@@ -70,8 +70,9 @@ type circleSourceStat struct {
 
 type circleDetail struct {
 	circleSummary
-	Works  []circleCatalogWork `json:"works"`
-	Series []circleSeries      `json:"series"`
+	AvailableWorks int                 `json:"availableWorks"`
+	Works          []circleCatalogWork `json:"works"`
+	Series         []circleSeries      `json:"series"`
 }
 
 type circleSeries struct {
@@ -292,12 +293,22 @@ func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	availableWorks, err := s.loadCircleAvailableWorks(r.Context(), partyID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	series, err := s.loadCircleSeries(r.Context(), partyID)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, circleDetail{circleSummary: summary, Works: works, Series: series})
+	writeJSON(w, http.StatusOK, circleDetail{
+		circleSummary:  summary,
+		AvailableWorks: availableWorks,
+		Works:          works,
+		Series:         series,
+	})
 }
 
 func (s *Server) autoRefreshCircle(w http.ResponseWriter, r *http.Request) {
@@ -1002,6 +1013,74 @@ func (s *Server) loadCircleSummary(ctx context.Context, userID int64, partyID in
 	return item, nil
 }
 
+// loadCircleAvailableWorks counts unique catalog works with at least one
+// available local, cached, remote, or tracked-source representation. The
+// catalog may contain multiple editions and remote sources, so availability
+// must be unioned by the logical work code rather than summed by source.
+func (s *Server) loadCircleAvailableWorks(ctx context.Context, partyID int64) (int, error) {
+	demoCatalogWhere := ""
+	demoMediaWhere := ""
+	demoPresenceWhere := ""
+	demoRemoteCatalogWhere := ""
+	if s.cfg.IsDemo() {
+		demoCatalogWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("catalog_work")
+		demoMediaWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("media_work")
+		demoPresenceWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("presence_work")
+		demoRemoteCatalogWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("remote_work")
+	}
+
+	var count int
+	err := s.db.QueryRowContext(ctx, `
+		WITH catalog_codes AS (
+			SELECT DISTINCT UPPER(COALESCE(catalog_logical.canonical_code, catalog.primary_code)) AS code
+			FROM party_catalog_item AS catalog
+			LEFT JOIN work AS catalog_work ON UPPER(catalog_work.primary_code) = UPPER(catalog.primary_code)
+			LEFT JOIN work_edition AS catalog_edition ON catalog_edition.work_id = catalog_work.id
+			LEFT JOIN logical_work AS catalog_logical ON catalog_logical.id = catalog_edition.logical_work_id
+			WHERE catalog.party_id = ?
+			`+demoCatalogWhere+`
+		), available_media_codes AS (
+			SELECT DISTINCT UPPER(COALESCE(media_logical.canonical_code, media_work.primary_code)) AS code
+			FROM work AS media_work
+			LEFT JOIN work_edition AS media_edition ON media_edition.work_id = media_work.id
+			LEFT JOIN logical_work AS media_logical ON media_logical.id = media_edition.logical_work_id
+			INNER JOIN media_item AS media_item ON media_item.work_id = media_work.id
+			INNER JOIN media_file_location AS media_location ON media_location.media_item_id = media_item.id
+			WHERE media_location.availability = 'available'
+			`+demoMediaWhere+`
+		), available_presence_codes AS (
+			SELECT DISTINCT UPPER(COALESCE(presence_logical.canonical_code, presence_work.primary_code)) AS code
+			FROM work AS presence_work
+			LEFT JOIN work_edition AS presence_edition ON presence_edition.work_id = presence_work.id
+			LEFT JOIN logical_work AS presence_logical ON presence_logical.id = presence_edition.logical_work_id
+			INNER JOIN work_source_presence AS presence ON presence.work_id = presence_work.id
+			INNER JOIN file_source AS presence_source ON presence_source.id = presence.file_source_id
+			WHERE presence.presence_type = 'source'
+				AND presence.availability = 'available'
+				AND presence_source.enabled = 1
+			`+demoPresenceWhere+`
+		), available_remote_catalog_codes AS (
+			SELECT DISTINCT UPPER(COALESCE(remote_logical.canonical_code, remote_catalog.primary_code)) AS code
+			FROM party_catalog_item AS remote_catalog
+			INNER JOIN metadata_provider AS remote_provider ON remote_provider.id = remote_catalog.provider_id
+			INNER JOIN file_source AS remote_source ON remote_provider.code = 'kikoeru_source_' || remote_source.code
+			LEFT JOIN work AS remote_work ON UPPER(remote_work.primary_code) = UPPER(remote_catalog.primary_code)
+			LEFT JOIN work_edition AS remote_edition ON remote_edition.work_id = remote_work.id
+			LEFT JOIN logical_work AS remote_logical ON remote_logical.id = remote_edition.logical_work_id
+			WHERE remote_catalog.party_id = ?
+				AND remote_source.source_type IN ('kikoeru_compatible', 'kikoeru_compatible_number178')
+				AND remote_source.enabled = 1
+			`+demoRemoteCatalogWhere+`
+		)
+		SELECT COUNT(*)
+		FROM catalog_codes AS catalog
+		WHERE catalog.code IN (SELECT code FROM available_media_codes)
+			OR catalog.code IN (SELECT code FROM available_presence_codes)
+			OR catalog.code IN (SELECT code FROM available_remote_catalog_codes)
+	`, partyID, partyID).Scan(&count)
+	return count, err
+}
+
 func (s *Server) fillCircleStats(ctx context.Context, userID int64, item *circleSummary) error {
 	setDefaultCircleState(item)
 	demoWhere := ""
@@ -1390,6 +1469,13 @@ func int64InQuery(template string, values []int64) (string, []any) {
 		args = append(args, value)
 	}
 	return fmt.Sprintf(template, strings.Join(placeholders, ",")), args
+}
+
+func maxInt(left int, right int) int {
+	if left > right {
+		return left
+	}
+	return right
 }
 
 func (s *Server) circleSourceStats(ctx context.Context, partyID int64) ([]circleSourceStat, error) {

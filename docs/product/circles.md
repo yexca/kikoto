@@ -17,12 +17,11 @@ Circles represent makers, circles, and related party catalog state.
 - Presents work results with the same responsive grid and work cards as the
   Library. This applies to both circle detail and circle series;
   the separate circle-entity list keeps its own controls.
-- On mobile detail views, the four catalog statistics remain in one compact row
-  and non-empty aliases start folded below the circle name. The same compact
-  statistics treatment applies on wide layouts, and the values describe the
-  whole circle rather than the active work filter.
+- Shows one `Available N` badge beside user-defined tags on circle detail. The
+  duplicated statistic tiles and circle aliases are omitted from circle UI.
 - Keeps the two common refresh actions in the detail summary and moves targeted
-  catalog, metadata, and source refresh modes into an Advanced sheet.
+  catalog, metadata, and source refresh modes into an anchored Advanced
+  popover.
 - Keeps mobile work controls to the Works/Series switch, search, and one Catalog
   options action. Availability, mobile columns, and selection mode live in that
   sheet; wide layouts retain inline controls.

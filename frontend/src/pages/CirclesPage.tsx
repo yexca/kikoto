@@ -340,6 +340,7 @@ function CircleListPage() {
                   name={circle.displayName}
                   identityLabel={circle.externalId}
                   aliases={circle.aliases}
+                  showAliases={false}
                   latestWork={circle.latestWork}
                   favorite={circle.favorite}
                   userTags={circle.userTags}
@@ -384,6 +385,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const [isBulkSaving, setIsBulkSaving] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
   const [advancedRefreshOpen, setAdvancedRefreshOpen] = useState(false);
+  const advancedRefreshAnchorRef = useRef<HTMLButtonElement | null>(null);
   const [catalogOptionsOpen, setCatalogOptionsOpen] = useState(false);
   const fetchWorkspace = useRemoteFetchWorkspace({
     onWorksChanged: async () => setDetail(await api.getCircle(externalId)),
@@ -501,7 +503,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     });
   }, [availabilityFilter, circle.works, workQuery]);
   const catalogOnlyCount = circle.works.filter((work) => work.catalogStatus !== "imported").length;
-  const playableCount = circle.playableWorks;
+  const availableWorkCount = circle.availableWorks ?? circle.works.filter((work) => work.local || work.remote).length;
   const totalWorkPages = Math.max(1, Math.ceil(filteredWorks.length / workPageSize));
   const currentWorkPage = Math.min(workPage, totalWorkPages);
   const pagedWorks = filteredWorks.slice((currentWorkPage - 1) * workPageSize, currentWorkPage * workPageSize);
@@ -816,20 +818,10 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                   {circle.favorite && <Badge variant="secondary">Favorite</Badge>}
                 </div>
                 <h2 className="mt-3 truncate text-2xl font-semibold lg:text-3xl">{circle.displayName}</h2>
-                <p className="mt-1 hidden text-sm text-muted-foreground sm:block">
-                  {circle.aliases.join(", ") || "No aliases"}
-                </p>
-                {circle.aliases.length > 0 ? (
-                  <details className="mt-2 text-sm sm:hidden">
-                    <summary className="cursor-pointer font-medium text-muted-foreground">
-                      Aliases · {circle.aliases.length}
-                    </summary>
-                    <p className="mt-1 text-muted-foreground">{circle.aliases.join(", ")}</p>
-                  </details>
-                ) : (
-                  <p className="mt-1 text-sm text-muted-foreground sm:hidden">No aliases</p>
-                )}
-                <UserTagRow tags={circle.userTags} onSave={saveCircleTags} className="mt-3" />
+                <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5">
+                  <Badge variant={availableWorkCount > 0 ? "success" : "warning"}>Available {availableWorkCount}</Badge>
+                  <UserTagRow tags={circle.userTags} onSave={saveCircleTags} className="min-w-0 flex-1" />
+                </div>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -867,21 +859,18 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                   variant="outline"
                   size="sm"
                   className="h-9 gap-2 px-2 sm:px-3"
+                  ref={advancedRefreshAnchorRef}
                   aria-label="Open advanced refresh actions"
+                  aria-haspopup="dialog"
+                  aria-expanded={advancedRefreshOpen}
+                  aria-controls={advancedRefreshOpen ? "circle-advanced-refresh" : undefined}
                   title="Advanced refresh actions"
-                  onClick={() => setAdvancedRefreshOpen(true)}
+                  onClick={() => setAdvancedRefreshOpen((open) => !open)}
                 >
                   <MoreHorizontal className="h-4 w-4" />
                   <span className="hidden sm:inline">Advanced</span>
                 </Button>
               </div>
-            </div>
-
-            <div className="grid grid-cols-4 gap-px overflow-hidden rounded-md border bg-border">
-              <Stat label="Catalog works" value={String(circle.catalogWorks || circle.works.length)} />
-              <Stat label="Series" value={String(circle.series.length)} />
-              <Stat label="Catalog only" value={String(catalogOnlyCount)} />
-              <Stat label="Playable" value={String(playableCount)} />
             </div>
           </CardContent>
         </Card>
@@ -1203,9 +1192,10 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       )}
       <CircleAdvancedRefreshSheet
         open={advancedRefreshOpen}
+        anchorRef={advancedRefreshAnchorRef}
         circle={circle}
         catalogOnlyCount={catalogOnlyCount}
-        playableCount={playableCount}
+        availableCount={availableWorkCount}
         refreshingScope={refreshingScope}
         isTranslationCircle={isTranslationCircle(circle.externalId)}
         onClose={() => setAdvancedRefreshOpen(false)}
@@ -1485,15 +1475,6 @@ function SyncBadge({ state }: { state: string }) {
   return <Badge variant={state === "fresh" || state === "excluded" ? "secondary" : "warning"}>{label}</Badge>;
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div role="group" aria-label={`${label}: ${value}`} className="min-w-0 bg-card p-2 text-center">
-      <div className="text-lg font-semibold tabular-nums sm:text-xl">{value}</div>
-      <div className="break-words text-[10px] leading-tight text-muted-foreground sm:text-xs">{label}</div>
-    </div>
-  );
-}
-
 function emptyCircleDetail(externalId: string): CircleDetail {
   return {
     id: 0,
@@ -1514,6 +1495,7 @@ function emptyCircleDetail(externalId: string): CircleDetail {
     autoRefresh: { status: "skipped", reason: "", mode: "" },
     sourceSummaries: [],
     latestWork: null,
+    availableWorks: 0,
     works: [],
     series: [],
   };

@@ -1,28 +1,25 @@
 import {
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Cloud,
-  Database,
   ExternalLink,
   FileAudio,
   GitBranchPlus,
   GitMerge,
   HardDriveDownload,
-  HardDrive,
   Heart,
-  Layers3,
   ListChecks,
   Loader2,
   Plus,
   RefreshCw,
   Search,
   SlidersHorizontal,
+  Tags,
   Trash2,
 } from "lucide-react";
-import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
+import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -411,10 +408,15 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
-  const compactDetailPanels = useCompactDetailPanels();
+  const [detailPanel, setDetailPanel] = useState<"aliases" | "remote" | null>(null);
+  const aliasActionRef = useRef<HTMLButtonElement | null>(null);
+  const remoteActionRef = useRef<HTMLButtonElement | null>(null);
+  const aliasPanelID = useId();
+  const remotePanelID = useId();
 
   useEffect(() => {
     setIsLoading(true);
+    setDetailPanel(null);
     setRemoteMatches([]);
     setRemoteError("");
     setNotFound(false);
@@ -476,10 +478,14 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   }, [detail?.personId]);
 
   const knownWorks = detail?.works ?? [];
-  const remoteMatchCount = useMemo(
-    () => remoteMatches.reduce((total, source) => total + source.works.length, 0),
-    [remoteMatches],
+  const alternateAliasCount = useMemo(
+    () =>
+      (detail?.aliasRecords ?? []).filter(
+        (alias) => alias.alias.trim() !== "" && alias.alias.trim() !== detail?.displayName.trim(),
+      ).length,
+    [detail?.aliasRecords, detail?.displayName],
   );
+  const remoteSourceWarning = Boolean(remoteError) || remoteMatches.some(remoteSourceFailed);
   const mergedWorks = useMemo(() => mergeVoiceWorks(knownWorks, remoteMatches), [knownWorks, remoteMatches]);
   const filteredWorks = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -785,7 +791,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
 
       {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section>
         <Card>
           <CardContent className="space-y-4 p-5">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -796,9 +802,6 @@ function VoiceDetailPage({ personId }: { personId: number }) {
                   <Badge variant="secondary">person route</Badge>
                 </div>
                 <h2 className="mt-3 truncate text-2xl font-semibold lg:text-3xl">{detail.displayName}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {detail.aliases.filter((alias) => alias !== detail.displayName).join(", ") || "No aliases"}
-                </p>
                 <UserTagRow tags={detail.userTags} onSave={saveVoiceTags} className="mt-3" />
               </div>
               <div className="flex flex-wrap gap-2">
@@ -810,83 +813,92 @@ function VoiceDetailPage({ personId }: { personId: number }) {
                   <Heart className={`h-4 w-4 ${detail.favorite ? "fill-current" : ""}`} />
                   Favorite
                 </Button>
+                <Button
+                  ref={aliasActionRef}
+                  variant={detailPanel === "aliases" ? "secondary" : "outline"}
+                  size="sm"
+                  aria-haspopup="dialog"
+                  aria-expanded={detailPanel === "aliases"}
+                  aria-controls={detailPanel === "aliases" ? aliasPanelID : undefined}
+                  onClick={() => setDetailPanel((current) => (current === "aliases" ? null : "aliases"))}
+                >
+                  <Tags className="h-4 w-4" />
+                  Aliases
+                  {alternateAliasCount > 0 && <span className="tabular-nums">{alternateAliasCount}</span>}
+                </Button>
+                <Button
+                  ref={remoteActionRef}
+                  variant={detailPanel === "remote" ? "secondary" : "outline"}
+                  size="sm"
+                  aria-haspopup="dialog"
+                  aria-expanded={detailPanel === "remote"}
+                  aria-controls={detailPanel === "remote" ? remotePanelID : undefined}
+                  aria-label={remoteSourceWarning ? "Open Remote Sources with attention" : "Open Remote Sources"}
+                  onClick={() => setDetailPanel((current) => (current === "remote" ? null : "remote"))}
+                >
+                  {isRemoteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Cloud className="h-4 w-4" />}
+                  <span>Remote sources</span>
+                  {remoteSourceWarning && <span className="text-warning-foreground">!</span>}
+                  {remoteMatches.length > 0 && <span className="tabular-nums">{remoteMatches.length}</span>}
+                </Button>
               </div>
             </div>
 
-            <div className="grid grid-cols-5 gap-px overflow-hidden rounded-md border bg-border sm:gap-3 sm:overflow-visible sm:border-0 sm:bg-transparent">
-              <Stat label="Known works" value={detail.knownWorks} icon={<Database className="h-4 w-4" />} />
-              <Stat label="Playable" value={detail.playableWorks} icon={<Layers3 className="h-4 w-4" />} />
-              <Stat label="Local" value={detail.localWorks} icon={<HardDrive className="h-4 w-4" />} />
-              <Stat label="Remote" value={detail.remoteWorks} icon={<Cloud className="h-4 w-4" />} />
-              <Stat label="Remote matches" value={remoteMatchCount} icon={<Search className="h-4 w-4" />} />
+            <div
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
+              aria-label="Voice actor statistics"
+            >
+              <VoiceInlineStat label="works" value={detail.knownWorks} />
+              <VoiceInlineStat label="playable" value={detail.playableWorks} />
+              <VoiceInlineStat label="local" value={detail.localWorks} />
+              <VoiceInlineStat label="remote" value={detail.remoteWorks} />
             </div>
           </CardContent>
         </Card>
 
-        <div className="space-y-5">
-          {auth.hasPermission("metadata:sync") &&
-            (compactDetailPanels ? (
-              <MobileDetailDisclosure
-                title="Aliases"
-                summary={`${detail.aliasRecords?.length ?? detail.aliases.length} known`}
-              >
-                <AliasReviewPanel
-                  personId={detail.personId}
-                  aliases={detail.aliasRecords ?? []}
-                  onAliasesChange={(aliases) =>
-                    setDetail((current) =>
-                      current
-                        ? { ...current, aliasRecords: aliases, aliases: aliases.map((alias) => alias.alias) }
-                        : current,
-                    )
-                  }
-                  onMerged={() => void refreshDetail()}
-                  onMessage={setMessage}
-                />
-              </MobileDetailDisclosure>
-            ) : (
-              <AliasReviewPanel
-                personId={detail.personId}
-                aliases={detail.aliasRecords ?? []}
-                onAliasesChange={(aliases) =>
-                  setDetail((current) =>
-                    current
-                      ? { ...current, aliasRecords: aliases, aliases: aliases.map((alias) => alias.alias) }
-                      : current,
-                  )
-                }
-                onMerged={() => void refreshDetail()}
-                onMessage={setMessage}
-              />
-            ))}
-          {compactDetailPanels ? (
-            <MobileDetailDisclosure
-              title="Remote Sources"
-              summary={
-                remoteError
-                  ? "Unavailable"
-                  : isRemoteLoading && remoteMatches.length === 0
-                    ? "Checking"
-                    : `${remoteMatches.length} source${remoteMatches.length === 1 ? "" : "s"} · ${remoteMatches.reduce((total, source) => total + (source.total || source.works.length), 0)} matches`
+        <AnchoredPopover
+          open={detailPanel === "aliases"}
+          anchorRef={aliasActionRef}
+          onOpenChange={(open) => setDetailPanel(open ? "aliases" : null)}
+          className="w-[min(34rem,calc(100vw-1.5rem))] p-4"
+          bottomCollisionPadding={96}
+          zIndex={70}
+        >
+          <div id={aliasPanelID} role="dialog" aria-label="Aliases">
+            <AliasReviewPanel
+              personId={detail.personId}
+              aliases={detail.aliasRecords ?? []}
+              canManage={auth.hasPermission("metadata:sync")}
+              onAliasesChange={(aliases) =>
+                setDetail((current) =>
+                  current
+                    ? { ...current, aliasRecords: aliases, aliases: aliases.map((alias) => alias.alias) }
+                    : current,
+                )
               }
-              warning={Boolean(remoteError) || remoteMatches.some(remoteSourceFailed)}
-            >
-              <RemoteSourcePanel
-                sources={remoteMatches}
-                loading={isRemoteLoading}
-                error={remoteError}
-                onRetry={() => void loadRemoteMatches(true)}
-              />
-            </MobileDetailDisclosure>
-          ) : (
+              onMerged={() => void refreshDetail()}
+              onMessage={setMessage}
+            />
+          </div>
+        </AnchoredPopover>
+
+        <AnchoredPopover
+          open={detailPanel === "remote"}
+          anchorRef={remoteActionRef}
+          onOpenChange={(open) => setDetailPanel(open ? "remote" : null)}
+          className="w-[min(28rem,calc(100vw-1.5rem))] p-4"
+          bottomCollisionPadding={96}
+          zIndex={70}
+        >
+          <div id={remotePanelID} role="dialog" aria-label="Remote Sources">
             <RemoteSourcePanel
               sources={remoteMatches}
               loading={isRemoteLoading}
               error={remoteError}
               onRetry={() => void loadRemoteMatches(true)}
             />
-          )}
-        </div>
+          </div>
+        </AnchoredPopover>
       </section>
 
       <section className="space-y-3">
@@ -1154,12 +1166,14 @@ function VoiceWorkCard({
 function AliasReviewPanel({
   personId,
   aliases,
+  canManage,
   onAliasesChange,
   onMerged,
   onMessage,
 }: {
   personId: number;
   aliases: VoiceAlias[];
+  canManage: boolean;
   onAliasesChange: (aliases: VoiceAlias[]) => void;
   onMerged: () => void;
   onMessage: (message: string) => void;
@@ -1175,6 +1189,7 @@ function AliasReviewPanel({
   const shouldShowSuggestions = isSuggestOpen && candidates.length > 0 && candidates.length <= aliasSuggestMaxResults;
 
   const loadCandidates = async () => {
+    if (!canManage) return;
     if (aliasDraft.trim().length < aliasSuggestMinChars) {
       setCandidates([]);
       return;
@@ -1190,6 +1205,10 @@ function AliasReviewPanel({
   };
 
   const loadMergeReviews = async () => {
+    if (!canManage) {
+      setMergeReviews([]);
+      return;
+    }
     try {
       setMergeReviews(await api.listVoiceMergeReviews(personId));
     } catch (error) {
@@ -1199,14 +1218,14 @@ function AliasReviewPanel({
 
   useEffect(() => {
     void loadMergeReviews();
-  }, [personId]);
+  }, [canManage, personId]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       void loadCandidates();
     }, 180);
     return () => window.clearTimeout(timeout);
-  }, [aliasDraft, personId]);
+  }, [aliasDraft, canManage, personId]);
 
   useEffect(() => {
     if (!isSuggestOpen) return;
@@ -1273,72 +1292,100 @@ function AliasReviewPanel({
   };
 
   return (
-    <Card>
-      <CardContent className="space-y-3 p-4">
-        <div>
-          <h3 className="font-semibold">Aliases</h3>
-          <p className="text-sm text-muted-foreground">Review alternate names and merge duplicate voice actors.</p>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {aliases.length > 0 ? (
-            aliases.map((alias) => (
-              <Badge
-                key={alias.id}
-                variant={alias.source === "primary_name" ? "secondary" : "outline"}
-                className="gap-1"
-              >
-                {alias.alias}
-                {alias.source !== "primary_name" && (
-                  <button
-                    className="rounded-sm hover:text-destructive"
-                    aria-label={`Delete alias ${alias.alias}`}
-                    onClick={() => void deleteAlias(alias)}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                )}
-              </Badge>
-            ))
-          ) : (
-            <Badge variant="warning">No aliases</Badge>
-          )}
-        </div>
-        <div className="relative" ref={suggestRef}>
-          <div className="flex gap-2">
-            <div className="flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-3">
-              <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <input
-                ref={inputRef}
-                className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                value={aliasDraft}
-                onKeyDown={dismissKeyboardOnEnter}
-                onChange={(event) => {
-                  setAliasDraft(event.target.value);
-                  setIsSuggestOpen(true);
-                }}
-                placeholder="Add alias or search duplicate voice actor"
-              />
-            </div>
-            <Button variant="outline" size="sm" onClick={() => void addAlias()}>
-              <Plus className="h-4 w-4" /> Add
-            </Button>
-          </div>
-          {shouldShowSuggestions && (
-            <div className="app-scroll absolute left-0 right-0 top-11 z-30 max-h-72 overflow-auto rounded-md border bg-popover p-1 shadow-lg">
-              {candidates.slice(0, aliasSuggestMaxResults).map((candidate) => (
+    <div className="space-y-3">
+      <div>
+        <h3 className="font-semibold">Aliases</h3>
+        <p className="text-sm text-muted-foreground">Review alternate names and merge duplicate voice actors.</p>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {aliases.length > 0 ? (
+          aliases.map((alias) => (
+            <Badge key={alias.id} variant={alias.source === "primary_name" ? "secondary" : "outline"} className="gap-1">
+              {alias.alias}
+              {canManage && alias.source !== "primary_name" && (
                 <button
-                  key={candidate.personId}
-                  className="flex w-full items-center justify-between gap-3 rounded-sm px-3 py-2 text-left text-sm hover:bg-muted"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => {
-                    setAliasDraft(candidate.displayName);
-                    setIsSuggestOpen(false);
-                    inputRef.current?.focus();
-                  }}
+                  className="rounded-sm hover:text-destructive"
+                  aria-label={`Delete alias ${alias.alias}`}
+                  onClick={() => void deleteAlias(alias)}
                 >
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{candidate.displayName}</span>
-                    <span className="block truncate text-xs text-muted-foreground">
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              )}
+            </Badge>
+          ))
+        ) : (
+          <Badge variant="warning">No aliases</Badge>
+        )}
+      </div>
+      {canManage && (
+        <>
+          <div className="relative" ref={suggestRef}>
+            <div className="flex gap-2">
+              <div className="flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-3">
+                <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <input
+                  ref={inputRef}
+                  className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                  value={aliasDraft}
+                  onKeyDown={dismissKeyboardOnEnter}
+                  onChange={(event) => {
+                    setAliasDraft(event.target.value);
+                    setIsSuggestOpen(true);
+                  }}
+                  placeholder="Add alias or search duplicate voice actor"
+                />
+              </div>
+              <Button variant="outline" size="sm" onClick={() => void addAlias()}>
+                <Plus className="h-4 w-4" /> Add
+              </Button>
+            </div>
+            {shouldShowSuggestions && (
+              <div className="app-scroll absolute left-0 right-0 top-11 z-30 max-h-72 overflow-auto rounded-md border bg-popover p-1 shadow-lg">
+                {candidates.slice(0, aliasSuggestMaxResults).map((candidate) => (
+                  <button
+                    key={candidate.personId}
+                    className="flex w-full items-center justify-between gap-3 rounded-sm px-3 py-2 text-left text-sm hover:bg-muted"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      setAliasDraft(candidate.displayName);
+                      setIsSuggestOpen(false);
+                      inputRef.current?.focus();
+                    }}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{candidate.displayName}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {candidate.knownWorks} works ·{" "}
+                        {[
+                          ...new Set(
+                            candidate.aliases
+                              .map((alias) => alias.alias)
+                              .filter((alias) => alias !== candidate.displayName),
+                          ),
+                        ].join(", ") || "No extra aliases"}
+                      </span>
+                    </span>
+                    <GitMerge className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {aliasDraft.trim().length >= aliasSuggestMinChars && candidates.length > aliasSuggestMaxResults && (
+            <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">
+              Too many matches. Keep typing to narrow candidates.
+            </div>
+          )}
+          {candidates.length > 0 && candidates.length <= aliasSuggestMaxResults && (
+            <div className="space-y-2">
+              {candidates.slice(0, 4).map((candidate) => (
+                <div
+                  key={candidate.personId}
+                  className="flex items-center justify-between gap-3 rounded-md border bg-background p-3 text-sm"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{candidate.displayName}</div>
+                    <div className="truncate text-xs text-muted-foreground">
                       {candidate.knownWorks} works ·{" "}
                       {[
                         ...new Set(
@@ -1347,61 +1394,33 @@ function AliasReviewPanel({
                             .filter((alias) => alias !== candidate.displayName),
                         ),
                       ].join(", ") || "No extra aliases"}
-                    </span>
-                  </span>
-                  <GitMerge className="h-4 w-4 shrink-0 text-muted-foreground" />
-                </button>
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setMergeTarget(candidate)}>
+                    <GitMerge className="h-4 w-4" />
+                    Merge
+                  </Button>
+                </div>
               ))}
             </div>
           )}
-        </div>
-        {aliasDraft.trim().length >= aliasSuggestMinChars && candidates.length > aliasSuggestMaxResults && (
-          <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">
-            Too many matches. Keep typing to narrow candidates.
-          </div>
-        )}
-        {candidates.length > 0 && candidates.length <= aliasSuggestMaxResults && (
-          <div className="space-y-2">
-            {candidates.slice(0, 4).map((candidate) => (
-              <div
-                key={candidate.personId}
-                className="flex items-center justify-between gap-3 rounded-md border bg-background p-3 text-sm"
-              >
-                <div className="min-w-0">
-                  <div className="truncate font-medium">{candidate.displayName}</div>
-                  <div className="truncate text-xs text-muted-foreground">
-                    {candidate.knownWorks} works ·{" "}
-                    {[
-                      ...new Set(
-                        candidate.aliases
-                          .map((alias) => alias.alias)
-                          .filter((alias) => alias !== candidate.displayName),
-                      ),
-                    ].join(", ") || "No extra aliases"}
-                  </div>
+        </>
+      )}
+      {mergeReviews.length > 0 && (
+        <div className="space-y-2 border-t pt-3">
+          <div className="text-sm font-medium">Merge history</div>
+          {mergeReviews.slice(0, 4).map((review) => (
+            <div
+              key={review.id}
+              className="flex items-center justify-between gap-3 rounded-md border bg-background p-3 text-sm"
+            >
+              <div className="min-w-0">
+                <div className="truncate font-medium">{review.sourceName}</div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {review.status === "undone" ? "Undone" : "Merged"} · {review.createdAt}
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setMergeTarget(candidate)}>
-                  <GitMerge className="h-4 w-4" />
-                  Merge
-                </Button>
               </div>
-            ))}
-          </div>
-        )}
-        {mergeReviews.length > 0 && (
-          <div className="space-y-2 border-t pt-3">
-            <div className="text-sm font-medium">Merge history</div>
-            {mergeReviews.slice(0, 4).map((review) => (
-              <div
-                key={review.id}
-                className="flex items-center justify-between gap-3 rounded-md border bg-background p-3 text-sm"
-              >
-                <div className="min-w-0">
-                  <div className="truncate font-medium">{review.sourceName}</div>
-                  <div className="truncate text-xs text-muted-foreground">
-                    {review.status === "undone" ? "Undone" : "Merged"} · {review.createdAt}
-                  </div>
-                </div>
+              {canManage && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1410,11 +1429,11 @@ function AliasReviewPanel({
                 >
                   Undo
                 </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       {mergeTarget && (
         <FloatingConfirm
           title="Merge voice actor"
@@ -1424,7 +1443,7 @@ function AliasReviewPanel({
           onConfirm={() => void mergeCandidate(mergeTarget)}
         />
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -1568,57 +1587,53 @@ function RemoteSourcePanel({
   onRetry: () => void;
 }) {
   return (
-    <Card>
-      <CardContent className="space-y-3 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className="font-semibold">Remote Sources</h3>
-            <p className="text-sm text-muted-foreground">
-              Queried after local detail renders, so source outages do not block the page.
-            </p>
-          </div>
-          <Button variant="outline" size="sm" disabled={loading} onClick={onRetry}>
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            Retry
-          </Button>
+    <div className="space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold">Remote Sources</h3>
+          <p className="text-xs text-muted-foreground">Live matches by configured source.</p>
         </div>
-        {loading && sources.length === 0 ? (
-          <RemoteSourceSkeleton />
-        ) : (
-          sources.map((source) => (
-            <div key={source.sourceId} className="rounded-md border bg-background p-3 text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="truncate font-medium">{source.displayName}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {source.total || source.works.length} matches · {source.elapsedMs} ms
-                  </div>
+        <Button variant="outline" size="sm" disabled={loading} onClick={onRetry}>
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          Retry
+        </Button>
+      </div>
+      {loading && sources.length === 0 ? (
+        <RemoteSourceSkeleton />
+      ) : (
+        sources.map((source) => (
+          <div key={source.sourceId} className="rounded-md border bg-background p-3 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate font-medium">{source.displayName}</div>
+                <div className="text-xs text-muted-foreground">
+                  {source.total || source.works.length} matches · {source.elapsedMs} ms
                 </div>
-                <Badge variant={source.status === "ok" ? "outline" : "warning"}>{source.status}</Badge>
               </div>
-              {remoteSourceStatusMessage(source) && (
-                <div className="mt-2 text-xs text-destructive">{remoteSourceStatusMessage(source)}</div>
-              )}
+              <Badge variant={source.status === "ok" ? "outline" : "warning"}>{source.status}</Badge>
             </div>
-          ))
-        )}
-        {loading && sources.length > 0 && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Refreshing remote matches
+            {remoteSourceStatusMessage(source) && (
+              <div className="mt-2 text-xs text-destructive">{remoteSourceStatusMessage(source)}</div>
+            )}
           </div>
-        )}
-        {error && (
-          <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
-        {!loading && sources.length === 0 && !error && (
-          <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">
-            No Kikoeru-compatible sources are configured.
-          </div>
-        )}
-      </CardContent>
-    </Card>
+        ))
+      )}
+      {loading && sources.length > 0 && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Refreshing remote matches
+        </div>
+      )}
+      {error && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+      {!loading && sources.length === 0 && !error && (
+        <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">
+          No Kikoeru-compatible sources are configured.
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1664,33 +1679,19 @@ function VoiceDetailSkeleton() {
   return (
     <div className="space-y-5">
       <EntitySkeletonLine className="h-9 w-32" />
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section>
         <Card>
           <CardContent className="space-y-4 p-5">
             <EntitySkeletonLine className="h-5 w-24" />
             <EntitySkeletonLine className="h-9 w-64" />
             <EntitySkeletonLine className="h-5 w-80" />
-            <div className="grid grid-cols-5 gap-px overflow-hidden rounded-md border bg-border sm:gap-3 sm:overflow-visible sm:border-0 sm:bg-transparent">
-              {Array.from({ length: 5 }, (_, index) => (
-                <EntitySkeletonLine key={index} className="h-16 w-full rounded-none sm:h-20 sm:rounded" />
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              {Array.from({ length: 4 }, (_, index) => (
+                <EntitySkeletonLine key={index} className="h-4 w-20" />
               ))}
             </div>
           </CardContent>
         </Card>
-        <div className="space-y-5">
-          <Card>
-            <CardContent className="space-y-3 p-4">
-              <EntitySkeletonLine className="h-5 w-32" />
-              <EntitySkeletonLine className="h-10 w-full" />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="space-y-3 p-4">
-              <EntitySkeletonLine className="h-5 w-32" />
-              <RemoteSourceSkeleton />
-            </CardContent>
-          </Card>
-        </div>
       </section>
       <WorkCollectionLoadingState label="Loading voice works" />
     </div>
@@ -1758,26 +1759,11 @@ function listeningStatusLabel(status: string) {
   );
 }
 
-function MiniStat({ label, value }: { label: string; value: number }) {
+function VoiceInlineStat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-md border bg-background p-2">
-      <div className="font-semibold">{value}</div>
-      <div className="text-muted-foreground">{label}</div>
-    </div>
-  );
-}
-
-function Stat({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
-  return (
-    <Card className="min-w-0 rounded-none border-0 sm:rounded-lg sm:border">
-      <CardContent className="flex min-w-0 flex-col items-center justify-center gap-1 p-2 text-center sm:flex-row sm:justify-between sm:gap-3 sm:p-4 sm:text-left">
-        <div className="min-w-0">
-          <div className="text-lg font-semibold tabular-nums sm:text-2xl">{value}</div>
-          <div className="break-words text-[10px] leading-tight text-muted-foreground sm:text-sm">{label}</div>
-        </div>
-        <div className="hidden text-primary sm:block">{icon}</div>
-      </CardContent>
-    </Card>
+    <span className="whitespace-nowrap">
+      {label}: <span className="font-medium tabular-nums text-foreground">{value}</span>
+    </span>
   );
 }
 
@@ -1808,42 +1794,6 @@ function voiceSourceStatusLabel(status: string) {
     default:
       return "Not checked";
   }
-}
-
-function MobileDetailDisclosure({
-  title,
-  summary,
-  warning = false,
-  children,
-}: {
-  title: string;
-  summary: string;
-  warning?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <details className="group">
-      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3 marker:hidden">
-        <div className="min-w-0">
-          <div className="font-semibold">{title}</div>
-          <div className={`truncate text-xs ${warning ? "text-destructive" : "text-muted-foreground"}`}>{summary}</div>
-        </div>
-        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
-      </summary>
-      <div className="mt-2">{children}</div>
-    </details>
-  );
-}
-
-function useCompactDetailPanels() {
-  const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 767px)").matches);
-  useEffect(() => {
-    const media = window.matchMedia("(max-width: 767px)");
-    const update = () => setCompact(media.matches);
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
-  return compact;
 }
 
 function CatalogPagination({

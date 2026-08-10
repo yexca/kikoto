@@ -28,6 +28,7 @@ export function CreatorCard({
   name,
   identityLabel,
   aliases,
+  showAliases = true,
   latestWork,
   favorite,
   userTags,
@@ -42,6 +43,7 @@ export function CreatorCard({
   name: string;
   identityLabel?: string;
   aliases: string[];
+  showAliases?: boolean;
   latestWork: CreatorLatestWork | null;
   favorite: boolean;
   userTags: UserTag[];
@@ -55,7 +57,7 @@ export function CreatorCard({
 }) {
   const [imageFailed, setImageFailed] = useState(false);
   useEffect(() => setImageFailed(false), [latestWork?.coverUrl]);
-  const visibleAliases = aliases.filter((alias) => alias && alias !== name);
+  const visibleAliases = showAliases ? aliases.filter((alias) => alias && alias !== name) : [];
   const availableSources = creatorSourceTags(sources);
   const showUnavailableCount = unavailableCount > 0 && availableSources.length > 0;
 

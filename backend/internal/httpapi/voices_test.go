@@ -101,6 +101,35 @@ func TestLoadVoiceSummariesSerializesMissingUserTagsAsArray(t *testing.T) {
 	}
 }
 
+func TestLoadVoiceSummariesCountsPlayableWorksAsAvailabilityUnion(t *testing.T) {
+	db := openMigratedTestDB(t)
+	statements := []string{
+		"INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000001', 'Example Work 1'), (2, 'RJ00000002', 'Example Work 2')",
+		"INSERT INTO person (id, display_name) VALUES (1, 'Example Voice')",
+		"INSERT INTO work_credit (work_id, person_id, role, source) VALUES (1, 1, 'voice_actor', 'test'), (2, 1, 'voice_actor', 'test')",
+		"INSERT INTO file_source (id, code, display_name, source_type, priority, enabled) VALUES (11, 'example_local', 'Example Local', 'local_scan', 10, 1), (12, 'example_remote_a', 'Example Remote A', 'kikoeru_compatible', 20, 1)",
+		"INSERT INTO media_item (id, work_id, kind, title) VALUES (1, 1, 'audio', 'Example Track')",
+		"INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability) VALUES (1, 1, 11, 'local', 'Library/RJ00000001/track.mp3', 'available'), (2, 1, 12, 'cache', 'cache/RJ00000001/track.mp3', 'available'), (3, 1, 12, 'remote_stream', 'remote/RJ00000001/track.mp3', 'available')",
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	summaries, err := (&Server{db: db}).loadVoiceSummaries(context.Background(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("summaries = %+v, want one voice", summaries)
+	}
+	summary := summaries[0]
+	if summary.KnownWorks != 2 || summary.LocalWorks != 1 || summary.CachedWorks != 1 || summary.RemoteWorks != 1 || summary.PlayableWorks != 1 {
+		t.Fatalf("summary = %+v, want known 2 and one distinct playable work across local, cache, and remote", summary)
+	}
+}
+
 func TestLoadVoiceKnownWorksProjectsAvailableSourcePresenceWithoutMediaLocation(t *testing.T) {
 	db := openMigratedTestDB(t)
 	statements := []string{

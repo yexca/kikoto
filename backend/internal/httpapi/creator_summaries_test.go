@@ -65,3 +65,35 @@ func TestLoadVoiceSummariesIncludesLatestKnownWork(t *testing.T) {
 		t.Fatalf("summaries = %+v, want latest voice work", summaries)
 	}
 }
+
+func TestLoadCircleAvailableWorksCountsCanonicalUnionOnce(t *testing.T) {
+	db := openMigratedTestDB(t)
+	statements := []string{
+		"INSERT INTO party (id, display_name) VALUES (1, 'Example Circle')",
+		"INSERT INTO metadata_provider (code, display_name) VALUES ('kikoeru_source_example_remote_a', 'Example Remote A')",
+		"INSERT INTO file_source (id, code, display_name, source_type, priority, enabled) VALUES (11, 'example_local', 'Example Local', 'local_scan', 10, 1), (12, 'example_remote_a', 'Example Remote A', 'kikoeru_compatible', 20, 1)",
+		"INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000001', 'Example Work 1'), (2, 'RJ00000002', 'Example Work 2')",
+		"INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (1, 1, 'RJ00000001')",
+		"INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, is_canonical) VALUES (1, 1, 'RJ00000001', 'RJ00000001', 1), (2, 1, 'RJ00000002', 'RJ00000001', 0)",
+		"INSERT INTO party_catalog_item (party_id, provider_id, primary_code, title) SELECT 1, id, 'RJ00000001', 'Example Work 1' FROM metadata_provider WHERE code = 'dlsite'",
+		"INSERT INTO party_catalog_item (party_id, provider_id, primary_code, title) SELECT 1, id, 'RJ00000002', 'Example Work 2' FROM metadata_provider WHERE code = 'dlsite'",
+		"INSERT INTO party_catalog_item (party_id, provider_id, primary_code, title) SELECT 1, id, 'RJ00000003', 'Example Work 3' FROM metadata_provider WHERE code = 'dlsite'",
+		"INSERT INTO party_catalog_item (party_id, provider_id, primary_code, title) SELECT 1, id, 'RJ00000002', 'Example Work 2' FROM metadata_provider WHERE code = 'kikoeru_source_example_remote_a'",
+		"INSERT INTO media_item (id, work_id, kind, title) VALUES (1, 1, 'audio', 'Example Track')",
+		"INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability) VALUES (1, 1, 11, 'local', 'Library/RJ00000001/track.mp3', 'available'), (2, 1, 12, 'cache', 'cache/RJ00000001/track.mp3', 'available')",
+		"INSERT INTO work_source_presence (work_id, file_source_id, presence_type, remote_code, availability) VALUES (2, 12, 'source', 'RJ00000002', 'available')",
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	available, err := (&Server{db: db}).loadCircleAvailableWorks(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if available != 1 {
+		t.Fatalf("available works = %d, want one canonical work across editions and sources", available)
+	}
+}

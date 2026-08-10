@@ -1269,6 +1269,7 @@ export type CircleSeries = {
 };
 
 export type CircleDetail = CircleSummary & {
+  availableWorks: number;
   works: CircleCatalogWork[];
   series: CircleSeries[];
 };

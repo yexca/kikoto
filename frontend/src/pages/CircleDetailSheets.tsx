@@ -1,6 +1,7 @@
 import { Check, Columns3, RefreshCw, X } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, type ReactNode, type RefObject } from "react";
 
+import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import type { CircleDetail } from "@/lib/api";
 import type { WorkCollectionColumnSetting } from "@/components/work-collection/WorkCollectionLayout";
@@ -11,39 +12,41 @@ export type CircleRefreshMode = "incremental" | "full";
 
 export function CircleAdvancedRefreshSheet({
   open,
+  anchorRef,
   circle,
   catalogOnlyCount,
-  playableCount,
+  availableCount,
   refreshingScope,
   isTranslationCircle,
   onClose,
   onRun,
 }: {
   open: boolean;
+  anchorRef: RefObject<HTMLElement | null>;
   circle: CircleDetail;
   catalogOnlyCount: number;
-  playableCount: number;
+  availableCount: number;
   refreshingScope: CircleRefreshScope | null;
   isTranslationCircle: boolean;
   onClose: () => void;
   onRun: (scope: CircleRefreshScope, mode: CircleRefreshMode) => void;
 }) {
-  useSheetEscape(open, onClose);
-
-  if (!open) return null;
   return (
-    <div
-      className="visual-viewport-layer z-50 flex items-end justify-center bg-background/55 p-2 backdrop-blur-sm sm:p-4 lg:items-center"
-      onMouseDown={onClose}
+    <AnchoredPopover
+      open={open}
+      anchorRef={anchorRef}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onClose();
+      }}
+      className="w-[min(30rem,calc(100vw-1.5rem))] p-4"
+      bottomCollisionPadding={96}
+      zIndex={70}
     >
       <div
         role="dialog"
-        aria-modal="true"
+        id="circle-advanced-refresh"
         aria-labelledby="circle-advanced-refresh-title"
         data-android-back-close
-        className="app-scroll min-h-0 max-h-full w-full max-w-xl overflow-y-auto rounded-t-lg border bg-card p-4 shadow-xl lg:rounded-lg"
-        style={{ paddingBottom: "max(1rem, calc(1rem + var(--safe-area-bottom)))" }}
-        onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -66,7 +69,7 @@ export function CircleAdvancedRefreshSheet({
           />
           <RefreshActionRow
             title="Work metadata"
-            description={`${catalogOnlyCount} catalog only · ${playableCount} playable`}
+            description={`${catalogOnlyCount} catalog only · ${availableCount} available`}
             disabled={refreshingScope !== null}
             active={refreshingScope === "work" || refreshingScope === "all"}
             onRun={(mode) => onRun("work", mode)}
@@ -85,7 +88,7 @@ export function CircleAdvancedRefreshSheet({
           )}
         </div>
       </div>
-    </div>
+    </AnchoredPopover>
   );
 }
 

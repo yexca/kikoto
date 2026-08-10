@@ -1281,6 +1281,7 @@ function FavoriteCircleCard({
       name={circle.displayName}
       identityLabel={circle.externalId}
       aliases={circle.aliases}
+      showAliases={false}
       latestWork={circle.latestWork}
       favorite={circle.favorite}
       userTags={circle.userTags}

@@ -726,6 +726,10 @@ func voiceSummaryQuery(where string, demo bool) string {
 			COUNT(DISTINCT CASE WHEN flags.has_local = 1 THEN COALESCE(logical.canonical_code, work.primary_code) END) AS local_works,
 			COUNT(DISTINCT CASE WHEN flags.has_remote = 1 THEN COALESCE(logical.canonical_code, work.primary_code) END) AS remote_works,
 			COUNT(DISTINCT CASE WHEN flags.has_cache = 1 THEN COALESCE(logical.canonical_code, work.primary_code) END) AS cached_works,
+			COUNT(DISTINCT CASE
+				WHEN flags.has_local = 1 OR flags.has_remote = 1 OR flags.has_cache = 1
+				THEN COALESCE(logical.canonical_code, work.primary_code)
+			END) AS playable_works,
 			MAX(work.updated_at) AS last_seen_at,
 			state.rating,
 			COALESCE(state.note, '') AS note,
@@ -773,6 +777,7 @@ func scanVoiceSummaryRow(scanner voiceSummaryScanner) (voiceSummary, error) {
 		&item.LocalWorks,
 		&item.RemoteWorks,
 		&item.CachedWorks,
+		&item.PlayableWorks,
 		&lastSeen,
 		&rating,
 		&item.Note,
@@ -781,7 +786,6 @@ func scanVoiceSummaryRow(scanner voiceSummaryScanner) (voiceSummary, error) {
 		return voiceSummary{}, err
 	}
 	item.Aliases = splitAliases(aliasesRaw)
-	item.PlayableWorks = maxInt(item.LocalWorks, countUnionInts(item.LocalWorks, item.CachedWorks, item.RemoteWorks))
 	item.LastSeenAt = nullableString(lastSeen)
 	if rating.Valid {
 		value := int(rating.Int64)
@@ -2646,21 +2650,6 @@ func splitAliases(raw string) []string {
 
 func voiceNameKey(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
-}
-
-func countUnionInts(values ...int) int {
-	total := 0
-	for _, value := range values {
-		total += value
-	}
-	return total
-}
-
-func maxInt(left int, right int) int {
-	if left > right {
-		return left
-	}
-	return right
 }
 
 func voiceSourceSummaries(local int, remote int, cache int) []circleSourceStat {
