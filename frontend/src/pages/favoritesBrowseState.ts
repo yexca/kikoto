@@ -27,7 +27,7 @@ export const defaultFavoritesBrowseState: FavoritesBrowseState = {
   list: "all",
   page: 1,
   pageSize: 24,
-  sort: "activity",
+  sort: "added",
   direction: "desc",
   randomSeed: 1,
 };

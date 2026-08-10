@@ -125,7 +125,7 @@ const availabilityFilters = [
 
 const pageSizeOptions = [24, 48] as const;
 const favoriteSortOptions: { value: FavoriteSort; label: string }[] = [
-  { value: "activity", label: "Shelf activity" },
+  { value: "activity", label: "Favorite activity" },
   { value: "added", label: "Added to list" },
   { value: "release", label: "Release date" },
   { value: "code", label: "DLsite code" },
@@ -185,7 +185,7 @@ export function FavoritesPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>(initialBrowseState.direction);
   const [randomSeed, setRandomSeed] = useState(initialBrowseState.randomSeed);
   const [totalWorks, setTotalWorks] = useState(0);
-  const [shelfTotal, setShelfTotal] = useState(0);
+  const [favoriteTotal, setFavoriteTotal] = useState(0);
   const [listCounts, setListCounts] = useState<Record<string, number>>({});
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const { mobileColumns, desktopColumns, setMobileColumns, setDesktopColumns } = useWorkCollectionLayout();
@@ -309,7 +309,7 @@ export function FavoritesPage() {
     if (!auth.user) {
       setWorks([]);
       setTotalWorks(0);
-      setShelfTotal(0);
+      setFavoriteTotal(0);
       setListCounts({});
       setStatusCounts({});
       setWorksSnapshotUserID(null);
@@ -337,7 +337,7 @@ export function FavoritesPage() {
         if (seq !== requestSeq.current) return;
         setWorks(result.works);
         setTotalWorks(result.total);
-        setShelfTotal(result.shelfTotal);
+        setFavoriteTotal(result.shelfTotal);
         setListCounts(result.listCounts);
         setStatusCounts(result.statusCounts);
         setWorksSnapshotUserID(principalID);
@@ -576,7 +576,7 @@ export function FavoritesPage() {
     );
     setWorks(result.works);
     setTotalWorks(result.total);
-    setShelfTotal(result.shelfTotal);
+    setFavoriteTotal(result.shelfTotal);
     setListCounts(result.listCounts);
     setStatusCounts(result.statusCounts);
     return lists;
@@ -670,7 +670,7 @@ export function FavoritesPage() {
                 active={favoriteEntity === "works"}
                 icon={ListMusic}
                 label="Works"
-                count={shelfTotal}
+                count={favoriteTotal}
                 onClick={() => setFavoriteEntity("works")}
               />
               <FavoriteEntityTab
@@ -801,8 +801,8 @@ export function FavoritesPage() {
                   ) : (
                     <FavoriteListTab
                       active={activeList === "all"}
-                      label="All Shelf"
-                      count={shelfTotal}
+                      label="All Favorites"
+                      count={favoriteTotal}
                       onClick={() => {
                         setActiveList("all");
                         setPage(1);
@@ -914,7 +914,7 @@ export function FavoritesPage() {
                   <tab.icon className="h-3 w-3" />
                   {tab.label}
                   <span className="text-[11px] tabular-nums opacity-65">
-                    {tab.value === "all" ? shelfTotal : (statusCounts[tab.value] ?? 0)}
+                    {tab.value === "all" ? favoriteTotal : (statusCounts[tab.value] ?? 0)}
                   </span>
                 </button>
               ))}
@@ -985,8 +985,8 @@ export function FavoritesPage() {
                       size="icon"
                       className="h-8 w-8"
                       onClick={clearFilters}
-                      aria-label="Clear shelf filters"
-                      title="Clear shelf filters"
+                      aria-label="Clear favorite filters"
+                      title="Clear favorite filters"
                     >
                       <X className="h-4 w-4" />
                     </Button>
@@ -1557,8 +1557,8 @@ function FavoriteSortControls({
           className="inline-flex h-7 min-w-0 max-w-40 items-center gap-1.5 rounded-l-md px-2 text-xs text-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
           disabled={disabled}
           onClick={() => setOpen((current) => !current)}
-          aria-label={`Sort shelf works: ${label}`}
-          title={`Sort shelf works: ${label}`}
+          aria-label={`Sort favorite works: ${label}`}
+          title={`Sort favorite works: ${label}`}
         >
           <ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           <span className="truncate">{label}</span>
@@ -1587,7 +1587,7 @@ function FavoriteSortControls({
         onOpenChange={setOpen}
         className="w-[min(12rem,calc(100vw-1.5rem))] p-1 text-sm"
       >
-        <div role="menu" aria-label="Shelf sort options">
+        <div role="menu" aria-label="Favorite sort options">
           {favoriteSortOptions.map((option) => (
             <button
               key={option.value}
@@ -1799,9 +1799,9 @@ function FavoriteMobileOptions({
         size="icon"
         className="relative h-11 w-11"
         onClick={() => setPopoverOpen(!open)}
-        aria-label="More shelf options"
-        title="More shelf options"
-        data-shelf-sort={sort}
+        aria-label="More favorite options"
+        title="More favorite options"
+        data-favorite-sort={sort}
       >
         <SlidersHorizontal className="h-4 w-4" />
         {(hasActiveFilters || selectionMode) && (
@@ -1815,7 +1815,7 @@ function FavoriteMobileOptions({
         className="w-[min(19rem,calc(100vw-1.5rem))] p-1 text-sm"
       >
         {panel === "root" ? (
-          <div role="menu" aria-label="More shelf options">
+          <div role="menu" aria-label="More favorite options">
             <div className="px-3 py-2 text-xs font-semibold text-foreground">More options</div>
             <FavoriteMobileMenuRow
               icon={<Filter className="h-4 w-4" />}
@@ -2066,11 +2066,11 @@ function EmptyFavorites({ hasFilters, onClearFilters }: { hasFilters: boolean; o
     <div className="grid min-h-72 place-items-center rounded-lg border bg-card p-6 text-center">
       <div className="max-w-sm space-y-3">
         <Heart className="mx-auto h-8 w-8 text-primary" />
-        <h3 className="text-base font-semibold">{hasFilters ? "No matches" : "No shelf works yet"}</h3>
+        <h3 className="text-base font-semibold">{hasFilters ? "No matches" : "No favorite works yet"}</h3>
         <p className="text-sm text-muted-foreground">
           {hasFilters
-            ? "The current filters do not match any shelf works."
-            : "Favorite or quick mark works from Library or Work Detail to build this shelf."}
+            ? "The current filters do not match any favorite works."
+            : "Add favorite works from Library or Work Detail to build your collection."}
         </p>
         {hasFilters && (
           <Button variant="outline" size="sm" onClick={onClearFilters}>

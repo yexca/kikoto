@@ -24,7 +24,7 @@ export const navItems = [
   {
     id: "favorites",
     label: "Favorites",
-    description: "Lists, quick marks, and progress across your library",
+    description: "Browse your favorite works, circles, voices, and lists",
     path: "/favorites",
     icon: Heart,
     audience: "authenticated",

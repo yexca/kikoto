@@ -188,7 +188,7 @@ test("favorites detail uses Library Up navigation while the Favorites tab restor
     "/favorites?entity=works&status=listening&availability=local&list=2&page=2&pageSize=24&sort=sales&direction=asc&seed=314159",
   );
   await expect(page.getByRole("button", { name: /Study/ })).toHaveAttribute("class", /bg-primary/);
-  await page.getByRole("button", { name: "More shelf options" }).click();
+  await page.getByRole("button", { name: "More favorite options" }).click();
   await expect(page.getByRole("menuitem", { name: "Sort Sales" })).toBeVisible();
   await expect(page.getByRole("textbox")).toHaveCount(0);
   await page.getByRole("menuitem", { name: "Selection mode Off" }).click();
@@ -211,7 +211,10 @@ test("favorites detail uses Library Up navigation while the Favorites tab restor
   await expect(page).toHaveURL(/^http:\/\/[^/]+\/(?:\?.*)?$/);
   await page.locator("footer").getByRole("button", { name: "Favorites", exact: true }).click();
   await expect(page).toHaveURL(/\/favorites$/);
-  await expect(page.getByRole("button", { name: "More shelf options" })).toHaveAttribute("data-shelf-sort", "sales");
+  await expect(page.getByRole("button", { name: "More favorite options" })).toHaveAttribute(
+    "data-favorite-sort",
+    "sales",
+  );
   await expect(page.getByText("1 selected", { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(savedScroll - 100);
   const params = new URL(page.url()).searchParams;
@@ -245,7 +248,7 @@ test("switching favorite lists keeps the entire playlist row stable while works 
   await page.goto("/favorites");
 
   const playlistButtons = [
-    page.getByRole("button", { name: /All Shelf/ }),
+    page.getByRole("button", { name: /All Favorites/ }),
     page.getByRole("button", { name: /Favorites 24/ }),
     page.getByRole("button", { name: /Study 24/ }),
     page.getByRole("button", { name: "Favorite list options", exact: true }),
@@ -302,7 +305,7 @@ test("filters favorites by any selected file source and keeps the selection out 
   });
   await page.goto("/favorites");
 
-  await page.getByRole("button", { name: "More shelf options" }).click();
+  await page.getByRole("button", { name: "More favorite options" }).click();
   await page.getByRole("menuitem", { name: /Sources All sources/ }).click();
   await page.getByRole("menuitemcheckbox", { name: /Example Remote A/ }).click();
   await expect.poll(() => sourceRequests.at(-1)).toEqual([11]);

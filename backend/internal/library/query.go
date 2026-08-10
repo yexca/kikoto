@@ -155,11 +155,6 @@ func matchingListSelectSQL(where string, options MatchingListOptions) (string, [
 		expression := `MAX(
 			COALESCE(user_work_state.updated_at, ''),
 			COALESCE((
-				SELECT shelf_cursor.updated_at
-				FROM user_work_playback_cursor AS shelf_cursor
-				WHERE shelf_cursor.user_id = ? AND shelf_cursor.work_id = work.id
-			), ''),
-			COALESCE((
 				SELECT MAX(shelf_list_item.created_at)
 				FROM favorite_list_item AS shelf_list_item
 				INNER JOIN favorite_list AS shelf_list ON shelf_list.id = shelf_list_item.list_id
@@ -168,7 +163,7 @@ func matchingListSelectSQL(where string, options MatchingListOptions) (string, [
 			work.created_at
 		)`
 		query := outerProjection + listBaseSelectSQLWithExtra(where, false, ", "+expression+" AS matching_sort_value") + `) AS library_rows ORDER BY matching_sort_value ` + direction + `, id ` + direction
-		return query, []any{options.UserID, options.UserID}
+		return query, []any{options.UserID}
 	case "added":
 		expression := `(
 			SELECT MAX(shelf_list_item.created_at)

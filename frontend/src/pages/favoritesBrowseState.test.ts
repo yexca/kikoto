@@ -9,6 +9,10 @@ import {
 } from "./favoritesBrowseState";
 
 describe("favorites browse state", () => {
+  it("defaults to recently added favorites", () => {
+    expect(defaultFavoritesBrowseState.sort).toBe("added");
+  });
+
   it("keeps recoverable state outside the canonical URL", () => {
     const state = {
       ...defaultFavoritesBrowseState,

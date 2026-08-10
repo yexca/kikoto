@@ -6,18 +6,21 @@ import (
 	"testing"
 )
 
-func TestMatchingListSelectSQLBuildsShelfActivityOrder(t *testing.T) {
+func TestMatchingListSelectSQLBuildsFavoriteActivityOrderWithoutPlayback(t *testing.T) {
 	query, args := matchingListSelectSQL("1 = 1", MatchingListOptions{
 		UserID: 42, Sort: "activity", Direction: "desc",
 	})
 
-	for _, fragment := range []string{"user_work_state.updated_at", "user_work_playback_cursor", "favorite_list_item", "matching_sort_value DESC"} {
+	for _, fragment := range []string{"user_work_state.updated_at", "favorite_list_item", "matching_sort_value DESC"} {
 		if !strings.Contains(query, fragment) {
 			t.Fatalf("activity query does not contain %q: %s", fragment, query)
 		}
 	}
-	if !reflect.DeepEqual(args, []any{int64(42), int64(42)}) {
-		t.Fatalf("activity args = %#v, want [42 42]", args)
+	if strings.Contains(query, "user_work_playback_cursor") {
+		t.Fatalf("favorite activity query should not depend on playback cursor: %s", query)
+	}
+	if !reflect.DeepEqual(args, []any{int64(42)}) {
+		t.Fatalf("activity args = %#v, want [42]", args)
 	}
 }
 

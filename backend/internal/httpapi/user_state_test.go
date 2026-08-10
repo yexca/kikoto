@@ -64,6 +64,44 @@ func TestListFavoriteWorksFiltersByAnySelectedFileSourceAcrossLogicalFamily(t *t
 	}
 }
 
+func TestListFavoriteWorksIncludesOnlyExplicitFavorites(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO user_account (id, username, display_name, role) VALUES
+			(1, 'synthetic-user', 'Synthetic User', 'user');
+		INSERT INTO work (id, primary_code, title) VALUES
+			(1, 'RJ00000001', 'Example Favorite'),
+			(2, 'RJ00000002', 'Example Listening Mark'),
+			(3, 'RJ00000003', 'Example Played Work'),
+			(4, 'RJ00000004', 'Example Unmarked Work');
+		INSERT INTO user_work_state (user_id, work_id, listening_status, favorite) VALUES
+			(1, 1, 'none', 1),
+			(1, 2, 'finished', 0),
+			(1, 3, 'none', 0),
+			(1, 4, 'none', 0);
+		INSERT INTO media_item (id, work_id, kind, title) VALUES
+			(21, 3, 'audio', 'Example track');
+		INSERT INTO user_work_playback_cursor (user_id, work_id, media_item_id, position_seconds, last_played_at)
+		VALUES (1, 3, 21, 12, '2026-08-10 00:00:00');
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewServer(db, config.Config{})
+	page := requestFavoriteWorksPage(t, server, "/api/favorite-works?page=1&pageSize=10&sort=code&direction=asc")
+	if page.Total != 1 || len(page.Works) != 1 || page.Works[0].PrimaryCode != "RJ00000001" {
+		t.Fatalf("favorite page = total %d works %#v, want only explicit favorite", page.Total, page.Works)
+	}
+	if page.StatusCounts["finished"] != 0 {
+		t.Fatalf("favorite status counts include non-favorite listening mark: %#v", page.StatusCounts)
+	}
+
+	finishedPage := requestFavoriteWorksPage(t, server, "/api/favorite-works?page=1&pageSize=10&status=finished")
+	if finishedPage.Total != 0 || len(finishedPage.Works) != 0 {
+		t.Fatalf("finished favorite page = total %d works %#v, want empty", finishedPage.Total, finishedPage.Works)
+	}
+}
+
 func TestListFavoriteWorksRejectsInvalidSourceID(t *testing.T) {
 	server := NewServer(openMigratedTestDB(t), config.Config{})
 	request := favoriteWorksRequest("/api/favorite-works?sourceId=invalid")
@@ -77,8 +115,9 @@ func TestListFavoriteWorksRejectsInvalidSourceID(t *testing.T) {
 }
 
 func requestFavoriteWorksPage(t *testing.T, server *Server, target string) struct {
-	Works []libraryWorkSummary `json:"works"`
-	Total int                  `json:"total"`
+	Works        []libraryWorkSummary `json:"works"`
+	Total        int                  `json:"total"`
+	StatusCounts map[string]int       `json:"statusCounts"`
 } {
 	t.Helper()
 	response := httptest.NewRecorder()
@@ -87,8 +126,9 @@ func requestFavoriteWorksPage(t *testing.T, server *Server, target string) struc
 		t.Fatalf("list favorite works status = %d, body = %s", response.Code, response.Body.String())
 	}
 	var page struct {
-		Works []libraryWorkSummary `json:"works"`
-		Total int                  `json:"total"`
+		Works        []libraryWorkSummary `json:"works"`
+		Total        int                  `json:"total"`
+		StatusCounts map[string]int       `json:"statusCounts"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
 		t.Fatal(err)

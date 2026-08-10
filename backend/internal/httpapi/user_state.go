@@ -153,7 +153,7 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 	}
 	sortKey := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort")))
 	if sortKey == "" {
-		sortKey = "activity"
+		sortKey = "added"
 	}
 	direction := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("direction")))
 	if direction != "asc" {
@@ -181,12 +181,12 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	shelfWhere, shelfArgs := favoriteWorksWhere("all", "all", "", user.ID, 0, nil)
-	shelfWhere = s.demoWorkWhere(shelfWhere, "work")
-	shelfCountQuery := "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE " + shelfWhere
-	shelfCountArgs := append([]any{user.ID}, shelfArgs...)
-	var shelfTotal int
-	if err := s.db.QueryRowContext(r.Context(), shelfCountQuery, shelfCountArgs...).Scan(&shelfTotal); err != nil {
+	favoriteWhere, favoriteArgs := favoriteWorksWhere("all", "all", "", user.ID, 0, nil)
+	favoriteWhere = s.demoWorkWhere(favoriteWhere, "work")
+	favoriteCountQuery := "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE " + favoriteWhere
+	favoriteCountArgs := append([]any{user.ID}, favoriteArgs...)
+	var favoriteTotal int
+	if err := s.db.QueryRowContext(r.Context(), favoriteCountQuery, favoriteCountArgs...).Scan(&favoriteTotal); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -213,22 +213,13 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, favoriteWorksResponse{
-		Works: works, Page: page, PageSize: pageSize, Total: total, ShelfTotal: shelfTotal, ListCounts: listCounts, StatusCounts: statusCounts,
+		Works: works, Page: page, PageSize: pageSize, Total: total, ShelfTotal: favoriteTotal, ListCounts: listCounts, StatusCounts: statusCounts,
 	})
 }
 
 func favoriteWorksWhere(status string, availability string, queryText string, userID int64, listID int64, sourceIDs []int64) (string, []any) {
-	clauses := []string{`(
-		COALESCE(user_work_state.favorite, 0) = 1
-		OR COALESCE(user_work_state.listening_status, 'none') <> 'none'
-		OR EXISTS (
-			SELECT 1
-			FROM user_work_playback_cursor AS shelf_cursor
-			WHERE shelf_cursor.user_id = ?
-				AND shelf_cursor.work_id = work.id
-		)
-	)`}
-	args := []any{userID}
+	clauses := []string{"COALESCE(user_work_state.favorite, 0) = 1"}
+	args := []any{}
 	if listID > 0 {
 		clauses = append(clauses, `EXISTS (
 			SELECT 1

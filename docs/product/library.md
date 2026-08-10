@@ -75,10 +75,12 @@ and summarize additional credits without allowing metadata to grow the card
 unboundedly.
 
 Favorites keeps only entity/search intent in the canonical URL. Its selected
-list, shelf filters, ordering, seed, pagination, selection, and work anchor are
+list, favorite filters, ordering, seed, pagination, selection, and work anchor are
 restored from the current history entry with user-scoped session fallback.
 Switching lists keeps the full favorite-list row stable while results load, and
-Shelved is the final listening-state option. The source picker can refine shelf
+Shelved is the final listening-state option. Works enter Favorites only through
+explicit favorite state or favorite-list membership; listening marks and
+playback cursors alone do not add them. The source picker can refine favorite
 works to any of several selected configured file sources without creating
 per-source work copies or requesting a live remote refresh. Favorite-list
 creation and contextual list management share the fixed overflow menu beside
