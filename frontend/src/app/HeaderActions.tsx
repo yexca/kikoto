@@ -643,9 +643,7 @@ export function HeaderActions({
         <HeaderPopover
           open={themeOpen}
           onOpenChange={setThemeOpen}
-          trigger={
-            <ThemeTrigger mode={themeMode} preset={themePreset} palette={themePalette} />
-          }
+          trigger={<ThemeTrigger mode={themeMode} preset={themePreset} palette={themePalette} />}
           align="right"
         >
           <div className="w-64">
