@@ -50,6 +50,7 @@ import {
 } from "@/components/work-collection/WorkCollectionLayout";
 import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
+import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import {
   api,
   ApiError,
@@ -61,7 +62,7 @@ import {
   type CircleSummary,
   type ListeningStatus,
 } from "@/lib/api";
-import { NAVIGATION_EVENT, historyStateWithReturn, navigateToHistoryReturn } from "@/lib/browserHistory";
+import { NAVIGATION_EVENT, historyStateWithReturn, navigateToWorkspaceUp } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { useAuth } from "@/auth/AuthProvider";
@@ -373,7 +374,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const auth = useAuth();
   const toast = useToast();
   const requireDownloadsManage = usePermissionGate("downloads:manage");
-  const compactLayout = useCompactLayout();
+  const compactLayout = useMobileNavigationLayout();
   const [detail, setDetail] = useState<CircleDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -511,7 +512,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const selectedWorks = circle.works.filter((work) => selectedWorkCodes.has(work.primaryCode));
   const selectedSyncableWorks = selectedWorks.filter((work) => work.workId === null);
   const circleListStorageScope = currentClientStorageScope(auth.user?.id ?? null);
-  const navigateToList = () => navigateToCirclesList(circleListStorageScope);
+  const navigateToList = () => navigateToCirclesList(circleListStorageScope, compactLayout);
 
   useEffect(() => {
     setWorkPage(1);
@@ -1750,31 +1751,12 @@ function circleRouteFromPath(path: string) {
   };
 }
 
-function navigateToCirclesList(storageScope?: string) {
-  if (!window.matchMedia("(max-width: 1023px)").matches) {
-    navigateToHistoryReturn({ fallbackLocation: "/circles" });
-    return;
-  }
-  const state = window.history.state as { returnTo?: unknown } | null;
-  const returnTo = typeof state?.returnTo === "string" ? state.returnTo : null;
-  if (returnTo && isCircleListLocation(returnTo)) {
-    window.history.back();
-    return;
-  }
-  const fallback = (storageScope && readLastCircleListLocation(storageScope)) || "/circles";
-  window.history.replaceState({}, "", fallback);
-  window.dispatchEvent(new Event(NAVIGATION_EVENT));
-}
-
-function useCompactLayout() {
-  const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 1023px)").matches);
-  useEffect(() => {
-    const media = window.matchMedia("(max-width: 1023px)");
-    const update = () => setCompact(media.matches);
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
-  return compact;
+function navigateToCirclesList(storageScope: string, mobile: boolean) {
+  navigateToWorkspaceUp({
+    mobile,
+    fallbackLocation: readLastCircleListLocation(storageScope) ?? "/circles",
+    isWorkspaceListLocation: isCircleListLocation,
+  });
 }
 
 function safeDecodePathSegment(value: string) {

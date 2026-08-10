@@ -18,6 +18,9 @@ playback actions for one work.
 - Uses one responsive page composer for persisted and remote-only identity
   controllers. Both share Back, Hero, mobile Info/Directory, desktop Directory,
   and modal placement without granting remote-only previews persisted state.
+- Treats the mobile Back control as Up to the last server-and-user-scoped
+  Library list location, while wide layouts retain the source-aware history
+  return.
 - Lazily indexes local media files only when the media stage needs a concrete
   tree. A completed empty scan is remembered until a library scan invalidates
   that state.

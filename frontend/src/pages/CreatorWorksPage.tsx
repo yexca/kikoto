@@ -39,6 +39,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { openWorkDetail } from "@/app/workDetailNavigation";
+import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import {
   announceRemoteTrackCreated,
   isMatchingRemoteTrack,
@@ -81,9 +82,15 @@ import {
   type VoiceSummary,
 } from "@/lib/api";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
-import { NAVIGATION_EVENT, historyStateWithReturn, navigateToHistoryReturn } from "@/lib/browserHistory";
+import { NAVIGATION_EVENT, historyStateWithReturn, navigateToWorkspaceUp } from "@/lib/browserHistory";
+import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
+import {
+  isVoiceListLocation,
+  readLastVoiceListLocation,
+  writeLastVoiceListLocation,
+} from "@/pages/voiceNavigationState";
 import {
   mergeVoiceWorks,
   voiceWorkHasRemoteAvailability,
@@ -147,7 +154,9 @@ function VoiceCreatorWorksPage() {
 }
 
 function VoiceListPage() {
+  const auth = useAuth();
   const toast = useToast();
+  const storageScope = currentClientStorageScope(auth.user?.id ?? null);
   const initialBrowseState = useMemo(
     () =>
       creatorBrowseStateFromSearch(
@@ -180,8 +189,10 @@ function VoiceListPage() {
 
   useEffect(() => {
     const search = creatorBrowseSearch({ query, filter, tag: tagFilter, page, pageSize });
-    window.history.replaceState(window.history.state ?? {}, "", `/voices${search}`);
-  }, [filter, page, pageSize, query, tagFilter]);
+    const location = `/voices${search}`;
+    window.history.replaceState(window.history.state ?? {}, "", location);
+    writeLastVoiceListLocation(storageScope, location);
+  }, [filter, page, pageSize, query, storageScope, tagFilter]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -391,6 +402,9 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const auth = useAuth();
   const toast = useToast();
   const requireDownloadsManage = usePermissionGate("downloads:manage");
+  const mobileNavigationLayout = useMobileNavigationLayout();
+  const voiceListStorageScope = currentClientStorageScope(auth.user?.id ?? null);
+  const navigateToList = () => navigateToVoicesList(voiceListStorageScope, mobileNavigationLayout);
   const [detail, setDetail] = useState<VoiceDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -762,7 +776,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       <NotFoundPage
         title="Voice actor not found"
         message={`Voice actor ${personId} is not available in the current catalog.`}
-        onBack={() => navigateToVoicesList()}
+        onBack={navigateToList}
         onOpenLibrary={() => {
           window.history.pushState({}, "", "/");
           window.dispatchEvent(new Event("kikoto:navigation"));
@@ -774,8 +788,8 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   if (!detail) {
     return (
       <div className="space-y-3">
-        <Button variant="outline" size="sm" onClick={() => navigateToVoicesList()}>
-          <ChevronLeft className="h-4 w-4" /> Back to voices
+        <Button variant="outline" size="sm" onClick={navigateToList}>
+          <ChevronLeft className="h-4 w-4" /> {voiceReturnLabel(mobileNavigationLayout)}
         </Button>
         <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>
       </div>
@@ -784,9 +798,9 @@ function VoiceDetailPage({ personId }: { personId: number }) {
 
   return (
     <div className="space-y-5">
-      <Button variant="outline" size="sm" onClick={() => navigateToVoicesList()}>
+      <Button variant="outline" size="sm" onClick={navigateToList}>
         <ChevronLeft className="h-4 w-4" />
-        Back to voices
+        {voiceReturnLabel(mobileNavigationLayout)}
       </Button>
 
       {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
@@ -1873,12 +1887,20 @@ function workProgressPercent(progress: NonNullable<VoiceKnownWork["progress"]>) 
 
 export function openVoiceRoute(personId: number) {
   const returnTo = currentVoiceReturnPath();
-  window.history.pushState(historyStateWithReturn(returnTo, "Back"), "", `/voices/${personId}`);
+  window.history.pushState(
+    historyStateWithReturn(returnTo, voiceReturnLabelForLocation(returnTo)),
+    "",
+    `/voices/${personId}`,
+  );
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 
-function navigateToVoicesList() {
-  navigateToHistoryReturn({ fallbackLocation: "/voices" });
+function navigateToVoicesList(storageScope: string, mobile: boolean) {
+  navigateToWorkspaceUp({
+    mobile,
+    fallbackLocation: readLastVoiceListLocation(storageScope) ?? "/voices",
+    isWorkspaceListLocation: isVoiceListLocation,
+  });
 }
 
 function openWorkRoute(work: VoiceWorkView) {
@@ -1902,4 +1924,25 @@ function openWorkRoute(work: VoiceWorkView) {
 
 function currentVoiceReturnPath() {
   return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+function voiceReturnLabel(mobile: boolean) {
+  if (mobile) return "Back to voices";
+  const state = window.history.state as { returnTo?: unknown } | null;
+  return typeof state?.returnTo === "string" ? voiceReturnLabelForLocation(state.returnTo) : "Back to voices";
+}
+
+function voiceReturnLabelForLocation(location: string) {
+  try {
+    const pathname = new URL(location, window.location.origin).pathname;
+    if (pathname === "/" || pathname === "") return "Back to library";
+    if (/^\/favorites\/?$/i.test(pathname)) return "Back to favorites";
+    if (/^\/circles(?:\/|$)/i.test(pathname)) return "Back to circles";
+    if (/^\/voices\/?$/i.test(pathname)) return "Back to voices";
+    if (/^\/settings\/?$/i.test(pathname)) return "Back to settings";
+    if (/^\/(?:RJ|BJ|VJ|CC)/i.test(pathname)) return "Back to work";
+  } catch {
+    // Fall through to the generic label for malformed history state.
+  }
+  return "Back";
 }

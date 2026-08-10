@@ -103,6 +103,35 @@ export function navigateToHistoryReturn({
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 
+export function navigateToWorkspaceUp({
+  mobile,
+  fallbackLocation,
+  fallbackState = {},
+  isWorkspaceListLocation,
+}: {
+  mobile: boolean;
+  fallbackLocation: string;
+  fallbackState?: unknown;
+  isWorkspaceListLocation: (location: string) => boolean;
+}) {
+  if (!mobile) {
+    navigateToHistoryReturn({ fallbackLocation, fallbackState });
+    return;
+  }
+
+  const currentState = historyStateRecord(window.history.state);
+  const declaredReturn =
+    typeof currentState.returnTo === "string" ? normalizeInternalLocation(currentState.returnTo) : null;
+  if (declaredReturn && isWorkspaceListLocation(declaredReturn)) {
+    navigateToHistoryReturn({ fallbackLocation, fallbackState });
+    return;
+  }
+
+  const fallback = normalizeInternalLocation(fallbackLocation) ?? "/";
+  window.history.replaceState(historyStateRecord(fallbackState), "", fallback);
+  window.dispatchEvent(new Event(NAVIGATION_EVENT));
+}
+
 export function historyEntrySnapshotFromValue(value: unknown): HistoryEntrySnapshot | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const candidate = value as Partial<HistoryEntrySnapshot>;

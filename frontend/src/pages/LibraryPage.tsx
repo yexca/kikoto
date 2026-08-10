@@ -62,6 +62,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { isActiveWorkflowStatus, useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import { UserTagRow } from "@/components/UserTagRow";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
@@ -98,7 +99,7 @@ import {
 } from "@/lib/api";
 import { ageRatingPresentation } from "@/lib/ageRating";
 import { currentClientStorageScope, type ClientPrincipalID } from "@/lib/clientStorageScope";
-import { NAVIGATION_EVENT, historyStateWithReturn, navigateToHistoryReturn } from "@/lib/browserHistory";
+import { NAVIGATION_EVENT, historyStateWithReturn, navigateToWorkspaceUp } from "@/lib/browserHistory";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { WORK_CODE_PATH_PATTERN } from "@/lib/workCode";
 import {
@@ -109,6 +110,8 @@ import {
   libraryLocation,
   localPageSize,
   localWorkPageSizeOptions,
+  normalizeLibraryBrowseLocation,
+  readLastLibraryLocation,
   readLibraryBrowseState,
   readLibrarySortPreference,
   writeLastLibraryLocation,
@@ -328,6 +331,7 @@ function writeLibraryHistoryBrowseState(storageScope: string, state: LibraryBrow
 export function LibraryPage() {
   const toast = useToast();
   const auth = useAuth();
+  const mobileNavigationLayout = useMobileNavigationLayout();
   const principalID = auth.user?.id ?? null;
   const browseStorageScope = currentClientStorageScope(principalID);
   const initialTab = useRef(tabFromPath(window.location.pathname, [])).current;
@@ -1022,12 +1026,14 @@ export function LibraryPage() {
   };
 
   const backToLibrary = () => {
-    const returnTarget = detailReturnTarget(
-      libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState),
-    );
-    navigateToHistoryReturn({
-      fallbackLocation: returnTarget.path,
+    const fallbackLocation =
+      readLastLibraryLocation(browseStorageScope) ??
+      libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState);
+    navigateToWorkspaceUp({
+      mobile: mobileNavigationLayout,
+      fallbackLocation,
       fallbackState: { libraryBrowseScope: browseStorageScope, libraryBrowseState: activeBrowseState },
+      isWorkspaceListLocation: (location) => normalizeLibraryBrowseLocation(location) !== null,
     });
     setSelectedCode(null);
     setSelectedRemoteTarget(null);
@@ -4592,11 +4598,13 @@ function UnifiedWorkDetailPage({
   onBack: () => void;
   children?: ReactNode;
 }) {
+  const mobileNavigationLayout = useMobileNavigationLayout();
+
   return (
     <div className="space-y-5">
       <Button variant="outline" size="sm" onClick={onBack}>
         <ChevronLeft className="h-4 w-4" />
-        {detailReturnTarget("library").label}
+        {mobileNavigationLayout ? "Back to library" : detailReturnTarget("library").label}
       </Button>
 
       {compact ? (

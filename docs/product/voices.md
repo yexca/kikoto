@@ -22,6 +22,10 @@ Voice pages present persisted person and credit data.
 - Places Alias review and Remote Sources actions beside Favorite on voice
   detail. Each action opens an anchored popover on mobile and desktop; alias
   management remains permission-gated while alias viewing stays available.
+- Treats the mobile detail back control as Up to the last
+  server-and-user-scoped Voice Actors list location, including when the detail
+  was opened from Library or Favorites. Wide layouts keep the source-aware
+  history return.
 
 ## Boundary
 
