@@ -5,6 +5,7 @@ import {
   Circle,
   ExternalLink,
   Headphones,
+  History,
   Languages,
   ListMusic,
   MicVocal,
@@ -61,6 +62,7 @@ export type WorkCardViewModel = {
   priceCurrency?: string;
   series?: string | null;
   hasAvailableNonOriginEdition?: boolean;
+  hasPlaybackHistory?: boolean;
   dlsiteTags: WorkCardBadge[];
   userTags?: WorkCardBadge[];
   sourceBadges: WorkCardBadge[];
@@ -366,6 +368,7 @@ function WorkCardBody({
         ratingCount={work.ratingCount ?? null}
         sales={work.sales ?? null}
         hasAvailableNonOriginEdition={work.hasAvailableNonOriginEdition === true}
+        hasPlaybackHistory={work.hasPlaybackHistory === true}
       />
       {work.userTags && work.userTags.length > 0 && (
         <div className="flex min-h-6 flex-wrap gap-1.5">
@@ -623,11 +626,13 @@ function WorkCardMetrics({
   ratingCount,
   sales,
   hasAvailableNonOriginEdition,
+  hasPlaybackHistory,
 }: {
   rating: number | null;
   ratingCount: number | null;
   sales: number | null;
   hasAvailableNonOriginEdition: boolean;
+  hasPlaybackHistory: boolean;
 }) {
   const normalizedRating = rating !== null && Number.isFinite(rating) ? Math.min(5, Math.max(0, rating)) : null;
   const normalizedRatingCount =
@@ -641,36 +646,64 @@ function WorkCardMetrics({
       ? `Sales: ${Math.floor(sales).toLocaleString()}`
       : "Sales unavailable";
   return (
-    <div className="grid min-h-10 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-      <span className="inline-flex min-w-0 items-center gap-1" title={salesLabel} aria-label={salesLabel}>
-        <ShoppingBag className="h-3.5 w-3.5 shrink-0" />
-        <span className="shrink-0 font-medium">Sales</span>
-        <span className="truncate tabular-nums text-foreground">{formatCompactCount(sales)}</span>
-      </span>
-      {hasAvailableNonOriginEdition && (
-        <span className="col-start-2 row-span-2 inline-flex shrink-0" title="Another language edition is available">
-          <Languages className="h-4 w-4 text-primary" role="img" aria-label="Another language edition is available" />
+    <div className="flex min-h-10 min-w-0 items-center justify-between gap-2 text-xs text-muted-foreground">
+      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+        <span
+          className="inline-flex min-w-0 flex-1 items-center gap-1 overflow-hidden"
+          title={salesLabel}
+          aria-label={salesLabel}
+        >
+          <ShoppingBag className="h-3.5 w-3.5 shrink-0" />
+          <span className="shrink-0 font-medium">Sales</span>
+          <span className="min-w-0 truncate tabular-nums text-foreground">{formatCompactCount(sales)}</span>
         </span>
-      )}
-      <span className="inline-flex min-w-0 items-center gap-1" title={ratingLabel} role="img" aria-label={ratingLabel}>
-        <span className="font-medium">Rate</span>
-        <span className="flex w-10 shrink-0 items-center gap-0.5" aria-hidden="true">
-          {Array.from({ length: 5 }, (_, index) => {
-            const fill = normalizedRating === null ? 0 : Math.min(1, Math.max(0, normalizedRating - index));
-            return (
-              <span key={index} className="h-1.5 w-1.5 flex-1 overflow-hidden rounded-[2px] bg-muted">
-                <span className="block h-full bg-primary" style={{ width: `${fill * 100}%` }} />
-              </span>
-            );
-          })}
+        <span
+          className="inline-flex min-w-0 flex-1 items-center gap-1 overflow-hidden"
+          title={ratingLabel}
+          role="img"
+          aria-label={ratingLabel}
+        >
+          <span className="shrink-0 font-medium">Rate</span>
+          <span className="flex w-8 shrink-0 items-center gap-0.5" aria-hidden="true">
+            {Array.from({ length: 5 }, (_, index) => {
+              const fill = normalizedRating === null ? 0 : Math.min(1, Math.max(0, normalizedRating - index));
+              return (
+                <span key={index} className="h-1.5 w-1.5 flex-1 overflow-hidden rounded-[2px] bg-muted">
+                  <span className="block h-full bg-primary" style={{ width: `${fill * 100}%` }} />
+                </span>
+              );
+            })}
+          </span>
+          <span className="shrink-0 tabular-nums text-foreground">
+            {normalizedRating === null ? "--" : normalizedRating.toFixed(2)}
+          </span>
+          {normalizedRatingCount !== null && (
+            <span className="min-w-0 truncate tabular-nums">({formatCompactCount(normalizedRatingCount)})</span>
+          )}
         </span>
-        <span className="shrink-0 tabular-nums text-foreground">
-          {normalizedRating === null ? "--" : normalizedRating.toFixed(2)}
-        </span>
-        {normalizedRatingCount !== null && (
-          <span className="min-w-0 truncate tabular-nums">({formatCompactCount(normalizedRatingCount)})</span>
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        {hasAvailableNonOriginEdition && (
+          <span
+            className="inline-flex shrink-0 text-primary"
+            title="Another language edition is available"
+            role="img"
+            aria-label="Another language edition is available"
+          >
+            <Languages className="h-4 w-4" aria-hidden="true" />
+          </span>
         )}
-      </span>
+        {hasPlaybackHistory && (
+          <span
+            className="inline-flex shrink-0 text-muted-foreground"
+            title="Playback history available"
+            role="img"
+            aria-label="Playback history available"
+          >
+            <History className="h-4 w-4" aria-hidden="true" />
+          </span>
+        )}
+      </div>
     </div>
   );
 }

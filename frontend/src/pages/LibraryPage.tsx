@@ -101,6 +101,7 @@ import { ageRatingPresentation } from "@/lib/ageRating";
 import { currentClientStorageScope, type ClientPrincipalID } from "@/lib/clientStorageScope";
 import { NAVIGATION_EVENT, historyStateWithReturn, navigateToWorkspaceUp } from "@/lib/browserHistory";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
+import { hasPlaybackHistory } from "@/lib/playbackHistory";
 import { WORK_CODE_PATH_PATTERN } from "@/lib/workCode";
 import {
   defaultLibraryBrowseState,
@@ -2634,6 +2635,7 @@ function libraryWorkCardView(
     priceCurrency: work.priceCurrency,
     series: work.series || null,
     hasAvailableNonOriginEdition: work.hasAvailableNonOriginEdition,
+    hasPlaybackHistory: hasPlaybackHistory(work.progress),
     dlsiteTags: dlsiteTagBadges(work.tags),
     userTags: userTagBadges(work.userTags ?? [], onUserTagOpen),
     sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),

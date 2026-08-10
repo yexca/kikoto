@@ -38,6 +38,7 @@ import { toastFromError, useToast } from "@/components/ui/toast";
 import { useAuth } from "@/auth/AuthProvider";
 import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
+import { hasPlaybackHistory } from "@/lib/playbackHistory";
 import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
@@ -1517,6 +1518,7 @@ function favoriteWorkCardView(work: Work, onUserTagOpen?: (tag: string) => void)
     priceCurrency: work.priceCurrency,
     series: work.series || null,
     hasAvailableNonOriginEdition: work.hasAvailableNonOriginEdition,
+    hasPlaybackHistory: hasPlaybackHistory(work.progress),
     dlsiteTags: [
       {
         key: `status:${work.listeningStatus}`,

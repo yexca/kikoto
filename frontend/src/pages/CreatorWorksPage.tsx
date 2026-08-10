@@ -84,6 +84,7 @@ import {
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { NAVIGATION_EVENT, historyStateWithReturn, navigateToWorkspaceUp } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
+import { hasPlaybackHistory } from "@/lib/playbackHistory";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
 import {
@@ -1583,6 +1584,7 @@ function voiceWorkCardView(work: VoiceWorkView): WorkCardViewModel {
     priceCurrency: "priceCurrency" in work ? work.priceCurrency : "JPY",
     series: "series" in work ? work.series || null : null,
     hasAvailableNonOriginEdition: work.hasAvailableNonOriginEdition,
+    hasPlaybackHistory: "progress" in work && hasPlaybackHistory(work.progress),
     dlsiteTags: dlsiteTagBadges(work.tags),
     userTags: isKnown ? userTagBadges(work.userTags ?? []) : [],
     sourceBadges,

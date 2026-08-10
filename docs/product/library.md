@@ -15,8 +15,8 @@ The Library is the main browsing surface for works.
   available.
 - Measures provider tags into at most two card rows. A `+N` badge opens hidden
   tags in a popover; personal tags remain a separate user-owned row.
-- Replaces card date and playback-history rows with compact DL sales and a
-  five-segment non-numeric rating comparison.
+- Shows compact DL sales and a five-segment non-numeric rating comparison in one
+  metrics row. A playback-history icon appears when a persisted cursor exists.
 - Shows a language icon only when the database knows an available non-Origin
   edition through an enabled source. Unknown or metadata-only language relations
   do not imply availability.

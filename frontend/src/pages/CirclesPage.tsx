@@ -65,6 +65,7 @@ import {
 import { NAVIGATION_EVENT, historyStateWithReturn, navigateToWorkspaceUp } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
+import { hasPlaybackHistory } from "@/lib/playbackHistory";
 import { useAuth } from "@/auth/AuthProvider";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
@@ -1409,6 +1410,7 @@ function catalogWorkCardView(work: CircleCatalogWork): WorkCardViewModel {
     priceCurrency: work.priceCurrency,
     series: work.series || null,
     hasAvailableNonOriginEdition: work.hasAvailableNonOriginEdition,
+    hasPlaybackHistory: hasPlaybackHistory(work.progress),
     dlsiteTags: dlsiteTagBadges(work.tags),
     userTags: userTagBadges(work.userTags ?? []),
     sourceBadges: statusBadges,

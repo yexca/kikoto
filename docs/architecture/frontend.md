@@ -83,8 +83,9 @@ small shared contract should resolve cross-domain needs.
   their own bottom-navigation destination instead of returning to another
   destination; wide layouts retain the source-aware browser-history return.
 - Keep provider tags to two measured card rows with an overflow popover. Card
-  summaries use Circle / Series, DL sales, segmented rating, and known available
-  alternate-language state; playback history belongs outside the shared card.
+  summaries use Circle / Series, DL sales, segmented rating, known available
+  alternate-language state, and a compact playback-history indicator when a
+  persisted cursor exists.
 - Persist work-collection column settings as one shared browser preference,
   rather than separate page-local selections.
 - Scope account-bearing browser state by the configured server identity and
