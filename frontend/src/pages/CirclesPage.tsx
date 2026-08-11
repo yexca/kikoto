@@ -348,6 +348,7 @@ function CircleListPage() {
                   userTags={circle.userTags}
                   syncState={circle.syncState}
                   workCount={circle.catalogWorks}
+                  availabilitySummary={{ available: circle.playableWorks, total: circle.catalogWorks }}
                   unavailableCount={circle.missingWorks}
                   sources={circle.sourceSummaries}
                   onOpen={() => openCircleRoute(circle.externalId)}
@@ -825,42 +826,46 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                   <UserTagRow tags={circle.userTags} onSave={saveCircleTags} className="min-w-0 flex-1" />
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5 lg:gap-2" role="group" aria-label="Circle actions">
                 <Button
                   variant={circle.favorite ? "default" : "outline"}
-                  size="sm"
+                  size="icon"
+                  className="lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+                  aria-label={circle.favorite ? "Remove favorite" : "Add favorite"}
+                  aria-pressed={circle.favorite}
+                  title={circle.favorite ? "Remove favorite" : "Add favorite"}
                   onClick={() => void toggleCircleFavorite()}
                 >
                   <Heart className={`h-4 w-4 ${circle.favorite ? "fill-current" : ""}`} />
-                  Favorite
-                </Button>
-                <Button variant="outline" size="sm" asChild>
-                  <a href={dlsiteMakerURL(circle.externalId)} target="_blank" rel="noreferrer">
-                    <ExternalLink className="h-4 w-4" />
-                    DLsite
-                  </a>
+                  <span className="hidden lg:inline">Favorite</span>
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
+                  className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
+                  aria-label="Retry circle metadata"
                   disabled={isLoading || refreshingScope !== null}
                   onClick={() => void refresh("work", "full")}
                 >
                   <RefreshCw className="h-4 w-4" />
-                  Retry metadata
+                  <span className="lg:hidden">Metadata</span>
+                  <span className="hidden lg:inline">Retry metadata</span>
                 </Button>
                 <Button
                   size="sm"
+                  className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
+                  aria-label="Refresh circle"
                   disabled={isLoading || refreshingScope !== null || isTranslationCircle(circle.externalId)}
                   onClick={() => void refresh("all", "incremental")}
                 >
                   <RefreshCw className="h-4 w-4" />
-                  Refresh circle
+                  <span className="lg:hidden">Circle</span>
+                  <span className="hidden lg:inline">Refresh circle</span>
                 </Button>
                 <Button
                   variant="outline"
-                  size="sm"
-                  className="h-9 gap-2 px-2 sm:px-3"
+                  size="icon"
+                  className="lg:h-9 lg:w-auto lg:gap-2 lg:px-3 lg:text-xs"
                   ref={advancedRefreshAnchorRef}
                   aria-label="Open advanced refresh actions"
                   aria-haspopup="dialog"
@@ -870,7 +875,24 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                   onClick={() => setAdvancedRefreshOpen((open) => !open)}
                 >
                   <MoreHorizontal className="h-4 w-4" />
-                  <span className="hidden sm:inline">Advanced</span>
+                  <span className="hidden lg:inline">Advanced</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+                  asChild
+                >
+                  <a
+                    href={dlsiteMakerURL(circle.externalId)}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label="Open DLsite"
+                    title="Open DLsite"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    <span className="hidden lg:inline">DLsite</span>
+                  </a>
                 </Button>
               </div>
             </div>

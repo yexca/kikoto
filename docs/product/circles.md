@@ -10,6 +10,8 @@ Circles represent makers, circles, and related party catalog state.
   rating, and notes.
 - Shows the latest known DLsite work code and locally cached cover in compact
   responsive creator cards, with a `No cover` fallback.
+- Summarizes each circle card with its sync state and one canonical
+  `Available N/total` badge instead of separate local and remote counts.
 - Shows circle detail by external id.
 - Supports catalog refresh in incremental or full mode.
 - Stores catalog rows separately from imported works.
@@ -22,6 +24,8 @@ Circles represent makers, circles, and related party catalog state.
 - Keeps the two common refresh actions in the detail summary and moves targeted
   catalog, metadata, and source refresh modes into an anchored Advanced
   popover.
+- Shortens the common detail actions on mobile, keeps icon-only Favorite,
+  Advanced, and DLsite controls accessible by name, and places DLsite last.
 - Keeps mobile work controls to the Works/Series switch, search, and one Catalog
   options action. Availability, mobile columns, and selection mode live in that
   sheet; wide layouts retain inline controls.

@@ -306,6 +306,11 @@ test("circle list uses compact responsive cards and shared pagination", async ({
   await expect(page.getByRole("heading", { name: "Circles" })).toBeVisible();
   await expect(page.getByText("Latest RJ00000000", { exact: true })).toBeVisible();
   await expect(page.getByText("No cover", { exact: true })).toBeVisible();
+  await expect(page.getByText("Available 3/5", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Local 2", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Remote 1", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("2 unavailable", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("5 works", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Page 1 · 30 circles", { exact: true })).toBeVisible();
   await expect(page.getByRole("group", { name: "Circle pages controls" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Circle pages" })).toBeVisible();
@@ -324,6 +329,7 @@ test("voice list keeps latest work, tags, and availability visible on mobile", a
   await expect(page.getByRole("heading", { name: "Voice Actors" })).toBeVisible();
   await expect(page.getByText("Latest RJ00000000", { exact: true })).toBeVisible();
   await expect(page.getByText("Cache 1", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("5 works", { exact: true }).first()).toBeVisible();
   await expect(
     page
       .locator("div.inline-flex")
@@ -428,10 +434,41 @@ test("circle detail keeps availability and primary actions compact on mobile", a
   await expect(page.getByRole("heading", { name: "Example Circle", exact: true })).toBeVisible();
   const summary = page.getByRole("region", { name: "Circle summary" });
   await expect(summary.getByText("Available 1", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open advanced refresh actions" })).toHaveAttribute(
+  const actions = summary.getByRole("group", { name: "Circle actions" });
+  await expect(actions.getByRole("button", { name: "Remove favorite" })).toBeVisible();
+  await expect(actions.getByRole("button", { name: "Retry circle metadata" })).toBeVisible();
+  await expect(actions.getByRole("button", { name: "Refresh circle" })).toBeVisible();
+  await expect(actions.getByText("Metadata", { exact: true })).toBeVisible();
+  await expect(actions.getByText("Retry metadata", { exact: true })).toBeHidden();
+  await expect(actions.getByText("Circle", { exact: true })).toBeVisible();
+  await expect(actions.getByText("Refresh circle", { exact: true })).toBeHidden();
+  await expect(actions.getByText("Favorite", { exact: true })).toBeHidden();
+  await expect(actions.getByText("Advanced", { exact: true })).toBeHidden();
+  await expect(actions.getByText("DLsite", { exact: true })).toBeHidden();
+  await expect(actions.getByRole("link", { name: "Open DLsite" })).toBeVisible();
+  await expect(actions.getByRole("button", { name: "Open advanced refresh actions" })).toHaveAttribute(
     "aria-expanded",
     "false",
   );
+  const actionMetrics = await actions.locator(":scope > :is(button, a)").evaluateAll((elements) =>
+    elements.map((element) => ({
+      label: element.getAttribute("aria-label"),
+      height: element.getBoundingClientRect().height,
+      width: element.getBoundingClientRect().width,
+      top: Math.round(element.getBoundingClientRect().top),
+    })),
+  );
+  expect(actionMetrics.map((metric) => metric.label)).toEqual([
+    "Remove favorite",
+    "Retry circle metadata",
+    "Refresh circle",
+    "Open advanced refresh actions",
+    "Open DLsite",
+  ]);
+  expect(actionMetrics.every((metric) => metric.height >= 44 && metric.width >= 44)).toBe(true);
+  expect(
+    Math.max(...actionMetrics.map((metric) => metric.top)) - Math.min(...actionMetrics.map((metric) => metric.top)),
+  ).toBeLessThanOrEqual(1);
   await expect(page.getByRole("dialog", { name: "Advanced refresh" })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
@@ -499,6 +536,22 @@ test("desktop circle detail keeps a full-width compact summary and source-aware 
   }));
   expect(Math.abs(summaryWidths.region - summaryWidths.card)).toBeLessThanOrEqual(1);
   await expect(summary.getByText("Available 1", { exact: true })).toBeVisible();
+  const actions = summary.getByRole("group", { name: "Circle actions" });
+  await expect(actions.getByText("Favorite", { exact: true })).toBeVisible();
+  await expect(actions.getByText("Retry metadata", { exact: true })).toBeVisible();
+  await expect(actions.getByText("Refresh circle", { exact: true })).toBeVisible();
+  await expect(actions.getByText("Advanced", { exact: true })).toBeVisible();
+  await expect(actions.getByText("DLsite", { exact: true })).toBeVisible();
+  const actionOrder = await actions
+    .locator(":scope > :is(button, a)")
+    .evaluateAll((elements) => elements.map((element) => element.getAttribute("aria-label")));
+  expect(actionOrder).toEqual([
+    "Remove favorite",
+    "Retry circle metadata",
+    "Refresh circle",
+    "Open advanced refresh actions",
+    "Open DLsite",
+  ]);
 
   await page.getByLabel("Catalog availability filter").selectOption("unavailable");
   await expect(summary.getByText("Available 1", { exact: true })).toBeVisible();

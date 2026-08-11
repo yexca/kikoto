@@ -141,7 +141,7 @@ func (s *Server) listCircles(w http.ResponseWriter, r *http.Request) {
 	availableWorks := 0
 	for _, item := range items {
 		catalogWorks += item.CatalogWorks
-		availableWorks += maxInt(item.PlayableWorks, item.LocalWorks+item.RemoteWorks)
+		availableWorks += item.PlayableWorks
 	}
 	pageSize := queryInt(r, "pageSize", 24)
 	page, start, end := creatorPageBounds(queryInt(r, "page", 1), pageSize, len(items))
@@ -1018,6 +1018,15 @@ func (s *Server) loadCircleSummary(ctx context.Context, userID int64, partyID in
 // catalog may contain multiple editions and remote sources, so availability
 // must be unioned by the logical work code rather than summed by source.
 func (s *Server) loadCircleAvailableWorks(ctx context.Context, partyID int64) (int, error) {
+	counts, err := s.loadCircleAvailableWorkCounts(ctx, []int64{partyID})
+	return counts[partyID], err
+}
+
+func (s *Server) loadCircleAvailableWorkCounts(ctx context.Context, partyIDs []int64) (map[int64]int, error) {
+	result := map[int64]int{}
+	if len(partyIDs) == 0 {
+		return result, nil
+	}
 	demoCatalogWhere := ""
 	demoMediaWhere := ""
 	demoPresenceWhere := ""
@@ -1029,15 +1038,14 @@ func (s *Server) loadCircleAvailableWorks(ctx context.Context, partyID int64) (i
 		demoRemoteCatalogWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("remote_work")
 	}
 
-	var count int
-	err := s.db.QueryRowContext(ctx, `
+	query, args := int64InQuery(`
 		WITH catalog_codes AS (
-			SELECT DISTINCT UPPER(COALESCE(catalog_logical.canonical_code, catalog.primary_code)) AS code
+			SELECT DISTINCT catalog.party_id, UPPER(COALESCE(catalog_logical.canonical_code, catalog.primary_code)) AS code
 			FROM party_catalog_item AS catalog
 			LEFT JOIN work AS catalog_work ON UPPER(catalog_work.primary_code) = UPPER(catalog.primary_code)
 			LEFT JOIN work_edition AS catalog_edition ON catalog_edition.work_id = catalog_work.id
 			LEFT JOIN logical_work AS catalog_logical ON catalog_logical.id = catalog_edition.logical_work_id
-			WHERE catalog.party_id = ?
+			WHERE catalog.party_id IN (%s)
 			`+demoCatalogWhere+`
 		), available_media_codes AS (
 			SELECT DISTINCT UPPER(COALESCE(media_logical.canonical_code, media_work.primary_code)) AS code
@@ -1060,25 +1068,43 @@ func (s *Server) loadCircleAvailableWorks(ctx context.Context, partyID int64) (i
 				AND presence_source.enabled = 1
 			`+demoPresenceWhere+`
 		), available_remote_catalog_codes AS (
-			SELECT DISTINCT UPPER(COALESCE(remote_logical.canonical_code, remote_catalog.primary_code)) AS code
+			SELECT DISTINCT remote_catalog.party_id, UPPER(COALESCE(remote_logical.canonical_code, remote_catalog.primary_code)) AS code
 			FROM party_catalog_item AS remote_catalog
 			INNER JOIN metadata_provider AS remote_provider ON remote_provider.id = remote_catalog.provider_id
 			INNER JOIN file_source AS remote_source ON remote_provider.code = 'kikoeru_source_' || remote_source.code
 			LEFT JOIN work AS remote_work ON UPPER(remote_work.primary_code) = UPPER(remote_catalog.primary_code)
 			LEFT JOIN work_edition AS remote_edition ON remote_edition.work_id = remote_work.id
 			LEFT JOIN logical_work AS remote_logical ON remote_logical.id = remote_edition.logical_work_id
-			WHERE remote_catalog.party_id = ?
+			WHERE remote_catalog.party_id IN (SELECT party_id FROM catalog_codes)
 				AND remote_source.source_type IN ('kikoeru_compatible', 'kikoeru_compatible_number178')
 				AND remote_source.enabled = 1
 			`+demoRemoteCatalogWhere+`
 		)
-		SELECT COUNT(*)
+		SELECT catalog.party_id, COUNT(*)
 		FROM catalog_codes AS catalog
 		WHERE catalog.code IN (SELECT code FROM available_media_codes)
 			OR catalog.code IN (SELECT code FROM available_presence_codes)
-			OR catalog.code IN (SELECT code FROM available_remote_catalog_codes)
-	`, partyID, partyID).Scan(&count)
-	return count, err
+			OR EXISTS (
+				SELECT 1
+				FROM available_remote_catalog_codes AS remote
+				WHERE remote.party_id = catalog.party_id AND remote.code = catalog.code
+		)
+		GROUP BY catalog.party_id
+	`, partyIDs)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var partyID int64
+		var count int
+		if err := rows.Scan(&partyID, &count); err != nil {
+			return nil, err
+		}
+		result[partyID] = count
+	}
+	return result, rows.Err()
 }
 
 func (s *Server) fillCircleStats(ctx context.Context, userID int64, item *circleSummary) error {
@@ -1109,12 +1135,16 @@ func (s *Server) fillCircleStats(ctx context.Context, userID int64, item *circle
 		switch stat.Key {
 		case "local":
 			item.LocalWorks = stat.Count
-			item.PlayableWorks = stat.Count
 		case "remote":
 			item.RemoteWorks += stat.Count
 		}
 	}
-	item.MissingWorks = catalogWorks - item.LocalWorks - item.RemoteWorks
+	availableWorks, err := s.loadCircleAvailableWorks(ctx, item.ID)
+	if err != nil {
+		return err
+	}
+	item.PlayableWorks = availableWorks
+	item.MissingWorks = catalogWorks - item.PlayableWorks
 	if item.MissingWorks < 0 {
 		item.MissingWorks = 0
 	}
@@ -1167,10 +1197,13 @@ func (s *Server) fillCircleStatsBatch(ctx context.Context, items []circleSummary
 	if err != nil {
 		return err
 	}
+	availableCounts, err := s.loadCircleAvailableWorkCounts(ctx, partyIDs)
+	if err != nil {
+		return err
+	}
 	for partyID, count := range localCounts {
 		if item := byID[partyID]; item != nil {
 			item.LocalWorks = count
-			item.PlayableWorks = count
 		}
 	}
 	for partyID, count := range remoteCounts {
@@ -1179,7 +1212,8 @@ func (s *Server) fillCircleStatsBatch(ctx context.Context, items []circleSummary
 		}
 	}
 	for index := range items {
-		items[index].MissingWorks = items[index].CatalogWorks - items[index].LocalWorks - items[index].RemoteWorks
+		items[index].PlayableWorks = availableCounts[items[index].ID]
+		items[index].MissingWorks = items[index].CatalogWorks - items[index].PlayableWorks
 		if items[index].MissingWorks < 0 {
 			items[index].MissingWorks = 0
 		}

@@ -1288,6 +1288,7 @@ function FavoriteCircleCard({
       userTags={circle.userTags}
       syncState={circle.syncState}
       workCount={circle.catalogWorks}
+      availabilitySummary={{ available: circle.playableWorks, total: circle.catalogWorks }}
       unavailableCount={circle.missingWorks}
       sources={circle.sourceSummaries}
       onOpen={() => openCircleRoute(circle.externalId)}

@@ -34,6 +34,7 @@ export function CreatorCard({
   userTags,
   syncState,
   workCount,
+  availabilitySummary,
   unavailableCount,
   sources,
   onOpen,
@@ -49,6 +50,7 @@ export function CreatorCard({
   userTags: UserTag[];
   syncState?: string;
   workCount: number;
+  availabilitySummary?: { available: number; total: number };
   unavailableCount: number;
   sources: CreatorSourceSummary[];
   onOpen: () => void;
@@ -118,18 +120,26 @@ export function CreatorCard({
 
           <div className="mt-auto flex flex-wrap items-center gap-1 border-t pt-2 text-xs text-muted-foreground">
             {syncState && <SyncBadge state={syncState} />}
-            {availableSources.length > 0 ? (
-              availableSources.map((source) => (
-                <Badge key={source.key} variant={source.key === "local" ? "secondary" : "outline"}>
-                  {source.displayName}
-                  {source.count > 0 ? ` ${source.count}` : ""}
-                </Badge>
-              ))
+            {availabilitySummary ? (
+              <Badge variant={availabilitySummary.available > 0 ? "success" : "warning"} className="tabular-nums">
+                Available {availabilitySummary.available}/{availabilitySummary.total}
+              </Badge>
             ) : (
-              <Badge variant="warning">Unavailable</Badge>
+              <>
+                {availableSources.length > 0 ? (
+                  availableSources.map((source) => (
+                    <Badge key={source.key} variant={source.key === "local" ? "secondary" : "outline"}>
+                      {source.displayName}
+                      {source.count > 0 ? ` ${source.count}` : ""}
+                    </Badge>
+                  ))
+                ) : (
+                  <Badge variant="warning">Unavailable</Badge>
+                )}
+                {showUnavailableCount && <Badge variant="warning">{unavailableCount} unavailable</Badge>}
+                <span className="ml-auto whitespace-nowrap tabular-nums">{workCount} works</span>
+              </>
             )}
-            {showUnavailableCount && <Badge variant="warning">{unavailableCount} unavailable</Badge>}
-            <span className="ml-auto whitespace-nowrap tabular-nums">{workCount} works</span>
           </div>
         </div>
       </CardContent>
