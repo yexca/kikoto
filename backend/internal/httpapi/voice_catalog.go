@@ -23,7 +23,6 @@ const (
 	voiceCatalogRefreshWorker   = "voice_catalog_refresh"
 	voiceCatalogRefreshWorkflow = "voice_catalog_refresh"
 	voiceCatalogSourceTimeout   = 15 * time.Minute
-	voiceCatalogRefreshAge      = 30 * 24 * time.Hour
 	voiceCatalogRetryDelay      = 10 * time.Minute
 )
 
@@ -173,13 +172,6 @@ type voiceCatalogRefreshStateSnapshot struct {
 	UpdatedAt        string  `json:"updatedAt"`
 }
 
-func (s *Server) autoRefreshVoiceCatalog(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
-		return
-	}
-	s.refreshVoiceCatalogResponse(w, r, false, voiceCatalogRefreshRequest{Scope: "all", Mode: "incremental"})
-}
-
 func (s *Server) refreshVoiceCatalog(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
 		return
@@ -279,7 +271,7 @@ func (s *Server) ensureVoiceCatalogRefresh(ctx context.Context, personID int64, 
 	}
 	reason, due := "manual refresh", true
 	if voiceCatalogRefreshIncludesRemote(request.Scope) {
-		reason, due = voiceCatalogRefreshReason(state, queries, force, time.Now().UTC())
+		reason, due = voiceCatalogRefreshReason(state, queries, force, time.Now().UTC(), s.catalogFreshnessDays(ctx))
 	}
 	if !due {
 		state.Status = voiceCatalogIdleStatus(state)
@@ -380,8 +372,11 @@ func voiceCatalogSourceIDs(sources []remoteSourceForUse) []int64 {
 	return ids
 }
 
-func voiceCatalogRefreshReason(state voiceCatalogRefreshState, queries []string, force bool, now time.Time) (string, bool) {
+func voiceCatalogRefreshReason(state voiceCatalogRefreshState, queries []string, force bool, now time.Time, freshnessDays int) (string, bool) {
 	if force {
+		if state.LastSuccessAt == "" && state.LastAttemptAt == "" {
+			return "first pull", true
+		}
 		return "manual refresh", true
 	}
 	if !state.exists {
@@ -398,11 +393,10 @@ func voiceCatalogRefreshReason(state voiceCatalogRefreshState, queries []string,
 	if state.LastSuccessAt == "" {
 		return "first pull", true
 	}
-	if !equalFoldedStrings(state.Queries, queries) {
+	if !equalVoiceCatalogQuerySets(state.Queries, queries) {
 		return "voice aliases changed", true
 	}
-	lastSuccess, err := parseSQLiteTime(state.LastSuccessAt)
-	if err != nil || now.Sub(lastSuccess) >= voiceCatalogRefreshAge {
+	if syncState, _ := catalogFreshnessState(state.LastSuccessAt, state.LastAttemptAt, freshnessDays, now); syncState != catalogSyncSynced {
 		return "catalog is stale", true
 	}
 	return "catalog is fresh", false
@@ -418,18 +412,6 @@ func voiceCatalogIdleStatus(state voiceCatalogRefreshState) string {
 	return state.LastStatus
 }
 
-func equalFoldedStrings(left []string, right []string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for index := range left {
-		if !strings.EqualFold(strings.TrimSpace(left[index]), strings.TrimSpace(right[index])) {
-			return false
-		}
-	}
-	return true
-}
-
 func (s *Server) voiceCatalogQueries(ctx context.Context, personID int64) ([]string, error) {
 	name, err := s.loadPersonName(ctx, personID)
 	if err != nil {
@@ -439,6 +421,14 @@ func (s *Server) voiceCatalogQueries(ctx context.Context, personID int64) ([]str
 	if err != nil {
 		return nil, err
 	}
+	aliasValues := make([]string, 0, len(aliases))
+	for _, alias := range aliases {
+		aliasValues = append(aliasValues, alias.Alias)
+	}
+	return voiceCatalogQueryValues(name, aliasValues), nil
+}
+
+func voiceCatalogQueryValues(name string, aliases []string) []string {
 	values := make([]string, 0, len(aliases)+1)
 	seen := map[string]bool{}
 	appendValue := func(value string) {
@@ -452,9 +442,35 @@ func (s *Server) voiceCatalogQueries(ctx context.Context, personID int64) ([]str
 	}
 	appendValue(name)
 	for _, alias := range aliases {
-		appendValue(alias.Alias)
+		appendValue(alias)
 	}
-	return values, nil
+	return values
+}
+
+func equalVoiceCatalogQuerySets(left []string, right []string) bool {
+	leftSet := map[string]bool{}
+	for _, value := range left {
+		key := voiceNameKey(value)
+		if key != "" {
+			leftSet[key] = true
+		}
+	}
+	rightSet := map[string]bool{}
+	for _, value := range right {
+		key := voiceNameKey(value)
+		if key != "" {
+			rightSet[key] = true
+		}
+	}
+	if len(leftSet) != len(rightSet) {
+		return false
+	}
+	for value := range leftSet {
+		if !rightSet[value] {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Server) loadVoiceCatalogRefreshState(ctx context.Context, personID int64) (voiceCatalogRefreshState, error) {

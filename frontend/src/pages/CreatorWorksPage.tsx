@@ -33,6 +33,7 @@ import {
   creatorCardMinHeightClassName,
   creatorCollectionClassName,
 } from "@/components/creator/CreatorCard";
+import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
 import { CreatorListMobileOptions } from "@/components/creator/CreatorListMobileOptions";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
@@ -373,6 +374,7 @@ function VoiceListPage() {
                   latestWork={voice.latestWork}
                   favorite={voice.favorite}
                   userTags={voice.userTags}
+                  syncState={voice.syncState}
                   workCount={voice.knownWorks}
                   availabilityCounts={{ local: voice.localWorks, remote: voice.remoteWorks }}
                   unavailableCount={Math.max(0, voice.knownWorks - voice.playableWorks)}
@@ -497,22 +499,12 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     }
   };
 
-  const voiceCatalogQueryKey = useMemo(
-    () =>
-      detail
-        ? [detail.displayName, ...(detail.aliasRecords ?? []).map((alias) => alias.alias.trim())]
-            .filter(Boolean)
-            .join("\u001f")
-        : "",
-    [detail?.aliasRecords, detail?.displayName],
-  );
-  const canAutoRefreshCatalog = auth.hasPermission("library:read") && !auth.demoMode;
   const canForceRefreshCatalog = auth.hasPermission("metadata:sync") && !auth.demoMode;
 
   useEffect(() => {
     if (!detail) return;
     let cancelled = false;
-    const loadPersistedThenRefresh = async () => {
+    const loadPersistedCatalog = async () => {
       setIsRemoteLoading(true);
       setRemoteError("");
       try {
@@ -520,9 +512,6 @@ function VoiceDetailPage({ personId }: { personId: number }) {
         if (cancelled) return;
         setRemoteMatches(persisted.remoteMatches);
         setCatalogRefresh(persisted.refresh);
-        if (!canAutoRefreshCatalog) return;
-        const refresh = await api.autoRefreshVoiceCatalog(personId);
-        if (!cancelled) setCatalogRefresh(refresh);
       } catch (error) {
         if (cancelled) return;
         const fallback = error instanceof Error ? error.message : "Voice catalog unavailable.";
@@ -532,11 +521,11 @@ function VoiceDetailPage({ personId }: { personId: number }) {
         if (!cancelled) setIsRemoteLoading(false);
       }
     };
-    void loadPersistedThenRefresh();
+    void loadPersistedCatalog();
     return () => {
       cancelled = true;
     };
-  }, [canAutoRefreshCatalog, personId, voiceCatalogQueryKey]);
+  }, [detail?.personId, personId]);
 
   const catalogRefreshActive = catalogRefresh?.status === "queued" || catalogRefresh?.status === "running";
   useEffect(() => {
@@ -561,15 +550,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
             // The persisted catalog remains usable if only the summary refresh fails.
           }
         }
-        let nextRefresh = result.refresh;
-        if (!stillActive && canAutoRefreshCatalog) {
-          try {
-            nextRefresh = await api.autoRefreshVoiceCatalog(personId);
-          } catch {
-            // A completed catalog remains visible when the follow-up decision is unavailable.
-          }
-        }
-        if (!cancelled) setCatalogRefresh(nextRefresh);
+        if (!cancelled) setCatalogRefresh(result.refresh);
       } catch (error) {
         if (!cancelled) setRemoteError(error instanceof Error ? error.message : "Voice catalog unavailable.");
       } finally {
@@ -581,7 +562,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [canAutoRefreshCatalog, catalogRefresh?.runId, catalogRefreshActive, personId]);
+  }, [catalogRefresh?.runId, catalogRefreshActive, personId]);
 
   const refreshVoiceCatalog = async (request: VoiceCatalogRefreshRequest, queuedMessage: string) => {
     if (!canForceRefreshCatalog) {
@@ -617,6 +598,9 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       "Voice remote refresh queued.",
     );
   };
+  const firstPull = detail?.syncState === "never";
+  const firstPullVoiceCatalog = () =>
+    void refreshVoiceCatalog({ scope: "all", mode: "full" }, "First voice catalog pull queued.");
 
   const knownWorks = detail?.works ?? [];
   const alternateAliasCount = useMemo(
@@ -958,8 +942,8 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline">#{detail.personId}</Badge>
+                  <CatalogSyncBadge state={detail.syncState} />
                   {detail.favorite && <Badge variant="secondary">Favorite</Badge>}
-                  <Badge variant="secondary">person route</Badge>
                 </div>
                 <h2 className="mt-3 truncate text-2xl font-semibold lg:text-3xl">{detail.displayName}</h2>
                 <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5" aria-label="Voice actor statistics">
@@ -999,38 +983,58 @@ function VoiceDetailPage({ personId }: { personId: number }) {
                   Aliases
                   {alternateAliasCount > 0 && <span className="tabular-nums">{alternateAliasCount}</span>}
                 </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-                  aria-label="Retry voice metadata"
-                  title="Retry metadata"
-                  disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
-                  onClick={retryVoiceMetadata}
-                >
-                  {isRemoteLoading || catalogRefreshActive ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                  <span className="hidden lg:inline">Retry metadata</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-                  aria-label="Refresh voice remote sources"
-                  title="Refresh remote"
-                  disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
-                  onClick={refreshAllRemoteSources}
-                >
-                  {isRemoteLoading || catalogRefreshActive ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Cloud className="h-4 w-4" />
-                  )}
-                  <span className="hidden lg:inline">Refresh remote</span>
-                </Button>
+                {firstPull ? (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
+                    aria-label="First pull voice catalog"
+                    disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
+                    onClick={firstPullVoiceCatalog}
+                  >
+                    {isRemoteLoading || catalogRefreshActive ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    <span>First pull</span>
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+                      aria-label="Retry voice metadata"
+                      title="Retry metadata"
+                      disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
+                      onClick={retryVoiceMetadata}
+                    >
+                      {isRemoteLoading || catalogRefreshActive ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4" />
+                      )}
+                      <span className="hidden lg:inline">Retry metadata</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+                      aria-label="Refresh voice remote sources"
+                      title="Refresh remote"
+                      disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
+                      onClick={refreshAllRemoteSources}
+                    >
+                      {isRemoteLoading || catalogRefreshActive ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Cloud className="h-4 w-4" />
+                      )}
+                      <span className="hidden lg:inline">Refresh remote</span>
+                    </Button>
+                  </>
+                )}
                 <Button
                   ref={advancedActionRef}
                   variant={detailPanel === "advanced" ? "secondary" : "outline"}
@@ -1072,7 +1076,14 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               onAliasesChange={(aliases) =>
                 setDetail((current) =>
                   current
-                    ? { ...current, aliasRecords: aliases, aliases: aliases.map((alias) => alias.alias) }
+                    ? {
+                        ...current,
+                        aliasRecords: aliases,
+                        aliases: aliases.map((alias) => alias.alias),
+                        ...(current.syncState === "never"
+                          ? {}
+                          : { syncState: "attention", syncReason: "aliases_changed" }),
+                      }
                     : current,
                 )
               }

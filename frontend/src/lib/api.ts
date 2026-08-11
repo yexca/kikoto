@@ -1,3 +1,7 @@
+import { normalizeCatalogSyncState, type CatalogSyncState } from "@/lib/catalogSyncState";
+
+export type { CatalogSyncState } from "@/lib/catalogSyncState";
+
 export type Work = {
   id: number;
   primaryCode: string;
@@ -455,7 +459,7 @@ export type AppSettings = {
   remoteDelayRandomSeconds: number;
   remoteBackoffSeconds: number;
   remoteMaxBackoffSeconds: number;
-  circleAutoRefreshDays: number;
+  catalogFreshnessDays: number;
   dlsiteMetadataLanguage: string;
   directoryRoutingRules: DirectoryRoutingRule[];
   recommendationThreshold: number;
@@ -1194,15 +1198,15 @@ export type CircleSummary = {
   missingWorks: number;
   catalogWorks: number;
   lastSyncedAt: string | null;
-  syncState: string;
-  autoRefresh: {
-    status: string;
-    reason: string;
-    mode: string;
-  };
+  syncState: CatalogSyncState;
+  syncReason: string;
   sourceSummaries: CircleSourceStat[];
   latestWork: CreatorLatestWork | null;
 };
+
+function normalizeCreatorSyncState<T extends { syncState?: unknown }>(creator: T): T & { syncState: CatalogSyncState } {
+  return { ...creator, syncState: normalizeCatalogSyncState(creator.syncState) };
+}
 
 export type CircleSummaryPage = {
   circles: CircleSummary[];
@@ -1284,6 +1288,9 @@ export type VoiceSummary = {
   cachedWorks: number;
   playableWorks: number;
   lastSeenAt: string | null;
+  lastSyncedAt: string | null;
+  syncState: CatalogSyncState;
+  syncReason: string;
   rating: number | null;
   note: string;
   favorite: boolean;
@@ -1951,26 +1958,30 @@ export const api = {
       `/api/works/${id}/user-state`,
       payload,
     ),
-  listCircles: (options: CreatorListOptions = {}) => {
+  listCircles: async (options: CreatorListOptions = {}) => {
     const search = creatorListSearch(options);
-    return getJSON<CircleSummaryPage>(`/api/circles${search}`, options.signal);
+    const page = await getJSON<CircleSummaryPage>(`/api/circles${search}`, options.signal);
+    return { ...page, circles: page.circles.map(normalizeCreatorSyncState) };
   },
-  getCircle: (externalId: string) => getJSON<CircleDetail>(`/api/circles/${encodeURIComponent(externalId)}`),
-  listVoices: (options: CreatorListOptions = {}) => {
+  getCircle: async (externalId: string) =>
+    normalizeCreatorSyncState(await getJSON<CircleDetail>(`/api/circles/${encodeURIComponent(externalId)}`)),
+  listVoices: async (options: CreatorListOptions = {}) => {
     const search = creatorListSearch(options);
-    return getJSON<VoiceSummaryPage>(`/api/voices${search}`, options.signal);
+    const page = await getJSON<VoiceSummaryPage>(`/api/voices${search}`, options.signal);
+    return { ...page, voices: page.voices.map(normalizeCreatorSyncState) };
   },
-  getVoice: (personId: number | string) => getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(String(personId))}`),
-  getVoiceSummary: (personId: number | string) =>
-    getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(String(personId))}?includeWorks=false`),
+  getVoice: async (personId: number | string) =>
+    normalizeCreatorSyncState(await getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(String(personId))}`)),
+  getVoiceSummary: async (personId: number | string) =>
+    normalizeCreatorSyncState(
+      await getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(String(personId))}?includeWorks=false`),
+    ),
   getVoiceWorks: (personId: number | string) =>
     getJSON<{ personId: number; works: VoiceKnownWork[] }>(`/api/voices/${encodeURIComponent(String(personId))}/works`),
   getVoiceRemoteMatches: (personId: number | string) =>
     getJSON<{ personId: number; remoteMatches: VoiceRemoteSourceSet[]; refresh: VoiceCatalogRefreshState }>(
       `/api/voices/${encodeURIComponent(String(personId))}/remote-matches`,
     ),
-  autoRefreshVoiceCatalog: (personId: number | string) =>
-    postJSON<VoiceCatalogRefreshState>(`/api/voices/${encodeURIComponent(String(personId))}/auto-refresh`),
   refreshVoiceCatalog: (personId: number | string, payload?: VoiceCatalogRefreshRequest) => {
     const path = `/api/voices/${encodeURIComponent(String(personId))}/catalog/refresh`;
     return payload ? postJSONBody<VoiceCatalogRefreshState>(path, payload) : postJSON<VoiceCatalogRefreshState>(path);
@@ -1996,23 +2007,28 @@ export const api = {
     postJSON<{ mergeId: number; targetPersonId: number; restoredPersonId: number; restoredName: string }>(
       `/api/voices/${personId}/merges/${mergeId}/undo`,
     ),
-  updateVoiceUserState: (personId: number, payload: { rating?: number | null; note?: string; favorite?: boolean }) =>
-    patchJSONBody<VoiceSummary>(`/api/voices/${personId}/user-state`, payload),
+  updateVoiceUserState: async (
+    personId: number,
+    payload: { rating?: number | null; note?: string; favorite?: boolean },
+  ) => normalizeCreatorSyncState(await patchJSONBody<VoiceSummary>(`/api/voices/${personId}/user-state`, payload)),
   setVoiceUserTags: (personId: number, tags: string[]) =>
     putJSONBody<{ personId: number; userTags: VoiceUserTag[] }>(`/api/voices/${personId}/tags`, { tags }),
-  updateCircleUserState: (externalId: string, payload: { rating?: number | null; note?: string; favorite?: boolean }) =>
-    patchJSONBody<CircleSummary>(`/api/circles/${encodeURIComponent(externalId)}/user-state`, payload),
+  updateCircleUserState: async (
+    externalId: string,
+    payload: { rating?: number | null; note?: string; favorite?: boolean },
+  ) =>
+    normalizeCreatorSyncState(
+      await patchJSONBody<CircleSummary>(`/api/circles/${encodeURIComponent(externalId)}/user-state`, payload),
+    ),
   setCircleUserTags: (externalId: string, tags: string[]) =>
     putJSONBody<{ externalId: string; userTags: VoiceUserTag[] }>(
       `/api/circles/${encodeURIComponent(externalId)}/tags`,
       { tags },
     ),
-  autoRefreshCircle: (externalId: string) =>
-    postJSON<CircleSummary["autoRefresh"]>(`/api/circles/${encodeURIComponent(externalId)}/auto-refresh`),
   refreshCircle: (
     externalId: string,
     payload: {
-      scope: "all" | "catalog" | "work" | "source";
+      scope: "all" | "catalog" | "work" | "source" | "metadata";
       mode: "incremental" | "full";
       productMode: "available" | "all";
     },
@@ -2038,7 +2054,7 @@ export const api = {
     remoteDelayRandomSeconds?: number;
     remoteBackoffSeconds?: number;
     remoteMaxBackoffSeconds?: number;
-    circleAutoRefreshDays?: number;
+    catalogFreshnessDays?: number;
     dlsiteMetadataLanguage?: string;
     directoryRoutingRules?: DirectoryRoutingRule[];
     recommendationThreshold?: number;

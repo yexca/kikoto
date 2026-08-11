@@ -36,8 +36,6 @@ type Server struct {
 	workflowStore                  *workflow.Store
 	cfg                            config.Config
 	dlsiteClient                   metasync.DLsiteClient
-	circleAutoRefreshMu            sync.Mutex
-	circleAutoRefreshing           map[int64]bool
 	remoteWorkCacheMu              sync.Mutex
 	remoteWorkCache                map[string]remoteWorkSnapshot
 	remoteWorkCacheCalls           map[string]*remoteWorkCall
@@ -67,7 +65,6 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 	return &Server{
 		db: db, accountStore: account.NewStore(db), libraryStore: library.NewStore(db), workflowStore: workflow.NewStore(db), cfg: cfg,
 		dlsiteClient:                   dlsite.NewClient(nil),
-		circleAutoRefreshing:           map[int64]bool{},
 		remoteWorkCache:                map[string]remoteWorkSnapshot{},
 		remoteWorkCacheCalls:           map[string]*remoteWorkCall{},
 		remoteWorkTracksCache:          map[string]remoteWorkTracksSnapshot{},
@@ -131,7 +128,6 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PUT /api/works/{id}/favorite-lists", s.setWorkFavoriteLists)
 	mux.HandleFunc("GET /api/circles", s.listCircles)
 	mux.HandleFunc("GET /api/circles/{externalId}", s.getCircle)
-	mux.HandleFunc("POST /api/circles/{externalId}/auto-refresh", s.autoRefreshCircle)
 	mux.HandleFunc("PATCH /api/circles/{externalId}/user-state", s.updateCircleUserState)
 	mux.HandleFunc("PUT /api/circles/{externalId}/tags", s.setCircleUserTags)
 	mux.HandleFunc("POST /api/circles/{externalId}/refresh", s.refreshCircle)
@@ -140,7 +136,6 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/voices/{personId}", s.getVoice)
 	mux.HandleFunc("GET /api/voices/{personId}/works", s.getVoiceWorks)
 	mux.HandleFunc("GET /api/voices/{personId}/remote-matches", s.getVoiceRemoteMatches)
-	mux.HandleFunc("POST /api/voices/{personId}/auto-refresh", s.autoRefreshVoiceCatalog)
 	mux.HandleFunc("POST /api/voices/{personId}/catalog/refresh", s.refreshVoiceCatalog)
 	mux.HandleFunc("GET /api/voices/{personId}/alias-candidates", s.listVoiceAliasCandidates)
 	mux.HandleFunc("POST /api/voices/{personId}/aliases", s.createVoiceAlias)

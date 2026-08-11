@@ -266,6 +266,11 @@ func TestVoiceCatalogReadIsSideEffectFreeAndRefreshEnqueueIsIdempotent(t *testin
 		t.Fatalf("GET created %d workflow runs, want none", runCount)
 	}
 	response = httptest.NewRecorder()
+	server.Routes().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/voices/1/auto-refresh", nil))
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("legacy auto-refresh status = %d, want %d", response.Code, http.StatusNotFound)
+	}
+	response = httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/voices/1/catalog/refresh", nil)
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: 1, Permissions: []string{"metadata:sync"}}))
 	server.Routes().ServeHTTP(response, request)
@@ -781,12 +786,12 @@ func TestVoiceCatalogRefreshReasonRetriesOnlyIncompleteCatalog(t *testing.T) {
 		LastAttemptAt: now.Add(-voiceCatalogRetryDelay - time.Minute).Format(time.RFC3339),
 		LastSuccessAt: now.Add(-time.Hour).Format(time.RFC3339), Queries: []string{"Example Voice"},
 	}
-	if reason, due := voiceCatalogRefreshReason(incomplete, []string{"Example Voice"}, false, now); !due || reason != "previous refresh did not complete" {
+	if reason, due := voiceCatalogRefreshReason(incomplete, []string{"Example Voice"}, false, now, defaultCatalogFreshnessDays); !due || reason != "previous refresh did not complete" {
 		t.Fatalf("incomplete refresh reason = %q, due = %t", reason, due)
 	}
 	metadataPartial := incomplete
 	metadataPartial.Complete = true
-	if reason, due := voiceCatalogRefreshReason(metadataPartial, []string{"Example Voice"}, false, now); due || reason != "catalog is fresh" {
+	if reason, due := voiceCatalogRefreshReason(metadataPartial, []string{"Example Voice"}, false, now, defaultCatalogFreshnessDays); due || reason != "catalog is fresh" {
 		t.Fatalf("complete catalog with metadata failure reason = %q, due = %t", reason, due)
 	}
 }

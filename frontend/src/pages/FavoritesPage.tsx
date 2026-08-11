@@ -1324,6 +1324,7 @@ function FavoriteVoiceCard({ voice, onChange }: { voice: VoiceSummary; onChange:
       latestWork={voice.latestWork}
       favorite={voice.favorite}
       userTags={voice.userTags}
+      syncState={voice.syncState}
       workCount={voice.knownWorks}
       availabilityCounts={{ local: voice.localWorks, remote: voice.remoteWorks }}
       unavailableCount={Math.max(0, voice.knownWorks - voice.playableWorks)}

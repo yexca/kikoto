@@ -8,7 +8,7 @@ import type { WorkCollectionColumnSetting } from "@/components/work-collection/W
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 
 export type CircleAvailabilityFilter = "all" | "available" | "unavailable" | "local" | "remote";
-export type CircleRefreshScope = "all" | "catalog" | "work" | "source";
+export type CircleRefreshScope = "all" | "catalog" | "work" | "source" | "metadata";
 export type CircleRefreshMode = "incremental" | "full";
 
 export function CircleAdvancedRefreshSheet({
@@ -19,6 +19,7 @@ export function CircleAdvancedRefreshSheet({
   availableCount,
   refreshingScope,
   isTranslationCircle,
+  canRefresh,
   onClose,
   onRun,
 }: {
@@ -29,6 +30,7 @@ export function CircleAdvancedRefreshSheet({
   availableCount: number;
   refreshingScope: CircleRefreshScope | null;
   isTranslationCircle: boolean;
+  canRefresh: boolean;
   onClose: () => void;
   onRun: (scope: CircleRefreshScope, mode: CircleRefreshMode) => void;
 }) {
@@ -64,21 +66,21 @@ export function CircleAdvancedRefreshSheet({
           <RefreshActionRow
             title="Catalog"
             description={`${circle.catalogWorks} works · ${circle.lastSyncedAt ? `last ${circle.lastSyncedAt}` : "never synced"}`}
-            disabled={refreshingScope !== null || isTranslationCircle}
+            disabled={!canRefresh || refreshingScope !== null || isTranslationCircle}
             active={refreshingScope === "catalog" || refreshingScope === "all"}
             onRun={(mode) => onRun("catalog", mode)}
           />
           <RefreshActionRow
             title="Work metadata"
             description={`${catalogOnlyCount} catalog only · ${availableCount} available`}
-            disabled={refreshingScope !== null}
+            disabled={!canRefresh || refreshingScope !== null}
             active={refreshingScope === "work" || refreshingScope === "all"}
             onRun={(mode) => onRun("work", mode)}
           />
           <RefreshActionRow
             title="Sources"
             description={`${circle.localWorks} local · ${circle.remoteWorks} remote · ${circle.missingWorks} missing`}
-            disabled={refreshingScope !== null || isTranslationCircle}
+            disabled={!canRefresh || refreshingScope !== null || isTranslationCircle}
             active={refreshingScope === "source" || refreshingScope === "all"}
             onRun={(mode) => onRun("source", mode)}
           />

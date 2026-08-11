@@ -40,9 +40,10 @@ type circleSummary struct {
 	CatalogWorks    int                `json:"catalogWorks"`
 	LastSyncedAt    *string            `json:"lastSyncedAt"`
 	SyncState       string             `json:"syncState"`
-	AutoRefresh     circleAutoRefresh  `json:"autoRefresh"`
+	SyncReason      string             `json:"syncReason"`
 	SourceSummaries []circleSourceStat `json:"sourceSummaries"`
 	LatestWork      *creatorLatestWork `json:"latestWork"`
+	lastAttemptAt   *string
 }
 
 type circleSummaryPage struct {
@@ -52,12 +53,6 @@ type circleSummaryPage struct {
 	Total          int             `json:"total"`
 	CatalogWorks   int             `json:"catalogWorks"`
 	AvailableWorks int             `json:"availableWorks"`
-}
-
-type circleAutoRefresh struct {
-	Status string `json:"status"`
-	Reason string `json:"reason"`
-	Mode   string `json:"mode"`
 }
 
 type circleSourceStat struct {
@@ -192,7 +187,12 @@ func (s *Server) loadCircleSummaries(ctx context.Context, userID int64) ([]circl
 				SELECT refresh.last_success_at
 				FROM party_catalog_refresh_state AS refresh
 				WHERE refresh.party_id = party.id AND refresh.provider_code = 'dlsite'
-			) AS last_synced_at
+			) AS last_synced_at,
+			(
+				SELECT refresh.last_attempt_at
+				FROM party_catalog_refresh_state AS refresh
+				WHERE refresh.party_id = party.id AND refresh.provider_code = 'dlsite'
+			) AS last_attempt_at
 		FROM party
 		INNER JOIN party_external_id AS external ON external.party_id = party.id
 		INNER JOIN metadata_provider AS provider ON provider.id = external.provider_id
@@ -213,18 +213,18 @@ func (s *Server) loadCircleSummaries(ctx context.Context, userID int64) ([]circl
 		var item circleSummary
 		var rating sql.NullInt64
 		var favorite int
-		var lastSynced sql.NullString
-		if err := rows.Scan(&item.ID, &item.ExternalID, &item.DisplayName, &rating, &item.Note, &favorite, &lastSynced); err != nil {
+		var lastSynced, lastAttempt sql.NullString
+		if err := rows.Scan(&item.ID, &item.ExternalID, &item.DisplayName, &rating, &item.Note, &favorite, &lastSynced, &lastAttempt); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
 		item.Rating = nullableIntPointer(rating)
 		item.Favorite = favorite != 0
 		item.LastSyncedAt = nullableString(lastSynced)
+		item.lastAttemptAt = nullableString(lastAttempt)
 		item.Aliases = []string{}
 		item.UserTags = []voiceUserTag{}
 		item.SourceSummaries = []circleSourceStat{}
-		setDefaultCircleState(&item)
 		items = append(items, item)
 		partyIDs = append(partyIDs, item.ID)
 	}
@@ -309,30 +309,6 @@ func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
 		Works:          works,
 		Series:         series,
 	})
-}
-
-func (s *Server) autoRefreshCircle(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requirePermission(w, r, "library:read")
-	if !ok {
-		return
-	}
-	externalID := normalizeMakerID(r.PathValue("externalId"))
-	if !dlsiteMakerIDPattern.MatchString(externalID) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid circle external id"})
-		return
-	}
-	partyID, err := s.ensurePlaceholderCircle(r.Context(), externalID)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	summary, err := s.loadCircleSummary(r.Context(), user.ID, partyID)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	summary.AutoRefresh = s.maybeStartCircleAutoRefresh(partyID, externalID, summary.LastSyncedAt)
-	writeJSON(w, http.StatusOK, summary.AutoRefresh)
 }
 
 func (s *Server) updateCircleUserState(w http.ResponseWriter, r *http.Request) {
@@ -968,7 +944,7 @@ func (s *Server) loadCircleSummary(ctx context.Context, userID int64, partyID in
 	var item circleSummary
 	var rating sql.NullInt64
 	var favorite int
-	var lastSynced sql.NullString
+	var lastSynced, lastAttempt sql.NullString
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT
 			party.id,
@@ -981,18 +957,24 @@ func (s *Server) loadCircleSummary(ctx context.Context, userID int64, partyID in
 				SELECT refresh.last_success_at
 				FROM party_catalog_refresh_state AS refresh
 				WHERE refresh.party_id = party.id AND refresh.provider_code = 'dlsite'
-			) AS last_synced_at
+			) AS last_synced_at,
+			(
+				SELECT refresh.last_attempt_at
+				FROM party_catalog_refresh_state AS refresh
+				WHERE refresh.party_id = party.id AND refresh.provider_code = 'dlsite'
+			) AS last_attempt_at
 		FROM party
 		INNER JOIN party_external_id AS external ON external.party_id = party.id
 		INNER JOIN metadata_provider AS provider ON provider.id = external.provider_id
 		LEFT JOIN user_party_state AS state ON state.party_id = party.id AND state.user_id = ?
 		WHERE party.id = ? AND provider.code = 'dlsite' AND external.id_type = 'maker_id'
-	`, userID, partyID).Scan(&item.ID, &item.ExternalID, &item.DisplayName, &rating, &item.Note, &favorite, &lastSynced); err != nil {
+	`, userID, partyID).Scan(&item.ID, &item.ExternalID, &item.DisplayName, &rating, &item.Note, &favorite, &lastSynced, &lastAttempt); err != nil {
 		return circleSummary{}, err
 	}
 	item.Rating = nullableIntPointer(rating)
 	item.Favorite = favorite != 0
 	item.LastSyncedAt = nullableString(lastSynced)
+	item.lastAttemptAt = nullableString(lastAttempt)
 	item.Aliases = []string{}
 	tags, err := s.loadCircleUserTags(ctx, userID, item.ID)
 	if err != nil {
@@ -1108,7 +1090,7 @@ func (s *Server) loadCircleAvailableWorkCounts(ctx context.Context, partyIDs []i
 }
 
 func (s *Server) fillCircleStats(ctx context.Context, userID int64, item *circleSummary) error {
-	setDefaultCircleState(item)
+	setCircleSyncState(item, s.catalogFreshnessDays(ctx), time.Now().UTC())
 	demoWhere := ""
 	if s.cfg.IsDemo() {
 		demoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
@@ -1148,32 +1130,24 @@ func (s *Server) fillCircleStats(ctx context.Context, userID int64, item *circle
 	if item.MissingWorks < 0 {
 		item.MissingWorks = 0
 	}
-	item.SyncState = "fresh"
-	if item.LastSyncedAt == nil {
-		item.SyncState = "pending"
-	} else if catalogWorks == 0 {
-		item.SyncState = "stale"
-	}
-	if isTranslationUmbrellaCircle(item.ExternalID) {
-		item.SyncState = "excluded"
-	}
 	return nil
 }
 
-func setDefaultCircleState(item *circleSummary) {
+func setCircleSyncState(item *circleSummary, freshnessDays int, now time.Time) {
 	if isTranslationUmbrellaCircle(item.ExternalID) {
-		item.AutoRefresh = circleAutoRefresh{Status: "skipped", Reason: "translation umbrella circle", Mode: ""}
+		item.SyncState = catalogSyncNotApplicable
+		item.SyncReason = "not_applicable"
+		return
 	}
-	if item.AutoRefresh.Status == "" {
-		item.AutoRefresh = circleAutoRefresh{Status: "skipped", Reason: "not evaluated"}
+	lastSuccessAt := ""
+	if item.LastSyncedAt != nil {
+		lastSuccessAt = *item.LastSyncedAt
 	}
-	item.SyncState = "fresh"
-	if item.LastSyncedAt == nil {
-		item.SyncState = "pending"
+	lastAttemptAt := ""
+	if item.lastAttemptAt != nil {
+		lastAttemptAt = *item.lastAttemptAt
 	}
-	if isTranslationUmbrellaCircle(item.ExternalID) {
-		item.SyncState = "excluded"
-	}
+	item.SyncState, item.SyncReason = catalogFreshnessState(lastSuccessAt, lastAttemptAt, freshnessDays, now)
 }
 
 func (s *Server) fillCircleStatsBatch(ctx context.Context, items []circleSummary, partyIDs []int64) error {
@@ -1211,15 +1185,15 @@ func (s *Server) fillCircleStatsBatch(ctx context.Context, items []circleSummary
 			item.RemoteWorks = count
 		}
 	}
+	freshnessDays := s.catalogFreshnessDays(ctx)
+	now := time.Now().UTC()
 	for index := range items {
 		items[index].PlayableWorks = availableCounts[items[index].ID]
 		items[index].MissingWorks = items[index].CatalogWorks - items[index].PlayableWorks
 		if items[index].MissingWorks < 0 {
 			items[index].MissingWorks = 0
 		}
-		if items[index].LastSyncedAt != nil && items[index].CatalogWorks == 0 && !isTranslationUmbrellaCircle(items[index].ExternalID) {
-			items[index].SyncState = "stale"
-		}
+		setCircleSyncState(&items[index], freshnessDays, now)
 		if items[index].LocalWorks > 0 {
 			items[index].SourceSummaries = append(items[index].SourceSummaries, circleSourceStat{
 				Key: "local", DisplayName: "Local", Status: "available", Count: items[index].LocalWorks,
@@ -1275,8 +1249,8 @@ func filterCircleSummaries(items []circleSummary, query string, filter string) [
 			matchesFilter = item.RemoteWorks > 0
 		case "missing":
 			matchesFilter = item.MissingWorks > 0
-		case "stale":
-			matchesFilter = item.SyncState != "fresh"
+		case "attention", "stale":
+			matchesFilter = item.SyncState == catalogSyncAttention
 		}
 		if matchesFilter {
 			filtered = append(filtered, item)
@@ -2279,59 +2253,6 @@ func (s *Server) loadCircleProfileForRefresh(ctx context.Context, partyID int64,
 		}
 	}
 	return profile, rows.Err()
-}
-
-func (s *Server) maybeStartCircleAutoRefresh(partyID int64, externalID string, lastSyncedAt *string) circleAutoRefresh {
-	if isTranslationUmbrellaCircle(externalID) {
-		return circleAutoRefresh{Status: "skipped", Reason: "translation umbrella circle", Mode: ""}
-	}
-	days := s.settingIntContext(context.Background(), "circle_auto_refresh_days", 30)
-	if days <= 0 {
-		return circleAutoRefresh{Status: "disabled", Reason: "auto refresh disabled"}
-	}
-	mode := "incremental"
-	reason := "stale"
-	if lastSyncedAt == nil {
-		mode = "full"
-		reason = "first pull"
-	} else if !circleRefreshDue(*lastSyncedAt, days) {
-		return circleAutoRefresh{Status: "skipped", Reason: "fresh", Mode: mode}
-	}
-	if !s.markCircleAutoRefreshRunning(partyID) {
-		return circleAutoRefresh{Status: "running", Reason: reason, Mode: mode}
-	}
-	go func() {
-		defer s.clearCircleAutoRefreshRunning(partyID)
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
-		defer cancel()
-		request := normalizeCircleRefreshRequest(circleRefreshRequest{Scope: "metadata", Mode: mode, ProductMode: "available"})
-		_, _ = s.runCircleRefresh(ctx, partyID, externalID, request)
-	}()
-	return circleAutoRefresh{Status: "queued", Reason: reason, Mode: mode}
-}
-
-func (s *Server) markCircleAutoRefreshRunning(partyID int64) bool {
-	s.circleAutoRefreshMu.Lock()
-	defer s.circleAutoRefreshMu.Unlock()
-	if s.circleAutoRefreshing[partyID] {
-		return false
-	}
-	s.circleAutoRefreshing[partyID] = true
-	return true
-}
-
-func (s *Server) clearCircleAutoRefreshRunning(partyID int64) {
-	s.circleAutoRefreshMu.Lock()
-	defer s.circleAutoRefreshMu.Unlock()
-	delete(s.circleAutoRefreshing, partyID)
-}
-
-func circleRefreshDue(lastSyncedAt string, days int) bool {
-	last, err := parseSQLiteTime(lastSyncedAt)
-	if err != nil {
-		return true
-	}
-	return time.Since(last) >= time.Duration(days)*24*time.Hour
 }
 
 func parseSQLiteTime(value string) (time.Time, error) {

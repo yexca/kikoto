@@ -190,6 +190,9 @@ async function mockApplication(
           cachedWorks: 0,
           playableWorks: 1,
           lastSeenAt: "2026-01-01T00:00:00Z",
+          lastSyncedAt: "2026-01-01T00:00:00Z",
+          syncState: "synced",
+          syncReason: "",
           rating: null,
           note: "",
           favorite: false,
@@ -226,26 +229,6 @@ async function mockApplication(
             sources: [],
             error: "",
           },
-        },
-      });
-      return;
-    }
-    if (url.pathname === "/api/voices/7/auto-refresh" && route.request().method() === "POST") {
-      await route.fulfill({
-        json: {
-          status: "succeeded",
-          reason: "",
-          lastStatus: "succeeded",
-          generation: 1,
-          lastAttemptAt: "",
-          lastSuccessAt: "",
-          complete: true,
-          pagesFetched: 1,
-          catalogWorks: 0,
-          metadataQueued: 0,
-          queries: ["Example Voice"],
-          sources: [],
-          error: "",
         },
       });
       return;

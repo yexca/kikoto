@@ -44,7 +44,7 @@ async function mockCacheSettings(
     remoteDelayRandomSeconds: 1.5,
     remoteBackoffSeconds: 30,
     remoteMaxBackoffSeconds: 300,
-    circleAutoRefreshDays: 30,
+    catalogFreshnessDays: 30,
     dlsiteMetadataLanguage: "ja-jp",
     directoryRoutingRules: [
       { id: "main", label: "Main story", weight: 40, aliases: ["main"], negativeAliases: ["bonus"], enabled: true },

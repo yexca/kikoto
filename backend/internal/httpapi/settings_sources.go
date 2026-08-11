@@ -115,7 +115,7 @@ type appSettingsResponse struct {
 	RemoteDelayRandom         float64                      `json:"remoteDelayRandomSeconds"`
 	RemoteBackoff             float64                      `json:"remoteBackoffSeconds"`
 	RemoteMaxBackoff          float64                      `json:"remoteMaxBackoffSeconds"`
-	CircleAutoRefreshDays     int                          `json:"circleAutoRefreshDays"`
+	CatalogFreshnessDays      int                          `json:"catalogFreshnessDays"`
 	DLsiteMetadataLanguage    string                       `json:"dlsiteMetadataLanguage"`
 	DirectoryRoutingRules     []directoryRule              `json:"directoryRoutingRules"`
 	RecommendationThreshold   int                          `json:"recommendationThreshold"`
@@ -575,7 +575,7 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		RemoteDelayRandom         *float64                      `json:"remoteDelayRandomSeconds"`
 		RemoteBackoff             *float64                      `json:"remoteBackoffSeconds"`
 		RemoteMaxBackoff          *float64                      `json:"remoteMaxBackoffSeconds"`
-		CircleAutoRefreshDays     *int                          `json:"circleAutoRefreshDays"`
+		CatalogFreshnessDays      *int                          `json:"catalogFreshnessDays"`
 		DLsiteMetadataLanguage    *string                       `json:"dlsiteMetadataLanguage"`
 		DirectoryRoutingRules     *[]directoryRule              `json:"directoryRoutingRules"`
 		RecommendationThreshold   *int                          `json:"recommendationThreshold"`
@@ -688,12 +688,12 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if payload.CircleAutoRefreshDays != nil {
-		if *payload.CircleAutoRefreshDays < 0 || *payload.CircleAutoRefreshDays > 365 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "circleAutoRefreshDays must be between 0 and 365"})
+	if payload.CatalogFreshnessDays != nil {
+		if *payload.CatalogFreshnessDays < minimumCatalogFreshnessDays || *payload.CatalogFreshnessDays > maximumCatalogFreshnessDays {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "catalogFreshnessDays must be between 1 and 365"})
 			return
 		}
-		if err := upsertSetting(r, tx, "circle_auto_refresh_days", *payload.CircleAutoRefreshDays); err != nil {
+		if err := upsertSetting(r, tx, "catalog_freshness_days", *payload.CatalogFreshnessDays); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -6457,7 +6457,7 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		RemoteDelayRandom:         s.settingFloat(r, "remote_request_delay_random_seconds", 1.5),
 		RemoteBackoff:             s.settingFloat(r, "remote_rate_limit_backoff_seconds", 30),
 		RemoteMaxBackoff:          s.settingFloat(r, "remote_max_backoff_seconds", 300),
-		CircleAutoRefreshDays:     s.settingInt(r, "circle_auto_refresh_days", 30),
+		CatalogFreshnessDays:      s.catalogFreshnessDays(r.Context()),
 		DLsiteMetadataLanguage:    normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp")),
 		DirectoryRoutingRules:     s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
 		RecommendationThreshold:   s.settingInt(r, "recommendation_threshold", 50),

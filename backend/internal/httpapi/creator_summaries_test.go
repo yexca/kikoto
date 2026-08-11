@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/yexca/kikoto/backend/internal/config"
 )
 
 func TestListCirclesPagesSummariesWithLatestKnownWork(t *testing.T) {
@@ -41,6 +43,39 @@ func TestListCirclesPagesSummariesWithLatestKnownWork(t *testing.T) {
 	latest := page.Circles[0].LatestWork
 	if latest == nil || latest.PrimaryCode != "RJ00000002" || latest.Title != "Latest work" {
 		t.Fatalf("latestWork = %+v, want latest release", latest)
+	}
+}
+
+func TestCircleDetailReadDoesNotQueueARefreshWorkflow(t *testing.T) {
+	db := openMigratedTestDB(t)
+	statements := []string{
+		"INSERT INTO party (id, display_name) VALUES (1, 'Example Circle')",
+		"INSERT INTO party_external_id (party_id, provider_id, id_type, external_id) SELECT 1, id, 'maker_id', 'RG00001' FROM metadata_provider WHERE code = 'dlsite'",
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	server := NewServer(db, config.Config{})
+	response := httptest.NewRecorder()
+	server.Routes().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/circles/RG00001", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("detail GET status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var runCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = 'circle_metadata_refresh'").Scan(&runCount); err != nil {
+		t.Fatal(err)
+	}
+	if runCount != 0 {
+		t.Fatalf("detail GET created %d workflows, want none", runCount)
+	}
+
+	response = httptest.NewRecorder()
+	server.Routes().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/circles/RG00001/auto-refresh", nil))
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("legacy auto-refresh status = %d, want %d", response.Code, http.StatusNotFound)
 	}
 }
 

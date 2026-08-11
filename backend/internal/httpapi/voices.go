@@ -33,6 +33,9 @@ type voiceSummary struct {
 	CachedWorks     int                `json:"cachedWorks"`
 	PlayableWorks   int                `json:"playableWorks"`
 	LastSeenAt      *string            `json:"lastSeenAt"`
+	LastSyncedAt    *string            `json:"lastSyncedAt"`
+	SyncState       string             `json:"syncState"`
+	SyncReason      string             `json:"syncReason"`
 	Rating          *int               `json:"rating"`
 	Note            string             `json:"note"`
 	Favorite        bool               `json:"favorite"`
@@ -670,6 +673,9 @@ func (s *Server) loadVoiceSummaries(ctx context.Context, userID int64) ([]voiceS
 		}
 		summaries[index].UserTags = tags
 	}
+	if err := s.fillVoiceCatalogSyncStates(ctx, summaries); err != nil {
+		return nil, err
+	}
 	personIDs := make([]int64, 0, len(summaries))
 	for _, summary := range summaries {
 		personIDs = append(personIDs, summary.PersonID)
@@ -690,6 +696,11 @@ func (s *Server) loadVoiceSummary(ctx context.Context, userID int64, personID in
 	if err != nil {
 		return voiceSummary{}, err
 	}
+	syncedItems := []voiceSummary{item}
+	if err := s.fillVoiceCatalogSyncStates(ctx, syncedItems); err != nil {
+		return voiceSummary{}, err
+	}
+	item = syncedItems[0]
 	latestByPerson, err := s.loadVoiceLatestWorks(ctx, []int64{personID})
 	if err != nil {
 		return voiceSummary{}, err
@@ -701,6 +712,98 @@ func (s *Server) loadVoiceSummary(ctx context.Context, userID int64, personID in
 		}
 	}
 	return item, nil
+}
+
+type voiceCatalogSyncProjection struct {
+	Exists        bool
+	Queries       []string
+	LastSuccessAt string
+	LastAttemptAt string
+	LastStatus    string
+	Complete      bool
+}
+
+func (s *Server) fillVoiceCatalogSyncStates(ctx context.Context, summaries []voiceSummary) error {
+	if len(summaries) == 0 {
+		return nil
+	}
+	personIDs := make([]int64, 0, len(summaries))
+	for _, summary := range summaries {
+		personIDs = append(personIDs, summary.PersonID)
+	}
+	projections, err := s.loadVoiceCatalogSyncProjections(ctx, personIDs)
+	if err != nil {
+		return err
+	}
+	freshnessDays := s.catalogFreshnessDays(ctx)
+	now := time.Now().UTC()
+	for index := range summaries {
+		setVoiceCatalogSyncState(&summaries[index], projections[summaries[index].PersonID], freshnessDays, now)
+	}
+	return nil
+}
+
+func (s *Server) loadVoiceCatalogSyncProjections(ctx context.Context, personIDs []int64) (map[int64]voiceCatalogSyncProjection, error) {
+	projections := map[int64]voiceCatalogSyncProjection{}
+	if len(personIDs) == 0 {
+		return projections, nil
+	}
+	query, args := int64InQuery(`
+		SELECT person_id, query_json, last_success_at, last_attempt_at, last_status, complete
+		FROM voice_catalog_refresh_state
+		WHERE person_id IN (%s)
+	`, personIDs)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var personID int64
+		var queryJSON string
+		var lastSuccess, lastAttempt sql.NullString
+		var lastStatus string
+		var complete int
+		if err := rows.Scan(&personID, &queryJSON, &lastSuccess, &lastAttempt, &lastStatus, &complete); err != nil {
+			return nil, err
+		}
+		projection := voiceCatalogSyncProjection{
+			Exists:        true,
+			LastStatus:    lastStatus,
+			Complete:      complete != 0,
+			LastSuccessAt: voiceCatalogStringValue(lastSuccess),
+			LastAttemptAt: voiceCatalogStringValue(lastAttempt),
+			Queries:       []string{},
+		}
+		_ = json.Unmarshal([]byte(queryJSON), &projection.Queries)
+		if projection.Queries == nil {
+			projection.Queries = []string{}
+		}
+		projections[personID] = projection
+	}
+	return projections, rows.Err()
+}
+
+func setVoiceCatalogSyncState(item *voiceSummary, projection voiceCatalogSyncProjection, freshnessDays int, now time.Time) {
+	if projection.LastSuccessAt != "" {
+		lastSuccessAt := projection.LastSuccessAt
+		item.LastSyncedAt = &lastSuccessAt
+	} else {
+		item.LastSyncedAt = nil
+	}
+	item.SyncState, item.SyncReason = catalogFreshnessState(projection.LastSuccessAt, projection.LastAttemptAt, freshnessDays, now)
+	if item.SyncState == catalogSyncNever {
+		return
+	}
+	if !projection.Complete {
+		item.SyncState = catalogSyncAttention
+		item.SyncReason = "incomplete"
+		return
+	}
+	if !equalVoiceCatalogQuerySets(projection.Queries, voiceCatalogQueryValues(item.DisplayName, item.Aliases)) {
+		item.SyncState = catalogSyncAttention
+		item.SyncReason = "aliases_changed"
+	}
 }
 
 func voiceSummaryQuery(where string, demo bool) string {

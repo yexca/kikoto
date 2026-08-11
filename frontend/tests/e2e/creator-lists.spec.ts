@@ -22,8 +22,8 @@ const circle = {
   missingWorks: 2,
   catalogWorks: 5,
   lastSyncedAt: "2026-07-01T00:00:00Z",
-  syncState: "fresh",
-  autoRefresh: { status: "skipped", reason: "not evaluated", mode: "" },
+  syncState: "synced",
+  syncReason: "",
   sourceSummaries: [
     { key: "local", sourceId: null, displayName: "Local", status: "available", count: 2 },
     { key: "remote", sourceId: null, displayName: "Remote", status: "available", count: 1 },
@@ -114,6 +114,9 @@ const voice = {
   cachedWorks: 1,
   playableWorks: 4,
   lastSeenAt: "2026-07-01T00:00:00Z",
+  lastSyncedAt: "2026-07-01T00:00:00Z",
+  syncState: "synced",
+  syncReason: "",
   rating: null,
   note: "",
   favorite: false,
@@ -126,7 +129,12 @@ const voice = {
   latestWork,
 };
 
-async function mockCreatorLists(page: Page) {
+async function mockCreatorLists(page: Page, options: { circleSyncState?: string; omitVoiceSyncState?: boolean } = {}) {
+  const circleSummary = { ...circle, syncState: options.circleSyncState ?? circle.syncState };
+  const voiceSummary = options.omitVoiceSyncState
+    ? withoutCatalogSyncState(voice)
+    : { ...voice, syncState: voice.syncState };
+
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
@@ -159,9 +167,9 @@ async function mockCreatorLists(page: Page) {
       await route.fulfill({
         json: {
           circles: [
-            circle,
+            circleSummary,
             {
-              ...circle,
+              ...circleSummary,
               id: 2,
               externalId: "RG10000",
               displayName: "No Cover Circle",
@@ -181,9 +189,9 @@ async function mockCreatorLists(page: Page) {
       await route.fulfill({
         json: {
           voices: [
-            voice,
+            voiceSummary,
             {
-              ...voice,
+              ...voiceSummary,
               personId: 8,
               displayName: "No Cover Voice",
               userTags: [
@@ -208,7 +216,19 @@ async function mockCreatorLists(page: Page) {
   });
 }
 
-async function mockCreatorDetails(page: Page) {
+function withoutCatalogSyncState<T extends { syncState: unknown; syncReason: unknown }>(creator: T) {
+  const { syncState: _syncState, syncReason: _syncReason, ...legacyCreator } = creator;
+  return legacyCreator;
+}
+
+async function mockCreatorDetails(
+  page: Page,
+  options: {
+    circleSyncState?: string;
+    voiceSyncState?: string;
+    onRefresh?: (path: string, payload: unknown) => void;
+  } = {},
+) {
   const voiceCatalogRefresh = {
     status: "succeeded",
     reason: "",
@@ -226,6 +246,7 @@ async function mockCreatorDetails(page: Page) {
   };
   const voiceDetail = {
     ...voice,
+    syncState: options.voiceSyncState ?? voice.syncState,
     aliases: [voice.displayName, "Voice alias"],
     aliasRecords: [
       { id: 1, alias: voice.displayName, source: "primary_name", createdAt: "2026-07-01T00:00:00Z" },
@@ -236,6 +257,7 @@ async function mockCreatorDetails(page: Page) {
   };
   const circleDetail = {
     ...circle,
+    syncState: options.circleSyncState ?? circle.syncState,
     aliases: ["Circle alias", "Second alias"],
     localWorks: 1,
     playableWorks: 1,
@@ -293,11 +315,8 @@ async function mockCreatorDetails(page: Page) {
       });
       return;
     }
-    if (url.pathname === "/api/voices/7/auto-refresh" && route.request().method() === "POST") {
-      await route.fulfill({ json: voiceCatalogRefresh });
-      return;
-    }
     if (url.pathname === "/api/voices/7/catalog/refresh" && route.request().method() === "POST") {
+      options.onRefresh?.(url.pathname, route.request().postDataJSON());
       await route.fulfill({ status: 202, json: voiceCatalogRefresh });
       return;
     }
@@ -322,8 +341,26 @@ async function mockCreatorDetails(page: Page) {
       });
       return;
     }
-    if (url.pathname === "/api/circles/RG09999/auto-refresh") {
-      await route.fulfill({ json: { status: "skipped", reason: "fresh", mode: "" } });
+    if (url.pathname === "/api/circles/RG09999/refresh" && route.request().method() === "POST") {
+      options.onRefresh?.(url.pathname, route.request().postDataJSON());
+      await route.fulfill({
+        status: 202,
+        json: {
+          runId: 1,
+          externalId: "RG09999",
+          status: "succeeded",
+          scope: "metadata",
+          catalogWorks: 0,
+          pagesFetched: 0,
+          productSynced: 0,
+          productSkipped: 0,
+          productFailed: 0,
+          productFailures: [],
+          sourceSynced: 0,
+          mode: "full",
+          productMode: "available",
+        },
+      });
       return;
     }
     await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } });
@@ -337,6 +374,7 @@ test("circle list uses compact responsive cards and shared pagination", async ({
   await expect(page.getByRole("heading", { name: "Circles" })).toBeVisible();
   await expect(page.getByText("Latest RJ00000000", { exact: true })).toBeVisible();
   await expect(page.getByText("No cover", { exact: true })).toBeVisible();
+  await expect(page.getByText("Synced", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Available 3/5", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Local 2", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Remote 1", { exact: true })).toHaveCount(0);
@@ -365,6 +403,7 @@ test("voice list keeps latest work, tags, and availability visible on mobile", a
   await expect(page.getByText("5 works", { exact: true })).toHaveCount(0);
   await expect(page.getByText("2 unavailable", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Drama", { exact: true })).toBeVisible();
+  await expect(page.getByText("Synced", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("+1", { exact: true })).toHaveCount(0);
   await expect(
     page
@@ -376,6 +415,69 @@ test("voice list keeps latest work, tags, and availability visible on mobile", a
   await expect(page.getByRole("group", { name: "Voice actor pages controls" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Voice actor pages" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("creator lists render a label for legacy catalog sync responses", async ({ page }) => {
+  await mockCreatorLists(page, { circleSyncState: "fresh", omitVoiceSyncState: true });
+
+  await page.goto("/circles");
+  await expect(page.getByText("Synced", { exact: true }).first()).toBeVisible();
+
+  await page.goto("/voices");
+  await expect(page.getByText("Attention", { exact: true }).first()).toBeVisible();
+});
+
+test("creator detail does not auto-refresh and exposes First pull for a new catalog", async ({ page }) => {
+  const legacyAutoRefreshRequests: string[] = [];
+  const refreshRequests: Array<{ path: string; payload: unknown }> = [];
+  await mockCreatorDetails(page, {
+    circleSyncState: "never",
+    voiceSyncState: "never",
+    onRefresh: (path, payload) => refreshRequests.push({ path, payload }),
+  });
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/auto-refresh")) {
+      legacyAutoRefreshRequests.push(request.url());
+    }
+  });
+
+  const circleLoaded = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/circles/RG09999");
+  await page.goto("/circles/RG09999");
+  await circleLoaded;
+  const circleSummary = page.getByRole("region", { name: "Circle summary" });
+  await expect(circleSummary.getByText("Never", { exact: true })).toBeVisible();
+  await expect(circleSummary.getByRole("button", { name: "First pull circle catalog" })).toBeVisible();
+  expect(legacyAutoRefreshRequests).toEqual([]);
+
+  const circlePullRequest = page.waitForRequest(
+    (request) => new URL(request.url()).pathname === "/api/circles/RG09999/refresh" && request.method() === "POST",
+  );
+  await circleSummary.getByRole("button", { name: "First pull circle catalog" }).click();
+  await circlePullRequest;
+  expect(refreshRequests).toContainEqual({
+    path: "/api/circles/RG09999/refresh",
+    payload: { scope: "metadata", mode: "full", productMode: "available" },
+  });
+
+  const voiceCatalogLoaded = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/voices/7/remote-matches",
+  );
+  await page.goto("/voices/7");
+  await voiceCatalogLoaded;
+  await expect(page.getByText("Never", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "First pull voice catalog" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(legacyAutoRefreshRequests).toEqual([]);
+
+  const voicePullRequest = page.waitForRequest(
+    (request) => new URL(request.url()).pathname === "/api/voices/7/catalog/refresh" && request.method() === "POST",
+  );
+  await page.getByRole("button", { name: "First pull voice catalog" }).click();
+  await voicePullRequest;
+  expect(refreshRequests).toContainEqual({
+    path: "/api/voices/7/catalog/refresh",
+    payload: { scope: "all", mode: "full" },
+  });
 });
 
 test("a one-circle result keeps the initial creator region height", async ({ page }) => {

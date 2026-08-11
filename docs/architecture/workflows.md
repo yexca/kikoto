@@ -111,11 +111,12 @@ availability.
 
 ## Voice Catalog Refresh
 
-Opening a voice actor detail first reads the persisted local works and voice
-catalog. An authorized client may then request the idempotent automatic refresh
-decision; the catalog GET endpoint itself is read-only. A manual refresh uses
-the same durable `voice_catalog_refresh` workflow and requires metadata-sync
-permission.
+Opening a voice actor detail reads the persisted local works and voice catalog
+only; entering either a voice or circle detail never queues a workflow. Creator
+catalogs expose Never, Attention, or Synced from their last successful pull and
+the configured freshness window. An authorized user can start an explicit First
+pull or manual refresh through the same durable workflow, which requires
+metadata-sync permission.
 
 The workflow searches the display name and every confirmed alias against each
 enabled compatible source. It follows the source-reported result count through

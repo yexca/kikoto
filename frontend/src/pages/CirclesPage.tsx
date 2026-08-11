@@ -28,6 +28,7 @@ import {
   creatorCardMinHeightClassName,
   creatorCollectionClassName,
 } from "@/components/creator/CreatorCard";
+import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
 import { CreatorListMobileOptions } from "@/components/creator/CreatorListMobileOptions";
 import {
   WorkCardActionButton,
@@ -104,7 +105,8 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "relisten", label: "Relisten" },
   { value: "paused", label: "Shelved" },
 ];
-type CircleFilter = "all" | "favorite" | "tagged" | "available" | "local" | "remote" | "missing" | "stale";
+type CircleFilter =
+  "all" | "favorite" | "tagged" | "available" | "local" | "remote" | "missing" | "attention" | "stale";
 const circleFilterOptions: readonly { value: CircleFilter; label: string }[] = [
   { value: "all", label: "All circles" },
   { value: "favorite", label: "Favorite" },
@@ -113,10 +115,9 @@ const circleFilterOptions: readonly { value: CircleFilter; label: string }[] = [
   { value: "local", label: "Local" },
   { value: "remote", label: "Remote" },
   { value: "missing", label: "Missing" },
-  { value: "stale", label: "Needs refresh" },
+  { value: "attention", label: "Attention" },
 ];
-const circleFilters: readonly CircleFilter[] = circleFilterOptions.map((option) => option.value);
-type CircleRefreshResultScope = CircleRefreshScope | "metadata";
+const circleFilters: readonly CircleFilter[] = [...circleFilterOptions.map((option) => option.value), "stale"];
 
 export function CirclesPage() {
   const [path, setPath] = useState(window.location.pathname);
@@ -377,6 +378,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const auth = useAuth();
   const toast = useToast();
   const requireDownloadsManage = usePermissionGate("downloads:manage");
+  const canRefreshCatalog = auth.hasPermission("metadata:sync") && !auth.demoMode;
   const compactLayout = useMobileNavigationLayout();
   const [detail, setDetail] = useState<CircleDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -445,42 +447,8 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   }, [detail?.works, loadCircleDetail]);
 
   useEffect(() => {
-    let cancelled = false;
-    let timeoutID: number | undefined;
-    let refreshStarted = false;
-    let metadataSyncToastShown = false;
-    const pollAutoRefresh = async (attempt = 0) => {
-      const next = await loadCircleDetail(attempt === 0);
-      if (cancelled || !next) return;
-      const autoRefresh =
-        attempt === 0 ? await api.autoRefreshCircle(externalId).catch(() => next.autoRefresh) : next.autoRefresh;
-      if (cancelled) return;
-      if (autoRefresh.status === "queued") {
-        refreshStarted = true;
-        toast.info(`Auto refresh queued: ${autoRefresh.mode} crawl for ${autoRefresh.reason}.`);
-      } else if (autoRefresh.status === "running") {
-        refreshStarted = true;
-        toast.info(`Auto refresh is already running: ${autoRefresh.mode} crawl.`);
-      } else if (attempt > 0 && autoRefresh.status === "skipped" && autoRefresh.reason === "fresh") {
-        toast.success("Auto refresh completed.");
-      }
-      if (refreshStarted && !metadataSyncToastShown && circleCatalogNeedsMetadataRefresh(next)) {
-        metadataSyncToastShown = true;
-        toast.info("Catalog fetched. Work metadata is still syncing and will appear here automatically.");
-      }
-      const metadataPending = refreshStarted && circleCatalogNeedsMetadataRefresh(next);
-      if ((autoRefresh.status === "queued" || autoRefresh.status === "running" || metadataPending) && attempt < 60) {
-        timeoutID = window.setTimeout(() => void pollAutoRefresh(attempt + 1), 2000);
-      }
-    };
-    void pollAutoRefresh();
-    return () => {
-      cancelled = true;
-      if (timeoutID !== undefined) {
-        window.clearTimeout(timeoutID);
-      }
-    };
-  }, [externalId, loadCircleDetail]);
+    void loadCircleDetail(true);
+  }, [loadCircleDetail]);
 
   const circle = detail ?? emptyCircleDetail(externalId);
   const filteredWorks = useMemo(() => {
@@ -578,6 +546,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     : circle.series.reduce((total, series) => total + series.works, 0);
 
   const refresh = async (scope: CircleRefreshScope, mode: CircleRefreshMode) => {
+    if (!canRefreshCatalog) return;
     setRefreshingScope(scope);
     try {
       const result = await api.refreshCircle(externalId, { scope, mode, productMode: workProductMode(scope, mode) });
@@ -590,6 +559,9 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       setRefreshingScope(null);
     }
   };
+
+  const firstPull = circle.syncState === "never";
+  const runPrimaryRefresh = () => void refresh(firstPull ? "metadata" : "all", firstPull ? "full" : "incremental");
 
   const toggleCircleFavorite = async () => {
     try {
@@ -831,7 +803,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline">{circle.externalId}</Badge>
-                  <SyncBadge state={circle.syncState} />
+                  <CatalogSyncBadge state={circle.syncState} />
                   {circle.favorite && <Badge variant="secondary">Favorite</Badge>}
                 </div>
                 <h2 className="mt-3 truncate text-2xl font-semibold lg:text-3xl">{circle.displayName}</h2>
@@ -853,28 +825,36 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                   <Heart className={`h-4 w-4 ${circle.favorite ? "fill-current" : ""}`} />
                   <span className="hidden lg:inline">Favorite</span>
                 </Button>
+                {!firstPull && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
+                    aria-label="Retry circle metadata"
+                    disabled={!canRefreshCatalog || isLoading || refreshingScope !== null}
+                    onClick={() => void refresh("work", "full")}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    <span className="lg:hidden">Metadata</span>
+                    <span className="hidden lg:inline">Retry metadata</span>
+                  </Button>
+                )}
                 <Button
-                  variant="outline"
+                  variant={firstPull ? "default" : "outline"}
                   size="sm"
                   className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
-                  aria-label="Retry circle metadata"
-                  disabled={isLoading || refreshingScope !== null}
-                  onClick={() => void refresh("work", "full")}
+                  aria-label={firstPull ? "First pull circle catalog" : "Refresh circle"}
+                  disabled={
+                    !canRefreshCatalog ||
+                    isLoading ||
+                    refreshingScope !== null ||
+                    isTranslationCircle(circle.externalId)
+                  }
+                  onClick={runPrimaryRefresh}
                 >
                   <RefreshCw className="h-4 w-4" />
-                  <span className="lg:hidden">Metadata</span>
-                  <span className="hidden lg:inline">Retry metadata</span>
-                </Button>
-                <Button
-                  size="sm"
-                  className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
-                  aria-label="Refresh circle"
-                  disabled={isLoading || refreshingScope !== null || isTranslationCircle(circle.externalId)}
-                  onClick={() => void refresh("all", "incremental")}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  <span className="lg:hidden">Circle</span>
-                  <span className="hidden lg:inline">Refresh circle</span>
+                  <span className="lg:hidden">{firstPull ? "First pull" : "Circle"}</span>
+                  <span className="hidden lg:inline">{firstPull ? "First pull" : "Refresh circle"}</span>
                 </Button>
                 <Button
                   variant="outline"
@@ -1292,6 +1272,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
         availableCount={availableWorkCount}
         refreshingScope={refreshingScope}
         isTranslationCircle={isTranslationCircle(circle.externalId)}
+        canRefresh={canRefreshCatalog}
         onClose={() => setAdvancedRefreshOpen(false)}
         onRun={(scope, mode) => void refresh(scope, mode)}
       />
@@ -1538,7 +1519,7 @@ function workProductMode(scope: CircleRefreshScope, mode: CircleRefreshMode): "a
 
 function refreshMessage(result: {
   runId: number;
-  scope: CircleRefreshResultScope;
+  scope: CircleRefreshScope;
   pagesFetched: number;
   catalogWorks: number;
   productSynced: number;
@@ -1550,24 +1531,6 @@ function refreshMessage(result: {
   const failed = result.productFailed ? `, ${result.productFailed} failed` : "";
   const skipped = result.productSkipped ? `, ${result.productSkipped} skipped` : "";
   return `Refresh workflow #${result.runId} (${scopeLabel}): ${result.pagesFetched} pages, ${result.catalogWorks} catalog works, ${result.productSynced} product JSON${skipped}${failed}, ${result.sourceSynced} source matches.`;
-}
-
-function circleCatalogNeedsMetadataRefresh(circle: CircleDetail) {
-  return (
-    circle.catalogWorks > 0 && circle.works.some((work) => work.workId === null || work.title === work.primaryCode)
-  );
-}
-
-function SyncBadge({ state }: { state: string }) {
-  const label =
-    state === "fresh"
-      ? "Synced"
-      : state === "stale"
-        ? "Needs refresh"
-        : state === "excluded"
-          ? "Excluded"
-          : "Never synced";
-  return <Badge variant={state === "fresh" || state === "excluded" ? "secondary" : "warning"}>{label}</Badge>;
 }
 
 function emptyCircleDetail(externalId: string): CircleDetail {
@@ -1586,8 +1549,8 @@ function emptyCircleDetail(externalId: string): CircleDetail {
     missingWorks: 0,
     catalogWorks: 0,
     lastSyncedAt: null,
-    syncState: "pending",
-    autoRefresh: { status: "skipped", reason: "", mode: "" },
+    syncState: "never",
+    syncReason: "never",
     sourceSummaries: [],
     latestWork: null,
     availableWorks: 0,

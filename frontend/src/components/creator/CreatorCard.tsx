@@ -5,7 +5,9 @@ import { UserTagRow, type UserTag } from "@/components/UserTagRow";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
 import { assetURL } from "@/lib/api";
+import type { CatalogSyncState } from "@/lib/catalogSyncState";
 
 export const creatorCardMinHeightClassName = "min-h-44";
 
@@ -49,7 +51,7 @@ export function CreatorCard({
   latestWork: CreatorLatestWork | null;
   favorite: boolean;
   userTags: UserTag[];
-  syncState?: string;
+  syncState: CatalogSyncState;
   workCount: number;
   availabilitySummary?: { available: number; total: number };
   availabilityCounts?: { local: number; remote: number };
@@ -121,7 +123,7 @@ export function CreatorCard({
           <UserTagRow tags={userTags} onSave={onTagsSave} className="mt-2" />
 
           <div className="mt-auto flex flex-wrap items-center gap-1 border-t pt-2 text-xs text-muted-foreground">
-            {syncState && <SyncBadge state={syncState} />}
+            <CatalogSyncBadge state={syncState} />
             {availabilitySummary ? (
               <Badge variant={availabilitySummary.available > 0 ? "success" : "warning"} className="tabular-nums">
                 Available {availabilitySummary.available}/{availabilitySummary.total}
@@ -193,16 +195,4 @@ function creatorSourceTags(sources: CreatorSourceSummary[]) {
     (source) => source.sourceId !== null && source.sourceId !== undefined && source.key !== "cache",
   );
   return hasSpecificRemote ? available.filter((source) => source.key !== "remote") : available;
-}
-
-function SyncBadge({ state }: { state: string }) {
-  const label =
-    state === "fresh"
-      ? "Synced"
-      : state === "stale"
-        ? "Needs refresh"
-        : state === "excluded"
-          ? "Excluded"
-          : "Never synced";
-  return <Badge variant={state === "fresh" || state === "excluded" ? "secondary" : "warning"}>{label}</Badge>;
 }

@@ -102,7 +102,7 @@ export function MaintenancePage({
   const [remoteDelayRandom, setRemoteDelayRandom] = useState(1.5);
   const [remoteBackoff, setRemoteBackoff] = useState(30);
   const [remoteMaxBackoff, setRemoteMaxBackoff] = useState(300);
-  const [circleAutoRefreshDays, setCircleAutoRefreshDays] = useState(30);
+  const [catalogFreshnessDays, setCatalogFreshnessDays] = useState(30);
   const [dlsiteMetadataLanguage, setDlsiteMetadataLanguage] = useState("ja-jp");
   const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>([]);
   const [recommendationThreshold, setRecommendationThreshold] = useState(50);
@@ -137,7 +137,7 @@ export function MaintenancePage({
         setRemoteDelayRandom(next.remoteDelayRandomSeconds);
         setRemoteBackoff(next.remoteBackoffSeconds);
         setRemoteMaxBackoff(next.remoteMaxBackoffSeconds);
-        setCircleAutoRefreshDays(next.circleAutoRefreshDays);
+        setCatalogFreshnessDays(next.catalogFreshnessDays);
         setDlsiteMetadataLanguage(next.dlsiteMetadataLanguage);
         setDirectoryRoutingRules(
           reweightDirectoryRoutingRules((next.directoryRoutingRules ?? []).filter((rule) => rule.enabled)),
@@ -205,7 +205,7 @@ export function MaintenancePage({
       remoteDelayRandomSeconds: remoteDelayRandom,
       remoteBackoffSeconds: remoteBackoff,
       remoteMaxBackoffSeconds: remoteMaxBackoff,
-      circleAutoRefreshDays,
+      catalogFreshnessDays,
       dlsiteMetadataLanguage,
       directoryRoutingRules,
       recommendationThreshold,
@@ -216,6 +216,7 @@ export function MaintenancePage({
     setCacheLimitGb(next.cacheLimitGb);
     setRemoteDownloadLimitGb(next.remoteDownloadLimitGb);
     setFetchStagingRetentionDays(next.fetchStagingRetentionDays);
+    setCatalogFreshnessDays(next.catalogFreshnessDays);
     setRecommendationConfig(next.recommendationConfig);
     toast.success("Settings saved.");
   };
@@ -458,7 +459,7 @@ export function MaintenancePage({
             cacheEnabled={cacheEnabled}
             cacheLimitGb={cacheLimitGb}
             localScanDepth={localScanDepth}
-            circleAutoRefreshDays={circleAutoRefreshDays}
+            catalogFreshnessDays={catalogFreshnessDays}
             onSelect={selectTab}
             canManageUsers={canManageUsers}
           />
@@ -521,9 +522,9 @@ export function MaintenancePage({
           />
         ) : activeTab === "metadata" ? (
           <MetadataSettings
-            circleAutoRefreshDays={circleAutoRefreshDays}
+            catalogFreshnessDays={catalogFreshnessDays}
             dlsiteMetadataLanguage={dlsiteMetadataLanguage}
-            onCircleAutoRefreshDaysChange={setCircleAutoRefreshDays}
+            onCatalogFreshnessDaysChange={setCatalogFreshnessDays}
             onDlsiteMetadataLanguageChange={setDlsiteMetadataLanguage}
             onSave={saveRuntimeSettings}
           />
@@ -562,7 +563,7 @@ function SettingsOverview({
   cacheEnabled,
   cacheLimitGb,
   localScanDepth,
-  circleAutoRefreshDays,
+  catalogFreshnessDays,
   onSelect,
   canManageUsers,
 }: {
@@ -571,7 +572,7 @@ function SettingsOverview({
   cacheEnabled: boolean;
   cacheLimitGb: number;
   localScanDepth: number;
-  circleAutoRefreshDays: number;
+  catalogFreshnessDays: number;
   onSelect: (tab: MaintenanceTab) => void;
   canManageUsers: boolean;
 }) {
@@ -624,9 +625,9 @@ function SettingsOverview({
       <SettingsHomeCard
         icon={<RefreshCw className="h-5 w-5" />}
         title="Metadata"
-        description="DLsite localization and circle refresh behavior."
-        status={circleAutoRefreshDays === 0 ? "Manual refresh" : `${circleAutoRefreshDays} day refresh`}
-        chips={["DLsite", "Circles", "Language"]}
+        description="DLsite localization and creator catalog freshness."
+        status={`${catalogFreshnessDays} day freshness`}
+        chips={["DLsite", "Creator catalogs", "Language"]}
         onClick={() => onSelect("metadata")}
       />
       <SettingsHomeCard
@@ -1049,15 +1050,15 @@ function RemoteSourcesSettingsSkeleton() {
 }
 
 function MetadataSettings({
-  circleAutoRefreshDays,
+  catalogFreshnessDays,
   dlsiteMetadataLanguage,
-  onCircleAutoRefreshDaysChange,
+  onCatalogFreshnessDaysChange,
   onDlsiteMetadataLanguageChange,
   onSave,
 }: {
-  circleAutoRefreshDays: number;
+  catalogFreshnessDays: number;
   dlsiteMetadataLanguage: string;
-  onCircleAutoRefreshDaysChange: (value: number) => void;
+  onCatalogFreshnessDaysChange: (value: number) => void;
   onDlsiteMetadataLanguageChange: (value: string) => void;
   onSave: () => Promise<void>;
 }) {
@@ -1095,20 +1096,18 @@ function MetadataSettings({
 
         <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
           <label className="grid gap-1 text-sm">
-            <span className="font-medium">Auto refresh days</span>
+            <span className="font-medium">Catalog freshness days</span>
             <input
               className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
               type="number"
-              min={0}
+              min={1}
               max={365}
-              value={circleAutoRefreshDays}
-              onChange={(event) => onCircleAutoRefreshDaysChange(Number(event.target.value))}
+              value={catalogFreshnessDays}
+              onChange={(event) => onCatalogFreshnessDaysChange(Number(event.target.value))}
             />
           </label>
           <div className="self-end rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
-            {circleAutoRefreshDays === 0
-              ? "Automatic circle refresh on detail entry is disabled."
-              : `Circle detail pages may refresh when local metadata is older than ${circleAutoRefreshDays} days.`}
+            Circle and voice catalog status changes to Attention after ${catalogFreshnessDays} days.
           </div>
         </div>
         <Button size="sm" onClick={() => void onSave()}>

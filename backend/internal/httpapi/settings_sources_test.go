@@ -237,6 +237,40 @@ func TestUpdateSettingsValidatesAndPersistsFetchTransferLimits(t *testing.T) {
 	}
 }
 
+func TestUpdateSettingsValidatesAndPersistsCatalogFreshnessDays(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		body       string
+		wantStatus int
+	}{
+		{name: "valid", body: `{"catalogFreshnessDays":14}`, wantStatus: http.StatusOK},
+		{name: "zero", body: `{"catalogFreshnessDays":0}`, wantStatus: http.StatusBadRequest},
+		{name: "too large", body: `{"catalogFreshnessDays":366}`, wantStatus: http.StatusBadRequest},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := openMigratedTestDB(t)
+			server := NewServer(db, config.Config{})
+			request := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(test.body))
+			request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"sources:write"}}))
+			response := httptest.NewRecorder()
+			server.updateSettings(response, request)
+			if response.Code != test.wantStatus {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+			if test.name != "valid" {
+				return
+			}
+			var settings appSettingsResponse
+			if err := json.Unmarshal(response.Body.Bytes(), &settings); err != nil {
+				t.Fatal(err)
+			}
+			if settings.CatalogFreshnessDays != 14 {
+				t.Fatalf("catalog freshness days = %d, want 14", settings.CatalogFreshnessDays)
+			}
+		})
+	}
+}
+
 func TestDirectoryRoutingRulesPreserveExplicitEmptySetting(t *testing.T) {
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('directory_routing_rules', '[]')`); err != nil {
