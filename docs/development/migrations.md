@@ -13,7 +13,7 @@ stores per-user audio-to-lyrics media preferences. Released migrations remain
 immutable; subsequent schema changes must use the next numbered file.
 
 The current sequence continues through
-`025_decouple_local_scan_metadata.sql`.
+`026_recommendation_session_snapshot.sql`.
 Migrations `008` through `013` add normalized work aliases and commercial
 metadata, terminal provider state, recommendation telemetry, and explicit video
 audio-presence data with a legacy backfill. Migration `014` adds durable
@@ -30,7 +30,9 @@ cleanup timestamp used by retention reconciliation.
 Migration `024` adds the per-source outbound-host restriction and allowlist
 fields. Migration `025` removes metadata synchronization from the local-scan
 definition and initializes every existing local-scan trigger with its metadata
-follow-up disabled.
+follow-up disabled. Migration `026` adds revision-tracked, per-user
+recommendation generations and client-session bindings so affinity is
+materialized only when a new session observes changed inputs.
 
 ## Guidelines
 

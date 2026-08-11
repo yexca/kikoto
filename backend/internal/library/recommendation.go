@@ -115,13 +115,29 @@ func ValidateRecommendationConfig(config RecommendationConfig) error {
 }
 
 func (s *Store) LoadRecommendationConfig(ctx context.Context) RecommendationConfig {
-	config := DefaultRecommendationConfig()
+	return loadRecommendationConfig(ctx, s.db)
+}
+
+type recommendationConfigQueryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func loadRecommendationConfig(ctx context.Context, queryer recommendationConfigQueryer) RecommendationConfig {
 	var raw string
-	if err := s.db.QueryRowContext(ctx, "SELECT value_json FROM app_setting WHERE key = 'recommendation_config'").Scan(&raw); err != nil {
-		return config
-	}
-	if err := json.Unmarshal([]byte(raw), &config); err != nil {
+	if err := queryer.QueryRowContext(ctx, "SELECT value_json FROM app_setting WHERE key = 'recommendation_config'").Scan(&raw); err != nil {
 		return DefaultRecommendationConfig()
+	}
+	config, err := decodeRecommendationConfig(raw)
+	if err != nil {
+		return DefaultRecommendationConfig()
+	}
+	return config
+}
+
+func decodeRecommendationConfig(raw string) (RecommendationConfig, error) {
+	config := DefaultRecommendationConfig()
+	if err := json.Unmarshal([]byte(raw), &config); err != nil {
+		return RecommendationConfig{}, err
 	}
 	var legacy struct {
 		AffinityBase *int `json:"affinityBase"`
@@ -130,10 +146,10 @@ func (s *Store) LoadRecommendationConfig(ctx context.Context) RecommendationConf
 	if err := json.Unmarshal([]byte(raw), &legacy); err == nil && legacy.AffinityBase == nil && legacy.NonePrior != nil && *legacy.NonePrior >= 0 && *legacy.NonePrior <= 100 {
 		config.AffinityBase = *legacy.NonePrior
 	}
-	if ValidateRecommendationConfig(config) != nil {
-		return DefaultRecommendationConfig()
+	if err := ValidateRecommendationConfig(config); err != nil {
+		return RecommendationConfig{}, err
 	}
-	return config
+	return config, nil
 }
 
 const positiveTagMatchCountExpression = `(SELECT COUNT(DISTINCT candidate_tag.tag_id)
@@ -237,16 +253,38 @@ func negativeCircleMatchCountExpression(minEvidence int) string {
 }
 
 func recommendationScoreExpression(config RecommendationConfig) string {
-	positiveTag := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.TagCap, positiveTagMatchCountExpression, config.TagWeight)
-	positiveVoice := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.VoiceCap, positiveVoiceMatchCountExpression, config.VoiceWeight)
-	positiveCircle := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.CircleCap, positiveCircleMatchCountExpression, config.CircleWeight)
-	negativeTag := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.NegativeTagCap, negativeTagMatchCountExpression(config.NegativeMinEvidence), config.NegativeTagWeight)
-	negativeVoice := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.NegativeVoiceCap, negativeVoiceMatchCountExpression(config.NegativeMinEvidence), config.NegativeVoiceWeight)
-	negativeCircle := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.NegativeCircleCap, negativeCircleMatchCountExpression(config.NegativeMinEvidence), config.NegativeCircleWeight)
+	return recommendationScoreFromSignalExpressions(
+		config,
+		"COALESCE(user_work_state.favorite, 0)",
+		positiveTagMatchCountExpression,
+		positiveVoiceMatchCountExpression,
+		positiveCircleMatchCountExpression,
+		negativeTagMatchCountExpression(config.NegativeMinEvidence),
+		negativeVoiceMatchCountExpression(config.NegativeMinEvidence),
+		negativeCircleMatchCountExpression(config.NegativeMinEvidence),
+	)
+}
+
+func recommendationScoreFromSignalExpressions(
+	config RecommendationConfig,
+	favoriteExpression string,
+	positiveTagExpression string,
+	positiveVoiceExpression string,
+	positiveCircleExpression string,
+	negativeTagExpression string,
+	negativeVoiceExpression string,
+	negativeCircleExpression string,
+) string {
+	positiveTag := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.TagCap, positiveTagExpression, config.TagWeight)
+	positiveVoice := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.VoiceCap, positiveVoiceExpression, config.VoiceWeight)
+	positiveCircle := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.CircleCap, positiveCircleExpression, config.CircleWeight)
+	negativeTag := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.NegativeTagCap, negativeTagExpression, config.NegativeTagWeight)
+	negativeVoice := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.NegativeVoiceCap, negativeVoiceExpression, config.NegativeVoiceWeight)
+	negativeCircle := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.NegativeCircleCap, negativeCircleExpression, config.NegativeCircleWeight)
 	return fmt.Sprintf(`MAX(0, MIN(100, %d + %s + %s + %s
-		+ CASE WHEN COALESCE(user_work_state.favorite, 0) = 1 THEN %d ELSE 0 END
+		+ CASE WHEN COALESCE(%s, 0) = 1 THEN %d ELSE 0 END
 		- MIN(%d, %s + %s + %s)))`, config.AffinityBase, positiveTag, positiveVoice, positiveCircle,
-		config.FavoriteBonus, config.NegativeTotalCap, negativeTag, negativeVoice, negativeCircle)
+		favoriteExpression, config.FavoriteBonus, config.NegativeTotalCap, negativeTag, negativeVoice, negativeCircle)
 }
 
 func recommendationUserArgs(userID int64) []any {
@@ -479,12 +517,12 @@ func recommendationLaneSuppressedExpression(config RecommendationConfig, statusE
 func recommendationListSelectSQL(baseSelect string, direction string, randomSeed int64, config RecommendationConfig) string {
 	_, direction = normalizeSort("recommend", direction)
 	withinLane := recommendationOrderBy("id", direction, randomSeed, config.JitterAmplitude)
-	position := recommendationLanePositionExpression(config, "listening_status", "recommendation_lane_rank")
-	suppressed := recommendationLaneSuppressedExpression(config, "listening_status")
+	position := recommendationLanePositionExpression(config, "recommendation_lane", "recommendation_lane_rank")
+	suppressed := recommendationLaneSuppressedExpression(config, "recommendation_lane")
 	return `WITH recommendation_candidates AS (` + baseSelect + `),
 	recommendation_ranked AS (
 		SELECT recommendation_candidates.*,
-			ROW_NUMBER() OVER (PARTITION BY listening_status ORDER BY ` + withinLane + `) AS recommendation_lane_rank
+			ROW_NUMBER() OVER (PARTITION BY recommendation_lane ORDER BY ` + withinLane + `) AS recommendation_lane_rank
 		FROM recommendation_candidates
 	),
 	recommendation_positioned AS (

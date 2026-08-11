@@ -93,6 +93,10 @@ small shared contract should resolve cross-domain needs.
   Library and Favorites browse restoration, workflow selection, and in-memory
   work media. Pure display preferences such as theme and player Dock mode stay
   shared on the device.
+- Keep the recommendation client-session id in server-and-user-scoped session
+  storage. Navigation and reloads in one browser tab reuse it; a newly opened
+  tab or native-app cold launch creates a new id and stable recommendation seed.
+  Manual reshuffle changes the browse seed without replacing the session id.
 - Keep scroll state per browser history entry. A push navigation starts at the
   top, while browser back/forward restores the originating entry after its
   content has rendered. Retry only deep history restoration, and cancel pending

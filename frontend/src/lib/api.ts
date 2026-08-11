@@ -1699,7 +1699,10 @@ export const api = {
   ) => patchJSONBody<ManagedUser>(`/api/users/${id}`, payload),
   deleteUser: (id: number) => deleteJSON<{ ok: boolean }>(`/api/users/${id}`),
   listWorks: () => getJSON<Work[]>("/api/works"),
-  getWorkRecommendation: (id: number) => getJSON<RecommendationBreakdown>(`/api/works/${id}/recommendation`),
+  getWorkRecommendation: (id: number, recommendationSession = "") =>
+    getJSON<RecommendationBreakdown>(
+      `/api/works/${id}/recommendation${recommendationSession ? `?recommendationSession=${encodeURIComponent(recommendationSession)}` : ""}`,
+    ),
   recordRecommendationEvents: (events: RecommendationEventInput[]) =>
     postJSONBody<{ recorded: number }>("/api/recommendation-events", { events }),
   getRecommendationTelemetry: () => getJSON<RecommendationTelemetrySummary>("/api/recommendation-telemetry"),
@@ -1714,9 +1717,10 @@ export const api = {
     seed = 1,
     recommendBadges = false,
     signal?: AbortSignal,
+    recommendationSession = "",
   ) =>
     getJSON<WorksPage>(
-      `/api/works?page=${page}&pageSize=${pageSize}&scope=${encodeURIComponent(scope)}&status=${encodeURIComponent(status)}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}&seed=${seed}&recommendBadges=${recommendBadges}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
+      `/api/works?page=${page}&pageSize=${pageSize}&scope=${encodeURIComponent(scope)}&status=${encodeURIComponent(status)}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}&seed=${seed}&recommendBadges=${recommendBadges}${recommendationSession ? `&recommendationSession=${encodeURIComponent(recommendationSession)}` : ""}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
       signal,
     ),
   checkUnlinkedWorkSources: (workIds: number[]) =>

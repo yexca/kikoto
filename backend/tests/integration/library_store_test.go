@@ -341,6 +341,161 @@ func TestStoreListPageRecommendSortUsesPositiveHistory(t *testing.T) {
 	}
 }
 
+func TestRecommendationSessionSnapshotRefreshesOnlyForNewSession(t *testing.T) {
+	db := openMigratedTestDB(t, "recommendation-session.db")
+	userResult, err := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('synthetic-session-user', 'Example Session User', 'user')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, _ := userResult.LastInsertId()
+	likedResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000020', 'Example Liked Work')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	likedID, _ := likedResult.LastInsertId()
+	candidateResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000021', 'Example Candidate Work')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidateID, _ := candidateResult.LastInsertId()
+	tagResult, err := db.Exec("INSERT INTO tag (namespace, normalized_name, display_name) VALUES ('dlsite', 'session-tag', 'Session tag')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tagID, _ := tagResult.LastInsertId()
+	if _, err := db.Exec("INSERT INTO user_work_state (user_id, work_id, listening_status) VALUES (?, ?, 'relisten')", userID, likedID); err != nil {
+		t.Fatal(err)
+	}
+	for _, workID := range []int64{likedID, candidateID} {
+		if _, err := db.Exec("INSERT INTO work_tag (work_id, tag_id, source) VALUES (?, ?, 'test')", workID, tagID); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	store := library.NewStore(db)
+	listCandidateScore := func(sessionID string) int {
+		t.Helper()
+		page, listErr := store.ListPage(context.Background(), library.ListOptions{
+			UserID: userID, Page: 1, PageSize: 24, Scope: "all", Status: "all", Sort: "recent",
+			IncludeRecommendation: true, RecommendationSessionID: sessionID,
+		})
+		if listErr != nil {
+			t.Fatal(listErr)
+		}
+		for _, work := range page.Works {
+			if work.ID == candidateID {
+				return work.RecommendScore
+			}
+		}
+		t.Fatalf("candidate %d was not returned", candidateID)
+		return 0
+	}
+
+	firstScore := listCandidateScore("session-a")
+	if firstScore != 40 {
+		t.Fatalf("first session score = %d, want 40", firstScore)
+	}
+	var generationCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM recommendation_generation WHERE user_id = ?", userID).Scan(&generationCount); err != nil {
+		t.Fatal(err)
+	}
+	if generationCount != 1 {
+		t.Fatalf("initial generation count = %d, want 1", generationCount)
+	}
+	firstSnapshot, err := store.PrepareRecommendationSession(context.Background(), userID, "session-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reusedSnapshot, err := store.PrepareRecommendationSession(context.Background(), userID, "session-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reusedSnapshot.GenerationID != firstSnapshot.GenerationID {
+		t.Fatalf("unchanged new session generation = %d, want reused generation %d", reusedSnapshot.GenerationID, firstSnapshot.GenerationID)
+	}
+
+	if _, err := db.Exec("UPDATE user_work_state SET listening_status = 'none' WHERE user_id = ? AND work_id = ?", userID, likedID); err != nil {
+		t.Fatal(err)
+	}
+	if got := listCandidateScore("session-a"); got != firstScore {
+		t.Fatalf("existing session score = %d, want frozen score %d", got, firstScore)
+	}
+	if got := listCandidateScore("session-c"); got != 35 {
+		t.Fatalf("new session score = %d, want refreshed score 35", got)
+	}
+	if got := listCandidateScore("session-a"); got != firstScore {
+		t.Fatalf("old session score after refresh = %d, want frozen score %d", got, firstScore)
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM recommendation_generation WHERE user_id = ?", userID).Scan(&generationCount); err != nil {
+		t.Fatal(err)
+	}
+	if generationCount != 2 {
+		t.Fatalf("generation count after new session = %d, want 2", generationCount)
+	}
+}
+
+func TestRecommendationSessionSnapshotFreezesLaneUntilNewSession(t *testing.T) {
+	db := openMigratedTestDB(t, "recommendation-session-lane.db")
+	userResult, err := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('synthetic-lane-user', 'Example Lane User', 'user')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, _ := userResult.LastInsertId()
+	listeningResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000022', 'Example Listening Work')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	listeningID, _ := listeningResult.LastInsertId()
+	unmarkedResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000023', 'Example Unmarked Work')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unmarkedID, _ := unmarkedResult.LastInsertId()
+	if _, err := db.Exec("INSERT INTO user_work_state (user_id, work_id, listening_status) VALUES (?, ?, 'listening')", userID, listeningID); err != nil {
+		t.Fatal(err)
+	}
+
+	store := library.NewStore(db)
+	list := func(sessionID string) []library.RawWork {
+		t.Helper()
+		page, listErr := store.ListPage(context.Background(), library.ListOptions{
+			UserID: userID, Page: 1, PageSize: 24, Scope: "all", Status: "all", Sort: "recommend",
+			Direction: "desc", RandomSeed: 17, RecommendationSessionID: sessionID,
+		})
+		if listErr != nil {
+			t.Fatal(listErr)
+		}
+		return page.Works
+	}
+
+	initial := list("session-a")
+	if len(initial) < 2 || initial[0].ID != listeningID {
+		t.Fatalf("initial recommendation order = %#v, want listening work first", initial)
+	}
+	initialSnapshot, err := store.PrepareRecommendationSession(context.Background(), userID, "session-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("UPDATE user_work_state SET listening_status = 'paused' WHERE user_id = ? AND work_id = ?", userID, listeningID); err != nil {
+		t.Fatal(err)
+	}
+	frozen := list("session-a")
+	if len(frozen) < 2 || frozen[0].ID != listeningID || frozen[0].ListeningStatus != "paused" {
+		t.Fatalf("existing session order = %#v, want old lane with current status", frozen)
+	}
+	frozenBreakdown, err := store.RecommendationSnapshotBreakdown(context.Background(), initialSnapshot, listeningID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frozenBreakdown.Lane != "listening" || frozenBreakdown.Signals.ListeningStatus != "listening" {
+		t.Fatalf("existing session breakdown = %#v, want frozen listening lane and signals", frozenBreakdown)
+	}
+	refreshed := list("session-b")
+	if len(refreshed) < 2 || refreshed[0].ID != unmarkedID {
+		t.Fatalf("new session order = %#v, want unmarked work first", refreshed)
+	}
+}
+
 func TestRecommendationConfigLoadsV3LaneDefaultsAndLegacyAffinity(t *testing.T) {
 	db := openMigratedTestDB(t, "recommend-config-upgrade.db")
 	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('recommendation_config', '{"nonePrior":45,"wantPrior":20,"tagWeight":7,"jitterAmplitude":8}')`); err != nil {

@@ -102,6 +102,7 @@ import { currentClientStorageScope, type ClientPrincipalID } from "@/lib/clientS
 import { NAVIGATION_EVENT, historyStateWithReturn, navigateToWorkspaceUp } from "@/lib/browserHistory";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { hasPlaybackHistory } from "@/lib/playbackHistory";
+import { readOrCreateRecommendationSession } from "@/lib/recommendationSession";
 import { WORK_CODE_PATH_PATTERN } from "@/lib/workCode";
 import {
   defaultLibraryBrowseState,
@@ -335,6 +336,14 @@ export function LibraryPage() {
   const mobileNavigationLayout = useMobileNavigationLayout();
   const principalID = auth.user?.id ?? null;
   const browseStorageScope = currentClientStorageScope(principalID);
+  const recommendationSession = useMemo(
+    () => readOrCreateRecommendationSession(browseStorageScope, RECOMMENDATION_ALGORITHM_VERSION),
+    [browseStorageScope],
+  );
+  const sessionDefaultBrowseState = useMemo(
+    () => ({ ...defaultLibraryBrowseState, randomSeed: recommendationSession.seed }),
+    [recommendationSession.seed],
+  );
   const initialTab = useRef(tabFromPath(window.location.pathname, [])).current;
   const initialScope = useRef(localScopeFromPath(window.location.pathname)).current;
   const initialSortPreference = readLibrarySortPreference(
@@ -343,7 +352,7 @@ export function LibraryPage() {
   const initialBrowseState = useRef(
     libraryBrowseStateFromSearch(
       window.location.search,
-      readLibraryHistoryBrowseState(browseStorageScope) ?? { ...defaultLibraryBrowseState, ...initialSortPreference },
+      readLibraryHistoryBrowseState(browseStorageScope) ?? { ...sessionDefaultBrowseState, ...initialSortPreference },
     ),
   ).current;
   const [works, setWorks] = useState<Work[]>([]);
@@ -576,6 +585,7 @@ export function LibraryPage() {
         randomSeed,
         recommendBadgesEnabled && librarySort !== "recommend",
         controller.signal,
+        recommendationSession.id,
       )
       .then((page) => {
         if (requestSeq !== libraryRequestSeq.current) return;
@@ -623,6 +633,7 @@ export function LibraryPage() {
     recommendBadgesEnabled,
     recordRecommendationEvents,
     sortDirection,
+    recommendationSession.id,
     workPage,
     workPageSize,
     workScope,
@@ -647,7 +658,7 @@ export function LibraryPage() {
           libraryBrowseStateFromSearch(
             window.location.search,
             stored ??
-              readLibraryHistoryBrowseState(browseStorageScope) ?? { ...defaultLibraryBrowseState, ...sortPreference },
+              readLibraryHistoryBrowseState(browseStorageScope) ?? { ...sessionDefaultBrowseState, ...sortPreference },
           ),
           resolved,
           codeFromLocation(window.location.pathname, window.location.search) === null,
@@ -667,7 +678,7 @@ export function LibraryPage() {
     return () => {
       cancelled = true;
     };
-  }, [auth.isLoading, browseStorageScope]);
+  }, [auth.isLoading, browseStorageScope, sessionDefaultBrowseState]);
 
   useEffect(() => {
     api
@@ -844,7 +855,7 @@ export function LibraryPage() {
         libraryBrowseStateFromSearch(
           window.location.search,
           stored ??
-            readLibraryHistoryBrowseState(browseStorageScope) ?? { ...defaultLibraryBrowseState, ...sortPreference },
+            readLibraryHistoryBrowseState(browseStorageScope) ?? { ...sessionDefaultBrowseState, ...sortPreference },
         ),
         nextTab,
         nextCode === null,
@@ -863,7 +874,7 @@ export function LibraryPage() {
       window.removeEventListener("popstate", handlePopState);
       window.removeEventListener("kikoto:navigation", handleAppNavigation);
     };
-  }, [sources, activeTab]);
+  }, [sources, activeTab, browseStorageScope, sessionDefaultBrowseState]);
 
   useEffect(() => {
     if (!browseHydrated || selectedCode !== null || selectedRemoteTarget !== null) return;
@@ -974,7 +985,7 @@ export function LibraryPage() {
   const openRecommendationExplanation = (work: Work) => {
     setRecommendationDialog({ work, breakdown: null, loading: true, error: "" });
     void api
-      .getWorkRecommendation(work.id)
+      .getWorkRecommendation(work.id, recommendationSession.id)
       .then((breakdown) => {
         setRecommendationDialog((current) =>
           current?.work.id === work.id ? { ...current, breakdown, loading: false, error: "" } : current,
@@ -1047,7 +1058,7 @@ export function LibraryPage() {
     const nextScope: LocalLibraryScope = tab.kind === "all" ? "local" : localScope;
     const nextKey = libraryBrowseKey(tab, nextScope, browseStorageScope);
     const nextState = withSharedLibraryQuery(
-      readLibraryBrowseState(nextKey) ?? { ...defaultLibraryBrowseState, ...readLibrarySortPreference(nextKey) },
+      readLibraryBrowseState(nextKey) ?? { ...sessionDefaultBrowseState, ...readLibrarySortPreference(nextKey) },
       searchQuery,
     );
     setActiveTab(tab);
@@ -1068,7 +1079,7 @@ export function LibraryPage() {
     const nextTab: LibraryTab = { kind: "all" };
     const nextKey = libraryBrowseKey(nextTab, scope, browseStorageScope);
     const nextState = withSharedLibraryQuery(
-      readLibraryBrowseState(nextKey) ?? { ...defaultLibraryBrowseState, ...readLibrarySortPreference(nextKey) },
+      readLibraryBrowseState(nextKey) ?? { ...sessionDefaultBrowseState, ...readLibrarySortPreference(nextKey) },
       searchQuery,
     );
     setActiveTab({ kind: "all" });
@@ -1149,6 +1160,8 @@ export function LibraryPage() {
         sortDirection,
         randomSeed,
         recommendBadgesEnabled && librarySort !== "recommend",
+        undefined,
+        recommendationSession.id,
       )
       .then((result) => {
         if (requestSeq !== libraryRequestSeq.current) return;
@@ -1226,6 +1239,8 @@ export function LibraryPage() {
       sortDirection,
       randomSeed,
       recommendBadgesEnabled && librarySort !== "recommend",
+      undefined,
+      recommendationSession.id,
     );
     setWorks(page.works);
     setWorkTotal(page.total);

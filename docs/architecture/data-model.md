@@ -100,6 +100,27 @@ family.
 Lyrics preferences relate an audio media item to a lyrics media item; runtime
 location selection remains a file-source concern.
 
+## Recommendation Snapshots
+
+Important tables:
+
+- `recommendation_input_revision`
+- `recommendation_user_revision`
+- `recommendation_generation`
+- `recommendation_snapshot`
+- `recommendation_snapshot_state`
+- `recommendation_client_session`
+
+A recommendation generation materializes one user's affinity score and
+listening lane for every work from a specific algorithm version, configuration,
+global input revision, and user-state revision. Client sessions bind to an
+immutable generation so ordinary browsing and card mutations do not repeat the
+affinity calculation. Current favorite and listening state still comes from
+`user_work_state` for card rendering; a later client session builds a new
+generation only when an input revision changed. Existing sessions retain their
+generation until they expire, so a refresh cannot change another open tab's
+ordering.
+
 ## Modeling Rules
 
 - Source-level facts go in `work_source_presence`.

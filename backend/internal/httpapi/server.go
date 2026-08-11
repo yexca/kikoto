@@ -451,14 +451,20 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []l
 }
 
 func (s *Server) listWorksPageFast(w http.ResponseWriter, r *http.Request, userID int64) {
+	recommendationSessionID := strings.TrimSpace(r.URL.Query().Get("recommendationSession"))
+	if recommendationSessionID != "" && !recommendationSessionIDPattern.MatchString(recommendationSessionID) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid recommendation session"})
+		return
+	}
 	page, err := s.libraryStore.ListPage(r.Context(), library.ListOptions{
 		UserID: userID, Page: queryInt(r, "page", 1), PageSize: queryInt(r, "pageSize", 24),
 		Scope:  strings.ToLower(strings.TrimSpace(r.URL.Query().Get("scope"))),
 		Status: strings.TrimSpace(r.URL.Query().Get("status")), Query: strings.TrimSpace(r.URL.Query().Get("q")),
 		Sort: strings.TrimSpace(r.URL.Query().Get("sort")), Direction: strings.TrimSpace(r.URL.Query().Get("direction")),
-		RandomSeed:            int64(queryInt(r, "seed", 1)),
-		IncludeRecommendation: strings.EqualFold(r.URL.Query().Get("recommendBadges"), "true"),
-		DemoOnly:              s.cfg.IsDemo(),
+		RandomSeed:              int64(queryInt(r, "seed", 1)),
+		IncludeRecommendation:   strings.EqualFold(r.URL.Query().Get("recommendBadges"), "true"),
+		RecommendationSessionID: recommendationSessionID,
+		DemoOnly:                s.cfg.IsDemo(),
 	})
 	if err != nil {
 		writeError(w, err)

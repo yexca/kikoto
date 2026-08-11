@@ -46,9 +46,15 @@ The Library is the main browsing surface for works.
   status filters still return every matching work. Within each state, a bounded
   affinity score uses favorite, tag, voice, and circle signals without treating
   the candidate itself as taste history. Relisten and favorite history are
-  positive evidence; Finished alone is neutral. The same stable browse seed
-  keeps both state mixing and within-state variety pagination-safe, and the
-  toolbar refresh action creates a new recommendation seed.
+  positive evidence; Finished alone is neutral. Each browser tab or native-app
+  launch binds to an immutable recommendation generation, so navigation,
+  pagination, filters, card mutations, and toolbar reshuffles do not recompute
+  affinity. Favorite and listening changes remain visible on cards immediately
+  but affect placement in the next client session. A new session rebuilds the
+  generation only when recommendation inputs changed; otherwise it reuses the
+  current generation with a new stable seed. The seed keeps both state mixing
+  and within-state variety pagination-safe, and the toolbar refresh action
+  changes only that seed within the current generation.
 - Shows a compact, horizontally scrollable recently-played strip above the
   Library controls. It is ordered per user from the one cursor owned by each
   logical work family and includes the latest track position without replacing

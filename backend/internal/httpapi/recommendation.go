@@ -14,6 +14,7 @@ import (
 )
 
 var recommendationContextIDPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{0,64}$`)
+var recommendationSessionIDPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
 
 type recommendationEventInput struct {
 	WorkID           *int64 `json:"workId"`
@@ -46,7 +47,23 @@ func (s *Server) getWorkRecommendation(w http.ResponseWriter, r *http.Request) {
 	if !s.requireDemoWork(w, r, workID) {
 		return
 	}
-	breakdown, err := s.libraryStore.RecommendationBreakdown(r.Context(), optionalUserID(r.Context()), workID)
+	userID := optionalUserID(r.Context())
+	recommendationSessionID := strings.TrimSpace(r.URL.Query().Get("recommendationSession"))
+	if recommendationSessionID != "" && !recommendationSessionIDPattern.MatchString(recommendationSessionID) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid recommendation session"})
+		return
+	}
+	var breakdown library.RecommendationBreakdown
+	if userID > 0 && recommendationSessionID != "" {
+		snapshot, snapshotErr := s.libraryStore.PrepareRecommendationSession(r.Context(), userID, recommendationSessionID)
+		if snapshotErr != nil {
+			writeError(w, snapshotErr)
+			return
+		}
+		breakdown, err = s.libraryStore.RecommendationSnapshotBreakdown(r.Context(), snapshot, workID)
+	} else {
+		breakdown, err = s.libraryStore.RecommendationBreakdown(r.Context(), userID, workID)
+	}
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})

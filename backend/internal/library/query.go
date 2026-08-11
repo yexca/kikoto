@@ -18,17 +18,18 @@ func NewStore(db *sql.DB) *Store {
 }
 
 type ListOptions struct {
-	UserID                int64
-	Page                  int
-	PageSize              int
-	Scope                 string
-	Status                string
-	Query                 string
-	Sort                  string
-	Direction             string
-	RandomSeed            int64
-	IncludeRecommendation bool
-	DemoOnly              bool
+	UserID                  int64
+	Page                    int
+	PageSize                int
+	Scope                   string
+	Status                  string
+	Query                   string
+	Sort                    string
+	Direction               string
+	RandomSeed              int64
+	IncludeRecommendation   bool
+	RecommendationSessionID string
+	DemoOnly                bool
 }
 
 type RawPage struct {
@@ -97,16 +98,37 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE "+where, countArgs...).Scan(&total); err != nil {
 		return RawPage{}, err
 	}
-	config := s.LoadRecommendationConfig(ctx)
 	includeRecommendation := options.IncludeRecommendation || strings.EqualFold(strings.TrimSpace(options.Sort), "recommend")
-	queryArgs := []any{}
+	config := DefaultRecommendationConfig()
+	recommendationGenerationID := int64(0)
 	if includeRecommendation {
+		switch {
+		case options.UserID <= 0:
+			config = s.LoadRecommendationConfig(ctx)
+			recommendationGenerationID = anonymousRecommendationGenerationID
+		case strings.TrimSpace(options.RecommendationSessionID) != "":
+			snapshot, err := s.PrepareRecommendationSession(ctx, options.UserID, options.RecommendationSessionID)
+			if err != nil {
+				return RawPage{}, err
+			}
+			config = snapshot.Config
+			recommendationGenerationID = snapshot.GenerationID
+		default:
+			// Older clients without a recommendation session retain the dynamic
+			// path until they are upgraded.
+			config = s.LoadRecommendationConfig(ctx)
+		}
+	}
+	queryArgs := []any{}
+	if includeRecommendation && recommendationGenerationID == 0 {
 		queryArgs = append(queryArgs, recommendationUserArgs(options.UserID)...)
 	}
 	queryArgs = append(queryArgs, options.UserID)
 	queryArgs = append(queryArgs, args...)
 	queryArgs = append(queryArgs, options.PageSize, (options.Page-1)*options.PageSize)
-	rows, err := s.db.QueryContext(ctx, listSelectSQL(where, options.Sort, options.Direction, options.RandomSeed, config, includeRecommendation)+" LIMIT ? OFFSET ?", queryArgs...)
+	rows, err := s.db.QueryContext(ctx, listSelectSQLWithRecommendationGeneration(
+		where, options.Sort, options.Direction, options.RandomSeed, config, includeRecommendation, recommendationGenerationID,
+	)+" LIMIT ? OFFSET ?", queryArgs...)
 	if err != nil {
 		return RawPage{}, err
 	}
@@ -673,13 +695,40 @@ func familyNumericClause(column string, operator string, value float64) string {
 	))`, column, column, operator, value, column, column, operator, value)
 }
 
+const anonymousRecommendationGenerationID int64 = -1
+
 func listSelectSQL(where string, sortKey string, direction string, randomSeed int64, config RecommendationConfig, includeRecommendation bool) string {
+	return listSelectSQLWithRecommendationGeneration(where, sortKey, direction, randomSeed, config, includeRecommendation, 0)
+}
+
+func listSelectSQLWithRecommendationGeneration(
+	where string,
+	sortKey string,
+	direction string,
+	randomSeed int64,
+	config RecommendationConfig,
+	includeRecommendation bool,
+	recommendationGenerationID int64,
+) string {
 	normalizedSort, _ := normalizeSort(sortKey, direction)
 	orderBy := listOrderBy(sortKey, direction, randomSeed, config)
 	if normalizedSort == "recommend" {
-		return recommendationListSelectSQL(listBaseSelectSQLWithConfig(where, true, config), direction, randomSeed, config)
+		recommendationLane := "COALESCE(user_work_state.listening_status, 'none')"
+		if recommendationGenerationID > 0 {
+			recommendationLane = "COALESCE(recommendation_snapshot.listening_status, 'none')"
+		}
+		baseSelect := listBaseSelectSQLWithConfigAndExtraAndGeneration(
+			where,
+			true,
+			config,
+			", "+recommendationLane+" AS recommendation_lane",
+			recommendationGenerationID,
+		)
+		return recommendationListSelectSQL(baseSelect, direction, randomSeed, config)
 	}
-	return listBaseSelectSQLWithConfig(where, includeRecommendation, config) + " ORDER BY " + orderBy
+	return listBaseSelectSQLWithConfigAndExtraAndGeneration(
+		where, includeRecommendation, config, "", recommendationGenerationID,
+	) + " ORDER BY " + orderBy
 }
 
 func listBaseSelectSQL(where string, includeRecommendation bool) string {
@@ -695,9 +744,29 @@ func listBaseSelectSQLWithConfig(where string, includeRecommendation bool, confi
 }
 
 func listBaseSelectSQLWithConfigAndExtra(where string, includeRecommendation bool, config RecommendationConfig, extraSelect string) string {
+	return listBaseSelectSQLWithConfigAndExtraAndGeneration(where, includeRecommendation, config, extraSelect, 0)
+}
+
+func listBaseSelectSQLWithConfigAndExtraAndGeneration(
+	where string,
+	includeRecommendation bool,
+	config RecommendationConfig,
+	extraSelect string,
+	recommendationGenerationID int64,
+) string {
 	recommendationSortColumn := ", 0 AS recommend_score"
+	recommendationSnapshotJoin := ""
 	if includeRecommendation {
-		recommendationSortColumn = `, ` + recommendationScoreExpression(config) + ` AS recommend_score`
+		switch {
+		case recommendationGenerationID > 0:
+			recommendationSortColumn = fmt.Sprintf(", COALESCE(recommendation_snapshot.score, %d) AS recommend_score", config.AffinityBase)
+			recommendationSnapshotJoin = fmt.Sprintf(`
+	LEFT JOIN recommendation_snapshot ON recommendation_snapshot.work_id = work.id AND recommendation_snapshot.generation_id = %d`, recommendationGenerationID)
+		case recommendationGenerationID < 0:
+			recommendationSortColumn = fmt.Sprintf(", %d AS recommend_score", config.AffinityBase)
+		default:
+			recommendationSortColumn = `, ` + recommendationScoreExpression(config) + ` AS recommend_score`
+		}
 	}
 	return `SELECT
 		work.id, work.primary_code, work.title, work.age_rating,
@@ -712,6 +781,6 @@ func listBaseSelectSQLWithConfigAndExtra(where string, includeRecommendation boo
 		COALESCE(user_work_state.listening_status, 'none') AS listening_status,
 		COALESCE(user_work_state.favorite, 0) AS favorite` + recommendationSortColumn + extraSelect + `
 	FROM work
-	LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?
+	LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?` + recommendationSnapshotJoin + `
 	WHERE ` + where
 }

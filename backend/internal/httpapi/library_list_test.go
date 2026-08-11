@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -85,6 +86,68 @@ func TestListWorksPageClosesOuterRowsBeforeEnrichment(t *testing.T) {
 	}
 	if response.Works[0].AgeRating != "R18" {
 		t.Fatalf("age rating = %q, want R18", response.Works[0].AgeRating)
+	}
+}
+
+func TestListWorksPageBindsValidatedRecommendationSession(t *testing.T) {
+	db := openMigratedTestDB(t)
+	userResult, err := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('synthetic-library-user', 'Example Library User', 'user')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, _ := userResult.LastInsertId()
+	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000024', 'Example Session Work')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workID, _ := workResult.LastInsertId()
+	server := NewServer(db, config.Config{})
+	user := currentUser{ID: userID}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/works?page=1&pageSize=10&sort=recommend&recommendationSession=session-a", nil)
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, user))
+	response := httptest.NewRecorder()
+	server.listWorks(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("list status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var sessionCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM recommendation_client_session WHERE user_id = ? AND session_id = 'session-a'", userID).Scan(&sessionCount); err != nil {
+		t.Fatal(err)
+	}
+	if sessionCount != 1 {
+		t.Fatalf("recommendation session count = %d, want 1", sessionCount)
+	}
+	if _, err := db.Exec("INSERT INTO user_work_state (user_id, work_id, favorite) VALUES (?, ?, 1)", userID, workID); err != nil {
+		t.Fatal(err)
+	}
+	recommendationRequest := httptest.NewRequest(http.MethodGet, "/api/works/1/recommendation?recommendationSession=session-a", nil)
+	recommendationRequest.SetPathValue("id", strconv.FormatInt(workID, 10))
+	recommendationRequest = recommendationRequest.WithContext(context.WithValue(recommendationRequest.Context(), currentUserKey, user))
+	recommendationResponse := httptest.NewRecorder()
+	server.getWorkRecommendation(recommendationResponse, recommendationRequest)
+	if recommendationResponse.Code != http.StatusOK {
+		t.Fatalf("recommendation status = %d, body = %s", recommendationResponse.Code, recommendationResponse.Body.String())
+	}
+	var breakdown struct {
+		Score   int `json:"score"`
+		Signals struct {
+			Favorite bool `json:"favorite"`
+		} `json:"signals"`
+	}
+	if err := json.Unmarshal(recommendationResponse.Body.Bytes(), &breakdown); err != nil {
+		t.Fatal(err)
+	}
+	if breakdown.Score != 35 || breakdown.Signals.Favorite {
+		t.Fatalf("session recommendation = %#v, want frozen base score and favorite signal", breakdown)
+	}
+
+	invalidRequest := httptest.NewRequest(http.MethodGet, "/api/works?page=1&sort=recommend&recommendationSession=invalid%20session", nil)
+	invalidRequest = invalidRequest.WithContext(context.WithValue(invalidRequest.Context(), currentUserKey, user))
+	invalidResponse := httptest.NewRecorder()
+	server.listWorks(invalidResponse, invalidRequest)
+	if invalidResponse.Code != http.StatusBadRequest {
+		t.Fatalf("invalid session status = %d, body = %s", invalidResponse.Code, invalidResponse.Body.String())
 	}
 }
 
