@@ -624,6 +624,40 @@ func TestVoiceCatalogMetadataRefreshStaysInOneWorkflowRun(t *testing.T) {
 	}
 }
 
+func TestVoiceCatalogMetadataModesRespectSnapshotsAndCatalogBoundary(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO person (id, display_name) VALUES (1, 'Example Voice');
+		INSERT INTO work (id, primary_code, title) VALUES
+			(10, 'RJ00000020', 'Example Work 20'),
+			(11, 'RJ00000021', 'Example Work 21');
+		INSERT INTO voice_catalog_item (id, person_id, primary_code, work_id, title) VALUES
+			(21, 1, 'RJ00000020', 10, 'Example Work 20'),
+			(22, 1, 'RJ00000021', 11, 'Example Work 21'),
+			(23, 1, 'RJ00000022', NULL, 'Catalog Only Work');
+		INSERT OR IGNORE INTO metadata_provider (code, display_name) VALUES ('dlsite', 'DLsite');
+		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
+		SELECT 10, id, 'RJ00000020', '{}' FROM metadata_provider WHERE code = 'dlsite';
+	`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	incremental, err := server.loadVoiceCatalogMetadataTargets(context.Background(), 1, "incremental")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(incremental) != 1 || incremental[0].FamilyCode != "RJ00000021" {
+		t.Fatalf("incremental metadata targets = %+v, want only the known work without a snapshot", incremental)
+	}
+	full, err := server.loadVoiceCatalogMetadataTargets(context.Background(), 1, "full")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(full) != 2 || full[0].FamilyCode != "RJ00000020" || full[1].FamilyCode != "RJ00000021" {
+		t.Fatalf("full metadata targets = %+v, want both known works and no catalog-only row", full)
+	}
+}
+
 func TestVoiceCatalogContributesToSummaryAndLatestWorkWithoutCredit(t *testing.T) {
 	db := openMigratedTestDB(t)
 	for _, statement := range []string{

@@ -515,25 +515,41 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   const advancedDialog = page.getByRole("dialog", { name: "Advanced refresh" });
   await expect(advancedDialog).toBeVisible();
   await expect(advancedDialog.getByRole("checkbox", { name: "Refresh Example Remote" })).toBeChecked();
-  const fullRefreshRequest = page.waitForRequest((request) => {
+  const catalogRefresh = advancedDialog.getByRole("group", { name: "Catalog refresh" });
+  const metadataRefresh = advancedDialog.getByRole("group", { name: "Metadata refresh" });
+  await expect(catalogRefresh.getByRole("button", { name: "Incremental", exact: true })).toBeVisible();
+  await expect(catalogRefresh.getByRole("button", { name: "Full", exact: true })).toBeVisible();
+  await expect(metadataRefresh.getByRole("button", { name: "Incremental", exact: true })).toBeVisible();
+  await expect(metadataRefresh.getByRole("button", { name: "Full", exact: true })).toBeVisible();
+  const fullCatalogRequest = page.waitForRequest((request) => {
     if (new URL(request.url()).pathname !== "/api/voices/7/catalog/refresh" || request.method() !== "POST") {
       return false;
     }
     const payload = request.postDataJSON() as { scope?: string; mode?: string };
     return payload.scope === "remote" && payload.mode === "full";
   });
-  await advancedDialog.getByRole("button", { name: "Full remote" }).click();
-  expect((await fullRefreshRequest).postDataJSON()).toEqual({ scope: "remote", mode: "full", sourceIds: [3] });
+  await catalogRefresh.getByRole("button", { name: "Full", exact: true }).click();
+  expect((await fullCatalogRequest).postDataJSON()).toEqual({ scope: "remote", mode: "full", sourceIds: [3] });
+  const fullMetadataRequest = page.waitForRequest((request) => {
+    if (new URL(request.url()).pathname !== "/api/voices/7/catalog/refresh" || request.method() !== "POST") {
+      return false;
+    }
+    const payload = request.postDataJSON() as { scope?: string; mode?: string };
+    return payload.scope === "metadata" && payload.mode === "full";
+  });
+  await metadataRefresh.getByRole("button", { name: "Full", exact: true }).click();
+  expect((await fullMetadataRequest).postDataJSON()).toEqual({ scope: "metadata", mode: "full" });
   await page.getByRole("button", { name: "Close advanced refresh actions" }).click();
 
   const metadataRefreshRequest = page.waitForRequest((request) => {
     if (new URL(request.url()).pathname !== "/api/voices/7/catalog/refresh" || request.method() !== "POST") {
       return false;
     }
-    return (request.postDataJSON() as { scope?: string }).scope === "metadata";
+    const payload = request.postDataJSON() as { scope?: string; mode?: string };
+    return payload.scope === "metadata" && payload.mode === "incremental";
   });
   await actions.getByRole("button", { name: "Retry voice metadata" }).click();
-  expect((await metadataRefreshRequest).postDataJSON()).toEqual({ scope: "metadata" });
+  expect((await metadataRefreshRequest).postDataJSON()).toEqual({ scope: "metadata", mode: "incremental" });
 
   await page.getByRole("button", { name: "Open voice work options" }).click();
   const optionsDialog = page.getByRole("dialog", { name: "Voice work options" });

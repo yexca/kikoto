@@ -617,7 +617,7 @@ func (s *Server) enqueueVoiceCatalogRefresh(ctx context.Context, payload voiceCa
 	}
 	for _, node := range []workflow.NodeRunSpec{
 		{NodeID: "persist", NodeType: "persist_voice_catalog", DisplayName: "Persist voice catalog", Position: 3, Status: map[bool]string{true: "queued", false: "skipped"}[remote]},
-		{NodeID: "metadata", NodeType: "sync_metadata", DisplayName: "Refresh known-work metadata", Position: 4, Status: map[bool]string{true: "queued", false: "skipped"}[metadata]},
+		{NodeID: "metadata", NodeType: "sync_metadata", DisplayName: "Refresh known-work metadata", Position: 4, Status: map[bool]string{true: "queued", false: "skipped"}[metadata], Input: map[string]any{"mode": payload.Mode}},
 	} {
 		if _, err := workflow.InsertNodeRun(ctx, tx, runID, node); err != nil {
 			return voiceCatalogRefreshState{}, err
@@ -920,7 +920,7 @@ func mergeVoiceCatalogSourceStatuses(previous []voiceCatalogSourceStatus, update
 }
 
 func (s *Server) refreshVoiceCatalogMetadata(ctx context.Context, job workflowJobRecord, nodeIDs map[string]int64, payload voiceCatalogRefreshPayload, remoteProgress int) (voiceCatalogMetadataResult, error) {
-	targets, err := s.loadVoiceCatalogMetadataTargets(ctx, payload.PersonID)
+	targets, err := s.loadVoiceCatalogMetadataTargets(ctx, payload.PersonID, payload.Mode)
 	if err != nil {
 		return voiceCatalogMetadataResult{}, err
 	}
@@ -958,18 +958,45 @@ func (s *Server) refreshVoiceCatalogMetadata(ctx context.Context, job workflowJo
 	return result, nil
 }
 
-func (s *Server) loadVoiceCatalogMetadataTargets(ctx context.Context, personID int64) ([]voiceCatalogMetadataTarget, error) {
+func (s *Server) loadVoiceCatalogMetadataTargets(ctx context.Context, personID int64, mode string) ([]voiceCatalogMetadataTarget, error) {
+	full := 0
+	if strings.EqualFold(strings.TrimSpace(mode), "full") {
+		full = 1
+	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT DISTINCT COALESCE(NULLIF(logical.canonical_code, ''), known.primary_code)
-		FROM voice_catalog_item AS item
-		LEFT JOIN work AS linked ON linked.id = item.work_id
-		LEFT JOIN work AS by_code ON UPPER(by_code.primary_code) = UPPER(item.primary_code)
-		INNER JOIN work AS known ON known.id = COALESCE(linked.id, by_code.id)
-		LEFT JOIN work_edition AS edition ON edition.work_id = known.id
-		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
-		WHERE item.person_id = ?
-		ORDER BY COALESCE(NULLIF(logical.canonical_code, ''), known.primary_code) ASC
-	`, personID)
+		WITH known_catalog AS (
+			SELECT DISTINCT
+				COALESCE(NULLIF(logical.canonical_code, ''), known.primary_code) AS family_code,
+				known.id AS known_work_id,
+				logical.id AS logical_work_id
+			FROM voice_catalog_item AS item
+			LEFT JOIN work AS linked ON linked.id = item.work_id
+			LEFT JOIN work AS by_code ON UPPER(by_code.primary_code) = UPPER(item.primary_code)
+			INNER JOIN work AS known ON known.id = COALESCE(linked.id, by_code.id)
+			LEFT JOIN work_edition AS edition ON edition.work_id = known.id
+			LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+			WHERE item.person_id = ?
+		)
+		SELECT DISTINCT family_code
+		FROM known_catalog
+		WHERE ? = 1
+			OR NOT EXISTS (
+				SELECT 1
+				FROM metadata_snapshot AS snapshot
+				INNER JOIN metadata_provider AS provider ON provider.id = snapshot.provider_id
+				WHERE provider.code = 'dlsite'
+					AND (
+						snapshot.work_id = known_catalog.known_work_id
+						OR EXISTS (
+							SELECT 1
+							FROM work_edition AS snapshot_edition
+							WHERE snapshot_edition.work_id = snapshot.work_id
+								AND snapshot_edition.logical_work_id = known_catalog.logical_work_id
+						)
+					)
+			)
+		ORDER BY family_code ASC
+	`, personID, full)
 	if err != nil {
 		return nil, err
 	}
@@ -1875,7 +1902,7 @@ func (s *Server) finishVoiceCatalogRefreshJob(
 			WHERE id = ?
 		`, metadataStatus, mustJSON(map[string]any{
 			"targeted": metadata.Targeted, "synced": metadata.Synced,
-			"skipped": metadata.Skipped, "failed": metadata.Failed,
+			"skipped": metadata.Skipped, "failed": metadata.Failed, "mode": payload.Mode,
 		}), metadataError, nodeIDs["metadata"]); err != nil {
 			return err
 		}

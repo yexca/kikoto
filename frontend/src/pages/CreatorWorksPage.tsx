@@ -604,7 +604,12 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     }
   };
 
-  const retryVoiceMetadata = () => void refreshVoiceCatalog({ scope: "metadata" }, "Voice metadata refresh queued.");
+  const refreshVoiceMetadata = (mode: "incremental" | "full") =>
+    void refreshVoiceCatalog(
+      { scope: "metadata", mode },
+      mode === "full" ? "Full voice metadata refresh queued." : "Voice metadata refresh queued.",
+    );
+  const retryVoiceMetadata = () => refreshVoiceMetadata("incremental");
   const refreshAllRemoteSources = () => {
     const sourceIds = remoteMatches.filter(isVoiceCatalogSourceSelectable).map((source) => source.sourceId);
     return void refreshVoiceCatalog(
@@ -1083,13 +1088,14 @@ function VoiceDetailPage({ personId }: { personId: number }) {
           sources={remoteMatches}
           loading={isRemoteLoading}
           refreshing={catalogRefreshActive}
+          activeScope={catalogRefreshActive ? catalogRefresh?.scope : null}
           error={remoteError}
           canRefresh={canForceRefreshCatalog}
           onClose={() => setDetailPanel(null)}
-          onRefreshRemote={(mode, sourceIds) =>
+          onRefreshCatalog={(mode, sourceIds) =>
             void refreshVoiceCatalog({ scope: "remote", mode, sourceIds }, "Voice remote refresh queued.")
           }
-          onRetryMetadata={retryVoiceMetadata}
+          onRefreshMetadata={refreshVoiceMetadata}
         />
       </section>
 

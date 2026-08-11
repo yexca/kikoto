@@ -130,9 +130,11 @@ source marks observations absent from the new generation `not_found`. Remote
 discoveries remain catalog rows and never materialize works recursively. Only
 catalog items that already resolve to canonical works enter the refresh run's
 metadata node; it synchronizes them within the same `voice_catalog_refresh`
-run rather than creating one metadata workflow per work. Metadata failures can
-make the workflow partial without making an otherwise complete catalog
-generation stale.
+run rather than creating one metadata workflow per work. Metadata incremental
+refreshes select only those known canonical work families without a DLsite
+snapshot; full refreshes retry every known canonical family. Neither mode
+materializes a catalog-only row as a work. Metadata failures can make the
+workflow partial without making an otherwise complete catalog generation stale.
 
 ## Review Candidates
 
