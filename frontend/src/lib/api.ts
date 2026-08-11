@@ -461,6 +461,7 @@ export type AppSettings = {
   remoteMaxBackoffSeconds: number;
   catalogFreshnessDays: number;
   dlsiteMetadataLanguage: string;
+  dlsiteMetadataLanguages: string[];
   directoryRoutingRules: DirectoryRoutingRule[];
   recommendationThreshold: number;
   recommendationConfig: RecommendationConfig;
@@ -2056,6 +2057,7 @@ export const api = {
     remoteMaxBackoffSeconds?: number;
     catalogFreshnessDays?: number;
     dlsiteMetadataLanguage?: string;
+    dlsiteMetadataLanguages?: string[];
     directoryRoutingRules?: DirectoryRoutingRule[];
     recommendationThreshold?: number;
     recommendationConfig?: RecommendationConfig;

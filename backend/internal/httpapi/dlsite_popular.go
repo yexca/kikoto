@@ -222,7 +222,6 @@ func dlsitePopularDefinition() map[string]any {
 }
 
 func (s *Server) executeDLsitePopularCollectionJob(ctx context.Context, job workflowJobRecord) error {
-	language := normalizeDLsiteLanguage(s.settingStringContext(ctx, "dlsite_metadata_language", "ja-jp"))
 	client := dlsite.NewClient(nil)
 	requestDelay := durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5))
 	if requestDelay < 500*time.Millisecond {
@@ -230,7 +229,7 @@ func (s *Server) executeDLsitePopularCollectionJob(ctx context.Context, job work
 	}
 	syncer := metasync.NewDLsiteSyncer(s.db, client).
 		WithCacheRoot(s.cfg.CacheRoot).
-		WithLanguages(dlsiteLanguageFallbacks(language)).
+		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.preferredMetadataLanguages(ctx))).
 		WithRequestPacing(
 			requestDelay,
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_rate_limit_backoff_seconds", 30)),

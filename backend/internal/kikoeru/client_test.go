@@ -298,6 +298,19 @@ func TestTagNamePrefersRequestedLocalization(t *testing.T) {
 	}
 }
 
+func TestTagNameForLanguagesUsesTheFirstAvailableLocalization(t *testing.T) {
+	tag := Tag{
+		Name: "Base name",
+		I18n: map[string]LocalizedTag{
+			"en-us": {Name: "English"},
+			"ja-jp": {Name: "Japanese"},
+		},
+	}
+	if got := TagNameForLanguages(tag, []string{"zh-cn", "en-us", "ja-jp"}); got != "English" {
+		t.Fatalf("TagNameForLanguages() = %q, want English", got)
+	}
+}
+
 func TestPopularWorksPostsRecommenderRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/recommender/popular" || r.Method != http.MethodPost {

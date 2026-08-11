@@ -1,5 +1,7 @@
 import {
   ArrowDown,
+  ArrowLeft,
+  ArrowRight,
   ArrowUp,
   ChevronDown,
   Cloud,
@@ -41,6 +43,13 @@ import {
   type RecommendationConfig,
   type RecommendationTelemetrySummary,
 } from "@/lib/api";
+import {
+  dlsiteMetadataLanguageOptions,
+  moveDlsiteMetadataLanguage,
+  moveDlsiteMetadataLanguageTo,
+  normalizeDlsiteMetadataLanguages,
+  type DlsiteMetadataLanguage,
+} from "@/features/maintenance/metadataLanguageModel";
 
 const DATA_PREFIX = "/data";
 const DEFAULT_SAVE_SUFFIX = "/<source_code>/<code_prefix>_<code_group>/<work_code>";
@@ -103,7 +112,7 @@ export function MaintenancePage({
   const [remoteBackoff, setRemoteBackoff] = useState(30);
   const [remoteMaxBackoff, setRemoteMaxBackoff] = useState(300);
   const [catalogFreshnessDays, setCatalogFreshnessDays] = useState(30);
-  const [dlsiteMetadataLanguage, setDlsiteMetadataLanguage] = useState("ja-jp");
+  const [dlsiteMetadataLanguages, setDlsiteMetadataLanguages] = useState<DlsiteMetadataLanguage[]>(["ja-jp"]);
   const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>([]);
   const [recommendationThreshold, setRecommendationThreshold] = useState(50);
   const [recommendationConfig, setRecommendationConfig] = useState<RecommendationConfig | null>(null);
@@ -138,7 +147,9 @@ export function MaintenancePage({
         setRemoteBackoff(next.remoteBackoffSeconds);
         setRemoteMaxBackoff(next.remoteMaxBackoffSeconds);
         setCatalogFreshnessDays(next.catalogFreshnessDays);
-        setDlsiteMetadataLanguage(next.dlsiteMetadataLanguage);
+        setDlsiteMetadataLanguages(
+          normalizeDlsiteMetadataLanguages(next.dlsiteMetadataLanguages ?? [next.dlsiteMetadataLanguage]),
+        );
         setDirectoryRoutingRules(
           reweightDirectoryRoutingRules((next.directoryRoutingRules ?? []).filter((rule) => rule.enabled)),
         );
@@ -206,7 +217,7 @@ export function MaintenancePage({
       remoteBackoffSeconds: remoteBackoff,
       remoteMaxBackoffSeconds: remoteMaxBackoff,
       catalogFreshnessDays,
-      dlsiteMetadataLanguage,
+      dlsiteMetadataLanguages,
       directoryRoutingRules,
       recommendationThreshold,
       ...(recommendationConfig ? { recommendationConfig } : {}),
@@ -217,6 +228,9 @@ export function MaintenancePage({
     setRemoteDownloadLimitGb(next.remoteDownloadLimitGb);
     setFetchStagingRetentionDays(next.fetchStagingRetentionDays);
     setCatalogFreshnessDays(next.catalogFreshnessDays);
+    setDlsiteMetadataLanguages(
+      normalizeDlsiteMetadataLanguages(next.dlsiteMetadataLanguages ?? [next.dlsiteMetadataLanguage]),
+    );
     setRecommendationConfig(next.recommendationConfig);
     toast.success("Settings saved.");
   };
@@ -523,9 +537,9 @@ export function MaintenancePage({
         ) : activeTab === "metadata" ? (
           <MetadataSettings
             catalogFreshnessDays={catalogFreshnessDays}
-            dlsiteMetadataLanguage={dlsiteMetadataLanguage}
+            languages={dlsiteMetadataLanguages}
             onCatalogFreshnessDaysChange={setCatalogFreshnessDays}
-            onDlsiteMetadataLanguageChange={setDlsiteMetadataLanguage}
+            onLanguagesChange={setDlsiteMetadataLanguages}
             onSave={saveRuntimeSettings}
           />
         ) : activeTab === "users" ? (
@@ -1051,17 +1065,44 @@ function RemoteSourcesSettingsSkeleton() {
 
 function MetadataSettings({
   catalogFreshnessDays,
-  dlsiteMetadataLanguage,
+  languages,
   onCatalogFreshnessDaysChange,
-  onDlsiteMetadataLanguageChange,
+  onLanguagesChange,
   onSave,
 }: {
   catalogFreshnessDays: number;
-  dlsiteMetadataLanguage: string;
+  languages: DlsiteMetadataLanguage[];
   onCatalogFreshnessDaysChange: (value: number) => void;
-  onDlsiteMetadataLanguageChange: (value: string) => void;
+  onLanguagesChange: (value: DlsiteMetadataLanguage[]) => void;
   onSave: () => Promise<void>;
 }) {
+  const [draggedLanguage, setDraggedLanguage] = useState<DlsiteMetadataLanguage | null>(null);
+  const draggedLanguageRef = useRef<DlsiteMetadataLanguage | null>(null);
+  const finishDrag = () => {
+    draggedLanguageRef.current = null;
+    setDraggedLanguage(null);
+  };
+
+  useEffect(() => {
+    if (draggedLanguage === null) return;
+    const finish = () => {
+      draggedLanguageRef.current = null;
+      setDraggedLanguage(null);
+    };
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+    window.addEventListener("blur", finish);
+    return () => {
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      window.removeEventListener("blur", finish);
+    };
+  }, [draggedLanguage]);
+
+  const moveLanguage = (index: number, direction: -1 | 1) => {
+    onLanguagesChange(moveDlsiteMetadataLanguage(languages, index, direction));
+  };
+
   return (
     <Card className="overflow-hidden">
       <CardHeader>
@@ -1073,24 +1114,104 @@ function MetadataSettings({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
-          <label className="grid gap-1 text-sm">
-            <span className="font-medium">DLsite title/tag language</span>
-            <select
-              className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
-              value={dlsiteMetadataLanguage}
-              onChange={(event) => onDlsiteMetadataLanguageChange(event.target.value)}
-            >
-              <option value="ja-jp">Japanese</option>
-              <option value="en-us">English</option>
-              <option value="zh-cn">Simplified Chinese</option>
-              <option value="zh-tw">Traditional Chinese</option>
-              <option value="ko-kr">Korean</option>
-            </select>
-          </label>
-          <div className="self-end rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
-            DLsite metadata sync uses this language first, then falls back to Japanese when the localized product data
-            is unavailable.
+        <div className="space-y-2">
+          <div>
+            <div className="font-medium">DLsite title and tag language priority</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Languages are tried from left to right. When localized data is unavailable, sync continues to the next
+              language, then uses DLsite's default response as a final fallback.
+            </p>
+          </div>
+          <div
+            className="app-scrollbar flex gap-2 overflow-x-auto pb-1"
+            role="list"
+            aria-label="DLsite metadata language priority"
+          >
+            {languages.map((language, index) => {
+              const option = dlsiteMetadataLanguageOptions.find((candidate) => candidate.value === language);
+              if (!option) return null;
+              return (
+                <div
+                  key={language}
+                  data-metadata-language-index={index}
+                  role="listitem"
+                  className={`flex min-w-[12rem] shrink-0 flex-col justify-between gap-3 rounded-md border bg-background p-3 ${
+                    draggedLanguage === language ? "opacity-55" : ""
+                  }`}
+                >
+                  <div className="flex min-w-0 items-start gap-2">
+                    <button
+                      type="button"
+                      className="grid h-8 w-8 shrink-0 touch-none cursor-grab place-items-center rounded-md border bg-card text-muted-foreground active:cursor-grabbing"
+                      aria-label={`Drag ${option.label}`}
+                      onPointerDown={(event) => {
+                        if (!event.isPrimary || event.button !== 0) return;
+                        event.preventDefault();
+                        event.currentTarget.setPointerCapture(event.pointerId);
+                        draggedLanguageRef.current = language;
+                        setDraggedLanguage(language);
+                      }}
+                      onPointerMove={(event) => {
+                        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                        const sourceLanguage = draggedLanguageRef.current;
+                        const source = sourceLanguage ? languages.indexOf(sourceLanguage) : -1;
+                        const target = Number(
+                          document
+                            .elementFromPoint(event.clientX, event.clientY)
+                            ?.closest<HTMLElement>("[data-metadata-language-index]")?.dataset.metadataLanguageIndex,
+                        );
+                        if (source >= 0 && Number.isInteger(target) && source !== target) {
+                          onLanguagesChange(moveDlsiteMetadataLanguageTo(languages, source, target));
+                        }
+                      }}
+                      onPointerUp={(event) => {
+                        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                          event.currentTarget.releasePointerCapture(event.pointerId);
+                        }
+                        finishDrag();
+                      }}
+                      onPointerCancel={finishDrag}
+                      onLostPointerCapture={finishDrag}
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </button>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold">{option.label}</div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">
+                        {index === 0 ? "First choice" : `Fallback ${index + 1}`}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 border-t pt-2">
+                    <span className="text-[11px] font-semibold uppercase text-muted-foreground">
+                      Priority {index + 1}
+                    </span>
+                    <span className="flex gap-1">
+                      <button
+                        type="button"
+                        className="grid h-7 w-7 place-items-center rounded-md border text-muted-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-40"
+                        aria-label={`Move ${option.label} earlier`}
+                        title={`Move ${option.label} earlier`}
+                        disabled={index === 0}
+                        onClick={() => moveLanguage(index, -1)}
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        className="grid h-7 w-7 place-items-center rounded-md border text-muted-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-40"
+                        aria-label={`Move ${option.label} later`}
+                        title={`Move ${option.label} later`}
+                        disabled={index === languages.length - 1}
+                        onClick={() => moveLanguage(index, 1)}
+                      >
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -1107,7 +1228,7 @@ function MetadataSettings({
             />
           </label>
           <div className="self-end rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
-            Circle and voice catalog status changes to Attention after ${catalogFreshnessDays} days.
+            Circle and voice catalog status changes to Attention after {catalogFreshnessDays} days.
           </div>
         </div>
         <Button size="sm" onClick={() => void onSave()}>

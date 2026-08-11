@@ -791,9 +791,14 @@ func candidateSites(workno string) []string {
 func normalizeLanguages(values []string) []string {
 	seen := map[string]bool{}
 	languages := []string{}
+	includeDefault := false
 	for _, value := range values {
 		value = strings.ToLower(strings.TrimSpace(value))
-		if value == "" || seen[value] {
+		if value == "" {
+			includeDefault = true
+			continue
+		}
+		if seen[value] {
 			continue
 		}
 		seen[value] = true
@@ -801,6 +806,9 @@ func normalizeLanguages(values []string) []string {
 	}
 	if len(languages) == 0 {
 		return []string{""}
+	}
+	if includeDefault {
+		languages = append(languages, "")
 	}
 	return languages
 }

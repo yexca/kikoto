@@ -4198,10 +4198,9 @@ func (s *Server) createDLsiteSyncRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) newDLsiteMetadataSyncer(ctx context.Context) *metasync.DLsiteSyncer {
-	language := normalizeDLsiteLanguage(s.settingStringContext(ctx, "dlsite_metadata_language", "ja-jp"))
 	return metasync.NewDLsiteSyncer(s.db, s.dlsiteClient).
 		WithCacheRoot(s.cfg.CacheRoot).
-		WithLanguages(dlsiteLanguageFallbacks(language)).
+		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.preferredMetadataLanguages(ctx))).
 		WithRequestPacing(
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5)),
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_rate_limit_backoff_seconds", 30)),
@@ -4218,10 +4217,28 @@ func durationFromSettingSeconds(value float64) time.Duration {
 
 func dlsiteLanguageFallbacks(language string) []string {
 	language = normalizeDLsiteLanguage(language)
-	if language == "" || language == "ja-jp" {
-		return []string{"ja-jp", ""}
+	if language == "" || language == defaultDLsiteMetadataLanguage {
+		return []string{defaultDLsiteMetadataLanguage, ""}
 	}
-	return []string{language, "ja-jp", ""}
+	return []string{language, defaultDLsiteMetadataLanguage, ""}
+}
+
+func dlsiteLanguageFallbacksForLanguages(languages []string) []string {
+	ordered := normalizeDLsiteMetadataLanguages(languages)
+	seen := map[string]bool{}
+	result := make([]string, 0, len(ordered)+2)
+	for _, language := range ordered {
+		if !seen[language] {
+			seen[language] = true
+			result = append(result, language)
+		}
+	}
+	if !seen[defaultDLsiteMetadataLanguage] {
+		result = append(result, defaultDLsiteMetadataLanguage)
+	}
+	// An empty locale asks DLsite for its unqualified/default response as a final fallback.
+	result = append(result, "")
+	return result
 }
 
 type localScanResult struct {

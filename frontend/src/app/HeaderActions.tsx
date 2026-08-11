@@ -251,8 +251,9 @@ export function HeaderActions({
             </Button>
           }
           align="right"
+          mobileSheet
         >
-          <div className="app-scroll max-h-[calc(100dvh-5rem)] w-[min(18rem,calc(100vw-2rem))] overflow-y-auto">
+          <div className="app-scroll max-h-[calc(var(--visual-viewport-height)-4rem)] w-full overflow-y-auto">
             <PopoverHeader title="Menu" subtitle={user ? user.displayName || user.username : "Kikoto"} />
             <MenuList>
               {canRunWorkflows && (
@@ -754,12 +755,14 @@ function HeaderPopover({
   trigger,
   children,
   align = "left",
+  mobileSheet = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   trigger: ReactElement;
   children: ReactNode;
   align?: "left" | "right";
+  mobileSheet?: boolean;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -781,18 +784,42 @@ function HeaderPopover({
 
   return (
     <div className="relative" ref={ref}>
-      {cloneElement(trigger, { onClick: () => onOpenChange(!open) })}
-      {open && (
-        <div
-          data-android-back-close
-          className={cn(
-            "theme-floating-surface absolute top-full z-50 mt-2 overflow-hidden rounded-lg border bg-card shadow-xl",
-            align === "right" ? "right-0" : "left-0",
-          )}
-        >
-          {children}
-        </div>
-      )}
+      {cloneElement(trigger, { onClick: () => onOpenChange(!open), "aria-expanded": open })}
+      {open &&
+        (mobileSheet ? (
+          <div
+            className="visual-viewport-layer z-[60] flex items-end bg-foreground/25 p-2 backdrop-blur-sm sm:p-4"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) onOpenChange(false);
+            }}
+          >
+            <div
+              data-android-back-close
+              role="dialog"
+              aria-modal="true"
+              aria-label="Menu"
+              className="theme-floating-surface flex min-h-0 w-full flex-col overflow-hidden rounded-t-xl border bg-card shadow-xl"
+              style={{
+                maxHeight: "calc(var(--visual-viewport-height) - 1rem)",
+                paddingBottom: "max(0.5rem, var(--safe-area-bottom))",
+              }}
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/35" aria-hidden="true" />
+              {children}
+            </div>
+          </div>
+        ) : (
+          <div
+            data-android-back-close
+            className={cn(
+              "theme-floating-surface absolute top-full z-50 mt-2 overflow-hidden rounded-lg border bg-card shadow-xl",
+              align === "right" ? "right-0" : "left-0",
+            )}
+          >
+            {children}
+          </div>
+        ))}
     </div>
   );
 }

@@ -276,9 +276,15 @@ func (c *Client) listWorksSortedSeeded(ctx context.Context, page int, pageSize i
 }
 
 func TagName(tag Tag, language string) string {
-	language = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(language), "_", "-"))
-	if localized, ok := tag.I18n[language]; ok && strings.TrimSpace(localized.Name) != "" {
-		return strings.TrimSpace(localized.Name)
+	return TagNameForLanguages(tag, []string{language})
+}
+
+func TagNameForLanguages(tag Tag, languages []string) string {
+	for _, language := range languages {
+		language = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(language), "_", "-"))
+		if localized, ok := tag.I18n[language]; ok && strings.TrimSpace(localized.Name) != "" {
+			return strings.TrimSpace(localized.Name)
+		}
 	}
 	return strings.TrimSpace(tag.Name)
 }

@@ -255,6 +255,12 @@ func TestFetchProductWithOptionsSendsLanguage(t *testing.T) {
 	}
 }
 
+func TestNormalizeLanguagesRetainsAnExplicitDefaultFallback(t *testing.T) {
+	if got := normalizeLanguages([]string{"zh-cn", "", "zh-cn"}); len(got) != 2 || got[0] != "zh-cn" || got[1] != "" {
+		t.Fatalf("normalizeLanguages() = %#v, want [zh-cn \"\"]", got)
+	}
+}
+
 func TestFetchMakerCatalogUsesAllLanguageOptions(t *testing.T) {
 	var requestedPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

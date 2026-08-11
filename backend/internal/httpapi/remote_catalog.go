@@ -9,7 +9,7 @@ import (
 )
 
 type remoteCatalogProjector struct {
-	language string
+	languages []string
 }
 
 type remoteCatalogWorkProjection struct {
@@ -33,21 +33,29 @@ type remoteCatalogWorkProjection struct {
 }
 
 func (s *Server) remoteCatalogProjector(ctx context.Context) remoteCatalogProjector {
-	return newRemoteCatalogProjector(s.preferredMetadataLanguage(ctx))
+	return newRemoteCatalogProjectorWithLanguages(s.preferredMetadataLanguages(ctx))
 }
 
 func (s *Server) preferredMetadataLanguage(ctx context.Context) string {
-	return normalizeDLsiteLanguage(s.settingStringContext(ctx, "dlsite_metadata_language", "ja-jp"))
+	return s.preferredMetadataLanguages(ctx)[0]
 }
 
 func newRemoteCatalogProjector(language string) remoteCatalogProjector {
-	return remoteCatalogProjector{language: normalizeDLsiteLanguage(language)}
+	return remoteCatalogProjector{languages: []string{normalizeDLsiteLanguage(language)}}
+}
+
+func newRemoteCatalogProjectorWithLanguages(languages []string) remoteCatalogProjector {
+	ordered, ok := parseDLsiteMetadataLanguages(languages)
+	if !ok {
+		ordered = []string{defaultDLsiteMetadataLanguage}
+	}
+	return remoteCatalogProjector{languages: ordered}
 }
 
 func (projector remoteCatalogProjector) project(sourceID int64, work kikoeru.Work) remoteCatalogWorkProjection {
 	tags := make([]string, 0, len(work.Tags))
 	for _, tag := range work.Tags {
-		if name := kikoeru.TagName(tag, projector.language); name != "" {
+		if name := kikoeru.TagNameForLanguages(tag, projector.languages); name != "" {
 			tags = append(tags, name)
 		}
 	}

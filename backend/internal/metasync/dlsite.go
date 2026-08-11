@@ -1292,13 +1292,21 @@ func firstNonEmptyText(values ...string) string {
 func normalizeLanguages(values []string) []string {
 	seen := map[string]bool{}
 	result := []string{}
+	includeDefault := false
 	for _, value := range values {
 		value = strings.ToLower(strings.TrimSpace(value))
-		if value == "" || seen[value] {
+		if value == "" {
+			includeDefault = true
+			continue
+		}
+		if seen[value] {
 			continue
 		}
 		seen[value] = true
 		result = append(result, value)
+	}
+	if includeDefault {
+		result = append(result, "")
 	}
 	return result
 }

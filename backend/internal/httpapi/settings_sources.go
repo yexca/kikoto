@@ -31,7 +31,13 @@ const (
 	sourceTypeLocalFolder          = "local_folder"
 	defaultRemoteWorkURLTemplate   = "/work/{code}"
 	maxRemoteAllowedHostPatterns   = 64
+	defaultDLsiteMetadataLanguage  = "ja-jp"
+	maxDLsiteMetadataLanguages     = 5
+	dlsiteMetadataLanguageSetting  = "dlsite_metadata_language"
+	dlsiteMetadataLanguagesSetting = "dlsite_metadata_languages"
 )
+
+var defaultDLsiteMetadataLanguages = []string{"ja-jp", "en-us", "zh-cn", "zh-tw", "ko-kr"}
 
 func isKikoeruSourceType(sourceType string) bool {
 	return sourceType == sourceTypeKikoeruCompatible || sourceType == sourceTypeKikoeruCompatible178
@@ -117,6 +123,7 @@ type appSettingsResponse struct {
 	RemoteMaxBackoff          float64                      `json:"remoteMaxBackoffSeconds"`
 	CatalogFreshnessDays      int                          `json:"catalogFreshnessDays"`
 	DLsiteMetadataLanguage    string                       `json:"dlsiteMetadataLanguage"`
+	DLsiteMetadataLanguages   []string                     `json:"dlsiteMetadataLanguages"`
 	DirectoryRoutingRules     []directoryRule              `json:"directoryRoutingRules"`
 	RecommendationThreshold   int                          `json:"recommendationThreshold"`
 	RecommendationConfig      library.RecommendationConfig `json:"recommendationConfig"`
@@ -577,6 +584,7 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		RemoteMaxBackoff          *float64                      `json:"remoteMaxBackoffSeconds"`
 		CatalogFreshnessDays      *int                          `json:"catalogFreshnessDays"`
 		DLsiteMetadataLanguage    *string                       `json:"dlsiteMetadataLanguage"`
+		DLsiteMetadataLanguages   *[]string                     `json:"dlsiteMetadataLanguages"`
 		DirectoryRoutingRules     *[]directoryRule              `json:"directoryRoutingRules"`
 		RecommendationThreshold   *int                          `json:"recommendationThreshold"`
 		RecommendationConfig      *library.RecommendationConfig `json:"recommendationConfig"`
@@ -698,13 +706,31 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if payload.DLsiteMetadataLanguage != nil {
-		value := normalizeDLsiteLanguage(*payload.DLsiteMetadataLanguage)
-		if value == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported dlsiteMetadataLanguage"})
+	if payload.DLsiteMetadataLanguages != nil || payload.DLsiteMetadataLanguage != nil {
+		var (
+			languages []string
+			err       error
+		)
+		if payload.DLsiteMetadataLanguages != nil {
+			languages, err = validateDLsiteMetadataLanguages(*payload.DLsiteMetadataLanguages)
+		} else {
+			language := normalizeDLsiteLanguage(*payload.DLsiteMetadataLanguage)
+			if language == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported dlsiteMetadataLanguage"})
+				return
+			}
+			languages = completeDLsiteMetadataLanguages([]string{language})
+		}
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		if err := upsertSetting(r, tx, "dlsite_metadata_language", value); err != nil {
+		if err := upsertSetting(r, tx, dlsiteMetadataLanguagesSetting, languages); err != nil {
+			writeError(w, err)
+			return
+		}
+		// Keep the legacy scalar in sync so older clients and deployments can still read the preference.
+		if err := upsertSetting(r, tx, dlsiteMetadataLanguageSetting, languages[0]); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -1062,12 +1088,12 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 	sortName, upstreamOrder := remoteSourceSort(r.URL.Query().Get("sort"))
 	direction := remoteSortDirection(r.URL.Query().Get("direction"))
 	client := s.kikoeruClientForSource(source)
-	language := s.preferredMetadataLanguage(r.Context())
+	languages := s.preferredMetadataLanguages(r.Context())
 	includeRecommendation := r.URL.Query().Get("recommendBadges") == "true" && !strings.EqualFold(r.URL.Query().Get("sort"), "recommend")
 	if s.cfg.IsDemo() {
-		works, total, sortApplied, err := s.demoRemoteSourcePage(
+		works, total, sortApplied, err := s.demoRemoteSourcePageWithLanguages(
 			r.Context(), userID, source.ID, client, source.SourceType, r.URL.Query().Get("q"), upstreamOrder, direction,
-			r.URL.Query().Get("seed"), page, pageSize, language, includeRecommendation,
+			r.URL.Query().Get("seed"), page, pageSize, languages, includeRecommendation,
 		)
 		if err != nil {
 			_ = s.updateSourceHealth(r.Context(), id, "unavailable")
@@ -1082,9 +1108,9 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(plan.PostFilterClauses) > 0 {
-		works, total, sortApplied, err := s.remotePostFilteredPage(
+		works, total, sortApplied, err := s.remotePostFilteredPageWithLanguages(
 			r.Context(), userID, source.ID, client, plan, upstreamOrder, direction,
-			r.URL.Query().Get("seed"), page, pageSize, language,
+			r.URL.Query().Get("seed"), page, pageSize, languages,
 		)
 		if err != nil {
 			_ = s.updateSourceHealth(r.Context(), id, "unavailable")
@@ -1105,7 +1131,7 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.updateSourceHealth(r.Context(), id, "healthy")
-	works, err := s.remoteWorkSummaries(r.Context(), userID, source.ID, remotePage.Works, language, includeRecommendation)
+	works, err := s.remoteWorkSummariesWithLanguages(r.Context(), userID, source.ID, remotePage.Works, languages, includeRecommendation)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -1148,15 +1174,33 @@ func (s *Server) demoRemoteSourcePage(
 	language string,
 	includeRecommendation bool,
 ) ([]remoteWorkSummary, int, bool, error) {
+	return s.demoRemoteSourcePageWithLanguages(ctx, userID, sourceID, client, sourceType, query, upstreamOrder, direction, seed, page, pageSize, []string{language}, includeRecommendation)
+}
+
+func (s *Server) demoRemoteSourcePageWithLanguages(
+	ctx context.Context,
+	userID int64,
+	sourceID int64,
+	client *kikoeru.Client,
+	sourceType string,
+	query string,
+	upstreamOrder string,
+	direction string,
+	seed string,
+	page int,
+	pageSize int,
+	languages []string,
+	includeRecommendation bool,
+) ([]remoteWorkSummary, int, bool, error) {
 	plan := demoRemoteSourceQueryPlan(query, sourceType)
 	if len(plan.PostFilterClauses) > 0 {
-		return s.remotePostFilteredPage(ctx, userID, sourceID, client, plan, upstreamOrder, direction, seed, page, pageSize, language, includeRecommendation)
+		return s.remotePostFilteredPageWithLanguages(ctx, userID, sourceID, client, plan, upstreamOrder, direction, seed, page, pageSize, languages, includeRecommendation)
 	}
 	remotePage, err := client.SearchWorksSortedSeeded(ctx, page, pageSize, plan.PushdownQuery, upstreamOrder, direction, seed)
 	if err != nil {
 		return nil, 0, false, err
 	}
-	works, err := s.remoteWorkSummaries(ctx, userID, sourceID, remotePage.Works, language, includeRecommendation)
+	works, err := s.remoteWorkSummariesWithLanguages(ctx, userID, sourceID, remotePage.Works, languages, includeRecommendation)
 	if err != nil {
 		return nil, 0, false, err
 	}
@@ -1177,6 +1221,23 @@ func (s *Server) remotePostFilteredPage(
 	language string,
 	includeRecommendation ...bool,
 ) ([]remoteWorkSummary, int, bool, error) {
+	return s.remotePostFilteredPageWithLanguages(ctx, userID, sourceID, client, plan, order, direction, seed, page, pageSize, []string{language}, includeRecommendation...)
+}
+
+func (s *Server) remotePostFilteredPageWithLanguages(
+	ctx context.Context,
+	userID int64,
+	sourceID int64,
+	client *kikoeru.Client,
+	plan remoteSourceQueryPlan,
+	order string,
+	direction string,
+	seed string,
+	page int,
+	pageSize int,
+	languages []string,
+	includeRecommendation ...bool,
+) ([]remoteWorkSummary, int, bool, error) {
 	const upstreamPageSize = 100
 	const maxUpstreamPages = 100
 	filtered := []remoteWorkSummary{}
@@ -1194,7 +1255,7 @@ func (s *Server) remotePostFilteredPage(
 			return nil, 0, false, err
 		}
 		sortApplied = sortApplied && result.SortApplied
-		summaries, err := s.remoteWorkSummaries(ctx, userID, sourceID, result.Works, language, includeRecommendation...)
+		summaries, err := s.remoteWorkSummariesWithLanguages(ctx, userID, sourceID, result.Works, languages, includeRecommendation...)
 		if err != nil {
 			return nil, 0, false, err
 		}
@@ -1276,8 +1337,8 @@ func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 		writeUpstreamError(w, err)
 		return
 	}
-	language := s.preferredMetadataLanguage(r.Context())
-	detail, err := s.remoteWorkDetail(r.Context(), source, remoteWork, language)
+	languages := s.preferredMetadataLanguages(r.Context())
+	detail, err := s.remoteWorkDetailWithLanguages(r.Context(), source, remoteWork, languages)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -2362,9 +2423,13 @@ func remoteWorkSummaryMatchesClause(work remoteWorkSummary, clause listSearchCla
 }
 
 func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID int64, works []kikoeru.Work, language string, includeRecommendation ...bool) ([]remoteWorkSummary, error) {
+	return s.remoteWorkSummariesWithLanguages(ctx, userID, sourceID, works, []string{language}, includeRecommendation...)
+}
+
+func (s *Server) remoteWorkSummariesWithLanguages(ctx context.Context, userID int64, sourceID int64, works []kikoeru.Work, languages []string, includeRecommendation ...bool) ([]remoteWorkSummary, error) {
 	result := make([]remoteWorkSummary, 0, len(works))
 	seen := map[string]int{}
-	projector := newRemoteCatalogProjector(language)
+	projector := newRemoteCatalogProjectorWithLanguages(languages)
 	for _, work := range works {
 		projected := projector.project(sourceID, work)
 		code := projected.RemoteCode
@@ -5681,7 +5746,11 @@ func sortedStringKeys(values map[string]bool) []string {
 }
 
 func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse, work kikoeru.Work, language string) (remoteWorkDetail, error) {
-	projected := newRemoteCatalogProjector(language).project(source.ID, work)
+	return s.remoteWorkDetailWithLanguages(ctx, source, work, []string{language})
+}
+
+func (s *Server) remoteWorkDetailWithLanguages(ctx context.Context, source remoteSourceForUse, work kikoeru.Work, languages []string) (remoteWorkDetail, error) {
+	projected := newRemoteCatalogProjectorWithLanguages(languages).project(source.ID, work)
 	code := projected.RemoteCode
 	displayCode := code
 	ref, err := s.canonicalWorkForCode(ctx, code)
@@ -6446,6 +6515,7 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 	if err != nil {
 		return appSettingsResponse{}, err
 	}
+	metadataLanguages := s.preferredMetadataLanguages(r.Context())
 	return appSettingsResponse{
 		LocalScanDepth:            s.settingInt(r, "local_scan_depth", s.cfg.LocalScanDepth),
 		CacheEnabled:              s.settingBool(r, "remote_cache_enabled", false),
@@ -6458,7 +6528,8 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		RemoteBackoff:             s.settingFloat(r, "remote_rate_limit_backoff_seconds", 30),
 		RemoteMaxBackoff:          s.settingFloat(r, "remote_max_backoff_seconds", 300),
 		CatalogFreshnessDays:      s.catalogFreshnessDays(r.Context()),
-		DLsiteMetadataLanguage:    normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp")),
+		DLsiteMetadataLanguage:    metadataLanguages[0],
+		DLsiteMetadataLanguages:   metadataLanguages,
 		DirectoryRoutingRules:     s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
 		RecommendationThreshold:   s.settingInt(r, "recommendation_threshold", 50),
 		RecommendationConfig:      s.libraryStore.LoadRecommendationConfig(r.Context()),
@@ -6569,7 +6640,7 @@ func stablePreferenceID(value string, label string, index int) string {
 func normalizeDLsiteLanguage(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "", "ja", "jp", "ja-jp":
-		return "ja-jp"
+		return defaultDLsiteMetadataLanguage
 	case "en", "en-us":
 		return "en-us"
 	case "zh", "zh-cn", "cn":
@@ -6581,6 +6652,82 @@ func normalizeDLsiteLanguage(value string) string {
 	default:
 		return ""
 	}
+}
+
+func normalizeDLsiteMetadataLanguages(values []string) []string {
+	if normalized, ok := parseDLsiteMetadataLanguages(values); ok {
+		return completeDLsiteMetadataLanguages(normalized)
+	}
+	return append([]string(nil), defaultDLsiteMetadataLanguages...)
+}
+
+func completeDLsiteMetadataLanguages(languages []string) []string {
+	result := append([]string(nil), languages...)
+	seen := map[string]bool{}
+	for _, language := range result {
+		seen[language] = true
+	}
+	for _, language := range defaultDLsiteMetadataLanguages {
+		if !seen[language] {
+			seen[language] = true
+			result = append(result, language)
+		}
+	}
+	return result
+}
+
+func parseDLsiteMetadataLanguages(values []string) ([]string, bool) {
+	if len(values) == 0 || len(values) > maxDLsiteMetadataLanguages {
+		return nil, false
+	}
+	normalized := make([]string, 0, len(values))
+	seen := map[string]bool{}
+	for _, raw := range values {
+		if strings.TrimSpace(raw) == "" {
+			return nil, false
+		}
+		language := normalizeDLsiteLanguage(raw)
+		if language == "" {
+			return nil, false
+		}
+		if seen[language] {
+			continue
+		}
+		seen[language] = true
+		normalized = append(normalized, language)
+	}
+	if len(normalized) == 0 {
+		return nil, false
+	}
+	return normalized, true
+}
+
+func validateDLsiteMetadataLanguages(values []string) ([]string, error) {
+	if len(values) == 0 {
+		return nil, fmt.Errorf("dlsiteMetadataLanguages must contain at least one language")
+	}
+	if len(values) > maxDLsiteMetadataLanguages {
+		return nil, fmt.Errorf("dlsiteMetadataLanguages must contain at most %d languages", maxDLsiteMetadataLanguages)
+	}
+	normalized, ok := parseDLsiteMetadataLanguages(values)
+	if !ok {
+		return nil, fmt.Errorf("unsupported dlsiteMetadataLanguages")
+	}
+	return completeDLsiteMetadataLanguages(normalized), nil
+}
+
+func (s *Server) preferredMetadataLanguages(ctx context.Context) []string {
+	var raw string
+	if err := s.db.QueryRowContext(ctx, "SELECT value_json FROM app_setting WHERE key = ?", dlsiteMetadataLanguagesSetting).Scan(&raw); err == nil {
+		var values []string
+		if json.Unmarshal([]byte(raw), &values) == nil {
+			if normalized, ok := parseDLsiteMetadataLanguages(values); ok {
+				return completeDLsiteMetadataLanguages(normalized)
+			}
+		}
+	}
+	legacy := s.settingStringContext(ctx, dlsiteMetadataLanguageSetting, defaultDLsiteMetadataLanguage)
+	return normalizeDLsiteMetadataLanguages([]string{legacy})
 }
 
 func (s *Server) loadFileSources(r *http.Request) ([]fileSourceSummary, error) {

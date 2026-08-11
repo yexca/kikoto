@@ -392,6 +392,7 @@ export function LibraryPage() {
   const [libraryLoadError, setLibraryLoadError] = useState("");
   const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">(initialBrowseState.status);
   const [searchQuery, setSearchQuery] = useState(initialBrowseState.query);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(() => Boolean(initialBrowseState.query.trim()));
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(initialBrowseState.query);
   const [debouncedRemoteSearchQuery, setDebouncedRemoteSearchQuery] = useState(initialBrowseState.query);
   const [optimisticLibrarySearchClauses, setOptimisticLibrarySearchClauses] = useState<SearchClause[] | null>(null);
@@ -424,6 +425,7 @@ export function LibraryPage() {
   const resultsAnchorRef = useRef<HTMLDivElement | null>(null);
   const pendingResultsScroll = useRef(false);
   const pendingScrollRestore = useRef<number | null>(null);
+  const mobileSearchInputRef = useRef<HTMLInputElement | null>(null);
   const browseSurfaceActive = useRef(true);
   browseSurfaceActive.current = selectedCode === null && selectedRemoteTarget === null;
   const searchClauses = useMemo(() => parseSearchClauses(searchQuery), [searchQuery]);
@@ -532,6 +534,16 @@ export function LibraryPage() {
       },
     ]);
   };
+
+  useEffect(() => {
+    if (searchQuery.trim()) setMobileSearchOpen(true);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (!mobileNavigationLayout || !mobileSearchOpen) return;
+    const frame = window.requestAnimationFrame(() => mobileSearchInputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [mobileNavigationLayout, mobileSearchOpen]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -1481,16 +1493,20 @@ export function LibraryPage() {
     onPageSizeChange: (value: number) => changeWorkPageSize(value as LocalWorkPageSize),
   };
   const localTopPagination = <WorkCollectionPagination {...localPaginationProps} placement="top" />;
+  const showRecentlyPlayed =
+    recentWorks.length > 0 && searchQuery.trim() === "" && statusFilter === "all" && searchClauses.length === 0;
 
   return (
     <div className="space-y-5">
-      {recentWorks.length > 0 && (
-        <RecentlyPlayedStrip works={recentWorks} onOpen={(work) => openWork(work, recentWorkSourceIntent(work))} />
-      )}
       <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between" data-toast-avoid>
-        <div className="flex min-h-10 flex-1 items-center gap-2 rounded-lg border bg-card px-3 text-sm lg:max-w-xl">
+        <div
+          className={`order-2 min-h-10 flex-1 items-center gap-2 rounded-lg border bg-card px-3 text-sm lg:order-1 lg:flex lg:max-w-xl ${
+            mobileSearchOpen ? "flex" : "hidden"
+          }`}
+        >
           <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
           <input
+            ref={mobileSearchInputRef}
             className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
             value={searchQuery}
             onKeyDown={dismissKeyboardOnEnter}
@@ -1520,7 +1536,28 @@ export function LibraryPage() {
             <Plus className="h-4 w-4" />
           </button>
         </div>
-        <div className="flex w-full flex-wrap justify-end gap-2 lg:w-auto">
+        <div className="order-1 flex w-full flex-wrap justify-end gap-2 lg:order-2 lg:w-auto">
+          {mobileNavigationLayout && (
+            <IconButton
+              title={
+                searchQuery.trim()
+                  ? "Library search is active"
+                  : mobileSearchOpen
+                    ? "Hide library search"
+                    : "Search library"
+              }
+              disabled={Boolean(searchQuery.trim())}
+              onClick={() => {
+                if (mobileSearchOpen && !searchQuery.trim()) {
+                  setMobileSearchOpen(false);
+                  return;
+                }
+                setMobileSearchOpen(true);
+              }}
+            >
+              <Search className="h-4 w-4" />
+            </IconButton>
+          )}
           <LayoutPicker
             mobileColumns={mobileColumns}
             desktopColumns={desktopColumns}
@@ -1603,6 +1640,9 @@ export function LibraryPage() {
           onCancel={() => setClauseEditor(null)}
           onSave={saveClauseEditor}
         />
+      )}
+      {showRecentlyPlayed && (
+        <RecentlyPlayedStrip works={recentWorks} onOpen={(work) => openWork(work, recentWorkSourceIntent(work))} />
       )}
 
       <LibraryPrimaryTabs
@@ -5448,9 +5488,15 @@ function SourceDirectoryPanel({
   onPreview?: (preview: FilePreviewState) => void;
 }) {
   const [trackedMenuOpen, setTrackedMenuOpen] = useState(false);
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const [requestedRoutePath, setRequestedRoutePath] = useState<string[] | null>(null);
   const trackedMenuRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => setTrackedMenuOpen(false), [activeKey, selectedTrackedPresenceKey]);
+  const mobileActionsRef = useRef<HTMLButtonElement | null>(null);
+  const mobileNavigationLayout = useMobileNavigationLayout();
+  useEffect(() => {
+    setTrackedMenuOpen(false);
+    setMobileActionsOpen(false);
+  }, [activeKey, selectedTrackedPresenceKey]);
   const content = emptyState ? (
     emptyState
   ) : directoryMode === "browse" ? (
@@ -5486,16 +5532,20 @@ function SourceDirectoryPanel({
       <div className="space-y-3">
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,auto)] lg:items-end">
           <div>
-            <h3 className="text-lg font-semibold">{title}</h3>
+            <h3 className="text-lg font-semibold">
+              <span className="sr-only lg:not-sr-only">{title}</span>
+            </h3>
             {statsLabel && <p className="mt-1 text-xs text-muted-foreground">{statsLabel}</p>}
           </div>
-          <p className="text-sm text-muted-foreground lg:text-right">{description}</p>
+          <p className="text-sm text-muted-foreground lg:text-right">
+            <span className="sr-only lg:not-sr-only">{description}</span>
+          </p>
         </div>
-        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 sm:flex sm:flex-wrap">
-          <div className="col-start-1 row-start-1 sm:contents">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="hidden shrink-0 lg:block">
             <DirectoryModeSwitch mode={directoryMode} onChange={onDirectoryModeChange} />
           </div>
-          <div className="col-span-2 row-start-2 flex min-w-0 items-center overflow-hidden rounded-md border bg-card p-1 sm:flex-1">
+          <div className="flex min-w-0 flex-1 items-center overflow-hidden rounded-md border bg-card p-1">
             <div className="app-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
               {tabs.map((source) =>
                 source.kind === "tracked" && trackedPresenceOptions.length > 1 ? (
@@ -5584,7 +5634,7 @@ function SourceDirectoryPanel({
                 ),
               )}
             </div>
-            {onCheckSources && (
+            {onCheckSources && !mobileNavigationLayout && (
               <IconButton
                 title={
                   checkingSources
@@ -5598,6 +5648,65 @@ function SourceDirectoryPanel({
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${checkingSources ? "animate-spin" : ""}`} />
               </IconButton>
+            )}
+            {mobileNavigationLayout && (
+              <>
+                <button
+                  ref={mobileActionsRef}
+                  type="button"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label="More directory actions"
+                  aria-haspopup="menu"
+                  aria-expanded={mobileActionsOpen}
+                  title="More directory actions"
+                  onClick={() => setMobileActionsOpen((open) => !open)}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </button>
+                <AnchoredPopover
+                  open={mobileActionsOpen}
+                  anchorRef={mobileActionsRef}
+                  onOpenChange={setMobileActionsOpen}
+                  className="w-52 p-1 text-sm"
+                  bottomCollisionPadding={96}
+                  zIndex={70}
+                >
+                  <div role="menu" aria-label="Directory actions">
+                    {onCheckSources && (
+                      <button
+                        role="menuitem"
+                        className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
+                        disabled={checkingSources}
+                        onClick={() => {
+                          setMobileActionsOpen(false);
+                          onCheckSources();
+                        }}
+                      >
+                        <RefreshCw className={`h-4 w-4 shrink-0 ${checkingSources ? "animate-spin" : ""}`} />
+                        <span>{checkingSources ? "Checking sources" : "Check sources"}</span>
+                      </button>
+                    )}
+                    <div className="my-1 border-t" />
+                    <div className="px-2 py-1 text-[11px] font-semibold uppercase text-muted-foreground">View</div>
+                    {(["browse", "tree"] as DirectoryMode[]).map((mode) => (
+                      <button
+                        key={mode}
+                        role="menuitemradio"
+                        aria-checked={directoryMode === mode}
+                        className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
+                        onClick={() => {
+                          onDirectoryModeChange(mode);
+                          setMobileActionsOpen(false);
+                        }}
+                      >
+                        {mode === "browse" ? <Folder className="h-4 w-4" /> : <FolderTree className="h-4 w-4" />}
+                        <span className="flex-1">{mode === "browse" ? "Browse" : "Tree"}</span>
+                        {directoryMode === mode && <Check className="h-4 w-4 text-primary" />}
+                      </button>
+                    ))}
+                  </div>
+                </AnchoredPopover>
+              </>
             )}
           </div>
         </div>
@@ -5650,26 +5759,48 @@ function DirectoryModeSwitch({ mode, onChange }: { mode: DirectoryMode; onChange
 }
 
 function DirectoryRouteSummary({ summary, onSelect }: { summary: DirectoryRouteMatch; onSelect: () => void }) {
+  const hasMatch = summary.positiveMatches.length > 0;
+
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2 text-xs">
-      <span className="font-medium text-muted-foreground">Default folder</span>
-      <button
-        type="button"
-        className="max-w-full truncate rounded-md border bg-secondary px-2 py-0.5 font-medium text-secondary-foreground hover:bg-secondary/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        title={`Open ${summary.pathLabel}`}
-        onClick={onSelect}
-      >
-        {summary.pathLabel}
-      </button>
-      {summary.positiveMatches.length > 0 ? (
-        <span className="min-w-0 text-muted-foreground">matched {summary.positiveMatches.join(" + ")}</span>
-      ) : (
-        <span className="text-muted-foreground">fallback: most playable media</span>
-      )}
-      {summary.negativeMatches.length > 0 && (
-        <span className="text-muted-foreground">excluded {summary.negativeMatches.join(" + ")}</span>
-      )}
-    </div>
+    <>
+      <div className="flex min-w-0 items-center rounded-md border bg-card px-3 py-2 text-xs lg:hidden">
+        {hasMatch ? (
+          <>
+            <span className="shrink-0 font-medium text-muted-foreground">Matched</span>
+            <button
+              type="button"
+              className="ml-2 min-w-0 max-w-full truncate rounded-md border bg-secondary px-2 py-0.5 text-left font-medium text-secondary-foreground hover:bg-secondary/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              title={`Open ${summary.pathLabel}`}
+              aria-label={`Matched ${summary.pathLabel}`}
+              onClick={onSelect}
+            >
+              {summary.pathLabel}
+            </button>
+          </>
+        ) : (
+          <span className="truncate font-medium text-muted-foreground">No matching folder</span>
+        )}
+      </div>
+      <div className="hidden flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2 text-xs lg:flex">
+        <span className="font-medium text-muted-foreground">Default folder</span>
+        <button
+          type="button"
+          className="max-w-full truncate rounded-md border bg-secondary px-2 py-0.5 font-medium text-secondary-foreground hover:bg-secondary/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          title={`Open ${summary.pathLabel}`}
+          onClick={onSelect}
+        >
+          {summary.pathLabel}
+        </button>
+        {hasMatch ? (
+          <span className="min-w-0 text-muted-foreground">matched {summary.positiveMatches.join(" + ")}</span>
+        ) : (
+          <span className="text-muted-foreground">fallback: most playable media</span>
+        )}
+        {summary.negativeMatches.length > 0 && (
+          <span className="text-muted-foreground">excluded {summary.negativeMatches.join(" + ")}</span>
+        )}
+      </div>
+    </>
   );
 }
 
