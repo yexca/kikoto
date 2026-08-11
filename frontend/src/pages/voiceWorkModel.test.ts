@@ -85,6 +85,42 @@ describe("mergeVoiceWorks", () => {
 
     expect(voiceWorkRemoteTarget(merged)).toEqual({ sourceId: 7, code: "SAMPLE-TRANSLATION" });
   });
+
+  it("sorts local works before newer catalog-only works", () => {
+    const local = {
+      ...knownWork(),
+      primaryCode: "RJ00000008",
+      releaseDate: "2024-01-01",
+      local: true,
+    };
+    const remote = {
+      ...remoteWork(),
+      primaryCode: "RJ00000009",
+      remoteCode: "RJ00000009",
+      releaseDate: "2026-01-01",
+    };
+
+    const result = mergeVoiceWorks([local], [sourceSet(remote)]);
+
+    expect(result.map((work) => work.primaryCode)).toEqual(["RJ00000008", "RJ00000009"]);
+  });
+
+  it("keeps persisted negative observations visible without exposing a remote action target", () => {
+    const unavailable = {
+      ...remoteWork(),
+      primaryCode: "RJ00000009",
+      remoteCode: "RJ00000009",
+      remotePlayable: false,
+      hasRemote: false,
+      availability: "not_found",
+    };
+
+    const [result] = mergeVoiceWorks([], [{ ...sourceSet(unavailable), status: "error" }]);
+
+    expect(result.primaryCode).toBe("RJ00000009");
+    expect(result.remoteObservations).toContainEqual(expect.objectContaining({ status: "not_found" }));
+    expect(voiceWorkRemoteTarget(result)).toBeNull();
+  });
 });
 
 function knownWork(): VoiceKnownWork {

@@ -207,7 +207,47 @@ async function mockApplication(
       return;
     }
     if (url.pathname === "/api/voices/7/remote-matches") {
-      await route.fulfill({ json: { personId: 7, remoteMatches: [] } });
+      await route.fulfill({
+        json: {
+          personId: 7,
+          remoteMatches: [],
+          refresh: {
+            status: "succeeded",
+            reason: "",
+            lastStatus: "succeeded",
+            generation: 1,
+            lastAttemptAt: "",
+            lastSuccessAt: "",
+            complete: true,
+            pagesFetched: 1,
+            catalogWorks: 0,
+            metadataQueued: 0,
+            queries: ["Example Voice"],
+            sources: [],
+            error: "",
+          },
+        },
+      });
+      return;
+    }
+    if (url.pathname === "/api/voices/7/auto-refresh" && route.request().method() === "POST") {
+      await route.fulfill({
+        json: {
+          status: "succeeded",
+          reason: "",
+          lastStatus: "succeeded",
+          generation: 1,
+          lastAttemptAt: "",
+          lastSuccessAt: "",
+          complete: true,
+          pagesFetched: 1,
+          catalogWorks: 0,
+          metadataQueued: 0,
+          queries: ["Example Voice"],
+          sources: [],
+          error: "",
+        },
+      });
       return;
     }
     if (url.pathname === "/api/voices/7/merges") {

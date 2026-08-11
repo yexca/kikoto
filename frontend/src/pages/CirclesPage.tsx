@@ -48,6 +48,7 @@ import {
   workCollectionStyle,
   useWorkCollectionLayout,
 } from "@/components/work-collection/WorkCollectionLayout";
+import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
@@ -516,6 +517,19 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const circleListStorageScope = currentClientStorageScope(auth.user?.id ?? null);
   const navigateToList = () => navigateToCirclesList(circleListStorageScope, compactLayout);
 
+  const changeAvailabilityFilter = (value: CircleAvailabilityFilter) => {
+    setAvailabilityFilter(value);
+    setWorkPage(1);
+  };
+  const changeWorkQuery = (value: string) => {
+    setWorkQuery(value);
+    setWorkPage(1);
+  };
+  const changeWorkPageSize = (value: number) => {
+    setWorkPageSize(value as CatalogWorkPageSize);
+    setWorkPage(1);
+  };
+
   useEffect(() => {
     setWorkPage(1);
   }, [availabilityFilter, externalId, workPageSize, workQuery]);
@@ -916,28 +930,32 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
               Series {circle.series.length}
             </button>
           </div>
-          <div className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground">
+          <div
+            className={`flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground ${isSeriesView ? "" : "hidden lg:flex"}`}
+          >
             <Search className="h-4 w-4" />
             <input
               className="min-w-0 flex-1 bg-transparent outline-none"
               value={workQuery}
               onKeyDown={dismissKeyboardOnEnter}
-              onChange={(event) => setWorkQuery(event.target.value)}
+              onChange={(event) => changeWorkQuery(event.target.value)}
               placeholder="Search circle catalog works"
             />
-            <Button
-              variant="outline"
-              size="icon"
-              className="relative shrink-0 lg:hidden"
-              aria-label="Open catalog options"
-              title="Catalog options"
-              onClick={() => setCatalogOptionsOpen(true)}
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-              {availabilityFilter !== "all" && (
-                <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
-              )}
-            </Button>
+            {isSeriesView && (
+              <Button
+                variant="outline"
+                size="icon"
+                className="relative shrink-0 lg:hidden"
+                aria-label="Open catalog options"
+                title="Catalog options"
+                onClick={() => setCatalogOptionsOpen(true)}
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                {(workQuery.trim() || availabilityFilter !== "all" || selectionMode) && (
+                  <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+                )}
+              </Button>
+            )}
           </div>
           <div className="hidden shrink-0 gap-2 lg:flex">
             <WorkCollectionLayoutPicker
@@ -949,7 +967,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
             <select
               className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={availabilityFilter}
-              onChange={(event) => setAvailabilityFilter(event.target.value as CircleAvailabilityFilter)}
+              onChange={(event) => changeAvailabilityFilter(event.target.value as CircleAvailabilityFilter)}
               aria-label="Catalog availability filter"
             >
               <option value="all">All works</option>
@@ -975,13 +993,51 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
           </div>
         </div>
 
+        {!isSeriesView && (
+          <div className="lg:hidden">
+            <WorkCollectionPagination
+              placement="top"
+              page={currentWorkPage}
+              pageSize={workPageSize}
+              totalItems={filteredWorks.length}
+              totalPages={totalWorkPages}
+              compactMobile
+              refreshing={isLoading}
+              refreshingLabel="Refreshing circle works"
+              leadingControls={
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="relative h-11 w-11"
+                  aria-label={`Open catalog options${workQuery.trim() || availabilityFilter !== "all" || selectionMode ? ", filters active" : ""}`}
+                  title="Catalog options"
+                  aria-haspopup="dialog"
+                  aria-expanded={catalogOptionsOpen}
+                  onClick={() => setCatalogOptionsOpen(true)}
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                  {(workQuery.trim() || availabilityFilter !== "all" || selectionMode) && (
+                    <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" aria-hidden="true" />
+                  )}
+                </Button>
+              }
+              onPageChange={setWorkPage}
+            />
+          </div>
+        )}
+
         <CircleCatalogOptionsSheet
           open={catalogOptionsOpen}
           onClose={() => setCatalogOptionsOpen(false)}
           isSeriesView={isSeriesView}
           selectionMode={selectionMode}
           availabilityFilter={availabilityFilter}
-          onAvailabilityFilterChange={setAvailabilityFilter}
+          onAvailabilityFilterChange={changeAvailabilityFilter}
+          query={workQuery}
+          onQueryChange={changeWorkQuery}
+          pageSize={workPageSize}
+          pageSizeOptions={catalogWorkPageSizeOptions}
+          onPageSizeChange={changeWorkPageSize}
           mobileColumns={mobileColumns}
           onMobileColumnsChange={setMobileColumns}
           onSelectWorks={() => {
@@ -1188,14 +1244,28 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
               )}
             </div>
             {totalWorkPages > 1 && (
-              <CatalogWorkPagination
-                page={currentWorkPage}
-                pageSize={workPageSize}
-                totalItems={filteredWorks.length}
-                totalPages={totalWorkPages}
-                onPageChange={setWorkPage}
-                onPageSizeChange={setWorkPageSize}
-              />
+              <div className="lg:hidden">
+                <WorkCollectionPagination
+                  placement="bottom"
+                  page={currentWorkPage}
+                  pageSize={workPageSize}
+                  totalItems={filteredWorks.length}
+                  totalPages={totalWorkPages}
+                  onPageChange={setWorkPage}
+                />
+              </div>
+            )}
+            {totalWorkPages > 1 && (
+              <div className="hidden lg:block">
+                <CatalogWorkPagination
+                  page={currentWorkPage}
+                  pageSize={workPageSize}
+                  totalItems={filteredWorks.length}
+                  totalPages={totalWorkPages}
+                  onPageChange={setWorkPage}
+                  onPageSizeChange={changeWorkPageSize}
+                />
+              </div>
             )}
           </>
         )}

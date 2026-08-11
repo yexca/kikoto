@@ -1,10 +1,11 @@
-import { Check, Columns3, RefreshCw, X } from "lucide-react";
+import { Check, Columns3, ListMusic, RefreshCw, Rows3, Search, X } from "lucide-react";
 import { useEffect, type ReactNode, type RefObject } from "react";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import type { CircleDetail } from "@/lib/api";
 import type { WorkCollectionColumnSetting } from "@/components/work-collection/WorkCollectionLayout";
+import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 
 export type CircleAvailabilityFilter = "all" | "available" | "unavailable" | "local" | "remote";
 export type CircleRefreshScope = "all" | "catalog" | "work" | "source";
@@ -99,6 +100,11 @@ export function CircleCatalogOptionsSheet({
   selectionMode,
   availabilityFilter,
   onAvailabilityFilterChange,
+  query,
+  onQueryChange,
+  pageSize,
+  pageSizeOptions,
+  onPageSizeChange,
   mobileColumns,
   onMobileColumnsChange,
   onSelectWorks,
@@ -109,6 +115,11 @@ export function CircleCatalogOptionsSheet({
   selectionMode: boolean;
   availabilityFilter: CircleAvailabilityFilter;
   onAvailabilityFilterChange: (value: CircleAvailabilityFilter) => void;
+  query: string;
+  onQueryChange: (value: string) => void;
+  pageSize: number;
+  pageSizeOptions: readonly number[];
+  onPageSizeChange: (value: number) => void;
   mobileColumns: WorkCollectionColumnSetting;
   onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
   onSelectWorks: () => void;
@@ -156,6 +167,33 @@ export function CircleCatalogOptionsSheet({
         </div>
 
         <fieldset className="mt-4 space-y-2">
+          <legend className="text-sm font-medium">Search</legend>
+          <div className="flex min-h-11 items-center gap-2 rounded-md border bg-background px-3">
+            <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <input
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+              value={query}
+              onKeyDown={dismissKeyboardOnEnter}
+              onChange={(event) => onQueryChange(event.target.value)}
+              placeholder="Search circle catalog works"
+              aria-label="Search circle catalog works"
+            />
+            {query.trim() && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                aria-label="Clear circle catalog search"
+                title="Clear circle catalog search"
+                onClick={() => onQueryChange("")}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </fieldset>
+
+        <fieldset className="mt-4 space-y-2">
           <legend className="text-sm font-medium">Availability</legend>
           <div className="grid grid-cols-2 gap-2" role="group" aria-label="Catalog availability">
             {availabilityOptions.map((option) => (
@@ -192,6 +230,26 @@ export function CircleCatalogOptionsSheet({
             ))}
           </div>
         </fieldset>
+
+        {!isSeriesView && (
+          <fieldset className="mt-4 space-y-2">
+            <legend className="flex items-center gap-2 text-sm font-medium">
+              <ListMusic className="h-4 w-4" aria-hidden="true" />
+              Per page
+            </legend>
+            <div className="grid grid-cols-2 gap-2" role="group" aria-label="Catalog work page size">
+              {pageSizeOptions.map((option) => (
+                <CatalogOptionButton
+                  key={option}
+                  active={pageSize === option}
+                  label={`${option} per page`}
+                  icon={<Rows3 className="h-4 w-4" />}
+                  onClick={() => onPageSizeChange(option)}
+                />
+              ))}
+            </div>
+          </fieldset>
+        )}
 
         {!isSeriesView && (
           <Button className="mt-4 w-full" variant={selectionMode ? "default" : "outline"} onClick={onSelectWorks}>

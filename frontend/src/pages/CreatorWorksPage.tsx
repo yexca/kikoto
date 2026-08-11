@@ -35,6 +35,7 @@ import {
 } from "@/components/creator/CreatorCard";
 import { CreatorListMobileOptions } from "@/components/creator/CreatorListMobileOptions";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
+import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { VoiceWorkOptionsSheet, type VoiceWorkFilter } from "@/pages/VoiceWorkOptionsSheet";
 import { useAuth } from "@/auth/AuthProvider";
 import { usePermissionGate } from "@/auth/usePermissionGate";
@@ -76,6 +77,7 @@ import {
   type ListeningStatus,
   type VoiceAlias,
   type VoiceAliasCandidate,
+  type VoiceCatalogRefreshState,
   type VoiceDetail,
   type VoiceKnownWork,
   type VoiceMergeReview,
@@ -412,6 +414,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isWorksLoading, setIsWorksLoading] = useState(false);
   const [remoteMatches, setRemoteMatches] = useState<VoiceRemoteSourceSet[]>([]);
+  const [catalogRefresh, setCatalogRefresh] = useState<VoiceCatalogRefreshState | null>(null);
   const [isRemoteLoading, setIsRemoteLoading] = useState(false);
   const [remoteError, setRemoteError] = useState("");
   const [message, setMessage] = useState("");
@@ -436,6 +439,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setDetailPanel(null);
     setWorkOptionsOpen(false);
     setRemoteMatches([]);
+    setCatalogRefresh(null);
     setRemoteError("");
     setNotFound(false);
     api
@@ -471,13 +475,14 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     try {
       const result = await api.getVoiceRemoteMatches(personId);
       setRemoteMatches(result.remoteMatches);
+      setCatalogRefresh(result.refresh);
       const failed = result.remoteMatches.filter((source) => remoteSourceFailed(source));
       if (failed.length > 0 || notify) {
         const timedOut = failed.some((source) => source.status === "timeout");
         const message =
           failed.length > 0
             ? `${failed.length} remote source${failed.length === 1 ? "" : "s"} ${timedOut ? "timed out or failed" : "failed"}.`
-            : "Remote matches refreshed.";
+            : "Voice catalog loaded.";
         if (failed.length > 0) toast.info(message);
         else toast.success(message);
       }
@@ -490,10 +495,114 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     }
   };
 
+  const voiceCatalogQueryKey = useMemo(
+    () =>
+      detail
+        ? [detail.displayName, ...(detail.aliasRecords ?? []).map((alias) => alias.alias.trim())]
+            .filter(Boolean)
+            .join("\u001f")
+        : "",
+    [detail?.aliasRecords, detail?.displayName],
+  );
+  const canAutoRefreshCatalog = auth.hasPermission("library:read") && !auth.demoMode;
+  const canForceRefreshCatalog = auth.hasPermission("metadata:sync") && !auth.demoMode;
+
   useEffect(() => {
     if (!detail) return;
-    void loadRemoteMatches(false);
-  }, [detail?.personId]);
+    let cancelled = false;
+    const loadPersistedThenRefresh = async () => {
+      setIsRemoteLoading(true);
+      setRemoteError("");
+      try {
+        const persisted = await api.getVoiceRemoteMatches(personId);
+        if (cancelled) return;
+        setRemoteMatches(persisted.remoteMatches);
+        setCatalogRefresh(persisted.refresh);
+        if (!canAutoRefreshCatalog) return;
+        const refresh = await api.autoRefreshVoiceCatalog(personId);
+        if (!cancelled) setCatalogRefresh(refresh);
+      } catch (error) {
+        if (cancelled) return;
+        const fallback = error instanceof Error ? error.message : "Voice catalog unavailable.";
+        setRemoteError(fallback);
+        toast.notify(toastFromError(error, "Voice catalog unavailable."));
+      } finally {
+        if (!cancelled) setIsRemoteLoading(false);
+      }
+    };
+    void loadPersistedThenRefresh();
+    return () => {
+      cancelled = true;
+    };
+  }, [canAutoRefreshCatalog, personId, voiceCatalogQueryKey]);
+
+  const catalogRefreshActive = catalogRefresh?.status === "queued" || catalogRefresh?.status === "running";
+  useEffect(() => {
+    if (!catalogRefreshActive) return;
+    let cancelled = false;
+    let requestRunning = false;
+    const poll = async () => {
+      if (requestRunning) return;
+      requestRunning = true;
+      try {
+        const result = await api.getVoiceRemoteMatches(personId);
+        if (cancelled) return;
+        setRemoteMatches(result.remoteMatches);
+        const stillActive = result.refresh.status === "queued" || result.refresh.status === "running";
+        if (!stillActive) {
+          try {
+            const summary = await api.getVoiceSummary(personId);
+            if (!cancelled) {
+              setDetail((current) => (current ? { ...summary, works: current.works, remoteMatches: [] } : current));
+            }
+          } catch {
+            // The persisted catalog remains usable if only the summary refresh fails.
+          }
+        }
+        let nextRefresh = result.refresh;
+        if (!stillActive && canAutoRefreshCatalog) {
+          try {
+            nextRefresh = await api.autoRefreshVoiceCatalog(personId);
+          } catch {
+            // A completed catalog remains visible when the follow-up decision is unavailable.
+          }
+        }
+        if (!cancelled) setCatalogRefresh(nextRefresh);
+      } catch (error) {
+        if (!cancelled) setRemoteError(error instanceof Error ? error.message : "Voice catalog unavailable.");
+      } finally {
+        requestRunning = false;
+      }
+    };
+    const timer = window.setInterval(() => void poll(), 2_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [canAutoRefreshCatalog, catalogRefresh?.runId, catalogRefreshActive, personId]);
+
+  const forceRefreshCatalog = async () => {
+    if (!canForceRefreshCatalog) {
+      await loadRemoteMatches(true);
+      return;
+    }
+    setIsRemoteLoading(true);
+    setRemoteError("");
+    try {
+      const refresh = await api.refreshVoiceCatalog(personId);
+      setCatalogRefresh(refresh);
+      toast.info(
+        refresh.status === "queued" || refresh.status === "running"
+          ? "Voice catalog refresh queued."
+          : "Voice catalog is current.",
+      );
+    } catch (error) {
+      setRemoteError(error instanceof Error ? error.message : "Voice catalog refresh failed.");
+      toast.notify(toastFromError(error, "Voice catalog refresh failed."));
+    } finally {
+      setIsRemoteLoading(false);
+    }
+  };
 
   const knownWorks = detail?.works ?? [];
   const alternateAliasCount = useMemo(
@@ -535,6 +644,18 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const totalPages = Math.max(1, Math.ceil(filteredWorks.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pageWorks = filteredWorks.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const changeWorkFilter = (value: VoiceWorkFilter) => {
+    setFilter(value);
+    setPage(1);
+  };
+  const changeWorkQuery = (value: string) => {
+    setQuery(value);
+    setPage(1);
+  };
+  const changeWorkPageSize = (value: number) => {
+    setPageSize(value as (typeof workPageSizeOptions)[number]);
+    setPage(1);
+  };
   useEffect(() => setPage(1), [filter, pageSize, query]);
   useEffect(() => {
     setSelectedWorkKeys(
@@ -875,7 +996,11 @@ function VoiceDetailPage({ personId }: { personId: number }) {
                   aria-label={remoteSourceWarning ? "Open Remote Sources with attention" : "Open Remote Sources"}
                   onClick={() => setDetailPanel((current) => (current === "remote" ? null : "remote"))}
                 >
-                  {isRemoteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Cloud className="h-4 w-4" />}
+                  {isRemoteLoading || catalogRefreshActive ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Cloud className="h-4 w-4" />
+                  )}
                   <span className="lg:hidden">Sources</span>
                   <span className="hidden lg:inline">Remote sources</span>
                   {remoteSourceWarning && <span className="text-warning-foreground">!</span>}
@@ -923,38 +1048,26 @@ function VoiceDetailPage({ personId }: { personId: number }) {
           <div id={remotePanelID} role="dialog" aria-label="Remote Sources">
             <RemoteSourcePanel
               sources={remoteMatches}
-              loading={isRemoteLoading}
+              loading={isRemoteLoading || catalogRefreshActive}
               error={remoteError}
-              onRetry={() => void loadRemoteMatches(true)}
+              canRefresh={canForceRefreshCatalog}
+              onRetry={() => void forceRefreshCatalog()}
             />
           </div>
         </AnchoredPopover>
       </section>
 
       <section className="space-y-3">
-        <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 lg:flex-row lg:items-center">
+        <div className="hidden flex-col gap-2 rounded-lg border bg-card p-3 lg:flex lg:flex-row lg:items-center">
           <div className="flex min-h-10 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground">
             <Search className="h-4 w-4" />
             <input
               className="min-w-0 flex-1 bg-transparent outline-none"
               value={query}
               onKeyDown={dismissKeyboardOnEnter}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => changeWorkQuery(event.target.value)}
               placeholder="Search voice works"
             />
-            <Button
-              variant="outline"
-              size="icon"
-              className="relative shrink-0 lg:hidden"
-              aria-label="Open voice work options"
-              title="Voice work options"
-              onClick={() => setWorkOptionsOpen(true)}
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-              {(filter !== "all" || selectionMode) && (
-                <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
-              )}
-            </Button>
           </div>
           <div className="hidden shrink-0 gap-2 lg:flex">
             <WorkCollectionLayoutPicker
@@ -966,7 +1079,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
             <select
               className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={filter}
-              onChange={(event) => setFilter(event.target.value as VoiceWorkFilter)}
+              onChange={(event) => changeWorkFilter(event.target.value as VoiceWorkFilter)}
               aria-label="Work filter"
             >
               <option value="all">All works</option>
@@ -980,11 +1093,46 @@ function VoiceDetailPage({ personId }: { personId: number }) {
             </Button>
           </div>
         </div>
+        <div className="lg:hidden">
+          <WorkCollectionPagination
+            placement="top"
+            page={currentPage}
+            pageSize={pageSize}
+            totalItems={filteredWorks.length}
+            totalPages={totalPages}
+            compactMobile
+            refreshing={isWorksLoading || isRemoteLoading || catalogRefreshActive}
+            refreshingLabel="Refreshing voice works"
+            leadingControls={
+              <Button
+                variant="outline"
+                size="icon"
+                className="relative h-11 w-11"
+                aria-label={`Open voice work options${query.trim() || filter !== "all" || selectionMode ? ", filters active" : ""}`}
+                title="Voice work options"
+                aria-haspopup="dialog"
+                aria-expanded={workOptionsOpen}
+                onClick={() => setWorkOptionsOpen(true)}
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                {(query.trim() || filter !== "all" || selectionMode) && (
+                  <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" aria-hidden="true" />
+                )}
+              </Button>
+            }
+            onPageChange={setPage}
+          />
+        </div>
         <VoiceWorkOptionsSheet
           open={workOptionsOpen}
           onClose={() => setWorkOptionsOpen(false)}
           filter={filter}
-          onFilterChange={setFilter}
+          onFilterChange={changeWorkFilter}
+          query={query}
+          onQueryChange={changeWorkQuery}
+          pageSize={pageSize}
+          pageSizeOptions={workPageSizeOptions}
+          onPageSizeChange={changeWorkPageSize}
           mobileColumns={mobileColumns}
           onMobileColumnsChange={setMobileColumns}
           selectionMode={selectionMode}
@@ -1045,7 +1193,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
           <div
             className={workCollectionClassName()}
             style={workCollectionStyle(mobileColumns, desktopColumns)}
-            aria-busy={isWorksLoading || isRemoteLoading}
+            aria-busy={isWorksLoading || isRemoteLoading || catalogRefreshActive}
           >
             {pageWorks.map((work) => (
               <div key={`${"sourceId" in work ? work.sourceId : "known"}:${work.primaryCode}`}>
@@ -1075,7 +1223,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               </div>
             ))}
           </div>
-        ) : isWorksLoading || isRemoteLoading ? (
+        ) : isWorksLoading || isRemoteLoading || catalogRefreshActive ? (
           <WorkCollectionLoadingState
             label="Loading voice works"
             mobileColumns={mobileColumns}
@@ -1089,14 +1237,28 @@ function VoiceDetailPage({ personId }: { personId: number }) {
           </Card>
         )}
         {totalPages > 1 && (
-          <CatalogPagination
-            page={currentPage}
-            pageSize={pageSize}
-            totalItems={filteredWorks.length}
-            totalPages={totalPages}
-            onPageChange={setPage}
-            onPageSizeChange={setPageSize}
-          />
+          <div className="lg:hidden">
+            <WorkCollectionPagination
+              placement="bottom"
+              page={currentPage}
+              pageSize={pageSize}
+              totalItems={filteredWorks.length}
+              totalPages={totalPages}
+              onPageChange={setPage}
+            />
+          </div>
+        )}
+        {totalPages > 1 && (
+          <div className="hidden lg:block">
+            <CatalogPagination
+              page={currentPage}
+              pageSize={pageSize}
+              totalItems={filteredWorks.length}
+              totalPages={totalPages}
+              onPageChange={setPage}
+              onPageSizeChange={changeWorkPageSize}
+            />
+          </div>
         )}
       </section>
       {saveConfirm && (
@@ -1623,11 +1785,13 @@ function RemoteSourcePanel({
   sources,
   loading,
   error,
+  canRefresh,
   onRetry,
 }: {
   sources: VoiceRemoteSourceSet[];
   loading: boolean;
   error: string;
+  canRefresh: boolean;
   onRetry: () => void;
 }) {
   return (
@@ -1635,11 +1799,11 @@ function RemoteSourcePanel({
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-semibold">Remote Sources</h3>
-          <p className="text-xs text-muted-foreground">Live matches by configured source.</p>
+          <p className="text-xs text-muted-foreground">Persisted catalog observations by source.</p>
         </div>
         <Button variant="outline" size="sm" disabled={loading} onClick={onRetry}>
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          Retry
+          {canRefresh ? "Refresh" : "Retry"}
         </Button>
       </div>
       {loading && sources.length === 0 ? (
@@ -1664,7 +1828,7 @@ function RemoteSourcePanel({
       )}
       {loading && sources.length > 0 && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Refreshing remote matches
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Refreshing voice catalog
         </div>
       )}
       {error && (
@@ -1716,7 +1880,7 @@ function remoteSourceStatusMessage(source: VoiceRemoteSourceSet) {
 }
 
 function remoteSourceFailed(source: VoiceRemoteSourceSet) {
-  return !["ok", "disabled", "unsupported"].includes(source.status);
+  return !["ok", "disabled", "unsupported", "refreshing", "pending"].includes(source.status);
 }
 
 function VoiceDetailSkeleton() {

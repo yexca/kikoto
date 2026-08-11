@@ -34,6 +34,35 @@ Demo mode.
 alias may reference a persisted edition work, but metadata-only aliases do not
 create works and do not imply local or remote file availability.
 
+## Voice Catalog Discovery
+
+Important tables:
+
+- `voice_catalog_item`
+- `voice_catalog_source`
+- `voice_catalog_refresh_state`
+
+`voice_catalog_item` is a person-scoped discovery projection keyed by canonical
+`primary_code`. It lets a voice actor page retain remote discoveries before a
+corresponding `work` exists. A remote-only catalog item does not create a work,
+credit, logical work, or second identity. When the canonical work already
+exists, `work_id` links the projection to that same work.
+
+`voice_catalog_source` records the exact remote code and catalog availability
+observed through a `metadata_provider`, using the same source-derived provider
+identity as the circle catalog. A complete successful source refresh marks
+older observations from that provider `not_found`; a failed or cancelled source
+refresh leaves its previous observations intact. The configured `file_source`
+is mapped separately when Kikoto projects known-work availability into
+`work_source_presence`; concrete playable paths still belong in
+`media_file_location`.
+
+`voice_catalog_refresh_state` stores the alias query set, generation, per-source
+completion, and latest durable workflow result. Person merge review snapshots
+include both sides' voice catalogs. A merge retains their canonical union and
+invalidates the target refresh state because the confirmed alias set changed;
+Undo restores both captured catalogs and refresh states.
+
 ## File Availability
 
 Important tables:
@@ -127,6 +156,9 @@ ordering.
 - Concrete local, cache, stream, and download paths go in `media_file_location`.
 - Provider snapshots stay available for traceability even when normalized work
   fields are updated.
+- Catalog discovery may retain a canonical code without materializing a `work`;
+  only an existing, tracked, local, cached, or explicitly requested work is a
+  metadata root.
 - Interactive code and text search reads normalized metadata and aliases rather
   than scanning raw provider snapshot JSON.
 - User state should survive metadata refresh and source replacement.

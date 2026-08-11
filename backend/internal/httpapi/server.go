@@ -47,6 +47,7 @@ type Server struct {
 	metadataSyncMu                 sync.Mutex
 	jobRunnerMu                    sync.Mutex
 	jobRunnerStarted               bool
+	voiceCatalogRefreshMu          sync.Mutex
 	fetchStagingCleanupMu          sync.Mutex
 	sourceGate                     *sourceRequestGate
 	localMediaIndexMu              sync.Mutex
@@ -139,6 +140,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/voices/{personId}", s.getVoice)
 	mux.HandleFunc("GET /api/voices/{personId}/works", s.getVoiceWorks)
 	mux.HandleFunc("GET /api/voices/{personId}/remote-matches", s.getVoiceRemoteMatches)
+	mux.HandleFunc("POST /api/voices/{personId}/auto-refresh", s.autoRefreshVoiceCatalog)
+	mux.HandleFunc("POST /api/voices/{personId}/catalog/refresh", s.refreshVoiceCatalog)
 	mux.HandleFunc("GET /api/voices/{personId}/alias-candidates", s.listVoiceAliasCandidates)
 	mux.HandleFunc("POST /api/voices/{personId}/aliases", s.createVoiceAlias)
 	mux.HandleFunc("DELETE /api/voices/{personId}/aliases/{aliasId}", s.deleteVoiceAlias)
@@ -794,6 +797,27 @@ func (s *Server) canonicalWorkForCode(ctx context.Context, code string) (canonic
 		FROM work_edition AS edition
 		INNER JOIN logical_work AS logical ON logical.id = edition.logical_work_id
 		WHERE UPPER(edition.primary_code) = UPPER(?)
+	`, code).Scan(&canonicalID, &canonicalCode)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return canonicalWorkRef{}, err
+	}
+	if err == nil {
+		canonicalCode = normalizeDLsiteCode(canonicalCode)
+		if canonicalID.Valid {
+			return canonicalWorkRef{WorkID: canonicalID.Int64, Code: canonicalCode, Known: true}, nil
+		}
+		if id, ok := s.workIDForCode(ctx, canonicalCode); ok {
+			return canonicalWorkRef{WorkID: id, Code: canonicalCode, Known: true}, nil
+		}
+		return canonicalWorkRef{Code: canonicalCode, Known: false}, nil
+	}
+	err = s.db.QueryRowContext(ctx, `
+		SELECT logical.canonical_work_id, logical.canonical_code
+		FROM work_code_alias AS alias
+		INNER JOIN logical_work AS logical ON logical.id = alias.logical_work_id
+		WHERE UPPER(alias.primary_code) = UPPER(?)
+		ORDER BY CASE WHEN alias.source_work_id IS NOT NULL THEN 0 ELSE 1 END, alias.id
+		LIMIT 1
 	`, code).Scan(&canonicalID, &canonicalCode)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return canonicalWorkRef{}, err

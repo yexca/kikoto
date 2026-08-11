@@ -1,8 +1,9 @@
-import { Check, Columns3, X } from "lucide-react";
+import { Check, Columns3, ListMusic, Search, X } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { WorkCollectionColumnSetting } from "@/components/work-collection/WorkCollectionLayout";
+import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 
 export type VoiceWorkFilter = "all" | "available" | "local" | "remote" | "missing";
 
@@ -25,6 +26,11 @@ export function VoiceWorkOptionsSheet({
   onClose,
   filter,
   onFilterChange,
+  query,
+  onQueryChange,
+  pageSize,
+  pageSizeOptions,
+  onPageSizeChange,
   mobileColumns,
   onMobileColumnsChange,
   selectionMode,
@@ -34,6 +40,11 @@ export function VoiceWorkOptionsSheet({
   onClose: () => void;
   filter: VoiceWorkFilter;
   onFilterChange: (value: VoiceWorkFilter) => void;
+  query: string;
+  onQueryChange: (value: string) => void;
+  pageSize: number;
+  pageSizeOptions: readonly number[];
+  onPageSizeChange: (value: number) => void;
   mobileColumns: WorkCollectionColumnSetting;
   onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
   selectionMode: boolean;
@@ -77,6 +88,33 @@ export function VoiceWorkOptionsSheet({
         </div>
 
         <fieldset className="mt-4 space-y-2">
+          <legend className="text-sm font-medium">Search</legend>
+          <div className="flex min-h-11 items-center gap-2 rounded-md border bg-background px-3">
+            <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <input
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+              value={query}
+              onKeyDown={dismissKeyboardOnEnter}
+              onChange={(event) => onQueryChange(event.target.value)}
+              placeholder="Search voice works"
+              aria-label="Search voice works"
+            />
+            {query.trim() && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                aria-label="Clear voice work search"
+                title="Clear voice work search"
+                onClick={() => onQueryChange("")}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </fieldset>
+
+        <fieldset className="mt-4 space-y-2">
           <legend className="text-sm font-medium">Availability</legend>
           <div className="grid grid-cols-2 gap-2" role="group" aria-label="Voice work availability">
             {filterOptions.map((option) => (
@@ -101,6 +139,23 @@ export function VoiceWorkOptionsSheet({
                 ariaLabel={option.ariaLabel}
                 icon={<Columns3 className="h-4 w-4" />}
                 onClick={() => onMobileColumnsChange(option.value)}
+              />
+            ))}
+          </div>
+        </fieldset>
+
+        <fieldset className="mt-4 space-y-2">
+          <legend className="flex items-center gap-2 text-sm font-medium">
+            <ListMusic className="h-4 w-4" aria-hidden="true" />
+            Per page
+          </legend>
+          <div className="grid grid-cols-2 gap-2" role="group" aria-label="Voice work page size">
+            {pageSizeOptions.map((option) => (
+              <OptionButton
+                key={option}
+                active={pageSize === option}
+                label={`${option} per page`}
+                onClick={() => onPageSizeChange(option)}
               />
             ))}
           </div>

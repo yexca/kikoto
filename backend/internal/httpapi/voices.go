@@ -83,15 +83,18 @@ type voiceMergeReview struct {
 }
 
 type personMergeSnapshot struct {
-	SourcePerson   personSnapshot              `json:"sourcePerson"`
-	Aliases        []personAliasSnapshot       `json:"aliases"`
-	Credits        []workCreditSnapshot        `json:"credits"`
-	States         []userPersonStateSnapshot   `json:"states"`
-	TagLinks       []userPersonTagLinkSnapshot `json:"tagLinks"`
-	TargetCredits  []workCreditSnapshot        `json:"targetCredits"`
-	TargetStates   []userPersonStateSnapshot   `json:"targetStates"`
-	TargetTagLinks []userPersonTagLinkSnapshot `json:"targetTagLinks"`
-	AddedAliases   []string                    `json:"addedAliases"`
+	SourcePerson    personSnapshot              `json:"sourcePerson"`
+	Aliases         []personAliasSnapshot       `json:"aliases"`
+	Credits         []workCreditSnapshot        `json:"credits"`
+	States          []userPersonStateSnapshot   `json:"states"`
+	TagLinks        []userPersonTagLinkSnapshot `json:"tagLinks"`
+	TargetCredits   []workCreditSnapshot        `json:"targetCredits"`
+	TargetStates    []userPersonStateSnapshot   `json:"targetStates"`
+	TargetTagLinks  []userPersonTagLinkSnapshot `json:"targetTagLinks"`
+	AddedAliases    []string                    `json:"addedAliases"`
+	CatalogCaptured bool                        `json:"catalogCaptured,omitempty"`
+	SourceCatalog   voiceCatalogPersonSnapshot  `json:"sourceCatalog,omitempty"`
+	TargetCatalog   voiceCatalogPersonSnapshot  `json:"targetCatalog,omitempty"`
 }
 
 type personSnapshot struct {
@@ -221,6 +224,7 @@ type voiceRemoteWork struct {
 	HasLocal       bool     `json:"hasLocal"`
 	HasCache       bool     `json:"hasCache"`
 	HasRemote      bool     `json:"hasRemote"`
+	Availability   string   `json:"availability,omitempty"`
 }
 
 func (s *Server) listVoices(w http.ResponseWriter, r *http.Request) {
@@ -252,7 +256,9 @@ func (s *Server) listVoices(w http.ResponseWriter, r *http.Request) {
 	pageItems := summaries[start:end]
 	for index := range pageItems {
 		if pageItems[index].LatestWork != nil {
-			pageItems[index].LatestWork.CoverURL = s.coverURL(pageItems[index].LatestWork.PrimaryCode)
+			if coverURL := s.coverURL(pageItems[index].LatestWork.PrimaryCode); coverURL != "" {
+				pageItems[index].LatestWork.CoverURL = coverURL
+			}
 		}
 	}
 	writeJSON(w, http.StatusOK, voiceSummaryPage{
@@ -312,14 +318,12 @@ func (s *Server) getVoiceWorks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getVoiceRemoteMatches(w http.ResponseWriter, r *http.Request) {
-	userID := optionalUserID(r.Context())
 	personID, err := parseInt64PathValue(r, "personId")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
 		return
 	}
-	summary, err := s.loadVoiceSummary(r.Context(), userID, personID)
-	if err != nil {
+	if _, err := s.loadPersonName(r.Context(), personID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
 			return
@@ -327,12 +331,17 @@ func (s *Server) getVoiceRemoteMatches(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	matches, err := s.searchVoiceRemoteSources(r.Context(), summary.PersonID, summary.DisplayName)
+	state, err := s.currentVoiceCatalogRefreshState(r.Context(), personID)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"personId": personID, "remoteMatches": matches})
+	matches, err := s.loadVoiceCatalogMatches(r.Context(), personID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"personId": personID, "remoteMatches": matches, "refresh": state})
 }
 
 func (s *Server) listVoiceAliasCandidates(w http.ResponseWriter, r *http.Request) {
@@ -687,23 +696,60 @@ func (s *Server) loadVoiceSummary(ctx context.Context, userID int64, personID in
 	}
 	item.LatestWork = latestByPerson[personID]
 	if item.LatestWork != nil {
-		item.LatestWork.CoverURL = s.coverURL(item.LatestWork.PrimaryCode)
+		if coverURL := s.coverURL(item.LatestWork.PrimaryCode); coverURL != "" {
+			item.LatestWork.CoverURL = coverURL
+		}
 	}
 	return item, nil
 }
 
 func voiceSummaryQuery(where string, demo bool) string {
+	creditDemoWhere := ""
+	catalogDemoWhere := ""
 	if demo {
-		if strings.TrimSpace(where) == "" {
-			where = "WHERE " + contentpolicy.DemoEligibleWorkSQL("work")
-		} else {
-			where += " AND " + contentpolicy.DemoEligibleWorkSQL("work")
-		}
+		creditDemoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
+		catalogDemoWhere = `
+			AND EXISTS (
+				SELECT 1
+				FROM work AS demo_work
+				WHERE (demo_work.id = catalog.work_id OR UPPER(demo_work.primary_code) = UPPER(catalog.primary_code))
+					AND ` + contentpolicy.DemoEligibleWorkSQL("demo_work") + `
+			)
+		`
 	}
 	return `
-		WITH work_location_flags AS (
+		WITH credited_roots AS (
 			SELECT
-				COALESCE(logical.canonical_code, work.primary_code) AS logical_code,
+				credit.person_id,
+				UPPER(COALESCE(logical.canonical_code, work.primary_code)) AS logical_code,
+				MAX(work.updated_at) AS last_seen_at
+			FROM work_credit AS credit
+			INNER JOIN work ON work.id = credit.work_id
+			LEFT JOIN work_edition AS edition ON edition.work_id = work.id
+			LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+			WHERE credit.role = 'voice_actor'
+				` + creditDemoWhere + `
+			GROUP BY credit.person_id, UPPER(COALESCE(logical.canonical_code, work.primary_code))
+		), catalog_roots AS (
+			SELECT
+				catalog.person_id,
+				UPPER(catalog.primary_code) AS logical_code,
+				MAX(catalog.updated_at) AS last_seen_at
+			FROM voice_catalog_item AS catalog
+			WHERE 1 = 1
+				` + catalogDemoWhere + `
+			GROUP BY catalog.person_id, UPPER(catalog.primary_code)
+		), voice_work_roots AS (
+			SELECT person_id, logical_code, MAX(last_seen_at) AS last_seen_at
+			FROM (
+				SELECT person_id, logical_code, last_seen_at FROM credited_roots
+				UNION ALL
+				SELECT person_id, logical_code, last_seen_at FROM catalog_roots
+			)
+			GROUP BY person_id, logical_code
+		), work_location_flags AS (
+			SELECT
+				UPPER(COALESCE(logical.canonical_code, work.primary_code)) AS logical_code,
 				MAX(CASE WHEN location.location_type = 'local' AND location.availability = 'available' THEN 1 ELSE 0 END) AS has_local,
 				MAX(CASE WHEN location.location_type IN ('remote_stream', 'remote_download') AND location.availability = 'available' THEN 1 ELSE 0 END) AS has_remote,
 				MAX(CASE WHEN location.location_type = 'cache' AND location.availability = 'available' THEN 1 ELSE 0 END) AS has_cache
@@ -712,7 +758,28 @@ func voiceSummaryQuery(where string, demo bool) string {
 			LEFT JOIN logical_work AS logical ON logical.id = availability_edition.logical_work_id
 			LEFT JOIN media_item AS item ON item.work_id = work.id
 			LEFT JOIN media_file_location AS location ON location.media_item_id = item.id
-			GROUP BY COALESCE(logical.canonical_code, work.primary_code)
+			GROUP BY UPPER(COALESCE(logical.canonical_code, work.primary_code))
+		), work_presence_flags AS (
+			SELECT
+				UPPER(COALESCE(logical.canonical_code, work.primary_code)) AS logical_code,
+				MAX(CASE WHEN presence.availability = 'available' AND source.enabled = 1 THEN 1 ELSE 0 END) AS has_remote
+			FROM work_source_presence AS presence
+			INNER JOIN work ON work.id = presence.work_id
+			INNER JOIN file_source AS source ON source.id = presence.file_source_id
+			LEFT JOIN work_edition AS edition ON edition.work_id = work.id
+			LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+			WHERE presence.presence_type = 'source'
+			GROUP BY UPPER(COALESCE(logical.canonical_code, work.primary_code))
+		), catalog_location_flags AS (
+			SELECT
+				catalog.person_id,
+				UPPER(catalog.primary_code) AS logical_code,
+				MAX(CASE WHEN catalog_source.availability = 'available' AND source.enabled = 1 THEN 1 ELSE 0 END) AS has_remote
+			FROM voice_catalog_item AS catalog
+			LEFT JOIN voice_catalog_source AS catalog_source ON catalog_source.catalog_item_id = catalog.id
+			LEFT JOIN metadata_provider AS provider ON provider.id = catalog_source.provider_id
+			LEFT JOIN file_source AS source ON provider.code = 'kikoeru_source_' || source.code
+			GROUP BY catalog.person_id, UPPER(catalog.primary_code)
 		)
 		SELECT
 			person.id,
@@ -722,24 +789,25 @@ func voiceSummaryQuery(where string, demo bool) string {
 				FROM person_alias AS alias
 				WHERE alias.person_id = person.id
 			), '') AS aliases,
-			COUNT(DISTINCT COALESCE(logical.canonical_code, work.primary_code)) AS known_works,
-			COUNT(DISTINCT CASE WHEN flags.has_local = 1 THEN COALESCE(logical.canonical_code, work.primary_code) END) AS local_works,
-			COUNT(DISTINCT CASE WHEN flags.has_remote = 1 THEN COALESCE(logical.canonical_code, work.primary_code) END) AS remote_works,
-			COUNT(DISTINCT CASE WHEN flags.has_cache = 1 THEN COALESCE(logical.canonical_code, work.primary_code) END) AS cached_works,
+			COUNT(DISTINCT roots.logical_code) AS known_works,
+			COUNT(DISTINCT CASE WHEN locations.has_local = 1 THEN roots.logical_code END) AS local_works,
+			COUNT(DISTINCT CASE WHEN locations.has_remote = 1 OR presence.has_remote = 1 OR catalog_flags.has_remote = 1 THEN roots.logical_code END) AS remote_works,
+			COUNT(DISTINCT CASE WHEN locations.has_cache = 1 THEN roots.logical_code END) AS cached_works,
 			COUNT(DISTINCT CASE
-				WHEN flags.has_local = 1 OR flags.has_remote = 1 OR flags.has_cache = 1
-				THEN COALESCE(logical.canonical_code, work.primary_code)
+				WHEN locations.has_local = 1 OR locations.has_remote = 1 OR locations.has_cache = 1
+					OR presence.has_remote = 1 OR catalog_flags.has_remote = 1
+				THEN roots.logical_code
 			END) AS playable_works,
-			MAX(work.updated_at) AS last_seen_at,
+			MAX(roots.last_seen_at) AS last_seen_at,
 			state.rating,
 			COALESCE(state.note, '') AS note,
 			COALESCE(state.favorite, 0) AS favorite
 		FROM person
-		INNER JOIN work_credit AS credit ON credit.person_id = person.id AND credit.role = 'voice_actor'
-		INNER JOIN work ON work.id = credit.work_id
-		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
-		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
-		LEFT JOIN work_location_flags AS flags ON flags.logical_code = COALESCE(logical.canonical_code, work.primary_code)
+		INNER JOIN voice_work_roots AS roots ON roots.person_id = person.id
+		LEFT JOIN work_location_flags AS locations ON locations.logical_code = roots.logical_code
+		LEFT JOIN work_presence_flags AS presence ON presence.logical_code = roots.logical_code
+		LEFT JOIN catalog_location_flags AS catalog_flags
+			ON catalog_flags.person_id = person.id AND catalog_flags.logical_code = roots.logical_code
 		LEFT JOIN user_person_state AS state ON state.person_id = person.id AND state.user_id = ?
 		` + where + `
 		GROUP BY person.id, person.display_name, state.rating, state.note, state.favorite
@@ -862,27 +930,59 @@ func (s *Server) loadVoiceLatestWorks(ctx context.Context, personIDs []int64) (m
 	if len(personIDs) == 0 {
 		return result, nil
 	}
-	demoWhere := ""
+	creditDemoWhere := ""
+	catalogDemoWhere := ""
 	if s.cfg.IsDemo() {
-		demoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
+		creditDemoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
+		catalogDemoWhere = `
+			AND EXISTS (
+				SELECT 1
+				FROM work AS demo_work
+				WHERE (demo_work.id = catalog.work_id OR UPPER(demo_work.primary_code) = UPPER(catalog.primary_code))
+					AND ` + contentpolicy.DemoEligibleWorkSQL("demo_work") + `
+			)
+		`
 	}
 	query, args := int64InQuery(`
-		WITH ranked AS (
+		WITH candidates AS (
+			SELECT
+				catalog.person_id,
+				UPPER(catalog.primary_code) AS primary_code,
+				COALESCE(NULLIF(work.title, ''), NULLIF(catalog.title, ''), UPPER(catalog.primary_code)) AS title,
+				COALESCE(work.release_date, catalog.release_date) AS release_date,
+				catalog.cover_url
+			FROM voice_catalog_item AS catalog
+			LEFT JOIN work ON work.id = catalog.work_id
+			WHERE 1 = 1
+				`+catalogDemoWhere+`
+			UNION ALL
 			SELECT
 				credit.person_id,
-				UPPER(work.primary_code) AS primary_code,
+				UPPER(COALESCE(logical.canonical_code, work.primary_code)) AS primary_code,
 				work.title,
 				work.release_date,
-				ROW_NUMBER() OVER (
-					PARTITION BY credit.person_id
-					ORDER BY COALESCE(work.release_date, '') DESC, UPPER(work.primary_code) DESC
-				) AS position
+				'' AS cover_url
 			FROM work_credit AS credit
 			INNER JOIN work ON work.id = credit.work_id
+			LEFT JOIN work_edition AS edition ON edition.work_id = work.id
+			LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
 			WHERE credit.role = 'voice_actor'
-				`+demoWhere+`
+				`+creditDemoWhere+`
+				AND NOT EXISTS (
+					SELECT 1
+					FROM voice_catalog_item AS catalog
+					WHERE catalog.person_id = credit.person_id
+						AND UPPER(catalog.primary_code) = UPPER(COALESCE(logical.canonical_code, work.primary_code))
+				)
+		), ranked AS (
+			SELECT *,
+				ROW_NUMBER() OVER (
+					PARTITION BY person_id
+					ORDER BY COALESCE(work.release_date, '') DESC, UPPER(work.primary_code) DESC
+				) AS position
+			FROM candidates AS work
 		)
-		SELECT person_id, primary_code, title, release_date
+		SELECT person_id, primary_code, title, release_date, cover_url
 		FROM ranked
 		WHERE position = 1 AND person_id IN (%s)
 	`, personIDs)
@@ -895,7 +995,7 @@ func (s *Server) loadVoiceLatestWorks(ctx context.Context, personIDs []int64) (m
 		var personID int64
 		var item creatorLatestWork
 		var releaseDate sql.NullString
-		if err := rows.Scan(&personID, &item.PrimaryCode, &item.Title, &releaseDate); err != nil {
+		if err := rows.Scan(&personID, &item.PrimaryCode, &item.Title, &releaseDate, &item.CoverURL); err != nil {
 			return nil, err
 		}
 		item.ReleaseDate = nullableString(releaseDate)
@@ -1881,6 +1981,9 @@ func (s *Server) mergeVoicePeople(ctx context.Context, targetID int64, sourceID 
 	`, targetID, sourceID); err != nil {
 		return nil, err
 	}
+	if err := mergeVoiceCatalogPeople(ctx, tx, targetID, sourceID); err != nil {
+		return nil, err
+	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM work_credit WHERE person_id = ?", sourceID); err != nil {
 		return nil, err
 	}
@@ -2051,6 +2154,11 @@ func (s *Server) undoVoiceMerge(ctx context.Context, targetID int64, mergeID int
 			return nil, err
 		}
 	}
+	if snapshot.CatalogCaptured {
+		if err := restoreVoiceCatalogMergeSnapshot(ctx, tx, targetID, snapshot.SourcePerson.ID, snapshot.TargetCatalog, snapshot.SourceCatalog); err != nil {
+			return nil, err
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE person_merge_review
 		SET status = 'undone',
@@ -2177,6 +2285,17 @@ func loadPersonMergeSnapshot(ctx context.Context, tx *sql.Tx, targetID int64, pe
 		return snapshot, err
 	}
 	snapshot.TargetTagLinks = targetLinks
+	sourceCatalog, err := loadVoiceCatalogPersonSnapshot(ctx, tx, personID)
+	if err != nil {
+		return snapshot, err
+	}
+	targetCatalog, err := loadVoiceCatalogPersonSnapshot(ctx, tx, targetID)
+	if err != nil {
+		return snapshot, err
+	}
+	snapshot.CatalogCaptured = true
+	snapshot.SourceCatalog = sourceCatalog
+	snapshot.TargetCatalog = targetCatalog
 	return snapshot, nil
 }
 

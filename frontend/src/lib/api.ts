@@ -1405,6 +1405,7 @@ export type VoiceRemoteWork = {
   hasLocal: boolean;
   hasCache: boolean;
   hasRemote: boolean;
+  availability?: string;
 };
 
 export type VoiceRemoteSourceSet = {
@@ -1417,6 +1418,35 @@ export type VoiceRemoteSourceSet = {
   elapsedMs: number;
   total: number;
   works: VoiceRemoteWork[];
+};
+
+export type VoiceCatalogSourceStatus = {
+  sourceId: number;
+  sourceCode: string;
+  displayName: string;
+  status: string;
+  error: string;
+  pages: number;
+  total: number;
+  matches: number;
+  elapsedMs: number;
+};
+
+export type VoiceCatalogRefreshState = {
+  status: string;
+  reason: string;
+  lastStatus: string;
+  generation: number;
+  runId?: number;
+  lastAttemptAt: string;
+  lastSuccessAt: string;
+  complete: boolean;
+  pagesFetched: number;
+  catalogWorks: number;
+  metadataQueued: number;
+  queries: string[];
+  sources: VoiceCatalogSourceStatus[];
+  error: string;
 };
 
 export type VoiceDetail = VoiceSummary & {
@@ -1927,9 +1957,13 @@ export const api = {
   getVoiceWorks: (personId: number | string) =>
     getJSON<{ personId: number; works: VoiceKnownWork[] }>(`/api/voices/${encodeURIComponent(String(personId))}/works`),
   getVoiceRemoteMatches: (personId: number | string) =>
-    getJSON<{ personId: number; remoteMatches: VoiceRemoteSourceSet[] }>(
+    getJSON<{ personId: number; remoteMatches: VoiceRemoteSourceSet[]; refresh: VoiceCatalogRefreshState }>(
       `/api/voices/${encodeURIComponent(String(personId))}/remote-matches`,
     ),
+  autoRefreshVoiceCatalog: (personId: number | string) =>
+    postJSON<VoiceCatalogRefreshState>(`/api/voices/${encodeURIComponent(String(personId))}/auto-refresh`),
+  refreshVoiceCatalog: (personId: number | string) =>
+    postJSON<VoiceCatalogRefreshState>(`/api/voices/${encodeURIComponent(String(personId))}/catalog/refresh`),
   listVoiceAliasCandidates: (personId: number, query = "") =>
     getJSON<VoiceAliasCandidate[]>(
       `/api/voices/${personId}/alias-candidates${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ""}`,

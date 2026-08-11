@@ -28,6 +28,7 @@ workflow_definition
 - Cache cleanup.
 - Local location cleanup.
 - Circle metadata refresh.
+- Voice catalog refresh.
 
 ## Popular Collections
 
@@ -107,6 +108,29 @@ Source availability is checked by the backend instead of frontend fan-out.
 Source-change checks first probe source health, then check candidate works only
 against reachable sources. The local library scan does not check remote source
 availability.
+
+## Voice Catalog Refresh
+
+Opening a voice actor detail first reads the persisted local works and voice
+catalog. An authorized client may then request the idempotent automatic refresh
+decision; the catalog GET endpoint itself is read-only. A manual refresh uses
+the same durable `voice_catalog_refresh` workflow and requires metadata-sync
+permission.
+
+The workflow searches the display name and every confirmed alias against each
+enabled compatible source. It follows the source-reported result count through
+all pages and applies no product-level page or result maximum. Outbound response
+limits, a per-source deadline, cancellation, repeated-page detection, and a
+three-source concurrency bound still protect the request boundary. Results are
+deduplicated by canonical `primary_code` before each successful source is
+persisted atomically.
+
+A failed source keeps its previous catalog observations, while a complete
+source marks observations absent from the new generation `not_found`. Remote
+discoveries remain catalog rows and never materialize works recursively. Only
+codes that already resolve to canonical works may enqueue independent metadata
+sync runs. Metadata queue failures can make the workflow partial without making
+an otherwise complete catalog generation stale.
 
 ## Review Candidates
 

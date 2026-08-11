@@ -1733,7 +1733,7 @@ func (s *Server) retryFailedWorkflowJob(ctx context.Context, runID int64) error 
 			AND worker_type IN (
 				'remote_work_fetch', 'remote_media_cache', 'remote_popular_collection',
 				'media_cache_limit_cleanup', 'media_cache_cleanup', 'local_media_delete', 'local_location_cleanup',
-				'media_location_cleanup', 'metadata_family_sync', 'custom_workflow'
+				'media_location_cleanup', 'metadata_family_sync', 'voice_catalog_refresh', 'custom_workflow'
 			)
 		ORDER BY id DESC LIMIT 1
 	`, runID).Scan(

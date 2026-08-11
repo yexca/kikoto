@@ -11,7 +11,9 @@ export type VoiceWorkView = (VoiceKnownWork | VoiceRemoteWork) & {
 };
 
 export function mergeVoiceWorks(knownWorks: VoiceKnownWork[], sourceSets: VoiceRemoteSourceSet[]): VoiceWorkView[] {
-  const remoteWorks = sourceSets.filter((source) => source.status === "ok").flatMap((source) => source.works);
+  const remoteWorks = sourceSets
+    .filter((source) => source.status === "ok" || source.works.some((work) => work.availability !== undefined))
+    .flatMap((source) => source.works);
   const remoteByCanonicalCode = groupRemoteWorks(remoteWorks);
   const consumedCodes = new Set<string>();
 
@@ -51,13 +53,19 @@ export function mergeVoiceWorks(knownWorks: VoiceKnownWork[], sourceSets: VoiceR
       remoteObservations: liveRemoteObservations(matches, [remoteWork.remoteCode, remoteWork.primaryCode]),
     });
   }
-  return [...mergedKnown, ...mergedRemote];
+  return [...mergedKnown, ...mergedRemote].sort(
+    (left, right) =>
+      Number(isLocalVoiceWork(right)) - Number(isLocalVoiceWork(left)) ||
+      voiceWorkSortDate(right).localeCompare(voiceWorkSortDate(left)) ||
+      normalizedCode(left.primaryCode).localeCompare(normalizedCode(right.primaryCode)),
+  );
 }
 
 export function voiceWorkRemoteTarget(work: VoiceWorkView): { sourceId: number; code: string } | null {
   const observation = work.remoteObservations?.find((item) => item.status === "available");
   if (observation) return { sourceId: observation.sourceId, code: observation.remoteCode };
   if ("sourceId" in work && validSourceID(work.sourceId)) {
+    if (!work.remotePlayable && work.availability !== "available" && !work.hasRemote) return null;
     const code = (work.remoteCode || work.primaryCode).trim();
     return code ? { sourceId: work.sourceId, code } : null;
   }
@@ -111,7 +119,7 @@ function liveRemoteObservations(works: VoiceRemoteWork[], preferredCodes: string
       sourceCode: work.sourceCode,
       sourceName: work.sourceName,
       remoteCode,
-      status: "available",
+      status: normalizedAvailability(work.availability || (work.remotePlayable ? "available" : "unknown")),
     });
   }
   const preferred = preferredCodes.map(normalizedCode).filter(Boolean);
@@ -123,6 +131,14 @@ function liveRemoteObservations(works: VoiceRemoteWork[], preferredCodes: string
           preferredCodeRank(right.observation.remoteCode, preferred) || left.index - right.index,
     )
     .map(({ observation }) => observation);
+}
+
+function isLocalVoiceWork(work: VoiceWorkView) {
+  return "local" in work ? work.local : work.hasLocal;
+}
+
+function voiceWorkSortDate(work: VoiceWorkView) {
+  return ("releaseDate" in work ? work.releaseDate || "" : "").trim();
 }
 
 function mergeRemoteObservations(

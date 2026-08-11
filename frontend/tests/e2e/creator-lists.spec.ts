@@ -209,6 +209,21 @@ async function mockCreatorLists(page: Page) {
 }
 
 async function mockCreatorDetails(page: Page) {
+  const voiceCatalogRefresh = {
+    status: "succeeded",
+    reason: "",
+    lastStatus: "succeeded",
+    generation: 1,
+    lastAttemptAt: "",
+    lastSuccessAt: "",
+    complete: true,
+    pagesFetched: 1,
+    catalogWorks: 0,
+    metadataQueued: 0,
+    queries: [voice.displayName, "Voice alias"],
+    sources: [],
+    error: "",
+  };
   const voiceDetail = {
     ...voice,
     aliases: [voice.displayName, "Voice alias"],
@@ -273,8 +288,13 @@ async function mockCreatorDetails(page: Page) {
               works: [],
             },
           ],
+          refresh: voiceCatalogRefresh,
         },
       });
+      return;
+    }
+    if (url.pathname === "/api/voices/7/auto-refresh" && route.request().method() === "POST") {
+      await route.fulfill({ json: voiceCatalogRefresh });
       return;
     }
     if (url.pathname === "/api/voices/7/merges") {
@@ -399,7 +419,27 @@ test("voice detail renders one stable work-loading region for local and remote d
   });
   await page.route("**/api/voices/7/remote-matches", async (route) => {
     await remoteGate;
-    await route.fulfill({ json: { personId: 7, remoteMatches: [] } });
+    await route.fulfill({
+      json: {
+        personId: 7,
+        remoteMatches: [],
+        refresh: {
+          status: "succeeded",
+          reason: "",
+          lastStatus: "succeeded",
+          generation: 1,
+          lastAttemptAt: "",
+          lastSuccessAt: "",
+          complete: true,
+          pagesFetched: 1,
+          catalogWorks: 0,
+          metadataQueued: 0,
+          queries: ["Example Voice"],
+          sources: [],
+          error: "",
+        },
+      },
+    });
   });
 
   await page.goto("/voices/7");
