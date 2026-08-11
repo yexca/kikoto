@@ -186,6 +186,13 @@ async function mockCreatorLists(page: Page) {
               ...voice,
               personId: 8,
               displayName: "No Cover Voice",
+              userTags: [
+                { id: 3, name: "Warm", color: "" },
+                { id: 4, name: "Calm", color: "" },
+                { id: 5, name: "Clear", color: "" },
+                { id: 6, name: "Story", color: "" },
+                { id: 7, name: "Drama", color: "" },
+              ],
               latestWork: { ...latestWork, primaryCode: "RJ00000002", coverUrl: "" },
             },
           ],
@@ -328,8 +335,13 @@ test("voice list keeps latest work, tags, and availability visible on mobile", a
 
   await expect(page.getByRole("heading", { name: "Voice Actors" })).toBeVisible();
   await expect(page.getByText("Latest RJ00000000", { exact: true })).toBeVisible();
-  await expect(page.getByText("Cache 1", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("5 works", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Local 2", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Remote 1", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Cache 1", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("5 works", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("2 unavailable", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Drama", { exact: true })).toBeVisible();
+  await expect(page.getByText("+1", { exact: true })).toHaveCount(0);
   await expect(
     page
       .locator("div.inline-flex")
@@ -409,22 +421,69 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   await expect(page.getByRole("heading", { name: "Example Voice", exact: true })).toBeVisible();
   const statistics = page.locator('[aria-label="Voice actor statistics"]');
   await expect(statistics).toBeVisible();
-  await expect(statistics).toContainText("works: 5");
-  await expect(statistics).toContainText("playable: 4");
-  await expect(statistics).toContainText("local: 2");
-  await expect(statistics).toContainText("remote: 1");
+  await expect(statistics).toContainText("Local 2");
+  await expect(statistics).toContainText("Remote 1");
+  await expect(statistics).toContainText("Soft");
+  await expect(statistics).not.toContainText("works: 5");
+  await expect(statistics).not.toContainText("playable: 4");
   const statisticItems = statistics.locator(":scope > *");
-  await expect(statisticItems).toHaveCount(4);
+  await expect(statisticItems).toHaveCount(3);
   const statisticTops = await statisticItems.evaluateAll((elements) =>
     elements.map((element) => Math.round(element.getBoundingClientRect().top)),
   );
-  expect(Math.max(...statisticTops) - Math.min(...statisticTops)).toBeLessThanOrEqual(1);
+  expect(Math.max(...statisticTops) - Math.min(...statisticTops)).toBeLessThanOrEqual(4);
 
   await expect(page.getByRole("button", { name: /^Aliases/ })).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByRole("button", { name: /^Open Remote Sources/ })).toHaveAttribute("aria-expanded", "false");
+  const actions = page.getByRole("group", { name: "Voice actor actions" });
+  await expect(actions.getByRole("button", { name: "Add favorite" })).toBeVisible();
+  await expect(actions.getByText("Favorite", { exact: true })).toBeHidden();
+  await expect(actions.getByRole("button", { name: /^Aliases/ })).toBeVisible();
+  await expect(actions.getByText("Sources", { exact: true })).toBeVisible();
+  await expect(actions.getByText("Remote sources", { exact: true })).toBeHidden();
+  const actionMetrics = await actions.locator(":scope > button").evaluateAll((elements) =>
+    elements.map((element) => ({
+      label: element.getAttribute("aria-label"),
+      height: element.getBoundingClientRect().height,
+      width: element.getBoundingClientRect().width,
+      top: Math.round(element.getBoundingClientRect().top),
+    })),
+  );
+  expect(actionMetrics.map((metric) => metric.label)).toEqual(["Add favorite", null, "Open Remote Sources"]);
+  expect(actionMetrics.every((metric) => metric.height >= 44 && metric.width >= 44)).toBe(true);
+  expect(
+    Math.max(...actionMetrics.map((metric) => metric.top)) - Math.min(...actionMetrics.map((metric) => metric.top)),
+  ).toBeLessThanOrEqual(1);
   await expect(page.getByRole("dialog", { name: "Aliases" })).toHaveCount(0);
   await expect(page.getByRole("dialog", { name: "Remote Sources" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Open voice work options" }).click();
+  const optionsDialog = page.getByRole("dialog", { name: "Voice work options" });
+  await expect(optionsDialog).toBeVisible();
+  await optionsDialog.getByRole("button", { name: "Remote", exact: true }).click();
+  await expect(optionsDialog.getByRole("button", { name: "Remote", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await optionsDialog.getByRole("button", { name: "2 columns" }).click();
+  await expect(optionsDialog.getByRole("button", { name: "2 columns" })).toHaveAttribute("aria-pressed", "true");
+  await optionsDialog.getByRole("button", { name: "Select works" }).click();
+  await expect(optionsDialog).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("desktop voice detail keeps full action labels and inline work controls", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockCreatorDetails(page);
+  await page.goto("/voices/7");
+
+  const actions = page.getByRole("group", { name: "Voice actor actions" });
+  await expect(actions.getByText("Favorite", { exact: true })).toBeVisible();
+  await expect(actions.getByText("Remote sources", { exact: true })).toBeVisible();
+  await expect(actions.getByText("Sources", { exact: true })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Open voice work options" })).toBeHidden();
+  await expect(page.getByLabel("Work filter")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Columns:/ })).toBeVisible();
 });
 
 test("circle detail keeps availability and primary actions compact on mobile", async ({ page }) => {

@@ -35,6 +35,7 @@ import {
 } from "@/components/creator/CreatorCard";
 import { CreatorListMobileOptions } from "@/components/creator/CreatorListMobileOptions";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
+import { VoiceWorkOptionsSheet, type VoiceWorkFilter } from "@/pages/VoiceWorkOptionsSheet";
 import { useAuth } from "@/auth/AuthProvider";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
@@ -103,7 +104,6 @@ import { voiceWorkIsExplicitlyUnavailable } from "@/pages/voiceWorkAvailabilityM
 
 type CreatorKind = "circle" | "voice";
 type VoiceFilter = "all" | "favorite" | "tagged" | "available" | "local" | "remote" | "missing";
-type WorkFilter = "all" | "available" | "local" | "remote" | "missing";
 const voicePageSizeOptions = [24, 48, 96] as const;
 const voiceFilterOptions: readonly { value: VoiceFilter; label: string }[] = [
   { value: "all", label: "All voices" },
@@ -370,6 +370,7 @@ function VoiceListPage() {
                   favorite={voice.favorite}
                   userTags={voice.userTags}
                   workCount={voice.knownWorks}
+                  availabilityCounts={{ local: voice.localWorks, remote: voice.remoteWorks }}
                   unavailableCount={Math.max(0, voice.knownWorks - voice.playableWorks)}
                   sources={voice.sourceSummaries}
                   onOpen={() => openVoiceRoute(voice.personId)}
@@ -415,7 +416,8 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const [remoteError, setRemoteError] = useState("");
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<WorkFilter>("all");
+  const [filter, setFilter] = useState<VoiceWorkFilter>("all");
+  const [workOptionsOpen, setWorkOptionsOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof workPageSizeOptions)[number]>(24);
   const { mobileColumns, desktopColumns, setMobileColumns, setDesktopColumns } = useWorkCollectionLayout();
@@ -432,6 +434,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   useEffect(() => {
     setIsLoading(true);
     setDetailPanel(null);
+    setWorkOptionsOpen(false);
     setRemoteMatches([]);
     setRemoteError("");
     setNotFound(false);
@@ -666,6 +669,13 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     });
   };
 
+  const toggleSelectionMode = () => {
+    setSelectionMode((value) => {
+      if (value) setSelectedWorkKeys(new Set());
+      return !value;
+    });
+  };
+
   const toggleVisibleSelection = (checked: boolean) => {
     setSelectedWorkKeys((current) => {
       const next = new Set(current);
@@ -817,21 +827,34 @@ function VoiceDetailPage({ personId }: { personId: number }) {
                   <Badge variant="secondary">person route</Badge>
                 </div>
                 <h2 className="mt-3 truncate text-2xl font-semibold lg:text-3xl">{detail.displayName}</h2>
-                <UserTagRow tags={detail.userTags} onSave={saveVoiceTags} className="mt-3" />
+                <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5" aria-label="Voice actor statistics">
+                  <Badge variant={detail.localWorks > 0 ? "secondary" : "outline"} className="tabular-nums">
+                    Local {detail.localWorks}
+                  </Badge>
+                  <Badge variant="outline" className="tabular-nums">
+                    Remote {detail.remoteWorks}
+                  </Badge>
+                  <UserTagRow tags={detail.userTags} onSave={saveVoiceTags} className="min-w-0 flex-1" />
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-nowrap shrink-0 gap-1.5 lg:gap-2" role="group" aria-label="Voice actor actions">
                 <Button
                   variant={detail.favorite ? "default" : "outline"}
-                  size="sm"
+                  size="icon"
+                  className="h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+                  aria-label={detail.favorite ? "Remove favorite" : "Add favorite"}
+                  aria-pressed={detail.favorite}
+                  title={detail.favorite ? "Remove favorite" : "Add favorite"}
                   onClick={() => void toggleFavorite()}
                 >
                   <Heart className={`h-4 w-4 ${detail.favorite ? "fill-current" : ""}`} />
-                  Favorite
+                  <span className="hidden lg:inline">Favorite</span>
                 </Button>
                 <Button
                   ref={aliasActionRef}
                   variant={detailPanel === "aliases" ? "secondary" : "outline"}
                   size="sm"
+                  className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
                   aria-haspopup="dialog"
                   aria-expanded={detailPanel === "aliases"}
                   aria-controls={detailPanel === "aliases" ? aliasPanelID : undefined}
@@ -845,6 +868,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
                   ref={remoteActionRef}
                   variant={detailPanel === "remote" ? "secondary" : "outline"}
                   size="sm"
+                  className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
                   aria-haspopup="dialog"
                   aria-expanded={detailPanel === "remote"}
                   aria-controls={detailPanel === "remote" ? remotePanelID : undefined}
@@ -852,21 +876,12 @@ function VoiceDetailPage({ personId }: { personId: number }) {
                   onClick={() => setDetailPanel((current) => (current === "remote" ? null : "remote"))}
                 >
                   {isRemoteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Cloud className="h-4 w-4" />}
-                  <span>Remote sources</span>
+                  <span className="lg:hidden">Sources</span>
+                  <span className="hidden lg:inline">Remote sources</span>
                   {remoteSourceWarning && <span className="text-warning-foreground">!</span>}
                   {remoteMatches.length > 0 && <span className="tabular-nums">{remoteMatches.length}</span>}
                 </Button>
               </div>
-            </div>
-
-            <div
-              className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
-              aria-label="Voice actor statistics"
-            >
-              <VoiceInlineStat label="works" value={detail.knownWorks} />
-              <VoiceInlineStat label="playable" value={detail.playableWorks} />
-              <VoiceInlineStat label="local" value={detail.localWorks} />
-              <VoiceInlineStat label="remote" value={detail.remoteWorks} />
             </div>
           </CardContent>
         </Card>
@@ -917,7 +932,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       </section>
 
       <section className="space-y-3">
-        <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 lg:flex-row lg:items-center">
           <div className="flex min-h-10 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground">
             <Search className="h-4 w-4" />
             <input
@@ -927,8 +942,21 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search voice works"
             />
+            <Button
+              variant="outline"
+              size="icon"
+              className="relative shrink-0 lg:hidden"
+              aria-label="Open voice work options"
+              title="Voice work options"
+              onClick={() => setWorkOptionsOpen(true)}
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              {(filter !== "all" || selectionMode) && (
+                <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+              )}
+            </Button>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="hidden shrink-0 gap-2 lg:flex">
             <WorkCollectionLayoutPicker
               mobileColumns={mobileColumns}
               desktopColumns={desktopColumns}
@@ -938,7 +966,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
             <select
               className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={filter}
-              onChange={(event) => setFilter(event.target.value as WorkFilter)}
+              onChange={(event) => setFilter(event.target.value as VoiceWorkFilter)}
               aria-label="Work filter"
             >
               <option value="all">All works</option>
@@ -947,24 +975,24 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               <option value="remote">Remote</option>
               <option value="missing">Missing</option>
             </select>
-            <Button variant="outline" size="sm" disabled>
-              <SlidersHorizontal className="h-4 w-4" />
-              More
-            </Button>
-            <Button
-              variant={selectionMode ? "default" : "outline"}
-              size="sm"
-              onClick={() => {
-                setSelectionMode((value) => {
-                  if (value) setSelectedWorkKeys(new Set());
-                  return !value;
-                });
-              }}
-            >
+            <Button variant={selectionMode ? "default" : "outline"} size="sm" onClick={toggleSelectionMode}>
               Select
             </Button>
           </div>
         </div>
+        <VoiceWorkOptionsSheet
+          open={workOptionsOpen}
+          onClose={() => setWorkOptionsOpen(false)}
+          filter={filter}
+          onFilterChange={setFilter}
+          mobileColumns={mobileColumns}
+          onMobileColumnsChange={setMobileColumns}
+          selectionMode={selectionMode}
+          onSelectWorks={() => {
+            setWorkOptionsOpen(false);
+            toggleSelectionMode();
+          }}
+        />
         {selectionMode && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
             <div className="flex items-center gap-2 text-muted-foreground">
@@ -1772,14 +1800,6 @@ function normalizeListeningStatus(status: string): ListeningStatus {
 function listeningStatusLabel(status: string) {
   return (
     listeningStatusOptions.find((option) => option.value === normalizeListeningStatus(status))?.label ?? "Unmarked"
-  );
-}
-
-function VoiceInlineStat({ label, value }: { label: string; value: number }) {
-  return (
-    <span className="whitespace-nowrap">
-      {label}: <span className="font-medium tabular-nums text-foreground">{value}</span>
-    </span>
   );
 }
 

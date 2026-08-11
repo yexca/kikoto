@@ -1325,6 +1325,7 @@ function FavoriteVoiceCard({ voice, onChange }: { voice: VoiceSummary; onChange:
       favorite={voice.favorite}
       userTags={voice.userTags}
       workCount={voice.knownWorks}
+      availabilityCounts={{ local: voice.localWorks, remote: voice.remoteWorks }}
       unavailableCount={Math.max(0, voice.knownWorks - voice.playableWorks)}
       sources={voice.sourceSummaries}
       onOpen={() => openVoiceRoute(voice.personId)}

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { assetURL } from "@/lib/api";
 
-export const creatorCardMinHeightClassName = "min-h-60";
+export const creatorCardMinHeightClassName = "min-h-44";
 
 export type CreatorLatestWork = {
   primaryCode: string;
@@ -35,6 +35,7 @@ export function CreatorCard({
   syncState,
   workCount,
   availabilitySummary,
+  availabilityCounts,
   unavailableCount,
   sources,
   onOpen,
@@ -51,6 +52,7 @@ export function CreatorCard({
   syncState?: string;
   workCount: number;
   availabilitySummary?: { available: number; total: number };
+  availabilityCounts?: { local: number; remote: number };
   unavailableCount: number;
   sources: CreatorSourceSummary[];
   onOpen: () => void;
@@ -116,7 +118,7 @@ export function CreatorCard({
             </Button>
           </div>
 
-          <UserTagRow tags={userTags} compact onSave={onTagsSave} className="mt-2" />
+          <UserTagRow tags={userTags} onSave={onTagsSave} className="mt-2" />
 
           <div className="mt-auto flex flex-wrap items-center gap-1 border-t pt-2 text-xs text-muted-foreground">
             {syncState && <SyncBadge state={syncState} />}
@@ -124,6 +126,15 @@ export function CreatorCard({
               <Badge variant={availabilitySummary.available > 0 ? "success" : "warning"} className="tabular-nums">
                 Available {availabilitySummary.available}/{availabilitySummary.total}
               </Badge>
+            ) : availabilityCounts ? (
+              <>
+                <Badge variant={availabilityCounts.local > 0 ? "secondary" : "outline"} className="tabular-nums">
+                  Local {availabilityCounts.local}
+                </Badge>
+                <Badge variant="outline" className="tabular-nums">
+                  Remote {availabilityCounts.remote}
+                </Badge>
+              </>
             ) : (
               <>
                 {availableSources.length > 0 ? (
