@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metasync"
 )
 
@@ -126,7 +125,7 @@ func (s *Server) syncWorkEntityMetadata(ctx context.Context, code string) error 
 
 func (s *Server) syncWorkMetadataFamily(ctx context.Context, code string) (metasync.DLsiteFamilySyncResult, error) {
 	language := normalizeDLsiteLanguage(s.settingStringContext(ctx, "dlsite_metadata_language", "ja-jp"))
-	syncer := metasync.NewDLsiteSyncer(s.db, dlsite.NewClient(nil)).
+	syncer := metasync.NewDLsiteSyncer(s.db, s.dlsiteClient).
 		WithCacheRoot(s.cfg.CacheRoot).
 		WithLanguages(dlsiteLanguageFallbacks(language)).
 		WithRequestPacing(

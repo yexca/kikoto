@@ -37,6 +37,7 @@ import { CreatorListMobileOptions } from "@/components/creator/CreatorListMobile
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { VoiceWorkOptionsSheet, type VoiceWorkFilter } from "@/pages/VoiceWorkOptionsSheet";
+import { VoiceAdvancedRefreshSheet, isVoiceCatalogSourceSelectable } from "@/pages/VoiceAdvancedRefreshSheet";
 import { useAuth } from "@/auth/AuthProvider";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
@@ -78,6 +79,7 @@ import {
   type VoiceAlias,
   type VoiceAliasCandidate,
   type VoiceCatalogRefreshState,
+  type VoiceCatalogRefreshRequest,
   type VoiceDetail,
   type VoiceKnownWork,
   type VoiceMergeReview,
@@ -428,11 +430,11 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
-  const [detailPanel, setDetailPanel] = useState<"aliases" | "remote" | null>(null);
+  const [detailPanel, setDetailPanel] = useState<"aliases" | "advanced" | null>(null);
   const aliasActionRef = useRef<HTMLButtonElement | null>(null);
-  const remoteActionRef = useRef<HTMLButtonElement | null>(null);
+  const advancedActionRef = useRef<HTMLButtonElement | null>(null);
   const aliasPanelID = useId();
-  const remotePanelID = useId();
+  const advancedPanelID = useId();
 
   useEffect(() => {
     setIsLoading(true);
@@ -581,7 +583,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     };
   }, [canAutoRefreshCatalog, catalogRefresh?.runId, catalogRefreshActive, personId]);
 
-  const forceRefreshCatalog = async () => {
+  const refreshVoiceCatalog = async (request: VoiceCatalogRefreshRequest, queuedMessage: string) => {
     if (!canForceRefreshCatalog) {
       await loadRemoteMatches(true);
       return;
@@ -589,12 +591,10 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setIsRemoteLoading(true);
     setRemoteError("");
     try {
-      const refresh = await api.refreshVoiceCatalog(personId);
+      const refresh = await api.refreshVoiceCatalog(personId, request);
       setCatalogRefresh(refresh);
       toast.info(
-        refresh.status === "queued" || refresh.status === "running"
-          ? "Voice catalog refresh queued."
-          : "Voice catalog is current.",
+        refresh.status === "queued" || refresh.status === "running" ? queuedMessage : "Voice catalog is current.",
       );
     } catch (error) {
       setRemoteError(error instanceof Error ? error.message : "Voice catalog refresh failed.");
@@ -602,6 +602,15 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     } finally {
       setIsRemoteLoading(false);
     }
+  };
+
+  const retryVoiceMetadata = () => void refreshVoiceCatalog({ scope: "metadata" }, "Voice metadata refresh queued.");
+  const refreshAllRemoteSources = () => {
+    const sourceIds = remoteMatches.filter(isVoiceCatalogSourceSelectable).map((source) => source.sourceId);
+    return void refreshVoiceCatalog(
+      { scope: "remote", mode: "incremental", ...(sourceIds.length > 0 ? { sourceIds } : {}) },
+      "Voice remote refresh queued.",
+    );
   };
 
   const knownWorks = detail?.works ?? [];
@@ -986,25 +995,56 @@ function VoiceDetailPage({ personId }: { personId: number }) {
                   {alternateAliasCount > 0 && <span className="tabular-nums">{alternateAliasCount}</span>}
                 </Button>
                 <Button
-                  ref={remoteActionRef}
-                  variant={detailPanel === "remote" ? "secondary" : "outline"}
-                  size="sm"
-                  className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
-                  aria-haspopup="dialog"
-                  aria-expanded={detailPanel === "remote"}
-                  aria-controls={detailPanel === "remote" ? remotePanelID : undefined}
-                  aria-label={remoteSourceWarning ? "Open Remote Sources with attention" : "Open Remote Sources"}
-                  onClick={() => setDetailPanel((current) => (current === "remote" ? null : "remote"))}
+                  variant="outline"
+                  size="icon"
+                  className="h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+                  aria-label="Retry voice metadata"
+                  title="Retry metadata"
+                  disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
+                  onClick={retryVoiceMetadata}
+                >
+                  {isRemoteLoading || catalogRefreshActive ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  <span className="hidden lg:inline">Retry metadata</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+                  aria-label="Refresh voice remote sources"
+                  title="Refresh remote"
+                  disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
+                  onClick={refreshAllRemoteSources}
                 >
                   {isRemoteLoading || catalogRefreshActive ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <Cloud className="h-4 w-4" />
                   )}
-                  <span className="lg:hidden">Sources</span>
-                  <span className="hidden lg:inline">Remote sources</span>
+                  <span className="hidden lg:inline">Refresh remote</span>
+                </Button>
+                <Button
+                  ref={advancedActionRef}
+                  variant={detailPanel === "advanced" ? "secondary" : "outline"}
+                  size="icon"
+                  className="relative h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+                  aria-haspopup="dialog"
+                  aria-expanded={detailPanel === "advanced"}
+                  aria-controls={detailPanel === "advanced" ? advancedPanelID : undefined}
+                  aria-label={
+                    remoteSourceWarning
+                      ? "Open advanced refresh actions with attention"
+                      : "Open advanced refresh actions"
+                  }
+                  title="Advanced refresh"
+                  onClick={() => setDetailPanel((current) => (current === "advanced" ? null : "advanced"))}
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                  <span className="hidden lg:inline">Advanced</span>
                   {remoteSourceWarning && <span className="text-warning-foreground">!</span>}
-                  {remoteMatches.length > 0 && <span className="tabular-nums">{remoteMatches.length}</span>}
                 </Button>
               </div>
             </div>
@@ -1037,24 +1077,20 @@ function VoiceDetailPage({ personId }: { personId: number }) {
           </div>
         </AnchoredPopover>
 
-        <AnchoredPopover
-          open={detailPanel === "remote"}
-          anchorRef={remoteActionRef}
-          onOpenChange={(open) => setDetailPanel(open ? "remote" : null)}
-          className="w-[min(28rem,calc(100vw-1.5rem))] p-4"
-          bottomCollisionPadding={96}
-          zIndex={70}
-        >
-          <div id={remotePanelID} role="dialog" aria-label="Remote Sources">
-            <RemoteSourcePanel
-              sources={remoteMatches}
-              loading={isRemoteLoading || catalogRefreshActive}
-              error={remoteError}
-              canRefresh={canForceRefreshCatalog}
-              onRetry={() => void forceRefreshCatalog()}
-            />
-          </div>
-        </AnchoredPopover>
+        <VoiceAdvancedRefreshSheet
+          open={detailPanel === "advanced"}
+          anchorRef={advancedActionRef}
+          sources={remoteMatches}
+          loading={isRemoteLoading}
+          refreshing={catalogRefreshActive}
+          error={remoteError}
+          canRefresh={canForceRefreshCatalog}
+          onClose={() => setDetailPanel(null)}
+          onRefreshRemote={(mode, sourceIds) =>
+            void refreshVoiceCatalog({ scope: "remote", mode, sourceIds }, "Voice remote refresh queued.")
+          }
+          onRetryMetadata={retryVoiceMetadata}
+        />
       </section>
 
       <section className="space-y-3">
@@ -1779,104 +1815,6 @@ function voiceWorkCardView(work: VoiceWorkView): WorkCardViewModel {
     userTags: isKnown ? userTagBadges(work.userTags ?? []) : [],
     sourceBadges,
   };
-}
-
-function RemoteSourcePanel({
-  sources,
-  loading,
-  error,
-  canRefresh,
-  onRetry,
-}: {
-  sources: VoiceRemoteSourceSet[];
-  loading: boolean;
-  error: string;
-  canRefresh: boolean;
-  onRetry: () => void;
-}) {
-  return (
-    <div className="space-y-3">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="font-semibold">Remote Sources</h3>
-          <p className="text-xs text-muted-foreground">Persisted catalog observations by source.</p>
-        </div>
-        <Button variant="outline" size="sm" disabled={loading} onClick={onRetry}>
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          {canRefresh ? "Refresh" : "Retry"}
-        </Button>
-      </div>
-      {loading && sources.length === 0 ? (
-        <RemoteSourceSkeleton />
-      ) : (
-        sources.map((source) => (
-          <div key={source.sourceId} className="rounded-md border bg-background p-3 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate font-medium">{source.displayName}</div>
-                <div className="text-xs text-muted-foreground">
-                  {source.total || source.works.length} matches · {source.elapsedMs} ms
-                </div>
-              </div>
-              <Badge variant={source.status === "ok" ? "outline" : "warning"}>{source.status}</Badge>
-            </div>
-            {remoteSourceStatusMessage(source) && (
-              <div className="mt-2 text-xs text-destructive">{remoteSourceStatusMessage(source)}</div>
-            )}
-          </div>
-        ))
-      )}
-      {loading && sources.length > 0 && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Refreshing voice catalog
-        </div>
-      )}
-      {error && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-      {!loading && sources.length === 0 && !error && (
-        <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">
-          No Kikoeru-compatible sources are configured.
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RemoteSourceSkeleton() {
-  return (
-    <>
-      {Array.from({ length: 2 }, (_, index) => (
-        <div key={index} className="space-y-2 rounded-md border bg-background p-3">
-          <EntitySkeletonLine className="h-4 w-32" />
-          <EntitySkeletonLine className="h-3 w-24" />
-        </div>
-      ))}
-    </>
-  );
-}
-
-function remoteSourceStatusMessage(source: VoiceRemoteSourceSet) {
-  if (source.status === "ok") return "";
-  switch (source.status) {
-    case "timeout":
-      return "Remote source timed out.";
-    case "unavailable":
-    case "error":
-      return "Remote source is unavailable.";
-    case "invalid_response":
-      return "Remote source returned an invalid response.";
-    case "misconfigured":
-      return "Remote source API endpoint is not configured.";
-    case "disabled":
-      return "Source is disabled.";
-    case "unsupported":
-      return "Source type is not supported.";
-    default:
-      return source.error || "";
-  }
 }
 
 function remoteSourceFailed(source: VoiceRemoteSourceSet) {

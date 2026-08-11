@@ -297,6 +297,10 @@ async function mockCreatorDetails(page: Page) {
       await route.fulfill({ json: voiceCatalogRefresh });
       return;
     }
+    if (url.pathname === "/api/voices/7/catalog/refresh" && route.request().method() === "POST") {
+      await route.fulfill({ status: 202, json: voiceCatalogRefresh });
+      return;
+    }
     if (url.pathname === "/api/voices/7/merges") {
       await route.fulfill({ json: [] });
       return;
@@ -474,13 +478,17 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   expect(Math.max(...statisticTops) - Math.min(...statisticTops)).toBeLessThanOrEqual(4);
 
   await expect(page.getByRole("button", { name: /^Aliases/ })).toHaveAttribute("aria-expanded", "false");
-  await expect(page.getByRole("button", { name: /^Open Remote Sources/ })).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("button", { name: "Open advanced refresh actions" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
   const actions = page.getByRole("group", { name: "Voice actor actions" });
   await expect(actions.getByRole("button", { name: "Add favorite" })).toBeVisible();
   await expect(actions.getByText("Favorite", { exact: true })).toBeHidden();
   await expect(actions.getByRole("button", { name: /^Aliases/ })).toBeVisible();
-  await expect(actions.getByText("Sources", { exact: true })).toBeVisible();
-  await expect(actions.getByText("Remote sources", { exact: true })).toBeHidden();
+  await expect(actions.getByText("Retry metadata", { exact: true })).toBeHidden();
+  await expect(actions.getByText("Refresh remote", { exact: true })).toBeHidden();
+  await expect(actions.getByText("Advanced", { exact: true })).toBeHidden();
   const actionMetrics = await actions.locator(":scope > button").evaluateAll((elements) =>
     elements.map((element) => ({
       label: element.getAttribute("aria-label"),
@@ -489,13 +497,43 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
       top: Math.round(element.getBoundingClientRect().top),
     })),
   );
-  expect(actionMetrics.map((metric) => metric.label)).toEqual(["Add favorite", null, "Open Remote Sources"]);
+  expect(actionMetrics.map((metric) => metric.label)).toEqual([
+    "Add favorite",
+    null,
+    "Retry voice metadata",
+    "Refresh voice remote sources",
+    "Open advanced refresh actions",
+  ]);
   expect(actionMetrics.every((metric) => metric.height >= 44 && metric.width >= 44)).toBe(true);
   expect(
     Math.max(...actionMetrics.map((metric) => metric.top)) - Math.min(...actionMetrics.map((metric) => metric.top)),
   ).toBeLessThanOrEqual(1);
   await expect(page.getByRole("dialog", { name: "Aliases" })).toHaveCount(0);
-  await expect(page.getByRole("dialog", { name: "Remote Sources" })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Advanced refresh" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Open advanced refresh actions" }).click();
+  const advancedDialog = page.getByRole("dialog", { name: "Advanced refresh" });
+  await expect(advancedDialog).toBeVisible();
+  await expect(advancedDialog.getByRole("checkbox", { name: "Refresh Example Remote" })).toBeChecked();
+  const fullRefreshRequest = page.waitForRequest((request) => {
+    if (new URL(request.url()).pathname !== "/api/voices/7/catalog/refresh" || request.method() !== "POST") {
+      return false;
+    }
+    const payload = request.postDataJSON() as { scope?: string; mode?: string };
+    return payload.scope === "remote" && payload.mode === "full";
+  });
+  await advancedDialog.getByRole("button", { name: "Full remote" }).click();
+  expect((await fullRefreshRequest).postDataJSON()).toEqual({ scope: "remote", mode: "full", sourceIds: [3] });
+  await page.getByRole("button", { name: "Close advanced refresh actions" }).click();
+
+  const metadataRefreshRequest = page.waitForRequest((request) => {
+    if (new URL(request.url()).pathname !== "/api/voices/7/catalog/refresh" || request.method() !== "POST") {
+      return false;
+    }
+    return (request.postDataJSON() as { scope?: string }).scope === "metadata";
+  });
+  await actions.getByRole("button", { name: "Retry voice metadata" }).click();
+  expect((await metadataRefreshRequest).postDataJSON()).toEqual({ scope: "metadata" });
 
   await page.getByRole("button", { name: "Open voice work options" }).click();
   const optionsDialog = page.getByRole("dialog", { name: "Voice work options" });
@@ -519,8 +557,9 @@ test("desktop voice detail keeps full action labels and inline work controls", a
 
   const actions = page.getByRole("group", { name: "Voice actor actions" });
   await expect(actions.getByText("Favorite", { exact: true })).toBeVisible();
-  await expect(actions.getByText("Remote sources", { exact: true })).toBeVisible();
-  await expect(actions.getByText("Sources", { exact: true })).toBeHidden();
+  await expect(actions.getByText("Retry metadata", { exact: true })).toBeVisible();
+  await expect(actions.getByText("Refresh remote", { exact: true })).toBeVisible();
+  await expect(actions.getByText("Advanced", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open voice work options" })).toBeHidden();
   await expect(page.getByLabel("Work filter")).toBeVisible();
   await expect(page.getByRole("button", { name: /^Columns:/ })).toBeVisible();

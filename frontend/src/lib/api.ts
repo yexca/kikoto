@@ -1432,6 +1432,12 @@ export type VoiceCatalogSourceStatus = {
   elapsedMs: number;
 };
 
+export type VoiceCatalogRefreshRequest = {
+  scope: "remote" | "metadata" | "all";
+  mode?: "incremental" | "full";
+  sourceIds?: number[];
+};
+
 export type VoiceCatalogRefreshState = {
   status: string;
   reason: string;
@@ -1447,6 +1453,9 @@ export type VoiceCatalogRefreshState = {
   queries: string[];
   sources: VoiceCatalogSourceStatus[];
   error: string;
+  scope?: VoiceCatalogRefreshRequest["scope"];
+  mode?: NonNullable<VoiceCatalogRefreshRequest["mode"]>;
+  sourceIds?: number[];
 };
 
 export type VoiceDetail = VoiceSummary & {
@@ -1962,8 +1971,10 @@ export const api = {
     ),
   autoRefreshVoiceCatalog: (personId: number | string) =>
     postJSON<VoiceCatalogRefreshState>(`/api/voices/${encodeURIComponent(String(personId))}/auto-refresh`),
-  refreshVoiceCatalog: (personId: number | string) =>
-    postJSON<VoiceCatalogRefreshState>(`/api/voices/${encodeURIComponent(String(personId))}/catalog/refresh`),
+  refreshVoiceCatalog: (personId: number | string, payload?: VoiceCatalogRefreshRequest) => {
+    const path = `/api/voices/${encodeURIComponent(String(personId))}/catalog/refresh`;
+    return payload ? postJSONBody<VoiceCatalogRefreshState>(path, payload) : postJSON<VoiceCatalogRefreshState>(path);
+  },
   listVoiceAliasCandidates: (personId: number, query = "") =>
     getJSON<VoiceAliasCandidate[]>(
       `/api/voices/${personId}/alias-candidates${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ""}`,

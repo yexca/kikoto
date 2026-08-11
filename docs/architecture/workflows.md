@@ -128,9 +128,11 @@ persisted atomically.
 A failed source keeps its previous catalog observations, while a complete
 source marks observations absent from the new generation `not_found`. Remote
 discoveries remain catalog rows and never materialize works recursively. Only
-codes that already resolve to canonical works may enqueue independent metadata
-sync runs. Metadata queue failures can make the workflow partial without making
-an otherwise complete catalog generation stale.
+catalog items that already resolve to canonical works enter the refresh run's
+metadata node; it synchronizes them within the same `voice_catalog_refresh`
+run rather than creating one metadata workflow per work. Metadata failures can
+make the workflow partial without making an otherwise complete catalog
+generation stale.
 
 ## Review Candidates
 

@@ -58,10 +58,13 @@ is mapped separately when Kikoto projects known-work availability into
 `media_file_location`.
 
 `voice_catalog_refresh_state` stores the alias query set, generation, per-source
-completion, and latest durable workflow result. Person merge review snapshots
-include both sides' voice catalogs. A merge retains their canonical union and
-invalidates the target refresh state because the confirmed alias set changed;
-Undo restores both captured catalogs and refresh states.
+completion, latest durable workflow result, and each compatible source/query's
+recent-added frontier for incremental discovery. The frontier contains remote
+identities from a source-provided recent-added order; it never derives ordering
+from a release date or primary code. Person merge review snapshots include both
+sides' voice catalogs. A merge retains their canonical union and invalidates the
+target refresh state because the confirmed alias set changed; Undo restores both
+captured catalogs and refresh states.
 
 ## File Availability
 
