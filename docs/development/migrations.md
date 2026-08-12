@@ -12,8 +12,7 @@ that migration without rebuilding or replacing user data.
 stores per-user audio-to-lyrics media preferences. Released migrations remain
 immutable; subsequent schema changes must use the next numbered file.
 
-The current sequence continues through
-`026_recommendation_session_snapshot.sql`.
+The current sequence continues through `027_voice_catalog.sql`.
 Migrations `008` through `013` add normalized work aliases and commercial
 metadata, terminal provider state, recommendation telemetry, and explicit video
 audio-presence data with a legacy backfill. Migration `014` adds durable
@@ -32,7 +31,9 @@ fields. Migration `025` removes metadata synchronization from the local-scan
 definition and initializes every existing local-scan trigger with its metadata
 follow-up disabled. Migration `026` adds revision-tracked, per-user
 recommendation generations and client-session bindings so affinity is
-materialized only when a new session observes changed inputs.
+materialized only when a new session observes changed inputs. Migration `027`
+adds persisted voice-catalog discoveries, per-source observations, and refresh
+state without materializing catalog-only rows as works.
 
 ## Guidelines
 

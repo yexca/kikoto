@@ -67,7 +67,7 @@ docker compose -f docker-compose.demo.yaml up -d
 ```
 
 Set `KIKOTO_DEMO_IMAGE` to pin a release or use another registry, for example
-`yexca/kikoto:0.4.0` or `ghcr.io/yexca/kikoto:0.4.0`.
+`yexca/kikoto:0.4.1` or `ghcr.io/yexca/kikoto:0.4.1`.
 
 It listens on `http://127.0.0.1:7655` by default. Override the host port with
 `KIKOTO_DEMO_PORT`. Set `KIKOTO_DEMO_REMOTE_SOURCES_ENABLED=true` only when the
