@@ -7,8 +7,6 @@ import {
   ChevronDown,
   Clipboard,
   Clock3,
-  Command,
-  Database,
   Download,
   GitBranchPlus,
   ListChecks,
@@ -16,10 +14,7 @@ import {
   LogIn,
   LogOut,
   MoreHorizontal,
-  Play,
   RotateCcw,
-  ScanLine,
-  Search,
   Server,
   Settings,
   UserRound,
@@ -29,7 +24,7 @@ import {
   Zap,
 } from "lucide-react";
 
-import { type NavigationItem, type PageID } from "@/app/navigation";
+import { type PageID } from "@/app/navigation";
 import { AppearanceControls } from "@/app/AppearanceControls";
 import {
   applyThemeMode,
@@ -69,8 +64,6 @@ type HeaderActionsProps = {
   onOpenCommandPalette: () => void;
 };
 
-type SystemAction = "local_scan" | "dlsite_sync" | "recover_stale";
-
 export function HeaderActions({
   user,
   hasPermission,
@@ -87,7 +80,6 @@ export function HeaderActions({
   const [themePreset, setThemePreset] = useState<ThemePreset>(() => getStoredThemePreset());
   const [themePalette, setThemePalette] = useState<ThemePalette>(() => getStoredThemePalette());
   const [reviewOpen, setReviewOpen] = useState(false);
-  const [actionsOpen, setActionsOpen] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("");
   const [diagnosticsText, setDiagnosticsText] = useState("");
@@ -98,7 +90,6 @@ export function HeaderActions({
   const [reviewCount, setReviewCount] = useState(0);
   const [notifications, setNotifications] = useState<WorkflowNotification[]>([]);
   const [notificationCount, setNotificationCount] = useState(0);
-  const [runningAction, setRunningAction] = useState<SystemAction | null>(null);
   const mobileRuntime = useMobileRuntime();
 
   useEffect(() => {
@@ -194,20 +185,6 @@ export function HeaderActions({
     }
   };
 
-  const runSystemAction = async (action: SystemAction) => {
-    setRunningAction(action);
-    try {
-      if (action === "local_scan") await api.runLocalScan({ followUpRun: false });
-      if (action === "dlsite_sync") await api.runDLsiteSync();
-      if (action === "recover_stale") await api.recoverStaleWorkflowRuns();
-      onOpenPage("activity");
-      window.setTimeout(refreshNotificationCenter, 800);
-    } finally {
-      setRunningAction(null);
-      setActionsOpen(false);
-    }
-  };
-
   const checkConnection = async () => {
     setConnectionStatus("Checking...");
     const health = await mobileRuntime.reconnect();
@@ -231,11 +208,12 @@ export function HeaderActions({
       <Button
         variant="outline"
         size="icon"
-        aria-label="Open command palette"
-        title="Command palette"
+        aria-label="Quick actions"
+        title="Quick actions"
+        className="h-11 w-11 sm:h-[var(--control-icon-size)] sm:w-[var(--control-icon-size)]"
         onClick={onOpenCommandPalette}
       >
-        <Search className="h-4 w-4" />
+        <Zap className="h-4 w-4" />
       </Button>
 
       <div className="sm:hidden">
@@ -243,7 +221,13 @@ export function HeaderActions({
           open={mobileMenuOpen}
           onOpenChange={setMobileMenuOpen}
           trigger={
-            <Button variant="outline" size="icon" aria-label="Open menu" title="Menu" className="relative">
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Open menu"
+              title="Menu"
+              className="relative h-11 w-11 sm:h-[var(--control-icon-size)] sm:w-[var(--control-icon-size)]"
+            >
               <MoreHorizontal className="h-4 w-4" />
               {totalNotificationCount > 0 && (
                 <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive" />
@@ -581,67 +565,6 @@ export function HeaderActions({
 
       <div className="hidden sm:block">
         <HeaderPopover
-          open={actionsOpen}
-          onOpenChange={setActionsOpen}
-          trigger={
-            <Button variant="outline" size="icon" aria-label="Quick actions" title="Quick actions">
-              <Zap className="h-4 w-4" />
-            </Button>
-          }
-          align="right"
-        >
-          <div className="w-72">
-            <PopoverHeader title="Quick actions" subtitle="Run common maintenance tasks" />
-            <MenuList>
-              {canRunWorkflows && canSyncMetadata && (
-                <ActionItem
-                  icon={<ScanLine className="h-4 w-4" />}
-                  label="Scan local library"
-                  busy={runningAction === "local_scan"}
-                  onClick={() => void runSystemAction("local_scan")}
-                />
-              )}
-              {canSyncMetadata && (
-                <ActionItem
-                  icon={<Database className="h-4 w-4" />}
-                  label="Run DLsite sync"
-                  busy={runningAction === "dlsite_sync"}
-                  onClick={() => void runSystemAction("dlsite_sync")}
-                />
-              )}
-              {canRunWorkflows && (
-                <ActionItem
-                  icon={<RotateCcw className="h-4 w-4" />}
-                  label="Recover stale runs"
-                  busy={runningAction === "recover_stale"}
-                  onClick={() => void runSystemAction("recover_stale")}
-                />
-              )}
-              <ActionItem
-                icon={<Settings className="h-4 w-4" />}
-                label="Open Settings"
-                onClick={() => {
-                  setActionsOpen(false);
-                  onOpenPage("settings");
-                }}
-              />
-              {canRunWorkflows && (
-                <ActionItem
-                  icon={<Workflow className="h-4 w-4" />}
-                  label="Open Workflows"
-                  onClick={() => {
-                    setActionsOpen(false);
-                    onOpenPage("workflows");
-                  }}
-                />
-              )}
-            </MenuList>
-          </div>
-        </HeaderPopover>
-      </div>
-
-      <div className="hidden sm:block">
-        <HeaderPopover
           open={themeOpen}
           onOpenChange={setThemeOpen}
           trigger={<ThemeTrigger mode={themeMode} preset={themePreset} palette={themePalette} />}
@@ -875,84 +798,4 @@ function workflowReviewCount(run: WorkflowRun) {
 
 function userInitial(user: CurrentUser) {
   return (user.displayName || user.username || "U").trim().slice(0, 1).toUpperCase();
-}
-
-export function commandActions({
-  hasPermission,
-  visibleNavItems,
-  onOpenPage,
-  onOpenPath,
-}: {
-  hasPermission: (permission: string) => boolean;
-  visibleNavItems: readonly NavigationItem[];
-  onOpenPage: (id: PageID) => void;
-  onOpenPath: (path: string, state?: unknown) => void;
-}) {
-  return [
-    ...visibleNavItems.map((item) => ({
-      id: `page:${item.id}`,
-      label: item.label,
-      description: item.path,
-      icon: <item.icon className="h-4 w-4" />,
-      run: () => onOpenPage(item.id),
-    })),
-    ...(hasPermission("workflows:run")
-      ? [
-          {
-            id: "activity:running",
-            label: "Running runs",
-            description: "Open current workflow activity",
-            icon: <Activity className="h-4 w-4" />,
-            run: () => onOpenPath("/activity"),
-          },
-          {
-            id: "activity:review",
-            label: "Review runs",
-            description: "Open workflow runs needing review",
-            icon: <ListChecks className="h-4 w-4" />,
-            run: () => onOpenPath("/activity?view=review"),
-          },
-          {
-            id: "activity:failed",
-            label: "Failed runs",
-            description: "Open failed workflow runs",
-            icon: <Clock3 className="h-4 w-4" />,
-            run: () => onOpenPath("/activity?view=failed"),
-          },
-        ]
-      : []),
-    ...(hasPermission("workflows:run") && hasPermission("metadata:sync")
-      ? [
-          {
-            id: "action:local_scan",
-            label: "Scan local library",
-            description: "Scan local works and refresh local presence",
-            icon: <ScanLine className="h-4 w-4" />,
-            run: () => void api.runLocalScan({ followUpRun: false }).then(() => onOpenPath("/activity")),
-          },
-        ]
-      : []),
-    ...(hasPermission("workflows:run")
-      ? [
-          {
-            id: "action:recover_stale",
-            label: "Recover stale workflow runs",
-            description: "Mark stale claimed jobs recoverable",
-            icon: <RotateCcw className="h-4 w-4" />,
-            run: () => void api.recoverStaleWorkflowRuns().then(() => onOpenPath("/activity")),
-          },
-        ]
-      : []),
-    ...(hasPermission("metadata:sync")
-      ? [
-          {
-            id: "action:dlsite_sync",
-            label: "Run DLsite sync",
-            description: "Queue metadata synchronization",
-            icon: <Play className="h-4 w-4" />,
-            run: () => void api.runDLsiteSync().then(() => onOpenPath("/activity")),
-          },
-        ]
-      : []),
-  ];
 }

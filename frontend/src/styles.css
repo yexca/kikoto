@@ -916,3 +916,9 @@
 svg.lucide {
   stroke-width: var(--icon-stroke);
 }
+
+@media (max-width: 1023px) {
+  :root {
+    --header-height: 3.5rem;
+  }
+}

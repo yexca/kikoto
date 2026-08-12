@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, FileAudio, Loader2, Search, Workflow, X } from "lucide-react";
 
-import { commandActions } from "@/app/HeaderActions";
+import { commandActions, type CommandAction } from "@/app/commandActions";
 import { type NavigationItem, type PageID } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
+import { toastFromError, useToast } from "@/components/ui/toast";
 import { parseWorkflowDefinition } from "@/features/workflows/definitionModel";
 import { WorkflowRunDialog } from "@/features/workflows/WorkflowRunDialog";
 import {
@@ -27,14 +28,8 @@ type CommandPaletteProps = {
   onOpenPath: (path: string, state?: unknown) => void;
 };
 
-type PaletteAction = {
-  id: string;
-  label: string;
-  description: string;
-  icon: React.ReactNode;
-  run: () => void;
+type PaletteAction = CommandAction & {
   disabled?: boolean;
-  closeOnRun?: boolean;
 };
 
 export function CommandPalette({
@@ -47,6 +42,7 @@ export function CommandPalette({
   onOpenPage,
   onOpenPath,
 }: CommandPaletteProps) {
+  const toast = useToast();
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
@@ -56,6 +52,7 @@ export function CommandPalette({
     inputs: Record<string, unknown>;
   } | null>(null);
   const [workflowLaunchBusy, setWorkflowLaunchBusy] = useState(false);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const baseActions = useMemo<PaletteAction[]>(
     () => commandActions({ hasPermission, visibleNavItems, onOpenPage, onOpenPath }),
@@ -153,6 +150,7 @@ export function CommandPalette({
     setActiveIndex(0);
     setWorkflowLaunch(null);
     handleWorkflowBusyChange(false);
+    setActionBusy(null);
     window.setTimeout(() => inputRef.current?.focus(), 0);
     if (!hasPermission("workflows:run")) {
       setDefinitions([]);
@@ -167,7 +165,9 @@ export function CommandPalette({
       .finally(() => setLoadingWorkflows(false));
   }, [handleWorkflowBusyChange, hasPermission, open]);
 
-  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
+  useEffect(() => {
+    onBusyChange?.(workflowLaunchBusy || actionBusy !== null);
+  }, [actionBusy, onBusyChange, workflowLaunchBusy]);
 
   useEffect(() => {
     if (!open) return;
@@ -208,11 +208,21 @@ export function CommandPalette({
     );
   }
 
-  const runAction = (index: number) => {
+  const runAction = async (index: number) => {
     const action = actions[index];
-    if (!action || action.disabled) return;
+    if (!action || action.disabled || actionBusy) return;
     if (action.closeOnRun !== false) onOpenChange(false);
-    action.run();
+    try {
+      const result = action.run();
+      if (result instanceof Promise) {
+        setActionBusy(action.id);
+        await result;
+      }
+    } catch (error) {
+      toast.notify(toastFromError(error, "Command could not be completed."));
+    } finally {
+      setActionBusy(null);
+    }
   };
 
   return (
@@ -244,7 +254,7 @@ export function CommandPalette({
               }
               if (event.key === "Enter") {
                 event.preventDefault();
-                runAction(activeIndex);
+                void runAction(activeIndex);
               }
             }}
             className="min-w-0 flex-1 bg-transparent text-sm outline-none"
@@ -272,10 +282,12 @@ export function CommandPalette({
                   index === activeIndex ? "bg-muted text-foreground" : "hover:bg-muted",
                 )}
                 onMouseEnter={() => setActiveIndex(index)}
-                onClick={() => runAction(index)}
-                disabled={action.disabled}
+                onClick={() => void runAction(index)}
+                disabled={action.disabled || actionBusy !== null}
               >
-                <span className="text-muted-foreground">{action.icon}</span>
+                <span className="text-muted-foreground">
+                  {actionBusy === action.id ? <Loader2 className="h-4 w-4 animate-spin" /> : action.icon}
+                </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{action.label}</span>
                   <span className="block truncate text-xs text-muted-foreground">{action.description}</span>

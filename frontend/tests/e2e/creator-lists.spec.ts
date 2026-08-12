@@ -371,7 +371,7 @@ test("circle list uses compact responsive cards and shared pagination", async ({
   await mockCreatorLists(page);
   await page.goto("/circles?pageSize=24");
 
-  await expect(page.getByRole("heading", { name: "Circles" })).toBeVisible();
+  await expect(page.locator("footer").getByRole("button", { name: "Circles", exact: true })).toBeVisible();
   await expect(page.getByText("Latest RJ00000000", { exact: true })).toBeVisible();
   await expect(page.getByText("No cover", { exact: true })).toBeVisible();
   await expect(page.getByText("Synced", { exact: true }).first()).toBeVisible();
@@ -395,7 +395,7 @@ test("voice list keeps latest work, tags, and availability visible on mobile", a
   await mockCreatorLists(page);
   await page.goto("/voices?pageSize=24");
 
-  await expect(page.getByRole("heading", { name: "Voice Actors" })).toBeVisible();
+  await expect(page.locator("footer").getByRole("button", { name: "Voice Actors", exact: true })).toBeVisible();
   await expect(page.getByText("Latest RJ00000000", { exact: true })).toBeVisible();
   await expect(page.getByText("Local 2", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Remote 1", { exact: true }).first()).toBeVisible();
@@ -825,7 +825,7 @@ test("mobile circle detail returns to the circle list entry that opened it", asy
 
   await page.getByRole("button", { name: "Back to circles", exact: true }).click();
   await expect(page).toHaveURL(/\/circles\?q=Example&page=2&pageSize=24$/);
-  await expect(page.getByRole("heading", { name: "Circles", exact: true })).toBeVisible();
+  await expect(page.locator("footer").getByRole("button", { name: "Circles", exact: true })).toBeVisible();
 });
 
 test("mobile circle navigation does not resume a detail route after returning from Library", async ({ page }) => {
@@ -850,7 +850,7 @@ test("mobile circle navigation does not resume a detail route after returning fr
   await expect(page).toHaveURL(/\/$/);
   await page.locator("footer").getByRole("button", { name: "Circles", exact: true }).click();
   await expect(page).toHaveURL(/\/circles\?q=Example&page=2&pageSize=24$/);
-  await expect(page.getByRole("heading", { name: "Circles", exact: true })).toBeVisible();
+  await expect(page.locator("footer").getByRole("button", { name: "Circles", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Back to circles", exact: true })).toHaveCount(0);
 });
 
@@ -859,7 +859,7 @@ test("command palette stays within the resized mobile visual viewport", async ({
   await mockCreatorDetails(page);
   await page.goto("/circles/RG09999");
 
-  await page.getByRole("button", { name: "Open command palette" }).click();
+  await page.getByRole("button", { name: "Quick actions" }).click();
   const dialog = page.getByRole("dialog", { name: "Command palette" });
   const input = page.getByPlaceholder("Search, open a work code, or type /workflow");
   await expect(dialog).toBeVisible();

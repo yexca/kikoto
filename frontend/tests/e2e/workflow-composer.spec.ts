@@ -241,7 +241,7 @@ test("composes a typed DAG and launches a slash command through preview", async 
   await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Close", exact: true }).click();
 
-  await page.getByRole("button", { name: "Open command palette" }).click();
+  await page.getByRole("button", { name: "Quick actions" }).click();
   await page.getByPlaceholder("Search, open a work code, or type /workflow").fill("/getCircle RG01234");
   await expect(page.getByRole("button", { name: /Preview Circle fetch demo/ })).toHaveCount(1);
   await expect(page.getByRole("button", { name: /Preview Foreign circle fetch/ })).toHaveCount(0);
@@ -377,7 +377,7 @@ test("keeps a direct Quick Action open while confirmation is in flight", async (
   });
   await page.goto("/workflows");
 
-  await page.getByRole("button", { name: "Open command palette" }).click();
+  await page.getByRole("button", { name: "Quick actions" }).click();
   await page.getByPlaceholder("Search, open a work code, or type /workflow").fill("/runCircle RG01234");
   await page.getByRole("button", { name: /Run Circle fetch demo/ }).click();
   await confirmationStarted;

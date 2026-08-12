@@ -43,8 +43,7 @@ test("@smoke renders the anonymous library shell", async ({ page }) => {
   await mockAppShell(page);
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "Library", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Library", exact: true })).toBeVisible();
+  await expect(page.locator("footer").getByRole("button", { name: "Library", exact: true })).toBeVisible();
 });
 
 test("@smoke opens About without an update icon when current", async ({ page }) => {

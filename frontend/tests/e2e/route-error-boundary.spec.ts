@@ -98,6 +98,6 @@ test("route render failures preserve the app shell and player", async ({ page })
 
   await expect(page).toHaveURL("/");
   await expect(fallback).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Library", exact: true })).toBeVisible();
+  await expect(page.locator("footer").getByRole("button", { name: "Library", exact: true })).toBeVisible();
   await expect(page.getByText("Boundary test track", { exact: true })).toBeVisible();
 });

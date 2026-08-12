@@ -974,7 +974,7 @@ test("mobile header keeps actions in bounds and exposes appearance and activity"
   await mockWorkflows(page);
   await page.goto("/workflows");
 
-  await expect(page.getByRole("button", { name: "Open command palette" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Quick actions" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open menu" })).toBeVisible();
   await page.getByRole("button", { name: "Open menu" }).click();
   await expect(page.getByRole("button", { name: "Activity", exact: true })).toBeVisible();

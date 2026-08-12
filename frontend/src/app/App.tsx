@@ -111,6 +111,7 @@ function AuthenticatedApp() {
     const additions = visibleNavItems.filter((item) => !preferred.some((candidate) => candidate.id === item.id));
     return [...preferred, ...additions].slice(0, 4);
   }, [visibleNavItems]);
+  const showMobilePageTitle = !["library", "favorites", "circles", "voice-actors"].includes(page);
   const activeItem = useMemo(() => visibleNavItems.find((item) => item.id === page), [page, visibleNavItems]);
   const canAccessCurrentPage = page !== "not-found" && canAccessPage(page, authState, navigationHasPermission);
 
@@ -326,12 +327,13 @@ function AuthenticatedApp() {
             className="theme-shell-surface sticky top-0 z-40 border-b bg-card/95 pt-[var(--safe-area-top)] backdrop-blur lg:pt-0"
             data-toast-avoid
           >
-            <div className="flex min-h-[var(--header-height)] min-w-0 items-center justify-between gap-2 py-2 pl-[max(1rem,var(--safe-area-left))] pr-[max(1rem,var(--safe-area-right))] lg:gap-3 lg:px-6">
-              <div className="flex min-w-0 flex-col lg:flex-row lg:items-baseline lg:gap-3">
-                <h1 className="truncate text-xl font-semibold lg:text-2xl">
+            <div className="flex h-[var(--header-height)] min-w-0 items-center justify-between gap-2 pl-[max(0.75rem,var(--safe-area-left))] pr-[max(0.75rem,var(--safe-area-right))] lg:h-auto lg:min-h-[var(--header-height)] lg:gap-3 lg:px-6 lg:py-2">
+              <div className="flex min-w-0 items-center lg:flex-row lg:items-baseline lg:gap-3">
+                {!showMobilePageTitle && <img src="/kikoto-icon.svg" alt="Kikoto" className="h-8 w-8 dark:invert lg:hidden" />}
+                <h1 className={cn("truncate text-base font-semibold lg:text-2xl", !showMobilePageTitle && "hidden lg:block")}>
                   {page === "not-found" ? "Not found" : (activeItem?.label ?? "Library")}
                 </h1>
-                <p className="line-clamp-2 text-xs text-muted-foreground lg:line-clamp-1 lg:text-sm">
+                <p className="hidden text-xs text-muted-foreground lg:line-clamp-1 lg:block lg:text-sm">
                   {page === "not-found"
                     ? "The requested page could not be found"
                     : (activeItem?.description ?? "Browse your audio library")}

@@ -1,11 +1,17 @@
 # Frontend
 
-On mobile, the app header reserves fixed space for Search and a viewport-bounded
-overflow menu. Theme, Activity, account, and native connection actions remain
-available through that menu without widening the header.
-The header also owns the active page title and smaller description; compact
-layouts allow the description to wrap to two lines instead of repeating a
-heading in page content.
+On mobile, the app header is a compact tool bar with a Quick actions entry and
+a viewport-bounded overflow menu. Theme, Activity, account, and native
+connection actions remain available through that menu without widening the
+header. The Quick actions entry opens the Command Palette, which provides
+navigation, common maintenance commands, work-code opening, and published
+workflow commands through one searchable interface.
+
+The header owns the desktop page title and description. Mobile browsing
+destinations use the bottom navigation as their location cue and show a compact
+Kikoto mark instead; administrative destinations retain a single-line title.
+Descriptions do not appear in the mobile header, so page content owns any
+additional context it needs.
 
 The frontend is a React application focused on library browsing, work detail,
 remote source management, and playback.
