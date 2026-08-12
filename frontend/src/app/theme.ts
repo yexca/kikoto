@@ -11,30 +11,55 @@ export const THEME_PRESET_OPTIONS = [
     value: "anthropic",
     label: "Anthropic",
     swatches: ["#ad4f2f", "#f7f3ed", "#302a26"],
+    previewAccents: {
+      original: "#ad4f2f",
+      graphite: "#625854",
+      cobalt: "#49699d",
+      iris: "#79588f",
+    },
     themeColor: { light: "#f7f3ed", dark: "#1a1715" },
   },
   {
     value: "openai",
     label: "OpenAI",
     swatches: ["#10a37f", "#fafafa", "#202020"],
+    previewAccents: {
+      original: "#10a37f",
+      graphite: "#4d5755",
+      cobalt: "#247da8",
+      iris: "#6b6099",
+    },
     themeColor: { light: "#fafafa", dark: "#141414" },
   },
   {
     value: "apple",
     label: "Apple",
     swatches: ["#007aff", "#f2f2f7", "#1c1c1e"],
+    previewAccents: {
+      original: "#007aff",
+      graphite: "#5b5b63",
+      cobalt: "#0a84ff",
+      iris: "#5e5ce6",
+    },
     themeColor: { light: "#f2f2f7", dark: "#111112" },
   },
   {
     value: "google-md",
     label: "Google MD",
     swatches: ["#1a73e8", "#f8fafd", "#202124"],
+    previewAccents: {
+      original: "#1a73e8",
+      graphite: "#5f6368",
+      cobalt: "#3367d6",
+      iris: "#7e57c2",
+    },
     themeColor: { light: "#f8fafd", dark: "#121316" },
   },
 ] as const satisfies ReadonlyArray<{
   value: ThemePreset;
   label: string;
   swatches: readonly [string, string, string];
+  previewAccents: Record<ThemePalette, string>;
   themeColor: Record<ResolvedThemeMode, string>;
 }>;
 export const THEME_PALETTE_OPTIONS = [

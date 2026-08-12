@@ -1,6 +1,6 @@
 import { Circle, Feather, Layers3, Shapes, type LucideIcon } from "lucide-react";
 
-import { THEME_PRESET_OPTIONS, type ThemePreset } from "@/app/theme";
+import { THEME_PRESET_OPTIONS, type ThemePalette, type ThemePreset } from "@/app/theme";
 import { cn } from "@/lib/utils";
 
 const presetIcons: Record<ThemePreset, LucideIcon> = {
@@ -13,10 +13,12 @@ const presetIcons: Record<ThemePreset, LucideIcon> = {
 export function ThemePresetPicker({
   value,
   onChange,
+  palette = "original",
   compact = false,
 }: {
   value: ThemePreset;
   onChange: (preset: ThemePreset) => void;
+  palette?: ThemePalette;
   compact?: boolean;
 }) {
   return (
@@ -43,7 +45,7 @@ export function ThemePresetPicker({
               <span className={cn("block truncate font-medium", compact ? "text-xs" : "text-sm")}>{option.label}</span>
               {!compact && (
                 <span className="mt-1 flex gap-1" aria-hidden="true">
-                  {option.swatches.map((swatch) => (
+                  {[option.previewAccents[palette], option.swatches[1], option.swatches[2]].map((swatch) => (
                     <span
                       key={swatch}
                       className="h-1.5 flex-1 rounded-full border border-black/10 shadow-sm"

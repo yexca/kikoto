@@ -278,7 +278,7 @@ export function SettingsPage({
             </fieldset>
             <fieldset className="space-y-2" disabled={readOnly}>
               <legend className="text-sm font-medium">Theme style</legend>
-              <ThemePresetPicker value={themePreset} onChange={updatePreset} />
+              <ThemePresetPicker value={themePreset} onChange={updatePreset} palette={themePalette} />
             </fieldset>
             <fieldset className="space-y-2" disabled={readOnly}>
               <legend className="text-sm font-medium">Color</legend>
