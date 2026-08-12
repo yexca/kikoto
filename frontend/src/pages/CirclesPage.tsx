@@ -806,7 +806,20 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                   <CatalogSyncBadge state={circle.syncState} />
                   {circle.favorite && <Badge variant="secondary">Favorite</Badge>}
                 </div>
-                <h2 className="mt-3 truncate text-2xl font-semibold lg:text-3xl">{circle.displayName}</h2>
+                <div className="mt-3 flex min-w-0 items-center gap-1.5">
+                  <h2 className="min-w-0 flex-1 truncate text-2xl font-semibold lg:text-3xl">{circle.displayName}</h2>
+                  <Button variant="outline" size="icon" className="shrink-0 lg:hidden" asChild>
+                    <a
+                      href={dlsiteMakerURL(circle.externalId)}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label="Open DLsite"
+                      title="Open DLsite"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  </Button>
+                </div>
                 <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5">
                   <Badge variant={availableWorkCount > 0 ? "success" : "warning"}>Available {availableWorkCount}</Badge>
                   <UserTagRow tags={circle.userTags} onSave={saveCircleTags} className="min-w-0 flex-1" />
@@ -874,7 +887,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                 <Button
                   variant="outline"
                   size="icon"
-                  className="lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+                  className="hidden lg:flex lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
                   asChild
                 >
                   <a
@@ -1266,6 +1279,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       )}
       <CircleAdvancedRefreshSheet
         open={advancedRefreshOpen}
+        mobile={compactLayout}
         anchorRef={advancedRefreshAnchorRef}
         circle={circle}
         catalogOnlyCount={catalogOnlyCount}

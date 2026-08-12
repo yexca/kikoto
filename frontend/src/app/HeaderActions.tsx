@@ -47,6 +47,7 @@ import {
 import { ThemeTrigger } from "@/app/ThemeTrigger";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MobileSheet } from "@/components/ui/mobile-sheet";
 import { api, type CurrentUser, type WorkflowNotification, type WorkflowRun } from "@/lib/api";
 import { clearStoredServerURL, getStoredServerURL, isNativeApp } from "@/lib/serverConfig";
 import { versionLabel } from "@/lib/appInfo";
@@ -689,7 +690,7 @@ function HeaderPopover({
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (!open) return;
+    if (!open || mobileSheet) return;
     const handlePointer = (event: MouseEvent) => {
       if (event.target instanceof Node && ref.current?.contains(event.target)) return;
       onOpenChange(false);
@@ -703,35 +704,21 @@ function HeaderPopover({
       document.removeEventListener("mousedown", handlePointer);
       document.removeEventListener("keydown", handleKey);
     };
-  }, [open, onOpenChange]);
+  }, [mobileSheet, open, onOpenChange]);
 
   return (
     <div className="relative" ref={ref}>
       {cloneElement(trigger, { onClick: () => onOpenChange(!open), "aria-expanded": open })}
       {open &&
         (mobileSheet ? (
-          <div
-            className="visual-viewport-layer z-[60] flex items-end bg-foreground/25 p-2 backdrop-blur-sm sm:p-4"
-            onMouseDown={(event) => {
-              if (event.target === event.currentTarget) onOpenChange(false);
-            }}
+          <MobileSheet
+            open={open}
+            onOpenChange={onOpenChange}
+            ariaLabel="Menu"
+            className="flex flex-col overflow-hidden"
           >
-            <div
-              data-android-back-close
-              role="dialog"
-              aria-modal="true"
-              aria-label="Menu"
-              className="theme-floating-surface flex min-h-0 w-full flex-col overflow-hidden rounded-t-xl border bg-card shadow-xl"
-              style={{
-                maxHeight: "calc(var(--visual-viewport-height) - 1rem)",
-                paddingBottom: "max(0.5rem, var(--safe-area-bottom))",
-              }}
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/35" aria-hidden="true" />
-              {children}
-            </div>
-          </div>
+            {children}
+          </MobileSheet>
         ) : (
           <div
             data-android-back-close

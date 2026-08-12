@@ -977,7 +977,10 @@ test("mobile header keeps actions in bounds and exposes appearance and activity"
   await expect(page.getByRole("button", { name: "Quick actions" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open menu" })).toBeVisible();
   await page.getByRole("button", { name: "Open menu" }).click();
-  await expect(page.getByRole("button", { name: "Activity", exact: true })).toBeVisible();
+  const menu = page.getByRole("dialog", { name: "Menu" });
+  await expect(menu).toBeVisible();
+  expect(await menu.locator("..").evaluate((element) => getComputedStyle(element).zIndex)).toBe("70");
+  await expect(menu.getByRole("button", { name: "Activity", exact: true })).toBeVisible();
   await expect(page.getByText("Appearance", { exact: true })).toBeVisible();
 
   const modeGroup = page.getByRole("group", { name: "Mode" });

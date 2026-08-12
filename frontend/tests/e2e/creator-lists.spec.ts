@@ -701,25 +701,34 @@ test("circle detail keeps availability and primary actions compact on mobile", a
   await expect(actions.getByText("Favorite", { exact: true })).toBeHidden();
   await expect(actions.getByText("Advanced", { exact: true })).toBeHidden();
   await expect(actions.getByText("DLsite", { exact: true })).toBeHidden();
-  await expect(actions.getByRole("link", { name: "Open DLsite" })).toBeVisible();
+  const dlsiteLink = summary.getByRole("link", { name: "Open DLsite" });
+  await expect(dlsiteLink).toBeVisible();
+  const titleAndLink = await Promise.all([
+    summary.getByRole("heading", { name: "Example Circle", exact: true }).boundingBox(),
+    dlsiteLink.boundingBox(),
+  ]);
+  expect(titleAndLink[0]).not.toBeNull();
+  expect(titleAndLink[1]).not.toBeNull();
+  expect(Math.abs(titleAndLink[0]!.y - titleAndLink[1]!.y)).toBeLessThanOrEqual(8);
   await expect(actions.getByRole("button", { name: "Open advanced refresh actions" })).toHaveAttribute(
     "aria-expanded",
     "false",
   );
   const actionMetrics = await actions.locator(":scope > :is(button, a)").evaluateAll((elements) =>
-    elements.map((element) => ({
-      label: element.getAttribute("aria-label"),
-      height: element.getBoundingClientRect().height,
-      width: element.getBoundingClientRect().width,
-      top: Math.round(element.getBoundingClientRect().top),
-    })),
+    elements
+      .map((element) => ({
+        label: element.getAttribute("aria-label"),
+        height: element.getBoundingClientRect().height,
+        width: element.getBoundingClientRect().width,
+        top: Math.round(element.getBoundingClientRect().top),
+      }))
+      .filter((metric) => metric.width > 0 && metric.height > 0),
   );
   expect(actionMetrics.map((metric) => metric.label)).toEqual([
     "Remove favorite",
     "Retry circle metadata",
     "Refresh circle",
     "Open advanced refresh actions",
-    "Open DLsite",
   ]);
   expect(actionMetrics.every((metric) => metric.height >= 44 && metric.width >= 44)).toBe(true);
   expect(
@@ -744,6 +753,9 @@ test("mobile circle detail keeps the work surface visible and moves secondary co
   const refreshDialog = page.getByRole("dialog", { name: "Advanced refresh" });
   await expect(refreshDialog).toBeVisible();
   await expect(refreshDialog.getByRole("button", { name: "Incremental" }).first()).toBeVisible();
+  const refreshDialogBox = await refreshDialog.boundingBox();
+  expect(refreshDialogBox).not.toBeNull();
+  expect(refreshDialogBox!.y + refreshDialogBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await page.getByRole("button", { name: "Close advanced refresh actions" }).click();
 
   await page.getByRole("button", { name: "Open catalog options" }).click();

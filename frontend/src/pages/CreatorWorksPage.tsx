@@ -1095,6 +1095,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
 
         <VoiceAdvancedRefreshSheet
           open={detailPanel === "advanced"}
+          mobile={mobileNavigationLayout}
           anchorRef={advancedActionRef}
           sources={remoteMatches}
           loading={isRemoteLoading}
