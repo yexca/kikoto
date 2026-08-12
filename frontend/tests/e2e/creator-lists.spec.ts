@@ -104,6 +104,31 @@ const circleCatalogWorks = [
   },
 ];
 
+const circleSeries = [
+  {
+    titleId: "SRI0999999999",
+    name: "Example Circle Series",
+    url: "https://example.invalid/series/example-circle-series",
+    declaredWorks: 1,
+    works: 1,
+    localWorks: 1,
+    remoteWorks: 0,
+    missingWorks: 0,
+    workCodes: ["RJ00000003"],
+  },
+  {
+    titleId: "SRI0888888888",
+    name: "Second Circle Series",
+    url: "https://example.invalid/series/second-circle-series",
+    declaredWorks: 1,
+    works: 1,
+    localWorks: 0,
+    remoteWorks: 0,
+    missingWorks: 1,
+    workCodes: ["RJ00000004"],
+  },
+];
+
 const voice = {
   personId: 7,
   displayName: "Example Voice",
@@ -226,6 +251,7 @@ async function mockCreatorDetails(
   options: {
     circleSyncState?: string;
     voiceSyncState?: string;
+    circleSeries?: typeof circleSeries;
     onRefresh?: (path: string, payload: unknown) => void;
   } = {},
 ) {
@@ -265,7 +291,7 @@ async function mockCreatorDetails(
     missingWorks: 1,
     catalogWorks: circleCatalogWorks.length,
     works: circleCatalogWorks,
-    series: [],
+    series: options.circleSeries ?? [],
   };
 
   await page.route("**/api/**", async (route) => {
@@ -579,7 +605,6 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   );
   expect(Math.max(...statisticTops) - Math.min(...statisticTops)).toBeLessThanOrEqual(4);
 
-  await expect(page.getByRole("button", { name: /^Aliases/ })).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByRole("button", { name: "Open advanced refresh actions" })).toHaveAttribute(
     "aria-expanded",
     "false",
@@ -587,7 +612,8 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   const actions = page.getByRole("group", { name: "Voice actor actions" });
   await expect(actions.getByRole("button", { name: "Add favorite" })).toBeVisible();
   await expect(actions.getByText("Favorite", { exact: true })).toBeHidden();
-  await expect(actions.getByRole("button", { name: /^Aliases/ })).toBeVisible();
+  await expect(actions.getByText("Metadata", { exact: true })).toBeVisible();
+  await expect(actions.getByText("Remote", { exact: true })).toBeVisible();
   await expect(actions.getByText("Retry metadata", { exact: true })).toBeHidden();
   await expect(actions.getByText("Refresh remote", { exact: true })).toBeHidden();
   await expect(actions.getByText("Advanced", { exact: true })).toBeHidden();
@@ -601,7 +627,6 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   );
   expect(actionMetrics.map((metric) => metric.label)).toEqual([
     "Add favorite",
-    null,
     "Retry voice metadata",
     "Refresh voice remote sources",
     "Open advanced refresh actions",
@@ -616,6 +641,8 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   await page.getByRole("button", { name: "Open advanced refresh actions" }).click();
   const advancedDialog = page.getByRole("dialog", { name: "Advanced refresh" });
   await expect(advancedDialog).toBeVisible();
+  await advancedDialog.locator("summary").click();
+  await expect(advancedDialog.getByPlaceholder("Add alias or search duplicate voice actor")).toBeVisible();
   await expect(advancedDialog.getByRole("checkbox", { name: "Refresh Example Remote" })).toBeChecked();
   const catalogRefresh = advancedDialog.getByRole("group", { name: "Catalog refresh" });
   const metadataRefresh = advancedDialog.getByRole("group", { name: "Metadata refresh" });
@@ -677,6 +704,8 @@ test("desktop voice detail keeps full action labels and inline work controls", a
   await expect(actions.getByText("Favorite", { exact: true })).toBeVisible();
   await expect(actions.getByText("Retry metadata", { exact: true })).toBeVisible();
   await expect(actions.getByText("Refresh remote", { exact: true })).toBeVisible();
+  await expect(actions.getByText("Metadata", { exact: true })).toBeHidden();
+  await expect(actions.getByText("Remote", { exact: true })).toBeHidden();
   await expect(actions.getByText("Advanced", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open voice work options" })).toBeHidden();
   await expect(page.getByLabel("Work filter")).toBeVisible();
@@ -785,6 +814,33 @@ test("mobile circle detail keeps the work surface visible and moves secondary co
       viewport: window.innerWidth,
     }));
   expect(dialogMetrics.width).toBeLessThanOrEqual(dialogMetrics.viewport);
+});
+
+test("mobile circle series combines its selected row, DLsite link, and sheet control", async ({ page }) => {
+  await mockCreatorDetails(page, { circleSeries });
+  await page.goto("/circles/RG09999/series/SRI0999999999");
+
+  const chooseSeries = page.getByRole("button", { name: "Choose circle series" }).first();
+  await expect(chooseSeries).toContainText("Example Circle Series");
+  await expect(page.getByRole("link", { name: "Open DLsite series" })).toHaveAttribute(
+    "href",
+    "https://example.invalid/series/example-circle-series",
+  );
+  await expect(page.getByRole("button", { name: "Expand circle series" })).toBeVisible();
+  await expect(page.getByText("Second Circle Series", { exact: true }).filter({ visible: true })).toHaveCount(0);
+
+  await chooseSeries.click();
+  const seriesDialog = page.getByRole("dialog", { name: "Circle series" });
+  await expect(seriesDialog).toBeVisible();
+  await expect(seriesDialog.getByText("All series", { exact: true })).toBeVisible();
+  await expect(seriesDialog.getByText("Example Circle Series", { exact: true })).toBeVisible();
+  await expect(seriesDialog.getByText("Second Circle Series", { exact: true })).toBeVisible();
+
+  await seriesDialog.getByText("Second Circle Series", { exact: true }).click();
+  await expect(seriesDialog).toHaveCount(0);
+  await expect(page).toHaveURL(/\/circles\/RG09999\/series\/SRI0888888888$/);
+  await expect(page.getByRole("button", { name: "Choose circle series" }).first()).toContainText("Second Circle Series");
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
 test("desktop circle detail keeps a full-width compact summary and source-aware return", async ({ page }) => {

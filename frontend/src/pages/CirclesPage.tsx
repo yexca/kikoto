@@ -1,6 +1,7 @@
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   CircleAlert,
   ExternalLink,
   FileAudio,
@@ -12,6 +13,7 @@ import {
   RefreshCw,
   Search,
   SlidersHorizontal,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -19,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { MobileSheet } from "@/components/ui/mobile-sheet";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { UserTagRow } from "@/components/UserTagRow";
 import { CollectionPagination } from "@/components/collection/CollectionPagination";
@@ -119,22 +122,24 @@ const circleFilterOptions: readonly { value: CircleFilter; label: string }[] = [
 ];
 const circleFilters: readonly CircleFilter[] = [...circleFilterOptions.map((option) => option.value), "stale"];
 
-export function CirclesPage() {
+export function CirclesPage({ active = true }: { active?: boolean }) {
   const [path, setPath] = useState(window.location.pathname);
   useEffect(() => {
+    if (!active) return;
     const syncPath = () => setPath(window.location.pathname);
+    syncPath();
     window.addEventListener("popstate", syncPath);
     window.addEventListener("kikoto:navigation", syncPath);
     return () => {
       window.removeEventListener("popstate", syncPath);
       window.removeEventListener("kikoto:navigation", syncPath);
     };
-  }, []);
+  }, [active]);
   const route = circleRouteFromPath(path);
   if (route) {
     return <CircleDetailPage externalId={route.externalId} seriesCode={route.seriesCode} />;
   }
-  return <CircleListPage />;
+  return <CircleListPage active={active} />;
 }
 
 export function openCircleRoute(externalId = PLACEHOLDER_CIRCLE_ID) {
@@ -158,7 +163,7 @@ export function openCircleSeriesRoute(externalId: string, seriesCode?: string | 
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 
-function CircleListPage() {
+function CircleListPage({ active }: { active: boolean }) {
   const auth = useAuth();
   const toast = useToast();
   const storageScope = currentClientStorageScope(auth.user?.id ?? null);
@@ -192,11 +197,12 @@ function CircleListPage() {
   }, [query]);
 
   useEffect(() => {
+    if (!active) return;
     const search = creatorBrowseSearch({ query, filter, tag: "", page, pageSize });
     const location = `/circles${search}`;
     window.history.replaceState(window.history.state ?? {}, "", location);
     writeLastCircleListLocation(storageScope, location);
-  }, [filter, page, pageSize, query, storageScope]);
+  }, [active, filter, page, pageSize, query, storageScope]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1051,7 +1057,14 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
               allCount={activeSeriesCount}
             />
             <div className="space-y-3">
-              <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+              <MobileCircleSeriesHeader
+                externalId={circle.externalId}
+                series={circle.series}
+                selectedSeries={selectedSeries}
+                selectedSeriesCode={selectedSeries?.titleId ?? null}
+                allCount={activeSeriesCount}
+              />
+              <div className="hidden flex-col gap-2 rounded-lg border bg-card px-3 py-2 lg:flex lg:flex-row lg:items-center lg:justify-between">
                 <div className="min-w-0">
                   <h3 className="truncate text-base font-semibold">
                     {selectedSeries ? selectedSeries.name : "All series"}
@@ -1585,10 +1598,110 @@ function CircleSeriesSidebar({
   allCount: number;
 }) {
   return (
-    <aside className="rounded-lg border bg-card p-2">
+    <aside className="hidden rounded-lg border bg-card p-2 lg:block">
+      <CircleSeriesOptions
+        series={series}
+        selectedSeriesCode={selectedSeriesCode}
+        allCount={allCount}
+        onSelect={openCircleSeriesRoute.bind(null, externalId)}
+      />
+    </aside>
+  );
+}
+
+function MobileCircleSeriesHeader({
+  externalId,
+  series,
+  selectedSeries,
+  selectedSeriesCode,
+  allCount,
+}: {
+  externalId: string;
+  series: CircleSeries[];
+  selectedSeries: CircleSeries | null;
+  selectedSeriesCode: string | null;
+  allCount: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedName = selectedSeries?.name ?? "All series";
+  const selectedCount = selectedSeries?.works ?? allCount;
+  const selectSeries = (titleId?: string) => {
+    setOpen(false);
+    openCircleSeriesRoute(externalId, titleId);
+  };
+  return (
+    <div className="flex min-h-12 items-center gap-1 rounded-lg border bg-card px-3 lg:hidden">
+      <button
+        className="flex min-w-0 flex-1 items-center justify-between gap-3 self-stretch text-left text-sm"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label="Choose circle series"
+        onClick={() => setOpen(true)}
+      >
+        <span className="min-w-0 truncate font-semibold">{selectedName}</span>
+        <span className="shrink-0 text-muted-foreground">{selectedCount}</span>
+      </button>
+      {selectedSeries?.url && (
+        <Button variant="ghost" size="icon" className="shrink-0" asChild>
+          <a
+            href={selectedSeries.url}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Open DLsite series"
+            title="Open DLsite series"
+          >
+            <ExternalLink className="h-4 w-4" />
+          </a>
+        </Button>
+      )}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="shrink-0"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label="Expand circle series"
+        title="Expand circle series"
+        onClick={() => setOpen(true)}
+      >
+        <ChevronDown className="h-4 w-4" />
+      </Button>
+      <MobileSheet open={open} onOpenChange={setOpen} ariaLabel="Circle series" className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="text-base font-semibold">Series</h2>
+          <Button variant="ghost" size="icon" aria-label="Close circle series" onClick={() => setOpen(false)}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="mt-4 space-y-1">
+          <CircleSeriesOptions
+            series={series}
+            selectedSeriesCode={selectedSeriesCode}
+            allCount={allCount}
+            onSelect={selectSeries}
+          />
+        </div>
+      </MobileSheet>
+    </div>
+  );
+}
+
+function CircleSeriesOptions({
+  series,
+  selectedSeriesCode,
+  allCount,
+  onSelect,
+}: {
+  series: CircleSeries[];
+  selectedSeriesCode: string | null;
+  allCount: number;
+  onSelect: (titleId?: string) => void;
+}) {
+  return (
+    <>
       <button
         className={`flex min-h-12 w-full items-center justify-between gap-3 rounded-md px-3 text-left text-sm hover:bg-muted ${selectedSeriesCode === null ? "bg-primary text-primary-foreground hover:bg-primary" : ""}`}
-        onClick={() => openCircleSeriesRoute(externalId)}
+        onClick={() => onSelect()}
       >
         <span className="min-w-0 truncate font-medium">All series</span>
         <span className={selectedSeriesCode === null ? "text-primary-foreground/80" : "text-muted-foreground"}>
@@ -1603,7 +1716,7 @@ function CircleSeriesSidebar({
               <button
                 key={item.titleId}
                 className={`grid min-h-14 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md px-3 text-left text-sm hover:bg-muted ${selected ? "bg-primary text-primary-foreground hover:bg-primary" : ""}`}
-                onClick={() => openCircleSeriesRoute(externalId, item.titleId)}
+                onClick={() => onSelect(item.titleId)}
               >
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{item.name}</span>
@@ -1625,7 +1738,7 @@ function CircleSeriesSidebar({
           <div className="px-3 py-2 text-sm text-muted-foreground">No series</div>
         )}
       </div>
-    </aside>
+    </>
   );
 }
 

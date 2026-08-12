@@ -1,5 +1,5 @@
 import { Loader2, RefreshCw, X } from "lucide-react";
-import { useEffect, useMemo, useState, type RefObject } from "react";
+import { useEffect, useMemo, useState, type ReactNode, type RefObject } from "react";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,7 @@ export function VoiceAdvancedRefreshSheet({
   activeScope,
   error,
   canRefresh,
+  aliasesPanel,
   onClose,
   onRefreshCatalog,
   onRefreshMetadata,
@@ -33,6 +34,7 @@ export function VoiceAdvancedRefreshSheet({
   activeScope?: VoiceCatalogRefreshState["scope"] | null;
   error: string;
   canRefresh: boolean;
+  aliasesPanel?: ReactNode;
   onClose: () => void;
   onRefreshCatalog: (mode: VoiceCatalogRefreshMode, sourceIds: number[]) => void;
   onRefreshMetadata: (mode: VoiceCatalogRefreshMode) => void;
@@ -101,6 +103,13 @@ export function VoiceAdvancedRefreshSheet({
           ariaLabel="Metadata refresh"
           onRun={onRefreshMetadata}
         />
+
+        {mobile && aliasesPanel && (
+          <details className="rounded-md border bg-background px-3 py-2">
+            <summary className="min-h-8 cursor-pointer py-1 text-sm font-medium">Aliases</summary>
+            <div className="mt-2 border-t pt-3">{aliasesPanel}</div>
+          </details>
+        )}
 
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">Sources</legend>

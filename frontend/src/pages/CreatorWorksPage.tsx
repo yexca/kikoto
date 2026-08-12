@@ -132,7 +132,7 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "paused", label: "Shelved" },
 ];
 
-export function CreatorWorksPage({ kind }: { kind: CreatorKind }) {
+export function CreatorWorksPage({ kind, active = true }: { kind: CreatorKind; active?: boolean }) {
   if (kind !== "voice") {
     return (
       <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
@@ -140,26 +140,28 @@ export function CreatorWorksPage({ kind }: { kind: CreatorKind }) {
       </div>
     );
   }
-  return <VoiceCreatorWorksPage />;
+  return <VoiceCreatorWorksPage active={active} />;
 }
 
-function VoiceCreatorWorksPage() {
+function VoiceCreatorWorksPage({ active }: { active: boolean }) {
   const [path, setPath] = useState(window.location.pathname);
   useEffect(() => {
+    if (!active) return;
     const syncPath = () => setPath(window.location.pathname);
+    syncPath();
     window.addEventListener("popstate", syncPath);
     window.addEventListener("kikoto:navigation", syncPath);
     return () => {
       window.removeEventListener("popstate", syncPath);
       window.removeEventListener("kikoto:navigation", syncPath);
     };
-  }, []);
+  }, [active]);
   const personId = voicePersonIdFromPath(path);
   if (personId) return <VoiceDetailPage personId={personId} />;
-  return <VoiceListPage />;
+  return <VoiceListPage active={active} />;
 }
 
-function VoiceListPage() {
+function VoiceListPage({ active }: { active: boolean }) {
   const auth = useAuth();
   const toast = useToast();
   const storageScope = currentClientStorageScope(auth.user?.id ?? null);
@@ -194,11 +196,12 @@ function VoiceListPage() {
   }, [query]);
 
   useEffect(() => {
+    if (!active) return;
     const search = creatorBrowseSearch({ query, filter, tag: tagFilter, page, pageSize });
     const location = `/voices${search}`;
     window.history.replaceState(window.history.state ?? {}, "", location);
     writeLastVoiceListLocation(storageScope, location);
-  }, [filter, page, pageSize, query, storageScope, tagFilter]);
+  }, [active, filter, page, pageSize, query, storageScope, tagFilter]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -969,20 +972,22 @@ function VoiceDetailPage({ personId }: { personId: number }) {
                   <Heart className={`h-4 w-4 ${detail.favorite ? "fill-current" : ""}`} />
                   <span className="hidden lg:inline">Favorite</span>
                 </Button>
-                <Button
-                  ref={aliasActionRef}
-                  variant={detailPanel === "aliases" ? "secondary" : "outline"}
-                  size="sm"
-                  className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
-                  aria-haspopup="dialog"
-                  aria-expanded={detailPanel === "aliases"}
-                  aria-controls={detailPanel === "aliases" ? aliasPanelID : undefined}
-                  onClick={() => setDetailPanel((current) => (current === "aliases" ? null : "aliases"))}
-                >
-                  <Tags className="h-4 w-4" />
-                  Aliases
-                  {alternateAliasCount > 0 && <span className="tabular-nums">{alternateAliasCount}</span>}
-                </Button>
+                {!mobileNavigationLayout && (
+                  <Button
+                    ref={aliasActionRef}
+                    variant={detailPanel === "aliases" ? "secondary" : "outline"}
+                    size="sm"
+                    className="h-[var(--control-height-sm)] gap-2 px-[var(--control-padding-sm-x)]"
+                    aria-haspopup="dialog"
+                    aria-expanded={detailPanel === "aliases"}
+                    aria-controls={detailPanel === "aliases" ? aliasPanelID : undefined}
+                    onClick={() => setDetailPanel((current) => (current === "aliases" ? null : "aliases"))}
+                  >
+                    <Tags className="h-4 w-4" />
+                    Aliases
+                    {alternateAliasCount > 0 && <span className="tabular-nums">{alternateAliasCount}</span>}
+                  </Button>
+                )}
                 {firstPull ? (
                   <Button
                     variant="default"
@@ -1003,8 +1008,8 @@ function VoiceDetailPage({ personId }: { personId: number }) {
                   <>
                     <Button
                       variant="outline"
-                      size="icon"
-                      className="h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+                      size="sm"
+                      className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs"
                       aria-label="Retry voice metadata"
                       title="Retry metadata"
                       disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
@@ -1015,12 +1020,13 @@ function VoiceDetailPage({ personId }: { personId: number }) {
                       ) : (
                         <RefreshCw className="h-4 w-4" />
                       )}
+                      <span className="lg:hidden">Metadata</span>
                       <span className="hidden lg:inline">Retry metadata</span>
                     </Button>
                     <Button
                       variant="outline"
-                      size="icon"
-                      className="h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+                      size="sm"
+                      className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs"
                       aria-label="Refresh voice remote sources"
                       title="Refresh remote"
                       disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
@@ -1031,6 +1037,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
                       ) : (
                         <Cloud className="h-4 w-4" />
                       )}
+                      <span className="lg:hidden">Remote</span>
                       <span className="hidden lg:inline">Refresh remote</span>
                     </Button>
                   </>
@@ -1060,15 +1067,52 @@ function VoiceDetailPage({ personId }: { personId: number }) {
           </CardContent>
         </Card>
 
-        <AnchoredPopover
-          open={detailPanel === "aliases"}
-          anchorRef={aliasActionRef}
-          onOpenChange={(open) => setDetailPanel(open ? "aliases" : null)}
-          className="w-[min(34rem,calc(100vw-1.5rem))] p-4"
-          bottomCollisionPadding={96}
-          zIndex={70}
-        >
-          <div id={aliasPanelID} role="dialog" aria-label="Aliases">
+        {!mobileNavigationLayout && (
+          <AnchoredPopover
+            open={detailPanel === "aliases"}
+            anchorRef={aliasActionRef}
+            onOpenChange={(open) => setDetailPanel(open ? "aliases" : null)}
+            className="w-[min(34rem,calc(100vw-1.5rem))] p-4"
+            bottomCollisionPadding={96}
+            zIndex={70}
+          >
+            <div id={aliasPanelID} role="dialog" aria-label="Aliases">
+              <AliasReviewPanel
+                personId={detail.personId}
+                aliases={detail.aliasRecords ?? []}
+                canManage={auth.hasPermission("metadata:sync")}
+                onAliasesChange={(aliases) =>
+                  setDetail((current) =>
+                    current
+                      ? {
+                          ...current,
+                          aliasRecords: aliases,
+                          aliases: aliases.map((alias) => alias.alias),
+                          ...(current.syncState === "never"
+                            ? {}
+                            : { syncState: "attention", syncReason: "aliases_changed" }),
+                        }
+                      : current,
+                  )
+                }
+                onMerged={() => void refreshDetail()}
+                onMessage={setMessage}
+              />
+            </div>
+          </AnchoredPopover>
+        )}
+
+        <VoiceAdvancedRefreshSheet
+          open={detailPanel === "advanced"}
+          mobile={mobileNavigationLayout}
+          anchorRef={advancedActionRef}
+          sources={remoteMatches}
+          loading={isRemoteLoading}
+          refreshing={catalogRefreshActive}
+          activeScope={catalogRefreshActive ? catalogRefresh?.scope : null}
+          error={remoteError}
+          canRefresh={canForceRefreshCatalog}
+          aliasesPanel={
             <AliasReviewPanel
               personId={detail.personId}
               aliases={detail.aliasRecords ?? []}
@@ -1090,19 +1134,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               onMerged={() => void refreshDetail()}
               onMessage={setMessage}
             />
-          </div>
-        </AnchoredPopover>
-
-        <VoiceAdvancedRefreshSheet
-          open={detailPanel === "advanced"}
-          mobile={mobileNavigationLayout}
-          anchorRef={advancedActionRef}
-          sources={remoteMatches}
-          loading={isRemoteLoading}
-          refreshing={catalogRefreshActive}
-          activeScope={catalogRefreshActive ? catalogRefresh?.scope : null}
-          error={remoteError}
-          canRefresh={canForceRefreshCatalog}
+          }
           onClose={() => setDetailPanel(null)}
           onRefreshCatalog={(mode, sourceIds) =>
             void refreshVoiceCatalog({ scope: "remote", mode, sourceIds }, "Voice remote refresh queued.")

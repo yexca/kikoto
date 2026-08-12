@@ -330,7 +330,7 @@ function writeLibraryHistoryBrowseState(storageScope: string, state: LibraryBrow
   );
 }
 
-export function LibraryPage() {
+export function LibraryPage({ active = true }: { active?: boolean }) {
   const toast = useToast();
   const auth = useAuth();
   const mobileNavigationLayout = useMobileNavigationLayout();
@@ -857,6 +857,7 @@ export function LibraryPage() {
   }, [selectedCode, works.length]);
 
   useEffect(() => {
+    if (!active) return;
     const syncFromPath = () => {
       const nextTab = resolveTabFromPath(window.location.pathname, sources, activeTab);
       const nextScope = localScopeFromPath(window.location.pathname);
@@ -886,10 +887,10 @@ export function LibraryPage() {
       window.removeEventListener("popstate", handlePopState);
       window.removeEventListener("kikoto:navigation", handleAppNavigation);
     };
-  }, [sources, activeTab, browseStorageScope, sessionDefaultBrowseState]);
+  }, [active, sources, activeTab, browseStorageScope, sessionDefaultBrowseState]);
 
   useEffect(() => {
-    if (!browseHydrated || selectedCode !== null || selectedRemoteTarget !== null) return;
+    if (!active || !browseHydrated || selectedCode !== null || selectedRemoteTarget !== null) return;
     const browseState = { ...activeBrowseState, scrollY: window.scrollY };
     writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
     writeLibrarySortPreference(libraryBrowseKey(activeTab, localScope, browseStorageScope), librarySort, sortDirection);
@@ -907,6 +908,7 @@ export function LibraryPage() {
       `${window.location.pathname}${nextSearch}`,
     );
   }, [
+    active,
     activeTab,
     browseHydrated,
     desktopColumns,

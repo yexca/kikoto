@@ -475,22 +475,22 @@ function CachedBrowsePages({ activePage }: { activePage: AppPage | null }) {
     <>
       {mountedPages.has("library") && (
         <div hidden={activePage !== "library"}>
-          <LibraryPage />
+          <LibraryPage active={activePage === "library"} />
         </div>
       )}
       {mountedPages.has("favorites") && (
         <div hidden={activePage !== "favorites"}>
-          <FavoritesPage />
+          <FavoritesPage active={activePage === "favorites"} />
         </div>
       )}
       {mountedPages.has("circles") && (
         <div hidden={activePage !== "circles"}>
-          <CirclesPage />
+          <CirclesPage active={activePage === "circles"} />
         </div>
       )}
       {mountedPages.has("voice-actors") && (
         <div hidden={activePage !== "voice-actors"}>
-          <CreatorWorksPage kind="voice" />
+          <CreatorWorksPage kind="voice" active={activePage === "voice-actors"} />
         </div>
       )}
     </>

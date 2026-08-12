@@ -150,7 +150,7 @@ type FavoritesEntryState = {
   favoritesAnchor?: { workID: number; viewportOffset: number };
 };
 
-export function FavoritesPage() {
+export function FavoritesPage({ active = true }: { active?: boolean }) {
   const toast = useToast();
   const auth = useAuth();
   const principalID = auth.user?.id ?? null;
@@ -371,7 +371,7 @@ export function FavoritesPage() {
   }, [isLoading, works]);
 
   useEffect(() => {
-    if (window.location.pathname !== "/favorites") return;
+    if (!active || window.location.pathname !== "/favorites") return;
     const browseState: FavoritesBrowseState = {
       entity: favoriteEntity,
       query,
@@ -395,6 +395,7 @@ export function FavoritesPage() {
     };
     window.history.replaceState(state, "", `/favorites${search}`);
   }, [
+    active,
     activeList,
     auth.user,
     availabilityFilter,
