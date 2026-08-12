@@ -119,8 +119,19 @@ npm run test:e2e
 Vitest unit tests stay beside their source under `frontend/src`.
 Playwright browser tests live under `frontend/tests/e2e`; Android JVM and device
 tests use the standard Gradle `src/test` and `src/androidTest` source sets.
-CI installs Chromium and runs the complete Playwright project after the
-frontend unit and production-build gates.
+CI runs staged validation in this order:
+
+```text
+Style -> Core -> Smoke -> Full E2E -> Build
+```
+
+`Style` checks formatting, lint, and documentation links. `Core` runs backend
+tests, vet, race detection, frontend unit tests, the dependency audit, and the
+production build. `Smoke` runs a small required Playwright suite for the app
+shell and critical routes. `Full E2E` runs the complete Playwright project and
+uploads failure artifacts. Pull requests require Style, Core, and Smoke;
+Full E2E remains visible but is not a merge requirement. Release validation
+runs every test stage before Android and Docker release builds begin.
 
 Current Vitest coverage is primarily pure state and model logic. User-visible
 React interaction belongs in Playwright until a real component-test environment

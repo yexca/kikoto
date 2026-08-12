@@ -15,6 +15,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"tests/**/*.ts\" \"scripts/**/*.mjs\" \"public/**/*.js\" \"*.{ts,mjs,cjs}\"",
     "preview": "vite preview --host 127.0.0.1",
     "test:unit": "vitest run",
+    "test:e2e:smoke": "playwright test tests/e2e/smoke.spec.ts",
     "test:e2e": "playwright test",
     "test:e2e:mobile": "playwright test --project=mobile-chromium"
   },
