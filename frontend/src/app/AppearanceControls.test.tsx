@@ -31,9 +31,7 @@ describe("AppearanceControls", () => {
   });
 
   it("changes only each style preview's accent for the selected palette", () => {
-    const rendered = renderToStaticMarkup(
-      <ThemePresetPicker value="anthropic" onChange={vi.fn()} palette="cobalt" />,
-    );
+    const rendered = renderToStaticMarkup(<ThemePresetPicker value="anthropic" onChange={vi.fn()} palette="cobalt" />);
 
     for (const color of ["#49699d", "#247da8", "#0a84ff", "#3367d6"]) {
       expect(rendered).toContain(`background-color:${color}`);
