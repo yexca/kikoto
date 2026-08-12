@@ -65,10 +65,10 @@ small shared contract should resolve cross-domain needs.
 - Keep playback global so navigation does not interrupt the current queue.
 - Treat bottom navigation, safe areas, Compact player placement, page clearance,
   and update notices as one fixed-surface layout contract.
-- Size mobile search and modal layers against the visual viewport. The Android
-  shell requests resize behavior for the software keyboard, while the frontend
+- Size mobile search and modal layers against the visual viewport. The frontend
   hides bottom navigation and player surfaces during text entry so focused
-  controls and scrollable results remain visible.
+  controls and scrollable results remain visible without relying on Android
+  activity resize behavior.
 - Treat each mobile bottom-navigation destination as a resumable workspace.
   Switching destinations restores that destination's last stable list or detail
   route, history state, and scroll position for the current server and user;
