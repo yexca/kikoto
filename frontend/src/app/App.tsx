@@ -329,8 +329,15 @@ function AuthenticatedApp() {
           >
             <div className="flex h-[var(--header-height)] min-w-0 items-center justify-between gap-2 pl-[max(0.75rem,var(--safe-area-left))] pr-[max(0.75rem,var(--safe-area-right))] lg:h-auto lg:min-h-[var(--header-height)] lg:gap-3 lg:px-6 lg:py-2">
               <div className="flex min-w-0 items-center lg:flex-row lg:items-baseline lg:gap-3">
-                {!showMobilePageTitle && <img src="/kikoto-icon.svg" alt="Kikoto" className="h-8 w-8 dark:invert lg:hidden" />}
-                <h1 className={cn("truncate text-base font-semibold lg:text-2xl", !showMobilePageTitle && "hidden lg:block")}>
+                {!showMobilePageTitle && (
+                  <img src="/kikoto-icon.svg" alt="Kikoto" className="h-8 w-8 dark:invert lg:hidden" />
+                )}
+                <h1
+                  className={cn(
+                    "truncate text-base font-semibold lg:text-2xl",
+                    !showMobilePageTitle && "hidden lg:block",
+                  )}
+                >
                   {page === "not-found" ? "Not found" : (activeItem?.label ?? "Library")}
                 </h1>
                 <p className="hidden text-xs text-muted-foreground lg:line-clamp-1 lg:block lg:text-sm">
@@ -370,10 +377,7 @@ function AuthenticatedApp() {
                     onOpenLibrary={() => openPath("/")}
                   />
                 )}
-                {canAccessCurrentPage && page === "library" && <LibraryPage />}
-                {canAccessCurrentPage && page === "favorites" && <FavoritesPage />}
-                {canAccessCurrentPage && page === "circles" && <CirclesPage />}
-                {canAccessCurrentPage && page === "voice-actors" && <CreatorWorksPage kind="voice" />}
+                <CachedBrowsePages key={clientStorageScope} activePage={canAccessCurrentPage ? page : null} />
                 {canAccessCurrentPage && page === "settings" && auth.user && (
                   <SettingsPage user={auth.user} readOnly={auth.demoMode} onAccountUpdated={auth.refresh} />
                 )}
@@ -449,6 +453,52 @@ function AuthenticatedApp() {
       </div>
     </PlayerProvider>
   );
+}
+
+const cachedBrowsePages = ["library", "favorites", "circles", "voice-actors"] as const;
+type CachedBrowsePage = (typeof cachedBrowsePages)[number];
+
+function CachedBrowsePages({ activePage }: { activePage: AppPage | null }) {
+  const [visitedPages, setVisitedPages] = useState<ReadonlySet<CachedBrowsePage>>(() => {
+    return activePage && isCachedBrowsePage(activePage) ? new Set([activePage]) : new Set();
+  });
+  const pageToMount = activePage && isCachedBrowsePage(activePage) ? activePage : null;
+  const mountedPages = new Set(visitedPages);
+  if (pageToMount) mountedPages.add(pageToMount);
+
+  useEffect(() => {
+    if (!pageToMount) return;
+    setVisitedPages((current) => (current.has(pageToMount) ? current : new Set([...current, pageToMount])));
+  }, [pageToMount]);
+
+  return (
+    <>
+      {mountedPages.has("library") && (
+        <div hidden={activePage !== "library"}>
+          <LibraryPage />
+        </div>
+      )}
+      {mountedPages.has("favorites") && (
+        <div hidden={activePage !== "favorites"}>
+          <FavoritesPage />
+        </div>
+      )}
+      {mountedPages.has("circles") && (
+        <div hidden={activePage !== "circles"}>
+          <CirclesPage />
+        </div>
+      )}
+      {mountedPages.has("voice-actors") && (
+        <div hidden={activePage !== "voice-actors"}>
+          <CreatorWorksPage kind="voice" />
+        </div>
+      )}
+    </>
+  );
+}
+
+function isCachedBrowsePage(page: AppPage): page is CachedBrowsePage {
+  return cachedBrowsePages.includes(page as CachedBrowsePage);
 }
 
 function RemoteTrackWorkflowBridge() {
