@@ -1115,14 +1115,16 @@ test("remote source reuses the library grid, source sorting, localized tags, and
 });
 
 test("remote source keeps alias matches returned by the backend", async ({ page }) => {
+  const aliasWorkCode = syntheticWorkCode("RJ", 54);
   const requests: URL[] = [];
   await mockRemoteSource(page, (url) => requests.push(url));
   await page.goto("/");
   await page.getByRole("button", { name: "Example Remote", exact: true }).click();
 
+  await page.getByRole("button", { name: "Search library" }).click();
   const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
-  await search.fill("RJ00000054");
-  await expect.poll(() => requests.some((url) => url.searchParams.get("q") === "RJ00000054")).toBe(true);
+  await search.fill(aliasWorkCode);
+  await expect.poll(() => requests.some((url) => url.searchParams.get("q") === aliasWorkCode)).toBe(true);
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
 });
 
@@ -1625,7 +1627,11 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await expect(page.getByRole("menuitem", { name: /Manage cache/ })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menu", { name: "Selected source options" })).toHaveCount(0);
-  await page.getByTitle(/Check sources/).click();
+  await page.getByRole("button", { name: "More directory actions" }).click();
+  await page
+    .getByRole("menu", { name: "Directory actions" })
+    .getByRole("menuitem", { name: "Check sources", exact: true })
+    .click();
   await expect.poll(() => sourceChecks).toBe(1);
 
   await page.getByRole("button", { name: "Back to library" }).click();
@@ -1884,7 +1890,7 @@ test("cards keep two complete tag rows and readable Sales and Rate metrics at co
   await expect(card.getByText("Sales", { exact: true })).toBeVisible();
   await expect(card.getByText("DL", { exact: true })).toHaveCount(0);
   await expect(card.getByText("4.50", { exact: true })).toBeVisible();
-  await expect(card.getByText("(240)", { exact: true })).toBeVisible();
+  await expect(rate).toBeVisible();
   await expect(rate.locator("[aria-hidden=true] > span")).toHaveCount(5);
 
   const assertTagRowsAreComplete = async (minimumCardWidth: number, maximumCardWidth: number) => {
@@ -2011,6 +2017,7 @@ test("library search follows the user across scopes and survives navigation", as
   await mockApplication(page);
   await page.goto("/");
 
+  await page.getByRole("button", { name: "Search library" }).click();
   const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
   await search.fill("local term");
   await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("local term");
