@@ -29,6 +29,13 @@ import (
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
+const githubTagsURL = "https://api.github.com/repos/yexca/kikoto/tags?per_page=100"
+
+type updateCheckCache struct {
+	checkedAt time.Time
+	result    appUpdateResponse
+}
+
 type Server struct {
 	db                             *sql.DB
 	accountStore                   *account.Store
@@ -54,6 +61,9 @@ type Server struct {
 	localDurationProbeMu           sync.Mutex
 	mediaStreamCache               sync.Map
 	filesystemTriggerConfigChanged chan struct{}
+	updateCheckMu                  sync.Mutex
+	updateCheck                    *updateCheckCache
+	updateHTTPClient               *http.Client
 }
 
 type localMediaIndexCall struct {
@@ -79,6 +89,7 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.health)
+	mux.HandleFunc("GET /api/app-update", s.getAppUpdate)
 	mux.HandleFunc("GET /api/auth/me", s.getCurrentUser)
 	mux.HandleFunc("PATCH /api/auth/me", s.updateCurrentUser)
 	mux.HandleFunc("POST /api/auth/login", s.login)

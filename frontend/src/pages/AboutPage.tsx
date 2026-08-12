@@ -1,8 +1,10 @@
-import { BookOpen, Boxes, ExternalLink, FolderCode, Scale, Sparkles } from "lucide-react";
+import { BookOpen, Boxes, Download, ExternalLink, FolderCode, Scale, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { APP_CLIENT_VERSION, KIKOTO_RELEASES_URL } from "@/lib/appInfo";
+import { api, type AppUpdate } from "@/lib/api";
 
 const dependencyGroups = [
   {
@@ -24,10 +26,37 @@ const dependencyGroups = [
 ] as const;
 
 export function AboutPage() {
+  const [update, setUpdate] = useState<AppUpdate | null>(null);
+  useEffect(() => {
+    let active = true;
+    void api
+      .appUpdate()
+      .then((result) => {
+        if (active && result.updateAvailable) setUpdate(result);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
   return (
     <div className="space-y-5">
       <section className="rounded-lg border bg-card p-5">
-        <p className="text-xs font-medium text-muted-foreground">About Kikoto · {APP_CLIENT_VERSION}</p>
+        <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+          <span>About Kikoto · {APP_CLIENT_VERSION}</span>
+          {update?.releaseUrl && (
+            <a
+              href={update.releaseUrl}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={`Update available: ${update.latestVersion}`}
+              title={`Update available: ${update.latestVersion}`}
+              className="text-info hover:text-info/80"
+            >
+              <Download className="h-4 w-4" />
+            </a>
+          )}
+        </p>
         <h2 className="mt-1 text-2xl font-semibold">Project background and credits</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           Kikoto is a local-first personal audio library focused on DLsite-style works, unified metadata, compatible

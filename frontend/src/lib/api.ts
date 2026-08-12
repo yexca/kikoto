@@ -448,6 +448,14 @@ export type RuntimeSettings = {
   recommendationThreshold: number;
 };
 
+export type AppUpdate = {
+  currentVersion: string;
+  latestVersion: string;
+  updateAvailable: boolean;
+  releaseUrl: string;
+  checkedAt: string;
+};
+
 export type AppSettings = {
   localScanDepth: number;
   cacheEnabled: boolean;
@@ -1717,6 +1725,7 @@ async function logout() {
 }
 
 export const api = {
+  appUpdate: () => getJSON<AppUpdate>("/api/app-update"),
   health: async (baseURL?: string) => {
     const response = await fetchAPI("/health", {}, baseURL);
     if (!response.ok) {
