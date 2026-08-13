@@ -1,4 +1,5 @@
 import {
+  Album,
   ArrowDownAZ,
   ArrowDownZA,
   ArrowDown,
@@ -7,11 +8,8 @@ import {
   ArrowUp,
   ArrowUpDown,
   Check,
-  ChevronRight,
   ChevronDown,
   Cloud,
-  Columns3,
-  ExternalLink,
   Filter,
   Heart,
   ListChecks,
@@ -24,7 +22,6 @@ import {
   Plus,
   RefreshCw,
   Search,
-  SlidersHorizontal,
   Star,
   Trash2,
   UsersRound,
@@ -210,21 +207,8 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const [listManagerOpen, setListManagerOpen] = useState(false);
   const [listActionsOpen, setListActionsOpen] = useState(false);
   const listActionsRef = useRef<HTMLDivElement | null>(null);
-  const [entitySearchOpen, setEntitySearchOpen] = useState(false);
-  const entitySearchRef = useRef<HTMLDivElement | null>(null);
-  const entitySearchInputRef = useRef<HTMLInputElement | null>(null);
   const requestSeq = useRef(0);
   const mobileNavigationLayout = useMobileNavigationLayout();
-
-  useEffect(() => {
-    setEntitySearchOpen(false);
-  }, [favoriteEntity]);
-
-  useEffect(() => {
-    if (!entitySearchOpen) return;
-    const frame = window.requestAnimationFrame(() => entitySearchInputRef.current?.focus());
-    return () => window.cancelAnimationFrame(frame);
-  }, [entitySearchOpen]);
 
   useEffect(() => {
     if (!auth.user) {
@@ -531,17 +515,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     setPage(1);
   };
 
-  const changeAvailabilityFilter = (value: AvailabilityFilter) => {
-    setAvailabilityFilter(value);
-    setSourceIDs([]);
-    setPage(1);
-  };
-
-  const changeSourceIDs = (value: number[]) => {
-    setSourceIDs(value);
-    setPage(1);
-  };
-
   const changeResourceSelection = ({ availability, sourceIDs }: FavoriteResourceSelection) => {
     setAvailabilityFilter(availability);
     setSourceIDs(sourceIDs);
@@ -723,7 +696,11 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
 
   return (
     <section className="space-y-5">
-      <div className={`${mobileNavigationLayout ? "hidden" : "flex"} flex-col space-y-3`} data-toast-avoid>
+      <div
+        hidden={mobileNavigationLayout}
+        className={`${mobileNavigationLayout ? "hidden" : "flex"} flex-col space-y-3`}
+        data-toast-avoid
+      >
         <div className="flex items-center gap-3">
           <FavoriteEntityPicker value={favoriteEntity} onChange={changeFavoriteEntity} />
           <FavoriteSearchInput
@@ -811,87 +788,36 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
         )}
       </div>
 
-      <div className={mobileNavigationLayout ? "block" : "hidden"}>
-        <div className="border-b">
-          <div className="flex min-w-0 items-end gap-3">
-            <div className="min-w-0 flex-1 overflow-x-auto" role="tablist" aria-label="Favorite categories">
-              <div className="flex w-max min-w-full gap-6">
-                <FavoriteEntityTab
-                  active={favoriteEntity === "works"}
-                  icon={ListMusic}
-                  label="Works"
-                  count={favoriteTotal}
-                  onClick={() => changeFavoriteEntity("works")}
-                />
-                <FavoriteEntityTab
-                  active={favoriteEntity === "circles"}
-                  icon={UsersRound}
-                  label="Circles"
-                  count={favoriteCircles.length}
-                  onClick={() => changeFavoriteEntity("circles")}
-                />
-                <FavoriteEntityTab
-                  active={favoriteEntity === "voices"}
-                  icon={Mic2}
-                  label="Voice Actors"
-                  count={favoriteVoices.length}
-                  onClick={() => changeFavoriteEntity("voices")}
-                />
-              </div>
-            </div>
-
-            {favoriteEntity !== "works" && (
-              <div ref={entitySearchRef} className="relative mb-1 shrink-0">
-                <div>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className={`h-9 w-9 ${query.trim() ? "text-primary" : ""}`}
-                    onClick={() => setEntitySearchOpen((open) => !open)}
-                    aria-label="Search favorites"
-                    title="Search favorites"
-                  >
-                    <Search className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                <AnchoredPopover
-                  open={entitySearchOpen}
-                  anchorRef={entitySearchRef}
-                  onOpenChange={setEntitySearchOpen}
-                  className="w-[min(18rem,calc(100vw-1.5rem))] p-2"
-                >
-                  <div className="flex items-center gap-2">
-                    <label className="relative block min-w-0 flex-1">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <input
-                        ref={entitySearchInputRef}
-                        className="h-9 w-full rounded-md border bg-card pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                        value={query}
-                        onKeyDown={dismissKeyboardOnEnter}
-                        onChange={(event) => setQuery(event.target.value)}
-                        placeholder={favoriteEntity === "circles" ? "Search circles" : "Search voice actors"}
-                        aria-label={favoriteEntity === "circles" ? "Search circles" : "Search voice actors"}
-                      />
-                    </label>
-                    {query.trim() && (
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-9 w-9 shrink-0"
-                        onClick={() => setQuery("")}
-                        aria-label="Clear search"
-                        title="Clear search"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </AnchoredPopover>
-              </div>
-            )}
-          </div>
-        </div>
+      <div hidden={!mobileNavigationLayout} className={mobileNavigationLayout ? "block" : "hidden"}>
+        <FavoriteMobileToolbar
+          favoriteEntity={favoriteEntity}
+          query={query}
+          worksOptions={
+            favoriteEntity === "works" ? (
+              <FavoriteMobileWorksControls
+                availability={availabilityFilter}
+                sources={fileSources}
+                selectedSourceIDs={sourceIDs}
+                sourcesLoading={areFileSourcesLoading}
+                sort={sort}
+                direction={sortDirection}
+                pageSize={pageSize}
+                mobileColumns={mobileColumns}
+                sortDisabled={isLoading}
+                onResourceChange={changeResourceSelection}
+                onSortChange={changeFavoriteSort}
+                onDirectionChange={changeFavoriteSortDirection}
+                onReshuffle={reshuffleFavorites}
+                onPageSizeChange={changePageSize}
+                onMobileColumnsChange={setMobileColumns}
+                desktopColumns={desktopColumns}
+                onDesktopColumnsChange={setDesktopColumns}
+              />
+            ) : null
+          }
+          onEntityChange={changeFavoriteEntity}
+          onQueryChange={changeFavoriteQuery}
+        />
       </div>
 
       {favoriteEntity !== "works" && (
@@ -917,7 +843,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
 
       {favoriteEntity === "works" && (
         <>
-          <div className={mobileNavigationLayout ? "space-y-2" : "hidden"}>
+          <div hidden={!mobileNavigationLayout} className={mobileNavigationLayout ? "space-y-2" : "hidden"}>
             <div className="flex items-center gap-2 pb-1">
               <div className="min-w-0 flex-1 overflow-x-auto">
                 <div className="flex w-max min-w-full gap-2" role="group" aria-label="Favorite lists">
@@ -980,6 +906,14 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                   className="w-52 p-1 text-sm"
                 >
                   <div role="menu" aria-label="Favorite list options">
+                    <FavoriteListAction
+                      icon={<Check className="h-4 w-4" />}
+                      label={selectionMode ? "Exit selection" : "Select works"}
+                      onClick={() => {
+                        setListActionsOpen(false);
+                        toggleSelectionMode();
+                      }}
+                    />
                     <FavoriteListAction
                       icon={<Plus className="h-4 w-4" />}
                       label="New list"
@@ -1062,7 +996,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
             </div>
           </div>
 
-          <div className={mobileNavigationLayout ? "block" : "hidden"}>
+          <div hidden={!mobileNavigationLayout} className={mobileNavigationLayout ? "block" : "hidden"}>
             <WorkCollectionPagination
               placement="top"
               page={currentPage}
@@ -1070,91 +1004,10 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
               totalItems={totalWorks}
               totalPages={totalPages}
               compactMobile
+              compactTop
               refreshing={isLoading && hasWorksSnapshot}
               refreshingLabel="Refreshing favorites"
               onPageChange={setPage}
-              leadingControls={
-                <>
-                  <div className="lg:hidden">
-                    <FavoriteMobileOptions
-                      availability={availabilityFilter}
-                      sources={fileSources}
-                      selectedSourceIDs={sourceIDs}
-                      sourcesLoading={areFileSourcesLoading}
-                      sort={sort}
-                      direction={sortDirection}
-                      pageSize={pageSize}
-                      mobileColumns={mobileColumns}
-                      selectionMode={selectionMode}
-                      hasActiveFilters={Boolean(hasActiveFilters)}
-                      sortDisabled={isLoading}
-                      onAvailabilityChange={changeAvailabilityFilter}
-                      onSourceIDsChange={changeSourceIDs}
-                      onSortChange={changeFavoriteSort}
-                      onDirectionChange={changeFavoriteSortDirection}
-                      onReshuffle={reshuffleFavorites}
-                      onPageSizeChange={changePageSize}
-                      onMobileColumnsChange={setMobileColumns}
-                      onToggleSelection={toggleSelectionMode}
-                      onClearFilters={clearFilters}
-                    />
-                  </div>
-                  <div className="hidden items-center gap-2 lg:flex">
-                    <select
-                      className="h-8 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
-                      value={availabilityFilter}
-                      onChange={(event) => changeAvailabilityFilter(event.target.value as AvailabilityFilter)}
-                      aria-label="Availability filter"
-                    >
-                      {availabilityFilters.map((filter) => (
-                        <option key={filter.value} value={filter.value}>
-                          {filter.label}
-                        </option>
-                      ))}
-                    </select>
-                    <FavoriteSourceFilter
-                      sources={fileSources}
-                      selectedSourceIDs={sourceIDs}
-                      loading={areFileSourcesLoading}
-                      onChange={changeSourceIDs}
-                    />
-                    {hasActiveFilters && (
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={clearFilters}
-                        aria-label="Clear favorite filters"
-                        title="Clear favorite filters"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                    <Button
-                      variant={selectionMode ? "default" : "outline"}
-                      size="sm"
-                      className="h-8"
-                      onClick={toggleSelectionMode}
-                    >
-                      Select
-                    </Button>
-                    <WorkCollectionLayoutPicker
-                      mobileColumns={mobileColumns}
-                      desktopColumns={desktopColumns}
-                      onMobileColumnsChange={setMobileColumns}
-                      onDesktopColumnsChange={setDesktopColumns}
-                    />
-                    <FavoriteSortControls
-                      value={sort}
-                      direction={sortDirection}
-                      disabled={isLoading}
-                      onChange={changeFavoriteSort}
-                      onDirectionChange={changeFavoriteSortDirection}
-                      onReshuffle={reshuffleFavorites}
-                    />
-                  </div>
-                </>
-              }
             />
           </div>
 
@@ -1305,48 +1158,19 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   );
 }
 
-function FavoriteEntityTab({
-  active,
-  icon: Icon,
-  label,
-  count,
-  onClick,
-}: {
-  active: boolean;
-  icon: typeof Heart;
-  label: string;
-  count: number;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      className={`relative inline-flex h-11 shrink-0 items-center gap-2 px-1 text-sm font-medium transition-colors ${active ? "text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary" : "text-muted-foreground hover:text-foreground"}`}
-      onClick={onClick}
-      role="tab"
-      aria-selected={active}
-    >
-      <Icon className="h-4 w-4" />
-      {label}
-      <span
-        className={`rounded-full px-1.5 py-0.5 text-[11px] tabular-nums ${active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}
-      >
-        {count}
-      </span>
-    </button>
-  );
-}
-
 function FavoriteEntityPicker({
   value,
   onChange,
+  compact = false,
 }: {
   value: FavoriteEntity;
   onChange: (value: FavoriteEntity) => void;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const options: { value: FavoriteEntity; label: string; icon: typeof ListMusic }[] = [
-    { value: "works", label: "Works", icon: ListMusic },
+    { value: "works", label: "Works", icon: Album },
     { value: "circles", label: "Circles", icon: UsersRound },
     { value: "voices", label: "Voice Actors", icon: Mic2 },
   ];
@@ -1355,17 +1179,23 @@ function FavoriteEntityPicker({
     <div className="relative shrink-0" ref={anchorRef}>
       <Button
         variant="outline"
-        size="sm"
-        className="h-9 min-w-32 justify-between"
+        size={compact ? "icon" : "sm"}
+        className={compact ? "h-8 w-8" : "h-9 min-w-32 justify-between"}
         onClick={() => setOpen((current) => !current)}
         aria-label={`Favorite type: ${selected.label}`}
         title={`Favorite type: ${selected.label}`}
       >
-        <span className="flex items-center gap-2">
+        {compact ? (
           <selected.icon className="h-4 w-4" />
-          <span>{selected.label}</span>
-        </span>
-        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+        ) : (
+          <>
+            <span className="flex items-center gap-2">
+              <selected.icon className="h-4 w-4" />
+              <span>{selected.label}</span>
+            </span>
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          </>
+        )}
       </Button>
       <AnchoredPopover open={open} anchorRef={anchorRef} onOpenChange={setOpen} className="w-44 p-1 text-sm">
         <div role="menu" aria-label="Favorite types">
@@ -1387,6 +1217,97 @@ function FavoriteEntityPicker({
           ))}
         </div>
       </AnchoredPopover>
+    </div>
+  );
+}
+
+function FavoriteMobileToolbar({
+  favoriteEntity,
+  query,
+  worksOptions,
+  onEntityChange,
+  onQueryChange,
+}: {
+  favoriteEntity: FavoriteEntity;
+  query: string;
+  worksOptions: ReactNode;
+  onEntityChange: (value: FavoriteEntity) => void;
+  onQueryChange: (value: string) => void;
+}) {
+  const [searchOpen, setSearchOpen] = useState(() => Boolean(query.trim()));
+  const searchAnchorRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const placeholder =
+    favoriteEntity === "works"
+      ? "Search title, code, circle, tag, or creator"
+      : favoriteEntity === "circles"
+        ? "Search circles"
+        : "Search voice actors";
+
+  useEffect(() => {
+    if (query.trim()) setSearchOpen(true);
+  }, [query]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    const frame = window.requestAnimationFrame(() => searchInputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [searchOpen]);
+
+  useEffect(() => {
+    setSearchOpen(Boolean(query.trim()));
+  }, [favoriteEntity]);
+
+  return (
+    <div className="flex items-center gap-2" data-toast-avoid>
+      <FavoriteEntityPicker value={favoriteEntity} onChange={onEntityChange} compact />
+      <div className="relative shrink-0" ref={searchAnchorRef}>
+        <Button
+          variant="outline"
+          size="icon"
+          className={`h-8 w-8 ${query.trim() ? "border-primary/30 bg-primary/10 text-primary" : ""}`}
+          onClick={() => setSearchOpen((open) => !open)}
+          aria-label={query.trim() ? "Edit favorite search" : "Search favorites"}
+          title={query.trim() ? "Edit favorite search" : "Search favorites"}
+        >
+          <Search className="h-4 w-4" />
+        </Button>
+        <AnchoredPopover
+          open={searchOpen}
+          anchorRef={searchAnchorRef}
+          onOpenChange={setSearchOpen}
+          align="start"
+          className="w-[min(22rem,calc(100vw-1.5rem))] p-2"
+        >
+          <div className="flex items-center gap-2">
+            <label className="relative block min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                ref={searchInputRef}
+                className="h-11 w-full rounded-md border bg-card pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                value={query}
+                onKeyDown={dismissKeyboardOnEnter}
+                onChange={(event) => onQueryChange(event.target.value)}
+                placeholder={placeholder}
+                aria-label={placeholder}
+              />
+            </label>
+            {query.trim() && (
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={() => onQueryChange("")}
+                aria-label="Clear search"
+                title="Clear search"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </AnchoredPopover>
+      </div>
+      <div className="ml-auto shrink-0">{worksOptions}</div>
     </div>
   );
 }
@@ -2162,110 +2083,6 @@ function FavoriteSortControls({
   );
 }
 
-function FavoriteSourceFilter({
-  sources,
-  selectedSourceIDs,
-  loading,
-  onChange,
-}: {
-  sources: LibrarySource[];
-  selectedSourceIDs: number[];
-  loading: boolean;
-  onChange: (sourceIDs: number[]) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const anchorRef = useRef<HTMLDivElement | null>(null);
-  const label = loading
-    ? "Loading sources"
-    : sources.length === 0
-      ? "No sources"
-      : favoriteSourceFilterLabel(sources, selectedSourceIDs);
-  const disabled = loading || sources.length === 0;
-  return (
-    <div className="relative" ref={anchorRef}>
-      <Button
-        variant="outline"
-        size="sm"
-        className={`h-8 max-w-44 ${selectedSourceIDs.length > 0 ? "border-primary/30 bg-primary/10 text-primary" : ""}`}
-        disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
-        aria-label={`Source filter: ${label}`}
-        title={`Source filter: ${label}`}
-      >
-        <Cloud className="h-3.5 w-3.5 shrink-0" />
-        <span className="truncate">{label}</span>
-      </Button>
-      <AnchoredPopover
-        open={open && !disabled}
-        anchorRef={anchorRef}
-        onOpenChange={setOpen}
-        align="start"
-        className="w-[min(17rem,calc(100vw-1.5rem))] p-1 text-sm"
-      >
-        <div role="menu" aria-label="Source filters">
-          <div className="px-3 py-2 text-xs font-semibold text-foreground">Sources</div>
-          <FavoriteSourceOptions sources={sources} selectedSourceIDs={selectedSourceIDs} onChange={onChange} />
-        </div>
-      </AnchoredPopover>
-    </div>
-  );
-}
-
-function FavoriteSourceOptions({
-  sources,
-  selectedSourceIDs,
-  onChange,
-}: {
-  sources: LibrarySource[];
-  selectedSourceIDs: number[];
-  onChange: (sourceIDs: number[]) => void;
-}) {
-  const selected = new Set(selectedSourceIDs);
-  const toggleSource = (sourceID: number) => {
-    if (selectedSourceIDs.length === 0) {
-      onChange([sourceID]);
-      return;
-    }
-    const next = selected.has(sourceID)
-      ? selectedSourceIDs.filter((candidate) => candidate !== sourceID)
-      : [...selectedSourceIDs, sourceID];
-    onChange(next);
-  };
-  return (
-    <>
-      <button
-        type="button"
-        role="menuitemcheckbox"
-        aria-checked={selectedSourceIDs.length === 0}
-        className={`flex min-h-11 w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-muted ${selectedSourceIDs.length === 0 ? "bg-primary/10 font-medium text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
-        onClick={() => onChange([])}
-      >
-        <Check className={`h-4 w-4 shrink-0 ${selectedSourceIDs.length === 0 ? "opacity-100" : "opacity-0"}`} />
-        <span className="text-foreground">All sources</span>
-      </button>
-      <div className="my-1 border-t" role="separator" />
-      {sources.map((source) => {
-        const checked = selected.has(source.id);
-        return (
-          <button
-            key={source.id}
-            type="button"
-            role="menuitemcheckbox"
-            aria-checked={checked}
-            className={`flex min-h-11 w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-muted ${checked ? "bg-primary/10 font-medium text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
-            onClick={() => toggleSource(source.id)}
-          >
-            <Check className={`h-4 w-4 shrink-0 ${checked ? "opacity-100" : "opacity-0"}`} />
-            <Cloud className="h-4 w-4 shrink-0" />
-            <span className="min-w-0 flex-1 truncate text-foreground">{source.displayName || source.code}</span>
-            {!source.enabled && <span className="text-[11px] text-muted-foreground">Disabled</span>}
-          </button>
-        );
-      })}
-    </>
-  );
-}
-
 function favoriteSourceFilterLabel(sources: LibrarySource[], selectedSourceIDs: number[]) {
   if (selectedSourceIDs.length === 0) return "All sources";
   if (selectedSourceIDs.length > 1) return `${selectedSourceIDs.length} sources`;
@@ -2273,9 +2090,7 @@ function favoriteSourceFilterLabel(sources: LibrarySource[], selectedSourceIDs: 
   return selected?.displayName || selected?.code || "1 source";
 }
 
-type FavoriteMobilePanel = "root" | "availability" | "sources" | "sort" | "columns" | "page-size";
-
-function FavoriteMobileOptions({
+function FavoriteMobileWorksControls({
   availability,
   sources,
   selectedSourceIDs,
@@ -2284,18 +2099,15 @@ function FavoriteMobileOptions({
   direction,
   pageSize,
   mobileColumns,
-  selectionMode,
-  hasActiveFilters,
+  desktopColumns,
   sortDisabled,
-  onAvailabilityChange,
-  onSourceIDsChange,
+  onResourceChange,
   onSortChange,
   onDirectionChange,
   onReshuffle,
   onPageSizeChange,
   onMobileColumnsChange,
-  onToggleSelection,
-  onClearFilters,
+  onDesktopColumnsChange,
 }: {
   availability: AvailabilityFilter;
   sources: LibrarySource[];
@@ -2305,311 +2117,156 @@ function FavoriteMobileOptions({
   direction: SortDirection;
   pageSize: PageSize;
   mobileColumns: WorkCollectionColumnSetting;
-  selectionMode: boolean;
-  hasActiveFilters: boolean;
+  desktopColumns: WorkCollectionColumnSetting;
   sortDisabled: boolean;
-  onAvailabilityChange: (value: AvailabilityFilter) => void;
-  onSourceIDsChange: (sourceIDs: number[]) => void;
+  onResourceChange: (selection: FavoriteResourceSelection) => void;
   onSortChange: (value: FavoriteSort) => void;
   onDirectionChange: (value: SortDirection) => void;
   onReshuffle: () => void;
   onPageSizeChange: (value: PageSize) => void;
   onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
-  onToggleSelection: () => void;
-  onClearFilters: () => void;
+  onDesktopColumnsChange: (value: WorkCollectionColumnSetting) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [panel, setPanel] = useState<FavoriteMobilePanel>("root");
-  const anchorRef = useRef<HTMLDivElement | null>(null);
   const availabilityLabel =
     availabilityFilters.find((option) => option.value === availability)?.label ?? "Any available";
   const sourceLabel = sourcesLoading
-    ? "Loading"
+    ? "Loading sources"
     : sources.length === 0
-      ? "None configured"
+      ? "No sources"
       : favoriteSourceFilterLabel(sources, selectedSourceIDs);
-  const sortLabel = favoriteSortOptions.find((option) => option.value === sort)?.label ?? "Sort";
-  const directionLabel = sort === "random" ? "Reshuffle" : direction === "asc" ? "Ascending" : "Descending";
-  const columnsLabel = mobileColumns === "auto" ? "Auto" : String(mobileColumns);
+  const resourceLabel = selectedSourceIDs.length > 0 ? sourceLabel : availabilityLabel;
 
-  const close = () => {
-    setOpen(false);
-    setPanel("root");
-  };
-  const runAndClose = (action: () => void) => {
-    action();
-    close();
-  };
-  const setPopoverOpen = (value: boolean) => {
-    setOpen(value);
-    if (!value) setPanel("root");
-  };
+  return (
+    <div className="flex items-center gap-1">
+      <FavoriteResourceIconControl
+        availability={availability}
+        sources={sources}
+        selectedSourceIDs={selectedSourceIDs}
+        loading={sourcesLoading}
+        label={resourceLabel}
+        onChange={onResourceChange}
+      />
+      <WorkCollectionLayoutPicker
+        mobileColumns={mobileColumns}
+        desktopColumns={desktopColumns}
+        onMobileColumnsChange={onMobileColumnsChange}
+        onDesktopColumnsChange={onDesktopColumnsChange}
+      />
+      <FavoriteSortControls
+        value={sort}
+        direction={direction}
+        disabled={sortDisabled}
+        compact
+        onChange={onSortChange}
+        onDirectionChange={onDirectionChange}
+        onReshuffle={onReshuffle}
+      />
+      <PageSizePicker
+        value={pageSize}
+        options={pageSizeOptions}
+        onChange={(value) => onPageSizeChange(value as PageSize)}
+      />
+    </div>
+  );
+}
 
+function FavoriteResourceIconControl({
+  availability,
+  sources,
+  selectedSourceIDs,
+  loading,
+  label,
+  onChange,
+}: {
+  availability: AvailabilityFilter;
+  sources: LibrarySource[];
+  selectedSourceIDs: number[];
+  loading: boolean;
+  label: string;
+  onChange: (selection: FavoriteResourceSelection) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const disabled = loading;
   return (
     <div className="relative" ref={anchorRef}>
       <Button
         variant="outline"
         size="icon"
-        className="relative h-11 w-11"
-        onClick={() => setPopoverOpen(!open)}
-        aria-label="More favorite options"
-        title="More favorite options"
-        data-favorite-sort={sort}
+        className={`h-8 w-8 ${availability !== "all" || selectedSourceIDs.length > 0 ? "border-primary/30 bg-primary/10 text-primary" : ""}`}
+        disabled={disabled}
+        onClick={() => setOpen((current) => !current)}
+        aria-label={`Resource: ${label}`}
+        title={`Resource: ${label}`}
       >
-        <SlidersHorizontal className="h-4 w-4" />
-        {(hasActiveFilters || selectionMode) && (
-          <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" />
-        )}
+        <Cloud className="h-4 w-4" />
       </Button>
       <AnchoredPopover
-        open={open}
+        open={open && !disabled}
         anchorRef={anchorRef}
-        onOpenChange={setPopoverOpen}
-        className="w-[min(19rem,calc(100vw-1.5rem))] p-1 text-sm"
+        onOpenChange={setOpen}
+        align="end"
+        className="w-[min(18rem,calc(100vw-1.5rem))] p-1 text-sm"
       >
-        {panel === "root" ? (
-          <div role="menu" aria-label="More favorite options">
-            <div className="px-3 py-2 text-xs font-semibold text-foreground">More options</div>
-            <FavoriteMobileMenuRow
-              icon={<Filter className="h-4 w-4" />}
-              label="Availability"
-              value={availabilityLabel}
-              onClick={() => setPanel("availability")}
-            />
-            <FavoriteMobileMenuRow
-              icon={<Cloud className="h-4 w-4" />}
-              label="Sources"
-              value={sourceLabel}
-              disabled={sourcesLoading || sources.length === 0}
-              onClick={() => setPanel("sources")}
-            />
-            <FavoriteMobileMenuRow
-              icon={<ArrowUpDown className="h-4 w-4" />}
-              label="Sort"
-              value={sortLabel}
-              disabled={sortDisabled}
-              onClick={() => setPanel("sort")}
-            />
-            <FavoriteMobileMenuRow
-              icon={
-                sort === "random" ? (
-                  <RefreshCw className="h-4 w-4" />
-                ) : direction === "asc" ? (
-                  <ArrowDownAZ className="h-4 w-4" />
-                ) : (
-                  <ArrowDownZA className="h-4 w-4" />
-                )
-              }
-              label={sort === "random" ? "Shuffle" : "Sort direction"}
-              value={directionLabel}
-              disabled={sortDisabled}
-              trailing={false}
-              onClick={() =>
-                runAndClose(
-                  sort === "random" ? onReshuffle : () => onDirectionChange(direction === "asc" ? "desc" : "asc"),
-                )
-              }
-            />
-            <FavoriteMobileMenuRow
-              icon={<Columns3 className="h-4 w-4" />}
-              label="Columns"
-              value={columnsLabel}
-              onClick={() => setPanel("columns")}
-            />
-            <FavoriteMobileMenuRow
-              icon={<ListMusic className="h-4 w-4" />}
-              label="Per page"
-              value={String(pageSize)}
-              onClick={() => setPanel("page-size")}
-            />
-            <FavoriteMobileMenuRow
-              icon={<ListChecks className="h-4 w-4" />}
-              label="Selection mode"
-              value={selectionMode ? "On" : "Off"}
-              trailing={false}
-              onClick={() => runAndClose(onToggleSelection)}
-            />
-            {hasActiveFilters && (
-              <FavoriteMobileMenuRow
-                icon={<X className="h-4 w-4" />}
-                label="Clear filters"
-                value=""
-                trailing={false}
-                onClick={() => runAndClose(onClearFilters)}
-              />
-            )}
-          </div>
-        ) : panel === "sources" ? (
-          <FavoriteMobileSourcePanel
-            sources={sources}
-            selectedSourceIDs={selectedSourceIDs}
-            onBack={() => setPanel("root")}
-            onChange={onSourceIDsChange}
+        <div role="menu" aria-label="Resource filters">
+          <div className="px-3 py-2 text-xs font-semibold text-foreground">Resource</div>
+          <FavoriteResourceOption
+            label="Any available"
+            selected={availability === "all" && selectedSourceIDs.length === 0}
+            onClick={() => {
+              onChange({ availability: "all", sourceIDs: [] });
+              setOpen(false);
+            }}
           />
-        ) : (
-          <FavoriteMobileOptionPanel
-            panel={panel}
-            availability={availability}
-            sort={sort}
-            pageSize={pageSize}
-            mobileColumns={mobileColumns}
-            onBack={() => setPanel("root")}
-            onAvailabilityChange={(value) => runAndClose(() => onAvailabilityChange(value))}
-            onSortChange={(value) => runAndClose(() => onSortChange(value))}
-            onPageSizeChange={(value) => runAndClose(() => onPageSizeChange(value))}
-            onMobileColumnsChange={(value) => runAndClose(() => onMobileColumnsChange(value))}
+          <FavoriteResourceOption
+            label="Local"
+            selected={availability === "local" && selectedSourceIDs.length === 0}
+            onClick={() => {
+              onChange({ availability: "local", sourceIDs: [] });
+              setOpen(false);
+            }}
           />
-        )}
+          <FavoriteResourceOption
+            label="Cached"
+            selected={availability === "cache" && selectedSourceIDs.length === 0}
+            onClick={() => {
+              onChange({ availability: "cache", sourceIDs: [] });
+              setOpen(false);
+            }}
+          />
+          <FavoriteResourceOption
+            label="Any remote"
+            selected={availability === "remote" && selectedSourceIDs.length === 0}
+            onClick={() => {
+              onChange({ availability: "remote", sourceIDs: [] });
+              setOpen(false);
+            }}
+          />
+          {sources.map((source) => (
+            <FavoriteResourceOption
+              key={source.id}
+              label={source.displayName || source.code}
+              selected={
+                availability === "remote" && selectedSourceIDs.length === 1 && selectedSourceIDs[0] === source.id
+              }
+              onClick={() => {
+                onChange({ availability: "remote", sourceIDs: [source.id] });
+                setOpen(false);
+              }}
+              icon={<Cloud className="h-3.5 w-3.5 shrink-0" />}
+              suffix={!source.enabled ? "Disabled" : undefined}
+            />
+          ))}
+          <FavoriteResourceOption
+            label="Missing"
+            selected={availability === "missing" && selectedSourceIDs.length === 0}
+            onClick={() => {
+              onChange({ availability: "missing", sourceIDs: [] });
+              setOpen(false);
+            }}
+          />
+        </div>
       </AnchoredPopover>
-    </div>
-  );
-}
-
-function FavoriteMobileMenuRow({
-  icon,
-  label,
-  value,
-  trailing = true,
-  disabled = false,
-  onClick,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-  trailing?: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      className="flex min-h-11 w-full items-center gap-3 rounded-md px-3 py-2 text-left text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-      disabled={disabled}
-      onClick={onClick}
-    >
-      <span className="shrink-0">{icon}</span>
-      <span className="min-w-0 flex-1 text-foreground">{label}</span>
-      {value && <span className="max-w-28 truncate text-xs">{value}</span>}
-      {trailing && <ChevronRight className="h-4 w-4 shrink-0" />}
-    </button>
-  );
-}
-
-function FavoriteMobileSourcePanel({
-  sources,
-  selectedSourceIDs,
-  onBack,
-  onChange,
-}: {
-  sources: LibrarySource[];
-  selectedSourceIDs: number[];
-  onBack: () => void;
-  onChange: (sourceIDs: number[]) => void;
-}) {
-  return (
-    <div role="menu" aria-label="Source options">
-      <div className="flex min-h-10 items-center gap-2 px-1">
-        <button
-          type="button"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-          onClick={onBack}
-          aria-label="Back to more options"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-        <span className="text-xs font-semibold text-foreground">Sources</span>
-      </div>
-      <FavoriteSourceOptions sources={sources} selectedSourceIDs={selectedSourceIDs} onChange={onChange} />
-    </div>
-  );
-}
-
-function FavoriteMobileOptionPanel({
-  panel,
-  availability,
-  sort,
-  pageSize,
-  mobileColumns,
-  onBack,
-  onAvailabilityChange,
-  onSortChange,
-  onPageSizeChange,
-  onMobileColumnsChange,
-}: {
-  panel: Exclude<FavoriteMobilePanel, "root" | "sources">;
-  availability: AvailabilityFilter;
-  sort: FavoriteSort;
-  pageSize: PageSize;
-  mobileColumns: WorkCollectionColumnSetting;
-  onBack: () => void;
-  onAvailabilityChange: (value: AvailabilityFilter) => void;
-  onSortChange: (value: FavoriteSort) => void;
-  onPageSizeChange: (value: PageSize) => void;
-  onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
-}) {
-  const title =
-    panel === "availability"
-      ? "Availability"
-      : panel === "sort"
-        ? "Sort"
-        : panel === "columns"
-          ? "Columns"
-          : "Per page";
-  const options =
-    panel === "availability"
-      ? availabilityFilters.map((option) => ({
-          key: option.value,
-          label: option.label,
-          selected: option.value === availability,
-          select: () => onAvailabilityChange(option.value),
-        }))
-      : panel === "sort"
-        ? favoriteSortOptions.map((option) => ({
-            key: option.value,
-            label: option.label,
-            selected: option.value === sort,
-            select: () => onSortChange(option.value),
-          }))
-        : panel === "columns"
-          ? (["auto", 1, 2] as const).map((option) => ({
-              key: String(option),
-              label: option === "auto" ? "Automatic" : `${option} ${option === 1 ? "column" : "columns"}`,
-              selected: option === mobileColumns,
-              select: () => onMobileColumnsChange(option),
-            }))
-          : pageSizeOptions.map((option) => ({
-              key: String(option),
-              label: `${option} per page`,
-              selected: option === pageSize,
-              select: () => onPageSizeChange(option),
-            }));
-  return (
-    <div role="menu" aria-label={`${title} options`}>
-      <div className="flex min-h-10 items-center gap-2 px-1">
-        <button
-          type="button"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-          onClick={onBack}
-          aria-label="Back to more options"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-        <span className="text-xs font-semibold text-foreground">{title}</span>
-      </div>
-      {options.map((option) => (
-        <button
-          key={option.key}
-          type="button"
-          role="menuitemradio"
-          aria-checked={option.selected}
-          className={`flex min-h-10 w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-muted ${option.selected ? "bg-primary/10 font-medium text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
-          onClick={option.select}
-        >
-          <Check className={`h-4 w-4 shrink-0 ${option.selected ? "opacity-100" : "opacity-0"}`} />
-          {option.label}
-        </button>
-      ))}
     </div>
   );
 }
