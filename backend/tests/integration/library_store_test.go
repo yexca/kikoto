@@ -496,6 +496,49 @@ func TestRecommendationSessionSnapshotFreezesLaneUntilNewSession(t *testing.T) {
 	}
 }
 
+func TestRecommendationSessionRebuildsWhenBoundGenerationUsesPriorAlgorithm(t *testing.T) {
+	db := openMigratedTestDB(t, "recommendation-session-version.db")
+	userResult, err := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('synthetic-version-user', 'Example Version User', 'user')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, _ := userResult.LastInsertId()
+	if _, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000025', 'Example Version Work')"); err != nil {
+		t.Fatal(err)
+	}
+
+	store := library.NewStore(db)
+	first, err := store.PrepareRecommendationSession(context.Background(), userID, "session-version")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("UPDATE recommendation_generation SET algorithm_version = 'heuristic-v3' WHERE id = ?", first.GenerationID); err != nil {
+		t.Fatal(err)
+	}
+
+	refreshed, err := store.PrepareRecommendationSession(context.Background(), userID, "session-version")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refreshed.GenerationID == first.GenerationID {
+		t.Fatalf("session remained bound to prior algorithm generation %d", first.GenerationID)
+	}
+	var algorithmVersion string
+	if err := db.QueryRow("SELECT algorithm_version FROM recommendation_generation WHERE id = ?", refreshed.GenerationID).Scan(&algorithmVersion); err != nil {
+		t.Fatal(err)
+	}
+	if algorithmVersion != library.RecommendationAlgorithmVersion {
+		t.Fatalf("rebuilt generation algorithm = %q, want %q", algorithmVersion, library.RecommendationAlgorithmVersion)
+	}
+	var boundGenerationID int64
+	if err := db.QueryRow("SELECT generation_id FROM recommendation_client_session WHERE user_id = ? AND session_id = ?", userID, "session-version").Scan(&boundGenerationID); err != nil {
+		t.Fatal(err)
+	}
+	if boundGenerationID != refreshed.GenerationID {
+		t.Fatalf("session generation = %d, want %d", boundGenerationID, refreshed.GenerationID)
+	}
+}
+
 func TestRecommendationConfigLoadsV3LaneDefaultsAndLegacyAffinity(t *testing.T) {
 	db := openMigratedTestDB(t, "recommend-config-upgrade.db")
 	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('recommendation_config', '{"nonePrior":45,"wantPrior":20,"tagWeight":7,"jitterAmplitude":8}')`); err != nil {
@@ -505,7 +548,7 @@ func TestRecommendationConfigLoadsV3LaneDefaultsAndLegacyAffinity(t *testing.T) 
 	if config.UnmarkedSlots != 12 || config.ListeningSlots != 4 || config.WantSlots != 4 || config.RelistenSlots != 2 || config.FinishedSlots != 2 || config.ShelvedSlots != 0 {
 		t.Fatalf("upgraded recommendation slots = %+v", config)
 	}
-	if config.AffinityBase != 45 || config.TagWeight != 7 || config.JitterAmplitude != 8 {
+	if config.AffinityBase != 45 || config.TagWeight != 7 || config.JitterAmplitude != 8 || config.ExplorationAmplitude != 18 {
 		t.Fatalf("upgraded recommendation affinity = %+v", config)
 	}
 }

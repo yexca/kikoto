@@ -280,7 +280,7 @@ func listOrderBy(sortKey string, direction string, randomSeed int64, config Reco
 	sortKey, direction = normalizeSort(sortKey, direction)
 	switch sortKey {
 	case "recommend":
-		return recommendationOrderBy("id", direction, randomSeed, config.JitterAmplitude)
+		return recommendationExplorationOrderBy("id", direction, randomSeed, config.JitterAmplitude, config.ExplorationAmplitude)
 	case "random":
 		return seededOrderBy("work.id", randomSeed)
 	case "release":
@@ -304,16 +304,8 @@ func seededOrderBy(idExpression string, randomSeed int64) string {
 }
 
 func seededHashExpression(idExpression string, randomSeed int64) string {
-	seed := randomSeed % 2147483647
-	if seed < 0 {
-		seed = -seed
-	}
-	multiplier := (seed*1103515245 + 12345) % 2147483647
-	if multiplier == 0 {
-		multiplier = 1
-	}
-	offset := (seed * 12345) % 2147483647
-	return fmt.Sprintf("((%s * %d + %d) %% 2147483647)", idExpression, multiplier, offset)
+	multiplier, offset := recommendationSeededHashParameters(randomSeed)
+	return fmt.Sprintf("(((%s %% %d) * %d + %d) %% %d)", idExpression, recommendationHashModulus, multiplier, offset, recommendationHashModulus)
 }
 
 func recommendationOrderBy(idExpression string, direction string, randomSeed int64, amplitude int) string {

@@ -19,8 +19,9 @@ type RecommendationSessionSnapshot struct {
 const recommendationSessionRetentionSQL = "datetime('now', '-90 days')"
 
 // PrepareRecommendationSession binds a client session to one recommendation
-// generation. Existing sessions never switch generations; a new session
-// rebuilds only when one of the recorded input revisions has changed.
+// generation. Existing compatible sessions never switch generations; an
+// obsolete algorithm version or a new session rebuilds when required inputs
+// have changed.
 func (s *Store) PrepareRecommendationSession(ctx context.Context, userID int64, sessionID string) (RecommendationSessionSnapshot, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if userID <= 0 || sessionID == "" {
@@ -166,7 +167,7 @@ func boundRecommendationSession(
 	if err != nil {
 		return RecommendationSessionSnapshot{}, false, err
 	}
-	if !generationID.Valid || algorithmVersion == "" {
+	if !generationID.Valid || algorithmVersion != RecommendationAlgorithmVersion {
 		return RecommendationSessionSnapshot{}, false, nil
 	}
 	config, err := decodeRecommendationConfig(configJSON)

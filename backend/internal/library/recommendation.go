@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const RecommendationAlgorithmVersion = "heuristic-v3"
+const RecommendationAlgorithmVersion = "heuristic-v4"
 
 const recommendationScoreUserArgumentCount = 9
 
@@ -36,6 +36,7 @@ type RecommendationConfig struct {
 	NegativeCircleCap    int `json:"negativeCircleCap"`
 	NegativeTotalCap     int `json:"negativeTotalCap"`
 	JitterAmplitude      int `json:"jitterAmplitude"`
+	ExplorationAmplitude int `json:"explorationAmplitude"`
 }
 
 type RecommendationSignals struct {
@@ -57,6 +58,16 @@ type RecommendationComponent struct {
 	Cap          int    `json:"cap"`
 }
 
+// RecommendationOrdering describes the seed-derived adjustment applied after
+// affinity scoring while works are ordered within one recommendation lane.
+type RecommendationOrdering struct {
+	Seed             int64   `json:"seed"`
+	ExplorationBoost float64 `json:"explorationBoost"`
+	Jitter           float64 `json:"jitter"`
+	TotalAdjustment  float64 `json:"totalAdjustment"`
+	RankingScore     float64 `json:"rankingScore"`
+}
+
 type RecommendationBreakdown struct {
 	AlgorithmVersion string                    `json:"algorithmVersion"`
 	Lane             string                    `json:"lane"`
@@ -64,6 +75,7 @@ type RecommendationBreakdown struct {
 	RawScore         int                       `json:"rawScore"`
 	Signals          RecommendationSignals     `json:"signals"`
 	Components       []RecommendationComponent `json:"components"`
+	Ordering         *RecommendationOrdering   `json:"ordering,omitempty"`
 }
 
 func DefaultRecommendationConfig() RecommendationConfig {
@@ -71,7 +83,7 @@ func DefaultRecommendationConfig() RecommendationConfig {
 		AffinityBase: 35, UnmarkedSlots: 12, WantSlots: 4, ListeningSlots: 4, FinishedSlots: 2, RelistenSlots: 2, ShelvedSlots: 0,
 		TagWeight: 5, TagCap: 25, VoiceWeight: 10, VoiceCap: 20, CircleWeight: 15, CircleCap: 15, FavoriteBonus: 10,
 		NegativeMinEvidence: 2, NegativeTagWeight: 2, NegativeTagCap: 6, NegativeVoiceWeight: 3, NegativeVoiceCap: 6,
-		NegativeCircleWeight: 5, NegativeCircleCap: 5, NegativeTotalCap: 15, JitterAmplitude: 3,
+		NegativeCircleWeight: 5, NegativeCircleCap: 5, NegativeTotalCap: 15, JitterAmplitude: 3, ExplorationAmplitude: 18,
 	}
 }
 
@@ -110,6 +122,9 @@ func ValidateRecommendationConfig(config RecommendationConfig) error {
 	}
 	if config.JitterAmplitude < 0 || config.JitterAmplitude > 10 {
 		return fmt.Errorf("jitterAmplitude must be between 0 and 10")
+	}
+	if config.ExplorationAmplitude < 0 || config.ExplorationAmplitude > 40 {
+		return fmt.Errorf("explorationAmplitude must be between 0 and 40")
 	}
 	return nil
 }
@@ -297,6 +312,13 @@ func recommendationUserArgs(userID int64) []any {
 
 func (s *Store) RecommendationBreakdown(ctx context.Context, userID, workID int64) (RecommendationBreakdown, error) {
 	config := s.LoadRecommendationConfig(ctx)
+	return s.RecommendationBreakdownWithConfig(ctx, userID, workID, config)
+}
+
+// RecommendationBreakdownWithConfig calculates a breakdown using a supplied
+// configuration. Callers that hold an immutable recommendation session use
+// this shape so the explanation and its ordering refer to the same settings.
+func (s *Store) RecommendationBreakdownWithConfig(ctx context.Context, userID, workID int64, config RecommendationConfig) (RecommendationBreakdown, error) {
 	if workID <= 0 {
 		return buildRecommendationBreakdown(config, RecommendationSignals{ListeningStatus: "none"}), nil
 	}
@@ -379,6 +401,48 @@ func recommendationLane(status string) string {
 		return "shelved"
 	default:
 		return "unmarked"
+	}
+}
+
+const recommendationHashModulus int64 = 2147483647
+
+func recommendationSeededHashParameters(randomSeed int64) (multiplier, offset int64) {
+	seed := randomSeed % recommendationHashModulus
+	if seed < 0 {
+		seed = -seed
+	}
+	multiplier = (seed*1103515245 + 12345) % recommendationHashModulus
+	if multiplier == 0 {
+		multiplier = 1
+	}
+	offset = (seed * 12345) % recommendationHashModulus
+	return multiplier, offset
+}
+
+// recommendationSeededHash mirrors seededHashExpression. Reducing the work id
+// before multiplication keeps both the Go and SQLite calculations within their
+// signed integer range without changing the modulo result.
+func recommendationSeededHash(workID, randomSeed int64) int64 {
+	multiplier, offset := recommendationSeededHashParameters(randomSeed)
+	workID %= recommendationHashModulus
+	return (workID*multiplier + offset) % recommendationHashModulus
+}
+
+// RecommendationOrderingFor returns the deterministic ordering adjustment for
+// one work and a particular browse seed. Affinity remains an integer score for
+// badges and telemetry; RankingScore is only for the current lane ordering.
+func RecommendationOrderingFor(workID int64, affinityScore int, randomSeed int64, config RecommendationConfig) RecommendationOrdering {
+	hash := recommendationSeededHash(workID, randomSeed)
+	proportion := float64(hash) / float64(recommendationHashModulus)
+	explorationBoost := proportion * float64(config.ExplorationAmplitude)
+	jitter := (proportion*2.0 - 1.0) * float64(config.JitterAmplitude)
+	totalAdjustment := explorationBoost + jitter
+	return RecommendationOrdering{
+		Seed:             randomSeed,
+		ExplorationBoost: explorationBoost,
+		Jitter:           jitter,
+		TotalAdjustment:  totalAdjustment,
+		RankingScore:     float64(affinityScore) + totalAdjustment,
 	}
 }
 
@@ -516,7 +580,7 @@ func recommendationLaneSuppressedExpression(config RecommendationConfig, statusE
 
 func recommendationListSelectSQL(baseSelect string, direction string, randomSeed int64, config RecommendationConfig) string {
 	_, direction = normalizeSort("recommend", direction)
-	withinLane := recommendationOrderBy("id", direction, randomSeed, config.JitterAmplitude)
+	withinLane := recommendationExplorationOrderBy("id", direction, randomSeed, config.JitterAmplitude, config.ExplorationAmplitude)
 	position := recommendationLanePositionExpression(config, "recommendation_lane", "recommendation_lane_rank")
 	suppressed := recommendationLaneSuppressedExpression(config, "recommendation_lane")
 	return `WITH recommendation_candidates AS (` + baseSelect + `),
@@ -536,6 +600,23 @@ func recommendationListSelectSQL(baseSelect string, direction string, randomSeed
 		listening_status, favorite, recommend_score
 	FROM recommendation_positioned
 	ORDER BY recommendation_suppressed ASC, recommendation_position ASC, id ASC`
+}
+
+// recommendationExplorationOrderBy preserves the stored affinity score while
+// giving each candidate a deterministic, seed-specific discovery boost. A new
+// seed therefore surfaces different plausible works without breaking stable
+// pagination for the current browse session.
+func recommendationExplorationOrderBy(idExpression string, direction string, randomSeed int64, jitterAmplitude int, explorationAmplitude int) string {
+	hash := seededHashExpression(idExpression, randomSeed)
+	exploration := "0"
+	if explorationAmplitude > 0 {
+		exploration = fmt.Sprintf("((%s / 2147483647.0) * %d)", hash, explorationAmplitude)
+	}
+	jitter := "0"
+	if jitterAmplitude > 0 {
+		jitter = fmt.Sprintf("(((%s / 2147483647.0) * 2.0 - 1.0) * %d)", hash, jitterAmplitude)
+	}
+	return fmt.Sprintf("(recommend_score + %s + %s) %s, %s ASC, %s ASC", exploration, jitter, direction, hash, idExpression)
 }
 
 func minInt(left, right int) int {

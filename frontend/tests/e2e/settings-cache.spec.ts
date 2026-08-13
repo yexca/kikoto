@@ -24,6 +24,7 @@ const recommendationDefaults = {
   negativeCircleCap: 5,
   negativeTotalCap: 15,
   jitterAmplitude: 3,
+  explorationAmplitude: 18,
 };
 
 async function mockCacheSettings(
@@ -505,6 +506,7 @@ test("recommendation keeps common controls visible and advanced scoring collapse
   await expect(page.getByLabel("Positive tag weight")).toBeHidden();
   await page.getByRole("button", { name: /Exploratory/ }).click();
   await expect(page.getByLabel("Result variation")).toHaveValue("8");
+  await expect(page.getByLabel("Discovery boost")).toHaveValue("30");
   await page.getByText("Advanced scoring", { exact: true }).click();
   await expect(page.getByLabel("Unmarked")).toHaveValue("16");
   await expect(page.getByRole("spinbutton", { name: "Shelved", exact: true })).toHaveValue("0");
@@ -512,4 +514,5 @@ test("recommendation keeps common controls visible and advanced scoring collapse
   await page.getByRole("button", { name: "Save recommendation settings" }).click();
   await expect.poll(() => settingsPayloads.length).toBe(1);
   expect((settingsPayloads[0].recommendationConfig as { jitterAmplitude: number }).jitterAmplitude).toBe(8);
+  expect((settingsPayloads[0].recommendationConfig as { explorationAmplitude: number }).explorationAmplitude).toBe(30);
 });

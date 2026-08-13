@@ -165,7 +165,7 @@ func TestRecommendationListScoreMatchesBreakdown(t *testing.T) {
 	t.Fatal("candidate was not returned by recommendation list")
 }
 
-func TestRecommendationSeedOrderIsStableAndJitterBounded(t *testing.T) {
+func TestRecommendationSeedOrderIsStableAndExploresAcrossSeeds(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
 	userID, _, _ := seedRecommendationUserCandidateAndTag(t, db)
@@ -190,10 +190,97 @@ func TestRecommendationSeedOrderIsStableAndJitterBounded(t *testing.T) {
 	if !reflect.DeepEqual(first, second) {
 		t.Fatalf("same seed orders differ: %v vs %v", first, second)
 	}
+	foundExploration := false
 	for _, seed := range []int64{1, 2, 999999} {
 		ids := listIDs(seed)
-		if len(ids) == 0 || ids[0] != highID {
-			t.Fatalf("seed %d moved score-45 work behind a score-35 work: %v", seed, ids)
+		if len(ids) == 0 {
+			t.Fatalf("seed %d returned no recommendations", seed)
+		}
+		if ids[0] != highID {
+			foundExploration = true
+		}
+	}
+	if !foundExploration {
+		t.Fatal("different seeds did not surface a lower-affinity candidate")
+	}
+}
+
+func TestWorkRecommendationIncludesSeededOrderingFromSessionConfig(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	userID, candidateID, _ := seedRecommendationUserCandidateAndTag(t, db)
+	snapshot, err := server.libraryStore.PrepareRecommendationSession(context.Background(), userID, "session-ordering")
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedConfig := snapshot.Config
+	updatedConfig.ExplorationAmplitude = 0
+	updatedConfigJSON, err := json.Marshal(updatedConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO app_setting (key, value_json) VALUES ('recommendation_config', ?)", string(updatedConfigJSON)); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/works/1/recommendation?recommendationSession=session-ordering&seed=71", nil)
+	request.SetPathValue("id", strconv.FormatInt(candidateID, 10))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: userID}))
+	response := httptest.NewRecorder()
+	server.getWorkRecommendation(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var breakdown library.RecommendationBreakdown
+	if err := json.Unmarshal(response.Body.Bytes(), &breakdown); err != nil {
+		t.Fatal(err)
+	}
+	if breakdown.Ordering == nil {
+		t.Fatal("response omitted seeded ordering")
+	}
+	want := library.RecommendationOrderingFor(candidateID, breakdown.Score, 71, snapshot.Config)
+	if *breakdown.Ordering != want {
+		t.Fatalf("ordering = %+v, want %+v", *breakdown.Ordering, want)
+	}
+	current := library.RecommendationOrderingFor(candidateID, breakdown.Score, 71, updatedConfig)
+	if breakdown.Ordering.ExplorationBoost == current.ExplorationBoost {
+		t.Fatalf("ordering used current config %+v instead of frozen session config %+v", *breakdown.Ordering, snapshot.Config)
+	}
+}
+
+func TestWorkRecommendationNormalizesInvalidSeedLikeRecommendationList(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	userID, candidateID, _ := seedRecommendationUserCandidateAndTag(t, db)
+	user := account.User{ID: userID}
+
+	requestForSeed := func(seed string) library.RecommendationOrdering {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodGet, "/api/works/1/recommendation?seed="+seed, nil)
+		request.SetPathValue("id", strconv.FormatInt(candidateID, 10))
+		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, user))
+		response := httptest.NewRecorder()
+		server.getWorkRecommendation(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("seed %q status = %d, body = %s", seed, response.Code, response.Body.String())
+		}
+		var breakdown library.RecommendationBreakdown
+		if err := json.Unmarshal(response.Body.Bytes(), &breakdown); err != nil {
+			t.Fatal(err)
+		}
+		if breakdown.Ordering == nil {
+			t.Fatalf("seed %q omitted ordering", seed)
+		}
+		return *breakdown.Ordering
+	}
+
+	for _, invalidSeed := range []string{"0", "invalid"} {
+		ordering := requestForSeed(invalidSeed)
+		if ordering.Seed != 1 {
+			t.Fatalf("seed %q normalized to %d, want 1", invalidSeed, ordering.Seed)
+		}
+		if want := requestForSeed("1"); ordering != want {
+			t.Fatalf("seed %q ordering = %+v, want seed 1 ordering %+v", invalidSeed, ordering, want)
 		}
 	}
 }

@@ -281,7 +281,7 @@ const librarySortOptions: { value: LibrarySort; label: string }[] = [
   { value: "title", label: "Title" },
 ];
 
-const RECOMMENDATION_ALGORITHM_VERSION = "heuristic-v3";
+const RECOMMENDATION_ALGORITHM_VERSION = "heuristic-v4";
 
 function remoteLibrarySort(value: LibrarySort): LibrarySort {
   return value === "code" || value === "release" || value === "rating" || value === "sales" || value === "random"
@@ -1016,7 +1016,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const openRecommendationExplanation = (work: Work) => {
     setRecommendationDialog({ work, breakdown: null, loading: true, error: "" });
     void api
-      .getWorkRecommendation(work.id, recommendationSession.id)
+      .getWorkRecommendation(work.id, recommendationSession.id, randomSeed)
       .then((breakdown) => {
         setRecommendationDialog((current) =>
           current?.work.id === work.id ? { ...current, breakdown, loading: false, error: "" } : current,
@@ -2632,9 +2632,37 @@ function RecommendationExplanationModal({
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                Listening state controls placement in the recommendation mix; affinity signals order works within that
-                state.
+                Listening state controls placement in the recommendation mix. Within each state, affinity is adjusted
+                by the current seeded discovery boost and result variation.
               </p>
+              {state.breakdown.ordering && (
+                <div className="space-y-2 border-t pt-3 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Current shuffle adjustment</span>
+                    <span className="font-semibold tabular-nums">
+                      {formatRecommendationAdjustment(state.breakdown.ordering.totalAdjustment)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Discovery boost</span>
+                    <span className="font-medium tabular-nums">
+                      {formatRecommendationAdjustment(state.breakdown.ordering.explorationBoost)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Result variation</span>
+                    <span className="font-medium tabular-nums">
+                      {formatRecommendationAdjustment(state.breakdown.ordering.jitter)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-t pt-2">
+                    <span className="font-medium">Ranking score</span>
+                    <span className="font-semibold tabular-nums">
+                      {state.breakdown.ordering.rankingScore.toFixed(1)}
+                    </span>
+                  </div>
+                </div>
+              )}
               <div className="space-y-2">
                 {components.map((component) => (
                   <div key={component.key} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-sm">
@@ -2668,6 +2696,11 @@ function RecommendationExplanationModal({
       </div>
     </div>
   );
+}
+
+function formatRecommendationAdjustment(value: number) {
+  const rounded = Math.abs(value) < 0.05 ? 0 : value;
+  return `${rounded >= 0 ? "+" : ""}${rounded.toFixed(1)}`;
 }
 
 function recommendationLaneLabel(lane: RecommendationBreakdown["lane"]) {

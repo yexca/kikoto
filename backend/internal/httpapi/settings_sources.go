@@ -572,26 +572,43 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
-		LocalScanDepth            *int                          `json:"localScanDepth"`
-		CacheEnabled              *bool                         `json:"cacheEnabled"`
-		CacheLimitGB              *int                          `json:"cacheLimitGb"`
-		RemoteDownloadLimitGB     *int                          `json:"remoteDownloadLimitGb"`
-		FetchStagingRetentionDays *int                          `json:"fetchStagingRetentionDays"`
-		RemoteSaveTemplate        *string                       `json:"remoteSaveTemplate"`
-		RemoteDelayBase           *float64                      `json:"remoteDelayBaseSeconds"`
-		RemoteDelayRandom         *float64                      `json:"remoteDelayRandomSeconds"`
-		RemoteBackoff             *float64                      `json:"remoteBackoffSeconds"`
-		RemoteMaxBackoff          *float64                      `json:"remoteMaxBackoffSeconds"`
-		CatalogFreshnessDays      *int                          `json:"catalogFreshnessDays"`
-		DLsiteMetadataLanguage    *string                       `json:"dlsiteMetadataLanguage"`
-		DLsiteMetadataLanguages   *[]string                     `json:"dlsiteMetadataLanguages"`
-		DirectoryRoutingRules     *[]directoryRule              `json:"directoryRoutingRules"`
-		RecommendationThreshold   *int                          `json:"recommendationThreshold"`
-		RecommendationConfig      *library.RecommendationConfig `json:"recommendationConfig"`
+		LocalScanDepth            *int             `json:"localScanDepth"`
+		CacheEnabled              *bool            `json:"cacheEnabled"`
+		CacheLimitGB              *int             `json:"cacheLimitGb"`
+		RemoteDownloadLimitGB     *int             `json:"remoteDownloadLimitGb"`
+		FetchStagingRetentionDays *int             `json:"fetchStagingRetentionDays"`
+		RemoteSaveTemplate        *string          `json:"remoteSaveTemplate"`
+		RemoteDelayBase           *float64         `json:"remoteDelayBaseSeconds"`
+		RemoteDelayRandom         *float64         `json:"remoteDelayRandomSeconds"`
+		RemoteBackoff             *float64         `json:"remoteBackoffSeconds"`
+		RemoteMaxBackoff          *float64         `json:"remoteMaxBackoffSeconds"`
+		CatalogFreshnessDays      *int             `json:"catalogFreshnessDays"`
+		DLsiteMetadataLanguage    *string          `json:"dlsiteMetadataLanguage"`
+		DLsiteMetadataLanguages   *[]string        `json:"dlsiteMetadataLanguages"`
+		DirectoryRoutingRules     *[]directoryRule `json:"directoryRoutingRules"`
+		RecommendationThreshold   *int             `json:"recommendationThreshold"`
+		RecommendationConfig      json.RawMessage  `json:"recommendationConfig"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 		return
+	}
+	var recommendationConfig *library.RecommendationConfig
+	if raw := strings.TrimSpace(string(payload.RecommendationConfig)); raw != "" && raw != "null" {
+		var nextConfig library.RecommendationConfig
+		if err := json.Unmarshal(payload.RecommendationConfig, &nextConfig); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+			return
+		}
+		var configFields map[string]json.RawMessage
+		if err := json.Unmarshal(payload.RecommendationConfig, &configFields); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+			return
+		}
+		if _, present := configFields["explorationAmplitude"]; !present {
+			nextConfig.ExplorationAmplitude = s.libraryStore.LoadRecommendationConfig(r.Context()).ExplorationAmplitude
+		}
+		recommendationConfig = &nextConfig
 	}
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
@@ -756,12 +773,12 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if payload.RecommendationConfig != nil {
-		if err := library.ValidateRecommendationConfig(*payload.RecommendationConfig); err != nil {
+	if recommendationConfig != nil {
+		if err := library.ValidateRecommendationConfig(*recommendationConfig); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		if err := upsertSetting(r, tx, "recommendation_config", *payload.RecommendationConfig); err != nil {
+		if err := upsertSetting(r, tx, "recommendation_config", *recommendationConfig); err != nil {
 			writeError(w, err)
 			return
 		}
