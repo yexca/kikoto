@@ -6,7 +6,6 @@ import {
   Clock3,
   Database,
   Edit3,
-  ExternalLink,
   GitFork,
   HardDrive,
   HardDriveDownload,
@@ -35,7 +34,6 @@ export function WorkIdentityActionBar({
   onMark,
   onSync,
   onEditMetadata,
-  dlsiteUrl,
   metadataSyncBusy = false,
   syncLabel = "Refresh metadata",
 }: {
@@ -49,7 +47,6 @@ export function WorkIdentityActionBar({
   onMark: (status: ListeningStatus) => void;
   onSync?: () => void;
   onEditMetadata?: () => void;
-  dlsiteUrl: string;
   metadataSyncBusy?: boolean;
   syncLabel?: string;
 }) {
@@ -79,14 +76,6 @@ export function WorkIdentityActionBar({
         ensureWorkId={onEnsureListWork}
         onSaved={onListSaved}
       />
-      {dlsiteUrl && (
-        <Button variant="outline" size="sm" className="h-8 w-8 px-0 sm:w-auto sm:px-3" asChild title="Open DLsite">
-          <a href={dlsiteUrl} target="_blank" rel="noreferrer">
-            <ExternalLink className="h-4 w-4" />
-            <span className="hidden sm:inline">DLsite</span>
-          </a>
-        </Button>
-      )}
       {(onSync || onEditMetadata) && (
         <div className="relative" ref={manageMenuRef}>
           <Button
