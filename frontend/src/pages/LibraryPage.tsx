@@ -2632,8 +2632,8 @@ function RecommendationExplanationModal({
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                Listening state controls placement in the recommendation mix. Within each state, affinity is adjusted
-                by the current seeded discovery boost and result variation.
+                Listening state controls placement in the recommendation mix. Within each state, affinity is adjusted by
+                the current seeded discovery boost and result variation.
               </p>
               {state.breakdown.ordering && (
                 <div className="space-y-2 border-t pt-3 text-sm">
