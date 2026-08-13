@@ -406,6 +406,7 @@ test("circle list uses compact responsive cards and shared pagination", async ({
   await expect(page.getByText("Remote 1", { exact: true })).toHaveCount(0);
   await expect(page.getByText("2 unavailable", { exact: true })).toHaveCount(0);
   await expect(page.getByText("5 works", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Circle totals" })).toHaveCount(0);
   await expect(page.getByText("Page 1 · 30 circles", { exact: true })).toBeVisible();
   await expect(page.getByRole("group", { name: "Circle pages controls" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Circle pages" })).toBeVisible();
@@ -420,6 +421,11 @@ test("circle list uses compact responsive cards and shared pagination", async ({
   await expect(page.getByPlaceholder("Search circles")).toBeVisible();
   await page.getByPlaceholder("Search circles").fill("Example");
   await expect(page.getByRole("button", { name: "Circles search is active" })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Items per page: 24" }).click();
+  await expect(page.getByRole("menu", { name: "Items per page" })).toBeVisible();
+  await page.getByRole("menuitemradio", { name: "48 per page" }).click();
+  await expect(page).toHaveURL(/pageSize=48/);
 });
 
 test("voice list keeps latest work, tags, and availability visible on mobile", async ({ page }) => {
@@ -447,14 +453,13 @@ test("voice list keeps latest work, tags, and availability visible on mobile", a
   await expect(page.getByRole("navigation", { name: "Voice actor pages" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await expect(page.getByRole("button", { name: "All voices" })).toBeVisible();
-  const optionsButton = page.getByRole("button", { name: "Voice actor list options" });
-  await expect(optionsButton).toBeVisible();
-  await optionsButton.click();
-  const optionsMenu = page.getByRole("menu", { name: "Voice actor list options" });
-  await expect(optionsMenu.getByRole("menuitem", { name: "Per page" })).toBeVisible();
-  await expect(optionsMenu.getByRole("menuitem", { name: "Filter" })).toHaveCount(0);
-  await expect(optionsMenu.getByRole("menuitem", { name: "Tag" })).toHaveCount(0);
-  await optionsButton.click();
+  const pageSizeButton = page.getByRole("button", { name: "Items per page: 24" });
+  await expect(pageSizeButton).toBeVisible();
+  await pageSizeButton.click();
+  await expect(page.getByRole("menu", { name: "Items per page" })).toBeVisible();
+  await expect(page.getByRole("menuitemradio", { name: "24 per page" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("menuitemradio", { name: "48 per page" }).click();
+  await expect(page).toHaveURL(/pageSize=48/);
 });
 
 test("creator list toolbars keep search left and filters right on desktop", async ({ page }) => {
@@ -466,6 +471,7 @@ test("creator list toolbars keep search left and filters right on desktop", asyn
   const circleFilter = page.getByRole("button", { name: "All circles" });
   await expect(circleSearch).toBeVisible();
   await expect(circleFilter).toBeVisible();
+  await expect(page.getByRole("button", { name: "Items per page: 24" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Search circles" })).toHaveCount(0);
   const circleSearchBox = await circleSearch.boundingBox();
   const circleFilterBox = await circleFilter.boundingBox();
@@ -478,6 +484,7 @@ test("creator list toolbars keep search left and filters right on desktop", asyn
   const voiceFilter = page.getByRole("button", { name: "All voices" });
   await expect(voiceSearch).toBeVisible();
   await expect(voiceFilter).toBeVisible();
+  await expect(page.getByRole("button", { name: "Items per page: 24" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Search voice actors" })).toHaveCount(0);
   const voiceSearchBox = await voiceSearch.boundingBox();
   const voiceFilterBox = await voiceFilter.boundingBox();

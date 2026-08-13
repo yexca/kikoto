@@ -4,13 +4,13 @@ Circles represent makers, circles, and related party catalog state.
 
 ## Current Behavior
 
-- Lists known parties with catalog and availability counts in server-paged
-  results.
+- Lists known parties in server-paged results with per-card catalog and
+  availability state.
 - Provides search, filters, URL-backed pagination, favorite state, user tags,
   rating, and notes.
 - Uses a Library-style first-row toolbar: search stays on the left and the
-  circle filter (defaulting to `All circles`) stays on the right; narrow
-  layouts collapse search into the toolbar actions.
+  page-size and circle-filter actions (defaulting to `All circles`) stay on the
+  right; narrow layouts collapse search into the toolbar actions.
 - Shows the latest known DLsite work code and locally cached cover in compact
   responsive creator cards, with a `No cover` fallback.
 - Summarizes each circle card with its sync state and one canonical

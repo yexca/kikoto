@@ -35,7 +35,6 @@ import {
 } from "@/components/creator/CreatorCard";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
 import { CreatorListToolbar } from "@/components/creator/CreatorListToolbar";
-import { CreatorListMobileOptions } from "@/components/creator/CreatorListMobileOptions";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { VoiceWorkOptionsSheet, type VoiceWorkFilter } from "@/pages/VoiceWorkOptionsSheet";
@@ -255,28 +254,10 @@ function VoiceListPage({ active }: { active: boolean }) {
     totalPages,
     itemLabel: "voice actors",
     ariaLabel: "Voice actor pages",
-    pageSizeOptions: voicePageSizeOptions,
-    pageSizeControlClassName: "hidden lg:block",
     compactMobile: true,
     refreshing: isLoading && hasLoaded,
     refreshingLabel: "Refreshing voice actors",
-    leadingControls: (
-      <div className="lg:hidden">
-        <CreatorListMobileOptions
-          label="Voice actor"
-          filter={filter}
-          defaultFilter="all"
-          filterOptions={voiceFilterOptions}
-          showFilter={false}
-          pageSize={pageSize}
-          pageSizeOptions={voicePageSizeOptions}
-          onFilterChange={changeFilter}
-          onPageSizeChange={changePageSize}
-        />
-      </div>
-    ),
     onPageChange: setPage,
-    onPageSizeChange: changePageSize,
   };
 
   const updateVoice = (next: VoiceSummary) => {
@@ -313,8 +294,11 @@ function VoiceListPage({ active }: { active: boolean }) {
           filter={filter}
           defaultFilter="all"
           filterOptions={voiceFilterOptions}
+          pageSize={pageSize}
+          pageSizeOptions={voicePageSizeOptions}
           onQueryChange={setQuery}
           onFilterChange={changeFilter}
+          onPageSizeChange={changePageSize}
         />
 
         <CollectionPagination {...paginationProps} placement="top" />

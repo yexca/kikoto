@@ -1,4 +1,4 @@
-import { Filter, Search, X } from "lucide-react";
+import { Filter, Rows3, Search, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
@@ -17,8 +17,11 @@ export function CreatorListToolbar<FilterValue extends string>({
   filter,
   defaultFilter,
   filterOptions,
+  pageSize,
+  pageSizeOptions,
   onQueryChange,
   onFilterChange,
+  onPageSizeChange,
 }: {
   label: string;
   query: string;
@@ -26,8 +29,11 @@ export function CreatorListToolbar<FilterValue extends string>({
   filter: FilterValue;
   defaultFilter: FilterValue;
   filterOptions: readonly CreatorListToolbarFilterOption<FilterValue>[];
+  pageSize: number;
+  pageSizeOptions: readonly number[];
   onQueryChange: (value: string) => void;
   onFilterChange: (value: FilterValue) => void;
+  onPageSizeChange: (value: number) => void;
 }) {
   const mobileNavigationLayout = useMobileNavigationLayout();
   const [mobileSearchOpen, setMobileSearchOpen] = useState(() => Boolean(query.trim()));
@@ -93,6 +99,7 @@ export function CreatorListToolbar<FilterValue extends string>({
             <Search className="h-4 w-4" />
           </CreatorListToolbarIconButton>
         )}
+        <CreatorListPageSizePicker value={pageSize} options={pageSizeOptions} onChange={onPageSizeChange} />
         <CreatorListFilterPicker
           label={label}
           value={filter}
@@ -119,7 +126,7 @@ function CreatorListToolbarIconButton({
   return (
     <button
       type="button"
-      className="relative inline-flex h-11 w-11 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50 lg:h-8 lg:w-8"
+      className="relative inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
       title={title}
       aria-label={title}
       disabled={disabled}
@@ -127,6 +134,55 @@ function CreatorListToolbarIconButton({
     >
       {children}
     </button>
+  );
+}
+
+function CreatorListPageSizePicker({
+  value,
+  options,
+  onChange,
+}: {
+  value: number;
+  options: readonly number[];
+  onChange: (value: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+
+  return (
+    <div className="relative" ref={anchorRef}>
+      <CreatorListToolbarIconButton title={`Items per page: ${value}`} onClick={() => setOpen((current) => !current)}>
+        <Rows3 className="h-4 w-4" />
+      </CreatorListToolbarIconButton>
+      <AnchoredPopover
+        open={open}
+        anchorRef={anchorRef}
+        onOpenChange={setOpen}
+        className="w-[min(13rem,calc(100vw-1.5rem))] p-1 text-sm"
+      >
+        <div role="menu" aria-label="Items per page">
+          <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground">
+            <Rows3 className="h-4 w-4" />
+            <span>Items per page</span>
+          </div>
+          {options.map((option) => (
+            <button
+              key={option}
+              type="button"
+              role="menuitemradio"
+              aria-checked={value === option}
+              className={`flex min-h-10 w-full items-center rounded-md px-3 py-2 text-left hover:bg-muted ${value === option ? "bg-primary/10 font-medium text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
+              onClick={() => {
+                onChange(option);
+                setOpen(false);
+              }}
+            >
+              {option} per page
+            </button>
+          ))}
+        </div>
+      </AnchoredPopover>
+    </div>
   );
 }
 

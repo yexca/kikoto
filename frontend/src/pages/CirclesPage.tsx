@@ -33,7 +33,6 @@ import {
 } from "@/components/creator/CreatorCard";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
 import { CreatorListToolbar } from "@/components/creator/CreatorListToolbar";
-import { CreatorListMobileOptions } from "@/components/creator/CreatorListMobileOptions";
 import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
@@ -197,8 +196,6 @@ function CircleListPage({ active }: { active: boolean }) {
   const [page, setPage] = useState(initialBrowseState.page);
   const [pageSize, setPageSize] = useState(initialBrowseState.pageSize);
   const [total, setTotal] = useState(0);
-  const [catalogWorks, setCatalogWorks] = useState(0);
-  const [availableWorks, setAvailableWorks] = useState(0);
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
@@ -223,8 +220,6 @@ function CircleListPage({ active }: { active: boolean }) {
       .then((result) => {
         setCircles(result.circles);
         setTotal(result.total);
-        setCatalogWorks(result.catalogWorks);
-        setAvailableWorks(result.availableWorks);
         setHasLoaded(true);
         if (result.page !== page) setPage(result.page);
       })
@@ -255,28 +250,10 @@ function CircleListPage({ active }: { active: boolean }) {
     totalPages,
     itemLabel: "circles",
     ariaLabel: "Circle pages",
-    pageSizeOptions: circlePageSizeOptions,
-    pageSizeControlClassName: "hidden lg:block",
     compactMobile: true,
     refreshing: isLoading && hasLoaded,
     refreshingLabel: "Refreshing circles",
-    leadingControls: (
-      <div className="lg:hidden">
-        <CreatorListMobileOptions
-          label="Circle"
-          filter={filter}
-          defaultFilter="all"
-          filterOptions={circleFilterOptions}
-          showFilter={false}
-          pageSize={pageSize}
-          pageSizeOptions={circlePageSizeOptions}
-          onFilterChange={changeFilter}
-          onPageSizeChange={changePageSize}
-        />
-      </div>
-    ),
     onPageChange: setPage,
-    onPageSizeChange: changePageSize,
   };
 
   const updateCircle = (next: CircleSummary) => {
@@ -314,14 +291,13 @@ function CircleListPage({ active }: { active: boolean }) {
           filter={filter}
           defaultFilter="all"
           filterOptions={circleFilterOptions}
+          pageSize={pageSize}
+          pageSizeOptions={circlePageSizeOptions}
           onQueryChange={setQuery}
           onFilterChange={changeFilter}
+          onPageSizeChange={changePageSize}
         />
         <CollectionPagination {...paginationProps} placement="top" />
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" aria-label="Circle totals">
-          <Badge variant="outline">{catalogWorks} catalog works</Badge>
-          <Badge variant="outline">{availableWorks} available works</Badge>
-        </div>
 
         {isLoading && !hasLoaded ? (
           <CreatorCollectionSkeleton label="Loading circles" />
