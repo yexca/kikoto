@@ -155,7 +155,8 @@ affinity calculation. Current favorite and listening state still comes from
 `user_work_state` for card rendering; a later client session builds a new
 generation only when an input revision changed. Existing sessions retain their
 generation until they expire, so a refresh cannot change another open tab's
-ordering.
+ordering. A released recommendation algorithm version invalidates its older
+generation binding and rebuilds it before the session is reused.
 
 ## Modeling Rules
 

@@ -1387,6 +1387,13 @@ function RecommendationSettings({
               max={10}
               onChange={(value) => updateField("jitterAmplitude", value)}
             />
+            <RecommendationRangeField
+              label="Discovery boost"
+              value={config.explorationAmplitude}
+              min={0}
+              max={40}
+              onChange={(value) => updateField("explorationAmplitude", value)}
+            />
             <div className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2">
               <div>
                 <div className="text-xs text-muted-foreground">Example score</div>
@@ -1621,6 +1628,7 @@ function recommendationPresetConfig(
         circleWeight: 20,
         circleCap: 25,
         jitterAmplitude: 1,
+        explorationAmplitude: 4,
       };
     case "exploratory":
       return {
@@ -1637,6 +1645,7 @@ function recommendationPresetConfig(
         circleWeight: 8,
         circleCap: 10,
         jitterAmplitude: 8,
+        explorationAmplitude: 30,
       };
     case "avoid_shelved":
       return {

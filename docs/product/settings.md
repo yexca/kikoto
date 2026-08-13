@@ -45,8 +45,9 @@ Demo mode renders Settings read-only.
   public host patterns.
 - Routing rules are ordered preferences. Their timeline position determines
   internal priority; disabled and numeric-weight controls are not exposed.
-- Recommendation starts with named common profiles and keeps the state-mix
-  slots, affinity baseline, weights, and caps under Advanced scoring.
+- Recommendation starts with named common profiles, exposes result variation
+  and discovery boost, and keeps the state-mix slots, affinity baseline,
+  weights, and caps under Advanced scoring.
 - Cache & Fetch presents editable policy first, followed by managed-media usage
   and cleanup controls. Its configuration is a vertical list; resolved save
   paths are read-only previews owned by Paths.

@@ -839,7 +839,9 @@ test("mobile circle series combines its selected row, DLsite link, and sheet con
   await seriesDialog.getByText("Second Circle Series", { exact: true }).click();
   await expect(seriesDialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/circles\/RG09999\/series\/SRI0888888888$/);
-  await expect(page.getByRole("button", { name: "Choose circle series" }).first()).toContainText("Second Circle Series");
+  await expect(page.getByRole("button", { name: "Choose circle series" }).first()).toContainText(
+    "Second Circle Series",
+  );
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 

@@ -62,6 +62,7 @@ export type RecommendationConfig = {
   negativeCircleCap: number;
   negativeTotalCap: number;
   jitterAmplitude: number;
+  explorationAmplitude: number;
 };
 
 export type RecommendationBreakdown = {
@@ -69,6 +70,13 @@ export type RecommendationBreakdown = {
   lane: "unmarked" | "want" | "listening" | "finished" | "relisten" | "shelved";
   score: number;
   rawScore: number;
+  ordering?: {
+    seed: number;
+    explorationBoost: number;
+    jitter: number;
+    totalAdjustment: number;
+    rankingScore: number;
+  };
   signals: {
     listeningStatus: ListeningStatus;
     favorite: boolean;
@@ -1756,10 +1764,13 @@ export const api = {
   ) => patchJSONBody<ManagedUser>(`/api/users/${id}`, payload),
   deleteUser: (id: number) => deleteJSON<{ ok: boolean }>(`/api/users/${id}`),
   listWorks: () => getJSON<Work[]>("/api/works"),
-  getWorkRecommendation: (id: number, recommendationSession = "") =>
-    getJSON<RecommendationBreakdown>(
-      `/api/works/${id}/recommendation${recommendationSession ? `?recommendationSession=${encodeURIComponent(recommendationSession)}` : ""}`,
-    ),
+  getWorkRecommendation: (id: number, recommendationSession = "", seed?: number) => {
+    const params = new URLSearchParams();
+    if (recommendationSession) params.set("recommendationSession", recommendationSession);
+    if (seed !== undefined) params.set("seed", String(seed));
+    const query = params.toString();
+    return getJSON<RecommendationBreakdown>(`/api/works/${id}/recommendation${query ? `?${query}` : ""}`);
+  },
   recordRecommendationEvents: (events: RecommendationEventInput[]) =>
     postJSONBody<{ recorded: number }>("/api/recommendation-events", { events }),
   getRecommendationTelemetry: () => getJSON<RecommendationTelemetrySummary>("/api/recommendation-telemetry"),

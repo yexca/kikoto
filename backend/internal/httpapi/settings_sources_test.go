@@ -15,6 +15,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/library"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
@@ -201,6 +202,63 @@ func TestLoadAppSettingsIsReadOnly(t *testing.T) {
 	}
 	if localSources != 1 {
 		t.Fatalf("local source count = %d, want 1", localSources)
+	}
+}
+
+func TestUpdateSettingsRecommendationConfigPreservesOrExplicitlySetsExplorationAmplitude(t *testing.T) {
+	for _, test := range []struct {
+		name                 string
+		includeExploration   bool
+		submittedExploration int
+		wantExploration      int
+	}{
+		{name: "old client preserves existing value", wantExploration: 27},
+		{name: "explicit zero disables exploration", includeExploration: true, submittedExploration: 0, wantExploration: 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := openMigratedTestDB(t)
+			server := NewServer(db, config.Config{})
+			existing := library.DefaultRecommendationConfig()
+			existing.ExplorationAmplitude = 27
+			existingJSON, err := json.Marshal(existing)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec("INSERT INTO app_setting (key, value_json) VALUES ('recommendation_config', ?)", string(existingJSON)); err != nil {
+				t.Fatal(err)
+			}
+
+			submitted := existing
+			submitted.JitterAmplitude = 8
+			submitted.ExplorationAmplitude = test.submittedExploration
+			submittedJSON, err := json.Marshal(submitted)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !test.includeExploration {
+				var fields map[string]json.RawMessage
+				if err := json.Unmarshal(submittedJSON, &fields); err != nil {
+					t.Fatal(err)
+				}
+				delete(fields, "explorationAmplitude")
+				submittedJSON, err = json.Marshal(fields)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			request := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(`{"recommendationConfig":`+string(submittedJSON)+`}`))
+			request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"sources:write"}}))
+			response := httptest.NewRecorder()
+			server.updateSettings(response, request)
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+			stored := server.libraryStore.LoadRecommendationConfig(context.Background())
+			if stored.ExplorationAmplitude != test.wantExploration || stored.JitterAmplitude != 8 {
+				t.Fatalf("stored recommendation config = %+v", stored)
+			}
+		})
 	}
 }
 

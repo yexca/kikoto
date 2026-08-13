@@ -45,7 +45,9 @@ The Library is the main browsing surface for works.
   insertions, and Shelved waits until scheduled states are exhausted. Explicit
   status filters still return every matching work. Within each state, a bounded
   affinity score uses favorite, tag, voice, and circle signals without treating
-  the candidate itself as taste history. Relisten and favorite history are
+  the candidate itself as taste history. A seeded discovery boost and result
+  variation adjust that affinity only for the current within-state ordering;
+  badges and telemetry retain the bounded affinity score. Relisten and favorite history are
   positive evidence; Finished alone is neutral. Each browser tab or native-app
   launch binds to an immutable recommendation generation, so navigation,
   pagination, filters, card mutations, and toolbar reshuffles do not recompute
