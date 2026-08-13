@@ -14,7 +14,6 @@ import {
   Clock3,
   GitBranchPlus,
   CloudOff,
-  Copy,
   Edit3,
   Trash2,
   FileAudio,
@@ -57,7 +56,7 @@ import {
   type RefObject,
 } from "react";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge, badgeVariants } from "@/components/ui/badge";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -5090,22 +5089,19 @@ function DetailTitleBlock({
     <div className="space-y-2">
       <div className="space-y-1.5">
         <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Work code actions">
-          <Button
+          <button
             type="button"
-            variant="secondary"
-            size="sm"
-            className="h-11 max-w-full gap-1.5 px-3 font-mono"
+            className={badgeVariants({ variant: "secondary", className: "w-fit cursor-copy" })}
             aria-label={`Copy work code ${codeLabel}`}
             title="Copy work code"
             onClick={() => void copyWorkCode()}
           >
-            <span className="truncate">{codeLabel}</span>
-            <Copy className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          </Button>
+            {codeLabel}
+          </button>
           {dlsiteUrl && (
-            <Button variant="outline" size="icon" className="h-11 w-11 shrink-0" asChild title="Open DLsite">
+            <Button variant="outline" size="icon" className="h-[22px] w-[22px] shrink-0 p-0" asChild title="Open DLsite">
               <a href={dlsiteUrl} target="_blank" rel="noreferrer" aria-label={`Open DLsite for ${codeLabel}`}>
-                <ExternalLink className="h-4 w-4" />
+                <ExternalLink className="h-3 w-3" />
               </a>
             </Button>
           )}
