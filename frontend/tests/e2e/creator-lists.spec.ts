@@ -411,10 +411,15 @@ test("circle list uses compact responsive cards and shared pagination", async ({
   await expect(page.getByRole("navigation", { name: "Circle pages" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
-  await page.getByRole("button", { name: "Circle list options" }).click();
-  await page.getByRole("menuitem", { name: /^Filter/ }).click();
+  await page.getByRole("button", { name: "All circles" }).click();
+  await expect(page.getByRole("menu", { name: "Circles filters" })).toBeVisible();
   await page.getByRole("menuitemradio", { name: "Missing" }).click();
   await expect(page).toHaveURL(/filter=missing/);
+
+  await page.getByRole("button", { name: "Search circles" }).click();
+  await expect(page.getByPlaceholder("Search circles")).toBeVisible();
+  await page.getByPlaceholder("Search circles").fill("Example");
+  await expect(page.getByRole("button", { name: "Circles search is active" })).toBeDisabled();
 });
 
 test("voice list keeps latest work, tags, and availability visible on mobile", async ({ page }) => {
@@ -441,6 +446,44 @@ test("voice list keeps latest work, tags, and availability visible on mobile", a
   await expect(page.getByRole("group", { name: "Voice actor pages controls" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Voice actor pages" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await expect(page.getByRole("button", { name: "All voices" })).toBeVisible();
+  const optionsButton = page.getByRole("button", { name: "Voice actor list options" });
+  await expect(optionsButton).toBeVisible();
+  await optionsButton.click();
+  const optionsMenu = page.getByRole("menu", { name: "Voice actor list options" });
+  await expect(optionsMenu.getByRole("menuitem", { name: "Per page" })).toBeVisible();
+  await expect(optionsMenu.getByRole("menuitem", { name: "Filter" })).toHaveCount(0);
+  await expect(optionsMenu.getByRole("menuitem", { name: "Tag" })).toHaveCount(0);
+  await optionsButton.click();
+});
+
+test("creator list toolbars keep search left and filters right on desktop", async ({ page }) => {
+  await mockCreatorLists(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+
+  await page.goto("/circles");
+  const circleSearch = page.getByPlaceholder("Search circles");
+  const circleFilter = page.getByRole("button", { name: "All circles" });
+  await expect(circleSearch).toBeVisible();
+  await expect(circleFilter).toBeVisible();
+  await expect(page.getByRole("button", { name: "Search circles" })).toHaveCount(0);
+  const circleSearchBox = await circleSearch.boundingBox();
+  const circleFilterBox = await circleFilter.boundingBox();
+  expect(circleSearchBox).not.toBeNull();
+  expect(circleFilterBox).not.toBeNull();
+  expect(circleSearchBox!.x + circleSearchBox!.width).toBeLessThanOrEqual(circleFilterBox!.x);
+
+  await page.goto("/voices");
+  const voiceSearch = page.getByPlaceholder("Search voices or tags");
+  const voiceFilter = page.getByRole("button", { name: "All voices" });
+  await expect(voiceSearch).toBeVisible();
+  await expect(voiceFilter).toBeVisible();
+  await expect(page.getByRole("button", { name: "Search voice actors" })).toHaveCount(0);
+  const voiceSearchBox = await voiceSearch.boundingBox();
+  const voiceFilterBox = await voiceFilter.boundingBox();
+  expect(voiceSearchBox).not.toBeNull();
+  expect(voiceFilterBox).not.toBeNull();
+  expect(voiceSearchBox!.x + voiceSearchBox!.width).toBeLessThanOrEqual(voiceFilterBox!.x);
 });
 
 test("creator lists render a label for legacy catalog sync responses", async ({ page }) => {

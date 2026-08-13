@@ -9,6 +9,10 @@ Voice pages present persisted person and credit data.
 - Uses server-paged, URL-backed list search and filters with shorter responsive
   creator cards, dynamic user-tag rows, Library-style pagination, and the latest
   known credited-work cover.
+- Uses a Library-style first-row toolbar with search on the left and the
+  existing voice filters (defaulting to `All voices`) on the right; narrow
+  layouts collapse search into the toolbar actions. User tags remain visible
+  and searchable, but the list does not expose a tag filter for now.
 - Shows favorite, rating, note, and user tag state.
 - Supports alias review, duplicate merge, and merge undo.
 - Groups works with no provider voice credits under an `unknown` bucket.

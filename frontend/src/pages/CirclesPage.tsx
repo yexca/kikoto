@@ -32,6 +32,7 @@ import {
   creatorCollectionClassName,
 } from "@/components/creator/CreatorCard";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
+import { CreatorListToolbar } from "@/components/creator/CreatorListToolbar";
 import { CreatorListMobileOptions } from "@/components/creator/CreatorListMobileOptions";
 import {
   WorkCardActionButton,
@@ -266,6 +267,7 @@ function CircleListPage({ active }: { active: boolean }) {
           filter={filter}
           defaultFilter="all"
           filterOptions={circleFilterOptions}
+          showFilter={false}
           pageSize={pageSize}
           pageSizeOptions={circlePageSizeOptions}
           onFilterChange={changeFilter}
@@ -305,32 +307,16 @@ function CircleListPage({ active }: { active: boolean }) {
   return (
     <div className="space-y-5">
       <section className="space-y-3">
-        <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 text-sm xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-3">
-            <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <input
-              className="min-w-0 flex-1 bg-transparent outline-none"
-              value={query}
-              onKeyDown={dismissKeyboardOnEnter}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search circles"
-            />
-          </div>
-          <div className="hidden flex-wrap items-center gap-2 lg:flex">
-            <select
-              className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-              value={filter}
-              onChange={(event) => changeFilter(event.target.value as CircleFilter)}
-              aria-label="Circle filter"
-            >
-              {circleFilterOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+        <CreatorListToolbar
+          label="Circles"
+          query={query}
+          placeholder="Search circles"
+          filter={filter}
+          defaultFilter="all"
+          filterOptions={circleFilterOptions}
+          onQueryChange={setQuery}
+          onFilterChange={changeFilter}
+        />
         <CollectionPagination {...paginationProps} placement="top" />
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" aria-label="Circle totals">
           <Badge variant="outline">{catalogWorks} catalog works</Badge>

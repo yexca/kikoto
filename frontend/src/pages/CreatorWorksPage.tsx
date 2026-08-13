@@ -34,6 +34,7 @@ import {
   creatorCollectionClassName,
 } from "@/components/creator/CreatorCard";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
+import { CreatorListToolbar } from "@/components/creator/CreatorListToolbar";
 import { CreatorListMobileOptions } from "@/components/creator/CreatorListMobileOptions";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
@@ -192,8 +193,6 @@ function VoiceListPage({ active }: { active: boolean }) {
   const [query, setQuery] = useState(initialBrowseState.query);
   const [requestQuery, setRequestQuery] = useState(initialBrowseState.query);
   const [filter, setFilter] = useState<VoiceFilter>(initialBrowseState.filter);
-  const [tagFilter, setTagFilter] = useState(initialBrowseState.tag);
-  const [tagOptions, setTagOptions] = useState<string[]>([]);
   const [page, setPage] = useState(initialBrowseState.page);
   const [pageSize, setPageSize] = useState(initialBrowseState.pageSize);
   const [total, setTotal] = useState(0);
@@ -206,25 +205,24 @@ function VoiceListPage({ active }: { active: boolean }) {
 
   useEffect(() => {
     if (!active || !isVoiceListLocation(currentInternalLocation())) return;
-    const search = creatorBrowseSearch({ query, filter, tag: tagFilter, page, pageSize });
+    const search = creatorBrowseSearch({ query, filter, tag: "", page, pageSize });
     const location = `/voices${search}`;
     window.history.replaceState(window.history.state ?? {}, "", location);
     writeLastVoiceListLocation(storageScope, location);
-  }, [active, filter, page, pageSize, query, storageScope, tagFilter]);
+  }, [active, filter, page, pageSize, query, storageScope]);
 
   useEffect(() => {
     const controller = new AbortController();
     setIsLoading(true);
     setLoadError("");
     api
-      .listVoices({ page, pageSize, query: requestQuery, filter, tag: tagFilter, signal: controller.signal })
+      .listVoices({ page, pageSize, query: requestQuery, filter, signal: controller.signal })
       .then((result) => {
         setVoices(result.voices);
         setTotal(result.total);
-        setTagOptions(result.tagOptions);
         setHasLoaded(true);
         setMessage(
-          result.total === 0 && !requestQuery.trim() && filter === "all" && !tagFilter
+          result.total === 0 && !requestQuery.trim() && filter === "all"
             ? "No voice actor credits have been derived from known work metadata yet."
             : "",
         );
@@ -239,15 +237,11 @@ function VoiceListPage({ active }: { active: boolean }) {
         if (!controller.signal.aborted) setIsLoading(false);
       });
     return () => controller.abort();
-  }, [filter, page, pageSize, reloadToken, requestQuery, tagFilter]);
+  }, [filter, page, pageSize, reloadToken, requestQuery]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const changeFilter = (value: VoiceFilter) => {
     setFilter(value);
-    setPage(1);
-  };
-  const changeTagFilter = (value: string) => {
-    setTagFilter(value);
     setPage(1);
   };
   const changePageSize = (value: number) => {
@@ -273,12 +267,10 @@ function VoiceListPage({ active }: { active: boolean }) {
           filter={filter}
           defaultFilter="all"
           filterOptions={voiceFilterOptions}
-          tag={tagFilter}
-          tagOptions={tagOptions}
+          showFilter={false}
           pageSize={pageSize}
           pageSizeOptions={voicePageSizeOptions}
           onFilterChange={changeFilter}
-          onTagChange={changeTagFilter}
           onPageSizeChange={changePageSize}
         />
       </div>
@@ -289,7 +281,7 @@ function VoiceListPage({ active }: { active: boolean }) {
 
   const updateVoice = (next: VoiceSummary) => {
     setVoices((items) => items.map((item) => (item.personId === next.personId ? { ...item, ...next } : item)));
-    if (filter !== "all" || tagFilter || requestQuery.trim()) setReloadToken((value) => value + 1);
+    if (filter !== "all" || requestQuery.trim()) setReloadToken((value) => value + 1);
   };
 
   const toggleFavorite = async (voice: VoiceSummary) => {
@@ -314,45 +306,16 @@ function VoiceListPage({ active }: { active: boolean }) {
       {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
 
       <section className="space-y-3">
-        <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 text-sm xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-3">
-            <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <input
-              className="min-w-0 flex-1 bg-transparent outline-none"
-              value={query}
-              onKeyDown={dismissKeyboardOnEnter}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search voices or tags"
-            />
-          </div>
-          <div className="hidden flex-wrap items-center gap-2 lg:flex">
-            <select
-              className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-              value={filter}
-              onChange={(event) => changeFilter(event.target.value as VoiceFilter)}
-              aria-label="Voice filter"
-            >
-              {voiceFilterOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <select
-              className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-              value={tagFilter}
-              onChange={(event) => changeTagFilter(event.target.value)}
-              aria-label="Voice tag filter"
-            >
-              <option value="">All tags</option>
-              {tagOptions.map((tag) => (
-                <option key={tag} value={tag}>
-                  {tag}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+        <CreatorListToolbar
+          label="Voice actors"
+          query={query}
+          placeholder="Search voices or tags"
+          filter={filter}
+          defaultFilter="all"
+          filterOptions={voiceFilterOptions}
+          onQueryChange={setQuery}
+          onFilterChange={changeFilter}
+        />
 
         <CollectionPagination {...paginationProps} placement="top" />
 

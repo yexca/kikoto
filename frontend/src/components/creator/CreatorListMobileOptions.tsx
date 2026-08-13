@@ -16,6 +16,7 @@ export function CreatorListMobileOptions<FilterValue extends string>({
   filter,
   defaultFilter,
   filterOptions,
+  showFilter = true,
   tag,
   tagOptions,
   pageSize,
@@ -28,6 +29,7 @@ export function CreatorListMobileOptions<FilterValue extends string>({
   filter: FilterValue;
   defaultFilter: FilterValue;
   filterOptions: readonly CreatorListFilterOption<FilterValue>[];
+  showFilter?: boolean;
   tag?: string;
   tagOptions?: readonly string[];
   pageSize: number;
@@ -40,7 +42,8 @@ export function CreatorListMobileOptions<FilterValue extends string>({
   const [panel, setPanel] = useState<CreatorListMobilePanel>("root");
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const hasTagFilter = tagOptions !== undefined && onTagChange !== undefined;
-  const activeFilterCount = Number(filter !== defaultFilter) + Number(Boolean(tag));
+  const hasFilter = showFilter;
+  const activeFilterCount = Number(hasFilter && filter !== defaultFilter) + Number(Boolean(tag));
   const filterLabel = filterOptions.find((option) => option.value === filter)?.label ?? "Filter";
   const tagLabel = tag || "All tags";
 
@@ -82,12 +85,14 @@ export function CreatorListMobileOptions<FilterValue extends string>({
         {panel === "root" ? (
           <div role="menu" aria-label={`${label} list options`}>
             <div className="px-3 py-2 text-xs font-semibold text-foreground">List options</div>
-            <CreatorListMobileMenuRow
-              icon={<Filter className="h-4 w-4" />}
-              label="Filter"
-              value={filterLabel}
-              onClick={() => setPanel("filter")}
-            />
+            {hasFilter && (
+              <CreatorListMobileMenuRow
+                icon={<Filter className="h-4 w-4" />}
+                label="Filter"
+                value={filterLabel}
+                onClick={() => setPanel("filter")}
+              />
+            )}
             {hasTagFilter && (
               <CreatorListMobileMenuRow
                 icon={<Tags className="h-4 w-4" />}
