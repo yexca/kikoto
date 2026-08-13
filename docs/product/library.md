@@ -66,6 +66,9 @@ The Library is the main browsing surface for works.
   Each source retains its own pagination, sort, and scroll state, while grid
   column settings remain shared. A source cannot restore stale query text after
   the user clears it elsewhere.
+- Keeps the active Local, Tracked, or remote-source page size in the first-row
+  action toolbar and leaves the compact top pagination focused on result context
+  and page navigation.
 - Keeps database cleanup out of Library. Maintenance -> Unlinked works provides
   paged search, source checks, and confirmed local-information deletion for
   logical families with no available source or media location.

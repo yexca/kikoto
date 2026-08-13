@@ -251,6 +251,7 @@ function CircleListPage({ active }: { active: boolean }) {
     itemLabel: "circles",
     ariaLabel: "Circle pages",
     compactMobile: true,
+    compactTop: true,
     refreshing: isLoading && hasLoaded,
     refreshingLabel: "Refreshing circles",
     onPageChange: setPage,

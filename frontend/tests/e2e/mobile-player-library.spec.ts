@@ -1099,6 +1099,12 @@ test("remote source reuses the library grid, source sorting, localized tags, and
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "退廃/背徳/インモラル", exact: true })).toBeVisible();
   await expect(page.getByText("Page 1 / 2 · 30 works", { exact: true })).toHaveCount(1);
+  const pageSizeButton = page.getByRole("button", { name: "Items per page: 24" });
+  await expect(pageSizeButton).toBeVisible();
+  await pageSizeButton.click();
+  await expect(page.getByRole("menu", { name: "Items per page" })).toBeVisible();
+  await page.getByRole("menuitemradio", { name: "12 per page" }).click();
+  await expect.poll(() => requests.some((url) => url.searchParams.get("pageSize") === "12")).toBe(true);
   await expect(page.getByTitle("Mark filters are unavailable for source browsing")).toBeDisabled();
 
   await page.getByRole("button", { name: "Sort: Recently added" }).click();

@@ -255,6 +255,7 @@ function VoiceListPage({ active }: { active: boolean }) {
     itemLabel: "voice actors",
     ariaLabel: "Voice actor pages",
     compactMobile: true,
+    compactTop: true,
     refreshing: isLoading && hasLoaded,
     refreshingLabel: "Refreshing voice actors",
     onPageChange: setPage,

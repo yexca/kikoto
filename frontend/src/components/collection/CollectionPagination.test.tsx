@@ -46,4 +46,24 @@ describe("CollectionPagination", () => {
     expect(rendered).toContain("1-24 of 30 circles");
     expect(rendered).toContain("Page 1 of 2, 30 circles");
   });
+
+  it("uses the compact top height without changing accessible pagination context", () => {
+    const rendered = renderToStaticMarkup(
+      <CollectionPagination
+        placement="top"
+        page={1}
+        pageSize={24}
+        totalItems={30}
+        totalPages={2}
+        itemLabel="works"
+        compactMobile
+        compactTop
+        onPageChange={() => undefined}
+      />,
+    );
+
+    expect(rendered).toContain("min-h-10");
+    expect(rendered).toContain("h-8 w-8");
+    expect(rendered).toContain("Page 1 of 2, 30 works");
+  });
 });

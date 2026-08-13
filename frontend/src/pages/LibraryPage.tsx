@@ -58,6 +58,7 @@ import {
 
 import { Badge, badgeVariants } from "@/components/ui/badge";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
+import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -1449,6 +1450,8 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const currentWorkPage = Math.min(workPage, totalWorkPages);
   const pagedWorks = visibleWorks;
   const activeFilterCount = statusFilter === "all" ? 0 : 1;
+  const activePageSize = activeTab.kind === "source" ? activeRemoteSourceState.pageSize : workPageSize;
+  const activePageSizeOptions = activeTab.kind === "source" ? ([12, 24, 48, 96] as const) : localWorkPageSizeOptions;
   const changeWorkPage = (page: number) => {
     queueResultsScroll();
     setWorkPage(page);
@@ -1507,11 +1510,11 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     pageSize: workPageSize,
     totalItems: workTotal,
     totalPages: totalWorkPages,
-    pageSizeOptions: localWorkPageSizeOptions,
     onPageChange: changeWorkPage,
-    onPageSizeChange: (value: number) => changeWorkPageSize(value as LocalWorkPageSize),
   };
-  const localTopPagination = <WorkCollectionPagination {...localPaginationProps} placement="top" />;
+  const localTopPagination = (
+    <WorkCollectionPagination {...localPaginationProps} placement="top" compactMobile compactTop />
+  );
   const showRecentlyPlayed =
     recentWorks.length > 0 && searchQuery.trim() === "" && statusFilter === "all" && searchClauses.length === 0;
 
@@ -1582,6 +1585,18 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             desktopColumns={desktopColumns}
             onMobileColumnsChange={setMobileColumns}
             onDesktopColumnsChange={setDesktopColumns}
+          />
+          <PageSizePicker
+            value={activePageSize}
+            options={activePageSizeOptions}
+            onChange={(value) => {
+              queueResultsScroll();
+              if (activeTab.kind === "source") {
+                updateRemoteSourceState(activeTab.source.id, { pageSize: value, page: 1 });
+                return;
+              }
+              changeWorkPageSize(value as LocalWorkPageSize);
+            }}
           />
           {librarySort === "recommend" ? (
             <IconButton title="Refresh recommendations" disabled={isLibraryLoading} onClick={reshuffle}>
@@ -1687,10 +1702,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             onPageChange={(page) => {
               queueResultsScroll();
               updateRemoteSourceState(activeTab.source.id, { page });
-            }}
-            onPageSizeChange={(value) => {
-              queueResultsScroll();
-              updateRemoteSourceState(activeTab.source.id, { pageSize: value, page: 1 });
             }}
             onOpenPreview={(work) => openRemotePreview(activeTab.source, work)}
             onTagOpen={addTagSearchClause}
@@ -1864,7 +1875,6 @@ function RemoteSourcePanel({
   desktopColumns,
   onClearSearch,
   onPageChange,
-  onPageSizeChange,
   onOpenPreview,
   onTagOpen,
   onWorkStateChanged,
@@ -1879,7 +1889,6 @@ function RemoteSourcePanel({
   desktopColumns: LibraryColumnSetting;
   onClearSearch: () => void;
   onPageChange: (page: number) => void;
-  onPageSizeChange: (pageSize: number) => void;
   onOpenPreview: (work: RemoteWork) => void;
   onTagOpen: (tag: string) => void;
   onWorkStateChanged: (
@@ -1940,11 +1949,11 @@ function RemoteSourcePanel({
     pageSize,
     totalItems,
     totalPages,
-    pageSizeOptions: [12, 24, 48, 96] as const,
     onPageChange,
-    onPageSizeChange,
   };
-  const remoteTopPagination = <WorkCollectionPagination {...remotePaginationProps} placement="top" />;
+  const remoteTopPagination = (
+    <WorkCollectionPagination {...remotePaginationProps} placement="top" compactMobile compactTop />
+  );
 
   useEffect(() => {
     setBulkCodes(

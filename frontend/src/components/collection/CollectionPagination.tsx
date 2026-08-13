@@ -18,6 +18,7 @@ export type CollectionPaginationProps = {
   pageSizeControlClassName?: string;
   leadingControls?: ReactNode;
   compactMobile?: boolean;
+  compactTop?: boolean;
   refreshing?: boolean;
   refreshingLabel?: string;
   onPageChange: (page: number) => void;
@@ -37,6 +38,7 @@ export function CollectionPagination({
   pageSizeControlClassName,
   leadingControls,
   compactMobile = false,
+  compactTop = false,
   refreshing,
   refreshingLabel,
   onPageChange,
@@ -112,7 +114,9 @@ export function CollectionPagination({
       className={cn(
         "rounded-lg border bg-card text-sm",
         compactMobile
-          ? "flex min-h-[3.75rem] flex-nowrap items-center justify-between gap-2 px-2 py-2 lg:min-h-0 lg:px-3"
+          ? compactTop
+            ? "flex min-h-10 flex-nowrap items-center justify-between gap-2 px-2 py-1 lg:px-3"
+            : "flex min-h-[3.75rem] flex-nowrap items-center justify-between gap-2 px-2 py-2 lg:min-h-0 lg:px-3"
           : "flex flex-col gap-2 px-3 py-2 lg:flex-row lg:items-center lg:justify-between",
       )}
     >
@@ -173,14 +177,17 @@ export function CollectionPagination({
         )}
         {compactMobile && (
           <div
-            className="inline-flex h-11 shrink-0 items-center rounded-md border bg-background lg:hidden"
+            className={cn(
+              "inline-flex shrink-0 items-center rounded-md border bg-background lg:hidden",
+              compactTop ? "h-8" : "h-11",
+            )}
             role="group"
             aria-label={`${ariaLabel} controls`}
           >
             <Button
               variant="ghost"
               size="icon"
-              className="h-11 w-11 rounded-r-none"
+              className={cn("rounded-r-none", compactTop ? "h-8 w-8" : "h-11 w-11")}
               disabled={currentPage <= 1}
               onClick={() => onPageChange(currentPage - 1)}
               aria-label="Previous page"
@@ -191,7 +198,7 @@ export function CollectionPagination({
             <Button
               variant="ghost"
               size="icon"
-              className="h-11 w-11 rounded-l-none border-l"
+              className={cn("rounded-l-none border-l", compactTop ? "h-8 w-8" : "h-11 w-11")}
               disabled={currentPage >= lastPage}
               onClick={() => onPageChange(currentPage + 1)}
               aria-label="Next page"
