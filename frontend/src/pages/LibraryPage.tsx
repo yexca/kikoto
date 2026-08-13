@@ -14,6 +14,7 @@ import {
   Clock3,
   GitBranchPlus,
   CloudOff,
+  Copy,
   Edit3,
   Trash2,
   FileAudio,
@@ -3527,7 +3528,6 @@ function RemoteOnlyWorkDetailController({
         await onWorksChanged();
       }}
       onMark={(status) => void updateRemoteMark(status)}
-      dlsiteUrl={dlsiteWorkURL(detail.primaryCode)}
     />
   ) : (
     <DetailSkeletonActions />
@@ -3652,6 +3652,7 @@ function RemoteOnlyWorkDetailController({
     coverUrl: remoteIdentity?.coverUrl ?? preview?.coverUrl ?? "",
     fallbackCode: displayPrimaryCode || remoteIdentity?.remoteId || preview?.remoteId || code,
     code: displayPrimaryCode || remoteIdentity?.remoteId || preview?.remoteId || code,
+    dlsiteUrl: detail ? dlsiteWorkURL(detail.primaryCode) : "",
     title: remoteIdentity?.title ?? preview?.title ?? code,
     circle: remoteIdentity?.circle ?? preview?.circle ?? "",
     circleExternalId: remoteIdentity?.circleRef?.externalId ?? preview?.circleExternalId ?? "",
@@ -4344,7 +4345,6 @@ function PersistedWorkDetailController({
       onMark={(status) => void markDetailWork(status)}
       onSync={() => void syncDetailMetadata()}
       onEditMetadata={() => setIsMetadataEditorOpen(true)}
-      dlsiteUrl={work.dlsiteUrl}
       metadataSyncBusy={Boolean(activeMetadataRunId)}
       syncLabel="Refresh metadata"
     />
@@ -4509,6 +4509,7 @@ function PersistedWorkDetailController({
     coverUrl: hero.coverUrl,
     fallbackCode: hero.primaryCode,
     code: hero.primaryCode,
+    dlsiteUrl: work?.dlsiteUrl ?? "",
     title: hero.title,
     circle: hero.circle,
     circleExternalId: hero.circleExternalId,
@@ -4628,6 +4629,7 @@ type UnifiedWorkDetailPresentation = {
   coverUrl: string;
   fallbackCode: string;
   code: string;
+  dlsiteUrl: string;
   title: string;
   circle: string;
   circleExternalId: string;
@@ -4706,6 +4708,7 @@ function DetailHero({
   coverUrl,
   fallbackCode,
   code,
+  dlsiteUrl,
   title,
   circle,
   circleExternalId,
@@ -4736,6 +4739,7 @@ function DetailHero({
   coverUrl: string;
   fallbackCode: string;
   code: string;
+  dlsiteUrl: string;
   title: string;
   circle: string;
   circleExternalId: string;
@@ -4781,6 +4785,7 @@ function DetailHero({
         <DetailTitleBlock
           fallbackCode={fallbackCode}
           code={code}
+          dlsiteUrl={dlsiteUrl}
           title={title}
           circle={circle}
           circleExternalId={circleExternalId}
@@ -4827,6 +4832,7 @@ function MobileWorkDetailLayout({
   coverUrl,
   fallbackCode,
   code,
+  dlsiteUrl,
   title,
   circle,
   circleExternalId,
@@ -4860,6 +4866,7 @@ function MobileWorkDetailLayout({
   coverUrl: string;
   fallbackCode: string;
   code: string;
+  dlsiteUrl: string;
   title: string;
   circle: string;
   circleExternalId: string;
@@ -4906,6 +4913,7 @@ function MobileWorkDetailLayout({
       <DetailTitleBlock
         fallbackCode={fallbackCode}
         code={code}
+        dlsiteUrl={dlsiteUrl}
         title={title}
         circle={circle}
         circleExternalId={circleExternalId}
@@ -5044,6 +5052,7 @@ function useDetailEntityResolver(code: string): DetailEntityResolver {
 function DetailTitleBlock({
   fallbackCode,
   code,
+  dlsiteUrl,
   title,
   circle,
   circleExternalId,
@@ -5055,6 +5064,7 @@ function DetailTitleBlock({
 }: {
   fallbackCode: string;
   code: string;
+  dlsiteUrl: string;
   title: string;
   circle: string;
   circleExternalId: string;
@@ -5064,13 +5074,42 @@ function DetailTitleBlock({
   loading?: boolean;
   entityResolver: DetailEntityResolver;
 }) {
+  const toast = useToast();
   const codeLabel = code || fallbackCode || "Remote";
+  const copyWorkCode = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(codeLabel);
+      toast.success(`Copied ${codeLabel}.`);
+    } catch {
+      toast.error("Could not copy the work code.");
+    }
+  };
+
   return (
     <div className="space-y-2">
       <div className="space-y-1.5">
-        <Badge variant="secondary" className="w-fit">
-          {codeLabel}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Work code actions">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="h-11 max-w-full gap-1.5 px-3 font-mono"
+            aria-label={`Copy work code ${codeLabel}`}
+            title="Copy work code"
+            onClick={() => void copyWorkCode()}
+          >
+            <span className="truncate">{codeLabel}</span>
+            <Copy className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          </Button>
+          {dlsiteUrl && (
+            <Button variant="outline" size="icon" className="h-11 w-11 shrink-0" asChild title="Open DLsite">
+              <a href={dlsiteUrl} target="_blank" rel="noreferrer" aria-label={`Open DLsite for ${codeLabel}`}>
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            </Button>
+          )}
+        </div>
         <h2 className="min-w-0 text-2xl font-semibold leading-tight lg:text-3xl">{title}</h2>
         {loading && <div className="h-2 w-40 animate-pulse rounded bg-muted" />}
       </div>
@@ -5229,14 +5268,14 @@ function DetailMetadataContent({
   }
   return (
     <>
-      {dlsiteCard}
-      <ActiveSourceInfo info={sourceInfo} />
-      {versionSelector}
       <div className="space-y-3">
         {voiceCard}
         {tagsCard}
       </div>
       {supplementary}
+      {versionSelector}
+      {dlsiteCard}
+      <ActiveSourceInfo info={sourceInfo} />
     </>
   );
 }

@@ -2416,6 +2416,63 @@ test("work detail groups DLsite and active source information", async ({ page })
   ).toBe(true);
 });
 
+test("mobile work detail orders Info sections and keeps work-code utilities together", async ({ page }) => {
+  const detailWork = {
+    ...work,
+    dlsiteUrl: "https://example.invalid/work/RJ00000000",
+    tags: ["Example tag"],
+    userTags: [{ id: 1, name: "Personal tag", color: "" }],
+    voiceActors: ["Example Voice"],
+    voiceCredits: [{ personId: 7, displayName: "Example Voice" }],
+  };
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: (value: string) => {
+          localStorage.setItem("kikoto:e2e-copied-work-code", value);
+          return Promise.resolve();
+        },
+      },
+    });
+  });
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, { authenticated: true, work: detailWork });
+  await page.goto("/");
+  await page.getByText(detailWork.title, { exact: true }).click();
+
+  const workCodeActions = page.getByRole("group", { name: "Work code actions" });
+  const copyWorkCode = workCodeActions.getByRole("button", { name: `Copy work code ${detailWork.primaryCode}` });
+  await expect(copyWorkCode).toBeVisible();
+  await expect(workCodeActions.getByRole("link", { name: `Open DLsite for ${detailWork.primaryCode}` })).toHaveAttribute(
+    "href",
+    detailWork.dlsiteUrl,
+  );
+  await expect(page.getByTestId("hero-actions").getByRole("link", { name: /Open DLsite/ })).toHaveCount(0);
+
+  await copyWorkCode.click();
+  await expect(page.getByText(`Copied ${detailWork.primaryCode}.`, { exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("kikoto:e2e-copied-work-code")))
+    .toBe(detailWork.primaryCode);
+
+  await page.getByRole("button", { name: "Info", exact: true }).click();
+  const sections = [
+    page.getByText("Voices", { exact: true }),
+    page.getByText("Tags", { exact: true }),
+    page.getByText("My tags", { exact: true }),
+    page.getByText("Versions", { exact: true }),
+    page.getByTestId("dlsite-info"),
+    page.getByTestId("active-source-info"),
+  ];
+  const positions = await Promise.all(
+    sections.map(async (section) => {
+      await expect(section).toHaveCount(1);
+      return (await section.boundingBox())?.y ?? -1;
+    }),
+  );
+  expect(positions.every((position, index) => index === 0 || positions[index - 1] < position)).toBe(true);
+});
+
 test("library request failures are not presented as an empty collection", async ({ page }) => {
   await mockApplication(page);
   await page.route("**/api/works?**", (route) =>
