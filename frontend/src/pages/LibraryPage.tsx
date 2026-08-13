@@ -5132,7 +5132,13 @@ function DetailTitleBlock({
             {codeLabel}
           </button>
           {dlsiteUrl && (
-            <Button variant="outline" size="icon" className="h-[22px] w-[22px] shrink-0 p-0" asChild title="Open DLsite">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-[22px] w-[22px] shrink-0 p-0"
+              asChild
+              title="Open DLsite"
+            >
               <a href={dlsiteUrl} target="_blank" rel="noreferrer" aria-label={`Open DLsite for ${codeLabel}`}>
                 <ExternalLink className="h-3 w-3" />
               </a>

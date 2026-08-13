@@ -2443,10 +2443,9 @@ test("mobile work detail orders Info sections and keeps work-code utilities toge
   const workCodeActions = page.getByRole("group", { name: "Work code actions" });
   const copyWorkCode = workCodeActions.getByRole("button", { name: `Copy work code ${detailWork.primaryCode}` });
   await expect(copyWorkCode).toBeVisible();
-  await expect(workCodeActions.getByRole("link", { name: `Open DLsite for ${detailWork.primaryCode}` })).toHaveAttribute(
-    "href",
-    detailWork.dlsiteUrl,
-  );
+  await expect(
+    workCodeActions.getByRole("link", { name: `Open DLsite for ${detailWork.primaryCode}` }),
+  ).toHaveAttribute("href", detailWork.dlsiteUrl);
   await expect(page.getByTestId("hero-actions").getByRole("link", { name: /Open DLsite/ })).toHaveCount(0);
 
   await copyWorkCode.click();
