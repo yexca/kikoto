@@ -1,11 +1,14 @@
 import {
   ArrowDownAZ,
   ArrowDownZA,
+  ArrowDown,
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
   ArrowUpDown,
   Check,
   ChevronRight,
+  ChevronDown,
   Cloud,
   Columns3,
   ExternalLink,
@@ -34,6 +37,7 @@ import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { useAuth } from "@/auth/AuthProvider";
 import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
@@ -97,6 +101,7 @@ import {
 } from "@/pages/favoritesBrowseState";
 import { defaultLibraryBrowseState, libraryLocation } from "@/pages/libraryBrowseState";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
+import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 
 const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "none", label: "Unmarked" },
@@ -117,7 +122,7 @@ const statusTabs: { value: ListeningStatus | "all"; label: string; icon: typeof 
 ];
 
 const availabilityFilters = [
-  { value: "all", label: "Any availability" },
+  { value: "all", label: "Any available" },
   { value: "local", label: "Local" },
   { value: "cache", label: "Cached" },
   { value: "remote", label: "Remote" },
@@ -202,12 +207,14 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const [worksReloadToken, setWorksReloadToken] = useState(0);
   const [listEditor, setListEditor] = useState<FavoriteList | "new" | null>(null);
   const [deleteListTarget, setDeleteListTarget] = useState<FavoriteList | null>(null);
+  const [listManagerOpen, setListManagerOpen] = useState(false);
   const [listActionsOpen, setListActionsOpen] = useState(false);
   const listActionsRef = useRef<HTMLDivElement | null>(null);
   const [entitySearchOpen, setEntitySearchOpen] = useState(false);
   const entitySearchRef = useRef<HTMLDivElement | null>(null);
   const entitySearchInputRef = useRef<HTMLInputElement | null>(null);
   const requestSeq = useRef(0);
+  const mobileNavigationLayout = useMobileNavigationLayout();
 
   useEffect(() => {
     setEntitySearchOpen(false);
@@ -318,6 +325,10 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       setIsLoading(false);
       return;
     }
+    if (favoriteEntity !== "works") {
+      setIsLoading(false);
+      return;
+    }
     const seq = ++requestSeq.current;
     setIsLoading(true);
     setWorksLoadError("");
@@ -325,7 +336,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       .listFavoriteWorksPage(
         page,
         pageSize,
-        "",
+        query,
         activeList,
         statusFilter,
         availabilityFilter,
@@ -355,8 +366,10 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     activeList,
     availabilityFilter,
     auth.user,
+    favoriteEntity,
     page,
     pageSize,
+    query,
     randomSeed,
     sort,
     sortDirection,
@@ -431,7 +444,11 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const currentPage = Math.min(page, totalPages);
   const hasActiveFilters =
     favoriteEntity === "works"
-      ? statusFilter !== "all" || availabilityFilter !== "all" || sourceIDs.length > 0 || activeList !== "all"
+      ? Boolean(query.trim()) ||
+        statusFilter !== "all" ||
+        availabilityFilter !== "all" ||
+        sourceIDs.length > 0 ||
+        activeList !== "all"
       : Boolean(query.trim());
   const markedList = favoriteLists.find((list) => list.kind === "marked") ?? null;
   const userFavoriteLists = favoriteLists.filter((list) => list.kind !== "marked");
@@ -516,12 +533,30 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
 
   const changeAvailabilityFilter = (value: AvailabilityFilter) => {
     setAvailabilityFilter(value);
+    setSourceIDs([]);
     setPage(1);
   };
 
   const changeSourceIDs = (value: number[]) => {
     setSourceIDs(value);
     setPage(1);
+  };
+
+  const changeResourceSelection = ({ availability, sourceIDs }: FavoriteResourceSelection) => {
+    setAvailabilityFilter(availability);
+    setSourceIDs(sourceIDs);
+    setPage(1);
+  };
+
+  const changeFavoriteEntity = (value: FavoriteEntity) => {
+    setFavoriteEntity(value);
+    setQuery("");
+    setPage(1);
+  };
+
+  const changeFavoriteQuery = (value: string) => {
+    setQuery(value);
+    if (favoriteEntity === "works") setPage(1);
   };
 
   const changePageSize = (value: PageSize) => {
@@ -570,7 +605,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     const result = await api.listFavoriteWorksPage(
       currentPage,
       pageSize,
-      "",
+      query,
       activeList,
       statusFilter,
       availabilityFilter,
@@ -604,30 +639,46 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
 
   const deleteFavoriteList = async () => {
     if (!deleteListTarget) return;
-    await api.deleteFavoriteList(deleteListTarget.id);
-    setDeleteListTarget(null);
-    setActiveList("all");
-    await reloadFavoriteLists();
-    toast.success("Favorite list deleted.");
+    try {
+      await api.deleteFavoriteList(deleteListTarget.id);
+      setDeleteListTarget(null);
+      setActiveList("all");
+      await reloadFavoriteLists();
+      toast.success("Favorite list deleted.");
+    } catch (error) {
+      toast.notify(toastFromError(error, "Favorite list could not be deleted."));
+    }
   };
 
   const moveFavoriteList = async (direction: -1 | 1) => {
     if (!selectedList || selectedListIndex < 0) return;
-    const nextIndex = selectedListIndex + direction;
+    await moveFavoriteListByID(selectedList.id, direction);
+  };
+
+  const moveFavoriteListByID = async (listID: number, direction: -1 | 1) => {
+    const targetIndex = userFavoriteLists.findIndex((list) => list.id === listID);
+    if (targetIndex < 0) return;
+    const nextIndex = targetIndex + direction;
     if (nextIndex < 0 || nextIndex >= userFavoriteLists.length) return;
     const reordered = [...userFavoriteLists];
-    const [moving] = reordered.splice(selectedListIndex, 1);
+    const [moving] = reordered.splice(targetIndex, 1);
     reordered.splice(nextIndex, 0, moving);
+    const previousLists = favoriteLists;
     setFavoriteLists((lists) =>
       lists.map((list) => {
         const nextIndex = reordered.findIndex((item) => item.id === list.id);
         return nextIndex >= 0 ? { ...list, sortOrder: nextIndex } : list;
       }),
     );
-    await Promise.all(reordered.map((list, index) => api.updateFavoriteList(list.id, { sortOrder: index })));
-    await reloadFavoriteLists();
-    setActiveList(selectedList.id);
-    toast.success("Favorite list reordered.");
+    try {
+      await Promise.all(reordered.map((list, index) => api.updateFavoriteList(list.id, { sortOrder: index })));
+      await reloadFavoriteLists();
+      setActiveList(listID);
+      toast.success("Favorite list reordered.");
+    } catch (error) {
+      setFavoriteLists(previousLists);
+      toast.notify(toastFromError(error, "Favorite lists could not be reordered."));
+    }
   };
 
   const toggleWorkSelection = (workID: number, selected: boolean) => {
@@ -672,110 +723,174 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
 
   return (
     <section className="space-y-5">
-      <div className="border-b">
-        <div className="flex min-w-0 items-end gap-3">
-          <div className="min-w-0 flex-1 overflow-x-auto" role="tablist" aria-label="Favorite categories">
-            <div className="flex w-max min-w-full gap-6">
-              <FavoriteEntityTab
-                active={favoriteEntity === "works"}
-                icon={ListMusic}
-                label="Works"
-                count={favoriteTotal}
-                onClick={() => setFavoriteEntity("works")}
+      <div className={`${mobileNavigationLayout ? "hidden" : "flex"} flex-col space-y-3`} data-toast-avoid>
+        <div className="flex items-center gap-3">
+          <FavoriteEntityPicker value={favoriteEntity} onChange={changeFavoriteEntity} />
+          <FavoriteSearchInput
+            value={query}
+            placeholder={
+              favoriteEntity === "works"
+                ? "Search title, code, circle, tag, or creator"
+                : favoriteEntity === "circles"
+                  ? "Search circles"
+                  : "Search voice actors"
+            }
+            onChange={changeFavoriteQuery}
+          />
+          {favoriteEntity === "works" && (
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              <FavoriteResourceFilter
+                availability={availabilityFilter}
+                sources={fileSources}
+                selectedSourceIDs={sourceIDs}
+                loading={areFileSourcesLoading}
+                onChange={changeResourceSelection}
               />
-              <FavoriteEntityTab
-                active={favoriteEntity === "circles"}
-                icon={UsersRound}
-                label="Circles"
-                count={favoriteCircles.length}
-                onClick={() => setFavoriteEntity("circles")}
+              <WorkCollectionLayoutPicker
+                mobileColumns={mobileColumns}
+                desktopColumns={desktopColumns}
+                onMobileColumnsChange={setMobileColumns}
+                onDesktopColumnsChange={setDesktopColumns}
               />
-              <FavoriteEntityTab
-                active={favoriteEntity === "voices"}
-                icon={Mic2}
-                label="Voice Actors"
-                count={favoriteVoices.length}
-                onClick={() => setFavoriteEntity("voices")}
+              <FavoriteSortControls
+                value={sort}
+                direction={sortDirection}
+                disabled={isLoading}
+                compact
+                onChange={changeFavoriteSort}
+                onDirectionChange={changeFavoriteSortDirection}
+                onReshuffle={reshuffleFavorites}
+              />
+              <PageSizePicker
+                value={pageSize}
+                options={pageSizeOptions}
+                onChange={(value) => changePageSize(value as PageSize)}
               />
             </div>
-          </div>
+          )}
+        </div>
+        {favoriteEntity === "works" && (
+          <>
+            <FavoriteDesktopListRow
+              markedList={markedList}
+              userFavoriteLists={userFavoriteLists}
+              activeList={activeList}
+              favoriteTotal={favoriteTotal}
+              listCounts={listCounts}
+              loading={areFavoriteListsLoading}
+              selectionMode={selectionMode}
+              onListChange={(list) => {
+                setActiveList(list);
+                setPage(1);
+              }}
+              onToggleSelection={toggleSelectionMode}
+              onEditLists={() => setListManagerOpen(true)}
+            />
+            <FavoriteDesktopStatusFilters
+              value={statusFilter}
+              counts={statusCounts}
+              favoriteTotal={activeList === "all" ? favoriteTotal : (listCounts[String(activeList)] ?? 0)}
+              onChange={(value) => {
+                setStatusFilter(value);
+                setPage(1);
+              }}
+            />
+            <WorkCollectionPagination
+              placement="top"
+              page={currentPage}
+              pageSize={pageSize}
+              totalItems={totalWorks}
+              totalPages={totalPages}
+              compactMobile
+              compactTop
+              refreshing={isLoading && hasWorksSnapshot}
+              refreshingLabel="Refreshing favorites"
+              onPageChange={setPage}
+            />
+          </>
+        )}
+      </div>
 
-          {favoriteEntity !== "works" && (
-            <div ref={entitySearchRef} className="relative mb-1 shrink-0">
-              <div className="hidden items-center gap-2 md:flex">
-                <label className="relative block w-56">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    className="h-9 w-full rounded-md border bg-card pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                    value={query}
-                    onKeyDown={dismissKeyboardOnEnter}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder={favoriteEntity === "circles" ? "Search circles" : "Search voice actors"}
-                    aria-label={favoriteEntity === "circles" ? "Search circles" : "Search voice actors"}
-                  />
-                </label>
-                {query.trim() && (
+      <div className={mobileNavigationLayout ? "block" : "hidden"}>
+        <div className="border-b">
+          <div className="flex min-w-0 items-end gap-3">
+            <div className="min-w-0 flex-1 overflow-x-auto" role="tablist" aria-label="Favorite categories">
+              <div className="flex w-max min-w-full gap-6">
+                <FavoriteEntityTab
+                  active={favoriteEntity === "works"}
+                  icon={ListMusic}
+                  label="Works"
+                  count={favoriteTotal}
+                  onClick={() => changeFavoriteEntity("works")}
+                />
+                <FavoriteEntityTab
+                  active={favoriteEntity === "circles"}
+                  icon={UsersRound}
+                  label="Circles"
+                  count={favoriteCircles.length}
+                  onClick={() => changeFavoriteEntity("circles")}
+                />
+                <FavoriteEntityTab
+                  active={favoriteEntity === "voices"}
+                  icon={Mic2}
+                  label="Voice Actors"
+                  count={favoriteVoices.length}
+                  onClick={() => changeFavoriteEntity("voices")}
+                />
+              </div>
+            </div>
+
+            {favoriteEntity !== "works" && (
+              <div ref={entitySearchRef} className="relative mb-1 shrink-0">
+                <div>
                   <Button
                     variant="outline"
                     size="icon"
-                    className="h-9 w-9"
-                    onClick={() => setQuery("")}
-                    aria-label="Clear search"
-                    title="Clear search"
+                    className={`h-9 w-9 ${query.trim() ? "text-primary" : ""}`}
+                    onClick={() => setEntitySearchOpen((open) => !open)}
+                    aria-label="Search favorites"
+                    title="Search favorites"
                   >
-                    <X className="h-4 w-4" />
+                    <Search className="h-4 w-4" />
                   </Button>
-                )}
-              </div>
-
-              <div className="md:hidden">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className={`h-9 w-9 ${query.trim() ? "text-primary" : ""}`}
-                  onClick={() => setEntitySearchOpen((open) => !open)}
-                  aria-label="Search favorites"
-                  title="Search favorites"
-                >
-                  <Search className="h-4 w-4" />
-                </Button>
-              </div>
-
-              <AnchoredPopover
-                open={entitySearchOpen}
-                anchorRef={entitySearchRef}
-                onOpenChange={setEntitySearchOpen}
-                className="w-[min(18rem,calc(100vw-1.5rem))] p-2"
-              >
-                <div className="flex items-center gap-2">
-                  <label className="relative block min-w-0 flex-1">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <input
-                      ref={entitySearchInputRef}
-                      className="h-9 w-full rounded-md border bg-card pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                      value={query}
-                      onKeyDown={dismissKeyboardOnEnter}
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder={favoriteEntity === "circles" ? "Search circles" : "Search voice actors"}
-                      aria-label={favoriteEntity === "circles" ? "Search circles" : "Search voice actors"}
-                    />
-                  </label>
-                  {query.trim() && (
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-9 w-9 shrink-0"
-                      onClick={() => setQuery("")}
-                      aria-label="Clear search"
-                      title="Clear search"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
                 </div>
-              </AnchoredPopover>
-            </div>
-          )}
+
+                <AnchoredPopover
+                  open={entitySearchOpen}
+                  anchorRef={entitySearchRef}
+                  onOpenChange={setEntitySearchOpen}
+                  className="w-[min(18rem,calc(100vw-1.5rem))] p-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <label className="relative block min-w-0 flex-1">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        ref={entitySearchInputRef}
+                        className="h-9 w-full rounded-md border bg-card pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                        value={query}
+                        onKeyDown={dismissKeyboardOnEnter}
+                        onChange={(event) => setQuery(event.target.value)}
+                        placeholder={favoriteEntity === "circles" ? "Search circles" : "Search voice actors"}
+                        aria-label={favoriteEntity === "circles" ? "Search circles" : "Search voice actors"}
+                      />
+                    </label>
+                    {query.trim() && (
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-9 w-9 shrink-0"
+                        onClick={() => setQuery("")}
+                        aria-label="Clear search"
+                        title="Clear search"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </AnchoredPopover>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -802,7 +917,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
 
       {favoriteEntity === "works" && (
         <>
-          <div className="space-y-2">
+          <div className={mobileNavigationLayout ? "space-y-2" : "hidden"}>
             <div className="flex items-center gap-2 pb-1">
               <div className="min-w-0 flex-1 overflow-x-auto">
                 <div className="flex w-max min-w-full gap-2" role="group" aria-label="Favorite lists">
@@ -947,102 +1062,101 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
             </div>
           </div>
 
-          <WorkCollectionPagination
-            placement="top"
-            page={currentPage}
-            pageSize={pageSize}
-            totalItems={totalWorks}
-            totalPages={totalPages}
-            pageSizeOptions={pageSizeOptions}
-            pageSizeControlClassName="hidden lg:block"
-            compactMobile
-            refreshing={isLoading && hasWorksSnapshot}
-            refreshingLabel="Refreshing favorites"
-            onPageChange={setPage}
-            onPageSizeChange={(value) => changePageSize(value as PageSize)}
-            leadingControls={
-              <>
-                <div className="lg:hidden">
-                  <FavoriteMobileOptions
-                    availability={availabilityFilter}
-                    sources={fileSources}
-                    selectedSourceIDs={sourceIDs}
-                    sourcesLoading={areFileSourcesLoading}
-                    sort={sort}
-                    direction={sortDirection}
-                    pageSize={pageSize}
-                    mobileColumns={mobileColumns}
-                    selectionMode={selectionMode}
-                    hasActiveFilters={Boolean(hasActiveFilters)}
-                    sortDisabled={isLoading}
-                    onAvailabilityChange={changeAvailabilityFilter}
-                    onSourceIDsChange={changeSourceIDs}
-                    onSortChange={changeFavoriteSort}
-                    onDirectionChange={changeFavoriteSortDirection}
-                    onReshuffle={reshuffleFavorites}
-                    onPageSizeChange={changePageSize}
-                    onMobileColumnsChange={setMobileColumns}
-                    onToggleSelection={toggleSelectionMode}
-                    onClearFilters={clearFilters}
-                  />
-                </div>
-                <div className="hidden items-center gap-2 lg:flex">
-                  <select
-                    className="h-8 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
-                    value={availabilityFilter}
-                    onChange={(event) => changeAvailabilityFilter(event.target.value as AvailabilityFilter)}
-                    aria-label="Availability filter"
-                  >
-                    {availabilityFilters.map((filter) => (
-                      <option key={filter.value} value={filter.value}>
-                        {filter.label}
-                      </option>
-                    ))}
-                  </select>
-                  <FavoriteSourceFilter
-                    sources={fileSources}
-                    selectedSourceIDs={sourceIDs}
-                    loading={areFileSourcesLoading}
-                    onChange={changeSourceIDs}
-                  />
-                  {hasActiveFilters && (
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={clearFilters}
-                      aria-label="Clear favorite filters"
-                      title="Clear favorite filters"
+          <div className={mobileNavigationLayout ? "block" : "hidden"}>
+            <WorkCollectionPagination
+              placement="top"
+              page={currentPage}
+              pageSize={pageSize}
+              totalItems={totalWorks}
+              totalPages={totalPages}
+              compactMobile
+              refreshing={isLoading && hasWorksSnapshot}
+              refreshingLabel="Refreshing favorites"
+              onPageChange={setPage}
+              leadingControls={
+                <>
+                  <div className="lg:hidden">
+                    <FavoriteMobileOptions
+                      availability={availabilityFilter}
+                      sources={fileSources}
+                      selectedSourceIDs={sourceIDs}
+                      sourcesLoading={areFileSourcesLoading}
+                      sort={sort}
+                      direction={sortDirection}
+                      pageSize={pageSize}
+                      mobileColumns={mobileColumns}
+                      selectionMode={selectionMode}
+                      hasActiveFilters={Boolean(hasActiveFilters)}
+                      sortDisabled={isLoading}
+                      onAvailabilityChange={changeAvailabilityFilter}
+                      onSourceIDsChange={changeSourceIDs}
+                      onSortChange={changeFavoriteSort}
+                      onDirectionChange={changeFavoriteSortDirection}
+                      onReshuffle={reshuffleFavorites}
+                      onPageSizeChange={changePageSize}
+                      onMobileColumnsChange={setMobileColumns}
+                      onToggleSelection={toggleSelectionMode}
+                      onClearFilters={clearFilters}
+                    />
+                  </div>
+                  <div className="hidden items-center gap-2 lg:flex">
+                    <select
+                      className="h-8 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
+                      value={availabilityFilter}
+                      onChange={(event) => changeAvailabilityFilter(event.target.value as AvailabilityFilter)}
+                      aria-label="Availability filter"
                     >
-                      <X className="h-4 w-4" />
+                      {availabilityFilters.map((filter) => (
+                        <option key={filter.value} value={filter.value}>
+                          {filter.label}
+                        </option>
+                      ))}
+                    </select>
+                    <FavoriteSourceFilter
+                      sources={fileSources}
+                      selectedSourceIDs={sourceIDs}
+                      loading={areFileSourcesLoading}
+                      onChange={changeSourceIDs}
+                    />
+                    {hasActiveFilters && (
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={clearFilters}
+                        aria-label="Clear favorite filters"
+                        title="Clear favorite filters"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                    <Button
+                      variant={selectionMode ? "default" : "outline"}
+                      size="sm"
+                      className="h-8"
+                      onClick={toggleSelectionMode}
+                    >
+                      Select
                     </Button>
-                  )}
-                  <Button
-                    variant={selectionMode ? "default" : "outline"}
-                    size="sm"
-                    className="h-8"
-                    onClick={toggleSelectionMode}
-                  >
-                    Select
-                  </Button>
-                  <WorkCollectionLayoutPicker
-                    mobileColumns={mobileColumns}
-                    desktopColumns={desktopColumns}
-                    onMobileColumnsChange={setMobileColumns}
-                    onDesktopColumnsChange={setDesktopColumns}
-                  />
-                  <FavoriteSortControls
-                    value={sort}
-                    direction={sortDirection}
-                    disabled={isLoading}
-                    onChange={changeFavoriteSort}
-                    onDirectionChange={changeFavoriteSortDirection}
-                    onReshuffle={reshuffleFavorites}
-                  />
-                </div>
-              </>
-            }
-          />
+                    <WorkCollectionLayoutPicker
+                      mobileColumns={mobileColumns}
+                      desktopColumns={desktopColumns}
+                      onMobileColumnsChange={setMobileColumns}
+                      onDesktopColumnsChange={setDesktopColumns}
+                    />
+                    <FavoriteSortControls
+                      value={sort}
+                      direction={sortDirection}
+                      disabled={isLoading}
+                      onChange={changeFavoriteSort}
+                      onDirectionChange={changeFavoriteSortDirection}
+                      onReshuffle={reshuffleFavorites}
+                    />
+                  </div>
+                </>
+              }
+            />
+          </div>
 
           {selectionMode && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
@@ -1165,6 +1279,26 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
               onConfirm={() => void deleteFavoriteList()}
             />
           )}
+          {listManagerOpen && (
+            <FavoriteListManager
+              markedList={markedList}
+              lists={userFavoriteLists}
+              onClose={() => setListManagerOpen(false)}
+              onNew={() => {
+                setListManagerOpen(false);
+                setListEditor("new");
+              }}
+              onEdit={(list) => {
+                setListManagerOpen(false);
+                setListEditor(list);
+              }}
+              onDelete={(list) => {
+                setListManagerOpen(false);
+                setDeleteListTarget(list);
+              }}
+              onMove={(listID, direction) => void moveFavoriteListByID(listID, direction)}
+            />
+          )}
         </>
       )}
     </section>
@@ -1200,6 +1334,393 @@ function FavoriteEntityTab({
       </span>
     </button>
   );
+}
+
+function FavoriteEntityPicker({
+  value,
+  onChange,
+}: {
+  value: FavoriteEntity;
+  onChange: (value: FavoriteEntity) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const options: { value: FavoriteEntity; label: string; icon: typeof ListMusic }[] = [
+    { value: "works", label: "Works", icon: ListMusic },
+    { value: "circles", label: "Circles", icon: UsersRound },
+    { value: "voices", label: "Voice Actors", icon: Mic2 },
+  ];
+  const selected = options.find((option) => option.value === value) ?? options[0];
+  return (
+    <div className="relative shrink-0" ref={anchorRef}>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-9 min-w-32 justify-between"
+        onClick={() => setOpen((current) => !current)}
+        aria-label={`Favorite type: ${selected.label}`}
+        title={`Favorite type: ${selected.label}`}
+      >
+        <span className="flex items-center gap-2">
+          <selected.icon className="h-4 w-4" />
+          <span>{selected.label}</span>
+        </span>
+        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+      </Button>
+      <AnchoredPopover open={open} anchorRef={anchorRef} onOpenChange={setOpen} className="w-44 p-1 text-sm">
+        <div role="menu" aria-label="Favorite types">
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="menuitemradio"
+              aria-checked={option.value === value}
+              className={`flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-muted ${option.value === value ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground"}`}
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
+            >
+              <option.icon className="h-4 w-4" />
+              <span>{option.label}</span>
+            </button>
+          ))}
+        </div>
+      </AnchoredPopover>
+    </div>
+  );
+}
+
+function FavoriteSearchInput({
+  value,
+  placeholder,
+  onChange,
+}: {
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="flex min-w-0 max-w-xl flex-1 items-center gap-2 rounded-lg border bg-card px-3 text-sm">
+      <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <input
+        className="min-w-0 flex-1 bg-transparent py-2 outline-none placeholder:text-muted-foreground"
+        value={value}
+        onKeyDown={dismissKeyboardOnEnter}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        aria-label={placeholder}
+      />
+      {value.trim() && (
+        <button
+          type="button"
+          className="text-muted-foreground hover:text-foreground"
+          onClick={() => onChange("")}
+          aria-label="Clear search"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
+    </label>
+  );
+}
+
+function FavoriteDesktopListRow({
+  markedList,
+  userFavoriteLists,
+  activeList,
+  favoriteTotal,
+  listCounts,
+  loading,
+  selectionMode,
+  onListChange,
+  onToggleSelection,
+  onEditLists,
+}: {
+  markedList: FavoriteList | null;
+  userFavoriteLists: FavoriteList[];
+  activeList: "all" | number;
+  favoriteTotal: number;
+  listCounts: Record<string, number>;
+  loading: boolean;
+  selectionMode: boolean;
+  onListChange: (list: "all" | number) => void;
+  onToggleSelection: () => void;
+  onEditLists: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2" aria-label="Favorite lists">
+      <div className="min-w-0 flex-1 overflow-x-auto">
+        <div className="flex w-max min-w-full gap-2">
+          {loading ? (
+            <FavoriteListTabSkeletons />
+          ) : (
+            <FavoriteListTab
+              active={activeList === "all"}
+              label="All Favorites"
+              count={favoriteTotal}
+              onClick={() => onListChange("all")}
+            />
+          )}
+          {markedList && (
+            <FavoriteListTab
+              active={activeList === markedList.id}
+              label="Marked"
+              count={listCounts[String(markedList.id)] ?? 0}
+              onClick={() => onListChange(markedList.id)}
+            />
+          )}
+          {userFavoriteLists.map((list) => (
+            <FavoriteListTab
+              key={list.id}
+              active={activeList === list.id}
+              label={list.name}
+              count={listCounts[String(list.id)] ?? 0}
+              title={list.description || list.name}
+              onClick={() => onListChange(list.id)}
+            />
+          ))}
+        </div>
+      </div>
+      <FavoriteDesktopListActions
+        selectionMode={selectionMode}
+        onToggleSelection={onToggleSelection}
+        onEditLists={onEditLists}
+      />
+    </div>
+  );
+}
+
+function FavoriteDesktopListActions({
+  selectionMode,
+  onToggleSelection,
+  onEditLists,
+}: {
+  selectionMode: boolean;
+  onToggleSelection: () => void;
+  onEditLists: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const close = () => setOpen(false);
+  return (
+    <div className="relative shrink-0" ref={anchorRef}>
+      <Button
+        variant="outline"
+        size="icon"
+        className="h-9 w-9"
+        onClick={() => setOpen((current) => !current)}
+        aria-label="Favorite list options"
+        title="Favorite list options"
+      >
+        <MoreHorizontal className="h-4 w-4" />
+      </Button>
+      <AnchoredPopover
+        open={open}
+        anchorRef={anchorRef}
+        onOpenChange={setOpen}
+        align="end"
+        className="w-52 p-1 text-sm"
+      >
+        <div role="menu" aria-label="Favorite list options">
+          <FavoriteListAction
+            icon={<Check className="h-4 w-4" />}
+            label={selectionMode ? "Exit selection" : "Select works"}
+            onClick={() => {
+              close();
+              onToggleSelection();
+            }}
+          />
+          <FavoriteListAction
+            icon={<Pencil className="h-4 w-4" />}
+            label="Edit lists"
+            onClick={() => {
+              close();
+              onEditLists();
+            }}
+          />
+        </div>
+      </AnchoredPopover>
+    </div>
+  );
+}
+
+function FavoriteDesktopStatusFilters({
+  value,
+  counts,
+  favoriteTotal,
+  onChange,
+}: {
+  value: ListeningStatus | "all";
+  counts: Record<string, number>;
+  favoriteTotal: number;
+  onChange: (value: ListeningStatus | "all") => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 overflow-x-auto pb-1" aria-label="Listening status filters">
+      <span className="mr-1 inline-flex h-7 shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground">
+        <Filter className="h-3 w-3" />
+        Status
+      </span>
+      {statusTabs.map((tab) => (
+        <button
+          key={tab.value}
+          type="button"
+          className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium ${value === tab.value ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/20" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+          onClick={() => onChange(tab.value)}
+          aria-pressed={value === tab.value}
+        >
+          <tab.icon className="h-3 w-3" />
+          {tab.label}
+          <span className="text-[11px] tabular-nums opacity-65">
+            {tab.value === "all" ? favoriteTotal : (counts[tab.value] ?? 0)}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+type FavoriteResourceSelection = {
+  availability: AvailabilityFilter;
+  sourceIDs: number[];
+};
+
+function FavoriteResourceFilter({
+  availability,
+  sources,
+  selectedSourceIDs,
+  loading,
+  onChange,
+}: {
+  availability: AvailabilityFilter;
+  sources: LibrarySource[];
+  selectedSourceIDs: number[];
+  loading: boolean;
+  onChange: (selection: FavoriteResourceSelection) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const selection: FavoriteResourceSelection = { availability, sourceIDs: selectedSourceIDs };
+  const label = favoriteResourceLabel(sources, selection);
+  const disabled = loading;
+  const select = (next: FavoriteResourceSelection) => {
+    onChange(next);
+    setOpen(false);
+  };
+
+  return (
+    <div className="relative" ref={anchorRef}>
+      <Button
+        variant="outline"
+        size="sm"
+        className={`h-8 max-w-48 ${availability !== "all" || selectedSourceIDs.length > 0 ? "border-primary/30 bg-primary/10 text-primary" : ""}`}
+        disabled={disabled}
+        onClick={() => setOpen((current) => !current)}
+        aria-label={`Resource: ${label}`}
+        title={`Resource: ${label}`}
+      >
+        <Cloud className="h-3.5 w-3.5 shrink-0" />
+        <span className="truncate">{label}</span>
+      </Button>
+      <AnchoredPopover
+        open={open && !disabled}
+        anchorRef={anchorRef}
+        onOpenChange={setOpen}
+        align="start"
+        className="w-[min(18rem,calc(100vw-1.5rem))] p-1 text-sm"
+      >
+        <div role="menu" aria-label="Resource filters">
+          <div className="px-3 py-2 text-xs font-semibold text-foreground">Resource</div>
+          <FavoriteResourceOption
+            label="Any available"
+            selected={availability === "all" && selectedSourceIDs.length === 0}
+            onClick={() => select({ availability: "all", sourceIDs: [] })}
+          />
+          <FavoriteResourceOption
+            label="Local"
+            selected={availability === "local" && selectedSourceIDs.length === 0}
+            onClick={() => select({ availability: "local", sourceIDs: [] })}
+          />
+          <FavoriteResourceOption
+            label="Cached"
+            selected={availability === "cache" && selectedSourceIDs.length === 0}
+            onClick={() => select({ availability: "cache", sourceIDs: [] })}
+          />
+          <FavoriteResourceOption
+            label="Any remote"
+            selected={availability === "remote" && selectedSourceIDs.length === 0}
+            onClick={() => select({ availability: "remote", sourceIDs: [] })}
+          />
+          {sources.map((source) => (
+            <FavoriteResourceOption
+              key={source.id}
+              label={source.displayName || source.code}
+              selected={
+                availability === "remote" && selectedSourceIDs.length === 1 && selectedSourceIDs[0] === source.id
+              }
+              onClick={() => select({ availability: "remote", sourceIDs: [source.id] })}
+              icon={<Cloud className="h-3.5 w-3.5 shrink-0" />}
+              suffix={!source.enabled ? "Disabled" : undefined}
+            />
+          ))}
+          <FavoriteResourceOption
+            label="Missing"
+            selected={availability === "missing" && selectedSourceIDs.length === 0}
+            onClick={() => select({ availability: "missing", sourceIDs: [] })}
+          />
+        </div>
+      </AnchoredPopover>
+    </div>
+  );
+}
+
+function FavoriteResourceOption({
+  label,
+  selected,
+  onClick,
+  icon,
+  suffix,
+}: {
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+  icon?: ReactNode;
+  suffix?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitemradio"
+      aria-checked={selected}
+      className={`flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-muted ${selected ? "bg-primary/10 font-medium text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
+      onClick={onClick}
+    >
+      <Check className={`h-4 w-4 shrink-0 ${selected ? "opacity-100" : "opacity-0"}`} />
+      {icon}
+      <span className="min-w-0 flex-1 truncate text-foreground">{label}</span>
+      {suffix && <span className="text-[11px] text-muted-foreground">{suffix}</span>}
+    </button>
+  );
+}
+
+function favoriteResourceLabel(sources: LibrarySource[], selection: FavoriteResourceSelection) {
+  if (selection.sourceIDs.length === 1) {
+    const source = sources.find((candidate) => candidate.id === selection.sourceIDs[0]);
+    return source?.displayName || source?.code || "Remote source";
+  }
+  switch (selection.availability) {
+    case "local":
+      return "Local";
+    case "cache":
+      return "Cached";
+    case "remote":
+      return "Any remote";
+    case "missing":
+      return "Missing";
+    default:
+      return "Any available";
+  }
 }
 
 function FavoriteEntitySection({
@@ -1564,6 +2085,7 @@ function FavoriteSortControls({
   value,
   direction,
   disabled,
+  compact = false,
   onChange,
   onDirectionChange,
   onReshuffle,
@@ -1571,6 +2093,7 @@ function FavoriteSortControls({
   value: FavoriteSort;
   direction: SortDirection;
   disabled: boolean;
+  compact?: boolean;
   onChange: (value: FavoriteSort) => void;
   onDirectionChange: (value: SortDirection) => void;
   onReshuffle: () => void;
@@ -1584,14 +2107,14 @@ function FavoriteSortControls({
       <div className="inline-flex h-8 shrink-0 items-center rounded-md border bg-background">
         <button
           type="button"
-          className="inline-flex h-7 min-w-0 max-w-40 items-center gap-1.5 rounded-l-md px-2 text-xs text-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+          className={`inline-flex h-7 items-center gap-1.5 rounded-l-md px-2 text-xs text-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-50 ${compact ? "w-8 justify-center px-0" : "min-w-0 max-w-40"}`}
           disabled={disabled}
           onClick={() => setOpen((current) => !current)}
           aria-label={`Sort favorite works: ${label}`}
           title={`Sort favorite works: ${label}`}
         >
           <ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate">{label}</span>
+          {!compact && <span className="truncate">{label}</span>}
         </button>
         <Button
           variant="ghost"
@@ -1799,7 +2322,7 @@ function FavoriteMobileOptions({
   const [panel, setPanel] = useState<FavoriteMobilePanel>("root");
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const availabilityLabel =
-    availabilityFilters.find((option) => option.value === availability)?.label ?? "Any availability";
+    availabilityFilters.find((option) => option.value === availability)?.label ?? "Any available";
   const sourceLabel = sourcesLoading
     ? "Loading"
     : sources.length === 0
@@ -2172,7 +2695,7 @@ function FavoriteListEditor({
           )}
         </div>
         <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
             Cancel
           </Button>
           <Button size="sm" type="submit" disabled={isSaving || !name.trim()}>
@@ -2209,6 +2732,125 @@ function ConfirmDeleteList({
           </Button>
           <Button size="sm" onClick={onConfirm}>
             Delete
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FavoriteListManager({
+  markedList,
+  lists,
+  onClose,
+  onNew,
+  onEdit,
+  onDelete,
+  onMove,
+}: {
+  markedList: FavoriteList | null;
+  lists: FavoriteList[];
+  onClose: () => void;
+  onNew: () => void;
+  onEdit: (list: FavoriteList) => void;
+  onDelete: (list: FavoriteList) => void;
+  onMove: (listID: number, direction: -1 | 1) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="favorite-list-manager-title"
+        className="w-full max-w-lg rounded-lg border bg-card p-4 shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 id="favorite-list-manager-title" className="text-base font-semibold">
+              Edit favorite lists
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">Sort, rename, create, or remove your lists.</p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close favorite list editor">
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="mt-4 max-h-[min(24rem,60vh)] space-y-2 overflow-y-auto">
+          {markedList && (
+            <div className="flex items-center gap-2 rounded-md border border-dashed bg-muted/30 px-3 py-2">
+              <ListMusic className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium">Marked</div>
+                <div className="truncate text-xs text-muted-foreground">System list · follows listening status</div>
+              </div>
+              <span className="shrink-0 text-xs text-muted-foreground">Fixed</span>
+            </div>
+          )}
+          {lists.length === 0 ? (
+            <div className="rounded-md border px-3 py-4 text-sm text-muted-foreground">No custom lists yet.</div>
+          ) : (
+            lists.map((list, index) => (
+              <div key={list.id} className="flex items-center gap-2 rounded-md border bg-background px-3 py-2">
+                <ListMusic className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{list.name}</div>
+                  {list.description && <div className="truncate text-xs text-muted-foreground">{list.description}</div>}
+                </div>
+                <span className="text-xs tabular-nums text-muted-foreground">{index + 1}</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  disabled={index === 0}
+                  onClick={() => onMove(list.id, -1)}
+                  aria-label={`Move ${list.name} up`}
+                  title="Move up"
+                >
+                  <ArrowUp className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  disabled={index === lists.length - 1}
+                  onClick={() => onMove(list.id, 1)}
+                  aria-label={`Move ${list.name} down`}
+                  title="Move down"
+                >
+                  <ArrowDown className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => onEdit(list)}
+                  aria-label={`Rename ${list.name}`}
+                  title="Rename"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-destructive"
+                  onClick={() => onDelete(list)}
+                  aria-label={`Delete ${list.name}`}
+                  title="Delete"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="mt-4 flex justify-between gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onNew}>
+            <Plus className="h-4 w-4" />
+            New list
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
+            Done
           </Button>
         </div>
       </div>

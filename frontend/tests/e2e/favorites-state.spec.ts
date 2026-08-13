@@ -193,6 +193,54 @@ async function mockFavorites(
   });
 }
 
+test("desktop favorites keeps type and search left with work controls on the right", async ({ page }) => {
+  await mockFavorites(page, {
+    sources: [
+      {
+        id: 11,
+        code: "example_remote_a",
+        displayName: "Example Remote A",
+        sourceType: "kikoeru_compatible",
+        enabled: true,
+        cacheEnabled: true,
+      },
+    ],
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/favorites");
+
+  const type = page.getByRole("button", { name: "Favorite type: Works" });
+  const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
+  const resource = page.getByRole("button", { name: "Resource: Any available" });
+  await expect(type).toBeVisible();
+  await expect(search).toBeVisible();
+  await expect(resource).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sort favorite works: Marked or added" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Columns: Auto" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Items per page: 24" })).toBeVisible();
+  const searchBox = await search.boundingBox();
+  const resourceBox = await resource.boundingBox();
+  expect(searchBox).not.toBeNull();
+  expect(resourceBox).not.toBeNull();
+  expect(searchBox!.x + searchBox!.width).toBeLessThanOrEqual(resourceBox!.x);
+
+  await resource.click();
+  await page.getByRole("menuitemradio", { name: "Example Remote A" }).click();
+  await expect.poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState?.availability)).toBe("remote");
+  await expect.poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState?.sourceIDs)).toEqual([11]);
+
+  await page.getByRole("button", { name: "Favorite list options", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Edit lists", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Edit favorite lists" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Rename Study" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Close favorite list editor" }).click();
+  await type.click();
+  await page.getByRole("menuitemradio", { name: "Circles" }).click();
+  await expect(page.getByPlaceholder("Search circles")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Resource:/ })).toHaveCount(0);
+});
+
 test("favorites detail uses Library Up navigation while the Favorites tab restores browse state", async ({ page }) => {
   await mockFavorites(page);
   await page.goto(
