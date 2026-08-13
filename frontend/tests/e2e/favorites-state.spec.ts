@@ -52,9 +52,11 @@ async function mockFavorites(
       cacheEnabled: boolean;
     }>;
     onFavoriteWorksRequest?: (sourceIDs: number[]) => void;
+    interactiveQuickMark?: boolean;
   } = {},
 ) {
   let savedTags = baseWork.userTags;
+  let quickMark = baseWork.listeningStatus;
   const works = Array.from({ length: 24 }, (_, index) => ({
     ...baseWork,
     id: index + 1,
@@ -84,8 +86,8 @@ async function mockFavorites(
     if (url.pathname === "/api/favorite-lists") {
       await route.fulfill({
         json: [
-          { id: 1, name: "Favorites", description: "", sortOrder: 0 },
-          { id: 2, name: "Study", description: "", sortOrder: 1 },
+          { id: 1, name: "Marked", description: "", sortOrder: -1, kind: "marked" },
+          { id: 2, name: "Study", description: "", sortOrder: 0, kind: "user" },
         ],
       });
       return;
@@ -98,13 +100,16 @@ async function mockFavorites(
       }
       await route.fulfill({
         json: {
-          works,
+          works:
+            options.interactiveQuickMark && quickMark === "none"
+              ? []
+              : works.map((work) => ({ ...work, listeningStatus: quickMark })),
           page: Number(url.searchParams.get("page") ?? 1),
           pageSize: 24,
-          total: 48,
-          shelfTotal: 48,
-          listCounts: { "1": 24, "2": 24 },
-          statusCounts: { listening: 48 },
+          total: options.interactiveQuickMark && quickMark === "none" ? 0 : 48,
+          shelfTotal: options.interactiveQuickMark && quickMark === "none" ? 0 : 48,
+          listCounts: { "1": options.interactiveQuickMark && quickMark === "none" ? 0 : 24, "2": 24 },
+          statusCounts: quickMark === "none" ? {} : { [quickMark]: 48 },
         },
       });
       return;
@@ -168,10 +173,16 @@ async function mockFavorites(
     if (/^\/api\/works\/\d+\/favorite-lists$/.test(url.pathname)) {
       await route.fulfill({
         json: [
-          { id: 1, name: "Favorites", description: "", sortOrder: 0, selected: true },
-          { id: 2, name: "Study", description: "", sortOrder: 1, selected: true },
+          { id: 1, name: "Marked", description: "", sortOrder: -1, kind: "marked", selected: true },
+          { id: 2, name: "Study", description: "", sortOrder: 0, kind: "user", selected: true },
         ],
       });
+      return;
+    }
+    if (/^\/api\/works\/\d+\/user-state$/.test(url.pathname) && request.method() === "PATCH") {
+      const body = request.postDataJSON() as { listeningStatus?: string };
+      quickMark = body.listeningStatus ?? quickMark;
+      await route.fulfill({ json: { workId: 1, listeningStatus: quickMark, favorite: false } });
       return;
     }
     if (/^\/api\/works\/[^/]+\/source-availability$/.test(url.pathname)) {
@@ -249,7 +260,7 @@ test("switching favorite lists keeps the entire playlist row stable while works 
 
   const playlistButtons = [
     page.getByRole("button", { name: /All Favorites/ }),
-    page.getByRole("button", { name: /Favorites 24/ }),
+    page.getByRole("button", { name: /Marked 24/ }),
     page.getByRole("button", { name: /Study 24/ }),
     page.getByRole("button", { name: "Favorite list options", exact: true }),
   ];
@@ -276,6 +287,20 @@ test("switching favorite lists keeps the entire playlist row stable while works 
 
   releaseListRequest();
   await expect(page.getByText("Favorite work 1", { exact: true })).toBeVisible();
+});
+
+test("unmarking a work refreshes All Favorites and removes it immediately", async ({ page }) => {
+  await mockFavorites(page, { interactiveQuickMark: true });
+  await page.goto("/favorites");
+
+  await expect(page.getByText("Favorite work 1", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Mark: Listening" }).first().click();
+  await page.getByRole("button", { name: "Unmarked" }).click();
+
+  await expect(page.getByText("Favorite work 1", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "No favorite works yet" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /All Favorites 0/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Marked 0/ })).toBeVisible();
 });
 
 test("filters favorites by any selected file source and keeps the selection out of the canonical URL", async ({

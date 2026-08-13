@@ -180,24 +180,48 @@ func matchingListSelectSQL(where string, options MatchingListOptions) (string, [
 				SELECT MAX(shelf_list_item.created_at)
 				FROM favorite_list_item AS shelf_list_item
 				INNER JOIN favorite_list AS shelf_list ON shelf_list.id = shelf_list_item.list_id
-				WHERE shelf_list.user_id = ? AND shelf_list_item.work_id = work.id
+				WHERE shelf_list.user_id = ?
+					AND shelf_list.kind = 'user'
+					AND shelf_list_item.work_id = work.id
 			), ''),
 			work.created_at
 		)`
 		query := outerProjection + listBaseSelectSQLWithExtra(where, false, ", "+expression+" AS matching_sort_value") + `) AS library_rows ORDER BY matching_sort_value ` + direction + `, id ` + direction
 		return query, []any{options.UserID}
 	case "added":
-		expression := `(
-			SELECT MAX(shelf_list_item.created_at)
-			FROM favorite_list_item AS shelf_list_item
-			INNER JOIN favorite_list AS shelf_list ON shelf_list.id = shelf_list_item.list_id
-			WHERE shelf_list.user_id = ? AND shelf_list_item.work_id = work.id`
+		expression := `MAX(
+			CASE WHEN COALESCE(user_work_state.listening_status, 'none') <> 'none'
+				THEN COALESCE(user_work_state.updated_at, '')
+				ELSE ''
+			END,
+			COALESCE((
+				SELECT MAX(shelf_list_item.created_at)
+				FROM favorite_list_item AS shelf_list_item
+				INNER JOIN favorite_list AS shelf_list ON shelf_list.id = shelf_list_item.list_id
+				WHERE shelf_list.user_id = ?
+					AND shelf_list.kind = 'user'
+					AND shelf_list_item.work_id = work.id
+			), '')
+		)`
 		prefixArgs := []any{options.UserID}
 		if options.ListID > 0 {
-			expression += ` AND shelf_list.id = ?`
-			prefixArgs = append(prefixArgs, options.ListID)
+			expression = `CASE WHEN EXISTS (
+				SELECT 1
+				FROM favorite_list AS selected_list
+				WHERE selected_list.id = ?
+					AND selected_list.user_id = ?
+					AND selected_list.kind = 'marked'
+			) THEN user_work_state.updated_at ELSE (
+				SELECT MAX(shelf_list_item.created_at)
+				FROM favorite_list_item AS shelf_list_item
+				INNER JOIN favorite_list AS shelf_list ON shelf_list.id = shelf_list_item.list_id
+				WHERE shelf_list.user_id = ?
+					AND shelf_list.id = ?
+					AND shelf_list.kind = 'user'
+					AND shelf_list_item.work_id = work.id
+			) END`
+			prefixArgs = []any{options.ListID, options.UserID, options.UserID, options.ListID}
 		}
-		expression += `)`
 		query := outerProjection + listBaseSelectSQLWithExtra(where, false, ", "+expression+" AS matching_sort_value") + `) AS library_rows ORDER BY matching_sort_value IS NULL ASC, matching_sort_value ` + direction + `, id ` + direction
 		return query, prefixArgs
 	case "release", "code", "title", "rating", "sales", "random", "recent":
@@ -660,12 +684,14 @@ func userShelfClause(negated bool) string {
 	if negated {
 		prefix = "NOT "
 	}
-	return prefix + `(COALESCE(user_work_state.favorite, 0) = 1
-		OR COALESCE(user_work_state.listening_status, 'none') <> 'none'
+	return prefix + `(COALESCE(user_work_state.listening_status, 'none') <> 'none'
 		OR EXISTS (
 			SELECT 1
-			FROM user_work_playback_cursor AS search_shelf_cursor
-			WHERE search_shelf_cursor.user_id = ? AND search_shelf_cursor.work_id = work.id
+			FROM favorite_list_item AS search_shelf_item
+			INNER JOIN favorite_list AS search_shelf_list ON search_shelf_list.id = search_shelf_item.list_id
+			WHERE search_shelf_list.user_id = ?
+				AND search_shelf_list.kind = 'user'
+				AND search_shelf_item.work_id = work.id
 		))`
 }
 

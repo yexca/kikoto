@@ -127,7 +127,7 @@ const availabilityFilters = [
 const pageSizeOptions = [24, 48] as const;
 const favoriteSortOptions: { value: FavoriteSort; label: string }[] = [
   { value: "activity", label: "Favorite activity" },
-  { value: "added", label: "Added to list" },
+  { value: "added", label: "Marked or added" },
   { value: "release", label: "Release date" },
   { value: "code", label: "DLsite code" },
   { value: "title", label: "Title" },
@@ -433,8 +433,10 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     favoriteEntity === "works"
       ? statusFilter !== "all" || availabilityFilter !== "all" || sourceIDs.length > 0 || activeList !== "all"
       : Boolean(query.trim());
-  const selectedList = activeList === "all" ? null : (favoriteLists.find((list) => list.id === activeList) ?? null);
-  const selectedListIndex = selectedList ? favoriteLists.findIndex((list) => list.id === selectedList.id) : -1;
+  const markedList = favoriteLists.find((list) => list.kind === "marked") ?? null;
+  const userFavoriteLists = favoriteLists.filter((list) => list.kind !== "marked");
+  const selectedList = activeList === "all" ? null : (userFavoriteLists.find((list) => list.id === activeList) ?? null);
+  const selectedListIndex = selectedList ? userFavoriteLists.findIndex((list) => list.id === selectedList.id) : -1;
   const selectedWorks = works.filter((work) => selectedWorkIDs.has(work.id));
   const allPagedWorksSelected = works.length > 0 && works.every((work) => selectedWorkIDs.has(work.id));
   const favoriteCircles = circles.filter((circle) => circle.favorite);
@@ -500,6 +502,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
         item.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item,
       ),
     );
+    setWorksReloadToken((value) => value + 1);
   };
 
   const clearFilters = () => {
@@ -611,11 +614,16 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const moveFavoriteList = async (direction: -1 | 1) => {
     if (!selectedList || selectedListIndex < 0) return;
     const nextIndex = selectedListIndex + direction;
-    if (nextIndex < 0 || nextIndex >= favoriteLists.length) return;
-    const reordered = [...favoriteLists];
+    if (nextIndex < 0 || nextIndex >= userFavoriteLists.length) return;
+    const reordered = [...userFavoriteLists];
     const [moving] = reordered.splice(selectedListIndex, 1);
     reordered.splice(nextIndex, 0, moving);
-    setFavoriteLists(reordered.map((list, index) => ({ ...list, sortOrder: index })));
+    setFavoriteLists((lists) =>
+      lists.map((list) => {
+        const nextIndex = reordered.findIndex((item) => item.id === list.id);
+        return nextIndex >= 0 ? { ...list, sortOrder: nextIndex } : list;
+      }),
+    );
     await Promise.all(reordered.map((list, index) => api.updateFavoriteList(list.id, { sortOrder: index })));
     await reloadFavoriteLists();
     setActiveList(selectedList.id);
@@ -811,7 +819,19 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                       }}
                     />
                   )}
-                  {favoriteLists.map((list) => (
+                  {markedList && (
+                    <FavoriteListTab
+                      active={activeList === markedList.id}
+                      label="Marked"
+                      count={listCounts[String(markedList.id)] ?? 0}
+                      title="Works with a quick mark"
+                      onClick={() => {
+                        setActiveList(markedList.id);
+                        setPage(1);
+                      }}
+                    />
+                  )}
+                  {userFavoriteLists.map((list) => (
                     <FavoriteListTab
                       key={list.id}
                       active={activeList === list.id}
@@ -876,7 +896,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                         <FavoriteListAction
                           icon={<ArrowRight className="h-4 w-4" />}
                           label="Move list right"
-                          disabled={selectedListIndex < 0 || selectedListIndex >= favoriteLists.length - 1}
+                          disabled={selectedListIndex < 0 || selectedListIndex >= userFavoriteLists.length - 1}
                           onClick={() => {
                             setListActionsOpen(false);
                             void moveFavoriteList(1);
@@ -916,7 +936,11 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                   <tab.icon className="h-3 w-3" />
                   {tab.label}
                   <span className="text-[11px] tabular-nums opacity-65">
-                    {tab.value === "all" ? favoriteTotal : (statusCounts[tab.value] ?? 0)}
+                    {tab.value === "all"
+                      ? activeList === "all"
+                        ? favoriteTotal
+                        : (listCounts[String(activeList)] ?? 0)
+                      : (statusCounts[tab.value] ?? 0)}
                   </span>
                 </button>
               ))}
@@ -1058,7 +1082,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                     <ListMembershipPopover
                       title={`${selectedWorks.length} selected works`}
                       work={null}
-                      favoriteLists={favoriteLists}
+                      favoriteLists={userFavoriteLists}
                       defaultSelectedListIDs={selectedList ? [selectedList.id] : undefined}
                       disabled={isBulkUpdating}
                       align="right"
@@ -1102,7 +1126,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                       selected={selectedWorkIDs.has(work.id)}
                       selectionActive={selectionMode}
                       onSelectedChange={(selected) => toggleWorkSelection(work.id, selected)}
-                      favoriteLists={favoriteLists}
+                      favoriteLists={userFavoriteLists}
                       isListSaving={isBulkUpdating}
                       onListsChanged={async () => {
                         await reloadFavoriteLists();
@@ -2223,7 +2247,10 @@ function ListMembershipPopover({
     api
       .getWorkFavoriteLists(work.id)
       .then((lists) => {
-        if (!cancelled) setSelectedIDs(new Set(lists.filter((list) => list.selected).map((list) => list.id)));
+        if (!cancelled)
+          setSelectedIDs(
+            new Set(lists.filter((list) => list.kind !== "marked" && list.selected).map((list) => list.id)),
+          );
       })
       .catch((nextError) => {
         if (!cancelled)

@@ -162,11 +162,13 @@ async function mockApplication(
       return;
     }
     if (url.pathname === "/api/favorite-lists") {
-      await route.fulfill({ json: [{ id: 1, name: "Favorites", description: "", sortOrder: 0 }] });
+      await route.fulfill({ json: [{ id: 1, name: "Marked", description: "", sortOrder: -1, kind: "marked" }] });
       return;
     }
     if (url.pathname === "/api/works/1/favorite-lists") {
-      await route.fulfill({ json: [{ id: 1, name: "Favorites", description: "", sortOrder: 0, selected: false }] });
+      await route.fulfill({
+        json: [{ id: 1, name: "Marked", description: "", sortOrder: -1, kind: "marked", selected: false }],
+      });
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
@@ -1998,7 +2000,7 @@ test("favorite list popovers use measured mobile placement and stay inside the u
   const trigger = page.getByRole("button", { name: "Add to list" });
   await trigger.scrollIntoViewIfNeeded();
   await trigger.click();
-  const popover = page.locator(".fixed.z-50").filter({ hasText: "Favorite lists" });
+  const popover = page.locator(".fixed.z-50").filter({ hasText: "Lists" });
   await expect(popover).toBeVisible();
   const [triggerBox, popoverBox, viewport] = await Promise.all([
     trigger.boundingBox(),

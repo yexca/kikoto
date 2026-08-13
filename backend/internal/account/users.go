@@ -102,7 +102,7 @@ func (s *Store) CreateManagedUser(ctx context.Context, input CreateUserInput) (M
 	if _, err := tx.ExecContext(ctx, `INSERT INTO user_password_credential (user_id, password_hash) VALUES (?, ?)`, userID, passwordHash); err != nil {
 		return ManagedUser{}, err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO favorite_list (user_id, name, sort_order) VALUES (?, 'Favorites', 0)`, userID); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO favorite_list (user_id, name, sort_order, kind) VALUES (?, '', -1, 'marked')`, userID); err != nil {
 		return ManagedUser{}, err
 	}
 	if err := insertAuditLog(ctx, tx, input.ActorUserID, "user.create", userID); err != nil {

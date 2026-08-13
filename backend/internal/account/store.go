@@ -84,7 +84,7 @@ func (s *Store) BootstrapRoot(ctx context.Context, username string, password str
 			return err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO favorite_list (user_id, name, sort_order) VALUES (?, 'Favorites', 0)", userID); err != nil {
+	if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO favorite_list (user_id, name, sort_order, kind) VALUES (?, '', -1, 'marked')", userID); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -133,7 +133,7 @@ func (s *Store) BootstrapDemo(ctx context.Context) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM user_session WHERE user_id = ?", userID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO favorite_list (user_id, name, sort_order) VALUES (?, 'Favorites', 0)", userID); err != nil {
+	if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO favorite_list (user_id, name, sort_order, kind) VALUES (?, '', -1, 'marked')", userID); err != nil {
 		return err
 	}
 	return tx.Commit()

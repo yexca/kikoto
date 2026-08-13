@@ -63,8 +63,11 @@ func TestParseSearchClausesSupportsShelfMembership(t *testing.T) {
 	}
 
 	where, args := SearchWhereForUser(`shelf:true`, 42)
-	if !strings.Contains(where, "user_work_playback_cursor") || !strings.Contains(where, "user_work_state.favorite") {
+	if !strings.Contains(where, "user_work_state.listening_status") || !strings.Contains(where, "search_shelf_list.kind = 'user'") {
 		t.Fatalf("shelf predicate = %s", where)
+	}
+	if strings.Contains(where, "user_work_playback_cursor") || strings.Contains(where, "user_work_state.favorite") {
+		t.Fatalf("shelf predicate must not use playback or favorite summaries: %s", where)
 	}
 	if !reflect.DeepEqual(args, []any{int64(42)}) {
 		t.Fatalf("shelf args = %#v, want [42]", args)

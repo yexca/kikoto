@@ -83,14 +83,16 @@ unboundedly.
 Favorites keeps only entity/search intent in the canonical URL. Its selected
 list, favorite filters, ordering, seed, pagination, selection, and work anchor are
 restored from the current history entry with user-scoped session fallback.
-Switching lists keeps the full favorite-list row stable while results load, and
-Shelved is the final listening-state option. Works enter Favorites only through
-explicit favorite state or favorite-list membership; listening marks and
-playback cursors alone do not add them. The source picker can refine favorite
-works to any of several selected configured file sources without creating
-per-source work copies or requesting a live remote refresh. Favorite-list
-creation and contextual list management share the fixed overflow menu beside
-the horizontally scrollable list row.
+`All Favorites` aggregates works with a Quick mark and works in any user list.
+`Marked` is the fixed system list containing only works whose Quick mark is not
+Unmarked; its membership is derived and cannot be edited as a list. Other
+lists are user-created and keep explicit membership. Switching lists keeps the
+full favorite-list row stable while results load, and Shelved is the final
+listening-state option. Playback cursors alone never add a work to Favorites.
+The source picker can refine favorite works to any of several selected
+configured file sources without creating per-source work copies or requesting
+a live remote refresh. List creation and contextual list management share the
+fixed overflow menu beside the horizontally scrollable list row.
 
 ## Identity
 

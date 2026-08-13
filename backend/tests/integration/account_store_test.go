@@ -25,6 +25,13 @@ func TestStoreManagesIdentityAndSessions(t *testing.T) {
 	if root.Role != "super_admin" || len(root.Permissions) == 0 {
 		t.Fatalf("root = %#v", root)
 	}
+	var markedCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM favorite_list WHERE user_id = ? AND kind = 'marked'", root.ID).Scan(&markedCount); err != nil {
+		t.Fatal(err)
+	}
+	if markedCount != 1 {
+		t.Fatalf("root marked list count = %d, want 1", markedCount)
+	}
 	if _, err := store.Authenticate(ctx, "root", "wrong-password", time.Now()); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("wrong password error = %v, want sql.ErrNoRows", err)
 	}
@@ -102,6 +109,13 @@ func TestBootstrapDemoCreatesPasswordlessRestrictedIdentity(t *testing.T) {
 	if credentials != 0 {
 		t.Fatalf("demo credential count = %d, want 0", credentials)
 	}
+	var markedCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM favorite_list WHERE user_id = ? AND kind = 'marked'", demo.ID).Scan(&markedCount); err != nil {
+		t.Fatal(err)
+	}
+	if markedCount != 1 {
+		t.Fatalf("demo marked list count = %d, want 1", markedCount)
+	}
 	if _, err := store.Authenticate(ctx, account.DemoUsername, "anything", time.Now()); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("demo authentication error = %v, want sql.ErrNoRows", err)
 	}
@@ -136,6 +150,13 @@ func TestStoreManagesUsersAndProtectsLastSuperAdmin(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	var markedCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM favorite_list WHERE user_id = ? AND kind = 'marked'", created.ID).Scan(&markedCount); err != nil {
+		t.Fatal(err)
+	}
+	if markedCount != 1 {
+		t.Fatalf("created user marked list count = %d, want 1", markedCount)
 	}
 	if err := store.EnsureAnotherEnabledSuperAdmin(ctx, root.ID); err == nil {
 		t.Fatal("EnsureAnotherEnabledSuperAdmin() accepted the last super administrator")

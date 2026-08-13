@@ -323,6 +323,7 @@ export type FavoriteList = {
   name: string;
   description: string;
   sortOrder: number;
+  kind: "marked" | "user";
   selected?: boolean;
 };
 
@@ -1963,7 +1964,7 @@ export const api = {
   deleteMediaLocalLocation: (locationId: number) => deleteJSON<MediaCleanupResult>(`/api/media/${locationId}/local`),
   cleanupMediaLocations: (targets: MediaCleanupTarget[]) =>
     postJSONBody<MediaCleanupResult>("/api/media/cleanup", { targets }),
-  updateWorkUserState: (id: number, payload: { listeningStatus?: ListeningStatus; favorite?: boolean }) =>
+  updateWorkUserState: (id: number, payload: { listeningStatus?: ListeningStatus }) =>
     patchJSONBody<{ workId: number; listeningStatus: ListeningStatus; favorite: boolean }>(
       `/api/works/${id}/user-state`,
       payload,

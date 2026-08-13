@@ -3903,7 +3903,7 @@ function PersistedWorkDetailController({
           ? "No local, cached, tracked, or remote source is currently linked to this work."
           : "File locations are grouped by local, cache, and remote source.";
   const sourceStatsLabel = formatTreeStats(directoryStats);
-  const favoriteSelected = favoriteLists.some((list) => list.selected);
+  const favoriteSelected = favoriteLists.some((list) => list.kind === "user" && list.selected);
   const isDetailLoading = !work;
   const actionMode: DetailActionMode = selectedRemoteSource
     ? "remote_source"

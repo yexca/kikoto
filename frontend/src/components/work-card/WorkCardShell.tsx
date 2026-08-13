@@ -875,8 +875,10 @@ export function WorkCardListButton({
     Promise.all([api.listFavoriteLists(), api.getWorkFavoriteLists(effectiveWorkId)])
       .then(([allLists, workLists]) => {
         if (cancelled) return;
-        setLists(allLists);
-        setSelected(new Set(workLists.filter((list) => list.selected).map((list) => list.id)));
+        setLists(allLists.filter((list) => list.kind !== "marked"));
+        setSelected(
+          new Set(workLists.filter((list) => list.kind !== "marked" && list.selected).map((list) => list.id)),
+        );
       })
       .catch((nextError) => {
         if (!cancelled) {
@@ -956,7 +958,7 @@ export function WorkCardListButton({
         bottomCollisionPadding={bottomCollisionPadding}
         className="w-56 p-2 text-left"
       >
-        <div className="text-sm font-semibold">Favorite lists</div>
+        <div className="text-sm font-semibold">Lists</div>
         <div className="app-scroll mt-2 max-h-56 space-y-1.5 overflow-auto">
           {loading ? (
             <div className="rounded-md border bg-background px-2.5 py-2 text-sm text-muted-foreground">
@@ -983,7 +985,7 @@ export function WorkCardListButton({
             ))
           ) : (
             <div className="rounded-md border bg-background px-2.5 py-2 text-sm text-muted-foreground">
-              No favorite lists yet.
+              No lists yet.
             </div>
           )}
           {error && (

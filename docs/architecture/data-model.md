@@ -122,6 +122,10 @@ Important tables:
 - `user_tag`
 - `user_work_tag`
 
+`favorite_list` distinguishes a system `marked` list from ordinary user lists.
+The system list has no stored items: it derives membership from a non-`none`
+Quick mark. `favorite_list_item` records only explicit user-list membership.
+
 `user_work_playback_cursor` stores at most one Resume position for each user and
 canonical logical work family. It references the active edition's logical media
 item and records the last file source/location context; location deletion clears
