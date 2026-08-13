@@ -6,6 +6,7 @@ import {
   Clock3,
   Database,
   Edit3,
+  ExternalLink,
   GitFork,
   HardDrive,
   HardDriveDownload,
