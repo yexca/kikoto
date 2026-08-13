@@ -29,6 +29,22 @@ as a self-hosted web application with a responsive player and an Android client.
 > [!IMPORTANT]
 > Kikoto is under active development. Back up `config/` and `data/` before an upgrade, and review the [security model](docs/operations/security.md) before exposing an instance to a network.
 
+## Known Issues
+
+> [!WARNING]
+> **Android 10 keyboard layout (APK).** Current APK builds are affected on
+> Android 10, and later APK releases should also be considered affected until
+> the upstream Capacitor fix is released and adopted by Kikoto. On affected
+> devices, opening the software keyboard can leave an Android system-rendered
+> area between the app and the keyboard, reducing the usable app area to roughly
+> 6–20% of the screen. Opening Kikoto in a web browser is not affected.
+> Investigation points to Android 10 IME insets being applied twice by
+> Capacitor's SystemBars
+> handling ([#8525](https://github.com/ionic-team/capacitor/issues/8525),
+> [#8466](https://github.com/ionic-team/capacitor/issues/8466), and
+> [#8528](https://github.com/ionic-team/capacitor/pull/8528)). Use Kikoto in a
+> browser on affected Android 10 devices until that upstream fix is available.
+
 ## Key Features
 
 - **One library, multiple locations.** Local, cached, tracked, and remote files
