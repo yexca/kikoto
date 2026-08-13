@@ -88,7 +88,13 @@ import {
   type VoiceSummary,
 } from "@/lib/api";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
-import { NAVIGATION_EVENT, historyStateWithReturn, navigateToWorkspaceUp } from "@/lib/browserHistory";
+import {
+  NAVIGATION_EVENT,
+  currentInternalLocation,
+  historyStateWithReturn,
+  navigateToWorkspaceUp,
+  normalizeInternalLocation,
+} from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { hasPlaybackHistory } from "@/lib/playbackHistory";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
@@ -147,7 +153,10 @@ function VoiceCreatorWorksPage({ active }: { active: boolean }) {
   const [path, setPath] = useState(window.location.pathname);
   useEffect(() => {
     if (!active) return;
-    const syncPath = () => setPath(window.location.pathname);
+    const syncPath = () => {
+      if (!isVoiceWorkspaceLocation(currentInternalLocation())) return;
+      setPath(window.location.pathname);
+    };
     syncPath();
     window.addEventListener("popstate", syncPath);
     window.addEventListener("kikoto:navigation", syncPath);
@@ -196,7 +205,7 @@ function VoiceListPage({ active }: { active: boolean }) {
   }, [query]);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || !isVoiceListLocation(currentInternalLocation())) return;
     const search = creatorBrowseSearch({ query, filter, tag: tagFilter, page, pageSize });
     const location = `/voices${search}`;
     window.history.replaceState(window.history.state ?? {}, "", location);
@@ -2045,6 +2054,17 @@ function voicePersonIdFromPath(path: string) {
   if (!match) return 0;
   const value = Number(decodeURIComponent(match[1]));
   return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function isVoiceWorkspaceLocation(location: string) {
+  const normalized = normalizeInternalLocation(location);
+  if (!normalized) return false;
+  if (isVoiceListLocation(normalized)) return true;
+  try {
+    return voicePersonIdFromPath(new URL(normalized, "https://kikoto.invalid").pathname) > 0;
+  } catch {
+    return false;
+  }
 }
 
 function formatTime(seconds: number) {

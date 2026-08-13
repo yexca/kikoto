@@ -67,7 +67,13 @@ import {
   type CircleSummary,
   type ListeningStatus,
 } from "@/lib/api";
-import { NAVIGATION_EVENT, historyStateWithReturn, navigateToWorkspaceUp } from "@/lib/browserHistory";
+import {
+  NAVIGATION_EVENT,
+  currentInternalLocation,
+  historyStateWithReturn,
+  navigateToWorkspaceUp,
+  normalizeInternalLocation,
+} from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { hasPlaybackHistory } from "@/lib/playbackHistory";
@@ -126,7 +132,10 @@ export function CirclesPage({ active = true }: { active?: boolean }) {
   const [path, setPath] = useState(window.location.pathname);
   useEffect(() => {
     if (!active) return;
-    const syncPath = () => setPath(window.location.pathname);
+    const syncPath = () => {
+      if (!isCircleWorkspaceLocation(currentInternalLocation())) return;
+      setPath(window.location.pathname);
+    };
     syncPath();
     window.addEventListener("popstate", syncPath);
     window.addEventListener("kikoto:navigation", syncPath);
@@ -197,7 +206,7 @@ function CircleListPage({ active }: { active: boolean }) {
   }, [query]);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || !isCircleListLocation(currentInternalLocation())) return;
     const search = creatorBrowseSearch({ query, filter, tag: "", page, pageSize });
     const location = `/circles${search}`;
     window.history.replaceState(window.history.state ?? {}, "", location);
@@ -1933,6 +1942,17 @@ function circleRouteFromPath(path: string) {
     externalId: safeDecodePathSegment(match[1]),
     seriesCode: match[3] ? safeDecodePathSegment(match[3]) : match[2] ? null : undefined,
   };
+}
+
+function isCircleWorkspaceLocation(location: string) {
+  const normalized = normalizeInternalLocation(location);
+  if (!normalized) return false;
+  if (isCircleListLocation(normalized)) return true;
+  try {
+    return circleRouteFromPath(new URL(normalized, "https://kikoto.invalid").pathname) !== null;
+  } catch {
+    return false;
+  }
 }
 
 function navigateToCirclesList(storageScope: string, mobile: boolean) {

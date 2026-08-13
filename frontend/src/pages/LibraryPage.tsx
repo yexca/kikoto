@@ -426,6 +426,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const pendingResultsScroll = useRef(false);
   const pendingScrollRestore = useRef<number | null>(null);
   const mobileSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const wasActive = useRef(active);
   const browseSurfaceActive = useRef(true);
   browseSurfaceActive.current = selectedCode === null && selectedRemoteTarget === null;
   const searchClauses = useMemo(() => parseSearchClauses(searchQuery), [searchQuery]);
@@ -662,6 +663,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         if (cancelled) return;
         setSources(items);
         setSourceRoutesReady(true);
+        if (!knownLibraryRoute(window.location.pathname, window.location.search, items)) return;
         const resolved = resolveTabFromPath(window.location.pathname, items, activeTab);
         const scope = localScopeFromPath(window.location.pathname);
         const stored = readLibraryBrowseState(libraryBrowseKey(resolved, scope, browseStorageScope));
@@ -857,8 +859,12 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   }, [selectedCode, works.length]);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active) {
+      wasActive.current = false;
+      return;
+    }
     const syncFromPath = () => {
+      if (!knownLibraryRoute(window.location.pathname, window.location.search, sources)) return;
       const nextTab = resolveTabFromPath(window.location.pathname, sources, activeTab);
       const nextScope = localScopeFromPath(window.location.pathname);
       const stored = readLibraryBrowseState(libraryBrowseKey(nextTab, nextScope, browseStorageScope));
@@ -879,6 +885,9 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       setActiveTab(nextTab);
       setLocalScope(nextScope);
     };
+    const becameActive = !wasActive.current;
+    wasActive.current = true;
+    if (becameActive) syncFromPath();
     const handlePopState = () => syncFromPath();
     const handleAppNavigation = () => syncFromPath();
     window.addEventListener("popstate", handlePopState);
@@ -890,7 +899,14 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   }, [active, sources, activeTab, browseStorageScope, sessionDefaultBrowseState]);
 
   useEffect(() => {
-    if (!active || !browseHydrated || selectedCode !== null || selectedRemoteTarget !== null) return;
+    if (
+      !active ||
+      !browseHydrated ||
+      selectedCode !== null ||
+      selectedRemoteTarget !== null ||
+      !knownLibraryRoute(window.location.pathname, window.location.search, sources)
+    )
+      return;
     const browseState = { ...activeBrowseState, scrollY: window.scrollY };
     writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
     writeLibrarySortPreference(libraryBrowseKey(activeTab, localScope, browseStorageScope), librarySort, sortDirection);
@@ -925,6 +941,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     workPage,
     workPageSize,
     remoteSourceStates,
+    sources,
   ]);
 
   useEffect(() => {
@@ -8802,7 +8819,11 @@ async function resolveAndOpenWork(
         setMediaError(directoryLoadErrorMessage(error));
       }
     }
-    if (resolved.resolvedCode && resolved.resolvedCode.toUpperCase() !== code.toUpperCase()) {
+    if (
+      resolved.resolvedCode &&
+      resolved.resolvedCode.toUpperCase() !== code.toUpperCase() &&
+      codeFromLocation(window.location.pathname, window.location.search)?.toUpperCase() === code.toUpperCase()
+    ) {
       window.history.replaceState(window.history.state ?? {}, "", `/${resolved.resolvedCode}${window.location.search}`);
       setSelectedCode(resolved.resolvedCode);
       window.dispatchEvent(new Event("kikoto:navigation"));
