@@ -3,8 +3,6 @@ import {
   ArrowDownAZ,
   ArrowDownZA,
   ArrowDown,
-  ArrowLeft,
-  ArrowRight,
   ArrowUp,
   ArrowUpDown,
   Check,
@@ -204,6 +202,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const [worksReloadToken, setWorksReloadToken] = useState(0);
   const [listEditor, setListEditor] = useState<FavoriteList | "new" | null>(null);
   const [deleteListTarget, setDeleteListTarget] = useState<FavoriteList | null>(null);
+  const [isDeletingList, setIsDeletingList] = useState(false);
   const [listManagerOpen, setListManagerOpen] = useState(false);
   const [listActionsOpen, setListActionsOpen] = useState(false);
   const listActionsRef = useRef<HTMLDivElement | null>(null);
@@ -437,7 +436,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const markedList = favoriteLists.find((list) => list.kind === "marked") ?? null;
   const userFavoriteLists = favoriteLists.filter((list) => list.kind !== "marked");
   const selectedList = activeList === "all" ? null : (userFavoriteLists.find((list) => list.id === activeList) ?? null);
-  const selectedListIndex = selectedList ? userFavoriteLists.findIndex((list) => list.id === selectedList.id) : -1;
   const selectedWorks = works.filter((work) => selectedWorkIDs.has(work.id));
   const allPagedWorksSelected = works.length > 0 && works.every((work) => selectedWorkIDs.has(work.id));
   const favoriteCircles = circles.filter((circle) => circle.favorite);
@@ -612,30 +610,32 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
 
   const openFavoriteListManager = () => {
     setListEditor(null);
+    setDeleteListTarget(null);
     setListManagerOpen(true);
   };
 
   const closeFavoriteListManager = () => {
+    if (isDeletingList) return;
     setListManagerOpen(false);
-    setListEditor((current) => (current === "new" ? null : current));
+    setListEditor(null);
+    setDeleteListTarget(null);
   };
 
   const deleteFavoriteList = async () => {
-    if (!deleteListTarget) return;
+    if (!deleteListTarget || isDeletingList) return;
+    const deletingList = deleteListTarget;
+    setIsDeletingList(true);
     try {
-      await api.deleteFavoriteList(deleteListTarget.id);
+      await api.deleteFavoriteList(deletingList.id);
       setDeleteListTarget(null);
-      setActiveList("all");
+      if (activeList === deletingList.id) setActiveList("all");
       await reloadFavoriteLists();
       toast.success("Favorite list deleted.");
     } catch (error) {
       toast.notify(toastFromError(error, "Favorite list could not be deleted."));
+    } finally {
+      setIsDeletingList(false);
     }
-  };
-
-  const moveFavoriteList = async (direction: -1 | 1) => {
-    if (!selectedList || selectedListIndex < 0) return;
-    await moveFavoriteListByID(selectedList.id, direction);
   };
 
   const moveFavoriteListByID = async (listID: number, direction: -1 | 1) => {
@@ -934,46 +934,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                         openFavoriteListManager();
                       }}
                     />
-                    {selectedList && (
-                      <>
-                        <div className="my-1 border-t" role="separator" />
-                        <FavoriteListAction
-                          icon={<Pencil className="h-4 w-4" />}
-                          label="Rename list"
-                          onClick={() => {
-                            setListActionsOpen(false);
-                            setListEditor(selectedList);
-                          }}
-                        />
-                        <FavoriteListAction
-                          icon={<ArrowLeft className="h-4 w-4" />}
-                          label="Move list left"
-                          disabled={selectedListIndex <= 0}
-                          onClick={() => {
-                            setListActionsOpen(false);
-                            void moveFavoriteList(-1);
-                          }}
-                        />
-                        <FavoriteListAction
-                          icon={<ArrowRight className="h-4 w-4" />}
-                          label="Move list right"
-                          disabled={selectedListIndex < 0 || selectedListIndex >= userFavoriteLists.length - 1}
-                          onClick={() => {
-                            setListActionsOpen(false);
-                            void moveFavoriteList(1);
-                          }}
-                        />
-                        <FavoriteListAction
-                          icon={<Trash2 className="h-4 w-4" />}
-                          label="Delete list"
-                          destructive
-                          onClick={() => {
-                            setListActionsOpen(false);
-                            setDeleteListTarget(selectedList);
-                          }}
-                        />
-                      </>
-                    )}
                   </div>
                 </AnchoredPopover>
               </div>
@@ -1130,37 +1090,23 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
           ) : (
             <EmptyFavorites hasFilters={Boolean(hasActiveFilters)} onClearFilters={clearFilters} />
           )}
-          {listEditor && listEditor !== "new" && !listManagerOpen && (
-            <FavoriteListEditor list={listEditor} onClose={() => setListEditor(null)} onSave={saveFavoriteList} />
-          )}
-          {deleteListTarget && (
-            <ConfirmDeleteList
-              list={deleteListTarget}
-              onClose={() => setDeleteListTarget(null)}
-              onConfirm={() => void deleteFavoriteList()}
-            />
-          )}
           {listManagerOpen && (
             <FavoriteListManager
               markedList={markedList}
               lists={userFavoriteLists}
-              adding={listEditor === "new"}
+              editor={listEditor}
+              deleteTarget={deleteListTarget}
+              deleting={isDeletingList}
               onClose={closeFavoriteListManager}
               onNew={() => setListEditor("new")}
-              onEdit={(list) => {
-                setListManagerOpen(false);
-                setListEditor(list);
-              }}
-              onDelete={(list) => {
-                setListManagerOpen(false);
-                setDeleteListTarget(list);
-              }}
+              onEdit={setListEditor}
+              onCancelEdit={() => setListEditor(null)}
+              onSave={saveFavoriteList}
+              onDelete={setDeleteListTarget}
+              onCancelDelete={() => setDeleteListTarget(null)}
+              onConfirmDelete={() => void deleteFavoriteList()}
               onMove={(listID, direction) => void moveFavoriteListByID(listID, direction)}
-            >
-              {listEditor === "new" && (
-                <FavoriteListEditor list={null} inline onClose={() => setListEditor(null)} onSave={saveFavoriteList} />
-              )}
-            </FavoriteListManager>
+            />
           )}
         </>
       )}
@@ -2308,19 +2254,23 @@ function EmptyFavorites({ hasFilters, onClearFilters }: { hasFilters: boolean; o
 
 function FavoriteListEditor({
   list,
-  inline = false,
   onClose,
   onSave,
 }: {
   list: FavoriteList | null;
-  inline?: boolean;
   onClose: () => void;
   onSave: (payload: { name: string; description: string }) => Promise<void>;
 }) {
+  const editorRef = useRef<HTMLDivElement | null>(null);
   const [name, setName] = useState(list?.name ?? "");
   const [description, setDescription] = useState(list?.description ?? "");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => editorRef.current?.scrollIntoView({ block: "nearest" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   const save = async () => {
     setIsSaving(true);
@@ -2334,86 +2284,51 @@ function FavoriteListEditor({
     }
   };
 
-  const form = (
-    <form
-      className={inline ? "border-y py-4" : "w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl"}
-      onMouseDown={(event) => event.stopPropagation()}
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!isSaving && name.trim()) void save();
-      }}
-    >
-      <h3 className="text-base font-semibold">{list ? "Rename list" : "Add list"}</h3>
-      <div className="mt-4 space-y-3">
-        <label className="grid gap-1 text-sm">
-          <span className="text-xs font-medium text-muted-foreground">Name</span>
-          <input
-            className="h-9 rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            autoFocus
-          />
-        </label>
-        <label className="grid gap-1 text-sm">
-          <span className="text-xs font-medium text-muted-foreground">Description</span>
-          <input
-            className="h-9 rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring"
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-          />
-        </label>
-        {error && (
-          <div className="rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">{error}</div>
-        )}
-      </div>
-      <div className="mt-4 flex justify-end gap-2">
-        <Button type="button" variant="outline" size="sm" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button size="sm" type="submit" disabled={isSaving || !name.trim()}>
-          {isSaving ? "Saving" : "Save"}
-        </Button>
-      </div>
-    </form>
-  );
-
-  return inline ? (
-    <div className="mt-4">{form}</div>
-  ) : (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
-      {form}
-    </div>
-  );
-}
-
-function ConfirmDeleteList({
-  list,
-  onClose,
-  onConfirm,
-}: {
-  list: FavoriteList;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
-      <div
-        className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl"
+    <div ref={editorRef} role="listitem">
+      <form
+        aria-label={list ? `Rename ${list.name}` : "Add favorite list"}
+        className="rounded-md border bg-background p-3"
         onMouseDown={(event) => event.stopPropagation()}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!isSaving && name.trim()) void save();
+        }}
       >
-        <h3 className="text-base font-semibold">Delete list</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Delete "{list.name}"? Works stay in the library, but this list membership is removed.
-        </p>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>
+        <h3 className="text-sm font-semibold">{list ? "Rename list" : "Add list"}</h3>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1 text-sm">
+            <span className="text-xs font-medium text-muted-foreground">Name</span>
+            <input
+              className="h-9 rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              autoFocus
+            />
+          </label>
+          <label className="grid gap-1 text-sm">
+            <span className="text-xs font-medium text-muted-foreground">Description</span>
+            <input
+              className="h-9 rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+            />
+          </label>
+        </div>
+        {error && (
+          <div className="mt-3 rounded-md border bg-card px-3 py-2 text-xs text-muted-foreground" role="alert">
+            {error}
+          </div>
+        )}
+        <div className="mt-3 flex justify-end gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
             Cancel
           </Button>
-          <Button size="sm" onClick={onConfirm}>
-            Delete
+          <Button size="sm" type="submit" disabled={isSaving || !name.trim()}>
+            {isSaving ? "Saving" : list ? "Save" : "Add list"}
           </Button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }
@@ -2421,24 +2336,36 @@ function ConfirmDeleteList({
 function FavoriteListManager({
   markedList,
   lists,
-  adding = false,
-  children,
+  editor,
+  deleteTarget,
+  deleting,
   onClose,
   onNew,
   onEdit,
+  onCancelEdit,
+  onSave,
   onDelete,
+  onCancelDelete,
+  onConfirmDelete,
   onMove,
 }: {
   markedList: FavoriteList | null;
   lists: FavoriteList[];
-  adding?: boolean;
-  children?: ReactNode;
+  editor: FavoriteList | "new" | null;
+  deleteTarget: FavoriteList | null;
+  deleting: boolean;
   onClose: () => void;
   onNew: () => void;
   onEdit: (list: FavoriteList) => void;
+  onCancelEdit: () => void;
+  onSave: (payload: { name: string; description: string }) => Promise<void>;
   onDelete: (list: FavoriteList) => void;
+  onCancelDelete: () => void;
+  onConfirmDelete: () => void;
   onMove: (listID: number, direction: -1 | 1) => void;
 }) {
+  const actionsDisabled = editor !== null || deleteTarget !== null || deleting;
+
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
       <div
@@ -2455,14 +2382,26 @@ function FavoriteListManager({
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">Sort, rename, create, or remove your lists.</p>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close favorite list editor">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            disabled={deleting}
+            aria-label="Close favorite list editor"
+          >
             <X className="h-4 w-4" />
           </Button>
         </div>
-        {children}
-        <div className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain">
+        <div
+          className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain"
+          role="list"
+          aria-label="Favorite lists"
+        >
           {markedList && (
-            <div className="flex items-center gap-2 rounded-md border border-dashed bg-muted/30 px-3 py-2">
+            <div
+              role="listitem"
+              className="flex items-center gap-2 rounded-md border border-dashed bg-muted/30 px-3 py-2"
+            >
               <ListMusic className="h-4 w-4 shrink-0 text-muted-foreground" />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium">Marked</div>
@@ -2471,75 +2410,180 @@ function FavoriteListManager({
               <span className="shrink-0 text-xs text-muted-foreground">Fixed</span>
             </div>
           )}
-          {lists.length === 0 ? (
+          {lists.length === 0 && editor !== "new" ? (
             <div className="rounded-md border px-3 py-4 text-sm text-muted-foreground">No custom lists yet.</div>
           ) : (
-            lists.map((list, index) => (
-              <div key={list.id} className="flex items-center gap-2 rounded-md border bg-background px-3 py-2">
-                <ListMusic className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{list.name}</div>
-                  {list.description && <div className="truncate text-xs text-muted-foreground">{list.description}</div>}
-                </div>
-                <span className="text-xs tabular-nums text-muted-foreground">{index + 1}</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  disabled={index === 0}
-                  onClick={() => onMove(list.id, -1)}
-                  aria-label={`Move ${list.name} up`}
-                  title="Move up"
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  disabled={index === lists.length - 1}
-                  onClick={() => onMove(list.id, 1)}
-                  aria-label={`Move ${list.name} down`}
-                  title="Move down"
-                >
-                  <ArrowDown className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => onEdit(list)}
-                  aria-label={`Rename ${list.name}`}
-                  title="Rename"
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-destructive"
-                  onClick={() => onDelete(list)}
-                  aria-label={`Delete ${list.name}`}
-                  title="Delete"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))
+            lists.map((list, index) =>
+              editor !== "new" && editor?.id === list.id ? (
+                <FavoriteListEditor key={`editor-${list.id}`} list={list} onClose={onCancelEdit} onSave={onSave} />
+              ) : (
+                <FavoriteListManagerRow
+                  key={list.id}
+                  list={list}
+                  index={index}
+                  total={lists.length}
+                  actionsDisabled={actionsDisabled}
+                  confirmingDelete={deleteTarget?.id === list.id}
+                  deleting={deleting && deleteTarget?.id === list.id}
+                  onMove={onMove}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  onCancelDelete={onCancelDelete}
+                  onConfirmDelete={onConfirmDelete}
+                />
+              ),
+            )
+          )}
+          {editor === "new" && (
+            <FavoriteListEditor key="new-list-editor" list={null} onClose={onCancelEdit} onSave={onSave} />
           )}
         </div>
-        <div className={`mt-4 flex shrink-0 gap-2 ${adding ? "justify-end" : "justify-between"}`}>
-          {!adding && (
-            <Button type="button" variant="outline" size="sm" onClick={onNew}>
+        <div className="mt-4 flex shrink-0 gap-2">
+          {editor === null && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onNew}
+              disabled={deleteTarget !== null || deleting}
+            >
               <Plus className="h-4 w-4" />
               Add list
             </Button>
           )}
-          <Button type="button" variant="outline" size="sm" onClick={onClose}>
+          <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={onClose} disabled={deleting}>
             Done
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function FavoriteListManagerRow({
+  list,
+  index,
+  total,
+  actionsDisabled,
+  confirmingDelete,
+  deleting,
+  onMove,
+  onEdit,
+  onDelete,
+  onCancelDelete,
+  onConfirmDelete,
+}: {
+  list: FavoriteList;
+  index: number;
+  total: number;
+  actionsDisabled: boolean;
+  confirmingDelete: boolean;
+  deleting: boolean;
+  onMove: (listID: number, direction: -1 | 1) => void;
+  onEdit: (list: FavoriteList) => void;
+  onDelete: (list: FavoriteList) => void;
+  onCancelDelete: () => void;
+  onConfirmDelete: () => void;
+}) {
+  const deleteButtonRef = useRef<HTMLButtonElement | null>(null);
+  const deleteTitleID = `favorite-list-delete-${list.id}-title`;
+  const deleteDescriptionID = `favorite-list-delete-${list.id}-description`;
+
+  const closeDeleteConfirmation = () => {
+    onCancelDelete();
+    window.requestAnimationFrame(() => deleteButtonRef.current?.focus());
+  };
+
+  return (
+    <div role="listitem" className="flex items-center gap-1 rounded-md border bg-background px-2 py-2 sm:gap-2 sm:px-3">
+      <ListMusic className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium">{list.name}</div>
+        {list.description && <div className="truncate text-xs text-muted-foreground">{list.description}</div>}
+      </div>
+      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{index + 1}</span>
+      <div className="flex shrink-0 items-center">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-11 w-11 sm:h-8 sm:w-8"
+          disabled={actionsDisabled || index === 0}
+          onClick={() => onMove(list.id, -1)}
+          aria-label={`Move ${list.name} up`}
+          title="Move up"
+        >
+          <ArrowUp className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-11 w-11 sm:h-8 sm:w-8"
+          disabled={actionsDisabled || index === total - 1}
+          onClick={() => onMove(list.id, 1)}
+          aria-label={`Move ${list.name} down`}
+          title="Move down"
+        >
+          <ArrowDown className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-11 w-11 sm:h-8 sm:w-8"
+          disabled={actionsDisabled}
+          onClick={() => onEdit(list)}
+          aria-label={`Rename ${list.name}`}
+          title="Rename"
+        >
+          <Pencil className="h-4 w-4" />
+        </Button>
+        <Button
+          ref={deleteButtonRef}
+          variant="ghost"
+          size="icon"
+          className="h-11 w-11 sm:h-8 sm:w-8"
+          disabled={deleting || (actionsDisabled && !confirmingDelete)}
+          onClick={() => onDelete(list)}
+          aria-label={`Delete ${list.name}`}
+          aria-haspopup="dialog"
+          aria-expanded={confirmingDelete}
+          title="Delete"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+      <AnchoredPopover
+        open={confirmingDelete}
+        anchorRef={deleteButtonRef}
+        onOpenChange={(open) => {
+          if (!open && !deleting) closeDeleteConfirmation();
+        }}
+        className="w-[min(18rem,calc(100vw-1.5rem))] p-3"
+        zIndex={60}
+      >
+        <div role="alertdialog" aria-labelledby={deleteTitleID} aria-describedby={deleteDescriptionID}>
+          <h3 id={deleteTitleID} className="text-sm font-semibold">
+            Delete list?
+          </h3>
+          <p id={deleteDescriptionID} className="mt-2 text-sm text-muted-foreground">
+            Delete "{list.name}"? Works stay in the library, but this list membership is removed.
+          </p>
+          <div className="mt-3 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={closeDeleteConfirmation}
+              disabled={deleting}
+              autoFocus
+            >
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" size="sm" onClick={onConfirmDelete} disabled={deleting}>
+              {deleting ? "Deleting..." : "Delete"}
+            </Button>
+          </div>
+        </div>
+      </AnchoredPopover>
     </div>
   );
 }
