@@ -655,10 +655,9 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   );
   expect(Math.max(...statisticTops) - Math.min(...statisticTops)).toBeLessThanOrEqual(4);
 
-  await expect(page.getByRole("button", { name: "Open advanced refresh actions" })).toHaveAttribute(
-    "aria-expanded",
-    "false",
-  );
+  const advancedAction = page.getByRole("button", { name: "Open advanced refresh actions" });
+  await expect(advancedAction).toHaveAttribute("aria-expanded", "false");
+  await expect(advancedAction.locator("svg circle")).toHaveCount(3);
   const actions = page.getByRole("group", { name: "Voice actor actions" });
   await expect(actions.getByRole("button", { name: "Add favorite" })).toBeVisible();
   await expect(actions.getByText("Favorite", { exact: true })).toBeHidden();
@@ -766,6 +765,9 @@ test("desktop voice detail keeps full action labels and inline work controls", a
   await expect(actions.getByText("Metadata", { exact: true })).toBeHidden();
   await expect(actions.getByText("Remote", { exact: true })).toBeHidden();
   await expect(actions.getByText("Advanced", { exact: true })).toBeVisible();
+  const advancedAction = actions.getByRole("button", { name: "Open advanced refresh actions" });
+  await expect(advancedAction.locator("svg circle")).toHaveCount(0);
+  await expect(advancedAction.locator("svg line")).toHaveCount(9);
   await expect(page.getByRole("button", { name: "Open voice work options" })).toBeHidden();
   await expect(page.getByLabel("Work filter")).toBeVisible();
   await expect(page.getByRole("button", { name: /^Columns:/ })).toBeVisible();

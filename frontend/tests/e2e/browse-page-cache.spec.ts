@@ -348,6 +348,32 @@ test("restores cached mobile detail workspaces through bottom navigation history
   await expect(page.getByRole("heading", { name: "Example Work", exact: true })).toBeVisible();
 });
 
+test("active mobile tabs return entity details to their browse lists", async ({ page }) => {
+  const requests: Record<string, number> = {};
+  await mockBrowsePages(page, requests);
+
+  await page.goto("/?q=Example");
+  await page.getByTestId("work-card").first().click();
+  await expect(page).toHaveURL(/\/RJ00000000(?:\?view=local)?$/);
+  await page.locator("footer").getByRole("button", { name: "Library", exact: true }).click();
+  await expect(page).toHaveURL((url) => url.pathname === "/" && url.searchParams.get("q") === "Example");
+  await expect(page.getByRole("button", { name: "Back to library", exact: true })).toHaveCount(0);
+
+  await page.goto("/circles?q=Example");
+  await page.getByRole("button", { name: "Open Example Circle", exact: true }).click();
+  await expect(page).toHaveURL(/\/circles\/RG012345$/);
+  await page.locator("footer").getByRole("button", { name: "Circles", exact: true }).click();
+  await expect(page).toHaveURL((url) => url.pathname === "/circles" && url.searchParams.get("q") === "Example");
+  await expect(page.getByRole("button", { name: "Back to circles", exact: true })).toHaveCount(0);
+
+  await page.goto("/voices?q=Example");
+  await page.getByRole("button", { name: "Open Example Voice", exact: true }).click();
+  await expect(page).toHaveURL(/\/voices\/7$/);
+  await page.locator("footer").getByRole("button", { name: "Voice Actors", exact: true }).click();
+  await expect(page).toHaveURL((url) => url.pathname === "/voices" && url.searchParams.get("q") === "Example");
+  await expect(page.getByRole("button", { name: "Back to voices", exact: true })).toHaveCount(0);
+});
+
 test("does not let an inactive Library detail redirect replace another mobile workspace route", async ({ page }) => {
   const requests: Record<string, number> = {};
   const mocks = await mockBrowsePages(page, requests, { deferAliasResolution: true });

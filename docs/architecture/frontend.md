@@ -91,6 +91,9 @@ small shared contract should resolve cross-domain needs.
   Switching destinations restores that destination's last stable list or detail
   route, history state, and scroll position for the current server and user;
   dialogs, pending mutations, and other transient overlays are not resumed.
+- Tapping the active Library, Circles, or Voice Actors destination from its
+  detail route returns to that workspace's last list state. Work detail routes
+  remain part of Library regardless of the workspace that opened them.
 - Distinguish Android client-old, server-old, and network-disconnected states;
   version actions open signed GitHub Releases and never imply silent install.
 - Use the shared work-collection layout and work-card view model whenever a

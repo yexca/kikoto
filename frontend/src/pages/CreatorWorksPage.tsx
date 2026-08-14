@@ -10,6 +10,7 @@ import {
   Heart,
   ListChecks,
   Loader2,
+  MoreHorizontal,
   Plus,
   RefreshCw,
   Search,
@@ -1015,7 +1016,11 @@ function VoiceDetailPage({ personId }: { personId: number }) {
                   title="Advanced refresh"
                   onClick={() => setDetailPanel((current) => (current === "advanced" ? null : "advanced"))}
                 >
-                  <SlidersHorizontal className="h-4 w-4" />
+                  {mobileNavigationLayout ? (
+                    <MoreHorizontal className="h-4 w-4" />
+                  ) : (
+                    <SlidersHorizontal className="h-4 w-4" />
+                  )}
                   <span className="hidden lg:inline">Advanced</span>
                   {remoteSourceWarning && <span className="text-warning-foreground">!</span>}
                 </Button>

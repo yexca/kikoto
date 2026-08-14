@@ -35,10 +35,13 @@ import {
   currentInternalLocation,
   historyScrollY,
   mobileTabResumeHistoryState,
+  navigateToWorkspaceUp,
   requestHistoryScrollRestoration,
 } from "@/lib/browserHistory";
 import { api, type RemoteTrackRunStatus } from "@/lib/api";
-import { readLastLibraryLocation } from "@/pages/libraryBrowseState";
+import { normalizeLibraryBrowseLocation, readLastLibraryLocation } from "@/pages/libraryBrowseState";
+import { isCircleListLocation, readLastCircleListLocation } from "@/pages/circleNavigationState";
+import { isVoiceListLocation, readLastVoiceListLocation } from "@/pages/voiceNavigationState";
 import { legacyLibraryRedirect } from "@/app/legacyLibraryRoutes";
 import { readMobileTabSnapshot, writeMobileTabSnapshot } from "@/app/mobileTabState";
 import {
@@ -173,6 +176,10 @@ function AuthenticatedApp() {
   const openMobilePage = (id: PageID) => {
     const item = navItems.find((navItem) => navItem.id === id);
     if (!item) return;
+    if (page === id && isMobileTabDetailLocation(id, currentInternalLocation())) {
+      navigateToMobileTabHome(id, clientStorageScope);
+      return;
+    }
     rememberCurrentMobileTab();
     const snapshot = readMobileTabSnapshot(clientStorageScope, id);
     if (snapshot && pageFromSnapshotLocation(snapshot.location) === id) {
@@ -754,6 +761,48 @@ function pageFromPath(rawPath: string): AppPage {
     return "library";
   }
   return "not-found";
+}
+
+function isMobileTabDetailLocation(id: PageID, location: string) {
+  try {
+    const parsed = new URL(location, "https://kikoto.invalid");
+    const pathname = parsed.pathname.length > 1 ? parsed.pathname.replace(/\/+$/, "") : parsed.pathname;
+    const listLocation = `${pathname}${parsed.search}`;
+    if (id === "library") {
+      return pageFromPath(pathname) === "library" && normalizeLibraryBrowseLocation(listLocation) === null;
+    }
+    if (id === "circles") return /^\/circles\/[^/]+(?:\/series(?:\/[^/]+)?)?$/i.test(pathname);
+    if (id === "voice-actors") return /^\/voices\/\d+$/i.test(pathname);
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function navigateToMobileTabHome(id: PageID, storageScope: string) {
+  if (id === "library") {
+    navigateToWorkspaceUp({
+      mobile: true,
+      fallbackLocation: readLastLibraryLocation(storageScope) ?? "/",
+      isWorkspaceListLocation: (location) => normalizeLibraryBrowseLocation(location) !== null,
+    });
+    return;
+  }
+  if (id === "circles") {
+    navigateToWorkspaceUp({
+      mobile: true,
+      fallbackLocation: readLastCircleListLocation(storageScope) ?? "/circles",
+      isWorkspaceListLocation: isCircleListLocation,
+    });
+    return;
+  }
+  if (id === "voice-actors") {
+    navigateToWorkspaceUp({
+      mobile: true,
+      fallbackLocation: readLastVoiceListLocation(storageScope) ?? "/voices",
+      isWorkspaceListLocation: isVoiceListLocation,
+    });
+  }
 }
 
 function pageFromSnapshotLocation(location: string): AppPage {
