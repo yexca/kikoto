@@ -610,6 +610,16 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     toast.success("Favorite list saved.");
   };
 
+  const openFavoriteListManager = () => {
+    setListEditor(null);
+    setListManagerOpen(true);
+  };
+
+  const closeFavoriteListManager = () => {
+    setListManagerOpen(false);
+    setListEditor((current) => (current === "new" ? null : current));
+  };
+
   const deleteFavoriteList = async () => {
     if (!deleteListTarget) return;
     try {
@@ -761,7 +771,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                 setPage(1);
               }}
               onToggleSelection={toggleSelectionMode}
-              onEditLists={() => setListManagerOpen(true)}
+              onEditLists={openFavoriteListManager}
             />
             <FavoriteDesktopStatusFilters
               value={statusFilter}
@@ -889,15 +899,17 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
               </div>
               <div ref={listActionsRef} className="relative shrink-0">
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="icon"
-                  className="h-11 w-11 md:h-9 md:w-9"
+                  className="group -m-1 h-11 w-11 hover:bg-transparent lg:m-0 lg:h-8 lg:w-8"
                   disabled={areFavoriteListsLoading}
                   onClick={() => setListActionsOpen((open) => !open)}
                   aria-label="Favorite list options"
                   title="Manage favorite lists"
                 >
-                  <MoreHorizontal className="h-4 w-4" />
+                  <span className="grid h-9 w-9 place-items-center rounded-[var(--control-radius)] border border-input bg-card transition-colors group-hover:bg-muted lg:h-8 lg:w-8">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </span>
                 </Button>
                 <AnchoredPopover
                   open={listActionsOpen}
@@ -915,11 +927,11 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                       }}
                     />
                     <FavoriteListAction
-                      icon={<Plus className="h-4 w-4" />}
-                      label="New list"
+                      icon={<Pencil className="h-4 w-4" />}
+                      label="Edit lists"
                       onClick={() => {
                         setListActionsOpen(false);
-                        setListEditor("new");
+                        openFavoriteListManager();
                       }}
                     />
                     {selectedList && (
@@ -1118,12 +1130,8 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
           ) : (
             <EmptyFavorites hasFilters={Boolean(hasActiveFilters)} onClearFilters={clearFilters} />
           )}
-          {listEditor && (
-            <FavoriteListEditor
-              list={listEditor === "new" ? null : listEditor}
-              onClose={() => setListEditor(null)}
-              onSave={saveFavoriteList}
-            />
+          {listEditor && listEditor !== "new" && !listManagerOpen && (
+            <FavoriteListEditor list={listEditor} onClose={() => setListEditor(null)} onSave={saveFavoriteList} />
           )}
           {deleteListTarget && (
             <ConfirmDeleteList
@@ -1136,11 +1144,9 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
             <FavoriteListManager
               markedList={markedList}
               lists={userFavoriteLists}
-              onClose={() => setListManagerOpen(false)}
-              onNew={() => {
-                setListManagerOpen(false);
-                setListEditor("new");
-              }}
+              adding={listEditor === "new"}
+              onClose={closeFavoriteListManager}
+              onNew={() => setListEditor("new")}
               onEdit={(list) => {
                 setListManagerOpen(false);
                 setListEditor(list);
@@ -1150,7 +1156,11 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                 setDeleteListTarget(list);
               }}
               onMove={(listID, direction) => void moveFavoriteListByID(listID, direction)}
-            />
+            >
+              {listEditor === "new" && (
+                <FavoriteListEditor list={null} inline onClose={() => setListEditor(null)} onSave={saveFavoriteList} />
+              )}
+            </FavoriteListManager>
           )}
         </>
       )}
@@ -1429,7 +1439,7 @@ function FavoriteDesktopListActions({
       <Button
         variant="outline"
         size="icon"
-        className="h-9 w-9"
+        className="h-8 w-8"
         onClick={() => setOpen((current) => !current)}
         aria-label="Favorite list options"
         title="Favorite list options"
@@ -1823,14 +1833,18 @@ function FavoriteListTab({
   return (
     <button
       type="button"
-      className={`inline-flex h-11 shrink-0 items-center gap-2 rounded-md border px-3 text-sm font-medium transition-colors md:h-9 ${active ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
+      className="group -my-1 inline-flex h-11 shrink-0 items-center rounded-md transition-[box-shadow,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[var(--press-scale)] motion-reduce:active:scale-100 lg:my-0 lg:h-8"
       aria-pressed={active}
       title={title ?? label}
       onClick={onClick}
     >
-      <ListMusic className="h-4 w-4" />
-      <span className="max-w-48 truncate">{label}</span>
-      <span className="text-xs tabular-nums opacity-80">{count}</span>
+      <span
+        className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-medium transition-colors lg:h-8 ${active ? "bg-primary text-primary-foreground" : "bg-card group-hover:bg-muted"}`}
+      >
+        <ListMusic className="h-4 w-4" />
+        <span className="max-w-48 truncate">{label}</span>
+        <span className="text-xs tabular-nums opacity-80">{count}</span>
+      </span>
     </button>
   );
 }
@@ -1839,7 +1853,7 @@ function FavoriteListTabSkeletons() {
   return (
     <>
       {Array.from({ length: 4 }, (_, index) => (
-        <FavoriteSkeletonLine key={index} className="h-11 w-28 shrink-0 md:h-9" />
+        <FavoriteSkeletonLine key={index} className="h-9 w-28 shrink-0 lg:h-8" />
       ))}
     </>
   );
@@ -2294,10 +2308,12 @@ function EmptyFavorites({ hasFilters, onClearFilters }: { hasFilters: boolean; o
 
 function FavoriteListEditor({
   list,
+  inline = false,
   onClose,
   onSave,
 }: {
   list: FavoriteList | null;
+  inline?: boolean;
   onClose: () => void;
   onSave: (payload: { name: string; description: string }) => Promise<void>;
 }) {
@@ -2318,48 +2334,54 @@ function FavoriteListEditor({
     }
   };
 
-  return (
+  const form = (
+    <form
+      className={inline ? "border-y py-4" : "w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl"}
+      onMouseDown={(event) => event.stopPropagation()}
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!isSaving && name.trim()) void save();
+      }}
+    >
+      <h3 className="text-base font-semibold">{list ? "Rename list" : "Add list"}</h3>
+      <div className="mt-4 space-y-3">
+        <label className="grid gap-1 text-sm">
+          <span className="text-xs font-medium text-muted-foreground">Name</span>
+          <input
+            className="h-9 rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            autoFocus
+          />
+        </label>
+        <label className="grid gap-1 text-sm">
+          <span className="text-xs font-medium text-muted-foreground">Description</span>
+          <input
+            className="h-9 rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </label>
+        {error && (
+          <div className="rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">{error}</div>
+        )}
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button size="sm" type="submit" disabled={isSaving || !name.trim()}>
+          {isSaving ? "Saving" : "Save"}
+        </Button>
+      </div>
+    </form>
+  );
+
+  return inline ? (
+    <div className="mt-4">{form}</div>
+  ) : (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
-      <form
-        className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl"
-        onMouseDown={(event) => event.stopPropagation()}
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!isSaving && name.trim()) void save();
-        }}
-      >
-        <h3 className="text-base font-semibold">{list ? "Rename list" : "New list"}</h3>
-        <div className="mt-4 space-y-3">
-          <label className="grid gap-1 text-sm">
-            <span className="text-xs font-medium text-muted-foreground">Name</span>
-            <input
-              className="h-9 rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              autoFocus
-            />
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="text-xs font-medium text-muted-foreground">Description</span>
-            <input
-              className="h-9 rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-            />
-          </label>
-          {error && (
-            <div className="rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">{error}</div>
-          )}
-        </div>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button size="sm" type="submit" disabled={isSaving || !name.trim()}>
-            {isSaving ? "Saving" : "Save"}
-          </Button>
-        </div>
-      </form>
+      {form}
     </div>
   );
 }
@@ -2399,6 +2421,8 @@ function ConfirmDeleteList({
 function FavoriteListManager({
   markedList,
   lists,
+  adding = false,
+  children,
   onClose,
   onNew,
   onEdit,
@@ -2407,6 +2431,8 @@ function FavoriteListManager({
 }: {
   markedList: FavoriteList | null;
   lists: FavoriteList[];
+  adding?: boolean;
+  children?: ReactNode;
   onClose: () => void;
   onNew: () => void;
   onEdit: (list: FavoriteList) => void;
@@ -2419,10 +2445,10 @@ function FavoriteListManager({
         role="dialog"
         aria-modal="true"
         aria-labelledby="favorite-list-manager-title"
-        className="w-full max-w-lg rounded-lg border bg-card p-4 shadow-xl"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-lg border bg-card p-4 shadow-xl"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex shrink-0 items-start justify-between gap-3">
           <div>
             <h2 id="favorite-list-manager-title" className="text-base font-semibold">
               Edit favorite lists
@@ -2433,7 +2459,8 @@ function FavoriteListManager({
             <X className="h-4 w-4" />
           </Button>
         </div>
-        <div className="mt-4 max-h-[min(24rem,60vh)] space-y-2 overflow-y-auto">
+        {children}
+        <div className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain">
           {markedList && (
             <div className="flex items-center gap-2 rounded-md border border-dashed bg-muted/30 px-3 py-2">
               <ListMusic className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -2501,11 +2528,13 @@ function FavoriteListManager({
             ))
           )}
         </div>
-        <div className="mt-4 flex justify-between gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={onNew}>
-            <Plus className="h-4 w-4" />
-            New list
-          </Button>
+        <div className={`mt-4 flex shrink-0 gap-2 ${adding ? "justify-end" : "justify-between"}`}>
+          {!adding && (
+            <Button type="button" variant="outline" size="sm" onClick={onNew}>
+              <Plus className="h-4 w-4" />
+              Add list
+            </Button>
+          )}
           <Button type="button" variant="outline" size="sm" onClick={onClose}>
             Done
           </Button>

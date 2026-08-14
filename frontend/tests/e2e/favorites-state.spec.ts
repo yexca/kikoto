@@ -218,6 +218,10 @@ test("desktop favorites keeps type and search left with work controls on the rig
   await expect(page.getByRole("button", { name: "Sort favorite works: Marked or added" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Columns: Auto" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Items per page: 24" })).toBeVisible();
+  const desktopListTab = page.getByRole("button", { name: /All Favorites/ });
+  const desktopListTabBox = await desktopListTab.boundingBox();
+  expect(desktopListTabBox).not.toBeNull();
+  expect(desktopListTabBox!.height).toBe(32);
   const searchBox = await search.boundingBox();
   const resourceBox = await resource.boundingBox();
   expect(searchBox).not.toBeNull();
@@ -231,8 +235,14 @@ test("desktop favorites keeps type and search left with work controls on the rig
 
   await page.getByRole("button", { name: "Favorite list options", exact: true }).click();
   await page.getByRole("menuitem", { name: "Edit lists", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Edit favorite lists" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Rename Study" })).toBeVisible();
+  const listManager = page.getByRole("dialog", { name: "Edit favorite lists" });
+  await expect(listManager).toBeVisible();
+  await expect(listManager.getByRole("button", { name: "Rename Study" })).toBeVisible();
+  await listManager.getByRole("button", { name: "Add list", exact: true }).click();
+  await expect(listManager.getByRole("heading", { name: "Add list" })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(1);
+  await listManager.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(listManager.getByRole("heading", { name: "Add list" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Close favorite list editor" }).click();
   await type.click();
@@ -267,6 +277,39 @@ test("mobile favorites collapses type and search into icon controls", async ({ p
   await expect(page.getByRole("button", { name: "Items per page: 24" })).toBeVisible();
   await expect(page.getByPlaceholder("Search title, code, circle, tag, or creator")).not.toBeVisible();
 
+  const mobileListTab = page.getByRole("button", { name: /All Favorites/ });
+  const mobileListTabBox = await mobileListTab.boundingBox();
+  const mobileListTabSurfaceBox = await mobileListTab.locator(":scope > span").boundingBox();
+  expect(mobileListTabBox).not.toBeNull();
+  expect(mobileListTabSurfaceBox).not.toBeNull();
+  expect(mobileListTabBox!.height).toBe(44);
+  expect(mobileListTabSurfaceBox!.height).toBe(36);
+
+  const mobileListOptions = page.getByRole("button", { name: "Favorite list options", exact: true });
+  const mobileListOptionsBox = await mobileListOptions.boundingBox();
+  const mobileListOptionsSurfaceBox = await mobileListOptions.locator(":scope > span").boundingBox();
+  expect(mobileListOptionsBox).not.toBeNull();
+  expect(mobileListOptionsSurfaceBox).not.toBeNull();
+  expect(mobileListOptionsBox!.height).toBe(44);
+  expect(mobileListOptionsSurfaceBox!.height).toBe(36);
+  await mobileListOptions.click();
+  await expect(page.getByRole("menuitem", { name: "Edit lists", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "New list", exact: true })).toHaveCount(0);
+  await page.getByRole("menuitem", { name: "Edit lists", exact: true }).click();
+  const mobileListManager = page.getByRole("dialog", { name: "Edit favorite lists" });
+  await expect(mobileListManager).toBeVisible();
+  await mobileListManager.getByRole("button", { name: "Add list", exact: true }).click();
+  await expect(mobileListManager.getByRole("heading", { name: "Add list" })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(1);
+  const mobileListManagerBox = await mobileListManager.boundingBox();
+  const mobileViewport = page.viewportSize();
+  expect(mobileListManagerBox).not.toBeNull();
+  expect(mobileViewport).not.toBeNull();
+  expect(mobileListManagerBox!.y).toBeGreaterThanOrEqual(0);
+  expect(mobileListManagerBox!.y + mobileListManagerBox!.height).toBeLessThanOrEqual(mobileViewport!.height);
+  await mobileListManager.getByRole("button", { name: "Cancel", exact: true }).click();
+  await mobileListManager.getByRole("button", { name: "Done", exact: true }).click();
+
   const topPreviousPage = page.getByRole("button", { name: "Previous page" }).first();
   await expect(topPreviousPage).toBeVisible();
   const topPreviousPageBox = await topPreviousPage.boundingBox();
@@ -300,7 +343,7 @@ test("favorites detail uses Library Up navigation while the Favorites tab restor
   await page.goto(
     "/favorites?entity=works&status=listening&availability=local&list=2&page=2&pageSize=24&sort=sales&direction=asc&seed=314159",
   );
-  await expect(page.getByRole("button", { name: /Study/ })).toHaveAttribute("class", /bg-primary/);
+  await expect(page.getByRole("button", { name: /Study/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Sort favorite works: Sales" }).click();
   await expect(page.getByRole("menuitemradio", { name: "Sales" })).toBeVisible();
   await page.keyboard.press("Escape");
@@ -368,7 +411,7 @@ test("switching favorite lists keeps the entire playlist row stable while works 
   await expect(playlistButtons[0]).toBeVisible();
   await expect(page.getByText("Favorite work 1", { exact: true })).toBeVisible();
   await playlistButtons[3].click();
-  await expect(page.getByRole("menuitem", { name: "New list", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Edit lists", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   // Normalize horizontal scroll before measuring; click() may reveal a partially clipped tab.
   await playlistButtons[2].scrollIntoViewIfNeeded();
@@ -377,7 +420,7 @@ test("switching favorite lists keeps the entire playlist row stable while works 
 
   await playlistButtons[2].click();
   await listRequestStarted;
-  await expect(playlistButtons[2]).toHaveClass(/bg-primary/);
+  await expect(playlistButtons[2]).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("Favorite work 1", { exact: true })).toBeVisible();
   await expect(page.getByRole("status", { name: "Loading favorite works" })).toHaveCount(0);
   for (const button of playlistButtons) await expect(button).toBeVisible();
