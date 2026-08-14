@@ -31,7 +31,7 @@ export function MobileSheet({
 
   return createPortal(
     <div
-      className="visual-viewport-layer z-[70] flex items-end bg-foreground/25 p-2 backdrop-blur-sm sm:p-4"
+      className="visual-viewport-layer z-[70] flex items-end bg-transparent p-2 sm:p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onOpenChange(false);
       }}

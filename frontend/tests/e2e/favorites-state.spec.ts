@@ -337,6 +337,16 @@ test("mobile favorites collapses type and search into icon controls", async ({ p
   await expect(page.getByPlaceholder("Search title, code, circle, tag, or creator")).not.toBeVisible();
 
   const mobileListTab = page.getByRole("button", { name: /All Favorites/ });
+  const mobileListScroller = page.getByRole("region", { name: "Favorite list tabs" });
+  await expect(mobileListScroller).toBeVisible();
+  await expect
+    .poll(() =>
+      mobileListScroller.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { overflowX: style.overflowX, overflowY: style.overflowY };
+      }),
+    )
+    .toEqual({ overflowX: "auto", overflowY: "hidden" });
   const mobileListTabBox = await mobileListTab.boundingBox();
   const mobileListTabSurfaceBox = await mobileListTab.locator(":scope > span").boundingBox();
   expect(mobileListTabBox).not.toBeNull();

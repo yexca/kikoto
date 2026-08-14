@@ -691,6 +691,11 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   await page.getByRole("button", { name: "Open advanced refresh actions" }).click();
   const advancedDialog = page.getByRole("dialog", { name: "Advanced refresh" });
   await expect(advancedDialog).toBeVisible();
+  const advancedLayerStyles = await advancedDialog.locator("..").evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { backgroundColor: style.backgroundColor, backdropFilter: style.backdropFilter };
+  });
+  expect(advancedLayerStyles).toEqual({ backgroundColor: "rgba(0, 0, 0, 0)", backdropFilter: "none" });
   await advancedDialog.locator("summary").click();
   await expect(advancedDialog.getByPlaceholder("Add alias or search duplicate voice actor")).toBeVisible();
   await expect(advancedDialog.getByRole("checkbox", { name: "Refresh Example Remote" })).toBeChecked();
@@ -779,16 +784,22 @@ test("circle detail keeps availability and primary actions compact on mobile", a
   await expect(actions.getByText("Refresh circle", { exact: true })).toBeHidden();
   await expect(actions.getByText("Favorite", { exact: true })).toBeHidden();
   await expect(actions.getByText("Advanced", { exact: true })).toBeHidden();
-  await expect(actions.getByText("DLsite", { exact: true })).toBeHidden();
-  const dlsiteLink = summary.getByRole("link", { name: "Open DLsite" });
+  const dlsiteLink = summary.getByRole("link", { name: "Open DLsite for RG09999" });
   await expect(dlsiteLink).toBeVisible();
-  const titleAndLink = await Promise.all([
-    summary.getByRole("heading", { name: "Example Circle", exact: true }).boundingBox(),
+  await expect(dlsiteLink).toContainText("RG09999");
+  await expect(dlsiteLink).toHaveAttribute(
+    "href",
+    "https://www.dlsite.com/maniax/circle/profile/=/maker_id/RG09999.html",
+  );
+  await expect(dlsiteLink).toHaveAttribute("target", "_blank");
+  await expect(dlsiteLink).toHaveAttribute("rel", "noreferrer");
+  const codeAndTitle = await Promise.all([
     dlsiteLink.boundingBox(),
+    summary.getByRole("heading", { name: "Example Circle", exact: true }).boundingBox(),
   ]);
-  expect(titleAndLink[0]).not.toBeNull();
-  expect(titleAndLink[1]).not.toBeNull();
-  expect(Math.abs(titleAndLink[0]!.y - titleAndLink[1]!.y)).toBeLessThanOrEqual(8);
+  expect(codeAndTitle[0]).not.toBeNull();
+  expect(codeAndTitle[1]).not.toBeNull();
+  expect(codeAndTitle[0]!.y).toBeLessThan(codeAndTitle[1]!.y);
   await expect(actions.getByRole("button", { name: "Open advanced refresh actions" })).toHaveAttribute(
     "aria-expanded",
     "false",
@@ -832,6 +843,11 @@ test("mobile circle detail keeps the work surface visible and moves secondary co
   const refreshDialog = page.getByRole("dialog", { name: "Advanced refresh" });
   await expect(refreshDialog).toBeVisible();
   await expect(refreshDialog.getByRole("button", { name: "Incremental" }).first()).toBeVisible();
+  const refreshLayerStyles = await refreshDialog.locator("..").evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { backgroundColor: style.backgroundColor, backdropFilter: style.backdropFilter };
+  });
+  expect(refreshLayerStyles).toEqual({ backgroundColor: "rgba(0, 0, 0, 0)", backdropFilter: "none" });
   const refreshDialogBox = await refreshDialog.boundingBox();
   expect(refreshDialogBox).not.toBeNull();
   expect(refreshDialogBox!.y + refreshDialogBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
@@ -917,7 +933,10 @@ test("desktop circle detail keeps a full-width compact summary and source-aware 
   await expect(actions.getByText("Retry metadata", { exact: true })).toBeVisible();
   await expect(actions.getByText("Refresh circle", { exact: true })).toBeVisible();
   await expect(actions.getByText("Advanced", { exact: true })).toBeVisible();
-  await expect(actions.getByText("DLsite", { exact: true })).toBeVisible();
+  await expect(actions.getByText("DLsite", { exact: true })).toHaveCount(0);
+  const dlsiteLink = summary.getByRole("link", { name: "Open DLsite for RG09999" });
+  await expect(dlsiteLink).toBeVisible();
+  await expect(dlsiteLink).toContainText("RG09999");
   const actionOrder = await actions
     .locator(":scope > :is(button, a)")
     .evaluateAll((elements) => elements.map((element) => element.getAttribute("aria-label")));
@@ -926,7 +945,6 @@ test("desktop circle detail keeps a full-width compact summary and source-aware 
     "Retry circle metadata",
     "Refresh circle",
     "Open advanced refresh actions",
-    "Open DLsite",
   ]);
 
   await page.getByLabel("Catalog availability filter").selectOption("unavailable");

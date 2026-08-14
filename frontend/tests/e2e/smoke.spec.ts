@@ -44,6 +44,13 @@ test("@smoke renders the anonymous library shell", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.locator("footer").getByRole("button", { name: "Library", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open appearance settings" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Account menu" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  const accountSheet = page.getByRole("dialog", { name: "Account" });
+  await expect(accountSheet).toBeVisible();
+  await expect(accountSheet.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
 });
 
 test("@smoke opens About without an update icon when current", async ({ page }) => {

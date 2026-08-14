@@ -970,38 +970,59 @@ test("remote popular collection requires an explicit source and queues configure
   await expect(page.getByText(/run #41 queued/)).toBeVisible();
 });
 
-test("mobile header keeps actions in bounds and exposes appearance and activity", async ({ page }) => {
+test("mobile header keeps actions in bounds and separates appearance from account actions", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await mockWorkflows(page);
   await page.goto("/workflows");
 
   await expect(page.getByRole("button", { name: "Quick actions" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open menu" })).toBeVisible();
-  await page.getByRole("button", { name: "Open menu" }).click();
-  const menu = page.getByRole("dialog", { name: "Menu" });
-  await expect(menu).toBeVisible();
-  expect(await menu.locator("..").evaluate((element) => getComputedStyle(element).zIndex)).toBe("70");
-  await expect(menu.getByRole("button", { name: "Activity", exact: true })).toBeVisible();
-  await expect(page.getByText("Appearance", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open appearance settings" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open menu" })).toHaveCount(0);
 
-  const modeGroup = page.getByRole("group", { name: "Mode" });
+  const headerActions = page.getByRole("button", { name: /^(Quick actions|Open appearance settings|Account menu)$/ });
+  const actionMetrics = await headerActions.evaluateAll((elements) =>
+    elements.map((element) => {
+      const rect = element.getBoundingClientRect();
+      return { height: rect.height, right: rect.right };
+    }),
+  );
+  expect(actionMetrics.every((metric) => metric.height >= 44 && metric.right <= page.viewportSize()!.width)).toBe(true);
+
+  await page.getByRole("button", { name: "Account menu" }).click();
+  const accountSheet = page.getByRole("dialog", { name: "Account" });
+  await expect(accountSheet).toBeVisible();
+  expect(await accountSheet.locator("..").evaluate((element) => getComputedStyle(element).zIndex)).toBe("70");
+  await expect(accountSheet.getByRole("button", { name: "Activity", exact: true })).toBeVisible();
+  await expect(accountSheet.getByText("Appearance", { exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "Open appearance settings" }).click();
+  const appearanceSheet = page.getByRole("dialog", { name: "Appearance" });
+  await expect(appearanceSheet).toBeVisible();
+  await expect(appearanceSheet.getByText("Mode, style, and color", { exact: true })).toBeVisible();
+  await expect(appearanceSheet.getByRole("button", { name: "Activity", exact: true })).toHaveCount(0);
+
+  const modeGroup = appearanceSheet.getByRole("group", { name: "Mode" });
   const modeBox = await modeGroup.boundingBox();
   expect(modeBox).not.toBeNull();
   expect(modeBox!.x).toBeGreaterThanOrEqual(0);
   expect(modeBox!.x + modeBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 
-  await page.getByRole("button", { name: "dark" }).click();
+  await appearanceSheet.getByRole("button", { name: "dark" }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
-  await page.getByRole("button", { name: "Open menu" }).click();
-  await page.getByRole("button", { name: "Apple", exact: true }).click();
+  await appearanceSheet.getByRole("button", { name: "Apple", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");
-  await page.getByRole("button", { name: "Cobalt", exact: true }).click();
+  await appearanceSheet.getByRole("button", { name: "Cobalt", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme-palette", "cobalt");
-  const colorGroupBox = await page.getByRole("group", { name: "Color" }).boundingBox();
+  const colorGroupBox = await appearanceSheet.getByRole("group", { name: "Color" }).boundingBox();
   expect(colorGroupBox).not.toBeNull();
   expect(colorGroupBox!.x).toBeGreaterThanOrEqual(0);
   expect(colorGroupBox!.x + colorGroupBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   expect(colorGroupBox!.y + colorGroupBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
-  await page.getByRole("button", { name: "Activity", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await page.getByRole("dialog", { name: "Account" }).getByRole("button", { name: "Activity", exact: true }).click();
   await expect(page).toHaveURL(/\/activity$/);
 });
 

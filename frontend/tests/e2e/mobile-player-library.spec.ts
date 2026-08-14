@@ -2063,7 +2063,7 @@ test("anonymous quick marks show an actionable toast above protected mobile cont
   const protectedBottom = Math.max(...protectedBoxes.filter((rect) => rect.bottom > 0).map((rect) => rect.bottom));
   expect(toastBox!.y).toBeGreaterThanOrEqual(protectedBottom + 10);
 
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.locator('[aria-live="polite"]').getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Sign in to Kikoto" })).toBeVisible();
 });
 
@@ -2861,7 +2861,7 @@ test("failed sources fall back automatically and the sleep timer survives a relo
   const customMinutes = page.getByRole("spinbutton", { name: "Custom sleep minutes" });
   await expect(customMinutes).toBeVisible();
   await customMinutes.fill("75");
-  await page.getByRole("button", { name: "Set" }).click();
+  await page.getByRole("button", { name: "Set", exact: true }).click();
   await expect
     .poll(() =>
       page.evaluate(() => {

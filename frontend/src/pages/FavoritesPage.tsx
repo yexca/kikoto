@@ -855,7 +855,11 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
         <>
           <div hidden={!mobileNavigationLayout} className={mobileNavigationLayout ? "space-y-2" : "hidden"}>
             <div className="flex items-center gap-2 pb-1">
-              <div className="min-w-0 flex-1 overflow-x-auto">
+              <div
+                className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden overscroll-x-contain"
+                role="region"
+                aria-label="Favorite list tabs"
+              >
                 <div className="flex w-max min-w-full gap-2" role="group" aria-label="Favorite lists">
                   {areFavoriteListsLoading ? (
                     <FavoriteListTabSkeletons />

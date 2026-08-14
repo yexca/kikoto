@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -780,23 +780,26 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">{circle.externalId}</Badge>
+                  <a
+                    href={dlsiteMakerURL(circle.externalId)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={badgeVariants({
+                      variant: "outline",
+                      className:
+                        "w-fit gap-1.5 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    })}
+                    aria-label={`Open DLsite for ${circle.externalId}`}
+                    title="Open DLsite"
+                  >
+                    <span>{circle.externalId}</span>
+                    <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  </a>
                   <CatalogSyncBadge state={circle.syncState} />
                   {circle.favorite && <Badge variant="secondary">Favorite</Badge>}
                 </div>
                 <div className="mt-3 flex min-w-0 items-center gap-1.5">
                   <h2 className="min-w-0 flex-1 truncate text-2xl font-semibold lg:text-3xl">{circle.displayName}</h2>
-                  <Button variant="outline" size="icon" className="shrink-0 lg:hidden" asChild>
-                    <a
-                      href={dlsiteMakerURL(circle.externalId)}
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label="Open DLsite"
-                      title="Open DLsite"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
-                  </Button>
                 </div>
                 <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5">
                   <Badge variant={availableWorkCount > 0 ? "success" : "warning"}>Available {availableWorkCount}</Badge>
@@ -861,23 +864,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                 >
                   <MoreHorizontal className="h-4 w-4" />
                   <span className="hidden lg:inline">Advanced</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="hidden lg:flex lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-                  asChild
-                >
-                  <a
-                    href={dlsiteMakerURL(circle.externalId)}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label="Open DLsite"
-                    title="Open DLsite"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    <span className="hidden lg:inline">DLsite</span>
-                  </a>
                 </Button>
               </div>
             </div>
