@@ -16,9 +16,9 @@ Playback is handled by a global browser audio player.
   without a positive unfinished cursor.
 - Playback continues across navigation.
 - Browser queue persistence is isolated by server identity and authenticated
-  user (or anonymous principal). Unscoped v1 queue/progress state is discarded
-  because it has no reliable owner; Dock mode and Mini position remain shared
-  device preferences.
+  user (or the anonymous principal when instance access is enabled). Unscoped
+  v1 queue/progress state is discarded because it has no reliable owner; Dock
+  mode and Mini position remain shared device preferences.
 - One durable cursor is saved per user and canonical logical work family. It
   references the current edition/media item, source/location context, position,
   duration, completion state, and timestamp. Rapid updates are coalesced and

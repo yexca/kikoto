@@ -36,6 +36,10 @@ func main() {
 	}
 
 	server := httpapi.NewServer(db, cfg)
+	if err := server.LoadAccessPolicy(ctx); err != nil {
+		slog.Error("load access policy", "error", err)
+		os.Exit(1)
+	}
 	if !cfg.IsDemo() {
 		if err := server.EnsureLocalSource(ctx); err != nil {
 			slog.Error("initialize local source", "error", err)

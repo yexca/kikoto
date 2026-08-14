@@ -33,8 +33,8 @@ The `/config/kikoto.db` SQLite database may contain:
 The `/cache` mount may contain derived covers, media cache entries, playback
 derivatives, and other rebuildable assets. The `/data` mount contains operator
 media plus durable Fetch staging, rollback, and review directories. Treat all
-three mounts as private even when a subset of Library data is anonymously
-readable through the application.
+three mounts as private even when an operator enables anonymous access to a
+subset of Library data through the application.
 
 Kikoto does not currently provide application-level encryption at rest. Host
 filesystem permissions, disk encryption, backup controls, and container access
@@ -53,10 +53,11 @@ ends and are exported only when the user chooses to copy them.
 
 ## Anonymous Library Access
 
-In production mode, anonymous users may browse Library metadata and play media
-exposed by the instance. Authentication protects personal state, configuration,
-and mutations; it is not a privacy boundary for the complete Library. Restrict
-network access when the collection itself must remain private.
+Production mode requires authentication by default. A super administrator can
+enable anonymous Library browsing and media playback under Maintenance. While
+that setting is enabled, authentication still protects personal state,
+configuration, and mutations, but it is not a privacy boundary for the complete
+Library. Restrict network access when the collection itself must remain private.
 
 ## Outbound Requests
 

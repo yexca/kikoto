@@ -8,8 +8,10 @@ sources, media access, filesystems, or outbound networking.
 
 ## Trust Boundaries
 
-- Anonymous Library browsing and playback are intentional production behavior.
-  Do not describe them as an authorization bypass.
+- Production requires authentication by default. Anonymous Library browsing and
+  playback are intentional only while a super administrator has enabled the
+  instance setting; do not describe that configured read access as an
+  authorization bypass.
 - Personal state, administrative configuration, and mutations require the
   appropriate authenticated permission.
 - Development mode is trusted-local only. Demo mode is a separate, fail-closed

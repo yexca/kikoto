@@ -142,7 +142,7 @@ export function SettingsPage({
           className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-muted-foreground"
           role="status"
         >
-          Demo mode is read-only.
+          Demo mode keeps account settings read-only.
         </div>
       )}
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)]">
@@ -250,7 +250,7 @@ export function SettingsPage({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
-            <fieldset className="space-y-2" disabled={readOnly}>
+            <fieldset className="space-y-2">
               <legend className="text-sm font-medium">Display mode</legend>
               <div
                 className="inline-flex max-w-full gap-1 overflow-x-auto rounded-md border bg-muted/40 p-1"
@@ -276,11 +276,11 @@ export function SettingsPage({
                 ))}
               </div>
             </fieldset>
-            <fieldset className="space-y-2" disabled={readOnly}>
+            <fieldset className="space-y-2">
               <legend className="text-sm font-medium">Theme style</legend>
               <ThemePresetPicker value={themePreset} onChange={updatePreset} palette={themePalette} />
             </fieldset>
-            <fieldset className="space-y-2" disabled={readOnly}>
+            <fieldset className="space-y-2">
               <legend className="text-sm font-medium">Color</legend>
               <ThemePalettePicker preset={themePreset} value={themePalette} onChange={updatePalette} />
             </fieldset>

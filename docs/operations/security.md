@@ -1,9 +1,11 @@
 # Security
 
-Kikoto is a personal media server with anonymous read-only browsing and
-playback by design. Authentication protects personal state, configuration, and
-mutating operations; it does not make the complete Library or its media private.
-Use network access controls when an instance must be private.
+Kikoto is a personal media server that requires sign-in by default. A super
+administrator can deliberately expose read-only Library browsing and playback
+to anonymous clients. Authentication always protects personal state,
+configuration, and mutating operations; once anonymous access is enabled, it no
+longer makes the complete Library or its media private. Use network access
+controls when an instance must be private.
 
 For privately reporting a vulnerability, see the repository
 [Security Policy](../../SECURITY.md).
@@ -24,8 +26,8 @@ firewall or an authentication mechanism for non-browser clients.
 
 ## Runtime Modes
 
-- `production` uses normal session authentication and requires an explicit
-  non-default `KIKOTO_ROOT_PASSWORD`.
+- `production` uses normal session authentication, requires an explicit
+  non-default `KIKOTO_ROOT_PASSWORD`, and starts with anonymous access disabled.
 - `development` authenticates every request as the configured root user. Use it
   only on a trusted local development machine.
 - `demo` is an isolated read-only showcase. It exposes sanitized read surfaces,
@@ -42,6 +44,19 @@ cover assets, so they must contain only sanitized Demo data.
 Use a long, unique root password. The configured root password is authoritative:
 changing `KIKOTO_ROOT_PASSWORD` and restarting Kikoto replaces the stored root
 credential and revokes existing root sessions.
+
+A super administrator can change **Anonymous access** under
+`Maintenance -> Access` in production or development. The setting is stored in
+SQLite and recorded in the audit log. In production it takes effect without a
+restart. When disabled, unauthenticated clients can reach only health,
+authentication bootstrap, and runtime-setting endpoints before the frontend
+presents the sign-in page. That unauthenticated runtime response contains only
+the deployment mode and access-policy state, not operational settings. When enabled,
+unauthenticated `GET` and `HEAD` requests may browse and play Library content;
+state-changing methods still require an authenticated account and permission.
+Development exposes the same control for production-feature debugging, but its
+automatic root identity means every development request remains authenticated.
+Demo mode neither exposes nor uses the setting.
 
 Browser sessions use HttpOnly, SameSite cookies. When HTTPS terminates at a
 reverse proxy, set:

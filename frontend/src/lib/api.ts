@@ -450,6 +450,7 @@ export type LibrarySource = {
 };
 
 export type RuntimeSettings = {
+  anonymousAccessEnabled: boolean;
   cacheEnabled: boolean;
   mode: "development" | "production" | "demo";
   demoMode: boolean;
@@ -466,6 +467,7 @@ export type AppUpdate = {
 };
 
 export type AppSettings = {
+  anonymousAccessEnabled: boolean;
   localScanDepth: number;
   cacheEnabled: boolean;
   cacheLimitGb: number;
@@ -1095,6 +1097,10 @@ export type ManagedUser = {
 };
 
 export type AuthState = { authenticated: false } | { authenticated: true; user: CurrentUser; sessionToken?: string };
+
+export type AccessPolicy = {
+  anonymousAccessEnabled: boolean;
+};
 
 export type HealthStatus = {
   status: string;
@@ -2065,6 +2071,7 @@ export const api = {
   ) => patchJSONBody<MediaProgressUpdate>(`/api/media-items/${id}/progress`, payload),
   listFileSources: () => getJSON<FileSource[]>("/api/file-sources"),
   getSettings: () => getJSON<AppSettings>("/api/settings"),
+  updateAccessPolicy: (payload: AccessPolicy) => patchJSONBody<AccessPolicy>("/api/access-policy", payload),
   updateSettings: (payload: {
     localScanDepth?: number;
     cacheEnabled?: boolean;

@@ -137,6 +137,12 @@ export function applyThemePalette(palette: ThemePalette) {
   delete document.documentElement.dataset.themeAccent;
 }
 
+export function initializeStoredTheme() {
+  applyThemePreset(getStoredThemePreset());
+  applyThemePalette(getStoredThemePalette());
+  applyThemeMode(getStoredThemeMode());
+}
+
 export function watchSystemTheme(onChange: () => void) {
   const media = window.matchMedia(darkModeQuery);
   media.addEventListener("change", onChange);

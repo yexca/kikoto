@@ -95,6 +95,11 @@ docker compose up -d
 
 Open <http://127.0.0.1:7655>.
 
+Sign in with the configured root username (default `root`) and
+`KIKOTO_ROOT_PASSWORD`. Production instances require sign-in by default. A
+super administrator can optionally enable read-only anonymous Library browsing
+and playback under `Maintenance -> Access`.
+
 The production Compose stack serves the web application and API on the same
 host port. Port `7659` is exposed separately only by the development stack.
 
@@ -268,10 +273,13 @@ product behavior.
 
 ## Security and Privacy
 
-Anonymous Library browsing and playback are intentional production behavior.
-Use network controls when the collection itself must remain private. Report a
-suspected vulnerability through the private process in [SECURITY.md](SECURITY.md)
-and review [PRIVACY.md](PRIVACY.md) before sharing logs or diagnostics.
+Production instances require sign-in by default. When a super administrator
+enables anonymous access, Library browsing and playback become intentionally
+public to anyone who can reach the instance; mutations and personal or
+administrative state still require authentication. Use network controls when
+the collection itself must remain private. Report a suspected vulnerability
+through the private process in [SECURITY.md](SECURITY.md) and review
+[PRIVACY.md](PRIVACY.md) before sharing logs or diagnostics.
 
 ## Acknowledgements
 

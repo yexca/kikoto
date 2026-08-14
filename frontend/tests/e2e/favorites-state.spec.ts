@@ -155,7 +155,15 @@ async function mockFavorites(
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
-      await route.fulfill({ json: { cacheEnabled: false, directoryRoutingRules: [] } });
+      await route.fulfill({
+        json: {
+          mode: "development",
+          demoMode: false,
+          anonymousAccessEnabled: false,
+          cacheEnabled: false,
+          directoryRoutingRules: [],
+        },
+      });
       return;
     }
     if (url.pathname === "/api/works") {

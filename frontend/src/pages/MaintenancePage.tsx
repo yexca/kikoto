@@ -11,6 +11,8 @@ import {
   Gauge,
   GripVertical,
   HardDrive,
+  LockKeyhole,
+  Loader2,
   PlayCircle,
   Plus,
   RefreshCw,
@@ -79,7 +81,16 @@ const emptyRemoteSource = {
 } satisfies FileSource;
 
 type MaintenanceTab =
-  "overview" | "routing" | "recommendation" | "library" | "unlinked" | "cache" | "metadata" | "users" | "paths";
+  | "overview"
+  | "routing"
+  | "recommendation"
+  | "library"
+  | "unlinked"
+  | "cache"
+  | "metadata"
+  | "security"
+  | "users"
+  | "paths";
 
 function maintenanceContentWidthClass(tab: MaintenanceTab) {
   return tab === "overview" || tab === "users" || tab === "unlinked" ? "w-full" : "w-full max-w-4xl";
@@ -90,18 +101,26 @@ export function MaintenancePage({
   canManageUsers,
   currentUserId,
   isSuperAdmin,
+  canManageAccessPolicy,
   readOnly = false,
+  onAccessPolicyUpdated,
 }: {
   canManageSources: boolean;
   canManageUsers: boolean;
   currentUserId: number;
   isSuperAdmin: boolean;
+  canManageAccessPolicy: boolean;
   readOnly?: boolean;
+  onAccessPolicyUpdated: () => Promise<void>;
 }) {
   const toast = useToast();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [isSettingsLoading, setIsSettingsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<MaintenanceTab>(() => maintenanceTabFromLocation(canManageUsers));
+  const [activeTab, setActiveTab] = useState<MaintenanceTab>(() =>
+    maintenanceTabFromLocation(canManageUsers, canManageAccessPolicy),
+  );
+  const [anonymousAccessEnabled, setAnonymousAccessEnabled] = useState(false);
+  const [isAccessPolicySaving, setIsAccessPolicySaving] = useState(false);
   const [localScanDepth, setLocalScanDepth] = useState(3);
   const [cacheEnabled, setCacheEnabled] = useState(false);
   const [cacheLimitGb, setCacheLimitGb] = useState(20);
@@ -137,6 +156,7 @@ export function MaintenancePage({
       .getSettings()
       .then((next) => {
         setSettings(next);
+        setAnonymousAccessEnabled(next.anonymousAccessEnabled);
         setLocalScanDepth(next.localScanDepth);
         setCacheEnabled(next.cacheEnabled);
         setCacheLimitGb(next.cacheLimitGb);
@@ -177,7 +197,8 @@ export function MaintenancePage({
 
   useEffect(() => {
     if (activeTab === "users" && !canManageUsers) setActiveTab("overview");
-  }, [activeTab, canManageUsers]);
+    if (activeTab === "security" && !canManageAccessPolicy) setActiveTab("overview");
+  }, [activeTab, canManageAccessPolicy, canManageUsers]);
 
   useEffect(() => {
     if (openedLinkedSource.current || readOnly || !settings) return;
@@ -233,6 +254,27 @@ export function MaintenancePage({
     );
     setRecommendationConfig(next.recommendationConfig);
     toast.success("Settings saved.");
+  };
+
+  const saveAccessPolicy = async () => {
+    if (readOnly || !canManageAccessPolicy) return;
+    setIsAccessPolicySaving(true);
+    try {
+      const next = await api.updateAccessPolicy({ anonymousAccessEnabled });
+      setSettings((current) => (current ? { ...current, ...next } : current));
+      setAnonymousAccessEnabled(next.anonymousAccessEnabled);
+      try {
+        await onAccessPolicyUpdated();
+      } catch {
+        toast.warning("Access policy saved, but runtime status could not be refreshed.");
+        return;
+      }
+      toast.success("Access policy saved.");
+    } catch (error) {
+      toast.notify(toastFromError(error, "Access policy could not be saved."));
+    } finally {
+      setIsAccessPolicySaving(false);
+    }
   };
 
   const openCreateSource = () => {
@@ -444,6 +486,15 @@ export function MaintenancePage({
             Users
           </SettingsTabButton>
         )}
+        {canManageAccessPolicy && (
+          <SettingsTabButton
+            active={activeTab === "security"}
+            onClick={() => selectTab("security")}
+            icon={<LockKeyhole className="h-4 w-4" />}
+          >
+            Access
+          </SettingsTabButton>
+        )}
         <SettingsTabButton
           active={activeTab === "paths"}
           onClick={() => selectTab("paths")}
@@ -476,6 +527,8 @@ export function MaintenancePage({
             catalogFreshnessDays={catalogFreshnessDays}
             onSelect={selectTab}
             canManageUsers={canManageUsers}
+            canManageAccessPolicy={canManageAccessPolicy}
+            anonymousAccessEnabled={anonymousAccessEnabled}
           />
         ) : activeTab === "routing" ? (
           <PlaybackSettings
@@ -542,6 +595,14 @@ export function MaintenancePage({
             onLanguagesChange={setDlsiteMetadataLanguages}
             onSave={saveRuntimeSettings}
           />
+        ) : activeTab === "security" ? (
+          <AccessPolicySettings
+            anonymousAccessEnabled={anonymousAccessEnabled}
+            savedAnonymousAccessEnabled={settings?.anonymousAccessEnabled ?? false}
+            saving={isAccessPolicySaving}
+            onAnonymousAccessEnabledChange={setAnonymousAccessEnabled}
+            onSave={saveAccessPolicy}
+          />
         ) : activeTab === "users" ? (
           <UsersPage currentUserId={currentUserId} isSuperAdmin={isSuperAdmin} readOnly={readOnly} embedded />
         ) : (
@@ -580,6 +641,8 @@ function SettingsOverview({
   catalogFreshnessDays,
   onSelect,
   canManageUsers,
+  canManageAccessPolicy,
+  anonymousAccessEnabled,
 }: {
   remoteSources: FileSource[];
   localSource: FileSource | null;
@@ -589,6 +652,8 @@ function SettingsOverview({
   catalogFreshnessDays: number;
   onSelect: (tab: MaintenanceTab) => void;
   canManageUsers: boolean;
+  canManageAccessPolicy: boolean;
+  anonymousAccessEnabled: boolean;
 }) {
   const enabledSources = remoteSources.filter((source) => source.enabled).length;
   const warningSources = remoteSources.filter((source) =>
@@ -662,7 +727,63 @@ function SettingsOverview({
           onClick={() => onSelect("users")}
         />
       )}
+      {canManageAccessPolicy && (
+        <SettingsHomeCard
+          icon={<LockKeyhole className="h-5 w-5" />}
+          title="Access"
+          description="Control unauthenticated access to library and playback surfaces."
+          status={anonymousAccessEnabled ? "Anonymous access on" : "Sign-in required"}
+          chips={["Authentication", "Library", "Playback"]}
+          onClick={() => onSelect("security")}
+        />
+      )}
     </div>
+  );
+}
+
+function AccessPolicySettings({
+  anonymousAccessEnabled,
+  savedAnonymousAccessEnabled,
+  saving,
+  onAnonymousAccessEnabledChange,
+  onSave,
+}: {
+  anonymousAccessEnabled: boolean;
+  savedAnonymousAccessEnabled: boolean;
+  saving: boolean;
+  onAnonymousAccessEnabledChange: (enabled: boolean) => void;
+  onSave: () => Promise<void>;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <LockKeyhole className="h-4 w-4" />
+          Instance access
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between gap-4 rounded-md border bg-background px-4 py-3">
+          <div className="min-w-0">
+            <div className="text-sm font-medium">Anonymous access</div>
+            <div className="text-xs text-muted-foreground">Library browsing and playback without an account</div>
+          </div>
+          <Switch
+            checked={anonymousAccessEnabled}
+            onCheckedChange={onAnonymousAccessEnabledChange}
+            aria-label="Anonymous access"
+          />
+        </div>
+        <Button
+          size="sm"
+          disabled={saving || anonymousAccessEnabled === savedAnonymousAccessEnabled}
+          onClick={() => void onSave()}
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Save access policy
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -2883,7 +3004,7 @@ function TextInput({ label, value, onChange }: { label: string; value: string; o
   );
 }
 
-function maintenanceTabFromLocation(canManageUsers: boolean): MaintenanceTab {
+function maintenanceTabFromLocation(canManageUsers: boolean, canManageAccessPolicy: boolean): MaintenanceTab {
   if (window.location.pathname === "/users" && canManageUsers) return "users";
   const value = new URLSearchParams(window.location.search).get("tab");
   if (value === "local" || value === "remote") return "library";
@@ -2896,10 +3017,16 @@ function maintenanceTabFromLocation(canManageUsers: boolean): MaintenanceTab {
     "unlinked",
     "cache",
     "metadata",
+    "security",
     "users",
     "paths",
   ];
-  if (value && tabs.includes(value as MaintenanceTab) && (value !== "users" || canManageUsers))
+  if (
+    value &&
+    tabs.includes(value as MaintenanceTab) &&
+    (value !== "users" || canManageUsers) &&
+    (value !== "security" || canManageAccessPolicy)
+  )
     return value as MaintenanceTab;
   return "overview";
 }

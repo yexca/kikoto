@@ -433,7 +433,15 @@ async function mockWorkflows(
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
-      await route.fulfill({ json: { cacheEnabled: false, directoryRoutingRules: [] } });
+      await route.fulfill({
+        json: {
+          mode: "development",
+          demoMode: false,
+          anonymousAccessEnabled: false,
+          cacheEnabled: false,
+          directoryRoutingRules: [],
+        },
+      });
       return;
     }
     await route.fulfill({ status: 404, json: { error: "Not mocked" } });
@@ -1119,16 +1127,22 @@ test("settings identifies an environment-managed root password", async ({ page }
   await expect(page.getByRole("button", { name: "Change password", exact: true })).toHaveCount(0);
 });
 
-test("demo settings and scheduled workflows expose read-only controls", async ({ page }) => {
+test("demo settings keeps account and workflows read-only while allowing appearance changes", async ({ page }) => {
   await mockWorkflows(page);
   await page.route("**/api/runtime-settings", (route) =>
     route.fulfill({
-      json: { mode: "demo", demoMode: true, cacheEnabled: false, directoryRoutingRules: [] },
+      json: {
+        mode: "demo",
+        demoMode: true,
+        anonymousAccessEnabled: false,
+        cacheEnabled: false,
+        directoryRoutingRules: [],
+      },
     }),
   );
 
   await page.goto("/settings");
-  await expect(page.getByRole("status")).toHaveText("Demo mode is read-only.");
+  await expect(page.getByRole("status")).toHaveText("Demo mode keeps account settings read-only.");
   for (const name of [
     "Light",
     "Dark",
@@ -1142,8 +1156,15 @@ test("demo settings and scheduled workflows expose read-only controls", async ({
     "Cobalt",
     "Iris",
   ]) {
-    await expect(page.getByRole("button", { name, exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name, exact: true })).toBeEnabled();
   }
+  await page.getByRole("button", { name: "Dark", exact: true }).click();
+  await page.getByRole("button", { name: "Apple", exact: true }).click();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");
+  await page.reload();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");
 
   await page.goto("/workflows");
   await expect(

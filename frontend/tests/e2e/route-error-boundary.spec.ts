@@ -48,7 +48,15 @@ async function prepareRouteFailure(page: Page) {
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
-      await route.fulfill({ json: { mode: "production", cacheEnabled: false, directoryRoutingRules: [] } });
+      await route.fulfill({
+        json: {
+          mode: "production",
+          demoMode: false,
+          anonymousAccessEnabled: true,
+          cacheEnabled: false,
+          directoryRoutingRules: [],
+        },
+      });
       return;
     }
     if (url.pathname === "/api/works/1/media") {

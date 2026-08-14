@@ -1,6 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
-async function mockAppShell(page: Page) {
+async function mockAppShell(
+  page: Page,
+  anonymousAccessEnabled = true,
+  onLibraryRequest: () => void = () => undefined,
+) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
@@ -8,7 +12,15 @@ async function mockAppShell(page: Page) {
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
-      await route.fulfill({ json: { mode: "production", cacheEnabled: false, directoryRoutingRules: [] } });
+      await route.fulfill({
+        json: {
+          mode: "production",
+          demoMode: false,
+          anonymousAccessEnabled,
+          cacheEnabled: false,
+          directoryRoutingRules: [],
+        },
+      });
       return;
     }
     if (url.pathname === "/api/app-update") {
@@ -24,6 +36,7 @@ async function mockAppShell(page: Page) {
       return;
     }
     if (url.pathname === "/api/works") {
+      onLibraryRequest();
       await route.fulfill({ json: { works: [], page: 1, pageSize: 24, total: 0 } });
       return;
     }
@@ -38,6 +51,18 @@ async function mockAppShell(page: Page) {
     await route.fulfill({ status: 404, json: { error: "Not mocked" } });
   });
 }
+
+test("@smoke requires sign-in before mounting the library when anonymous access is off", async ({ page }) => {
+  let libraryRequests = 0;
+  await mockAppShell(page, false, () => {
+    libraryRequests += 1;
+  });
+  await page.goto("/");
+
+  await expect(page.getByRole("heading", { name: "Sign in to Kikoto", exact: true })).toBeVisible();
+  await expect(page.locator("footer").getByRole("button", { name: "Library", exact: true })).toHaveCount(0);
+  expect(libraryRequests).toBe(0);
+});
 
 test("@smoke renders the anonymous library shell", async ({ page }) => {
   await mockAppShell(page);

@@ -22,6 +22,8 @@ The backend is a Go HTTP API with SQLite persistence.
 ## Runtime Responsibilities
 
 - Authenticate users and enforce permissions.
+- Enforce the production instance access policy before API handlers, with
+  sign-in required by default and optional anonymous `GET`/`HEAD` access.
 - Scan local libraries.
 - Sync metadata snapshots.
 - Serve library and detail APIs.
@@ -59,6 +61,15 @@ Public errors use a stable code and retryability decision without returning raw
 database, upstream, endpoint, or filesystem details. Logs and workflow Activity
 may retain protected diagnostics when they are necessary to operate the
 instance.
+
+The access-policy middleware runs after authentication has resolved a session
+and before Demo content or handlers. Health, login/logout, current-auth state,
+minimal mode/access runtime settings, and CORS preflight remain available for
+bootstrap. Operational runtime settings are omitted while production sign-in is
+required. Every other unauthenticated request is rejected unless the stored
+anonymous-access policy is enabled, in which case only `GET` and `HEAD` continue.
+The cached effective value is loaded before the server starts and updated only
+after the SQLite setting and audit entry commit.
 
 ## Outbound Requests
 

@@ -26,7 +26,8 @@ Kikoto currently includes:
   pages.
 - Kikoeru-compatible remote source browsing, availability checks, sync, cache,
   and fetch flows.
-- User authentication, roles, favorite/listening state, and playback progress.
+- User authentication, roles, a default-on sign-in boundary with optional
+  read-only anonymous access, favorite/listening state, and playback progress.
 - A persistent browser player plus Android media-session integration.
 - SQLite-backed priority jobs with resource lanes, retry state, notifications,
   and restart recovery for the supported workflow families.

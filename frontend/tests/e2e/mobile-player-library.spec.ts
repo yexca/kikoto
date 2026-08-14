@@ -172,7 +172,15 @@ async function mockApplication(
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
-      await route.fulfill({ json: { cacheEnabled: false, directoryRoutingRules: [] } });
+      await route.fulfill({
+        json: {
+          mode: "development",
+          demoMode: false,
+          anonymousAccessEnabled: true,
+          cacheEnabled: false,
+          directoryRoutingRules: [],
+        },
+      });
       return;
     }
     if (url.pathname === "/api/recently-played-works") {
@@ -534,7 +542,15 @@ async function mockRemoteSource(
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
-      await route.fulfill({ json: { cacheEnabled: false, directoryRoutingRules: [] } });
+      await route.fulfill({
+        json: {
+          mode: "development",
+          demoMode: false,
+          anonymousAccessEnabled: true,
+          cacheEnabled: false,
+          directoryRoutingRules: [],
+        },
+      });
       return;
     }
     if (url.pathname === "/api/works") {

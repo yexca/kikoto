@@ -38,8 +38,9 @@ Default ports:
 
 The default Compose mapping publishes `7655` on every host interface. For a
 host-only instance, change it to `127.0.0.1:7655:7659`. Otherwise protect the
-port with a host firewall, trusted VPN, or reverse proxy. Anonymous Library and
-media reads are part of the product's normal production behavior.
+port with a host firewall, trusted VPN, or reverse proxy. Production requires
+sign-in by default; enabling anonymous access under Maintenance intentionally
+exposes Library and media reads to every client that can reach the port.
 
 Default mounts:
 

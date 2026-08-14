@@ -35,6 +35,7 @@ async function mockCacheSettings(
   onSourceUpdate: (payload: Record<string, unknown>) => void = () => undefined,
 ) {
   let currentSettings = {
+    anonymousAccessEnabled: false,
     localScanDepth: 3,
     cacheEnabled: true,
     cacheLimitGb: 20,
@@ -124,7 +125,16 @@ async function mockCacheSettings(
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
-      await route.fulfill({ json: { cacheEnabled: true, directoryRoutingRules: [], recommendationThreshold: 50 } });
+      await route.fulfill({
+        json: {
+          mode: "development",
+          demoMode: false,
+          anonymousAccessEnabled: false,
+          cacheEnabled: true,
+          directoryRoutingRules: [],
+          recommendationThreshold: 50,
+        },
+      });
       return;
     }
     if (url.pathname === "/api/settings" && route.request().method() === "PATCH") {
@@ -308,6 +318,70 @@ test("personal settings stay separate from administrator maintenance", async ({ 
   await expect(page.getByRole("heading", { name: "Maintenance", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Users", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("User directory", { exact: true })).toBeVisible();
+});
+
+test("development super administrator can configure production anonymous access", async ({ page }) => {
+  let anonymousAccessEnabled = false;
+  let runtimeRequests = 0;
+  const updates: Array<{ anonymousAccessEnabled: boolean }> = [];
+  await mockCacheSettings(page, () => undefined);
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: {
+        authenticated: true,
+        user: {
+          id: 1,
+          username: "root",
+          displayName: "Root",
+          role: "super_admin",
+          permissions: ["system:admin"],
+          devMode: true,
+          demoMode: false,
+          passwordManagedBy: "environment",
+        },
+      },
+    }),
+  );
+  await page.route("**/api/runtime-settings", (route) => {
+    runtimeRequests += 1;
+    return route.fulfill({
+      json: {
+        mode: "development",
+        demoMode: false,
+        anonymousAccessEnabled,
+        cacheEnabled: true,
+        directoryRoutingRules: [],
+      },
+    });
+  });
+  await page.route("**/api/access-policy", async (route) => {
+    const payload = route.request().postDataJSON() as { anonymousAccessEnabled: boolean };
+    updates.push(payload);
+    anonymousAccessEnabled = payload.anonymousAccessEnabled;
+    await route.fulfill({ json: payload });
+  });
+
+  await page.goto("/maintenance?tab=security");
+  await expect(page.getByRole("button", { name: "Access", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const accessSwitch = page.getByRole("switch", { name: "Anonymous access", exact: true });
+  const accessRow = page
+    .getByText("Library browsing and playback without an account", { exact: true })
+    .locator("xpath=../..");
+  const saveAccessPolicy = page.getByRole("button", { name: "Save access policy", exact: true });
+  const accessRowBox = await accessRow.boundingBox();
+  const saveAccessPolicyBox = await saveAccessPolicy.boundingBox();
+  expect(accessRowBox).not.toBeNull();
+  expect(saveAccessPolicyBox).not.toBeNull();
+  expect(Math.abs(saveAccessPolicyBox!.x - accessRowBox!.x)).toBeLessThanOrEqual(1);
+  await expect(accessSwitch).toHaveAttribute("aria-checked", "false");
+  await accessSwitch.click();
+  await saveAccessPolicy.click();
+
+  await expect.poll(() => updates).toEqual([{ anonymousAccessEnabled: true }]);
+  await expect.poll(() => runtimeRequests).toBeGreaterThanOrEqual(2);
+  await expect(accessSwitch).toHaveAttribute("aria-checked", "true");
+  await expect(saveAccessPolicy).toBeDisabled();
+  await expect(page.getByText("Access policy saved.", { exact: true })).toBeVisible();
 });
 
 test("unlinked works mounts once and keeps its result region stable while settings load", async ({ page }) => {

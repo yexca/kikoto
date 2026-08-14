@@ -1,7 +1,7 @@
 # Settings
 
-Settings exposes per-user account and appearance preferences. Instance and user
-administration remain in Maintenance.
+Settings exposes per-user account controls and browser-local appearance
+preferences. Instance and user administration remain in Maintenance.
 
 ## Current Settings
 
@@ -10,7 +10,8 @@ administration remain in Maintenance.
   password and confirming the replacement.
 - Keep username and role visible but read-only.
 - Light, dark, and system appearance preferences.
-- Pink, blue, and green accent-color preferences.
+- Anthropic, OpenAI, Apple, and Google Material Design style preferences.
+- Original, Graphite, Cobalt, and Iris color preferences.
 
 ## Account Boundaries
 
@@ -25,7 +26,9 @@ value and restarting Kikoto replaces the stored root password and revokes its
 existing sessions. Other super administrators remain account-managed and can
 change their own passwords normally.
 
-Demo mode renders Settings read-only.
+Demo mode keeps account-backed Settings read-only. Appearance controls remain
+available because theme mode, style, and color are browser-local preferences
+and do not modify Demo server data.
 
 ## Maintenance Organization
 
@@ -34,6 +37,11 @@ Demo mode renders Settings read-only.
   retain only operational metrics such as source health, recommendation
   telemetry, and managed-cache usage.
 - Library combines the local scan settings and configured remote sources.
+- Access is visible to super administrators in production and development.
+  Anonymous Library browsing and playback default to disabled; changing the
+  switch applies to the production access boundary and creates an audit entry.
+  Development still authenticates every request as root, so the setting remains
+  visible and editable there without creating an anonymous development session.
 - Unlinked works is a dedicated paged maintenance tab for logical work families
   with no available source or media location. It supports source rechecks and
   confirmed deletion of local database information while retaining media files.

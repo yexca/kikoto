@@ -28,6 +28,13 @@ additional context it needs.
 The frontend is a React application focused on library browsing, work detail,
 remote source management, and playback.
 
+At startup, the authentication provider loads current-user and public runtime
+settings before mounting the application shell or global player. A production
+client without a user sees the full-page sign-in surface when anonymous access
+is disabled; when it is enabled, the same client enters the read-only-capable
+Library shell. Stored theme mode, style, and color are applied before React
+renders, including on the sign-in and Demo surfaces.
+
 ## Stack
 
 - React.
@@ -113,7 +120,8 @@ small shared contract should resolve cross-domain needs.
   current user (or anonymous principal). This includes player queue/progress,
   Library and Favorites browse restoration, workflow selection, and in-memory
   work media. Pure display preferences such as theme and player Dock mode stay
-  shared on the device.
+  shared on the device. Demo mode may change those local display preferences
+  even though server-backed account and administration state remains read-only.
 - Keep the recommendation client-session id in server-and-user-scoped session
   storage. Navigation and reloads in one browser tab reuse it; a newly opened
   tab or native-app cold launch creates a new id and stable recommendation seed.

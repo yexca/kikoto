@@ -23,7 +23,16 @@ Kikoto is configured through environment variables and administrator settings.
 
 Maintenance manages local scan depth, cache behavior, the remote per-file
 download limit, failed Fetch staging retention, remote request pacing, DLsite
-metadata language, file sources, and creator catalog freshness.
+metadata language, file sources, creator catalog freshness, and production
+instance access.
+
+Production anonymous access is an SQLite-backed instance setting rather than an
+environment variable. It defaults to disabled. A super administrator can
+enable read-only Library browsing and playback under `Maintenance -> Access`;
+the change applies immediately in production and is audited. Development shows
+and saves the same option so its automatic root identity can inspect every
+production administration surface, but all development requests remain
+authenticated as root. Demo mode does not expose or use the option.
 
 See [Settings](../product/settings.md) for user-visible behavior.
 

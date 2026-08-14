@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/accesspolicy"
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
 	"github.com/yexca/kikoto/backend/internal/config"
@@ -39,6 +40,7 @@ type updateCheckCache struct {
 type Server struct {
 	db                             *sql.DB
 	accountStore                   *account.Store
+	accessPolicy                   *accesspolicy.Store
 	libraryStore                   *library.Store
 	workflowStore                  *workflow.Store
 	cfg                            config.Config
@@ -73,7 +75,7 @@ type localMediaIndexCall struct {
 
 func NewServer(db *sql.DB, cfg config.Config) *Server {
 	return &Server{
-		db: db, accountStore: account.NewStore(db), libraryStore: library.NewStore(db), workflowStore: workflow.NewStore(db), cfg: cfg,
+		db: db, accountStore: account.NewStore(db), accessPolicy: accesspolicy.NewStore(db), libraryStore: library.NewStore(db), workflowStore: workflow.NewStore(db), cfg: cfg,
 		dlsiteClient:                   dlsite.NewClient(nil),
 		remoteWorkCache:                map[string]remoteWorkSnapshot{},
 		remoteWorkCacheCalls:           map[string]*remoteWorkCall{},
@@ -94,6 +96,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/auth/me", s.updateCurrentUser)
 	mux.HandleFunc("POST /api/auth/login", s.login)
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
+	mux.HandleFunc("PATCH /api/access-policy", s.updateAccessPolicy)
 	mux.HandleFunc("GET /api/notifications", s.listNotifications)
 	mux.HandleFunc("DELETE /api/notifications/{id}", s.dismissNotification)
 	mux.HandleFunc("GET /api/remote-track-runs/{id}", s.getRemoteTrackRunStatus)
@@ -218,7 +221,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/workflow-runs/dlsite-sync", s.createDLsiteSyncRun)
 	mux.HandleFunc("GET /api/availability-watch", s.getAvailabilityWatch)
 	mux.HandleFunc("PUT /api/availability-watch", s.updateAvailabilityWatch)
-	apiHandler := s.withCORS(limitRequestBody(s.authMiddleware(s.demoReadOnlyMiddleware(s.demoContentMiddleware(mux))), maxJSONRequestBytes))
+	apiHandler := s.withCORS(limitRequestBody(s.authMiddleware(s.anonymousAccessMiddleware(s.demoReadOnlyMiddleware(s.demoContentMiddleware(mux)))), maxJSONRequestBytes))
 	if strings.TrimSpace(s.cfg.StaticDir) == "" {
 		return apiHandler
 	}

@@ -59,6 +59,12 @@ func TestCircleDetailReadDoesNotQueueARefreshWorkflow(t *testing.T) {
 	}
 
 	server := NewServer(db, config.Config{})
+	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('anonymous_access_enabled', 'true')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.LoadAccessPolicy(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	response := httptest.NewRecorder()
 	server.Routes().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/circles/RG00001", nil))
 	if response.Code != http.StatusOK {
@@ -73,7 +79,9 @@ func TestCircleDetailReadDoesNotQueueARefreshWorkflow(t *testing.T) {
 	}
 
 	response = httptest.NewRecorder()
-	server.Routes().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/circles/RG00001/auto-refresh", nil))
+	legacyRequest := httptest.NewRequest(http.MethodPost, "/api/circles/RG00001/auto-refresh", nil)
+	legacyRequest = legacyRequest.WithContext(context.WithValue(legacyRequest.Context(), currentUserKey, currentUser{ID: 1}))
+	server.Routes().ServeHTTP(response, legacyRequest)
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("legacy auto-refresh status = %d, want %d", response.Code, http.StatusNotFound)
 	}

@@ -26,8 +26,9 @@ practical.
 
 Kikoto has several intentional trust boundaries:
 
-- In production mode, anonymous users may browse library metadata and play
-  media exposed by the instance. Unauthorized mutation, access to another
+- Production mode requires authentication by default. A super administrator
+  may enable anonymous read-only access to library metadata and media playback.
+  Anonymous mutation, reads while that setting is disabled, access to another
   user's private state, privilege escalation, or access outside the configured
   media roots is not intended.
 - Development mode authenticates requests as the configured root user. It must
@@ -83,7 +84,8 @@ without its operator's permission.
 
 ## Generally Out of Scope
 
-- Intended anonymous read-only library and playback access.
+- Intended anonymous read-only library and playback access while the instance
+  setting is enabled.
 - Exposing development mode to an untrusted network.
 - Requests to the exact endpoint an administrator intentionally configured,
   without an additional boundary escape or privilege change.

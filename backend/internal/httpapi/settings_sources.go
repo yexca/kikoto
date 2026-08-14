@@ -111,6 +111,7 @@ func (s *Server) SeedRemoteSourcesFromConfig(ctx context.Context) error {
 }
 
 type appSettingsResponse struct {
+	AnonymousAccessEnabled    bool                         `json:"anonymousAccessEnabled"`
 	LocalScanDepth            int                          `json:"localScanDepth"`
 	CacheEnabled              bool                         `json:"cacheEnabled"`
 	CacheLimitGB              int                          `json:"cacheLimitGb"`
@@ -558,13 +559,21 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getRuntimeSettings(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"cacheEnabled":            s.settingBool(r, "remote_cache_enabled", false),
-		"mode":                    s.cfg.RuntimeMode(),
-		"demoMode":                s.cfg.IsDemo(),
-		"directoryRoutingRules":   s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
-		"recommendationThreshold": s.settingInt(r, "recommendation_threshold", 50),
-	})
+	configuredAnonymousAccessEnabled := s.configuredAnonymousAccessEnabled()
+	effectiveAnonymousAccessEnabled := s.anonymousAccessEnabled()
+	response := map[string]any{
+		"anonymousAccessEnabled": configuredAnonymousAccessEnabled,
+		"mode":                   s.cfg.RuntimeMode(),
+		"demoMode":               s.cfg.IsDemo(),
+	}
+	if _, authenticated := userFromContext(r.Context()); !authenticated && !effectiveAnonymousAccessEnabled && !s.cfg.IsDevelopment() && !s.cfg.IsDemo() {
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
+	response["cacheEnabled"] = s.settingBool(r, "remote_cache_enabled", false)
+	response["directoryRoutingRules"] = s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules())
+	response["recommendationThreshold"] = s.settingInt(r, "recommendation_threshold", 50)
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
@@ -6534,6 +6543,7 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 	}
 	metadataLanguages := s.preferredMetadataLanguages(r.Context())
 	return appSettingsResponse{
+		AnonymousAccessEnabled:    s.configuredAnonymousAccessEnabled(),
 		LocalScanDepth:            s.settingInt(r, "local_scan_depth", s.cfg.LocalScanDepth),
 		CacheEnabled:              s.settingBool(r, "remote_cache_enabled", false),
 		CacheLimitGB:              s.settingInt(r, "remote_cache_limit_gb", 20),

@@ -117,7 +117,15 @@ async function mockBrowsePages(page: Page, requests: Record<string, number>, opt
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
-      await route.fulfill({ json: { mode: "development", cacheEnabled: false, directoryRoutingRules: [] } });
+      await route.fulfill({
+        json: {
+          mode: "development",
+          demoMode: false,
+          anonymousAccessEnabled: false,
+          cacheEnabled: false,
+          directoryRoutingRules: [],
+        },
+      });
       return;
     }
     if (url.pathname === "/api/app-update") {

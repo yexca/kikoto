@@ -271,6 +271,10 @@ function AuthenticatedApp() {
     );
   }
 
+  if (!auth.user && !auth.anonymousAccessEnabled) {
+    return <LoginPage />;
+  }
+
   return (
     <PlayerProvider key={clientStorageScope}>
       <RemoteTrackWorkflowBridge />
@@ -394,7 +398,9 @@ function AuthenticatedApp() {
                     canManageUsers={auth.demoMode || auth.hasPermission("users:manage")}
                     currentUserId={auth.user.id}
                     isSuperAdmin={auth.user.role === "super_admin"}
+                    canManageAccessPolicy={auth.user.role === "super_admin" && auth.runtimeMode !== "demo"}
                     readOnly={auth.demoMode}
+                    onAccessPolicyUpdated={auth.refreshRuntime}
                   />
                 )}
                 {canAccessCurrentPage && (page === "workflows" || page === "activity") && (
