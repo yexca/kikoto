@@ -3,7 +3,7 @@ import { useEffect, type ReactNode, type RefObject } from "react";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
-import { MobileSheet } from "@/components/ui/mobile-sheet";
+import { MobileSheet, MobileSheetBody, MobileSheetHeader } from "@/components/ui/mobile-sheet";
 import type { CircleDetail } from "@/lib/api";
 import type { WorkCollectionColumnSetting } from "@/components/work-collection/WorkCollectionLayout";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
@@ -37,49 +37,55 @@ export function CircleAdvancedRefreshSheet({
   onClose: () => void;
   onRun: (scope: CircleRefreshScope, mode: CircleRefreshMode) => void;
 }) {
+  const headerContent = (
+    <div className="min-w-0">
+      <h2 id="circle-advanced-refresh-title" className="text-base font-semibold">
+        Advanced refresh
+      </h2>
+      <p className="mt-1 text-sm text-muted-foreground">Run a targeted catalog, metadata, or source workflow.</p>
+    </div>
+  );
+  const actionContent = (
+    <>
+      <RefreshActionRow
+        title="Catalog"
+        description={`${circle.catalogWorks} works · ${circle.lastSyncedAt ? `last ${circle.lastSyncedAt}` : "never synced"}`}
+        disabled={!canRefresh || refreshingScope !== null || isTranslationCircle}
+        active={refreshingScope === "catalog" || refreshingScope === "all"}
+        onRun={(mode) => onRun("catalog", mode)}
+      />
+      <RefreshActionRow
+        title="Work metadata"
+        description={`${catalogOnlyCount} catalog only · ${availableCount} available`}
+        disabled={!canRefresh || refreshingScope !== null}
+        active={refreshingScope === "work" || refreshingScope === "all"}
+        onRun={(mode) => onRun("work", mode)}
+      />
+      <RefreshActionRow
+        title="Sources"
+        description={`${circle.localWorks} local · ${circle.remoteWorks} remote · ${circle.missingWorks} missing`}
+        disabled={!canRefresh || refreshingScope !== null || isTranslationCircle}
+        active={refreshingScope === "source" || refreshingScope === "all"}
+        onRun={(mode) => onRun("source", mode)}
+      />
+      {isTranslationCircle && (
+        <p className="text-xs text-muted-foreground">
+          Catalog and source refresh are disabled for translation umbrella circles.
+        </p>
+      )}
+    </>
+  );
   const content = (
     <div>
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 id="circle-advanced-refresh-title" className="text-base font-semibold">
-            Advanced refresh
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">Run a targeted catalog, metadata, or source workflow.</p>
-        </div>
+        {headerContent}
         {!mobile && (
           <Button variant="ghost" size="icon" aria-label="Close advanced refresh actions" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         )}
       </div>
-      <div className="mt-4 space-y-3">
-        <RefreshActionRow
-          title="Catalog"
-          description={`${circle.catalogWorks} works · ${circle.lastSyncedAt ? `last ${circle.lastSyncedAt}` : "never synced"}`}
-          disabled={!canRefresh || refreshingScope !== null || isTranslationCircle}
-          active={refreshingScope === "catalog" || refreshingScope === "all"}
-          onRun={(mode) => onRun("catalog", mode)}
-        />
-        <RefreshActionRow
-          title="Work metadata"
-          description={`${catalogOnlyCount} catalog only · ${availableCount} available`}
-          disabled={!canRefresh || refreshingScope !== null}
-          active={refreshingScope === "work" || refreshingScope === "all"}
-          onRun={(mode) => onRun("work", mode)}
-        />
-        <RefreshActionRow
-          title="Sources"
-          description={`${circle.localWorks} local · ${circle.remoteWorks} remote · ${circle.missingWorks} missing`}
-          disabled={!canRefresh || refreshingScope !== null || isTranslationCircle}
-          active={refreshingScope === "source" || refreshingScope === "all"}
-          onRun={(mode) => onRun("source", mode)}
-        />
-        {isTranslationCircle && (
-          <p className="text-xs text-muted-foreground">
-            Catalog and source refresh are disabled for translation umbrella circles.
-          </p>
-        )}
-      </div>
+      <div className="mt-4 space-y-3">{actionContent}</div>
     </div>
   );
 
@@ -91,9 +97,12 @@ export function CircleAdvancedRefreshSheet({
           if (!nextOpen) onClose();
         }}
         ariaLabelledby="circle-advanced-refresh-title"
-        className="p-4"
+        className="flex flex-col overflow-hidden p-0"
       >
-        {content}
+        <MobileSheetHeader>{headerContent}</MobileSheetHeader>
+        <MobileSheetBody>
+          <div className="space-y-3">{actionContent}</div>
+        </MobileSheetBody>
       </MobileSheet>
     );
   }

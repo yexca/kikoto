@@ -12,7 +12,12 @@ stay anchored to their triggers.
 `MobileSheet` is the shared bottom-sheet primitive. It animates in from the
 bottom and out toward the bottom, supports Escape and outside dismissal, and
 accepts a downward drag on its handle to close. Its default layer is
-transparent so sheet content does not add a backdrop mask.
+transparent so sheet content does not add a backdrop mask. The shared
+`MobileSheetHeader` and `MobileSheetBody` keep command and advanced-refresh
+sheets on the same bordered header and compact scrolling body treatment. Mobile
+command and advanced-refresh sheets rely on sheet dismissal rather than an
+in-content close icon; desktop command surfaces may retain an explicit close
+action.
 
 The header owns the desktop page title and description. Mobile browsing
 destinations use the bottom navigation as their location cue and show a compact

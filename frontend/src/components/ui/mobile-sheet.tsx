@@ -11,6 +11,25 @@ type MobileSheetDrag = {
   startY: number;
 };
 
+export function MobileSheetHeader({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div
+      data-mobile-sheet-header
+      className={cn("flex min-h-14 shrink-0 items-center justify-between gap-3 border-b px-4", className)}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function MobileSheetBody({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div data-mobile-sheet-body className={cn("app-scroll min-h-0 flex-1 overflow-auto p-2", className)}>
+      {children}
+    </div>
+  );
+}
+
 export function MobileSheet({
   open,
   onOpenChange,

@@ -5,7 +5,7 @@ import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { MobileSheet } from "@/components/ui/mobile-sheet";
+import { MobileSheet, MobileSheetBody, MobileSheetHeader } from "@/components/ui/mobile-sheet";
 import type { VoiceCatalogRefreshState, VoiceRemoteSourceSet } from "@/lib/api";
 
 export type VoiceCatalogRefreshMode = "incremental" | "full";
@@ -72,94 +72,89 @@ export function VoiceAdvancedRefreshSheet({
     });
   };
 
-  const content = (
-    <div>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 id="voice-advanced-refresh-title" className="text-base font-semibold">
-            Advanced refresh
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">Run a targeted catalog, metadata, or source workflow.</p>
-        </div>
-        {!mobile && (
-          <Button variant="ghost" size="icon" aria-label="Close advanced refresh actions" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        )}
-      </div>
+  const headerContent = (
+    <div className="min-w-0">
+      <h2 id="voice-advanced-refresh-title" className="text-base font-semibold">
+        Advanced refresh
+      </h2>
+      <p className="mt-1 text-sm text-muted-foreground">Run a targeted catalog, metadata, or source workflow.</p>
+    </div>
+  );
+  const actionContent = (
+    <>
+      <VoiceRefreshActionRow
+        title="Catalog"
+        description="Refresh the selected remote-source catalog."
+        disabled={catalogDisabled}
+        active={catalogActive}
+        ariaLabel="Catalog refresh"
+        onRun={(mode) => onRefreshCatalog(mode, selectedSourceIds)}
+      />
+      <VoiceRefreshActionRow
+        title="Metadata"
+        description="Refresh metadata for known catalog works."
+        disabled={metadataDisabled}
+        active={metadataActive}
+        ariaLabel="Metadata refresh"
+        onRun={onRefreshMetadata}
+      />
 
-      <div className="mt-4 space-y-3">
-        <VoiceRefreshActionRow
-          title="Catalog"
-          description="Refresh the selected remote-source catalog."
-          disabled={catalogDisabled}
-          active={catalogActive}
-          ariaLabel="Catalog refresh"
-          onRun={(mode) => onRefreshCatalog(mode, selectedSourceIds)}
-        />
-        <VoiceRefreshActionRow
-          title="Metadata"
-          description="Refresh metadata for known catalog works."
-          disabled={metadataDisabled}
-          active={metadataActive}
-          ariaLabel="Metadata refresh"
-          onRun={onRefreshMetadata}
-        />
+      {mobile && aliasesPanel && (
+        <details className="rounded-md border bg-background px-3 py-2">
+          <summary className="min-h-8 cursor-pointer py-1 text-sm font-medium">Aliases</summary>
+          <div className="mt-2 border-t pt-3">{aliasesPanel}</div>
+        </details>
+      )}
 
-        {mobile && aliasesPanel && (
-          <details className="rounded-md border bg-background px-3 py-2">
-            <summary className="min-h-8 cursor-pointer py-1 text-sm font-medium">Aliases</summary>
-            <div className="mt-2 border-t pt-3">{aliasesPanel}</div>
-          </details>
-        )}
-
-        <fieldset className="space-y-2">
-          <legend className="text-sm font-medium">Sources</legend>
-          <p className="text-xs text-muted-foreground">Choose the remote sources used by Catalog refresh.</p>
-          {loading && sources.length === 0 ? (
-            <div className="flex min-h-11 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading source status
-            </div>
-          ) : sources.length === 0 ? (
-            <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
-              No Kikoeru-compatible sources are configured.
-            </div>
-          ) : (
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Remote sources to refresh">
-              {sources.map((source) => {
-                const selectable = isVoiceCatalogSourceSelectable(source);
-                const checked = selectedSourceSet.has(source.sourceId);
-                return (
-                  <div
-                    key={source.sourceId}
-                    className="flex min-h-11 min-w-0 max-w-full items-center gap-2 rounded-md border bg-background px-2.5 py-1.5 text-sm"
-                  >
-                    <Checkbox
-                      checked={checked}
-                      disabled={!selectable || busy || !canRefresh}
-                      aria-label={`Refresh ${source.displayName}`}
-                      onCheckedChange={(nextChecked) => toggleSource(source.sourceId, nextChecked)}
-                    />
-                    <div className="min-w-0">
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        <span className="truncate font-medium">{source.displayName}</span>
-                        <Badge variant={source.status === "ok" ? "outline" : "warning"} className="shrink-0">
-                          {source.status}
-                        </Badge>
-                      </div>
-                      <div className="truncate text-xs text-muted-foreground">
-                        {source.total || source.works.length} matches
-                        {source.error ? ` · ${source.error}` : ""}
-                      </div>
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium">Sources</legend>
+        <p className="text-xs text-muted-foreground">Choose the remote sources used by Catalog refresh.</p>
+        {loading && sources.length === 0 ? (
+          <div className="flex min-h-11 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading source status
+          </div>
+        ) : sources.length === 0 ? (
+          <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
+            No Kikoeru-compatible sources are configured.
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Remote sources to refresh">
+            {sources.map((source) => {
+              const selectable = isVoiceCatalogSourceSelectable(source);
+              const checked = selectedSourceSet.has(source.sourceId);
+              return (
+                <div
+                  key={source.sourceId}
+                  className="flex min-h-11 min-w-0 max-w-full items-center gap-2 rounded-md border bg-background px-2.5 py-1.5 text-sm"
+                >
+                  <Checkbox
+                    checked={checked}
+                    disabled={!selectable || busy || !canRefresh}
+                    aria-label={`Refresh ${source.displayName}`}
+                    onCheckedChange={(nextChecked) => toggleSource(source.sourceId, nextChecked)}
+                  />
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate font-medium">{source.displayName}</span>
+                      <Badge variant={source.status === "ok" ? "outline" : "warning"} className="shrink-0">
+                        {source.status}
+                      </Badge>
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {source.total || source.works.length} matches
+                      {source.error ? ` · ${source.error}` : ""}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </fieldset>
-      </div>
-
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </fieldset>
+    </>
+  );
+  const feedbackContent = (
+    <>
       {refreshing && (
         <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -175,6 +170,21 @@ export function VoiceAdvancedRefreshSheet({
           {error}
         </div>
       )}
+    </>
+  );
+  const content = (
+    <div>
+      <div className="flex items-start justify-between gap-3">
+        {headerContent}
+        {!mobile && (
+          <Button variant="ghost" size="icon" aria-label="Close advanced refresh actions" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+
+      <div className="mt-4 space-y-3">{actionContent}</div>
+      {feedbackContent}
     </div>
   );
 
@@ -186,9 +196,13 @@ export function VoiceAdvancedRefreshSheet({
           if (!nextOpen) onClose();
         }}
         ariaLabelledby="voice-advanced-refresh-title"
-        className="p-4"
+        className="flex flex-col overflow-hidden p-0"
       >
-        {content}
+        <MobileSheetHeader>{headerContent}</MobileSheetHeader>
+        <MobileSheetBody>
+          <div className="space-y-3">{actionContent}</div>
+          {feedbackContent}
+        </MobileSheetBody>
       </MobileSheet>
     );
   }

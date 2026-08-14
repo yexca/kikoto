@@ -242,6 +242,8 @@ test("composes a typed DAG and launches a slash command through preview", async 
   await page.getByRole("button", { name: "Close", exact: true }).click();
 
   await page.getByRole("button", { name: "Quick actions" }).click();
+  const commandPalette = page.getByRole("dialog", { name: "Command palette" });
+  await expect(commandPalette.getByRole("button", { name: "Close command palette" })).toHaveCount(1);
   await page.getByPlaceholder("Search, open a work code, or type /workflow").fill("/getCircle RG01234");
   await expect(page.getByRole("button", { name: /Preview Circle fetch demo/ })).toHaveCount(1);
   await expect(page.getByRole("button", { name: /Preview Foreign circle fetch/ })).toHaveCount(0);

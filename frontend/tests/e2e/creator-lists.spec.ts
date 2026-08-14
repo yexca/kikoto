@@ -692,6 +692,8 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   const advancedDialog = page.getByRole("dialog", { name: "Advanced refresh" });
   await expect(advancedDialog).toBeVisible();
   await expect(advancedDialog.getByRole("button", { name: "Close advanced refresh actions" })).toHaveCount(0);
+  await expect(advancedDialog.locator("[data-mobile-sheet-header]")).toBeVisible();
+  await expect(advancedDialog.locator("[data-mobile-sheet-body]")).toBeVisible();
   const advancedLayerStyles = await advancedDialog.locator("..").evaluate((element) => {
     const style = getComputedStyle(element);
     return { backgroundColor: style.backgroundColor, backdropFilter: style.backdropFilter };
@@ -846,6 +848,8 @@ test("mobile circle detail keeps the work surface visible and moves secondary co
   await expect(refreshDialog).toBeVisible();
   await expect(refreshDialog.getByRole("button", { name: "Incremental" }).first()).toBeVisible();
   await expect(refreshDialog.getByRole("button", { name: "Close advanced refresh actions" })).toHaveCount(0);
+  await expect(refreshDialog.locator("[data-mobile-sheet-header]")).toBeVisible();
+  await expect(refreshDialog.locator("[data-mobile-sheet-body]")).toBeVisible();
   const refreshLayerStyles = await refreshDialog.locator("..").evaluate((element) => {
     const style = getComputedStyle(element);
     return { backgroundColor: style.backgroundColor, backdropFilter: style.backdropFilter };
@@ -1009,6 +1013,9 @@ test("mobile command palette uses a sheet, stays in the visual viewport, and clo
   await expect(dialog).toBeVisible();
   await expect(dialog).toHaveAttribute("data-mobile-sheet");
   await expect(dialog).toHaveAttribute("data-state", "open");
+  await expect(dialog.getByRole("button", { name: "Close command palette" })).toHaveCount(0);
+  await expect(dialog.locator("[data-mobile-sheet-header]")).toBeVisible();
+  await expect(dialog.locator("[data-mobile-sheet-body]")).toBeVisible();
   await expect(input).toBeFocused();
 
   await page.setViewportSize({ width: 412, height: 430 });
