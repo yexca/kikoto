@@ -45,7 +45,6 @@ import {
 import { ThemeTrigger } from "@/app/ThemeTrigger";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MobileSheet } from "@/components/ui/mobile-sheet";
 import { api, type CurrentUser, type WorkflowNotification, type WorkflowRun } from "@/lib/api";
 import { clearStoredServerURL, getStoredServerURL, isNativeApp } from "@/lib/serverConfig";
 import { versionLabel } from "@/lib/appInfo";
@@ -210,34 +209,37 @@ export function HeaderActions({
         size="icon"
         aria-label="Quick actions"
         title="Quick actions"
-        className="h-11 w-11 sm:h-[var(--control-icon-size)] sm:w-[var(--control-icon-size)]"
+        className="order-1 h-11 w-11 sm:h-[var(--control-icon-size)] sm:w-[var(--control-icon-size)]"
         onClick={onOpenCommandPalette}
       >
         <Zap className="h-4 w-4" />
       </Button>
 
-      <div className="flex items-center gap-2 sm:hidden">
+      <div className="order-3 sm:hidden">
         <HeaderPopover
           open={mobileAppearanceOpen}
           onOpenChange={setMobileAppearanceOpen}
           trigger={<ThemeTrigger mode={themeMode} preset={themePreset} palette={themePalette} />}
           align="right"
-          mobileSheet
-          mobileSheetLabel="Appearance"
+          ariaLabel="Appearance"
         >
-          <div className="app-scroll max-h-[calc(var(--visual-viewport-height)-4rem)] w-full overflow-y-auto">
-            <PopoverHeader title="Appearance" subtitle="Mode, style, and color" />
-            <AppearanceControls
-              mode={themeMode}
-              preset={themePreset}
-              palette={themePalette}
-              onModeChange={setThemeMode}
-              onPresetChange={setThemePreset}
-              onPaletteChange={setThemePalette}
-            />
+          <div className="w-[min(16rem,calc(100vw-1rem))]">
+            <div className="app-scroll max-h-[calc(var(--visual-viewport-height)-4rem)] overflow-y-auto">
+              <PopoverHeader title="Appearance" subtitle="Mode, style, and color" />
+              <AppearanceControls
+                mode={themeMode}
+                preset={themePreset}
+                palette={themePalette}
+                onModeChange={setThemeMode}
+                onPresetChange={setThemePreset}
+                onPaletteChange={setThemePalette}
+              />
+            </div>
           </div>
         </HeaderPopover>
+      </div>
 
+      <div className="order-4 sm:hidden">
         <HeaderPopover
           open={mobileAccountOpen}
           onOpenChange={setMobileAccountOpen}
@@ -253,9 +255,6 @@ export function HeaderActions({
                 <span className="grid h-7 w-7 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
                   {userInitial(user)}
                 </span>
-                {totalNotificationCount > 0 && (
-                  <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive" />
-                )}
               </Button>
             ) : (
               <Button variant="outline" size="icon" aria-label="Sign in" title="Sign in" className="h-11 w-11">
@@ -264,112 +263,113 @@ export function HeaderActions({
             )
           }
           align="right"
-          mobileSheet
-          mobileSheetLabel="Account"
+          ariaLabel="Account"
         >
-          <div className="app-scroll max-h-[calc(var(--visual-viewport-height)-4rem)] w-full overflow-y-auto">
-            <PopoverHeader
-              title="Account"
-              subtitle={user ? user.displayName || user.username : "Sign in to manage your account"}
-            />
-            {user && (
-              <MenuList>
-                {canRunWorkflows && (
-                  <>
-                    <ActionItem
-                      icon={<Activity className="h-4 w-4" />}
-                      label="Activity"
-                      onClick={() => {
-                        setMobileAccountOpen(false);
-                        onOpenPath("/activity");
-                      }}
-                    />
-                    <ActionItem
-                      icon={<ListChecks className="h-4 w-4" />}
-                      label={reviewCount > 0 ? `Review (${reviewCount})` : "Review"}
-                      onClick={() => {
-                        setMobileAccountOpen(false);
-                        onOpenPath("/activity?view=review");
-                      }}
-                    />
-                  </>
-                )}
-                <ActionItem
-                  icon={<Settings className="h-4 w-4" />}
-                  label="Settings"
-                  onClick={() => {
-                    setMobileAccountOpen(false);
-                    onOpenPage("settings");
-                  }}
-                />
-                {canManageUsers && (
+          <div className="w-[min(20rem,calc(100vw-1rem))]">
+            <div className="app-scroll max-h-[calc(var(--visual-viewport-height)-4rem)] overflow-y-auto">
+              <PopoverHeader
+                title="Account"
+                subtitle={user ? user.displayName || user.username : "Sign in to manage your account"}
+              />
+              {user && (
+                <MenuList>
+                  {canRunWorkflows && (
+                    <>
+                      <ActionItem
+                        icon={<Activity className="h-4 w-4" />}
+                        label="Activity"
+                        onClick={() => {
+                          setMobileAccountOpen(false);
+                          onOpenPath("/activity");
+                        }}
+                      />
+                      <ActionItem
+                        icon={<ListChecks className="h-4 w-4" />}
+                        label={reviewCount > 0 ? `Review (${reviewCount})` : "Review"}
+                        onClick={() => {
+                          setMobileAccountOpen(false);
+                          onOpenPath("/activity?view=review");
+                        }}
+                      />
+                    </>
+                  )}
                   <ActionItem
-                    icon={<Users className="h-4 w-4" />}
-                    label="Users"
+                    icon={<Settings className="h-4 w-4" />}
+                    label="Settings"
                     onClick={() => {
                       setMobileAccountOpen(false);
-                      onOpenPath("/maintenance?tab=users");
+                      onOpenPage("settings");
                     }}
                   />
-                )}
-              </MenuList>
-            )}
-            {isNativeApp() && (
-              <div className="border-t p-2">
-                <div className="px-2 pb-1 text-xs font-medium text-muted-foreground">Server</div>
-                <ActionItem
-                  icon={<Server className="h-4 w-4" />}
-                  label="Reconnect"
-                  onClick={() => void checkConnection()}
-                />
-                <ActionItem
-                  icon={<Clipboard className="h-4 w-4" />}
-                  label="Copy diagnostics"
-                  onClick={() => void showDiagnostics()}
-                />
-                <ActionItem
-                  icon={<RotateCcw className="h-4 w-4" />}
-                  label="Clear server"
-                  onClick={() => {
-                    setMobileAccountOpen(false);
-                    clearStoredServerURL();
-                    window.location.reload();
-                  }}
-                />
-              </div>
-            )}
-            {user ? (
-              !user.devMode &&
-              !user.demoMode && (
+                  {canManageUsers && (
+                    <ActionItem
+                      icon={<Users className="h-4 w-4" />}
+                      label="Users"
+                      onClick={() => {
+                        setMobileAccountOpen(false);
+                        onOpenPath("/maintenance?tab=users");
+                      }}
+                    />
+                  )}
+                </MenuList>
+              )}
+              {isNativeApp() && (
                 <div className="border-t p-2">
+                  <div className="px-2 pb-1 text-xs font-medium text-muted-foreground">Server</div>
                   <ActionItem
-                    icon={<LogOut className="h-4 w-4" />}
-                    label="Sign out"
+                    icon={<Server className="h-4 w-4" />}
+                    label="Reconnect"
+                    onClick={() => void checkConnection()}
+                  />
+                  <ActionItem
+                    icon={<Clipboard className="h-4 w-4" />}
+                    label="Copy diagnostics"
+                    onClick={() => void showDiagnostics()}
+                  />
+                  <ActionItem
+                    icon={<RotateCcw className="h-4 w-4" />}
+                    label="Clear server"
                     onClick={() => {
                       setMobileAccountOpen(false);
-                      onLogout();
+                      clearStoredServerURL();
+                      window.location.reload();
                     }}
                   />
                 </div>
-              )
-            ) : (
-              <div className="border-t p-2">
-                <ActionItem
-                  icon={<LogIn className="h-4 w-4" />}
-                  label="Sign in"
-                  onClick={() => {
-                    setMobileAccountOpen(false);
-                    onOpenLogin();
-                  }}
-                />
-              </div>
-            )}
+              )}
+              {user ? (
+                !user.devMode &&
+                !user.demoMode && (
+                  <div className="border-t p-2">
+                    <ActionItem
+                      icon={<LogOut className="h-4 w-4" />}
+                      label="Sign out"
+                      onClick={() => {
+                        setMobileAccountOpen(false);
+                        onLogout();
+                      }}
+                    />
+                  </div>
+                )
+              ) : (
+                <div className="border-t p-2">
+                  <ActionItem
+                    icon={<LogIn className="h-4 w-4" />}
+                    label="Sign in"
+                    onClick={() => {
+                      setMobileAccountOpen(false);
+                      onOpenLogin();
+                    }}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         </HeaderPopover>
       </div>
 
       {isNativeApp() && (
-        <div className="hidden sm:block">
+        <div className="order-2 hidden sm:block">
           <HeaderPopover
             open={connectionOpen}
             onOpenChange={(open) => {
@@ -459,7 +459,7 @@ export function HeaderActions({
       )}
 
       {user && (
-        <div>
+        <div className="order-2 sm:order-3">
           <HeaderPopover
             open={reviewOpen}
             onOpenChange={(open) => {
@@ -472,7 +472,7 @@ export function HeaderActions({
                 size="icon"
                 aria-label="Notifications"
                 title="Notifications"
-                className="relative"
+                className="relative h-11 w-11 sm:h-[var(--control-icon-size)] sm:w-[var(--control-icon-size)]"
               >
                 <Bell className="h-4 w-4" />
                 {totalNotificationCount > 0 && (
@@ -483,6 +483,7 @@ export function HeaderActions({
               </Button>
             }
             align="right"
+            ariaLabel="Notifications"
           >
             <div className="w-[min(20rem,calc(100vw-1rem))]">
               <PopoverHeader
@@ -587,7 +588,7 @@ export function HeaderActions({
         </div>
       )}
 
-      <div className="hidden sm:block">
+      <div className="order-4 hidden sm:block">
         <HeaderPopover
           open={themeOpen}
           onOpenChange={setThemeOpen}
@@ -608,7 +609,7 @@ export function HeaderActions({
         </HeaderPopover>
       </div>
 
-      <div className="hidden sm:block">
+      <div className="order-5 hidden sm:block">
         {user ? (
           <HeaderPopover
             open={userOpen}
@@ -702,59 +703,49 @@ function HeaderPopover({
   trigger,
   children,
   align = "left",
-  mobileSheet = false,
-  mobileSheetLabel = "Menu",
+  ariaLabel,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   trigger: ReactElement;
   children: ReactNode;
   align?: "left" | "right";
-  mobileSheet?: boolean;
-  mobileSheetLabel?: string;
+  ariaLabel?: string;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (!open || mobileSheet) return;
-    const handlePointer = (event: MouseEvent) => {
+    if (!open) return;
+    const handlePointer = (event: PointerEvent) => {
       if (event.target instanceof Node && ref.current?.contains(event.target)) return;
       onOpenChange(false);
     };
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onOpenChange(false);
     };
-    document.addEventListener("mousedown", handlePointer);
+    document.addEventListener("pointerdown", handlePointer);
     document.addEventListener("keydown", handleKey);
     return () => {
-      document.removeEventListener("mousedown", handlePointer);
+      document.removeEventListener("pointerdown", handlePointer);
       document.removeEventListener("keydown", handleKey);
     };
-  }, [mobileSheet, open, onOpenChange]);
+  }, [open, onOpenChange]);
 
   return (
     <div className="relative" ref={ref}>
       {cloneElement(trigger, { onClick: () => onOpenChange(!open), "aria-expanded": open })}
-      {open &&
-        (mobileSheet ? (
-          <MobileSheet
-            open={open}
-            onOpenChange={onOpenChange}
-            ariaLabel={mobileSheetLabel}
-            className="flex flex-col overflow-hidden"
-          >
-            {children}
-          </MobileSheet>
-        ) : (
-          <div
-            data-android-back-close
-            className={cn(
-              "theme-floating-surface absolute top-full z-50 mt-2 overflow-hidden rounded-lg border bg-card shadow-xl",
-              align === "right" ? "right-0" : "left-0",
-            )}
-          >
-            {children}
-          </div>
-        ))}
+      {open && (
+        <div
+          data-android-back-close
+          role={ariaLabel ? "dialog" : undefined}
+          aria-label={ariaLabel}
+          className={cn(
+            "theme-floating-surface absolute top-full z-50 mt-2 max-w-[calc(100vw-1rem)] overflow-hidden rounded-lg border bg-card shadow-xl",
+            align === "right" ? "right-0" : "left-0",
+          )}
+        >
+          {children}
+        </div>
+      )}
     </div>
   );
 }

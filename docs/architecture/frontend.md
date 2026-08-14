@@ -1,12 +1,18 @@
 # Frontend
 
-On mobile, the app header is a compact tool bar with a Quick actions entry plus
-independent Appearance and account controls. Appearance owns mode, style, and
+On mobile, the app header is a compact tool bar ordered as Quick actions,
+Notifications (when authenticated), Appearance, and account. Quick actions
+opens the searchable Command Palette in a bottom sheet; Notifications,
+Appearance, and account use anchored popovers. Appearance owns mode, style, and
 color choices; the account surface owns Activity, account settings, native
-connection actions, and authentication actions. The Quick actions entry opens
-the Command Palette, which provides navigation, common maintenance commands,
-work-code opening, and published workflow commands through one searchable
-interface.
+connection actions, and authentication actions. On desktop, Quick actions and
+the same command palette remain a centered surface while the header popovers
+stay anchored to their triggers.
+
+`MobileSheet` is the shared bottom-sheet primitive. It animates in from the
+bottom and out toward the bottom, supports Escape and outside dismissal, and
+accepts a downward drag on its handle to close. Its default layer is
+transparent so sheet content does not add a backdrop mask.
 
 The header owns the desktop page title and description. Mobile browsing
 destinations use the bottom navigation as their location cue and show a compact

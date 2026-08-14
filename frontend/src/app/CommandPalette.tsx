@@ -4,6 +4,7 @@ import { ArrowRight, FileAudio, Loader2, Search, Workflow, X } from "lucide-reac
 import { commandActions, type CommandAction } from "@/app/commandActions";
 import { type NavigationItem, type PageID } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
+import { MobileSheet } from "@/components/ui/mobile-sheet";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { parseWorkflowDefinition } from "@/features/workflows/definitionModel";
 import { WorkflowRunDialog } from "@/features/workflows/WorkflowRunDialog";
@@ -13,6 +14,7 @@ import {
   workflowCommandInputValues,
   workflowCommandUsage,
 } from "@/features/workflows/workflowCommands";
+import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { api, type WorkflowDefinition } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { isWorkCode } from "@/lib/workCode";
@@ -43,6 +45,7 @@ export function CommandPalette({
   onOpenPath,
 }: CommandPaletteProps) {
   const toast = useToast();
+  const mobile = useMobileNavigationLayout();
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
@@ -188,8 +191,7 @@ export function CommandPalette({
     setActiveIndex(0);
   }, [query]);
 
-  if (!open) return null;
-  if (workflowLaunch) {
+  if (open && workflowLaunch) {
     const parsed = parseWorkflowDefinition(workflowLaunch.definition.definitionJson);
     return (
       <WorkflowRunDialog
@@ -225,6 +227,86 @@ export function CommandPalette({
     }
   };
 
+  const paletteContent = (
+    <>
+      <div className="flex min-h-14 items-center gap-3 border-b px-4">
+        <Search className="h-4 w-4 text-muted-foreground" />
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              setActiveIndex((index) => Math.min(index + 1, Math.max(0, actions.length - 1)));
+            }
+            if (event.key === "ArrowUp") {
+              event.preventDefault();
+              setActiveIndex((index) => Math.max(index - 1, 0));
+            }
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void runAction(activeIndex);
+            }
+          }}
+          className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+          placeholder="Search, open a work code, or type /workflow"
+        />
+        {loadingWorkflows && (
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Loading workflow commands" />
+        )}
+        <Button variant="ghost" size="icon" aria-label="Close command palette" onClick={() => onOpenChange(false)}>
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+      <div className="app-scroll min-h-0 flex-1 overflow-auto p-2">
+        {actions.length === 0 ? (
+          <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+            {parsedCommand.isCommand ? "No published workflow command matches." : "No commands match."}
+          </div>
+        ) : (
+          actions.map((action, index) => (
+            <button
+              key={action.id}
+              className={cn(
+                "flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm",
+                action.disabled && "cursor-not-allowed opacity-55",
+                index === activeIndex ? "bg-muted text-foreground" : "hover:bg-muted",
+              )}
+              onMouseEnter={() => setActiveIndex(index)}
+              onClick={() => void runAction(index)}
+              disabled={action.disabled || actionBusy !== null}
+            >
+              <span className="text-muted-foreground">
+                {actionBusy === action.id ? <Loader2 className="h-4 w-4 animate-spin" /> : action.icon}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">{action.label}</span>
+                <span className="block truncate text-xs text-muted-foreground">{action.description}</span>
+              </span>
+              <ArrowRight className="h-4 w-4 text-muted-foreground" />
+            </button>
+          ))
+        )}
+      </div>
+    </>
+  );
+
+  if (mobile) {
+    return (
+      <MobileSheet
+        open={open}
+        onOpenChange={onOpenChange}
+        ariaLabel="Command palette"
+        className="flex flex-col overflow-hidden p-0"
+      >
+        {paletteContent}
+      </MobileSheet>
+    );
+  }
+
+  if (!open) return null;
+
   return (
     <div
       className="visual-viewport-layer z-50 flex min-h-0 bg-background/55 p-2 backdrop-blur-sm sm:p-4 lg:block"
@@ -237,66 +319,7 @@ export function CommandPalette({
         className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col overflow-hidden rounded-md border bg-card shadow-xl lg:mt-[10vh] lg:flex-none lg:max-h-[76vh]"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="flex min-h-14 items-center gap-3 border-b px-4">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowDown") {
-                event.preventDefault();
-                setActiveIndex((index) => Math.min(index + 1, Math.max(0, actions.length - 1)));
-              }
-              if (event.key === "ArrowUp") {
-                event.preventDefault();
-                setActiveIndex((index) => Math.max(index - 1, 0));
-              }
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void runAction(activeIndex);
-              }
-            }}
-            className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-            placeholder="Search, open a work code, or type /workflow"
-          />
-          {loadingWorkflows && (
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Loading workflow commands" />
-          )}
-          <Button variant="ghost" size="icon" aria-label="Close command palette" onClick={() => onOpenChange(false)}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="app-scroll min-h-0 flex-1 overflow-auto p-2">
-          {actions.length === 0 ? (
-            <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-              {parsedCommand.isCommand ? "No published workflow command matches." : "No commands match."}
-            </div>
-          ) : (
-            actions.map((action, index) => (
-              <button
-                key={action.id}
-                className={cn(
-                  "flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm",
-                  action.disabled && "cursor-not-allowed opacity-55",
-                  index === activeIndex ? "bg-muted text-foreground" : "hover:bg-muted",
-                )}
-                onMouseEnter={() => setActiveIndex(index)}
-                onClick={() => void runAction(index)}
-                disabled={action.disabled || actionBusy !== null}
-              >
-                <span className="text-muted-foreground">
-                  {actionBusy === action.id ? <Loader2 className="h-4 w-4 animate-spin" /> : action.icon}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{action.label}</span>
-                  <span className="block truncate text-xs text-muted-foreground">{action.description}</span>
-                </span>
-                <ArrowRight className="h-4 w-4 text-muted-foreground" />
-              </button>
-            ))
-          )}
-        </div>
+        {paletteContent}
       </div>
     </div>
   );

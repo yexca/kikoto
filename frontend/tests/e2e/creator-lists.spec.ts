@@ -691,6 +691,7 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   await page.getByRole("button", { name: "Open advanced refresh actions" }).click();
   const advancedDialog = page.getByRole("dialog", { name: "Advanced refresh" });
   await expect(advancedDialog).toBeVisible();
+  await expect(advancedDialog.getByRole("button", { name: "Close advanced refresh actions" })).toHaveCount(0);
   const advancedLayerStyles = await advancedDialog.locator("..").evaluate((element) => {
     const style = getComputedStyle(element);
     return { backgroundColor: style.backgroundColor, backdropFilter: style.backdropFilter };
@@ -723,7 +724,8 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   });
   await metadataRefresh.getByRole("button", { name: "Full", exact: true }).click();
   expect((await fullMetadataRequest).postDataJSON()).toEqual({ scope: "metadata", mode: "full" });
-  await page.getByRole("button", { name: "Close advanced refresh actions" }).click();
+  await page.keyboard.press("Escape");
+  await expect(advancedDialog).toHaveCount(0);
 
   const metadataRefreshRequest = page.waitForRequest((request) => {
     if (new URL(request.url()).pathname !== "/api/voices/7/catalog/refresh" || request.method() !== "POST") {
@@ -843,6 +845,7 @@ test("mobile circle detail keeps the work surface visible and moves secondary co
   const refreshDialog = page.getByRole("dialog", { name: "Advanced refresh" });
   await expect(refreshDialog).toBeVisible();
   await expect(refreshDialog.getByRole("button", { name: "Incremental" }).first()).toBeVisible();
+  await expect(refreshDialog.getByRole("button", { name: "Close advanced refresh actions" })).toHaveCount(0);
   const refreshLayerStyles = await refreshDialog.locator("..").evaluate((element) => {
     const style = getComputedStyle(element);
     return { backgroundColor: style.backgroundColor, backdropFilter: style.backdropFilter };
@@ -851,7 +854,8 @@ test("mobile circle detail keeps the work surface visible and moves secondary co
   const refreshDialogBox = await refreshDialog.boundingBox();
   expect(refreshDialogBox).not.toBeNull();
   expect(refreshDialogBox!.y + refreshDialogBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
-  await page.getByRole("button", { name: "Close advanced refresh actions" }).click();
+  await page.keyboard.press("Escape");
+  await expect(refreshDialog).toHaveCount(0);
 
   await page.getByRole("button", { name: "Open catalog options" }).click();
   const optionsDialog = page.getByRole("dialog", { name: "Catalog options" });
@@ -992,7 +996,9 @@ test("mobile circle navigation does not resume a detail route after returning fr
   await expect(page.getByRole("button", { name: "Back to circles", exact: true })).toHaveCount(0);
 });
 
-test("command palette stays within the resized mobile visual viewport", async ({ page }) => {
+test("mobile command palette uses a sheet, stays in the visual viewport, and closes on a downward swipe", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 412, height: 915 });
   await mockCreatorDetails(page);
   await page.goto("/circles/RG09999");
@@ -1001,6 +1007,8 @@ test("command palette stays within the resized mobile visual viewport", async ({
   const dialog = page.getByRole("dialog", { name: "Command palette" });
   const input = page.getByPlaceholder("Search, open a work code, or type /workflow");
   await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("data-mobile-sheet");
+  await expect(dialog).toHaveAttribute("data-state", "open");
   await expect(input).toBeFocused();
 
   await page.setViewportSize({ width: 412, height: 430 });
@@ -1012,4 +1020,14 @@ test("command palette stays within the resized mobile visual viewport", async ({
     .toBe(true);
   await expect(input).toBeVisible();
   await expect(page.locator("footer")).toHaveCount(0);
+
+  const handleBox = await dialog.locator("[data-mobile-sheet-handle]").boundingBox();
+  expect(handleBox).not.toBeNull();
+  await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + handleBox!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + handleBox!.height / 2 + 140, {
+    steps: 4,
+  });
+  await page.mouse.up();
+  await expect(dialog).toHaveCount(0);
 });

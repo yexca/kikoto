@@ -81,9 +81,11 @@ export function VoiceAdvancedRefreshSheet({
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">Run a targeted catalog, metadata, or source workflow.</p>
         </div>
-        <Button variant="ghost" size="icon" aria-label="Close advanced refresh actions" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </Button>
+        {!mobile && (
+          <Button variant="ghost" size="icon" aria-label="Close advanced refresh actions" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       <div className="mt-4 space-y-3">
