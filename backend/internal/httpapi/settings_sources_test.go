@@ -718,6 +718,9 @@ func TestRemoteWorkSyncForksTrackTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !result.Tracked {
+		t.Fatal("track sync reported tracked=false")
+	}
 	if result.SyncedMediaItems != 1 || result.SyncedLocations != 1 {
 		t.Fatalf("sync counts = %d items, %d locations", result.SyncedMediaItems, result.SyncedLocations)
 	}
@@ -737,6 +740,58 @@ func TestRemoteWorkSyncForksTrackTree(t *testing.T) {
 	}
 	if trackedPresence != 1 || sourcePresence != 1 {
 		t.Fatalf("presence counts = tracked %d source %d, want 1 each", trackedPresence, sourcePresence)
+	}
+}
+
+func TestRemoteWorkMaterializeSyncKeepsSourceWithoutTracking(t *testing.T) {
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/workInfo/RJ00000009":
+			_ = json.NewEncoder(w).Encode(kikoeru.Work{ID: 11, SourceID: "RJ00000009", Title: "Materialized work"})
+		case "/api/tracks/11":
+			_ = json.NewEncoder(w).Encode([]kikoeru.Track{{Type: "audio", Title: "track.mp3", MediaStreamURL: "/media/track.mp3"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote', 'Remote', 'kikoeru_compatible')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO file_source_endpoint (file_source_id, base_url, api_url) VALUES (1, ?, ?)`, remote.URL, remote.URL); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{CacheRoot: t.TempDir()})
+	request := httptest.NewRequest(http.MethodPost, "/api/remote-sources/1/works/RJ00000009/sync", strings.NewReader(`{"triggerReason":"test_materialize"}`))
+	request.SetPathValue("id", "1")
+	request.SetPathValue("code", "RJ00000009")
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"library:read"}}))
+	response := httptest.NewRecorder()
+	server.syncRemoteSourceWork(response, request)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("sync status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var result remoteWorkSyncResult
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Tracked {
+		t.Fatal("materialize sync reported tracked=true")
+	}
+	var trackedPresence, sourcePresence, locations int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM work_source_presence WHERE file_source_id = 1 AND presence_type = 'tracked' AND availability = 'available'`).Scan(&trackedPresence); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM work_source_presence WHERE file_source_id = 1 AND presence_type = 'source' AND availability = 'available'`).Scan(&sourcePresence); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location WHERE file_source_id = 1 AND location_type = 'remote_stream' AND availability = 'available'`).Scan(&locations); err != nil {
+		t.Fatal(err)
+	}
+	if trackedPresence != 0 || sourcePresence != 1 || locations != 1 {
+		t.Fatalf("presence/locations = tracked %d source %d locations %d, want 0/1/1", trackedPresence, sourcePresence, locations)
 	}
 }
 

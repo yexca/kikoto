@@ -709,7 +709,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     try {
       const syncResult = await api.syncRemoteSourceWork(target.sourceId, target.code, "voice_mark_interest");
       await api.updateWorkUserState(syncResult.workId, { listeningStatus: status });
-      toast.success(`Tracked and marked ${syncResult.primaryCode}.`);
+      toast.success(`Saved and marked ${syncResult.primaryCode}.`);
       await refreshDetail();
     } catch (error) {
       toast.notify(toastFromError(error, "Listening mark update failed."));
@@ -734,7 +734,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       await refreshDetail();
       return nextWorkId;
     } catch (error) {
-      toast.notify(toastFromError(error, "Track for list failed."));
+      toast.notify(toastFromError(error, "Save for list failed."));
       return null;
     }
   };

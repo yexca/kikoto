@@ -13,6 +13,7 @@ import {
   Loader2,
   RefreshCw,
   Trash2,
+  Unlink,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
@@ -138,6 +139,8 @@ export function MediaContextActionBar({
   onTrack,
   trackDisabled,
   trackDisabledReason,
+  onUntrack,
+  untrackDisabled = false,
   forkSources = [],
   currentForkSource,
   onFork,
@@ -158,6 +161,8 @@ export function MediaContextActionBar({
   onTrack?: () => void;
   trackDisabled?: boolean;
   trackDisabledReason?: string;
+  onUntrack?: () => void;
+  untrackDisabled?: boolean;
   forkSources?: RemoteSourceAvailability[];
   currentForkSource?: RemoteSourceAvailability | null;
   onFork?: (remote: RemoteSourceAvailability) => void;
@@ -177,9 +182,11 @@ export function MediaContextActionBar({
   const optionsButtonRef = useRef<HTMLButtonElement | null>(null);
   const optionsMenuRef = useRef<HTMLDivElement | null>(null);
   const optionsMenuId = useId();
+  const [untrackConfirming, setUntrackConfirming] = useState(false);
   const hasForkOptions = (mode === "tracked_unforked" || mode === "tracked_forked") && Boolean(onFork);
   const hasOptions = Boolean(
     onTrack ||
+    onUntrack ||
     hasForkOptions ||
     onFetch ||
     remoteSourceWorkUrl ||
@@ -193,11 +200,19 @@ export function MediaContextActionBar({
 
   useEffect(() => {
     setOptionsOpen(false);
+    setUntrackConfirming(false);
   }, [contextKey]);
 
   useEffect(() => {
-    if (busy) setOptionsOpen(false);
+    if (busy) {
+      setOptionsOpen(false);
+      setUntrackConfirming(false);
+    }
   }, [busy]);
+
+  useEffect(() => {
+    if (!optionsOpen) setUntrackConfirming(false);
+  }, [optionsOpen]);
 
   useEffect(() => {
     if (!optionsOpen) return;
@@ -311,6 +326,26 @@ export function MediaContextActionBar({
                 })
               )}
             </div>
+          )}
+          {onUntrack && (
+            <>
+              <div className="my-1 border-t" />
+              <SourceOptionButton
+                icon={<Unlink className="h-4 w-4" />}
+                label={untrackConfirming ? "Confirm untrack" : "Untrack"}
+                detail={untrackConfirming ? "Click again to confirm" : "Stop tracking this source"}
+                tone="danger"
+                disabled={untrackDisabled}
+                onClick={() => {
+                  if (!untrackConfirming) {
+                    setUntrackConfirming(true);
+                    return;
+                  }
+                  setUntrackConfirming(false);
+                  runOption(onUntrack);
+                }}
+              />
+            </>
           )}
           {onFetch && (
             <SourceOptionButton

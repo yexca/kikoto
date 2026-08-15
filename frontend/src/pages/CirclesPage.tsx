@@ -607,7 +607,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     try {
       const syncResult = await api.syncRemoteSourceWork(target.sourceId, target.code, "circle_mark_interest");
       const markResult = await api.updateWorkUserState(syncResult.workId, { listeningStatus: status });
-      toast.success(`Tracked and marked ${syncResult.primaryCode}.`);
+      toast.success(`Saved and marked ${syncResult.primaryCode}.`);
       const next = await api.getCircle(externalId);
       setDetail({
         ...next,
@@ -638,7 +638,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       setDetail(next);
       return workId;
     } catch (error) {
-      toast.notify(toastFromError(error, "Track for list failed."));
+      toast.notify(toastFromError(error, "Save for list failed."));
       return null;
     }
   };

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { MediaItem, SourceAvailabilitySource, WorkDetail } from "@/lib/api";
-import { buildSourceTabs, buildTrackedPresenceOptions, currentRemoteSourceWorkCode } from "./sourceContextModel";
+import {
+  buildSourceTabs,
+  buildTrackedPresenceOptions,
+  currentRemoteSourceWorkCode,
+  trackedPresenceKey,
+} from "./sourceContextModel";
 
 describe("sourceContextModel", () => {
   it("aggregates tracked presences into one tab and reflects the selected presence", () => {
@@ -104,5 +109,16 @@ describe("sourceContextModel", () => {
       status: "available",
       statusLabel: "Forked directory available",
     });
+  });
+
+  it("keeps tracked presences from different family editions distinct", () => {
+    const base = {
+      type: "tracked",
+      availability: "available",
+      fileSourceId: 7,
+      remoteId: "remote-work",
+    } as NonNullable<WorkDetail["sourcePresence"]>[number];
+
+    expect(trackedPresenceKey({ ...base, workId: 11 })).not.toBe(trackedPresenceKey({ ...base, workId: 12 }));
   });
 });

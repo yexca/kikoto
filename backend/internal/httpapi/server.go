@@ -565,6 +565,7 @@ type libraryWorkSummary struct {
 type sourcePresenceItem struct {
 	Type           string `json:"type"`
 	Availability   string `json:"availability"`
+	WorkID         int64  `json:"workId,omitempty"`
 	FileSourceID   int64  `json:"fileSourceId"`
 	FileSourceCode string `json:"fileSourceCode"`
 	FileSourceName string `json:"fileSourceName"`
@@ -919,6 +920,7 @@ func (s *Server) sourcePresenceForCode(ctx context.Context, code string) []sourc
 		SELECT
 			presence.presence_type,
 			presence.availability,
+			presence.work_id,
 			presence.file_source_id,
 			COALESCE(source.code, ''),
 			COALESCE(source.display_name, ''),
@@ -994,6 +996,9 @@ func parseSourcePresenceSummary(raw string) []sourcePresenceItem {
 			if len(fields) > 7 {
 				item.RemoteCode = strings.TrimSpace(fields[7])
 			}
+			if len(fields) > 8 {
+				item.WorkID, _ = strconv.ParseInt(strings.TrimSpace(fields[8]), 10, 64)
+			}
 		} else {
 			presenceType, availability, ok := strings.Cut(part, ":")
 			if !ok {
@@ -1008,7 +1013,7 @@ func parseSourcePresenceSummary(raw string) []sourcePresenceItem {
 		if item.Availability == "" {
 			item.Availability = "unknown"
 		}
-		key := fmt.Sprintf("%s:%d:%s", strings.ToLower(item.Type), item.FileSourceID, strings.ToLower(item.Availability))
+		key := fmt.Sprintf("%s:%d:%d:%s", strings.ToLower(item.Type), item.WorkID, item.FileSourceID, strings.ToLower(item.Availability))
 		if index, ok := seen[key]; ok {
 			mergeSourcePresenceItem(&items[index], item)
 			continue
@@ -1027,6 +1032,7 @@ func scanSourcePresenceRows(rows *sql.Rows) ([]sourcePresenceItem, error) {
 		if err := rows.Scan(
 			&item.Type,
 			&item.Availability,
+			&item.WorkID,
 			&item.FileSourceID,
 			&item.FileSourceCode,
 			&item.FileSourceName,
@@ -1042,7 +1048,7 @@ func scanSourcePresenceRows(rows *sql.Rows) ([]sourcePresenceItem, error) {
 		if item.Availability == "" {
 			item.Availability = "unknown"
 		}
-		key := fmt.Sprintf("%s:%d:%s", strings.ToLower(item.Type), item.FileSourceID, strings.ToLower(item.Availability))
+		key := fmt.Sprintf("%s:%d:%d:%s", strings.ToLower(item.Type), item.WorkID, item.FileSourceID, strings.ToLower(item.Availability))
 		if index, ok := seen[key]; ok {
 			mergeSourcePresenceItem(&items[index], item)
 			continue
@@ -1054,6 +1060,9 @@ func scanSourcePresenceRows(rows *sql.Rows) ([]sourcePresenceItem, error) {
 }
 
 func mergeSourcePresenceItem(target *sourcePresenceItem, item sourcePresenceItem) {
+	if target.WorkID == 0 {
+		target.WorkID = item.WorkID
+	}
 	if target.RemoteCode == "" {
 		target.RemoteCode = item.RemoteCode
 	}

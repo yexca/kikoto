@@ -90,6 +90,16 @@ func TestTrackedPresenceForkStateUsesWholeLogicalFamily(t *testing.T) {
 	if tracked == nil || tracked.Forked == nil || !*tracked.Forked {
 		t.Fatalf("tracked family presence = %#v, want forked true", tracked)
 	}
+	if tracked.WorkID != 312 {
+		t.Fatalf("tracked family presence owner = %d, want 312", tracked.WorkID)
+	}
+	flags, err := server.sourceAvailabilityFlags(context.Background(), 311, "RJ00000002")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !flags.HasTracked {
+		t.Fatal("family source availability reported hasTracked=false")
+	}
 
 	if _, err := db.Exec("UPDATE media_file_location SET availability = 'missing' WHERE id = 311"); err != nil {
 		t.Fatal(err)
@@ -98,6 +108,19 @@ func TestTrackedPresenceForkStateUsesWholeLogicalFamily(t *testing.T) {
 	tracked = trackedPresenceForTest(items, 311)
 	if tracked == nil || tracked.Forked == nil || *tracked.Forked {
 		t.Fatalf("tracked family presence = %#v, want forked false", tracked)
+	}
+}
+
+func TestParseSourcePresenceSummaryKeepsDistinctOwners(t *testing.T) {
+	items := parseSourcePresenceSummary(
+		"tracked|available|311|example_remote|Example Remote|a||RJ00000002|311," +
+			"tracked|available|311|example_remote|Example Remote|b||RJ00000003|312",
+	)
+	if len(items) != 2 {
+		t.Fatalf("parsed presence count = %d, want 2", len(items))
+	}
+	if items[0].WorkID != 311 || items[1].WorkID != 312 {
+		t.Fatalf("parsed presence owners = %d/%d, want 311/312", items[0].WorkID, items[1].WorkID)
 	}
 }
 

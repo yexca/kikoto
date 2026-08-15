@@ -205,7 +205,7 @@ export function remoteSourceForTrackedPresence(
 }
 
 export function trackedPresenceKey(presence: NonNullable<WorkDetail["sourcePresence"]>[number]) {
-  return `tracked:${presence.fileSourceId ?? 0}:${presence.remoteId ?? ""}:${presence.sourceUrl ?? ""}`;
+  return `tracked:${presence.workId ?? 0}:${presence.fileSourceId ?? 0}:${presence.remoteId ?? ""}:${presence.sourceUrl ?? ""}`;
 }
 
 export function remoteSourceCanBrowse(summary: SourceAvailabilitySource) {

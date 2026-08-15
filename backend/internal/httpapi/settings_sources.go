@@ -313,6 +313,7 @@ type sourceAvailabilitySummary struct {
 	CoverURL    string `json:"coverUrl"`
 	WorkID      *int64 `json:"workId"`
 	HasRemote   bool   `json:"hasRemote"`
+	HasTracked  bool   `json:"hasTracked"`
 	HasCache    bool   `json:"hasCache"`
 	HasLocal    bool   `json:"hasLocal"`
 	Error       string `json:"error"`
@@ -347,6 +348,7 @@ type remoteWorkSyncResult struct {
 	WorkID           int64  `json:"workId"`
 	PrimaryCode      string `json:"primaryCode"`
 	Status           string `json:"status"`
+	Tracked          bool   `json:"tracked"`
 	SyncedMediaItems int    `json:"syncedMediaItems"`
 	SyncedLocations  int    `json:"syncedLocations"`
 	TriggerReason    string `json:"triggerReason"`
@@ -1739,6 +1741,7 @@ func (s *Server) attachSourceAvailabilityFlags(ctx context.Context, result *sour
 	}
 	result.WorkID = flags.WorkID
 	result.HasRemote = flags.HasRemote
+	result.HasTracked = flags.HasTracked
 	result.HasCache = flags.HasCache
 	result.HasLocal = flags.HasLocal
 	return nil
@@ -1866,7 +1869,7 @@ func (s *Server) syncRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 	if payload.TriggerReason == "" {
 		payload.TriggerReason = "manual"
 	}
-	result, err := s.runRemoteWorkSync(r.Context(), id, code, payload.TriggerReason)
+	result, err := s.runRemoteWorkMaterialize(r.Context(), id, code, payload.TriggerReason)
 	if err != nil {
 		writeUpstreamError(w, err)
 		return
@@ -2072,10 +2075,11 @@ func (s *Server) checkRemoteWorkAvailabilityWithClass(ctx context.Context, sourc
 }
 
 type sourceAvailabilityState struct {
-	WorkID    *int64
-	HasRemote bool
-	HasCache  bool
-	HasLocal  bool
+	WorkID     *int64
+	HasRemote  bool
+	HasTracked bool
+	HasCache   bool
+	HasLocal   bool
 }
 
 type workSourcePresence struct {
@@ -2155,6 +2159,7 @@ func (s *Server) sourceAvailabilityFlags(ctx context.Context, sourceID int64, wo
 	}
 	for _, workID := range ids {
 		flags.HasRemote = flags.HasRemote || s.workHasLocationType(ctx, workID, sourceID, "remote_stream") || s.workHasSourcePresence(ctx, workID, sourceID, sourcePresenceTypeRemoteSource, "available")
+		flags.HasTracked = flags.HasTracked || s.workHasSourcePresence(ctx, workID, sourceID, "tracked", "available")
 		flags.HasCache = flags.HasCache || s.workHasLocationType(ctx, workID, sourceID, "cache")
 		flags.HasLocal = flags.HasLocal || s.workHasLocationType(ctx, workID, 0, "local") || s.workHasSourcePresence(ctx, workID, 0, "local", "available")
 	}
@@ -2829,7 +2834,7 @@ func (s *Server) prepareRemoteWorkTrack(ctx context.Context, sourceID int64, cod
 	}, nil
 }
 
-func persistRemoteWorkTrack(ctx context.Context, tx *sql.Tx, prepared preparedRemoteWorkTrack) (int64, int, int, error) {
+func persistRemoteWorkSync(ctx context.Context, tx *sql.Tx, prepared preparedRemoteWorkTrack, tracked bool) (int64, int, int, error) {
 	workID, err := upsertRemoteWork(ctx, tx, prepared.Source, prepared.RemoteWork, prepared.RawWork, true)
 	if err != nil {
 		return 0, 0, 0, err
@@ -2837,17 +2842,19 @@ func persistRemoteWorkTrack(ctx context.Context, tx *sql.Tx, prepared preparedRe
 	if err := upsertAvailableRemoteSourcePresence(ctx, tx, prepared.Source, prepared.RemoteWork, workID); err != nil {
 		return 0, 0, 0, err
 	}
-	if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
-		WorkID:       workID,
-		FileSourceID: prepared.Source.ID,
-		PresenceType: "tracked",
-		RemoteID:     strconv.FormatInt(prepared.RemoteWork.ID, 10),
-		RemoteCode:   prepared.WorkCode,
-		SourceURL:    prepared.RemoteWork.SourceURL,
-		Availability: "available",
-		RawJSON:      string(prepared.RawWork),
-	}); err != nil {
-		return 0, 0, 0, err
+	if tracked {
+		if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
+			WorkID:       workID,
+			FileSourceID: prepared.Source.ID,
+			PresenceType: "tracked",
+			RemoteID:     strconv.FormatInt(prepared.RemoteWork.ID, 10),
+			RemoteCode:   prepared.WorkCode,
+			SourceURL:    prepared.RemoteWork.SourceURL,
+			Availability: "available",
+			RawJSON:      string(prepared.RawWork),
+		}); err != nil {
+			return 0, 0, 0, err
+		}
 	}
 	syncedMediaItems, syncedLocations, err := syncRemoteTrackTree(ctx, tx, prepared.Source.ID, workID, prepared.WorkCode, prepared.Tracks)
 	if err != nil {
@@ -2856,7 +2863,19 @@ func persistRemoteWorkTrack(ctx context.Context, tx *sql.Tx, prepared preparedRe
 	return workID, syncedMediaItems, syncedLocations, nil
 }
 
+func persistRemoteWorkTrack(ctx context.Context, tx *sql.Tx, prepared preparedRemoteWorkTrack) (int64, int, int, error) {
+	return persistRemoteWorkSync(ctx, tx, prepared, true)
+}
+
+func (s *Server) runRemoteWorkMaterialize(ctx context.Context, sourceID int64, code string, triggerReason string) (remoteWorkSyncResult, error) {
+	return s.runRemoteWorkSyncWithIntent(ctx, sourceID, code, triggerReason, false)
+}
+
 func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code string, triggerReason string) (remoteWorkSyncResult, error) {
+	return s.runRemoteWorkSyncWithIntent(ctx, sourceID, code, triggerReason, true)
+}
+
+func (s *Server) runRemoteWorkSyncWithIntent(ctx context.Context, sourceID int64, code string, triggerReason string, tracked bool) (remoteWorkSyncResult, error) {
 	prepared, err := s.prepareRemoteWorkTrack(ctx, sourceID, code)
 	if err != nil {
 		return remoteWorkSyncResult{}, err
@@ -2886,9 +2905,13 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 	if err != nil {
 		return remoteWorkSyncResult{}, err
 	}
-	runInput := map[string]any{"file_source_id": source.ID, "source_code": source.Code, "work_code": workCode, "requested_work_code": requestedCode, "trigger_reason": triggerReason}
-	runSummary := map[string]any{"remote_work_id": remoteWork.ID, "tracked": true}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_source_sync", "Track remote source", "succeeded", "manual", triggerReason, runInput, runSummary)
+	runInput := map[string]any{"file_source_id": source.ID, "source_code": source.Code, "work_code": workCode, "requested_work_code": requestedCode, "trigger_reason": triggerReason, "tracked": tracked}
+	runSummary := map[string]any{"remote_work_id": remoteWork.ID, "tracked": tracked}
+	runDisplayName := "Sync remote source"
+	if tracked {
+		runDisplayName = "Track remote source"
+	}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_source_sync", runDisplayName, "succeeded", "manual", triggerReason, runInput, runSummary)
 	if err != nil {
 		return remoteWorkSyncResult{}, err
 	}
@@ -2905,7 +2928,7 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 	if err != nil {
 		return remoteWorkSyncResult{}, err
 	}
-	workID, syncedMediaItems, syncedLocations, err := persistRemoteWorkTrack(ctx, tx, prepared)
+	workID, syncedMediaItems, syncedLocations, err := persistRemoteWorkSync(ctx, tx, prepared, tracked)
 	if err != nil {
 		return remoteWorkSyncResult{}, err
 	}
@@ -2929,7 +2952,7 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 	}
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
 		NodeID: "match", NodeType: "match_works", DisplayName: "Match works", Position: 4, Status: "succeeded",
-		Input: map[string]any{"work_code": workCode}, Output: map[string]any{"work_id": workID},
+		Input: map[string]any{"work_code": workCode}, Output: map[string]any{"work_id": workID, "tracked": tracked},
 	}); err != nil {
 		return remoteWorkSyncResult{}, err
 	}
@@ -2940,13 +2963,13 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 		return remoteWorkSyncResult{}, err
 	}
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "tree", NodeType: "fetch_remote_tree", DisplayName: "Fork remote directory", Position: 6, Status: "succeeded",
-		Input: map[string]any{"work_id": workID, "source_id": source.ID}, Output: map[string]any{"media_items": syncedMediaItems, "locations": syncedLocations},
+		NodeID: "tree", NodeType: "fetch_remote_tree", DisplayName: "Sync remote directory", Position: 6, Status: "succeeded",
+		Input: map[string]any{"work_id": workID, "source_id": source.ID}, Output: map[string]any{"media_items": syncedMediaItems, "locations": syncedLocations, "tracked": tracked},
 	}); err != nil {
 		return remoteWorkSyncResult{}, err
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET summary_json = ? WHERE id = ?", mustJSON(map[string]any{
-		"remote_work_id": remoteWork.ID, "tracked": true, "media_items": syncedMediaItems, "locations": syncedLocations,
+		"remote_work_id": remoteWork.ID, "tracked": tracked, "media_items": syncedMediaItems, "locations": syncedLocations,
 	}), runID); err != nil {
 		return remoteWorkSyncResult{}, err
 	}
@@ -2959,6 +2982,7 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 		WorkID:           workID,
 		PrimaryCode:      workCode,
 		Status:           "succeeded",
+		Tracked:          tracked,
 		SyncedMediaItems: syncedMediaItems,
 		SyncedLocations:  syncedLocations,
 		TriggerReason:    triggerReason,
@@ -3072,7 +3096,7 @@ func (s *Server) finishRemoteWorkTrackJob(ctx context.Context, job workflowJobRe
 	}
 	return remoteWorkSyncResult{
 		RunID: job.RunID, JobID: job.ID, WorkID: workID, PrimaryCode: prepared.WorkCode,
-		Status: "succeeded", SyncedMediaItems: syncedMediaItems, SyncedLocations: syncedLocations,
+		Status: "succeeded", Tracked: true, SyncedMediaItems: syncedMediaItems, SyncedLocations: syncedLocations,
 		TriggerReason: payload.TriggerReason,
 	}, nil
 }

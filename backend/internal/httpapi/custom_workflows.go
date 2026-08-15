@@ -3154,6 +3154,7 @@ func (s *Server) customTrackRequestResult(ctx context.Context, requestID string,
 		return remoteWorkSyncResult{}, false, fmt.Errorf("completed track request result is incomplete")
 	}
 	result.Status = "succeeded"
+	result.Tracked = true
 	result.TriggerReason = requestID
 	return result, true, nil
 }

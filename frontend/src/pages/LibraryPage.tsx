@@ -421,7 +421,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const [workPageSize, setWorkPageSize] = useState<LocalWorkPageSize>(localPageSize(initialBrowseState.pageSize));
   const [workTotal, setWorkTotal] = useState(0);
   const [isLibraryLoading, setIsLibraryLoading] = useState(false);
-  const [untrackTarget, setUntrackTarget] = useState<{ work: Work; source: SourcePresenceItem } | null>(null);
   const [isUntracking, setIsUntracking] = useState(false);
   const libraryRequestSeq = useRef(0);
   const remoteRequestSeq = useRef(0);
@@ -1164,13 +1163,19 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     }
   };
 
-  const untrackWorkSource = async () => {
-    if (!untrackTarget?.source.fileSourceId) return;
+  const untrackWorkSource = async (work: Work, source: SourcePresenceItem) => {
+    const sourceID = source.fileSourceId;
+    const ownerWorkID = source.workId || work.id;
+    if (!sourceID || !ownerWorkID) return;
     setIsUntracking(true);
     try {
-      await api.untrackWorkSource(untrackTarget.work.id, untrackTarget.source.fileSourceId);
-      setUntrackTarget(null);
+      await api.untrackWorkSource(ownerWorkID, sourceID);
+      toast.success(
+        `Untracked ${work.primaryCode} from ${source.fileSourceName || source.fileSourceCode || "the source"}.`,
+      );
       await refreshCurrentWorksPage();
+    } catch (error) {
+      toast.notify(toastFromError(error, "Untrack failed."));
     } finally {
       setIsUntracking(false);
     }
@@ -1793,7 +1798,8 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
                   }}
                   onTagOpen={addTagSearchClause}
                   onUserTagOpen={addUserTagSearchClause}
-                  onUntrack={localScope === "tracked" ? (source) => setUntrackTarget({ work, source }) : undefined}
+                  onUntrack={localScope === "tracked" ? (source) => untrackWorkSource(work, source) : undefined}
+                  isUntracking={isUntracking}
                   onFetch={
                     localScope === "tracked" ? (source) => void openTrackedFetchSelection(work, source) : undefined
                   }
@@ -1804,17 +1810,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
           )}
           {!libraryLoadError && <WorkCollectionPagination {...localPaginationProps} placement="bottom" />}
         </div>
-      )}
-      {untrackTarget && (
-        <UntrackConfirmModal
-          work={untrackTarget.work}
-          source={untrackTarget.source}
-          disabled={isUntracking}
-          onClose={() => {
-            if (!isUntracking) setUntrackTarget(null);
-          }}
-          onConfirm={() => void untrackWorkSource()}
-        />
       )}
       {recommendationDialog && (
         <RecommendationExplanationModal state={recommendationDialog} onClose={() => setRecommendationDialog(null)} />
@@ -2081,7 +2076,7 @@ function RemoteSourcePanel({
       if (!workId) return;
       await api.updateWorkUserState(workId, { listeningStatus: status });
       onWorkStateChanged(work.primaryCode, { workId, listeningStatus: status });
-      toast.success(`Tracked and marked ${work.primaryCode}.`);
+      toast.success(`Saved and marked ${work.primaryCode}.`);
       await onSynced(workId);
     } catch (error) {
       toast.notify(toastFromError(error, "Mark update failed."));
@@ -2103,7 +2098,7 @@ function RemoteSourcePanel({
     setIsSyncingCode(work.primaryCode);
     try {
       const result = await api.syncRemoteSourceWork(source.id, remoteWorkActionCode(work), "list_remote");
-      toast.success(`Tracked ${result.primaryCode} for list selection.`);
+      toast.success(`Saved ${result.primaryCode} for list selection.`);
       return result.workId;
     } catch (error) {
       toast.notify(toastFromError(error, "Remote sync failed."));
@@ -2364,7 +2359,10 @@ function recentWorkSourceIntent(work: Work): DetailSourceIntent {
   const hasLocal = (work.sourcePresence ?? []).some(
     (item) => item.type === "local" && item.availability === "available",
   );
-  return hasLocal ? "local" : "tracked";
+  const hasTracked = (work.sourcePresence ?? []).some(
+    (item) => item.type === "tracked" && item.availability === "available",
+  );
+  return hasLocal || !hasTracked ? "local" : "tracked";
 }
 
 function WorkCard({
@@ -2377,6 +2375,7 @@ function WorkCard({
   onTagOpen,
   onUserTagOpen,
   onUntrack,
+  isUntracking = false,
   onFetch,
   isFetchBusy,
 }: {
@@ -2388,12 +2387,16 @@ function WorkCard({
   onFavoriteSaved: (workID: number, favorite: boolean) => void;
   onTagOpen: (tag: string) => void;
   onUserTagOpen: (tag: string) => void;
-  onUntrack?: (source: SourcePresenceItem) => void;
+  onUntrack?: (source: SourcePresenceItem) => Promise<void>;
+  isUntracking?: boolean;
   onFetch?: (source: SourcePresenceItem) => void;
   isFetchBusy?: boolean;
 }) {
   const view = libraryWorkCardView(work, onUserTagOpen, showRecommendationScore);
-  const trackedSource = trackedSourceForWork(work);
+  const trackedSources = trackedSourcesForWork(work);
+  const trackedSource = trackedSources[0] ?? null;
+  const untrackAnchorRef = useRef<HTMLDivElement | null>(null);
+  const [untrackOpen, setUntrackOpen] = useState(false);
 
   return (
     <WorkCardShell
@@ -2412,16 +2415,54 @@ function WorkCard({
           left={<WorkCardDLsiteAction href={work.dlsiteUrl} />}
           right={
             <>
-              {onUntrack && trackedSource && (
-                <WorkCardActionButton
-                  title="Untrack source"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onUntrack(trackedSource);
-                  }}
-                >
-                  <Unlink className="h-4 w-4" />
-                </WorkCardActionButton>
+              {onUntrack && trackedSources.length > 0 && (
+                <div className="relative" ref={untrackAnchorRef}>
+                  <WorkCardActionButton
+                    title="Untrack source"
+                    disabled={isUntracking}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setUntrackOpen((current) => !current);
+                    }}
+                  >
+                    <Unlink className="h-4 w-4" />
+                  </WorkCardActionButton>
+                  <AnchoredPopover
+                    open={untrackOpen && !isUntracking}
+                    anchorRef={untrackAnchorRef}
+                    onOpenChange={setUntrackOpen}
+                    className="w-[min(18rem,calc(100vw-1.5rem))] p-2 text-sm"
+                    bottomCollisionPadding={96}
+                    zIndex={70}
+                  >
+                    <div className="space-y-2">
+                      <div className="font-medium">Untrack source?</div>
+                      <p className="text-xs text-muted-foreground">
+                        Work information, marks, lists, metadata, and local files will be kept. Cached files for this
+                        source will be deleted.
+                      </p>
+                      <div className="space-y-1">
+                        {trackedSources.map((source) => {
+                          const sourceName = source.fileSourceName || source.fileSourceCode || "this source";
+                          return (
+                            <button
+                              key={`${source.workId ?? work.id}:${source.fileSourceId ?? 0}`}
+                              className="flex min-h-10 w-full items-center gap-2 rounded-md border border-destructive/30 px-2 text-left text-destructive hover:bg-destructive/10 disabled:pointer-events-none disabled:opacity-50"
+                              disabled={isUntracking}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void onUntrack(source).finally(() => setUntrackOpen(false));
+                              }}
+                            >
+                              <Unlink className="h-4 w-4 shrink-0" />
+                              <span className="min-w-0 flex-1 truncate">Untrack {sourceName}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </AnchoredPopover>
+                </div>
               )}
               {onUntrack && (
                 <WorkCardActionButton
@@ -2592,56 +2633,6 @@ function SaveConfirmModal({
           </Button>
           <Button size="sm" onClick={onConfirm}>
             Fetch
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function UntrackConfirmModal({
-  work,
-  source,
-  disabled,
-  onClose,
-  onConfirm,
-}: {
-  work: Work;
-  source: SourcePresenceItem;
-  disabled: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  const sourceName = source.fileSourceName || source.fileSourceCode || "this source";
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
-      <div
-        className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <h3 className="text-base font-semibold">Untrack source</h3>
-        <div className="mt-2 space-y-2 text-sm text-muted-foreground">
-          <p>
-            {work.primaryCode} will be removed from tracked works for {sourceName}.
-          </p>
-          <p>Work information, marks, lists, metadata, and local files will be kept.</p>
-          <p>
-            Cached files for this work under /cache will be deleted and their cache locations will be marked
-            unavailable.
-          </p>
-        </div>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" disabled={disabled} onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="border-destructive/40 text-destructive hover:bg-destructive/10"
-            disabled={disabled}
-            onClick={onConfirm}
-          >
-            {disabled ? "Untracking" : "Untrack"}
           </Button>
         </div>
       </div>
@@ -2829,9 +2820,21 @@ function libraryWorkCardView(
   };
 }
 
-function trackedSourceForWork(work: Work) {
-  return (work.sourcePresence ?? []).find(
+function trackedSourcesForWork(work: Work) {
+  return (work.sourcePresence ?? []).filter(
     (item) => item.type === "tracked" && item.availability === "available" && item.fileSourceId,
+  );
+}
+
+function trackedPresenceForRemoteSource(work: WorkDetail | null, sourceID: number, remoteCode: string) {
+  const candidates = (work?.sourcePresence ?? []).filter(
+    (item) => item.type === "tracked" && item.availability === "available" && item.fileSourceId === sourceID,
+  );
+  if (candidates.length === 0) return null;
+  return (
+    candidates.find((item) => item.remoteCode?.toUpperCase() === remoteCode.toUpperCase()) ??
+    candidates.find((item) => item.workId === work?.id) ??
+    candidates[0]
   );
 }
 
@@ -3313,6 +3316,7 @@ function RemoteOnlyWorkDetailController({
           coverUrl: preview?.coverUrl ?? "",
           workId: null,
           hasRemote: false,
+          hasTracked: false,
           hasCache: false,
           hasLocal: false,
           error: "",
@@ -3320,6 +3324,7 @@ function RemoteOnlyWorkDetailController({
         },
       })),
   );
+  const [availabilityLoading, setAvailabilityLoading] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
   const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("browse");
   const [isManageOpen, setIsManageOpen] = useState(false);
@@ -3381,6 +3386,10 @@ function RemoteOnlyWorkDetailController({
   const activeTrackedForked = Boolean(activeTrackedPresence && activeRemoteTabInfo?.status === "available");
   const activeRemoteAvailability =
     remoteAvailability.find((item) => remoteSourceTabKey(item.source.id) === activeRemoteTab) ?? null;
+  const primaryRemoteAvailability = remoteAvailability.find((item) => item.source.id === source.id) ?? null;
+  const trackedSourcePresence = trackedPresenceForRemoteSource(trackedWork, source.id, displayRemoteCode);
+  const hasTrackedSource = Boolean(trackedSourcePresence || primaryRemoteAvailability?.summary.hasTracked);
+  const materializedWorkID = trackedWork?.id ?? primaryRemoteAvailability?.summary.workId ?? detail?.workId ?? null;
   const materializedTree = useMemo(() => {
     if (!trackedWork) return emptyTree();
     if (activeRemoteTabInfo?.kind === "tracked" && activeTrackedForked) {
@@ -3415,9 +3424,10 @@ function RemoteOnlyWorkDetailController({
 
   useEffect(() => {
     let cancelled = false;
+    setAvailabilityLoading(true);
     api
       .getSourceAvailability(code)
-      .then((result) => {
+      .then(async (result) => {
         if (cancelled) return;
         setRemoteAvailability((current) =>
           current.map((item) => {
@@ -3425,12 +3435,26 @@ function RemoteOnlyWorkDetailController({
             return summary ? { ...item, summary } : item;
           }),
         );
+        const summary = result.sources.find((candidate) => candidate.sourceId === source.id);
+        if (!summary?.workId) {
+          setTrackedWork(null);
+          return;
+        }
+        try {
+          const nextWork = await api.getWork(summary.workId);
+          if (!cancelled) setTrackedWork(nextWork);
+        } catch {
+          // Availability still controls Track state when materialized detail cannot be loaded.
+        }
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setAvailabilityLoading(false);
+      });
     return () => {
       cancelled = true;
     };
-  }, [code]);
+  }, [code, remoteRetryToken, source.id]);
 
   useEffect(() => {
     setDetail(null);
@@ -3579,6 +3603,37 @@ function RemoteOnlyWorkDetailController({
     });
   };
 
+  const untrackRemoteSource = async () => {
+    if (!materializedWorkID || !detail) return;
+    setIsFetching(true);
+    setMessage("");
+    try {
+      const currentWork = trackedWork ?? (await api.getWork(materializedWorkID));
+      const presence = trackedPresenceForRemoteSource(currentWork, source.id, remoteDetailActionCode(detail));
+      if (!presence?.fileSourceId) throw new Error("Tracked source could not be resolved.");
+      const ownerWorkID = presence.workId || currentWork.id;
+      const sourceName = presence.fileSourceName || presence.fileSourceCode || detail.sourceName;
+      await api.untrackWorkSource(ownerWorkID, presence.fileSourceId);
+      const [nextWork, availability] = await Promise.all([
+        api.getWork(currentWork.id),
+        api.getSourceAvailability(detail.primaryCode || code),
+        onWorksChanged(),
+      ]);
+      setTrackedWork(nextWork);
+      setRemoteAvailability((current) =>
+        current.map((item) => {
+          const summary = availability.sources.find((candidate) => candidate.sourceId === item.source.id);
+          return summary ? { ...item, summary } : item;
+        }),
+      );
+      toast.success(`Untracked ${detail.primaryCode} from ${sourceName}.`);
+    } catch (error) {
+      toast.notify(toastFromError(error, "Untrack failed."));
+    } finally {
+      setIsFetching(false);
+    }
+  };
+
   useEffect(() => {
     const reconcileTrack = (event: Event) => {
       const terminal = (event as CustomEvent<RemoteTrackTerminalDetail>).detail;
@@ -3691,8 +3746,11 @@ function RemoteOnlyWorkDetailController({
       <MediaContextActionBar
         busy={isFetching || fetchWorkspace.isBusy}
         mode="remote_source"
-        contextKey={remoteSourceTabKey(source.id)}
-        onTrack={detail.workId || trackedWork ? undefined : () => void fetchWork("manual_track")}
+        contextKey={`${remoteSourceTabKey(source.id)}:${hasTrackedSource ? "tracked" : "available"}`}
+        onTrack={() => void fetchWork("manual_track")}
+        trackDisabled={availabilityLoading || hasTrackedSource}
+        trackDisabledReason={availabilityLoading ? "Loading tracking state" : "Already tracked"}
+        onUntrack={hasTrackedSource && materializedWorkID ? () => void untrackRemoteSource() : undefined}
         onFetch={() => void openSaveWorkspace()}
         remoteSourceWorkUrl={safeExternalHTTPURL(detail.publicWorkUrl)}
         remoteSourceName={detail.sourceName}
@@ -4062,11 +4120,13 @@ function PersistedWorkDetailController({
         : "local";
   const forkSources = availableForkSources(remoteSources);
   const currentForkSource = selectedTrackedRemoteSource ?? selectedRemoteSource ?? null;
-  const canTrackRemote = Boolean(
-    selectedRemoteSource?.detail?.primaryCode &&
-    !selectedRemoteSource.summary.workId &&
-    !selectedRemoteSource.summary.hasRemote,
-  );
+  const selectedRemoteTrackedPresence = selectedRemoteSource
+    ? trackedPresenceForRemoteSource(work, selectedRemoteSource.source.id, selectedRemoteWorkCode)
+    : null;
+  const activeTrackedPresenceForAction = selectedTrackedPresence ?? selectedRemoteTrackedPresence;
+  const selectedRemoteHasTracked = Boolean(selectedRemoteTrackedPresence || selectedRemoteSource?.summary.hasTracked);
+  const hasTrackedSourceForAction = Boolean(activeTrackedPresenceForAction || selectedRemoteHasTracked);
+  const canTrackRemote = Boolean(selectedRemoteSource?.detail?.primaryCode && !selectedRemoteHasTracked);
   const selectedSourceDetailsLoading = Boolean(
     selectedRemoteSource &&
     !selectedRemoteDetail &&
@@ -4361,6 +4421,38 @@ function PersistedWorkDetailController({
     }
   };
 
+  const untrackSelectedSource = async () => {
+    if (!work) return;
+    setIsSyncingDetail(true);
+    setMessage("");
+    try {
+      let presence = activeTrackedPresenceForAction;
+      if (!presence && selectedRemoteSource?.summary.hasTracked) {
+        const currentWork = await api.getWork(work.id);
+        presence = trackedPresenceForRemoteSource(currentWork, selectedRemoteSource.source.id, selectedRemoteWorkCode);
+      }
+      if (!presence?.fileSourceId) throw new Error("Tracked source could not be resolved.");
+      const sourceID = presence.fileSourceId;
+      const ownerWorkID = presence.workId || work.id;
+      const sourceName = presence.fileSourceName || presence.fileSourceCode || "the source";
+      await api.untrackWorkSource(ownerWorkID, sourceID);
+      toast.success(`Untracked ${work.primaryCode} from ${sourceName}.`);
+      const remoteToKeep = selectedRemoteSource ?? selectedTrackedRemoteSource;
+      if (remoteToKeep) setActiveSourceKey(remoteSourceTabKey(remoteToKeep.source.id));
+      await onWorkReload(work.id, true);
+      await onWorksChanged();
+      try {
+        await refreshAvailability();
+      } catch {
+        // The work detail reload is authoritative; availability can be checked again from Source.
+      }
+    } catch (error) {
+      toast.notify(toastFromError(error, "Untrack failed."));
+    } finally {
+      setIsSyncingDetail(false);
+    }
+  };
+
   const forkTrackedSource = async (remote: RemoteSourceAvailability) => {
     if (!work?.primaryCode) return;
     setIsSyncingDetail(true);
@@ -4508,8 +4600,12 @@ function PersistedWorkDetailController({
           ? "Loading source details"
           : selectedRemoteSource?.error
             ? "Source details unavailable"
-            : "Already tracked"
+            : selectedRemoteHasTracked
+              ? "Already tracked"
+              : "Source unavailable"
       }
+      onUntrack={hasTrackedSourceForAction ? () => void untrackSelectedSource() : undefined}
+      untrackDisabled={isSyncingDetail}
       forkSources={forkSources}
       currentForkSource={currentForkSource}
       onFork={(remote) => requestForkSource(remote)}

@@ -117,6 +117,7 @@ export type RecommendationTelemetrySummary = {
 export type SourcePresenceItem = {
   type: string;
   availability: string;
+  workId?: number;
   fileSourceId?: number;
   fileSourceCode?: string;
   fileSourceName?: string;
@@ -621,6 +622,7 @@ export type SourceAvailabilitySource = {
   coverUrl: string;
   workId: number | null;
   hasRemote: boolean;
+  hasTracked: boolean;
   hasCache: boolean;
   hasLocal: boolean;
   error: string;
@@ -639,6 +641,7 @@ export type RemoteWorkSyncResult = {
   workId: number;
   primaryCode: string;
   status: string;
+  tracked: boolean;
   syncedMediaItems: number;
   syncedLocations: number;
   triggerReason: string;

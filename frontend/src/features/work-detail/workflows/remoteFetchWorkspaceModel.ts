@@ -235,6 +235,7 @@ function demoSourceAvailability(detail: RemoteWorkDetail): SourceAvailabilitySou
     coverUrl: detail.coverUrl,
     workId: detail.workId,
     hasRemote: true,
+    hasTracked: false,
     hasCache: false,
     hasLocal: false,
     error: "",

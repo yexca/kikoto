@@ -87,6 +87,7 @@ type MockApplicationFixture = {
   sourceAvailability?: Record<string, unknown>;
   remoteDetail?: Record<string, unknown>;
   onSourceCheck?: () => void;
+  onUntrack?: (workId: number, sourceId: number) => void;
   onLocalRefresh?: () => void;
   onMediaRequest?: () => void;
   mediaBusy?: boolean;
@@ -99,6 +100,8 @@ type RemoteTrackControl = {
   status: "queued" | "running" | "succeeded" | "failed";
   trackRequests: string[];
   statusRequests: number;
+  untracked: boolean;
+  untrackRequests: string[];
 };
 
 function silentWav(durationSeconds = 0.1) {
@@ -406,6 +409,26 @@ async function mockApplication(
       await route.fulfill({ status: 202, json: { runId: 41, jobId: 42, status: "queued", queued: 2 } });
       return;
     }
+    const untrackMatch = url.pathname.match(/^\/api\/works\/(\d+)\/tracked-sources\/(\d+)$/);
+    if (untrackMatch && route.request().method() === "DELETE") {
+      const workId = Number(untrackMatch[1]);
+      const sourceId = Number(untrackMatch[2]);
+      fixture.onUntrack?.(workId, sourceId);
+      await route.fulfill({
+        json: {
+          workId,
+          sourceId,
+          status: "succeeded",
+          clearedCaches: 0,
+          deletedFiles: 0,
+          cachePaths: [],
+          trackedCleared: true,
+          workPreserved: true,
+          localPreserved: true,
+        },
+      });
+      return;
+    }
     if (url.pathname === "/api/works/1/local-files/refresh" && route.request().method() === "POST") {
       fixture.onLocalRefresh?.();
       await route.fulfill({
@@ -508,7 +531,8 @@ async function mockRemoteSource(
 ) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
-    const trackCompleted = options.trackControl?.status === "succeeded";
+    const workMaterialized = options.trackControl?.status === "succeeded";
+    const trackCompleted = workMaterialized && !options.trackControl?.untracked;
     if (url.pathname === "/api/auth/me") {
       await route.fulfill({
         json:
@@ -578,8 +602,9 @@ async function mockRemoteSource(
               primaryCode: remoteOnlyWork ? "RJ00000051" : work.primaryCode,
               title: remoteOnlyWork ? "Remote Japanese work" : work.title,
               coverUrl: "",
-              workId: remoteOnlyWork ? (trackCompleted ? 91 : null) : 1,
-              hasRemote: remoteOnlyWork ? trackCompleted : true,
+              workId: remoteOnlyWork ? (workMaterialized ? 91 : null) : 1,
+              hasRemote: remoteOnlyWork ? workMaterialized : true,
+              hasTracked: remoteOnlyWork ? trackCompleted : false,
               hasCache: false,
               hasLocal: !remoteOnlyWork,
               error: "",
@@ -599,18 +624,31 @@ async function mockRemoteSource(
           title: "Remote Japanese work",
           circle: "Remote circle",
           ratingCount: 240,
-          availability: ["tracked", "remote"],
-          sourcePresence: [
-            {
-              type: "tracked",
-              availability: "available",
-              fileSourceId: 1,
-              fileSourceCode: "example_remote",
-              fileSourceName: "Example Remote",
-              remoteCode: "RJ00000051",
-              forked: true,
-            },
-          ],
+          availability: trackCompleted ? ["tracked", "remote"] : ["remote"],
+          sourcePresence: trackCompleted
+            ? [
+                {
+                  type: "tracked",
+                  availability: "available",
+                  workId: 91,
+                  fileSourceId: 1,
+                  fileSourceCode: "example_remote",
+                  fileSourceName: "Example Remote",
+                  remoteCode: "RJ00000051",
+                  forked: true,
+                },
+              ]
+            : [
+                {
+                  type: "source",
+                  availability: "available",
+                  workId: 91,
+                  fileSourceId: 1,
+                  fileSourceCode: "example_remote",
+                  fileSourceName: "Example Remote",
+                  remoteCode: "RJ00000051",
+                },
+              ],
           baseCode: "",
           metadataLanguage: "JPN",
           workType: "audio",
@@ -742,9 +780,9 @@ async function mockRemoteSource(
               ratingCount: 240,
               sales: 100,
               tags: ["退廃/背徳/インモラル"],
-              importStatus: trackCompleted ? "tracked" : "remote_only",
+              importStatus: trackCompleted ? "tracked" : workMaterialized ? "synced" : "remote_only",
               remotePlayable: true,
-              workId: pageNumber === 1 && trackCompleted ? 91 : options.persisted && pageNumber === 1 ? 1 : null,
+              workId: pageNumber === 1 && workMaterialized ? 91 : options.persisted && pageNumber === 1 ? 1 : null,
               favorite: false,
               listeningStatus: "none",
             },
@@ -805,8 +843,8 @@ async function mockRemoteSource(
           durationSeconds: null,
           tags: [],
           voiceActors: [],
-          importStatus: trackCompleted ? "tracked" : "remote_only",
-          workId: trackCompleted ? 91 : null,
+          importStatus: trackCompleted ? "tracked" : workMaterialized ? "synced" : "remote_only",
+          workId: workMaterialized ? 91 : null,
           languageEditions: [
             {
               remoteCode: "RJ00000051",
@@ -971,6 +1009,26 @@ async function mockRemoteSource(
           ? JSON.stringify({ work_id: 91, primary_code: "RJ00000051", source_id: 1, forked: true })
           : "{}";
       await route.fulfill({ json: { runId: 91, status: options.trackControl.status, summaryJson } });
+      return;
+    }
+    if (url.pathname === "/api/works/91/tracked-sources/1" && route.request().method() === "DELETE") {
+      if (options.trackControl) {
+        options.trackControl.untracked = true;
+        options.trackControl.untrackRequests.push(url.pathname);
+      }
+      await route.fulfill({
+        json: {
+          workId: 91,
+          sourceId: 1,
+          status: "succeeded",
+          clearedCaches: 0,
+          deletedFiles: 0,
+          cachePaths: [],
+          trackedCleared: true,
+          workPreserved: true,
+          localPreserved: true,
+        },
+      });
       return;
     }
     if (url.pathname === "/api/remote-sources/1/works/RJ00000051/fetch-plan") {
@@ -1594,6 +1652,7 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
         coverUrl: "",
         workId: 1,
         hasRemote: true,
+        hasTracked: true,
         hasCache: false,
         hasLocal: true,
         error: "",
@@ -1610,6 +1669,7 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
         coverUrl: "",
         workId: 1,
         hasRemote: false,
+        hasTracked: true,
         hasCache: false,
         hasLocal: true,
         error: "",
@@ -1688,7 +1748,8 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
 
   await remoteTab.click();
   await sourceOptions.click();
-  await expect(page.getByRole("menuitem", { name: /Track/ })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /^Track/ })).toBeDisabled();
+  await expect(page.getByRole("menuitem", { name: /^Untrack/ })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Fetch", exact: true })).toBeVisible();
   await trackedTab.click();
   await expect(page.getByRole("menu", { name: "Selected source options" })).toHaveCount(0);
@@ -1707,6 +1768,7 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await expect(page).toHaveURL(/view=tracked&trackedSource=7/);
   await sourceOptions.click();
   await expect(page.getByText("Switch fork", { exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /^Untrack/ })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: /Manage cache/ })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menu", { name: "Selected source options" })).toHaveCount(0);
@@ -1732,6 +1794,39 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await page.getByRole("button", { name: "Permanently delete" }).click();
   await expect.poll(() => cleanupBodies).toHaveLength(1);
   expect(cleanupBodies[0]).toEqual({ targets: [{ kind: "cache", locationId: 2 }] });
+});
+
+test("tracked library cards confirm Untrack in an anchored popover", async ({ page }) => {
+  const untrackRequests: Array<{ workId: number; sourceId: number }> = [];
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    work: {
+      ...work,
+      availability: ["tracked", "remote"],
+      sourcePresence: [
+        {
+          type: "tracked",
+          availability: "available",
+          workId: 12,
+          fileSourceId: 7,
+          fileSourceCode: "remote_a",
+          fileSourceName: "Remote A",
+          remoteCode: work.primaryCode,
+        },
+      ],
+    },
+    onUntrack: (workId, sourceId) => untrackRequests.push({ workId, sourceId }),
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Tracked", exact: true }).click();
+
+  const untrackTrigger = page.getByTitle("Untrack source");
+  await untrackTrigger.click();
+  await expect(page.getByText("Untrack source?", { exact: true })).toBeVisible();
+  expect(untrackRequests).toHaveLength(0);
+
+  await page.getByRole("button", { name: "Untrack Remote A", exact: true }).click();
+  await expect.poll(() => untrackRequests).toEqual([{ workId: 12, sourceId: 7 }]);
+  await expect(page.getByText(`Untracked ${work.primaryCode} from Remote A.`, { exact: true })).toBeVisible();
 });
 
 test("anonymous Fetch opens login before loading remote detail or a fetch plan", async ({ page }) => {
@@ -1802,7 +1897,13 @@ test("remote-only work uses the shared mobile detail shell without becoming pers
 });
 
 test("remote detail Track completes in place and makes the forked Tracked source available", async ({ page }) => {
-  const trackControl: RemoteTrackControl = { status: "queued", trackRequests: [], statusRequests: 0 };
+  const trackControl: RemoteTrackControl = {
+    status: "queued",
+    trackRequests: [],
+    statusRequests: 0,
+    untracked: false,
+    untrackRequests: [],
+  };
   await mockRemoteSource(page, () => undefined, { trackControl });
   await page.goto("/");
   await page.getByRole("button", { name: "Example Remote", exact: true }).click();
@@ -1825,10 +1926,24 @@ test("remote detail Track completes in place and makes the forked Tracked source
   expect(page.url()).toBe(detailURL);
   await expect(trackedTab).toHaveAttribute("title", "Tracked: Forked directory available");
   await page.getByRole("button", { name: /Source actions for/ }).click();
-  await expect(page.getByRole("menuitem", { name: "Track", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: /^Track/ })).toBeDisabled();
+  await page.getByRole("menuitem", { name: /^Untrack/ }).click();
+  await expect(page.getByRole("menuitem", { name: /^Confirm untrack/ })).toBeVisible();
+  expect(trackControl.untrackRequests).toHaveLength(0);
+  await page.getByRole("menuitem", { name: /^Confirm untrack/ }).click();
+  await expect.poll(() => trackControl.untrackRequests).toHaveLength(1);
+  await expect(page.getByText("Untracked RJ00000051 from Example Remote.", { exact: true })).toBeVisible();
+  await expect(trackedTab).toHaveAttribute("title", "Tracked: No tracked source linked");
+  await page.getByRole("button", { name: /Source actions for/ }).click();
+  await expect(page.getByRole("menuitem", { name: /^Track/ })).toBeEnabled();
+  await expect(page.getByRole("menuitem", { name: /^Untrack/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await trackedTab.click();
-  await expect(page.getByText("track.mp3", { exact: true })).toBeVisible();
-  await expect(page.getByText("Tracked directory not forked", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText("Track a remote source from its source tab to create a browsable tracked directory.", {
+      exact: true,
+    }),
+  ).toBeVisible();
 });
 
 test("persisted remote result opens the canonical detail with its remote source selected", async ({ page }) => {

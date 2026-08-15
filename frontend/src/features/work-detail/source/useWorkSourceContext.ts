@@ -428,6 +428,7 @@ function seedRemoteSources(sources: LibrarySource[], workCode: string): RemoteSo
         coverUrl: "",
         workId: null,
         hasRemote: false,
+        hasTracked: false,
         hasCache: false,
         hasLocal: false,
         error: "",
