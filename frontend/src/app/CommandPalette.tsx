@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ArrowRight, FileAudio, Loader2, Search, Workflow, X } from "lucide-react";
 
 import { commandActions, type CommandAction } from "@/app/commandActions";
@@ -44,6 +45,7 @@ export function CommandPalette({
   onOpenPage,
   onOpenPath,
 }: CommandPaletteProps) {
+  const { t } = useTranslation();
   const toast = useToast();
   const mobile = useMobileNavigationLayout();
   const [query, setQuery] = useState("");
@@ -58,8 +60,8 @@ export function CommandPalette({
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const baseActions = useMemo<PaletteAction[]>(
-    () => commandActions({ hasPermission, visibleNavItems, onOpenPage, onOpenPath }),
-    [hasPermission, visibleNavItems, onOpenPage, onOpenPath],
+    () => commandActions({ hasPermission, visibleNavItems, translate: t, onOpenPage, onOpenPath }),
+    [hasPermission, t, visibleNavItems, onOpenPage, onOpenPath],
   );
   const workflowCommands = useMemo(
     () => publishedWorkflowCommandsForUser(definitions, currentUserId),
@@ -87,11 +89,11 @@ export function CommandPalette({
           const parsedValues = workflowCommandInputValues(parsedCommand.arguments, command.document.inputs);
           const errors = [parsedCommand.error, ...parsedValues.errors].filter(Boolean);
           const launchMode = command.document.policy.requirePreview
-            ? "Preview required"
-            : "Preview, then run within saved limits";
+            ? t("commands.previewRequired")
+            : t("commands.previewThenRun");
           return {
             id: `workflow:${command.definition.id}`,
-            label: `${command.document.policy.requirePreview ? "Preview" : "Run"} ${command.definition.displayName}`,
+            label: `${command.document.policy.requirePreview ? t("commands.preview") : t("commands.run")} ${command.definition.displayName}`,
             description:
               errors.length > 0
                 ? errors.join(" ")
@@ -138,14 +140,14 @@ export function CommandPalette({
     return [
       {
         id: `code:${code}`,
-        label: `Open ${code}`,
-        description: "Open work detail by code",
+        label: t("commands.openWork", { code }),
+        description: t("commands.openWorkDescription"),
         icon: <FileAudio className="h-4 w-4" />,
         run: () => onOpenPath(`/${encodeURIComponent(code)}`),
       },
       ...filtered,
     ];
-  }, [baseActions, cleanQuery, codeMatch, onOpenPath, parsedCommand, workflowCommands]);
+  }, [baseActions, cleanQuery, codeMatch, onOpenPath, parsedCommand, t, workflowCommands]);
 
   useEffect(() => {
     if (!open) return;
@@ -221,7 +223,7 @@ export function CommandPalette({
         await result;
       }
     } catch (error) {
-      toast.notify(toastFromError(error, "Command could not be completed."));
+      toast.notify(toastFromError(error, t("commands.failed")));
     } finally {
       setActionBusy(null);
     }
@@ -249,13 +251,13 @@ export function CommandPalette({
           }
         }}
         className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-        placeholder="Search, open a work code, or type /workflow"
+        placeholder={t("commands.searchPlaceholder")}
       />
       {loadingWorkflows && (
-        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Loading workflow commands" />
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label={t("commands.loadingWorkflows")} />
       )}
       {!mobile && (
-        <Button variant="ghost" size="icon" aria-label="Close command palette" onClick={() => onOpenChange(false)}>
+        <Button variant="ghost" size="icon" aria-label={t("commands.closePalette")} onClick={() => onOpenChange(false)}>
           <X className="h-4 w-4" />
         </Button>
       )}
@@ -266,7 +268,7 @@ export function CommandPalette({
     <>
       {actions.length === 0 ? (
         <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-          {parsedCommand.isCommand ? "No published workflow command matches." : "No commands match."}
+          {parsedCommand.isCommand ? t("commands.noPublishedMatch") : t("commands.noMatch")}
         </div>
       ) : (
         actions.map((action, index) => (
@@ -312,7 +314,7 @@ export function CommandPalette({
       <MobileSheet
         open={open}
         onOpenChange={onOpenChange}
-        ariaLabel="Command palette"
+        ariaLabel={t("commands.palette")}
         className="flex flex-col overflow-hidden p-0"
       >
         {paletteContent}
@@ -330,7 +332,7 @@ export function CommandPalette({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Command palette"
+        aria-label={t("commands.palette")}
         className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col overflow-hidden rounded-md border bg-card shadow-xl lg:mt-[10vh] lg:flex-none lg:max-h-[76vh]"
         onMouseDown={(event) => event.stopPropagation()}
       >

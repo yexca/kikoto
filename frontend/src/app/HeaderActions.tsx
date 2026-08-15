@@ -1,5 +1,6 @@
 import { cloneElement, useEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Activity,
   Bell,
@@ -51,6 +52,8 @@ import { versionLabel } from "@/lib/appInfo";
 import { buildMobileDiagnosticsText } from "@/lib/mobileDiagnostics";
 import { useMobileRuntime } from "@/app/MobileRuntime";
 import { cn } from "@/lib/utils";
+import type { UiLocale } from "@/i18n";
+import { useLocale } from "@/i18n/LocaleProvider";
 
 type HeaderActionsProps = {
   user: CurrentUser | null;
@@ -60,6 +63,7 @@ type HeaderActionsProps = {
   onOpenPage: (id: PageID) => void;
   onOpenPath: (path: string, state?: unknown) => void;
   onOpenCommandPalette: () => void;
+  onLocaleChange: (locale: UiLocale) => Promise<void>;
 };
 
 export function HeaderActions({
@@ -70,7 +74,9 @@ export function HeaderActions({
   onOpenPage,
   onOpenPath,
   onOpenCommandPalette,
+  onLocaleChange,
 }: HeaderActionsProps) {
+  const { t } = useTranslation();
   const canRunWorkflows = hasPermission("workflows:run");
   const canSyncMetadata = hasPermission("metadata:sync");
   const canManageUsers = hasPermission("users:manage");
@@ -85,11 +91,27 @@ export function HeaderActions({
   const [userOpen, setUserOpen] = useState(false);
   const [mobileAppearanceOpen, setMobileAppearanceOpen] = useState(false);
   const [mobileAccountOpen, setMobileAccountOpen] = useState(false);
+  const [localeBusy, setLocaleBusy] = useState(false);
+  const [localeError, setLocaleError] = useState("");
   const [reviewRuns, setReviewRuns] = useState<WorkflowRun[]>([]);
   const [reviewCount, setReviewCount] = useState(0);
   const [notifications, setNotifications] = useState<WorkflowNotification[]>([]);
   const [notificationCount, setNotificationCount] = useState(0);
   const mobileRuntime = useMobileRuntime();
+  const locale = useLocale();
+
+  const changeLocale = async (next: UiLocale) => {
+    if (localeBusy || next === locale.preference) return;
+    setLocaleBusy(true);
+    setLocaleError("");
+    try {
+      await onLocaleChange(next);
+    } catch {
+      setLocaleError(t("appearance.saveFailed"));
+    } finally {
+      setLocaleBusy(false);
+    }
+  };
 
   useEffect(() => {
     applyThemeMode(themeMode);
@@ -185,10 +207,12 @@ export function HeaderActions({
   };
 
   const checkConnection = async () => {
-    setConnectionStatus("Checking...");
+    setConnectionStatus(t("common.checking"));
     const health = await mobileRuntime.reconnect();
     setConnectionStatus(
-      health ? `Connected · ${health.version}` : mobileRuntime.connection.message || "Connection check failed.",
+      health
+        ? t("account.connectedVersion", { version: health.version })
+        : mobileRuntime.connection.message || t("common.connectionCheckFailed"),
     );
   };
 
@@ -207,8 +231,8 @@ export function HeaderActions({
       <Button
         variant="outline"
         size="icon"
-        aria-label="Quick actions"
-        title="Quick actions"
+        aria-label={t("header.quickActions")}
+        title={t("header.quickActions")}
         className="order-1 h-11 w-11 sm:h-[var(--control-icon-size)] sm:w-[var(--control-icon-size)]"
         onClick={onOpenCommandPalette}
       >
@@ -221,11 +245,11 @@ export function HeaderActions({
           onOpenChange={setMobileAppearanceOpen}
           trigger={<ThemeTrigger mode={themeMode} preset={themePreset} palette={themePalette} />}
           align="right"
-          ariaLabel="Appearance"
+          ariaLabel={t("appearance.title")}
         >
           <div className="w-[min(16rem,calc(100vw-1rem))]">
             <div className="app-scroll max-h-[calc(var(--visual-viewport-height)-4rem)] overflow-y-auto">
-              <PopoverHeader title="Appearance" subtitle="Mode, style, and color" />
+              <PopoverHeader title={t("appearance.title")} subtitle={t("appearance.subtitle")} />
               <AppearanceControls
                 mode={themeMode}
                 preset={themePreset}
@@ -233,6 +257,10 @@ export function HeaderActions({
                 onModeChange={setThemeMode}
                 onPresetChange={setThemePreset}
                 onPaletteChange={setThemePalette}
+                localePreference={locale.preference}
+                onLocaleChange={changeLocale}
+                localeBusy={localeBusy}
+                localeError={localeError}
               />
             </div>
           </div>
@@ -248,8 +276,8 @@ export function HeaderActions({
               <Button
                 variant="outline"
                 size="icon"
-                aria-label="Account menu"
-                title="Account menu"
+                aria-label={t("account.accountMenu")}
+                title={t("account.accountMenu")}
                 className="relative h-11 w-11"
               >
                 <span className="grid h-7 w-7 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
@@ -257,19 +285,25 @@ export function HeaderActions({
                 </span>
               </Button>
             ) : (
-              <Button variant="outline" size="icon" aria-label="Sign in" title="Sign in" className="h-11 w-11">
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label={t("account.signIn")}
+                title={t("account.signIn")}
+                className="h-11 w-11"
+              >
                 <LogIn className="h-4 w-4" />
               </Button>
             )
           }
           align="right"
-          ariaLabel="Account"
+          ariaLabel={t("account.account")}
         >
           <div className="w-[min(20rem,calc(100vw-1rem))]">
             <div className="app-scroll max-h-[calc(var(--visual-viewport-height)-4rem)] overflow-y-auto">
               <PopoverHeader
-                title="Account"
-                subtitle={user ? user.displayName || user.username : "Sign in to manage your account"}
+                title={t("account.account")}
+                subtitle={user ? user.displayName || user.username : t("account.accountSubtitle")}
               />
               {user && (
                 <MenuList>
@@ -277,7 +311,7 @@ export function HeaderActions({
                     <>
                       <ActionItem
                         icon={<Activity className="h-4 w-4" />}
-                        label="Activity"
+                        label={t("account.activity")}
                         onClick={() => {
                           setMobileAccountOpen(false);
                           onOpenPath("/activity");
@@ -285,7 +319,7 @@ export function HeaderActions({
                       />
                       <ActionItem
                         icon={<ListChecks className="h-4 w-4" />}
-                        label={reviewCount > 0 ? `Review (${reviewCount})` : "Review"}
+                        label={reviewCount > 0 ? t("account.reviewCount", { count: reviewCount }) : t("account.review")}
                         onClick={() => {
                           setMobileAccountOpen(false);
                           onOpenPath("/activity?view=review");
@@ -295,7 +329,7 @@ export function HeaderActions({
                   )}
                   <ActionItem
                     icon={<Settings className="h-4 w-4" />}
-                    label="Settings"
+                    label={t("account.settings")}
                     onClick={() => {
                       setMobileAccountOpen(false);
                       onOpenPage("settings");
@@ -304,7 +338,7 @@ export function HeaderActions({
                   {canManageUsers && (
                     <ActionItem
                       icon={<Users className="h-4 w-4" />}
-                      label="Users"
+                      label={t("account.users")}
                       onClick={() => {
                         setMobileAccountOpen(false);
                         onOpenPath("/maintenance?tab=users");
@@ -315,20 +349,20 @@ export function HeaderActions({
               )}
               {isNativeApp() && (
                 <div className="border-t p-2">
-                  <div className="px-2 pb-1 text-xs font-medium text-muted-foreground">Server</div>
+                  <div className="px-2 pb-1 text-xs font-medium text-muted-foreground">{t("account.server")}</div>
                   <ActionItem
                     icon={<Server className="h-4 w-4" />}
-                    label="Reconnect"
+                    label={t("account.reconnect")}
                     onClick={() => void checkConnection()}
                   />
                   <ActionItem
                     icon={<Clipboard className="h-4 w-4" />}
-                    label="Copy diagnostics"
+                    label={t("account.copyDiagnostics")}
                     onClick={() => void showDiagnostics()}
                   />
                   <ActionItem
                     icon={<RotateCcw className="h-4 w-4" />}
-                    label="Clear server"
+                    label={t("account.clearServer")}
                     onClick={() => {
                       setMobileAccountOpen(false);
                       clearStoredServerURL();
@@ -343,7 +377,7 @@ export function HeaderActions({
                   <div className="border-t p-2">
                     <ActionItem
                       icon={<LogOut className="h-4 w-4" />}
-                      label="Sign out"
+                      label={t("account.signOut")}
                       onClick={() => {
                         setMobileAccountOpen(false);
                         onLogout();
@@ -355,7 +389,7 @@ export function HeaderActions({
                 <div className="border-t p-2">
                   <ActionItem
                     icon={<LogIn className="h-4 w-4" />}
-                    label="Sign in"
+                    label={t("account.signIn")}
                     onClick={() => {
                       setMobileAccountOpen(false);
                       onOpenLogin();
@@ -380,27 +414,34 @@ export function HeaderActions({
               }
             }}
             trigger={
-              <Button variant="outline" size="icon" aria-label="Server connection" title="Server connection">
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label={t("account.serverConnection")}
+                title={t("account.serverConnection")}
+              >
                 <Server className="h-4 w-4" />
               </Button>
             }
             align="right"
           >
             <div className="w-80">
-              <PopoverHeader title="Connection" subtitle="Android client server" />
+              <PopoverHeader title={t("account.connection")} subtitle={t("account.androidClientServer")} />
               <div className="space-y-3 border-b p-3 text-sm">
                 <div>
-                  <div className="text-xs font-medium text-muted-foreground">Server</div>
-                  <div className="mt-1 break-all font-medium">{getStoredServerURL() || "Not configured"}</div>
+                  <div className="text-xs font-medium text-muted-foreground">{t("account.server")}</div>
+                  <div className="mt-1 break-all font-medium">{getStoredServerURL() || t("common.notConfigured")}</div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div className="rounded-md border bg-muted px-2 py-1.5">
-                    <div className="text-muted-foreground">Client</div>
+                    <div className="text-muted-foreground">{t("account.client")}</div>
                     <div className="truncate font-medium">{versionLabel()}</div>
                   </div>
                   <div className="rounded-md border bg-muted px-2 py-1.5">
-                    <div className="text-muted-foreground">Server</div>
-                    <div className="truncate font-medium">{mobileRuntime.connection.serverVersion || "unknown"}</div>
+                    <div className="text-muted-foreground">{t("account.server")}</div>
+                    <div className="truncate font-medium">
+                      {mobileRuntime.connection.serverVersion || t("common.unknown")}
+                    </div>
                   </div>
                 </div>
                 {mobileRuntime.connection.message && (
@@ -417,13 +458,13 @@ export function HeaderActions({
               <MenuList>
                 <ActionItem
                   icon={<Server className="h-4 w-4" />}
-                  label="Reconnect"
+                  label={t("account.reconnect")}
                   onClick={() => void checkConnection()}
                 />
                 {user && (
                   <ActionItem
                     icon={<LogOut className="h-4 w-4" />}
-                    label="Sign out"
+                    label={t("account.signOut")}
                     onClick={() => {
                       setConnectionOpen(false);
                       onLogout();
@@ -432,7 +473,7 @@ export function HeaderActions({
                 )}
                 <ActionItem
                   icon={<RotateCcw className="h-4 w-4" />}
-                  label="Clear server"
+                  label={t("account.clearServer")}
                   onClick={() => {
                     clearStoredServerURL();
                     window.location.reload();
@@ -440,7 +481,7 @@ export function HeaderActions({
                 />
                 <ActionItem
                   icon={<Clipboard className="h-4 w-4" />}
-                  label="Copy diagnostics"
+                  label={t("account.copyDiagnostics")}
                   onClick={() => void showDiagnostics()}
                 />
               </MenuList>
@@ -470,8 +511,8 @@ export function HeaderActions({
               <Button
                 variant="outline"
                 size="icon"
-                aria-label="Notifications"
-                title="Notifications"
+                aria-label={t("notifications.title")}
+                title={t("notifications.title")}
                 className="relative h-11 w-11 sm:h-[var(--control-icon-size)] sm:w-[var(--control-icon-size)]"
               >
                 <Bell className="h-4 w-4" />
@@ -483,17 +524,21 @@ export function HeaderActions({
               </Button>
             }
             align="right"
-            ariaLabel="Notifications"
+            ariaLabel={t("notifications.title")}
           >
             <div className="w-[min(20rem,calc(100vw-1rem))]">
               <PopoverHeader
-                title="Notifications"
-                subtitle={totalNotificationCount > 0 ? `${totalNotificationCount} items` : "Nothing new"}
+                title={t("notifications.title")}
+                subtitle={
+                  totalNotificationCount > 0
+                    ? t("notifications.itemCount", { count: totalNotificationCount })
+                    : t("notifications.nothingNew")
+                }
               />
               <div className="app-scroll max-h-80 overflow-auto p-2">
                 {notifications.length === 0 && reviewRuns.length === 0 ? (
                   <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                    No notifications right now.
+                    {t("notifications.empty")}
                   </div>
                 ) : (
                   <>
@@ -532,7 +577,10 @@ export function HeaderActions({
                           <span className="min-w-0 flex-1">
                             <span className="block truncate font-medium">{notification.message}</span>
                             <span className="block truncate text-xs text-muted-foreground">
-                              Workflow #{notification.workflowRunId} · {notification.status}
+                              {t("notifications.workflowStatus", {
+                                id: notification.workflowRunId,
+                                status: notification.status,
+                              })}
                             </span>
                           </span>
                         </button>
@@ -540,8 +588,8 @@ export function HeaderActions({
                           variant="ghost"
                           size="icon"
                           className="m-1 h-8 w-8 shrink-0"
-                          aria-label={`Dismiss notification for ${notification.workCode}`}
-                          title="Dismiss notification"
+                          aria-label={t("notifications.dismissFor", { workCode: notification.workCode })}
+                          title={t("notifications.dismiss")}
                           onClick={() => void dismissFetchNotification(notification.id)}
                         >
                           <X className="h-4 w-4" />
@@ -561,7 +609,7 @@ export function HeaderActions({
                         <span className="min-w-0 flex-1">
                           <span className="block truncate font-medium">{run.displayName}</span>
                           <span className="block truncate text-xs text-muted-foreground">
-                            {run.workflowCode} · review
+                            {run.workflowCode} · {t("account.review")}
                           </span>
                         </span>
                         <Badge variant="warning">{workflowReviewCount(run)}</Badge>
@@ -580,7 +628,7 @@ export function HeaderActions({
                   }}
                 >
                   <Activity className="h-4 w-4" />
-                  Open Activity
+                  {t("notifications.openActivity")}
                 </Button>
               </PopoverFooter>
             </div>
@@ -596,15 +644,21 @@ export function HeaderActions({
           align="right"
         >
           <div className="w-64">
-            <PopoverHeader title="Appearance" subtitle="Mode, style, and color" />
-            <AppearanceControls
-              mode={themeMode}
-              preset={themePreset}
-              palette={themePalette}
-              onModeChange={setThemeMode}
-              onPresetChange={setThemePreset}
-              onPaletteChange={setThemePalette}
-            />
+            <div className="app-scroll max-h-[calc(var(--visual-viewport-height)-4rem)] overflow-y-auto">
+              <PopoverHeader title={t("appearance.title")} subtitle={t("appearance.subtitle")} />
+              <AppearanceControls
+                mode={themeMode}
+                preset={themePreset}
+                palette={themePalette}
+                onModeChange={setThemeMode}
+                onPresetChange={setThemePreset}
+                onPaletteChange={setThemePalette}
+                localePreference={locale.preference}
+                onLocaleChange={changeLocale}
+                localeBusy={localeBusy}
+                localeError={localeError}
+              />
+            </div>
           </div>
         </HeaderPopover>
       </div>
@@ -615,7 +669,11 @@ export function HeaderActions({
             open={userOpen}
             onOpenChange={setUserOpen}
             trigger={
-              <Button variant="outline" className="h-[var(--control-height)] gap-2 px-2 sm:px-3" aria-label="User menu">
+              <Button
+                variant="outline"
+                className="h-[var(--control-height)] gap-2 px-2 sm:px-3"
+                aria-label={t("account.userMenu")}
+              >
                 <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
                   {userInitial(user)}
                 </span>
@@ -624,7 +682,7 @@ export function HeaderActions({
                     {user.displayName || user.username}
                   </span>
                   <span className="block max-w-32 truncate text-[10px] leading-3 text-muted-foreground">
-                    {user.role}
+                    {t(`account.roles.${user.role}`, { defaultValue: user.role })}
                     {user.devMode ? " · dev" : user.demoMode ? " · demo" : ""}
                   </span>
                 </span>
@@ -645,15 +703,15 @@ export function HeaderActions({
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Badge variant="outline">{user.role}</Badge>
-                  {user.devMode && <Badge variant="warning">dev mode</Badge>}
-                  {user.demoMode && <Badge variant="secondary">demo mode</Badge>}
+                  <Badge variant="outline">{t(`account.roles.${user.role}`, { defaultValue: user.role })}</Badge>
+                  {user.devMode && <Badge variant="warning">{t("account.devMode")}</Badge>}
+                  {user.demoMode && <Badge variant="secondary">{t("account.demoMode")}</Badge>}
                 </div>
               </div>
               <MenuList>
                 <ActionItem
                   icon={<Settings className="h-4 w-4" />}
-                  label="Settings"
+                  label={t("account.settings")}
                   onClick={() => {
                     setUserOpen(false);
                     onOpenPage("settings");
@@ -662,7 +720,7 @@ export function HeaderActions({
                 {canManageUsers && (
                   <ActionItem
                     icon={<Users className="h-4 w-4" />}
-                    label="Users"
+                    label={t("account.users")}
                     onClick={() => {
                       setUserOpen(false);
                       onOpenPath("/maintenance?tab=users");
@@ -671,12 +729,12 @@ export function HeaderActions({
                 )}
                 {user.devMode || user.demoMode ? (
                   <div className="px-3 py-2 text-xs text-muted-foreground">
-                    {user.demoMode ? "Demo sessions are read-only." : "Dev mode session does not require sign out."}
+                    {user.demoMode ? t("account.demoSessionReadOnly") : t("account.devSessionNoSignOut")}
                   </div>
                 ) : (
                   <ActionItem
                     icon={<LogOut className="h-4 w-4" />}
-                    label="Sign out"
+                    label={t("account.signOut")}
                     onClick={() => {
                       setUserOpen(false);
                       onLogout();
@@ -689,7 +747,7 @@ export function HeaderActions({
         ) : (
           <Button variant="outline" className="h-[var(--control-height)] gap-2 px-3" onClick={onOpenLogin}>
             <LogIn className="h-4 w-4" />
-            <span className="hidden sm:inline">Sign in</span>
+            <span className="hidden sm:inline">{t("account.signIn")}</span>
           </Button>
         )}
       </div>

@@ -50,6 +50,54 @@ func TestStoreManagesIdentityAndSessions(t *testing.T) {
 	}
 }
 
+func TestStorePersistsOwnUILocaleAndRejectsInvalidValues(t *testing.T) {
+	db := openMigratedTestDB(t, "account-ui-locale.db")
+	store := account.NewStore(db)
+	ctx := context.Background()
+	if err := store.BootstrapRoot(ctx, "root", "root-password"); err != nil {
+		t.Fatal(err)
+	}
+	root, err := store.LoadByUsername(ctx, "root")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if root.UILocale != account.UILocaleAuto {
+		t.Fatalf("default UI locale = %q, want %q", root.UILocale, account.UILocaleAuto)
+	}
+
+	locale := account.UILocaleJapanese
+	updated, err := store.UpdateOwnAccount(ctx, account.UpdateOwnAccountInput{
+		ID: root.ID, DisplayName: root.DisplayName, UILocale: &locale,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.UILocale != account.UILocaleJapanese {
+		t.Fatalf("updated UI locale = %q, want %q", updated.UILocale, account.UILocaleJapanese)
+	}
+
+	invalid := "fr"
+	if _, err := store.UpdateOwnAccount(ctx, account.UpdateOwnAccountInput{
+		ID: root.ID, DisplayName: "Must Roll Back", UILocale: &invalid,
+	}); !errors.Is(err, account.ErrInvalidUILocale) {
+		t.Fatalf("invalid UI locale error = %v, want ErrInvalidUILocale", err)
+	}
+	reloaded, err := store.LoadByID(ctx, root.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.DisplayName != root.DisplayName || reloaded.UILocale != account.UILocaleJapanese {
+		t.Fatalf("invalid update persisted partial state: %#v", reloaded)
+	}
+	var localeAudits int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE action = 'user.ui_locale_update'`).Scan(&localeAudits); err != nil {
+		t.Fatal(err)
+	}
+	if localeAudits != 1 {
+		t.Fatalf("UI locale audit count = %d, want 1", localeAudits)
+	}
+}
+
 func TestBootstrapRootSynchronizesEnvironmentPasswordAndRevokesSessions(t *testing.T) {
 	db := openMigratedTestDB(t, "account-root-password.db")
 	store := account.NewStore(db)

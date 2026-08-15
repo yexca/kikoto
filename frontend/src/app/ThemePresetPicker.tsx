@@ -1,4 +1,5 @@
 import { Circle, Feather, Layers3, Shapes, type LucideIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { THEME_PRESET_OPTIONS, type ThemePalette, type ThemePreset } from "@/app/theme";
 import { cn } from "@/lib/utils";
@@ -21,8 +22,9 @@ export function ThemePresetPicker({
   palette?: ThemePalette;
   compact?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
-    <div className="grid grid-cols-2 gap-2" aria-label="Theme style">
+    <div className="grid grid-cols-2 gap-2" aria-label={t("appearance.themeStyle")}>
       {THEME_PRESET_OPTIONS.map((option) => {
         const Icon = presetIcons[option.value];
         const selected = value === option.value;

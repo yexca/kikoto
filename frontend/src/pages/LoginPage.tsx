@@ -1,13 +1,16 @@
 import { Lock, LogIn } from "lucide-react";
 import { FormEvent, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/auth/AuthProvider";
+import { ApiError } from "@/lib/api";
 import { clearStoredServerURL, getStoredServerURL, isNativeApp } from "@/lib/serverConfig";
 
 export function LoginPage({ embedded = false, onSuccess }: { embedded?: boolean; onSuccess?: () => void }) {
   const auth = useAuth();
+  const { t } = useTranslation();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -22,7 +25,15 @@ export function LoginPage({ embedded = false, onSuccess }: { embedded?: boolean;
       await auth.login(username, password);
       onSuccess?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(
+        err instanceof ApiError && err.status === 401
+          ? t("login.invalidCredentials")
+          : err instanceof TypeError
+            ? t("errors.network")
+            : err instanceof Error
+              ? err.message
+              : t("login.failed"),
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -35,14 +46,14 @@ export function LoginPage({ embedded = false, onSuccess }: { embedded?: boolean;
           <div className="mb-3 grid h-10 w-10 place-items-center rounded-lg bg-secondary text-secondary-foreground">
             <Lock className="h-5 w-5" />
           </div>
-          <h1 className="text-xl font-semibold">Sign in to Kikoto</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Use the configured root account or an invited user.</p>
+          <h1 className="text-xl font-semibold">{t("login.title")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t("login.subtitle")}</p>
           {mobileServerURL && <p className="mt-2 truncate text-xs text-muted-foreground">{mobileServerURL}</p>}
         </div>
 
         <form className="space-y-3" onSubmit={submit}>
           <label className="grid gap-1.5 text-sm font-medium">
-            Username
+            {t("login.username")}
             <input
               className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={username}
@@ -51,7 +62,7 @@ export function LoginPage({ embedded = false, onSuccess }: { embedded?: boolean;
             />
           </label>
           <label className="grid gap-1.5 text-sm font-medium">
-            Password
+            {t("login.password")}
             <input
               className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
               type="password"
@@ -67,7 +78,7 @@ export function LoginPage({ embedded = false, onSuccess }: { embedded?: boolean;
           )}
           <Button className="w-full" disabled={isSubmitting}>
             <LogIn className="h-4 w-4" />
-            {isSubmitting ? "Signing in" : "Sign in"}
+            {isSubmitting ? t("login.signingIn") : t("account.signIn")}
           </Button>
           {mobileServerURL && (
             <Button
@@ -79,7 +90,7 @@ export function LoginPage({ embedded = false, onSuccess }: { embedded?: boolean;
                 window.location.reload();
               }}
             >
-              Change server
+              {t("login.changeServer")}
             </Button>
           )}
         </form>

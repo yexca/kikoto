@@ -233,6 +233,50 @@ func TestUpdateCurrentUserChangesAccountManagedProfileAndPasswordAndKeepsCurrent
 	}
 }
 
+func TestUpdateCurrentUserPersistsUILocaleAndRejectsUnsupportedLocale(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{Mode: config.ModeProduction, RootUsername: "root", RootPassword: "root-password"})
+	if err := server.BootstrapRoot(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Routes()
+	cookie := loginTestSession(t, handler, "root", "root-password")
+
+	request := httptest.NewRequest(http.MethodPatch, "/api/auth/me", strings.NewReader(`{"uiLocale":"zh-Hant"}`))
+	request.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("UI locale update status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var payload struct {
+		Authenticated bool        `json:"authenticated"`
+		User          currentUser `json:"user"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.Authenticated || payload.User.UILocale != account.UILocaleHant {
+		t.Fatalf("UI locale update response = %#v", payload)
+	}
+
+	invalidRequest := httptest.NewRequest(http.MethodPatch, "/api/auth/me", strings.NewReader(`{"uiLocale":"fr"}`))
+	invalidRequest.AddCookie(cookie)
+	invalidResponse := httptest.NewRecorder()
+	handler.ServeHTTP(invalidResponse, invalidRequest)
+	if invalidResponse.Code != http.StatusBadRequest || !strings.Contains(invalidResponse.Body.String(), `"code":"invalid_ui_locale"`) {
+		t.Fatalf("invalid UI locale status = %d, body = %s", invalidResponse.Code, invalidResponse.Body.String())
+	}
+
+	meRequest := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	meRequest.AddCookie(cookie)
+	meResponse := httptest.NewRecorder()
+	handler.ServeHTTP(meResponse, meRequest)
+	if meResponse.Code != http.StatusOK || !strings.Contains(meResponse.Body.String(), `"uiLocale":"zh-Hant"`) {
+		t.Fatalf("persisted UI locale response = %d, body = %s", meResponse.Code, meResponse.Body.String())
+	}
+}
+
 func TestUpdateCurrentUserRejectsWrongPasswordWithoutPartialUpdate(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{Mode: config.ModeProduction, RootUsername: "root", RootPassword: "old-password"})

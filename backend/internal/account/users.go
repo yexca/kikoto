@@ -39,6 +39,7 @@ type UpdateUserInput struct {
 type UpdateOwnAccountInput struct {
 	ID               int64
 	DisplayName      string
+	UILocale         *string
 	CurrentPassword  string
 	NewPassword      string
 	CurrentSessionID string
@@ -48,6 +49,7 @@ var (
 	ErrUsernameExists         = errors.New("username already exists")
 	ErrInvalidCurrentPassword = errors.New("current password is incorrect")
 	ErrPasswordUnchanged      = errors.New("new password must differ from current password")
+	ErrInvalidUILocale        = errors.New("invalid interface language")
 )
 
 func (s *Store) ListManagedUsers(ctx context.Context) ([]ManagedUser, error) {
@@ -151,8 +153,8 @@ func (s *Store) UpdateOwnAccount(ctx context.Context, input UpdateOwnAccountInpu
 	}
 	defer tx.Rollback()
 
-	var username, currentDisplayName string
-	if err := tx.QueryRowContext(ctx, `SELECT username, display_name FROM user_account WHERE id = ? AND enabled = 1`, input.ID).Scan(&username, &currentDisplayName); err != nil {
+	var username, currentDisplayName, currentUILocale string
+	if err := tx.QueryRowContext(ctx, `SELECT username, display_name, ui_locale FROM user_account WHERE id = ? AND enabled = 1`, input.ID).Scan(&username, &currentDisplayName, &currentUILocale); err != nil {
 		return User{}, err
 	}
 	displayName := strings.TrimSpace(input.DisplayName)
@@ -165,6 +167,20 @@ func (s *Store) UpdateOwnAccount(ctx context.Context, input UpdateOwnAccountInpu
 		}
 		if err := insertAuditLog(ctx, tx, input.ID, "user.profile_update", input.ID); err != nil {
 			return User{}, err
+		}
+	}
+	if input.UILocale != nil {
+		normalizedLocale, ok := NormalizeUILocale(*input.UILocale)
+		if !ok {
+			return User{}, ErrInvalidUILocale
+		}
+		if normalizedLocale != currentUILocale {
+			if _, err := tx.ExecContext(ctx, `UPDATE user_account SET ui_locale = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, normalizedLocale, input.ID); err != nil {
+				return User{}, err
+			}
+			if err := insertAuditLog(ctx, tx, input.ID, "user.ui_locale_update", input.ID); err != nil {
+				return User{}, err
+			}
 		}
 	}
 

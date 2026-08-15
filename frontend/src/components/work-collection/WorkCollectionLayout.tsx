@@ -1,7 +1,10 @@
 import { Columns3 } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { useTranslation } from "react-i18next";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
+import i18n from "@/i18n";
 import {
   isWorkCollectionColumnCount,
   workCollectionColumnOptions,
@@ -65,6 +68,7 @@ export function WorkCollectionLayoutPicker({
   onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
   onDesktopColumnsChange: (value: WorkCollectionColumnSetting) => void;
 }) {
+  const { t } = useTranslation("translation", { i18n });
   const [columnsOpen, setColumnsOpen] = useState(false);
   const isWide = useIsWideLayout();
   const popoverRef = useRef<HTMLDivElement | null>(null);
@@ -83,8 +87,8 @@ export function WorkCollectionLayoutPicker({
     <div className="relative" ref={popoverRef}>
       <button
         className="relative inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
-        title={`Columns: ${columnSettingLabel(currentValue)}`}
-        aria-label={`Columns: ${columnSettingLabel(currentValue)}`}
+        title={t("collection.columns", { label: columnSettingLabel(currentValue, t) })}
+        aria-label={t("collection.columns", { label: columnSettingLabel(currentValue, t) })}
         type="button"
         onClick={() => setColumnsOpen((current) => !current)}
       >
@@ -102,11 +106,11 @@ export function WorkCollectionLayoutPicker({
             type="button"
             className={`flex h-8 items-center justify-center rounded-md text-sm font-medium hover:bg-muted ${currentValue === option ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
             aria-pressed={currentValue === option}
-            title={columnOptionLabel(option)}
-            aria-label={columnOptionLabel(option)}
+            title={columnOptionLabel(option, t)}
+            aria-label={columnOptionLabel(option, t)}
             onClick={() => setColumns(option)}
           >
-            {columnSettingLabel(option)}
+            {columnSettingLabel(option, t)}
           </button>
         ))}
       </AnchoredPopover>
@@ -143,13 +147,13 @@ function useIsWideLayout() {
   return wide;
 }
 
-function columnSettingLabel(setting: WorkCollectionColumnSetting) {
-  return setting === "auto" ? "Auto" : String(setting);
+function columnSettingLabel(setting: WorkCollectionColumnSetting, t: TFunction<"translation">) {
+  return setting === "auto" ? t("collection.auto") : String(setting);
 }
 
-function columnOptionLabel(setting: WorkCollectionColumnSetting) {
-  if (setting === "auto") return "Automatic columns";
-  return `${setting} ${setting === 1 ? "column" : "columns"}`;
+function columnOptionLabel(setting: WorkCollectionColumnSetting, t: TFunction<"translation">) {
+  if (setting === "auto") return t("collection.automaticColumns");
+  return t("collection.column", { count: setting });
 }
 
 function readStoredLayout(fallback: StoredWorkCollectionLayout): StoredWorkCollectionLayout {

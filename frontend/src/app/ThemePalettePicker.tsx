@@ -1,5 +1,6 @@
 import { THEME_PALETTE_OPTIONS, THEME_PRESET_OPTIONS, type ThemePalette, type ThemePreset } from "@/app/theme";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 export function ThemePalettePicker({
   preset,
@@ -12,11 +13,12 @@ export function ThemePalettePicker({
   onChange: (palette: ThemePalette) => void;
   compact?: boolean;
 }) {
+  const { t } = useTranslation();
   const originalSwatch =
     THEME_PRESET_OPTIONS.find((option) => option.value === preset)?.swatches[0] ?? THEME_PRESET_OPTIONS[0].swatches[0];
 
   return (
-    <div className={cn("grid gap-2", compact ? "grid-cols-4" : "grid-cols-2")} aria-label="Theme color">
+    <div className={cn("grid gap-2", compact ? "grid-cols-4" : "grid-cols-2")} aria-label={t("appearance.themeColor")}>
       {THEME_PALETTE_OPTIONS.map((option) => {
         const selected = value === option.value;
         return (

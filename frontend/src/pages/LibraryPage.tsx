@@ -55,6 +55,8 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 
 import { Badge, badgeVariants } from "@/components/ui/badge";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
@@ -149,6 +151,7 @@ import {
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
+import i18n from "@/i18n";
 import {
   WorkCollectionLayoutPicker as LayoutPicker,
   workCollectionClassName,
@@ -334,6 +337,7 @@ function writeLibraryHistoryBrowseState(storageScope: string, state: LibraryBrow
 export function LibraryPage({ active = true }: { active?: boolean }) {
   const toast = useToast();
   const auth = useAuth();
+  const { t } = useTranslation();
   const mobileNavigationLayout = useMobileNavigationLayout();
   const principalID = auth.user?.id ?? null;
   const browseStorageScope = currentClientStorageScope(principalID);
@@ -1400,7 +1404,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     if (selectedWorkNotFound) {
       return (
         <NotFoundPage
-          title="Work not found"
+          title={t("library.workNotFound")}
           message={`${selectedCode} is not available in the current library or configured sources.`}
           onBack={backToLibrary}
           onOpenLibrary={openLibraryHome}
@@ -1536,7 +1540,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
               setOptimisticLibrarySearchClauses(null);
               setSearchQuery(event.target.value);
             }}
-            placeholder="Search title, code, circle, tag, or creator"
+            placeholder={t("library.searchPlaceholder")}
           />
           {searchQuery.trim() && (
             <button
@@ -1545,7 +1549,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
                 setOptimisticLibrarySearchClauses(null);
                 setSearchQuery("");
               }}
-              aria-label="Clear search"
+              aria-label={t("library.clearSearch")}
             >
               <X className="h-4 w-4" />
             </button>
@@ -1553,7 +1557,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
           <button
             className="rounded-sm text-muted-foreground hover:text-foreground"
             onClick={openAddClauseEditor}
-            aria-label="Add search condition"
+            aria-label={t("library.addSearchCondition")}
           >
             <Plus className="h-4 w-4" />
           </button>
@@ -1563,10 +1567,10 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             <IconButton
               title={
                 searchQuery.trim()
-                  ? "Library search is active"
+                  ? t("library.searchActive")
                   : mobileSearchOpen
-                    ? "Hide library search"
-                    : "Search library"
+                    ? t("library.hideSearch")
+                    : t("library.searchLibrary")
               }
               disabled={Boolean(searchQuery.trim())}
               onClick={() => {
@@ -1599,12 +1603,14 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             }}
           />
           {librarySort === "recommend" ? (
-            <IconButton title="Refresh recommendations" disabled={isLibraryLoading} onClick={reshuffle}>
+            <IconButton title={t("library.refreshRecommendations")} disabled={isLibraryLoading} onClick={reshuffle}>
               <RefreshCw className={`h-4 w-4 ${isLibraryLoading ? "animate-spin" : ""}`} />
             </IconButton>
           ) : (
             <IconButton
-              title={recommendBadgesEnabled ? "Hide recommendation badges" : "Show recommendation badges"}
+              title={
+                recommendBadgesEnabled ? t("library.hideRecommendationBadges") : t("library.showRecommendationBadges")
+              }
               onClick={toggleRecommendBadges}
             >
               <Sparkles className={`h-4 w-4 ${recommendBadgesEnabled ? "fill-current text-primary" : ""}`} />
@@ -1630,10 +1636,10 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         <div className="flex flex-wrap gap-1.5">
           <Badge variant="outline" className="gap-1.5">
             <Filter className="h-4 w-4" />
-            Mark: {statusFilterLabel(statusFilter)}
+            {t("library.markFilter")}: {statusFilterLabel(statusFilter, t)}
             <button
               className="rounded-sm text-muted-foreground hover:text-foreground"
-              aria-label="Clear mark filter"
+              aria-label={t("library.clearMarkFilter")}
               onClick={() => changeStatusFilter("all")}
             >
               <X className="h-3 w-3" />
@@ -1654,11 +1660,11 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
                 onClick={() => openEditClauseEditor(clause, index)}
               >
                 <Edit3 className="h-3 w-3" />
-                {searchClauseLabel(clause)}
+                {searchClauseLabel(clause, t)}
               </button>
               <button
                 className="rounded-sm text-muted-foreground hover:text-foreground"
-                aria-label={`Remove ${searchClauseLabel(clause)}`}
+                aria-label={t("library.removeSearchClause", { clause: searchClauseLabel(clause, t) })}
                 onClick={() => removeSearchClause(index)}
               >
                 <X className="h-3 w-3" />
@@ -1811,17 +1817,18 @@ function LibraryPrimaryTabs({
   onChange: (tab: "local" | "tracked") => void;
   onSourceChange: (source: LibrarySource) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex gap-2 overflow-x-auto rounded-lg border bg-card p-1">
       <TabButton active={active === "local"} onClick={() => onChange("local")} icon={<HardDrive className="h-4 w-4" />}>
-        Local
+        {t("library.local")}
       </TabButton>
       <TabButton
         active={active === "tracked"}
         onClick={() => onChange("tracked")}
         icon={<GitBranchPlus className="h-4 w-4" />}
       >
-        Tracked
+        {t("library.tracked")}
       </TabButton>
       {sources.map((source) => (
         <TabButton
@@ -1898,6 +1905,7 @@ function RemoteSourcePanel({
   onSynced: (workID: number, options?: { openTracked?: boolean }) => Promise<void>;
 }) {
   const toast = useToast();
+  const { t } = useTranslation();
   const requireDownloadsManage = usePermissionGate("downloads:manage");
   const isInitialLoading = loading && result === null;
   const [isSyncingCode, setIsSyncingCode] = useState<string | null>(null);
@@ -1910,7 +1918,7 @@ function RemoteSourcePanel({
 
   const trackWork = async (work: RemoteWork, reason: string) => {
     if (!work.primaryCode) {
-      toast.warning("This remote work has no stable work code.");
+      toast.warning(t("library.remoteWorkNoCode"));
       return;
     }
     setIsSyncingCode(work.primaryCode);
@@ -1926,7 +1934,7 @@ function RemoteSourcePanel({
       });
       return result.runId;
     } catch (error) {
-      toast.notify(toastFromError(error, "Track could not be queued."));
+      toast.notify(toastFromError(error, t("library.trackCouldNotQueue")));
       return null;
     } finally {
       setIsSyncingCode(null);
@@ -2072,9 +2080,7 @@ function RemoteSourcePanel({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">{source.displayName}</h2>
-          <p className="text-sm text-muted-foreground">
-            Browse source results without importing until a user action needs local state.
-          </p>
+          <p className="text-sm text-muted-foreground">{t("library.remoteBrowseDescription")}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -2087,20 +2093,24 @@ function RemoteSourcePanel({
               });
             }}
           >
-            Select
+            {t("library.select")}
           </Button>
-          <Badge variant={source.enabled ? "outline" : "warning"}>{source.enabled ? "enabled" : "disabled"}</Badge>
-          <Badge variant="secondary">{result?.status ?? "loading"}</Badge>
-          {result?.status === "ok" && !result.sortApplied && <Badge variant="warning">source order fallback</Badge>}
+          <Badge variant={source.enabled ? "outline" : "warning"}>
+            {source.enabled ? t("library.enabled") : t("library.disabled")}
+          </Badge>
+          <Badge variant="secondary">{result?.status ?? t("common.loading")}</Badge>
+          {result?.status === "ok" && !result.sortApplied && (
+            <Badge variant="warning">{t("library.sourceOrderFallback")}</Badge>
+          )}
         </div>
       </div>
       {remoteTopPagination}
       {selectionMode && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
-          <div className="text-muted-foreground">{selectedWorks.length} selected</div>
+          <div className="text-muted-foreground">{t("library.selectedCount", { count: selectedWorks.length })}</div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => toggleAllVisible(true)}>
-              Select all
+              {t("library.selectAll")}
             </Button>
             <Button
               variant="outline"
@@ -2110,7 +2120,7 @@ function RemoteSourcePanel({
                 setSelectionMode(false);
               }}
             >
-              Cancel selection
+              {t("library.cancelSelection")}
             </Button>
             <Button
               variant="outline"
@@ -2119,7 +2129,7 @@ function RemoteSourcePanel({
               onClick={() => void bulkSyncSelected()}
             >
               <GitBranchPlus className="h-4 w-4" />
-              Track {selectedSyncable.length}
+              {t("library.trackCount", { count: selectedSyncable.length })}
             </Button>
             <Button
               variant="outline"
@@ -2128,7 +2138,7 @@ function RemoteSourcePanel({
               onClick={() => void bulkSaveSelected()}
             >
               <HardDriveDownload className="h-4 w-4" />
-              Fetch {selectedSaveable.length}
+              {t("library.fetchCount", { count: selectedSaveable.length })}
             </Button>
           </div>
         </div>
@@ -2138,14 +2148,10 @@ function RemoteSourcePanel({
       ) : visibleWorks.length === 0 ? (
         <Card>
           <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5 text-sm text-muted-foreground">
-            <span>
-              {searchClauses.length > 0
-                ? "No remote works match the current search on this page."
-                : "No remote works on this page."}
-            </span>
+            <span>{searchClauses.length > 0 ? t("library.noRemoteSearchMatch") : t("library.noRemoteWorks")}</span>
             {searchClauses.length > 0 && (
               <Button variant="outline" size="sm" onClick={onClearSearch}>
-                Clear search
+                {t("library.clearSearch")}
               </Button>
             )}
           </CardContent>
@@ -2200,6 +2206,7 @@ function RemoteSourcePanel({
 }
 
 function RecentlyPlayedStrip({ works, onOpen }: { works: Work[]; onOpen: (work: Work) => void }) {
+  const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(
     () => window.localStorage.getItem("kikoto:recently-played-collapsed") === "true",
   );
@@ -2218,14 +2225,14 @@ function RecentlyPlayedStrip({ works, onOpen }: { works: Work[]; onOpen: (work: 
           type="button"
           className="flex min-h-8 w-full items-center justify-between gap-2 rounded-md px-1 text-sm font-semibold transition-colors hover:bg-muted"
           onClick={toggleCollapsed}
-          aria-label={collapsed ? "Expand recently played" : "Collapse recently played"}
+          aria-label={collapsed ? t("library.expandRecentlyPlayed") : t("library.collapseRecentlyPlayed")}
           aria-expanded={!collapsed}
           aria-controls="recently-played-list"
-          title={collapsed ? "Expand recently played" : "Collapse recently played"}
+          title={collapsed ? t("library.expandRecentlyPlayed") : t("library.collapseRecentlyPlayed")}
         >
           <span className="flex items-center gap-2">
             <Clock3 className="h-4 w-4 text-primary" />
-            Recently played
+            {t("library.recentlyPlayed")}
           </span>
           <ChevronDown
             className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${collapsed ? "-rotate-90" : ""}`}
@@ -2239,7 +2246,7 @@ function RecentlyPlayedStrip({ works, onOpen }: { works: Work[]; onOpen: (work: 
               key={work.id}
               className="group flex h-[194px] w-[138px] shrink-0 snap-start flex-col text-left sm:h-[208px] sm:w-[154px] lg:h-[222px] lg:w-[168px]"
               onClick={() => onOpen(work)}
-              aria-label={`Open ${work.title}`}
+              aria-label={t("library.openWorkTitle", { title: work.title })}
             >
               <span className="relative block aspect-[4/3] w-full shrink-0 overflow-hidden rounded-md border bg-muted transition-colors group-hover:border-primary/50">
                 {work.coverUrl ? (
@@ -2262,7 +2269,7 @@ function RecentlyPlayedStrip({ works, onOpen }: { works: Work[]; onOpen: (work: 
                 {work.title}
               </span>
               <span className="mt-0.5 block h-4 w-full truncate text-[11px] text-muted-foreground">
-                {work.circle || "Unknown circle"}
+                {work.circle || t("common.unknown")}
               </span>
               <span className="mt-auto block h-1 w-full shrink-0 overflow-hidden rounded-full bg-muted">
                 <span
@@ -2767,7 +2774,7 @@ function trackedSourceForWork(work: Work) {
 }
 
 function remoteWorkCardView(work: RemoteWork, source: LibrarySource): WorkCardViewModel {
-  const sourceLabel = source.displayName || source.code || "remote source";
+  const sourceLabel = source.displayName || source.code || i18n.t("workCard.remoteSource");
   return {
     code: work.primaryCode || work.remoteId,
     title: work.title,
@@ -2788,7 +2795,13 @@ function remoteWorkCardView(work: RemoteWork, source: LibrarySource): WorkCardVi
     recommendationScore: work.recommendScore,
     sourceBadges: work.remotePlayable
       ? [{ key: `source:remote:${source.id}`, label: sourceLabel, variant: "outline" }]
-      : [{ key: `source:remote:${source.id}:unavailable`, label: `${sourceLabel} unavailable`, variant: "warning" }],
+      : [
+          {
+            key: `source:remote:${source.id}:unavailable`,
+            label: i18n.t("workCard.namedSourceUnavailable", { name: sourceLabel }),
+            variant: "warning",
+          },
+        ],
   };
 }
 
@@ -2811,8 +2824,9 @@ function workHasNoSource(work: {
 }
 
 function WorkProgress({ progress }: { progress: Work["progress"] }) {
+  const { t } = useTranslation();
   if (!progress.mediaItemId || !progress.lastPlayedAt) {
-    return <div className="h-8 text-xs text-muted-foreground">No playback yet</div>;
+    return <div className="h-8 text-xs text-muted-foreground">{t("library.noPlaybackYet")}</div>;
   }
   return (
     <div className="space-y-1">
@@ -2821,8 +2835,11 @@ function WorkProgress({ progress }: { progress: Work["progress"] }) {
       </div>
       <div className="truncate text-xs text-muted-foreground">
         {progress.completed
-          ? "Finished"
-          : `Resume ${progress.title || "track"} at ${formatTime(progress.positionSeconds)}`}
+          ? t("library.finished")
+          : t("library.resumeAt", {
+              title: progress.title || t("library.track"),
+              time: formatTime(progress.positionSeconds),
+            })}
       </div>
     </div>
   );
@@ -2843,6 +2860,7 @@ function SortPicker({
   onDirectionChange: (value: SortDirection) => void;
   onReshuffle: () => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const options =
@@ -2851,7 +2869,8 @@ function SortPicker({
           ["recent", "release", "code", "rating", "sales", "random"].includes(option.value),
         )
       : librarySortOptions;
-  const label = options.find((option) => option.value === value)?.label ?? "Sort";
+  const label = options.find((option) => option.value === value)?.label ?? t("library.sort");
+  const localizedLabel = t(`library.sortOptions.${value}`, { defaultValue: label });
   useDismissiblePopover(open, popoverRef, () => setOpen(false));
   const nextDirection = direction === "asc" ? "desc" : "asc";
   return (
@@ -2859,16 +2878,28 @@ function SortPicker({
       <div className="inline-flex rounded-md border bg-background">
         <button
           className="relative inline-flex h-8 w-8 items-center justify-center rounded-l-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-          title={`Sort: ${label}`}
-          aria-label={`Sort: ${label}`}
+          title={t("library.sortLabel", { label: localizedLabel })}
+          aria-label={t("library.sortLabel", { label: localizedLabel })}
           onClick={() => setOpen((current) => !current)}
         >
           <ArrowUpDown className="h-4 w-4" />
         </button>
         <button
           className="relative inline-flex h-8 w-8 items-center justify-center rounded-r-md border-l text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-          title={value === "random" ? "Reshuffle" : direction === "asc" ? "Ascending" : "Descending"}
-          aria-label={value === "random" ? "Reshuffle" : direction === "asc" ? "Ascending" : "Descending"}
+          title={
+            value === "random"
+              ? t("library.reshuffle")
+              : direction === "asc"
+                ? t("library.ascending")
+                : t("library.descending")
+          }
+          aria-label={
+            value === "random"
+              ? t("library.reshuffle")
+              : direction === "asc"
+                ? t("library.ascending")
+                : t("library.descending")
+          }
           onClick={() => (value === "random" ? onReshuffle() : onDirectionChange(nextDirection))}
         >
           {value === "random" ? (
@@ -2896,7 +2927,7 @@ function SortPicker({
               setOpen(false);
             }}
           >
-            {option.label}
+            {t(`library.sortOptions.${option.value}`, { defaultValue: option.label })}
           </button>
         ))}
       </AnchoredPopover>
@@ -2915,6 +2946,7 @@ function FilterPicker({
   disabled?: boolean;
   onChange: (value: ListeningStatus | "all") => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   useDismissiblePopover(open, popoverRef, () => setOpen(false));
@@ -2923,10 +2955,10 @@ function FilterPicker({
       <IconButton
         title={
           disabled
-            ? "Mark filters are unavailable for source browsing"
+            ? t("library.markFiltersUnavailable")
             : activeCount > 0
-              ? `Filters: ${activeCount} active`
-              : "Filters"
+              ? t("library.activeFilters", { count: activeCount })
+              : t("library.filters")
         }
         disabled={disabled}
         onClick={() => setOpen((current) => !current)}
@@ -2942,8 +2974,8 @@ function FilterPicker({
         <button
           className={`flex h-8 items-center justify-center rounded-md hover:bg-muted ${value === "all" ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
           aria-pressed={value === "all"}
-          title="All marks"
-          aria-label="All marks"
+          title={t("library.allMarks")}
+          aria-label={t("library.allMarks")}
           onClick={() => {
             onChange("all");
             setOpen(false);
@@ -2958,8 +2990,8 @@ function FilterPicker({
               key={option.value}
               className={`flex h-8 items-center justify-center rounded-md hover:bg-muted ${value === option.value ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
               aria-pressed={value === option.value}
-              title={option.label}
-              aria-label={option.label}
+              title={t(`library.status.${option.value}`, { defaultValue: option.label })}
+              aria-label={t(`library.status.${option.value}`, { defaultValue: option.label })}
               onClick={() => {
                 onChange(option.value);
                 setOpen(false);
@@ -3011,9 +3043,10 @@ function useDismissiblePopover(open: boolean, ref: RefObject<HTMLElement | null>
   }, [open, ref, onClose]);
 }
 
-function statusFilterLabel(value: ListeningStatus | "all") {
-  if (value === "all") return "All marks";
-  return listeningStatusOptions.find((option) => option.value === value)?.label ?? value;
+function statusFilterLabel(value: ListeningStatus | "all", t: TFunction) {
+  if (value === "all") return t("library.allMarks");
+  const fallback = listeningStatusOptions.find((option) => option.value === value)?.label ?? value;
+  return t(`library.status.${value}`, { defaultValue: fallback });
 }
 
 function EmptyLibraryWorksCard({
@@ -3025,13 +3058,14 @@ function EmptyLibraryWorksCard({
   filtered: boolean;
   onClear: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Card>
       <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5 text-sm text-muted-foreground">
-        <span>{scope === "tracked" ? "No tracked works match this view." : "No local works match this view."}</span>
+        <span>{scope === "tracked" ? t("library.noTrackedWorks") : t("library.noLocalWorks")}</span>
         {filtered && (
           <Button variant="outline" size="sm" onClick={onClear}>
-            Clear search and filters
+            {t("library.clearSearchAndFilters")}
           </Button>
         )}
       </CardContent>
@@ -3050,6 +3084,7 @@ function SearchClauseEditor({
   onCancel: () => void;
   onSave: () => void;
 }) {
+  const { t } = useTranslation();
   const value = editor.draft.value;
   return (
     <div className="flex flex-col gap-2 rounded-lg border bg-card p-2 text-sm shadow-sm sm:flex-row sm:items-center">
@@ -3063,11 +3098,11 @@ function SearchClauseEditor({
             value: kind === "shelf" ? "true" : editor.draft.kind === "shelf" ? "" : editor.draft.value,
           });
         }}
-        aria-label="Search clause type"
+        aria-label={t("library.searchClauseType")}
       >
         {editableSearchClauseKinds.map((kind) => (
           <option key={kind.value} value={kind.value}>
-            {kind.label}
+            {t(`library.searchClauseKinds.${kind.value}`, { defaultValue: kind.label })}
           </option>
         ))}
       </select>
@@ -3076,10 +3111,10 @@ function SearchClauseEditor({
           className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
           value={value === "false" ? "false" : "true"}
           onChange={(event) => onChange({ ...editor.draft, value: event.target.value })}
-          aria-label="Shelf membership"
+          aria-label={t("library.shelfMembership")}
         >
-          <option value="true">Included</option>
-          <option value="false">Not included</option>
+          <option value="true">{t("library.included")}</option>
+          <option value="false">{t("library.notIncluded")}</option>
         </select>
       ) : (
         <input
@@ -3090,17 +3125,17 @@ function SearchClauseEditor({
             if (event.key === "Enter") onSave();
             if (event.key === "Escape") onCancel();
           }}
-          placeholder="Value"
+          placeholder={t("library.value")}
         />
       )}
       <div className="flex gap-2">
         <Button size="sm" disabled={!value.trim()} onClick={onSave}>
           <Check className="h-4 w-4" />
-          {editor.mode === "add" ? "Add" : "Save"}
+          {editor.mode === "add" ? t("library.add") : t("common.save")}
         </Button>
         <Button size="sm" variant="outline" onClick={onCancel}>
           <X className="h-4 w-4" />
-          Cancel
+          {t("common.cancel")}
         </Button>
       </div>
     </div>
@@ -3149,6 +3184,7 @@ function IconButton({
 }
 
 function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (status: ListeningStatus) => void }) {
+  const { t } = useTranslation();
   return (
     <div className="absolute bottom-10 left-0 z-20 w-44 overflow-hidden rounded-md border bg-card p-1 shadow-lg">
       {listeningStatusOptions.map((option) => (
@@ -3165,7 +3201,7 @@ function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (stat
           <ListChecks
             className={value === option.value && value !== "none" ? "h-3.5 w-3.5 text-primary" : "h-3.5 w-3.5"}
           />
-          {option.label}
+          {t(`library.status.${option.value}`, { defaultValue: option.label })}
         </button>
       ))}
     </div>
@@ -3188,6 +3224,7 @@ function RemoteOnlyWorkDetailController({
   onWorksChanged: () => Promise<void>;
 }) {
   const toast = useToast();
+  const { t } = useTranslation();
   const [detail, setDetail] = useState<RemoteWorkDetail | null>(null);
   const [identityDetail, setIdentityDetail] = useState<RemoteWorkDetail | null>(null);
   const [trackedWork, setTrackedWork] = useState<WorkDetail | null>(null);
@@ -3457,7 +3494,12 @@ function RemoteOnlyWorkDetailController({
     if (!workID) return;
     try {
       const result = await api.updateWorkUserState(workID, { listeningStatus: status });
-      toast.success(`Marked ${detail.primaryCode} as ${listeningStatusLabel(result.listeningStatus)}.`);
+      toast.success(
+        t("library.markedAs", {
+          code: detail.primaryCode,
+          status: listeningStatusLabel(result.listeningStatus, t),
+        }),
+      );
       await onWorksChanged();
     } catch (error) {
       toast.notify(toastFromError(error, "Mark update failed."));
@@ -9056,21 +9098,23 @@ function remoteWorkPreviewFromHistory(code: string | null): RemoteWorkPreview | 
   };
 }
 
-function listeningStatusLabel(status: ListeningStatus) {
-  return listeningStatusOptions.find((option) => option.value === status)?.label ?? "Unmarked";
+function listeningStatusLabel(status: ListeningStatus, t?: TFunction) {
+  const fallback = listeningStatusOptions.find((option) => option.value === status)?.label ?? "Unmarked";
+  return t?.(`library.status.${status}`, { defaultValue: fallback }) ?? fallback;
 }
 
 function LibraryLoadErrorCard({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const { t } = useTranslation();
   return (
     <Card className="border-destructive/35">
       <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="text-sm font-semibold text-destructive">Library could not be loaded.</div>
+          <div className="text-sm font-semibold text-destructive">{t("library.couldNotLoad")}</div>
           <div className="mt-1 text-xs text-muted-foreground">{message}</div>
         </div>
         <Button variant="outline" size="sm" onClick={onRetry}>
           <RefreshCw className="h-4 w-4" />
-          Retry
+          {t("common.retry")}
         </Button>
       </CardContent>
     </Card>
@@ -9142,39 +9186,49 @@ function numericClauseValue(value: string) {
   return Number.isFinite(number) ? number : 0;
 }
 
-function searchClauseLabel(clause: SearchClause) {
+function searchClauseLabel(clause: SearchClause, t?: TFunction) {
+  const translate = (key: string, fallback: string) =>
+    t?.(key, { value: clause.value, defaultValue: fallback }) ?? fallback;
   switch (clause.kind) {
     case "code":
-      return `Code: ${clause.value}`;
+      return translate("library.searchClauseLabels.code", `Code: ${clause.value}`);
     case "circle":
-      return `Circle: ${clause.value}`;
+      return translate("library.searchClauseLabels.circle", `Circle: ${clause.value}`);
     case "voice_actor":
-      return `VA: ${clause.value}`;
+      return translate("library.searchClauseLabels.voiceActor", `VA: ${clause.value}`);
     case "tag":
-      return `Tag: ${clause.value}`;
+      return translate("library.searchClauseLabels.tag", `Tag: ${clause.value}`);
     case "exclude_tag":
-      return `Exclude tag: ${clause.value}`;
+      return translate("library.searchClauseLabels.excludeTag", `Exclude tag: ${clause.value}`);
     case "user_tag":
-      return `My tag: ${clause.value}`;
+      return translate("library.searchClauseLabels.userTag", `My tag: ${clause.value}`);
     case "exclude_user_tag":
-      return `Exclude my tag: ${clause.value}`;
+      return translate("library.searchClauseLabels.excludeUserTag", `Exclude my tag: ${clause.value}`);
     case "rating_min":
-      return `Rating >= ${clause.value}`;
+      return translate("library.searchClauseLabels.ratingMin", `Rating >= ${clause.value}`);
     case "sales_min":
-      return `Sales >= ${clause.value}`;
+      return translate("library.searchClauseLabels.salesMin", `Sales >= ${clause.value}`);
     case "duration_min":
-      return `Duration >= ${clause.value}`;
+      return translate("library.searchClauseLabels.durationMin", `Duration >= ${clause.value}`);
     case "duration_max":
-      return `Duration <= ${clause.value}`;
+      return translate("library.searchClauseLabels.durationMax", `Duration <= ${clause.value}`);
     case "age":
-      return `Age: ${clause.value}`;
+      return translate("library.searchClauseLabels.age", `Age: ${clause.value}`);
     case "language":
-      return `Language: ${clause.value}`;
+      return translate("library.searchClauseLabels.language", `Language: ${clause.value}`);
     case "shelf":
-      return clause.value === "false" ? "Shelf: Not included" : "Shelf: Included";
+      return t
+        ? t(
+            clause.value === "false"
+              ? "library.searchClauseLabels.shelfExcluded"
+              : "library.searchClauseLabels.shelfIncluded",
+          )
+        : clause.value === "false"
+          ? "Shelf: Not included"
+          : "Shelf: Included";
     case "text":
     default:
-      return `Text: ${clause.value}`;
+      return translate("library.searchClauseLabels.text", `Text: ${clause.value}`);
   }
 }
 

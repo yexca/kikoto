@@ -1,5 +1,6 @@
 import { App as CapacitorApp } from "@capacitor/app";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
   Download,
@@ -13,7 +14,14 @@ import {
 } from "lucide-react";
 
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
-import { canAccessPage, navItems, visibleNavigationItems, type PageID } from "@/app/navigation";
+import {
+  canAccessPage,
+  navItems,
+  navigationDescription,
+  navigationLabel,
+  visibleNavigationItems,
+  type PageID,
+} from "@/app/navigation";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { LoginPage } from "@/pages/LoginPage";
@@ -29,6 +37,8 @@ import { ANDROID_BACK_EVENT, LOGIN_REQUEST_EVENT } from "@/app/events";
 import { isNativeApp } from "@/lib/serverConfig";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { isWorkCodePath } from "@/lib/workCode";
+import { useLocale } from "@/i18n/LocaleProvider";
+import type { UiLocale } from "@/i18n";
 import {
   HISTORY_ENTRY_UPDATED_EVENT,
   NAVIGATION_EVENT,
@@ -81,6 +91,8 @@ export function App() {
 function AuthenticatedApp() {
   useScrollRestoration();
   const auth = useAuth();
+  const { t } = useTranslation();
+  const locale = useLocale();
   const [page, setPage] = useState<AppPage>(resolveAppPageFromLocation);
   const [routeRenderKey, setRouteRenderKey] = useState(resolveRouteRenderKey);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
@@ -94,6 +106,28 @@ function AuthenticatedApp() {
   const exitBackDeadlineRef = useRef(0);
   const authState = auth.user ? "authenticated" : "anonymous";
   const clientStorageScope = currentClientStorageScope(auth.user?.id ?? null);
+
+  useEffect(() => {
+    locale.syncAccountPreference(auth.user?.id ?? null, auth.user?.uiLocale, auth.user?.demoMode ?? false);
+  }, [auth.user?.demoMode, auth.user?.id, auth.user?.uiLocale, locale.syncAccountPreference]);
+
+  const updateLocale = useCallback(
+    async (next: UiLocale) => {
+      const previous = locale.preference;
+      locale.setPreference(next);
+      if (!auth.user || auth.demoMode) return;
+      try {
+        const state = await api.updateCurrentAccount({ uiLocale: next });
+        if (!state.authenticated) throw new Error("Language preference could not be saved.");
+        locale.setPreference(state.user.uiLocale);
+        await auth.refresh();
+      } catch (error) {
+        locale.setPreference(previous);
+        throw error;
+      }
+    },
+    [auth.demoMode, auth.refresh, auth.user, locale],
+  );
   const effectiveHasPermission = useCallback(
     (permission: string) => !auth.demoMode && auth.hasPermission(permission),
     [auth.demoMode, auth.hasPermission],
@@ -222,7 +256,7 @@ function AuthenticatedApp() {
       if (disposed) return;
       if (commandPaletteOpen) {
         if (commandPaletteBusy) {
-          toast.info("Workflow request is still being submitted.");
+          toast.info(t("app.workflowSubmitting"));
           return;
         }
         setCommandPaletteOpen(false);
@@ -251,7 +285,7 @@ function AuthenticatedApp() {
         return;
       }
       exitBackDeadlineRef.current = now + 2000;
-      toast.info("Press back again to exit Kikoto.");
+      toast.info(t("app.pressBackAgain"));
       window.setTimeout(() => {
         if (Date.now() >= exitBackDeadlineRef.current) exitBackDeadlineRef.current = 0;
       }, 2100);
@@ -261,12 +295,12 @@ function AuthenticatedApp() {
       disposed = true;
       void CapacitorApp.removeAllListeners();
     };
-  }, [commandPaletteBusy, commandPaletteOpen, loginOpen, toast]);
+  }, [commandPaletteBusy, commandPaletteOpen, loginOpen, t, toast]);
 
   if (auth.isLoading) {
     return (
       <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">
-        Loading Kikoto...
+        {t("app.loading")}
       </div>
     );
   }
@@ -309,12 +343,12 @@ function AuthenticatedApp() {
                 )}
                 variant="ghost"
                 size={sidebarCollapsed ? "icon" : "default"}
-                title={sidebarCollapsed ? item.label : undefined}
-                aria-label={sidebarCollapsed ? item.label : undefined}
+                title={sidebarCollapsed ? navigationLabel(item, t) : undefined}
+                aria-label={sidebarCollapsed ? navigationLabel(item, t) : undefined}
                 onClick={() => openPage(item.id)}
               >
                 <item.icon className="h-4 w-4" />
-                {!sidebarCollapsed && item.label}
+                {!sidebarCollapsed && navigationLabel(item, t)}
               </Button>
             ))}
           </nav>
@@ -323,12 +357,12 @@ function AuthenticatedApp() {
               variant="ghost"
               size={sidebarCollapsed ? "icon" : "default"}
               className={cn("w-full", sidebarCollapsed ? "justify-center px-0" : "justify-start")}
-              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              title={sidebarCollapsed ? "Expand sidebar" : undefined}
+              aria-label={sidebarCollapsed ? t("app.expandSidebar") : t("app.collapseSidebar")}
+              title={sidebarCollapsed ? t("app.expandSidebar") : undefined}
               onClick={toggleSidebar}
             >
               {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-              {!sidebarCollapsed && "Collapse"}
+              {!sidebarCollapsed && t("app.collapse")}
             </Button>
           </div>
         </aside>
@@ -349,12 +383,18 @@ function AuthenticatedApp() {
                     !showMobilePageTitle && "hidden lg:block",
                   )}
                 >
-                  {page === "not-found" ? "Not found" : (activeItem?.label ?? "Library")}
+                  {page === "not-found"
+                    ? t("app.notFound")
+                    : activeItem
+                      ? navigationLabel(activeItem, t)
+                      : t("nav.library")}
                 </h1>
                 <p className="hidden text-xs text-muted-foreground lg:line-clamp-1 lg:block lg:text-sm">
                   {page === "not-found"
-                    ? "The requested page could not be found"
-                    : (activeItem?.description ?? "Browse your audio library")}
+                    ? t("app.notFoundDescription")
+                    : activeItem
+                      ? navigationDescription(activeItem, t)
+                      : t("app.libraryFallback")}
                 </p>
               </div>
               <HeaderActions
@@ -365,6 +405,7 @@ function AuthenticatedApp() {
                 onOpenPage={openPage}
                 onOpenPath={openPath}
                 onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+                onLocaleChange={updateLocale}
               />
             </div>
           </header>
@@ -376,7 +417,14 @@ function AuthenticatedApp() {
             onReconnect={() => void mobileRuntime.reconnect()}
           />
 
-          <RouteErrorBoundary resetKey={routeRenderKey} onOpenLibrary={() => openPath("/")}>
+          <RouteErrorBoundary
+            resetKey={routeRenderKey}
+            onOpenLibrary={() => openPath("/")}
+            title={t("notFound.pageUnavailable")}
+            message={t("notFound.routeErrorMessage")}
+            retryLabel={t("notFound.retryPage")}
+            libraryLabel={t("notFound.openLibrary")}
+          >
             <Suspense fallback={<PageLoading />}>
               <div className="py-[var(--page-padding-y)] pl-[max(1rem,var(--safe-area-left))] pr-[max(1rem,var(--safe-area-right))] lg:px-6">
                 {page !== "not-found" && !canAccessCurrentPage && (
@@ -424,7 +472,9 @@ function AuthenticatedApp() {
                   "workflows",
                   "activity",
                   "about",
-                ].includes(page) && <PlaceholderPage title={activeItem?.label ?? "Page"} />}
+                ].includes(page) && (
+                  <PlaceholderPage title={activeItem ? navigationLabel(activeItem, t) : t("app.pageReserved")} />
+                )}
               </div>
             </Suspense>
           </RouteErrorBoundary>
@@ -444,7 +494,7 @@ function AuthenticatedApp() {
                     onClick={() => openMobilePage(item.id)}
                   >
                     <item.icon className="h-4 w-4" />
-                    <span>{item.label}</span>
+                    <span>{navigationLabel(item, t)}</span>
                   </button>
                 );
               })}
@@ -550,6 +600,7 @@ function RemoteTrackWorkflowObserver({
 }) {
   const toast = useToast();
   const auth = useAuth();
+  const { t } = useTranslation();
   const [run, setRun] = useState<RemoteTrackRunStatus | null>(null);
   const handled = useRef(false);
 
@@ -592,14 +643,14 @@ function RemoteTrackWorkflowObserver({
     toast.notify({
       kind: succeeded ? "success" : "error",
       message: succeeded
-        ? `Track workflow #${run.runId} completed for ${primaryCode}.`
-        : `Track workflow #${run.runId} failed for ${primaryCode}.`,
-      actionLabel: canOpenActivity ? "Activity" : undefined,
+        ? t("workflows.trackCompleted", { id: run.runId, primaryCode })
+        : t("workflows.trackFailed", { id: run.runId, primaryCode }),
+      actionLabel: canOpenActivity ? t("nav.activity") : undefined,
       onAction: canOpenActivity ? () => openWorkflowActivity(run.runId) : undefined,
     });
     window.dispatchEvent(new CustomEvent<RemoteTrackTerminalDetail>(REMOTE_TRACK_TERMINAL_EVENT, { detail: terminal }));
     onDone(detail.runId);
-  }, [auth.demoMode, auth.hasPermission, detail, onDone, run, toast]);
+  }, [auth.demoMode, auth.hasPermission, detail, onDone, run, t, toast]);
 
   return null;
 }
@@ -639,6 +690,7 @@ function MobileConnectionBanner({
   noticeKey: string;
   onReconnect: () => void;
 }) {
+  const { t } = useTranslation();
   const dismissedStorageKey = "kikoto:dismissed-version-notice";
   const [dismissedNotice, setDismissedNotice] = useState(() => localStorage.getItem(dismissedStorageKey) ?? "");
   const isClientUpdate = kind === "client-update-available" || kind === "client-update-required";
@@ -657,12 +709,12 @@ function MobileConnectionBanner({
           <Button variant="outline" size="sm" asChild>
             <a href={releaseUrl} target="_blank" rel="noreferrer">
               <ExternalLink className="h-3.5 w-3.5" />
-              {isClientUpdate ? "View update" : "View release"}
+              {isClientUpdate ? t("app.viewUpdate") : t("app.viewRelease")}
             </a>
           </Button>
         ) : (
           <Button variant="outline" size="sm" onClick={onReconnect}>
-            Reconnect
+            {t("account.reconnect")}
           </Button>
         )}
         {!isRequired && noticeKey && (
@@ -672,8 +724,8 @@ function MobileConnectionBanner({
               localStorage.setItem(dismissedStorageKey, noticeKey);
               setDismissedNotice(noticeKey);
             }}
-            aria-label="Dismiss version notice"
-            title="Remind me for the next version"
+            aria-label={t("app.dismissVersionNotice")}
+            title={t("app.remindNextVersion")}
           >
             <X className="h-4 w-4" />
           </button>
@@ -699,8 +751,9 @@ function LoginOverlay({ onClose }: { onClose: () => void }) {
 }
 
 function PageLoading() {
+  const { t } = useTranslation();
   return (
-    <div className="space-y-5 px-4 py-5 lg:px-6" aria-label="Loading page">
+    <div className="space-y-5 px-4 py-5 lg:px-6" aria-label={t("app.loadingPage")}>
       <section className="rounded-lg border bg-card p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-2">
@@ -832,17 +885,19 @@ function resolveRouteRenderKey() {
 }
 
 function PlaceholderPage({ title }: { title: string }) {
+  const { t } = useTranslation();
   return (
     <section className="rounded-lg border bg-card p-5">
       <h2 className="text-lg font-semibold">{title}</h2>
-      <p className="mt-2 text-sm text-muted-foreground">This surface is reserved for the next product slice.</p>
+      <p className="mt-2 text-sm text-muted-foreground">{t("app.pageReserved")}</p>
     </section>
   );
 }
 
 function AccessRequiredPage({ page, onOpenLogin }: { page: PageID; onOpenLogin: () => void }) {
+  const { t } = useTranslation();
   const item = navItems.find((navItem) => navItem.id === page);
-  const title = item?.label ?? "This page";
+  const title = item ? navigationLabel(item, t) : t("app.thisPage");
   const needsLogin = item?.audience === "authenticated";
   return (
     <section className="rounded-lg border bg-card p-6">
@@ -851,11 +906,11 @@ function AccessRequiredPage({ page, onOpenLogin }: { page: PageID; onOpenLogin: 
       </div>
       <h2 className="text-lg font-semibold">{title}</h2>
       <p className="mt-2 text-sm text-muted-foreground">
-        {needsLogin ? "Sign in to access this page." : "Your account does not have permission to access this page."}
+        {needsLogin ? t("auth.signInToAccess") : t("auth.permissionRequired")}
       </p>
       {needsLogin && (
         <Button className="mt-4" onClick={onOpenLogin}>
-          Sign in
+          {t("account.signIn")}
         </Button>
       )}
     </section>

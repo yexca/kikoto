@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 
 export function PWAServiceWorker() {
+  const { t } = useTranslation();
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const reloadRequestedRef = useRef(false);
 
@@ -53,8 +55,8 @@ export function PWAServiceWorker() {
     <div className="fixed bottom-[var(--app-update-banner-bottom)] left-[max(0.75rem,var(--safe-area-left))] right-[max(0.75rem,var(--safe-area-right))] z-[90] mx-auto flex max-w-xl items-center gap-3 rounded-xl border bg-card p-3 text-card-foreground shadow-2xl">
       <RefreshCw className="h-5 w-5 shrink-0 text-primary" />
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-semibold">Kikoto update ready</div>
-        <div className="text-xs text-muted-foreground">Reload to use the latest version.</div>
+        <div className="text-sm font-semibold">{t("pwa.updateReady")}</div>
+        <div className="text-xs text-muted-foreground">{t("pwa.reloadLatest")}</div>
       </div>
       <Button
         size="sm"
@@ -63,12 +65,12 @@ export function PWAServiceWorker() {
           waitingWorker.postMessage({ type: "SKIP_WAITING" });
         }}
       >
-        Reload
+        {t("pwa.reload")}
       </Button>
       <button
         className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted"
         onClick={() => setWaitingWorker(null)}
-        aria-label="Dismiss update"
+        aria-label={t("pwa.dismiss")}
       >
         <X className="h-4 w-4" />
       </button>

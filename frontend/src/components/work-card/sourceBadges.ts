@@ -1,4 +1,5 @@
 import type { CircleSourceStat, SourcePresenceItem } from "@/lib/api";
+import i18n from "@/i18n";
 
 import type { WorkCardBadge } from "./WorkCardShell";
 
@@ -22,9 +23,9 @@ export function sourcePresenceBadges(
     if (type === "local") {
       add({
         key: "source:local",
-        label: "Local",
+        label: i18n.t("workCard.local"),
         variant: availabilityLabel === "available" ? "secondary" : "warning",
-        title: "Local source",
+        title: i18n.t("workCard.localSource"),
       });
       continue;
     }
@@ -34,14 +35,14 @@ export function sourcePresenceBadges(
       const unforked = !hasPlayableAvailability(availability);
       add({
         key: `source:tracked:${item.fileSourceId ?? (sourceName || "unknown")}`,
-        label: unforked ? "Unforked" : "Tracked",
+        label: unforked ? i18n.t("workCard.unforked") : i18n.t("workCard.tracked"),
         variant: unforked ? "warning" : "outline",
         title: sourceName || undefined,
       });
       continue;
     }
     if (type === "source") {
-      const sourceName = item.fileSourceName || item.fileSourceCode || "remote source";
+      const sourceName = item.fileSourceName || item.fileSourceCode || i18n.t("workCard.remoteSource");
       add({
         key: `source:${item.fileSourceId ?? sourceName}`,
         label: sourceName,
@@ -59,7 +60,7 @@ export function sourcePresenceBadges(
 
   if (badges.length > 0) return sortSourceBadges(badges);
   if (items.length === 0 && !hasPlayableAvailability(availability)) {
-    return [{ key: "source:no-source", label: "No source", variant: "warning" }];
+    return [{ key: "source:no-source", label: i18n.t("workCard.noSource"), variant: "warning" }];
   }
   return sortSourceBadges(availabilityBadges(availability));
 }
@@ -76,7 +77,13 @@ export function circleSourceBadges({
   sourceTags?: CircleSourceStat[];
 }): WorkCardBadge[] {
   const badges: WorkCardBadge[] = [];
-  if (local) badges.push({ key: "source:local", label: "Local", variant: "secondary", title: "Local source" });
+  if (local)
+    badges.push({
+      key: "source:local",
+      label: i18n.t("workCard.local"),
+      variant: "secondary",
+      title: i18n.t("workCard.localSource"),
+    });
 
   const availableSources = sourceTags.filter((source) => source.status === "available" || source.count > 0);
   for (const source of availableSources) {
@@ -90,7 +97,7 @@ export function circleSourceBadges({
     }
   }
 
-  if (cache) badges.push({ key: "source:cache", label: "Cache", variant: "secondary" });
+  if (cache) badges.push({ key: "source:cache", label: i18n.t("workCard.cache"), variant: "secondary" });
   return sortSourceBadges(dedupeBadges(badges));
 }
 
@@ -100,11 +107,11 @@ function availabilityBadges(availability: string[]): WorkCardBadge[] {
     const normalized = item.toLowerCase();
     if (normalized === "remote") continue;
     if (normalized === "local") {
-      badges.push({ key: "source:local", label: "Local", variant: "secondary" });
+      badges.push({ key: "source:local", label: i18n.t("workCard.local"), variant: "secondary" });
     } else if (normalized === "cache" || normalized === "cached") {
-      badges.push({ key: "source:cache", label: "Cache", variant: "secondary" });
+      badges.push({ key: "source:cache", label: i18n.t("workCard.cache"), variant: "secondary" });
     } else if (normalized === "missing") {
-      badges.push({ key: "source:missing", label: "Missing", variant: "warning" });
+      badges.push({ key: "source:missing", label: i18n.t("workCard.missing"), variant: "warning" });
     } else {
       badges.push({ key: `source:${normalized}`, label: item, variant: "outline" });
     }

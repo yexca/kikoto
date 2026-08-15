@@ -7,6 +7,10 @@ type RouteErrorBoundaryProps = {
   children: ReactNode;
   onOpenLibrary: () => void;
   resetKey: string;
+  title: string;
+  message: string;
+  retryLabel: string;
+  libraryLabel: string;
 };
 
 type RouteErrorBoundaryState = {
@@ -52,15 +56,13 @@ export class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, Route
             <AlertTriangle className="h-5 w-5" aria-hidden="true" />
           </div>
           <h2 id="route-error-title" className="mt-4 text-lg font-semibold">
-            Page unavailable
+            {this.props.title}
           </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Kikoto could not display this page. The player and navigation are still available.
-          </p>
+          <p className="mt-2 text-sm text-muted-foreground">{this.props.message}</p>
           <div className="mt-5 flex flex-wrap gap-2">
-            <Button onClick={this.retry}>Retry page</Button>
+            <Button onClick={this.retry}>{this.props.retryLabel}</Button>
             <Button variant="outline" onClick={this.openLibrary}>
-              Open Library
+              {this.props.libraryLabel}
             </Button>
           </div>
         </section>

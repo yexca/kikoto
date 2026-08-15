@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
@@ -23,6 +24,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import i18n, { intlLocaleFor, type ResolvedUiLocale } from "@/i18n";
+import { useLocale } from "@/i18n/LocaleProvider";
 import {
   api,
   assetURL,
@@ -94,16 +97,18 @@ export function WorkCardShell({
   onRecommendationOpen?: () => void;
 }) {
   const toast = useToast();
+  const { t } = useTranslation();
   const [resolvingEntity, setResolvingEntity] = useState<WorkEntityLink["kind"] | null>(null);
   const resolveEntity = async (kind: WorkEntityLink["kind"], name = "") => {
     if (!work.code || resolvingEntity) return;
     setResolvingEntity(kind);
-    toast.info(kind === "series" ? "Loading series information…" : `Loading ${kind} information…`);
+    const entityKind = entityKindLabel(kind);
+    toast.info(kind === "series" ? t("workCard.loadingSeries") : t("workCard.loadingEntity", { kind: entityKind }));
     try {
       const result = await api.resolveWorkEntityLink(work.code, kind, name);
       if (result.route) openEntityRoute(result.route);
     } catch (error) {
-      toast.notify(toastFromError(error, `Could not open this ${kind}.`));
+      toast.notify(toastFromError(error, t("workCard.couldNotOpenEntity", { kind: entityKind })));
     } finally {
       setResolvingEntity(null);
     }
@@ -206,7 +211,9 @@ export function WorkCardMedia({
   recommendationScore?: number;
   onRecommendationOpen?: () => void;
 }) {
-  const codeText = code || "Source";
+  const { t } = useTranslation();
+  const { resolvedLocale } = useLocale();
+  const codeText = code || t("workCard.source");
   return (
     <div className="relative aspect-[4/3] overflow-hidden bg-muted">
       {selection}
@@ -230,8 +237,8 @@ export function WorkCardMedia({
           <button
             type="button"
             className="absolute right-3 top-3 inline-flex h-8 items-center gap-1 rounded-md bg-primary px-2 text-xs font-semibold text-primary-foreground shadow-sm"
-            title="Explain recommendation score"
-            aria-label={`Explain recommendation score ${recommendationScore ?? 0}`}
+            title={t("workCard.explainRecommendationScore")}
+            aria-label={`${t("workCard.explainRecommendationScore")} ${recommendationScore ?? 0}`}
             onClick={(event) => {
               event.stopPropagation();
               onRecommendationOpen();
@@ -243,8 +250,8 @@ export function WorkCardMedia({
         ) : (
           <div
             className="absolute right-3 top-3 inline-flex h-8 items-center gap-1 rounded-md bg-primary px-2 text-xs font-semibold text-primary-foreground shadow-sm"
-            title="Recommended for you"
-            aria-label="Recommended for you"
+            title={t("workCard.recommendedForYou")}
+            aria-label={t("workCard.recommendedForYou")}
           >
             <Star className="h-4 w-4 fill-current" />
             {Number.isFinite(recommendationScore) && <span>{recommendationScore}</span>}
@@ -255,11 +262,13 @@ export function WorkCardMedia({
           className="absolute bottom-3 left-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold"
           title={
             regularPrice !== null && regularPrice > price
-              ? `Regular ${formatPrice(regularPrice, priceCurrency)}`
+              ? t("workCard.regularPrice", {
+                  price: formatPrice(regularPrice, priceCurrency, resolvedLocale),
+                })
               : undefined
           }
         >
-          {price === 0 ? "Free" : formatPrice(price, priceCurrency)}
+          {price === 0 ? t("workCard.free") : formatPrice(price, priceCurrency, resolvedLocale)}
         </div>
       )}
     </div>
@@ -279,7 +288,9 @@ function WorkCardBody({
   onSeriesOpen?: () => void;
   onTagOpen?: (tag: string) => void;
 }) {
+  const { t } = useTranslation();
   const ageRating = ageRatingPresentation(work.ageRating ?? "");
+  const circleLabel = !work.circle || work.circle === "Unknown circle" ? t("workCard.unknownCircle") : work.circle;
   return (
     <div className="flex min-h-52 flex-1 flex-col gap-3 p-4">
       <div className="space-y-1">
@@ -287,7 +298,7 @@ function WorkCardBody({
         <div className="flex min-w-0 items-center gap-2">
           <div
             className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left text-sm text-muted-foreground"
-            title={[work.circle || "Unknown circle", work.series].filter(Boolean).join(" / ")}
+            title={[circleLabel, work.series].filter(Boolean).join(" / ")}
           >
             {onCircleOpen ? (
               <button
@@ -297,10 +308,10 @@ function WorkCardBody({
                   onCircleOpen();
                 }}
               >
-                {work.circle || "Unknown circle"}
+                {circleLabel}
               </button>
             ) : (
-              <span>{work.circle || "Unknown circle"}</span>
+              <span>{circleLabel}</span>
             )}
             {work.series && (
               <>
@@ -362,7 +373,7 @@ function WorkCardBody({
           </div>
         </div>
       )}
-      <MeasuredBadgeList badges={work.dlsiteTags} emptyLabel="No DLsite tags" onBadgeClick={onTagOpen} />
+      <MeasuredBadgeList badges={work.dlsiteTags} emptyLabel={t("workCard.noDlsiteTags")} onBadgeClick={onTagOpen} />
       <WorkCardMetrics
         rating={work.rating ?? null}
         ratingCount={work.ratingCount ?? null}
@@ -400,7 +411,7 @@ function WorkCardBody({
         </div>
       )}
       <div className="mt-auto">
-        <BadgeList badges={work.sourceBadges} emptyLabel="Source unavailable" emptyVariant="warning" />
+        <BadgeList badges={work.sourceBadges} emptyLabel={t("workCard.sourceUnavailable")} emptyVariant="warning" />
       </div>
     </div>
   );
@@ -464,6 +475,7 @@ function MeasuredBadgeList({
   emptyLabel: string;
   onBadgeClick?: (label: string) => void;
 }) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const measurementRef = useRef<HTMLDivElement | null>(null);
   const overflowRef = useRef<HTMLButtonElement | null>(null);
@@ -529,7 +541,7 @@ function MeasuredBadgeList({
             ref={overflowRef}
             type="button"
             className="max-w-full rounded-full"
-            aria-label={`Show ${hiddenBadges.length} more tags`}
+            aria-label={t("workCard.showMoreTags", { count: hiddenBadges.length })}
             aria-expanded={open}
             onClick={(event) => {
               event.stopPropagation();
@@ -634,17 +646,24 @@ function WorkCardMetrics({
   hasAvailableNonOriginEdition: boolean;
   hasPlaybackHistory: boolean;
 }) {
+  const { t } = useTranslation();
+  const { resolvedLocale } = useLocale();
   const normalizedRating = rating !== null && Number.isFinite(rating) ? Math.min(5, Math.max(0, rating)) : null;
   const normalizedRatingCount =
     ratingCount !== null && Number.isFinite(ratingCount) && ratingCount >= 0 ? Math.floor(ratingCount) : null;
   const ratingLabel =
     normalizedRating === null
-      ? "No rating"
-      : `Rate ${normalizedRating.toFixed(2)} out of 5${normalizedRatingCount === null ? "" : ` from ${normalizedRatingCount.toLocaleString()} ratings`}`;
+      ? t("workCard.noRating")
+      : normalizedRatingCount === null
+        ? t("workCard.rating", { value: formatRating(normalizedRating, resolvedLocale) })
+        : t("workCard.ratingWithCount", {
+            value: formatRating(normalizedRating, resolvedLocale),
+            count: formatStandardCount(normalizedRatingCount, resolvedLocale),
+          });
   const salesLabel =
     sales !== null && Number.isFinite(sales) && sales >= 0
-      ? `Sales: ${Math.floor(sales).toLocaleString()}`
-      : "Sales unavailable";
+      ? t("workCard.salesLabel", { value: formatStandardCount(Math.floor(sales), resolvedLocale) })
+      : t("workCard.salesUnavailable");
   return (
     <div className="flex min-h-10 min-w-0 items-center justify-between gap-2 text-xs text-muted-foreground">
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
@@ -654,8 +673,10 @@ function WorkCardMetrics({
           aria-label={salesLabel}
         >
           <ShoppingBag className="h-3.5 w-3.5 shrink-0" />
-          <span className="shrink-0 font-medium">Sales</span>
-          <span className="min-w-0 truncate tabular-nums text-foreground">{formatCompactCount(sales)}</span>
+          <span className="shrink-0 font-medium">{t("workCard.sales")}</span>
+          <span className="min-w-0 truncate tabular-nums text-foreground">
+            {formatCompactCount(sales, resolvedLocale)}
+          </span>
         </span>
         <span
           className="inline-flex min-w-0 flex-1 items-center gap-1 overflow-hidden"
@@ -663,7 +684,7 @@ function WorkCardMetrics({
           role="img"
           aria-label={ratingLabel}
         >
-          <span className="shrink-0 font-medium">Rate</span>
+          <span className="shrink-0 font-medium">{t("workCard.ratingShort")}</span>
           <span className="flex w-8 shrink-0 items-center gap-0.5" aria-hidden="true">
             {Array.from({ length: 5 }, (_, index) => {
               const fill = normalizedRating === null ? 0 : Math.min(1, Math.max(0, normalizedRating - index));
@@ -675,10 +696,12 @@ function WorkCardMetrics({
             })}
           </span>
           <span className="shrink-0 tabular-nums text-foreground">
-            {normalizedRating === null ? "--" : normalizedRating.toFixed(2)}
+            {normalizedRating === null ? "--" : formatRating(normalizedRating, resolvedLocale)}
           </span>
           {normalizedRatingCount !== null && (
-            <span className="min-w-0 truncate tabular-nums">({formatCompactCount(normalizedRatingCount)})</span>
+            <span className="min-w-0 truncate tabular-nums">
+              ({formatCompactCount(normalizedRatingCount, resolvedLocale)})
+            </span>
           )}
         </span>
       </div>
@@ -686,9 +709,9 @@ function WorkCardMetrics({
         {hasAvailableNonOriginEdition && (
           <span
             className="inline-flex shrink-0 text-primary"
-            title="Another language edition is available"
+            title={t("workCard.otherLanguageEdition")}
             role="img"
-            aria-label="Another language edition is available"
+            aria-label={t("workCard.otherLanguageEdition")}
           >
             <Languages className="h-4 w-4" aria-hidden="true" />
           </span>
@@ -696,9 +719,9 @@ function WorkCardMetrics({
         {hasPlaybackHistory && (
           <span
             className="inline-flex shrink-0 text-muted-foreground"
-            title="Playback history available"
+            title={t("workCard.playbackHistory")}
             role="img"
-            aria-label="Playback history available"
+            aria-label={t("workCard.playbackHistory")}
           >
             <History className="h-4 w-4" aria-hidden="true" />
           </span>
@@ -708,21 +731,32 @@ function WorkCardMetrics({
   );
 }
 
-function formatPrice(value: number, currency = "JPY") {
+function formatPrice(value: number, currency: string | undefined, locale: ResolvedUiLocale) {
   try {
-    return new Intl.NumberFormat(undefined, {
+    return new Intl.NumberFormat(intlLocaleFor(locale), {
       style: "currency",
       currency: currency || "JPY",
       maximumFractionDigits: 0,
     }).format(value);
   } catch {
-    return `${value.toLocaleString()} ${currency || "JPY"}`;
+    return `${formatStandardCount(value, locale)} ${currency || "JPY"}`;
   }
 }
 
-function formatCompactCount(value: number | null) {
+function formatRating(value: number, locale: ResolvedUiLocale) {
+  return new Intl.NumberFormat(intlLocaleFor(locale), {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function formatStandardCount(value: number, locale: ResolvedUiLocale) {
+  return new Intl.NumberFormat(intlLocaleFor(locale)).format(value);
+}
+
+function formatCompactCount(value: number | null, locale: ResolvedUiLocale) {
   if (value === null || !Number.isFinite(value) || value < 0) return "--";
-  return new Intl.NumberFormat(undefined, {
+  return new Intl.NumberFormat(intlLocaleFor(locale), {
     notation: value >= 10_000 ? "compact" : "standard",
     maximumFractionDigits: value >= 10_000 ? 1 : 0,
   }).format(Math.floor(value));
@@ -783,19 +817,21 @@ export function WorkCardQuickMarkButton({
   responsiveLabel?: boolean;
   onChange: (status: ListeningStatus) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
   const current = quickMarkMeta(value);
+  const currentLabel = t(listeningStatusKey(value));
   const bottomCollisionPadding = isMobileViewport() ? 168 : 12;
 
   return (
     <div className="relative" ref={ref}>
       <WorkCardActionButton
-        title={`Mark: ${current.label}`}
+        title={t("workCard.mark", { status: currentLabel })}
         disabled={disabled}
         showLabel={showLabel}
         responsiveLabel={responsiveLabel}
-        label={`Mark: ${current.label}`}
+        label={t("workCard.mark", { status: currentLabel })}
         onClick={(event) => {
           event.stopPropagation();
           setOpen((value) => !value);
@@ -811,11 +847,11 @@ export function WorkCardQuickMarkButton({
         className="w-40 p-1 text-sm"
       >
         {quickMarkOptions.map((option) => {
-          const meta = quickMarkMeta(option.value);
-          const selected = option.value === value;
+          const meta = quickMarkMeta(option);
+          const selected = option === value;
           return (
             <button
-              key={option.value}
+              key={option}
               className={cn(
                 "flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-muted",
                 selected && "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15",
@@ -824,11 +860,11 @@ export function WorkCardQuickMarkButton({
               onClick={(event) => {
                 event.stopPropagation();
                 setOpen(false);
-                onChange(option.value);
+                onChange(option);
               }}
             >
               <meta.icon className={`h-3.5 w-3.5 ${selected && meta.active ? meta.className : ""}`} />
-              <span className="min-w-0 flex-1">{option.label}</span>
+              <span className="min-w-0 flex-1">{t(listeningStatusKey(option))}</span>
             </button>
           );
         })}
@@ -855,6 +891,7 @@ export function WorkCardListButton({
   onSaved?: (favorite: boolean, workId: number) => void;
 }) {
   const toast = useToast();
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [resolvedWorkId, setResolvedWorkId] = useState<number | null>(null);
   const [lists, setLists] = useState<FavoriteList[]>([]);
@@ -882,8 +919,9 @@ export function WorkCardListButton({
       })
       .catch((nextError) => {
         if (!cancelled) {
-          toast.notify(toastFromError(nextError, "Favorite lists could not be loaded."));
-          setError(nextError instanceof Error ? nextError.message : "Favorite lists could not be loaded.");
+          const fallback = t("workCard.favoriteListsLoadFailed");
+          toast.notify(toastFromError(nextError, fallback));
+          setError(nextError instanceof Error ? nextError.message : fallback);
         }
       })
       .finally(() => {
@@ -892,7 +930,7 @@ export function WorkCardListButton({
     return () => {
       cancelled = true;
     };
-  }, [open, effectiveWorkId]);
+  }, [effectiveWorkId, open, t, toast]);
 
   const toggle = (listID: number, checked: boolean) => {
     setSelected((items) => {
@@ -912,8 +950,9 @@ export function WorkCardListButton({
       onSaved?.(result.favorite, effectiveWorkId);
       setOpen(false);
     } catch (nextError) {
-      toast.notify(toastFromError(nextError, "Favorite lists could not be saved."));
-      setError(nextError instanceof Error ? nextError.message : "Favorite lists could not be saved.");
+      const fallback = t("workCard.favoriteListsSaveFailed");
+      toast.notify(toastFromError(nextError, fallback));
+      setError(nextError instanceof Error ? nextError.message : fallback);
     } finally {
       setSaving(false);
     }
@@ -922,11 +961,11 @@ export function WorkCardListButton({
   return (
     <div className="relative" ref={ref}>
       <WorkCardActionButton
-        title={active ? "Favorite lists" : "Add to list"}
+        title={active ? t("workCard.favoriteLists") : t("workCard.addToList")}
         disabled={disabled || resolving || (!effectiveWorkId && !ensureWorkId)}
         showLabel={showLabel}
         responsiveLabel={responsiveLabel}
-        label={active ? "Lists" : "Add list"}
+        label={active ? t("workCard.lists") : t("workCard.addList")}
         onClick={(event) => {
           event.stopPropagation();
           if (effectiveWorkId) {
@@ -943,8 +982,9 @@ export function WorkCardListButton({
               setOpen(true);
             })
             .catch((nextError) => {
-              toast.notify(toastFromError(nextError, "Work could not be tracked."));
-              setError(nextError instanceof Error ? nextError.message : "Work could not be tracked.");
+              const fallback = t("workCard.workTrackFailed");
+              toast.notify(toastFromError(nextError, fallback));
+              setError(nextError instanceof Error ? nextError.message : fallback);
             })
             .finally(() => setResolving(false));
         }}
@@ -958,11 +998,11 @@ export function WorkCardListButton({
         bottomCollisionPadding={bottomCollisionPadding}
         className="w-56 p-2 text-left"
       >
-        <div className="text-sm font-semibold">Lists</div>
+        <div className="text-sm font-semibold">{t("workCard.lists")}</div>
         <div className="app-scroll mt-2 max-h-56 space-y-1.5 overflow-auto">
           {loading ? (
             <div className="rounded-md border bg-background px-2.5 py-2 text-sm text-muted-foreground">
-              Loading lists...
+              {t("workCard.loadingLists")}
             </div>
           ) : lists.length > 0 ? (
             lists.map((list) => (
@@ -978,14 +1018,16 @@ export function WorkCardListButton({
                   checked={selected.has(list.id)}
                   onCheckedChange={(checked) => toggle(list.id, checked)}
                   onClick={(event) => event.stopPropagation()}
-                  aria-label={`${selected.has(list.id) ? "Remove from" : "Add to"} ${list.name}`}
+                  aria-label={t(selected.has(list.id) ? "workCard.removeFromList" : "workCard.addToNamedList", {
+                    name: list.name,
+                  })}
                 />
                 <span className="min-w-0 flex-1 truncate">{list.name}</span>
               </div>
             ))
           ) : (
             <div className="rounded-md border bg-background px-2.5 py-2 text-sm text-muted-foreground">
-              No lists yet.
+              {t("workCard.noLists")}
             </div>
           )}
           {error && (
@@ -997,8 +1039,8 @@ export function WorkCardListButton({
             variant="ghost"
             size="icon"
             className="h-8 w-8"
-            title="Cancel"
-            aria-label="Cancel"
+            title={t("workCard.cancel")}
+            aria-label={t("workCard.cancel")}
             onClick={() => setOpen(false)}
           >
             <X className="h-4 w-4" />
@@ -1006,8 +1048,8 @@ export function WorkCardListButton({
           <Button
             size="icon"
             className="h-8 w-8"
-            title={saving ? "Saving" : "Save"}
-            aria-label={saving ? "Saving" : "Save"}
+            title={saving ? t("workCard.saving") : t("workCard.save")}
+            aria-label={saving ? t("workCard.saving") : t("workCard.save")}
             disabled={loading || saving}
             onClick={() => void save()}
           >
@@ -1020,14 +1062,15 @@ export function WorkCardListButton({
 }
 
 export function WorkCardDLsiteAction({ href }: { href: string }) {
+  const { t } = useTranslation();
   return (
-    <Button variant="ghost" size="icon" className="h-8 w-8" asChild title="Open DLsite">
+    <Button variant="ghost" size="icon" className="h-8 w-8" asChild title={t("workCard.openDLsite")}>
       <a
         href={href}
         target="_blank"
         rel="noreferrer"
         onClick={(event) => event.stopPropagation()}
-        aria-label="Open DLsite"
+        aria-label={t("workCard.openDLsite")}
       >
         <ExternalLink className="h-4 w-4" />
       </a>
@@ -1044,6 +1087,7 @@ export function WorkCardSelection({
   disabled?: boolean;
   onChange: (checked: boolean) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -1061,7 +1105,7 @@ export function WorkCardSelection({
         onCheckedChange={onChange}
         onClick={(event) => event.stopPropagation()}
         className="shadow-sm"
-        aria-label="Select work"
+        aria-label={t("workCard.selectWork")}
       />
     </div>
   );
@@ -1075,39 +1119,37 @@ export function userTagBadges(tags: UserTag[], onOpen?: (tag: string) => void): 
   return tags.map((tag) => ({
     key: `user:${tag.id}`,
     label: tag.name,
-    title: `My tag: ${tag.name}`,
+    title: i18n.t("workCard.myTag", { name: tag.name }),
     variant: "secondary",
     onClick: onOpen ? () => onOpen(tag.name) : undefined,
   }));
 }
 
-const quickMarkOptions: { value: ListeningStatus; label: string }[] = [
-  { value: "none", label: "Unmarked" },
-  { value: "want_to_listen", label: "Want" },
-  { value: "listening", label: "Listening" },
-  { value: "finished", label: "Finished" },
-  { value: "relisten", label: "Relisten" },
-  { value: "paused", label: "Shelved" },
-];
+const quickMarkOptions: ListeningStatus[] = ["none", "want_to_listen", "listening", "finished", "relisten", "paused"];
 
 function quickMarkMeta(value: ListeningStatus) {
   switch (value) {
     case "want_to_listen":
-      return { label: "Want", icon: BookmarkPlus, active: true, className: "text-primary" };
+      return { icon: BookmarkPlus, active: true, className: "text-primary" };
     case "listening":
-      return { label: "Listening", icon: Headphones, active: true, className: "text-primary" };
+      return { icon: Headphones, active: true, className: "text-primary" };
     case "finished":
-      return { label: "Finished", icon: CheckCircle2, active: true, className: "text-success" };
+      return { icon: CheckCircle2, active: true, className: "text-success" };
     case "relisten":
-      return { label: "Relisten", icon: Repeat2, active: true, className: "text-primary" };
+      return { icon: Repeat2, active: true, className: "text-primary" };
     case "paused":
-      return { label: "Shelved", icon: PauseCircle, active: true, className: "text-warning" };
+      return { icon: PauseCircle, active: true, className: "text-warning" };
     default:
-      return { label: "Unmarked", icon: Circle, active: false, className: "" };
+      return { icon: Circle, active: false, className: "" };
   }
 }
 
+function listeningStatusKey(value: ListeningStatus) {
+  return `workCard.status.${value}` as const;
+}
+
 function VoiceOverflow({ names, onOpen }: { names: string[]; onOpen?: (name: string) => void }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement | null>(null);
   return (
@@ -1115,7 +1157,7 @@ function VoiceOverflow({ names, onOpen }: { names: string[]; onOpen?: (name: str
       <button
         ref={anchorRef}
         className="ml-1 hover:text-primary"
-        aria-label={`Show ${names.length} more voice actors`}
+        aria-label={t("workCard.showMoreVoiceActors", { count: names.length })}
         onClick={(event) => {
           event.stopPropagation();
           setOpen((current) => !current);
@@ -1150,10 +1192,21 @@ function VoiceOverflow({ names, onOpen }: { names: string[]; onOpen?: (name: str
   );
 }
 
+function entityKindLabel(kind: WorkEntityLink["kind"]) {
+  switch (kind) {
+    case "series":
+      return i18n.t("workCard.entityKinds.series");
+    case "voice":
+      return i18n.t("workCard.entityKinds.voice");
+    default:
+      return i18n.t("workCard.entityKinds.circle");
+  }
+}
+
 function openEntityRoute(route: string) {
   if (!route.startsWith("/")) return;
   const returnTo = `${window.location.pathname}${window.location.search}`;
-  window.history.pushState(historyStateWithReturn(returnTo, "Back"), "", route);
+  window.history.pushState(historyStateWithReturn(returnTo, i18n.t("workCard.back")), "", route);
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 

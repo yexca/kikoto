@@ -1,8 +1,10 @@
 import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { paginationItems } from "@/components/work-collection/paginationModel";
+import i18n from "@/i18n";
 import { cn } from "@/lib/utils";
 
 export type CollectionPaginationProps = {
@@ -44,6 +46,7 @@ export function CollectionPagination({
   onPageChange,
   onPageSizeChange,
 }: CollectionPaginationProps) {
+  const { t } = useTranslation("translation", { i18n });
   const lastPage = Math.max(1, totalPages);
   const currentPage = Math.min(lastPage, Math.max(1, page));
 
@@ -58,8 +61,8 @@ export function CollectionPagination({
             className="h-8 w-8 shrink-0"
             disabled={currentPage <= 1}
             onClick={() => onPageChange(currentPage - 1)}
-            aria-label="Previous page"
-            title="Previous page"
+            aria-label={t("collection.previousPage")}
+            title={t("collection.previousPage")}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -79,7 +82,7 @@ export function CollectionPagination({
                 size="icon"
                 className="h-8 w-8 shrink-0 text-xs tabular-nums"
                 onClick={() => onPageChange(item)}
-                aria-label={`Page ${item}`}
+                aria-label={t("collection.page", { page: item })}
                 aria-current={item === currentPage ? "page" : undefined}
               >
                 {item}
@@ -92,8 +95,8 @@ export function CollectionPagination({
             className="h-8 w-8 shrink-0"
             disabled={currentPage >= lastPage}
             onClick={() => onPageChange(currentPage + 1)}
-            aria-label="Next page"
-            title="Next page"
+            aria-label={t("collection.nextPage")}
+            title={t("collection.nextPage")}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
@@ -104,11 +107,8 @@ export function CollectionPagination({
 
   const firstItem = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const lastItem = Math.min(totalItems, currentPage * pageSize);
-  const summaryContent = summary ?? (
-    <>
-      {firstItem}-{lastItem} of {totalItems} {itemLabel}
-    </>
-  );
+  const summaryContent =
+    summary ?? t("collection.rangeOf", { first: firstItem, last: lastItem, totalItems, itemLabel });
   return (
     <div
       className={cn(
@@ -129,19 +129,25 @@ export function CollectionPagination({
         {compactMobile ? (
           <>
             <div className="flex min-w-0 items-center gap-1.5 lg:hidden">
-              <CollectionRefreshStatus refreshing={refreshing} label={refreshingLabel ?? `Refreshing ${itemLabel}`} />
+              <CollectionRefreshStatus
+                refreshing={refreshing}
+                label={refreshingLabel ?? t("collection.refreshing", { itemLabel })}
+              />
               <span className="min-w-0 truncate">
                 <span className="sr-only">
-                  Page {currentPage} of {lastPage}, {totalItems} {itemLabel}
+                  {t("collection.pageOf", { page: currentPage, totalPages: lastPage, totalItems, itemLabel })}
                 </span>
                 <span aria-hidden="true">
-                  <span className="hidden min-[360px]:inline">Page {currentPage} · </span>
+                  <span className="hidden min-[360px]:inline">{t("collection.page", { page: currentPage })} · </span>
                   {totalItems} {itemLabel}
                 </span>
               </span>
             </div>
             <div className="hidden items-center gap-1.5 lg:flex">
-              <CollectionRefreshStatus refreshing={refreshing} label={refreshingLabel ?? `Refreshing ${itemLabel}`} />
+              <CollectionRefreshStatus
+                refreshing={refreshing}
+                label={refreshingLabel ?? t("collection.refreshing", { itemLabel })}
+              />
               <span>{summaryContent}</span>
             </div>
           </>
@@ -166,11 +172,11 @@ export function CollectionPagination({
             )}
             value={pageSize}
             onChange={(event) => onPageSizeChange(Number(event.target.value))}
-            aria-label={`${itemLabel} per page`}
+            aria-label={t("collection.perPageLabel", { itemLabel })}
           >
             {pageSizeOptions.map((value) => (
               <option key={value} value={value}>
-                {value} / page
+                {t("collection.pageOption", { value })}
               </option>
             ))}
           </select>
@@ -182,7 +188,7 @@ export function CollectionPagination({
               compactTop ? "h-8" : "h-11",
             )}
             role="group"
-            aria-label={`${ariaLabel} controls`}
+            aria-label={t("collection.controls", { label: ariaLabel })}
           >
             <Button
               variant="ghost"
@@ -190,8 +196,8 @@ export function CollectionPagination({
               className={cn("rounded-r-none", compactTop ? "h-8 w-8" : "h-11 w-11")}
               disabled={currentPage <= 1}
               onClick={() => onPageChange(currentPage - 1)}
-              aria-label="Previous page"
-              title="Previous page"
+              aria-label={t("collection.previousPage")}
+              title={t("collection.previousPage")}
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -201,8 +207,8 @@ export function CollectionPagination({
               className={cn("rounded-l-none border-l", compactTop ? "h-8 w-8" : "h-11 w-11")}
               disabled={currentPage >= lastPage}
               onClick={() => onPageChange(currentPage + 1)}
-              aria-label="Next page"
-              title="Next page"
+              aria-label={t("collection.nextPage")}
+              title={t("collection.nextPage")}
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
@@ -220,8 +226,8 @@ export function CollectionPagination({
             className="h-7 w-8 rounded-r-none"
             disabled={currentPage <= 1}
             onClick={() => onPageChange(currentPage - 1)}
-            aria-label="Previous page"
-            title="Previous page"
+            aria-label={t("collection.previousPage")}
+            title={t("collection.previousPage")}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -234,8 +240,8 @@ export function CollectionPagination({
             className="h-7 w-8 rounded-l-none"
             disabled={currentPage >= lastPage}
             onClick={() => onPageChange(currentPage + 1)}
-            aria-label="Next page"
-            title="Next page"
+            aria-label={t("collection.nextPage")}
+            title={t("collection.nextPage")}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>

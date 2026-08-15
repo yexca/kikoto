@@ -1,5 +1,6 @@
 import { KeyRound, LoaderCircle, Monitor, Moon, Save, Sun, UserRound } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
+import { Trans, useTranslation } from "react-i18next";
 
 import {
   applyThemeMode,
@@ -42,6 +43,7 @@ export function SettingsPage({
   onAccountUpdated: () => Promise<void>;
 }) {
   const toast = useToast();
+  const { t } = useTranslation();
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredThemeMode());
   const [themePreset, setThemePreset] = useState<ThemePreset>(() => getStoredThemePreset());
   const [themePalette, setThemePalette] = useState<ThemePalette>(() => getStoredThemePalette());
@@ -97,9 +99,9 @@ export function SettingsPage({
     try {
       await api.updateCurrentAccount({ displayName: nextDisplayName });
       await onAccountUpdated();
-      toast.success("Account profile updated.");
+      toast.success(t("account.profileUpdated"));
     } catch (error) {
-      toast.notify(toastFromError(error, "Profile update failed."));
+      toast.notify(toastFromError(error, t("account.profileUpdateFailed")));
     } finally {
       setIsProfileSaving(false);
     }
@@ -108,7 +110,7 @@ export function SettingsPage({
   const changePassword = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const validationError = validatePasswordChange(passwordDraft);
-    setPasswordError(validationError);
+    setPasswordError(validationError ? t(passwordErrorKey(validationError), { defaultValue: validationError }) : null);
     if (validationError) return;
     setIsPasswordSaving(true);
     try {
@@ -118,9 +120,9 @@ export function SettingsPage({
       });
       await onAccountUpdated();
       setPasswordDraft(emptyPasswordDraft);
-      toast.success("Password changed. Other sessions were signed out.");
+      toast.success(t("account.passwordChanged"));
     } catch (error) {
-      toast.notify(toastFromError(error, "Password change failed."));
+      toast.notify(toastFromError(error, t("account.passwordChangeFailed")));
     } finally {
       setIsPasswordSaving(false);
     }
@@ -142,7 +144,7 @@ export function SettingsPage({
           className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-muted-foreground"
           role="status"
         >
-          Demo mode keeps account settings read-only.
+          {t("account.demoReadOnly")}
         </div>
       )}
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)]">
@@ -150,13 +152,13 @@ export function SettingsPage({
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <UserRound className="h-4 w-4" />
-              Account
+              {t("settings.account")}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <form className="space-y-4" onSubmit={saveProfile}>
               <label className="block space-y-1 text-sm" htmlFor="account-display-name">
-                <span className="font-medium">Display name</span>
+                <span className="font-medium">{t("settings.displayName")}</span>
                 <input
                   id="account-display-name"
                   className="h-[var(--control-height)] w-full rounded-md border bg-background px-3 text-sm disabled:bg-muted"
@@ -167,8 +169,11 @@ export function SettingsPage({
                 />
               </label>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                <ReadonlyField label="Username" value={user.username} />
-                <ReadonlyField label="Role" value={user.role.replace("_", " ")} />
+                <ReadonlyField label={t("settings.username")} value={user.username} />
+                <ReadonlyField
+                  label={t("settings.role")}
+                  value={t(`account.roles.${user.role}`, { defaultValue: user.role.replace("_", " ") })}
+                />
               </div>
               <div className="flex justify-end">
                 <Button
@@ -176,7 +181,7 @@ export function SettingsPage({
                   disabled={readOnly || isProfileSaving || normalizedDisplayName === savedDisplayName}
                 >
                   {isProfileSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  Save profile
+                  {t("settings.saveProfile")}
                 </Button>
               </div>
             </form>
@@ -186,20 +191,25 @@ export function SettingsPage({
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <KeyRound className="h-4 w-4" />
-              Password
+              {t("settings.password")}
             </CardTitle>
           </CardHeader>
           <CardContent>
             {passwordManagedByEnvironment ? (
               <div className="rounded-md border bg-muted/35 px-3 py-3 text-sm text-muted-foreground" role="status">
-                The root password is managed by <code className="font-mono text-foreground">KIKOTO_ROOT_PASSWORD</code>.
-                Update it in <code className="font-mono text-foreground">.env</code> and restart Kikoto.
+                <Trans
+                  i18nKey="settings.rootPasswordManaged"
+                  components={{
+                    env: <code className="font-mono text-foreground" />,
+                    file: <code className="font-mono text-foreground" />,
+                  }}
+                />
               </div>
             ) : (
               <form className="space-y-3" onSubmit={changePassword}>
                 <PasswordField
                   id="current-password"
-                  label="Current password"
+                  label={t("settings.currentPassword")}
                   value={passwordDraft.currentPassword}
                   autoComplete="current-password"
                   disabled={readOnly || isPasswordSaving}
@@ -207,7 +217,7 @@ export function SettingsPage({
                 />
                 <PasswordField
                   id="new-password"
-                  label="New password"
+                  label={t("settings.newPassword")}
                   value={passwordDraft.newPassword}
                   autoComplete="new-password"
                   disabled={readOnly || isPasswordSaving}
@@ -215,7 +225,7 @@ export function SettingsPage({
                 />
                 <PasswordField
                   id="confirm-password"
-                  label="Confirm new password"
+                  label={t("settings.confirmNewPassword")}
                   value={passwordDraft.confirmPassword}
                   autoComplete="new-password"
                   disabled={readOnly || isPasswordSaving}
@@ -235,7 +245,7 @@ export function SettingsPage({
                     ) : (
                       <KeyRound className="h-4 w-4" />
                     )}
-                    Change password
+                    {t("settings.changePassword")}
                   </Button>
                 </div>
               </form>
@@ -246,21 +256,21 @@ export function SettingsPage({
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Monitor className="h-4 w-4" />
-              Appearance
+              {t("appearance.title")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
             <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">Display mode</legend>
+              <legend className="text-sm font-medium">{t("appearance.displayMode")}</legend>
               <div
                 className="inline-flex max-w-full gap-1 overflow-x-auto rounded-md border bg-muted/40 p-1"
-                aria-label="Theme preference"
+                aria-label={t("appearance.themePreference")}
               >
                 {(
                   [
-                    { value: "light", label: "Light", icon: <Sun className="h-4 w-4" /> },
-                    { value: "dark", label: "Dark", icon: <Moon className="h-4 w-4" /> },
-                    { value: "system", label: "System", icon: <Monitor className="h-4 w-4" /> },
+                    { value: "light", label: t("appearance.light"), icon: <Sun className="h-4 w-4" /> },
+                    { value: "dark", label: t("appearance.dark"), icon: <Moon className="h-4 w-4" /> },
+                    { value: "system", label: t("appearance.system"), icon: <Monitor className="h-4 w-4" /> },
                   ] as const
                 ).map((option) => (
                   <button
@@ -277,11 +287,11 @@ export function SettingsPage({
               </div>
             </fieldset>
             <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">Theme style</legend>
+              <legend className="text-sm font-medium">{t("appearance.themeStyle")}</legend>
               <ThemePresetPicker value={themePreset} onChange={updatePreset} palette={themePalette} />
             </fieldset>
             <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">Color</legend>
+              <legend className="text-sm font-medium">{t("appearance.color")}</legend>
               <ThemePalettePicker preset={themePreset} value={themePalette} onChange={updatePalette} />
             </fieldset>
           </CardContent>
@@ -289,6 +299,25 @@ export function SettingsPage({
       </div>
     </div>
   );
+}
+
+function passwordErrorKey(message: string) {
+  switch (message) {
+    case "Current password is required.":
+      return "settings.passwordErrors.currentRequired";
+    case "New password is required.":
+      return "settings.passwordErrors.newRequired";
+    case "New password must be at least 8 characters.":
+      return "settings.passwordErrors.tooShort";
+    case "New password must differ from your current password.":
+      return "settings.passwordErrors.unchanged";
+    case "Confirm your new password.":
+      return "settings.passwordErrors.confirmRequired";
+    case "New passwords do not match.":
+      return "settings.passwordErrors.mismatch";
+    default:
+      return message;
+  }
 }
 
 function ReadonlyField({ label, value }: { label: string; value: string }) {

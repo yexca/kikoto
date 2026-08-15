@@ -1,5 +1,6 @@
 import { BookOpen, Boxes, Download, ExternalLink, FolderCode, Scale, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ const dependencyGroups = [
 ] as const;
 
 export function AboutPage() {
+  const { t } = useTranslation();
   const [update, setUpdate] = useState<AppUpdate | null>(null);
   useEffect(() => {
     let active = true;
@@ -43,25 +45,22 @@ export function AboutPage() {
     <div className="space-y-5">
       <section className="rounded-lg border bg-card p-5">
         <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <span>About Kikoto · {APP_CLIENT_VERSION}</span>
+          <span>{t("about.label", { version: APP_CLIENT_VERSION })}</span>
           {update?.releaseUrl && (
             <a
               href={update.releaseUrl}
               target="_blank"
               rel="noreferrer"
-              aria-label={`Update available: ${update.latestVersion}`}
-              title={`Update available: ${update.latestVersion}`}
+              aria-label={t("about.updateAvailable", { version: update.latestVersion })}
+              title={t("about.updateAvailable", { version: update.latestVersion })}
               className="text-info hover:text-info/80"
             >
               <Download className="h-4 w-4" />
             </a>
           )}
         </p>
-        <h2 className="mt-1 text-2xl font-semibold">Project background and credits</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Kikoto is a local-first personal audio library focused on DLsite-style works, unified metadata, compatible
-          remote sources, and browser playback.
-        </p>
+        <h2 className="mt-1 text-2xl font-semibold">{t("about.title")}</h2>
+        <p className="mt-2 text-sm text-muted-foreground">{t("about.intro")}</p>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
@@ -69,14 +68,12 @@ export function AboutPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Sparkles className="h-4 w-4" />
-              Built with Codex
+              {t("about.builtWithCodex")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <p>This software is developed by yexca with assistance from Codex.</p>
-            <p>
-              v0.1.0 was developed with GPT-5.5 assistance. From v0.1.1 onward, development assistance uses GPT-5.6-sol.
-            </p>
+            <p>{t("about.codexCredit")}</p>
+            <p>{t("about.modelCredit")}</p>
           </CardContent>
         </Card>
 
@@ -84,18 +81,12 @@ export function AboutPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <BookOpen className="h-4 w-4" />
-              Software overview
+              {t("about.softwareOverview")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <p>
-              Kikoto combines local folders, DLsite metadata, and Kikoeru-compatible remote sources under one unified
-              work model.
-            </p>
-            <p>
-              It includes library browsing, favorites, circles, voice actors, workflow visibility, remote fetch flows,
-              and a browser-based audio player.
-            </p>
+            <p>{t("about.overviewOne")}</p>
+            <p>{t("about.overviewTwo")}</p>
           </CardContent>
         </Card>
 
@@ -103,32 +94,28 @@ export function AboutPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <FolderCode className="h-4 w-4" />
-              Reference projects
+              {t("about.referenceProjects")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-muted-foreground">
             <div className="space-y-3">
               <p>
-                Kikoto adapts to Kikoeru-compatible backends and references the public backend interface shape of
-                <span className="mx-1 font-medium text-foreground">Number178/kikoeru-express</span>
-                for compatibility work.
+                {t("about.kikoeruReference")}{" "}
+                <span className="mx-1 font-medium text-foreground">Number178/kikoeru-express</span>.
               </p>
               <Button asChild variant="outline" size="sm">
                 <a href="https://github.com/Number178/kikoeru-express" target="_blank" rel="noreferrer">
                   <ExternalLink className="h-4 w-4" />
-                  Open Kikoeru reference
+                  {t("about.openKikoeru")}
                 </a>
               </Button>
             </div>
             <div className="space-y-3 border-t pt-4">
-              <p>
-                ComfyUI informed the workflow-canvas interaction design. Kikoto does not include or adapt ComfyUI source
-                code; its canvas is an independent React implementation built with @xyflow/react.
-              </p>
+              <p>{t("about.comfyReference")}</p>
               <Button asChild variant="outline" size="sm">
                 <a href="https://github.com/comfyanonymous/ComfyUI" target="_blank" rel="noreferrer">
                   <ExternalLink className="h-4 w-4" />
-                  Open ComfyUI reference
+                  {t("about.openComfy")}
                 </a>
               </Button>
             </div>
@@ -139,13 +126,13 @@ export function AboutPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Boxes className="h-4 w-4" />
-              Dependencies
+              {t("about.dependencies")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-muted-foreground">
             {dependencyGroups.map((group) => (
               <div key={group.title}>
-                <h3 className="mb-2 font-medium text-foreground">{group.title}</h3>
+                <h3 className="mb-2 font-medium text-foreground">{t(`about.groups.${group.title}`)}</h3>
                 <div className="flex flex-wrap gap-2">
                   {group.items.map((item) => (
                     <span key={item} className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">
@@ -162,32 +149,29 @@ export function AboutPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Scale className="h-4 w-4" />
-              License
+              {t("about.license")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
-            <p>Copyright (C) 2026 yexca.</p>
-            <p>
-              Kikoto is free software licensed under GNU AGPL v3. It is provided without warranty; the complete
-              corresponding source is available in the project repository.
-            </p>
+            <p>{t("about.copyright")}</p>
+            <p>{t("about.licenseText")}</p>
             <div className="flex flex-wrap gap-2">
               <Button asChild variant="outline" size="sm">
                 <a href="https://github.com/yexca/kikoto/blob/main/LICENSE" target="_blank" rel="noreferrer">
                   <ExternalLink className="h-4 w-4" />
-                  Read license
+                  {t("about.readLicense")}
                 </a>
               </Button>
               <Button asChild variant="outline" size="sm">
                 <a href="https://github.com/yexca/kikoto" target="_blank" rel="noreferrer">
                   <ExternalLink className="h-4 w-4" />
-                  View source
+                  {t("about.viewSource")}
                 </a>
               </Button>
               <Button asChild variant="outline" size="sm">
                 <a href={KIKOTO_RELEASES_URL} target="_blank" rel="noreferrer">
                   <ExternalLink className="h-4 w-4" />
-                  View releases
+                  {t("about.viewReleases")}
                 </a>
               </Button>
             </div>

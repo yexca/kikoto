@@ -26,11 +26,40 @@ type User struct {
 	ID                int64    `json:"id"`
 	Username          string   `json:"username"`
 	DisplayName       string   `json:"displayName"`
+	UILocale          string   `json:"uiLocale"`
 	Role              string   `json:"role"`
 	Permissions       []string `json:"permissions"`
 	DevMode           bool     `json:"devMode"`
 	DemoMode          bool     `json:"demoMode"`
 	PasswordManagedBy string   `json:"passwordManagedBy"`
+}
+
+const (
+	UILocaleAuto     = "auto"
+	UILocaleEnglish  = "en"
+	UILocaleHans     = "zh-Hans"
+	UILocaleHant     = "zh-Hant"
+	UILocaleJapanese = "ja"
+	UILocaleKorean   = "ko"
+)
+
+func NormalizeUILocale(value string) (string, bool) {
+	switch strings.TrimSpace(value) {
+	case UILocaleAuto:
+		return UILocaleAuto, true
+	case UILocaleEnglish:
+		return UILocaleEnglish, true
+	case UILocaleHans:
+		return UILocaleHans, true
+	case UILocaleHant:
+		return UILocaleHant, true
+	case UILocaleJapanese:
+		return UILocaleJapanese, true
+	case UILocaleKorean:
+		return UILocaleKorean, true
+	default:
+		return "", false
+	}
 }
 
 type Session struct {
@@ -149,8 +178,8 @@ func (s *Store) LoadByID(ctx context.Context, id int64) (User, error) {
 
 func (s *Store) load(ctx context.Context, predicate string, value any) (User, error) {
 	var user User
-	err := s.db.QueryRowContext(ctx, `SELECT id, username, display_name, role FROM user_account WHERE `+predicate+` AND enabled = 1`, value).
-		Scan(&user.ID, &user.Username, &user.DisplayName, &user.Role)
+	err := s.db.QueryRowContext(ctx, `SELECT id, username, display_name, ui_locale, role FROM user_account WHERE `+predicate+` AND enabled = 1`, value).
+		Scan(&user.ID, &user.Username, &user.DisplayName, &user.UILocale, &user.Role)
 	if err != nil {
 		return User{}, err
 	}

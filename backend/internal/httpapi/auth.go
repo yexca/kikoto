@@ -181,6 +181,7 @@ func (s *Server) updateCurrentUser(w http.ResponseWriter, r *http.Request) {
 	}
 	var payload struct {
 		DisplayName     *string `json:"displayName"`
+		UILocale        *string `json:"uiLocale"`
 		CurrentPassword string  `json:"currentPassword"`
 		NewPassword     string  `json:"newPassword"`
 	}
@@ -214,9 +215,13 @@ func (s *Server) updateCurrentUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	updated, err := s.accountStore.UpdateOwnAccount(r.Context(), account.UpdateOwnAccountInput{
-		ID: actor.ID, DisplayName: displayName, CurrentPassword: payload.CurrentPassword,
+		ID: actor.ID, DisplayName: displayName, UILocale: payload.UILocale, CurrentPassword: payload.CurrentPassword,
 		NewPassword: payload.NewPassword, CurrentSessionID: currentSessionID(r),
 	})
+	if errors.Is(err, account.ErrInvalidUILocale) {
+		writeAPIError(w, http.StatusBadRequest, "invalid_ui_locale", "invalid interface language", false)
+		return
+	}
 	if errors.Is(err, account.ErrInvalidCurrentPassword) || errors.Is(err, account.ErrPasswordUnchanged) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return

@@ -1049,6 +1049,7 @@ export type CurrentUser = {
   id: number;
   username: string;
   displayName: string;
+  uiLocale: "auto" | "en" | "zh-Hans" | "zh-Hant" | "ja" | "ko";
   role: "super_admin" | "admin" | "user";
   permissions: string[];
   devMode: boolean;
@@ -1749,8 +1750,12 @@ export const api = {
     return response.json() as Promise<HealthStatus>;
   },
   me: () => getJSON<AuthState>("/api/auth/me"),
-  updateCurrentAccount: (payload: { displayName?: string; currentPassword?: string; newPassword?: string }) =>
-    patchJSONBody<AuthState>("/api/auth/me", payload),
+  updateCurrentAccount: (payload: {
+    displayName?: string;
+    uiLocale?: CurrentUser["uiLocale"];
+    currentPassword?: string;
+    newPassword?: string;
+  }) => patchJSONBody<AuthState>("/api/auth/me", payload),
   login,
   logout,
   listNotifications: (limit = 20) => getJSON<WorkflowNotificationsPage>(`/api/notifications?limit=${limit}`),

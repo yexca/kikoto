@@ -1,7 +1,9 @@
 import { Rows3 } from "lucide-react";
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
+import i18n from "@/i18n";
 
 export function PageSizePicker({
   value,
@@ -12,6 +14,7 @@ export function PageSizePicker({
   options: readonly number[];
   onChange: (value: number) => void;
 }) {
+  const { t } = useTranslation("translation", { i18n });
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
 
@@ -20,8 +23,8 @@ export function PageSizePicker({
       <button
         type="button"
         className="relative inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
-        title={`Items per page: ${value}`}
-        aria-label={`Items per page: ${value}`}
+        title={t("collection.pageSize", { value })}
+        aria-label={t("collection.pageSize", { value })}
         onClick={() => setOpen((current) => !current)}
       >
         <Rows3 className="h-4 w-4" />
@@ -32,10 +35,10 @@ export function PageSizePicker({
         onOpenChange={setOpen}
         className="w-[min(13rem,calc(100vw-1.5rem))] p-1 text-sm"
       >
-        <div role="menu" aria-label="Items per page">
+        <div role="menu" aria-label={t("collection.itemsPerPage")}>
           <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground">
             <Rows3 className="h-4 w-4" />
-            <span>Items per page</span>
+            <span>{t("collection.itemsPerPage")}</span>
           </div>
           {options.map((option) => (
             <button
@@ -49,7 +52,7 @@ export function PageSizePicker({
                 setOpen(false);
               }}
             >
-              {option} per page
+              {t("collection.pageOption", { value: option })}
             </button>
           ))}
         </div>

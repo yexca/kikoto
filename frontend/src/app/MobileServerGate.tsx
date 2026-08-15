@@ -1,5 +1,6 @@
 import { Server, WifiOff } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
@@ -14,6 +15,7 @@ import {
 type ConnectionState = "checking" | "ready" | "setup";
 
 export function MobileServerGate({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation();
   const [state, setState] = useState<ConnectionState>(() => (isNativeApp() ? "checking" : "ready"));
   const [serverURL, setServerURL] = useState(() => getStoredServerURL());
   const [error, setError] = useState("");
@@ -36,12 +38,12 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
           })
           .catch(() => {
             setServerURL(stored);
-            setError("Kikoto server is not reachable from this device.");
+            setError(t("serverGate.unreachable"));
             setState("setup");
           });
       })
       .catch(() => {
-        setError("Stored connection settings could not be loaded.");
+        setError(t("serverGate.settingsUnavailable"));
         setState("setup");
       });
   }, []);
@@ -50,7 +52,7 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
   if (state === "checking") {
     return (
       <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">
-        Connecting to Kikoto...
+        {t("serverGate.connecting")}
       </div>
     );
   }
@@ -77,13 +79,13 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
           <div className="mb-3 grid h-10 w-10 place-items-center rounded-lg bg-secondary text-secondary-foreground">
             {error ? <WifiOff className="h-5 w-5" /> : <Server className="h-5 w-5" />}
           </div>
-          <h1 className="text-xl font-semibold">Connect to Kikoto</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Enter the address of your Kikoto server.</p>
+          <h1 className="text-xl font-semibold">{t("serverGate.title")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t("serverGate.subtitle")}</p>
         </div>
 
         <form className="space-y-3" onSubmit={submit}>
           <label className="grid gap-1.5 text-sm font-medium">
-            Server address
+            {t("serverGate.serverAddress")}
             <input
               className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={serverURL}
@@ -101,10 +103,10 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
           )}
           {version && (
             <div className="rounded-md border bg-muted px-3 py-2 text-sm text-muted-foreground">
-              Server version {version}
+              {t("serverGate.serverVersion", { version })}
             </div>
           )}
-          <Button className="w-full">Connect</Button>
+          <Button className="w-full">{t("serverGate.connect")}</Button>
         </form>
       </section>
     </main>
