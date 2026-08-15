@@ -178,6 +178,20 @@ func (s *Server) executeLocalScanJob(ctx context.Context, job workflowJobRecord)
 		}); err != nil {
 			return rollbackAndFail(err)
 		}
+		var managedFetchRootExists bool
+		if err := tx.QueryRowContext(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM work_folder_location
+				WHERE work_id = ? AND file_source_id = ? AND role = 'managed_fetch'
+			)
+		`, workID, fileSourceID).Scan(&managedFetchRootExists); err != nil {
+			return rollbackAndFail(err)
+		}
+		if !managedFetchRootExists {
+			if err := upsertWorkFolderLocation(ctx, tx, workID, fileSourceID, folder.RelPath, "external", "active", true); err != nil {
+				return rollbackAndFail(err)
+			}
+		}
 		// A duplicate stays reviewable. Invalidating either folder here would
 		// choose a winner before the user has reviewed the candidate.
 		if !duplicateCodes[strings.ToUpper(strings.TrimSpace(folder.Code))] && !reconciledWorkIDs[workID] {

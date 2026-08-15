@@ -29,8 +29,10 @@ const (
 )
 
 type mediaCleanupTargetRequest struct {
-	Kind       string `json:"kind"`
-	LocationID int64  `json:"locationId"`
+	Kind         string `json:"kind"`
+	LocationID   int64  `json:"locationId"`
+	FolderID     int64  `json:"folderId,omitempty"`
+	ExpectedPath string `json:"expectedPath,omitempty"`
 }
 
 type mediaCleanupRequest struct {
@@ -39,12 +41,15 @@ type mediaCleanupRequest struct {
 }
 
 type mediaCleanupTarget struct {
-	Kind        string `json:"kind"`
-	LocationID  int64  `json:"locationId"`
-	MediaItemID int64  `json:"mediaItemId"`
-	WorkID      int64  `json:"workId"`
-	SourceID    int64  `json:"sourceId"`
-	Path        string `json:"path"`
+	Kind         string `json:"kind"`
+	LocationID   int64  `json:"locationId"`
+	FolderID     int64  `json:"folderId,omitempty"`
+	MediaItemID  int64  `json:"mediaItemId"`
+	WorkID       int64  `json:"workId"`
+	SourceID     int64  `json:"sourceId"`
+	Path         string `json:"path"`
+	ExpectedPath string `json:"expectedPath,omitempty"`
+	CleanupRunID int64  `json:"cleanupRunId,omitempty"`
 }
 
 type mediaCleanupJobPayload struct {
@@ -65,6 +70,15 @@ type mediaCleanupResult struct {
 	JobID  int64  `json:"jobId"`
 	Status string `json:"status"`
 	Queued int    `json:"queued"`
+}
+
+type mediaCleanupTargetConflictError struct{ message string }
+
+func (e mediaCleanupTargetConflictError) Error() string {
+	if strings.TrimSpace(e.message) == "" {
+		return "media cleanup target changed; refresh the work and try again"
+	}
+	return e.message
 }
 
 func (s *Server) cleanupMediaLocations(w http.ResponseWriter, r *http.Request) {
@@ -121,6 +135,13 @@ func writeMediaCleanupError(w http.ResponseWriter, err error) {
 		})
 		return
 	}
+	var conflictErr mediaCleanupTargetConflictError
+	if errors.As(err, &conflictErr) {
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error": conflictErr.Error(), "code": "media_cleanup_target_changed", "retryable": false,
+		})
+		return
+	}
 	writeError(w, err)
 }
 
@@ -163,7 +184,7 @@ func (s *Server) enqueueMediaLocationCleanupWithOptions(ctx context.Context, req
 		}
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
 		return mediaCleanupResult{}, err
 	}
@@ -216,7 +237,7 @@ func (s *Server) enqueueMediaLocationCleanupWithOptions(ctx context.Context, req
 		}
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: cleanupNodeID, WorkerType: "media_location_cleanup", Status: "queued", Priority: workflow.JobPriorityUserInitiated, Payload: payload,
+		NodeRunID: cleanupNodeID, WorkerType: "media_location_cleanup", Status: "queued", Priority: workflow.JobPriorityUserInitiated, ResourceKey: "media:cleanup", Payload: payload,
 		Checkpoint: mediaCleanupCheckpoint{CompletedKeys: []string{}}, Recoverable: true, MaxRetries: 3,
 		ProgressCurrent: 0, ProgressTotal: len(targets),
 	})
@@ -272,25 +293,24 @@ func (s *Server) loadMediaCleanupTarget(ctx context.Context, requested mediaClea
 		}
 		return mediaCleanupTarget{}, err
 	}
-	if requested.Kind == "local_root" && locationType == "local" {
-		target.Kind = requested.Kind
-		if err := s.db.QueryRowContext(ctx, `
-			SELECT source_url
-			FROM work_source_presence
-			WHERE work_id = ? AND file_source_id = ? AND presence_type = 'local'
-			LIMIT 1
-		`, target.WorkID, target.SourceID).Scan(&target.Path); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return mediaCleanupTarget{}, fmt.Errorf("local work root not found")
-			}
-			return mediaCleanupTarget{}, err
+	locationPath := normalizeFolderRootPath(target.Path)
+	if requested.Kind == "local_root" {
+		if locationType != "local" {
+			return mediaCleanupTarget{}, fmt.Errorf("media location %d is not local", requested.LocationID)
 		}
-		rootPath, err := safeDataPath(s.cfg.DataRoot, target.Path)
+		folder, err := s.resolveMediaCleanupFolder(ctx, target.WorkID, target.SourceID, requested.FolderID, requested.ExpectedPath)
 		if err != nil {
 			return mediaCleanupTarget{}, err
 		}
-		if isSymlinkPath(rootPath) {
-			return mediaCleanupTarget{}, fmt.Errorf("refusing to delete symlink %s", filepath.ToSlash(target.Path))
+		target.Kind = requested.Kind
+		target.FolderID = folder.ID
+		target.Path = folder.RootPath
+		target.ExpectedPath = folder.RootPath
+		if !mediaCleanupPathWithinRoot(target.Path, locationPath) {
+			return mediaCleanupTarget{}, mediaCleanupTargetConflictError{message: "selected file is outside the confirmed local root"}
+		}
+		if _, err := validateDestructivePath(s.cfg.DataRoot, target.Path, true, true); err != nil {
+			return mediaCleanupTarget{}, err
 		}
 		return target, nil
 	}
@@ -299,7 +319,7 @@ func (s *Server) loadMediaCleanupTarget(ctx context.Context, requested mediaClea
 	}
 	target.Kind = locationType
 	if target.Kind == "cache" {
-		if _, err := safeCachePath(s.cfg.CacheRoot, target.Path); err != nil {
+		if _, err := validateDestructivePath(s.cfg.CacheRoot, target.Path, true, false); err != nil {
 			return mediaCleanupTarget{}, err
 		}
 		return target, nil
@@ -315,6 +335,9 @@ func (s *Server) loadMediaCleanupTarget(ctx context.Context, requested mediaClea
 		}
 		return mediaCleanupTarget{}, symlinkMediaLocationError{RunID: runID, CandidateID: candidateID, Path: target.Path}
 	}
+	if _, err := validateDestructivePath(s.cfg.DataRoot, target.Path, true, false); err != nil {
+		return mediaCleanupTarget{}, err
+	}
 	if info, err := os.Stat(targetPath); err == nil && info.IsDir() {
 		return mediaCleanupTarget{}, fmt.Errorf("refusing to delete directory %s", filepath.ToSlash(target.Path))
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -323,28 +346,210 @@ func (s *Server) loadMediaCleanupTarget(ctx context.Context, requested mediaClea
 	return target, nil
 }
 
+type mediaCleanupFolder struct {
+	ID       int64
+	WorkID   int64
+	SourceID int64
+	RootPath string
+	State    string
+}
+
+func (s *Server) resolveMediaCleanupFolder(ctx context.Context, workID int64, sourceID int64, requestedID int64, expectedPath string) (mediaCleanupFolder, error) {
+	expectedPath = normalizeFolderRootPath(expectedPath)
+	if requestedID <= 0 || expectedPath == "" {
+		return mediaCleanupFolder{}, mediaCleanupTargetConflictError{message: "the local root confirmation is incomplete; refresh the work and try again"}
+	}
+	var folder mediaCleanupFolder
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT id, work_id, file_source_id, root_path, state
+		FROM work_folder_location
+		WHERE id = ?
+	`, requestedID).Scan(&folder.ID, &folder.WorkID, &folder.SourceID, &folder.RootPath, &folder.State); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return mediaCleanupFolder{}, mediaCleanupTargetConflictError{message: "the confirmed local root no longer exists"}
+		}
+		return mediaCleanupFolder{}, err
+	}
+	if folder.WorkID != workID || folder.SourceID != sourceID || folder.State != "active" {
+		return mediaCleanupFolder{}, mediaCleanupTargetConflictError{message: "the confirmed local root is no longer available"}
+	}
+	folder.RootPath = normalizeFolderRootPath(folder.RootPath)
+	if expectedPath != folder.RootPath {
+		return mediaCleanupFolder{}, mediaCleanupTargetConflictError{message: "the confirmed local root path changed"}
+	}
+	if folder.RootPath == "" {
+		return mediaCleanupFolder{}, mediaCleanupTargetConflictError{message: "the confirmed local root path is empty"}
+	}
+	return folder, nil
+}
+
+func mediaCleanupPathWithinRoot(root string, candidate string) bool {
+	root = normalizeFolderRootPath(root)
+	candidate = normalizeFolderRootPath(candidate)
+	return candidate == root || strings.HasPrefix(candidate, root+"/")
+}
+
+func relativeDataPath(root string, absolutePath string) string {
+	relative, err := filepath.Rel(root, absolutePath)
+	if err != nil {
+		return ""
+	}
+	return filepath.ToSlash(relative)
+}
+
+func (s *Server) mediaCleanupRunCancelled(ctx context.Context, runID int64) (bool, error) {
+	var status string
+	err := withDatabaseBusyRetry(context.WithoutCancel(ctx), func() error {
+		return s.db.QueryRowContext(context.WithoutCancel(ctx), "SELECT status FROM workflow_run WHERE id = ?", runID).Scan(&status)
+	})
+	if err != nil {
+		return false, err
+	}
+	return status == "cancelled", nil
+}
+
+func (s *Server) claimMediaCleanupFolder(ctx context.Context, target mediaCleanupTarget, runID int64) error {
+	if target.FolderID <= 0 {
+		return nil
+	}
+	var result sql.Result
+	err := withDatabaseBusyRetry(context.WithoutCancel(ctx), func() error {
+		var err error
+		result, err = s.db.ExecContext(context.WithoutCancel(ctx), `
+		UPDATE work_folder_location
+		SET state = 'pending_cleanup', cleanup_run_id = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND work_id = ? AND file_source_id = ? AND root_path = ?
+			AND state = 'active' AND cleanup_run_id IS NULL
+	`, runID, target.FolderID, target.WorkID, target.SourceID, normalizeFolderRootPath(target.Path))
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected > 0 {
+		return nil
+	}
+	var state string
+	var claimed sql.NullInt64
+	err = withDatabaseBusyRetry(context.WithoutCancel(ctx), func() error {
+		return s.db.QueryRowContext(context.WithoutCancel(ctx), `
+		SELECT state, cleanup_run_id FROM work_folder_location WHERE id = ?
+	`, target.FolderID).Scan(&state, &claimed)
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return mediaCleanupTargetConflictError{message: "the local root disappeared before deletion started"}
+		}
+		return err
+	}
+	if state == "pending_cleanup" && claimed.Valid && claimed.Int64 == runID {
+		return nil
+	}
+	return mediaCleanupTargetConflictError{message: "the local root is already being changed by another operation"}
+}
+
+func (s *Server) restoreMediaCleanupFolders(ctx context.Context, runID int64) error {
+	if runID <= 0 {
+		return nil
+	}
+	err := withDatabaseBusyRetry(context.WithoutCancel(ctx), func() error {
+		_, err := s.db.ExecContext(context.WithoutCancel(ctx), `
+		UPDATE work_folder_location
+		SET state = 'active', cleanup_run_id = NULL, updated_at = CURRENT_TIMESTAMP
+		WHERE cleanup_run_id = ? AND state = 'pending_cleanup'
+	`, runID)
+		return err
+	})
+	return err
+}
+
+func (s *Server) finishCancelledMediaCleanup(ctx context.Context, job workflowJobRecord) error {
+	ctx = context.WithoutCancel(ctx)
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_node_run
+		SET status = 'cancelled', error_message = CASE WHEN error_message <> '' THEN error_message ELSE 'cancelled manually' END,
+			finished_at = COALESCE(finished_at, CURRENT_TIMESTAMP)
+		WHERE workflow_run_id = ? AND status IN ('queued', 'running')
+	`, job.RunID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_job
+		SET status = 'cancelled', error_message = CASE WHEN error_message <> '' THEN error_message ELSE 'cancelled manually' END,
+			locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND status IN ('queued', 'running')
+	`, job.ID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_run
+		SET status = 'cancelled',
+			summary_json = json_set(COALESCE(NULLIF(summary_json, ''), '{}'), '$.cancelled', true, '$.cancel_reason', 'manual'),
+			finished_at = COALESCE(finished_at, CURRENT_TIMESTAMP)
+		WHERE id = ? AND status IN ('queued', 'running')
+	`, job.RunID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (s *Server) executeMediaLocationCleanupJob(ctx context.Context, job workflowJobRecord) error {
 	var payload mediaCleanupJobPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		_ = s.failClaimedWorkflowJob(context.WithoutCancel(ctx), job, err.Error())
 		return err
 	}
 	mode, err := parseMediaCleanupMode(string(payload.Mode))
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		_ = s.failClaimedWorkflowJob(context.WithoutCancel(ctx), job, err.Error())
 		return err
 	}
 	payload.Mode = mode
 	checkpoint := mediaCleanupCheckpoint{}
 	if err := decodeWorkflowJobCheckpointDetail(job.CheckpointJSON, &checkpoint); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		_ = s.failClaimedWorkflowJob(context.WithoutCancel(ctx), job, err.Error())
 		return err
+	}
+	statusCtx := context.WithoutCancel(ctx)
+	finishCancelled := func() error {
+		if err := s.restoreMediaCleanupFolders(statusCtx, job.RunID); err != nil {
+			return err
+		}
+		return s.finishCancelledMediaCleanup(statusCtx, job)
+	}
+	if cancelled, err := s.mediaCleanupRunCancelled(statusCtx, job.RunID); err != nil {
+		return err
+	} else if cancelled {
+		return finishCancelled()
 	}
 	completed := map[string]bool{}
 	for _, key := range checkpoint.CompletedKeys {
 		completed[key] = true
 	}
 	for index, target := range payload.Targets {
+		if ctx.Err() != nil {
+			if cancelled, statusErr := s.mediaCleanupRunCancelled(statusCtx, job.RunID); statusErr != nil {
+				return statusErr
+			} else if cancelled {
+				return finishCancelled()
+			} else {
+				return ctx.Err()
+			}
+		}
+		if cancelled, err := s.mediaCleanupRunCancelled(statusCtx, job.RunID); err != nil {
+			return err
+		} else if cancelled {
+			return finishCancelled()
+		}
 		key := mediaCleanupTargetKey(target)
 		if index < checkpoint.CompletedCount || completed[key] {
 			if checkpoint.CompletedCount < index+1 {
@@ -352,25 +557,49 @@ func (s *Server) executeMediaLocationCleanupJob(ctx context.Context, job workflo
 			}
 			continue
 		}
+		if target.Kind == "local_root" && target.FolderID > 0 {
+			if err := s.claimMediaCleanupFolder(statusCtx, target, job.RunID); err != nil {
+				_ = s.restoreMediaCleanupFolders(statusCtx, job.RunID)
+				_ = s.failClaimedWorkflowJob(statusCtx, job, err.Error())
+				return err
+			}
+		}
+		target.CleanupRunID = job.RunID
 		var didDelete bool
 		var err error
 		if target.Kind == "cache" {
-			_, didDelete, err = s.clearCacheLocation(ctx, target.LocationID, target.Path)
+			_, didDelete, err = s.clearCacheLocation(statusCtx, target.LocationID, target.Path)
 		} else if target.Kind == "local_root" {
-			didDelete, err = s.clearLocalWorkRoot(ctx, target)
+			didDelete, err = s.clearLocalWorkRoot(statusCtx, target)
 		} else {
-			didDelete, err = s.clearLocalMediaLocation(ctx, target.LocationID, target.Path)
+			didDelete, err = s.clearLocalMediaLocation(statusCtx, target.LocationID, target.Path)
 		}
 		if err != nil {
-			_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+			if cancelled, statusErr := s.mediaCleanupRunCancelled(statusCtx, job.RunID); statusErr != nil {
+				return statusErr
+			} else if cancelled {
+				return finishCancelled()
+			}
+			_ = s.restoreMediaCleanupFolders(statusCtx, job.RunID)
+			_ = s.failClaimedWorkflowJob(statusCtx, job, err.Error())
 			return err
+		}
+		if cancelled, err := s.mediaCleanupRunCancelled(statusCtx, job.RunID); err != nil {
+			return err
+		} else if cancelled {
+			return finishCancelled()
 		}
 		if didDelete {
 			checkpoint.Deleted++
 		}
 		completed[key] = true
 		checkpoint.CompletedCount = index + 1
-		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "cleanup", checkpoint, index+1, len(payload.Targets))
+		checkpoint.CompletedKeys = append(checkpoint.CompletedKeys, key)
+		if err := s.updateWorkflowJobCheckpoint(statusCtx, job.ID, "cleanup", checkpoint, index+1, len(payload.Targets)); err != nil {
+			_ = s.restoreMediaCleanupFolders(statusCtx, job.RunID)
+			_ = s.failClaimedWorkflowJob(statusCtx, job, err.Error())
+			return err
+		}
 	}
 	var workIDs []int64
 	if mode == mediaCleanupForgetWork {
@@ -385,45 +614,83 @@ func (s *Server) executeMediaLocationCleanupJob(ctx context.Context, job workflo
 		}
 		if len(uniqueWorkIDs) != 1 {
 			err := fmt.Errorf("forget work can target only one work")
-			_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+			_ = s.failClaimedWorkflowJob(statusCtx, job, err.Error())
 			return err
 		}
 		for workID := range uniqueWorkIDs {
 			workIDs = append(workIDs, workID)
 		}
 	}
+	if cancelled, err := s.mediaCleanupRunCancelled(statusCtx, job.RunID); err != nil {
+		return err
+	} else if cancelled {
+		return finishCancelled()
+	}
 
 	fileOutput := map[string]any{"locations": len(payload.Targets), "deleted": checkpoint.Deleted}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := beginTxWithDatabaseBusyRetry(statusCtx, s.db)
 	if err != nil {
+		_ = s.restoreMediaCleanupFolders(statusCtx, job.RunID)
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	var runStatus string
+	if err := tx.QueryRowContext(statusCtx, "SELECT status FROM workflow_run WHERE id = ?", job.RunID).Scan(&runStatus); err != nil {
+		_ = s.restoreMediaCleanupFolders(statusCtx, job.RunID)
+		return err
+	}
+	if runStatus == "cancelled" {
+		_ = tx.Rollback()
+		return finishCancelled()
+	}
 	if mode == mediaCleanupFilesOnly {
 		output := mustJSON(fileOutput)
-		if _, err := tx.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", output, job.NodeRunID); err != nil {
+		result, err := tx.ExecContext(statusCtx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('queued', 'running')", output, job.NodeRunID)
+		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE workflow_job SET status = 'succeeded', progress_current = progress_total,
-			locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, job.ID); err != nil {
+		nodeAffected, err := result.RowsAffected()
+		if err != nil || nodeAffected == 0 {
+			_ = tx.Rollback()
+			return finishCancelled()
+		}
+		result, err = tx.ExecContext(statusCtx, `UPDATE workflow_job SET status = 'succeeded', progress_current = progress_total,
+			locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'running'`, job.ID)
+		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", output, job.RunID); err != nil {
+		jobAffected, err := result.RowsAffected()
+		if err != nil || jobAffected == 0 {
+			_ = tx.Rollback()
+			return finishCancelled()
+		}
+		result, err = tx.ExecContext(statusCtx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('queued', 'running')", output, job.RunID)
+		if err != nil {
 			return err
 		}
-		return tx.Commit()
+		runAffected, err := result.RowsAffected()
+		if err != nil || runAffected == 0 {
+			_ = tx.Rollback()
+			return finishCancelled()
+		}
+		if err := tx.Commit(); err != nil {
+			_ = s.restoreMediaCleanupFolders(statusCtx, job.RunID)
+			_ = s.failClaimedWorkflowJob(statusCtx, job, err.Error())
+			return err
+		}
+		return nil
 	}
 
-	purge, err := s.deleteUnlinkedWorkFamiliesTx(ctx, tx, workIDs)
+	purge, err := s.deleteUnlinkedWorkFamiliesTx(statusCtx, tx, workIDs)
 	if err != nil {
 		return err
 	}
-	if err := insertUnlinkedWorkDeleteAudit(ctx, tx, payload.ActorUserID, purge, checkpoint.Deleted > 0, mediaCleanupForgetAuditAction); err != nil {
+	if err := insertUnlinkedWorkDeleteAudit(statusCtx, tx, payload.ActorUserID, purge, checkpoint.Deleted > 0, mediaCleanupForgetAuditAction); err != nil {
 		return err
 	}
 	forgetNodeID := payload.ForgetNodeID
 	if forgetNodeID <= 0 {
-		if err := tx.QueryRowContext(ctx, `SELECT id FROM workflow_node_run WHERE workflow_run_id = ? AND node_id = 'forget' LIMIT 1`, job.RunID).Scan(&forgetNodeID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		if err := tx.QueryRowContext(statusCtx, `SELECT id FROM workflow_node_run WHERE workflow_run_id = ? AND node_id = 'forget' LIMIT 1`, job.RunID).Scan(&forgetNodeID); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 	}
@@ -450,20 +717,44 @@ func (s *Server) executeMediaLocationCleanupJob(ctx context.Context, job workflo
 		"deleted_codes":          purge.DeletedCodes,
 		"skipped":                purge.Skipped,
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(fileOutput), job.NodeRunID); err != nil {
+	result, err := tx.ExecContext(statusCtx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('queued', 'running')", mustJSON(fileOutput), job.NodeRunID)
+	if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE workflow_job SET status = 'succeeded', progress_current = progress_total,
-		locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, job.ID); err != nil {
+	if affected, err := result.RowsAffected(); err != nil || affected == 0 {
+		if err != nil {
+			return err
+		}
+		_ = tx.Rollback()
+		return finishCancelled()
+	}
+	result, err = tx.ExecContext(statusCtx, `UPDATE workflow_job SET status = 'succeeded', progress_current = progress_total,
+		locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'running'`, job.ID)
+	if err != nil {
 		return err
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected == 0 {
+		if err != nil {
+			return err
+		}
+		_ = tx.Rollback()
+		return finishCancelled()
 	}
 	if forgetNodeID > 0 {
-		if _, err := tx.ExecContext(ctx, `UPDATE workflow_node_run SET status = ?, output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, status, mustJSON(forgetOutput), forgetNodeID); err != nil {
+		result, err = tx.ExecContext(statusCtx, `UPDATE workflow_node_run SET status = ?, output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('queued', 'running')`, status, mustJSON(forgetOutput), forgetNodeID)
+		if err != nil {
 			return err
+		}
+		if affected, err := result.RowsAffected(); err != nil || affected == 0 {
+			if err != nil {
+				return err
+			}
+			_ = tx.Rollback()
+			return finishCancelled()
 		}
 	}
 	if partial {
-		if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
+		if err := workflow.InsertEvent(statusCtx, tx, job.RunID, workflow.EventSpec{
 			NodeRunID: forgetNodeID, JobID: job.ID, Level: "warn", Type: "media_cleanup.work_retained",
 			Message: "Files were deleted, but the work was retained because another source is still available",
 			Detail:  map[string]any{"skipped": purge.Skipped, "work_ids": workIDs},
@@ -471,14 +762,27 @@ func (s *Server) executeMediaLocationCleanupJob(ctx context.Context, job workflo
 			return err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, mustJSON(combinedOutput), job.RunID); err != nil {
+	result, err = tx.ExecContext(statusCtx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('queued', 'running')", status, mustJSON(combinedOutput), job.RunID)
+	if err != nil {
 		return err
 	}
-	return tx.Commit()
+	if affected, err := result.RowsAffected(); err != nil || affected == 0 {
+		if err != nil {
+			return err
+		}
+		_ = tx.Rollback()
+		return finishCancelled()
+	}
+	if err := tx.Commit(); err != nil {
+		_ = s.restoreMediaCleanupFolders(statusCtx, job.RunID)
+		_ = s.failClaimedWorkflowJob(statusCtx, job, err.Error())
+		return err
+	}
+	return nil
 }
 
 func (s *Server) clearLocalWorkRoot(ctx context.Context, target mediaCleanupTarget) (bool, error) {
-	rootPath, err := safeDataPath(s.cfg.DataRoot, target.Path)
+	rootPath, err := validateDestructiveDirectoryTree(s.cfg.DataRoot, target.Path)
 	if err != nil {
 		return false, err
 	}
@@ -490,7 +794,11 @@ func (s *Server) clearLocalWorkRoot(ctx context.Context, target mediaCleanupTarg
 			}
 			return walkErr
 		}
-		if entry.Type()&os.ModeSymlink != 0 || !entry.IsDir() {
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			return infoErr
+		}
+		if unsafeFetchStagingEntry(info) || !entry.IsDir() {
 			return fmt.Errorf("local work root still contains %s", filepath.ToSlash(path))
 		}
 		directories = append(directories, path)
@@ -502,56 +810,93 @@ func (s *Server) clearLocalWorkRoot(ctx context.Context, target mediaCleanupTarg
 	sort.Slice(directories, func(i, j int) bool { return len(directories[i]) > len(directories[j]) })
 	deleted := false
 	for _, directory := range directories {
+		if _, err := validateDestructivePath(s.cfg.DataRoot, relativeDataPath(s.cfg.DataRoot, directory), false, true); err != nil {
+			return false, err
+		}
 		if err := os.Remove(directory); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return false, err
 		} else if err == nil && directory == rootPath {
 			deleted = true
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	root := normalizeFolderRootPath(target.Path)
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE media_file_location
 		SET availability = 'unavailable', last_checked_at = CURRENT_TIMESTAMP
 		WHERE file_source_id = ? AND location_type = 'local'
 			AND media_item_id IN (SELECT id FROM media_item WHERE work_id = ?)
-	`, target.SourceID, target.WorkID); err != nil {
+			AND (path = ? OR substr(path, 1, length(?) + 1) = ? || '/')
+	`, target.SourceID, target.WorkID, root, root, root); err != nil {
 		return false, err
 	}
-	_, err = s.db.ExecContext(ctx, `
+	if target.FolderID > 0 {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE work_folder_location
+			SET state = 'ignored', cleanup_run_id = NULL, updated_at = CURRENT_TIMESTAMP
+			WHERE id = ? AND work_id = ? AND file_source_id = ? AND root_path = ?
+				AND state = 'pending_cleanup'
+				AND (cleanup_run_id = ? OR (? = 0 AND cleanup_run_id IS NULL))
+		`, target.FolderID, target.WorkID, target.SourceID, root, target.CleanupRunID, target.CleanupRunID); err != nil {
+			return false, err
+		}
+	}
+	var available int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM media_file_location AS location
+			INNER JOIN media_item AS item ON item.id = location.media_item_id
+			WHERE item.work_id = ? AND location.file_source_id = ?
+				AND location.location_type = 'local' AND location.availability = 'available'
+		) OR EXISTS (
+			SELECT 1 FROM work_folder_location
+			WHERE work_id = ? AND file_source_id = ? AND state = 'active'
+		)
+	`, target.WorkID, target.SourceID, target.WorkID, target.SourceID).Scan(&available); err != nil {
+		return false, err
+	}
+	remainingRoot := ""
+	_ = tx.QueryRowContext(ctx, `
+		SELECT root_path FROM work_folder_location
+		WHERE work_id = ? AND file_source_id = ? AND state = 'active'
+		ORDER BY is_primary DESC, updated_at DESC, id ASC LIMIT 1
+	`, target.WorkID, target.SourceID).Scan(&remainingRoot)
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE work_source_presence
-		SET availability = 'unavailable', last_checked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+		SET availability = CASE WHEN ? <> 0 THEN 'available' ELSE 'unavailable' END,
+			source_url = CASE WHEN ? <> '' THEN ? ELSE source_url END,
+			last_checked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
 		WHERE work_id = ? AND file_source_id = ? AND presence_type = 'local'
-	`, target.WorkID, target.SourceID)
-	return deleted, err
+	`, available, remainingRoot, remainingRoot, target.WorkID, target.SourceID); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return deleted, nil
 }
 
 func (s *Server) clearLocalMediaLocation(ctx context.Context, locationID int64, relPath string) (bool, error) {
-	targetPath, err := safeDataPath(s.cfg.DataRoot, relPath)
+	deleted, _, err := removeDestructiveFile(s.cfg.DataRoot, relPath)
 	if err != nil {
 		return false, err
 	}
-	if info, err := os.Lstat(targetPath); err == nil {
-		if info.Mode()&os.ModeSymlink != 0 {
-			return false, fmt.Errorf("refusing to delete symlink %s", filepath.ToSlash(relPath))
-		}
-		if info.IsDir() {
-			return false, fmt.Errorf("refusing to delete directory %s", filepath.ToSlash(relPath))
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return false, err
-	}
-	deleted := false
-	if err := os.Remove(targetPath); err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return false, err
-		}
-	} else {
-		deleted = true
-	}
-	_, err = s.db.ExecContext(ctx, `UPDATE media_file_location SET availability = 'unavailable',
+	err = withDatabaseBusyRetry(ctx, func() error {
+		_, err := s.db.ExecContext(ctx, `UPDATE media_file_location SET availability = 'unavailable',
 		last_checked_at = CURRENT_TIMESTAMP WHERE id = ? AND location_type = 'local'`, locationID)
+		return err
+	})
 	return deleted, err
 }
 
 func mediaCleanupTargetKey(target mediaCleanupTarget) string {
+	if target.Kind == "local_root" && target.FolderID > 0 {
+		return fmt.Sprintf("%s:folder:%d", target.Kind, target.FolderID)
+	}
 	return fmt.Sprintf("%s:%d", target.Kind, target.LocationID)
 }

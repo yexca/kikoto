@@ -169,7 +169,11 @@ func (s *Server) scanManagedMediaCache(ctx context.Context) (cacheMaintenanceSca
 		if walkErr != nil {
 			return walkErr
 		}
-		if entry.Type()&os.ModeSymlink != 0 {
+		entryInfo, infoErr := entry.Info()
+		if infoErr != nil {
+			return infoErr
+		}
+		if unsafeFetchStagingEntry(entryInfo) {
 			if entry.IsDir() {
 				return filepath.SkipDir
 			}
@@ -198,10 +202,7 @@ func (s *Server) scanManagedMediaCache(ctx context.Context) (cacheMaintenanceSca
 			}
 			return nil
 		}
-		info, infoErr := entry.Info()
-		if infoErr != nil {
-			return infoErr
-		}
+		info := entryInfo
 		result.Overview.MediaFiles++
 		result.Overview.MediaBytes += info.Size()
 		reference, referenced := references[rel]
@@ -383,7 +384,7 @@ func (s *Server) enqueueOrphanCacheCleanup(ctx context.Context, groupKeys []stri
 	if err != nil {
 		return cacheMaintenanceResult{}, err
 	}
-	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{NodeRunID: nodeID, WorkerType: "cache_orphan_cleanup", Status: "queued", Priority: workflow.JobPriorityUserInitiated, ResourceKey: "local:io", Payload: payload, Checkpoint: cacheOrphanCleanupCheckpoint{CompletedKeys: []string{}}, Recoverable: true, MaxRetries: 3, ProgressTotal: total})
+	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{NodeRunID: nodeID, WorkerType: "cache_orphan_cleanup", Status: "queued", Priority: workflow.JobPriorityUserInitiated, ResourceKey: "media:cleanup", Payload: payload, Checkpoint: cacheOrphanCleanupCheckpoint{CompletedKeys: []string{}}, Recoverable: true, MaxRetries: 3, ProgressTotal: total})
 	if err != nil {
 		return cacheMaintenanceResult{}, err
 	}
@@ -458,12 +459,39 @@ func (s *Server) executeCacheOrphanCleanupJob(ctx context.Context, job workflowJ
 	for _, key := range checkpoint.CompletedKeys {
 		completed[key] = true
 	}
+	statusCtx := context.WithoutCancel(ctx)
+	finishCancelled := func() error {
+		return s.finishCancelledMediaCleanup(statusCtx, job)
+	}
+	checkCancelled := func() (bool, error) {
+		if ctx.Err() != nil {
+			cancelled, err := s.mediaCleanupRunCancelled(statusCtx, job.RunID)
+			if err != nil {
+				return false, err
+			}
+			if cancelled {
+				return true, nil
+			}
+			return false, ctx.Err()
+		}
+		return s.mediaCleanupRunCancelled(statusCtx, job.RunID)
+	}
 	total := len(payload.Files) + len(payload.Directories)
 	progress := len(checkpoint.CompletedKeys)
+	if cancelled, err := checkCancelled(); err != nil {
+		return err
+	} else if cancelled {
+		return finishCancelled()
+	}
 	for _, relPath := range payload.Files {
 		key := "file:" + relPath
 		if completed[key] {
 			continue
+		}
+		if cancelled, err := checkCancelled(); err != nil {
+			return err
+		} else if cancelled {
+			return finishCancelled()
 		}
 		deleted, bytes, err := s.deleteOrphanCacheFile(ctx, relPath)
 		if err != nil {
@@ -477,12 +505,20 @@ func (s *Server) executeCacheOrphanCleanupJob(ctx context.Context, job workflowJ
 		checkpoint.CompletedKeys = append(checkpoint.CompletedKeys, key)
 		completed[key] = true
 		progress++
-		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "cleanup", checkpoint, progress, total)
+		if err := s.updateWorkflowJobCheckpoint(statusCtx, job.ID, "cleanup", checkpoint, progress, total); err != nil {
+			_ = s.failClaimedWorkflowJob(statusCtx, job, err.Error())
+			return err
+		}
 	}
 	for _, relPath := range payload.Directories {
 		key := "directory:" + relPath
 		if completed[key] {
 			continue
+		}
+		if cancelled, err := checkCancelled(); err != nil {
+			return err
+		} else if cancelled {
+			return finishCancelled()
 		}
 		if err := s.removeEmptyManagedCacheDirectory(relPath); err != nil {
 			_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
@@ -490,22 +526,62 @@ func (s *Server) executeCacheOrphanCleanupJob(ctx context.Context, job workflowJ
 		}
 		checkpoint.CompletedKeys = append(checkpoint.CompletedKeys, key)
 		progress++
-		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "cleanup", checkpoint, progress, total)
+		if err := s.updateWorkflowJobCheckpoint(statusCtx, job.ID, "cleanup", checkpoint, progress, total); err != nil {
+			_ = s.failClaimedWorkflowJob(statusCtx, job, err.Error())
+			return err
+		}
+	}
+	if cancelled, err := checkCancelled(); err != nil {
+		return err
+	} else if cancelled {
+		return finishCancelled()
 	}
 	output := mustJSON(map[string]any{"deleted_files": checkpoint.DeletedFiles, "freed_bytes": checkpoint.FreedBytes})
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := beginTxWithDatabaseBusyRetry(statusCtx, s.db)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", output, job.NodeRunID); err != nil {
+	var runStatus string
+	if err := tx.QueryRowContext(statusCtx, "SELECT status FROM workflow_run WHERE id = ?", job.RunID).Scan(&runStatus); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE workflow_job SET status = 'succeeded', progress_current = progress_total, locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?", job.ID); err != nil {
+	if runStatus == "cancelled" {
+		_ = tx.Rollback()
+		return finishCancelled()
+	}
+	result, err := tx.ExecContext(statusCtx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('queued', 'running')", output, job.NodeRunID)
+	if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", output, job.RunID); err != nil {
+	if affected, err := result.RowsAffected(); err != nil || affected == 0 {
+		if err != nil {
+			return err
+		}
+		_ = tx.Rollback()
+		return finishCancelled()
+	}
+	result, err = tx.ExecContext(statusCtx, "UPDATE workflow_job SET status = 'succeeded', progress_current = progress_total, locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'running'", job.ID)
+	if err != nil {
 		return err
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected == 0 {
+		if err != nil {
+			return err
+		}
+		_ = tx.Rollback()
+		return finishCancelled()
+	}
+	result, err = tx.ExecContext(statusCtx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('queued', 'running')", output, job.RunID)
+	if err != nil {
+		return err
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected == 0 {
+		if err != nil {
+			return err
+		}
+		_ = tx.Rollback()
+		return finishCancelled()
 	}
 	return tx.Commit()
 }
@@ -522,7 +598,7 @@ func (s *Server) deleteOrphanCacheFile(ctx context.Context, relPath string) (boo
 	if available > 0 {
 		return false, 0, nil
 	}
-	targetPath, err := safeCachePath(s.cfg.CacheRoot, relPath)
+	targetPath, err := validateDestructivePath(s.cfg.CacheRoot, relPath, true, false)
 	if err != nil {
 		return false, 0, err
 	}
@@ -533,17 +609,20 @@ func (s *Server) deleteOrphanCacheFile(ctx context.Context, relPath string) (boo
 	if err != nil {
 		return false, 0, err
 	}
-	if info.Mode()&os.ModeSymlink != 0 || info.IsDir() {
-		return false, 0, fmt.Errorf("refusing to delete non-file cache path")
-	}
 	if time.Since(info.ModTime()) < cacheOrphanGracePeriod {
 		return false, 0, nil
 	}
-	if err := os.Remove(targetPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+	deleted, bytes, err := removeDestructiveFile(s.cfg.CacheRoot, relPath)
+	if err != nil {
 		return false, 0, err
 	}
-	_ = pruneEmptyCacheParents(s.cfg.CacheRoot, filepath.Dir(targetPath))
-	return true, info.Size(), nil
+	if !deleted {
+		return false, 0, nil
+	}
+	if err := pruneEmptyCacheParents(s.cfg.CacheRoot, filepath.Dir(targetPath)); err != nil {
+		return false, 0, err
+	}
+	return true, bytes, nil
 }
 
 func (s *Server) removeEmptyManagedCacheDirectory(relPath string) error {
@@ -551,8 +630,16 @@ func (s *Server) removeEmptyManagedCacheDirectory(relPath string) error {
 	if !strings.HasPrefix(relPath, "media/") {
 		return fmt.Errorf("cache maintenance directory is outside managed media cache")
 	}
-	target, err := safeCachePath(s.cfg.CacheRoot, relPath)
+	target, err := validateDestructivePath(s.cfg.CacheRoot, relPath, true, true)
 	if err != nil {
+		return err
+	}
+	if _, err := os.Lstat(target); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if _, err := validateDestructivePath(s.cfg.CacheRoot, relPath, false, true); err != nil {
 		return err
 	}
 	if err := os.Remove(target); err != nil {
@@ -565,6 +652,10 @@ func (s *Server) removeEmptyManagedCacheDirectory(relPath string) error {
 }
 
 func pruneEmptyCacheParents(cacheRoot string, startDirectory string) error {
+	absCacheRoot, err := filepath.Abs(cacheRoot)
+	if err != nil {
+		return err
+	}
 	mediaRoot, err := filepath.Abs(filepath.Join(cacheRoot, "media"))
 	if err != nil {
 		return err
@@ -577,6 +668,23 @@ func pruneEmptyCacheParents(cacheRoot string, startDirectory string) error {
 		return nil
 	}
 	for current != mediaRoot {
+		relative, err := filepath.Rel(absCacheRoot, current)
+		if err != nil {
+			return err
+		}
+		relative = filepath.ToSlash(relative)
+		if _, err := validateDestructivePath(cacheRoot, relative, true, true); err != nil {
+			return err
+		}
+		if _, err := os.Lstat(current); errors.Is(err, os.ErrNotExist) {
+			current = filepath.Dir(current)
+			continue
+		} else if err != nil {
+			return err
+		}
+		if _, err := validateDestructivePath(cacheRoot, relative, false, true); err != nil {
+			return err
+		}
 		if err := os.Remove(current); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				current = filepath.Dir(current)

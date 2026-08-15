@@ -4791,7 +4791,17 @@ function RunMetrics({ run }: { run: WorkflowRun }) {
 }
 
 function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () => Promise<void> }) {
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
   const cancellable = ["queued", "running"].includes(run.status);
+  const destructiveCleanup = [
+    "media_location_cleanup",
+    "media_cleanup_forget_work",
+    "media_cache_cleanup",
+    "media_cache_limit_cleanup",
+    "cache_orphan_cleanup",
+    "local_media_delete",
+    "local_location_cleanup",
+  ].includes(run.workflowCode);
   const retryable =
     (run.status === "failed" ||
       (run.status === "partial" && run.workflowCode === "remote_work_fetch" && run.pendingCandidates > 0)) &&
@@ -4810,33 +4820,78 @@ function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () =>
   if (!cancellable && !retryable) {
     return null;
   }
+  const cancel = async () => {
+    await api.cancelWorkflowRun(run.id);
+    setConfirmingCancel(false);
+    await onRunAction();
+  };
   return (
-    <div className="flex justify-end gap-2">
-      {cancellable && (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={async () => {
-            await api.cancelWorkflowRun(run.id);
-            await onRunAction();
-          }}
-        >
-          Cancel
-        </Button>
+    <>
+      <div className="flex justify-end gap-2">
+        {cancellable && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              if (destructiveCleanup) setConfirmingCancel(true);
+              else void cancel();
+            }}
+          >
+            Cancel
+          </Button>
+        )}
+        {retryable && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={async () => {
+              await api.retryWorkflowRun(run.id);
+              await onRunAction();
+            }}
+          >
+            Retry
+          </Button>
+        )}
+      </div>
+      {confirmingCancel && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/20 p-4 backdrop-blur-sm">
+          <div
+            className="w-full max-w-md rounded-lg border bg-card p-4 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`cancel-run-${run.id}-title`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 id={`cancel-run-${run.id}-title`} className="font-semibold">
+                  Cancel deletion workflow?
+                </h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Cancelling will not restore files already deleted. Completed deletions cannot be undone; cancellation
+                  only stops deletions that have not started.
+                </p>
+                {run.workflowCode === "media_cleanup_forget_work" && (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    If the forget step has not started, it will be skipped.
+                  </p>
+                )}
+              </div>
+              <Button size="icon" variant="ghost" aria-label="Close" onClick={() => setConfirmingCancel(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setConfirmingCancel(false)}>
+                Keep running
+              </Button>
+              <Button variant="destructive" onClick={() => void cancel()}>
+                Cancel workflow
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
-      {retryable && (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={async () => {
-            await api.retryWorkflowRun(run.id);
-            await onRunAction();
-          }}
-        >
-          Retry
-        </Button>
-      )}
-    </div>
+    </>
   );
 }
 

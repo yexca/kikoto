@@ -117,12 +117,22 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) 
 	if s.cfg.IsDemo() {
 		return nil
 	}
-	job, ok, err := s.claimNextQueuedWorkflowJob(ctx, runnerID)
+	var job workflowJobRecord
+	var ok bool
+	err := withDatabaseBusyRetry(ctx, func() error {
+		var err error
+		job, ok, err = s.claimNextQueuedWorkflowJob(ctx, runnerID)
+		return err
+	})
 	if err != nil || !ok {
 		return err
 	}
 	jobCtx, stopHeartbeat := s.startWorkflowJobHeartbeat(ctx, job)
-	defer stopHeartbeat()
+	s.registerActiveWorkflowJob(job.RunID, job.ID, stopHeartbeat)
+	defer func() {
+		s.unregisterActiveWorkflowJob(job.RunID, job.ID)
+		stopHeartbeat()
+	}()
 	var runErr error
 	switch job.WorkerType {
 	case "remote_source_track":
@@ -201,6 +211,12 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) 
 			}
 		}
 	}
+	if runErr != nil {
+		var runStatus string
+		if statusErr := s.db.QueryRowContext(context.WithoutCancel(ctx), "SELECT status FROM workflow_run WHERE id = ?", job.RunID).Scan(&runStatus); statusErr == nil && runStatus == "cancelled" {
+			return nil
+		}
+	}
 	return runErr
 }
 
@@ -223,7 +239,53 @@ func (s *Server) leaseInlineWorkflowJob(ctx context.Context, job workflowJobReco
 	}
 	job.LockedBy = runnerID
 	jobCtx, stop := s.startWorkflowJobHeartbeat(ctx, job)
-	return jobCtx, stop, nil
+	s.registerActiveWorkflowJob(job.RunID, job.ID, stop)
+	return jobCtx, func() {
+		s.unregisterActiveWorkflowJob(job.RunID, job.ID)
+		stop()
+	}, nil
+}
+
+func (s *Server) registerActiveWorkflowJob(runID int64, jobID int64, cancel context.CancelFunc) {
+	if runID <= 0 || jobID <= 0 || cancel == nil {
+		return
+	}
+	s.activeWorkflowMu.Lock()
+	if s.activeWorkflowCancels == nil {
+		s.activeWorkflowCancels = map[int64]map[int64]context.CancelFunc{}
+	}
+	if s.activeWorkflowCancels[runID] == nil {
+		s.activeWorkflowCancels[runID] = map[int64]context.CancelFunc{}
+	}
+	s.activeWorkflowCancels[runID][jobID] = cancel
+	s.activeWorkflowMu.Unlock()
+}
+
+func (s *Server) unregisterActiveWorkflowJob(runID int64, jobID int64) {
+	if runID <= 0 || jobID <= 0 {
+		return
+	}
+	s.activeWorkflowMu.Lock()
+	if jobs := s.activeWorkflowCancels[runID]; jobs != nil {
+		delete(jobs, jobID)
+		if len(jobs) == 0 {
+			delete(s.activeWorkflowCancels, runID)
+		}
+	}
+	s.activeWorkflowMu.Unlock()
+}
+
+func (s *Server) cancelActiveWorkflowJob(runID int64) {
+	s.activeWorkflowMu.Lock()
+	jobs := s.activeWorkflowCancels[runID]
+	cancels := make([]context.CancelFunc, 0, len(jobs))
+	for _, cancel := range jobs {
+		cancels = append(cancels, cancel)
+	}
+	s.activeWorkflowMu.Unlock()
+	for _, cancel := range cancels {
+		cancel()
+	}
 }
 
 func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string) (workflowJobRecord, bool, error) {
@@ -248,7 +310,7 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string
 	if err != nil {
 		return workflowJobRecord{}, false, err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
 		return workflowJobRecord{}, false, err
 	}
@@ -437,14 +499,16 @@ func (s *Server) updateWorkflowJobCheckpoint(ctx context.Context, jobID int64, p
 		"phase": strings.TrimSpace(phase), "detail": detail, "progressCurrent": current, "progressTotal": total,
 		"updatedAt": time.Now().UTC().Format(time.RFC3339Nano),
 	})
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE workflow_job
-		SET checkpoint_json = ?, progress_current = ?, progress_total = ?,
-			heartbeat_at = CASE WHEN status = 'running' THEN CURRENT_TIMESTAMP ELSE heartbeat_at END,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, checkpoint, current, total, jobID)
-	return err
+	return withDatabaseBusyRetry(ctx, func() error {
+		_, err := s.db.ExecContext(ctx, `
+			UPDATE workflow_job
+			SET checkpoint_json = ?, progress_current = ?, progress_total = ?,
+				heartbeat_at = CASE WHEN status = 'running' THEN CURRENT_TIMESTAMP ELSE heartbeat_at END,
+				updated_at = CURRENT_TIMESTAMP
+			WHERE id = ?
+		`, checkpoint, current, total, jobID)
+		return err
+	})
 }
 
 func (s *Server) failClaimedWorkflowJob(ctx context.Context, job workflowJobRecord, message string) error {
@@ -452,7 +516,7 @@ func (s *Server) failClaimedWorkflowJob(ctx context.Context, job workflowJobReco
 	if message == "" {
 		message = "workflow job failed"
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
 		return err
 	}
@@ -466,7 +530,9 @@ func (s *Server) failClaimedWorkflowJob(ctx context.Context, job workflowJobReco
 			heartbeat_at = NULL,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
-	`, message, job.ID); err != nil {
+			AND status = 'running'
+			AND NOT EXISTS (SELECT 1 FROM workflow_run WHERE id = ? AND status = 'cancelled')
+	`, message, job.ID, job.RunID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -476,6 +542,7 @@ func (s *Server) failClaimedWorkflowJob(ctx context.Context, job workflowJobReco
 			finished_at = CURRENT_TIMESTAMP
 		WHERE workflow_run_id = ?
 			AND status IN ('queued', 'running')
+			AND NOT EXISTS (SELECT 1 FROM workflow_run AS run WHERE run.id = workflow_node_run.workflow_run_id AND run.status = 'cancelled')
 	`, message, job.RunID); err != nil {
 		return err
 	}
@@ -485,6 +552,7 @@ func (s *Server) failClaimedWorkflowJob(ctx context.Context, job workflowJobReco
 			summary_json = ?,
 			finished_at = CURRENT_TIMESTAMP
 		WHERE id = ?
+			AND status IN ('queued', 'running')
 	`, mustJSON(map[string]any{"error": message}), job.RunID); err != nil {
 		return err
 	}

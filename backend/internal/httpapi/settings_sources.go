@@ -3126,14 +3126,15 @@ func (s *Server) runWorkSourceUntrack(ctx context.Context, workID int64, sourceI
 	cachePaths := make([]string, 0, len(cacheLocations))
 	for _, location := range cacheLocations {
 		cachePaths = append(cachePaths, location.Path)
-		targetPath, err := safeCachePath(s.cfg.CacheRoot, location.Path)
+		targetPath, err := validateDestructivePath(s.cfg.CacheRoot, location.Path, true, false)
 		if err != nil {
 			return workSourceUntrackResult{}, err
 		}
-		if err := os.Remove(targetPath); err != nil {
-			if !errors.Is(err, os.ErrNotExist) {
-				return workSourceUntrackResult{}, err
-			}
+		deleted, _, err := removeDestructiveFile(s.cfg.CacheRoot, location.Path)
+		if err != nil {
+			return workSourceUntrackResult{}, err
+		}
+		if !deleted {
 			continue
 		}
 		deletedFiles++
@@ -4509,14 +4510,19 @@ func (s *Server) cleanupPromotedFetchCache(ctx context.Context, plan remoteWorkS
 			ORDER BY availability = 'available' DESC, id DESC LIMIT 1
 		`, sourceID, item.CachePath).Scan(&locationID)
 		if errors.Is(err, sql.ErrNoRows) {
-			targetPath, pathErr := safeCachePath(s.cfg.CacheRoot, item.CachePath)
+			targetPath, pathErr := validateDestructivePath(s.cfg.CacheRoot, item.CachePath, true, false)
 			if pathErr != nil {
 				return removed, pathErr
 			}
-			if removeErr := os.Remove(targetPath); removeErr == nil {
-				removed++
-			} else if !errors.Is(removeErr, os.ErrNotExist) {
+			deleted, _, removeErr := removeDestructiveFile(s.cfg.CacheRoot, item.CachePath)
+			if removeErr != nil {
 				return removed, removeErr
+			}
+			if deleted {
+				removed++
+				if pruneErr := pruneEmptyCacheParents(s.cfg.CacheRoot, filepath.Dir(targetPath)); pruneErr != nil {
+					return removed, pruneErr
+				}
 			}
 			if err := s.markCacheLocationUnavailable(ctx, sourceID, item.CachePath); err != nil {
 				return removed, err
@@ -5769,7 +5775,7 @@ func (s *Server) quarantineFetchLocalRoots(ctx context.Context, runID int64, wor
 		if err != nil {
 			return nil, err
 		}
-		if _, err := tx.ExecContext(ctx, "UPDATE work_folder_location SET state = 'pending_cleanup', is_primary = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?", record.id); err != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE work_folder_location SET state = 'pending_cleanup', cleanup_run_id = ?, is_primary = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?", runID, record.id); err != nil {
 			_ = tx.Rollback()
 			return nil, err
 		}

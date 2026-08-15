@@ -320,6 +320,7 @@ func (s *Server) completeRemoteFetchManifest(ctx context.Context, manifest remot
 			origin_source_id = excluded.origin_source_id,
 			origin_remote_code = excluded.origin_remote_code,
 			state = 'active',
+			cleanup_run_id = NULL,
 			is_primary = 1,
 			last_scanned_at = CURRENT_TIMESTAMP,
 			updated_at = CURRENT_TIMESTAMP

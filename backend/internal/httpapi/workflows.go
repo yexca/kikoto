@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -1032,12 +1031,12 @@ func (s *Server) reviewArchivedFetchRoots(w http.ResponseWriter, r *http.Request
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "archived root is outside the Fetch trash area"})
 				return
 			}
-			path, err := safeDataPath(s.cfg.DataRoot, archive)
+			_, err := safeDataPath(s.cfg.DataRoot, archive)
 			if err != nil {
 				writeError(w, err)
 				return
 			}
-			if err := os.RemoveAll(path); err != nil {
+			if _, err := removeDestructiveTree(s.cfg.DataRoot, archive); err != nil {
 				writeError(w, err)
 				return
 			}
@@ -1051,11 +1050,11 @@ func (s *Server) reviewArchivedFetchRoots(w http.ResponseWriter, r *http.Request
 	defer func() { _ = tx.Rollback() }()
 	for _, root := range payload.ArchivedRoots {
 		if request.Action == "delete_archived" {
-			if _, err := tx.ExecContext(r.Context(), "DELETE FROM work_folder_location WHERE id = ? AND state = 'pending_cleanup'", root.FolderID); err != nil {
+			if _, err := tx.ExecContext(r.Context(), "DELETE FROM work_folder_location WHERE id = ? AND state = 'pending_cleanup' AND cleanup_run_id = ?", root.FolderID, candidate.RunID); err != nil {
 				writeError(w, err)
 				return
 			}
-		} else if _, err := tx.ExecContext(r.Context(), "UPDATE work_folder_location SET state = 'ignored', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND state = 'pending_cleanup'", root.FolderID); err != nil {
+		} else if _, err := tx.ExecContext(r.Context(), "UPDATE work_folder_location SET state = 'ignored', cleanup_run_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND state = 'pending_cleanup' AND cleanup_run_id = ?", root.FolderID, candidate.RunID); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -1097,7 +1096,7 @@ func (s *Server) runLocalCandidateCleanup(ctx context.Context, candidateID int64
 		return localCandidateCleanupResult{}, fmt.Errorf("no cleanup locations selected")
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
 		return localCandidateCleanupResult{}, err
 	}
@@ -1140,7 +1139,7 @@ func (s *Server) runLocalCandidateCleanup(ctx context.Context, candidateID int64
 	initialResult := localCandidateCleanupResult{RunID: runID, CandidateID: candidateID, Action: action, Status: "succeeded", Failures: []string{}}
 	initialCheckpoint := localLocationCleanupCheckpoint{CompletedLocationIDs: []int64{}, Result: initialResult}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: cleanupNodeID, WorkerType: "local_location_cleanup", Status: "running", Payload: input,
+		NodeRunID: cleanupNodeID, WorkerType: "local_location_cleanup", Status: "running", ResourceKey: "media:cleanup", Payload: input,
 		Checkpoint: initialCheckpoint, Recoverable: true, MaxRetries: 3, ProgressCurrent: 0, ProgressTotal: len(locationIDs),
 	})
 	if err != nil {
@@ -1357,23 +1356,10 @@ func (s *Server) cleanupLocalLocation(ctx context.Context, locationID int64, del
 	}
 	deleted := false
 	if deleteFile && availability == "available" {
-		targetPath, err := safeDataPath(s.cfg.DataRoot, relPath)
+		var err error
+		deleted, _, err = removeDestructiveFile(s.cfg.DataRoot, relPath)
 		if err != nil {
 			return false, false, err
-		}
-		info, err := os.Lstat(targetPath)
-		if err != nil {
-			if !errors.Is(err, os.ErrNotExist) {
-				return false, false, err
-			}
-		} else if info.Mode()&os.ModeSymlink != 0 {
-			return false, false, fmt.Errorf("refusing to delete symlink %s", filepath.ToSlash(relPath))
-		} else if info.IsDir() {
-			return false, false, fmt.Errorf("refusing to delete directory %s", filepath.ToSlash(relPath))
-		} else if err := os.Remove(targetPath); err != nil {
-			return false, false, err
-		} else {
-			deleted = true
 		}
 	}
 	result, err := s.db.ExecContext(ctx, `
@@ -1457,7 +1443,7 @@ func (s *Server) cancelWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow run id"})
 		return
 	}
-	tx, err := s.db.BeginTx(r.Context(), nil)
+	tx, err := beginTxWithDatabaseBusyRetry(r.Context(), s.db)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -1501,6 +1487,7 @@ func (s *Server) cancelWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		UPDATE workflow_job
 		SET status = 'cancelled',
 			error_message = CASE WHEN error_message <> '' THEN error_message ELSE 'cancelled manually' END,
+			locked_by = '', locked_at = NULL, heartbeat_at = NULL,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE workflow_run_id = ?
 			AND status IN ('queued', 'running')
@@ -1508,14 +1495,26 @@ func (s *Server) cancelWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	if _, err := tx.ExecContext(r.Context(), `
+	result, err := tx.ExecContext(r.Context(), `
 		UPDATE workflow_run
 		SET status = 'cancelled',
 			summary_json = ?,
 			finished_at = CURRENT_TIMESTAMP
 		WHERE id = ?
-	`, mustJSON(summary), id); err != nil {
+			AND status IN ('queued', 'running')
+	`, mustJSON(summary), id)
+	if err != nil {
 		writeError(w, err)
+		return
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if affected == 0 {
+		_ = tx.Rollback()
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "workflow run has already finished"})
 		return
 	}
 	if err := workflow.InsertEvent(r.Context(), tx, id, workflow.EventSpec{
@@ -1531,6 +1530,7 @@ func (s *Server) cancelWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	s.cancelActiveWorkflowJob(id)
 	writeJSON(w, http.StatusOK, workflowRunActionResult{RunID: id, Status: "cancelled", Message: "run cancelled"})
 }
 

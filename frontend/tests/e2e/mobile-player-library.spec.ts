@@ -27,6 +27,7 @@ const work = {
   availableLocations: 1,
   availability: ["local"],
   sourcePresence: [],
+  localFolders: [],
   progress: {
     mediaItemId: null,
     title: "",
@@ -1517,6 +1518,17 @@ test("local Delete builds a refreshed preview and requires two confirmations", a
           sourceUrl: work.primaryCode,
         },
       ],
+      localFolders: [
+        {
+          id: 101,
+          workId: work.id,
+          fileSourceId: 1,
+          rootPath: work.primaryCode,
+          role: "external",
+          state: "active",
+          primary: true,
+        },
+      ],
     },
     onLocalRefresh: () => {
       localRefreshes += 1;
@@ -1550,7 +1562,7 @@ test("local Delete builds a refreshed preview and requires two confirmations", a
     targets: [
       { kind: "cache", locationId: 2 },
       { kind: "local", locationId: 1 },
-      { kind: "local_root", locationId: 1 },
+      { kind: "local_root", locationId: 1, folderId: 101, expectedPath: work.primaryCode },
     ],
   });
 });
@@ -1603,6 +1615,17 @@ test("local Delete enables work forgetting only for a complete root and confirms
           sourceUrl: work.primaryCode,
         },
       ],
+      localFolders: [
+        {
+          id: 102,
+          workId: work.id,
+          fileSourceId: 1,
+          rootPath: work.primaryCode,
+          role: "external",
+          state: "active",
+          primary: true,
+        },
+      ],
     },
   });
 
@@ -1630,7 +1653,7 @@ test("local Delete enables work forgetting only for a complete root and confirms
     mode: "files_and_forget_work",
     targets: [
       { kind: "local", locationId: 1 },
-      { kind: "local_root", locationId: 1 },
+      { kind: "local_root", locationId: 1, folderId: 102, expectedPath: work.primaryCode },
     ],
   });
 });

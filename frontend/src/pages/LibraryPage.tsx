@@ -4018,6 +4018,19 @@ function PersistedWorkDetailController({
   const [mobileDetailTab, setMobileDetailTab] = useState<"info" | "directory">("directory");
   const isCompactDetailLayout = useCompactDetailLayout();
   const localDirectoryWork = activeEdition ?? work;
+  const localRoot = useMemo(() => {
+    const sourceID = selectedSource?.fileSourceId;
+    if (!localDirectoryWork || !sourceID) return null;
+    const folders = (localDirectoryWork.localFolders ?? []).filter(
+      (folder) =>
+        folder.workId === localDirectoryWork.id &&
+        folder.fileSourceId === sourceID &&
+        folder.state === "active" &&
+        folder.rootPath.trim() !== "",
+    );
+    if (folders.length !== 1) return null;
+    return { folderId: folders[0].id, path: folders[0].rootPath };
+  }, [localDirectoryWork, selectedSource?.fileSourceId]);
   const { tree, isDirectoryLoading } = useMediaTree({
     mediaLoading,
     localItems: localDirectoryWork?.mediaItems ?? [],
@@ -4843,14 +4856,7 @@ function PersistedWorkDetailController({
           canForgetWork={canForgetWork}
           allowCacheDelete={!selectedRemoteSource}
           allowLocalDelete={!selectedRemoteSource && !selectedTrackedPresence}
-          localRootPath={
-            work?.sourcePresence?.find(
-              (presence) =>
-                presence.type === "local" &&
-                presence.availability === "available" &&
-                presence.fileSourceId === selectedSource?.fileSourceId,
-            )?.sourceUrl ?? ""
-          }
+          localRoot={localRoot}
           showCachedFilter={Boolean(selectedTrackedPresence)}
         />
       )}
@@ -7979,7 +7985,7 @@ function DirectoryManagerModal({
   onDeleteTargets,
   allowCacheDelete,
   allowLocalDelete,
-  localRootPath = "",
+  localRoot = null,
   showCachedFilter = false,
   workId = 0,
   canForgetWork = false,
@@ -7993,7 +7999,7 @@ function DirectoryManagerModal({
   onDeleteTargets?: (targets: MediaDeleteTarget[], mode: MediaCleanupMode) => void;
   allowCacheDelete?: boolean;
   allowLocalDelete?: boolean;
-  localRootPath?: string;
+  localRoot?: { folderId: number; path: string } | null;
   showCachedFilter?: boolean;
   workId?: number;
   canForgetWork?: boolean;
@@ -8009,17 +8015,21 @@ function DirectoryManagerModal({
     [root, allowCacheDelete, allowLocalDelete, workId],
   );
   const rootTarget = useMemo<MediaDeleteTarget | null>(() => {
-    const representative = fileTargets.find((target) => target.kind === "local");
-    if (!allowLocalDelete || !localRootPath || !representative) return null;
+    const representative = fileTargets.find(
+      (target) => target.kind === "local" && localRoot && isMediaPathWithinRoot(localRoot.path, target.path),
+    );
+    if (!allowLocalDelete || !localRoot || !representative) return null;
     return {
       kind: "local_root",
       locationId: representative.locationId,
+      folderId: localRoot.folderId,
+      expectedPath: localRoot.path,
       title: "Work root",
-      path: localRootPath,
+      path: localRoot.path,
       sizeBytes: null,
       workId,
     };
-  }, [allowLocalDelete, fileTargets, localRootPath, workId]);
+  }, [allowLocalDelete, fileTargets, localRoot, workId]);
   const targets = useMemo(() => (rootTarget ? [...fileTargets, rootTarget] : fileTargets), [fileTargets, rootTarget]);
   const selectedTargets = useMemo(
     () => targets.filter((target) => selectedKeys.has(mediaDeleteTargetKey(target))),
@@ -8645,7 +8655,13 @@ function mediaDeleteTargetsForFile(
 }
 
 function mediaDeleteTargetKey(target: MediaDeleteTarget) {
-  return `${target.kind}:${target.locationId}`;
+  return `${target.kind}:${target.folderId ?? target.locationId}`;
+}
+
+function isMediaPathWithinRoot(root: string, candidate: string) {
+  const normalizedRoot = root.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").toLowerCase();
+  const normalizedCandidate = candidate.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").toLowerCase();
+  return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(`${normalizedRoot}/`);
 }
 
 function folderNameHasPriority(name: string) {

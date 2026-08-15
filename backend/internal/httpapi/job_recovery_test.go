@@ -13,6 +13,25 @@ import (
 	"github.com/yexca/kikoto/backend/internal/outbound"
 )
 
+func TestCancelActiveWorkflowJobCancelsEveryJobInRun(t *testing.T) {
+	server := NewServer(nil, config.Config{})
+	firstContext, cancelFirst := context.WithCancel(context.Background())
+	secondContext, cancelSecond := context.WithCancel(context.Background())
+	server.registerActiveWorkflowJob(10, 101, cancelFirst)
+	server.registerActiveWorkflowJob(10, 102, cancelSecond)
+
+	server.cancelActiveWorkflowJob(10)
+
+	if firstContext.Err() != context.Canceled || secondContext.Err() != context.Canceled {
+		t.Fatalf("job contexts = %v and %v, want both cancelled", firstContext.Err(), secondContext.Err())
+	}
+	server.unregisterActiveWorkflowJob(10, 101)
+	server.unregisterActiveWorkflowJob(10, 102)
+	if _, exists := server.activeWorkflowCancels[10]; exists {
+		t.Fatal("active workflow registry retained an empty run")
+	}
+}
+
 func TestClaimNextQueuedWorkflowJobUsesPersistentPriorityBeforeAge(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})

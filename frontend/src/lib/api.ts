@@ -240,7 +240,18 @@ export type WorkDetail = {
   translations: WorkTranslation[];
   manualOverrides: WorkManualOverrides;
   sourcePresence: SourcePresenceItem[] | null;
+  localFolders: WorkFolderLocation[];
   mediaItems: MediaItem[];
+};
+
+export type WorkFolderLocation = {
+  id: number;
+  workId: number;
+  fileSourceId: number;
+  rootPath: string;
+  role: string;
+  state: "active" | "pending_cleanup" | "ignored" | string;
+  primary: boolean;
 };
 
 export type ManualOverrideEntity = {
@@ -1581,6 +1592,8 @@ export type CacheMaintenanceResult = {
 export type MediaCleanupTarget = {
   kind: "cache" | "local" | "local_root";
   locationId: number;
+  folderId?: number;
+  expectedPath?: string;
 };
 
 export type MediaCleanupMode = "files_only" | "files_and_forget_work";

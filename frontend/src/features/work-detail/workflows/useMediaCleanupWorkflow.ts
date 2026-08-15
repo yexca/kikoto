@@ -9,6 +9,8 @@ export type { MediaCleanupMode } from "@/lib/api";
 export type MediaDeleteTarget = {
   kind: "cache" | "local" | "local_root";
   locationId: number;
+  folderId?: number;
+  expectedPath?: string;
   workId: number;
   title: string;
   path: string;
@@ -90,7 +92,12 @@ export function useMediaCleanupWorkflow({
         ...targets.filter((target) => target.kind === "local_root"),
       ];
       const result = await api.cleanupMediaLocations(
-        orderedTargets.map(({ kind, locationId }) => ({ kind, locationId })),
+        orderedTargets.map(({ kind, locationId, folderId, expectedPath }) => ({
+          kind,
+          locationId,
+          ...(folderId ? { folderId } : {}),
+          ...(expectedPath ? { expectedPath } : {}),
+        })),
         mode,
       );
       setActiveRunId(result.runId);

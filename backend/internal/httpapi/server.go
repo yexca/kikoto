@@ -54,6 +54,8 @@ type Server struct {
 	metadataSyncMu                 sync.Mutex
 	jobRunnerMu                    sync.Mutex
 	jobRunnerStarted               bool
+	activeWorkflowMu               sync.Mutex
+	activeWorkflowCancels          map[int64]map[int64]context.CancelFunc
 	voiceCatalogRefreshMu          sync.Mutex
 	fetchStagingCleanupMu          sync.Mutex
 	sourceGate                     *sourceRequestGate
@@ -83,6 +85,7 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 		remoteWorkTracksCacheCalls:     map[string]*remoteWorkTracksCall{},
 		localMediaIndexes:              map[string]*localMediaIndexCall{},
 		localMediaWriteSlot:            make(chan struct{}, 1),
+		activeWorkflowCancels:          map[int64]map[int64]context.CancelFunc{},
 		sourceGate:                     newSourceRequestGate(),
 		filesystemTriggerConfigChanged: make(chan struct{}, 1),
 	}
@@ -576,44 +579,55 @@ type sourcePresenceItem struct {
 }
 
 type workDetail struct {
-	ID               int64                `json:"id"`
-	PrimaryCode      string               `json:"primaryCode"`
-	BaseCode         string               `json:"baseCode"`
-	MetadataLanguage string               `json:"metadataLanguage"`
-	WorkType         string               `json:"workType"`
-	Title            string               `json:"title"`
-	TitleKana        string               `json:"titleKana"`
-	Description      string               `json:"description"`
-	ReleaseDate      *string              `json:"releaseDate"`
-	AgeRating        string               `json:"ageRating"`
-	DurationSeconds  *int64               `json:"durationSeconds"`
-	CreatedAt        string               `json:"createdAt"`
-	UpdatedAt        string               `json:"updatedAt"`
-	CoverURL         string               `json:"coverUrl"`
-	DLsiteURL        string               `json:"dlsiteUrl"`
-	Circle           string               `json:"circle"`
-	CircleExternalID string               `json:"circleExternalId"`
-	Rating           *float64             `json:"rating"`
-	RatingCount      *int64               `json:"ratingCount"`
-	Sales            *int64               `json:"sales"`
-	RegularPrice     *int64               `json:"regularPrice"`
-	Price            *int64               `json:"price"`
-	PriceCurrency    string               `json:"priceCurrency"`
-	PermanentlyFree  *bool                `json:"permanentlyFree"`
-	Series           string               `json:"series"`
-	SeriesTitleID    string               `json:"seriesTitleId"`
-	SeriesCircleID   string               `json:"seriesCircleExternalId"`
-	DLsiteFetchedAt  string               `json:"dlsiteFetchedAt"`
-	Tags             []string             `json:"tags"`
-	UserTags         []workUserTag        `json:"userTags"`
-	VoiceActors      []string             `json:"voiceActors"`
-	VoiceCredits     []voiceCredit        `json:"voiceCredits"`
-	ListeningStatus  string               `json:"listeningStatus"`
-	Favorite         bool                 `json:"favorite"`
-	Translations     []workTranslation    `json:"translations"`
-	ManualOverrides  workManualOverrides  `json:"manualOverrides"`
-	SourcePresence   []sourcePresenceItem `json:"sourcePresence"`
-	MediaItems       []mediaItemDetail    `json:"mediaItems"`
+	ID               int64                      `json:"id"`
+	PrimaryCode      string                     `json:"primaryCode"`
+	BaseCode         string                     `json:"baseCode"`
+	MetadataLanguage string                     `json:"metadataLanguage"`
+	WorkType         string                     `json:"workType"`
+	Title            string                     `json:"title"`
+	TitleKana        string                     `json:"titleKana"`
+	Description      string                     `json:"description"`
+	ReleaseDate      *string                    `json:"releaseDate"`
+	AgeRating        string                     `json:"ageRating"`
+	DurationSeconds  *int64                     `json:"durationSeconds"`
+	CreatedAt        string                     `json:"createdAt"`
+	UpdatedAt        string                     `json:"updatedAt"`
+	CoverURL         string                     `json:"coverUrl"`
+	DLsiteURL        string                     `json:"dlsiteUrl"`
+	Circle           string                     `json:"circle"`
+	CircleExternalID string                     `json:"circleExternalId"`
+	Rating           *float64                   `json:"rating"`
+	RatingCount      *int64                     `json:"ratingCount"`
+	Sales            *int64                     `json:"sales"`
+	RegularPrice     *int64                     `json:"regularPrice"`
+	Price            *int64                     `json:"price"`
+	PriceCurrency    string                     `json:"priceCurrency"`
+	PermanentlyFree  *bool                      `json:"permanentlyFree"`
+	Series           string                     `json:"series"`
+	SeriesTitleID    string                     `json:"seriesTitleId"`
+	SeriesCircleID   string                     `json:"seriesCircleExternalId"`
+	DLsiteFetchedAt  string                     `json:"dlsiteFetchedAt"`
+	Tags             []string                   `json:"tags"`
+	UserTags         []workUserTag              `json:"userTags"`
+	VoiceActors      []string                   `json:"voiceActors"`
+	VoiceCredits     []voiceCredit              `json:"voiceCredits"`
+	ListeningStatus  string                     `json:"listeningStatus"`
+	Favorite         bool                       `json:"favorite"`
+	Translations     []workTranslation          `json:"translations"`
+	ManualOverrides  workManualOverrides        `json:"manualOverrides"`
+	SourcePresence   []sourcePresenceItem       `json:"sourcePresence"`
+	LocalFolders     []workFolderLocationDetail `json:"localFolders"`
+	MediaItems       []mediaItemDetail          `json:"mediaItems"`
+}
+
+type workFolderLocationDetail struct {
+	ID           int64  `json:"id"`
+	WorkID       int64  `json:"workId"`
+	FileSourceID int64  `json:"fileSourceId"`
+	RootPath     string `json:"rootPath"`
+	Role         string `json:"role"`
+	State        string `json:"state"`
+	Primary      bool   `json:"primary"`
 }
 
 type workTranslation struct {
@@ -1950,7 +1964,7 @@ func (s *Server) runCacheLimitCleanup(ctx context.Context, sourceID int64, keepL
 		return result, err
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
 		return result, err
 	}
@@ -1983,7 +1997,7 @@ func (s *Server) runCacheLimitCleanup(ctx context.Context, sourceID int64, keepL
 		return result, err
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: cleanupNodeID, WorkerType: "media_cache_limit_cleanup", Status: "running", Payload: input,
+		NodeRunID: cleanupNodeID, WorkerType: "media_cache_limit_cleanup", Status: "running", ResourceKey: "media:cleanup", Payload: input,
 		Checkpoint: map[string]any{"phase": "pending"}, Recoverable: true, MaxRetries: 3, ProgressCurrent: 0, ProgressTotal: 1,
 	})
 	if err != nil {
@@ -2179,13 +2193,21 @@ func (s *Server) cacheCleanupCandidates(ctx context.Context, sourceID int64) ([]
 }
 
 func (s *Server) clearCacheLocation(ctx context.Context, cacheLocationID int64, cachePath string) (int64, bool, error) {
-	targetPath, err := safeCachePath(s.cfg.CacheRoot, cachePath)
+	targetPath, err := validateDestructivePath(s.cfg.CacheRoot, cachePath, true, false)
 	if err != nil {
 		return 0, false, err
 	}
 	var bytes int64
-	if info, err := os.Stat(targetPath); err == nil {
+	if info, err := os.Lstat(targetPath); err == nil {
+		if unsafeFetchStagingEntry(info) || info.IsDir() {
+			return 0, false, fmt.Errorf("refusing to delete unsafe cache target %s", filepath.ToSlash(cachePath))
+		}
 		bytes = info.Size()
+	}
+	// Revalidate immediately before the unlink to reduce the window for a
+	// parent replacement after the initial component walk.
+	if _, err := validateDestructivePath(s.cfg.CacheRoot, cachePath, true, false); err != nil {
+		return 0, false, err
 	}
 	deleted := false
 	if err := os.Remove(targetPath); err != nil {
@@ -2260,7 +2282,7 @@ func (s *Server) runMediaCacheCleanup(ctx context.Context, cacheLocationID int64
 	if locationType != "cache" {
 		return mediaCacheDeleteResult{}, fmt.Errorf("media location is not a cache file")
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
 		return mediaCacheDeleteResult{}, err
 	}
@@ -2293,7 +2315,7 @@ func (s *Server) runMediaCacheCleanup(ctx context.Context, cacheLocationID int64
 		return mediaCacheDeleteResult{}, err
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: cleanupNodeID, WorkerType: "media_cache_cleanup", Status: "running", Payload: input,
+		NodeRunID: cleanupNodeID, WorkerType: "media_cache_cleanup", Status: "running", ResourceKey: "media:cleanup", Payload: input,
 		Checkpoint: map[string]any{"phase": "pending"}, Recoverable: true, MaxRetries: 3, ProgressCurrent: 0, ProgressTotal: 1,
 	})
 	if err != nil {
@@ -2368,8 +2390,11 @@ func (s *Server) runLocalMediaDelete(ctx context.Context, localLocationID int64)
 		}
 		return mediaLocalDeleteResult{}, symlinkMediaLocationError{RunID: runID, CandidateID: candidateID, Path: relPath}
 	}
+	if _, err := validateDestructivePath(s.cfg.DataRoot, relPath, true, false); err != nil {
+		return mediaLocalDeleteResult{}, err
+	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
 		return mediaLocalDeleteResult{}, err
 	}
@@ -2402,7 +2427,7 @@ func (s *Server) runLocalMediaDelete(ctx context.Context, localLocationID int64)
 		return mediaLocalDeleteResult{}, err
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: deleteNodeID, WorkerType: "local_media_delete", Status: "running", Payload: input,
+		NodeRunID: deleteNodeID, WorkerType: "local_media_delete", Status: "running", ResourceKey: "media:cleanup", Payload: input,
 		Checkpoint: map[string]any{"phase": "pending"}, Recoverable: true, MaxRetries: 3, ProgressCurrent: 0, ProgressTotal: 1,
 	})
 	if err != nil {
@@ -2417,14 +2442,10 @@ func (s *Server) runLocalMediaDelete(ctx context.Context, localLocationID int64)
 	}
 	defer stopHeartbeat()
 
-	deleted := false
-	if err := os.Remove(targetPath); err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			_ = s.finishLocalMediaDelete(jobCtx, runID, deleteNodeID, jobID, "failed", localLocationID, relPath, deleted, err.Error())
-			return mediaLocalDeleteResult{}, err
-		}
-	} else {
-		deleted = true
+	deleted, _, err := removeDestructiveFile(s.cfg.DataRoot, relPath)
+	if err != nil {
+		_ = s.finishLocalMediaDelete(jobCtx, runID, deleteNodeID, jobID, "failed", localLocationID, relPath, deleted, err.Error())
+		return mediaLocalDeleteResult{}, err
 	}
 	if _, err := s.db.ExecContext(jobCtx, `
 		UPDATE media_file_location
@@ -2457,20 +2478,8 @@ func (s *Server) executeLocalMediaDeleteJob(ctx context.Context, job workflowJob
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
-	targetPath, err := safeDataPath(s.cfg.DataRoot, payload.Path)
-	if err == nil && isSymlinkPath(targetPath) {
-		err = fmt.Errorf("refusing to delete symlink %s", filepath.ToSlash(payload.Path))
-	}
 	deleted := false
-	if err == nil {
-		if removeErr := os.Remove(targetPath); removeErr != nil {
-			if !errors.Is(removeErr, os.ErrNotExist) {
-				err = removeErr
-			}
-		} else {
-			deleted = true
-		}
-	}
+	deleted, _, err := removeDestructiveFile(s.cfg.DataRoot, payload.Path)
 	if err == nil {
 		_, err = s.db.ExecContext(ctx, `
 			UPDATE media_file_location
@@ -2490,7 +2499,7 @@ func (s *Server) executeLocalMediaDeleteJob(ctx context.Context, job workflowJob
 
 func isSymlinkPath(path string) bool {
 	info, err := os.Lstat(path)
-	return err == nil && info.Mode()&os.ModeSymlink != 0
+	return err == nil && unsafeFetchStagingEntry(info)
 }
 
 func (s *Server) createSymlinkMediaReview(ctx context.Context, localLocationID int64, mediaItemID int64, workID int64, sourceID int64, relPath string) (int64, int64, error) {
@@ -2842,6 +2851,11 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 	work.CoverURL = s.coverURL(work.PrimaryCode)
 	work.DLsiteURL = dlsiteURL(work.PrimaryCode)
 	work.SourcePresence = s.sourcePresenceForCode(ctx, work.PrimaryCode)
+	localFolders, err := s.loadWorkFolderLocations(ctx, work.ID)
+	if err != nil {
+		return workDetail{}, err
+	}
+	work.LocalFolders = localFolders
 	work.MediaItems = []mediaItemDetail{}
 	userTags, err := s.loadWorkUserTags(ctx, userID, id)
 	if err != nil {
@@ -2944,6 +2958,31 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 		return workDetail{}, err
 	}
 	return work, nil
+}
+
+func (s *Server) loadWorkFolderLocations(ctx context.Context, workID int64) ([]workFolderLocationDetail, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, work_id, file_source_id, root_path, role, state, is_primary
+		FROM work_folder_location
+		WHERE work_id = ?
+		ORDER BY is_primary DESC, updated_at DESC, id ASC
+	`, workID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	folders := []workFolderLocationDetail{}
+	for rows.Next() {
+		var folder workFolderLocationDetail
+		var primary int
+		if err := rows.Scan(&folder.ID, &folder.WorkID, &folder.FileSourceID, &folder.RootPath, &folder.Role, &folder.State, &primary); err != nil {
+			return nil, err
+		}
+		folder.RootPath = filepath.ToSlash(strings.Trim(folder.RootPath, "/"))
+		folder.Primary = primary != 0
+		folders = append(folders, folder)
+	}
+	return folders, rows.Err()
 }
 
 func (s *Server) resolveMediaWorkIDForRequest(ctx context.Context, workID int64) (int64, error) {
@@ -3293,6 +3332,20 @@ func (s *Server) indexLocalMediaForWorkOnce(ctx context.Context, workID int64, f
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	var managedFetchRootExists bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM work_folder_location
+			WHERE work_id = ? AND file_source_id = ? AND role = 'managed_fetch'
+		)
+	`, workID, fileSourceID).Scan(&managedFetchRootExists); err != nil {
+		return err
+	}
+	if !managedFetchRootExists {
+		if err := upsertWorkFolderLocation(ctx, tx, workID, fileSourceID, relPath, "external", "active", true); err != nil {
+			return err
+		}
+	}
 
 	playableTrackNo := 1
 	seenPaths := map[string]bool{}

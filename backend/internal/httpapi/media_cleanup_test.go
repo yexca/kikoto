@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -53,6 +54,13 @@ func TestMediaLocationCleanupKeepsLargeSelectionInOneRun(t *testing.T) {
 	if runs != 1 || jobs != 1 {
 		t.Fatalf("large cleanup created %d runs and %d jobs, want one durable run and job", runs, jobs)
 	}
+	var resourceKey string
+	if err := db.QueryRow("SELECT resource_key FROM workflow_job WHERE id = ?", queued.JobID).Scan(&resourceKey); err != nil {
+		t.Fatal(err)
+	}
+	if resourceKey != "media:cleanup" {
+		t.Fatalf("resource key = %q, want media:cleanup", resourceKey)
+	}
 }
 
 func TestMediaLocationCleanupQueuesAndExecutesMixedTargets(t *testing.T) {
@@ -79,6 +87,12 @@ func TestMediaLocationCleanupQueuesAndExecutesMixedTargets(t *testing.T) {
 		SELECT work_id, ?, 'local', 'RJTEST001', 'available' FROM media_item WHERE id = ?`, sourceID, mediaItemID); err != nil {
 		t.Fatal(err)
 	}
+	folderResult, err := db.Exec(`INSERT INTO work_folder_location (work_id, file_source_id, root_path, role, state, is_primary)
+		SELECT work_id, ?, 'RJTEST001', 'external', 'active', 1 FROM media_item WHERE id = ?`, sourceID, mediaItemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	folderID, _ := folderResult.LastInsertId()
 	result, err := db.Exec(`INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability)
 		VALUES (?, ?, 'cache', 'cached.mp3', 'available')`, mediaItemID, sourceID)
 	if err != nil {
@@ -96,7 +110,7 @@ func TestMediaLocationCleanupQueuesAndExecutesMixedTargets(t *testing.T) {
 		{Kind: "local", LocationID: localID},
 		{Kind: "cache", LocationID: cacheID},
 		{Kind: "cache", LocationID: cacheID},
-		{Kind: "local_root", LocationID: localID},
+		{Kind: "local_root", LocationID: localID, FolderID: folderID, ExpectedPath: "RJTEST001"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -169,6 +183,255 @@ func TestMediaLocationCleanupQueuesAndExecutesMixedTargets(t *testing.T) {
 	}
 	if summary != `{"deleted":3,"locations":3}` {
 		t.Fatalf("summary = %s, want recovered total delete count", summary)
+	}
+}
+
+func TestMediaCleanupLocalRootUsesConfirmedFolderOnly(t *testing.T) {
+	dataRoot := t.TempDir()
+	rootA := filepath.Join(dataRoot, "library", "RJ00000020")
+	rootB := filepath.Join(dataRoot, "library", "RJ00000021")
+	if err := os.MkdirAll(rootA, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(rootB, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rootB, "track.mp3"), []byte("root b"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	relA := filepath.ToSlash(filepath.Join("library", "RJ00000020"))
+	relB := filepath.ToSlash(filepath.Join("library", "RJ00000021"))
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES (320, 'RJ00000020', 'Root A');
+		INSERT INTO file_source (id, code, display_name, source_type) VALUES (320, 'cleanup-local-roots', 'Cleanup local roots', 'local_folder');
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES
+			(320, 320, 'audio', 'a.mp3', 'root-a'), (321, 320, 'audio', 'track.mp3', 'root-b');
+		INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability) VALUES
+			(320, 320, 320, 'local', 'library/RJ00000020/a.mp3', 'available'),
+			(321, 321, 320, 'local', 'library/RJ00000021/track.mp3', 'available');
+		INSERT INTO work_source_presence (work_id, file_source_id, presence_type, source_url, availability)
+			VALUES (320, 320, 'local', 'library/RJ00000020', 'available');
+		INSERT INTO work_folder_location (id, work_id, file_source_id, root_path, role, state, is_primary)
+			VALUES (320, 320, 320, 'library/RJ00000020', 'external', 'pending_cleanup', 1),
+			       (321, 320, 320, 'library/RJ00000021', 'external', 'active', 0);
+	`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{DataRoot: dataRoot, CacheRoot: t.TempDir()})
+	deleted, err := server.clearLocalWorkRoot(context.Background(), mediaCleanupTarget{
+		Kind: "local_root", LocationID: 320, FolderID: 320, WorkID: 320, SourceID: 320, Path: relA,
+	})
+	if err != nil || !deleted {
+		t.Fatalf("clear root A = deleted %t, error %v", deleted, err)
+	}
+	if _, err := os.Stat(rootA); !os.IsNotExist(err) {
+		t.Fatalf("root A still exists or stat failed unexpectedly: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(rootB, "track.mp3")); err != nil {
+		t.Fatalf("root B was affected: %v", err)
+	}
+	var availability string
+	if err := db.QueryRow("SELECT availability FROM media_file_location WHERE id = 320").Scan(&availability); err != nil {
+		t.Fatal(err)
+	}
+	if availability != "unavailable" {
+		t.Fatalf("root A location availability = %q, want unavailable", availability)
+	}
+	if err := db.QueryRow("SELECT availability FROM media_file_location WHERE id = 321").Scan(&availability); err != nil {
+		t.Fatal(err)
+	}
+	if availability != "available" {
+		t.Fatalf("root B location availability = %q, want available", availability)
+	}
+	var state string
+	if err := db.QueryRow("SELECT state FROM work_folder_location WHERE id = 320").Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "ignored" {
+		t.Fatalf("root A state = %q, want ignored", state)
+	}
+	if err := db.QueryRow("SELECT state FROM work_folder_location WHERE id = 321").Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "active" {
+		t.Fatalf("root B state = %q, want active", state)
+	}
+	var presence string
+	if err := db.QueryRow("SELECT availability FROM work_source_presence WHERE work_id = 320 AND file_source_id = 320 AND presence_type = 'local'").Scan(&presence); err != nil {
+		t.Fatal(err)
+	}
+	if presence != "available" {
+		t.Fatalf("local presence = %q, want available while another root remains", presence)
+	}
+
+	_, err = server.loadMediaCleanupTarget(context.Background(), mediaCleanupTargetRequest{
+		Kind: "local_root", LocationID: 320, FolderID: 321, ExpectedPath: relB,
+	})
+	var conflict mediaCleanupTargetConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("mismatched confirmed root error = %v, want conflict", err)
+	}
+	_, err = server.loadMediaCleanupTarget(context.Background(), mediaCleanupTargetRequest{
+		Kind: "local_root", LocationID: 321, FolderID: 321,
+	})
+	if !errors.As(err, &conflict) {
+		t.Fatalf("incomplete confirmed root error = %v, want conflict", err)
+	}
+	_, err = server.loadMediaCleanupTarget(context.Background(), mediaCleanupTargetRequest{
+		Kind: "local_root", LocationID: 321, FolderID: 321, ExpectedPath: "library/RJ00000099",
+	})
+	if !errors.As(err, &conflict) {
+		t.Fatalf("stale confirmed root error = %v, want conflict", err)
+	}
+}
+
+func TestMediaCleanupFolderReturnsToActiveAfterRootPreflightFailure(t *testing.T) {
+	dataRoot := t.TempDir()
+	root := filepath.Join(dataRoot, "library", "RJ00000022")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "still-present.mp3"), []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	relRoot := filepath.ToSlash(filepath.Join("library", "RJ00000022"))
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES (322, 'RJ00000022', 'Root failure');
+		INSERT INTO file_source (id, code, display_name, source_type) VALUES (322, 'cleanup-local-failure', 'Cleanup local failure', 'local_folder');
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (322, 322, 'audio', 'still-present.mp3', 'root-failure');
+		INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability)
+			VALUES (322, 322, 322, 'local', 'library/RJ00000022/still-present.mp3', 'available');
+		INSERT INTO work_source_presence (work_id, file_source_id, presence_type, source_url, availability)
+			VALUES (322, 322, 'local', 'library/RJ00000022', 'available');
+		INSERT INTO work_folder_location (id, work_id, file_source_id, root_path, role, state, is_primary)
+			VALUES (322, 322, 322, 'library/RJ00000022', 'external', 'active', 1);
+	`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{DataRoot: dataRoot, CacheRoot: t.TempDir()})
+	queued, err := server.enqueueMediaLocationCleanup(context.Background(), []mediaCleanupTargetRequest{
+		{Kind: "local_root", LocationID: 322, FolderID: 322, ExpectedPath: relRoot},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.runNextQueuedWorkflowJob(context.Background(), "root-failure-worker"); err == nil {
+		t.Fatal("root cleanup unexpectedly succeeded with a remaining file")
+	}
+	var state, runStatus string
+	if err := db.QueryRow("SELECT state FROM work_folder_location WHERE id = 322").Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "active" {
+		t.Fatalf("folder state = %q, want active after failure", state)
+	}
+	if err := db.QueryRow("SELECT status FROM workflow_run WHERE id = ?", queued.RunID).Scan(&runStatus); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "failed" {
+		t.Fatalf("run status = %q, want failed", runStatus)
+	}
+}
+
+func TestMediaCleanupCancellationKeepsPendingTargetsAndSkipsForget(t *testing.T) {
+	dataRoot := t.TempDir()
+	cacheRoot := t.TempDir()
+	localRoot := filepath.Join(dataRoot, "library", "RJ00000023")
+	if err := os.MkdirAll(localRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	first := "media/example/RJ/000/RJ00000023/first.mp3"
+	second := "media/example/RJ/000/RJ00000023/second.mp3"
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(cacheRoot, filepath.FromSlash(first))), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cacheRoot, filepath.FromSlash(first)), []byte("first"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cacheRoot, filepath.FromSlash(second)), []byte("second"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES (323, 'RJ00000023', 'Cancelled cleanup');
+		INSERT INTO file_source (id, code, display_name, source_type) VALUES (323, 'cleanup-remote', 'Cleanup remote', 'kikoeru_compatible');
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES
+			(323, 323, 'audio', 'first.mp3', 'cancel-first'), (324, 323, 'audio', 'second.mp3', 'cancel-second'),
+			(325, 323, 'audio', 'local.mp3', 'cancel-local');
+		INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability) VALUES
+			(323, 323, 323, 'cache', 'media/example/RJ/000/RJ00000023/first.mp3', 'unavailable'),
+			(324, 324, 323, 'cache', 'media/example/RJ/000/RJ00000023/second.mp3', 'available'),
+			(325, 325, 323, 'local', 'library/RJ00000023/local.mp3', 'available');
+		INSERT INTO work_folder_location (id, work_id, file_source_id, root_path, role, state, is_primary)
+			VALUES (323, 323, 323, 'library/RJ00000023', 'external', 'active', 1);
+	`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{DataRoot: dataRoot, CacheRoot: cacheRoot})
+	queued, err := server.enqueueMediaLocationCleanupWithOptions(context.Background(), []mediaCleanupTargetRequest{
+		{Kind: "cache", LocationID: 323}, {Kind: "cache", LocationID: 324},
+		{Kind: "local_root", LocationID: 325, FolderID: 323, ExpectedPath: "library/RJ00000023"},
+	}, mediaCleanupOptions{Mode: mediaCleanupForgetWork, ActorUserID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload mediaCleanupJobPayload
+	var job workflowJobRecord
+	if err := db.QueryRow(`
+		SELECT id, workflow_run_id, workflow_node_run_id, worker_type, payload_json, checkpoint_json,
+			'', resume_count, retry_count, max_retries
+		FROM workflow_job WHERE id = ?`, queued.JobID).Scan(
+		&job.ID, &job.RunID, &job.NodeRunID, &job.WorkerType, &job.PayloadJSON, &job.CheckpointJSON,
+		&job.LockedBy, &job.ResumeCount, &job.RetryCount, &job.MaxRetries,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Targets) != 3 {
+		t.Fatalf("targets = %d, want 3", len(payload.Targets))
+	}
+	if _, err := db.Exec(`
+		UPDATE workflow_run SET status = 'cancelled' WHERE id = ?;
+		UPDATE workflow_job SET status = 'running' WHERE id = ?;
+		UPDATE work_folder_location SET state = 'pending_cleanup', cleanup_run_id = ? WHERE id = 323`,
+		queued.RunID, queued.JobID, queued.RunID); err != nil {
+		t.Fatal(err)
+	}
+	job.CheckpointJSON = mustJSON(mediaCleanupCheckpoint{
+		CompletedKeys:  []string{mediaCleanupTargetKey(payload.Targets[0])},
+		CompletedCount: 1,
+		Deleted:        1,
+	})
+	if err := server.executeMediaLocationCleanupJob(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(cacheRoot, filepath.FromSlash(second))); err != nil {
+		t.Fatalf("pending target was deleted after cancellation: %v", err)
+	}
+	assertMediaCleanupCount(t, db, "SELECT COUNT(*) FROM work WHERE id = 323", 1)
+	assertMediaCleanupCount(t, db, "SELECT COUNT(*) FROM metadata_snapshot WHERE work_id = 323", 0)
+	assertMediaCleanupCount(t, db, "SELECT COUNT(*) FROM audit_log WHERE action = 'media_cleanup.forget_work' AND actor_user_id = 1", 0)
+	var runStatus, jobStatus string
+	if err := db.QueryRow("SELECT status FROM workflow_run WHERE id = ?", queued.RunID).Scan(&runStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT status FROM workflow_job WHERE id = ?", queued.JobID).Scan(&jobStatus); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "cancelled" || jobStatus != "cancelled" {
+		t.Fatalf("statuses = run %q job %q, want cancelled", runStatus, jobStatus)
+	}
+	var folderState string
+	var cleanupRunID sql.NullInt64
+	if err := db.QueryRow("SELECT state, cleanup_run_id FROM work_folder_location WHERE id = 323").Scan(&folderState, &cleanupRunID); err != nil {
+		t.Fatal(err)
+	}
+	if folderState != "active" || cleanupRunID.Valid {
+		t.Fatalf("folder after cancellation = state %q cleanup run %+v, want active and unclaimed", folderState, cleanupRunID)
 	}
 }
 
@@ -276,6 +539,8 @@ func TestMediaCleanupForgetWorkDeletesLogicalFamilyAndUserState(t *testing.T) {
 		VALUES (312, 312, 32, 'local', 'RJ00000011/track.mp3', 'available');
 		INSERT INTO work_source_presence (work_id, file_source_id, presence_type, source_url, availability)
 		VALUES (302, 32, 'local', 'RJ00000011', 'available');
+		INSERT INTO work_folder_location (id, work_id, file_source_id, root_path, role, state, is_primary)
+		VALUES (312, 302, 32, 'RJ00000011', 'external', 'active', 1);
 		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json) VALUES
 			(302, (SELECT id FROM metadata_provider WHERE code = 'dlsite'), 'RJ00000011', '{}'),
 			(303, (SELECT id FROM metadata_provider WHERE code = 'dlsite'), 'RJ00000012', '{}');
@@ -291,7 +556,8 @@ func TestMediaCleanupForgetWorkDeletesLogicalFamilyAndUserState(t *testing.T) {
 	}
 	server := NewServer(db, config.Config{DataRoot: dataRoot, CacheRoot: t.TempDir()})
 	queued, err := server.enqueueMediaLocationCleanupWithOptions(context.Background(), []mediaCleanupTargetRequest{
-		{Kind: "local", LocationID: 312}, {Kind: "local_root", LocationID: 312},
+		{Kind: "local", LocationID: 312},
+		{Kind: "local_root", LocationID: 312, FolderID: 312, ExpectedPath: "RJ00000011"},
 	}, mediaCleanupOptions{Mode: mediaCleanupForgetWork, ActorUserID: 1})
 	if err != nil {
 		t.Fatal(err)
@@ -358,6 +624,8 @@ func TestMediaCleanupForgetWorkRetainsWorkWhenAnotherSourceIsAvailable(t *testin
 		VALUES (315, 314, 33, 'remote_stream', 'remote/track.mp3', 'available');
 		INSERT INTO work_source_presence (work_id, file_source_id, presence_type, source_url, availability)
 		VALUES (304, 33, 'local', 'RJ00000013', 'available');
+		INSERT INTO work_folder_location (id, work_id, file_source_id, root_path, role, state, is_primary)
+		VALUES (314, 304, 33, 'RJ00000013', 'external', 'active', 1);
 		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
 		VALUES (304, (SELECT id FROM metadata_provider WHERE code = 'dlsite'), 'RJ00000013', '{}');
 		INSERT INTO user_work_state (user_id, work_id, listening_status, favorite) VALUES (1, 304, 'listening', 1);
@@ -366,7 +634,8 @@ func TestMediaCleanupForgetWorkRetainsWorkWhenAnotherSourceIsAvailable(t *testin
 	}
 	server := NewServer(db, config.Config{DataRoot: dataRoot, CacheRoot: t.TempDir()})
 	queued, err := server.enqueueMediaLocationCleanupWithOptions(context.Background(), []mediaCleanupTargetRequest{
-		{Kind: "local", LocationID: 314}, {Kind: "local_root", LocationID: 314},
+		{Kind: "local", LocationID: 314},
+		{Kind: "local_root", LocationID: 314, FolderID: 314, ExpectedPath: "RJ00000013"},
 	}, mediaCleanupOptions{Mode: mediaCleanupForgetWork, ActorUserID: 1})
 	if err != nil {
 		t.Fatal(err)
