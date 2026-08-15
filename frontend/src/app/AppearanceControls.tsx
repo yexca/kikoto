@@ -36,51 +36,34 @@ export function AppearanceControls({
       <div className="border-b p-3" role="group" aria-label={t("appearance.language")}>
         <AppearanceGroupLabel>{t("appearance.language")}</AppearanceGroupLabel>
         <p className="mb-2 px-2 text-xs text-muted-foreground">{t("appearance.languageDescription")}</p>
-        <div className="space-y-1">
+        <select
+          className="h-[var(--control-height)] w-full rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-wait disabled:opacity-60"
+          value={localePreference}
+          disabled={localeBusy}
+          aria-busy={localeBusy}
+          aria-label={t("appearance.language")}
+          onChange={(event) => void onLocaleChange(event.target.value as UiLocale)}
+        >
           {UI_LOCALE_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              className="flex min-h-[var(--control-height)] w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-[color,background-color,transform] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[var(--press-scale)] motion-reduce:active:scale-100 disabled:cursor-wait disabled:opacity-60"
-              aria-pressed={localePreference === option.value}
-              disabled={localeBusy}
-              onClick={() => void onLocaleChange(option.value)}
-            >
-              {localeBusy && localePreference === option.value ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <span className="h-4 w-4" aria-hidden="true" />
-              )}
-              <span className="min-w-0 flex-1">{t(option.labelKey)}</span>
-              {localePreference === option.value && !localeBusy && <CheckCircle2 className="h-4 w-4 text-primary" />}
-            </button>
+            <option key={option.value} value={option.value}>
+              {t(option.labelKey)}
+            </option>
           ))}
-        </div>
+        </select>
         {localeError && <p className="mt-2 px-2 text-xs text-destructive">{localeError}</p>}
       </div>
       <div className="p-2" role="group" aria-label={t("appearance.mode")}>
         <AppearanceGroupLabel>{t("appearance.mode")}</AppearanceGroupLabel>
-        <ThemeItem
-          mode="light"
-          label={t("appearance.light")}
-          current={mode}
-          icon={<Sun className="h-4 w-4" />}
-          onSelect={onModeChange}
-        />
-        <ThemeItem
-          mode="dark"
-          label={t("appearance.dark")}
-          current={mode}
-          icon={<Moon className="h-4 w-4" />}
-          onSelect={onModeChange}
-        />
-        <ThemeItem
-          mode="system"
-          label={t("appearance.system")}
-          current={mode}
-          icon={<Command className="h-4 w-4" />}
-          onSelect={onModeChange}
-        />
+        <select
+          className="h-[var(--control-height)] w-full rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          value={mode}
+          aria-label={t("appearance.mode")}
+          onChange={(event) => onModeChange(event.target.value as ThemeMode)}
+        >
+          <option value="light">{t("appearance.light")}</option>
+          <option value="dark">{t("appearance.dark")}</option>
+          <option value="system">{t("appearance.system")}</option>
+        </select>
       </div>
       <div className="border-t p-3">
         <div role="group" aria-label={t("appearance.style")}>
@@ -98,30 +81,4 @@ export function AppearanceControls({
 
 function AppearanceGroupLabel({ children }: { children: ReactNode }) {
   return <div className="mb-2 px-2 text-xs font-medium text-muted-foreground">{children}</div>;
-}
-
-function ThemeItem({
-  mode,
-  label,
-  current,
-  icon,
-  onSelect,
-}: {
-  mode: ThemeMode;
-  label: string;
-  current: ThemeMode;
-  icon: ReactNode;
-  onSelect: (mode: ThemeMode) => void;
-}) {
-  return (
-    <button
-      className="flex min-h-[var(--control-height)] w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-[color,background-color,transform] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[var(--press-scale)] motion-reduce:active:scale-100"
-      aria-pressed={mode === current}
-      onClick={() => onSelect(mode)}
-    >
-      {icon}
-      <span className="min-w-0 flex-1">{label}</span>
-      {mode === current && <CheckCircle2 className="h-4 w-4 text-primary" />}
-    </button>
-  );
 }

@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/utils";
 
-type PopoverPosition = { left: number; top: number; visible: boolean };
+type PopoverPosition = { left: number; top: number; maxHeight: number; visible: boolean };
 
 export function AnchoredPopover({
   open,
@@ -15,6 +15,7 @@ export function AnchoredPopover({
   collisionPadding = 12,
   bottomCollisionPadding = collisionPadding,
   zIndex,
+  ariaLabel,
   onOpenChange,
 }: {
   open: boolean;
@@ -26,10 +27,11 @@ export function AnchoredPopover({
   collisionPadding?: number;
   bottomCollisionPadding?: number;
   zIndex?: number;
+  ariaLabel?: string;
   onOpenChange?: (open: boolean) => void;
 }) {
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const [position, setPosition] = useState<PopoverPosition>({ left: 0, top: 0, visible: false });
+  const [position, setPosition] = useState<PopoverPosition>({ left: 0, top: 0, maxHeight: 0, visible: false });
 
   const updatePosition = useCallback(() => {
     const anchor = anchorRef.current;
@@ -37,16 +39,26 @@ export function AnchoredPopover({
     if (!anchor || !content) return;
     const anchorRect = anchor.getBoundingClientRect();
     const contentRect = content.getBoundingClientRect();
-    const availableBelow = window.innerHeight - bottomCollisionPadding - anchorRect.bottom - gap;
-    const availableAbove = anchorRect.top - collisionPadding - gap;
+    const viewport = window.visualViewport;
+    const viewportLeft = viewport?.offsetLeft ?? 0;
+    const viewportTop = viewport?.offsetTop ?? 0;
+    const viewportWidth = viewport?.width ?? window.innerWidth;
+    const viewportHeight = viewport?.height ?? window.innerHeight;
+    const viewportBottom = viewportTop + viewportHeight;
+    const availableBelow = viewportBottom - bottomCollisionPadding - anchorRect.bottom - gap;
+    const availableAbove = anchorRect.top - viewportTop - collisionPadding - gap;
     const openBelow = availableBelow >= contentRect.height || availableBelow >= availableAbove;
     const desiredTop = openBelow ? anchorRect.bottom + gap : anchorRect.top - contentRect.height - gap;
     const desiredLeft = align === "start" ? anchorRect.left : anchorRect.right - contentRect.width;
-    const maxLeft = Math.max(collisionPadding, window.innerWidth - contentRect.width - collisionPadding);
-    const maxTop = Math.max(collisionPadding, window.innerHeight - contentRect.height - bottomCollisionPadding);
+    const minLeft = viewportLeft + collisionPadding;
+    const maxLeft = Math.max(minLeft, viewportLeft + viewportWidth - contentRect.width - collisionPadding);
+    const minTop = viewportTop + collisionPadding;
+    const maxTop = Math.max(minTop, viewportBottom - contentRect.height - bottomCollisionPadding);
+    const availableHeight = Math.max(8, openBelow ? availableBelow : availableAbove);
     setPosition({
-      left: Math.max(collisionPadding, Math.min(maxLeft, desiredLeft)),
-      top: Math.max(collisionPadding, Math.min(maxTop, desiredTop)),
+      left: Math.max(minLeft, Math.min(maxLeft, desiredLeft)),
+      top: Math.max(minTop, Math.min(maxTop, desiredTop)),
+      maxHeight: availableHeight,
       visible: true,
     });
   }, [align, anchorRef, bottomCollisionPadding, collisionPadding, gap]);
@@ -62,10 +74,14 @@ export function AnchoredPopover({
     if (observer && content) observer.observe(content);
     window.addEventListener("resize", updatePosition);
     window.addEventListener("scroll", updatePosition, true);
+    window.visualViewport?.addEventListener("resize", updatePosition);
+    window.visualViewport?.addEventListener("scroll", updatePosition);
     return () => {
       observer?.disconnect();
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
+      window.visualViewport?.removeEventListener("resize", updatePosition);
+      window.visualViewport?.removeEventListener("scroll", updatePosition);
     };
   }, [open, updatePosition]);
 
@@ -91,11 +107,20 @@ export function AnchoredPopover({
   return createPortal(
     <div
       ref={contentRef}
+      data-android-back-close
+      role={ariaLabel ? "dialog" : undefined}
+      aria-label={ariaLabel}
       className={cn(
         "theme-floating-surface app-scrollbar fixed z-50 max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-lg border bg-popover text-popover-foreground shadow-xl",
         className,
       )}
-      style={{ left: position.left, top: position.top, visibility: position.visible ? "visible" : "hidden", zIndex }}
+      style={{
+        left: position.left,
+        top: position.top,
+        maxHeight: position.maxHeight > 0 ? position.maxHeight : undefined,
+        visibility: position.visible ? "visible" : "hidden",
+        zIndex,
+      }}
       onPointerDown={(event) => event.stopPropagation()}
     >
       {children}

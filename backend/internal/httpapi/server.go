@@ -98,6 +98,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
 	mux.HandleFunc("PATCH /api/access-policy", s.updateAccessPolicy)
 	mux.HandleFunc("GET /api/notifications", s.listNotifications)
+	mux.HandleFunc("POST /api/notifications/clear-succeeded", s.clearSucceededNotifications)
 	mux.HandleFunc("DELETE /api/notifications/{id}", s.dismissNotification)
 	mux.HandleFunc("GET /api/remote-track-runs/{id}", s.getRemoteTrackRunStatus)
 	mux.HandleFunc("GET /api/users", s.listUsers)

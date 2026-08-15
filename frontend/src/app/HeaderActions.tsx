@@ -6,6 +6,8 @@ import {
   Bell,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Clipboard,
   Clock3,
   Download,
@@ -17,6 +19,7 @@ import {
   RotateCcw,
   Server,
   Settings,
+  Trash2,
   Users,
   Workflow,
   X,
@@ -45,13 +48,14 @@ import {
 } from "@/app/theme";
 import { ThemeTrigger } from "@/app/ThemeTrigger";
 import { Badge } from "@/components/ui/badge";
+import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
+import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, type CurrentUser, type WorkflowNotification, type WorkflowRun } from "@/lib/api";
 import { clearStoredServerURL, getStoredServerURL, isNativeApp } from "@/lib/serverConfig";
 import { versionLabel } from "@/lib/appInfo";
 import { buildMobileDiagnosticsText } from "@/lib/mobileDiagnostics";
 import { useMobileRuntime } from "@/app/MobileRuntime";
-import { cn } from "@/lib/utils";
 import type { UiLocale } from "@/i18n";
 import { useLocale } from "@/i18n/LocaleProvider";
 
@@ -77,6 +81,7 @@ export function HeaderActions({
   onLocaleChange,
 }: HeaderActionsProps) {
   const { t } = useTranslation();
+  const toast = useToast();
   const canRunWorkflows = hasPermission("workflows:run");
   const canSyncMetadata = hasPermission("metadata:sync");
   const canManageUsers = hasPermission("users:manage");
@@ -97,6 +102,10 @@ export function HeaderActions({
   const [reviewCount, setReviewCount] = useState(0);
   const [notifications, setNotifications] = useState<WorkflowNotification[]>([]);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [notificationPage, setNotificationPage] = useState(1);
+  const [notificationTotalPages, setNotificationTotalPages] = useState(1);
+  const [clearableNotificationCount, setClearableNotificationCount] = useState(0);
+  const [clearingSucceeded, setClearingSucceeded] = useState(false);
   const mobileRuntime = useMobileRuntime();
   const locale = useLocale();
 
@@ -151,21 +160,31 @@ export function HeaderActions({
     return () => window.removeEventListener(THEME_PALETTE_CHANGE_EVENT, syncPalette);
   }, []);
 
-  const refreshNotificationCenter = () => {
+  const notificationPageSize = 50;
+  const refreshNotificationCenter = (requestedPage = notificationPage) => {
     if (user) {
       api
-        .listNotifications(20)
+        .listNotifications(requestedPage, notificationPageSize)
         .then((page) => {
           setNotifications(page.notifications);
           setNotificationCount(page.total);
+          setNotificationPage(page.page);
+          setNotificationTotalPages(page.totalPages);
+          setClearableNotificationCount(page.clearableTotal);
         })
         .catch(() => {
           setNotifications([]);
           setNotificationCount(0);
+          setNotificationPage(1);
+          setNotificationTotalPages(1);
+          setClearableNotificationCount(0);
         });
     } else {
       setNotifications([]);
       setNotificationCount(0);
+      setNotificationPage(1);
+      setNotificationTotalPages(1);
+      setClearableNotificationCount(0);
     }
     if (canRunWorkflows) {
       api
@@ -189,20 +208,37 @@ export function HeaderActions({
     if (!user && !canRunWorkflows) return;
     const timer = window.setInterval(refreshNotificationCenter, 30000);
     return () => window.clearInterval(timer);
-  }, [canRunWorkflows, user?.id]);
+  }, [canRunWorkflows, notificationPage, user?.id]);
 
   const totalNotificationCount = notificationCount + reviewCount;
 
   const dismissFetchNotification = async (id: number) => {
     const previous = notifications;
     const previousCount = notificationCount;
+    const dismissed = notifications.find((item) => item.id === id);
     setNotifications((items) => items.filter((item) => item.id !== id));
     setNotificationCount((count) => Math.max(0, count - 1));
+    if (dismissed?.status === "succeeded") setClearableNotificationCount((count) => Math.max(0, count - 1));
     try {
       await api.dismissNotification(id);
     } catch {
       setNotifications(previous);
       setNotificationCount(previousCount);
+      if (dismissed?.status === "succeeded") setClearableNotificationCount((count) => count + 1);
+    }
+  };
+
+  const clearSucceededNotifications = async () => {
+    if (clearingSucceeded || clearableNotificationCount === 0) return;
+    setClearingSucceeded(true);
+    try {
+      await api.clearSucceededNotifications();
+      setNotificationPage(1);
+      await refreshNotificationCenter(1);
+    } catch (error) {
+      toast.notify(toastFromError(error, t("notifications.clearFailed")));
+    } finally {
+      setClearingSucceeded(false);
     }
   };
 
@@ -526,7 +562,7 @@ export function HeaderActions({
             align="right"
             ariaLabel={t("notifications.title")}
           >
-            <div className="w-[min(20rem,calc(100vw-1rem))]">
+            <div className="w-[min(22rem,calc(100vw-1rem))] max-w-full">
               <PopoverHeader
                 title={t("notifications.title")}
                 subtitle={
@@ -535,7 +571,7 @@ export function HeaderActions({
                     : t("notifications.nothingNew")
                 }
               />
-              <div className="app-scroll max-h-80 overflow-auto p-2">
+              <div className="app-scroll max-h-[min(24rem,calc(var(--visual-viewport-height)-8rem))] overflow-auto p-2">
                 {notifications.length === 0 && reviewRuns.length === 0 ? (
                   <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
                     {t("notifications.empty")}
@@ -618,18 +654,60 @@ export function HeaderActions({
                   </>
                 )}
               </div>
+              {notificationTotalPages > 1 && (
+                <div className="flex items-center justify-between gap-2 border-t px-3 py-1.5 text-xs text-muted-foreground">
+                  <span>{t("notifications.pageOf", { page: notificationPage, totalPages: notificationTotalPages })}</span>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      disabled={notificationPage <= 1}
+                      aria-label={t("collection.previousPage")}
+                      title={t("collection.previousPage")}
+                      onClick={() => setNotificationPage((page) => Math.max(1, page - 1))}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      disabled={notificationPage >= notificationTotalPages}
+                      aria-label={t("collection.nextPage")}
+                      title={t("collection.nextPage")}
+                      onClick={() =>
+                        setNotificationPage((page) => Math.min(notificationTotalPages, page + 1))
+                      }
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
               <PopoverFooter>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setReviewOpen(false);
-                    onOpenPath("/activity");
-                  }}
-                >
-                  <Activity className="h-4 w-4" />
-                  {t("notifications.openActivity")}
-                </Button>
+                <div className="flex w-full items-center justify-between gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={clearingSucceeded || clearableNotificationCount === 0}
+                    onClick={() => void clearSucceededNotifications()}
+                  >
+                    {clearingSucceeded ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    {t("notifications.clearSucceeded")}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setReviewOpen(false);
+                      onOpenPath("/activity");
+                    }}
+                  >
+                    <Activity className="h-4 w-4" />
+                    {t("notifications.openActivity")}
+                  </Button>
+                </div>
               </PopoverFooter>
             </div>
           </HeaderPopover>
@@ -770,40 +848,59 @@ function HeaderPopover({
   align?: "left" | "right";
   ariaLabel?: string;
 }) {
-  const ref = useRef<HTMLDivElement | null>(null);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const [bottomCollisionPadding, setBottomCollisionPadding] = useState(12);
+
   useEffect(() => {
     if (!open) return;
-    const handlePointer = (event: PointerEvent) => {
-      if (event.target instanceof Node && ref.current?.contains(event.target)) return;
-      onOpenChange(false);
+    const updatePlayerBoundary = () => {
+      const viewport = window.visualViewport;
+      const viewportTop = viewport?.offsetTop ?? 0;
+      const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
+      const player = document.querySelector<HTMLElement>('[data-compact-player="true"]');
+      if (!player || document.documentElement.dataset.playerMode !== "compact") {
+        setBottomCollisionPadding(12);
+        return;
+      }
+      const playerTop = player.getBoundingClientRect().top;
+      const overlap = viewportBottom - playerTop;
+      setBottomCollisionPadding(Math.max(12, overlap + 8));
     };
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onOpenChange(false);
-    };
-    document.addEventListener("pointerdown", handlePointer);
-    document.addEventListener("keydown", handleKey);
+
+    updatePlayerBoundary();
+    const player = document.querySelector<HTMLElement>('[data-compact-player="true"]');
+    const resizeObserver = typeof ResizeObserver === "undefined" || !player ? null : new ResizeObserver(updatePlayerBoundary);
+    if (resizeObserver && player) resizeObserver.observe(player);
+    const mutationObserver =
+      typeof MutationObserver === "undefined" ? null : new MutationObserver(updatePlayerBoundary);
+    mutationObserver?.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener("resize", updatePlayerBoundary);
+    window.visualViewport?.addEventListener("resize", updatePlayerBoundary);
+    window.visualViewport?.addEventListener("scroll", updatePlayerBoundary);
     return () => {
-      document.removeEventListener("pointerdown", handlePointer);
-      document.removeEventListener("keydown", handleKey);
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+      window.removeEventListener("resize", updatePlayerBoundary);
+      window.visualViewport?.removeEventListener("resize", updatePlayerBoundary);
+      window.visualViewport?.removeEventListener("scroll", updatePlayerBoundary);
     };
-  }, [open, onOpenChange]);
+  }, [open]);
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative" ref={anchorRef}>
       {cloneElement(trigger, { onClick: () => onOpenChange(!open), "aria-expanded": open })}
-      {open && (
-        <div
-          data-android-back-close
-          role={ariaLabel ? "dialog" : undefined}
-          aria-label={ariaLabel}
-          className={cn(
-            "theme-floating-surface absolute top-full z-50 mt-2 max-w-[calc(100vw-1rem)] overflow-hidden rounded-lg border bg-card shadow-xl",
-            align === "right" ? "right-0" : "left-0",
-          )}
-        >
-          {children}
-        </div>
-      )}
+      <AnchoredPopover
+        open={open}
+        anchorRef={anchorRef}
+        align={align === "right" ? "end" : "start"}
+        collisionPadding={8}
+        bottomCollisionPadding={bottomCollisionPadding}
+        ariaLabel={ariaLabel}
+        onOpenChange={onOpenChange}
+        className="max-w-[calc(100vw-1rem)] bg-card"
+      >
+        {children}
+      </AnchoredPopover>
     </div>
   );
 }

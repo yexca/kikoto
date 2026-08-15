@@ -372,6 +372,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const [remoteResult, setRemoteResult] = useState<RemoteWorksResponse | null>(null);
   const [isRemoteLoading, setIsRemoteLoading] = useState(false);
   const [remoteSourceStates, setRemoteSourceStates] = useState<Record<number, RemoteSourceViewState>>({});
+  const [remoteSelectionMode, setRemoteSelectionMode] = useState(false);
   const [settings, setSettings] = useState<{ cacheEnabled: boolean; recommendationThreshold: number } | null>(null);
   const [recommendationDialog, setRecommendationDialog] = useState<{
     work: Work;
@@ -768,6 +769,11 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
           pageSize: sourceState.pageSize,
           total: 0,
           status: "unavailable",
+          error: {
+            code: "unavailable",
+            message: "",
+            retryable: true,
+          },
           sort: remoteLibrarySort(librarySort),
           direction: sortDirection,
           sortApplied: false,
@@ -787,6 +793,10 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     remoteSourceStates,
     sortDirection,
   ]);
+
+  useEffect(() => {
+    setRemoteSelectionMode(false);
+  }, [activeTab.kind, activeTab.kind === "source" ? activeTab.source.id : 0]);
 
   useEffect(() => {
     if (selectedCode === null) {
@@ -1253,6 +1263,11 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
           pageSize: sourceState.pageSize,
           total: 0,
           status: "unavailable",
+          error: {
+            code: "unavailable",
+            message: "",
+            retryable: true,
+          },
           sort: remoteLibrarySort(librarySort),
           direction: sortDirection,
           sortApplied: false,
@@ -1624,12 +1639,17 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             onDirectionChange={changeSortDirection}
             onReshuffle={reshuffle}
           />
-          <FilterPicker
-            value={statusFilter}
-            activeCount={activeFilterCount}
-            disabled={activeTab.kind === "source"}
-            onChange={changeStatusFilter}
-          />
+          {activeTab.kind === "source" ? (
+            <IconButton
+              title={remoteSelectionMode ? t("library.cancelSelection") : t("library.select")}
+              aria-pressed={remoteSelectionMode}
+              onClick={() => setRemoteSelectionMode((current) => !current)}
+            >
+              <ListChecks className={`h-4 w-4 ${remoteSelectionMode ? "text-primary" : ""}`} />
+            </IconButton>
+          ) : (
+            <FilterPicker value={statusFilter} activeCount={activeFilterCount} onChange={changeStatusFilter} />
+          )}
         </div>
       </section>
       {activeFilterCount > 0 && (
@@ -1701,6 +1721,8 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             result={remoteResult}
             loading={isRemoteLoading}
             viewState={activeRemoteSourceState}
+            selectionMode={remoteSelectionMode}
+            onSelectionModeChange={setRemoteSelectionMode}
             searchClauses={searchClauses}
             mobileColumns={mobileColumns}
             desktopColumns={desktopColumns}
@@ -1734,6 +1756,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
               const detail = await api.getWork(workId);
               openWorkCodeRoute(detail.primaryCode, "tracked", activeTab.source.id);
             }}
+            onRetry={() => loadRemoteWorksNow(activeTab.source, remoteSearchQuery, activeRemoteSourceState.page)}
           />
         </div>
       ) : (
@@ -1836,7 +1859,6 @@ function LibraryPrimaryTabs({
           active={activeSourceId === source.id}
           onClick={() => onSourceChange(source)}
           icon={<Cloud className="h-4 w-4" />}
-          disabled={!source.enabled}
         >
           {source.displayName}
         </TabButton>
@@ -1877,6 +1899,8 @@ function RemoteSourcePanel({
   result,
   loading,
   viewState,
+  selectionMode,
+  onSelectionModeChange,
   searchClauses,
   mobileColumns,
   desktopColumns,
@@ -1886,11 +1910,14 @@ function RemoteSourcePanel({
   onTagOpen,
   onWorkStateChanged,
   onSynced,
+  onRetry,
 }: {
   source: LibrarySource;
   result: RemoteWorksResponse | null;
   loading: boolean;
   viewState: RemoteSourceViewState;
+  selectionMode: boolean;
+  onSelectionModeChange: (active: boolean) => void;
   searchClauses: SearchClause[];
   mobileColumns: LibraryColumnSetting;
   desktopColumns: LibraryColumnSetting;
@@ -1903,6 +1930,7 @@ function RemoteSourcePanel({
     patch: Partial<Pick<RemoteWork, "workId" | "favorite" | "listeningStatus">>,
   ) => void;
   onSynced: (workID: number, options?: { openTracked?: boolean }) => Promise<void>;
+  onRetry: () => void;
 }) {
   const toast = useToast();
   const { t } = useTranslation();
@@ -1910,7 +1938,6 @@ function RemoteSourcePanel({
   const isInitialLoading = loading && result === null;
   const [isSyncingCode, setIsSyncingCode] = useState<string | null>(null);
   const [bulkCodes, setBulkCodes] = useState<Set<string>>(new Set());
-  const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ codes: string[]; run: () => Promise<void> } | null>(null);
   const fetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged: () => onSynced(0) });
@@ -1962,6 +1989,13 @@ function RemoteSourcePanel({
   const remoteTopPagination = (
     <WorkCollectionPagination {...remotePaginationProps} placement="top" compactMobile compactTop />
   );
+  const remoteError =
+    result?.error ??
+    (result?.status === "disabled"
+      ? { code: "disabled", message: "", retryable: false }
+      : result?.status === "unavailable"
+        ? { code: "unavailable", message: "", retryable: true }
+        : null);
 
   useEffect(() => {
     setBulkCodes(
@@ -1969,6 +2003,10 @@ function RemoteSourcePanel({
         new Set(Array.from(current).filter((code) => visibleWorks.some((work) => work.primaryCode === code))),
     );
   }, [visibleWorks]);
+
+  useEffect(() => {
+    if (!selectionMode) setBulkCodes(new Set());
+  }, [selectionMode]);
 
   useEffect(() => {
     if (loading || page <= totalPages) return;
@@ -2077,34 +2115,7 @@ function RemoteSourcePanel({
 
   return (
     <section className="space-y-3 pb-4 lg:pb-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold">{source.displayName}</h2>
-          <p className="text-sm text-muted-foreground">{t("library.remoteBrowseDescription")}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant={selectionMode ? "default" : "outline"}
-            size="sm"
-            onClick={() => {
-              setSelectionMode((value) => {
-                if (value) setBulkCodes(new Set());
-                return !value;
-              });
-            }}
-          >
-            {t("library.select")}
-          </Button>
-          <Badge variant={source.enabled ? "outline" : "warning"}>
-            {source.enabled ? t("library.enabled") : t("library.disabled")}
-          </Badge>
-          <Badge variant="secondary">{result?.status ?? t("common.loading")}</Badge>
-          {result?.status === "ok" && !result.sortApplied && (
-            <Badge variant="warning">{t("library.sourceOrderFallback")}</Badge>
-          )}
-        </div>
-      </div>
-      {remoteTopPagination}
+      {!remoteError && remoteTopPagination}
       {selectionMode && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
           <div className="text-muted-foreground">{t("library.selectedCount", { count: selectedWorks.length })}</div>
@@ -2117,7 +2128,7 @@ function RemoteSourcePanel({
               size="sm"
               onClick={() => {
                 setBulkCodes(new Set());
-                setSelectionMode(false);
+                onSelectionModeChange(false);
               }}
             >
               {t("library.cancelSelection")}
@@ -2145,6 +2156,8 @@ function RemoteSourcePanel({
       )}
       {isInitialLoading ? (
         <RemoteWorkGridSkeleton mobileColumns={mobileColumns} desktopColumns={desktopColumns} />
+      ) : remoteError ? (
+        <RemoteSourceErrorCard error={remoteError} onRetry={onRetry} />
       ) : visibleWorks.length === 0 ? (
         <Card>
           <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5 text-sm text-muted-foreground">
@@ -2192,7 +2205,7 @@ function RemoteSourcePanel({
           </section>
         </div>
       )}
-      <WorkCollectionPagination {...remotePaginationProps} placement="bottom" />
+      {!remoteError && <WorkCollectionPagination {...remotePaginationProps} placement="bottom" />}
       {saveConfirm && (
         <SaveConfirmModal
           count={saveConfirm.codes.length}
@@ -2202,6 +2215,55 @@ function RemoteSourcePanel({
       )}
       <RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
     </section>
+  );
+}
+
+function RemoteSourceErrorCard({
+  error,
+  onRetry,
+}: {
+  error: { code: string; message: string; url?: string; retryable: boolean };
+  onRetry: () => void;
+}) {
+  const { t } = useTranslation();
+  const disabled = error.code === "disabled";
+  const url = safeExternalHTTPURL(error.url);
+  return (
+    <Card className="border-error-border bg-error-surface">
+      <CardContent className="flex flex-col gap-4 p-5 text-sm text-error-foreground sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <CloudOff className="mt-0.5 h-5 w-5 shrink-0" />
+          <div className="min-w-0 space-y-1">
+            <div className="font-semibold">
+              {disabled ? t("library.remoteSourceDisabledTitle") : t("library.remoteSourceUnavailableTitle")}
+            </div>
+            <p className="text-sm/6">
+              {disabled
+                ? t("library.remoteSourceDisabledDescription")
+                : t("library.remoteSourceUnavailableDescription")}
+            </p>
+            {error.message && <p className="text-xs/5 opacity-80">{error.message}</p>}
+            {url && (
+              <a
+                className="inline-flex max-w-full items-start gap-1 break-all text-xs underline underline-offset-2 hover:no-underline"
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>{url}</span>
+              </a>
+            )}
+          </div>
+        </div>
+        {error.retryable && (
+          <Button variant="outline" size="sm" className="shrink-0" onClick={onRetry}>
+            <RefreshCw className="h-4 w-4" />
+            {t("library.retryRemoteSource")}
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

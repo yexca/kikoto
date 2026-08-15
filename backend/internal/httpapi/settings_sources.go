@@ -186,10 +186,23 @@ type remoteWorksResponse struct {
 	PageSize    int                 `json:"pageSize"`
 	Total       int                 `json:"total"`
 	Status      string              `json:"status"`
+	Error       *remoteWorksError   `json:"error,omitempty"`
 	Sort        string              `json:"sort"`
 	Direction   string              `json:"direction"`
 	SortApplied bool                `json:"sortApplied"`
 }
+
+type remoteWorksError struct {
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	URL       string `json:"url,omitempty"`
+	Retryable bool   `json:"retryable"`
+}
+
+const (
+	remoteSourceDisabledMessage    = "Remote source is disabled. Enable it in source settings before browsing."
+	remoteSourceUnavailableMessage = "Remote source service is unavailable. Check the configured endpoint and try again."
+)
 
 type librarySource struct {
 	ID           int64  `json:"id"`
@@ -1091,15 +1104,22 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source is not a supported kikoeru source"})
 		return
 	}
+	diagnosticURL := remoteSourceDiagnosticURL(r.Context(), source.Endpoint)
 	if !source.Enabled {
 		sortName, _ := remoteSourceSort(r.URL.Query().Get("sort"))
 		writeJSON(w, http.StatusOK, remoteWorksResponse{
-			SourceID:  id,
-			Works:     []remoteWorkSummary{},
-			Page:      queryInt(r, "page", 1),
-			PageSize:  queryInt(r, "pageSize", 24),
-			Total:     0,
-			Status:    "disabled",
+			SourceID: id,
+			Works:    []remoteWorkSummary{},
+			Page:     queryInt(r, "page", 1),
+			PageSize: queryInt(r, "pageSize", 24),
+			Total:    0,
+			Status:   "disabled",
+			Error: &remoteWorksError{
+				Code:      "disabled",
+				Message:   remoteSourceDisabledMessage,
+				URL:       diagnosticURL,
+				Retryable: false,
+			},
 			Sort:      sortName,
 			Direction: remoteSortDirection(r.URL.Query().Get("direction")),
 		})
@@ -1123,7 +1143,7 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			_ = s.updateSourceHealth(r.Context(), id, "unavailable")
-			writeUpstreamError(w, err)
+			s.writeRemoteWorksUnavailable(w, source, page, pageSize, sortName, direction, diagnosticURL, err)
 			return
 		}
 		_ = s.updateSourceHealth(r.Context(), id, "healthy")
@@ -1140,7 +1160,7 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			_ = s.updateSourceHealth(r.Context(), id, "unavailable")
-			writeUpstreamError(w, err)
+			s.writeRemoteWorksUnavailable(w, source, page, pageSize, sortName, direction, diagnosticURL, err)
 			return
 		}
 		_ = s.updateSourceHealth(r.Context(), id, "healthy")
@@ -1153,7 +1173,7 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 	remotePage, err := client.ListWorksSortedSeeded(r.Context(), page, pageSize, plan.PushdownQuery, upstreamOrder, direction, r.URL.Query().Get("seed"))
 	if err != nil {
 		_ = s.updateSourceHealth(r.Context(), id, "unavailable")
-		writeUpstreamError(w, err)
+		s.writeRemoteWorksUnavailable(w, source, page, pageSize, sortName, direction, diagnosticURL, err)
 		return
 	}
 	_ = s.updateSourceHealth(r.Context(), id, "healthy")
@@ -1182,6 +1202,37 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		Sort:        sortName,
 		Direction:   direction,
 		SortApplied: remotePage.SortApplied,
+	})
+}
+
+func (s *Server) writeRemoteWorksUnavailable(
+	w http.ResponseWriter,
+	source remoteSourceForUse,
+	page int,
+	pageSize int,
+	sortName string,
+	direction string,
+	diagnosticURL string,
+	err error,
+) {
+	// Keep the upstream detail in protected logs while returning a stable,
+	// source-local status that the library can render without exposing it.
+	slog.Error("remote source works request failed", "source_id", source.ID, "error", err)
+	writeJSON(w, http.StatusOK, remoteWorksResponse{
+		SourceID: source.ID,
+		Works:    []remoteWorkSummary{},
+		Page:     page,
+		PageSize: pageSize,
+		Total:    0,
+		Status:   "unavailable",
+		Error: &remoteWorksError{
+			Code:      "unavailable",
+			Message:   remoteSourceUnavailableMessage,
+			URL:       diagnosticURL,
+			Retryable: true,
+		},
+		Sort:      sortName,
+		Direction: direction,
 	})
 }
 
@@ -6956,6 +7007,32 @@ func validRemoteWorkURLTemplate(value string) bool {
 	}
 	remainder := strings.NewReplacer("{code}", "", "{codeLower}", "").Replace(value)
 	return !strings.ContainsAny(remainder, "{}")
+}
+
+// publicRemoteSourceURL returns a diagnostic destination derived from the
+// configured source endpoint. Query strings are intentionally removed because
+// an operator may use them for tokens or other private request metadata.
+func publicRemoteSourceURL(endpoint fileSourceEndpoint) string {
+	for _, candidate := range []string{endpoint.APIURL, endpoint.BaseURL, endpoint.FallbackURL} {
+		parsed, err := outbound.ParseHTTPURL(candidate)
+		if err != nil {
+			continue
+		}
+		parsed.User = nil
+		parsed.RawQuery = ""
+		parsed.ForceQuery = false
+		parsed.Fragment = ""
+		return strings.TrimRight(parsed.String(), "/")
+	}
+	return ""
+}
+
+func remoteSourceDiagnosticURL(ctx context.Context, endpoint fileSourceEndpoint) string {
+	actor, ok := userFromContext(ctx)
+	if !ok || !userHasPermission(actor, "sources:write") {
+		return ""
+	}
+	return publicRemoteSourceURL(endpoint)
 }
 
 func publicRemoteWorkURL(endpoint fileSourceEndpoint, code string) string {

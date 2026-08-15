@@ -1765,7 +1765,10 @@ export function PlayerDock() {
     const scrubDelta = activeScrub ? activeScrub.previewTime - activeScrub.originTime : 0;
     const labelPosition = Math.max(22, Math.min(78, originProgress));
     return (
-      <div className="fixed bottom-[var(--compact-player-mobile-offset)] left-[max(0.75rem,var(--safe-area-left))] right-[max(0.75rem,var(--safe-area-right))] z-40 lg:inset-auto lg:bottom-[var(--compact-player-desktop-offset)] lg:right-6 lg:w-[390px]">
+      <div
+        data-compact-player="true"
+        className="fixed bottom-[var(--compact-player-mobile-offset)] left-[max(0.75rem,var(--safe-area-left))] right-[max(0.75rem,var(--safe-area-right))] z-40 lg:inset-auto lg:bottom-[var(--compact-player-desktop-offset)] lg:right-6 lg:w-[390px]"
+      >
         {activeScrub && (
           <div className="pointer-events-none absolute inset-x-0 bottom-full h-12" aria-live="polite">
             <div className="absolute bottom-0 h-7 w-px bg-primary/60" style={{ left: `${originProgress}%` }} />

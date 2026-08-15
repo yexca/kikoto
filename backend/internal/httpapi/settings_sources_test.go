@@ -503,6 +503,108 @@ func TestPublicRemoteWorkURL(t *testing.T) {
 	}
 }
 
+func TestListRemoteSourceWorksReturnsDisabledStatusWithEndpointURL(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`INSERT INTO file_source (id, code, display_name, source_type, enabled) VALUES (1, 'remote', 'Example Remote', 'kikoeru_compatible', 0)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO file_source_endpoint (file_source_id, api_url, base_url)
+		VALUES (1, 'https://remote.example/api?token=synthetic-token', 'https://remote.example')
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewServer(db, config.Config{})
+	request := httptest.NewRequest(http.MethodGet, "/api/remote-sources/1/works?page=2&pageSize=12", nil)
+	request.SetPathValue("id", "1")
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"sources:write"}}))
+	response := httptest.NewRecorder()
+	server.listRemoteSourceWorks(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+	}
+	var page remoteWorksResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if page.Status != "disabled" || len(page.Works) != 0 || page.Error == nil || page.Error.Code != "disabled" {
+		t.Fatalf("page = %+v, want disabled empty result", page)
+	}
+	if page.Error.URL != "https://remote.example/api" || strings.Contains(page.Error.URL, "token") {
+		t.Fatalf("diagnostic URL = %q, want query-free configured URL", page.Error.URL)
+	}
+}
+
+func TestListRemoteSourceWorksReturnsUnavailableStatusWithoutUpstreamBody(t *testing.T) {
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "synthetic upstream body must not be returned", http.StatusBadGateway)
+	}))
+	defer remote.Close()
+
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`INSERT INTO file_source (id, code, display_name, source_type, enabled) VALUES (1, 'remote', 'Example Remote', 'kikoeru_compatible', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO file_source_endpoint (file_source_id, api_url, base_url) VALUES (1, ?, ?)`, remote.URL, remote.URL); err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewServer(db, config.Config{})
+	request := httptest.NewRequest(http.MethodGet, "/api/remote-sources/1/works", nil)
+	request.SetPathValue("id", "1")
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"system:admin"}}))
+	response := httptest.NewRecorder()
+	server.listRemoteSourceWorks(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+	}
+	var page remoteWorksResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if page.Status != "unavailable" || len(page.Works) != 0 || page.Error == nil || page.Error.Code != "unavailable" {
+		t.Fatalf("page = %+v, want unavailable empty result", page)
+	}
+	if page.Error.URL != remote.URL || strings.Contains(page.Error.Message, "synthetic upstream") || strings.Contains(response.Body.String(), "synthetic upstream") {
+		t.Fatalf("public response leaked upstream detail: %s", response.Body.String())
+	}
+}
+
+func TestPublicRemoteSourceURLRemovesQueryAndCredentials(t *testing.T) {
+	if got := publicRemoteSourceURL(fileSourceEndpoint{APIURL: "https://remote.example/api?token=synthetic-token"}); got != "https://remote.example/api" {
+		t.Fatalf("publicRemoteSourceURL() = %q", got)
+	}
+	if got := publicRemoteSourceURL(fileSourceEndpoint{APIURL: "https://synthetic-user:synthetic-password@remote.example/api"}); got != "" {
+		t.Fatalf("publicRemoteSourceURL accepted credentials: %q", got)
+	}
+}
+
+func TestRemoteSourceDiagnosticURLRequiresSourceAdministration(t *testing.T) {
+	endpoint := fileSourceEndpoint{APIURL: "https://remote.example/api?token=synthetic-token"}
+	tests := []struct {
+		name        string
+		permissions []string
+		want        string
+	}{
+		{name: "anonymous"},
+		{name: "library reader", permissions: []string{"library:read"}},
+		{name: "administrator", permissions: []string{"sources:write"}, want: "https://remote.example/api"},
+		{name: "super administrator", permissions: []string{"system:admin"}, want: "https://remote.example/api"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			if test.permissions != nil {
+				ctx = context.WithValue(ctx, currentUserKey, currentUser{ID: 1, Permissions: test.permissions})
+			}
+			if got := remoteSourceDiagnosticURL(ctx, endpoint); got != test.want {
+				t.Fatalf("remoteSourceDiagnosticURL() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestUpdateSourceHealthOnlyWritesSameStatusAfterThrottleWindow(t *testing.T) {
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote', 'Remote', 'kikoeru_compatible')`); err != nil {

@@ -21,6 +21,9 @@ describe("AppearanceControls", () => {
       expect(rendered).toContain(`role="group" aria-label="${label}"`);
       expect(rendered).toContain(`>${label}</div>`);
     }
+    expect(rendered).toContain('aria-label="UI language"');
+    expect(rendered).toContain('aria-label="Mode"');
+    expect(rendered).toContain('<select');
   });
 
   it("keeps each style preview's authored accent color", () => {

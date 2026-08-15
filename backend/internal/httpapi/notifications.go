@@ -21,6 +21,23 @@ type workflowNotificationRecord struct {
 	CreatedAt     string `json:"createdAt"`
 }
 
+type workflowNotificationsPage struct {
+	Notifications  []workflowNotificationRecord `json:"notifications"`
+	Page           int                          `json:"page"`
+	PageSize       int                          `json:"pageSize"`
+	Total          int64                        `json:"total"`
+	TotalPages     int                          `json:"totalPages"`
+	ClearableTotal int64                        `json:"clearableTotal"`
+}
+
+const (
+	defaultNotificationPageSize = 50
+	maxNotificationPageSize     = 100
+	maxNotificationPage         = 100000
+)
+
+const clearableNotificationTypesSQL = "'remote_fetch', 'remote_track'"
+
 type remoteTrackRunStatus struct {
 	RunID       int64  `json:"runId"`
 	Status      string `json:"status"`
@@ -63,10 +80,7 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	limit := 20
-	if parsed, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && parsed > 0 {
-		limit = min(parsed, 100)
-	}
+	page, pageSize := notificationPageParams(r)
 	var total int64
 	if err := s.db.QueryRowContext(r.Context(), `
 		SELECT COUNT(*) FROM workflow_notification
@@ -75,6 +89,20 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	var clearableTotal int64
+	if err := s.db.QueryRowContext(r.Context(), `
+		SELECT COUNT(*) FROM workflow_notification
+		WHERE user_id = ? AND dismissed_at IS NULL AND status = 'succeeded'
+			AND notification_type IN (`+clearableNotificationTypesSQL+`)
+	`, actor.ID).Scan(&clearableTotal); err != nil {
+		writeError(w, err)
+		return
+	}
+	totalPages := max(1, (int(total)+pageSize-1)/pageSize)
+	if page > totalPages {
+		page = totalPages
+	}
+	offset := (page - 1) * pageSize
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT notification.id, notification.workflow_run_id, notification.notification_type,
 			notification.status, notification.work_id,
@@ -84,8 +112,8 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 		INNER JOIN workflow_run AS run ON run.id = notification.workflow_run_id
 		WHERE notification.user_id = ? AND notification.dismissed_at IS NULL AND notification.status IN ('succeeded', 'failed')
 		ORDER BY notification.created_at DESC, notification.id DESC
-		LIMIT ?
-	`, actor.ID, limit)
+		LIMIT ? OFFSET ?
+	`, actor.ID, pageSize, offset)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -112,7 +140,32 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"notifications": notifications, "total": total})
+	writeJSON(w, http.StatusOK, workflowNotificationsPage{
+		Notifications:  notifications,
+		Page:           page,
+		PageSize:       pageSize,
+		Total:          total,
+		TotalPages:     totalPages,
+		ClearableTotal: clearableTotal,
+	})
+}
+
+func notificationPageParams(r *http.Request) (int, int) {
+	page := 1
+	pageSize := defaultNotificationPageSize
+	if parsed, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("page"))); err == nil && parsed > 0 {
+		page = min(parsed, maxNotificationPage)
+	}
+	pageSizeValue := strings.TrimSpace(r.URL.Query().Get("pageSize"))
+	if pageSizeValue == "" {
+		// Keep the old limit parameter working for API clients during the
+		// transition to page/pageSize.
+		pageSizeValue = strings.TrimSpace(r.URL.Query().Get("limit"))
+	}
+	if parsed, err := strconv.Atoi(pageSizeValue); err == nil && parsed > 0 {
+		pageSize = min(parsed, maxNotificationPageSize)
+	}
+	return page, pageSize
 }
 
 func (s *Server) dismissNotification(w http.ResponseWriter, r *http.Request) {
@@ -140,6 +193,25 @@ func (s *Server) dismissNotification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *Server) clearSucceededNotifications(w http.ResponseWriter, r *http.Request) {
+	actor, ok := s.requirePermission(w, r, "library:read")
+	if !ok {
+		return
+	}
+	result, err := s.db.ExecContext(r.Context(), `
+		UPDATE workflow_notification
+		SET dismissed_at = CURRENT_TIMESTAMP
+		WHERE user_id = ? AND dismissed_at IS NULL AND status = 'succeeded'
+			AND notification_type IN (`+clearableNotificationTypesSQL+`)
+	`, actor.ID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	affected, _ := result.RowsAffected()
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "dismissed": affected})
 }
 
 func (s *Server) createRemoteFetchNotification(ctx context.Context, runID int64, status string, payload remoteWorkFetchJobPayload) error {

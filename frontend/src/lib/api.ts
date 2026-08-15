@@ -506,6 +506,12 @@ export type RemoteWorksResponse = {
   pageSize: number;
   total: number;
   status: string;
+  error?: {
+    code: "disabled" | "unavailable" | string;
+    message: string;
+    url?: string;
+    retryable: boolean;
+  };
   sort: LibrarySort;
   direction: SortDirection;
   sortApplied: boolean;
@@ -1071,7 +1077,11 @@ export type WorkflowNotification = {
 
 export type WorkflowNotificationsPage = {
   notifications: WorkflowNotification[];
+  page: number;
+  pageSize: number;
   total: number;
+  totalPages: number;
+  clearableTotal: number;
 };
 
 export type RemoteTrackRunStatus = {
@@ -1758,8 +1768,11 @@ export const api = {
   }) => patchJSONBody<AuthState>("/api/auth/me", payload),
   login,
   logout,
-  listNotifications: (limit = 20) => getJSON<WorkflowNotificationsPage>(`/api/notifications?limit=${limit}`),
+  listNotifications: (page = 1, pageSize = 50) =>
+    getJSON<WorkflowNotificationsPage>(`/api/notifications?page=${page}&pageSize=${pageSize}`),
   dismissNotification: (id: number) => deleteJSON<{ ok: boolean }>(`/api/notifications/${id}`),
+  clearSucceededNotifications: () =>
+    postJSON<{ ok: boolean; dismissed: number }>('/api/notifications/clear-succeeded'),
   getRemoteTrackRunStatus: (id: number) => getJSON<RemoteTrackRunStatus>(`/api/remote-track-runs/${id}`),
   listUsers: () => getJSON<ManagedUser[]>("/api/users"),
   createUser: (payload: {

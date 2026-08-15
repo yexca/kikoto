@@ -239,8 +239,25 @@ async function mockWorkflows(
     total: 1,
     viewTotals: { running: 0, review: 0, failed: 0, completed: 1 },
   },
-  notificationPage = { notifications: [] as Array<Record<string, unknown>>, total: 0 },
+  notificationPage:
+    | {
+        notifications: Array<Record<string, unknown>>;
+        page?: number;
+        pageSize?: number;
+        total: number;
+        totalPages?: number;
+        clearableTotal?: number;
+      }
+    | ((page: number, pageSize: number) => {
+        notifications: Array<Record<string, unknown>>;
+        page?: number;
+        pageSize?: number;
+        total: number;
+        totalPages?: number;
+        clearableTotal?: number;
+      }) = { notifications: [] as Array<Record<string, unknown>>, total: 0 },
   onAvailabilityWatch?: (payload: unknown) => void,
+  onClearSucceeded?: () => void,
 ) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
@@ -263,7 +280,31 @@ async function mockWorkflows(
       return;
     }
     if (url.pathname === "/api/notifications") {
-      await route.fulfill({ json: notificationPage });
+      const requestedPage = Math.max(1, Number(url.searchParams.get("page") ?? "1"));
+      const requestedPageSize = Math.max(1, Number(url.searchParams.get("pageSize") ?? "50"));
+      const response =
+        typeof notificationPage === "function"
+          ? notificationPage(requestedPage, requestedPageSize)
+          : notificationPage;
+      const clearableTotal = response.notifications.filter(
+        (notification) =>
+          notification.status === "succeeded" &&
+          (notification.type === "remote_fetch" || notification.type === "remote_track"),
+      ).length;
+      await route.fulfill({
+        json: {
+          page: requestedPage,
+          pageSize: requestedPageSize,
+          totalPages: 1,
+          clearableTotal,
+          ...response,
+        },
+      });
+      return;
+    }
+    if (url.pathname === "/api/notifications/clear-succeeded" && route.request().method() === "POST") {
+      onClearSucceeded?.();
+      await route.fulfill({ json: { ok: true, dismissed: 1 } });
       return;
     }
     if (url.pathname.startsWith("/api/notifications/") && route.request().method() === "DELETE") {
@@ -487,6 +528,92 @@ test("mobile notification center opens fetched works and dismisses individual re
 
   await page.getByText("Fetch failed for RJ00000003.", { exact: true }).click();
   await expect(page).toHaveURL(/\/RJ00000003\?view=local$/);
+});
+
+test("notification center paginates and clears only succeeded remote notifications", async ({ page }) => {
+  let cleared = false;
+  const futureActionNotification = {
+    id: 3,
+    workflowRunId: 73,
+    type: "future_review_action",
+    status: "succeeded",
+    workId: 13,
+    workCode: "RJ00000004",
+    message: "Review action remains available.",
+    createdAt: "2026-07-27T03:00:00Z",
+  };
+  await mockWorkflows(
+    page,
+    undefined,
+    undefined,
+    (requestedPage) => {
+      if (cleared) {
+        return { notifications: [futureActionNotification], page: 1, total: 1, totalPages: 1, clearableTotal: 0 };
+      }
+      if (requestedPage === 2) {
+        return {
+          notifications: [futureActionNotification],
+          page: 2,
+          total: 51,
+          totalPages: 2,
+          clearableTotal: 1,
+        };
+      }
+      return {
+        notifications: [
+          {
+            id: 2,
+            workflowRunId: 72,
+            type: "remote_track",
+            status: "failed",
+            workId: 12,
+            workCode: "RJ00000003",
+            message: "Track failed for RJ00000003.",
+            createdAt: "2026-07-27T02:00:00Z",
+          },
+          {
+            id: 1,
+            workflowRunId: 71,
+            type: "remote_fetch",
+            status: "succeeded",
+            workId: 11,
+            workCode: "RJ00000002",
+            message: "Fetch completed for RJ00000002.",
+            createdAt: "2026-07-27T01:00:00Z",
+          },
+        ],
+        page: 1,
+        total: 51,
+        totalPages: 2,
+        clearableTotal: 1,
+      };
+    },
+    undefined,
+    () => {
+      cleared = true;
+    },
+  );
+  await page.goto("/workflows");
+
+  const notificationButton = page.getByRole("button", { name: "Notifications", exact: true });
+  await notificationButton.click();
+  const dialog = page.getByRole("dialog", { name: "Notifications" });
+  await expect(dialog.getByText("Fetch completed for RJ00000002.", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Page 1 of 2", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Clear succeeded", exact: true })).toBeEnabled();
+
+  await dialog.getByRole("button", { name: "Next page", exact: true }).click();
+  await expect(dialog.getByText("Page 2 of 2", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Review action remains available.", { exact: true })).toBeVisible();
+
+  const clearRequest = page.waitForRequest(
+    (request) => request.method() === "POST" && request.url().endsWith("/api/notifications/clear-succeeded"),
+  );
+  await dialog.getByRole("button", { name: "Clear succeeded", exact: true }).click();
+  await clearRequest;
+  await expect(dialog.getByText("Review action remains available.", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Fetch completed for RJ00000002.", { exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Clear succeeded", exact: true })).toBeDisabled();
 });
 
 test("definitions foreground runnable presets and configure DLsite popular collection", async ({ page }) => {
@@ -1018,7 +1145,7 @@ test("mobile header orders actions and separates popovers from the quick-action 
   await page.getByRole("button", { name: "Open appearance settings" }).click();
   const appearancePopover = page.getByRole("dialog", { name: "Appearance" });
   await expect(appearancePopover).toBeVisible();
-  await expect(appearancePopover.getByText("Mode, style, and color", { exact: true })).toBeVisible();
+  await expect(appearancePopover.getByText("UI language, mode, style, and color", { exact: true })).toBeVisible();
   await expect(appearancePopover.getByRole("button", { name: "Activity", exact: true })).toHaveCount(0);
 
   const modeGroup = appearancePopover.getByRole("group", { name: "Mode" });
@@ -1027,7 +1154,7 @@ test("mobile header orders actions and separates popovers from the quick-action 
   expect(modeBox!.x).toBeGreaterThanOrEqual(0);
   expect(modeBox!.x + modeBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 
-  await appearancePopover.getByRole("button", { name: "dark" }).click();
+  await modeGroup.getByRole("combobox").selectOption("dark");
   await expect(page.locator("html")).toHaveClass(/dark/);
   await appearancePopover.getByRole("button", { name: "Apple", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");
@@ -1050,7 +1177,7 @@ test("desktop header popovers render above page content", async ({ page }) => {
   await page.goto("/workflows");
 
   await page.getByRole("button", { name: "Open appearance settings" }).click();
-  await expect(page.getByText("Mode, style, and color", { exact: true })).toBeVisible();
+  await expect(page.getByText("UI language, mode, style, and color", { exact: true })).toBeVisible();
   const modeGroup = page.getByRole("group", { name: "Mode" });
   await expect(modeGroup).toBeVisible();
   const headerBox = await page.locator("header").boundingBox();
@@ -1058,7 +1185,7 @@ test("desktop header popovers render above page content", async ({ page }) => {
   expect(headerBox).not.toBeNull();
   expect(popoverBox).not.toBeNull();
   expect(popoverBox!.y + popoverBox!.height).toBeGreaterThan(headerBox!.y + headerBox!.height);
-  await page.getByRole("button", { name: "dark" }).click();
+  await page.getByRole("group", { name: "Mode" }).getByRole("combobox").selectOption("dark");
   await expect(page.locator("html")).toHaveClass(/dark/);
 });
 

@@ -500,6 +500,8 @@ async function mockRemoteSource(
     fetchRootConflict?: boolean;
     persisted?: boolean;
     authenticated?: boolean;
+    remoteStatus?: "ok" | "disabled" | "unavailable";
+    remoteErrorURL?: string;
     onFetchPlan?: (body: Record<string, unknown>) => void;
     trackControl?: RemoteTrackControl;
   } = {},
@@ -534,7 +536,7 @@ async function mockRemoteSource(
             code: "example_remote",
             displayName: "Example Remote",
             sourceType: "kikoeru_compatible",
-            enabled: true,
+            enabled: options.remoteStatus !== "disabled",
             cacheEnabled: true,
           },
         ],
@@ -685,6 +687,31 @@ async function mockRemoteSource(
       onRemoteRequest(url);
       const pageNumber = Number(url.searchParams.get("page") ?? "1");
       const sort = url.searchParams.get("sort") ?? "recent";
+      if (options.remoteStatus && options.remoteStatus !== "ok") {
+        await route.fulfill({
+          json: {
+            sourceId: 1,
+            page: pageNumber,
+            pageSize: 24,
+            total: 0,
+            status: options.remoteStatus,
+            error: {
+              code: options.remoteStatus,
+              message:
+                options.remoteStatus === "disabled"
+                  ? "Remote source is disabled."
+                  : "Remote source service is unavailable.",
+              url: options.remoteErrorURL,
+              retryable: options.remoteStatus === "unavailable",
+            },
+            sort,
+            direction: url.searchParams.get("direction") ?? "desc",
+            sortApplied: false,
+            works: [],
+          },
+        });
+        return;
+      }
       await route.fulfill({
         json: {
           sourceId: 1,
@@ -1114,14 +1141,17 @@ test("remote source reuses the library grid, source sorting, localized tags, and
 
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "退廃/背徳/インモラル", exact: true })).toBeVisible();
-  await expect(page.getByText("Page 1 / 2 · 30 works", { exact: true })).toHaveCount(1);
+  await expect(page.getByRole("navigation", { name: "Pages", exact: true })).toBeVisible();
   const pageSizeButton = page.getByRole("button", { name: "Items per page: 24" });
   await expect(pageSizeButton).toBeVisible();
   await pageSizeButton.click();
   await expect(page.getByRole("menu", { name: "Items per page" })).toBeVisible();
-  await page.getByRole("menuitemradio", { name: "12 per page" }).click();
+  await page.getByRole("menuitemradio", { name: "12 / page" }).click();
   await expect.poll(() => requests.some((url) => url.searchParams.get("pageSize") === "12")).toBe(true);
-  await expect(page.getByTitle("Mark filters are unavailable for source browsing")).toBeDisabled();
+  const selectButton = page.getByRole("button", { name: "Select", exact: true });
+  await expect(selectButton).toBeVisible();
+  await selectButton.click();
+  await expect(page.getByLabel("Select work").first()).toBeVisible();
 
   await page.getByRole("button", { name: "Sort: Recently added" }).click();
   await page.getByRole("button", { name: "Code", exact: true }).click();
@@ -1136,6 +1166,35 @@ test("remote source reuses the library grid, source sorting, localized tags, and
   await page.getByTitle("Next page").last().click();
   await expect(page.getByText("Remote page two work", { exact: true })).toBeVisible();
   await expect.poll(() => requests.some((url) => url.searchParams.get("page") === "2")).toBe(true);
+});
+
+test("remote source renders disabled and unavailable failures inside the works area", async ({ page }) => {
+  await mockRemoteSource(page, () => undefined, { remoteStatus: "disabled" });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+
+  await expect(page.getByText("Remote source is disabled", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try again", exact: true })).toHaveCount(0);
+  await expect(page.getByText("Remote Japanese work", { exact: true })).toHaveCount(0);
+});
+
+test("remote source unavailable failure shows the backend URL and retry action", async ({ page }) => {
+  const requests: URL[] = [];
+  await mockRemoteSource(page, (url) => requests.push(url), {
+    remoteStatus: "unavailable",
+    remoteErrorURL: "https://remote.example/api",
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+
+  await expect(page.getByText("Remote source is unavailable", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "https://remote.example/api" })).toHaveAttribute(
+    "href",
+    "https://remote.example/api",
+  );
+  const initialRequests = requests.length;
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect.poll(() => requests.length).toBeGreaterThan(initialRequests);
 });
 
 test("remote source keeps alias matches returned by the backend", async ({ page }) => {
