@@ -1771,8 +1771,7 @@ export const api = {
   listNotifications: (page = 1, pageSize = 50) =>
     getJSON<WorkflowNotificationsPage>(`/api/notifications?page=${page}&pageSize=${pageSize}`),
   dismissNotification: (id: number) => deleteJSON<{ ok: boolean }>(`/api/notifications/${id}`),
-  clearSucceededNotifications: () =>
-    postJSON<{ ok: boolean; dismissed: number }>('/api/notifications/clear-succeeded'),
+  clearSucceededNotifications: () => postJSON<{ ok: boolean; dismissed: number }>("/api/notifications/clear-succeeded"),
   getRemoteTrackRunStatus: (id: number) => getJSON<RemoteTrackRunStatus>(`/api/remote-track-runs/${id}`),
   listUsers: () => getJSON<ManagedUser[]>("/api/users"),
   createUser: (payload: {

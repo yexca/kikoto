@@ -1,10 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-async function mockAppShell(
-  page: Page,
-  anonymousAccessEnabled = true,
-  onLibraryRequest: () => void = () => undefined,
-) {
+async function mockAppShell(page: Page, anonymousAccessEnabled = true, onLibraryRequest: () => void = () => undefined) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {

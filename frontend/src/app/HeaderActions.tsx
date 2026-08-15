@@ -656,7 +656,9 @@ export function HeaderActions({
               </div>
               {notificationTotalPages > 1 && (
                 <div className="flex items-center justify-between gap-2 border-t px-3 py-1.5 text-xs text-muted-foreground">
-                  <span>{t("notifications.pageOf", { page: notificationPage, totalPages: notificationTotalPages })}</span>
+                  <span>
+                    {t("notifications.pageOf", { page: notificationPage, totalPages: notificationTotalPages })}
+                  </span>
                   <div className="flex items-center gap-1">
                     <Button
                       variant="ghost"
@@ -676,9 +678,7 @@ export function HeaderActions({
                       disabled={notificationPage >= notificationTotalPages}
                       aria-label={t("collection.nextPage")}
                       title={t("collection.nextPage")}
-                      onClick={() =>
-                        setNotificationPage((page) => Math.min(notificationTotalPages, page + 1))
-                      }
+                      onClick={() => setNotificationPage((page) => Math.min(notificationTotalPages, page + 1))}
                     >
                       <ChevronRight className="h-4 w-4" />
                     </Button>
@@ -869,7 +869,8 @@ function HeaderPopover({
 
     updatePlayerBoundary();
     const player = document.querySelector<HTMLElement>('[data-compact-player="true"]');
-    const resizeObserver = typeof ResizeObserver === "undefined" || !player ? null : new ResizeObserver(updatePlayerBoundary);
+    const resizeObserver =
+      typeof ResizeObserver === "undefined" || !player ? null : new ResizeObserver(updatePlayerBoundary);
     if (resizeObserver && player) resizeObserver.observe(player);
     const mutationObserver =
       typeof MutationObserver === "undefined" ? null : new MutationObserver(updatePlayerBoundary);

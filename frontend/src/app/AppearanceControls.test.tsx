@@ -23,7 +23,7 @@ describe("AppearanceControls", () => {
     }
     expect(rendered).toContain('aria-label="UI language"');
     expect(rendered).toContain('aria-label="Mode"');
-    expect(rendered).toContain('<select');
+    expect(rendered).toContain("<select");
   });
 
   it("keeps each style preview's authored accent color", () => {

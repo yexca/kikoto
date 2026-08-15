@@ -248,7 +248,10 @@ async function mockWorkflows(
         totalPages?: number;
         clearableTotal?: number;
       }
-    | ((page: number, pageSize: number) => {
+    | ((
+        page: number,
+        pageSize: number,
+      ) => {
         notifications: Array<Record<string, unknown>>;
         page?: number;
         pageSize?: number;
@@ -283,9 +286,7 @@ async function mockWorkflows(
       const requestedPage = Math.max(1, Number(url.searchParams.get("page") ?? "1"));
       const requestedPageSize = Math.max(1, Number(url.searchParams.get("pageSize") ?? "50"));
       const response =
-        typeof notificationPage === "function"
-          ? notificationPage(requestedPage, requestedPageSize)
-          : notificationPage;
+        typeof notificationPage === "function" ? notificationPage(requestedPage, requestedPageSize) : notificationPage;
       const clearableTotal = response.notifications.filter(
         (notification) =>
           notification.status === "succeeded" &&
