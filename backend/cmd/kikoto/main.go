@@ -9,9 +9,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/buildinfo"
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/httpapi"
 	"github.com/yexca/kikoto/backend/internal/storage"
+	"github.com/yexca/kikoto/backend/migrations"
 )
 
 func main() {
@@ -30,7 +32,7 @@ func main() {
 	}
 	defer db.Close()
 
-	if err := storage.Migrate(db, "migrations"); err != nil {
+	if err := storage.MigrateFS(db, migrations.Files, buildinfo.Version); err != nil {
 		slog.Error("run migrations", "error", err)
 		os.Exit(1)
 	}
@@ -77,6 +79,10 @@ func main() {
 			"failed_works", result.FailedWorks,
 			"indexed_files", result.IndexedFiles,
 		)
+	}
+	if err := storage.RecordSuccessfulStart(db, buildinfo.Version); err != nil {
+		slog.Error("record successful application start", "error", err)
+		os.Exit(1)
 	}
 	if cfg.IsDevelopment() {
 		slog.Warn("dev mode enabled; requests authenticate as root user", "username", cfg.RootUsername)

@@ -6,7 +6,8 @@ The backend is a Go HTTP API with SQLite persistence.
 
 - Go standard `net/http`.
 - SQLite.
-- SQL migrations in `backend/migrations/`.
+- Embedded SQL migration catalog and generated fresh-install baseline in
+  `backend/migrations/`.
 - Docker-first runtime.
 
 ## Main Packages

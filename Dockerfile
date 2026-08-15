@@ -27,7 +27,6 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY --from=backend-build /out/kikoto /app/kikoto
-COPY backend/migrations /app/migrations
 COPY --from=frontend-build /src/frontend/dist /app/static
 COPY LICENSE /app/LICENSE
 

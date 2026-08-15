@@ -16,7 +16,6 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /out/kikoto /app/kikoto
-COPY backend/migrations /app/migrations
 COPY LICENSE /app/LICENSE
 EXPOSE 7659
 ENTRYPOINT ["/app/kikoto"]

@@ -273,7 +273,7 @@ func TestWorkCodeAliasMigrationBackfillsDeclaredLanguageEditions(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, entry := range entries {
-		if entry.IsDir() || entry.Name() == "008_work_code_alias.sql" {
+		if entry.IsDir() || entry.Name() >= "008_work_code_alias.sql" {
 			continue
 		}
 		contents, err := os.ReadFile(filepath.Join(migrationDir, entry.Name()))
