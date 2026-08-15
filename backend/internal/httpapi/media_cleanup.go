@@ -20,6 +20,14 @@ import (
 // work tree so the browser never has to orchestrate sequential child runs.
 const maxMediaCleanupTargets = 20000
 
+type mediaCleanupMode string
+
+const (
+	mediaCleanupFilesOnly         mediaCleanupMode = "files_only"
+	mediaCleanupForgetWork        mediaCleanupMode = "files_and_forget_work"
+	mediaCleanupForgetAuditAction                  = "media_cleanup.forget_work"
+)
+
 type mediaCleanupTargetRequest struct {
 	Kind       string `json:"kind"`
 	LocationID int64  `json:"locationId"`
@@ -27,6 +35,7 @@ type mediaCleanupTargetRequest struct {
 
 type mediaCleanupRequest struct {
 	Targets []mediaCleanupTargetRequest `json:"targets"`
+	Mode    string                      `json:"mode,omitempty"`
 }
 
 type mediaCleanupTarget struct {
@@ -39,7 +48,10 @@ type mediaCleanupTarget struct {
 }
 
 type mediaCleanupJobPayload struct {
-	Targets []mediaCleanupTarget `json:"targets"`
+	Targets      []mediaCleanupTarget `json:"targets"`
+	Mode         mediaCleanupMode     `json:"mode"`
+	ActorUserID  int64                `json:"actorUserId,omitempty"`
+	ForgetNodeID int64                `json:"forgetNodeId,omitempty"`
 }
 
 type mediaCleanupCheckpoint struct {
@@ -56,7 +68,8 @@ type mediaCleanupResult struct {
 }
 
 func (s *Server) cleanupMediaLocations(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "downloads:manage"); !ok {
+	actor, ok := s.requirePermission(w, r, "downloads:manage")
+	if !ok {
 		return
 	}
 	var request mediaCleanupRequest
@@ -64,12 +77,40 @@ func (s *Server) cleanupMediaLocations(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 		return
 	}
-	result, err := s.enqueueMediaLocationCleanup(r.Context(), request.Targets)
+	mode, err := parseMediaCleanupMode(request.Mode)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if mode == mediaCleanupForgetWork {
+		if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
+			return
+		}
+	}
+	result, err := s.enqueueMediaLocationCleanupWithOptions(r.Context(), request.Targets, mediaCleanupOptions{
+		Mode: mode, ActorUserID: actor.ID,
+	})
 	if err != nil {
 		writeMediaCleanupError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, result)
+}
+
+type mediaCleanupOptions struct {
+	Mode        mediaCleanupMode
+	ActorUserID int64
+}
+
+func parseMediaCleanupMode(value string) (mediaCleanupMode, error) {
+	switch mediaCleanupMode(strings.TrimSpace(value)) {
+	case "", mediaCleanupFilesOnly:
+		return mediaCleanupFilesOnly, nil
+	case mediaCleanupForgetWork:
+		return mediaCleanupForgetWork, nil
+	default:
+		return "", fmt.Errorf("invalid media cleanup mode")
+	}
 }
 
 func writeMediaCleanupError(w http.ResponseWriter, err error) {
@@ -84,6 +125,18 @@ func writeMediaCleanupError(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) enqueueMediaLocationCleanup(ctx context.Context, requested []mediaCleanupTargetRequest) (mediaCleanupResult, error) {
+	return s.enqueueMediaLocationCleanupWithOptions(ctx, requested, mediaCleanupOptions{Mode: mediaCleanupFilesOnly})
+}
+
+func (s *Server) enqueueMediaLocationCleanupWithOptions(ctx context.Context, requested []mediaCleanupTargetRequest, options mediaCleanupOptions) (mediaCleanupResult, error) {
+	mode, err := parseMediaCleanupMode(string(options.Mode))
+	if err != nil {
+		return mediaCleanupResult{}, err
+	}
+	options.Mode = mode
+	if mode == mediaCleanupForgetWork && options.ActorUserID <= 0 {
+		return mediaCleanupResult{}, fmt.Errorf("an authenticated actor is required to forget a work")
+	}
 	if len(requested) == 0 {
 		return mediaCleanupResult{}, fmt.Errorf("at least one media location is required")
 	}
@@ -104,22 +157,37 @@ func (s *Server) enqueueMediaLocationCleanup(ctx context.Context, requested []me
 		seen[key] = true
 		targets = append(targets, target)
 	}
+	if mode == mediaCleanupForgetWork {
+		if err := validateMediaForgetTargets(targets); err != nil {
+			return mediaCleanupResult{}, err
+		}
+	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return mediaCleanupResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	definition := map[string]any{"nodes": []map[string]string{
+	definitionCode := "media_location_cleanup"
+	displayName := "Clean media locations"
+	description := "Delete selected cache or local files and mark their locations unavailable."
+	nodes := []map[string]string{
 		{"id": "select", "type": "select_media_items"},
 		{"id": "cleanup", "type": "cleanup_media_locations"},
-	}}
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, "media_location_cleanup", "Clean media locations", "Delete selected cache or local files and mark their locations unavailable.", definition)
+	}
+	if mode == mediaCleanupForgetWork {
+		definitionCode = "media_cleanup_forget_work"
+		displayName = "Delete media and forget work"
+		description = "Delete selected files, then remove an unlinked logical work family and its personal state."
+		nodes = append(nodes, map[string]string{"id": "forget", "type": "forget_unlinked_work"})
+	}
+	definition := map[string]any{"nodes": nodes}
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, definitionCode, displayName, description, definition)
 	if err != nil {
 		return mediaCleanupResult{}, err
 	}
-	payload := mediaCleanupJobPayload{Targets: targets}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "media_location_cleanup", "Clean media locations", "queued", "manual", "delete_selected", payload, map[string]any{"locations": len(targets)})
+	payload := mediaCleanupJobPayload{Targets: targets, Mode: mode, ActorUserID: options.ActorUserID}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, definitionCode, displayName, "queued", "manual", "delete_selected", payload, map[string]any{"locations": len(targets), "mode": mode})
 	if err != nil {
 		return mediaCleanupResult{}, err
 	}
@@ -135,6 +203,18 @@ func (s *Server) enqueueMediaLocationCleanup(ctx context.Context, requested []me
 	if err != nil {
 		return mediaCleanupResult{}, err
 	}
+	if mode == mediaCleanupForgetWork {
+		forgetNodeID, insertErr := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+			NodeID: "forget", NodeType: "forget_unlinked_work", DisplayName: "Forget unlinked work", Position: 3, Status: "queued", Input: payload,
+		})
+		if insertErr != nil {
+			return mediaCleanupResult{}, insertErr
+		}
+		payload.ForgetNodeID = forgetNodeID
+		if _, err := tx.ExecContext(ctx, "UPDATE workflow_node_run SET input_json = ? WHERE id = ?", mustJSON(payload), forgetNodeID); err != nil {
+			return mediaCleanupResult{}, err
+		}
+	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
 		NodeRunID: cleanupNodeID, WorkerType: "media_location_cleanup", Status: "queued", Priority: workflow.JobPriorityUserInitiated, Payload: payload,
 		Checkpoint: mediaCleanupCheckpoint{CompletedKeys: []string{}}, Recoverable: true, MaxRetries: 3,
@@ -147,6 +227,30 @@ func (s *Server) enqueueMediaLocationCleanup(ctx context.Context, requested []me
 		return mediaCleanupResult{}, err
 	}
 	return mediaCleanupResult{RunID: runID, JobID: jobID, Status: "queued", Queued: len(targets)}, nil
+}
+
+func validateMediaForgetTargets(targets []mediaCleanupTarget) error {
+	if len(targets) == 0 {
+		return fmt.Errorf("at least one media location is required")
+	}
+	workIDs := map[int64]struct{}{}
+	hasRoot := false
+	for _, target := range targets {
+		if target.WorkID <= 0 {
+			return fmt.Errorf("forget work target is missing its work")
+		}
+		workIDs[target.WorkID] = struct{}{}
+		if target.Kind == "local_root" {
+			hasRoot = true
+		}
+	}
+	if !hasRoot {
+		return fmt.Errorf("forget work requires the complete local work root")
+	}
+	if len(workIDs) != 1 {
+		return fmt.Errorf("forget work can target only one work")
+	}
+	return nil
 }
 
 func (s *Server) loadMediaCleanupTarget(ctx context.Context, requested mediaCleanupTargetRequest) (mediaCleanupTarget, error) {
@@ -225,6 +329,12 @@ func (s *Server) executeMediaLocationCleanupJob(ctx context.Context, job workflo
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
+	mode, err := parseMediaCleanupMode(string(payload.Mode))
+	if err != nil {
+		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		return err
+	}
+	payload.Mode = mode
 	checkpoint := mediaCleanupCheckpoint{}
 	if err := decodeWorkflowJobCheckpointDetail(job.CheckpointJSON, &checkpoint); err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
@@ -262,20 +372,106 @@ func (s *Server) executeMediaLocationCleanupJob(ctx context.Context, job workflo
 		checkpoint.CompletedCount = index + 1
 		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "cleanup", checkpoint, index+1, len(payload.Targets))
 	}
-	output := mustJSON(map[string]any{"locations": len(payload.Targets), "deleted": checkpoint.Deleted})
+	var workIDs []int64
+	if mode == mediaCleanupForgetWork {
+		uniqueWorkIDs := map[int64]struct{}{}
+		for _, target := range payload.Targets {
+			if target.WorkID <= 0 {
+				err := fmt.Errorf("forget work target is missing its work")
+				_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+				return err
+			}
+			uniqueWorkIDs[target.WorkID] = struct{}{}
+		}
+		if len(uniqueWorkIDs) != 1 {
+			err := fmt.Errorf("forget work can target only one work")
+			_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+			return err
+		}
+		for workID := range uniqueWorkIDs {
+			workIDs = append(workIDs, workID)
+		}
+	}
+
+	fileOutput := map[string]any{"locations": len(payload.Targets), "deleted": checkpoint.Deleted}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", output, job.NodeRunID); err != nil {
+	if mode == mediaCleanupFilesOnly {
+		output := mustJSON(fileOutput)
+		if _, err := tx.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", output, job.NodeRunID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE workflow_job SET status = 'succeeded', progress_current = progress_total,
+			locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, job.ID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", output, job.RunID); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+
+	purge, err := s.deleteUnlinkedWorkFamiliesTx(ctx, tx, workIDs)
+	if err != nil {
+		return err
+	}
+	if err := insertUnlinkedWorkDeleteAudit(ctx, tx, payload.ActorUserID, purge, checkpoint.Deleted > 0, mediaCleanupForgetAuditAction); err != nil {
+		return err
+	}
+	forgetNodeID := payload.ForgetNodeID
+	if forgetNodeID <= 0 {
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM workflow_node_run WHERE workflow_run_id = ? AND node_id = 'forget' LIMIT 1`, job.RunID).Scan(&forgetNodeID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+	}
+	partial := len(purge.Skipped) > 0
+	status := "succeeded"
+	if partial {
+		status = "partial"
+	}
+	forgetOutput := map[string]any{
+		"forgotten_family_count": purge.DeletedFamilyCount,
+		"forgotten_work_count":   purge.DeletedWorkCount,
+		"forgotten_work_ids":     purge.DeletedWorkIDs,
+		"deleted_codes":          purge.DeletedCodes,
+		"skipped":                purge.Skipped,
+	}
+	combinedOutput := map[string]any{
+		"mode":                   string(mode),
+		"locations":              len(payload.Targets),
+		"deleted":                checkpoint.Deleted,
+		"work_forgotten":         purge.DeletedFamilyCount > 0,
+		"forgotten_family_count": purge.DeletedFamilyCount,
+		"forgotten_work_count":   purge.DeletedWorkCount,
+		"forgotten_work_ids":     purge.DeletedWorkIDs,
+		"deleted_codes":          purge.DeletedCodes,
+		"skipped":                purge.Skipped,
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(fileOutput), job.NodeRunID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE workflow_job SET status = 'succeeded', progress_current = progress_total,
 		locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, job.ID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", output, job.RunID); err != nil {
+	if forgetNodeID > 0 {
+		if _, err := tx.ExecContext(ctx, `UPDATE workflow_node_run SET status = ?, output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, status, mustJSON(forgetOutput), forgetNodeID); err != nil {
+			return err
+		}
+	}
+	if partial {
+		if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
+			NodeRunID: forgetNodeID, JobID: job.ID, Level: "warn", Type: "media_cleanup.work_retained",
+			Message: "Files were deleted, but the work was retained because another source is still available",
+			Detail:  map[string]any{"skipped": purge.Skipped, "work_ids": workIDs},
+		}); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, mustJSON(combinedOutput), job.RunID); err != nil {
 		return err
 	}
 	return tx.Commit()

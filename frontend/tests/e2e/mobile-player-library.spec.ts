@@ -92,6 +92,7 @@ type MockApplicationFixture = {
   onMediaRequest?: () => void;
   mediaBusy?: boolean;
   authenticated?: boolean;
+  permissions?: string[];
   onLyricsPreference?: (method: "PUT" | "DELETE", audioMediaItemId: number, lyricsMediaItemId: number | null) => void;
   beforeWorksResponse?: () => Promise<void>;
 };
@@ -144,7 +145,7 @@ async function mockApplication(
                 username: "listener",
                 displayName: "Listener",
                 role: "user",
-                permissions: ["library:read", "playback:use", "favorites:write"],
+                permissions: fixture.permissions ?? ["library:read", "playback:use", "favorites:write"],
                 devMode: true,
               },
             }
@@ -1535,18 +1536,99 @@ test("local Delete builds a refreshed preview and requires two confirmations", a
   await expect(page.getByText("Delete preview", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "All", exact: true }).click();
   await expect(page.getByRole("button", { name: "Refreshing preview" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Review deletion" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Review file deletion" })).toBeEnabled();
   await expect(page.getByText("3 items", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Review deletion" }).click();
-  await expect(page.getByRole("heading", { name: "Review deletion" })).toBeVisible();
+  await page.getByRole("button", { name: "Review file deletion" }).click();
+  await expect(page.getByRole("heading", { name: "Review file deletion" })).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("heading", { name: "Final confirmation" })).toBeVisible();
-  await page.getByRole("button", { name: "Permanently delete" }).click();
+  await page.getByRole("button", { name: "Delete files only" }).click();
   await expect.poll(() => cleanupBodies).toHaveLength(1);
   expect(cleanupBodies[0]).toEqual({
+    mode: "files_only",
     targets: [
       { kind: "cache", locationId: 2 },
+      { kind: "local", locationId: 1 },
+      { kind: "local_root", locationId: 1 },
+    ],
+  });
+});
+
+test("local Delete enables work forgetting only for a complete root and confirms its data boundary", async ({ page }) => {
+  const cleanupBodies: Record<string, unknown>[] = [];
+  const mediaItems = [
+    {
+      id: 1,
+      parentId: null,
+      kind: "audio",
+      title: "track.mp3",
+      discNo: null,
+      trackNo: 1,
+      durationSeconds: 10,
+      sizeBytes: 12,
+      fingerprint: "forget-work-track",
+      progress: null,
+      locations: [
+        {
+          id: 1,
+          fileSourceId: 1,
+          fileSourceCode: "local",
+          fileSourceName: "Local",
+          locationType: "local",
+          path: `${work.primaryCode}/track.mp3`,
+          streamUrl: "/api/media/1/stream",
+          downloadUrl: "",
+          remoteHash: "",
+          sizeBytes: 12,
+          durationSeconds: 10,
+          availability: "available",
+          lastCheckedAt: null,
+        },
+      ],
+    },
+  ];
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, (body) => cleanupBodies.push(body), {
+    authenticated: true,
+    permissions: ["library:read", "playback:use", "downloads:manage", "sources:write"],
+    work: {
+      ...work,
+      sourcePresence: [
+        {
+          type: "local",
+          availability: "available",
+          fileSourceId: 1,
+          fileSourceCode: "local",
+          fileSourceName: "Local",
+          sourceUrl: work.primaryCode,
+        },
+      ],
+    },
+  });
+
+  await page.goto("/");
+  await page.getByText(work.title, { exact: true }).click();
+  await page.getByRole("button", { name: /Source actions for/ }).click();
+  await page.getByRole("menuitem", { name: "Manage files", exact: true }).click();
+
+  const forgetButton = page.getByRole("button", { name: "Review deletion and forget work" });
+  await expect(forgetButton).toBeDisabled();
+  await page.getByRole("button", { name: "All", exact: true }).click();
+  await expect(forgetButton).toBeEnabled();
+  await forgetButton.click();
+
+  await expect(page.getByRole("heading", { name: "Review deletion and forget work" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Will be deleted" })).toBeVisible();
+  await expect(page.getByText(/complete logical work family, all metadata, playback history, Quick mark/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Will be kept" })).toBeVisible();
+  await expect(page.getByText(/Any other available remote, tracked, cache, or local source/)).toBeVisible();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Delete files and forget work" }).click();
+
+  await expect.poll(() => cleanupBodies).toHaveLength(1);
+  expect(cleanupBodies[0]).toEqual({
+    mode: "files_and_forget_work",
+    targets: [
       { kind: "local", locationId: 1 },
       { kind: "local_root", locationId: 1 },
     ],
@@ -1789,11 +1871,11 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await page.getByRole("menuitem", { name: /Manage cache/ }).click();
   await page.getByRole("button", { name: "All", exact: true }).click();
   await expect(page.getByText("1 selected / 1 deletable", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Review deletion" }).click();
+  await page.getByRole("button", { name: "Review file deletion" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("button", { name: "Permanently delete" }).click();
+  await page.getByRole("button", { name: "Delete files only" }).click();
   await expect.poll(() => cleanupBodies).toHaveLength(1);
-  expect(cleanupBodies[0]).toEqual({ targets: [{ kind: "cache", locationId: 2 }] });
+  expect(cleanupBodies[0]).toEqual({ mode: "files_only", targets: [{ kind: "cache", locationId: 2 }] });
 });
 
 test("tracked library cards confirm Untrack in an anchored popover", async ({ page }) => {

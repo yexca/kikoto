@@ -1583,10 +1583,12 @@ export type MediaCleanupTarget = {
   locationId: number;
 };
 
+export type MediaCleanupMode = "files_only" | "files_and_forget_work";
+
 export type MediaCleanupResult = {
   runId: number;
   jobId: number;
-  status: "queued" | "running" | "succeeded" | "failed";
+  status: "queued" | "running" | "succeeded" | "partial" | "failed";
   queued: number;
 };
 
@@ -1999,8 +2001,8 @@ export const api = {
     postJSONBody<CacheMaintenanceResult>("/api/cache/cleanup", payload),
   deleteMediaCacheLocation: (locationId: number) => deleteJSON<MediaCleanupResult>(`/api/media/${locationId}/cache`),
   deleteMediaLocalLocation: (locationId: number) => deleteJSON<MediaCleanupResult>(`/api/media/${locationId}/local`),
-  cleanupMediaLocations: (targets: MediaCleanupTarget[]) =>
-    postJSONBody<MediaCleanupResult>("/api/media/cleanup", { targets }),
+  cleanupMediaLocations: (targets: MediaCleanupTarget[], mode: MediaCleanupMode = "files_only") =>
+    postJSONBody<MediaCleanupResult>("/api/media/cleanup", { targets, mode }),
   updateWorkUserState: (id: number, payload: { listeningStatus?: ListeningStatus }) =>
     patchJSONBody<{ workId: number; listeningStatus: ListeningStatus; favorite: boolean }>(
       `/api/works/${id}/user-state`,

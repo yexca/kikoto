@@ -52,6 +52,7 @@ var workflowNodeTypeRegistry = []workflowNodeTypeRecord{
 	nodeType("cleanup_local_locations", "execute", "Cleanup local locations", "Mark selected local locations unavailable and optionally delete their files.", true, schemaObject("deleteFiles"), schemaObject("locationIds"), schemaObject("deleted", "marked")),
 	nodeType("delete_local_media", "execute", "Delete local media", "Delete local media files and mark their locations unavailable.", true, schemaObject(), schemaObject("locationIds"), schemaObject("deleted")),
 	nodeType("cleanup_media_locations", "execute", "Cleanup media locations", "Delete selected cache or local files and mark their locations unavailable.", true, schemaObject(), schemaObject("targets"), schemaObject("deleted")),
+	nodeType("forget_unlinked_work", "commit", "Forget unlinked work", "Remove a logical work family only when no available source remains.", true, schemaObject(), schemaObject("workIds"), schemaObject("forgottenWorkIds", "skipped")),
 	nodeType("dispatch_child_workflows", "execute", "Dispatch child workflows", "Run child workflows from a parent workflow.", false, schemaObject("workflowCode", "mode"), schemaObject("codes", "action"), schemaObject("childRuns")),
 
 	nodeType("verify_files", "verify", "Verify files", "Validate materialized file outputs.", true, schemaObject("checkSize", "checkHash"), schemaObject("paths", "expected"), schemaObject("verified", "failed")),
@@ -297,6 +298,16 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 		Nodes: []map[string]string{
 			{"id": "select", "type": "select_media_items", "displayName": "Select media locations"},
 			{"id": "cleanup", "type": "cleanup_media_locations", "displayName": "Delete media files"},
+		},
+	},
+	{
+		Code:        "media_cleanup_forget_work",
+		Name:        "Delete media and forget work",
+		Description: "Delete selected files, then remove an unlinked logical work family and its personal state.",
+		Nodes: []map[string]string{
+			{"id": "select", "type": "select_media_items", "displayName": "Select media locations"},
+			{"id": "cleanup", "type": "cleanup_media_locations", "displayName": "Delete media files"},
+			{"id": "forget", "type": "forget_unlinked_work", "displayName": "Forget unlinked work"},
 		},
 	},
 	{

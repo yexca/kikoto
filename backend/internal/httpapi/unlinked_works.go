@@ -311,6 +311,23 @@ func (s *Server) deleteUnlinkedWorkFamilies(ctx context.Context, actorUserID int
 		return unlinkedWorkDeleteResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	result, err := s.deleteUnlinkedWorkFamiliesTx(ctx, tx, workIDs)
+	if err != nil {
+		return unlinkedWorkDeleteResult{}, err
+	}
+	if err := insertUnlinkedWorkDeleteAudit(ctx, tx, actorUserID, result, false, "unlinked_works.delete"); err != nil {
+		return unlinkedWorkDeleteResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return unlinkedWorkDeleteResult{}, err
+	}
+	return result, nil
+}
+
+// deleteUnlinkedWorkFamiliesTx removes the database representation of eligible
+// logical work families. The caller owns the transaction so a media cleanup
+// workflow can commit file-state updates and the work purge atomically.
+func (s *Server) deleteUnlinkedWorkFamiliesTx(ctx context.Context, tx *sql.Tx, workIDs []int64) (unlinkedWorkDeleteResult, error) {
 	families, skipped, err := eligibleUnlinkedWorkFamilies(ctx, tx, workIDs)
 	if err != nil {
 		return unlinkedWorkDeleteResult{}, err
@@ -341,20 +358,24 @@ func (s *Server) deleteUnlinkedWorkFamilies(ctx context.Context, actorUserID int
 		result.DeletedWorkIDs = append(result.DeletedWorkIDs, family.WorkIDs...)
 		result.DeletedCodes = append(result.DeletedCodes, family.Codes...)
 	}
+	return result, nil
+}
+
+func insertUnlinkedWorkDeleteAudit(ctx context.Context, tx *sql.Tx, actorUserID int64, result unlinkedWorkDeleteResult, mediaFilesDeleted bool, action string) error {
+	if strings.TrimSpace(action) == "" {
+		action = "unlinked_works.delete"
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO audit_log (actor_user_id, action, target_type, target_id, detail_json)
-		VALUES (?, 'unlinked_works.delete', 'work_family', ?, ?)
-	`, actorUserID, unlinkedDeleteAuditTarget(result.DeletedCodes), mustJSON(map[string]any{
+		VALUES (?, ?, 'work_family', ?, ?)
+	`, actorUserID, action, unlinkedDeleteAuditTarget(result.DeletedCodes), mustJSON(map[string]any{
 		"deleted_family_count": result.DeletedFamilyCount, "deleted_work_count": result.DeletedWorkCount,
 		"deleted_codes": result.DeletedCodes, "skipped": result.Skipped, "retained_asset_files": result.RetainedAssetFiles,
-		"media_files_deleted": false,
+		"media_files_deleted": mediaFilesDeleted,
 	})); err != nil {
-		return unlinkedWorkDeleteResult{}, err
+		return err
 	}
-	if err := tx.Commit(); err != nil {
-		return unlinkedWorkDeleteResult{}, err
-	}
-	return result, nil
+	return nil
 }
 
 func eligibleUnlinkedWorkFamilies(ctx context.Context, queryer unlinkedWorkQueryer, workIDs []int64) ([]unlinkedWorkFamily, []unlinkedWorkMaintenanceSkip, error) {

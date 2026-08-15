@@ -39,6 +39,7 @@ import {
   RefreshCw,
   Repeat2,
   Search,
+  ShieldAlert,
   Sparkles,
   Tags,
   Unlink,
@@ -214,6 +215,8 @@ import {
 } from "@/features/work-detail/media/mediaTreeModel";
 import {
   useMediaCleanupWorkflow,
+  type MediaCleanupCompletion,
+  type MediaCleanupMode,
   type MediaDeleteTarget,
 } from "@/features/work-detail/workflows/useMediaCleanupWorkflow";
 import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
@@ -1443,6 +1446,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         initialTrackedSourceID={detailTrackedSourceIDFromLocation(window.location.search)}
         initialRemoteCode={detailRemoteCodeFromLocation(window.location.search)}
         principalID={principalID}
+        canForgetWork={auth.hasPermission("sources:write")}
         onBack={backToLibrary}
         onStatusChange={updateWorkStatus}
         onPlay={() => {
@@ -3936,6 +3940,7 @@ function PersistedWorkDetailController({
   initialTrackedSourceID,
   initialRemoteCode,
   principalID,
+  canForgetWork,
   onBack,
   onStatusChange,
   onPlay,
@@ -3952,6 +3957,7 @@ function PersistedWorkDetailController({
   initialTrackedSourceID: number | null;
   initialRemoteCode: string;
   principalID: ClientPrincipalID;
+  canForgetWork: boolean;
   onBack: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
   onPlay: () => void;
@@ -4083,13 +4089,17 @@ function PersistedWorkDetailController({
   };
   const mediaCleanup = useMediaCleanupWorkflow({
     onAccepted: () => setIsManageOpen(false),
-    onCompleted: async () => {
+    onCompleted: async ({ workForgotten, partial }: MediaCleanupCompletion) => {
+      await onWorksChanged();
+      if (workForgotten && !partial) {
+        onBack();
+        return;
+      }
       if (activeEdition) {
         setActiveEdition(await api.getWork(activeEdition.id));
       } else if (work) {
         await onWorkReload(work.id, true);
       }
-      await onWorksChanged();
     },
   });
   const directoryTitle = "Directory";
@@ -4829,6 +4839,8 @@ function PersistedWorkDetailController({
           onClose={() => setIsManageOpen(false)}
           deleting={mediaCleanup.isSubmitting}
           onDeleteTargets={mediaCleanup.submit}
+          workId={localDirectoryWork?.id ?? work?.id ?? 0}
+          canForgetWork={canForgetWork}
           allowCacheDelete={!selectedRemoteSource}
           allowLocalDelete={!selectedRemoteSource && !selectedTrackedPresence}
           localRootPath={
@@ -7969,6 +7981,8 @@ function DirectoryManagerModal({
   allowLocalDelete,
   localRootPath = "",
   showCachedFilter = false,
+  workId = 0,
+  canForgetWork = false,
 }: {
   root: TreeNode;
   title?: string;
@@ -7976,19 +7990,23 @@ function DirectoryManagerModal({
   emptyLabel: string;
   onClose: () => void;
   deleting?: boolean;
-  onDeleteTargets?: (targets: MediaDeleteTarget[]) => void;
+  onDeleteTargets?: (targets: MediaDeleteTarget[], mode: MediaCleanupMode) => void;
   allowCacheDelete?: boolean;
   allowLocalDelete?: boolean;
   localRootPath?: string;
   showCachedFilter?: boolean;
+  workId?: number;
+  canForgetWork?: boolean;
 }) {
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [confirmStep, setConfirmStep] = useState<0 | 1 | 2>(0);
+  const [confirmMode, setConfirmMode] = useState<MediaCleanupMode | null>(null);
   const [showOnlyDeletable, setShowOnlyDeletable] = useState(showCachedFilter);
   const [previewTargets, setPreviewTargets] = useState<MediaDeleteTarget[]>([]);
   const fileTargets = useMemo(
-    () => directoryManageTargets(root, { allowCacheDelete, allowLocalDelete }),
-    [root, allowCacheDelete, allowLocalDelete],
+    () =>
+      directoryManageTargets(root, { allowCacheDelete, allowLocalDelete }).map((target) => ({ ...target, workId })),
+    [root, allowCacheDelete, allowLocalDelete, workId],
   );
   const rootTarget = useMemo<MediaDeleteTarget | null>(() => {
     const representative = fileTargets.find((target) => target.kind === "local");
@@ -7999,8 +8017,9 @@ function DirectoryManagerModal({
       title: "Work root",
       path: localRootPath,
       sizeBytes: null,
+      workId,
     };
-  }, [allowLocalDelete, fileTargets, localRootPath]);
+  }, [allowLocalDelete, fileTargets, localRootPath, workId]);
   const targets = useMemo(() => (rootTarget ? [...fileTargets, rootTarget] : fileTargets), [fileTargets, rootTarget]);
   const selectedTargets = useMemo(
     () => targets.filter((target) => selectedKeys.has(mediaDeleteTargetKey(target))),
@@ -8010,6 +8029,17 @@ function DirectoryManagerModal({
   const previewSignature = previewTargets.map(mediaDeleteTargetKey).sort().join("|");
   const previewRefreshing = selectedTargets.length > 0 && selectedSignature !== previewSignature;
   const allSelected = targets.length > 0 && selectedTargets.length === targets.length;
+  const selectedRootTarget = selectedTargets.find((target) => target.kind === "local_root") ?? null;
+  const allFileTargetsSelected =
+    fileTargets.length > 0 && fileTargets.every((target) => selectedKeys.has(mediaDeleteTargetKey(target)));
+  const selectedWorkIDs = new Set(selectedTargets.map((target) => target.workId).filter((id) => id > 0));
+  const canReviewForget = Boolean(
+    canForgetWork &&
+      selectedRootTarget &&
+      allFileTargetsSelected &&
+      selectedWorkIDs.size === 1 &&
+      selectedRootTarget.workId > 0,
+  );
   const toggleAll = () => setSelectedKeys(allSelected ? new Set() : new Set(targets.map(mediaDeleteTargetKey)));
   const extensionSelection = (extension: string) => {
     const matching = targets.filter((target) => target.path.toLowerCase().endsWith(`.${extension}`));
@@ -8041,9 +8071,14 @@ function DirectoryManagerModal({
       return next;
     });
   };
-  const confirmDelete = () => {
-    onDeleteTargets?.(previewTargets);
+  const startConfirmation = (mode: MediaCleanupMode) => {
+    setConfirmMode(mode);
+    setConfirmStep(1);
+  };
+  const confirmDelete = (mode: MediaCleanupMode) => {
+    onDeleteTargets?.(previewTargets, mode);
     setConfirmStep(0);
+    setConfirmMode(null);
     setSelectedKeys(new Set());
   };
 
@@ -8168,25 +8203,45 @@ function DirectoryManagerModal({
               {selectedTargets.length} selected / {targets.length} deletable
             </span>
           </div>
-          <Button
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            size="sm"
-            disabled={selectedTargets.length === 0 || previewRefreshing || deleting}
-            onClick={() => setConfirmStep(1)}
-          >
-            <Trash2 className="h-4 w-4" />
-            {deleting ? "Deleting" : previewRefreshing ? "Refreshing preview" : "Review deletion"}
-          </Button>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={selectedTargets.length === 0 || previewRefreshing || deleting}
+              onClick={() => startConfirmation("files_only")}
+            >
+              <Trash2 className="h-4 w-4" />
+              {deleting ? "Deleting" : previewRefreshing ? "Refreshing preview" : "Review file deletion"}
+            </Button>
+            <Button
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              size="sm"
+              disabled={!canReviewForget || previewRefreshing || deleting}
+              title={
+                canReviewForget
+                  ? "Delete the selected files, then forget the work if no source remains."
+                  : "Select the complete local work root and every deletable file from one work."
+              }
+              onClick={() => startConfirmation("files_and_forget_work")}
+            >
+              <ShieldAlert className="h-4 w-4" />
+              {deleting ? "Deleting" : "Review deletion and forget work"}
+            </Button>
+          </div>
         </div>
       </div>
       {confirmStep > 0 && (
         <ConfirmMediaBatchDeleteModal
           targets={previewTargets}
+          mode={confirmMode ?? "files_only"}
           step={confirmStep === 2 ? 2 : 1}
           deleting={deleting}
-          onCancel={() => setConfirmStep(0)}
+          onCancel={() => {
+            setConfirmStep(0);
+            setConfirmMode(null);
+          }}
           onContinue={() => setConfirmStep(2)}
-          onConfirm={confirmDelete}
+          onConfirm={() => confirmDelete(confirmMode ?? "files_only")}
         />
       )}
     </div>
@@ -8430,6 +8485,7 @@ function ManagedFileRow({
 
 function ConfirmMediaBatchDeleteModal({
   targets,
+  mode,
   step,
   deleting,
   onCancel,
@@ -8437,14 +8493,17 @@ function ConfirmMediaBatchDeleteModal({
   onConfirm,
 }: {
   targets: MediaDeleteTarget[];
+  mode: MediaCleanupMode;
   step: 1 | 2;
   deleting: boolean;
   onCancel: () => void;
   onContinue: () => void;
   onConfirm: () => void;
 }) {
+  const forgetWork = mode === "files_and_forget_work";
   const localCount = targets.filter((target) => target.kind === "local").length;
   const cacheCount = targets.filter((target) => target.kind === "cache").length;
+  const rootCount = targets.filter((target) => target.kind === "local_root").length;
   return (
     <div className="fixed inset-0 z-[60] grid place-items-center bg-black/55 p-4" onMouseDown={onCancel}>
       <div
@@ -8453,11 +8512,21 @@ function ConfirmMediaBatchDeleteModal({
       >
         <div className="flex items-start justify-between gap-3 border-b p-4">
           <div>
-            <h3 className="text-base font-semibold">{step === 1 ? "Review deletion" : "Final confirmation"}</h3>
+            <h3 className="text-base font-semibold">
+              {step === 1
+                ? forgetWork
+                  ? "Review deletion and forget work"
+                  : "Review file deletion"
+                : "Final confirmation"}
+            </h3>
             <p className="mt-1 text-sm text-muted-foreground">
               {step === 1
-                ? "Confirm that the refreshed preview contains only the intended files."
-                : "Deleted files cannot be restored by Kikoto."}
+                ? forgetWork
+                  ? "The second confirmation will delete files first, then re-check every source before forgetting the work."
+                  : "The second confirmation deletes files only; work history and marks remain."
+                : forgetWork
+                  ? "This action cannot be undone. Review both lists before continuing."
+                  : "Deleted files cannot be restored by Kikoto."}
             </p>
           </div>
           <IconButton title="Close" onClick={onCancel}>
@@ -8468,7 +8537,8 @@ function ConfirmMediaBatchDeleteModal({
           <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive">
             Delete {targets.length} selected location{targets.length === 1 ? "" : "s"}
             {localCount > 0 ? `, including ${localCount} local` : ""}
-            {cacheCount > 0 ? ` and ${cacheCount} cache` : ""}.
+            {cacheCount > 0 ? ` and ${cacheCount} cache` : ""}
+            {rootCount > 0 ? ", including the complete local work root" : ""}.
           </div>
           <div className="app-scroll max-h-44 overflow-auto rounded-md border bg-muted px-3 py-2 text-xs text-muted-foreground">
             {targets.slice(0, 10).map((target) => (
@@ -8479,6 +8549,44 @@ function ConfirmMediaBatchDeleteModal({
             ))}
             {targets.length > 10 && <div className="pt-1">...and {targets.length - 10} more</div>}
           </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <section className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
+              <h4 className="font-semibold text-destructive">Will be deleted</h4>
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+                <li>The selected cache and local files, plus their location availability state.</li>
+                {forgetWork ? (
+                  <li>
+                    If no available source remains after the file step: the complete logical work family, all metadata,
+                    playback history, Quick mark, and every List membership for every user.
+                  </li>
+                ) : (
+                  <li>No work-level data, playback history, Quick mark, List membership, or metadata.</li>
+                )}
+              </ul>
+            </section>
+            <section className="rounded-md border bg-muted/30 p-3">
+              <h4 className="font-semibold">Will be kept</h4>
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+                {forgetWork ? (
+                  <>
+                    <li>Any other available remote, tracked, cache, or local source; in that case the work stays.</li>
+                    <li>Shared tags, people, circles, catalog discovery, audit history, and workflow history.</li>
+                  </>
+                ) : (
+                  <>
+                    <li>Playback records, Resume/recent playback, Quick mark, and all List memberships.</li>
+                    <li>Work metadata and every other source or unselected file.</li>
+                  </>
+                )}
+              </ul>
+            </section>
+          </div>
+          {forgetWork && (
+            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+              If another source is still available, the workflow finishes as partial: files are deleted, but the work
+              and all work-level user data are retained.
+            </p>
+          )}
         </div>
         <div className="flex justify-end gap-2 border-t p-4">
           <Button variant="outline" onClick={onCancel} disabled={deleting}>
@@ -8495,7 +8603,7 @@ function ConfirmMediaBatchDeleteModal({
               disabled={deleting || targets.length === 0}
             >
               <Trash2 className="h-4 w-4" />
-              {deleting ? "Deleting" : "Permanently delete"}
+              {deleting ? "Deleting" : forgetWork ? "Delete files and forget work" : "Delete files only"}
             </Button>
           )}
         </div>
@@ -8517,6 +8625,7 @@ function mediaDeleteTargetsForFile(
     targets.push({
       kind: "cache",
       locationId: file.cacheLocationId,
+      workId: 0,
       title: file.title,
       path: file.cachePath,
       sizeBytes: file.sizeBytes,
@@ -8526,6 +8635,7 @@ function mediaDeleteTargetsForFile(
     targets.push({
       kind: "local",
       locationId: file.localLocationId,
+      workId: 0,
       title: file.title,
       path: file.localPath,
       sizeBytes: file.sizeBytes,
