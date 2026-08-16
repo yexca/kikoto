@@ -239,44 +239,64 @@ func (s *Server) executeDLsitePopularCollectionJob(ctx context.Context, job work
 }
 
 func (s *Server) executeDLsitePopularCollectionJobWith(ctx context.Context, job workflowJobRecord, rankingClient dlsiteRankingProvider, syncer dlsiteFamilyMetadataSyncer) error {
-	var payload dlsitePopularJobPayload
-	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
-		return err
-	}
-	checkpoint := dlsitePopularCheckpoint{}
-	if err := decodeWorkflowJobCheckpointDetail(job.CheckpointJSON, &checkpoint); err != nil {
+	payload, checkpoint, nodeIDs, err := s.loadDLsitePopularJobState(ctx, job)
+	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
 	result := checkpoint.Result
 	result.RunID = job.RunID
 	result.Status = "running"
-	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, job.RunID)
+	checkpoint, result, err = s.discoverDLsitePopularCodes(ctx, job, payload, checkpoint, result, nodeIDs, rankingClient)
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", nodeIDs["metadata"]); err != nil {
+		return err
+	}
+	checkpoint, result, err = s.syncDLsitePopularCodes(ctx, job, payload, checkpoint, result, syncer)
+	if err != nil {
+		return err
+	}
+	result.Status = dlsitePopularResultStatus(result)
+	return s.finishDLsitePopularCollection(ctx, job, nodeIDs, result)
+}
+
+func (s *Server) loadDLsitePopularJobState(ctx context.Context, job workflowJobRecord) (dlsitePopularJobPayload, dlsitePopularCheckpoint, map[string]int64, error) {
+	var payload dlsitePopularJobPayload
+	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
+		return payload, dlsitePopularCheckpoint{}, nil, err
+	}
+	checkpoint := dlsitePopularCheckpoint{}
+	if err := decodeWorkflowJobCheckpointDetail(job.CheckpointJSON, &checkpoint); err != nil {
+		return payload, checkpoint, nil, err
+	}
+	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, job.RunID)
+	return payload, checkpoint, nodeIDs, err
+}
+
+func (s *Server) discoverDLsitePopularCodes(ctx context.Context, job workflowJobRecord, payload dlsitePopularJobPayload, checkpoint dlsitePopularCheckpoint, result dlsitePopularRunResult, nodeIDs map[string]int64, rankingClient dlsiteRankingProvider) (dlsitePopularCheckpoint, dlsitePopularRunResult, error) {
 	if len(checkpoint.WorkCodes) == 0 {
 		ranking, err := rankingClient.FetchVoiceRanking(ctx, dlsite.RankingOptions{Period: payload.Period, ReleaseWindow: payload.ReleaseWindow, Year: payload.Year})
 		if err != nil {
-			_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
-			return err
+			return checkpoint, result, err
 		}
 		checkpoint.WorkCodes = ranking.WorkCodes
 		result.Discovered = len(ranking.WorkCodes)
 		checkpoint.Result = result
 		if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"work_codes": ranking.WorkCodes, "count": len(ranking.WorkCodes)}), nodeIDs["discover"]); err != nil {
-			return err
+			return checkpoint, result, err
 		}
 		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "discovered", checkpoint, len(checkpoint.CompletedCodes), len(checkpoint.WorkCodes))
-	} else {
-		result.Discovered = len(checkpoint.WorkCodes)
-		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"work_codes": checkpoint.WorkCodes, "count": len(checkpoint.WorkCodes), "resumed": true}), nodeIDs["discover"])
+		return checkpoint, result, nil
 	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", nodeIDs["metadata"]); err != nil {
-		return err
-	}
+	result.Discovered = len(checkpoint.WorkCodes)
+	_, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"work_codes": checkpoint.WorkCodes, "count": len(checkpoint.WorkCodes), "resumed": true}), nodeIDs["discover"])
+	return checkpoint, result, err
+}
+
+func (s *Server) syncDLsitePopularCodes(ctx context.Context, job workflowJobRecord, payload dlsitePopularJobPayload, checkpoint dlsitePopularCheckpoint, result dlsitePopularRunResult, syncer dlsiteFamilyMetadataSyncer) (dlsitePopularCheckpoint, dlsitePopularRunResult, error) {
 	completed := map[string]bool{}
 	for _, code := range checkpoint.CompletedCodes {
 		completed[strings.ToUpper(strings.TrimSpace(code))] = true
@@ -287,41 +307,50 @@ func (s *Server) executeDLsitePopularCollectionJobWith(ctx context.Context, job 
 			continue
 		}
 		if err := s.ensureWorkflowRunActive(ctx, job.RunID); err != nil {
-			return err
+			return checkpoint, result, err
 		}
-		family, syncErr := syncer.SyncFamily(ctx, code)
-		if syncErr != nil {
-			result.Failed++
-			result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, syncErr.Error()))
-		} else {
-			var workID int64
-			if err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE UPPER(primary_code) = UPPER(?)", code).Scan(&workID); err != nil {
-				result.Failed++
-				result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
-			} else if _, err := s.addWorkUserTag(ctx, payload.UserID, []int64{workID}, payload.TagName); err != nil {
-				result.Failed++
-				result.Failures = append(result.Failures, fmt.Sprintf("%s tag: %s", code, err.Error()))
-			} else {
-				result.Synced++
-				result.Tagged++
-			}
-			if len(family.Failures) > 0 {
-				result.Failed++
-				result.Failures = append(result.Failures, family.Failures...)
-			}
-		}
+		result = s.syncDLsitePopularCode(ctx, payload, code, result, syncer)
 		completed[code] = true
 		checkpoint.CompletedCodes = sortedStringKeys(completed)
 		checkpoint.Result = result
 		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "syncing", checkpoint, index+1, len(checkpoint.WorkCodes))
 	}
-	result.Status = "succeeded"
-	if result.Failed > 0 && result.Synced == 0 {
-		result.Status = "failed"
-	} else if result.Failed > 0 {
-		result.Status = "partial"
+	return checkpoint, result, nil
+}
+
+func (s *Server) syncDLsitePopularCode(ctx context.Context, payload dlsitePopularJobPayload, code string, result dlsitePopularRunResult, syncer dlsiteFamilyMetadataSyncer) dlsitePopularRunResult {
+	family, err := syncer.SyncFamily(ctx, code)
+	if err != nil {
+		result.Failed++
+		result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
+		return result
 	}
-	return s.finishDLsitePopularCollection(ctx, job, nodeIDs, result)
+	var workID int64
+	if err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE UPPER(primary_code) = UPPER(?)", code).Scan(&workID); err != nil {
+		result.Failed++
+		result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
+	} else if _, err := s.addWorkUserTag(ctx, payload.UserID, []int64{workID}, payload.TagName); err != nil {
+		result.Failed++
+		result.Failures = append(result.Failures, fmt.Sprintf("%s tag: %s", code, err.Error()))
+	} else {
+		result.Synced++
+		result.Tagged++
+	}
+	if len(family.Failures) > 0 {
+		result.Failed++
+		result.Failures = append(result.Failures, family.Failures...)
+	}
+	return result
+}
+
+func dlsitePopularResultStatus(result dlsitePopularRunResult) string {
+	if result.Failed == 0 {
+		return "succeeded"
+	}
+	if result.Synced == 0 {
+		return "failed"
+	}
+	return "partial"
 }
 
 func (s *Server) finishDLsitePopularCollection(ctx context.Context, job workflowJobRecord, nodeIDs map[string]int64, result dlsitePopularRunResult) error {

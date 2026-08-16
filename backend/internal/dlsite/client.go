@@ -261,6 +261,12 @@ type RankingResult struct {
 	WorkCodes     []string `json:"workCodes"`
 }
 
+type rankingQuery struct {
+	period        string
+	releaseWindow string
+	year          int
+}
+
 func NewClient(httpClient *http.Client) *Client {
 	if httpClient == nil {
 		policy, err := outbound.NewPolicy([]outbound.Destination{
@@ -312,59 +318,77 @@ func (c *Client) FetchMakerProfile(ctx context.Context, makerID string) (MakerPr
 }
 
 func (c *Client) FetchVoiceRanking(ctx context.Context, options RankingOptions) (RankingResult, error) {
-	period := strings.ToLower(strings.TrimSpace(options.Period))
-	switch period {
-	case "day", "week", "month", "year":
-	default:
-		return RankingResult{}, fmt.Errorf("unsupported DLsite ranking period %q", options.Period)
-	}
-	releaseWindow := strings.ToLower(strings.TrimSpace(options.ReleaseWindow))
-	if period == "year" {
-		releaseWindow = ""
-	} else if releaseWindow != "" && releaseWindow != "30d" {
-		return RankingResult{}, fmt.Errorf("unsupported DLsite ranking release window %q", options.ReleaseWindow)
-	}
-	if period == "year" {
-		currentYear := time.Now().UTC().Year()
-		if options.Year < 2000 || options.Year > currentYear {
-			return RankingResult{}, fmt.Errorf("DLsite ranking year must be between 2000 and %d", currentYear)
-		}
-	} else if options.Year != 0 {
-		return RankingResult{}, fmt.Errorf("DLsite ranking year is only valid for annual rankings")
-	}
-
-	params := url.Values{"category": []string{"voice"}}
-	if releaseWindow != "" {
-		params.Set("date", releaseWindow)
-	}
-	if period == "year" {
-		params.Set("year", strconv.Itoa(options.Year))
-	}
-	endpoint := fmt.Sprintf("%s/maniax/ranking/%s?%s", strings.TrimRight(c.baseURL, "/"), period, params.Encode())
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	query, err := normalizeRankingQuery(options)
 	if err != nil {
 		return RankingResult{}, err
+	}
+	codes, err := c.fetchRankingCodes(ctx, query)
+	if err != nil {
+		return RankingResult{}, err
+	}
+	if len(codes) == 0 {
+		return RankingResult{}, fmt.Errorf("DLsite ranking returned no voice works")
+	}
+	return RankingResult{Period: query.period, ReleaseWindow: query.releaseWindow, Year: query.year, WorkCodes: codes}, nil
+}
+
+func normalizeRankingQuery(options RankingOptions) (rankingQuery, error) {
+	query := rankingQuery{
+		period:        strings.ToLower(strings.TrimSpace(options.Period)),
+		releaseWindow: strings.ToLower(strings.TrimSpace(options.ReleaseWindow)),
+		year:          options.Year,
+	}
+	switch query.period {
+	case "day", "week", "month", "year":
+	default:
+		return rankingQuery{}, fmt.Errorf("unsupported DLsite ranking period %q", options.Period)
+	}
+	if query.period == "year" {
+		query.releaseWindow = ""
+		currentYear := time.Now().UTC().Year()
+		if query.year < 2000 || query.year > currentYear {
+			return rankingQuery{}, fmt.Errorf("DLsite ranking year must be between 2000 and %d", currentYear)
+		}
+		return query, nil
+	}
+	if query.releaseWindow != "" && query.releaseWindow != "30d" {
+		return rankingQuery{}, fmt.Errorf("unsupported DLsite ranking release window %q", options.ReleaseWindow)
+	}
+	if query.year != 0 {
+		return rankingQuery{}, fmt.Errorf("DLsite ranking year is only valid for annual rankings")
+	}
+	return query, nil
+}
+
+func (c *Client) fetchRankingCodes(ctx context.Context, query rankingQuery) ([]string, error) {
+	params := url.Values{"category": []string{"voice"}}
+	if query.releaseWindow != "" {
+		params.Set("date", query.releaseWindow)
+	}
+	if query.period == "year" {
+		params.Set("year", strconv.Itoa(query.year))
+	}
+	endpoint := fmt.Sprintf("%s/maniax/ranking/%s?%s", strings.TrimRight(c.baseURL, "/"), query.period, params.Encode())
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
 	}
 	request.Header.Set("Accept", "text/html")
 	request.Header.Set("Accept-Language", "ja,en;q=0.8")
 	request.Header.Set("User-Agent", c.userAgent)
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return RankingResult{}, err
+		return nil, err
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return RankingResult{}, HTTPStatusError{Operation: "dlsite ranking", Status: response.Status, StatusCode: response.StatusCode, RetryAfter: response.Header.Get("Retry-After")}
+		return nil, HTTPStatusError{Operation: "dlsite ranking", Status: response.Status, StatusCode: response.StatusCode, RetryAfter: response.Header.Get("Retry-After")}
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, 2*1024*1024))
 	if err != nil {
-		return RankingResult{}, err
+		return nil, err
 	}
-	codes := parseRankingWorkCodes(string(body))
-	if len(codes) == 0 {
-		return RankingResult{}, fmt.Errorf("DLsite ranking returned no voice works")
-	}
-	return RankingResult{Period: period, ReleaseWindow: releaseWindow, Year: options.Year, WorkCodes: codes}, nil
+	return parseRankingWorkCodes(string(body)), nil
 }
 
 func (c *Client) FetchMakerCatalog(ctx context.Context, makerID string, options MakerCatalogOptions) (MakerProfile, error) {
@@ -484,28 +508,45 @@ func (c *Client) fetchProductFromSite(ctx context.Context, site string, workno s
 	if language != "" {
 		endpoint += "&locale=" + url.QueryEscape(language)
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	body, err := c.fetchProductBody(ctx, site, endpoint)
 	if err != nil {
 		return Product{}, err
+	}
+	product, err := decodeProductResponse(body, site, workno)
+	if err != nil {
+		return Product{}, err
+	}
+	if dynamicRaw, dynamic, err := c.fetchDynamic(ctx, product); err == nil {
+		applyDynamicProductFields(&product, dynamicRaw, dynamic)
+	}
+	return product, nil
+}
+
+func (c *Client) fetchProductBody(ctx context.Context, site, endpoint string) ([]byte, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
 	}
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("User-Agent", c.userAgent)
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return Product{}, err
+		return nil, err
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return Product{}, HTTPStatusError{Operation: "dlsite " + site, Status: response.Status, StatusCode: response.StatusCode, RetryAfter: response.Header.Get("Retry-After")}
+		return nil, HTTPStatusError{Operation: "dlsite " + site, Status: response.Status, StatusCode: response.StatusCode, RetryAfter: response.Header.Get("Retry-After")}
 	}
-
 	body, err := readLimitedBody(response.Body, maxDLsiteJSONBytes)
 	if err != nil {
-		return Product{}, err
+		return nil, err
 	}
+	return body, nil
+}
 
+func decodeProductResponse(body []byte, site, workno string) (Product, error) {
 	var raws []json.RawMessage
 	if err := json.Unmarshal(body, &raws); err != nil {
 		return Product{}, err
@@ -529,46 +570,42 @@ func (c *Client) fetchProductFromSite(ctx context.Context, site string, workno s
 	if !strings.EqualFold(product.WorkNo, workno) {
 		return Product{}, fmt.Errorf("dlsite %s returned %s for %s", site, product.WorkNo, workno)
 	}
-	if dynamicRaw, dynamic, err := c.fetchDynamic(ctx, product); err == nil {
-		product.DynamicRaw = dynamicRaw
-		if dynamic.RateAverage2DP != nil {
-			product.RateAverage2DP = dynamic.RateAverage2DP
-		} else if dynamic.RateAverage != nil {
-			product.RateAverage2DP = dynamic.RateAverage
-		}
-		if dynamic.SalesCount != nil {
-			product.SalesCount = dynamic.SalesCount
-		}
-		if dynamic.RegularPrice != nil {
-			product.RegularPrice = dynamic.RegularPrice
-		}
-		if dynamic.CurrentPrice != nil {
-			product.CurrentPrice = dynamic.CurrentPrice
-		}
-		if dynamic.DiscountRate != nil {
-			product.DiscountRate = dynamic.DiscountRate
-		}
-		if dynamic.IsDiscount != nil {
-			product.IsDiscount = dynamic.IsDiscount
-		}
-		if dynamic.IsSale != nil {
-			product.IsSale = dynamic.IsSale
-		}
-		if dynamic.IsFree != nil {
-			product.IsFree = dynamic.IsFree
-		}
-		product.Raw = combinedRaw(product.ProductRaw, product.DynamicRaw)
-	}
 	return product, nil
 }
 
+func applyDynamicProductFields(product *Product, dynamicRaw json.RawMessage, dynamic dynamicProductMetadata) {
+	product.DynamicRaw = dynamicRaw
+	if dynamic.RateAverage2DP != nil {
+		product.RateAverage2DP = dynamic.RateAverage2DP
+	} else if dynamic.RateAverage != nil {
+		product.RateAverage2DP = dynamic.RateAverage
+	}
+	if dynamic.SalesCount != nil {
+		product.SalesCount = dynamic.SalesCount
+	}
+	if dynamic.RegularPrice != nil {
+		product.RegularPrice = dynamic.RegularPrice
+	}
+	if dynamic.CurrentPrice != nil {
+		product.CurrentPrice = dynamic.CurrentPrice
+	}
+	if dynamic.DiscountRate != nil {
+		product.DiscountRate = dynamic.DiscountRate
+	}
+	if dynamic.IsDiscount != nil {
+		product.IsDiscount = dynamic.IsDiscount
+	}
+	if dynamic.IsSale != nil {
+		product.IsSale = dynamic.IsSale
+	}
+	if dynamic.IsFree != nil {
+		product.IsFree = dynamic.IsFree
+	}
+	product.Raw = combinedRaw(product.ProductRaw, product.DynamicRaw)
+}
+
 func (c *Client) fetchMakerCatalogFromSite(ctx context.Context, site string, makerID string, options MakerCatalogOptions) (MakerProfile, error) {
-	allCodes := []string{}
-	seenCodes := map[string]bool{}
-	var firstProfile MakerProfile
-	var firstRaw string
-	pagesFetched := 0
-	reachedEnd := false
+	state := makerCatalogPageState{allCodes: []string{}, seenCodes: map[string]bool{}}
 	knownCodes := normalizeCodeSet(options.KnownWorkCodes)
 	mode := strings.ToLower(strings.TrimSpace(options.Mode))
 	if mode == "" {
@@ -578,70 +615,96 @@ func (c *Client) fetchMakerCatalogFromSite(ctx context.Context, site string, mak
 	languages := normalizeMakerCatalogLanguages(options.Languages)
 	for page := 1; page <= maxPages; page++ {
 		if page > 1 && options.Delay > 0 {
-			timer := time.NewTimer(options.Delay)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return MakerProfile{}, ctx.Err()
-			case <-timer.C:
+			if err := waitMakerCatalogDelay(ctx, options.Delay); err != nil {
+				return MakerProfile{}, err
 			}
 		}
 		profile, err := c.fetchMakerProfilePageCandidates(ctx, site, makerID, page, languages)
 		if err != nil {
-			if page > 1 && len(allCodes) > 0 {
-				reachedEnd = true
+			if page > 1 && len(state.allCodes) > 0 {
+				state.reachedEnd = true
 				break
 			}
 			return MakerProfile{}, err
 		}
 		if page == 1 {
-			firstProfile = profile
-			firstRaw = profile.RawHTML
+			state.firstProfile = profile
+			state.firstRaw = profile.RawHTML
 			if mode == "full" {
-				pageTotal := pagesFromTotal(profile.TotalWorks, 50)
-				pageNoTotal := parsePageNoMax(profile.RawHTML)
-				if pageNoTotal > pageTotal {
-					pageTotal = pageNoTotal
-				}
-				if pageTotal > 0 && pageTotal < maxPages {
-					maxPages = pageTotal
-				}
+				maxPages = makerCatalogPageLimit(profile, maxPages)
 			}
 		}
-		pagesFetched++
-		pageNew := 0
-		pageCodes := profile.WorkCodes
-		if mode != "full" {
-			if beforeKnown, foundKnown := codesBeforeFirstKnown(pageCodes, knownCodes); foundKnown {
-				pageCodes = beforeKnown
-				reachedEnd = true
-			}
-		}
-		for _, code := range pageCodes {
-			if seenCodes[code] {
-				continue
-			}
-			seenCodes[code] = true
-			allCodes = append(allCodes, code)
-			pageNew++
-		}
+		state.pagesFetched++
+		pageNew := state.appendPageCodes(profile.WorkCodes, knownCodes, mode)
 		if len(profile.WorkCodes) == 0 || pageNew == 0 {
-			reachedEnd = true
+			state.reachedEnd = true
 			break
 		}
-		if reachedEnd {
+		if state.reachedEnd {
 			break
 		}
 	}
-	if pagesFetched == 0 {
+	if state.pagesFetched == 0 {
 		return MakerProfile{}, fmt.Errorf("dlsite maker returned no pages")
 	}
-	firstProfile.WorkCodes = allCodes
-	firstProfile.RawHTML = firstRaw
-	firstProfile.PagesFetched = pagesFetched
-	firstProfile.ReachedEnd = reachedEnd
-	firstProfile.Series = c.fetchMakerSeriesCatalogs(ctx, firstProfile.Series, languages)
-	return firstProfile, nil
+	state.firstProfile.WorkCodes = state.allCodes
+	state.firstProfile.RawHTML = state.firstRaw
+	state.firstProfile.PagesFetched = state.pagesFetched
+	state.firstProfile.ReachedEnd = state.reachedEnd
+	state.firstProfile.Series = c.fetchMakerSeriesCatalogs(ctx, state.firstProfile.Series, languages)
+	return state.firstProfile, nil
+}
+
+type makerCatalogPageState struct {
+	allCodes     []string
+	seenCodes    map[string]bool
+	firstProfile MakerProfile
+	firstRaw     string
+	pagesFetched int
+	reachedEnd   bool
+}
+
+func waitMakerCatalogDelay(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func makerCatalogPageLimit(profile MakerProfile, currentLimit int) int {
+	pageTotal := pagesFromTotal(profile.TotalWorks, 50)
+	pageNoTotal := parsePageNoMax(profile.RawHTML)
+	if pageNoTotal > pageTotal {
+		pageTotal = pageNoTotal
+	}
+	if pageTotal > 0 && pageTotal < currentLimit {
+		return pageTotal
+	}
+	return currentLimit
+}
+
+func (state *makerCatalogPageState) appendPageCodes(codes []string, knownCodes map[string]bool, mode string) int {
+	pageCodes := codes
+	if mode != "full" {
+		if beforeKnown, foundKnown := codesBeforeFirstKnown(pageCodes, knownCodes); foundKnown {
+			pageCodes = beforeKnown
+			state.reachedEnd = true
+		}
+	}
+	pageNew := 0
+	for _, code := range pageCodes {
+		if state.seenCodes[code] {
+			continue
+		}
+		state.seenCodes[code] = true
+		state.allCodes = append(state.allCodes, code)
+		pageNew++
+	}
+	return pageNew
 }
 
 func (c *Client) fetchMakerProfilePageCandidates(ctx context.Context, site string, makerID string, page int, languages []string) (MakerProfile, error) {

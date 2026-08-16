@@ -72,98 +72,17 @@ func MigrateFS(db *sql.DB, migrationFS fs.FS, appVersion string) error {
 	if migrationFS == nil {
 		return errors.New("migrate database: nil migration filesystem")
 	}
-	catalog, err := loadMigrationCatalog(migrationFS)
+	catalog, classification, err := prepareMigrationCatalog(db, migrationFS)
 	if err != nil {
 		return err
 	}
-	classification, err := classifyDatabase(db)
+	history, state, err := prepareMigrationState(db, catalog, classification)
 	if err != nil {
 		return err
 	}
-	if classification.futureVersion > catalog.current {
-		return fmt.Errorf(
-			"database schema version %d is newer than this binary supports (%d); use a compatible Kikoto version",
-			classification.futureVersion,
-			catalog.current,
-		)
-	}
-	if classification.hasApplicationTables && !classification.hasMigrationTable {
-		return errors.New("database contains Kikoto tables but has no migration history; refusing to infer a schema version")
-	}
-	if err := ensureMigrationMetadata(db); err != nil {
+	state, applied, err := applyMigrationCatalog(db, catalog, classification, history, state, appVersion)
+	if err != nil {
 		return err
-	}
-
-	var history migrationHistory
-	var state schemaState
-	// A second process may commit the ledger and state between these reads.
-	// Revalidate once so concurrent startup observes one coherent checkpoint.
-	for attempt := 0; attempt < 2; attempt++ {
-		history, err = validateAndAdoptHistory(db, catalog)
-		if err != nil {
-			return err
-		}
-		if classification.hasApplicationTables && !history.hasRecords {
-			return errors.New("database contains Kikoto tables but migration history is empty; refusing to infer a schema version")
-		}
-		baselineVersion := 0
-		if catalog.baseline != nil {
-			baselineVersion = catalog.baseline.version
-		}
-		state, err = ensureSchemaState(db, history, catalog.current, baselineVersion)
-		if err == nil {
-			break
-		}
-		if attempt == 0 && isConcurrentStateMismatch(err) {
-			continue
-		}
-		return err
-	}
-
-	applied := false
-	if history.current == 0 && !classification.hasApplicationTables && catalog.baseline != nil {
-		changed, err := applyMigrationAsset(db, *catalog.baseline, state.currentVersion, appVersion)
-		if err != nil {
-			return err
-		}
-		applied = applied || changed
-		if changed {
-			state.currentVersion = catalog.baseline.version
-			state.baselineVersion = catalog.baseline.version
-			state.baselineHash = catalog.baseline.checksum
-		} else {
-			state, err = readSchemaState(db)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	for _, migration := range catalog.migrations {
-		if migration.version <= state.currentVersion {
-			continue
-		}
-		if migration.version != state.currentVersion+1 {
-			return fmt.Errorf(
-				"migration history ends at %03d but the next available migration is %03d (%s)",
-				state.currentVersion,
-				migration.version,
-				migration.filename,
-			)
-		}
-		changed, err := applyMigrationAsset(db, migration, state.currentVersion, appVersion)
-		if err != nil {
-			return err
-		}
-		applied = applied || changed
-		if changed {
-			state.currentVersion = migration.version
-		} else {
-			state, err = readSchemaState(db)
-			if err != nil {
-				return err
-			}
-		}
 	}
 
 	if state.currentVersion != catalog.current {
@@ -175,6 +94,106 @@ func MigrateFS(db *sql.DB, migrationFS fs.FS, appVersion string) error {
 		}
 	}
 	return nil
+}
+
+func prepareMigrationCatalog(db *sql.DB, migrationFS fs.FS) (migrationCatalog, databaseClassification, error) {
+	catalog, err := loadMigrationCatalog(migrationFS)
+	if err != nil {
+		return migrationCatalog{}, databaseClassification{}, err
+	}
+	classification, err := classifyDatabase(db)
+	if err != nil {
+		return migrationCatalog{}, databaseClassification{}, err
+	}
+	if classification.futureVersion > catalog.current {
+		return migrationCatalog{}, databaseClassification{}, fmt.Errorf(
+			"database schema version %d is newer than this binary supports (%d); use a compatible Kikoto version",
+			classification.futureVersion, catalog.current,
+		)
+	}
+	if classification.hasApplicationTables && !classification.hasMigrationTable {
+		return migrationCatalog{}, databaseClassification{}, errors.New("database contains Kikoto tables but has no migration history; refusing to infer a schema version")
+	}
+	if err := ensureMigrationMetadata(db); err != nil {
+		return migrationCatalog{}, databaseClassification{}, err
+	}
+	return catalog, classification, nil
+}
+
+func prepareMigrationState(db *sql.DB, catalog migrationCatalog, classification databaseClassification) (migrationHistory, schemaState, error) {
+	baselineVersion := 0
+	if catalog.baseline != nil {
+		baselineVersion = catalog.baseline.version
+	}
+	var history migrationHistory
+	var state schemaState
+	// A second process may commit the ledger and state between these reads.
+	// Revalidate once so concurrent startup observes one coherent checkpoint.
+	for attempt := 0; attempt < 2; attempt++ {
+		var err error
+		history, err = validateAndAdoptHistory(db, catalog)
+		if err != nil {
+			return migrationHistory{}, schemaState{}, err
+		}
+		if classification.hasApplicationTables && !history.hasRecords {
+			return migrationHistory{}, schemaState{}, errors.New("database contains Kikoto tables but migration history is empty; refusing to infer a schema version")
+		}
+		state, err = ensureSchemaState(db, history, catalog.current, baselineVersion)
+		if err == nil {
+			return history, state, nil
+		}
+		if attempt == 0 && isConcurrentStateMismatch(err) {
+			continue
+		}
+		return migrationHistory{}, schemaState{}, err
+	}
+	return migrationHistory{}, schemaState{}, errors.New("could not establish migration state")
+}
+
+func applyMigrationCatalog(db *sql.DB, catalog migrationCatalog, classification databaseClassification, history migrationHistory, state schemaState, appVersion string) (schemaState, bool, error) {
+	applied := false
+	if history.current == 0 && !classification.hasApplicationTables && catalog.baseline != nil {
+		changed, err := applyMigrationAsset(db, *catalog.baseline, state.currentVersion, appVersion)
+		if err != nil {
+			return state, false, err
+		}
+		applied = applied || changed
+		if changed {
+			state.currentVersion = catalog.baseline.version
+			state.baselineVersion = catalog.baseline.version
+			state.baselineHash = catalog.baseline.checksum
+		} else {
+			state, err = readSchemaState(db)
+			if err != nil {
+				return state, false, err
+			}
+		}
+	}
+	for _, migration := range catalog.migrations {
+		if migration.version <= state.currentVersion {
+			continue
+		}
+		if migration.version != state.currentVersion+1 {
+			return state, false, fmt.Errorf(
+				"migration history ends at %03d but the next available migration is %03d (%s)",
+				state.currentVersion, migration.version, migration.filename,
+			)
+		}
+		changed, err := applyMigrationAsset(db, migration, state.currentVersion, appVersion)
+		if err != nil {
+			return state, false, err
+		}
+		applied = applied || changed
+		if changed {
+			state.currentVersion = migration.version
+			continue
+		}
+		state, err = readSchemaState(db)
+		if err != nil {
+			return state, false, err
+		}
+	}
+	return state, applied, nil
 }
 
 func isConcurrentStateMismatch(err error) bool {
@@ -208,29 +227,12 @@ func RecordSuccessfulStart(db *sql.DB, appVersion string) error {
 }
 
 func loadMigrationCatalog(migrationFS fs.FS) (migrationCatalog, error) {
-	entries, err := fs.ReadDir(migrationFS, ".")
+	migrations, _, err := loadNumberedMigrationAssets(migrationFS)
 	if err != nil {
-		return migrationCatalog{}, fmt.Errorf("read migrations: %w", err)
+		return migrationCatalog{}, err
 	}
 	catalog := migrationCatalog{byFilename: make(map[string]migrationAsset)}
-	versions := make(map[int]string)
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
-			continue
-		}
-		matches := migrationFilenamePattern.FindStringSubmatch(entry.Name())
-		if matches == nil {
-			return migrationCatalog{}, fmt.Errorf("invalid migration filename %q", entry.Name())
-		}
-		version, _ := strconv.Atoi(matches[1])
-		if previous, exists := versions[version]; exists {
-			return migrationCatalog{}, fmt.Errorf("migration version %03d is used by both %s and %s", version, previous, entry.Name())
-		}
-		asset, err := readMigrationAsset(migrationFS, entry.Name(), version, false)
-		if err != nil {
-			return migrationCatalog{}, err
-		}
-		versions[version] = entry.Name()
+	for _, asset := range migrations {
 		catalog.migrations = append(catalog.migrations, asset)
 		catalog.byFilename[asset.filename] = asset
 	}
@@ -240,46 +242,95 @@ func loadMigrationCatalog(migrationFS fs.FS) (migrationCatalog, error) {
 	sort.Slice(catalog.migrations, func(i, j int) bool {
 		return catalog.migrations[i].version < catalog.migrations[j].version
 	})
-	for index, migration := range catalog.migrations {
-		expected := index + 1
-		if migration.version != expected {
-			return migrationCatalog{}, fmt.Errorf("migration catalog has a gap: expected version %03d, found %03d", expected, migration.version)
-		}
+	if err := validateMigrationSequence(catalog.migrations); err != nil {
+		return migrationCatalog{}, err
 	}
 	catalog.current = catalog.migrations[len(catalog.migrations)-1].version
 
-	baselineEntries, err := fs.ReadDir(migrationFS, "baseline")
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return migrationCatalog{}, fmt.Errorf("read migration baseline: %w", err)
+	baseline, err := loadMigrationBaseline(migrationFS, catalog.current)
+	if err != nil {
+		return migrationCatalog{}, err
 	}
-	if err == nil {
-		for _, entry := range baselineEntries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
-				continue
-			}
-			matches := baselineFilenamePattern.FindStringSubmatch(entry.Name())
-			if matches == nil {
-				return migrationCatalog{}, fmt.Errorf("invalid migration baseline filename %q", entry.Name())
-			}
-			if catalog.baseline != nil {
-				return migrationCatalog{}, errors.New("migration catalog contains more than one baseline")
-			}
-			version, _ := strconv.Atoi(matches[1])
-			if version == 0 {
-				return migrationCatalog{}, errors.New("migration baseline version must be greater than zero")
-			}
-			if version > catalog.current {
-				return migrationCatalog{}, fmt.Errorf("migration baseline version %03d exceeds current version %03d", version, catalog.current)
-			}
-			asset, err := readMigrationAsset(migrationFS, "baseline/"+entry.Name(), version, true)
-			if err != nil {
-				return migrationCatalog{}, err
-			}
-			catalog.baseline = &asset
-			catalog.byFilename[asset.filename] = asset
-		}
+	if baseline != nil {
+		catalog.baseline = baseline
+		catalog.byFilename[baseline.filename] = *baseline
 	}
 	return catalog, nil
+}
+
+func loadNumberedMigrationAssets(migrationFS fs.FS) ([]migrationAsset, map[int]string, error) {
+	entries, err := fs.ReadDir(migrationFS, ".")
+	if err != nil {
+		return nil, nil, fmt.Errorf("read migrations: %w", err)
+	}
+	assets := []migrationAsset{}
+	versions := map[int]string{}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+			continue
+		}
+		matches := migrationFilenamePattern.FindStringSubmatch(entry.Name())
+		if matches == nil {
+			return nil, nil, fmt.Errorf("invalid migration filename %q", entry.Name())
+		}
+		version, _ := strconv.Atoi(matches[1])
+		if previous, exists := versions[version]; exists {
+			return nil, nil, fmt.Errorf("migration version %03d is used by both %s and %s", version, previous, entry.Name())
+		}
+		asset, err := readMigrationAsset(migrationFS, entry.Name(), version, false)
+		if err != nil {
+			return nil, nil, err
+		}
+		versions[version] = entry.Name()
+		assets = append(assets, asset)
+	}
+	return assets, versions, nil
+}
+
+func validateMigrationSequence(migrations []migrationAsset) error {
+	for index, migration := range migrations {
+		expected := index + 1
+		if migration.version != expected {
+			return fmt.Errorf("migration catalog has a gap: expected version %03d, found %03d", expected, migration.version)
+		}
+	}
+	return nil
+}
+
+func loadMigrationBaseline(migrationFS fs.FS, currentVersion int) (*migrationAsset, error) {
+	entries, err := fs.ReadDir(migrationFS, "baseline")
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read migration baseline: %w", err)
+	}
+	var baseline *migrationAsset
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+			continue
+		}
+		matches := baselineFilenamePattern.FindStringSubmatch(entry.Name())
+		if matches == nil {
+			return nil, fmt.Errorf("invalid migration baseline filename %q", entry.Name())
+		}
+		if baseline != nil {
+			return nil, errors.New("migration catalog contains more than one baseline")
+		}
+		version, _ := strconv.Atoi(matches[1])
+		if version == 0 {
+			return nil, errors.New("migration baseline version must be greater than zero")
+		}
+		if version > currentVersion {
+			return nil, fmt.Errorf("migration baseline version %03d exceeds current version %03d", version, currentVersion)
+		}
+		asset, err := readMigrationAsset(migrationFS, "baseline/"+entry.Name(), version, true)
+		if err != nil {
+			return nil, err
+		}
+		baseline = &asset
+	}
+	return baseline, nil
 }
 
 func readMigrationAsset(migrationFS fs.FS, filename string, version int, baseline bool) (migrationAsset, error) {
@@ -428,48 +479,73 @@ func tableColumns(db *sql.DB, table string) (map[string]bool, error) {
 	return columns, nil
 }
 
+type migrationHistoryRow struct {
+	filename string
+	version  sql.NullInt64
+	checksum string
+	asset    migrationAsset
+}
+
 func validateAndAdoptHistory(db *sql.DB, catalog migrationCatalog) (migrationHistory, error) {
+	historyRows, err := loadMigrationHistoryRows(db, catalog)
+	if err != nil {
+		return migrationHistory{}, err
+	}
+	sort.Slice(historyRows, func(i, j int) bool { return historyRows[i].asset.version < historyRows[j].asset.version })
+	history, err := adoptMigrationHistoryRows(db, historyRows)
+	if err != nil {
+		return migrationHistory{}, err
+	}
+	if err := validateMigrationHistorySequence(historyRows, &history); err != nil {
+		return migrationHistory{}, err
+	}
+	if _, err := db.Exec(`
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_schema_migration_version
+		ON schema_migration(version)
+		WHERE version IS NOT NULL
+	`); err != nil {
+		return migrationHistory{}, fmt.Errorf("index migration versions: %w", err)
+	}
+	return history, nil
+}
+
+func loadMigrationHistoryRows(db *sql.DB, catalog migrationCatalog) ([]migrationHistoryRow, error) {
 	rows, err := db.Query(`
 		SELECT filename, version, checksum
 		FROM schema_migration
 		ORDER BY applied_at, filename
 	`)
 	if err != nil {
-		return migrationHistory{}, fmt.Errorf("read migration history: %w", err)
+		return nil, fmt.Errorf("read migration history: %w", err)
 	}
-	type historyRow struct {
-		filename string
-		version  sql.NullInt64
-		checksum string
-		asset    migrationAsset
-	}
-	var historyRows []historyRow
+	defer rows.Close()
+	var historyRows []migrationHistoryRow
 	for rows.Next() {
-		var row historyRow
+		var row migrationHistoryRow
 		if err := rows.Scan(&row.filename, &row.version, &row.checksum); err != nil {
-			rows.Close()
-			return migrationHistory{}, fmt.Errorf("read migration history: %w", err)
+			return nil, fmt.Errorf("read migration history: %w", err)
 		}
 		asset, exists := catalog.byFilename[row.filename]
 		if !exists {
-			rows.Close()
 			if version := versionFromUnknownFilename(row.filename); version > catalog.current {
-				return migrationHistory{}, fmt.Errorf(
+				return nil, fmt.Errorf(
 					"database migration %s is newer than this binary supports (%03d)",
 					row.filename,
 					catalog.current,
 				)
 			}
-			return migrationHistory{}, fmt.Errorf("database contains unknown migration record %q", row.filename)
+			return nil, fmt.Errorf("database contains unknown migration record %q", row.filename)
 		}
 		row.asset = asset
 		historyRows = append(historyRows, row)
 	}
-	if err := rows.Close(); err != nil {
-		return migrationHistory{}, fmt.Errorf("read migration history: %w", err)
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read migration history: %w", err)
 	}
+	return historyRows, nil
+}
 
-	sort.Slice(historyRows, func(i, j int) bool { return historyRows[i].asset.version < historyRows[j].asset.version })
+func adoptMigrationHistoryRows(db *sql.DB, historyRows []migrationHistoryRow) (migrationHistory, error) {
 	history := migrationHistory{}
 	seenVersions := make(map[int]string)
 	for _, row := range historyRows {
@@ -502,30 +578,25 @@ func validateAndAdoptHistory(db *sql.DB, catalog migrationCatalog) (migrationHis
 			history.baselineHash = asset.checksum
 		}
 	}
-
-	if len(historyRows) > 0 {
-		expected := 1
-		if historyRows[0].asset.baseline {
-			expected = historyRows[0].asset.version
-		}
-		for index, row := range historyRows {
-			if index > 0 || !row.asset.baseline {
-				if row.asset.version != expected {
-					return migrationHistory{}, fmt.Errorf("database migration history has a gap: expected %03d, found %03d", expected, row.asset.version)
-				}
-			}
-			expected = row.asset.version + 1
-			history.current = row.asset.version
-		}
-	}
-	if _, err := db.Exec(`
-		CREATE UNIQUE INDEX IF NOT EXISTS idx_schema_migration_version
-		ON schema_migration(version)
-		WHERE version IS NOT NULL
-	`); err != nil {
-		return migrationHistory{}, fmt.Errorf("index migration versions: %w", err)
-	}
 	return history, nil
+}
+
+func validateMigrationHistorySequence(historyRows []migrationHistoryRow, history *migrationHistory) error {
+	if len(historyRows) == 0 {
+		return nil
+	}
+	expected := 1
+	if historyRows[0].asset.baseline {
+		expected = historyRows[0].asset.version
+	}
+	for index, row := range historyRows {
+		if (index > 0 || !row.asset.baseline) && row.asset.version != expected {
+			return fmt.Errorf("database migration history has a gap: expected %03d, found %03d", expected, row.asset.version)
+		}
+		expected = row.asset.version + 1
+		history.current = row.asset.version
+	}
+	return nil
 }
 
 func versionFromUnknownFilename(filename string) int {

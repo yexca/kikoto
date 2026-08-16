@@ -220,36 +220,51 @@ func (s *Server) demoContentMiddleware(next http.Handler) http.Handler {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-		if len(parts) >= 3 && parts[0] == "api" {
-			id, err := strconv.ParseInt(parts[2], 10, 64)
-			if err == nil && id > 0 {
-				switch parts[1] {
-				case "works":
-					if !s.requireDemoWork(w, r, id) {
-						return
-					}
-				case "media-items":
-					eligible, lookupErr := s.demoMediaItemEligible(r.Context(), id)
-					if lookupErr != nil || !eligible {
-						writeAPIError(w, http.StatusNotFound, "not_found", "media item not found", false)
-						return
-					}
-				case "media":
-					isMediaItem := len(parts) >= 4 && parts[3] == "lyrics-preference"
-					isStream := len(parts) >= 4 && parts[3] == "stream"
-					if isMediaItem {
-						eligible, lookupErr := s.demoMediaItemEligible(r.Context(), id)
-						if lookupErr != nil || !eligible {
-							writeAPIError(w, http.StatusNotFound, "not_found", "media item not found", false)
-							return
-						}
-					} else if !isStream && !s.requireDemoMediaLocation(w, r, id) {
-						return
-					}
-				}
-			}
+		if !s.allowDemoContentRequest(w, r) {
+			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (s *Server) allowDemoContentRequest(w http.ResponseWriter, r *http.Request) bool {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) < 3 || parts[0] != "api" {
+		return true
+	}
+	id, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil || id <= 0 {
+		return true
+	}
+	switch parts[1] {
+	case "works":
+		return s.requireDemoWork(w, r, id)
+	case "media-items":
+		return s.requireDemoMediaItem(w, r, id)
+	case "media":
+		return s.requireDemoMediaRequest(w, r, parts, id)
+	default:
+		return true
+	}
+}
+
+func (s *Server) requireDemoMediaItem(w http.ResponseWriter, r *http.Request, id int64) bool {
+	eligible, lookupErr := s.demoMediaItemEligible(r.Context(), id)
+	if lookupErr != nil || !eligible {
+		writeAPIError(w, http.StatusNotFound, "not_found", "media item not found", false)
+		return false
+	}
+	return true
+}
+
+func (s *Server) requireDemoMediaRequest(w http.ResponseWriter, r *http.Request, parts []string, id int64) bool {
+	isMediaItem := len(parts) >= 4 && parts[3] == "lyrics-preference"
+	isStream := len(parts) >= 4 && parts[3] == "stream"
+	if isMediaItem {
+		return s.requireDemoMediaItem(w, r, id)
+	}
+	if isStream {
+		return true
+	}
+	return s.requireDemoMediaLocation(w, r, id)
 }

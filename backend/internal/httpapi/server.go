@@ -979,55 +979,11 @@ func parseSourcePresenceSummary(raw string) []sourcePresenceItem {
 	items := []sourcePresenceItem{}
 	seen := map[string]int{}
 	for _, part := range strings.Split(raw, ",") {
-		part = strings.TrimSpace(part)
-		if part == "" {
+		item, ok := parseSourcePresenceSummaryItem(strings.TrimSpace(part))
+		if !ok {
 			continue
 		}
-		item := sourcePresenceItem{}
-		if strings.Contains(part, "|") {
-			fields := strings.Split(part, "|")
-			if len(fields) > 0 {
-				item.Type = strings.TrimSpace(fields[0])
-			}
-			if len(fields) > 1 {
-				item.Availability = strings.TrimSpace(fields[1])
-			}
-			if len(fields) > 2 {
-				item.FileSourceID, _ = strconv.ParseInt(strings.TrimSpace(fields[2]), 10, 64)
-			}
-			if len(fields) > 3 {
-				item.FileSourceCode = strings.TrimSpace(fields[3])
-			}
-			if len(fields) > 4 {
-				item.FileSourceName = strings.TrimSpace(fields[4])
-			}
-			if len(fields) > 5 {
-				item.RemoteID = strings.TrimSpace(fields[5])
-			}
-			if len(fields) > 6 {
-				item.SourceURL = strings.TrimSpace(fields[6])
-			}
-			if len(fields) > 7 {
-				item.RemoteCode = strings.TrimSpace(fields[7])
-			}
-			if len(fields) > 8 {
-				item.WorkID, _ = strconv.ParseInt(strings.TrimSpace(fields[8]), 10, 64)
-			}
-		} else {
-			presenceType, availability, ok := strings.Cut(part, ":")
-			if !ok {
-				continue
-			}
-			item.Type = strings.TrimSpace(presenceType)
-			item.Availability = strings.TrimSpace(availability)
-		}
-		if item.Type == "" {
-			continue
-		}
-		if item.Availability == "" {
-			item.Availability = "unknown"
-		}
-		key := fmt.Sprintf("%s:%d:%d:%s", strings.ToLower(item.Type), item.WorkID, item.FileSourceID, strings.ToLower(item.Availability))
+		key := sourcePresenceItemKey(item)
 		if index, ok := seen[key]; ok {
 			mergeSourcePresenceItem(&items[index], item)
 			continue
@@ -1036,6 +992,75 @@ func parseSourcePresenceSummary(raw string) []sourcePresenceItem {
 		items = append(items, item)
 	}
 	return items
+}
+
+func parseSourcePresenceSummaryItem(part string) (sourcePresenceItem, bool) {
+	if part == "" {
+		return sourcePresenceItem{}, false
+	}
+	item := sourcePresenceItem{}
+	if strings.Contains(part, "|") {
+		item = parseDelimitedSourcePresenceItem(strings.Split(part, "|"))
+	} else {
+		presenceType, availability, ok := strings.Cut(part, ":")
+		if !ok {
+			return sourcePresenceItem{}, false
+		}
+		item.Type = strings.TrimSpace(presenceType)
+		item.Availability = strings.TrimSpace(availability)
+	}
+	if !normalizeSourcePresenceItem(&item) {
+		return sourcePresenceItem{}, false
+	}
+	return item, true
+}
+
+func parseDelimitedSourcePresenceItem(fields []string) sourcePresenceItem {
+	item := sourcePresenceItem{}
+	if len(fields) > 0 {
+		item.Type = strings.TrimSpace(fields[0])
+	}
+	if len(fields) > 1 {
+		item.Availability = strings.TrimSpace(fields[1])
+	}
+	if len(fields) > 2 {
+		item.FileSourceID, _ = strconv.ParseInt(strings.TrimSpace(fields[2]), 10, 64)
+	}
+	if len(fields) > 3 {
+		item.FileSourceCode = strings.TrimSpace(fields[3])
+	}
+	if len(fields) > 4 {
+		item.FileSourceName = strings.TrimSpace(fields[4])
+	}
+	if len(fields) > 5 {
+		item.RemoteID = strings.TrimSpace(fields[5])
+	}
+	if len(fields) > 6 {
+		item.SourceURL = strings.TrimSpace(fields[6])
+	}
+	if len(fields) > 7 {
+		item.RemoteCode = strings.TrimSpace(fields[7])
+	}
+	if len(fields) > 8 {
+		item.WorkID, _ = strconv.ParseInt(strings.TrimSpace(fields[8]), 10, 64)
+	}
+	return item
+}
+
+func normalizeSourcePresenceItem(item *sourcePresenceItem) bool {
+	item.Type = strings.TrimSpace(item.Type)
+	if item.Type == "" {
+		return false
+	}
+	item.Availability = strings.TrimSpace(item.Availability)
+	if item.Availability == "" {
+		item.Availability = "unknown"
+	}
+	return true
+}
+
+func sourcePresenceItemKey(item sourcePresenceItem) string {
+	return fmt.Sprintf("%s:%d:%d:%s", strings.ToLower(item.Type), item.WorkID, item.FileSourceID, strings.ToLower(item.Availability))
 }
 
 func scanSourcePresenceRows(rows *sql.Rows) ([]sourcePresenceItem, error) {
@@ -1056,13 +1081,10 @@ func scanSourcePresenceRows(rows *sql.Rows) ([]sourcePresenceItem, error) {
 		); err != nil {
 			return nil, err
 		}
-		if item.Type == "" {
+		if !normalizeSourcePresenceItem(&item) {
 			continue
 		}
-		if item.Availability == "" {
-			item.Availability = "unknown"
-		}
-		key := fmt.Sprintf("%s:%d:%d:%s", strings.ToLower(item.Type), item.WorkID, item.FileSourceID, strings.ToLower(item.Availability))
+		key := sourcePresenceItemKey(item)
 		if index, ok := seen[key]; ok {
 			mergeSourcePresenceItem(&items[index], item)
 			continue
@@ -2359,6 +2381,35 @@ func (s *Server) executeMediaCacheCleanupJob(ctx context.Context, job workflowJo
 }
 
 func (s *Server) runLocalMediaDelete(ctx context.Context, localLocationID int64) (mediaLocalDeleteResult, error) {
+	target, err := s.loadLocalMediaDeleteTarget(ctx, localLocationID)
+	if err != nil {
+		return mediaLocalDeleteResult{}, err
+	}
+	if target.Symlink {
+		runID, candidateID, err := s.createSymlinkMediaReview(ctx, target.LocationID, target.MediaItemID, target.WorkID, target.SourceID, target.RelPath)
+		if err != nil {
+			return mediaLocalDeleteResult{}, err
+		}
+		return mediaLocalDeleteResult{}, symlinkMediaLocationError{RunID: runID, CandidateID: candidateID, Path: target.RelPath}
+	}
+	runID, deleteNodeID, jobID, err := s.createLocalMediaDeleteWorkflow(ctx, target)
+	if err != nil {
+		return mediaLocalDeleteResult{}, err
+	}
+	return s.performLocalMediaDelete(ctx, target, runID, deleteNodeID, jobID)
+}
+
+type localMediaDeleteTarget struct {
+	LocationID   int64
+	MediaItemID  int64
+	WorkID       int64
+	SourceID     int64
+	RelPath      string
+	Availability string
+	Symlink      bool
+}
+
+func (s *Server) loadLocalMediaDeleteTarget(ctx context.Context, localLocationID int64) (localMediaDeleteTarget, error) {
 	var mediaItemID int64
 	var workID int64
 	var sourceID int64
@@ -2372,31 +2423,36 @@ func (s *Server) runLocalMediaDelete(ctx context.Context, localLocationID int64)
 		WHERE location.id = ?
 	`, localLocationID).Scan(&mediaItemID, &workID, &sourceID, &locationType, &relPath, &availability); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return mediaLocalDeleteResult{}, fmt.Errorf("local media location not found")
+			return localMediaDeleteTarget{}, fmt.Errorf("local media location not found")
 		}
-		return mediaLocalDeleteResult{}, err
+		return localMediaDeleteTarget{}, err
 	}
 	if locationType != "local" {
-		return mediaLocalDeleteResult{}, fmt.Errorf("media location is not a local file")
+		return localMediaDeleteTarget{}, fmt.Errorf("media location is not a local file")
 	}
 	targetPath, err := safeDataPath(s.cfg.DataRoot, relPath)
 	if err != nil {
-		return mediaLocalDeleteResult{}, err
+		return localMediaDeleteTarget{}, err
 	}
-	if isSymlinkPath(targetPath) {
-		runID, candidateID, err := s.createSymlinkMediaReview(ctx, localLocationID, mediaItemID, workID, sourceID, relPath)
-		if err != nil {
-			return mediaLocalDeleteResult{}, err
-		}
-		return mediaLocalDeleteResult{}, symlinkMediaLocationError{RunID: runID, CandidateID: candidateID, Path: relPath}
-	}
-	if _, err := validateDestructivePath(s.cfg.DataRoot, relPath, true, false); err != nil {
-		return mediaLocalDeleteResult{}, err
-	}
+	symlink := isSymlinkPath(targetPath)
+	return localMediaDeleteTarget{
+		LocationID: localLocationID, MediaItemID: mediaItemID, WorkID: workID, SourceID: sourceID, RelPath: relPath,
+		Availability: availability, Symlink: symlink,
+	}, validateLocalMediaDeletePath(s.cfg.DataRoot, relPath, symlink)
+}
 
+func validateLocalMediaDeletePath(dataRoot, relPath string, symlink bool) error {
+	if symlink {
+		return nil
+	}
+	_, err := validateDestructivePath(dataRoot, relPath, true, false)
+	return err
+}
+
+func (s *Server) createLocalMediaDeleteWorkflow(ctx context.Context, target localMediaDeleteTarget) (int64, int64, int64, error) {
 	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
-		return mediaLocalDeleteResult{}, err
+		return 0, 0, 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	definitionID, err := workflow.EnsureDefinition(ctx, tx, "local_media_delete", "Delete local media", "Delete a local media file and mark only that file location unavailable.", map[string]any{
@@ -2406,45 +2462,49 @@ func (s *Server) runLocalMediaDelete(ctx context.Context, localLocationID int64)
 		},
 	})
 	if err != nil {
-		return mediaLocalDeleteResult{}, err
+		return 0, 0, 0, err
 	}
-	input := map[string]any{"local_location_id": localLocationID, "media_item_id": mediaItemID, "work_id": workID, "source_id": sourceID, "path": relPath}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "local_media_delete", "Delete local media", "running", "manual", "delete_local", input, map[string]any{"path": relPath})
+	input := map[string]any{"local_location_id": target.LocationID, "media_item_id": target.MediaItemID, "work_id": target.WorkID, "source_id": target.SourceID, "path": target.RelPath}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "local_media_delete", "Delete local media", "running", "manual", "delete_local", input, map[string]any{"path": target.RelPath})
 	if err != nil {
-		return mediaLocalDeleteResult{}, err
+		return 0, 0, 0, err
 	}
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
 		NodeID: "select", NodeType: "select_media_items", DisplayName: "Select local media", Position: 1, Status: "succeeded",
-		Input: input, Output: map[string]any{"availability": availability},
+		Input: input, Output: map[string]any{"availability": target.Availability},
 	}); err != nil {
-		return mediaLocalDeleteResult{}, err
+		return 0, 0, 0, err
 	}
 	deleteNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
 		NodeID: "delete", NodeType: "delete_local_media", DisplayName: "Delete local file", Position: 2, Status: "running",
 		Input: input, Output: nil,
 	})
 	if err != nil {
-		return mediaLocalDeleteResult{}, err
+		return 0, 0, 0, err
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
 		NodeRunID: deleteNodeID, WorkerType: "local_media_delete", Status: "running", ResourceKey: "media:cleanup", Payload: input,
 		Checkpoint: map[string]any{"phase": "pending"}, Recoverable: true, MaxRetries: 3, ProgressCurrent: 0, ProgressTotal: 1,
 	})
 	if err != nil {
-		return mediaLocalDeleteResult{}, err
+		return 0, 0, 0, err
 	}
 	if err := tx.Commit(); err != nil {
-		return mediaLocalDeleteResult{}, err
+		return 0, 0, 0, err
 	}
+	return runID, deleteNodeID, jobID, nil
+}
+
+func (s *Server) performLocalMediaDelete(ctx context.Context, target localMediaDeleteTarget, runID, deleteNodeID, jobID int64) (mediaLocalDeleteResult, error) {
 	jobCtx, stopHeartbeat, err := s.leaseInlineWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID, NodeRunID: deleteNodeID})
 	if err != nil {
 		return mediaLocalDeleteResult{}, err
 	}
 	defer stopHeartbeat()
 
-	deleted, _, err := removeDestructiveFile(s.cfg.DataRoot, relPath)
+	deleted, _, err := removeDestructiveFile(s.cfg.DataRoot, target.RelPath)
 	if err != nil {
-		_ = s.finishLocalMediaDelete(jobCtx, runID, deleteNodeID, jobID, "failed", localLocationID, relPath, deleted, err.Error())
+		_ = s.finishLocalMediaDelete(jobCtx, runID, deleteNodeID, jobID, "failed", target.LocationID, target.RelPath, deleted, err.Error())
 		return mediaLocalDeleteResult{}, err
 	}
 	if _, err := s.db.ExecContext(jobCtx, `
@@ -2453,18 +2513,18 @@ func (s *Server) runLocalMediaDelete(ctx context.Context, localLocationID int64)
 			last_checked_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 			AND location_type = 'local'
-	`, localLocationID); err != nil {
-		_ = s.finishLocalMediaDelete(jobCtx, runID, deleteNodeID, jobID, "failed", localLocationID, relPath, deleted, err.Error())
+	`, target.LocationID); err != nil {
+		_ = s.finishLocalMediaDelete(jobCtx, runID, deleteNodeID, jobID, "failed", target.LocationID, target.RelPath, deleted, err.Error())
 		return mediaLocalDeleteResult{}, err
 	}
-	if err := s.finishLocalMediaDelete(jobCtx, runID, deleteNodeID, jobID, "succeeded", localLocationID, relPath, deleted, ""); err != nil {
+	if err := s.finishLocalMediaDelete(jobCtx, runID, deleteNodeID, jobID, "succeeded", target.LocationID, target.RelPath, deleted, ""); err != nil {
 		return mediaLocalDeleteResult{}, err
 	}
 	return mediaLocalDeleteResult{
 		RunID:             runID,
-		LocationID:        localLocationID,
-		WorkID:            workID,
-		Path:              relPath,
+		LocationID:        target.LocationID,
+		WorkID:            target.WorkID,
+		Path:              target.RelPath,
 		Status:            "succeeded",
 		Deleted:           deleted,
 		ClearedProgress:   0,
@@ -2784,6 +2844,33 @@ func workCodeShard(workCode string) (string, string) {
 
 func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, includeMedia bool) (workDetail, error) {
 	var work workDetail
+	work, err := s.loadWorkDetailBase(ctx, userID, id)
+	if err != nil {
+		return workDetail{}, err
+	}
+	mediaWorkID, err := s.populateWorkDetailMetadata(ctx, &work)
+	if err != nil {
+		return workDetail{}, err
+	}
+	work.VoiceCredits, err = s.loadWorkDetailVoiceCredits(ctx, id)
+	if err != nil {
+		return workDetail{}, err
+	}
+	if err := s.applyManualOverridesToDetail(ctx, &work); err != nil {
+		return workDetail{}, err
+	}
+	if !includeMedia {
+		return work, nil
+	}
+	work.MediaItems, err = s.loadWorkMediaItems(ctx, userID, mediaWorkID)
+	if err != nil {
+		return workDetail{}, err
+	}
+	return work, nil
+}
+
+func (s *Server) loadWorkDetailBase(ctx context.Context, userID int64, id int64) (workDetail, error) {
+	var work workDetail
 	var releaseDate sql.NullString
 	var durationSeconds sql.NullInt64
 	var rating sql.NullFloat64
@@ -2862,7 +2949,10 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 		return workDetail{}, err
 	}
 	work.UserTags = userTags
+	return work, nil
+}
 
+func (s *Server) populateWorkDetailMetadata(ctx context.Context, work *workDetail) (int64, error) {
 	var snapshot sql.NullString
 	var snapshotFetchedAt sql.NullString
 	if err := s.db.QueryRowContext(ctx, `
@@ -2873,8 +2963,8 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 			AND metadata_provider.code = 'dlsite'
 		ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC
 		LIMIT 1
-	`, id).Scan(&snapshot, &snapshotFetchedAt); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return workDetail{}, err
+	`, work.ID).Scan(&snapshot, &snapshotFetchedAt); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
 	}
 	metadata := parseDLsiteSnapshot(snapshot.String)
 	if snapshotFetchedAt.Valid {
@@ -2887,8 +2977,8 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 	work.CircleExternalID = metadata.CircleExternalID
 	work.BaseCode = metadata.BaseCode
 	work.MetadataLanguage = metadata.MetadataLanguage
-	if canonicalCode, metadataLanguage, err := s.loadWorkEditionMetadata(ctx, id); err != nil {
-		return workDetail{}, err
+	if canonicalCode, metadataLanguage, err := s.loadWorkEditionMetadata(ctx, work.ID); err != nil {
+		return 0, err
 	} else {
 		if canonicalCode != "" && !strings.EqualFold(canonicalCode, work.PrimaryCode) {
 			work.BaseCode = canonicalCode
@@ -2902,8 +2992,8 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 		SELECT display_name || '|' || external_id
 		FROM work_primary_circle
 		WHERE work_id = ?
-	`, id).Scan(&partyLink); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return workDetail{}, err
+	`, work.ID).Scan(&partyLink); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
 	}
 	if name, externalID := parsePartyLink(partyLink.String); name != "" {
 		work.Circle = name
@@ -2915,16 +3005,19 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 	work.SeriesCircleID = work.CircleExternalID
 	work.Tags = metadata.Tags
 	work.VoiceActors = metadata.VoiceActors
-	work.VoiceCredits = []voiceCredit{}
 	translations, err := s.loadWorkTranslations(ctx, work.PrimaryCode, work.BaseCode, metadata.LanguageEditions)
 	if err != nil {
-		return workDetail{}, err
+		return 0, err
 	}
 	work.Translations = translations
 	mediaWorkID, err := s.resolveMediaWorkID(ctx, work.ID, work.Translations)
 	if err != nil {
-		return workDetail{}, err
+		return 0, err
 	}
+	return mediaWorkID, nil
+}
+
+func (s *Server) loadWorkDetailVoiceCredits(ctx context.Context, workID int64) ([]voiceCredit, error) {
 	creditRows, err := s.db.QueryContext(ctx, `
 		SELECT person.id, person.display_name
 		FROM work_credit AS credit
@@ -2932,32 +3025,23 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 		WHERE credit.work_id = ?
 			AND credit.role = 'voice_actor'
 		ORDER BY person.display_name ASC, person.id ASC
-	`, id)
+	`, workID)
 	if err != nil {
-		return workDetail{}, err
+		return nil, err
 	}
 	defer creditRows.Close()
+	credits := []voiceCredit{}
 	for creditRows.Next() {
 		var credit voiceCredit
 		if err := creditRows.Scan(&credit.PersonID, &credit.DisplayName); err != nil {
-			return workDetail{}, err
+			return nil, err
 		}
-		work.VoiceCredits = append(work.VoiceCredits, credit)
+		credits = append(credits, credit)
 	}
 	if err := creditRows.Err(); err != nil {
-		return workDetail{}, err
+		return nil, err
 	}
-	if err := s.applyManualOverridesToDetail(ctx, &work); err != nil {
-		return workDetail{}, err
-	}
-	if !includeMedia {
-		return work, nil
-	}
-	work.MediaItems, err = s.loadWorkMediaItems(ctx, userID, mediaWorkID)
-	if err != nil {
-		return workDetail{}, err
-	}
-	return work, nil
+	return credits, nil
 }
 
 func (s *Server) loadWorkFolderLocations(ctx context.Context, workID int64) ([]workFolderLocationDetail, error) {
@@ -2998,6 +3082,21 @@ func (s *Server) resolveMediaWorkIDForRequest(ctx context.Context, workID int64)
 }
 
 func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWorkID int64) ([]mediaItemDetail, error) {
+	mediaItems, itemIndexes, err := s.loadMediaItemRows(ctx, userID, mediaWorkID)
+	if err != nil {
+		return nil, err
+	}
+	if len(mediaItems) == 0 {
+		return mediaItems, nil
+	}
+	if err := s.loadMediaLocationRows(ctx, mediaWorkID, mediaItems, itemIndexes); err != nil {
+		return nil, err
+	}
+	inferMediaItemKinds(mediaItems)
+	return mediaItems, nil
+}
+
+func (s *Server) loadMediaItemRows(ctx context.Context, userID int64, mediaWorkID int64) ([]mediaItemDetail, map[int64]int, error) {
 	mediaItems := []mediaItemDetail{}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
@@ -3032,8 +3131,9 @@ func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWork
 			media_item.id ASC
 	`, userID, userID, mediaWorkID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	defer func() { _ = rows.Close() }()
 
 	itemIndexes := map[int64]int{}
 	for rows.Next() {
@@ -3067,7 +3167,7 @@ func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWork
 			&preferredLyricsMediaItemID,
 		); err != nil {
 			_ = rows.Close()
-			return nil, err
+			return nil, nil, err
 		}
 		item.ParentID = nullableInt64(parentID)
 		item.DiscNo = nullableInt64(discNo)
@@ -3083,16 +3183,15 @@ func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWork
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
-		return nil, err
+		return nil, nil, err
 	}
 	if err := rows.Close(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	return mediaItems, itemIndexes, nil
+}
 
-	if len(mediaItems) == 0 {
-		return mediaItems, nil
-	}
-
+func (s *Server) loadMediaLocationRows(ctx context.Context, mediaWorkID int64, mediaItems []mediaItemDetail, itemIndexes map[int64]int) error {
 	locationRows, err := s.db.QueryContext(ctx, `
 		SELECT
 			location.id,
@@ -3116,8 +3215,9 @@ func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWork
 		ORDER BY source.priority ASC, location.id ASC
 	`, mediaWorkID)
 	if err != nil {
-		return nil, err
+		return err
 	}
+	defer func() { _ = locationRows.Close() }()
 
 	for locationRows.Next() {
 		var mediaItemID int64
@@ -3142,7 +3242,7 @@ func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWork
 			&lastCheckedAt,
 		); err != nil {
 			_ = locationRows.Close()
-			return nil, err
+			return err
 		}
 		location.SizeBytes = nullableInt64(sizeBytes)
 		location.DurationSeconds = nullableInt64(locationDurationSeconds)
@@ -3156,11 +3256,15 @@ func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWork
 	}
 	if err := locationRows.Err(); err != nil {
 		_ = locationRows.Close()
-		return nil, err
+		return err
 	}
 	if err := locationRows.Close(); err != nil {
-		return nil, err
+		return err
 	}
+	return nil
+}
+
+func inferMediaItemKinds(mediaItems []mediaItemDetail) {
 	// Older scans may have stored files before an extension was recognized.
 	// Derive the playable kind from the concrete location so existing media
 	// becomes usable without requiring a destructive rescan.
@@ -3181,7 +3285,6 @@ func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWork
 			}
 		}
 	}
-	return mediaItems, nil
 }
 
 func (s *Server) ensureLocalMediaIndexed(ctx context.Context, workID int64) error {
@@ -3280,38 +3383,67 @@ func (s *Server) indexLocalMediaForWorkOnce(ctx context.Context, workID int64, f
 	if relPath == "" {
 		return nil
 	}
-	root, err := filepath.Abs(s.cfg.DataRoot)
+	folder, collectDuration, err := s.collectLocalWorkFolder(ctx, workID, relPath)
 	if err != nil {
 		return err
 	}
-	workPath := filepath.Join(root, filepath.FromSlash(relPath))
-	workPath, err = filepath.Abs(workPath)
+	releaseWriteSlot, writeWaitDuration, err := s.acquireLocalMediaWriteSlot(ctx)
 	if err != nil {
 		return err
 	}
-	if !isPathWithinRoot(root, workPath) {
-		return fmt.Errorf("local work path escapes data root")
+	defer releaseWriteSlot()
+	writeStartedAt := time.Now()
+	if err := s.persistIndexedLocalWork(ctx, workID, fileSourceID, relPath, folder); err != nil {
+		return err
+	}
+	writeDuration := time.Since(writeStartedAt)
+	if elapsed := time.Since(startedAt); elapsed >= 250*time.Millisecond {
+		slog.Info("indexed local work media",
+			"work_id", workID,
+			"file_count", len(folder.Files),
+			"collect_duration", collectDuration,
+			"write_wait_duration", writeWaitDuration,
+			"write_duration", writeDuration,
+			"elapsed", elapsed,
+		)
 	}
 
+	go func() {
+		s.localDurationProbeMu.Lock()
+		defer s.localDurationProbeMu.Unlock()
+		s.probeLocalDurationsForFiles(context.Background(), fileSourceID, folder.Files)
+	}()
+	return nil
+}
+
+func (s *Server) collectLocalWorkFolder(ctx context.Context, workID int64, relPath string) (localfs.WorkFolder, time.Duration, error) {
+	root, err := filepath.Abs(s.cfg.DataRoot)
+	if err != nil {
+		return localfs.WorkFolder{}, 0, err
+	}
+	workPath, err := filepath.Abs(filepath.Join(root, filepath.FromSlash(relPath)))
+	if err != nil {
+		return localfs.WorkFolder{}, 0, err
+	}
+	if !isPathWithinRoot(root, workPath) {
+		return localfs.WorkFolder{}, 0, fmt.Errorf("local work path escapes data root")
+	}
 	collectStartedAt := time.Now()
 	files, err := localfs.CollectWorkFiles(root, workPath)
 	if err != nil {
-		return err
+		return localfs.WorkFolder{}, 0, err
 	}
-	collectDuration := time.Since(collectStartedAt)
-	var code string
-	var title string
+	var code, title string
 	if err := s.db.QueryRowContext(ctx, "SELECT primary_code, title FROM work WHERE id = ?", workID).Scan(&code, &title); err != nil {
-		return err
+		return localfs.WorkFolder{}, 0, err
 	}
-	folder := localfs.WorkFolder{
-		Code:    strings.ToUpper(strings.TrimSpace(code)),
-		Title:   title,
-		AbsPath: workPath,
-		RelPath: relPath,
-		Files:   files,
-	}
+	return localfs.WorkFolder{
+		Code: strings.ToUpper(strings.TrimSpace(code)), Title: title,
+		AbsPath: workPath, RelPath: relPath, Files: files,
+	}, time.Since(collectStartedAt), nil
+}
 
+func (s *Server) acquireLocalMediaWriteSlot(ctx context.Context) (func(), time.Duration, error) {
 	writeWaitStartedAt := time.Now()
 	s.localMediaIndexMu.Lock()
 	if s.localMediaWriteSlot == nil {
@@ -3321,12 +3453,13 @@ func (s *Server) indexLocalMediaForWorkOnce(ctx context.Context, workID int64, f
 	s.localMediaIndexMu.Unlock()
 	select {
 	case writeSlot <- struct{}{}:
-		defer func() { <-writeSlot }()
+		return func() { <-writeSlot }, time.Since(writeWaitStartedAt), nil
 	case <-ctx.Done():
-		return ctx.Err()
+		return nil, 0, ctx.Err()
 	}
-	writeWaitDuration := time.Since(writeWaitStartedAt)
-	writeStartedAt := time.Now()
+}
+
+func (s *Server) persistIndexedLocalWork(ctx context.Context, workID, fileSourceID int64, relPath string, folder localfs.WorkFolder) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -3346,10 +3479,35 @@ func (s *Server) indexLocalMediaForWorkOnce(ctx context.Context, workID int64, f
 			return err
 		}
 	}
+	seenPaths, err := persistIndexedLocalFiles(ctx, tx, workID, fileSourceID, folder)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE work_source_presence
+		SET raw_json = ?,
+			last_checked_at = CURRENT_TIMESTAMP,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE work_id = ?
+			AND file_source_id = ?
+			AND presence_type = 'local'
+	`, mustJSON(map[string]any{
+		"code": folder.Code, "title": folder.Title, "rel_path": filepath.ToSlash(folder.RelPath),
+		"files": len(folder.Files), "file_tree_scanned": true,
+		"file_tree_scanned_at": time.Now().UTC().Format("2006-01-02 15:04:05"),
+	}), workID, fileSourceID); err != nil {
+		return err
+	}
+	if _, err := markMissingLocalLocationsForWork(ctx, tx, workID, fileSourceID, seenPaths); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
 
+func persistIndexedLocalFiles(ctx context.Context, tx *sql.Tx, workID, fileSourceID int64, folder localfs.WorkFolder) (map[string]bool, error) {
 	playableTrackNo := 1
 	seenPaths := map[string]bool{}
-	for _, file := range files {
+	for _, file := range folder.Files {
 		seenPaths[file.RelPath] = true
 		kind := localFileKind(file.WorkRelPath)
 		trackNo := 0
@@ -3363,54 +3521,13 @@ func (s *Server) indexLocalMediaForWorkOnce(ctx context.Context, workID int64, f
 		}
 		mediaItemID, err := upsertDetectedMediaItem(ctx, tx, workID, folder, file, kind, trackNo)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if _, err := upsertDetectedLocation(ctx, tx, mediaItemID, fileSourceID, file); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE work_source_presence
-		SET raw_json = ?,
-			last_checked_at = CURRENT_TIMESTAMP,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE work_id = ?
-			AND file_source_id = ?
-			AND presence_type = 'local'
-	`, mustJSON(map[string]any{
-		"code":                 folder.Code,
-		"title":                folder.Title,
-		"rel_path":             filepath.ToSlash(folder.RelPath),
-		"files":                len(files),
-		"file_tree_scanned":    true,
-		"file_tree_scanned_at": time.Now().UTC().Format("2006-01-02 15:04:05"),
-	}), workID, fileSourceID); err != nil {
-		return err
-	}
-	if _, err := markMissingLocalLocationsForWork(ctx, tx, workID, fileSourceID, seenPaths); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	writeDuration := time.Since(writeStartedAt)
-	if elapsed := time.Since(startedAt); elapsed >= 250*time.Millisecond {
-		slog.Info("indexed local work media",
-			"work_id", workID,
-			"file_count", len(files),
-			"collect_duration", collectDuration,
-			"write_wait_duration", writeWaitDuration,
-			"write_duration", writeDuration,
-			"elapsed", elapsed,
-		)
-	}
-
-	go func() {
-		s.localDurationProbeMu.Lock()
-		defer s.localDurationProbeMu.Unlock()
-		s.probeLocalDurationsForFiles(context.Background(), fileSourceID, files)
-	}()
-	return nil
+	return seenPaths, nil
 }
 
 func isPathWithinRoot(root string, candidate string) bool {
@@ -3516,88 +3633,117 @@ func (s *Server) loadWorkTranslations(ctx context.Context, primaryCode string, b
 
 	translations := []workTranslation{}
 	seen := map[string]bool{}
-	addTranslation := func(item workTranslation) {
-		item.PrimaryCode = normalizeDLsiteCode(item.PrimaryCode)
-		if item.PrimaryCode == "" || seen[item.PrimaryCode] {
-			return
-		}
-		seen[item.PrimaryCode] = true
-		item.Current = strings.EqualFold(item.PrimaryCode, primaryCode)
-		item.MediaState = normalizedWorkMediaState(item.WorkID, item.HasMedia, false, item.MediaState)
-		translations = append(translations, item)
-	}
 	for _, edition := range editions {
-		addTranslation(edition)
+		appendWorkTranslation(&translations, seen, edition, primaryCode)
 	}
 
 	if logicalTranslations, err := s.loadLogicalWorkTranslations(ctx, primaryCode); err != nil {
 		return nil, err
 	} else if len(logicalTranslations) > 0 {
 		for _, item := range logicalTranslations {
-			if seen[strings.ToUpper(strings.TrimSpace(item.PrimaryCode))] {
-				for index := range translations {
-					if strings.EqualFold(translations[index].PrimaryCode, item.PrimaryCode) {
-						translations[index].WorkID = item.WorkID
-						translations[index].Title = item.Title
-						translations[index].HasMedia = item.HasMedia
-						translations[index].MediaState = item.MediaState
-						translations[index].EditionLabel = firstNonEmpty(translations[index].EditionLabel, item.EditionLabel)
-						translations[index].TranslationKind = item.TranslationKind
-						translations[index].Official = item.Official
-						if translations[index].MetadataLanguage == "" {
-							translations[index].MetadataLanguage = item.MetadataLanguage
-						}
-						translations[index].Current = strings.EqualFold(item.PrimaryCode, primaryCode)
-						break
-					}
-				}
-				continue
+			if !mergeLogicalWorkTranslation(translations, seen, item, primaryCode) {
+				appendWorkTranslation(&translations, seen, item, primaryCode)
 			}
-			addTranslation(item)
 		}
 	}
 
-	unresolvedCodes := make([]string, 0, len(translations)+2)
-	unresolvedSeen := map[string]bool{}
-	addUnresolvedCode := func(code string) {
-		code = normalizeDLsiteCode(code)
-		if code == "" || unresolvedSeen[code] {
-			return
-		}
-		unresolvedSeen[code] = true
-		unresolvedCodes = append(unresolvedCodes, code)
-	}
-	for _, item := range translations {
-		if item.WorkID == nil {
-			addUnresolvedCode(item.PrimaryCode)
-		}
-	}
-	addUnresolvedCode(primaryCode)
-	addUnresolvedCode(familyCode)
+	unresolvedCodes := unresolvedWorkTranslationCodes(translations, primaryCode, familyCode)
 	materialized, err := s.loadMaterializedWorkTranslationsByCodes(ctx, unresolvedCodes)
 	if err != nil {
 		return nil, err
 	}
 	for _, item := range materialized {
-		if seen[strings.ToUpper(strings.TrimSpace(item.PrimaryCode))] {
-			for index := range translations {
-				if strings.EqualFold(translations[index].PrimaryCode, item.PrimaryCode) {
-					translations[index].WorkID = item.WorkID
-					translations[index].Title = item.Title
-					translations[index].HasMedia = item.HasMedia
-					translations[index].MediaState = item.MediaState
-					translations[index].Current = strings.EqualFold(item.PrimaryCode, primaryCode)
-					break
-				}
-			}
-			continue
+		if !mergeMaterializedWorkTranslation(translations, seen, item, primaryCode) {
+			appendWorkTranslation(&translations, seen, item, primaryCode)
 		}
-		addTranslation(item)
 	}
 	if len(translations) <= 1 {
 		return []workTranslation{}, nil
 	}
 	return translations, nil
+}
+
+func appendWorkTranslation(translations *[]workTranslation, seen map[string]bool, item workTranslation, primaryCode string) {
+	item.PrimaryCode = normalizeDLsiteCode(item.PrimaryCode)
+	if item.PrimaryCode == "" || seen[item.PrimaryCode] {
+		return
+	}
+	seen[item.PrimaryCode] = true
+	item.Current = strings.EqualFold(item.PrimaryCode, primaryCode)
+	item.MediaState = normalizedWorkMediaState(item.WorkID, item.HasMedia, false, item.MediaState)
+	*translations = append(*translations, item)
+}
+
+func workTranslationIndex(translations []workTranslation, code string) int {
+	for index := range translations {
+		if strings.EqualFold(translations[index].PrimaryCode, code) {
+			return index
+		}
+	}
+	return -1
+}
+
+func mergeLogicalWorkTranslation(translations []workTranslation, seen map[string]bool, item workTranslation, primaryCode string) bool {
+	code := normalizeDLsiteCode(item.PrimaryCode)
+	if !seen[code] {
+		return false
+	}
+	index := workTranslationIndex(translations, code)
+	if index < 0 {
+		return false
+	}
+	target := &translations[index]
+	target.WorkID = item.WorkID
+	target.Title = item.Title
+	target.HasMedia = item.HasMedia
+	target.MediaState = item.MediaState
+	target.EditionLabel = firstNonEmpty(target.EditionLabel, item.EditionLabel)
+	target.TranslationKind = item.TranslationKind
+	target.Official = item.Official
+	if target.MetadataLanguage == "" {
+		target.MetadataLanguage = item.MetadataLanguage
+	}
+	target.Current = strings.EqualFold(item.PrimaryCode, primaryCode)
+	return true
+}
+
+func mergeMaterializedWorkTranslation(translations []workTranslation, seen map[string]bool, item workTranslation, primaryCode string) bool {
+	code := normalizeDLsiteCode(item.PrimaryCode)
+	if !seen[code] {
+		return false
+	}
+	index := workTranslationIndex(translations, code)
+	if index < 0 {
+		return false
+	}
+	target := &translations[index]
+	target.WorkID = item.WorkID
+	target.Title = item.Title
+	target.HasMedia = item.HasMedia
+	target.MediaState = item.MediaState
+	target.Current = strings.EqualFold(item.PrimaryCode, primaryCode)
+	return true
+}
+
+func unresolvedWorkTranslationCodes(translations []workTranslation, primaryCode, familyCode string) []string {
+	codes := make([]string, 0, len(translations)+2)
+	seen := map[string]bool{}
+	add := func(code string) {
+		code = normalizeDLsiteCode(code)
+		if code == "" || seen[code] {
+			return
+		}
+		seen[code] = true
+		codes = append(codes, code)
+	}
+	for _, item := range translations {
+		if item.WorkID == nil {
+			add(item.PrimaryCode)
+		}
+	}
+	add(primaryCode)
+	add(familyCode)
+	return codes
 }
 
 func (s *Server) loadMaterializedWorkTranslationsByCodes(ctx context.Context, codes []string) ([]workTranslation, error) {
@@ -4039,67 +4185,13 @@ func (s *Server) runRemoteBulkWorkflow(ctx context.Context, userID int64, source
 	if action == "" {
 		return remoteBulkWorkflowResult{}, fmt.Errorf("invalid remote bulk action")
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	runID, dispatchNodeID, err := s.startRemoteBulkWorkflow(ctx, sourceID, action, codes)
 	if err != nil {
 		return remoteBulkWorkflowResult{}, err
 	}
-	defer func() { _ = tx.Rollback() }()
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_bulk_action", "Run remote bulk action", "Select multiple remote works and dispatch per-work track or fetch workflows.", map[string]any{
-		"nodes": []map[string]string{
-			{"id": "select", "type": "select_remote_works"},
-			{"id": "dispatch", "type": "dispatch_child_workflows"},
-		},
-	})
-	if err != nil {
-		return remoteBulkWorkflowResult{}, err
-	}
-	input := map[string]any{"source_id": sourceID, "action": action, "codes": codes}
-	summary := map[string]any{"source_id": sourceID, "action": action, "works": len(codes)}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_bulk_action", "Run remote bulk action", "running", "manual", action, input, summary)
-	if err != nil {
-		return remoteBulkWorkflowResult{}, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "select", NodeType: "select_remote_works", DisplayName: "Select remote works", Position: 1, Status: "succeeded",
-		Input: input, Output: map[string]any{"works": len(codes)},
-	}); err != nil {
-		return remoteBulkWorkflowResult{}, err
-	}
-	dispatchNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "dispatch", NodeType: "dispatch_child_workflows", DisplayName: "Dispatch per-work workflows", Position: 2, Status: "running",
-		Input: map[string]any{"action": action}, Output: map[string]any{"expected_child_runs": len(codes)},
-	})
-	if err != nil {
-		return remoteBulkWorkflowResult{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return remoteBulkWorkflowResult{}, err
-	}
-
 	result := remoteBulkWorkflowResult{RunID: runID, SourceID: sourceID, Action: action, Codes: codes, Status: "succeeded", Failures: []string{}}
 	for _, code := range codes {
-		workFailed := false
-		if action == "track" || action == "track_fetch" {
-			syncResult, err := s.runRemoteWorkSync(ctx, sourceID, code, "remote_bulk_"+action)
-			if err != nil {
-				result.Failed++
-				result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
-				workFailed = true
-			} else {
-				result.Synced++
-				result.ChildRuns = append(result.ChildRuns, syncResult.RunID)
-			}
-		}
-		if !workFailed && (action == "fetch" || action == "track_fetch") {
-			saveResult, err := s.enqueueRemoteWorkSave(ctx, sourceID, code, []string{}, nil, "", "", nil, 0, userID, workflow.JobPriorityBackground)
-			if err != nil {
-				result.Failed++
-				result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
-				continue
-			}
-			result.Fetched++
-			result.ChildRuns = append(result.ChildRuns, saveResult.RunID)
-		}
+		s.processRemoteBulkCode(ctx, userID, sourceID, action, code, &result)
 	}
 	status := "succeeded"
 	if result.Failed > 0 {
@@ -4109,6 +4201,73 @@ func (s *Server) runRemoteBulkWorkflow(ctx context.Context, userID int64, source
 		return remoteBulkWorkflowResult{}, err
 	}
 	return result, nil
+}
+
+func (s *Server) startRemoteBulkWorkflow(ctx context.Context, sourceID int64, action string, codes []string) (int64, int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_bulk_action", "Run remote bulk action", "Select multiple remote works and dispatch per-work track or fetch workflows.", map[string]any{
+		"nodes": []map[string]string{
+			{"id": "select", "type": "select_remote_works"},
+			{"id": "dispatch", "type": "dispatch_child_workflows"},
+		},
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	input := map[string]any{"source_id": sourceID, "action": action, "codes": codes}
+	summary := map[string]any{"source_id": sourceID, "action": action, "works": len(codes)}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_bulk_action", "Run remote bulk action", "running", "manual", action, input, summary)
+	if err != nil {
+		return 0, 0, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "select", NodeType: "select_remote_works", DisplayName: "Select remote works", Position: 1, Status: "succeeded",
+		Input: input, Output: map[string]any{"works": len(codes)},
+	}); err != nil {
+		return 0, 0, err
+	}
+	dispatchNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "dispatch", NodeType: "dispatch_child_workflows", DisplayName: "Dispatch per-work workflows", Position: 2, Status: "running",
+		Input: map[string]any{"action": action}, Output: map[string]any{"expected_child_runs": len(codes)},
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, 0, err
+	}
+	return runID, dispatchNodeID, nil
+}
+
+func (s *Server) processRemoteBulkCode(ctx context.Context, userID, sourceID int64, action, code string, result *remoteBulkWorkflowResult) {
+	if action == "track" || action == "track_fetch" {
+		syncResult, err := s.runRemoteWorkSync(ctx, sourceID, code, "remote_bulk_"+action)
+		if err != nil {
+			recordRemoteBulkFailure(result, code, err)
+			return
+		}
+		result.Synced++
+		result.ChildRuns = append(result.ChildRuns, syncResult.RunID)
+	}
+	if action != "fetch" && action != "track_fetch" {
+		return
+	}
+	saveResult, err := s.enqueueRemoteWorkSave(ctx, sourceID, code, []string{}, nil, "", "", nil, 0, userID, workflow.JobPriorityBackground)
+	if err != nil {
+		recordRemoteBulkFailure(result, code, err)
+		return
+	}
+	result.Fetched++
+	result.ChildRuns = append(result.ChildRuns, saveResult.RunID)
+}
+
+func recordRemoteBulkFailure(result *remoteBulkWorkflowResult, code string, err error) {
+	result.Failed++
+	result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
 }
 
 func (s *Server) finishRemoteBulkWorkflow(ctx context.Context, runID int64, dispatchNodeID int64, status string, result remoteBulkWorkflowResult, runErr error) error {
@@ -5014,101 +5173,146 @@ type dlsiteSnapshotMetadata struct {
 	VoiceActors      []string
 }
 
+type dlsiteSnapshotLanguage struct {
+	Language         string `json:"language"`
+	ResponseLanguage string `json:"response_language"`
+	EditionLanguage  string `json:"edition_language"`
+}
+
+type dlsiteSnapshotEnvelope struct {
+	Product json.RawMessage        `json:"product"`
+	Dynamic json.RawMessage        `json:"dynamic"`
+	Kikoto  dlsiteSnapshotLanguage `json:"_kikoto"`
+}
+
+type dlsiteSnapshotGenre struct {
+	Name     string `json:"name"`
+	NameBase string `json:"name_base"`
+}
+
+type dlsiteSnapshotSeriesWork struct {
+	Title string `json:"title"`
+	Name  string `json:"name"`
+}
+
+type dlsiteSnapshotTranslationInfo struct {
+	OriginalWorkNo string `json:"original_workno"`
+	ParentWorkNo   string `json:"parent_workno"`
+	Lang           string `json:"lang"`
+}
+
+type dlsiteSnapshotEdition struct {
+	WorkNo       string `json:"workno"`
+	DisplayOrder int    `json:"display_order"`
+	Label        string `json:"label"`
+	Lang         string `json:"lang"`
+}
+
+type dlsiteSnapshotPayload struct {
+	MakerName          string                        `json:"maker_name"`
+	MakerID            string                        `json:"maker_id"`
+	CircleID           string                        `json:"circle_id"`
+	BrandID            string                        `json:"brand_id"`
+	LabelID            string                        `json:"label_id"`
+	WorkNo             string                        `json:"workno"`
+	ProductID          string                        `json:"product_id"`
+	OriginalWorkNo     string                        `json:"original_workno"`
+	OriginalWorkNumber string                        `json:"original_work_number"`
+	BaseWorkNo         string                        `json:"base_workno"`
+	BaseCode           string                        `json:"base_code"`
+	Language           string                        `json:"language"`
+	Locale             string                        `json:"locale"`
+	ReleaseDate        string                        `json:"release_date"`
+	UpdateDate         string                        `json:"update_date"`
+	ModifyDate         string                        `json:"modify_date"`
+	RateCount          *int64                        `json:"rate_count"`
+	ReviewCount        *int64                        `json:"review_count"`
+	SeriesName         string                        `json:"series_name"`
+	Series             string                        `json:"series"`
+	Genres             []dlsiteSnapshotGenre         `json:"genres"`
+	SeriesWork         []dlsiteSnapshotSeriesWork    `json:"series_work"`
+	Creators           dlsite.Creators               `json:"creaters"`
+	Kikoto             dlsiteSnapshotLanguage        `json:"_kikoto"`
+	TranslationInfo    dlsiteSnapshotTranslationInfo `json:"translation_info"`
+	LanguageEditions   []dlsiteSnapshotEdition       `json:"language_editions"`
+}
+
 func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
-	metadata := dlsiteSnapshotMetadata{
-		Tags:        []string{},
-		VoiceActors: []string{},
-	}
-	if strings.TrimSpace(raw) == "" {
+	metadata := dlsiteSnapshotMetadata{Tags: []string{}, VoiceActors: []string{}}
+	envelope, payload, ok := decodeDLsiteSnapshot(raw)
+	if !ok {
 		return metadata
 	}
-
-	rawBytes := []byte(raw)
-	var combined struct {
-		Product json.RawMessage `json:"product"`
-		Dynamic json.RawMessage `json:"dynamic"`
-		Kikoto  struct {
-			Language         string `json:"language"`
-			ResponseLanguage string `json:"response_language"`
-			EditionLanguage  string `json:"edition_language"`
-		} `json:"_kikoto"`
-	}
-	if err := json.Unmarshal(rawBytes, &combined); err == nil && len(combined.Product) > 0 {
-		rawBytes = combined.Product
-	}
-
-	var payload struct {
-		MakerName          string `json:"maker_name"`
-		MakerID            string `json:"maker_id"`
-		CircleID           string `json:"circle_id"`
-		BrandID            string `json:"brand_id"`
-		LabelID            string `json:"label_id"`
-		WorkNo             string `json:"workno"`
-		ProductID          string `json:"product_id"`
-		OriginalWorkNo     string `json:"original_workno"`
-		OriginalWorkNumber string `json:"original_work_number"`
-		BaseWorkNo         string `json:"base_workno"`
-		BaseCode           string `json:"base_code"`
-		Language           string `json:"language"`
-		Locale             string `json:"locale"`
-		ReleaseDate        string `json:"release_date"`
-		UpdateDate         string `json:"update_date"`
-		ModifyDate         string `json:"modify_date"`
-		RateCount          *int64 `json:"rate_count"`
-		ReviewCount        *int64 `json:"review_count"`
-		SeriesName         string `json:"series_name"`
-		Series             string `json:"series"`
-		Genres             []struct {
-			Name     string `json:"name"`
-			NameBase string `json:"name_base"`
-		} `json:"genres"`
-		SeriesWork []struct {
-			Title string `json:"title"`
-			Name  string `json:"name"`
-		} `json:"series_work"`
-		Creators dlsite.Creators `json:"creaters"`
-		Kikoto   struct {
-			Language         string `json:"language"`
-			ResponseLanguage string `json:"response_language"`
-			EditionLanguage  string `json:"edition_language"`
-		} `json:"_kikoto"`
-		TranslationInfo struct {
-			OriginalWorkNo string `json:"original_workno"`
-			ParentWorkNo   string `json:"parent_workno"`
-			Lang           string `json:"lang"`
-		} `json:"translation_info"`
-		LanguageEditions []struct {
-			WorkNo       string `json:"workno"`
-			DisplayOrder int    `json:"display_order"`
-			Label        string `json:"label"`
-			Lang         string `json:"lang"`
-		} `json:"language_editions"`
-	}
-	if err := json.Unmarshal(rawBytes, &payload); err != nil {
-		return metadata
-	}
-	if len(combined.Dynamic) > 0 {
-		var dynamic struct {
-			RateCount   *int64 `json:"rate_count"`
-			ReviewCount *int64 `json:"review_count"`
-		}
-		if err := json.Unmarshal(combined.Dynamic, &dynamic); err == nil {
-			if dynamic.RateCount != nil {
-				payload.RateCount = dynamic.RateCount
-			} else if dynamic.ReviewCount != nil {
-				payload.ReviewCount = dynamic.ReviewCount
-			}
-		}
-	}
-
 	metadata.Circle = strings.TrimSpace(payload.MakerName)
 	metadata.CircleExternalID = strings.ToUpper(strings.TrimSpace(firstNonEmpty(payload.MakerID, payload.CircleID, payload.BrandID, payload.LabelID)))
 	metadata.BaseCode = normalizeDLsiteCode(firstNonEmpty(payload.TranslationInfo.OriginalWorkNo, payload.TranslationInfo.ParentWorkNo, payload.OriginalWorkNo, payload.OriginalWorkNumber, payload.BaseWorkNo, payload.BaseCode))
 	currentCode := normalizeDLsiteCode(firstNonEmpty(payload.WorkNo, payload.ProductID))
+	originCode, currentLanguage := dlsiteEditionSummary(payload.LanguageEditions, currentCode)
+	metadata.LanguageEditions = buildDLsiteLanguageEditions(payload.LanguageEditions, originCode, currentCode)
+	if metadata.BaseCode == "" && originCode != "" && !strings.EqualFold(originCode, currentCode) {
+		metadata.BaseCode = originCode
+	}
+	if metadata.BaseCode == currentCode {
+		metadata.BaseCode = ""
+	}
+	metadata.MetadataLanguage = strings.TrimSpace(firstNonEmpty(
+		envelope.Kikoto.EditionLanguage, payload.Kikoto.EditionLanguage, currentLanguage,
+		envelope.Kikoto.Language, payload.Kikoto.Language, payload.Language, payload.Locale,
+		payload.TranslationInfo.Lang,
+	))
+	metadata.ReleaseDate = trimmedSnapshotPointer(payload.ReleaseDate)
+	metadata.DLsiteUpdatedAt = trimmedSnapshotPointer(firstNonEmpty(payload.UpdateDate, payload.ModifyDate))
+	if payload.RateCount != nil {
+		metadata.RatingCount = payload.RateCount
+	} else {
+		metadata.RatingCount = payload.ReviewCount
+	}
+	metadata.Series = dlsiteSnapshotSeries(payload)
+	metadata.Tags = uniqueDLsiteSnapshotTags(payload.Genres)
+	metadata.VoiceActors = uniqueDLsiteSnapshotActors(payload.Creators)
+	return metadata
+}
+
+func decodeDLsiteSnapshot(raw string) (dlsiteSnapshotEnvelope, dlsiteSnapshotPayload, bool) {
+	if strings.TrimSpace(raw) == "" {
+		return dlsiteSnapshotEnvelope{}, dlsiteSnapshotPayload{}, false
+	}
+	envelope := dlsiteSnapshotEnvelope{}
+	rawBytes := []byte(raw)
+	if err := json.Unmarshal(rawBytes, &envelope); err == nil && len(envelope.Product) > 0 {
+		rawBytes = envelope.Product
+	}
+	payload := dlsiteSnapshotPayload{}
+	if err := json.Unmarshal(rawBytes, &payload); err != nil {
+		return dlsiteSnapshotEnvelope{}, dlsiteSnapshotPayload{}, false
+	}
+	applyDLsiteDynamicCounts(&payload, envelope.Dynamic)
+	return envelope, payload, true
+}
+
+func applyDLsiteDynamicCounts(payload *dlsiteSnapshotPayload, raw json.RawMessage) {
+	if len(raw) == 0 {
+		return
+	}
+	var dynamic struct {
+		RateCount   *int64 `json:"rate_count"`
+		ReviewCount *int64 `json:"review_count"`
+	}
+	if err := json.Unmarshal(raw, &dynamic); err != nil {
+		return
+	}
+	if dynamic.RateCount != nil {
+		payload.RateCount = dynamic.RateCount
+	} else if dynamic.ReviewCount != nil {
+		payload.ReviewCount = dynamic.ReviewCount
+	}
+}
+
+func dlsiteEditionSummary(editions []dlsiteSnapshotEdition, currentCode string) (string, string) {
 	originCode := ""
 	originOrder := 0
-	currentEditionLanguage := ""
-	for index, edition := range payload.LanguageEditions {
+	currentLanguage := ""
+	for index, edition := range editions {
 		code := normalizeDLsiteCode(edition.WorkNo)
 		if code == "" {
 			continue
@@ -5118,89 +5322,83 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 			order = index + 1
 		}
 		if originCode == "" || order < originOrder {
-			originCode = code
-			originOrder = order
+			originCode, originOrder = code, order
 		}
 		if strings.EqualFold(code, currentCode) {
-			currentEditionLanguage = strings.TrimSpace(firstNonEmpty(edition.Lang, edition.Label))
+			currentLanguage = strings.TrimSpace(firstNonEmpty(edition.Lang, edition.Label))
 		}
 	}
-	for _, edition := range payload.LanguageEditions {
+	return originCode, currentLanguage
+}
+
+func buildDLsiteLanguageEditions(editions []dlsiteSnapshotEdition, originCode, currentCode string) []workTranslation {
+	translations := []workTranslation{}
+	for _, edition := range editions {
 		code := normalizeDLsiteCode(edition.WorkNo)
 		if code == "" {
 			continue
 		}
-		metadata.LanguageEditions = append(metadata.LanguageEditions, workTranslation{
-			PrimaryCode:      code,
-			MetadataLanguage: firstNonEmpty(edition.Lang, edition.Label),
-			EditionLabel:     strings.TrimSpace(edition.Label),
-			Origin:           strings.EqualFold(code, originCode),
-			Official:         false,
-			TranslationKind:  map[bool]string{true: "origin", false: "unknown"}[strings.EqualFold(code, originCode)],
-			Current:          strings.EqualFold(code, currentCode),
+		isOrigin := strings.EqualFold(code, originCode)
+		translations = append(translations, workTranslation{
+			PrimaryCode: code, MetadataLanguage: firstNonEmpty(edition.Lang, edition.Label),
+			EditionLabel: strings.TrimSpace(edition.Label), Origin: isOrigin, Official: false,
+			TranslationKind: map[bool]string{true: "origin", false: "unknown"}[isOrigin],
+			Current:         strings.EqualFold(code, currentCode),
 		})
 	}
-	if metadata.BaseCode == "" && originCode != "" && !strings.EqualFold(originCode, currentCode) {
-		metadata.BaseCode = originCode
+	return translations
+}
+
+func trimmedSnapshotPointer(value string) *string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
 	}
-	if metadata.BaseCode == currentCode {
-		metadata.BaseCode = ""
+	return &value
+}
+
+func dlsiteSnapshotSeries(payload dlsiteSnapshotPayload) string {
+	series := strings.TrimSpace(firstNonEmpty(payload.SeriesName, payload.Series))
+	if series != "" {
+		return series
 	}
-	metadata.MetadataLanguage = strings.TrimSpace(firstNonEmpty(
-		combined.Kikoto.EditionLanguage,
-		payload.Kikoto.EditionLanguage,
-		currentEditionLanguage,
-		combined.Kikoto.Language,
-		payload.Kikoto.Language,
-		payload.Language,
-		payload.Locale,
-		payload.TranslationInfo.Lang,
-	))
-	if release := strings.TrimSpace(payload.ReleaseDate); release != "" {
-		metadata.ReleaseDate = &release
-	}
-	if updated := strings.TrimSpace(firstNonEmpty(payload.UpdateDate, payload.ModifyDate)); updated != "" {
-		metadata.DLsiteUpdatedAt = &updated
-	}
-	if payload.RateCount != nil {
-		metadata.RatingCount = payload.RateCount
-	} else if payload.ReviewCount != nil {
-		metadata.RatingCount = payload.ReviewCount
-	}
-	metadata.Series = strings.TrimSpace(firstNonEmpty(payload.SeriesName, payload.Series))
-	if metadata.Series == "" {
-		for _, item := range payload.SeriesWork {
-			if name := strings.TrimSpace(firstNonEmpty(item.Title, item.Name)); name != "" {
-				metadata.Series = name
-				break
-			}
+	for _, item := range payload.SeriesWork {
+		if series = strings.TrimSpace(firstNonEmpty(item.Title, item.Name)); series != "" {
+			return series
 		}
 	}
+	return ""
+}
 
-	seenTags := map[string]bool{}
-	for _, genre := range payload.Genres {
+func uniqueDLsiteSnapshotTags(genres []dlsiteSnapshotGenre) []string {
+	seen := map[string]bool{}
+	tags := []string{}
+	for _, genre := range genres {
 		name := strings.TrimSpace(genre.Name)
 		if name == "" {
 			name = strings.TrimSpace(genre.NameBase)
 		}
-		if name == "" || seenTags[name] {
+		if name == "" || seen[name] {
 			continue
 		}
-		seenTags[name] = true
-		metadata.Tags = append(metadata.Tags, name)
+		seen[name] = true
+		tags = append(tags, name)
 	}
+	return tags
+}
 
-	seenActors := map[string]bool{}
-	for _, creator := range payload.Creators["voice_by"] {
+func uniqueDLsiteSnapshotActors(creators dlsite.Creators) []string {
+	seen := map[string]bool{}
+	actors := []string{}
+	for _, creator := range creators["voice_by"] {
 		name := strings.TrimSpace(creator.Name)
-		if name == "" || seenActors[name] {
+		if name == "" || seen[name] {
 			continue
 		}
-		seenActors[name] = true
-		metadata.VoiceActors = append(metadata.VoiceActors, name)
+		seen[name] = true
+		actors = append(actors, name)
 	}
-
-	return metadata
+	return actors
 }
 
 func parsePartyLink(value string) (string, string) {

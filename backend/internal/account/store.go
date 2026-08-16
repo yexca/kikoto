@@ -89,34 +89,38 @@ func (s *Store) BootstrapRoot(ctx context.Context, username string, password str
 	if err := tx.QueryRowContext(ctx, "SELECT id FROM user_account WHERE username = ?", username).Scan(&userID); err != nil {
 		return err
 	}
-	var currentHash string
-	err = tx.QueryRowContext(ctx, "SELECT password_hash FROM user_password_credential WHERE user_id = ?", userID).Scan(&currentHash)
-	if errors.Is(err, sql.ErrNoRows) {
-		hash, err := HashPassword(password)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO user_password_credential (user_id, password_hash) VALUES (?, ?)`, userID, hash); err != nil {
-			return err
-		}
-	} else if err != nil {
+	if err := ensureRootCredential(ctx, tx, userID, password); err != nil {
 		return err
-	} else if !VerifyPassword(password, currentHash) {
-		hash, err := HashPassword(password)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE user_password_credential SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`, hash, userID); err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, "DELETE FROM user_session WHERE user_id = ?", userID); err != nil {
-			return err
-		}
 	}
 	if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO favorite_list (user_id, name, sort_order, kind) VALUES (?, '', -1, 'marked')", userID); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+func ensureRootCredential(ctx context.Context, tx *sql.Tx, userID int64, password string) error {
+	var currentHash string
+	err := tx.QueryRowContext(ctx, "SELECT password_hash FROM user_password_credential WHERE user_id = ?", userID).Scan(&currentHash)
+	if errors.Is(err, sql.ErrNoRows) {
+		hash, hashErr := HashPassword(password)
+		if hashErr != nil {
+			return hashErr
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO user_password_credential (user_id, password_hash) VALUES (?, ?)`, userID, hash)
+		return err
+	}
+	if err != nil || VerifyPassword(password, currentHash) {
+		return err
+	}
+	hash, err := HashPassword(password)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE user_password_credential SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`, hash, userID); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, "DELETE FROM user_session WHERE user_id = ?", userID)
+	return err
 }
 
 func (s *Store) BootstrapDemo(ctx context.Context) error {

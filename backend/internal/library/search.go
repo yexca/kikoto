@@ -16,6 +16,29 @@ var splitSearchPattern = regexp.MustCompile(`(\S+):"([^"]+)"|(\S+):'([^']+)'|"([
 var workCodePattern = regexp.MustCompile(`(?i)^(RJ|BJ|VJ|CC)[0-9]{5,8}$`)
 var numericSearchPattern = regexp.MustCompile(`[^0-9.]`)
 
+var searchClauseKindByKey = map[string]string{
+	"circle":    "circle",
+	"va":        "voice_actor",
+	"voice":     "voice_actor",
+	"creator":   "voice_actor",
+	"tag":       "tag",
+	"tagw":      "tag",
+	"-tag":      "exclude_tag",
+	"-tagw":     "exclude_tag",
+	"mytag":     "user_tag",
+	"-mytag":    "exclude_user_tag",
+	"rate":      "rating_min",
+	"rating":    "rating_min",
+	"sell":      "sales_min",
+	"sales":     "sales_min",
+	"duration":  "duration_min",
+	"-duration": "duration_max",
+	"age":       "age",
+	"lang":      "language",
+	"language":  "language",
+	"shelf":     "shelf",
+}
+
 func ParseSearchClauses(query string) []SearchClause {
 	clauses := []SearchClause{}
 	rest := strings.TrimSpace(query)
@@ -90,38 +113,16 @@ func searchClauseFromKey(key string, value string) (SearchClause, bool) {
 	if value == "" {
 		return SearchClause{}, false
 	}
-	switch key {
-	case "circle":
-		return SearchClause{Kind: "circle", Value: value}, true
-	case "va", "voice", "creator":
-		return SearchClause{Kind: "voice_actor", Value: value}, true
-	case "tag", "tagw":
-		return SearchClause{Kind: "tag", Value: value}, true
-	case "-tag", "-tagw":
-		return SearchClause{Kind: "exclude_tag", Value: value}, true
-	case "mytag":
-		return SearchClause{Kind: "user_tag", Value: value}, true
-	case "-mytag":
-		return SearchClause{Kind: "exclude_user_tag", Value: value}, true
-	case "rate", "rating":
-		return SearchClause{Kind: "rating_min", Value: value}, true
-	case "sell", "sales":
-		return SearchClause{Kind: "sales_min", Value: value}, true
-	case "duration":
-		return SearchClause{Kind: "duration_min", Value: value}, true
-	case "-duration":
-		return SearchClause{Kind: "duration_max", Value: value}, true
-	case "age":
-		return SearchClause{Kind: "age", Value: value}, true
-	case "lang", "language":
-		return SearchClause{Kind: "language", Value: value}, true
-	case "shelf":
+	kind, ok := searchClauseKindByKey[key]
+	if !ok {
+		return SearchClause{}, false
+	}
+	if kind == "shelf" {
 		normalized := strings.ToLower(value)
 		if normalized != "true" && normalized != "false" {
 			return SearchClause{}, false
 		}
 		return SearchClause{Kind: "shelf", Value: normalized}, true
-	default:
-		return SearchClause{}, false
 	}
+	return SearchClause{Kind: kind, Value: value}, true
 }

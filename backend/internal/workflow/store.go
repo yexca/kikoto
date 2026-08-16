@@ -16,30 +16,8 @@ func (s *Store) RequeueExpiredJobs(ctx context.Context, leaseTimeout time.Durati
 		leaseTimeout = 30 * time.Second
 	}
 	cutoff := time.Now().UTC().Add(-leaseTimeout).Format("2006-01-02 15:04:05")
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, workflow_run_id, COALESCE(workflow_node_run_id, 0), locked_by
-		FROM workflow_job
-		WHERE status = 'running' AND recoverable = 1 AND resume_count < max_retries
-			AND COALESCE(heartbeat_at, locked_at, created_at) < ?
-		ORDER BY id ASC
-	`, cutoff)
+	jobs, err := loadExpiredJobs(ctx, s.db, cutoff)
 	if err != nil {
-		return 0, err
-	}
-	type expiredJob struct {
-		id, runID, nodeRunID int64
-		lockedBy             string
-	}
-	jobs := []expiredJob{}
-	for rows.Next() {
-		var job expiredJob
-		if err := rows.Scan(&job.id, &job.runID, &job.nodeRunID, &job.lockedBy); err != nil {
-			rows.Close()
-			return 0, err
-		}
-		jobs = append(jobs, job)
-	}
-	if err := rows.Close(); err != nil {
 		return 0, err
 	}
 	if len(jobs) == 0 {
@@ -52,40 +30,84 @@ func (s *Store) RequeueExpiredJobs(ctx context.Context, leaseTimeout time.Durati
 	defer tx.Rollback()
 	requeued := int64(0)
 	for _, job := range jobs {
-		result, err := tx.ExecContext(ctx, `
+		updated, err := requeueExpiredJob(ctx, tx, job)
+		if err != nil {
+			return 0, err
+		}
+		if updated {
+			requeued++
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return requeued, nil
+}
+
+type expiredJob struct {
+	id, runID, nodeRunID int64
+	lockedBy             string
+}
+
+func loadExpiredJobs(ctx context.Context, db *sql.DB, cutoff string) ([]expiredJob, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, workflow_run_id, COALESCE(workflow_node_run_id, 0), locked_by
+		FROM workflow_job
+		WHERE status = 'running' AND recoverable = 1 AND resume_count < max_retries
+			AND COALESCE(heartbeat_at, locked_at, created_at) < ?
+		ORDER BY id ASC
+	`, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	jobs := []expiredJob{}
+	defer rows.Close()
+	for rows.Next() {
+		var job expiredJob
+		if err := rows.Scan(&job.id, &job.runID, &job.nodeRunID, &job.lockedBy); err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, job)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return jobs, rows.Close()
+}
+
+func requeueExpiredJob(ctx context.Context, tx *sql.Tx, job expiredJob) (bool, error) {
+	result, err := tx.ExecContext(ctx, `
 			UPDATE workflow_job
 			SET status = 'queued', locked_by = '', locked_at = NULL, heartbeat_at = NULL,
 				resume_count = resume_count + 1, available_at = CURRENT_TIMESTAMP,
 				error_message = '', updated_at = CURRENT_TIMESTAMP
 			WHERE id = ? AND status = 'running' AND locked_by = ?
 		`, job.id, job.lockedBy)
-		if err != nil {
-			return 0, err
-		}
-		affected, err := result.RowsAffected()
-		if err != nil || affected == 0 {
-			continue
-		}
-		if job.nodeRunID > 0 {
-			if _, err := tx.ExecContext(ctx, `UPDATE workflow_node_run SET status = 'queued', error_message = '', finished_at = NULL WHERE id = ? AND status = 'running'`, job.nodeRunID); err != nil {
-				return 0, err
-			}
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE workflow_run SET status = 'queued', finished_at = NULL WHERE id = ?`, job.runID); err != nil {
-			return 0, err
-		}
-		if err := InsertEvent(ctx, tx, job.runID, EventSpec{
-			NodeRunID: job.nodeRunID, JobID: job.id, Level: "warn", Type: "job.lease_expired",
-			Message: "Expired job lease requeued from its checkpoint", Detail: map[string]any{"previous_lock": job.lockedBy},
-		}); err != nil {
-			return 0, err
-		}
-		requeued++
+	if err != nil {
+		return false, err
 	}
-	if err := tx.Commit(); err != nil {
-		return 0, err
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
 	}
-	return requeued, nil
+	if affected == 0 {
+		return false, nil
+	}
+	if job.nodeRunID > 0 {
+		if _, err := tx.ExecContext(ctx, `UPDATE workflow_node_run SET status = 'queued', error_message = '', finished_at = NULL WHERE id = ? AND status = 'running'`, job.nodeRunID); err != nil {
+			return false, err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE workflow_run SET status = 'queued', finished_at = NULL WHERE id = ?`, job.runID); err != nil {
+		return false, err
+	}
+	if err := InsertEvent(ctx, tx, job.runID, EventSpec{
+		NodeRunID: job.nodeRunID, JobID: job.id, Level: "warn", Type: "job.lease_expired",
+		Message: "Expired job lease requeued from its checkpoint", Detail: map[string]any{"previous_lock": job.lockedBy},
+	}); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func NewStore(db *sql.DB) *Store {
@@ -110,25 +132,7 @@ func (s *Store) ListRuns(ctx context.Context, options ListRunsOptions) (RunsPage
 	if options.PageSize < 1 || options.PageSize > 100 {
 		options.PageSize = 25
 	}
-	conditions := []string{"1 = 1"}
-	args := []any{}
-	if options.Status != "" && options.Status != "all" {
-		conditions = append(conditions, "run.status = ?")
-		args = append(args, options.Status)
-	}
-	if options.WorkflowCode != "" && options.WorkflowCode != "all" {
-		conditions = append(conditions, "run.workflow_code = ?")
-		args = append(args, options.WorkflowCode)
-	}
-	if query := strings.ToLower(strings.TrimSpace(options.Query)); query != "" {
-		conditions = append(conditions, "(LOWER(run.workflow_code) LIKE ? OR LOWER(run.display_name) LIKE ? OR LOWER(run.trigger_reason) LIKE ?)")
-		like := "%" + query + "%"
-		args = append(args, like, like, like)
-	}
-	conditions, args = appendRunVisibility(conditions, args, options.ViewerUserID, options.CanViewAll)
-	baseWhereSQL := strings.Join(conditions, " AND ")
-	viewConditions := appendRunViewCondition(append([]string{}, conditions...), options.View)
-	whereSQL := strings.Join(viewConditions, " AND ")
+	baseWhereSQL, whereSQL, args := buildRunListConditions(options)
 	var total int64
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM workflow_run AS run WHERE "+whereSQL, args...).Scan(&total); err != nil {
 		return RunsPage{}, err
@@ -155,6 +159,28 @@ func (s *Store) ListRuns(ctx context.Context, options ListRunsOptions) (RunsPage
 		return RunsPage{}, err
 	}
 	return RunsPage{Runs: runs, Page: options.Page, PageSize: options.PageSize, Total: total, ViewTotals: viewTotals}, nil
+}
+
+func buildRunListConditions(options ListRunsOptions) (string, string, []any) {
+	conditions := []string{"1 = 1"}
+	args := []any{}
+	if options.Status != "" && options.Status != "all" {
+		conditions = append(conditions, "run.status = ?")
+		args = append(args, options.Status)
+	}
+	if options.WorkflowCode != "" && options.WorkflowCode != "all" {
+		conditions = append(conditions, "run.workflow_code = ?")
+		args = append(args, options.WorkflowCode)
+	}
+	if query := strings.ToLower(strings.TrimSpace(options.Query)); query != "" {
+		conditions = append(conditions, "(LOWER(run.workflow_code) LIKE ? OR LOWER(run.display_name) LIKE ? OR LOWER(run.trigger_reason) LIKE ?)")
+		like := "%" + query + "%"
+		args = append(args, like, like, like)
+	}
+	conditions, args = appendRunVisibility(conditions, args, options.ViewerUserID, options.CanViewAll)
+	baseWhereSQL := strings.Join(conditions, " AND ")
+	viewConditions := appendRunViewCondition(append([]string{}, conditions...), options.View)
+	return baseWhereSQL, strings.Join(viewConditions, " AND "), args
 }
 
 const runningRunCondition = `run.status IN ('queued', 'running')`
@@ -351,98 +377,108 @@ func (s *Store) markStaleRuns(ctx context.Context, reason string, viewerUserID i
 	}
 	defer tx.Rollback()
 	conditions, args := appendRunVisibility([]string{"run.status IN ('queued', 'running')"}, nil, viewerUserID, canViewAll)
-	rows, err := tx.QueryContext(ctx, `SELECT run.id, run.display_name, run.status FROM workflow_run AS run WHERE `+strings.Join(conditions, " AND ")+` ORDER BY run.created_at ASC, run.id ASC`, args...)
+	staleRuns, err := loadStaleRuns(ctx, tx, conditions, args)
 	if err != nil {
-		return 0, err
-	}
-	type staleRun struct {
-		id          int64
-		displayName string
-		status      string
-	}
-	staleRuns := []staleRun{}
-	for rows.Next() {
-		var run staleRun
-		if err := rows.Scan(&run.id, &run.displayName, &run.status); err != nil {
-			rows.Close()
-			return 0, err
-		}
-		staleRuns = append(staleRuns, run)
-	}
-	if err := rows.Close(); err != nil {
-		return 0, err
-	}
-	if err := rows.Err(); err != nil {
 		return 0, err
 	}
 	recovered := int64(0)
 	for _, run := range staleRuns {
-		var activeJobs, recoverableJobs int
-		if err := tx.QueryRowContext(ctx, `
-			SELECT COUNT(*), COALESCE(SUM(CASE WHEN recoverable = 1 AND resume_count < max_retries THEN 1 ELSE 0 END), 0)
-			FROM workflow_job
-			WHERE workflow_run_id = ? AND status IN ('queued', 'running')
-		`, run.id).Scan(&activeJobs, &recoverableJobs); err != nil {
-			return 0, err
-		}
-		if activeJobs > 0 && activeJobs == recoverableJobs {
-			if _, err := tx.ExecContext(ctx, `
-				UPDATE workflow_job
-				SET status = 'queued', locked_by = '', locked_at = NULL, heartbeat_at = NULL,
-					resume_count = resume_count + CASE WHEN status = 'running' THEN 1 ELSE 0 END,
-					available_at = CURRENT_TIMESTAMP, error_message = '', updated_at = CURRENT_TIMESTAMP
-				WHERE workflow_run_id = ? AND status IN ('queued', 'running')
-			`, run.id); err != nil {
-				return 0, err
-			}
-			if _, err := tx.ExecContext(ctx, `
-				UPDATE workflow_node_run
-				SET status = 'queued', error_message = '', finished_at = NULL
-				WHERE workflow_run_id = ? AND status IN ('queued', 'running')
-			`, run.id); err != nil {
-				return 0, err
-			}
-			if _, err := tx.ExecContext(ctx, `
-				UPDATE workflow_run
-				SET status = 'queued', finished_at = NULL,
-					summary_json = json_set(COALESCE(NULLIF(summary_json, ''), '{}'), '$.recovered', true, '$.recovery_reason', ?)
-				WHERE id = ?
-			`, reason, run.id); err != nil {
-				return 0, err
-			}
-			if err := InsertEvent(ctx, tx, run.id, EventSpec{
-				Level: "warn", Type: "run.requeued_after_restart", Message: "Interrupted run requeued from its last checkpoint",
-				Detail: map[string]any{"previous_status": run.status, "reason": reason},
-			}); err != nil {
-				return 0, err
-			}
-			recovered++
-			continue
-		}
-		summary, err := marshal(map[string]any{"error": reason, "recovered_stale": true})
+		wasRecovered, err := recoverStaleRun(ctx, tx, run, reason)
 		if err != nil {
 			return 0, err
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE workflow_node_run SET status = 'failed', error_message = CASE WHEN error_message <> '' THEN error_message ELSE ? END, finished_at = CURRENT_TIMESTAMP WHERE workflow_run_id = ? AND status IN ('queued', 'running')`, reason, run.id); err != nil {
-			return 0, err
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE workflow_job SET status = 'failed', error_message = CASE WHEN error_message <> '' THEN error_message ELSE ? END, updated_at = CURRENT_TIMESTAMP WHERE workflow_run_id = ? AND status IN ('queued', 'running')`, reason, run.id); err != nil {
-			return 0, err
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE workflow_run SET status = 'failed', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, summary, run.id); err != nil {
-			return 0, err
-		}
-		if err := InsertEvent(ctx, tx, run.id, EventSpec{
-			Level: "warn", Type: "run.recovered_stale", Message: "Stale run marked failed",
-			Detail: map[string]any{"previous_status": run.status, "reason": reason},
-		}); err != nil {
-			return 0, err
+		if wasRecovered {
+			recovered++
 		}
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
 	return recovered, nil
+}
+
+type staleRun struct {
+	id          int64
+	displayName string
+	status      string
+}
+
+func loadStaleRuns(ctx context.Context, tx *sql.Tx, conditions []string, args []any) ([]staleRun, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT run.id, run.display_name, run.status FROM workflow_run AS run WHERE `+strings.Join(conditions, " AND ")+` ORDER BY run.created_at ASC, run.id ASC`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	runs := []staleRun{}
+	for rows.Next() {
+		var run staleRun
+		if err := rows.Scan(&run.id, &run.displayName, &run.status); err != nil {
+			return nil, err
+		}
+		runs = append(runs, run)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return runs, rows.Close()
+}
+
+func recoverStaleRun(ctx context.Context, tx *sql.Tx, run staleRun, reason string) (bool, error) {
+	var activeJobs, recoverableJobs int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*), COALESCE(SUM(CASE WHEN recoverable = 1 AND resume_count < max_retries THEN 1 ELSE 0 END), 0)
+		FROM workflow_job WHERE workflow_run_id = ? AND status IN ('queued', 'running')
+	`, run.id).Scan(&activeJobs, &recoverableJobs); err != nil {
+		return false, err
+	}
+	if activeJobs > 0 && activeJobs == recoverableJobs {
+		return requeueStaleRun(ctx, tx, run, reason)
+	}
+	return failStaleRun(ctx, tx, run, reason)
+}
+
+func requeueStaleRun(ctx context.Context, tx *sql.Tx, run staleRun, reason string) (bool, error) {
+	queries := []struct {
+		query string
+		args  []any
+	}{
+		{`UPDATE workflow_job SET status = 'queued', locked_by = '', locked_at = NULL, heartbeat_at = NULL, resume_count = resume_count + CASE WHEN status = 'running' THEN 1 ELSE 0 END, available_at = CURRENT_TIMESTAMP, error_message = '', updated_at = CURRENT_TIMESTAMP WHERE workflow_run_id = ? AND status IN ('queued', 'running')`, []any{run.id}},
+		{`UPDATE workflow_node_run SET status = 'queued', error_message = '', finished_at = NULL WHERE workflow_run_id = ? AND status IN ('queued', 'running')`, []any{run.id}},
+		{`UPDATE workflow_run SET status = 'queued', finished_at = NULL, summary_json = json_set(COALESCE(NULLIF(summary_json, ''), '{}'), '$.recovered', true, '$.recovery_reason', ?) WHERE id = ?`, []any{reason, run.id}},
+	}
+	for _, item := range queries {
+		if _, err := tx.ExecContext(ctx, item.query, item.args...); err != nil {
+			return false, err
+		}
+	}
+	if err := InsertEvent(ctx, tx, run.id, EventSpec{Level: "warn", Type: "run.requeued_after_restart", Message: "Interrupted run requeued from its last checkpoint", Detail: map[string]any{"previous_status": run.status, "reason": reason}}); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func failStaleRun(ctx context.Context, tx *sql.Tx, run staleRun, reason string) (bool, error) {
+	summary, err := marshal(map[string]any{"error": reason, "recovered_stale": true})
+	if err != nil {
+		return false, err
+	}
+	queries := []struct {
+		query string
+		args  []any
+	}{
+		{`UPDATE workflow_node_run SET status = 'failed', error_message = CASE WHEN error_message <> '' THEN error_message ELSE ? END, finished_at = CURRENT_TIMESTAMP WHERE workflow_run_id = ? AND status IN ('queued', 'running')`, []any{reason, run.id}},
+		{`UPDATE workflow_job SET status = 'failed', error_message = CASE WHEN error_message <> '' THEN error_message ELSE ? END, updated_at = CURRENT_TIMESTAMP WHERE workflow_run_id = ? AND status IN ('queued', 'running')`, []any{reason, run.id}},
+		{`UPDATE workflow_run SET status = 'failed', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, []any{summary, run.id}},
+	}
+	for _, item := range queries {
+		if _, err := tx.ExecContext(ctx, item.query, item.args...); err != nil {
+			return false, err
+		}
+	}
+	if err := InsertEvent(ctx, tx, run.id, EventSpec{Level: "warn", Type: "run.recovered_stale", Message: "Stale run marked failed", Detail: map[string]any{"previous_status": run.status, "reason": reason}}); err != nil {
+		return false, err
+	}
+	return false, nil
 }
 
 type rowScanner interface {

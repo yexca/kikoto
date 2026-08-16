@@ -209,6 +209,30 @@ func (s *Server) legacyRemoteFetchRootIsManaged(ctx context.Context, source remo
 
 func (s *Server) loadLegacyRemoteFetchTargets(ctx context.Context, sourceID int64) ([]string, error) {
 	targets := map[string]bool{}
+	folderTargets, err := s.loadLegacyManagedFolderTargets(ctx, sourceID)
+	if err != nil {
+		return nil, err
+	}
+	for target := range folderTargets {
+		targets[target] = true
+	}
+	fetchTargets, err := s.loadLegacySuccessfulFetchTargets(ctx, sourceID)
+	if err != nil {
+		return nil, err
+	}
+	for target := range fetchTargets {
+		targets[target] = true
+	}
+	result := make([]string, 0, len(targets))
+	for target := range targets {
+		result = append(result, target)
+	}
+	sort.Strings(result)
+	return result, nil
+}
+
+func (s *Server) loadLegacyManagedFolderTargets(ctx context.Context, sourceID int64) (map[string]bool, error) {
+	targets := map[string]bool{}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT root_path
 		FROM work_folder_location
@@ -238,8 +262,12 @@ func (s *Server) loadLegacyRemoteFetchTargets(ctx context.Context, sourceID int6
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
+	return targets, nil
+}
 
-	rows, err = s.db.QueryContext(ctx, `
+func (s *Server) loadLegacySuccessfulFetchTargets(ctx context.Context, sourceID int64) (map[string]bool, error) {
+	targets := map[string]bool{}
+	rows, err := s.db.QueryContext(ctx, `
 		SELECT run.input_json, plan.output_json
 		FROM workflow_run AS run
 		INNER JOIN workflow_node_run AS plan
@@ -294,13 +322,7 @@ func (s *Server) loadLegacyRemoteFetchTargets(ctx context.Context, sourceID int6
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
-
-	result := make([]string, 0, len(targets))
-	for target := range targets {
-		result = append(result, target)
-	}
-	sort.Strings(result)
-	return result, nil
+	return targets, nil
 }
 
 func legacyRemoteFetchTargetPaths(dataRoot string, absRoot string, targets []string) (map[string]bool, map[string]bool) {

@@ -77,41 +77,56 @@ func (editions *LanguageEditionList) UnmarshalJSON(data []byte) error {
 	if len(data) == 0 {
 		return fmt.Errorf("language_editions is empty JSON")
 	}
-	if data[0] == '[' {
-		var decoded []LanguageEdition
-		if err := json.Unmarshal(data, &decoded); err != nil {
-			return fmt.Errorf("decode language_editions array: %w", err)
+	switch data[0] {
+	case '[':
+		decoded, err := decodeLanguageEditionArray(data)
+		if err != nil {
+			return err
 		}
 		*editions = decoded
 		return nil
-	}
-	if data[0] != '{' {
+	case '{':
+		decoded, err := decodeLanguageEditionObject(data)
+		if err != nil {
+			return err
+		}
+		*editions = decoded
+		return nil
+	default:
 		return fmt.Errorf("language_editions must be an array, numeric-keyed object, or null")
 	}
+}
 
+func decodeLanguageEditionArray(data []byte) (LanguageEditionList, error) {
+	var decoded []LanguageEdition
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return nil, fmt.Errorf("decode language_editions array: %w", err)
+	}
+	return LanguageEditionList(decoded), nil
+}
+
+type indexedLanguageEdition struct {
+	index   uint64
+	key     string
+	edition LanguageEdition
+}
+
+func decodeLanguageEditionObject(data []byte) (LanguageEditionList, error) {
 	var values map[string]json.RawMessage
 	if err := json.Unmarshal(data, &values); err != nil {
-		return fmt.Errorf("decode language_editions object: %w", err)
+		return nil, fmt.Errorf("decode language_editions object: %w", err)
 	}
-	type indexedEdition struct {
-		index   uint64
-		key     string
-		edition LanguageEdition
-	}
-	indexed := make([]indexedEdition, 0, len(values))
+	indexed := make([]indexedLanguageEdition, 0, len(values))
 	for key, raw := range values {
-		if key == "" || strings.IndexFunc(key, func(value rune) bool { return value < '0' || value > '9' }) >= 0 {
-			return fmt.Errorf("language_editions object contains a non-numeric key")
-		}
-		index, err := strconv.ParseUint(key, 10, 64)
+		index, err := parseLanguageEditionIndex(key)
 		if err != nil {
-			return fmt.Errorf("language_editions object contains an invalid numeric key")
+			return nil, err
 		}
 		var edition LanguageEdition
 		if err := json.Unmarshal(raw, &edition); err != nil {
-			return fmt.Errorf("decode language_editions object value: %w", err)
+			return nil, fmt.Errorf("decode language_editions object value: %w", err)
 		}
-		indexed = append(indexed, indexedEdition{index: index, key: key, edition: edition})
+		indexed = append(indexed, indexedLanguageEdition{index: index, key: key, edition: edition})
 	}
 	sort.Slice(indexed, func(left int, right int) bool {
 		if indexed[left].index != indexed[right].index {
@@ -123,8 +138,18 @@ func (editions *LanguageEditionList) UnmarshalJSON(data []byte) error {
 	for index, value := range indexed {
 		decoded[index] = value.edition
 	}
-	*editions = decoded
-	return nil
+	return decoded, nil
+}
+
+func parseLanguageEditionIndex(key string) (uint64, error) {
+	if key == "" || strings.IndexFunc(key, func(value rune) bool { return value < '0' || value > '9' }) >= 0 {
+		return 0, fmt.Errorf("language_editions object contains a non-numeric key")
+	}
+	index, err := strconv.ParseUint(key, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("language_editions object contains an invalid numeric key")
+	}
+	return index, nil
 }
 
 type Circle struct {
@@ -219,7 +244,24 @@ func (c *Client) SearchWorksSortedSeeded(ctx context.Context, page int, pageSize
 	return c.listWorksSortedSeeded(ctx, page, pageSize, keyword, order, direction, seed, false)
 }
 
+type worksListRequest struct {
+	path    string
+	keyword string
+	sorted  url.Values
+	plain   url.Values
+}
+
 func (c *Client) listWorksSortedSeeded(ctx context.Context, page int, pageSize int, keyword string, order string, direction string, seed string, allowCompatibilityFallback bool) (WorksPage, error) {
+	request := buildWorksListRequest(page, pageSize, keyword, order, direction, seed)
+	var result WorksPage
+	if err := c.get(ctx, request.path, request.sorted, &result); err != nil {
+		return c.listWorksCompatibilityFallback(ctx, request, allowCompatibilityFallback, err)
+	}
+	result.SortApplied = true
+	return result, nil
+}
+
+func buildWorksListRequest(page, pageSize int, keyword, order, direction, seed string) worksListRequest {
 	params := url.Values{}
 	params.Set("page", strconv.Itoa(page))
 	params.Set("pageSize", strconv.Itoa(pageSize))
@@ -240,38 +282,36 @@ func (c *Client) listWorksSortedSeeded(ctx context.Context, page int, pageSize i
 	plainParams.Del("order")
 	plainParams.Del("sort")
 	plainParams.Del("seed")
-	var result WorksPage
 	keyword = strings.TrimSpace(keyword)
 	path := "/api/works"
 	if keyword != "" {
 		path = "/api/search/" + url.PathEscape(keyword)
 		params.Set("includeTranslationWorks", "true")
 	}
-	if err := c.get(ctx, path, params, &result); err != nil {
-		if !allowCompatibilityFallback || c.compatibility != CompatibilityNumber178 {
-			return WorksPage{}, err
+	return worksListRequest{path: path, keyword: keyword, sorted: params, plain: plainParams}
+}
+
+func (c *Client) listWorksCompatibilityFallback(ctx context.Context, request worksListRequest, allow bool, originalErr error) (WorksPage, error) {
+	if !allow || c.compatibility != CompatibilityNumber178 {
+		return WorksPage{}, originalErr
+	}
+	var result WorksPage
+	if request.keyword == "" {
+		if err := c.get(ctx, request.path, request.plain, &result); err != nil {
+			return WorksPage{}, originalErr
 		}
-		if keyword == "" {
-			if fallbackErr := c.get(ctx, path, plainParams, &result); fallbackErr == nil {
-				result.SortApplied = false
-				return result, nil
-			}
-		}
-		if keyword == "" {
-			return WorksPage{}, err
-		}
-		if fallbackErr := c.get(ctx, "/api/works", params, &result); fallbackErr != nil {
-			if plainFallbackErr := c.get(ctx, "/api/works", plainParams, &result); plainFallbackErr != nil {
-				return WorksPage{}, err
-			}
-			result.SortApplied = false
-		} else {
-			result.SortApplied = true
-		}
-		result.Works = filterWorks(result.Works, keyword)
+		result.SortApplied = false
 		return result, nil
 	}
-	result.SortApplied = true
+	if err := c.get(ctx, "/api/works", request.sorted, &result); err != nil {
+		if err := c.get(ctx, "/api/works", request.plain, &result); err != nil {
+			return WorksPage{}, originalErr
+		}
+		result.SortApplied = false
+	} else {
+		result.SortApplied = true
+	}
+	result.Works = filterWorks(result.Works, request.keyword)
 	return result, nil
 }
 
@@ -335,30 +375,51 @@ func (c *Client) FindWorkByCode(ctx context.Context, code string) (Work, json.Ra
 	if code == "" {
 		return Work{}, nil, fmt.Errorf("work code is required")
 	}
-	if page, err := c.ListWorks(ctx, 1, 20, code); err == nil {
-		for _, work := range page.Works {
-			if WorkCode(work) == code {
-				raw, _ := json.Marshal(work)
-				return work, raw, nil
-			}
-		}
+	if work, raw, found := c.findWorkBySearch(ctx, code); found {
+		return work, raw, nil
 	}
+	if work, raw, found := c.findWorkByPages(ctx, code); found {
+		return work, raw, nil
+	}
+	return Work{}, nil, fmt.Errorf("remote source returned no matching work for %s", code)
+}
+
+func (c *Client) findWorkBySearch(ctx context.Context, code string) (Work, json.RawMessage, bool) {
+	page, err := c.ListWorks(ctx, 1, 20, code)
+	if err != nil {
+		return Work{}, nil, false
+	}
+	return findWorkInPage(page.Works, code)
+}
+
+func (c *Client) findWorkByPages(ctx context.Context, code string) (Work, json.RawMessage, bool) {
 	for pageNumber := 1; pageNumber <= 50; pageNumber++ {
 		page, err := c.ListWorks(ctx, pageNumber, 100, "")
 		if err != nil {
 			break
 		}
-		for _, work := range page.Works {
-			if WorkCode(work) == code {
-				raw, _ := json.Marshal(work)
-				return work, raw, nil
-			}
+		if work, raw, found := findWorkInPage(page.Works, code); found {
+			return work, raw, true
 		}
-		if len(page.Works) == 0 || page.Pagination.TotalCount > 0 && page.Pagination.PageSize > 0 && pageNumber*page.Pagination.PageSize >= page.Pagination.TotalCount {
+		if workPageComplete(page, pageNumber) {
 			break
 		}
 	}
-	return Work{}, nil, fmt.Errorf("remote source returned no matching work for %s", code)
+	return Work{}, nil, false
+}
+
+func findWorkInPage(works []Work, code string) (Work, json.RawMessage, bool) {
+	for _, work := range works {
+		if WorkCode(work) == code {
+			raw, _ := json.Marshal(work)
+			return work, raw, true
+		}
+	}
+	return Work{}, nil, false
+}
+
+func workPageComplete(page WorksPage, pageNumber int) bool {
+	return len(page.Works) == 0 || page.Pagination.TotalCount > 0 && page.Pagination.PageSize > 0 && pageNumber*page.Pagination.PageSize >= page.Pagination.TotalCount
 }
 
 func WorkCode(work Work) string {

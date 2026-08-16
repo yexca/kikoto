@@ -170,22 +170,6 @@ func parseRemoteSourceSeedYAML(raw string) []RemoteSourceSeed {
 	seeds := []RemoteSourceSeed{}
 	current := RemoteSourceSeed{}
 	hasCurrent := false
-	flush := func() {
-		if strings.TrimSpace(current.DisplayName) != "" && strings.TrimSpace(current.APIURL) != "" {
-			if current.SourceType == "" {
-				current.SourceType = "kikoeru_compatible"
-			}
-			if current.Priority <= 0 {
-				current.Priority = 30
-			}
-			if current.BaseURL == "" {
-				current.BaseURL = current.APIURL
-			}
-			seeds = append(seeds, current)
-		}
-		current = RemoteSourceSeed{}
-		hasCurrent = false
-	}
 	for _, rawLine := range strings.Split(raw, "\n") {
 		line := strings.TrimSpace(stripYAMLComment(rawLine))
 		if line == "" || line == "sources:" || line == "remote_sources:" {
@@ -193,7 +177,11 @@ func parseRemoteSourceSeedYAML(raw string) []RemoteSourceSeed {
 		}
 		if strings.HasPrefix(line, "- ") {
 			if hasCurrent {
-				flush()
+				if seed, ok := finalizeRemoteSourceSeed(current); ok {
+					seeds = append(seeds, seed)
+				}
+				current = RemoteSourceSeed{}
+				hasCurrent = false
 			}
 			hasCurrent = true
 			line = strings.TrimSpace(strings.TrimPrefix(line, "- "))
@@ -208,29 +196,51 @@ func parseRemoteSourceSeedYAML(raw string) []RemoteSourceSeed {
 		hasCurrent = true
 		key = normalizeSeedYAMLKey(key)
 		value = trimYAMLValue(value)
-		switch key {
-		case "display_name", "displayname", "name":
-			current.DisplayName = value
-		case "api_url", "apiurl":
-			current.APIURL = value
-		case "base_url", "baseurl":
-			current.BaseURL = value
-		case "fallback_url", "fallbackurl":
-			current.FallbackURL = value
-		case "work_url_template", "workurltemplate":
-			current.WorkURLTemplate = value
-		case "source_type", "sourcetype", "type":
-			current.SourceType = value
-		case "priority":
-			current.Priority = parsePositiveInt(value, current.Priority)
-		case "enabled":
-			current.Enabled = parseBool(value, true)
-		}
+		applyRemoteSourceSeedYAMLField(&current, key, value)
 	}
 	if hasCurrent {
-		flush()
+		if seed, ok := finalizeRemoteSourceSeed(current); ok {
+			seeds = append(seeds, seed)
+		}
 	}
 	return seeds
+}
+
+func finalizeRemoteSourceSeed(seed RemoteSourceSeed) (RemoteSourceSeed, bool) {
+	if strings.TrimSpace(seed.DisplayName) == "" || strings.TrimSpace(seed.APIURL) == "" {
+		return RemoteSourceSeed{}, false
+	}
+	if seed.SourceType == "" {
+		seed.SourceType = "kikoeru_compatible"
+	}
+	if seed.Priority <= 0 {
+		seed.Priority = 30
+	}
+	if seed.BaseURL == "" {
+		seed.BaseURL = seed.APIURL
+	}
+	return seed, true
+}
+
+func applyRemoteSourceSeedYAMLField(seed *RemoteSourceSeed, key, value string) {
+	switch key {
+	case "display_name", "displayname", "name":
+		seed.DisplayName = value
+	case "api_url", "apiurl":
+		seed.APIURL = value
+	case "base_url", "baseurl":
+		seed.BaseURL = value
+	case "fallback_url", "fallbackurl":
+		seed.FallbackURL = value
+	case "work_url_template", "workurltemplate":
+		seed.WorkURLTemplate = value
+	case "source_type", "sourcetype", "type":
+		seed.SourceType = value
+	case "priority":
+		seed.Priority = parsePositiveInt(value, seed.Priority)
+	case "enabled":
+		seed.Enabled = parseBool(value, true)
+	}
 }
 
 func stripYAMLComment(value string) string {

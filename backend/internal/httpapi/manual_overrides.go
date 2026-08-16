@@ -668,56 +668,70 @@ func syncManualOverrideRelations(ctx context.Context, tx *sql.Tx, workID int64, 
 	if _, err := tx.ExecContext(ctx, "DELETE FROM work_party WHERE work_id = ? AND role = 'circle' AND source = 'manual_override'", workID); err != nil {
 		return err
 	}
-	if circle != nil {
-		if partyID, ok, err := partyIDForExternalID(ctx, tx, circle.ExternalID); err != nil {
-			return err
-		} else if ok {
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO work_party (work_id, party_id, role, source, updated_at)
-				VALUES (?, ?, 'circle', 'manual_override', CURRENT_TIMESTAMP)
-				ON CONFLICT(work_id, party_id, role) DO UPDATE SET
-					source = excluded.source,
-					updated_at = CURRENT_TIMESTAMP
-			`, workID, partyID); err != nil {
-				return err
-			}
-		}
+	if err := syncManualOverrideCircle(ctx, tx, workID, circle); err != nil {
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM work_credit WHERE work_id = ? AND role = 'voice_actor' AND source = 'manual_override'", workID); err != nil {
 		return err
 	}
+	if err := syncManualOverrideActors(ctx, tx, workID, actors); err != nil {
+		return err
+	}
+	return syncManualOverrideSeries(ctx, tx, workID, series)
+}
+
+func syncManualOverrideCircle(ctx context.Context, tx *sql.Tx, workID int64, circle *manualOverrideEntity) error {
+	if circle == nil {
+		return nil
+	}
+	partyID, ok, err := partyIDForExternalID(ctx, tx, circle.ExternalID)
+	if err != nil || !ok {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO work_party (work_id, party_id, role, source, updated_at)
+		VALUES (?, ?, 'circle', 'manual_override', CURRENT_TIMESTAMP)
+		ON CONFLICT(work_id, party_id, role) DO UPDATE SET source = excluded.source, updated_at = CURRENT_TIMESTAMP
+	`, workID, partyID)
+	return err
+}
+
+func syncManualOverrideActors(ctx context.Context, tx *sql.Tx, workID int64, actors []manualOverridePerson) error {
 	for _, actor := range actors {
-		if ok, err := personIDExists(ctx, tx, actor.PersonID); err != nil {
+		ok, err := personIDExists(ctx, tx, actor.PersonID)
+		if err != nil {
 			return err
-		} else if ok {
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO work_credit (work_id, person_id, role, source, updated_at)
-				VALUES (?, ?, 'voice_actor', 'manual_override', CURRENT_TIMESTAMP)
-				ON CONFLICT(work_id, person_id, role) DO UPDATE SET
-					source = excluded.source,
-					updated_at = CURRENT_TIMESTAMP
-			`, workID, actor.PersonID); err != nil {
-				return err
-			}
+		}
+		if !ok {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO work_credit (work_id, person_id, role, source, updated_at)
+			VALUES (?, ?, 'voice_actor', 'manual_override', CURRENT_TIMESTAMP)
+			ON CONFLICT(work_id, person_id, role) DO UPDATE SET source = excluded.source, updated_at = CURRENT_TIMESTAMP
+		`, workID, actor.PersonID); err != nil {
+			return err
 		}
 	}
+	return nil
+}
+
+func syncManualOverrideSeries(ctx context.Context, tx *sql.Tx, workID int64, series *manualOverrideSeries) error {
 	if series != nil {
-		if seriesID, ok, err := seriesIDForTitle(ctx, tx, series.TitleID, series.CircleExternalID); err != nil {
+		seriesID, ok, err := seriesIDForTitle(ctx, tx, series.TitleID, series.CircleExternalID)
+		if err != nil || !ok {
 			return err
-		} else if ok {
-			var code string
-			if err := tx.QueryRowContext(ctx, "SELECT primary_code FROM work WHERE id = ?", workID).Scan(&code); err != nil {
-				return err
-			}
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO party_series_work (series_id, primary_code, updated_at)
-				VALUES (?, ?, CURRENT_TIMESTAMP)
-				ON CONFLICT(series_id, primary_code) DO UPDATE SET
-					updated_at = CURRENT_TIMESTAMP
-			`, seriesID, strings.ToUpper(strings.TrimSpace(code))); err != nil {
-				return err
-			}
 		}
+		var code string
+		if err := tx.QueryRowContext(ctx, "SELECT primary_code FROM work WHERE id = ?", workID).Scan(&code); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO party_series_work (series_id, primary_code, updated_at)
+			VALUES (?, ?, CURRENT_TIMESTAMP)
+			ON CONFLICT(series_id, primary_code) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+		`, seriesID, strings.ToUpper(strings.TrimSpace(code)))
+		return err
 	}
 	return nil
 }

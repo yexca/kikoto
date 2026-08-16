@@ -129,25 +129,44 @@ func (w *DirectoryWatcher) run() {
 
 func (w *DirectoryWatcher) processEvent(event fsnotify.Event) {
 	path := filepath.Clean(event.Name)
-	if strings.EqualFold(filepath.Base(path), FetchRootMarkerName) && event.Has(fsnotify.Create|fsnotify.Write|fsnotify.Rename) && fetchRootMarkerExists(filepath.Dir(path)) {
-		root := filepath.Dir(path)
-		if err := w.addExcludedRoot(root); err != nil {
-			w.emitError(err)
-			return
-		}
-		w.removeTree(root)
+	if w.handleFetchRootMarkerEvent(path, event) {
 		return
 	}
 	if w.isInternalPath(path) {
 		return
 	}
-	if sameFilesystemPath(path, w.root) && event.Has(fsnotify.Remove|fsnotify.Rename) {
-		select {
-		case w.invalidated <- struct{}{}:
-		default:
-		}
+	if w.handleRootInvalidation(path, event) {
 		return
 	}
+	w.updateWatchedTree(path, event)
+	w.emitChange(event)
+}
+
+func (w *DirectoryWatcher) handleFetchRootMarkerEvent(path string, event fsnotify.Event) bool {
+	if !strings.EqualFold(filepath.Base(path), FetchRootMarkerName) || !event.Has(fsnotify.Create|fsnotify.Write|fsnotify.Rename) || !fetchRootMarkerExists(filepath.Dir(path)) {
+		return false
+	}
+	root := filepath.Dir(path)
+	if err := w.addExcludedRoot(root); err != nil {
+		w.emitError(err)
+		return true
+	}
+	w.removeTree(root)
+	return true
+}
+
+func (w *DirectoryWatcher) handleRootInvalidation(path string, event fsnotify.Event) bool {
+	if !sameFilesystemPath(path, w.root) || !event.Has(fsnotify.Remove|fsnotify.Rename) {
+		return false
+	}
+	select {
+	case w.invalidated <- struct{}{}:
+	default:
+	}
+	return true
+}
+
+func (w *DirectoryWatcher) updateWatchedTree(path string, event fsnotify.Event) {
 	if event.Has(fsnotify.Create) {
 		if info, err := os.Stat(path); err == nil && info.IsDir() {
 			if err := w.addTree(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -158,11 +177,15 @@ func (w *DirectoryWatcher) processEvent(event fsnotify.Event) {
 	if event.Has(fsnotify.Remove | fsnotify.Rename) {
 		w.removeTree(path)
 	}
-	if event.Has(fsnotify.Create | fsnotify.Write | fsnotify.Remove | fsnotify.Rename) {
-		select {
-		case w.changes <- struct{}{}:
-		default:
-		}
+}
+
+func (w *DirectoryWatcher) emitChange(event fsnotify.Event) {
+	if !event.Has(fsnotify.Create | fsnotify.Write | fsnotify.Remove | fsnotify.Rename) {
+		return
+	}
+	select {
+	case w.changes <- struct{}{}:
+	default:
 	}
 }
 

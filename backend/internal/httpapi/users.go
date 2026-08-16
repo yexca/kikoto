@@ -96,54 +96,77 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only super administrators can modify super administrator accounts"})
 		return
 	}
-	var payload struct {
-		DisplayName *string `json:"displayName"`
-		Role        *string `json:"role"`
-		Password    *string `json:"password"`
-		Enabled     *bool   `json:"enabled"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
-		return
-	}
-	displayName := current.DisplayName
-	if payload.DisplayName != nil {
-		displayName = strings.TrimSpace(*payload.DisplayName)
-		if displayName == "" {
-			displayName = current.Username
-		}
-	}
-	role := current.Role
-	if payload.Role != nil {
-		role = strings.TrimSpace(*payload.Role)
-	}
-	password := ""
-	if payload.Password != nil {
-		password = *payload.Password
-	}
-	if err := account.ValidateUserWrite(actor, role, password, false); err != nil {
+	payload, err := decodeUpdateUserPayload(r)
+	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	enabled := current.Enabled
-	if payload.Enabled != nil {
-		enabled = *payload.Enabled
+	update, err := normalizeUpdateUserInput(current, payload)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
 	}
-	if current.Role == "super_admin" && (!enabled || role != "super_admin") {
+	if err := account.ValidateUserWrite(actor, update.Role, update.Password, false); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if current.Role == "super_admin" && (!update.Enabled || update.Role != "super_admin") {
 		if err := s.accountStore.EnsureAnotherEnabledSuperAdmin(r.Context(), userID); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
 	}
 	updated, err := s.accountStore.UpdateManagedUser(r.Context(), account.UpdateUserInput{
-		ID: userID, DisplayName: displayName, Role: role, Password: password,
-		Enabled: enabled, ActorUserID: actor.ID,
+		ID: userID, DisplayName: update.DisplayName, Role: update.Role, Password: update.Password,
+		Enabled: update.Enabled, ActorUserID: actor.ID,
 	})
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, updated)
+}
+
+type updateUserPayload struct {
+	DisplayName *string `json:"displayName"`
+	Role        *string `json:"role"`
+	Password    *string `json:"password"`
+	Enabled     *bool   `json:"enabled"`
+}
+
+type normalizedUpdateUserInput struct {
+	DisplayName string
+	Role        string
+	Password    string
+	Enabled     bool
+}
+
+func decodeUpdateUserPayload(r *http.Request) (updateUserPayload, error) {
+	var payload updateUserPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		return updateUserPayload{}, errors.New("invalid JSON body")
+	}
+	return payload, nil
+}
+
+func normalizeUpdateUserInput(current account.ManagedUser, payload updateUserPayload) (normalizedUpdateUserInput, error) {
+	input := normalizedUpdateUserInput{DisplayName: current.DisplayName, Role: current.Role, Enabled: current.Enabled}
+	if payload.DisplayName != nil {
+		input.DisplayName = strings.TrimSpace(*payload.DisplayName)
+		if input.DisplayName == "" {
+			input.DisplayName = current.Username
+		}
+	}
+	if payload.Role != nil {
+		input.Role = strings.TrimSpace(*payload.Role)
+	}
+	if payload.Password != nil {
+		input.Password = *payload.Password
+	}
+	if payload.Enabled != nil {
+		input.Enabled = *payload.Enabled
+	}
+	return input, nil
 }
 
 func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {

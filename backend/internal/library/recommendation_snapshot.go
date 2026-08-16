@@ -41,20 +41,13 @@ func (s *Store) PrepareRecommendationSession(ctx context.Context, userID int64, 
 		return RecommendationSessionSnapshot{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	return s.prepareRecommendationSessionTx(ctx, tx, userID, sessionID)
+}
 
-	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM recommendation_client_session
-		WHERE user_id = ? AND created_at < `+recommendationSessionRetentionSQL, userID); err != nil {
+func (s *Store) prepareRecommendationSessionTx(ctx context.Context, tx *sql.Tx, userID int64, sessionID string) (RecommendationSessionSnapshot, error) {
+	if err := initializeRecommendationSession(ctx, tx, userID, sessionID); err != nil {
 		return RecommendationSessionSnapshot{}, err
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO recommendation_client_session (user_id, session_id, generation_id)
-		VALUES (?, ?, NULL)
-		ON CONFLICT(user_id, session_id) DO NOTHING
-	`, userID, sessionID); err != nil {
-		return RecommendationSessionSnapshot{}, err
-	}
-
 	if snapshot, found, err := boundRecommendationSession(ctx, tx, userID, sessionID); err != nil {
 		return RecommendationSessionSnapshot{}, err
 	} else if found {
@@ -65,69 +58,110 @@ func (s *Store) PrepareRecommendationSession(ctx context.Context, userID int64, 
 	}
 
 	config := loadRecommendationConfig(ctx, tx)
+	inputRevision, userRevision, err := recommendationSessionRevisions(ctx, tx, userID)
+	if err != nil {
+		return RecommendationSessionSnapshot{}, err
+	}
+	generationID, config, err := s.reuseOrBuildRecommendationGeneration(ctx, tx, userID, config, inputRevision, userRevision)
+	if err != nil {
+		return RecommendationSessionSnapshot{}, err
+	}
+	if err := bindRecommendationSession(ctx, tx, userID, sessionID, generationID); err != nil {
+		return RecommendationSessionSnapshot{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return RecommendationSessionSnapshot{}, err
+	}
+	return RecommendationSessionSnapshot{GenerationID: generationID, Config: config}, nil
+}
+
+func initializeRecommendationSession(ctx context.Context, tx *sql.Tx, userID int64, sessionID string) error {
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM recommendation_client_session
+		WHERE user_id = ? AND created_at < `+recommendationSessionRetentionSQL, userID); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO recommendation_client_session (user_id, session_id, generation_id)
+		VALUES (?, ?, NULL)
+		ON CONFLICT(user_id, session_id) DO NOTHING
+	`, userID, sessionID)
+	return err
+}
+
+func recommendationSessionRevisions(ctx context.Context, tx *sql.Tx, userID int64) (int64, int64, error) {
 	inputRevision, err := recommendationInputRevision(ctx, tx)
 	if err != nil {
-		return RecommendationSessionSnapshot{}, err
+		return 0, 0, err
 	}
 	userRevision, err := recommendationUserRevision(ctx, tx, userID)
-	if err != nil {
-		return RecommendationSessionSnapshot{}, err
-	}
+	return inputRevision, userRevision, err
+}
 
+func (s *Store) reuseOrBuildRecommendationGeneration(ctx context.Context, tx *sql.Tx, userID int64, config RecommendationConfig, inputRevision, userRevision int64) (int64, RecommendationConfig, error) {
+	generationID, storedConfig, reusable, err := loadReusableRecommendationGeneration(ctx, tx, userID, config, inputRevision, userRevision)
+	if err != nil {
+		return 0, config, err
+	}
+	if reusable {
+		return generationID, storedConfig, nil
+	}
+	generationID, err = buildRecommendationGeneration(ctx, tx, userID, config, inputRevision, userRevision)
+	if err != nil {
+		return 0, config, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO recommendation_snapshot_state (user_id, current_generation_id)
+		VALUES (?, ?)
+		ON CONFLICT(user_id) DO UPDATE SET
+			current_generation_id = excluded.current_generation_id,
+			updated_at = CURRENT_TIMESTAMP
+	`, userID, generationID); err != nil {
+		return 0, config, err
+	}
+	return generationID, config, nil
+}
+
+func loadReusableRecommendationGeneration(ctx context.Context, tx *sql.Tx, userID int64, config RecommendationConfig, inputRevision, userRevision int64) (int64, RecommendationConfig, bool, error) {
 	var currentGenerationID sql.NullInt64
 	if err := tx.QueryRowContext(ctx, `
 		SELECT current_generation_id
 		FROM recommendation_snapshot_state
 		WHERE user_id = ?
 	`, userID).Scan(&currentGenerationID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return RecommendationSessionSnapshot{}, err
+		return 0, config, false, err
 	}
-
-	generationID := int64(0)
-	if currentGenerationID.Valid {
-		var algorithmVersion, configJSON string
-		var generationInputRevision, generationUserRevision int64
-		if err := tx.QueryRowContext(ctx, `
-			SELECT algorithm_version, config_json, input_revision, user_revision
-			FROM recommendation_generation
-			WHERE id = ? AND user_id = ?
-		`, currentGenerationID.Int64, userID).Scan(&algorithmVersion, &configJSON, &generationInputRevision, &generationUserRevision); err == nil {
-			storedConfig, decodeErr := decodeRecommendationConfig(configJSON)
-			if algorithmVersion == RecommendationAlgorithmVersion &&
-				generationInputRevision == inputRevision && generationUserRevision == userRevision &&
-				decodeErr == nil && storedConfig == config {
-				generationID = currentGenerationID.Int64
-				config = storedConfig
-			}
-		} else if !errors.Is(err, sql.ErrNoRows) {
-			return RecommendationSessionSnapshot{}, err
-		}
+	if !currentGenerationID.Valid {
+		return 0, config, false, nil
 	}
-
-	if generationID == 0 {
-		generationID, err = buildRecommendationGeneration(ctx, tx, userID, config, inputRevision, userRevision)
-		if err != nil {
-			return RecommendationSessionSnapshot{}, err
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO recommendation_snapshot_state (user_id, current_generation_id)
-			VALUES (?, ?)
-			ON CONFLICT(user_id) DO UPDATE SET
-				current_generation_id = excluded.current_generation_id,
-				updated_at = CURRENT_TIMESTAMP
-		`, userID, generationID); err != nil {
-			return RecommendationSessionSnapshot{}, err
-		}
+	var algorithmVersion, configJSON string
+	var generationInputRevision, generationUserRevision int64
+	err := tx.QueryRowContext(ctx, `
+		SELECT algorithm_version, config_json, input_revision, user_revision
+		FROM recommendation_generation
+		WHERE id = ? AND user_id = ?
+	`, currentGenerationID.Int64, userID).Scan(&algorithmVersion, &configJSON, &generationInputRevision, &generationUserRevision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, config, false, nil
 	}
+	if err != nil {
+		return 0, config, false, err
+	}
+	storedConfig, decodeErr := decodeRecommendationConfig(configJSON)
+	if algorithmVersion != RecommendationAlgorithmVersion || generationInputRevision != inputRevision || generationUserRevision != userRevision || decodeErr != nil || storedConfig != config {
+		return 0, config, false, nil
+	}
+	return currentGenerationID.Int64, storedConfig, true, nil
+}
 
+func bindRecommendationSession(ctx context.Context, tx *sql.Tx, userID int64, sessionID string, generationID int64) error {
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE recommendation_client_session
 		SET generation_id = ?
 		WHERE user_id = ? AND session_id = ?
 	`, generationID, userID, sessionID); err != nil {
-		return RecommendationSessionSnapshot{}, err
+		return err
 	}
-
 	// Keep generations referenced by active sessions. Unreferenced old
 	// generations are safe to remove once a newer generation is current.
 	if _, err := tx.ExecContext(ctx, `
@@ -137,14 +171,10 @@ func (s *Store) PrepareRecommendationSession(ctx context.Context, userID int64, 
 			SELECT 1 FROM recommendation_client_session AS session
 			WHERE session.generation_id = recommendation_generation.id
 		  )
-	`, userID, generationID); err != nil {
-		return RecommendationSessionSnapshot{}, err
+		`, userID, generationID); err != nil {
+		return err
 	}
-
-	if err := tx.Commit(); err != nil {
-		return RecommendationSessionSnapshot{}, err
-	}
-	return RecommendationSessionSnapshot{GenerationID: generationID, Config: config}, nil
+	return nil
 }
 
 func boundRecommendationSession(

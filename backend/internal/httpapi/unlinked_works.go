@@ -249,44 +249,67 @@ func (s *Server) executeUnlinkedWorkSourceCheckJob(ctx context.Context, job work
 		if completed[workID] {
 			continue
 		}
-		family, err := resolveUnlinkedWorkFamily(ctx, s.db, workID)
-		if errors.Is(err, sql.ErrNoRows) {
-			checkpoint.Skipped++
-		} else if err != nil {
+		outcome, err := s.processUnlinkedWorkSourceCheck(ctx, workID, healthySourceIDs)
+		if err != nil {
 			_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 			return err
-		} else if unlinked, err := isUnlinkedWorkFamily(ctx, s.db, family.WorkIDs); err != nil {
-			_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
-			return err
-		} else if !unlinked {
-			checkpoint.Skipped++
-		} else {
-			response, err := s.checkWorkSourceAvailabilityForSourcesWithHealth(ctx, family.CanonicalCode, 0, healthySourceIDs, "maintenance", "unlinked_work_source_check")
-			if err != nil {
-				_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
-				return err
-			}
-			checkpoint.Checked++
-			linked := false
-			for _, source := range response.Sources {
-				linked = linked || source.Status == "available"
-			}
-			if linked {
-				checkpoint.Linked++
-			} else {
-				checkpoint.StillUnlinked++
-			}
 		}
+		checkpoint.Checked += outcome.Checked
+		checkpoint.Linked += outcome.Linked
+		checkpoint.StillUnlinked += outcome.StillUnlinked
+		checkpoint.Skipped += outcome.Skipped
 		completed[workID] = true
 		checkpoint.CompletedWorkIDs = append(checkpoint.CompletedWorkIDs, workID)
 		if err := s.updateWorkflowJobCheckpoint(ctx, job.ID, "check_sources", checkpoint, len(checkpoint.CompletedWorkIDs), len(payload.WorkIDs)); err != nil {
 			return err
 		}
 	}
-	output := map[string]any{
+	output := unlinkedWorkSourceCheckOutput(checkpoint)
+	return s.finishUnlinkedWorkSourceCheckJob(ctx, job, output)
+}
+
+type unlinkedWorkSourceCheckOutcome struct {
+	Checked       int
+	Linked        int
+	StillUnlinked int
+	Skipped       int
+}
+
+func (s *Server) processUnlinkedWorkSourceCheck(ctx context.Context, workID int64, healthySourceIDs map[int64]bool) (unlinkedWorkSourceCheckOutcome, error) {
+	family, err := resolveUnlinkedWorkFamily(ctx, s.db, workID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return unlinkedWorkSourceCheckOutcome{Skipped: 1}, nil
+	}
+	if err != nil {
+		return unlinkedWorkSourceCheckOutcome{}, err
+	}
+	unlinked, err := isUnlinkedWorkFamily(ctx, s.db, family.WorkIDs)
+	if err != nil {
+		return unlinkedWorkSourceCheckOutcome{}, err
+	}
+	if !unlinked {
+		return unlinkedWorkSourceCheckOutcome{Skipped: 1}, nil
+	}
+	response, err := s.checkWorkSourceAvailabilityForSourcesWithHealth(ctx, family.CanonicalCode, 0, healthySourceIDs, "maintenance", "unlinked_work_source_check")
+	if err != nil {
+		return unlinkedWorkSourceCheckOutcome{}, err
+	}
+	for _, source := range response.Sources {
+		if source.Status == "available" {
+			return unlinkedWorkSourceCheckOutcome{Checked: 1, Linked: 1}, nil
+		}
+	}
+	return unlinkedWorkSourceCheckOutcome{Checked: 1, StillUnlinked: 1}, nil
+}
+
+func unlinkedWorkSourceCheckOutput(checkpoint unlinkedWorkSourceCheckCheckpoint) map[string]any {
+	return map[string]any{
 		"checked": checkpoint.Checked, "linked": checkpoint.Linked, "still_unlinked": checkpoint.StillUnlinked,
 		"skipped": checkpoint.Skipped, "healthy_sources": checkpoint.HealthySources,
 	}
+}
+
+func (s *Server) finishUnlinkedWorkSourceCheckJob(ctx context.Context, job workflowJobRecord, output map[string]any) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -413,6 +436,38 @@ func eligibleUnlinkedWorkFamilies(ctx context.Context, queryer unlinkedWorkQuery
 }
 
 func resolveUnlinkedWorkFamily(ctx context.Context, queryer unlinkedWorkQueryer, workID int64) (unlinkedWorkFamily, error) {
+	code, logicalWorkID, err := loadUnlinkedWorkIdentity(ctx, queryer, workID)
+	if err != nil {
+		return unlinkedWorkFamily{}, err
+	}
+	family := unlinkedWorkFamily{LogicalWorkID: logicalWorkID, CanonicalWorkID: workID, CanonicalCode: code, WorkIDs: []int64{}, Codes: []string{}}
+	if logicalWorkID <= 0 {
+		family.WorkIDs = append(family.WorkIDs, workID)
+		family.Codes = append(family.Codes, code)
+		return family, nil
+	}
+	members, err := loadUnlinkedWorkFamilyMembers(ctx, queryer, logicalWorkID)
+	if err != nil {
+		return unlinkedWorkFamily{}, err
+	}
+	family.WorkIDs = members.WorkIDs
+	family.Codes = members.Codes
+	if len(family.WorkIDs) == 0 {
+		family.WorkIDs = append(family.WorkIDs, workID)
+		family.Codes = append(family.Codes, code)
+	}
+	if members.CanonicalWorkID.Valid {
+		family.CanonicalWorkID = members.CanonicalWorkID.Int64
+		if resolvedCode := codeForWorkID(ctx, queryer, members.CanonicalWorkID.Int64); resolvedCode != "" {
+			family.CanonicalCode = resolvedCode
+		}
+	} else if strings.TrimSpace(members.CanonicalCode) != "" {
+		family.CanonicalCode = members.CanonicalCode
+	}
+	return family, nil
+}
+
+func loadUnlinkedWorkIdentity(ctx context.Context, queryer unlinkedWorkQueryer, workID int64) (string, int64, error) {
 	var code string
 	var editionLogicalID sql.NullInt64
 	if err := queryer.QueryRowContext(ctx, `
@@ -421,7 +476,7 @@ func resolveUnlinkedWorkFamily(ctx context.Context, queryer unlinkedWorkQueryer,
 		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
 		WHERE work.id = ?
 	`, workID).Scan(&code, &editionLogicalID); err != nil {
-		return unlinkedWorkFamily{}, err
+		return "", 0, err
 	}
 	logicalWorkID := int64(0)
 	if editionLogicalID.Valid {
@@ -429,16 +484,22 @@ func resolveUnlinkedWorkFamily(ctx context.Context, queryer unlinkedWorkQueryer,
 	} else {
 		_ = queryer.QueryRowContext(ctx, "SELECT id FROM logical_work WHERE canonical_work_id = ? ORDER BY id LIMIT 1", workID).Scan(&logicalWorkID)
 	}
-	family := unlinkedWorkFamily{LogicalWorkID: logicalWorkID, CanonicalWorkID: workID, CanonicalCode: code, WorkIDs: []int64{}, Codes: []string{}}
-	if logicalWorkID <= 0 {
-		family.WorkIDs = append(family.WorkIDs, workID)
-		family.Codes = append(family.Codes, code)
-		return family, nil
-	}
+	return code, logicalWorkID, nil
+}
+
+type unlinkedWorkFamilyMembers struct {
+	WorkIDs         []int64
+	Codes           []string
+	CanonicalWorkID sql.NullInt64
+	CanonicalCode   string
+}
+
+func loadUnlinkedWorkFamilyMembers(ctx context.Context, queryer unlinkedWorkQueryer, logicalWorkID int64) (unlinkedWorkFamilyMembers, error) {
+	members := unlinkedWorkFamilyMembers{WorkIDs: []int64{}, Codes: []string{}}
 	var canonicalWorkID sql.NullInt64
 	var canonicalCode string
 	if err := queryer.QueryRowContext(ctx, "SELECT canonical_work_id, canonical_code FROM logical_work WHERE id = ?", logicalWorkID).Scan(&canonicalWorkID, &canonicalCode); err != nil {
-		return unlinkedWorkFamily{}, err
+		return members, err
 	}
 	rows, err := queryer.QueryContext(ctx, `
 		SELECT work.id, work.primary_code, edition.is_canonical
@@ -448,7 +509,7 @@ func resolveUnlinkedWorkFamily(ctx context.Context, queryer unlinkedWorkQueryer,
 		ORDER BY edition.is_canonical DESC, work.id ASC
 	`, logicalWorkID)
 	if err != nil {
-		return unlinkedWorkFamily{}, err
+		return members, err
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -456,34 +517,27 @@ func resolveUnlinkedWorkFamily(ctx context.Context, queryer unlinkedWorkQueryer,
 		var memberCode string
 		var canonical bool
 		if err := rows.Scan(&memberID, &memberCode, &canonical); err != nil {
-			return unlinkedWorkFamily{}, err
+			return members, err
 		}
-		family.WorkIDs = append(family.WorkIDs, memberID)
-		family.Codes = append(family.Codes, memberCode)
+		members.WorkIDs = append(members.WorkIDs, memberID)
+		members.Codes = append(members.Codes, memberCode)
 		if canonical || canonicalWorkID.Valid && canonicalWorkID.Int64 == memberID {
-			family.CanonicalWorkID = memberID
-			family.CanonicalCode = memberCode
+			members.CanonicalWorkID = sql.NullInt64{Int64: memberID, Valid: true}
+			members.CanonicalCode = memberCode
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return unlinkedWorkFamily{}, err
+		return members, err
 	}
 	if err := rows.Close(); err != nil {
-		return unlinkedWorkFamily{}, err
-	}
-	if len(family.WorkIDs) == 0 {
-		family.WorkIDs = append(family.WorkIDs, workID)
-		family.Codes = append(family.Codes, code)
+		return members, err
 	}
 	if canonicalWorkID.Valid {
-		family.CanonicalWorkID = canonicalWorkID.Int64
-		if resolvedCode := codeForWorkID(ctx, queryer, canonicalWorkID.Int64); resolvedCode != "" {
-			family.CanonicalCode = resolvedCode
-		}
+		members.CanonicalWorkID = canonicalWorkID
 	} else if strings.TrimSpace(canonicalCode) != "" {
-		family.CanonicalCode = canonicalCode
+		members.CanonicalCode = canonicalCode
 	}
-	return family, nil
+	return members, nil
 }
 
 func codeForWorkID(ctx context.Context, queryer unlinkedWorkQueryer, workID int64) string {

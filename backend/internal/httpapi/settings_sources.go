@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/library"
 	"github.com/yexca/kikoto/backend/internal/outbound"
@@ -64,50 +65,83 @@ func (s *Server) SeedRemoteSourcesFromConfig(ctx context.Context) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 	for _, seed := range s.cfg.RemoteSourceSeeds {
-		sourceType := strings.TrimSpace(seed.SourceType)
-		if sourceType == sourceTypeKikoeruCompatible178 || sourceType == historicalMisspelled178Type {
-			return fmt.Errorf("remote source type %q is retained for compatibility but disabled for new configuration", sourceType)
-		}
-		if !isKikoeruSourceType(sourceType) {
-			sourceType = sourceTypeKikoeruCompatible
-		}
-		displayName := strings.TrimSpace(seed.DisplayName)
-		apiURL := strings.TrimSpace(seed.APIURL)
-		if displayName == "" || apiURL == "" {
-			continue
-		}
-		for _, candidate := range []string{apiURL, strings.TrimSpace(seed.BaseURL), strings.TrimSpace(seed.FallbackURL)} {
-			if candidate == "" {
-				continue
-			}
-			if _, err := outbound.ParseHTTPURL(candidate); err != nil {
-				return fmt.Errorf("remote source seed has an invalid endpoint: %w", err)
-			}
-		}
-		code := stableSourceCode(displayName)
-		if code == "" {
-			code = slugSourceCode(displayName)
-		}
-		configJSON := mustJSON(fileSourceConfig{})
-		sourceID, err := insertAndID(ctx, tx, `
-			INSERT INTO file_source (code, display_name, source_type, priority, enabled, config_json)
-			VALUES (?, ?, ?, ?, ?, ?)
-		`, code, displayName, sourceType, sourcePriority(seed.Priority), seed.Enabled, configJSON)
+		normalized, err := normalizeRemoteSourceSeed(seed)
 		if err != nil {
 			return err
 		}
-		baseURL := strings.TrimSpace(seed.BaseURL)
-		if baseURL == "" {
-			baseURL = apiURL
+		if normalized == nil {
+			continue
 		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO file_source_endpoint (file_source_id, base_url, api_url, fallback_url, work_url_template)
-			VALUES (?, ?, ?, ?, ?)
-		`, sourceID, baseURL, apiURL, strings.TrimSpace(seed.FallbackURL), remoteWorkURLTemplate(seed.WorkURLTemplate)); err != nil {
+		if err := insertRemoteSourceSeed(ctx, tx, *normalized); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
+}
+
+type normalizedRemoteSourceSeed struct {
+	Code            string
+	DisplayName     string
+	SourceType      string
+	Priority        int
+	Enabled         bool
+	BaseURL         string
+	APIURL          string
+	FallbackURL     string
+	WorkURLTemplate string
+}
+
+func normalizeRemoteSourceSeed(seed config.RemoteSourceSeed) (*normalizedRemoteSourceSeed, error) {
+	sourceType := strings.TrimSpace(seed.SourceType)
+	if sourceType == sourceTypeKikoeruCompatible178 || sourceType == historicalMisspelled178Type {
+		return nil, fmt.Errorf("remote source type %q is retained for compatibility but disabled for new configuration", sourceType)
+	}
+	if !isKikoeruSourceType(sourceType) {
+		sourceType = sourceTypeKikoeruCompatible
+	}
+	displayName := strings.TrimSpace(seed.DisplayName)
+	apiURL := strings.TrimSpace(seed.APIURL)
+	if displayName == "" || apiURL == "" {
+		return nil, nil
+	}
+	baseURL := strings.TrimSpace(seed.BaseURL)
+	fallbackURL := strings.TrimSpace(seed.FallbackURL)
+	for _, candidate := range []string{apiURL, baseURL, fallbackURL} {
+		if candidate == "" {
+			continue
+		}
+		if _, err := outbound.ParseHTTPURL(candidate); err != nil {
+			return nil, fmt.Errorf("remote source seed has an invalid endpoint: %w", err)
+		}
+	}
+	if baseURL == "" {
+		baseURL = apiURL
+	}
+	code := stableSourceCode(displayName)
+	if code == "" {
+		code = slugSourceCode(displayName)
+	}
+	return &normalizedRemoteSourceSeed{
+		Code: code, DisplayName: displayName, SourceType: sourceType,
+		Priority: sourcePriority(seed.Priority), Enabled: seed.Enabled,
+		BaseURL: baseURL, APIURL: apiURL, FallbackURL: fallbackURL,
+		WorkURLTemplate: remoteWorkURLTemplate(seed.WorkURLTemplate),
+	}, nil
+}
+
+func insertRemoteSourceSeed(ctx context.Context, tx *sql.Tx, seed normalizedRemoteSourceSeed) error {
+	sourceID, err := insertAndID(ctx, tx, `
+		INSERT INTO file_source (code, display_name, source_type, priority, enabled, config_json)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, seed.Code, seed.DisplayName, seed.SourceType, seed.Priority, seed.Enabled, mustJSON(fileSourceConfig{}))
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO file_source_endpoint (file_source_id, base_url, api_url, fallback_url, work_url_template)
+		VALUES (?, ?, ?, ?, ?)
+	`, sourceID, seed.BaseURL, seed.APIURL, seed.FallbackURL, seed.WorkURLTemplate)
+	return err
 }
 
 type appSettingsResponse struct {
@@ -561,6 +595,42 @@ func (err remoteWorkSaveConflictError) Error() string {
 var sourceCodePattern = regexp.MustCompile(`[^a-z0-9_]+`)
 var remoteFetchRequestIDPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{8,128}$`)
 
+type settingsUpdatePayload struct {
+	LocalScanDepth            *int             `json:"localScanDepth"`
+	CacheEnabled              *bool            `json:"cacheEnabled"`
+	CacheLimitGB              *int             `json:"cacheLimitGb"`
+	RemoteDownloadLimitGB     *int             `json:"remoteDownloadLimitGb"`
+	FetchStagingRetentionDays *int             `json:"fetchStagingRetentionDays"`
+	RemoteSaveTemplate        *string          `json:"remoteSaveTemplate"`
+	RemoteDelayBase           *float64         `json:"remoteDelayBaseSeconds"`
+	RemoteDelayRandom         *float64         `json:"remoteDelayRandomSeconds"`
+	RemoteBackoff             *float64         `json:"remoteBackoffSeconds"`
+	RemoteMaxBackoff          *float64         `json:"remoteMaxBackoffSeconds"`
+	CatalogFreshnessDays      *int             `json:"catalogFreshnessDays"`
+	DLsiteMetadataLanguage    *string          `json:"dlsiteMetadataLanguage"`
+	DLsiteMetadataLanguages   *[]string        `json:"dlsiteMetadataLanguages"`
+	DirectoryRoutingRules     *[]directoryRule `json:"directoryRoutingRules"`
+	RecommendationThreshold   *int             `json:"recommendationThreshold"`
+	RecommendationConfig      json.RawMessage  `json:"recommendationConfig"`
+}
+
+type settingsValidationError struct{ message string }
+
+func (err *settingsValidationError) Error() string { return err.message }
+
+func invalidSettings(message string) error {
+	return &settingsValidationError{message: message}
+}
+
+func writeSettingsUpdateError(w http.ResponseWriter, err error) {
+	var validationErr *settingsValidationError
+	if errors.As(err, &validationErr) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": validationErr.Error()})
+		return
+	}
+	writeError(w, err)
+}
+
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
 		return
@@ -595,44 +665,15 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
 		return
 	}
-	var payload struct {
-		LocalScanDepth            *int             `json:"localScanDepth"`
-		CacheEnabled              *bool            `json:"cacheEnabled"`
-		CacheLimitGB              *int             `json:"cacheLimitGb"`
-		RemoteDownloadLimitGB     *int             `json:"remoteDownloadLimitGb"`
-		FetchStagingRetentionDays *int             `json:"fetchStagingRetentionDays"`
-		RemoteSaveTemplate        *string          `json:"remoteSaveTemplate"`
-		RemoteDelayBase           *float64         `json:"remoteDelayBaseSeconds"`
-		RemoteDelayRandom         *float64         `json:"remoteDelayRandomSeconds"`
-		RemoteBackoff             *float64         `json:"remoteBackoffSeconds"`
-		RemoteMaxBackoff          *float64         `json:"remoteMaxBackoffSeconds"`
-		CatalogFreshnessDays      *int             `json:"catalogFreshnessDays"`
-		DLsiteMetadataLanguage    *string          `json:"dlsiteMetadataLanguage"`
-		DLsiteMetadataLanguages   *[]string        `json:"dlsiteMetadataLanguages"`
-		DirectoryRoutingRules     *[]directoryRule `json:"directoryRoutingRules"`
-		RecommendationThreshold   *int             `json:"recommendationThreshold"`
-		RecommendationConfig      json.RawMessage  `json:"recommendationConfig"`
-	}
+	var payload settingsUpdatePayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 		return
 	}
-	var recommendationConfig *library.RecommendationConfig
-	if raw := strings.TrimSpace(string(payload.RecommendationConfig)); raw != "" && raw != "null" {
-		var nextConfig library.RecommendationConfig
-		if err := json.Unmarshal(payload.RecommendationConfig, &nextConfig); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
-			return
-		}
-		var configFields map[string]json.RawMessage
-		if err := json.Unmarshal(payload.RecommendationConfig, &configFields); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
-			return
-		}
-		if _, present := configFields["explorationAmplitude"]; !present {
-			nextConfig.ExplorationAmplitude = s.libraryStore.LoadRecommendationConfig(r.Context()).ExplorationAmplitude
-		}
-		recommendationConfig = &nextConfig
+	recommendationConfig, err := s.parseRecommendationConfig(r.Context(), payload.RecommendationConfig)
+	if err != nil {
+		writeSettingsUpdateError(w, err)
+		return
 	}
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
@@ -640,178 +681,9 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-
-	if payload.LocalScanDepth != nil {
-		if *payload.LocalScanDepth < 1 || *payload.LocalScanDepth > 8 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "localScanDepth must be between 1 and 8"})
-			return
-		}
-		if err := upsertSetting(r, tx, "local_scan_depth", *payload.LocalScanDepth); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if payload.CacheEnabled != nil {
-		if err := upsertSetting(r, tx, "remote_cache_enabled", *payload.CacheEnabled); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if payload.CacheLimitGB != nil {
-		if *payload.CacheLimitGB < 0 || *payload.CacheLimitGB > 4096 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cacheLimitGb must be between 0 and 4096"})
-			return
-		}
-		if err := upsertSetting(r, tx, "remote_cache_limit_gb", *payload.CacheLimitGB); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if payload.RemoteDownloadLimitGB != nil {
-		if *payload.RemoteDownloadLimitGB < minimumRemoteDownloadLimitGB || *payload.RemoteDownloadLimitGB > maximumRemoteDownloadLimitGB {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "remoteDownloadLimitGb must be between 1 and 2048"})
-			return
-		}
-		if err := upsertSetting(r, tx, "remote_download_limit_gb", *payload.RemoteDownloadLimitGB); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if payload.FetchStagingRetentionDays != nil {
-		if *payload.FetchStagingRetentionDays < minimumFetchStagingRetentionDays || *payload.FetchStagingRetentionDays > maximumFetchStagingRetentionDays {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "fetchStagingRetentionDays must be between 1 and 365"})
-			return
-		}
-		if err := upsertSetting(r, tx, "fetch_staging_retention_days", *payload.FetchStagingRetentionDays); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if payload.RemoteSaveTemplate != nil {
-		value := strings.TrimSpace(*payload.RemoteSaveTemplate)
-		if value == "" {
-			value = defaultRemoteSaveRootTemplate
-		}
-		if err := upsertSetting(r, tx, "remote_save_root_template", value); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if payload.RemoteDelayBase != nil {
-		if *payload.RemoteDelayBase < 0 || *payload.RemoteDelayBase > 60 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "remoteDelayBaseSeconds must be between 0 and 60"})
-			return
-		}
-		if err := upsertSetting(r, tx, "remote_request_delay_base_seconds", *payload.RemoteDelayBase); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if payload.RemoteDelayRandom != nil {
-		if *payload.RemoteDelayRandom < 0 || *payload.RemoteDelayRandom > 60 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "remoteDelayRandomSeconds must be between 0 and 60"})
-			return
-		}
-		if err := upsertSetting(r, tx, "remote_request_delay_random_seconds", *payload.RemoteDelayRandom); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if payload.RemoteBackoff != nil {
-		if *payload.RemoteBackoff < 0 || *payload.RemoteBackoff > 3600 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "remoteBackoffSeconds must be between 0 and 3600"})
-			return
-		}
-		if err := upsertSetting(r, tx, "remote_rate_limit_backoff_seconds", *payload.RemoteBackoff); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if payload.RemoteMaxBackoff != nil {
-		if *payload.RemoteMaxBackoff < 0 || *payload.RemoteMaxBackoff > 3600 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "remoteMaxBackoffSeconds must be between 0 and 3600"})
-			return
-		}
-		if err := upsertSetting(r, tx, "remote_max_backoff_seconds", *payload.RemoteMaxBackoff); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if payload.CatalogFreshnessDays != nil {
-		if *payload.CatalogFreshnessDays < minimumCatalogFreshnessDays || *payload.CatalogFreshnessDays > maximumCatalogFreshnessDays {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "catalogFreshnessDays must be between 1 and 365"})
-			return
-		}
-		if err := upsertSetting(r, tx, "catalog_freshness_days", *payload.CatalogFreshnessDays); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if payload.DLsiteMetadataLanguages != nil || payload.DLsiteMetadataLanguage != nil {
-		var (
-			languages []string
-			err       error
-		)
-		if payload.DLsiteMetadataLanguages != nil {
-			languages, err = validateDLsiteMetadataLanguages(*payload.DLsiteMetadataLanguages)
-		} else {
-			language := normalizeDLsiteLanguage(*payload.DLsiteMetadataLanguage)
-			if language == "" {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported dlsiteMetadataLanguage"})
-				return
-			}
-			languages = completeDLsiteMetadataLanguages([]string{language})
-		}
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-			return
-		}
-		if err := upsertSetting(r, tx, dlsiteMetadataLanguagesSetting, languages); err != nil {
-			writeError(w, err)
-			return
-		}
-		// Keep the legacy scalar in sync so older clients and deployments can still read the preference.
-		if err := upsertSetting(r, tx, dlsiteMetadataLanguageSetting, languages[0]); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if payload.DirectoryRoutingRules != nil {
-		rules := normalizeDirectoryRoutingRules(*payload.DirectoryRoutingRules)
-		if len(rules) > 20 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "directoryRoutingRules must contain at most 20 rules"})
-			return
-		}
-		if err := upsertSetting(r, tx, "directory_routing_rules", rules); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if payload.RecommendationThreshold != nil {
-		if *payload.RecommendationThreshold < 1 || *payload.RecommendationThreshold > 100 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "recommendationThreshold must be between 1 and 100"})
-			return
-		}
-		if err := upsertSetting(r, tx, "recommendation_threshold", *payload.RecommendationThreshold); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if recommendationConfig != nil {
-		if err := library.ValidateRecommendationConfig(*recommendationConfig); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-			return
-		}
-		if err := upsertSetting(r, tx, "recommendation_config", *recommendationConfig); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if payload.LocalScanDepth != nil && !s.cfg.IsDemo() {
-		if _, err := s.upsertLocalFileSource(r.Context(), tx, *payload.LocalScanDepth); err != nil {
-			writeError(w, err)
-			return
-		}
+	if err := s.applySettingsUpdate(r, tx, payload, recommendationConfig); err != nil {
+		writeSettingsUpdateError(w, err)
+		return
 	}
 	if err := tx.Commit(); err != nil {
 		writeError(w, err)
@@ -826,6 +698,183 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, settings)
+}
+
+func (s *Server) parseRecommendationConfig(ctx context.Context, raw json.RawMessage) (*library.RecommendationConfig, error) {
+	if value := strings.TrimSpace(string(raw)); value == "" || value == "null" {
+		return nil, nil
+	}
+	var config library.RecommendationConfig
+	if err := json.Unmarshal(raw, &config); err != nil {
+		return nil, invalidSettings("invalid JSON body")
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return nil, invalidSettings("invalid JSON body")
+	}
+	if _, present := fields["explorationAmplitude"]; !present {
+		config.ExplorationAmplitude = s.libraryStore.LoadRecommendationConfig(ctx).ExplorationAmplitude
+	}
+	return &config, nil
+}
+
+func (s *Server) applySettingsUpdate(
+	r *http.Request,
+	tx *sql.Tx,
+	payload settingsUpdatePayload,
+	recommendationConfig *library.RecommendationConfig,
+) error {
+	if err := applyGeneralSettings(r, tx, payload); err != nil {
+		return err
+	}
+	if err := applyMetadataSettings(r, tx, payload); err != nil {
+		return err
+	}
+	if err := applyRecommendationSettings(r, tx, payload, recommendationConfig); err != nil {
+		return err
+	}
+	if payload.LocalScanDepth != nil && !s.cfg.IsDemo() {
+		if _, err := s.upsertLocalFileSource(r.Context(), tx, *payload.LocalScanDepth); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func applyGeneralSettings(r *http.Request, tx *sql.Tx, payload settingsUpdatePayload) error {
+	intSettings := []struct {
+		value     *int
+		key       string
+		minimum   int
+		maximum   int
+		errorText string
+	}{
+		{payload.LocalScanDepth, "local_scan_depth", 1, 8, "localScanDepth must be between 1 and 8"},
+		{payload.CacheLimitGB, "remote_cache_limit_gb", 0, 4096, "cacheLimitGb must be between 0 and 4096"},
+		{payload.RemoteDownloadLimitGB, "remote_download_limit_gb", minimumRemoteDownloadLimitGB, maximumRemoteDownloadLimitGB, "remoteDownloadLimitGb must be between 1 and 2048"},
+		{payload.FetchStagingRetentionDays, "fetch_staging_retention_days", minimumFetchStagingRetentionDays, maximumFetchStagingRetentionDays, "fetchStagingRetentionDays must be between 1 and 365"},
+		{payload.CatalogFreshnessDays, "catalog_freshness_days", minimumCatalogFreshnessDays, maximumCatalogFreshnessDays, "catalogFreshnessDays must be between 1 and 365"},
+	}
+	for _, setting := range intSettings {
+		if err := upsertOptionalIntSetting(r, tx, setting.value, setting.key, setting.minimum, setting.maximum, setting.errorText); err != nil {
+			return err
+		}
+	}
+	if err := upsertOptionalBoolSetting(r, tx, payload.CacheEnabled, "remote_cache_enabled"); err != nil {
+		return err
+	}
+	if payload.RemoteSaveTemplate != nil {
+		value := strings.TrimSpace(*payload.RemoteSaveTemplate)
+		if value == "" {
+			value = defaultRemoteSaveRootTemplate
+		}
+		if err := upsertSetting(r, tx, "remote_save_root_template", value); err != nil {
+			return err
+		}
+	}
+	floatSettings := []struct {
+		value     *float64
+		key       string
+		maximum   float64
+		errorText string
+	}{
+		{payload.RemoteDelayBase, "remote_request_delay_base_seconds", 60, "remoteDelayBaseSeconds must be between 0 and 60"},
+		{payload.RemoteDelayRandom, "remote_request_delay_random_seconds", 60, "remoteDelayRandomSeconds must be between 0 and 60"},
+		{payload.RemoteBackoff, "remote_rate_limit_backoff_seconds", 3600, "remoteBackoffSeconds must be between 0 and 3600"},
+		{payload.RemoteMaxBackoff, "remote_max_backoff_seconds", 3600, "remoteMaxBackoffSeconds must be between 0 and 3600"},
+	}
+	for _, setting := range floatSettings {
+		if err := upsertOptionalFloatSetting(r, tx, setting.value, setting.key, setting.maximum, setting.errorText); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func applyMetadataSettings(r *http.Request, tx *sql.Tx, payload settingsUpdatePayload) error {
+	if payload.DLsiteMetadataLanguages != nil || payload.DLsiteMetadataLanguage != nil {
+		languages, err := requestedDLsiteMetadataLanguages(payload)
+		if err != nil {
+			return err
+		}
+		if err := upsertSetting(r, tx, dlsiteMetadataLanguagesSetting, languages); err != nil {
+			return err
+		}
+		// Keep the legacy scalar in sync so older clients and deployments can still read the preference.
+		if err := upsertSetting(r, tx, dlsiteMetadataLanguageSetting, languages[0]); err != nil {
+			return err
+		}
+	}
+	if payload.DirectoryRoutingRules != nil {
+		rules := normalizeDirectoryRoutingRules(*payload.DirectoryRoutingRules)
+		if len(rules) > 20 {
+			return invalidSettings("directoryRoutingRules must contain at most 20 rules")
+		}
+		if err := upsertSetting(r, tx, "directory_routing_rules", rules); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func requestedDLsiteMetadataLanguages(payload settingsUpdatePayload) ([]string, error) {
+	if payload.DLsiteMetadataLanguages != nil {
+		languages, err := validateDLsiteMetadataLanguages(*payload.DLsiteMetadataLanguages)
+		if err != nil {
+			return nil, invalidSettings(err.Error())
+		}
+		return languages, nil
+	}
+	language := normalizeDLsiteLanguage(*payload.DLsiteMetadataLanguage)
+	if language == "" {
+		return nil, invalidSettings("unsupported dlsiteMetadataLanguage")
+	}
+	return completeDLsiteMetadataLanguages([]string{language}), nil
+}
+
+func applyRecommendationSettings(
+	r *http.Request,
+	tx *sql.Tx,
+	payload settingsUpdatePayload,
+	recommendationConfig *library.RecommendationConfig,
+) error {
+	if err := upsertOptionalIntSetting(r, tx, payload.RecommendationThreshold, "recommendation_threshold", 1, 100, "recommendationThreshold must be between 1 and 100"); err != nil {
+		return err
+	}
+	if recommendationConfig == nil {
+		return nil
+	}
+	if err := library.ValidateRecommendationConfig(*recommendationConfig); err != nil {
+		return invalidSettings(err.Error())
+	}
+	return upsertSetting(r, tx, "recommendation_config", *recommendationConfig)
+}
+
+func upsertOptionalIntSetting(r *http.Request, tx *sql.Tx, value *int, key string, minimum int, maximum int, errorText string) error {
+	if value == nil {
+		return nil
+	}
+	if *value < minimum || *value > maximum {
+		return invalidSettings(errorText)
+	}
+	return upsertSetting(r, tx, key, *value)
+}
+
+func upsertOptionalFloatSetting(r *http.Request, tx *sql.Tx, value *float64, key string, maximum float64, errorText string) error {
+	if value == nil {
+		return nil
+	}
+	if *value < 0 || *value > maximum {
+		return invalidSettings(errorText)
+	}
+	return upsertSetting(r, tx, key, *value)
+}
+
+func upsertOptionalBoolSetting(r *http.Request, tx *sql.Tx, value *bool, key string) error {
+	if value == nil {
+		return nil
+	}
+	return upsertSetting(r, tx, key, *value)
 }
 
 func (s *Server) listLibrarySources(w http.ResponseWriter, r *http.Request) {
@@ -924,21 +973,16 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var existingSourceType string
-	if err := s.db.QueryRowContext(r.Context(), "SELECT source_type FROM file_source WHERE id = ?", id).Scan(&existingSourceType); err != nil {
+	if err := s.validateFileSourceUpdate(r.Context(), id, payload); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found"})
 			return
 		}
+		if errors.Is(err, errLocalFolderSourceManaged) || errors.Is(err, errLegacySourceTypeSelection) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
 		writeError(w, err)
-		return
-	}
-	if existingSourceType == sourceTypeLocalFolder || payload.SourceType == sourceTypeLocalFolder {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "local folder source is managed by local scan settings"})
-		return
-	}
-	if payload.SourceType == sourceTypeKikoeruCompatible178 && existingSourceType != sourceTypeKikoeruCompatible178 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "legacy number178 sources cannot be selected"})
 		return
 	}
 	tx, err := s.db.BeginTx(r.Context(), nil)
@@ -947,42 +991,13 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-
-	result, err := tx.ExecContext(r.Context(), `
-		UPDATE file_source
-		SET display_name = ?,
-			source_type = ?,
-			priority = ?,
-			enabled = ?,
-			config_json = ?,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, payload.DisplayName, payload.SourceType, payload.Priority, payload.Enabled, mustJSON(payload.Config), id)
+	updated, err := updateFileSourceTx(r.Context(), tx, id, payload)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	affected, _ := result.RowsAffected()
-	if affected == 0 {
+	if !updated {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found"})
-		return
-	}
-	if _, err := tx.ExecContext(r.Context(), `
-		INSERT INTO file_source_endpoint (
-			file_source_id, base_url, api_url, fallback_url, work_url_template,
-			restrict_outbound_hosts, allowed_host_patterns_json
-		)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(file_source_id) DO UPDATE SET
-			base_url = excluded.base_url,
-			api_url = excluded.api_url,
-			fallback_url = excluded.fallback_url,
-			work_url_template = excluded.work_url_template,
-			restrict_outbound_hosts = excluded.restrict_outbound_hosts,
-			allowed_host_patterns_json = excluded.allowed_host_patterns_json
-	`, id, payload.Endpoint.BaseURL, payload.Endpoint.APIURL, payload.Endpoint.FallbackURL, payload.Endpoint.WorkURLTemplate,
-		payload.Endpoint.RestrictOutboundHosts, mustJSON(payload.Endpoint.AllowedHostPatterns)); err != nil {
-		writeError(w, err)
 		return
 	}
 	if err := tx.Commit(); err != nil {
@@ -1000,6 +1015,63 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 		go s.runSourceChangeAvailabilityChecks(context.Background(), source.ID, "source_updated")
 	}
 	writeJSON(w, http.StatusOK, source)
+}
+
+var (
+	errLocalFolderSourceManaged  = errors.New("local folder source is managed by local scan settings")
+	errLegacySourceTypeSelection = errors.New("legacy number178 sources cannot be selected")
+)
+
+func (s *Server) validateFileSourceUpdate(ctx context.Context, id int64, payload fileSourcePayload) error {
+	var existingSourceType string
+	if err := s.db.QueryRowContext(ctx, "SELECT source_type FROM file_source WHERE id = ?", id).Scan(&existingSourceType); err != nil {
+		return err
+	}
+	if existingSourceType == sourceTypeLocalFolder || payload.SourceType == sourceTypeLocalFolder {
+		return errLocalFolderSourceManaged
+	}
+	if payload.SourceType == sourceTypeKikoeruCompatible178 && existingSourceType != sourceTypeKikoeruCompatible178 {
+		return errLegacySourceTypeSelection
+	}
+	return nil
+}
+
+func updateFileSourceTx(ctx context.Context, tx *sql.Tx, id int64, payload fileSourcePayload) (bool, error) {
+	result, err := tx.ExecContext(ctx, `
+		UPDATE file_source
+		SET display_name = ?,
+			source_type = ?,
+			priority = ?,
+			enabled = ?,
+			config_json = ?,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, payload.DisplayName, payload.SourceType, payload.Priority, payload.Enabled, mustJSON(payload.Config), id)
+	if err != nil {
+		return false, err
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO file_source_endpoint (
+			file_source_id, base_url, api_url, fallback_url, work_url_template,
+			restrict_outbound_hosts, allowed_host_patterns_json
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(file_source_id) DO UPDATE SET
+			base_url = excluded.base_url,
+			api_url = excluded.api_url,
+			fallback_url = excluded.fallback_url,
+			work_url_template = excluded.work_url_template,
+			restrict_outbound_hosts = excluded.restrict_outbound_hosts,
+			allowed_host_patterns_json = excluded.allowed_host_patterns_json
+	`, id, payload.Endpoint.BaseURL, payload.Endpoint.APIURL, payload.Endpoint.FallbackURL, payload.Endpoint.WorkURLTemplate,
+		payload.Endpoint.RestrictOutboundHosts, mustJSON(payload.Endpoint.AllowedHostPatterns)); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Server) deleteFileSource(w http.ResponseWriter, r *http.Request) {
@@ -1108,103 +1180,98 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 	}
 	diagnosticURL := remoteSourceDiagnosticURL(r.Context(), source.Endpoint)
 	if !source.Enabled {
-		sortName, _ := remoteSourceSort(r.URL.Query().Get("sort"))
-		writeJSON(w, http.StatusOK, remoteWorksResponse{
-			SourceID: id,
-			Works:    []remoteWorkSummary{},
-			Page:     queryInt(r, "page", 1),
-			PageSize: queryInt(r, "pageSize", 24),
-			Total:    0,
-			Status:   "disabled",
-			Error: &remoteWorksError{
-				Code:      "disabled",
-				Message:   remoteSourceDisabledMessage,
-				URL:       diagnosticURL,
-				Retryable: false,
-			},
-			Sort:      sortName,
-			Direction: remoteSortDirection(r.URL.Query().Get("direction")),
-		})
+		s.writeRemoteWorksDisabled(w, id, r, diagnosticURL)
 		return
 	}
+	request := newRemoteSourceWorksRequest(r, source.SourceType, s.preferredMetadataLanguages(r.Context()))
+	if err := s.serveRemoteSourceWorksPage(w, r, userID, source, diagnosticURL, request); err != nil {
+		writeError(w, err)
+	}
+}
+
+type remoteSourceWorksRequest struct {
+	Page                  int
+	PageSize              int
+	Query                 string
+	Seed                  string
+	Plan                  remoteSourceQueryPlan
+	Sort                  string
+	UpstreamOrder         string
+	Direction             string
+	Languages             []string
+	IncludeRecommendation bool
+}
+
+func newRemoteSourceWorksRequest(r *http.Request, sourceType string, languages []string) remoteSourceWorksRequest {
 	page := queryInt(r, "page", 1)
 	pageSize := queryInt(r, "pageSize", 24)
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 24
 	}
-	plan := planRemoteSourceQuery(r.URL.Query().Get("q"), source.SourceType)
+	query := r.URL.Query().Get("q")
 	sortName, upstreamOrder := remoteSourceSort(r.URL.Query().Get("sort"))
-	direction := remoteSortDirection(r.URL.Query().Get("direction"))
-	client := s.kikoeruClientForSource(source)
-	languages := s.preferredMetadataLanguages(r.Context())
-	includeRecommendation := r.URL.Query().Get("recommendBadges") == "true" && !strings.EqualFold(r.URL.Query().Get("sort"), "recommend")
-	if s.cfg.IsDemo() {
-		works, total, sortApplied, err := s.demoRemoteSourcePageWithLanguages(
-			r.Context(), userID, source.ID, client, source.SourceType, r.URL.Query().Get("q"), upstreamOrder, direction,
-			r.URL.Query().Get("seed"), page, pageSize, languages, includeRecommendation,
-		)
-		if err != nil {
-			_ = s.updateSourceHealth(r.Context(), id, "unavailable")
-			s.writeRemoteWorksUnavailable(w, source, page, pageSize, sortName, direction, diagnosticURL, err)
-			return
-		}
-		_ = s.updateSourceHealth(r.Context(), id, "healthy")
-		writeJSON(w, http.StatusOK, remoteWorksResponse{
-			SourceID: source.ID, Works: works, Page: page, PageSize: pageSize, Total: total,
-			Status: "ok", Sort: sortName, Direction: direction, SortApplied: sortApplied,
-		})
-		return
+	return remoteSourceWorksRequest{
+		Page: page, PageSize: pageSize, Query: query, Seed: r.URL.Query().Get("seed"),
+		Plan: planRemoteSourceQuery(query, sourceType), Sort: sortName, UpstreamOrder: upstreamOrder,
+		Direction: remoteSortDirection(r.URL.Query().Get("direction")), Languages: languages,
+		IncludeRecommendation: r.URL.Query().Get("recommendBadges") == "true" && !strings.EqualFold(r.URL.Query().Get("sort"), "recommend"),
 	}
-	if len(plan.PostFilterClauses) > 0 {
-		works, total, sortApplied, err := s.remotePostFilteredPageWithLanguages(
-			r.Context(), userID, source.ID, client, plan, upstreamOrder, direction,
-			r.URL.Query().Get("seed"), page, pageSize, languages,
-		)
-		if err != nil {
-			_ = s.updateSourceHealth(r.Context(), id, "unavailable")
-			s.writeRemoteWorksUnavailable(w, source, page, pageSize, sortName, direction, diagnosticURL, err)
-			return
-		}
-		_ = s.updateSourceHealth(r.Context(), id, "healthy")
-		writeJSON(w, http.StatusOK, remoteWorksResponse{
-			SourceID: source.ID, Works: works, Page: page, PageSize: pageSize, Total: total,
-			Status: "ok", Sort: sortName, Direction: direction, SortApplied: sortApplied,
-		})
-		return
-	}
-	remotePage, err := client.ListWorksSortedSeeded(r.Context(), page, pageSize, plan.PushdownQuery, upstreamOrder, direction, r.URL.Query().Get("seed"))
-	if err != nil {
-		_ = s.updateSourceHealth(r.Context(), id, "unavailable")
-		s.writeRemoteWorksUnavailable(w, source, page, pageSize, sortName, direction, diagnosticURL, err)
-		return
-	}
-	_ = s.updateSourceHealth(r.Context(), id, "healthy")
-	works, err := s.remoteWorkSummariesWithLanguages(r.Context(), userID, source.ID, remotePage.Works, languages, includeRecommendation)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	if len(plan.PostFilterClauses) > 0 {
-		works = filterRemoteWorkSummaries(works, plan.PostFilterClauses)
-	}
-	total := remotePage.Pagination.TotalCount
-	if total == 0 {
-		total = remotePage.Pagination.Total
-	}
-	if total == 0 {
-		total = remotePage.Pagination.Count
-	}
+}
+
+func (s *Server) writeRemoteWorksDisabled(w http.ResponseWriter, sourceID int64, r *http.Request, diagnosticURL string) {
+	sortName, _ := remoteSourceSort(r.URL.Query().Get("sort"))
 	writeJSON(w, http.StatusOK, remoteWorksResponse{
-		SourceID:    id,
-		Works:       works,
-		Page:        page,
-		PageSize:    pageSize,
-		Total:       total,
-		Status:      "ok",
-		Sort:        sortName,
-		Direction:   direction,
-		SortApplied: remotePage.SortApplied,
+		SourceID: sourceID, Works: []remoteWorkSummary{}, Page: queryInt(r, "page", 1), PageSize: queryInt(r, "pageSize", 24),
+		Status: "disabled", Error: &remoteWorksError{Code: "disabled", Message: remoteSourceDisabledMessage, URL: diagnosticURL, Retryable: false},
+		Sort: sortName, Direction: remoteSortDirection(r.URL.Query().Get("direction")),
 	})
+}
+
+func (s *Server) serveRemoteSourceWorksPage(w http.ResponseWriter, r *http.Request, userID int64, source remoteSourceForUse, diagnosticURL string, request remoteSourceWorksRequest) error {
+	ctx := r.Context()
+	client := s.kikoeruClientForSource(source)
+	if s.cfg.IsDemo() {
+		works, total, sortApplied, err := s.demoRemoteSourcePageWithLanguages(ctx, userID, source.ID, client, source.SourceType, request.Query, request.UpstreamOrder, request.Direction, request.Seed, request.Page, request.PageSize, request.Languages, request.IncludeRecommendation)
+		return s.writeRemoteSourceWorksResult(w, ctx, source, diagnosticURL, request, works, total, sortApplied, err)
+	}
+	if len(request.Plan.PostFilterClauses) > 0 {
+		works, total, sortApplied, err := s.remotePostFilteredPageWithLanguages(ctx, userID, source.ID, client, request.Plan, request.UpstreamOrder, request.Direction, request.Seed, request.Page, request.PageSize, request.Languages)
+		return s.writeRemoteSourceWorksResult(w, ctx, source, diagnosticURL, request, works, total, sortApplied, err)
+	}
+	remotePage, err := client.ListWorksSortedSeeded(ctx, request.Page, request.PageSize, request.Plan.PushdownQuery, request.UpstreamOrder, request.Direction, request.Seed)
+	if err != nil {
+		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+		s.writeRemoteWorksUnavailable(w, source, request.Page, request.PageSize, request.Sort, request.Direction, diagnosticURL, err)
+		return nil
+	}
+	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+	works, err := s.remoteWorkSummariesWithLanguages(ctx, userID, source.ID, remotePage.Works, request.Languages, request.IncludeRecommendation)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, remoteWorksResponse{SourceID: source.ID, Works: works, Page: request.Page, PageSize: request.PageSize, Total: remotePageTotal(remotePage), Status: "ok", Sort: request.Sort, Direction: request.Direction, SortApplied: remotePage.SortApplied})
+	return nil
+}
+
+func (s *Server) writeRemoteSourceWorksResult(w http.ResponseWriter, ctx context.Context, source remoteSourceForUse, diagnosticURL string, request remoteSourceWorksRequest, works []remoteWorkSummary, total int, sortApplied bool, err error) error {
+	if err != nil {
+		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+		s.writeRemoteWorksUnavailable(w, source, request.Page, request.PageSize, request.Sort, request.Direction, diagnosticURL, err)
+		return nil
+	}
+	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+	writeJSON(w, http.StatusOK, remoteWorksResponse{SourceID: source.ID, Works: works, Page: request.Page, PageSize: request.PageSize, Total: total, Status: "ok", Sort: request.Sort, Direction: request.Direction, SortApplied: sortApplied})
+	return nil
+}
+
+func remotePageTotal(page kikoeru.WorksPage) int {
+	if page.Pagination.TotalCount > 0 {
+		return page.Pagination.TotalCount
+	}
+	if page.Pagination.Total > 0 {
+		return page.Pagination.Total
+	}
+	return page.Pagination.Count
 }
 
 func (s *Server) writeRemoteWorksUnavailable(
@@ -1515,58 +1582,8 @@ func (s *Server) checkWorkSourceAvailabilityForSourcesWithHealth(ctx context.Con
 		if allowedSourceIDs != nil && !allowedSourceIDs[source.ID] {
 			continue
 		}
-		result := sourceAvailabilitySummary{
-			SourceID: source.ID, SourceCode: source.Code, DisplayName: source.DisplayName, Status: "disabled",
-		}
-		started := time.Now()
-		if !isKikoeruSourceType(source.SourceType) {
-			result.Status = "unavailable"
-			result.Error = "source is not a supported kikoeru source"
-			if err := s.attachSourceAvailabilityFlags(ctx, &result, source.ID, code); err != nil {
-				return sourceAvailabilityResponse{}, err
-			}
-			results = append(results, result)
-			continue
-		}
-		if !source.Enabled {
-			if err := s.attachSourceAvailabilityFlags(ctx, &result, source.ID, code); err != nil {
-				return sourceAvailabilityResponse{}, err
-			}
-			results = append(results, result)
-			continue
-		}
-		requestClass := sourceRequestCrawl
-		if triggerType == "manual" {
-			requestClass = sourceRequestInteractive
-		}
-		remoteWork, err := s.checkRemoteWorkAvailabilityWithClass(ctx, source, code, requestClass)
-		result.ElapsedMS = time.Since(started).Milliseconds()
+		result, err := s.checkOneWorkSourceAvailability(ctx, source, code, triggerType)
 		if err != nil {
-			result.Status = "error"
-			result.Error = "remote source request failed"
-			if isNotFoundLikeError(err) {
-				result.Status = "not_found"
-				result.Error = "work was not found"
-			}
-			slog.Warn("remote source availability check failed", "source_id", source.ID, "work_code", code, "error", err)
-			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
-			if err := s.attachSourceAvailabilityFlags(ctx, &result, source.ID, code); err != nil {
-				return sourceAvailabilityResponse{}, err
-			}
-			results = append(results, result)
-			continue
-		}
-		_ = s.updateSourceHealth(ctx, source.ID, "healthy")
-		workCode := normalizedRemoteWorkCode(remoteWork)
-		if workCode == "" {
-			workCode = code
-		}
-		result.Status = "available"
-		result.RemoteID = strconv.FormatInt(remoteWork.ID, 10)
-		result.PrimaryCode = workCode
-		result.Title = firstNonEmpty(remoteWork.Title, remoteWork.Name, workCode)
-		result.CoverURL = firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL)
-		if err := s.attachSourceAvailabilityFlags(ctx, &result, source.ID, workCode); err != nil {
 			return sourceAvailabilityResponse{}, err
 		}
 		results = append(results, result)
@@ -1577,6 +1594,47 @@ func (s *Server) checkWorkSourceAvailabilityForSourcesWithHealth(ctx context.Con
 	return sourceAvailabilityResponse{
 		WorkCode: code, CheckedAt: checkedAt, Sources: results,
 	}, nil
+}
+
+func (s *Server) checkOneWorkSourceAvailability(ctx context.Context, source remoteSourceForUse, code, triggerType string) (sourceAvailabilitySummary, error) {
+	result := sourceAvailabilitySummary{SourceID: source.ID, SourceCode: source.Code, DisplayName: source.DisplayName, Status: "disabled"}
+	if !isKikoeruSourceType(source.SourceType) {
+		result.Status = "unavailable"
+		result.Error = "source is not a supported kikoeru source"
+		return result, s.attachSourceAvailabilityFlags(ctx, &result, source.ID, code)
+	}
+	if !source.Enabled {
+		return result, s.attachSourceAvailabilityFlags(ctx, &result, source.ID, code)
+	}
+	requestClass := sourceRequestCrawl
+	if triggerType == "manual" {
+		requestClass = sourceRequestInteractive
+	}
+	started := time.Now()
+	remoteWork, err := s.checkRemoteWorkAvailabilityWithClass(ctx, source, code, requestClass)
+	result.ElapsedMS = time.Since(started).Milliseconds()
+	if err != nil {
+		result.Status = "error"
+		result.Error = "remote source request failed"
+		if isNotFoundLikeError(err) {
+			result.Status = "not_found"
+			result.Error = "work was not found"
+		}
+		slog.Warn("remote source availability check failed", "source_id", source.ID, "work_code", code, "error", err)
+		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+		return result, s.attachSourceAvailabilityFlags(ctx, &result, source.ID, code)
+	}
+	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+	workCode := normalizedRemoteWorkCode(remoteWork)
+	if workCode == "" {
+		workCode = code
+	}
+	result.Status = "available"
+	result.RemoteID = strconv.FormatInt(remoteWork.ID, 10)
+	result.PrimaryCode = workCode
+	result.Title = firstNonEmpty(remoteWork.Title, remoteWork.Name, workCode)
+	result.CoverURL = firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL)
+	return result, s.attachSourceAvailabilityFlags(ctx, &result, source.ID, workCode)
 }
 
 func (s *Server) recordSourceAvailabilityObservation(ctx context.Context, code string, results []sourceAvailabilitySummary) error {
@@ -2471,37 +2529,65 @@ func remoteWorkSummaryMatchesClause(work remoteWorkSummary, clause listSearchCla
 		return true
 	}
 	switch clause.Kind {
+	case "code", "circle", "age":
+		return remoteWorkSummaryMatchesTextClause(work, clause.Kind, needle)
+	case "tag", "exclude_tag", "voice_actor", "user_tag", "exclude_user_tag":
+		return remoteWorkSummaryMatchesTagClause(work, clause.Kind, needle)
+	case "rating_min", "sales_min", "duration_min", "duration_max":
+		return remoteWorkSummaryMatchesNumericClause(work, clause.Kind, needle)
+	case "language":
+		return false
+	default:
+		return remoteWorkSummaryMatchesFreeText(work, needle)
+	}
+}
+
+func remoteWorkSummaryMatchesTextClause(work remoteWorkSummary, kind, needle string) bool {
+	switch kind {
 	case "code":
 		return strings.Contains(strings.ToLower(work.PrimaryCode), needle) || strings.Contains(strings.ToLower(work.RemoteCode), needle) || strings.Contains(strings.ToLower(work.RemoteID), needle)
 	case "circle":
 		return strings.Contains(strings.ToLower(work.Circle), needle)
-	case "tag":
-		return stringSliceContainsSubstringFold(work.Tags, needle)
-	case "exclude_tag":
-		return !stringSliceContainsSubstringFold(work.Tags, needle)
-	case "rating_min":
-		return work.Rating != nil && *work.Rating >= numericListClauseValue(needle)
-	case "sales_min":
-		return work.Sales != nil && float64(*work.Sales) >= numericListClauseValue(needle)
-	case "voice_actor":
-		return stringSliceContainsSubstringFold(work.VoiceActors, needle)
-	case "user_tag":
-		return stringSliceContainsSubstringFold(work.SearchUserTags, needle)
-	case "exclude_user_tag":
-		return !stringSliceContainsSubstringFold(work.SearchUserTags, needle)
-	case "duration_min":
-		return work.DurationSeconds != nil && float64(*work.DurationSeconds) >= numericListClauseValue(needle)
-	case "duration_max":
-		return work.DurationSeconds != nil && float64(*work.DurationSeconds) <= numericListClauseValue(needle)
-	case "age":
-		return strings.Contains(strings.ToLower(work.AgeRating), needle)
-	case "language":
-		return false
 	default:
-		return stringSliceContainsSubstringFold([]string{work.PrimaryCode, work.RemoteCode, work.RemoteID, work.Title, work.Circle, work.ReleaseDate, work.AgeRating}, needle) ||
-			stringSliceContainsSubstringFold(work.Tags, needle) || stringSliceContainsSubstringFold(work.VoiceActors, needle) ||
-			stringSliceContainsSubstringFold(work.SearchUserTags, needle)
+		return strings.Contains(strings.ToLower(work.AgeRating), needle)
 	}
+}
+
+func remoteWorkSummaryMatchesTagClause(work remoteWorkSummary, kind, needle string) bool {
+	var values []string
+	switch kind {
+	case "tag", "exclude_tag":
+		values = work.Tags
+	case "voice_actor":
+		values = work.VoiceActors
+	default:
+		values = work.SearchUserTags
+	}
+	matched := stringSliceContainsSubstringFold(values, needle)
+	if kind == "exclude_tag" || kind == "exclude_user_tag" {
+		return !matched
+	}
+	return matched
+}
+
+func remoteWorkSummaryMatchesNumericClause(work remoteWorkSummary, kind, needle string) bool {
+	threshold := numericListClauseValue(needle)
+	switch kind {
+	case "rating_min":
+		return work.Rating != nil && *work.Rating >= threshold
+	case "sales_min":
+		return work.Sales != nil && float64(*work.Sales) >= threshold
+	case "duration_min":
+		return work.DurationSeconds != nil && float64(*work.DurationSeconds) >= threshold
+	default:
+		return work.DurationSeconds != nil && float64(*work.DurationSeconds) <= threshold
+	}
+}
+
+func remoteWorkSummaryMatchesFreeText(work remoteWorkSummary, needle string) bool {
+	return stringSliceContainsSubstringFold([]string{work.PrimaryCode, work.RemoteCode, work.RemoteID, work.Title, work.Circle, work.ReleaseDate, work.AgeRating}, needle) ||
+		stringSliceContainsSubstringFold(work.Tags, needle) || stringSliceContainsSubstringFold(work.VoiceActors, needle) ||
+		stringSliceContainsSubstringFold(work.SearchUserTags, needle)
 }
 
 func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID int64, works []kikoeru.Work, language string, includeRecommendation ...bool) ([]remoteWorkSummary, error) {
@@ -2513,95 +2599,89 @@ func (s *Server) remoteWorkSummariesWithLanguages(ctx context.Context, userID in
 	seen := map[string]int{}
 	projector := newRemoteCatalogProjectorWithLanguages(languages)
 	for _, work := range works {
-		projected := projector.project(sourceID, work)
-		code := projected.RemoteCode
-		displayCode := code
-		ref, err := s.canonicalWorkForCode(ctx, code)
+		item, err := s.buildRemoteWorkSummary(ctx, userID, sourceID, projector, work, includeRecommendation...)
 		if err != nil {
 			return nil, err
 		}
-		var workID *int64
-		var favorite bool
-		listeningStatus := "none"
-		if ref.Code != "" {
-			displayCode = ref.Code
-		}
-		if ref.Known && ref.WorkID > 0 {
-			workID = &ref.WorkID
-			if workID != nil {
-				var favoriteInt int
-				if err := s.db.QueryRowContext(ctx, `
-					SELECT COALESCE(favorite, 0), COALESCE(listening_status, 'none')
-					FROM user_work_state
-					WHERE user_id = ? AND work_id = ?
-				`, userID, *workID).Scan(&favoriteInt, &listeningStatus); err != nil && !errors.Is(err, sql.ErrNoRows) {
-					return nil, err
-				} else if err == nil {
-					favorite = favoriteInt != 0
-				}
-			}
-		}
-		recommendScore := 0
-		if workID != nil && len(includeRecommendation) > 0 && includeRecommendation[0] {
-			recommendScore, err = s.workRecommendationScore(ctx, userID, *workID)
-			if err != nil {
-				return nil, err
-			}
-		}
-		status := "remote_only"
-		if workID != nil {
-			status = "synced"
-		}
-		item := remoteWorkSummary{
-			RemoteID:        projected.RemoteID,
-			PrimaryCode:     displayCode,
-			RemoteCode:      code,
-			Title:           firstNonEmpty(projected.Title, displayCode),
-			ReleaseDate:     projected.ReleaseDate,
-			UpdatedAt:       projected.ReleaseDate,
-			CoverURL:        projected.CoverURL,
-			Circle:          projected.Circle,
-			CircleRef:       projected.CircleRef,
-			AgeRating:       projected.AgeRating,
-			Rating:          projected.Rating,
-			RatingCount:     projected.RatingCount,
-			Sales:           projected.Sales,
-			Price:           projected.Price,
-			Tags:            projected.Tags,
-			VoiceActors:     projected.VoiceActors,
-			VoiceRefs:       projected.VoiceRefs,
-			ImportStatus:    status,
-			RemotePlayable:  true,
-			WorkID:          workID,
-			Favorite:        favorite,
-			ListeningStatus: listeningStatus,
-			RecommendScore:  recommendScore,
-		}
-		item.DurationSeconds = projected.DurationSeconds
-		key := strings.ToUpper(strings.TrimSpace(displayCode))
+		key := strings.ToUpper(strings.TrimSpace(item.PrimaryCode))
 		if index, ok := seen[key]; ok {
-			existing := &result[index]
-			existing.RemotePlayable = existing.RemotePlayable || item.RemotePlayable
-			existing.Favorite = existing.Favorite || item.Favorite
-			if existing.ListeningStatus == "none" {
-				existing.ListeningStatus = item.ListeningStatus
-			}
-			if existing.WorkID == nil {
-				existing.WorkID = item.WorkID
-				existing.ImportStatus = item.ImportStatus
-			}
-			if existing.Price == nil {
-				existing.Price = item.Price
-			}
-			if existing.RemoteCode == "" || strings.EqualFold(item.RemoteCode, item.PrimaryCode) {
-				existing.RemoteCode = item.RemoteCode
-				existing.RemoteID = item.RemoteID
-			}
+			mergeRemoteWorkSummary(&result[index], item)
 			continue
 		}
 		seen[key] = len(result)
 		result = append(result, item)
 	}
+	return s.enrichRemoteWorkSummaries(ctx, userID, result)
+}
+
+func (s *Server) buildRemoteWorkSummary(ctx context.Context, userID, sourceID int64, projector remoteCatalogProjector, work kikoeru.Work, includeRecommendation ...bool) (remoteWorkSummary, error) {
+	projected := projector.project(sourceID, work)
+	code := projected.RemoteCode
+	displayCode := code
+	ref, err := s.canonicalWorkForCode(ctx, code)
+	if err != nil {
+		return remoteWorkSummary{}, err
+	}
+	if ref.Code != "" {
+		displayCode = ref.Code
+	}
+	var workID *int64
+	var favorite bool
+	listeningStatus := "none"
+	if ref.Known && ref.WorkID > 0 {
+		workID = &ref.WorkID
+		var favoriteInt int
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT COALESCE(favorite, 0), COALESCE(listening_status, 'none')
+			FROM user_work_state
+			WHERE user_id = ? AND work_id = ?
+		`, userID, *workID).Scan(&favoriteInt, &listeningStatus); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return remoteWorkSummary{}, err
+		} else if err == nil {
+			favorite = favoriteInt != 0
+		}
+	}
+	recommendScore := 0
+	if workID != nil && len(includeRecommendation) > 0 && includeRecommendation[0] {
+		recommendScore, err = s.workRecommendationScore(ctx, userID, *workID)
+		if err != nil {
+			return remoteWorkSummary{}, err
+		}
+	}
+	status := "remote_only"
+	if workID != nil {
+		status = "synced"
+	}
+	return remoteWorkSummary{
+		RemoteID: projected.RemoteID, PrimaryCode: displayCode, RemoteCode: code,
+		Title: firstNonEmpty(projected.Title, displayCode), ReleaseDate: projected.ReleaseDate,
+		UpdatedAt: projected.ReleaseDate, CoverURL: projected.CoverURL, Circle: projected.Circle,
+		CircleRef: projected.CircleRef, AgeRating: projected.AgeRating, Rating: projected.Rating,
+		RatingCount: projected.RatingCount, Sales: projected.Sales, Price: projected.Price,
+		Tags: projected.Tags, VoiceActors: projected.VoiceActors, VoiceRefs: projected.VoiceRefs,
+		ImportStatus: status, RemotePlayable: true, WorkID: workID, Favorite: favorite,
+		ListeningStatus: listeningStatus, RecommendScore: recommendScore, DurationSeconds: projected.DurationSeconds,
+	}, nil
+}
+
+func mergeRemoteWorkSummary(existing *remoteWorkSummary, item remoteWorkSummary) {
+	existing.RemotePlayable = existing.RemotePlayable || item.RemotePlayable
+	existing.Favorite = existing.Favorite || item.Favorite
+	if existing.ListeningStatus == "none" {
+		existing.ListeningStatus = item.ListeningStatus
+	}
+	if existing.WorkID == nil {
+		existing.WorkID, existing.ImportStatus = item.WorkID, item.ImportStatus
+	}
+	if existing.Price == nil {
+		existing.Price = item.Price
+	}
+	if existing.RemoteCode == "" || strings.EqualFold(item.RemoteCode, item.PrimaryCode) {
+		existing.RemoteCode, existing.RemoteID = item.RemoteCode, item.RemoteID
+	}
+}
+
+func (s *Server) enrichRemoteWorkSummaries(ctx context.Context, userID int64, result []remoteWorkSummary) ([]remoteWorkSummary, error) {
 	workIDs := make([]int64, 0, len(result))
 	for _, item := range result {
 		if item.WorkID != nil {
@@ -2633,13 +2713,9 @@ func (s *Server) enqueueRemoteWorkTrack(ctx context.Context, userID int64, sourc
 	s.remoteTrackMu.Lock()
 	defer s.remoteTrackMu.Unlock()
 
-	requestedCode := strings.ToUpper(strings.TrimSpace(code))
-	if requestedCode == "" {
-		return remoteWorkTrackResult{}, fmt.Errorf("work code is required")
-	}
-	triggerReason = strings.TrimSpace(triggerReason)
-	if triggerReason == "" {
-		triggerReason = "manual_track"
+	requestedCode, triggerReason, err := normalizeRemoteWorkTrackRequest(code, triggerReason)
+	if err != nil {
+		return remoteWorkTrackResult{}, err
 	}
 	source, err := s.loadRemoteSourceForUse(ctx, sourceID)
 	if err != nil {
@@ -2648,19 +2724,12 @@ func (s *Server) enqueueRemoteWorkTrack(ctx context.Context, userID int64, sourc
 		}
 		return remoteWorkTrackResult{}, err
 	}
-	if !isKikoeruSourceType(source.SourceType) || !source.Enabled {
-		return remoteWorkTrackResult{}, fmt.Errorf("source is not an enabled kikoeru-compatible source")
+	if err := validateRemoteWorkTrackSource(source); err != nil {
+		return remoteWorkTrackResult{}, err
 	}
-	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
-		return remoteWorkTrackResult{}, fmt.Errorf("source has no API endpoint")
-	}
-	if existing, ok, err := activeRemoteWorkTrack(ctx, s.db, sourceID, requestedCode); err != nil {
+	if existing, ok, err := reuseRemoteWorkTrack(ctx, s.db, userID, sourceID, requestedCode); err != nil {
 		return remoteWorkTrackResult{}, err
 	} else if ok {
-		if err := subscribeRemoteTrackNotification(ctx, s.db, userID, existing.RunID, existing.WorkID, requestedCode); err != nil {
-			return remoteWorkTrackResult{}, err
-		}
-		existing.Deduplicated = true
 		return existing, nil
 	}
 
@@ -2669,19 +2738,64 @@ func (s *Server) enqueueRemoteWorkTrack(ctx context.Context, userID int64, sourc
 		return remoteWorkTrackResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if existing, ok, err := activeRemoteWorkTrack(ctx, tx, sourceID, requestedCode); err != nil {
+	if existing, ok, err := reuseRemoteWorkTrack(ctx, tx, userID, sourceID, requestedCode); err != nil {
 		return remoteWorkTrackResult{}, err
 	} else if ok {
-		if err := subscribeRemoteTrackNotification(ctx, tx, userID, existing.RunID, existing.WorkID, requestedCode); err != nil {
-			return remoteWorkTrackResult{}, err
-		}
 		if err := tx.Commit(); err != nil {
 			return remoteWorkTrackResult{}, err
 		}
-		existing.Deduplicated = true
 		return existing, nil
 	}
+	result, err := enqueueRemoteWorkTrackTx(ctx, tx, source, userID, requestedCode, triggerReason)
+	if err != nil {
+		return remoteWorkTrackResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return remoteWorkTrackResult{}, err
+	}
+	return result, nil
+}
 
+func normalizeRemoteWorkTrackRequest(code string, triggerReason string) (string, string, error) {
+	requestedCode := strings.ToUpper(strings.TrimSpace(code))
+	if requestedCode == "" {
+		return "", "", fmt.Errorf("work code is required")
+	}
+	triggerReason = strings.TrimSpace(triggerReason)
+	if triggerReason == "" {
+		triggerReason = "manual_track"
+	}
+	return requestedCode, triggerReason, nil
+}
+
+func validateRemoteWorkTrackSource(source remoteSourceForUse) error {
+	if !isKikoeruSourceType(source.SourceType) || !source.Enabled {
+		return fmt.Errorf("source is not an enabled kikoeru-compatible source")
+	}
+	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
+		return fmt.Errorf("source has no API endpoint")
+	}
+	return nil
+}
+
+type remoteWorkTrackQueryer interface {
+	rowQueryer
+	contextExecer
+}
+
+func reuseRemoteWorkTrack(ctx context.Context, queryer remoteWorkTrackQueryer, userID, sourceID int64, requestedCode string) (remoteWorkTrackResult, bool, error) {
+	existing, ok, err := activeRemoteWorkTrack(ctx, queryer, sourceID, requestedCode)
+	if err != nil || !ok {
+		return existing, ok, err
+	}
+	if err := subscribeRemoteTrackNotification(ctx, queryer, userID, existing.RunID, existing.WorkID, requestedCode); err != nil {
+		return remoteWorkTrackResult{}, false, err
+	}
+	existing.Deduplicated = true
+	return existing, true, nil
+}
+
+func enqueueRemoteWorkTrackTx(ctx context.Context, tx *sql.Tx, source remoteSourceForUse, userID int64, requestedCode, triggerReason string) (remoteWorkTrackResult, error) {
 	definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_source_sync", "Track remote source", "Track one remote work and fork its selected-source directory in a recoverable background job.", map[string]any{
 		"nodes": []map[string]string{
 			{"id": "select", "type": "select_remote_source", "displayName": "Select remote source"},
@@ -2697,12 +2811,12 @@ func (s *Server) enqueueRemoteWorkTrack(ctx context.Context, userID int64, sourc
 	}
 	payload := remoteWorkTrackJobPayload{
 		RequestedByUserID: userID,
-		SourceID:          sourceID,
+		SourceID:          source.ID,
 		WorkCode:          requestedCode,
 		TriggerReason:     triggerReason,
 	}
 	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_source_sync", "Track "+requestedCode, "queued", "manual", triggerReason, payload, map[string]any{
-		"source_id": sourceID, "requested_work_code": requestedCode, "tracked": false,
+		"source_id": source.ID, "requested_work_code": requestedCode, "tracked": false,
 	})
 	if err != nil {
 		return remoteWorkTrackResult{}, err
@@ -2724,7 +2838,7 @@ func (s *Server) enqueueRemoteWorkTrack(ctx context.Context, userID int64, sourc
 		{NodeID: "filter", NodeType: "filter_candidates", DisplayName: "Validate candidate", Position: 3, Status: "queued", Input: map[string]any{"work_code": requestedCode}},
 		{NodeID: "match", NodeType: "match_works", DisplayName: "Track work", Position: 4, Status: "queued", Input: map[string]any{"work_code": requestedCode}},
 		{NodeID: "metadata", NodeType: "sync_metadata", DisplayName: "Record source metadata", Position: 5, Status: "queued", Input: map[string]any{"work_code": requestedCode}},
-		{NodeID: "sync", NodeType: "sync_file_locations", DisplayName: "Fork remote directory", Position: 6, Status: "queued", Input: map[string]any{"source_id": sourceID, "work_code": requestedCode}},
+		{NodeID: "sync", NodeType: "sync_file_locations", DisplayName: "Fork remote directory", Position: 6, Status: "queued", Input: map[string]any{"source_id": source.ID, "work_code": requestedCode}},
 	} {
 		if _, err := workflow.InsertNodeRun(ctx, tx, runID, node); err != nil {
 			return remoteWorkTrackResult{}, err
@@ -2739,9 +2853,6 @@ func (s *Server) enqueueRemoteWorkTrack(ctx context.Context, userID int64, sourc
 		return remoteWorkTrackResult{}, err
 	}
 	if err := subscribeRemoteTrackNotification(ctx, tx, userID, runID, nil, requestedCode); err != nil {
-		return remoteWorkTrackResult{}, err
-	}
-	if err := tx.Commit(); err != nil {
 		return remoteWorkTrackResult{}, err
 	}
 	return remoteWorkTrackResult{
@@ -2880,11 +2991,7 @@ func (s *Server) runRemoteWorkSyncWithIntent(ctx context.Context, sourceID int64
 	if err != nil {
 		return remoteWorkSyncResult{}, err
 	}
-	requestedCode := prepared.RequestedCode
 	workCode := prepared.WorkCode
-	source := prepared.Source
-	remoteWork := prepared.RemoteWork
-	rawWork := prepared.RawWork
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -2892,39 +2999,7 @@ func (s *Server) runRemoteWorkSyncWithIntent(ctx context.Context, sourceID int64
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_source_sync", "Track remote source", "Discover remote works, filter candidates, match works, and track remote metadata.", map[string]any{
-		"nodes": []map[string]string{
-			{"id": "select", "type": "select_remote_source"},
-			{"id": "discover", "type": "discover_remote_works"},
-			{"id": "filter", "type": "filter_candidates"},
-			{"id": "match", "type": "match_works"},
-			{"id": "metadata", "type": "sync_metadata"},
-			{"id": "tree", "type": "fetch_remote_tree"},
-		},
-	})
-	if err != nil {
-		return remoteWorkSyncResult{}, err
-	}
-	runInput := map[string]any{"file_source_id": source.ID, "source_code": source.Code, "work_code": workCode, "requested_work_code": requestedCode, "trigger_reason": triggerReason, "tracked": tracked}
-	runSummary := map[string]any{"remote_work_id": remoteWork.ID, "tracked": tracked}
-	runDisplayName := "Sync remote source"
-	if tracked {
-		runDisplayName = "Track remote source"
-	}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_source_sync", runDisplayName, "succeeded", "manual", triggerReason, runInput, runSummary)
-	if err != nil {
-		return remoteWorkSyncResult{}, err
-	}
-	selectNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "select", NodeType: "select_remote_source", DisplayName: "Select remote source", Position: 1, Status: "succeeded",
-		Input: runInput, Output: map[string]any{"file_source_id": source.ID, "api_url": source.Endpoint.APIURL},
-	})
-	if err != nil {
-		return remoteWorkSyncResult{}, err
-	}
-	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: selectNodeID, WorkerType: "kikoeru_remote_sync", Status: "succeeded", Payload: runInput, ProgressCurrent: 1, ProgressTotal: 1,
-	})
+	runID, jobID, err := createRemoteWorkSyncWorkflow(ctx, tx, prepared, triggerReason, tracked)
 	if err != nil {
 		return remoteWorkSyncResult{}, err
 	}
@@ -2932,45 +3007,7 @@ func (s *Server) runRemoteWorkSyncWithIntent(ctx context.Context, sourceID int64
 	if err != nil {
 		return remoteWorkSyncResult{}, err
 	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "discover", NodeType: "discover_remote_works", DisplayName: "Discover remote works", Position: 2, Status: "succeeded",
-		Input: map[string]any{"work_code": workCode}, Output: map[string]any{"remote_work_id": remoteWork.ID},
-	}); err != nil {
-		return remoteWorkSyncResult{}, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "filter", NodeType: "filter_candidates", DisplayName: "Filter candidates", Position: 3, Status: "succeeded",
-		Input: map[string]any{"work_code": workCode}, Output: map[string]any{"accepted": 1, "rejected": 0},
-	}); err != nil {
-		return remoteWorkSyncResult{}, err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO workflow_candidate (workflow_run_id, candidate_type, external_key, status, payload_json)
-		VALUES (?, 'remote_work', ?, 'accepted', ?)
-	`, runID, workCode, mustJSON(map[string]any{"work_code": workCode, "remote_work_id": remoteWork.ID})); err != nil {
-		return remoteWorkSyncResult{}, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "match", NodeType: "match_works", DisplayName: "Match works", Position: 4, Status: "succeeded",
-		Input: map[string]any{"work_code": workCode}, Output: map[string]any{"work_id": workID, "tracked": tracked},
-	}); err != nil {
-		return remoteWorkSyncResult{}, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "metadata", NodeType: "sync_metadata", DisplayName: "Sync metadata", Position: 5, Status: "succeeded",
-		Input: map[string]any{"work_id": workID}, Output: map[string]any{"snapshot_bytes": len(rawWork)},
-	}); err != nil {
-		return remoteWorkSyncResult{}, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "tree", NodeType: "fetch_remote_tree", DisplayName: "Sync remote directory", Position: 6, Status: "succeeded",
-		Input: map[string]any{"work_id": workID, "source_id": source.ID}, Output: map[string]any{"media_items": syncedMediaItems, "locations": syncedLocations, "tracked": tracked},
-	}); err != nil {
-		return remoteWorkSyncResult{}, err
-	}
-	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET summary_json = ? WHERE id = ?", mustJSON(map[string]any{
-		"remote_work_id": remoteWork.ID, "tracked": tracked, "media_items": syncedMediaItems, "locations": syncedLocations,
-	}), runID); err != nil {
+	if err := recordRemoteWorkSyncWorkflow(ctx, tx, runID, prepared, tracked, workID, syncedMediaItems, syncedLocations); err != nil {
 		return remoteWorkSyncResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -2987,6 +3024,87 @@ func (s *Server) runRemoteWorkSyncWithIntent(ctx context.Context, sourceID int64
 		SyncedLocations:  syncedLocations,
 		TriggerReason:    triggerReason,
 	}, nil
+}
+
+func createRemoteWorkSyncWorkflow(ctx context.Context, tx *sql.Tx, prepared preparedRemoteWorkTrack, triggerReason string, tracked bool) (int64, int64, error) {
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_source_sync", "Track remote source", "Discover remote works, filter candidates, match works, and track remote metadata.", map[string]any{
+		"nodes": []map[string]string{
+			{"id": "select", "type": "select_remote_source"}, {"id": "discover", "type": "discover_remote_works"},
+			{"id": "filter", "type": "filter_candidates"}, {"id": "match", "type": "match_works"},
+			{"id": "metadata", "type": "sync_metadata"}, {"id": "tree", "type": "fetch_remote_tree"},
+		},
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	runInput := map[string]any{
+		"file_source_id": prepared.Source.ID, "source_code": prepared.Source.Code, "work_code": prepared.WorkCode,
+		"requested_work_code": prepared.RequestedCode, "trigger_reason": triggerReason, "tracked": tracked,
+	}
+	runDisplayName := "Sync remote source"
+	if tracked {
+		runDisplayName = "Track remote source"
+	}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_source_sync", runDisplayName, "succeeded", "manual", triggerReason, runInput, map[string]any{"remote_work_id": prepared.RemoteWork.ID, "tracked": tracked})
+	if err != nil {
+		return 0, 0, err
+	}
+	selectNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "select", NodeType: "select_remote_source", DisplayName: "Select remote source", Position: 1, Status: "succeeded",
+		Input: runInput, Output: map[string]any{"file_source_id": prepared.Source.ID, "api_url": prepared.Source.Endpoint.APIURL},
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
+		NodeRunID: selectNodeID, WorkerType: "kikoeru_remote_sync", Status: "succeeded", Payload: runInput, ProgressCurrent: 1, ProgressTotal: 1,
+	})
+	return runID, jobID, err
+}
+
+func recordRemoteWorkSyncWorkflow(ctx context.Context, tx *sql.Tx, runID int64, prepared preparedRemoteWorkTrack, tracked bool, workID int64, syncedMediaItems, syncedLocations int) error {
+	workCode := prepared.WorkCode
+	remoteWork := prepared.RemoteWork
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "discover", NodeType: "discover_remote_works", DisplayName: "Discover remote works", Position: 2, Status: "succeeded",
+		Input: map[string]any{"work_code": workCode}, Output: map[string]any{"remote_work_id": remoteWork.ID},
+	}); err != nil {
+		return err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "filter", NodeType: "filter_candidates", DisplayName: "Filter candidates", Position: 3, Status: "succeeded",
+		Input: map[string]any{"work_code": workCode}, Output: map[string]any{"accepted": 1, "rejected": 0},
+	}); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO workflow_candidate (workflow_run_id, candidate_type, external_key, status, payload_json)
+		VALUES (?, 'remote_work', ?, 'accepted', ?)
+	`, runID, workCode, mustJSON(map[string]any{"work_code": workCode, "remote_work_id": remoteWork.ID})); err != nil {
+		return err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "match", NodeType: "match_works", DisplayName: "Match works", Position: 4, Status: "succeeded",
+		Input: map[string]any{"work_code": workCode}, Output: map[string]any{"work_id": workID, "tracked": tracked},
+	}); err != nil {
+		return err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "metadata", NodeType: "sync_metadata", DisplayName: "Sync metadata", Position: 5, Status: "succeeded",
+		Input: map[string]any{"work_id": workID}, Output: map[string]any{"snapshot_bytes": len(prepared.RawWork)},
+	}); err != nil {
+		return err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "tree", NodeType: "fetch_remote_tree", DisplayName: "Sync remote directory", Position: 6, Status: "succeeded",
+		Input: map[string]any{"work_id": workID, "source_id": prepared.Source.ID}, Output: map[string]any{"media_items": syncedMediaItems, "locations": syncedLocations, "tracked": tracked},
+	}); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, "UPDATE workflow_run SET summary_json = ? WHERE id = ?", mustJSON(map[string]any{
+		"remote_work_id": remoteWork.ID, "tracked": tracked, "media_items": syncedMediaItems, "locations": syncedLocations,
+	}), runID)
+	return err
 }
 
 func (s *Server) executeRemoteWorkTrackJob(ctx context.Context, job workflowJobRecord) error {
@@ -3222,25 +3340,33 @@ func (s *Server) runRemotePopularWorkflow(ctx context.Context, userID int64, pay
 }
 
 func (s *Server) runRemotePopularWorkflowWithTrigger(ctx context.Context, userID int64, payload remoteCollectionRunRequest, trigger workflowRunTrigger) (remoteCollectionRunResult, error) {
-	action := normalizeRemoteCollectionAction(payload.Action)
-	if action == "" {
-		return remoteCollectionRunResult{}, fmt.Errorf("action must be track or fetch")
-	}
-	if payload.SourceID <= 0 {
-		return remoteCollectionRunResult{}, fmt.Errorf("sourceId is required")
-	}
-	if payload.Limit <= 0 || payload.Limit > 100 {
-		return remoteCollectionRunResult{}, fmt.Errorf("limit must be between 1 and 100")
-	}
-	source, err := s.remoteCollectionSource(ctx, payload.SourceID)
+	action, source, payload, err := s.prepareRemotePopularWorkflow(ctx, payload)
 	if err != nil {
 		return remoteCollectionRunResult{}, err
 	}
+	return s.enqueueRemotePopularWorkflow(ctx, userID, source, payload, action, trigger)
+}
+
+func (s *Server) prepareRemotePopularWorkflow(ctx context.Context, payload remoteCollectionRunRequest) (string, remoteSourceForUse, remoteCollectionRunRequest, error) {
+	action := normalizeRemoteCollectionAction(payload.Action)
+	if action == "" {
+		return "", remoteSourceForUse{}, payload, fmt.Errorf("action must be track or fetch")
+	}
+	if payload.SourceID <= 0 {
+		return "", remoteSourceForUse{}, payload, fmt.Errorf("sourceId is required")
+	}
+	if payload.Limit <= 0 || payload.Limit > 100 {
+		return "", remoteSourceForUse{}, payload, fmt.Errorf("limit must be between 1 and 100")
+	}
+	source, err := s.remoteCollectionSource(ctx, payload.SourceID)
+	if err != nil {
+		return "", remoteSourceForUse{}, payload, err
+	}
 	if !isKikoeruSourceType(source.SourceType) || !source.Enabled {
-		return remoteCollectionRunResult{}, fmt.Errorf("source is not an enabled compatible remote source")
+		return "", remoteSourceForUse{}, payload, fmt.Errorf("source is not an enabled compatible remote source")
 	}
 	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
-		return remoteCollectionRunResult{}, fmt.Errorf("source has no API endpoint")
+		return "", remoteSourceForUse{}, payload, fmt.Errorf("source has no API endpoint")
 	}
 	payload.TagNameTemplate = strings.TrimSpace(payload.TagNameTemplate)
 	if payload.TagNameTemplate != "" {
@@ -3249,17 +3375,20 @@ func (s *Server) runRemotePopularWorkflowWithTrigger(ctx context.Context, userID
 			"source_code": workflowTagFragment(source.Code), "action": action,
 		})
 		if err != nil {
-			return remoteCollectionRunResult{}, err
+			return "", remoteSourceForUse{}, payload, err
 		}
 	}
 	payload.TagName = strings.TrimSpace(payload.TagName)
 	if payload.TagName == "" {
-		return remoteCollectionRunResult{}, fmt.Errorf("tagName or tagNameTemplate is required")
+		return "", remoteSourceForUse{}, payload, fmt.Errorf("tagName or tagNameTemplate is required")
 	}
 	if runes := []rune(payload.TagName); len(runes) > 40 {
 		payload.TagName = string(runes[:40])
 	}
+	return action, source, payload, nil
+}
 
+func (s *Server) enqueueRemotePopularWorkflow(ctx context.Context, userID int64, source remoteSourceForUse, payload remoteCollectionRunRequest, action string, trigger workflowRunTrigger) (remoteCollectionRunResult, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return remoteCollectionRunResult{}, err
@@ -3329,22 +3458,7 @@ func remotePopularCollectionDefinition() map[string]any {
 }
 
 func (s *Server) executeRemotePopularCollectionJob(ctx context.Context, job workflowJobRecord) error {
-	var payload remoteCollectionJobPayload
-	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
-		return err
-	}
-	checkpoint := remoteCollectionJobCheckpoint{}
-	if err := decodeWorkflowJobCheckpointDetail(job.CheckpointJSON, &checkpoint); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
-		return err
-	}
-	source, err := s.remoteCollectionSource(ctx, payload.SourceID)
-	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
-		return err
-	}
-	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, job.RunID)
+	payload, checkpoint, source, nodeIDs, err := s.loadRemotePopularJobState(ctx, job)
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
@@ -3359,42 +3473,86 @@ func (s *Server) executeRemotePopularCollectionJob(ctx context.Context, job work
 	result.Status = "running"
 	_, _ = s.db.ExecContext(ctx, "UPDATE workflow_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", job.RunID)
 
-	if checkpoint.Candidates == nil {
-		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", nodeIDs["discover"])
-		page, discoverErr := s.kikoeruCrawlClientForSource(source).PopularWorks(ctx, 1, payload.Limit)
-		if discoverErr != nil {
-			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
-			_ = s.failClaimedWorkflowJob(ctx, job, discoverErr.Error())
-			return discoverErr
-		}
-		_ = s.updateSourceHealth(ctx, source.ID, "healthy")
-		checkpoint.Candidates = uniqueRemoteCollectionWorks(page.Works, payload.Limit)
-		result.Discovered = len(page.Works)
-		result.ReturnedCount = len(page.Works)
-		result.Accepted = len(checkpoint.Candidates)
-		result.Skipped = max(0, len(page.Works)-len(checkpoint.Candidates))
-		checkpoint.Result = result
-		if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"returned": len(page.Works), "pagination": page.Pagination}), nodeIDs["discover"]); err != nil {
-			return err
-		}
-		if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"accepted": result.Accepted, "skipped": result.Skipped}), nodeIDs["filter"]); err != nil {
-			return err
-		}
-		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "discovered", checkpoint, len(checkpoint.CompletedCodes), len(checkpoint.Candidates))
-	} else {
-		result.Accepted = len(checkpoint.Candidates)
-		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = COALESCE(finished_at, CURRENT_TIMESTAMP) WHERE id = ?", mustJSON(map[string]any{"returned": result.ReturnedCount, "resumed": true}), nodeIDs["discover"])
-		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = COALESCE(finished_at, CURRENT_TIMESTAMP) WHERE id = ?", mustJSON(map[string]any{"accepted": result.Accepted, "skipped": result.Skipped, "resumed": true}), nodeIDs["filter"])
+	result, checkpoint, err = s.discoverRemotePopularCandidates(ctx, job, payload, source, nodeIDs, result, checkpoint)
+	if err != nil {
+		return err
 	}
 
 	_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id IN (?, ?)", nodeIDs["dispatch"], nodeIDs["tag"])
-	completed := map[string]bool{}
+	result, checkpoint, err = s.dispatchRemotePopularCandidates(ctx, job, payload, source, result, checkpoint)
+	if err != nil {
+		return err
+	}
+	result.Status = remoteCollectionResultStatus(result)
+	return s.finishRemotePopularCollectionJob(ctx, job, nodeIDs, result)
+}
+
+func (s *Server) loadRemotePopularJobState(ctx context.Context, job workflowJobRecord) (remoteCollectionJobPayload, remoteCollectionJobCheckpoint, remoteSourceForUse, map[string]int64, error) {
+	var payload remoteCollectionJobPayload
+	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
+		return payload, remoteCollectionJobCheckpoint{}, remoteSourceForUse{}, nil, err
+	}
+	checkpoint := remoteCollectionJobCheckpoint{}
+	if err := decodeWorkflowJobCheckpointDetail(job.CheckpointJSON, &checkpoint); err != nil {
+		return payload, checkpoint, remoteSourceForUse{}, nil, err
+	}
+	source, err := s.remoteCollectionSource(ctx, payload.SourceID)
+	if err != nil {
+		return payload, checkpoint, remoteSourceForUse{}, nil, err
+	}
+	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, job.RunID)
+	return payload, checkpoint, source, nodeIDs, err
+}
+
+func (s *Server) discoverRemotePopularCandidates(ctx context.Context, job workflowJobRecord, payload remoteCollectionJobPayload, source remoteSourceForUse, nodeIDs map[string]int64, result remoteCollectionRunResult, checkpoint remoteCollectionJobCheckpoint) (remoteCollectionRunResult, remoteCollectionJobCheckpoint, error) {
+	if checkpoint.Candidates != nil {
+		result.Accepted = len(checkpoint.Candidates)
+		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = COALESCE(finished_at, CURRENT_TIMESTAMP) WHERE id = ?", mustJSON(map[string]any{"returned": result.ReturnedCount, "resumed": true}), nodeIDs["discover"])
+		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = COALESCE(finished_at, CURRENT_TIMESTAMP) WHERE id = ?", mustJSON(map[string]any{"accepted": result.Accepted, "skipped": result.Skipped, "resumed": true}), nodeIDs["filter"])
+		return result, checkpoint, nil
+	}
+	_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", nodeIDs["discover"])
+	page, err := s.kikoeruCrawlClientForSource(source).PopularWorks(ctx, 1, payload.Limit)
+	if err != nil {
+		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		return result, checkpoint, err
+	}
+	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+	checkpoint.Candidates = uniqueRemoteCollectionWorks(page.Works, payload.Limit)
+	result.Discovered = len(page.Works)
+	result.ReturnedCount = len(page.Works)
+	result.Accepted = len(checkpoint.Candidates)
+	result.Skipped = max(0, len(page.Works)-len(checkpoint.Candidates))
+	checkpoint.Result = result
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"returned": len(page.Works), "pagination": page.Pagination}), nodeIDs["discover"]); err != nil {
+		return result, checkpoint, err
+	}
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"accepted": result.Accepted, "skipped": result.Skipped}), nodeIDs["filter"]); err != nil {
+		return result, checkpoint, err
+	}
+	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "discovered", checkpoint, len(checkpoint.CompletedCodes), len(checkpoint.Candidates))
+	return result, checkpoint, nil
+}
+
+type remotePopularCandidateOutcome struct {
+	code       string
+	workID     int64
+	childRunID int64
+	tracked    bool
+	fetched    bool
+	tagged     bool
+	failure    string
+}
+
+func (s *Server) dispatchRemotePopularCandidates(ctx context.Context, job workflowJobRecord, payload remoteCollectionJobPayload, source remoteSourceForUse, result remoteCollectionRunResult, checkpoint remoteCollectionJobCheckpoint) (remoteCollectionRunResult, remoteCollectionJobCheckpoint, error) {
+	completed := make(map[string]bool, len(checkpoint.CompletedCodes))
 	for _, code := range checkpoint.CompletedCodes {
 		completed[strings.ToUpper(strings.TrimSpace(code))] = true
 	}
 	for index, work := range checkpoint.Candidates {
 		if err := s.ensureWorkflowRunActive(ctx, job.RunID); err != nil {
-			return err
+			return result, checkpoint, err
 		}
 		code := normalizedRemoteWorkCode(work)
 		if code == "" {
@@ -3405,35 +3563,19 @@ func (s *Server) executeRemotePopularCollectionJob(ctx context.Context, job work
 		if completed[code] {
 			continue
 		}
-		var workID int64
-		if result.Action == "track" {
-			workID, err = s.trackRemoteCollectionWork(ctx, source, work, "popular", job.RunID)
-			if err == nil && workID > 0 {
-				result.Tracked++
-			}
-		} else {
-			var fetchResult remoteWorkSaveResult
-			fetchResult, err = s.enqueueRemoteWorkSave(ctx, source.ID, code, []string{}, nil, "", "", nil, 0, payload.UserID, workflow.JobPriorityBackground)
-			if err == nil {
-				workID = fetchResult.WorkID
-				result.Fetched++
-				result.ChildRuns = append(result.ChildRuns, fetchResult.RunID)
-				_, _ = s.db.ExecContext(ctx, `
-					INSERT INTO workflow_candidate (workflow_run_id, candidate_type, external_key, status, payload_json)
-					VALUES (?, 'remote_work', ?, 'accepted', ?)
-				`, job.RunID, code, mustJSON(map[string]any{"collection_kind": "popular", "remote_work_id": work.ID, "child_run_id": fetchResult.RunID}))
-			}
+		outcome := s.dispatchRemotePopularCandidate(ctx, job, payload, source, work, code, result.Action)
+		if outcome.tracked {
+			result.Tracked++
 		}
-		if err != nil {
+		if outcome.fetched {
+			result.Fetched++
+			result.ChildRuns = append(result.ChildRuns, outcome.childRunID)
+		}
+		if outcome.failure != "" {
 			result.Failed++
-			result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
-		} else if workID <= 0 {
-			result.Failed++
-			result.Failures = append(result.Failures, fmt.Sprintf("%s: work was not persisted", code))
-		} else if _, tagErr := s.addWorkUserTag(ctx, payload.UserID, []int64{workID}, payload.TagName); tagErr != nil {
-			result.Failed++
-			result.Failures = append(result.Failures, fmt.Sprintf("%s tag: %s", code, tagErr.Error()))
-		} else {
+			result.Failures = append(result.Failures, outcome.failure)
+		}
+		if outcome.tagged {
 			result.Tagged++
 		}
 		completed[code] = true
@@ -3441,14 +3583,51 @@ func (s *Server) executeRemotePopularCollectionJob(ctx context.Context, job work
 		checkpoint.Result = result
 		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "dispatch", checkpoint, index+1, len(checkpoint.Candidates))
 	}
-	result.Status = "succeeded"
+	return result, checkpoint, nil
+}
+
+func (s *Server) dispatchRemotePopularCandidate(ctx context.Context, job workflowJobRecord, payload remoteCollectionJobPayload, source remoteSourceForUse, work kikoeru.Work, code, action string) remotePopularCandidateOutcome {
+	outcome := remotePopularCandidateOutcome{code: code}
+	if action == "track" {
+		workID, err := s.trackRemoteCollectionWork(ctx, source, work, "popular", job.RunID)
+		if err != nil {
+			outcome.failure = fmt.Sprintf("%s: %s", code, err.Error())
+			return outcome
+		}
+		outcome.workID, outcome.tracked = workID, workID > 0
+	} else {
+		fetchResult, err := s.enqueueRemoteWorkSave(ctx, source.ID, code, []string{}, nil, "", "", nil, 0, payload.UserID, workflow.JobPriorityBackground)
+		if err != nil {
+			outcome.failure = fmt.Sprintf("%s: %s", code, err.Error())
+			return outcome
+		}
+		outcome.workID, outcome.childRunID, outcome.fetched = fetchResult.WorkID, fetchResult.RunID, true
+		_, _ = s.db.ExecContext(ctx, `
+			INSERT INTO workflow_candidate (workflow_run_id, candidate_type, external_key, status, payload_json)
+			VALUES (?, 'remote_work', ?, 'accepted', ?)
+		`, job.RunID, code, mustJSON(map[string]any{"collection_kind": "popular", "remote_work_id": work.ID, "child_run_id": fetchResult.RunID}))
+	}
+	if outcome.workID <= 0 {
+		outcome.failure = fmt.Sprintf("%s: work was not persisted", code)
+		return outcome
+	}
+	if _, err := s.addWorkUserTag(ctx, payload.UserID, []int64{outcome.workID}, payload.TagName); err != nil {
+		outcome.failure = fmt.Sprintf("%s tag: %s", code, err.Error())
+		return outcome
+	}
+	outcome.tagged = true
+	return outcome
+}
+
+func remoteCollectionResultStatus(result remoteCollectionRunResult) string {
 	succeeded := result.Tracked + result.Fetched
 	if result.Failed > 0 && succeeded == 0 {
-		result.Status = "failed"
-	} else if result.Failed > 0 {
-		result.Status = "partial"
+		return "failed"
 	}
-	return s.finishRemotePopularCollectionJob(ctx, job, nodeIDs, result)
+	if result.Failed > 0 {
+		return "partial"
+	}
+	return "succeeded"
 }
 
 func (s *Server) finishRemotePopularCollectionJob(ctx context.Context, job workflowJobRecord, nodeIDs map[string]int64, result remoteCollectionRunResult) error {
@@ -3575,231 +3754,26 @@ func (s *Server) buildRemoteWorkSavePlan(ctx context.Context, sourceID int64, co
 }
 
 func (s *Server) buildRemoteWorkSavePlanFromSnapshot(ctx context.Context, source remoteSourceForUse, remoteWork kikoeru.Work, tracks []kikoeru.Track, code string, selectedPaths []string, selectedLocalPaths []string, requestedTargetRoot string, decisions []remoteFetchFileDecision) (remoteWorkSavePlan, error) {
-	workCode := normalizedRemoteWorkCode(remoteWork)
-	if workCode == "" {
-		workCode = strings.ToUpper(strings.TrimSpace(code))
-	}
-	saveRoot := s.remoteSaveRoot(source, workCode)
-	if strings.TrimSpace(requestedTargetRoot) != "" {
-		requestedTargetRoot = filepath.ToSlash(filepath.Clean(filepath.FromSlash(requestedTargetRoot)))
-		if requestedTargetRoot != filepath.ToSlash(filepath.Clean(filepath.FromSlash(saveRoot))) {
-			validatedRoot, err := s.validateRemoteFetchTargetRoot(ctx, workCode, requestedTargetRoot)
-			if err != nil {
-				return remoteWorkSavePlan{}, err
-			}
-			saveRoot = validatedRoot
-		}
-	}
-	selected := normalizeSelectedRemotePaths(selectedPaths)
-	selectedLocal := normalizeSelectedLocalPaths(selectedLocalPaths)
-	files := flattenRemoteSaveFiles(tracks)
-	sourceOptions := s.remoteFetchSourceOptions(ctx, source, workCode, files)
-	decisionByKey := normalizeRemoteFetchDecisions(decisions)
-	locationState, err := s.remoteTrackLocationState(ctx, source.ID, workCode)
+	inputs, err := s.prepareRemoteFetchPlanInputs(ctx, source, remoteWork, tracks, code, selectedPaths, selectedLocalPaths, requestedTargetRoot, decisions)
 	if err != nil {
 		return remoteWorkSavePlan{}, err
 	}
-	items := make([]remoteWorkSavePlanItem, 0, len(files))
 	seenTargets := map[string]string{}
-	for _, file := range files {
-		if len(selected) == 0 && len(selectedLocal) > 0 {
-			continue
-		}
-		if len(selected) > 0 && !selectedRemotePathMatches(selected, file.Path) {
-			continue
-		}
-		targetRelPath := joinRemotePath(saveRoot, file.Path)
-		targetAbsPath, err := safeDataPath(s.cfg.DataRoot, targetRelPath)
-		if err != nil {
-			return remoteWorkSavePlan{}, err
-		}
-		cacheRelPath := cacheMediaRelPath(source.Code, workCode, file.Path)
-		item := remoteWorkSavePlanItem{
-			ItemKey:          "remote:" + file.Path,
-			Path:             file.Path,
-			Kind:             file.Kind,
-			SizeBytes:        file.SizeBytes,
-			SourceKind:       "remote",
-			SourcePath:       firstNonEmpty(file.DownloadURL, file.StreamURL),
-			CachePath:        cacheRelPath,
-			TargetPath:       filepath.ToSlash(targetRelPath),
-			LocalPaths:       []string{},
-			RemoteSourceID:   source.ID,
-			RemoteSourceCode: source.Code,
-			RemoteSourceName: source.DisplayName,
-			SourceOptions:    sourceOptions[file.Path],
-		}
-		item.OriginalTargetPath = item.TargetPath
-		decision := decisionByKey[item.ItemKey]
-		if err := applyRemoteFetchSourceDecision(&item, decision, sourceOptions[file.Path], source, workCode); err != nil {
-			return remoteWorkSavePlan{}, err
-		}
-		if decision.Resolution == "rename" {
-			target, err := normalizeFetchDecisionTarget(saveRoot, decision.TargetPath)
-			if err != nil {
-				return remoteWorkSavePlan{}, fmt.Errorf("%s: %w", item.ItemKey, err)
-			}
-			item.TargetPath = target
-			item.Resolution = "rename"
-		}
-		targetAbsPath, err = safeDataPath(s.cfg.DataRoot, item.TargetPath)
-		if err != nil {
-			return remoteWorkSavePlan{}, err
-		}
-		if state, ok := locationState.localForRemotePath(file.Path); ok {
-			item.LocalPaths = append(item.LocalPaths, state.Path)
-		}
-		if info, err := os.Stat(targetAbsPath); err == nil {
-			if info.IsDir() {
-				item.TargetExists = true
-				item.TargetConflict = true
-				item.TargetConflictReason = "target is a directory"
-				item.Action = "conflict"
-				item.Status = "target_conflict"
-			} else {
-				size := info.Size()
-				item.TargetExists = true
-				item.TargetSizeBytes = &size
-				if item.SizeBytes == nil || size == *item.SizeBytes {
-					item.Action = "skip"
-					item.Status = "local_exists"
-				} else {
-					item.TargetConflict = true
-					item.TargetConflictReason = "target exists with a different size"
-					item.Action = "conflict"
-					item.Status = "target_conflict"
-				}
-			}
-		} else if !errors.Is(err, os.ErrNotExist) {
-			item.TargetConflict = true
-			item.TargetConflictReason = err.Error()
-			item.Action = "conflict"
-			item.Status = "target_conflict"
-		}
-		if previous, exists := seenTargets[item.TargetPath]; exists && !item.TargetConflict {
-			item.TargetConflict = true
-			item.TargetConflictReason = "multiple remote files resolve to the same target path: " + previous
-			item.Action = "conflict"
-			item.Status = "duplicate_target"
-		} else {
-			seenTargets[item.TargetPath] = file.Path
-		}
-		if err := s.applyRemoteFetchConflictDecision(&item, decision, saveRoot, seenTargets); err != nil {
-			return remoteWorkSavePlan{}, err
-		}
-		targetAbsPath, err = safeDataPath(s.cfg.DataRoot, item.TargetPath)
-		if err != nil {
-			return remoteWorkSavePlan{}, err
-		}
-		if item.Action != "" {
-			items = append(items, item)
-			continue
-		}
-		if existingFileMatches(targetAbsPath, item.SizeBytes) {
-			item.Action = "skip"
-			item.Status = "local_exists"
-		} else if cachePath, ok := s.findRemoteCacheFile(ctx, item.RemoteSourceID, item.RemoteSourceCode, workCode, firstNonEmpty(item.RemotePath, item.Path), item.SizeBytes); ok {
-			item.Action = "cache_hit"
-			item.Status = "cache_hit"
-			item.CachePath = filepath.ToSlash(cachePath)
-		} else {
-			item.Action = "cache_download"
-			item.Status = "remote_only"
-		}
-		items = append(items, item)
+	remoteItems, err := s.buildRemoteFetchPlanItems(ctx, source, inputs, seenTargets)
+	if err != nil {
+		return remoteWorkSavePlan{}, err
 	}
-	localFiles := remoteWorkSaveLocalFiles(locationState)
-	for _, localFile := range localFiles {
-		if len(selectedLocal) == 0 {
-			continue
-		}
-		if len(selectedLocal) > 0 && !selectedLocalPathMatches(selectedLocal, localFile.Path) {
-			continue
-		}
-		targetRelPath := joinRemotePath(saveRoot, trimLocalPathToWorkRoot(localFile.Path, localFiles))
-		targetAbsPath, err := safeDataPath(s.cfg.DataRoot, targetRelPath)
-		if err != nil {
-			return remoteWorkSavePlan{}, err
-		}
-		item := remoteWorkSavePlanItem{
-			ItemKey:         "local:" + localFile.Path,
-			Path:            trimLocalPathToWorkRoot(localFile.Path, localFiles),
-			Kind:            mediaKindFromPath(localFile.Path),
-			SizeBytes:       localFile.SizeBytes,
-			SourceKind:      "local",
-			LocalSourcePath: localFile.Path,
-			TargetPath:      filepath.ToSlash(targetRelPath),
-			MediaItemID:     localFile.MediaItemID,
-			LocalPaths:      []string{localFile.Path},
-			SourceOptions:   []remoteFetchSourceOption{},
-		}
-		item.OriginalTargetPath = item.TargetPath
-		decision := decisionByKey[item.ItemKey]
-		if decision.Resolution == "rename" {
-			target, err := normalizeFetchDecisionTarget(saveRoot, decision.TargetPath)
-			if err != nil {
-				return remoteWorkSavePlan{}, fmt.Errorf("%s: %w", item.ItemKey, err)
-			}
-			item.TargetPath = target
-			item.Resolution = "rename"
-		}
-		targetAbsPath, err = safeDataPath(s.cfg.DataRoot, item.TargetPath)
-		if err != nil {
-			return remoteWorkSavePlan{}, err
-		}
-		if info, err := os.Stat(targetAbsPath); err == nil {
-			if info.IsDir() {
-				item.TargetExists = true
-				item.TargetConflict = true
-				item.TargetConflictReason = "target is a directory"
-				item.Action = "conflict"
-				item.Status = "target_conflict"
-			} else {
-				size := info.Size()
-				item.TargetExists = true
-				item.TargetSizeBytes = &size
-				if filepath.ToSlash(localFile.Path) == item.TargetPath {
-					item.Action = "skip"
-					item.Status = "local_source_already_target"
-				} else {
-					item.TargetConflict = true
-					item.TargetConflictReason = "target exists"
-					item.Action = "conflict"
-					item.Status = "target_conflict"
-				}
-			}
-		} else if !errors.Is(err, os.ErrNotExist) {
-			item.TargetConflict = true
-			item.TargetConflictReason = err.Error()
-			item.Action = "conflict"
-			item.Status = "target_conflict"
-		}
-		if previous, exists := seenTargets[item.TargetPath]; exists && !item.TargetConflict {
-			item.TargetConflict = true
-			item.TargetConflictReason = "multiple selected files resolve to the same target path: " + previous
-			item.Action = "conflict"
-			item.Status = "duplicate_target"
-		} else {
-			seenTargets[item.TargetPath] = localFile.Path
-		}
-		if err := s.applyRemoteFetchConflictDecision(&item, decision, saveRoot, seenTargets); err != nil {
-			return remoteWorkSavePlan{}, err
-		}
-		if item.Action == "" {
-			item.Action = "copy_local"
-			item.Status = "copy_local"
-		}
-		items = append(items, item)
+	localItems, err := s.buildLocalFetchPlanItems(inputs, seenTargets)
+	if err != nil {
+		return remoteWorkSavePlan{}, err
 	}
+	items := append(remoteItems, localItems...)
 	plan := remoteWorkSavePlan{
-		SourceID:    source.ID,
-		PrimaryCode: workCode,
-		SaveRoot:    saveRoot,
-		LocalFiles:  localFiles,
-		Items:       items,
+		SourceID: source.ID, PrimaryCode: inputs.workCode, SaveRoot: inputs.saveRoot,
+		LocalFiles: inputs.localFiles, Items: items,
 	}
 	validateResolvedFetchTargets(plan.Items)
-	plan.Summary = summarizeRemoteSavePlan(items)
+	plan.Summary = summarizeRemoteSavePlan(plan.Items)
 	if err := s.attachRemoteFetchRootReview(ctx, source, &plan); err != nil {
 		return remoteWorkSavePlan{}, err
 	}
@@ -3817,187 +3791,14 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 		return existing, nil
 	}
 	if s.db != nil {
-		// Fetch can be queued by background workflows without a preceding plan
-		// request. Give canonical DLsite metadata one shared chance before the
-		// remote source fallback is materialized.
+		// Background Fetch runs may not have a preceding plan request.
 		_ = s.ensureRemoteFetchMetadata(ctx, requestedCode)
 	}
-	source, remoteWork, tracks, err := s.loadRemoteWorkTracksCached(ctx, sourceID, code)
+	prep, err := s.prepareRemoteWorkSaveEnqueue(ctx, sourceID, code, selectedPaths, selectedLocalPaths, targetRoot, requestID, decisions, minFreeBytes, requestedByUserID, jobPriority)
 	if err != nil {
 		return remoteWorkSaveResult{}, err
 	}
-	workCode := normalizedRemoteWorkCode(remoteWork)
-	if workCode == "" {
-		workCode = strings.ToUpper(strings.TrimSpace(code))
-	}
-	plan, err := s.buildRemoteWorkSavePlanFromSnapshot(ctx, source, remoteWork, tracks, workCode, selectedPaths, selectedLocalPaths, targetRoot, decisions)
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if plan.Summary.Conflict > 0 {
-		return remoteWorkSaveResult{}, remoteWorkSaveConflictError{Summary: plan.Summary}
-	}
-	downloadLimit := s.remoteMediaDownloadLimitBytes(ctx)
-	if err := validateRemoteFetchDownloadPlan(plan.Items, downloadLimit); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if err := s.ensureRemoteWorkSaveDiskReserve(plan, minFreeBytes); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	claimedRoot, err := s.ensureRemoteFetchRootClaim(ctx, source, plan.SaveRoot)
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if claimedRoot.Conflict {
-		if !plan.FetchRoot.Conflict {
-			plan.Summary.Conflict++
-		}
-		plan.FetchRoot = claimedRoot
-		return remoteWorkSaveResult{}, remoteWorkSaveConflictError{Summary: plan.Summary}
-	}
-	if plan.FetchRoot.Status == "ready" || plan.FetchRoot.Status == "legacy_managed" {
-		s.notifyFilesystemTriggerConfigChanged()
-	}
-	plan.FetchRoot = claimedRoot
-	rawWork, _ := json.Marshal(remoteWork)
-	rawTracks, _ := json.Marshal(tracks)
-	localScanDepth := s.configuredLocalScanDepth(ctx)
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if existing, found, err := activeRemoteFetchResult(ctx, tx, workCode); err != nil {
-		return remoteWorkSaveResult{}, err
-	} else if found {
-		if err := subscribeRemoteFetchNotification(ctx, tx, requestedByUserID, existing.RunID, existing.WorkID, existing.PrimaryCode); err != nil {
-			return remoteWorkSaveResult{}, err
-		}
-		return existing, tx.Commit()
-	}
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_work_fetch", "Fetch remote work", "Select remote files, cache them, promote cache files to the local library, and sync local locations.", remoteWorkFetchDefinition())
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	runInput := remoteWorkFetchJobPayload{
-		RequestedByUserID: requestedByUserID,
-		SourceID:          sourceID, WorkCode: workCode, Paths: selectedPaths, LocalPaths: selectedLocalPaths,
-		TargetRoot: plan.SaveRoot, RequestID: requestID, Decisions: decisions, MinFreeBytes: minFreeBytes,
-	}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_work_fetch", "Fetch remote work", "queued", "manual", "fetch_selected", runInput, map[string]any{"plan": plan.Summary})
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "select", NodeType: "select_remote_source", DisplayName: "Select remote source", Position: 1, Status: "succeeded",
-		Input: runInput, Output: map[string]any{"source_id": sourceID, "work_code": workCode},
-	}); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "tree", NodeType: "fetch_remote_tree", DisplayName: "Fetch remote tree", Position: 2, Status: "succeeded",
-		Input: map[string]any{"work_code": workCode}, Output: map[string]any{"tracks": len(tracks), "snapshot_bytes": len(rawWork) + len(rawTracks)},
-	}); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "plan", NodeType: "plan_save", DisplayName: "Plan save", Position: 3, Status: "succeeded",
-		Input: map[string]any{"paths": selectedPaths, "local_paths": selectedLocalPaths}, Output: plan,
-	}); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	cacheNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "cache", NodeType: "materialize_cache", DisplayName: "Cache selected files", Position: 4, Status: "queued",
-		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
-	})
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "stage", NodeType: "stage_fetch_result", DisplayName: "Assemble staging directory", Position: 5, Status: "queued",
-		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
-	}); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "verify", NodeType: "verify_files", DisplayName: "Verify staged files", Position: 6, Status: "queued",
-		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
-	}); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "promote", NodeType: "publish_staged_fetch", DisplayName: "Publish staged result", Position: 7, Status: "queued",
-		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
-	}); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "sync", NodeType: "sync_file_locations", DisplayName: "Sync fetched locations", Position: 8, Status: "queued",
-		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
-	}); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "cleanup", NodeType: "cleanup_cache", DisplayName: "Remove promoted cache files", Position: 9, Status: "queued",
-		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
-	}); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	workID, err := upsertRemoteWork(ctx, tx, source, remoteWork, rawWork, true)
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if err := upsertAvailableRemoteSourcePresence(ctx, tx, source, remoteWork, workID); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, _, err := syncRemoteTrackTree(ctx, tx, source.ID, workID, workCode, tracks); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	localSourceID, err := s.upsertLocalFileSource(ctx, tx, localScanDepth)
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	transferBytesTotal, transferUnknownItems := remoteFetchTransferTotals(plan.Items)
-	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: cacheNodeID, WorkerType: "remote_work_fetch", Status: "queued", Priority: jobPriority, ResourceKey: sourceResourceKey(source.Endpoint.APIURL), Payload: runInput, Recoverable: true, MaxRetries: 5, ProgressCurrent: 0, ProgressTotal: len(plan.Items) * 2,
-		ProgressBytesTotal: transferBytesTotal, ProgressBytesUnknownItems: transferUnknownItems,
-	})
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := createRemoteFetchManifest(ctx, tx, runID, jobID, requestID, workID, sourceID, localSourceID, plan); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if err := subscribeRemoteFetchNotification(ctx, tx, requestedByUserID, runID, workID, workCode); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	result := remoteWorkSaveResult{
-		RunID:       runID,
-		JobID:       jobID,
-		WorkID:      workID,
-		PrimaryCode: workCode,
-		Status:      "queued",
-		SaveRoot:    plan.SaveRoot,
-		Plan:        plan.Summary,
-		RequestID:   requestID,
-	}
-	if requestID != "" {
-		resultJSON, err := json.Marshal(result)
-		if err != nil {
-			return remoteWorkSaveResult{}, err
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO remote_fetch_request (request_id, source_id, work_code, workflow_run_id, result_json)
-			VALUES (?, ?, ?, ?, ?)
-		`, requestID, sourceID, requestedCode, runID, string(resultJSON)); err != nil {
-			return remoteWorkSaveResult{}, err
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	return result, nil
+	return s.enqueuePreparedRemoteWorkSave(ctx, prep)
 }
 
 type rowQueryer interface {
@@ -4112,303 +3913,16 @@ func (s *Server) executeRemoteWorkFetchJob(ctx context.Context, job workflowJobR
 }
 
 func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID int64, payload remoteWorkFetchJobPayload) (remoteWorkSaveResult, error) {
-	sourceID, code := payload.SourceID, payload.WorkCode
-	source, err := s.loadRemoteSourceForUse(ctx, sourceID)
+	execution, err := s.prepareRemoteWorkFetchExecution(ctx, runID, jobID, payload)
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
 		return remoteWorkSaveResult{}, err
 	}
-	workCode := strings.ToUpper(strings.TrimSpace(code))
-	manifest, manifestErr := s.loadRemoteFetchManifest(ctx, runID)
-	var plan remoteWorkSavePlan
-	if manifestErr == nil && strings.TrimSpace(manifest.ErrorMessage) == "" {
-		manifestErr = json.Unmarshal([]byte(manifest.PlanJSON), &plan)
-	}
-	if manifestErr != nil || plan.PrimaryCode == "" {
-		var remoteWork kikoeru.Work
-		var tracks []kikoeru.Track
-		source, remoteWork, tracks, err = s.loadRemoteWorkTracksCached(ctx, sourceID, code)
-		if err != nil {
-			_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
-			return remoteWorkSaveResult{}, err
-		}
-		if normalized := normalizedRemoteWorkCode(remoteWork); normalized != "" {
-			workCode = normalized
-		}
-		plan, err = s.buildRemoteWorkSavePlanFromSnapshot(ctx, source, remoteWork, tracks, workCode, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.Decisions)
-		if err != nil {
-			_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
-			return remoteWorkSaveResult{}, err
-		}
-		if manifest.ID > 0 {
-			if err := s.refreshRemoteFetchManifestPlan(ctx, manifest.ID, plan); err != nil {
-				_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
-				return remoteWorkSaveResult{}, err
-			}
-			manifest, err = s.loadRemoteFetchManifest(ctx, runID)
-			if err != nil {
-				return remoteWorkSaveResult{}, err
-			}
-		}
-	}
-	if plan.Summary.Conflict > 0 {
-		err := remoteWorkSaveConflictError{Summary: plan.Summary}
-		_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
-		return remoteWorkSaveResult{}, err
-	}
-	downloadLimit := s.remoteMediaDownloadLimitBytes(ctx)
-	if err := validateRemoteFetchDownloadPlan(plan.Items, downloadLimit); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
-		return remoteWorkSaveResult{}, err
-	}
-	if err := s.ensureRemoteWorkSaveDiskReserve(plan, payload.MinFreeBytes); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
-		return remoteWorkSaveResult{}, err
-	}
-	workID, localSourceID, cacheNodeID, promoteNodeID, syncNodeID, cleanupNodeID, err := s.preparePersistedRemoteWorkFetchJob(ctx, runID, manifest)
+	counts, err := s.materializeRemoteWorkFetch(ctx, runID, jobID, execution)
 	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
 		return remoteWorkSaveResult{}, err
 	}
-	byteProgress, err := newRemoteFetchByteProgress(ctx, s, jobID, cacheNodeID, plan.Items)
-	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
-		return remoteWorkSaveResult{}, err
-	}
-
-	skipped, cacheHits, cacheDownloads := 0, 0, 0
-	downloadSources := map[int64]remoteSourceForUse{source.ID: source}
-	for index, item := range plan.Items {
-		if err := s.ensureWorkflowRunActive(ctx, runID); err != nil {
-			return remoteWorkSaveResult{}, err
-		}
-		if item.Action == "skip" || item.Action == "exclude" {
-			skipped++
-			_ = updateWorkflowJobProgress(ctx, s.db, jobID, index+1, len(plan.Items)*2)
-			_ = s.updateWorkflowJobCheckpoint(ctx, jobID, "materialize", map[string]any{"index": index + 1, "itemKey": item.ItemKey, "action": item.Action}, index+1, len(plan.Items)*2)
-			continue
-		}
-		if item.Action == "copy_local" {
-			_ = updateWorkflowJobProgress(ctx, s.db, jobID, index+1, len(plan.Items)*2)
-			_ = s.updateWorkflowJobCheckpoint(ctx, jobID, "materialize", map[string]any{"index": index + 1, "itemKey": item.ItemKey, "action": item.Action}, index+1, len(plan.Items)*2)
-			continue
-		}
-		_ = s.updateRemoteFetchCacheProgress(ctx, cacheNodeID, index, len(plan.Items), item, 0)
-		cacheAbsPath, err := safeCachePath(s.cfg.CacheRoot, item.CachePath)
-		if err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		if item.Action == "cache_hit" {
-			cacheHits++
-			_ = s.updateRemoteFetchCacheProgress(ctx, cacheNodeID, index+1, len(plan.Items), item, 0)
-			_ = updateWorkflowJobProgress(ctx, s.db, jobID, index+1, len(plan.Items)*2)
-			_ = s.updateWorkflowJobCheckpoint(ctx, jobID, "materialize", map[string]any{"index": index + 1, "itemKey": item.ItemKey, "action": item.Action}, index+1, len(plan.Items)*2)
-			continue
-		}
-		if err := os.MkdirAll(filepath.Dir(cacheAbsPath), 0o755); err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		if err := byteProgress.begin(index, item); err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		downloadSourceID := item.RemoteSourceID
-		if downloadSourceID <= 0 {
-			downloadSourceID = source.ID
-		}
-		downloadSource, ok := downloadSources[downloadSourceID]
-		if !ok {
-			downloadSource, err = s.loadRemoteSourceForUse(ctx, downloadSourceID)
-			if err != nil {
-				_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
-				return remoteWorkSaveResult{}, err
-			}
-			downloadSources[downloadSourceID] = downloadSource
-		}
-		written, err := s.downloadToFile(ctx, downloadSource, item.SourcePath, cacheAbsPath, remoteDownloadOptions{
-			MaxBytes:      downloadLimit,
-			ExpectedBytes: item.SizeBytes,
-			OnProgress: func(written int64) {
-				byteProgress.report(index, item, written)
-			},
-		})
-		if err != nil {
-			byteProgress.abort(index, item)
-			var blockedOrigin outbound.OriginNotAllowedError
-			if downloadSource.Endpoint.RestrictOutboundHosts && errors.As(err, &blockedOrigin) {
-				slog.Warn("remote Fetch origin blocked by source policy",
-					"run_id", runID,
-					"job_id", jobID,
-					"source_id", downloadSource.ID,
-					"origin", blockedOrigin.Origin,
-					"error", err,
-				)
-				if pauseErr := s.pauseRemoteFetchForOriginReview(
-					ctx,
-					runID,
-					cacheNodeID,
-					jobID,
-					manifest.ID,
-					downloadSource,
-					blockedOrigin.Origin,
-					index,
-					len(plan.Items)*2,
-					plan.Summary,
-				); pauseErr != nil {
-					_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", pauseErr.Error(), index, len(plan.Items)*2, plan.Summary)
-					return remoteWorkSaveResult{}, pauseErr
-				}
-				return remoteWorkSaveResult{}, remoteOriginReviewError{Origin: blockedOrigin.Origin}
-			}
-			_ = s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		if err := byteProgress.complete(index+1, item, written); err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		mediaItemID, err := s.mediaItemIDForRemotePath(ctx, workID, item.Path)
-		if err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		cacheSourceID := item.RemoteSourceID
-		if cacheSourceID <= 0 {
-			cacheSourceID = source.ID
-		}
-		cacheLocationID, err := s.upsertCacheLocation(ctx, mediaItemID, cacheSourceID, item.CachePath, "", item.SizeBytes, nil, written)
-		if err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		_, _ = s.runCacheLimitCleanup(ctx, cacheSourceID, cacheLocationID)
-		cacheDownloads++
-		_ = s.updateRemoteFetchCacheProgress(ctx, cacheNodeID, index+1, len(plan.Items), item, written)
-		_ = updateWorkflowJobProgress(ctx, s.db, jobID, index+1, len(plan.Items)*2)
-		_ = s.updateWorkflowJobCheckpoint(ctx, jobID, "materialize", map[string]any{"index": index + 1, "itemKey": item.ItemKey, "action": item.Action}, index+1, len(plan.Items)*2)
-	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{
-		"skipped": skipped, "cache_hits": cacheHits, "cache_downloads": cacheDownloads,
-		"bytes_current": byteProgress.current, "bytes_total": byteProgress.total, "bytes_unknown_items": byteProgress.unknownItems,
-	}), cacheNodeID); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if manifest.ID <= 0 {
-		manifest, err = s.loadRemoteFetchManifest(ctx, runID)
-	}
-	if err != nil {
-		_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items), len(plan.Items)*2, plan.Summary)
-		return remoteWorkSaveResult{}, err
-	}
-	promoted, err := s.stageAndPublishRemoteFetch(ctx, manifest, plan)
-	if err != nil {
-		_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items), len(plan.Items)*2, plan.Summary)
-		return remoteWorkSaveResult{}, err
-	}
-	_ = s.updateWorkflowJobCheckpoint(ctx, jobID, "published", map[string]any{"targetRoot": plan.SaveRoot, "promoted": promoted}, len(plan.Items), len(plan.Items)*2)
-	_ = updateWorkflowJobProgress(ctx, s.db, jobID, len(plan.Items)*2, len(plan.Items)*2)
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"staged": promoted, "verified": promoted, "published": promoted, "target_root": plan.SaveRoot}), promoteNodeID); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_job SET progress_current = ?, progress_total = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", len(plan.Items)*2, len(plan.Items)*2, jobID); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?", syncNodeID); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	syncedLocations := 0
-	for index, item := range plan.Items {
-		if err := s.ensureWorkflowRunActive(ctx, runID); err != nil {
-			return remoteWorkSaveResult{}, err
-		}
-		if item.Action == "exclude" {
-			continue
-		}
-		targetAbsPath, err := safeDataPath(s.cfg.DataRoot, item.TargetPath)
-		if err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, syncNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		if _, err := os.Stat(targetAbsPath); err != nil {
-			if item.Action == "skip" && errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			if err != nil {
-				_ = finishWorkflowRunSimple(ctx, s.db, runID, syncNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-				return remoteWorkSaveResult{}, err
-			}
-		}
-		if err := s.upsertSavedLocalLocation(ctx, workID, localSourceID, item, targetAbsPath); err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, syncNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		syncedLocations++
-	}
-	if err := s.finishFetchPresence(ctx, workID, remoteFetchPlanSourceIDs(plan, source.ID), localSourceID, workCode); err != nil {
-		_ = finishWorkflowRunSimple(ctx, s.db, runID, syncNodeID, jobID, "failed", err.Error(), len(plan.Items)*2, len(plan.Items)*2, plan.Summary)
-		return remoteWorkSaveResult{}, err
-	}
-	if cleanupNodeID > 0 {
-		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", cleanupNodeID)
-	}
-	removedCache, err := s.cleanupPromotedFetchCache(ctx, plan, workID)
-	if err != nil {
-		failedNodeID := cleanupNodeID
-		if failedNodeID == 0 {
-			failedNodeID = syncNodeID
-		}
-		_ = finishWorkflowRunSimple(ctx, s.db, runID, failedNodeID, jobID, "failed", err.Error(), len(plan.Items)*2, len(plan.Items)*2, plan.Summary)
-		return remoteWorkSaveResult{}, err
-	}
-	_ = s.updateWorkflowJobCheckpoint(ctx, jobID, "cache_cleaned", map[string]any{"removed": removedCache}, len(plan.Items)*2, len(plan.Items)*2)
-	if cleanupNodeID > 0 {
-		if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"removed": removedCache}), cleanupNodeID); err != nil {
-			return remoteWorkSaveResult{}, err
-		}
-	}
-	if err := s.completeRemoteFetchManifest(ctx, manifest); err != nil {
-		_ = finishWorkflowRunSimple(ctx, s.db, runID, syncNodeID, jobID, "failed", err.Error(), len(plan.Items)*2, len(plan.Items)*2, plan.Summary)
-		return remoteWorkSaveResult{}, err
-	}
-	_ = s.updateWorkflowJobCheckpoint(ctx, jobID, "registered", map[string]any{"locations": syncedLocations}, len(plan.Items)*2, len(plan.Items)*2)
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"locations": syncedLocations}), syncNodeID); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE workflow_job
-		SET status = 'succeeded',
-			progress_current = ?,
-			progress_total = ?,
-			locked_by = '',
-			locked_at = NULL,
-			heartbeat_at = NULL,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, len(plan.Items)*2, len(plan.Items)*2, jobID); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"plan": plan.Summary, "skipped": skipped, "cache_hits": cacheHits, "cache_downloads": cacheDownloads, "cache_removed": removedCache, "promoted": promoted, "snapshot_bytes": len(manifest.PlanJSON)}), runID); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if err := s.insertFetchCleanupCandidate(ctx, runID, workID, localSourceID, workCode, plan.Items); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	return remoteWorkSaveResult{
-		RunID:         runID,
-		JobID:         jobID,
-		WorkID:        workID,
-		PrimaryCode:   workCode,
-		Status:        "succeeded",
-		SaveRoot:      plan.SaveRoot,
-		SavedFiles:    promoted,
-		SkippedFiles:  skipped,
-		CachedFiles:   cacheHits + cacheDownloads,
-		PromotedFiles: promoted,
-		Plan:          plan.Summary,
-	}, nil
+	return s.finalizeRemoteWorkFetch(ctx, runID, jobID, execution, counts)
 }
 
 func (s *Server) updateRemoteFetchCacheProgress(ctx context.Context, nodeRunID int64, current int, total int, item remoteWorkSavePlanItem, written int64) error {
@@ -4457,82 +3971,14 @@ func (s *Server) preparePersistedRemoteWorkFetchJob(ctx context.Context, runID i
 }
 
 func (s *Server) cleanupPromotedFetchCache(ctx context.Context, plan remoteWorkSavePlan, workID int64) (int, error) {
-	trackedSources := map[int64]bool{}
-	if workID > 0 {
-		rows, err := s.db.QueryContext(ctx, `
-			SELECT file_source_id
-			FROM work_source_presence
-			WHERE work_id = ?
-				AND presence_type = 'tracked'
-				AND availability = 'available'
-		`, workID)
-		if err != nil {
-			return 0, err
-		}
-		for rows.Next() {
-			var sourceID int64
-			if err := rows.Scan(&sourceID); err != nil {
-				_ = rows.Close()
-				return 0, err
-			}
-			trackedSources[sourceID] = true
-		}
-		if err := rows.Err(); err != nil {
-			_ = rows.Close()
-			return 0, err
-		}
-		if err := rows.Close(); err != nil {
-			return 0, err
-		}
+	trackedSources, err := s.trackedFetchSourceIDs(ctx, workID)
+	if err != nil {
+		return 0, err
 	}
 	removed := 0
 	seen := map[string]bool{}
 	for _, item := range plan.Items {
-		if item.Action != "cache_hit" && item.Action != "cache_download" {
-			continue
-		}
-		sourceID := item.RemoteSourceID
-		if sourceID <= 0 {
-			sourceID = plan.SourceID
-		}
-		if trackedSources[sourceID] {
-			continue
-		}
-		key := fmt.Sprintf("%d:%s", sourceID, item.CachePath)
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		var locationID int64
-		err := s.db.QueryRowContext(ctx, `
-			SELECT id FROM media_file_location
-			WHERE file_source_id = ? AND location_type = 'cache' AND path = ?
-			ORDER BY availability = 'available' DESC, id DESC LIMIT 1
-		`, sourceID, item.CachePath).Scan(&locationID)
-		if errors.Is(err, sql.ErrNoRows) {
-			targetPath, pathErr := validateDestructivePath(s.cfg.CacheRoot, item.CachePath, true, false)
-			if pathErr != nil {
-				return removed, pathErr
-			}
-			deleted, _, removeErr := removeDestructiveFile(s.cfg.CacheRoot, item.CachePath)
-			if removeErr != nil {
-				return removed, removeErr
-			}
-			if deleted {
-				removed++
-				if pruneErr := pruneEmptyCacheParents(s.cfg.CacheRoot, filepath.Dir(targetPath)); pruneErr != nil {
-					return removed, pruneErr
-				}
-			}
-			if err := s.markCacheLocationUnavailable(ctx, sourceID, item.CachePath); err != nil {
-				return removed, err
-			}
-			continue
-		}
-		if err != nil {
-			return removed, err
-		}
-		_, deleted, err := s.clearCacheLocation(ctx, locationID, item.CachePath)
+		deleted, err := s.cleanupPromotedFetchCacheItem(ctx, plan.SourceID, item, trackedSources, seen)
 		if err != nil {
 			return removed, err
 		}
@@ -4541,6 +3987,93 @@ func (s *Server) cleanupPromotedFetchCache(ctx context.Context, plan remoteWorkS
 		}
 	}
 	return removed, nil
+}
+
+func (s *Server) trackedFetchSourceIDs(ctx context.Context, workID int64) (map[int64]bool, error) {
+	trackedSources := map[int64]bool{}
+	if workID <= 0 {
+		return trackedSources, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT file_source_id
+		FROM work_source_presence
+		WHERE work_id = ?
+			AND presence_type = 'tracked'
+			AND availability = 'available'
+	`, workID)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var sourceID int64
+		if err := rows.Scan(&sourceID); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		trackedSources[sourceID] = true
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	return trackedSources, nil
+}
+
+func (s *Server) cleanupPromotedFetchCacheItem(
+	ctx context.Context,
+	defaultSourceID int64,
+	item remoteWorkSavePlanItem,
+	trackedSources map[int64]bool,
+	seen map[string]bool,
+) (bool, error) {
+	if item.Action != "cache_hit" && item.Action != "cache_download" {
+		return false, nil
+	}
+	sourceID := item.RemoteSourceID
+	if sourceID <= 0 {
+		sourceID = defaultSourceID
+	}
+	if trackedSources[sourceID] {
+		return false, nil
+	}
+	key := fmt.Sprintf("%d:%s", sourceID, item.CachePath)
+	if seen[key] {
+		return false, nil
+	}
+	seen[key] = true
+	var locationID int64
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id FROM media_file_location
+		WHERE file_source_id = ? AND location_type = 'cache' AND path = ?
+		ORDER BY availability = 'available' DESC, id DESC LIMIT 1
+	`, sourceID, item.CachePath).Scan(&locationID)
+	if errors.Is(err, sql.ErrNoRows) {
+		targetPath, pathErr := validateDestructivePath(s.cfg.CacheRoot, item.CachePath, true, false)
+		if pathErr != nil {
+			return false, pathErr
+		}
+		deleted, _, removeErr := removeDestructiveFile(s.cfg.CacheRoot, item.CachePath)
+		if removeErr != nil {
+			return false, removeErr
+		}
+		if deleted {
+			if pruneErr := pruneEmptyCacheParents(s.cfg.CacheRoot, filepath.Dir(targetPath)); pruneErr != nil {
+				return false, pruneErr
+			}
+		}
+		if err := s.markCacheLocationUnavailable(ctx, sourceID, item.CachePath); err != nil {
+			return false, err
+		}
+		return deleted, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	_, deleted, err := s.clearCacheLocation(ctx, locationID, item.CachePath)
+	return deleted, err
 }
 
 func workflowNodeIDsByNodeID(ctx context.Context, db *sql.DB, runID int64) (map[string]int64, error) {
@@ -4587,41 +4120,53 @@ type remoteSaveFile struct {
 
 func (s *Server) remoteFetchSourceOptions(ctx context.Context, primary remoteSourceForUse, workCode string, primaryFiles []remoteSaveFile) map[string][]remoteFetchSourceOption {
 	result := map[string][]remoteFetchSourceOption{}
-	primaryPathByHash := map[string]string{}
-	for _, file := range primaryFiles {
+	primaryPathByHash := primaryRemoteFetchPathsByHash(primaryFiles)
+	appendRemoteFetchSourceOptions(result, primary, primaryFiles, primaryPathByHash, false)
+	s.appendRemoteFetchAlternativeSources(ctx, result, primary, workCode, primaryPathByHash)
+	sortRemoteFetchSourceOptions(result, primary.ID)
+	return result
+}
+
+func primaryRemoteFetchPathsByHash(files []remoteSaveFile) map[string]string {
+	paths := map[string]string{}
+	for _, file := range files {
 		if hash := strings.TrimSpace(file.Hash); hash != "" {
-			if _, duplicate := primaryPathByHash[hash]; duplicate {
-				primaryPathByHash[hash] = ""
+			if _, duplicate := paths[hash]; duplicate {
+				paths[hash] = ""
 			} else {
-				primaryPathByHash[hash] = file.Path
+				paths[hash] = file.Path
 			}
 		}
 	}
-	appendFiles := func(source remoteSourceForUse, files []remoteSaveFile, matchPrimary bool) {
-		for _, file := range files {
-			groupPath := file.Path
-			if matchPrimary && strings.TrimSpace(file.Hash) != "" {
-				if matched := primaryPathByHash[strings.TrimSpace(file.Hash)]; matched != "" {
-					groupPath = matched
-				}
+	return paths
+}
+
+func appendRemoteFetchSourceOptions(result map[string][]remoteFetchSourceOption, source remoteSourceForUse, files []remoteSaveFile, primaryPathByHash map[string]string, matchPrimary bool) {
+	for _, file := range files {
+		groupPath := file.Path
+		if matchPrimary && strings.TrimSpace(file.Hash) != "" {
+			if matched := primaryPathByHash[strings.TrimSpace(file.Hash)]; matched != "" {
+				groupPath = matched
 			}
-			duplicate := false
-			for _, option := range result[groupPath] {
-				if option.SourceID == source.ID {
-					duplicate = true
-					break
-				}
-			}
-			if duplicate {
-				continue
-			}
-			result[groupPath] = append(result[groupPath], remoteFetchSourceOption{
-				SourceID: source.ID, SourceCode: source.Code, SourceName: source.DisplayName,
-				Path: file.Path, SizeBytes: file.SizeBytes, SourcePath: firstNonEmpty(file.DownloadURL, file.StreamURL), Kind: file.Kind, Hash: file.Hash,
-			})
 		}
+		duplicate := false
+		for _, option := range result[groupPath] {
+			if option.SourceID == source.ID {
+				duplicate = true
+				break
+			}
+		}
+		if duplicate {
+			continue
+		}
+		result[groupPath] = append(result[groupPath], remoteFetchSourceOption{
+			SourceID: source.ID, SourceCode: source.Code, SourceName: source.DisplayName,
+			Path: file.Path, SizeBytes: file.SizeBytes, SourcePath: firstNonEmpty(file.DownloadURL, file.StreamURL), Kind: file.Kind, Hash: file.Hash,
+		})
 	}
-	appendFiles(primary, primaryFiles, false)
+}
+
+func (s *Server) appendRemoteFetchAlternativeSources(ctx context.Context, result map[string][]remoteFetchSourceOption, primary remoteSourceForUse, workCode string, primaryPathByHash map[string]string) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT DISTINCT source.id
 		FROM work_source_presence AS presence
@@ -4645,21 +4190,23 @@ func (s *Server) remoteFetchSourceOptions(ctx context.Context, primary remoteSou
 			if loadErr != nil || !strings.EqualFold(normalizedRemoteWorkCode(remoteWork), workCode) {
 				continue
 			}
-			appendFiles(source, flattenRemoteSaveFiles(tracks), true)
+			appendRemoteFetchSourceOptions(result, source, flattenRemoteSaveFiles(tracks), primaryPathByHash, true)
 		}
 	}
+}
+
+func sortRemoteFetchSourceOptions(result map[string][]remoteFetchSourceOption, primaryID int64) {
 	for path := range result {
 		sort.SliceStable(result[path], func(i, j int) bool {
-			if result[path][i].SourceID == primary.ID && result[path][j].SourceID != primary.ID {
+			if result[path][i].SourceID == primaryID && result[path][j].SourceID != primaryID {
 				return true
 			}
-			if result[path][j].SourceID == primary.ID && result[path][i].SourceID != primary.ID {
+			if result[path][j].SourceID == primaryID && result[path][i].SourceID != primaryID {
 				return false
 			}
 			return result[path][i].SourceName < result[path][j].SourceName
 		})
 	}
-	return result
 }
 
 func normalizeRemoteFetchDecisions(decisions []remoteFetchFileDecision) map[string]remoteFetchFileDecision {
@@ -5684,26 +5231,54 @@ func (s *Server) insertFetchCleanupCandidate(ctx context.Context, runID int64, w
 }
 
 func (s *Server) quarantineFetchLocalRoots(ctx context.Context, runID int64, workID int64, localSourceID int64, items []remoteWorkSavePlanItem) ([]map[string]any, error) {
-	targetRoots := map[string]bool{}
+	publishedRoot, records, err := s.loadFetchRootsForQuarantine(ctx, workID, localSourceID)
+	if err != nil {
+		return nil, err
+	}
+	targetRoots := fetchPlanTargetRoots(items)
+	archived := []map[string]any{}
+	for _, record := range records {
+		item, ok, err := s.quarantineFetchRoot(ctx, runID, workID, localSourceID, publishedRoot, targetRoots, record)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		archived = append(archived, item)
+	}
+	return archived, nil
+}
+
+type fetchRootRecord struct {
+	id         int64
+	path, role string
+}
+
+func fetchPlanTargetRoots(items []remoteWorkSavePlanItem) map[string]bool {
+	targets := map[string]bool{}
 	for _, item := range items {
 		path := filepath.ToSlash(strings.TrimSpace(item.TargetPath))
 		if path == "" {
 			continue
 		}
 		for _, root := range fetchRootCandidatesForPath(path) {
-			targetRoots[root] = true
+			targets[root] = true
 		}
 	}
+	return targets
+}
+
+func (s *Server) loadFetchRootsForQuarantine(ctx context.Context, workID, localSourceID int64) (string, []fetchRootRecord, error) {
 	var publishedRoot string
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT root_path FROM work_folder_location
 		WHERE work_id = ? AND file_source_id = ? AND role = 'managed_fetch' AND state = 'active' AND is_primary = 1
 		ORDER BY updated_at DESC, id DESC LIMIT 1
 	`, workID, localSourceID).Scan(&publishedRoot); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
+		return "", nil, err
 	}
 	publishedRoot = filepath.ToSlash(strings.Trim(publishedRoot, "/"))
-
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, root_path, role
 		FROM work_folder_location
@@ -5711,93 +5286,97 @@ func (s *Server) quarantineFetchLocalRoots(ctx context.Context, runID int64, wor
 		ORDER BY id ASC
 	`, workID, localSourceID, publishedRoot)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
-	type rootRecord struct {
-		id         int64
-		path, role string
-	}
-	records := []rootRecord{}
+	defer rows.Close()
+	records := []fetchRootRecord{}
 	for rows.Next() {
-		var record rootRecord
+		var record fetchRootRecord
 		if err := rows.Scan(&record.id, &record.path, &record.role); err != nil {
-			_ = rows.Close()
-			return nil, err
+			return "", nil, err
 		}
 		records = append(records, record)
 	}
-	if err := rows.Close(); err != nil {
-		return nil, err
+	if err := rows.Err(); err != nil {
+		return "", nil, err
 	}
+	return publishedRoot, records, rows.Close()
+}
 
-	archived := []map[string]any{}
-	for _, record := range records {
-		root := filepath.ToSlash(strings.Trim(record.path, "/"))
-		if root == "" || fetchRootsOverlap(root, publishedRoot) || targetRoots[root] {
-			continue
-		}
-		archive := filepath.ToSlash(filepath.Join(".kikoto-trash", "fetch", fmt.Sprintf("%d", runID), fmt.Sprintf("%d-%s", record.id, filepath.Base(filepath.FromSlash(root)))))
-		sourcePath, err := safeDataPath(s.cfg.DataRoot, root)
-		if err != nil {
-			return nil, err
-		}
-		archivePath, err := safeDataPath(s.cfg.DataRoot, archive)
-		if err != nil {
-			return nil, err
-		}
-		var files []map[string]any
-		var totalBytes int64
-		if info, statErr := os.Lstat(sourcePath); statErr == nil {
-			if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-				continue
-			}
-			files, totalBytes, err = archivedRootFileSummary(sourcePath)
-			if err != nil {
-				return nil, err
-			}
-			if err := os.MkdirAll(filepath.Dir(archivePath), 0o755); err != nil {
-				return nil, err
-			}
-			if err := os.Rename(sourcePath, archivePath); err != nil {
-				return nil, fmt.Errorf("archive old fetch root %s: %w", root, err)
-			}
-		} else if !errors.Is(statErr, os.ErrNotExist) {
-			return nil, statErr
-		} else if _, archiveErr := os.Stat(archivePath); archiveErr != nil {
-			continue
-		} else {
-			files, totalBytes, err = archivedRootFileSummary(archivePath)
-			if err != nil {
-				return nil, err
-			}
-		}
-		tx, err := s.db.BeginTx(ctx, nil)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := tx.ExecContext(ctx, "UPDATE work_folder_location SET state = 'pending_cleanup', cleanup_run_id = ?, is_primary = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?", runID, record.id); err != nil {
-			_ = tx.Rollback()
-			return nil, err
-		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE media_file_location
-			SET availability = 'unavailable', last_checked_at = CURRENT_TIMESTAMP
-			WHERE file_source_id = ? AND location_type = 'local'
-				AND media_item_id IN (SELECT id FROM media_item WHERE work_id = ?)
-				AND (path = ? OR substr(path, 1, length(?) + 1) = ? || '/')
-		`, localSourceID, workID, root, root, root); err != nil {
-			_ = tx.Rollback()
-			return nil, err
-		}
-		if err := tx.Commit(); err != nil {
-			return nil, err
-		}
-		archived = append(archived, map[string]any{
-			"folder_id": record.id, "original_path": root, "archive_path": archive,
-			"role": record.role, "files": files, "file_count": len(files), "size_bytes": totalBytes,
-		})
+func (s *Server) quarantineFetchRoot(ctx context.Context, runID, workID, localSourceID int64, publishedRoot string, targetRoots map[string]bool, record fetchRootRecord) (map[string]any, bool, error) {
+	root := filepath.ToSlash(strings.Trim(record.path, "/"))
+	if root == "" || fetchRootsOverlap(root, publishedRoot) || targetRoots[root] {
+		return nil, false, nil
 	}
-	return archived, nil
+	archive := filepath.ToSlash(filepath.Join(".kikoto-trash", "fetch", fmt.Sprintf("%d", runID), fmt.Sprintf("%d-%s", record.id, filepath.Base(filepath.FromSlash(root)))))
+	files, totalBytes, ok, err := s.archiveFetchRoot(root, archive)
+	if err != nil || !ok {
+		return nil, false, err
+	}
+	if err := s.markFetchRootQuarantined(ctx, runID, workID, localSourceID, record.id, root); err != nil {
+		return nil, false, err
+	}
+	return map[string]any{
+		"folder_id": record.id, "original_path": root, "archive_path": archive,
+		"role": record.role, "files": files, "file_count": len(files), "size_bytes": totalBytes,
+	}, true, nil
+}
+
+func (s *Server) archiveFetchRoot(root, archive string) ([]map[string]any, int64, bool, error) {
+	sourcePath, err := safeDataPath(s.cfg.DataRoot, root)
+	if err != nil {
+		return nil, 0, false, err
+	}
+	archivePath, err := safeDataPath(s.cfg.DataRoot, archive)
+	if err != nil {
+		return nil, 0, false, err
+	}
+	info, statErr := os.Lstat(sourcePath)
+	if statErr == nil {
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return nil, 0, false, nil
+		}
+		files, totalBytes, err := archivedRootFileSummary(sourcePath)
+		if err != nil {
+			return nil, 0, false, err
+		}
+		if err := os.MkdirAll(filepath.Dir(archivePath), 0o755); err != nil {
+			return nil, 0, false, err
+		}
+		if err := os.Rename(sourcePath, archivePath); err != nil {
+			return nil, 0, false, fmt.Errorf("archive old fetch root %s: %w", root, err)
+		}
+		return files, totalBytes, true, nil
+	}
+	if !errors.Is(statErr, os.ErrNotExist) {
+		return nil, 0, false, statErr
+	}
+	if _, archiveErr := os.Stat(archivePath); archiveErr != nil {
+		return nil, 0, false, nil
+	}
+	files, totalBytes, err := archivedRootFileSummary(archivePath)
+	return files, totalBytes, err == nil, err
+}
+
+func (s *Server) markFetchRootQuarantined(ctx context.Context, runID, workID, localSourceID, folderID int64, root string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, "UPDATE work_folder_location SET state = 'pending_cleanup', cleanup_run_id = ?, is_primary = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?", runID, folderID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE media_file_location
+		SET availability = 'unavailable', last_checked_at = CURRENT_TIMESTAMP
+		WHERE file_source_id = ? AND location_type = 'local'
+			AND media_item_id IN (SELECT id FROM media_item WHERE work_id = ?)
+			AND (path = ? OR substr(path, 1, length(?) + 1) = ? || '/')
+	`, localSourceID, workID, root, root, root); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func fetchRootCandidatesForPath(path string) []string {
@@ -5930,12 +5509,7 @@ func (s *Server) remoteWorkTracksDetail(ctx context.Context, source remoteSource
 
 func normalizedRemoteLanguageEditions(work kikoeru.Work) []remoteLanguageEdition {
 	currentCode := normalizedRemoteWorkCode(work)
-	originOrder := 0
-	for _, edition := range work.LanguageEditions {
-		if edition.DisplayOrder > 0 && (originOrder == 0 || edition.DisplayOrder < originOrder) {
-			originOrder = edition.DisplayOrder
-		}
-	}
+	originOrder := earliestRemoteLanguageEditionOrder(work.LanguageEditions)
 	result := make([]remoteLanguageEdition, 0, len(work.LanguageEditions))
 	seen := map[string]bool{}
 	for index, edition := range work.LanguageEditions {
@@ -5944,35 +5518,53 @@ func normalizedRemoteLanguageEditions(work kikoeru.Work) []remoteLanguageEdition
 			continue
 		}
 		seen[code] = true
-		origin := edition.DisplayOrder > 0 && edition.DisplayOrder == originOrder
-		if originOrder == 0 && index == 0 {
-			origin = true
-		}
-		result = append(result, remoteLanguageEdition{
-			RemoteCode: code, Language: strings.TrimSpace(edition.Language), Label: firstNonEmpty(strings.TrimSpace(edition.Label), strings.TrimSpace(edition.Language), code),
-			DisplayOrder: edition.DisplayOrder, Current: strings.EqualFold(code, currentCode), Origin: origin,
-		})
+		result = append(result, newRemoteLanguageEdition(edition, code, currentCode, originOrder, index == 0))
 	}
 	if len(result) == 0 && currentCode != "" {
 		result = append(result, remoteLanguageEdition{RemoteCode: currentCode, Label: currentCode, Current: true, Origin: true})
 	}
-	sort.SliceStable(result, func(i, j int) bool {
-		if result[i].Origin != result[j].Origin {
-			return result[i].Origin
-		}
-		leftOrder, rightOrder := result[i].DisplayOrder, result[j].DisplayOrder
-		if leftOrder <= 0 {
-			leftOrder = int(^uint(0) >> 1)
-		}
-		if rightOrder <= 0 {
-			rightOrder = int(^uint(0) >> 1)
-		}
-		if leftOrder != rightOrder {
-			return leftOrder < rightOrder
-		}
-		return result[i].RemoteCode < result[j].RemoteCode
-	})
+	sort.SliceStable(result, func(i, j int) bool { return remoteLanguageEditionLess(result[i], result[j]) })
 	return result
+}
+
+func earliestRemoteLanguageEditionOrder(editions kikoeru.LanguageEditionList) int {
+	order := 0
+	for _, edition := range editions {
+		if edition.DisplayOrder > 0 && (order == 0 || edition.DisplayOrder < order) {
+			order = edition.DisplayOrder
+		}
+	}
+	return order
+}
+
+func newRemoteLanguageEdition(edition kikoeru.LanguageEdition, code, currentCode string, originOrder int, first bool) remoteLanguageEdition {
+	origin := edition.DisplayOrder > 0 && edition.DisplayOrder == originOrder
+	if originOrder == 0 && first {
+		origin = true
+	}
+	language := strings.TrimSpace(edition.Language)
+	return remoteLanguageEdition{
+		RemoteCode: code, Language: language, Label: firstNonEmpty(strings.TrimSpace(edition.Label), language, code),
+		DisplayOrder: edition.DisplayOrder, Current: strings.EqualFold(code, currentCode), Origin: origin,
+	}
+}
+
+func remoteLanguageEditionLess(left, right remoteLanguageEdition) bool {
+	if left.Origin != right.Origin {
+		return left.Origin
+	}
+	leftOrder, rightOrder := remoteLanguageEditionOrder(left), remoteLanguageEditionOrder(right)
+	if leftOrder != rightOrder {
+		return leftOrder < rightOrder
+	}
+	return left.RemoteCode < right.RemoteCode
+}
+
+func remoteLanguageEditionOrder(edition remoteLanguageEdition) int {
+	if edition.DisplayOrder <= 0 {
+		return int(^uint(0) >> 1)
+	}
+	return edition.DisplayOrder
 }
 
 type remoteTrackLocationState struct {
@@ -6270,7 +5862,28 @@ func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse
 		return 0, err
 	}
 	title := firstNonEmpty(remoteWork.Title, remoteWork.Name, code)
-	description := ""
+	workID, err := upsertRemoteWorkBase(ctx, tx, code, title, remoteWork, policy)
+	if err != nil {
+		return 0, err
+	}
+	providerID, err := upsertRemoteWorkMetadata(ctx, tx, source, workID, code, remoteWork, rawWork)
+	if err != nil {
+		return 0, err
+	}
+	if err := syncVoiceCreditSnapshot(ctx, tx, voiceCreditSnapshotRow{
+		WorkID: workID, ProviderID: sql.NullInt64{Int64: providerID, Valid: true}, Raw: string(rawWork),
+	}); err != nil {
+		return 0, err
+	}
+	if allowCircleFallback && policy.AttachCircleFallback {
+		if err := attachRemoteWorkCircleFallback(ctx, tx, remoteWork, workID, providerID); err != nil {
+			return 0, err
+		}
+	}
+	return workID, nil
+}
+
+func upsertRemoteWorkBase(ctx context.Context, tx *sql.Tx, code, title string, remoteWork kikoeru.Work, policy remoteWorkFallbackPolicy) (int64, error) {
 	releaseDate := normalizeDate(remoteWork.Release)
 	var duration any
 	if remoteWork.Duration != nil && *remoteWork.Duration > 0 {
@@ -6300,18 +5913,15 @@ func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse
 				ELSE COALESCE(work.duration_seconds, excluded.duration_seconds)
 			END,
 			updated_at = CURRENT_TIMESTAMP
-	`, code, title, description, releaseDate, remoteWork.AgeCategoryString, duration,
-		policy.UpdateNormalizedMetadata,
-		policy.UpdateNormalizedMetadata,
-		policy.UpdateNormalizedMetadata,
-		policy.UpdateNormalizedMetadata,
-	); err != nil {
+	`, code, title, "", releaseDate, remoteWork.AgeCategoryString, duration,
+		policy.UpdateNormalizedMetadata, policy.UpdateNormalizedMetadata,
+		policy.UpdateNormalizedMetadata, policy.UpdateNormalizedMetadata); err != nil {
 		return 0, err
 	}
-	workID, err := selectID(ctx, tx, "SELECT id FROM work WHERE primary_code = ?", code)
-	if err != nil {
-		return 0, err
-	}
+	return selectID(ctx, tx, "SELECT id FROM work WHERE primary_code = ?", code)
+}
+
+func upsertRemoteWorkMetadata(ctx context.Context, tx *sql.Tx, source remoteSourceForUse, workID int64, code string, remoteWork kikoeru.Work, rawWork json.RawMessage) (int64, error) {
 	providerCode := "kikoeru_source_" + source.Code
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO metadata_provider (code, display_name)
@@ -6351,148 +5961,146 @@ func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse
 	`, workID, providerID, code, string(rawWork)); err != nil {
 		return 0, err
 	}
-	if err := syncVoiceCreditSnapshot(ctx, tx, voiceCreditSnapshotRow{
-		WorkID: workID, ProviderID: sql.NullInt64{Int64: providerID, Valid: true}, Raw: string(rawWork),
-	}); err != nil {
-		return 0, err
+	return providerID, nil
+}
+
+func attachRemoteWorkCircleFallback(ctx context.Context, tx *sql.Tx, remoteWork kikoeru.Work, workID, providerID int64) error {
+	if remoteWork.Circle == nil || strings.TrimSpace(remoteWork.Circle.Name) == "" {
+		return nil
 	}
-	if allowCircleFallback && policy.AttachCircleFallback && remoteWork.Circle != nil && strings.TrimSpace(remoteWork.Circle.Name) != "" {
-		var partyID int64
-		if err := tx.QueryRowContext(ctx, `
-			SELECT id
-			FROM party
-			WHERE party_type IN ('circle', 'brand', 'maker')
-				AND LOWER(display_name) = LOWER(?)
-			ORDER BY id ASC
-			LIMIT 1
-		`, strings.TrimSpace(remoteWork.Circle.Name)).Scan(&partyID); err == nil {
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO work_party (work_id, party_id, role, provider_id, source, updated_at)
-				VALUES (?, ?, 'circle', ?, ?, CURRENT_TIMESTAMP)
-				ON CONFLICT(work_id, party_id, role) DO UPDATE SET
-					provider_id = excluded.provider_id,
-					source = excluded.source,
-					updated_at = CURRENT_TIMESTAMP
-			`, workID, partyID, providerID, "remote_source"); err != nil {
-				return 0, err
-			}
-		} else if !errors.Is(err, sql.ErrNoRows) {
-			return 0, err
-		}
+	var partyID int64
+	err := tx.QueryRowContext(ctx, `
+		SELECT id
+		FROM party
+		WHERE party_type IN ('circle', 'brand', 'maker')
+			AND LOWER(display_name) = LOWER(?)
+		ORDER BY id ASC
+		LIMIT 1
+	`, strings.TrimSpace(remoteWork.Circle.Name)).Scan(&partyID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
 	}
-	return workID, nil
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO work_party (work_id, party_id, role, provider_id, source, updated_at)
+		VALUES (?, ?, 'circle', ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(work_id, party_id, role) DO UPDATE SET
+			provider_id = excluded.provider_id,
+			source = excluded.source,
+			updated_at = CURRENT_TIMESTAMP
+	`, workID, partyID, providerID, "remote_source")
+	return err
 }
 
 func syncRemoteTrackTree(ctx context.Context, tx *sql.Tx, fileSourceID int64, workID int64, workCode string, tracks []kikoeru.Track) (int, int, error) {
-	mediaItems := 0
-	locations := 0
+	state := remoteTrackSyncState{}
 	var walk func(parentID *int64, basePath string, nodes []kikoeru.Track) error
 	walk = func(parentID *int64, basePath string, nodes []kikoeru.Track) error {
 		for index, node := range nodes {
-			title := strings.TrimSpace(node.Title)
-			if title == "" {
-				title = fmt.Sprintf("Track %d", index+1)
-			}
-			path := joinRemotePath(basePath, title)
-			kind := remoteTrackKindForPath(node.Type, path)
-			fingerprint := fmt.Sprintf("remote:%d:%s:%s", fileSourceID, workCode, path)
-			var parent any
-			if parentID != nil {
-				parent = *parentID
-			}
-			duration := nullableSeconds(node.Duration)
-			hasAudio := remoteMediaHasAudio(kind)
-			var size any
-			if node.Size > 0 {
-				size = node.Size
-			}
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO media_item (work_id, parent_id, kind, title, track_no, duration_seconds, has_audio, size_bytes, fingerprint)
-				SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
-				WHERE NOT EXISTS (SELECT 1 FROM media_item WHERE fingerprint = ?)
-			`, workID, parent, kind, title, index+1, duration, hasAudio, size, fingerprint, fingerprint); err != nil {
+			if err := syncRemoteTrackNode(ctx, tx, fileSourceID, workID, workCode, parentID, basePath, index, node, &state); err != nil {
 				return err
 			}
-			if _, err := tx.ExecContext(ctx, `
-				UPDATE media_item
-				SET parent_id = ?,
-					kind = ?,
-					title = ?,
-					track_no = ?,
-					duration_seconds = ?,
-					has_audio = COALESCE(?, has_audio),
-					size_bytes = ?
-				WHERE fingerprint = ?
-			`, parent, kind, title, index+1, duration, hasAudio, size, fingerprint); err != nil {
-				return err
-			}
-			itemID, err := selectID(ctx, tx, "SELECT id FROM media_item WHERE fingerprint = ?", fingerprint)
-			if err != nil {
-				return err
-			}
-			mediaItems++
-			if len(node.Children) > 0 || kind == "folder" {
-				childID := itemID
-				if err := walk(&childID, path, node.Children); err != nil {
-					return err
-				}
-				continue
-			}
-			streamURL := firstNonEmpty(node.MediaStreamURL, node.StreamLowQualityURL)
-			downloadURL := node.MediaDownloadURL
-			if streamURL == "" && downloadURL == "" {
-				continue
-			}
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO media_file_location (
-					media_item_id,
-					file_source_id,
-					location_type,
-					path,
-					stream_url,
-					download_url,
-					remote_hash,
-					size_bytes,
-					duration_seconds,
-					availability,
-					last_checked_at
-				)
-				SELECT ?, ?, 'remote_stream', ?, ?, ?, ?, ?, ?, 'available', CURRENT_TIMESTAMP
-				WHERE NOT EXISTS (
-					SELECT 1
-					FROM media_file_location
-					WHERE media_item_id = ?
-						AND file_source_id = ?
-						AND location_type = 'remote_stream'
-						AND path = ?
-				)
-			`, itemID, fileSourceID, path, streamURL, downloadURL, node.Hash, size, duration, itemID, fileSourceID, path); err != nil {
-				return err
-			}
-			if _, err := tx.ExecContext(ctx, `
-				UPDATE media_file_location
-				SET stream_url = ?,
-					download_url = ?,
-					remote_hash = ?,
-					size_bytes = ?,
-					duration_seconds = ?,
-					availability = 'available',
-					last_checked_at = CURRENT_TIMESTAMP
-				WHERE media_item_id = ?
-					AND file_source_id = ?
-					AND location_type = 'remote_stream'
-					AND path = ?
-			`, streamURL, downloadURL, node.Hash, size, duration, itemID, fileSourceID, path); err != nil {
-				return err
-			}
-			locations++
 		}
 		return nil
 	}
 	if err := walk(nil, "", tracks); err != nil {
 		return 0, 0, err
 	}
-	return mediaItems, locations, nil
+	return state.mediaItems, state.locations, nil
+}
+
+type remoteTrackSyncState struct {
+	mediaItems int
+	locations  int
+}
+
+func syncRemoteTrackNode(ctx context.Context, tx *sql.Tx, fileSourceID, workID int64, workCode string, parentID *int64, basePath string, index int, node kikoeru.Track, state *remoteTrackSyncState) error {
+	title := strings.TrimSpace(node.Title)
+	if title == "" {
+		title = fmt.Sprintf("Track %d", index+1)
+	}
+	path := joinRemotePath(basePath, title)
+	kind := remoteTrackKindForPath(node.Type, path)
+	fingerprint := fmt.Sprintf("remote:%d:%s:%s", fileSourceID, workCode, path)
+	var parent any
+	if parentID != nil {
+		parent = *parentID
+	}
+	duration := nullableSeconds(node.Duration)
+	hasAudio := remoteMediaHasAudio(kind)
+	var size any
+	if node.Size > 0 {
+		size = node.Size
+	}
+	if err := upsertRemoteMediaItem(ctx, tx, workID, parent, kind, title, index, duration, hasAudio, size, fingerprint); err != nil {
+		return err
+	}
+	itemID, err := selectID(ctx, tx, "SELECT id FROM media_item WHERE fingerprint = ?", fingerprint)
+	if err != nil {
+		return err
+	}
+	state.mediaItems++
+	if len(node.Children) > 0 || kind == "folder" {
+		childID := itemID
+		return syncRemoteTrackChildren(ctx, tx, fileSourceID, workID, workCode, &childID, path, node.Children, state)
+	}
+	return upsertRemoteTrackLocation(ctx, tx, fileSourceID, itemID, path, node, duration, size, state)
+}
+
+func upsertRemoteMediaItem(ctx context.Context, tx *sql.Tx, workID int64, parent any, kind, title string, index int, duration, hasAudio, size any, fingerprint string) error {
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO media_item (work_id, parent_id, kind, title, track_no, duration_seconds, has_audio, size_bytes, fingerprint)
+		SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+		WHERE NOT EXISTS (SELECT 1 FROM media_item WHERE fingerprint = ?)
+	`, workID, parent, kind, title, index+1, duration, hasAudio, size, fingerprint, fingerprint); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `
+		UPDATE media_item
+		SET parent_id = ?, kind = ?, title = ?, track_no = ?, duration_seconds = ?,
+			has_audio = COALESCE(?, has_audio), size_bytes = ?
+		WHERE fingerprint = ?
+	`, parent, kind, title, index+1, duration, hasAudio, size, fingerprint)
+	return err
+}
+
+func syncRemoteTrackChildren(ctx context.Context, tx *sql.Tx, fileSourceID, workID int64, workCode string, parentID *int64, path string, children []kikoeru.Track, state *remoteTrackSyncState) error {
+	for index, child := range children {
+		if err := syncRemoteTrackNode(ctx, tx, fileSourceID, workID, workCode, parentID, path, index, child, state); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func upsertRemoteTrackLocation(ctx context.Context, tx *sql.Tx, fileSourceID, itemID int64, path string, node kikoeru.Track, duration, size any, state *remoteTrackSyncState) error {
+	streamURL := firstNonEmpty(node.MediaStreamURL, node.StreamLowQualityURL)
+	downloadURL := node.MediaDownloadURL
+	if streamURL == "" && downloadURL == "" {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, stream_url, download_url, remote_hash, size_bytes, duration_seconds, availability, last_checked_at)
+		SELECT ?, ?, 'remote_stream', ?, ?, ?, ?, ?, ?, 'available', CURRENT_TIMESTAMP
+		WHERE NOT EXISTS (
+			SELECT 1 FROM media_file_location
+			WHERE media_item_id = ? AND file_source_id = ? AND location_type = 'remote_stream' AND path = ?
+		)
+	`, itemID, fileSourceID, path, streamURL, downloadURL, node.Hash, size, duration, itemID, fileSourceID, path); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE media_file_location
+		SET stream_url = ?, download_url = ?, remote_hash = ?, size_bytes = ?, duration_seconds = ?,
+			availability = 'available', last_checked_at = CURRENT_TIMESTAMP
+		WHERE media_item_id = ? AND file_source_id = ? AND location_type = 'remote_stream' AND path = ?
+	`, streamURL, downloadURL, node.Hash, size, duration, itemID, fileSourceID, path); err != nil {
+		return err
+	}
+	state.locations++
+	return nil
 }
 
 func (s *Server) updateSourceHealth(ctx context.Context, sourceID int64, status string) error {
@@ -6949,75 +6557,95 @@ type fileSourcePayload struct {
 }
 
 func parseFileSourcePayload(w http.ResponseWriter, r *http.Request, allowLocal bool, allowLegacy bool) (fileSourcePayload, bool) {
-	var payload fileSourcePayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+	payload, err := decodeFileSourcePayload(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return fileSourcePayload{}, false
 	}
+	normalizeFileSourcePayload(&payload)
+	if err := validateFileSourcePayload(&payload, allowLocal, allowLegacy); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return fileSourcePayload{}, false
+	}
+	return payload, true
+}
+
+func decodeFileSourcePayload(r *http.Request) (fileSourcePayload, error) {
+	var payload fileSourcePayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		return fileSourcePayload{}, errors.New("invalid JSON body")
+	}
+	return payload, nil
+}
+
+func normalizeFileSourcePayload(payload *fileSourcePayload) {
 	payload.DisplayName = strings.TrimSpace(payload.DisplayName)
 	payload.SourceType = strings.TrimSpace(payload.SourceType)
 	payload.Endpoint.BaseURL = strings.TrimSpace(payload.Endpoint.BaseURL)
 	payload.Endpoint.APIURL = strings.TrimSpace(payload.Endpoint.APIURL)
 	payload.Endpoint.FallbackURL = strings.TrimSpace(payload.Endpoint.FallbackURL)
 	payload.Endpoint.WorkURLTemplate = remoteWorkURLTemplate(payload.Endpoint.WorkURLTemplate)
-	if payload.DisplayName == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "displayName is required"})
-		return fileSourcePayload{}, false
-	}
 	if payload.SourceType == "" {
 		payload.SourceType = sourceTypeKikoeruCompatible
-	}
-	if payload.SourceType == sourceTypeKikoeruCompatible178 && !allowLegacy {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "legacy number178 sources are disabled"})
-		return fileSourcePayload{}, false
-	}
-	if !isKikoeruSourceType(payload.SourceType) && !(allowLocal && payload.SourceType == sourceTypeLocalFolder) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported sourceType"})
-		return fileSourcePayload{}, false
 	}
 	if payload.Priority <= 0 {
 		payload.Priority = 30
 	}
+}
+
+func validateFileSourcePayload(payload *fileSourcePayload, allowLocal, allowLegacy bool) error {
+	if payload.DisplayName == "" {
+		return errors.New("displayName is required")
+	}
+	if payload.SourceType == sourceTypeKikoeruCompatible178 && !allowLegacy {
+		return errors.New("legacy number178 sources are disabled")
+	}
+	if !isKikoeruSourceType(payload.SourceType) && !(allowLocal && payload.SourceType == sourceTypeLocalFolder) {
+		return errors.New("unsupported sourceType")
+	}
 	if isKikoeruSourceType(payload.SourceType) {
-		for _, candidate := range []string{payload.Endpoint.BaseURL, payload.Endpoint.APIURL, payload.Endpoint.FallbackURL} {
-			if candidate == "" {
-				continue
-			}
-			if _, err := outbound.ParseHTTPURL(candidate); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "endpoint URLs must be absolute HTTP(S) URLs without credentials"})
-				return fileSourcePayload{}, false
-			}
+		if err := validateRemoteFileSourceEndpoint(&payload.Endpoint); err != nil {
+			return err
 		}
-		if !validRemoteWorkURLTemplate(payload.Endpoint.WorkURLTemplate) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "workUrlTemplate must be a relative path containing {code} or {codeLower}"})
-			return fileSourcePayload{}, false
-		}
-		if len(payload.Endpoint.AllowedHostPatterns) > maxRemoteAllowedHostPatterns {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "allowedHostPatterns must contain at most 64 entries"})
-			return fileSourcePayload{}, false
-		}
-		normalizedPatterns := make([]string, 0, len(payload.Endpoint.AllowedHostPatterns))
-		seenPatterns := make(map[string]bool, len(payload.Endpoint.AllowedHostPatterns))
-		for _, value := range payload.Endpoint.AllowedHostPatterns {
-			if strings.TrimSpace(value) == "" {
-				continue
-			}
-			normalized, err := outbound.NormalizeHostPattern(value)
-			if err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "allowedHostPatterns entries must be hostnames or leading-wildcard patterns such as *.media.example.invalid"})
-				return fileSourcePayload{}, false
-			}
-			if !seenPatterns[normalized] {
-				seenPatterns[normalized] = true
-				normalizedPatterns = append(normalizedPatterns, normalized)
-			}
-		}
-		payload.Endpoint.AllowedHostPatterns = normalizedPatterns
 	}
 	if payload.Endpoint.AllowedHostPatterns == nil {
 		payload.Endpoint.AllowedHostPatterns = []string{}
 	}
-	return payload, true
+	return nil
+}
+
+func validateRemoteFileSourceEndpoint(endpoint *fileSourceEndpoint) error {
+	for _, candidate := range []string{endpoint.BaseURL, endpoint.APIURL, endpoint.FallbackURL} {
+		if candidate == "" {
+			continue
+		}
+		if _, err := outbound.ParseHTTPURL(candidate); err != nil {
+			return errors.New("endpoint URLs must be absolute HTTP(S) URLs without credentials")
+		}
+	}
+	if !validRemoteWorkURLTemplate(endpoint.WorkURLTemplate) {
+		return errors.New("workUrlTemplate must be a relative path containing {code} or {codeLower}")
+	}
+	if len(endpoint.AllowedHostPatterns) > maxRemoteAllowedHostPatterns {
+		return errors.New("allowedHostPatterns must contain at most 64 entries")
+	}
+	normalizedPatterns := make([]string, 0, len(endpoint.AllowedHostPatterns))
+	seenPatterns := make(map[string]bool, len(endpoint.AllowedHostPatterns))
+	for _, value := range endpoint.AllowedHostPatterns {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		normalized, err := outbound.NormalizeHostPattern(value)
+		if err != nil {
+			return errors.New("allowedHostPatterns entries must be hostnames or leading-wildcard patterns such as *.media.example.invalid")
+		}
+		if !seenPatterns[normalized] {
+			seenPatterns[normalized] = true
+			normalizedPatterns = append(normalizedPatterns, normalized)
+		}
+	}
+	endpoint.AllowedHostPatterns = normalizedPatterns
+	return nil
 }
 
 func remoteWorkURLTemplate(value string) string {

@@ -99,25 +99,9 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 		return RawPage{}, err
 	}
 	includeRecommendation := options.IncludeRecommendation || strings.EqualFold(strings.TrimSpace(options.Sort), "recommend")
-	config := DefaultRecommendationConfig()
-	recommendationGenerationID := int64(0)
-	if includeRecommendation {
-		switch {
-		case options.UserID <= 0:
-			config = s.LoadRecommendationConfig(ctx)
-			recommendationGenerationID = anonymousRecommendationGenerationID
-		case strings.TrimSpace(options.RecommendationSessionID) != "":
-			snapshot, err := s.PrepareRecommendationSession(ctx, options.UserID, options.RecommendationSessionID)
-			if err != nil {
-				return RawPage{}, err
-			}
-			config = snapshot.Config
-			recommendationGenerationID = snapshot.GenerationID
-		default:
-			// Older clients without a recommendation session retain the dynamic
-			// path until they are upgraded.
-			config = s.LoadRecommendationConfig(ctx)
-		}
+	config, recommendationGenerationID, err := s.listPageRecommendationContext(ctx, options, includeRecommendation)
+	if err != nil {
+		return RawPage{}, err
 	}
 	queryArgs := []any{}
 	if includeRecommendation && recommendationGenerationID == 0 {
@@ -137,6 +121,26 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 		return RawPage{}, err
 	}
 	return RawPage{Works: works, Page: options.Page, PageSize: options.PageSize, Total: total}, nil
+}
+
+func (s *Store) listPageRecommendationContext(ctx context.Context, options ListOptions, include bool) (RecommendationConfig, int64, error) {
+	config := DefaultRecommendationConfig()
+	if !include {
+		return config, 0, nil
+	}
+	if options.UserID <= 0 {
+		return s.LoadRecommendationConfig(ctx), anonymousRecommendationGenerationID, nil
+	}
+	if sessionID := strings.TrimSpace(options.RecommendationSessionID); sessionID != "" {
+		snapshot, err := s.PrepareRecommendationSession(ctx, options.UserID, sessionID)
+		if err != nil {
+			return RecommendationConfig{}, 0, err
+		}
+		return snapshot.Config, snapshot.GenerationID, nil
+	}
+	// Older clients without a recommendation session retain the dynamic path
+	// until they are upgraded.
+	return s.LoadRecommendationConfig(ctx), 0, nil
 }
 
 // ListMatching materializes the common Library projection for a predicate
@@ -454,67 +458,88 @@ func SearchWhereForUser(queryText string, userID int64) (string, []any) {
 	clauses := []string{}
 	args := []any{}
 	for _, clause := range ParseSearchClauses(queryText) {
-		needle := strings.TrimSpace(clause.Value)
-		if needle == "" {
+		where, clauseArgs := searchWhereClause(clause, userID)
+		if where == "" {
 			continue
 		}
-		like := "%" + strings.ToLower(needle) + "%"
-		switch clause.Kind {
-		case "code":
-			exactCode := strings.ToUpper(needle)
-			clauses = append(clauses, familyCodeClause())
-			args = append(args, exactCode, exactCode, exactCode, exactCode)
-		case "circle":
-			clauses = append(clauses, `(`+familyCircleLikeClause()+` OR `+manualOverrideFieldLikeClause("circle")+`)`)
-			args = append(args, like, like, like)
-		case "voice_actor":
-			clauses = append(clauses, `(`+familyVoiceActorLikeClause()+` OR `+manualOverrideFieldLikeClause("voice_actors")+`)`)
-			args = append(args, like, like)
-		case "tag":
-			clauses = append(clauses, normalizedTagLikeClause(false))
-			args = append(args, like)
-		case "exclude_tag":
-			clauses = append(clauses, normalizedTagLikeClause(true))
-			args = append(args, like)
-		case "user_tag":
-			clauses = append(clauses, userTagLikeClause(false))
-			args = append(args, userID, like)
-		case "exclude_user_tag":
-			clauses = append(clauses, userTagLikeClause(true))
-			args = append(args, userID, like)
-		case "rating_min":
-			clauses = append(clauses, familyNumericClause("rating_average", ">=", NumericClauseValue(needle)))
-		case "sales_min":
-			clauses = append(clauses, familyNumericClause("sales_count", ">=", NumericClauseValue(needle)))
-		case "duration_min":
-			clauses = append(clauses, familyDurationClause(">=", NumericClauseValue(needle)))
-		case "duration_max":
-			clauses = append(clauses, familyDurationClause("<=", NumericClauseValue(needle)))
-		case "age":
-			clauses = append(clauses, familyWorkColumnLikeClause("age_rating"))
-			args = append(args, like, like)
-		case "language":
-			clauses = append(clauses, familyEditionLanguageLikeClause())
-			args = append(args, like, like, like, like)
-		case "shelf":
-			clauses = append(clauses, userShelfClause(strings.EqualFold(needle, "false")))
-			args = append(args, userID)
-		default:
-			personalTag := ""
-			if userID > 0 {
-				personalTag = " OR " + userTagLikeClause(false)
-			}
-			clauses = append(clauses, `(`+familyWorkTextLikeClause()+` OR `+familyCircleLikeClause()+` OR `+familyVoiceActorLikeClause()+` OR `+normalizedTagLikeClause(false)+` OR `+manualOverrideAnyLikeClause("title", "circle", "series", "voice_actors")+personalTag+`)`)
-			args = append(args, like, like, like, like, like, like, like, like, like, like)
-			if userID > 0 {
-				args = append(args, userID, like)
-			}
-		}
+		clauses = append(clauses, where)
+		args = append(args, clauseArgs...)
 	}
 	if len(clauses) == 0 {
 		return "", nil
 	}
 	return "(" + strings.Join(clauses, " AND ") + ")", args
+}
+
+func searchWhereClause(clause SearchClause, userID int64) (string, []any) {
+	needle := strings.TrimSpace(clause.Value)
+	if needle == "" {
+		return "", nil
+	}
+	like := "%" + strings.ToLower(needle) + "%"
+	switch clause.Kind {
+	case "code":
+		exactCode := strings.ToUpper(needle)
+		return familyCodeClause(), []any{exactCode, exactCode, exactCode, exactCode}
+	case "circle", "voice_actor":
+		return searchPartyClause(clause.Kind, like)
+	case "tag", "exclude_tag", "user_tag", "exclude_user_tag":
+		return searchTagClause(clause.Kind, userID, like)
+	case "rating_min", "sales_min", "duration_min", "duration_max":
+		return searchNumericClause(clause.Kind, needle)
+	case "age":
+		return familyWorkColumnLikeClause("age_rating"), []any{like, like}
+	case "language":
+		return familyEditionLanguageLikeClause(), []any{like, like, like, like}
+	case "shelf":
+		return userShelfClause(strings.EqualFold(needle, "false")), []any{userID}
+	default:
+		return searchTextClause(like, userID)
+	}
+}
+
+func searchPartyClause(kind, like string) (string, []any) {
+	if kind == "circle" {
+		return `(` + familyCircleLikeClause() + ` OR ` + manualOverrideFieldLikeClause("circle") + `)`, []any{like, like, like}
+	}
+	return `(` + familyVoiceActorLikeClause() + ` OR ` + manualOverrideFieldLikeClause("voice_actors") + `)`, []any{like, like}
+}
+
+func searchTagClause(kind string, userID int64, like string) (string, []any) {
+	switch kind {
+	case "tag":
+		return normalizedTagLikeClause(false), []any{like}
+	case "exclude_tag":
+		return normalizedTagLikeClause(true), []any{like}
+	case "user_tag":
+		return userTagLikeClause(false), []any{userID, like}
+	default:
+		return userTagLikeClause(true), []any{userID, like}
+	}
+}
+
+func searchNumericClause(kind, needle string) (string, []any) {
+	value := NumericClauseValue(needle)
+	switch kind {
+	case "rating_min":
+		return familyNumericClause("rating_average", ">=", value), nil
+	case "sales_min":
+		return familyNumericClause("sales_count", ">=", value), nil
+	case "duration_min":
+		return familyDurationClause(">=", value), nil
+	default:
+		return familyDurationClause("<=", value), nil
+	}
+}
+
+func searchTextClause(like string, userID int64) (string, []any) {
+	personalTag := ""
+	args := []any{like, like, like, like, like, like, like, like, like, like}
+	if userID > 0 {
+		personalTag = " OR " + userTagLikeClause(false)
+		args = append(args, userID, like)
+	}
+	return `(` + familyWorkTextLikeClause() + ` OR ` + familyCircleLikeClause() + ` OR ` + familyVoiceActorLikeClause() + ` OR ` + normalizedTagLikeClause(false) + ` OR ` + manualOverrideAnyLikeClause("title", "circle", "series", "voice_actors") + personalTag + `)`, args
 }
 
 func familyCodeClause() string {

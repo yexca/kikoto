@@ -91,31 +91,14 @@ func ValidateRecommendationConfig(config RecommendationConfig) error {
 	if config.AffinityBase < 0 || config.AffinityBase > 100 {
 		return fmt.Errorf("affinityBase must be between 0 and 100")
 	}
-	slots := []int{config.UnmarkedSlots, config.WantSlots, config.ListeningSlots, config.FinishedSlots, config.RelistenSlots, config.ShelvedSlots}
-	totalSlots := 0
-	for _, value := range slots {
-		if value < 0 || value > 100 {
-			return fmt.Errorf("recommendation lane slots must be between 0 and 100")
-		}
-		totalSlots += value
+	if err := validateRecommendationLaneSlots(config); err != nil {
+		return err
 	}
-	if config.UnmarkedSlots == 0 {
-		return fmt.Errorf("unmarkedSlots must be at least 1")
+	if err := validateRecommendationRange([]int{config.TagWeight, config.VoiceWeight, config.CircleWeight, config.FavoriteBonus, config.NegativeTagWeight, config.NegativeVoiceWeight, config.NegativeCircleWeight}, 0, 50, "recommendation weights must be between 0 and 50"); err != nil {
+		return err
 	}
-	if totalSlots < 1 || totalSlots > 100 {
-		return fmt.Errorf("recommendation lane slots must total between 1 and 100")
-	}
-	weights := []int{config.TagWeight, config.VoiceWeight, config.CircleWeight, config.FavoriteBonus, config.NegativeTagWeight, config.NegativeVoiceWeight, config.NegativeCircleWeight}
-	for _, value := range weights {
-		if value < 0 || value > 50 {
-			return fmt.Errorf("recommendation weights must be between 0 and 50")
-		}
-	}
-	caps := []int{config.TagCap, config.VoiceCap, config.CircleCap, config.NegativeTagCap, config.NegativeVoiceCap, config.NegativeCircleCap, config.NegativeTotalCap}
-	for _, value := range caps {
-		if value < 0 || value > 100 {
-			return fmt.Errorf("recommendation caps must be between 0 and 100")
-		}
+	if err := validateRecommendationRange([]int{config.TagCap, config.VoiceCap, config.CircleCap, config.NegativeTagCap, config.NegativeVoiceCap, config.NegativeCircleCap, config.NegativeTotalCap}, 0, 100, "recommendation caps must be between 0 and 100"); err != nil {
+		return err
 	}
 	if config.NegativeMinEvidence < 1 || config.NegativeMinEvidence > 10 {
 		return fmt.Errorf("negativeMinEvidence must be between 1 and 10")
@@ -125,6 +108,33 @@ func ValidateRecommendationConfig(config RecommendationConfig) error {
 	}
 	if config.ExplorationAmplitude < 0 || config.ExplorationAmplitude > 40 {
 		return fmt.Errorf("explorationAmplitude must be between 0 and 40")
+	}
+	return nil
+}
+
+func validateRecommendationLaneSlots(config RecommendationConfig) error {
+	slots := []int{config.UnmarkedSlots, config.WantSlots, config.ListeningSlots, config.FinishedSlots, config.RelistenSlots, config.ShelvedSlots}
+	if err := validateRecommendationRange(slots, 0, 100, "recommendation lane slots must be between 0 and 100"); err != nil {
+		return err
+	}
+	if config.UnmarkedSlots == 0 {
+		return fmt.Errorf("unmarkedSlots must be at least 1")
+	}
+	total := 0
+	for _, value := range slots {
+		total += value
+	}
+	if total < 1 || total > 100 {
+		return fmt.Errorf("recommendation lane slots must total between 1 and 100")
+	}
+	return nil
+}
+
+func validateRecommendationRange(values []int, minimum, maximum int, message string) error {
+	for _, value := range values {
+		if value < minimum || value > maximum {
+			return fmt.Errorf("%s", message)
+		}
 	}
 	return nil
 }
@@ -457,56 +467,19 @@ type recommendationMixLane struct {
 // Want reserve the leading positions, then proportional deficit scheduling
 // spreads the remaining states without allowing affinity to change the mix.
 func recommendationSlotOffsets(config RecommendationConfig) (int, map[string][]int) {
-	total := config.UnmarkedSlots + config.WantSlots + config.ListeningSlots + config.FinishedSlots + config.RelistenSlots + config.ShelvedSlots
+	total := recommendationMixTotal(config)
 	if total <= 0 {
 		config = DefaultRecommendationConfig()
-		total = config.UnmarkedSlots + config.WantSlots + config.ListeningSlots + config.FinishedSlots + config.RelistenSlots + config.ShelvedSlots
+		total = recommendationMixTotal(config)
 	}
-	relistenEarliest := maxInt(5, total/4+1)
-	finishedEarliest := maxInt(relistenEarliest+2, total/2-1)
-	shelvedEarliest := maxInt(finishedEarliest+2, (total*3)/4)
-	lanes := []recommendationMixLane{
-		{status: "listening", slots: config.ListeningSlots, earliest: 1, priority: 0},
-		{status: "want_to_listen", slots: config.WantSlots, earliest: 1, priority: 1},
-		{status: "none", slots: config.UnmarkedSlots, earliest: 1, priority: 2},
-		{status: "relisten", slots: config.RelistenSlots, earliest: minInt(total, relistenEarliest), priority: 3},
-		{status: "finished", slots: config.FinishedSlots, earliest: minInt(total, finishedEarliest), priority: 4},
-		{status: "paused", slots: config.ShelvedSlots, earliest: minInt(total, shelvedEarliest), priority: 5},
-	}
+	lanes := recommendationMixLanes(config, total)
 	used := make(map[string]int, len(lanes))
 	sequence := make([]string, 0, total)
-	appendReserved := func(status string) {
-		for _, lane := range lanes {
-			if lane.status == status && lane.slots > used[status] {
-				sequence = append(sequence, status)
-				used[status]++
-				return
-			}
-		}
-	}
-	appendReserved("listening")
-	appendReserved("want_to_listen")
+	sequence = appendRecommendationReserved(sequence, used, lanes, "listening")
+	sequence = appendRecommendationReserved(sequence, used, lanes, "want_to_listen")
 	for len(sequence) < total {
 		position := len(sequence) + 1
-		best := -1
-		bestDeficit := 0
-		for index, lane := range lanes {
-			if lane.slots <= used[lane.status] || position < lane.earliest {
-				continue
-			}
-			deficit := lane.slots*position - used[lane.status]*total
-			if best < 0 || deficit > bestDeficit || (deficit == bestDeficit && lane.priority < lanes[best].priority) {
-				best = index
-				bestDeficit = deficit
-			}
-		}
-		if best < 0 {
-			for index, lane := range lanes {
-				if lane.slots > used[lane.status] && (best < 0 || lane.earliest < lanes[best].earliest || (lane.earliest == lanes[best].earliest && lane.priority < lanes[best].priority)) {
-					best = index
-				}
-			}
-		}
+		best := chooseRecommendationLane(lanes, used, position, total)
 		if best < 0 {
 			break
 		}
@@ -514,11 +487,76 @@ func recommendationSlotOffsets(config RecommendationConfig) (int, map[string][]i
 		sequence = append(sequence, status)
 		used[status]++
 	}
+	return total, recommendationMixOffsets(sequence, lanes)
+}
+
+func recommendationMixTotal(config RecommendationConfig) int {
+	return config.UnmarkedSlots + config.WantSlots + config.ListeningSlots + config.FinishedSlots + config.RelistenSlots + config.ShelvedSlots
+}
+
+func recommendationMixLanes(config RecommendationConfig, total int) []recommendationMixLane {
+	relistenEarliest := maxInt(5, total/4+1)
+	finishedEarliest := maxInt(relistenEarliest+2, total/2-1)
+	shelvedEarliest := maxInt(finishedEarliest+2, (total*3)/4)
+	return []recommendationMixLane{
+		{status: "listening", slots: config.ListeningSlots, earliest: 1, priority: 0},
+		{status: "want_to_listen", slots: config.WantSlots, earliest: 1, priority: 1},
+		{status: "none", slots: config.UnmarkedSlots, earliest: 1, priority: 2},
+		{status: "relisten", slots: config.RelistenSlots, earliest: minInt(total, relistenEarliest), priority: 3},
+		{status: "finished", slots: config.FinishedSlots, earliest: minInt(total, finishedEarliest), priority: 4},
+		{status: "paused", slots: config.ShelvedSlots, earliest: minInt(total, shelvedEarliest), priority: 5},
+	}
+}
+
+func appendRecommendationReserved(sequence []string, used map[string]int, lanes []recommendationMixLane, status string) []string {
+	for _, lane := range lanes {
+		if lane.status == status && lane.slots > used[status] {
+			used[status]++
+			return append(sequence, status)
+		}
+	}
+	return sequence
+}
+
+func chooseRecommendationLane(lanes []recommendationMixLane, used map[string]int, position, total int) int {
+	if best := chooseRecommendationDeficitLane(lanes, used, position, total); best >= 0 {
+		return best
+	}
+	return chooseRecommendationFallbackLane(lanes, used)
+}
+
+func chooseRecommendationDeficitLane(lanes []recommendationMixLane, used map[string]int, position, total int) int {
+	best := -1
+	bestDeficit := 0
+	for index, lane := range lanes {
+		if lane.slots <= used[lane.status] || position < lane.earliest {
+			continue
+		}
+		deficit := lane.slots*position - used[lane.status]*total
+		if best < 0 || deficit > bestDeficit || (deficit == bestDeficit && lane.priority < lanes[best].priority) {
+			best = index
+			bestDeficit = deficit
+		}
+	}
+	return best
+}
+
+func chooseRecommendationFallbackLane(lanes []recommendationMixLane, used map[string]int) int {
+	best := -1
+	for index, lane := range lanes {
+		if lane.slots > used[lane.status] && (best < 0 || lane.earliest < lanes[best].earliest || (lane.earliest == lanes[best].earliest && lane.priority < lanes[best].priority)) {
+			best = index
+		}
+	}
+	return best
+}
+
+func recommendationMixOffsets(sequence []string, lanes []recommendationMixLane) map[string][]int {
 	offsets := make(map[string][]int, len(lanes))
 	for index, status := range sequence {
 		offsets[status] = append(offsets[status], index+1)
 	}
-	return total, offsets
+	return offsets
 }
 
 func recommendationLanePositionExpression(config RecommendationConfig, statusExpression string, rankExpression string) string {

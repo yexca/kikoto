@@ -186,6 +186,25 @@ describe("workflow definition model", () => {
     expect(messages).toContain("Edge references a missing node.");
   });
 
+  it("does not count an edge from a missing node as a connected required input", () => {
+    const definition = createEmptyWorkflowDefinition();
+    definition.nodes = [{ id: "catalog", type: "read_circle_catalog", position: { x: 0, y: 0 } }];
+    definition.edges = [
+      {
+        id: "missing_source",
+        source: "removed",
+        sourceHandle: "value",
+        target: "catalog",
+        targetHandle: "circle",
+      },
+    ];
+
+    const messages = validateWorkflowDefinition(definition, nodeTypes).map((issue) => issue.message);
+
+    expect(messages).toContain("Edge references a missing node.");
+    expect(messages).toContain("Circle is not connected.");
+  });
+
   it("detects a proposed cycle before adding the connection", () => {
     const nodes = [{ id: "first" }, { id: "second" }, { id: "third" }];
     const edges = [

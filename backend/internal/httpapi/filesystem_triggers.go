@@ -80,107 +80,137 @@ func (s *Server) runFilesystemWatcherSession(ctx context.Context, watcher filesy
 	if err != nil {
 		return err
 	}
-	enabled := ok && trigger.Enabled
-	var timer *time.Timer
-	var timerC <-chan time.Time
-	pending := false
-	lastEventAt := time.Time{}
-	stopTimer := func() {
-		if timer != nil && !timer.Stop() {
-			select {
-			case <-timer.C:
-			default:
-			}
-		}
-		timerC = nil
+	session := filesystemWatcherSession{
+		server: s, watcher: watcher, config: watchConfig,
+		settleDelay: settleDelay, retryDelay: retryDelay, enabled: ok && trigger.Enabled,
 	}
-	schedule := func(delay time.Duration) {
-		if timer == nil {
-			timer = time.NewTimer(delay)
-		} else {
-			stopTimer()
-			timer.Reset(delay)
-		}
-		timerC = timer.C
-	}
-	defer stopTimer()
+	defer session.stopTimer()
+	return session.run(ctx)
+}
 
+type filesystemWatcherSession struct {
+	server      *Server
+	watcher     filesystemWatcher
+	config      filesystemWatcherConfig
+	settleDelay time.Duration
+	retryDelay  time.Duration
+	enabled     bool
+	pending     bool
+	lastEventAt time.Time
+	timer       *time.Timer
+	timerC      <-chan time.Time
+}
+
+func (session *filesystemWatcherSession) run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case _, ok := <-watcher.Changes():
+		case _, ok := <-session.watcher.Changes():
 			if !ok {
 				return errors.New("filesystem watcher closed")
 			}
-			if !enabled {
-				continue
-			}
-			pending = true
-			lastEventAt = time.Now().UTC()
-			schedule(settleDelay)
-		case _, ok := <-watcher.Invalidated():
+			session.scheduleEvent(session.settleDelay)
+		case _, ok := <-session.watcher.Invalidated():
 			if !ok {
 				return errors.New("filesystem watcher closed")
 			}
 			return errors.New("filesystem watch root was removed or renamed")
-		case watchErr, ok := <-watcher.Errors():
+		case watchErr, ok := <-session.watcher.Errors():
 			if !ok {
 				return errors.New("filesystem watcher closed")
 			}
-			_ = s.recordFilesystemWatcherError(ctx, watchErr)
-			if !enabled {
-				continue
-			}
-			pending = true
-			lastEventAt = time.Now().UTC()
-			schedule(settleDelay)
-		case <-s.filesystemTriggerConfigChanged:
-			nextConfig, err := s.loadFilesystemWatcherConfig(ctx)
-			if err != nil {
+			_ = session.server.recordFilesystemWatcherError(ctx, watchErr)
+			session.scheduleEvent(session.settleDelay)
+		case <-session.server.filesystemTriggerConfigChanged:
+			if err := session.reload(ctx); err != nil {
 				return err
 			}
-			if !sameFilesystemWatcherConfig(watchConfig, nextConfig) {
-				return errFilesystemWatcherReconfigure
-			}
-			trigger, ok, err := s.loadFixedFilesystemTrigger(ctx)
-			if err != nil {
+		case <-session.timerC:
+			if err := session.dispatch(ctx); err != nil {
 				return err
-			}
-			enabled = ok && trigger.Enabled
-			if !enabled {
-				pending = false
-				stopTimer()
-			}
-		case <-timerC:
-			timerC = nil
-			if !pending {
-				continue
-			}
-			queued, blocked, err := s.dispatchFilesystemTriggeredLocalScan(ctx, watcher.WatchedDirectoryCount(), lastEventAt)
-			if queued {
-				pending = false
-			}
-			if err != nil {
-				if ctx.Err() != nil {
-					return ctx.Err()
-				}
-				if queued {
-					slog.Error("record filesystem workflow dispatch", "error", err)
-					continue
-				}
-				schedule(retryDelay)
-				continue
-			}
-			if blocked {
-				schedule(retryDelay)
-				continue
-			}
-			if !queued {
-				pending = false
 			}
 		}
 	}
+}
+
+func (session *filesystemWatcherSession) scheduleEvent(delay time.Duration) {
+	if !session.enabled {
+		return
+	}
+	session.pending = true
+	session.lastEventAt = time.Now().UTC()
+	session.schedule(delay)
+}
+
+func (session *filesystemWatcherSession) stopTimer() {
+	if session.timer != nil && !session.timer.Stop() {
+		select {
+		case <-session.timer.C:
+		default:
+		}
+	}
+	session.timerC = nil
+}
+
+func (session *filesystemWatcherSession) schedule(delay time.Duration) {
+	if session.timer == nil {
+		session.timer = time.NewTimer(delay)
+	} else {
+		session.stopTimer()
+		session.timer.Reset(delay)
+	}
+	session.timerC = session.timer.C
+}
+
+func (session *filesystemWatcherSession) reload(ctx context.Context) error {
+	nextConfig, err := session.server.loadFilesystemWatcherConfig(ctx)
+	if err != nil {
+		return err
+	}
+	if !sameFilesystemWatcherConfig(session.config, nextConfig) {
+		return errFilesystemWatcherReconfigure
+	}
+	trigger, ok, err := session.server.loadFixedFilesystemTrigger(ctx)
+	if err != nil {
+		return err
+	}
+	session.enabled = ok && trigger.Enabled
+	if !session.enabled {
+		session.pending = false
+		session.stopTimer()
+	}
+	return nil
+}
+
+func (session *filesystemWatcherSession) dispatch(ctx context.Context) error {
+	session.timerC = nil
+	if !session.pending {
+		return nil
+	}
+	queued, blocked, err := session.server.dispatchFilesystemTriggeredLocalScan(ctx, session.watcher.WatchedDirectoryCount(), session.lastEventAt)
+	if queued {
+		session.pending = false
+	}
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if queued {
+			slog.Error("record filesystem workflow dispatch", "error", err)
+			return nil
+		}
+		session.schedule(session.retryDelay)
+		return nil
+	}
+	if blocked {
+		session.schedule(session.retryDelay)
+		return nil
+	}
+	if !queued {
+		session.pending = false
+	}
+	return nil
 }
 
 func (s *Server) loadFilesystemWatcherConfig(ctx context.Context) (filesystemWatcherConfig, error) {

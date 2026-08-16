@@ -44,6 +44,15 @@ type workProgressSummary struct {
 	Completed       bool     `json:"completed"`
 }
 
+type mediaProgressUpdateRequest struct {
+	LocationID      *int64   `json:"locationId"`
+	PositionSeconds float64  `json:"positionSeconds"`
+	DurationSeconds *float64 `json:"durationSeconds"`
+	Completed       bool     `json:"completed"`
+}
+
+var errMediaProgressLocationMismatch = errors.New("locationId must belong to the media item")
+
 func (s *Server) updateMediaProgress(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requirePermission(w, r, "playback:use")
 	if !ok {
@@ -62,53 +71,81 @@ func (s *Server) updateMediaProgress(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "not_found", "media item not found", false)
 		return
 	}
-	var payload struct {
-		LocationID      *int64   `json:"locationId"`
-		PositionSeconds float64  `json:"positionSeconds"`
-		DurationSeconds *float64 `json:"durationSeconds"`
-		Completed       bool     `json:"completed"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
-		return
-	}
-	if payload.LocationID != nil && *payload.LocationID <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "locationId must be a positive integer"})
-		return
-	}
-	if !validSeconds(payload.PositionSeconds) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "positionSeconds must be finite and non-negative"})
-		return
-	}
-	if payload.DurationSeconds != nil && !validSeconds(*payload.DurationSeconds) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "durationSeconds must be finite and non-negative"})
+	payload, err := decodeMediaProgressUpdate(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	if payload.DurationSeconds != nil && *payload.DurationSeconds > 0 && payload.PositionSeconds > *payload.DurationSeconds {
 		payload.PositionSeconds = *payload.DurationSeconds
 	}
 
-	workID, fileSourceID, locationID, locationType, err := s.progressTarget(r.Context(), mediaItemID, payload.LocationID)
+	progress, err := s.prepareAndPersistMediaProgress(r.Context(), user.ID, mediaItemID, payload)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeAPIError(w, http.StatusNotFound, "not_found", "media item not found", false)
+		return
+	}
+	if errors.Is(err, errMediaProgressLocationMismatch) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeAPIError(w, http.StatusNotFound, "not_found", "media item not found", false)
-			return
-		}
 		writeError(w, err)
 		return
+	}
+	writeJSON(w, http.StatusOK, progress)
+}
+
+func (s *Server) prepareAndPersistMediaProgress(ctx context.Context, userID, mediaItemID int64, payload mediaProgressUpdateRequest) (mediaProgressResponse, error) {
+	workID, fileSourceID, locationID, locationType, err := s.progressTarget(ctx, mediaItemID, payload.LocationID)
+	if err != nil {
+		return mediaProgressResponse{}, err
 	}
 	if payload.LocationID != nil && locationID == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "locationId must belong to the media item"})
-		return
+		return mediaProgressResponse{}, errMediaProgressLocationMismatch
 	}
-	canonicalWorkID, err := s.canonicalWorkID(r.Context(), workID)
+	canonicalWorkID, err := s.canonicalWorkID(ctx, workID)
 	if err != nil {
-		writeError(w, err)
-		return
+		return mediaProgressResponse{}, err
 	}
-
 	lastPlayedAt := time.Now().UTC().Truncate(time.Second).Format("2006-01-02 15:04:05")
-	if _, err := s.db.ExecContext(r.Context(), `
+	if err := s.persistMediaProgress(ctx, userID, canonicalWorkID, mediaItemID, fileSourceID, locationID, locationType, payload, lastPlayedAt); err != nil {
+		return mediaProgressResponse{}, err
+	}
+	return mediaProgressResponse{
+		WorkID: canonicalWorkID, MediaWorkID: workID, MediaItemID: mediaItemID,
+		FileSourceID: fileSourceID, LocationID: locationID, LocationType: locationType,
+		PositionSeconds: payload.PositionSeconds, DurationSeconds: payload.DurationSeconds,
+		Completed: payload.Completed, LastPlayedAt: &lastPlayedAt,
+	}, nil
+}
+
+func decodeMediaProgressUpdate(r *http.Request) (mediaProgressUpdateRequest, error) {
+	var payload mediaProgressUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		return mediaProgressUpdateRequest{}, errors.New("invalid JSON body")
+	}
+	if payload.LocationID != nil && *payload.LocationID <= 0 {
+		return mediaProgressUpdateRequest{}, errors.New("locationId must be a positive integer")
+	}
+	if !validSeconds(payload.PositionSeconds) {
+		return mediaProgressUpdateRequest{}, errors.New("positionSeconds must be finite and non-negative")
+	}
+	if payload.DurationSeconds != nil && !validSeconds(*payload.DurationSeconds) {
+		return mediaProgressUpdateRequest{}, errors.New("durationSeconds must be finite and non-negative")
+	}
+	return payload, nil
+}
+
+func (s *Server) persistMediaProgress(
+	ctx context.Context,
+	userID, workID, mediaItemID int64,
+	fileSourceID, locationID *int64,
+	locationType string,
+	payload mediaProgressUpdateRequest,
+	lastPlayedAt string,
+) error {
+	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO user_work_playback_cursor (
 			user_id,
 			work_id,
@@ -132,24 +169,12 @@ func (s *Server) updateMediaProgress(w http.ResponseWriter, r *http.Request) {
 			completed = excluded.completed,
 			last_played_at = excluded.last_played_at,
 			updated_at = excluded.last_played_at
-	`, user.ID, canonicalWorkID, mediaItemID, fileSourceID, locationID, locationType,
-		payload.PositionSeconds, payload.DurationSeconds, payload.Completed, lastPlayedAt); err != nil {
-		writeError(w, err)
-		return
+	`, userID, workID, mediaItemID, fileSourceID, locationID, locationType,
+		payload.PositionSeconds, payload.DurationSeconds, payload.Completed, lastPlayedAt)
+	if err != nil {
+		return err
 	}
-	progress := mediaProgressResponse{
-		WorkID:          canonicalWorkID,
-		MediaWorkID:     workID,
-		MediaItemID:     mediaItemID,
-		FileSourceID:    fileSourceID,
-		LocationID:      locationID,
-		LocationType:    locationType,
-		PositionSeconds: payload.PositionSeconds,
-		DurationSeconds: payload.DurationSeconds,
-		Completed:       payload.Completed,
-		LastPlayedAt:    &lastPlayedAt,
-	}
-	writeJSON(w, http.StatusOK, progress)
+	return nil
 }
 
 func (s *Server) getWorkPlaybackCursor(w http.ResponseWriter, r *http.Request) {

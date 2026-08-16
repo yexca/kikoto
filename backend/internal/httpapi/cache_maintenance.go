@@ -164,80 +164,11 @@ func (s *Server) scanManagedMediaCache(ctx context.Context) (cacheMaintenanceSca
 	} else if statErr != nil {
 		return cacheMaintenanceScan{}, statErr
 	}
-	now := time.Now()
-	err = filepath.WalkDir(mediaRoot, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		entryInfo, infoErr := entry.Info()
-		if infoErr != nil {
-			return infoErr
-		}
-		if unsafeFetchStagingEntry(entryInfo) {
-			if entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		rel, relErr := filepath.Rel(cacheRoot, path)
-		if relErr != nil {
-			return relErr
-		}
-		rel = filepath.ToSlash(rel)
-		if entry.IsDir() {
-			if path == mediaRoot {
-				return nil
-			}
-			children, readErr := os.ReadDir(path)
-			if readErr != nil {
-				return readErr
-			}
-			if len(children) == 0 {
-				result.Overview.EmptyDirectories++
-				result.EmptyPaths = append(result.EmptyPaths, rel)
-				workCode, sourceCode := cachePathIdentity(rel)
-				row := ensureCacheWorkOverview(workRows, cacheReference{}, workCode, sourceCode)
-				row.EmptyDirectories++
-				result.EmptyPathGroups[rel] = row.GroupKey
-			}
-			return nil
-		}
-		info := entryInfo
-		result.Overview.MediaFiles++
-		result.Overview.MediaBytes += info.Size()
-		reference, referenced := references[rel]
-		if referenced {
-			seenReferences[rel] = true
-		}
-		workCode, sourceCode := cachePathIdentity(rel)
-		if reference.WorkCode != "" {
-			workCode = reference.WorkCode
-		}
-		if reference.SourceCode != "" {
-			sourceCode = reference.SourceCode
-		}
-		row := ensureCacheWorkOverview(workRows, reference, workCode, sourceCode)
-		row.Files++
-		row.Bytes += info.Size()
-		if referenced && reference.Available {
-			result.Overview.ReferencedFiles++
-			result.Overview.ReferencedBytes += info.Size()
-			row.ReferencedFiles++
-			row.ReferencedBytes += info.Size()
-			return nil
-		}
-		if now.Sub(info.ModTime()) < cacheOrphanGracePeriod {
-			result.Overview.ProtectedFiles++
-			return nil
-		}
-		result.Overview.OrphanFiles++
-		result.Overview.OrphanBytes += info.Size()
-		row.OrphanFiles++
-		row.OrphanBytes += info.Size()
-		result.OrphanPaths = append(result.OrphanPaths, rel)
-		result.OrphanPathGroups[rel] = row.GroupKey
-		return nil
-	})
+	walker := managedCacheWalker{
+		cacheRoot: cacheRoot, mediaRoot: mediaRoot, now: time.Now(), references: references,
+		seenReferences: seenReferences, workRows: workRows, result: &result,
+	}
+	err = filepath.WalkDir(mediaRoot, walker.visit)
 	if err != nil {
 		return cacheMaintenanceScan{}, err
 	}
@@ -258,6 +189,97 @@ func (s *Server) scanManagedMediaCache(ctx context.Context) (cacheMaintenanceSca
 	sort.Strings(result.OrphanPaths)
 	sort.Slice(result.EmptyPaths, func(i, j int) bool { return len(result.EmptyPaths[i]) > len(result.EmptyPaths[j]) })
 	return result, nil
+}
+
+type managedCacheWalker struct {
+	cacheRoot, mediaRoot string
+	now                  time.Time
+	references           map[string]cacheReference
+	seenReferences       map[string]bool
+	workRows             map[string]*cacheWorkOverview
+	result               *cacheMaintenanceScan
+}
+
+func (walker *managedCacheWalker) visit(path string, entry os.DirEntry, walkErr error) error {
+	if walkErr != nil {
+		return walkErr
+	}
+	info, err := entry.Info()
+	if err != nil {
+		return err
+	}
+	if unsafeFetchStagingEntry(info) {
+		if entry.IsDir() {
+			return filepath.SkipDir
+		}
+		return nil
+	}
+	rel, err := filepath.Rel(walker.cacheRoot, path)
+	if err != nil {
+		return err
+	}
+	rel = filepath.ToSlash(rel)
+	if entry.IsDir() {
+		return walker.visitDirectory(path, rel)
+	}
+	walker.visitFile(rel, info)
+	return nil
+}
+
+func (walker *managedCacheWalker) visitDirectory(path, rel string) error {
+	if path == walker.mediaRoot {
+		return nil
+	}
+	children, err := os.ReadDir(path)
+	if err != nil {
+		return err
+	}
+	if len(children) != 0 {
+		return nil
+	}
+	walker.result.Overview.EmptyDirectories++
+	walker.result.EmptyPaths = append(walker.result.EmptyPaths, rel)
+	workCode, sourceCode := cachePathIdentity(rel)
+	row := ensureCacheWorkOverview(walker.workRows, cacheReference{}, workCode, sourceCode)
+	row.EmptyDirectories++
+	walker.result.EmptyPathGroups[rel] = row.GroupKey
+	return nil
+}
+
+func (walker *managedCacheWalker) visitFile(rel string, info os.FileInfo) {
+	walker.result.Overview.MediaFiles++
+	walker.result.Overview.MediaBytes += info.Size()
+	reference, referenced := walker.references[rel]
+	if referenced {
+		walker.seenReferences[rel] = true
+	}
+	workCode, sourceCode := cachePathIdentity(rel)
+	if reference.WorkCode != "" {
+		workCode = reference.WorkCode
+	}
+	if reference.SourceCode != "" {
+		sourceCode = reference.SourceCode
+	}
+	row := ensureCacheWorkOverview(walker.workRows, reference, workCode, sourceCode)
+	row.Files++
+	row.Bytes += info.Size()
+	if referenced && reference.Available {
+		walker.result.Overview.ReferencedFiles++
+		walker.result.Overview.ReferencedBytes += info.Size()
+		row.ReferencedFiles++
+		row.ReferencedBytes += info.Size()
+		return
+	}
+	if walker.now.Sub(info.ModTime()) < cacheOrphanGracePeriod {
+		walker.result.Overview.ProtectedFiles++
+		return
+	}
+	walker.result.Overview.OrphanFiles++
+	walker.result.Overview.OrphanBytes += info.Size()
+	row.OrphanFiles++
+	row.OrphanBytes += info.Size()
+	walker.result.OrphanPaths = append(walker.result.OrphanPaths, rel)
+	walker.result.OrphanPathGroups[rel] = row.GroupKey
 }
 
 func (s *Server) loadCacheReferences(ctx context.Context) (map[string]cacheReference, error) {
@@ -343,6 +365,15 @@ func (s *Server) enqueueOrphanCacheCleanup(ctx context.Context, groupKeys []stri
 	if err != nil {
 		return cacheMaintenanceResult{}, err
 	}
+	payload := selectCacheOrphanCleanupPayload(scan, groupKeys)
+	total := len(payload.Files) + len(payload.Directories)
+	if total == 0 {
+		return cacheMaintenanceResult{Status: "succeeded"}, nil
+	}
+	return s.insertCacheOrphanCleanupWorkflow(ctx, payload, scan.Overview, total)
+}
+
+func selectCacheOrphanCleanupPayload(scan cacheMaintenanceScan, groupKeys []string) cacheOrphanCleanupPayload {
 	selected := map[string]bool{}
 	for _, key := range groupKeys {
 		if key = strings.TrimSpace(key); key != "" {
@@ -360,10 +391,10 @@ func (s *Server) enqueueOrphanCacheCleanup(ctx context.Context, groupKeys []stri
 			payload.Directories = append(payload.Directories, path)
 		}
 	}
-	total := len(payload.Files) + len(payload.Directories)
-	if total == 0 {
-		return cacheMaintenanceResult{Status: "succeeded"}, nil
-	}
+	return payload
+}
+
+func (s *Server) insertCacheOrphanCleanupWorkflow(ctx context.Context, payload cacheOrphanCleanupPayload, overview cacheOverview, total int) (cacheMaintenanceResult, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return cacheMaintenanceResult{}, err
@@ -377,7 +408,7 @@ func (s *Server) enqueueOrphanCacheCleanup(ctx context.Context, groupKeys []stri
 	if err != nil {
 		return cacheMaintenanceResult{}, err
 	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{NodeID: "scan", NodeType: "select_media_items", DisplayName: "Analyze media cache", Position: 1, Status: "succeeded", Input: map[string]any{"grace_hours": int(cacheOrphanGracePeriod.Hours())}, Output: scan.Overview}); err != nil {
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{NodeID: "scan", NodeType: "select_media_items", DisplayName: "Analyze media cache", Position: 1, Status: "succeeded", Input: map[string]any{"grace_hours": int(cacheOrphanGracePeriod.Hours())}, Output: overview}); err != nil {
 		return cacheMaintenanceResult{}, err
 	}
 	nodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{NodeID: "cleanup", NodeType: "cleanup_cache", DisplayName: "Delete orphan cache files", Position: 2, Status: "queued", Input: payload})
@@ -445,145 +476,187 @@ func (s *Server) enqueueWorkCacheCleanup(ctx context.Context, workIDs []int64) (
 }
 
 func (s *Server) executeCacheOrphanCleanupJob(ctx context.Context, job workflowJobRecord) error {
-	var payload cacheOrphanCleanupPayload
-	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
+	payload, checkpoint, err := decodeCacheOrphanCleanupExecution(job)
+	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
-	}
-	checkpoint := cacheOrphanCleanupCheckpoint{}
-	if err := decodeWorkflowJobCheckpointDetail(job.CheckpointJSON, &checkpoint); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
-		return err
-	}
-	completed := map[string]bool{}
-	for _, key := range checkpoint.CompletedKeys {
-		completed[key] = true
 	}
 	statusCtx := context.WithoutCancel(ctx)
 	finishCancelled := func() error {
 		return s.finishCancelledMediaCleanup(statusCtx, job)
 	}
-	checkCancelled := func() (bool, error) {
-		if ctx.Err() != nil {
-			cancelled, err := s.mediaCleanupRunCancelled(statusCtx, job.RunID)
-			if err != nil {
-				return false, err
-			}
-			if cancelled {
-				return true, nil
-			}
-			return false, ctx.Err()
-		}
-		return s.mediaCleanupRunCancelled(statusCtx, job.RunID)
-	}
 	total := len(payload.Files) + len(payload.Directories)
-	progress := len(checkpoint.CompletedKeys)
-	if cancelled, err := checkCancelled(); err != nil {
+	completed := cacheCleanupCompletedKeys(checkpoint)
+	if stopped, err := s.stopMediaCleanupIfNeeded(ctx, statusCtx, job.RunID, finishCancelled); stopped {
 		return err
-	} else if cancelled {
-		return finishCancelled()
 	}
-	for _, relPath := range payload.Files {
+	progress, stopped, err := s.processCacheCleanupFiles(ctx, statusCtx, job, payload.Files, &checkpoint, completed, total, finishCancelled)
+	if stopped {
+		return err
+	}
+	if stopped, err := s.processCacheCleanupDirectories(ctx, statusCtx, job, payload.Directories, &checkpoint, completed, progress, total, finishCancelled); stopped {
+		return err
+	}
+	if stopped, err := s.stopMediaCleanupIfNeeded(ctx, statusCtx, job.RunID, finishCancelled); stopped {
+		return err
+	}
+	return s.finishCacheOrphanCleanup(statusCtx, job, checkpoint, finishCancelled)
+}
+
+func decodeCacheOrphanCleanupExecution(job workflowJobRecord) (cacheOrphanCleanupPayload, cacheOrphanCleanupCheckpoint, error) {
+	var payload cacheOrphanCleanupPayload
+	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
+		return cacheOrphanCleanupPayload{}, cacheOrphanCleanupCheckpoint{}, err
+	}
+	checkpoint := cacheOrphanCleanupCheckpoint{}
+	if err := decodeWorkflowJobCheckpointDetail(job.CheckpointJSON, &checkpoint); err != nil {
+		return cacheOrphanCleanupPayload{}, cacheOrphanCleanupCheckpoint{}, err
+	}
+	return payload, checkpoint, nil
+}
+
+func cacheCleanupCompletedKeys(checkpoint cacheOrphanCleanupCheckpoint) map[string]bool {
+	completed := make(map[string]bool, len(checkpoint.CompletedKeys))
+	for _, key := range checkpoint.CompletedKeys {
+		completed[key] = true
+	}
+	return completed
+}
+
+func (s *Server) processCacheCleanupFiles(
+	ctx context.Context,
+	statusCtx context.Context,
+	job workflowJobRecord,
+	paths []string,
+	checkpoint *cacheOrphanCleanupCheckpoint,
+	completed map[string]bool,
+	total int,
+	finishCancelled func() error,
+) (int, bool, error) {
+	progress := len(checkpoint.CompletedKeys)
+	for _, relPath := range paths {
 		key := "file:" + relPath
 		if completed[key] {
 			continue
 		}
-		if cancelled, err := checkCancelled(); err != nil {
-			return err
-		} else if cancelled {
-			return finishCancelled()
+		if stopped, err := s.stopMediaCleanupIfNeeded(ctx, statusCtx, job.RunID, finishCancelled); stopped {
+			return progress, true, err
 		}
 		deleted, bytes, err := s.deleteOrphanCacheFile(ctx, relPath)
 		if err != nil {
 			_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
-			return err
+			return progress, true, err
 		}
 		if deleted {
 			checkpoint.DeletedFiles++
 			checkpoint.FreedBytes += bytes
 		}
-		checkpoint.CompletedKeys = append(checkpoint.CompletedKeys, key)
-		completed[key] = true
 		progress++
-		if err := s.updateWorkflowJobCheckpoint(statusCtx, job.ID, "cleanup", checkpoint, progress, total); err != nil {
-			_ = s.failClaimedWorkflowJob(statusCtx, job, err.Error())
-			return err
+		if err := s.recordCacheCleanupCheckpoint(statusCtx, job, checkpoint, completed, key, progress, total); err != nil {
+			return progress, true, err
 		}
 	}
-	for _, relPath := range payload.Directories {
+	return progress, false, nil
+}
+
+func (s *Server) processCacheCleanupDirectories(
+	ctx context.Context,
+	statusCtx context.Context,
+	job workflowJobRecord,
+	paths []string,
+	checkpoint *cacheOrphanCleanupCheckpoint,
+	completed map[string]bool,
+	progress int,
+	total int,
+	finishCancelled func() error,
+) (bool, error) {
+	for _, relPath := range paths {
 		key := "directory:" + relPath
 		if completed[key] {
 			continue
 		}
-		if cancelled, err := checkCancelled(); err != nil {
-			return err
-		} else if cancelled {
-			return finishCancelled()
+		if stopped, err := s.stopMediaCleanupIfNeeded(ctx, statusCtx, job.RunID, finishCancelled); stopped {
+			return true, err
 		}
 		if err := s.removeEmptyManagedCacheDirectory(relPath); err != nil {
 			_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
-			return err
+			return true, err
 		}
-		checkpoint.CompletedKeys = append(checkpoint.CompletedKeys, key)
 		progress++
-		if err := s.updateWorkflowJobCheckpoint(statusCtx, job.ID, "cleanup", checkpoint, progress, total); err != nil {
-			_ = s.failClaimedWorkflowJob(statusCtx, job, err.Error())
-			return err
+		if err := s.recordCacheCleanupCheckpoint(statusCtx, job, checkpoint, completed, key, progress, total); err != nil {
+			return true, err
 		}
 	}
-	if cancelled, err := checkCancelled(); err != nil {
+	return false, nil
+}
+
+func (s *Server) recordCacheCleanupCheckpoint(
+	ctx context.Context,
+	job workflowJobRecord,
+	checkpoint *cacheOrphanCleanupCheckpoint,
+	completed map[string]bool,
+	key string,
+	progress int,
+	total int,
+) error {
+	checkpoint.CompletedKeys = append(checkpoint.CompletedKeys, key)
+	completed[key] = true
+	if err := s.updateWorkflowJobCheckpoint(ctx, job.ID, "cleanup", *checkpoint, progress, total); err != nil {
+		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
-	} else if cancelled {
-		return finishCancelled()
 	}
+	return nil
+}
+
+func (s *Server) finishCacheOrphanCleanup(ctx context.Context, job workflowJobRecord, checkpoint cacheOrphanCleanupCheckpoint, finishCancelled func() error) error {
 	output := mustJSON(map[string]any{"deleted_files": checkpoint.DeletedFiles, "freed_bytes": checkpoint.FreedBytes})
-	tx, err := beginTxWithDatabaseBusyRetry(statusCtx, s.db)
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 	var runStatus string
-	if err := tx.QueryRowContext(statusCtx, "SELECT status FROM workflow_run WHERE id = ?", job.RunID).Scan(&runStatus); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT status FROM workflow_run WHERE id = ?", job.RunID).Scan(&runStatus); err != nil {
 		return err
 	}
 	if runStatus == "cancelled" {
 		_ = tx.Rollback()
 		return finishCancelled()
 	}
-	result, err := tx.ExecContext(statusCtx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('queued', 'running')", output, job.NodeRunID)
+	updated, err := updateCacheCleanupStep(ctx, tx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('queued', 'running')", output, job.NodeRunID)
 	if err != nil {
 		return err
 	}
-	if affected, err := result.RowsAffected(); err != nil || affected == 0 {
-		if err != nil {
-			return err
-		}
+	if !updated {
 		_ = tx.Rollback()
 		return finishCancelled()
 	}
-	result, err = tx.ExecContext(statusCtx, "UPDATE workflow_job SET status = 'succeeded', progress_current = progress_total, locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'running'", job.ID)
+	updated, err = updateCacheCleanupStep(ctx, tx, "UPDATE workflow_job SET status = 'succeeded', progress_current = progress_total, locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'running'", job.ID)
 	if err != nil {
 		return err
 	}
-	if affected, err := result.RowsAffected(); err != nil || affected == 0 {
-		if err != nil {
-			return err
-		}
+	if !updated {
 		_ = tx.Rollback()
 		return finishCancelled()
 	}
-	result, err = tx.ExecContext(statusCtx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('queued', 'running')", output, job.RunID)
+	updated, err = updateCacheCleanupStep(ctx, tx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('queued', 'running')", output, job.RunID)
 	if err != nil {
 		return err
 	}
-	if affected, err := result.RowsAffected(); err != nil || affected == 0 {
-		if err != nil {
-			return err
-		}
+	if !updated {
 		_ = tx.Rollback()
 		return finishCancelled()
 	}
 	return tx.Commit()
+}
+
+func updateCacheCleanupStep(ctx context.Context, tx *sql.Tx, query string, args ...any) (bool, error) {
+	result, err := tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	return affected > 0, err
 }
 
 func (s *Server) deleteOrphanCacheFile(ctx context.Context, relPath string) (bool, int64, error) {

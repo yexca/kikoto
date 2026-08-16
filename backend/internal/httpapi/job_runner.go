@@ -133,49 +133,42 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) 
 		s.unregisterActiveWorkflowJob(job.RunID, job.ID)
 		stopHeartbeat()
 	}()
-	var runErr error
-	switch job.WorkerType {
-	case "remote_source_track":
-		runErr = s.executeRemoteWorkTrackJob(jobCtx, job)
-	case "remote_work_fetch":
-		runErr = s.executeRemoteWorkFetchJob(jobCtx, job)
-	case "remote_media_cache":
-		runErr = s.executeRemoteMediaCacheJob(jobCtx, job)
-	case "remote_popular_collection":
-		runErr = s.executeRemotePopularCollectionJob(jobCtx, job)
-	case "dlsite_popular_collection":
-		runErr = s.executeDLsitePopularCollectionJob(jobCtx, job)
-	case "local_library_scan":
-		runErr = s.executeLocalScanJob(jobCtx, job)
-	case "metadata_sync":
-		runErr = s.executeDLsiteMetadataSyncJob(jobCtx, job)
-	case "metadata_family_sync":
-		runErr = s.executeWorkMetadataSyncJob(jobCtx, job)
-	case "voice_catalog_refresh":
-		runErr = s.executeVoiceCatalogRefreshJob(jobCtx, job)
-	case "media_cache_limit_cleanup":
-		runErr = s.executeMediaCacheLimitCleanupJob(jobCtx, job)
-	case "media_cache_cleanup":
-		runErr = s.executeMediaCacheCleanupJob(jobCtx, job)
-	case "local_media_delete":
-		runErr = s.executeLocalMediaDeleteJob(jobCtx, job)
-	case "local_location_cleanup":
-		runErr = s.executeLocalLocationCleanupJob(jobCtx, job)
-	case "media_location_cleanup":
-		runErr = s.executeMediaLocationCleanupJob(jobCtx, job)
-	case "cache_orphan_cleanup":
-		runErr = s.executeCacheOrphanCleanupJob(jobCtx, job)
-	case "unlinked_work_source_check":
-		runErr = s.executeUnlinkedWorkSourceCheckJob(jobCtx, job)
-	case "custom_workflow":
-		runErr = s.executeCustomWorkflowJob(jobCtx, job)
-	default:
-		message := "unsupported workflow job type: " + job.WorkerType
-		if err := s.failClaimedWorkflowJob(jobCtx, job, message); err != nil {
-			return err
-		}
-		return errors.New(message)
+	runErr := s.executeClaimedWorkflowJob(jobCtx, job)
+	return s.handleWorkflowJobResult(ctx, jobCtx, job, runErr)
+}
+
+func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobRecord) error {
+	executors := map[string]func(context.Context, workflowJobRecord) error{
+		"remote_source_track":        s.executeRemoteWorkTrackJob,
+		"remote_work_fetch":          s.executeRemoteWorkFetchJob,
+		"remote_media_cache":         s.executeRemoteMediaCacheJob,
+		"remote_popular_collection":  s.executeRemotePopularCollectionJob,
+		"dlsite_popular_collection":  s.executeDLsitePopularCollectionJob,
+		"local_library_scan":         s.executeLocalScanJob,
+		"metadata_sync":              s.executeDLsiteMetadataSyncJob,
+		"metadata_family_sync":       s.executeWorkMetadataSyncJob,
+		"voice_catalog_refresh":      s.executeVoiceCatalogRefreshJob,
+		"media_cache_limit_cleanup":  s.executeMediaCacheLimitCleanupJob,
+		"media_cache_cleanup":        s.executeMediaCacheCleanupJob,
+		"local_media_delete":         s.executeLocalMediaDeleteJob,
+		"local_location_cleanup":     s.executeLocalLocationCleanupJob,
+		"media_location_cleanup":     s.executeMediaLocationCleanupJob,
+		"cache_orphan_cleanup":       s.executeCacheOrphanCleanupJob,
+		"unlinked_work_source_check": s.executeUnlinkedWorkSourceCheckJob,
+		"custom_workflow":            s.executeCustomWorkflowJob,
 	}
+	executor := executors[job.WorkerType]
+	if executor != nil {
+		return executor(ctx, job)
+	}
+	message := "unsupported workflow job type: " + job.WorkerType
+	if err := s.failClaimedWorkflowJob(ctx, job, message); err != nil {
+		return err
+	}
+	return errors.New(message)
+}
+
+func (s *Server) handleWorkflowJobResult(ctx context.Context, jobCtx context.Context, job workflowJobRecord, runErr error) error {
 	var originReviewErr remoteOriginReviewError
 	if errors.As(runErr, &originReviewErr) {
 		return nil
@@ -187,30 +180,7 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) 
 		}
 		return nil
 	}
-	if job.WorkerType == "remote_work_fetch" {
-		var payload remoteWorkFetchJobPayload
-		if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err == nil {
-			status := "succeeded"
-			if runErr != nil {
-				status = "failed"
-			}
-			if err := s.createRemoteFetchNotification(context.WithoutCancel(ctx), job.RunID, status, payload); err != nil {
-				slog.Error("create remote fetch notification", "run_id", job.RunID, "error", err)
-			}
-		}
-	}
-	if job.WorkerType == "remote_source_track" {
-		var payload remoteWorkTrackJobPayload
-		if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err == nil {
-			status := "succeeded"
-			if runErr != nil {
-				status = "failed"
-			}
-			if err := s.createRemoteTrackNotification(context.WithoutCancel(ctx), job.RunID, status, payload); err != nil {
-				slog.Error("create remote track notification", "run_id", job.RunID, "error", err)
-			}
-		}
-	}
+	s.notifyWorkflowJobCompletion(context.WithoutCancel(ctx), job, runErr)
 	if runErr != nil {
 		var runStatus string
 		if statusErr := s.db.QueryRowContext(context.WithoutCancel(ctx), "SELECT status FROM workflow_run WHERE id = ?", job.RunID).Scan(&runStatus); statusErr == nil && runStatus == "cancelled" {
@@ -218,6 +188,29 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) 
 		}
 	}
 	return runErr
+}
+
+func (s *Server) notifyWorkflowJobCompletion(ctx context.Context, job workflowJobRecord, runErr error) {
+	status := "succeeded"
+	if runErr != nil {
+		status = "failed"
+	}
+	switch job.WorkerType {
+	case "remote_work_fetch":
+		var payload remoteWorkFetchJobPayload
+		if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err == nil {
+			if err := s.createRemoteFetchNotification(ctx, job.RunID, status, payload); err != nil {
+				slog.Error("create remote fetch notification", "run_id", job.RunID, "error", err)
+			}
+		}
+	case "remote_source_track":
+		var payload remoteWorkTrackJobPayload
+		if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err == nil {
+			if err := s.createRemoteTrackNotification(ctx, job.RunID, status, payload); err != nil {
+				slog.Error("create remote track notification", "run_id", job.RunID, "error", err)
+			}
+		}
+	}
 }
 
 func (s *Server) leaseInlineWorkflowJob(ctx context.Context, job workflowJobRecord) (context.Context, context.CancelFunc, error) {
@@ -416,39 +409,48 @@ func (s *Server) requeueFailedWorkflowJob(ctx context.Context, job workflowJobRe
 	}
 	defer func() { _ = tx.Rollback() }()
 	if job.WorkerType == "remote_work_fetch" {
-		var stagingCleanupRunning bool
-		if err := tx.QueryRowContext(ctx, `
-			SELECT EXISTS(
-				SELECT 1 FROM remote_fetch_manifest
-				WHERE workflow_run_id = ? AND state = 'cleaning_staging'
-			)
-		`, job.RunID).Scan(&stagingCleanupRunning); err != nil {
+		if err := prepareRemoteFetchRetry(ctx, tx, job, reason); err != nil {
 			return err
-		}
-		if stagingCleanupRunning {
-			return errors.New("Fetch staging cleanup is in progress; retry after cleanup finishes")
-		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE remote_fetch_manifest
-			SET staging_cleaned_at = NULL, updated_at = CURRENT_TIMESTAMP
-			WHERE workflow_run_id = ?
-		`, job.RunID); err != nil {
-			return err
-		}
-		if reason == "Manual retry requested" {
-			if _, err := tx.ExecContext(ctx, `
-				UPDATE workflow_candidate
-				SET status = 'resolved',
-					decision_json = json_object('action', 'retry_after_source_policy_update'),
-					updated_at = CURRENT_TIMESTAMP
-				WHERE workflow_run_id = ?
-					AND candidate_type = ?
-					AND status = 'pending'
-			`, job.RunID, remoteOriginBlockedCandidateType); err != nil {
-				return err
-			}
 		}
 	}
+	if err := requeueWorkflowJobTx(ctx, tx, job, availableAt, reason); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func prepareRemoteFetchRetry(ctx context.Context, tx *sql.Tx, job workflowJobRecord, reason string) error {
+	var stagingCleanupRunning bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM remote_fetch_manifest
+			WHERE workflow_run_id = ? AND state = 'cleaning_staging'
+		)
+	`, job.RunID).Scan(&stagingCleanupRunning); err != nil {
+		return err
+	}
+	if stagingCleanupRunning {
+		return errors.New("Fetch staging cleanup is in progress; retry after cleanup finishes")
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE remote_fetch_manifest
+		SET staging_cleaned_at = NULL, updated_at = CURRENT_TIMESTAMP
+		WHERE workflow_run_id = ?
+	`, job.RunID); err != nil {
+		return err
+	}
+	if reason != "Manual retry requested" {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `
+		UPDATE workflow_candidate
+		SET status = 'resolved', decision_json = json_object('action', 'retry_after_source_policy_update'), updated_at = CURRENT_TIMESTAMP
+		WHERE workflow_run_id = ? AND candidate_type = ? AND status = 'pending'
+	`, job.RunID, remoteOriginBlockedCandidateType)
+	return err
+}
+
+func requeueWorkflowJobTx(ctx context.Context, tx *sql.Tx, job workflowJobRecord, availableAt, reason string) error {
 	result, err := tx.ExecContext(ctx, `
 		UPDATE workflow_job
 		SET status = 'queued', retry_count = retry_count + 1, available_at = ?, error_message = '',
@@ -491,7 +493,7 @@ func (s *Server) requeueFailedWorkflowJob(ctx context.Context, job workflowJobRe
 	}); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (s *Server) updateWorkflowJobCheckpoint(ctx context.Context, jobID int64, phase string, detail any, current int, total int) error {

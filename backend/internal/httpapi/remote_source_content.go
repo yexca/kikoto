@@ -73,7 +73,11 @@ func (s *Server) getRemoteSourceWorkText(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "remote text URL is not allowed"})
 		return
 	}
-	request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, parsed.String(), nil)
+	s.serveRemoteTextPreview(w, r, source, parsed.String())
+}
+
+func (s *Server) serveRemoteTextPreview(w http.ResponseWriter, r *http.Request, source remoteSourceForUse, remoteURL string) {
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, remoteURL, nil)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "remote text request could not be created"})
 		return

@@ -460,15 +460,12 @@ func (s *Server) updateWorkflowDefinition(w http.ResponseWriter, r *http.Request
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := ensureWorkflowCommandAliasAvailableFrom(r.Context(), tx, ownerID, current.ID, payload.DefinitionJSON); err != nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
-		return
-	}
-	if _, err := tx.ExecContext(r.Context(), `
-		UPDATE workflow_definition
-		SET display_name = ?, description = ?, definition_json = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ? AND editable = 1
-	`, payload.DisplayName, payload.Description, payload.DefinitionJSON, id); err != nil {
+	if err := updateWorkflowDefinitionTx(r.Context(), tx, current.ID, ownerID, payload); err != nil {
+		var aliasErr *workflowCommandAliasConflictError
+		if errors.As(err, &aliasErr) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			return
+		}
 		writeError(w, err)
 		return
 	}
@@ -482,6 +479,23 @@ func (s *Server) updateWorkflowDefinition(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, definition)
+}
+
+type workflowCommandAliasConflictError struct{ err error }
+
+func (e *workflowCommandAliasConflictError) Error() string { return e.err.Error() }
+func (e *workflowCommandAliasConflictError) Unwrap() error { return e.err }
+
+func updateWorkflowDefinitionTx(ctx context.Context, tx *sql.Tx, definitionID, ownerID int64, payload workflowDefinitionPayload) error {
+	if err := ensureWorkflowCommandAliasAvailableFrom(ctx, tx, ownerID, definitionID, payload.DefinitionJSON); err != nil {
+		return &workflowCommandAliasConflictError{err: err}
+	}
+	_, err := tx.ExecContext(ctx, `
+		UPDATE workflow_definition
+		SET display_name = ?, description = ?, definition_json = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND editable = 1
+	`, payload.DisplayName, payload.Description, payload.DefinitionJSON, definitionID)
+	return err
 }
 
 func (s *Server) deleteWorkflowDefinition(w http.ResponseWriter, r *http.Request) {
@@ -597,22 +611,9 @@ func (s *Server) updateWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow trigger id"})
 		return
 	}
-	current, err := s.loadWorkflowTrigger(r.Context(), id)
+	current, currentDefinition, err := s.loadWorkflowTriggerUpdateContext(r.Context(), actor, id)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow trigger not found"})
-			return
-		}
-		writeError(w, err)
-		return
-	}
-	currentDefinition, err := s.loadWorkflowDefinition(r.Context(), current.WorkflowDefinitionID)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	if !canUseWorkflowDefinition(actor, currentDefinition) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow trigger belongs to another user"})
+		writeWorkflowTriggerUpdateError(w, err)
 		return
 	}
 	payload, ok := decodeWorkflowTriggerPayload(w, r)
@@ -623,79 +624,14 @@ func (s *Server) updateWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if current.TriggerType == "filesystem_event" {
-		if currentDefinition.Code != "local_library_scan" || payload.WorkflowDefinitionID != current.WorkflowDefinitionID || payload.TriggerType != current.TriggerType || payload.DisplayName != current.DisplayName || payload.ScheduleJSON != current.ScheduleJSON || payload.ConfigJSON != current.ConfigJSON {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "the local library filesystem trigger only supports enable and pause"})
-			return
-		}
-	}
-	definition, err := s.loadWorkflowDefinition(r.Context(), payload.WorkflowDefinitionID)
+	current, prepared, enabled, err := s.prepareWorkflowTriggerUpdate(r.Context(), actor, id, current, currentDefinition, payload)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "workflow definition not found"})
-			return
-		}
-		writeError(w, err)
+		writeWorkflowTriggerUpdateError(w, err)
 		return
 	}
-	if !canUseWorkflowDefinition(actor, definition) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow definition belongs to another user"})
+	if err := s.persistWorkflowTriggerUpdate(r.Context(), id, current, payload, prepared, enabled); err != nil {
+		writeWorkflowTriggerUpdateError(w, err)
 		return
-	}
-	if payload.TriggerType == "filesystem_event" && current.TriggerType != "filesystem_event" {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "filesystem watching is a fixed trigger for the local library scan"})
-		return
-	}
-	if err := s.ensureUniqueWorkflowStartupTrigger(r.Context(), payload.WorkflowDefinitionID, id, payload.TriggerType); err != nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
-		return
-	}
-	prepared, err := s.prepareWorkflowTrigger(r.Context(), actor, definition, payload, time.Now().UTC(), &current)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-	enabled := true
-	if payload.Enabled != nil {
-		enabled = *payload.Enabled
-	}
-	result, err := s.db.ExecContext(r.Context(), `
-		UPDATE workflow_trigger
-		SET workflow_definition_id = ?,
-			trigger_type = ?,
-			display_name = ?,
-			enabled = ?,
-			schedule_json = ?,
-			config_json = ?,
-			next_run_at = ?,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, payload.WorkflowDefinitionID, payload.TriggerType, payload.DisplayName, enabled, payload.ScheduleJSON, prepared.ConfigJSON, prepared.NextRunAt, id)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	if rows == 0 {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow trigger not found"})
-		return
-	}
-	if current.TriggerType == "filesystem_event" && !enabled {
-		if _, err := s.db.ExecContext(r.Context(), `
-			UPDATE filesystem_trigger_state
-			SET last_event_at = NULL, updated_at = CURRENT_TIMESTAMP
-			WHERE trigger_id = ?
-		`, id); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if current.TriggerType == "filesystem_event" {
-		s.notifyFilesystemTriggerConfigChanged()
 	}
 	trigger, err := s.loadWorkflowTrigger(r.Context(), id)
 	if err != nil {
@@ -703,6 +639,110 @@ func (s *Server) updateWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, trigger)
+}
+
+type workflowTriggerUpdateHTTPError struct {
+	status  int
+	message string
+}
+
+func (err *workflowTriggerUpdateHTTPError) Error() string { return err.message }
+
+func writeWorkflowTriggerUpdateError(w http.ResponseWriter, err error) {
+	var httpErr *workflowTriggerUpdateHTTPError
+	if errors.As(err, &httpErr) {
+		writeJSON(w, httpErr.status, map[string]string{"error": httpErr.message})
+		return
+	}
+	writeError(w, err)
+}
+
+func workflowTriggerUpdateHTTPErrorf(status int, format string, args ...any) error {
+	return &workflowTriggerUpdateHTTPError{status: status, message: fmt.Sprintf(format, args...)}
+}
+
+func (s *Server) loadWorkflowTriggerUpdateContext(ctx context.Context, actor currentUser, id int64) (workflowTriggerRecord, workflowDefinitionRecord, error) {
+	current, err := s.loadWorkflowTrigger(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return workflowTriggerRecord{}, workflowDefinitionRecord{}, workflowTriggerUpdateHTTPErrorf(http.StatusNotFound, "workflow trigger not found")
+		}
+		return workflowTriggerRecord{}, workflowDefinitionRecord{}, err
+	}
+	currentDefinition, err := s.loadWorkflowDefinition(ctx, current.WorkflowDefinitionID)
+	if err != nil {
+		return workflowTriggerRecord{}, workflowDefinitionRecord{}, err
+	}
+	if !canUseWorkflowDefinition(actor, currentDefinition) {
+		return workflowTriggerRecord{}, workflowDefinitionRecord{}, workflowTriggerUpdateHTTPErrorf(http.StatusForbidden, "workflow trigger belongs to another user")
+	}
+	return current, currentDefinition, nil
+}
+
+func (s *Server) prepareWorkflowTriggerUpdate(ctx context.Context, actor currentUser, id int64, current workflowTriggerRecord, currentDefinition workflowDefinitionRecord, payload workflowTriggerPayload) (workflowTriggerRecord, preparedWorkflowTrigger, bool, error) {
+	if current.TriggerType == "filesystem_event" && !isFixedFilesystemTriggerUpdate(currentDefinition, current, payload) {
+		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "the local library filesystem trigger only supports enable and pause")
+	}
+	definition, err := s.loadWorkflowDefinition(ctx, payload.WorkflowDefinitionID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusBadRequest, "workflow definition not found")
+		}
+		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, err
+	}
+	if !canUseWorkflowDefinition(actor, definition) {
+		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusForbidden, "workflow definition belongs to another user")
+	}
+	if payload.TriggerType == "filesystem_event" && current.TriggerType != "filesystem_event" {
+		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "filesystem watching is a fixed trigger for the local library scan")
+	}
+	if err := s.ensureUniqueWorkflowStartupTrigger(ctx, payload.WorkflowDefinitionID, id, payload.TriggerType); err != nil {
+		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "%s", err)
+	}
+	prepared, err := s.prepareWorkflowTrigger(ctx, actor, definition, payload, time.Now().UTC(), &current)
+	if err != nil {
+		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusBadRequest, "%s", err)
+	}
+	enabled := payload.Enabled == nil || *payload.Enabled
+	return current, prepared, enabled, nil
+}
+
+func isFixedFilesystemTriggerUpdate(definition workflowDefinitionRecord, current workflowTriggerRecord, payload workflowTriggerPayload) bool {
+	return definition.Code == "local_library_scan" && payload.WorkflowDefinitionID == current.WorkflowDefinitionID &&
+		payload.TriggerType == current.TriggerType && payload.DisplayName == current.DisplayName &&
+		payload.ScheduleJSON == current.ScheduleJSON && payload.ConfigJSON == current.ConfigJSON
+}
+
+func (s *Server) persistWorkflowTriggerUpdate(ctx context.Context, id int64, current workflowTriggerRecord, payload workflowTriggerPayload, prepared preparedWorkflowTrigger, enabled bool) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE workflow_trigger
+		SET workflow_definition_id = ?, trigger_type = ?, display_name = ?, enabled = ?,
+			schedule_json = ?, config_json = ?, next_run_at = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, payload.WorkflowDefinitionID, payload.TriggerType, payload.DisplayName, enabled, payload.ScheduleJSON, prepared.ConfigJSON, prepared.NextRunAt, id)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return workflowTriggerUpdateHTTPErrorf(http.StatusNotFound, "workflow trigger not found")
+	}
+	if current.TriggerType == "filesystem_event" && !enabled {
+		if _, err := s.db.ExecContext(ctx, `
+			UPDATE filesystem_trigger_state
+			SET last_event_at = NULL, updated_at = CURRENT_TIMESTAMP
+			WHERE trigger_id = ?
+		`, id); err != nil {
+			return err
+		}
+	}
+	if current.TriggerType == "filesystem_event" {
+		s.notifyFilesystemTriggerConfigChanged()
+	}
+	return nil
 }
 
 func (s *Server) deleteWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
@@ -849,22 +889,9 @@ func (s *Server) updateWorkflowCandidate(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow candidate id"})
 		return
 	}
-	var payload workflowCandidateUpdatePayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
-		return
-	}
-	payload.Status = strings.TrimSpace(payload.Status)
-	payload.DecisionJSON = strings.TrimSpace(payload.DecisionJSON)
-	if payload.DecisionJSON == "" {
-		payload.DecisionJSON = "{}"
-	}
-	if !allowedCandidateReviewStatus(payload.Status) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported candidate status"})
-		return
-	}
-	if !json.Valid([]byte(payload.DecisionJSON)) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "decision JSON is invalid"})
+	payload, err := decodeWorkflowCandidateUpdate(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	tx, err := s.db.BeginTx(r.Context(), nil)
@@ -897,26 +924,7 @@ func (s *Server) updateWorkflowCandidate(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "update the remote source outbound policy, then retry the workflow run"})
 		return
 	}
-	if _, err := tx.ExecContext(r.Context(), `
-		UPDATE workflow_candidate
-		SET status = ?, decision_json = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, payload.Status, payload.DecisionJSON, id); err != nil {
-		writeError(w, err)
-		return
-	}
-	if err := workflow.InsertEvent(r.Context(), tx, runID, workflow.EventSpec{
-		NodeRunID: nullableInt64Value(nodeRunID),
-		Level:     "info",
-		Type:      "candidate.reviewed",
-		Message:   "Candidate " + payload.Status,
-		Detail: map[string]any{
-			"candidate_id":   id,
-			"candidate_type": candidateType,
-			"external_key":   externalKey,
-			"status":         payload.Status,
-		},
-	}); err != nil {
+	if err := updateWorkflowCandidateReview(r.Context(), tx, id, payload, runID, nodeRunID, candidateType, externalKey); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -936,6 +944,40 @@ func (s *Server) updateWorkflowCandidate(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func decodeWorkflowCandidateUpdate(r *http.Request) (workflowCandidateUpdatePayload, error) {
+	var payload workflowCandidateUpdatePayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		return workflowCandidateUpdatePayload{}, errors.New("invalid JSON body")
+	}
+	payload.Status = strings.TrimSpace(payload.Status)
+	payload.DecisionJSON = strings.TrimSpace(payload.DecisionJSON)
+	if payload.DecisionJSON == "" {
+		payload.DecisionJSON = "{}"
+	}
+	if !allowedCandidateReviewStatus(payload.Status) {
+		return workflowCandidateUpdatePayload{}, errors.New("unsupported candidate status")
+	}
+	if !json.Valid([]byte(payload.DecisionJSON)) {
+		return workflowCandidateUpdatePayload{}, errors.New("decision JSON is invalid")
+	}
+	return payload, nil
+}
+
+func updateWorkflowCandidateReview(ctx context.Context, tx *sql.Tx, candidateID int64, payload workflowCandidateUpdatePayload, runID int64, nodeRunID sql.NullInt64, candidateType, externalKey string) error {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_candidate
+		SET status = ?, decision_json = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, payload.Status, payload.DecisionJSON, candidateID); err != nil {
+		return err
+	}
+	return workflow.InsertEvent(ctx, tx, runID, workflow.EventSpec{
+		NodeRunID: nullableInt64Value(nodeRunID), Level: "info", Type: "candidate.reviewed",
+		Message: "Candidate " + payload.Status,
+		Detail:  map[string]any{"candidate_id": candidateID, "candidate_type": candidateType, "external_key": externalKey, "status": payload.Status},
+	})
 }
 
 func (s *Server) cleanupLocalWorkflowCandidate(w http.ResponseWriter, r *http.Request) {
@@ -978,6 +1020,11 @@ type archivedFetchRoot struct {
 	ArchivePath  string `json:"archive_path"`
 }
 
+type archivedFetchReviewRequest struct {
+	Action  string `json:"action"`
+	Confirm string `json:"confirm"`
+}
+
 func (s *Server) reviewArchivedFetchRoots(w http.ResponseWriter, r *http.Request) {
 	actor, ok := s.requirePermission(w, r, "workflows:run")
 	if !ok {
@@ -988,21 +1035,9 @@ func (s *Server) reviewArchivedFetchRoots(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow candidate id"})
 		return
 	}
-	var request struct {
-		Action  string `json:"action"`
-		Confirm string `json:"confirm"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
-		return
-	}
-	request.Action = strings.TrimSpace(request.Action)
-	if request.Action != "keep_archived" && request.Action != "delete_archived" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "action must be keep_archived or delete_archived"})
-		return
-	}
-	if request.Action == "delete_archived" && request.Confirm != "DELETE" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "permanent deletion requires DELETE confirmation"})
+	request, err := decodeArchivedFetchReviewRequest(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	if !s.requireWorkflowCandidateAccess(w, r, actor, id) {
@@ -1017,64 +1052,101 @@ func (s *Server) reviewArchivedFetchRoots(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "candidate is not an unresolved Fetch archive review"})
 		return
 	}
-	var payload struct {
-		ArchivedRoots []archivedFetchRoot `json:"archived_roots"`
-	}
-	if err := json.Unmarshal([]byte(candidate.PayloadJSON), &payload); err != nil || len(payload.ArchivedRoots) == 0 {
+	archivedRoots, err := archivedFetchRootsFromCandidate(candidate.PayloadJSON)
+	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "candidate has no archived roots"})
 		return
 	}
 	if request.Action == "delete_archived" {
-		for _, root := range payload.ArchivedRoots {
-			archive := filepath.ToSlash(strings.Trim(root.ArchivePath, "/"))
-			if !strings.HasPrefix(archive, ".kikoto-trash/fetch/") {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "archived root is outside the Fetch trash area"})
+		if err := s.deleteArchivedFetchRoots(archivedRoots); err != nil {
+			var pathErr *archivedFetchRootPathError
+			if errors.As(err, &pathErr) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 				return
 			}
-			_, err := safeDataPath(s.cfg.DataRoot, archive)
-			if err != nil {
-				writeError(w, err)
-				return
-			}
-			if _, err := removeDestructiveTree(s.cfg.DataRoot, archive); err != nil {
-				writeError(w, err)
-				return
-			}
-		}
-	}
-	tx, err := s.db.BeginTx(r.Context(), nil)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	defer func() { _ = tx.Rollback() }()
-	for _, root := range payload.ArchivedRoots {
-		if request.Action == "delete_archived" {
-			if _, err := tx.ExecContext(r.Context(), "DELETE FROM work_folder_location WHERE id = ? AND state = 'pending_cleanup' AND cleanup_run_id = ?", root.FolderID, candidate.RunID); err != nil {
-				writeError(w, err)
-				return
-			}
-		} else if _, err := tx.ExecContext(r.Context(), "UPDATE work_folder_location SET state = 'ignored', cleanup_run_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND state = 'pending_cleanup' AND cleanup_run_id = ?", root.FolderID, candidate.RunID); err != nil {
 			writeError(w, err)
 			return
 		}
 	}
-	decision := map[string]any{"action": request.Action, "archived_roots": len(payload.ArchivedRoots)}
-	if _, err := tx.ExecContext(r.Context(), "UPDATE workflow_candidate SET status = 'resolved', decision_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(decision), id); err != nil {
-		writeError(w, err)
-		return
-	}
-	if err := workflow.InsertEvent(r.Context(), tx, candidate.RunID, workflow.EventSpec{
-		Level: "info", Type: "candidate.fetch_archive_reviewed", Message: "Fetch archive " + request.Action, Detail: decision,
-	}); err != nil {
-		writeError(w, err)
-		return
-	}
-	if err := tx.Commit(); err != nil {
+	if err := s.resolveArchivedFetchReview(r.Context(), id, candidate.RunID, request.Action, archivedRoots); err != nil {
 		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"candidateId": id, "status": "resolved", "action": request.Action})
+}
+
+func decodeArchivedFetchReviewRequest(r *http.Request) (archivedFetchReviewRequest, error) {
+	var request archivedFetchReviewRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		return request, errors.New("invalid JSON body")
+	}
+	request.Action = strings.TrimSpace(request.Action)
+	if request.Action != "keep_archived" && request.Action != "delete_archived" {
+		return request, errors.New("action must be keep_archived or delete_archived")
+	}
+	if request.Action == "delete_archived" && request.Confirm != "DELETE" {
+		return request, errors.New("permanent deletion requires DELETE confirmation")
+	}
+	return request, nil
+}
+
+func archivedFetchRootsFromCandidate(raw string) ([]archivedFetchRoot, error) {
+	var payload struct {
+		ArchivedRoots []archivedFetchRoot `json:"archived_roots"`
+	}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil || len(payload.ArchivedRoots) == 0 {
+		return nil, errors.New("candidate has no archived roots")
+	}
+	return payload.ArchivedRoots, nil
+}
+
+type archivedFetchRootPathError struct{}
+
+func (err *archivedFetchRootPathError) Error() string {
+	return "archived root is outside the Fetch trash area"
+}
+
+func (s *Server) deleteArchivedFetchRoots(roots []archivedFetchRoot) error {
+	for _, root := range roots {
+		archive := filepath.ToSlash(strings.Trim(root.ArchivePath, "/"))
+		if !strings.HasPrefix(archive, ".kikoto-trash/fetch/") {
+			return &archivedFetchRootPathError{}
+		}
+		if _, err := safeDataPath(s.cfg.DataRoot, archive); err != nil {
+			return err
+		}
+		if _, err := removeDestructiveTree(s.cfg.DataRoot, archive); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Server) resolveArchivedFetchReview(ctx context.Context, candidateID, runID int64, action string, roots []archivedFetchRoot) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, root := range roots {
+		if action == "delete_archived" {
+			if _, err := tx.ExecContext(ctx, "DELETE FROM work_folder_location WHERE id = ? AND state = 'pending_cleanup' AND cleanup_run_id = ?", root.FolderID, runID); err != nil {
+				return err
+			}
+		} else if _, err := tx.ExecContext(ctx, "UPDATE work_folder_location SET state = 'ignored', cleanup_run_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND state = 'pending_cleanup' AND cleanup_run_id = ?", root.FolderID, runID); err != nil {
+			return err
+		}
+	}
+	decision := map[string]any{"action": action, "archived_roots": len(roots)}
+	if _, err := tx.ExecContext(ctx, "UPDATE workflow_candidate SET status = 'resolved', decision_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(decision), candidateID); err != nil {
+		return err
+	}
+	if err := workflow.InsertEvent(ctx, tx, runID, workflow.EventSpec{
+		Level: "info", Type: "candidate.fetch_archive_reviewed", Message: "Fetch archive " + action, Detail: decision,
+	}); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func candidateNeedsResolution(status string) bool {
@@ -1471,59 +1543,14 @@ func (s *Server) cancelWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "only queued or running workflow runs can be cancelled"})
 		return
 	}
-	summary := mergeJSONObjects(run.SummaryJSON, map[string]any{"cancelled": true, "cancel_reason": "manual"})
-	if _, err := tx.ExecContext(r.Context(), `
-		UPDATE workflow_node_run
-		SET status = 'cancelled',
-			error_message = CASE WHEN error_message <> '' THEN error_message ELSE 'cancelled manually' END,
-			finished_at = CURRENT_TIMESTAMP
-		WHERE workflow_run_id = ?
-			AND status IN ('queued', 'running')
-	`, id); err != nil {
-		writeError(w, err)
-		return
-	}
-	if _, err := tx.ExecContext(r.Context(), `
-		UPDATE workflow_job
-		SET status = 'cancelled',
-			error_message = CASE WHEN error_message <> '' THEN error_message ELSE 'cancelled manually' END,
-			locked_by = '', locked_at = NULL, heartbeat_at = NULL,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE workflow_run_id = ?
-			AND status IN ('queued', 'running')
-	`, id); err != nil {
-		writeError(w, err)
-		return
-	}
-	result, err := tx.ExecContext(r.Context(), `
-		UPDATE workflow_run
-		SET status = 'cancelled',
-			summary_json = ?,
-			finished_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-			AND status IN ('queued', 'running')
-	`, mustJSON(summary), id)
+	changed, err := s.cancelWorkflowRunTx(r.Context(), tx, run, id)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	if affected == 0 {
+	if !changed {
 		_ = tx.Rollback()
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "workflow run has already finished"})
-		return
-	}
-	if err := workflow.InsertEvent(r.Context(), tx, id, workflow.EventSpec{
-		Level:   "warn",
-		Type:    "run.cancelled",
-		Message: "Run cancelled manually",
-		Detail:  map[string]any{"previous_status": run.Status},
-	}); err != nil {
-		writeError(w, err)
 		return
 	}
 	if err := tx.Commit(); err != nil {
@@ -1532,6 +1559,50 @@ func (s *Server) cancelWorkflowRun(w http.ResponseWriter, r *http.Request) {
 	}
 	s.cancelActiveWorkflowJob(id)
 	writeJSON(w, http.StatusOK, workflowRunActionResult{RunID: id, Status: "cancelled", Message: "run cancelled"})
+}
+
+func (s *Server) cancelWorkflowRunTx(ctx context.Context, tx *sql.Tx, run workflowRunRecord, runID int64) (bool, error) {
+	summary := mergeJSONObjects(run.SummaryJSON, map[string]any{"cancelled": true, "cancel_reason": "manual"})
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_node_run
+		SET status = 'cancelled',
+			error_message = CASE WHEN error_message <> '' THEN error_message ELSE 'cancelled manually' END,
+			finished_at = CURRENT_TIMESTAMP
+		WHERE workflow_run_id = ?
+			AND status IN ('queued', 'running')
+	`, runID); err != nil {
+		return false, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_job
+		SET status = 'cancelled',
+			error_message = CASE WHEN error_message <> '' THEN error_message ELSE 'cancelled manually' END,
+			locked_by = '', locked_at = NULL, heartbeat_at = NULL,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE workflow_run_id = ?
+			AND status IN ('queued', 'running')
+	`, runID); err != nil {
+		return false, err
+	}
+	result, err := tx.ExecContext(ctx, `
+		UPDATE workflow_run
+		SET status = 'cancelled', summary_json = ?, finished_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND status IN ('queued', 'running')
+	`, mustJSON(summary), runID)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil || affected == 0 {
+		return affected > 0, err
+	}
+	if err := workflow.InsertEvent(ctx, tx, runID, workflow.EventSpec{
+		Level: "warn", Type: "run.cancelled", Message: "Run cancelled manually",
+		Detail: map[string]any{"previous_status": run.Status},
+	}); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Server) retryWorkflowRun(w http.ResponseWriter, r *http.Request) {
@@ -1566,64 +1637,21 @@ func (s *Server) retryWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "running workflow runs cannot be retried"})
 		return
 	}
-	var newRunID int64
-	resumedExistingRun := false
-	switch run.WorkflowCode {
-	case "local_library_scan":
-		if !userHasPermission(actor, "metadata:sync") {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
-			return
-		}
-		var payload localScanJobPayload
-		var inputJSON string
-		if err := s.db.QueryRowContext(r.Context(), "SELECT input_json FROM workflow_run WHERE id = ?", id).Scan(&inputJSON); err != nil {
-			writeError(w, err)
-			return
-		}
-		if err := json.Unmarshal([]byte(inputJSON), &payload); err != nil {
-			writeError(w, err)
-			return
-		}
-		result, err := s.enqueueLocalScanWithOptions(r.Context(), "manual", "retry_run", 0, payload.FollowUpRun)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		newRunID = result.RunID
-	case "metadata_sync":
-		if !userHasPermission(actor, "metadata:sync") {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
-			return
-		}
-		result, err := s.enqueueDLsiteMetadataSync(r.Context(), "manual", "retry_run")
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		newRunID = result.RunID
-	default:
-		allowed, err := s.canRetryCustomWorkflowRun(r.Context(), actor, id)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		if !allowed {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
-			return
-		}
-		if err := s.retryFailedWorkflowJob(r.Context(), id); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				writeJSON(w, http.StatusConflict, map[string]string{"error": "this workflow has no recoverable failed job"})
-				return
-			}
-			writeError(w, err)
-			return
-		}
-		newRunID = id
-		resumedExistingRun = true
+	dispatch, err := s.dispatchWorkflowRetry(r.Context(), actor, run, id)
+	if errors.Is(err, errWorkflowRetryPermission) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+		return
 	}
-	detail := map[string]any{"new_run_id": newRunID}
-	if resumedExistingRun {
+	if errors.Is(err, errWorkflowRetryNoRecoverableJob) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "this workflow has no recoverable failed job"})
+		return
+	}
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	detail := map[string]any{"new_run_id": dispatch.NewRunID}
+	if dispatch.ResumedExistingRun {
 		detail = map[string]any{"resumed_run_id": id}
 	}
 	if err := s.recordWorkflowRunEvent(r.Context(), id, "info", "run.retry_requested", "Retry started", detail); err != nil {
@@ -1631,10 +1659,69 @@ func (s *Server) retryWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result := workflowRunActionResult{RunID: id, Status: "retried", Message: "retry started"}
-	if !resumedExistingRun {
-		result.NewRunID = &newRunID
+	if !dispatch.ResumedExistingRun {
+		result.NewRunID = &dispatch.NewRunID
 	}
 	writeJSON(w, http.StatusAccepted, result)
+}
+
+var (
+	errWorkflowRetryPermission       = errors.New("workflow retry permission denied")
+	errWorkflowRetryNoRecoverableJob = errors.New("workflow has no recoverable failed job")
+)
+
+type workflowRetryDispatchResult struct {
+	NewRunID           int64
+	ResumedExistingRun bool
+}
+
+func (s *Server) dispatchWorkflowRetry(ctx context.Context, actor currentUser, run workflowRunRecord, runID int64) (workflowRetryDispatchResult, error) {
+	switch run.WorkflowCode {
+	case "local_library_scan":
+		if !userHasPermission(actor, "metadata:sync") {
+			return workflowRetryDispatchResult{}, errWorkflowRetryPermission
+		}
+		newRunID, err := s.retryLocalLibraryScan(ctx, runID)
+		return workflowRetryDispatchResult{NewRunID: newRunID}, err
+	case "metadata_sync":
+		if !userHasPermission(actor, "metadata:sync") {
+			return workflowRetryDispatchResult{}, errWorkflowRetryPermission
+		}
+		result, err := s.enqueueDLsiteMetadataSync(ctx, "manual", "retry_run")
+		return workflowRetryDispatchResult{NewRunID: result.RunID}, err
+	default:
+		return s.retryCustomWorkflow(ctx, actor, runID)
+	}
+}
+
+func (s *Server) retryLocalLibraryScan(ctx context.Context, runID int64) (int64, error) {
+	var payload localScanJobPayload
+	var inputJSON string
+	if err := s.db.QueryRowContext(ctx, "SELECT input_json FROM workflow_run WHERE id = ?", runID).Scan(&inputJSON); err != nil {
+		return 0, err
+	}
+	if err := json.Unmarshal([]byte(inputJSON), &payload); err != nil {
+		return 0, err
+	}
+	result, err := s.enqueueLocalScanWithOptions(ctx, "manual", "retry_run", 0, payload.FollowUpRun)
+	return result.RunID, err
+}
+
+func (s *Server) retryCustomWorkflow(ctx context.Context, actor currentUser, runID int64) (workflowRetryDispatchResult, error) {
+	allowed, err := s.canRetryCustomWorkflowRun(ctx, actor, runID)
+	if err != nil {
+		return workflowRetryDispatchResult{}, err
+	}
+	if !allowed {
+		return workflowRetryDispatchResult{}, errWorkflowRetryPermission
+	}
+	if err := s.retryFailedWorkflowJob(ctx, runID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return workflowRetryDispatchResult{}, errWorkflowRetryNoRecoverableJob
+		}
+		return workflowRetryDispatchResult{}, err
+	}
+	return workflowRetryDispatchResult{NewRunID: runID, ResumedExistingRun: true}, nil
 }
 
 type workflowRunOwnershipQuerier interface {
@@ -1878,14 +1965,8 @@ func decodeWorkflowTriggerPayload(w http.ResponseWriter, r *http.Request) (workf
 }
 
 func validateWorkflowDefinitionPayload(payload workflowDefinitionPayload) error {
-	if !workflowCodePattern.MatchString(payload.Code) {
-		return fmt.Errorf("workflow code must be lowercase snake_case and 3-64 characters")
-	}
-	if payload.DisplayName == "" {
-		return fmt.Errorf("display name is required")
-	}
-	if payload.DefinitionJSON == "" {
-		return fmt.Errorf("definition JSON is required")
+	if err := validateWorkflowDefinitionMetadata(payload); err != nil {
+		return err
 	}
 	var versionProbe struct {
 		SchemaVersion int `json:"schemaVersion"`
@@ -1900,15 +1981,36 @@ func validateWorkflowDefinitionPayload(payload workflowDefinitionPayload) error 
 	if versionProbe.SchemaVersion != 0 {
 		return fmt.Errorf("unsupported workflow schemaVersion: %d", versionProbe.SchemaVersion)
 	}
-	var definition struct {
-		Nodes []struct {
-			ID          string `json:"id"`
-			Type        string `json:"type"`
-			DisplayName string `json:"displayName"`
-			Config      any    `json:"config"`
-		} `json:"nodes"`
+	return validateLegacyWorkflowDefinition(payload.DefinitionJSON)
+}
+
+func validateWorkflowDefinitionMetadata(payload workflowDefinitionPayload) error {
+	if !workflowCodePattern.MatchString(payload.Code) {
+		return fmt.Errorf("workflow code must be lowercase snake_case and 3-64 characters")
 	}
-	if err := json.Unmarshal([]byte(payload.DefinitionJSON), &definition); err != nil {
+	if payload.DisplayName == "" {
+		return fmt.Errorf("display name is required")
+	}
+	if payload.DefinitionJSON == "" {
+		return fmt.Errorf("definition JSON is required")
+	}
+	return nil
+}
+
+type legacyWorkflowNodePayload struct {
+	ID          string `json:"id"`
+	Type        string `json:"type"`
+	DisplayName string `json:"displayName"`
+	Config      any    `json:"config"`
+}
+
+type legacyWorkflowDefinitionPayload struct {
+	Nodes []legacyWorkflowNodePayload `json:"nodes"`
+}
+
+func validateLegacyWorkflowDefinition(raw string) error {
+	var definition legacyWorkflowDefinitionPayload
+	if err := json.Unmarshal([]byte(raw), &definition); err != nil {
 		return fmt.Errorf("definition JSON is invalid")
 	}
 	if len(definition.Nodes) == 0 {
@@ -1916,22 +2018,29 @@ func validateWorkflowDefinitionPayload(payload workflowDefinitionPayload) error 
 	}
 	seen := map[string]bool{}
 	for _, node := range definition.Nodes {
-		nodeID := strings.TrimSpace(node.ID)
-		nodeType := strings.TrimSpace(node.Type)
-		if nodeID == "" {
-			return fmt.Errorf("node id is required")
+		if err := validateLegacyWorkflowNode(node, seen); err != nil {
+			return err
 		}
-		if seen[nodeID] {
-			return fmt.Errorf("node id must be unique")
-		}
-		seen[nodeID] = true
-		if !allowedWorkflowNodeTypes[nodeType] {
-			return fmt.Errorf("unsupported node type: %s", nodeType)
-		}
-		if node.Config != nil {
-			if _, ok := node.Config.(map[string]any); !ok {
-				return fmt.Errorf("node config must be an object")
-			}
+	}
+	return nil
+}
+
+func validateLegacyWorkflowNode(node legacyWorkflowNodePayload, seen map[string]bool) error {
+	nodeID := strings.TrimSpace(node.ID)
+	nodeType := strings.TrimSpace(node.Type)
+	if nodeID == "" {
+		return fmt.Errorf("node id is required")
+	}
+	if seen[nodeID] {
+		return fmt.Errorf("node id must be unique")
+	}
+	seen[nodeID] = true
+	if !allowedWorkflowNodeTypes[nodeType] {
+		return fmt.Errorf("unsupported node type: %s", nodeType)
+	}
+	if node.Config != nil {
+		if _, ok := node.Config.(map[string]any); !ok {
+			return fmt.Errorf("node config must be an object")
 		}
 	}
 	return nil

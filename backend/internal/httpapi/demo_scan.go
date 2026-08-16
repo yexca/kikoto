@@ -68,44 +68,18 @@ func (s *Server) RunDemoLibraryScan(ctx context.Context) (DemoLibraryScanResult,
 		)
 
 	for _, folder := range folders {
-		code := strings.ToUpper(strings.TrimSpace(folder.Code))
-		if duplicateCodes[code] {
+		outcome := s.processDemoLibraryFolder(ctx, syncer, fileSourceID, folder, duplicateCodes)
+		if outcome.Discarded {
 			result.DiscardedWorks++
-			continue
 		}
-
-		product, fetchErr := syncer.FetchProduct(ctx, code)
-		if fetchErr != nil {
+		if outcome.Failure != "" {
 			result.FailedWorks++
-			result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, fetchErr.Error()))
-			continue
+			result.Failures = append(result.Failures, outcome.Failure)
 		}
-		if fetchedCode := demoProductCode(product); !strings.EqualFold(fetchedCode, code) {
-			result.FailedWorks++
-			result.Failures = append(result.Failures, fmt.Sprintf("%s: provider returned mismatched code %q", code, fetchedCode))
-			continue
+		if outcome.Eligible {
+			result.EligibleWorks++
+			result.IndexedFiles += outcome.IndexedFiles
 		}
-		permanentlyFree := product.IsPermanentlyFree()
-		if !contentpolicy.IsAllAges(product.AgeCategoryString) || permanentlyFree == nil || !*permanentlyFree {
-			result.DiscardedWorks++
-			continue
-		}
-
-		workID, syncErr := syncer.SyncProductForDemo(ctx, product)
-		if syncErr == nil {
-			syncErr = s.storeDemoLocalWork(ctx, fileSourceID, workID, folder)
-		}
-		if syncErr == nil {
-			syncErr = s.syncVoiceCreditsForWorkFromSnapshots(ctx, workID)
-		}
-		if syncErr != nil {
-			_ = s.hideDemoWork(ctx, workID)
-			result.FailedWorks++
-			result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, syncErr.Error()))
-			continue
-		}
-		result.EligibleWorks++
-		result.IndexedFiles += len(folder.Files)
 	}
 
 	if result.EligibleWorks > 0 {
@@ -113,12 +87,7 @@ func (s *Server) RunDemoLibraryScan(ctx context.Context) (DemoLibraryScanResult,
 			result.Failures = append(result.Failures, fmt.Sprintf("sync demo creator metadata: %s", err.Error()))
 		}
 	}
-	if len(result.Failures) > 0 {
-		result.Status = "partial"
-		if result.EligibleWorks == 0 && result.DiscardedWorks == 0 {
-			result.Status = "failed"
-		}
-	}
+	finalizeDemoLibraryScanStatus(&result)
 
 	runID, err := s.recordDemoLibraryScan(ctx, scanDepth, summary, result)
 	if err != nil {
@@ -126,6 +95,53 @@ func (s *Server) RunDemoLibraryScan(ctx context.Context) (DemoLibraryScanResult,
 	}
 	result.RunID = runID
 	return result, nil
+}
+
+type demoLibraryFolderOutcome struct {
+	Eligible     bool
+	Discarded    bool
+	IndexedFiles int
+	Failure      string
+}
+
+func (s *Server) processDemoLibraryFolder(ctx context.Context, syncer *metasync.DLsiteSyncer, fileSourceID int64, folder localfs.WorkFolder, duplicateCodes map[string]bool) demoLibraryFolderOutcome {
+	code := strings.ToUpper(strings.TrimSpace(folder.Code))
+	if duplicateCodes[code] {
+		return demoLibraryFolderOutcome{Discarded: true}
+	}
+	product, err := syncer.FetchProduct(ctx, code)
+	if err != nil {
+		return demoLibraryFolderOutcome{Failure: fmt.Sprintf("%s: %s", code, err.Error())}
+	}
+	if fetchedCode := demoProductCode(product); !strings.EqualFold(fetchedCode, code) {
+		return demoLibraryFolderOutcome{Failure: fmt.Sprintf("%s: provider returned mismatched code %q", code, fetchedCode)}
+	}
+	permanentlyFree := product.IsPermanentlyFree()
+	if !contentpolicy.IsAllAges(product.AgeCategoryString) || permanentlyFree == nil || !*permanentlyFree {
+		return demoLibraryFolderOutcome{Discarded: true}
+	}
+	workID, err := syncer.SyncProductForDemo(ctx, product)
+	if err == nil {
+		err = s.storeDemoLocalWork(ctx, fileSourceID, workID, folder)
+	}
+	if err == nil {
+		err = s.syncVoiceCreditsForWorkFromSnapshots(ctx, workID)
+	}
+	if err != nil {
+		_ = s.hideDemoWork(ctx, workID)
+		return demoLibraryFolderOutcome{Failure: fmt.Sprintf("%s: %s", code, err.Error())}
+	}
+	return demoLibraryFolderOutcome{Eligible: true, IndexedFiles: len(folder.Files)}
+}
+
+func finalizeDemoLibraryScanStatus(result *DemoLibraryScanResult) {
+	if len(result.Failures) == 0 {
+		return
+	}
+	result.Status = "partial"
+	if result.EligibleWorks == 0 && result.DiscardedWorks == 0 {
+		result.Status = "failed"
+	}
 }
 
 func (s *Server) prepareDemoLibraryScan(ctx context.Context, scanDepth int) (int64, error) {

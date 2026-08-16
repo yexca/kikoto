@@ -90,62 +90,15 @@ func (s *Server) updateAvailabilityWatch(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if payload.SourceID != nil && *payload.SourceID > 0 {
-		source, err := s.loadRemoteSourceForUse(r.Context(), *payload.SourceID)
-		if err != nil || !source.Enabled || !isKikoeruSourceType(source.SourceType) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "sourceId must identify an enabled compatible remote source"})
-			return
-		}
-	} else {
+	if err := s.validateAvailabilityWatchSource(r.Context(), payload.SourceID); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if payload.SourceID == nil || *payload.SourceID <= 0 {
 		payload.SourceID = nil
 	}
 	excluded := normalizeExtensionList(payload.ExcludeExtensions)
-	tx, err := s.db.BeginTx(r.Context(), nil)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	defer tx.Rollback()
-	_, err = tx.ExecContext(r.Context(), `
-		INSERT INTO availability_watch (owner_user_id, enabled, interval_minutes, action, source_id, exclude_extensions_json)
-		VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT(owner_user_id) DO UPDATE SET
-			enabled = excluded.enabled, interval_minutes = excluded.interval_minutes, action = excluded.action,
-			source_id = excluded.source_id, exclude_extensions_json = excluded.exclude_extensions_json,
-			revision = availability_watch.revision + 1, updated_at = CURRENT_TIMESTAMP
-	`, actor.ID, payload.Enabled, payload.IntervalMinutes, payload.Action, payload.SourceID, mustJSON(excluded))
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	var watchID int64
-	if err := tx.QueryRowContext(r.Context(), "SELECT id FROM availability_watch WHERE owner_user_id = ?", actor.ID).Scan(&watchID); err != nil {
-		writeError(w, err)
-		return
-	}
-	if _, err := tx.ExecContext(r.Context(), `
-		UPDATE availability_watch_target
-		SET active = 0, state = 'disabled', next_check_at = NULL, revision = revision + 1, updated_at = CURRENT_TIMESTAMP
-		WHERE watch_id = ? AND active = 1
-	`, watchID); err != nil {
-		writeError(w, err)
-		return
-	}
-	for _, code := range codes {
-		if _, err := tx.ExecContext(r.Context(), `
-			INSERT INTO availability_watch_target (watch_id, work_code, active, state, next_check_at)
-			VALUES (?, ?, 1, 'monitoring', CURRENT_TIMESTAMP)
-			ON CONFLICT(watch_id, work_code) DO UPDATE SET
-				active = 1, state = 'monitoring', next_check_at = CURRENT_TIMESTAMP,
-				last_status = '', last_error = '', available_source_id = NULL,
-				track_run_id = NULL, fetch_run_id = NULL, revision = availability_watch_target.revision + 1,
-				updated_at = CURRENT_TIMESTAMP
-		`, watchID, code); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if err := tx.Commit(); err != nil {
+	if err := s.persistAvailabilityWatchUpdate(r.Context(), actor.ID, payload, codes, excluded); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -155,6 +108,67 @@ func (s *Server) updateAvailabilityWatch(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, view)
+}
+
+func (s *Server) validateAvailabilityWatchSource(ctx context.Context, sourceID *int64) error {
+	if sourceID == nil || *sourceID <= 0 {
+		return nil
+	}
+	source, err := s.loadRemoteSourceForUse(ctx, *sourceID)
+	if err != nil || !source.Enabled || !isKikoeruSourceType(source.SourceType) {
+		return fmt.Errorf("sourceId must identify an enabled compatible remote source")
+	}
+	return nil
+}
+
+func (s *Server) persistAvailabilityWatchUpdate(ctx context.Context, ownerID int64, payload availabilityWatchUpdate, codes, excluded []string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO availability_watch (owner_user_id, enabled, interval_minutes, action, source_id, exclude_extensions_json)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(owner_user_id) DO UPDATE SET
+			enabled = excluded.enabled, interval_minutes = excluded.interval_minutes, action = excluded.action,
+			source_id = excluded.source_id, exclude_extensions_json = excluded.exclude_extensions_json,
+			revision = availability_watch.revision + 1, updated_at = CURRENT_TIMESTAMP
+	`, ownerID, payload.Enabled, payload.IntervalMinutes, payload.Action, payload.SourceID, mustJSON(excluded)); err != nil {
+		return err
+	}
+	var watchID int64
+	if err := tx.QueryRowContext(ctx, "SELECT id FROM availability_watch WHERE owner_user_id = ?", ownerID).Scan(&watchID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE availability_watch_target
+		SET active = 0, state = 'disabled', next_check_at = NULL, revision = revision + 1, updated_at = CURRENT_TIMESTAMP
+		WHERE watch_id = ? AND active = 1
+	`, watchID); err != nil {
+		return err
+	}
+	if err := upsertAvailabilityWatchTargets(ctx, tx, watchID, codes); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func upsertAvailabilityWatchTargets(ctx context.Context, tx *sql.Tx, watchID int64, codes []string) error {
+	for _, code := range codes {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO availability_watch_target (watch_id, work_code, active, state, next_check_at)
+			VALUES (?, ?, 1, 'monitoring', CURRENT_TIMESTAMP)
+			ON CONFLICT(watch_id, work_code) DO UPDATE SET
+				active = 1, state = 'monitoring', next_check_at = CURRENT_TIMESTAMP,
+				last_status = '', last_error = '', available_source_id = NULL,
+				track_run_id = NULL, fetch_run_id = NULL, revision = availability_watch_target.revision + 1,
+				updated_at = CURRENT_TIMESTAMP
+		`, watchID, code); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Server) loadAvailabilityWatch(ctx context.Context, ownerUserID int64) (availabilityWatchView, error) {
@@ -250,20 +264,8 @@ func (s *Server) processAvailabilityWatchTick(ctx context.Context) error {
 }
 
 func (s *Server) checkNextAvailabilityWatchTarget(ctx context.Context) error {
-	var target dueAvailabilityWatchTarget
-	err := s.db.QueryRowContext(ctx, `
-		SELECT target.id, watch.id, watch.owner_user_id, target.work_code, watch.action, watch.source_id,
-			watch.interval_minutes, target.revision, target.availability_epoch, target.last_status, watch.exclude_extensions_json
-		FROM availability_watch_target AS target
-		INNER JOIN availability_watch AS watch ON watch.id = target.watch_id
-		WHERE watch.enabled = 1 AND target.active = 1 AND target.state IN ('monitoring', 'error')
-			AND (target.next_check_at IS NULL OR target.next_check_at <= CURRENT_TIMESTAMP)
-		ORDER BY COALESCE(target.next_check_at, target.created_at), target.id LIMIT 1
-	`).Scan(&target.ID, &target.WatchID, &target.OwnerUserID, &target.WorkCode, &target.Action, &target.SourceID, &target.IntervalMinutes, &target.Revision, &target.Epoch, &target.LastStatus, &target.ExcludeExtensionsJSON)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
+	target, found, err := s.loadDueAvailabilityWatchTarget(ctx)
+	if err != nil || !found {
 		return err
 	}
 	onlySourceID := int64(0)
@@ -280,18 +282,45 @@ func (s *Server) checkNextAvailabilityWatchTarget(ctx context.Context) error {
 		_, updateErr := s.db.ExecContext(ctx, `UPDATE availability_watch_target SET state = 'error', last_error = ?, next_check_at = datetime('now', '+5 minutes'), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND active = 1 AND revision = ?`, "Availability check failed", target.ID, target.Revision)
 		return updateErr
 	}
-	var available *sourceAvailabilitySummary
-	for index := range response.Sources {
-		if response.Sources[index].Status == "available" {
-			available = &response.Sources[index]
-			break
-		}
-	}
+	available := firstAvailableSource(response)
 	if available == nil {
 		modifier := fmt.Sprintf("+%d minutes", target.IntervalMinutes)
 		_, err = s.db.ExecContext(ctx, `UPDATE availability_watch_target SET state = 'monitoring', last_checked_at = CURRENT_TIMESTAMP, last_status = 'not_found', last_error = '', next_check_at = datetime('now', ?), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND active = 1 AND revision = ?`, modifier, target.ID, target.Revision)
 		return err
 	}
+	return s.markAvailabilityWatchTargetAvailable(ctx, target, available)
+}
+
+func (s *Server) loadDueAvailabilityWatchTarget(ctx context.Context) (dueAvailabilityWatchTarget, bool, error) {
+	var target dueAvailabilityWatchTarget
+	err := s.db.QueryRowContext(ctx, `
+		SELECT target.id, watch.id, watch.owner_user_id, target.work_code, watch.action, watch.source_id,
+			watch.interval_minutes, target.revision, target.availability_epoch, target.last_status, watch.exclude_extensions_json
+		FROM availability_watch_target AS target
+		INNER JOIN availability_watch AS watch ON watch.id = target.watch_id
+		WHERE watch.enabled = 1 AND target.active = 1 AND target.state IN ('monitoring', 'error')
+			AND (target.next_check_at IS NULL OR target.next_check_at <= CURRENT_TIMESTAMP)
+		ORDER BY COALESCE(target.next_check_at, target.created_at), target.id LIMIT 1
+	`).Scan(&target.ID, &target.WatchID, &target.OwnerUserID, &target.WorkCode, &target.Action, &target.SourceID, &target.IntervalMinutes, &target.Revision, &target.Epoch, &target.LastStatus, &target.ExcludeExtensionsJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return dueAvailabilityWatchTarget{}, false, nil
+	}
+	if err != nil {
+		return dueAvailabilityWatchTarget{}, false, err
+	}
+	return target, true, nil
+}
+
+func firstAvailableSource(response sourceAvailabilityResponse) *sourceAvailabilitySummary {
+	for index := range response.Sources {
+		if response.Sources[index].Status == "available" {
+			return &response.Sources[index]
+		}
+	}
+	return nil
+}
+
+func (s *Server) markAvailabilityWatchTargetAvailable(ctx context.Context, target dueAvailabilityWatchTarget, available *sourceAvailabilitySummary) error {
 	epoch := target.Epoch
 	if target.LastStatus != "available" {
 		epoch++
@@ -322,9 +351,36 @@ func (s *Server) checkNextAvailabilityWatchTarget(ctx context.Context) error {
 }
 
 func (s *Server) dispatchNextAvailabilityWatchAction(ctx context.Context) error {
-	var outboxID, targetID, ownerUserID, sourceID, trackRunID int64
-	var epoch, retryCount int
-	var action, code, rawExcluded string
+	action, ok, err := s.loadNextAvailabilityWatchAction(ctx)
+	if err != nil || !ok {
+		return err
+	}
+	claimed, err := s.claimAvailabilityWatchAction(ctx, action.OutboxID)
+	if err != nil || !claimed {
+		return err
+	}
+	trackID, fetchID, err := s.executeAvailabilityWatchAction(ctx, action)
+	if err != nil {
+		return s.retryAvailabilityWatchAction(ctx, action.OutboxID, action.TargetID, action.RetryCount, err)
+	}
+	return s.completeAvailabilityWatchAction(ctx, action, trackID, fetchID)
+}
+
+type availabilityWatchAction struct {
+	OutboxID    int64
+	TargetID    int64
+	OwnerUserID int64
+	SourceID    int64
+	TrackRunID  int64
+	Epoch       int64
+	RetryCount  int
+	Action      string
+	Code        string
+	RawExcluded string
+}
+
+func (s *Server) loadNextAvailabilityWatchAction(ctx context.Context) (availabilityWatchAction, bool, error) {
+	var action availabilityWatchAction
 	err := s.db.QueryRowContext(ctx, `
 		SELECT outbox.id, target.id, watch.owner_user_id, target.available_source_id, COALESCE(target.track_run_id, 0),
 			outbox.availability_epoch, outbox.retry_count, outbox.action, target.work_code, watch.exclude_extensions_json
@@ -334,55 +390,66 @@ func (s *Server) dispatchNextAvailabilityWatchAction(ctx context.Context) error 
 		WHERE outbox.status = 'pending' AND (outbox.next_attempt_at IS NULL OR outbox.next_attempt_at <= CURRENT_TIMESTAMP)
 			AND target.active = 1 AND target.availability_epoch = outbox.availability_epoch
 		ORDER BY outbox.id LIMIT 1
-	`).Scan(&outboxID, &targetID, &ownerUserID, &sourceID, &trackRunID, &epoch, &retryCount, &action, &code, &rawExcluded)
+	`).Scan(&action.OutboxID, &action.TargetID, &action.OwnerUserID, &action.SourceID, &action.TrackRunID, &action.Epoch, &action.RetryCount, &action.Action, &action.Code, &action.RawExcluded)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil
+		return availabilityWatchAction{}, false, nil
 	}
 	if err != nil {
-		return err
+		return availabilityWatchAction{}, false, err
 	}
+	return action, true, nil
+}
+
+func (s *Server) claimAvailabilityWatchAction(ctx context.Context, outboxID int64) (bool, error) {
 	result, err := s.db.ExecContext(ctx, `UPDATE availability_watch_outbox SET status = 'running', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'`, outboxID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if affected, _ := result.RowsAffected(); affected == 0 {
-		return nil
+		return false, nil
 	}
-	var trackID, fetchID int64
-	if (action == "track" || action == "track_fetch") && trackRunID == 0 {
-		tracked, runErr := s.runRemoteWorkSync(ctx, sourceID, code, fmt.Sprintf("availability_watch:%d:%d:track", targetID, epoch))
-		if runErr != nil {
-			return s.retryAvailabilityWatchAction(ctx, outboxID, targetID, retryCount, runErr)
+	return true, nil
+}
+
+func (s *Server) executeAvailabilityWatchAction(ctx context.Context, action availabilityWatchAction) (int64, int64, error) {
+	trackID := action.TrackRunID
+	if (action.Action == "track" || action.Action == "track_fetch") && action.TrackRunID == 0 {
+		tracked, err := s.runRemoteWorkSync(ctx, action.SourceID, action.Code, fmt.Sprintf("availability_watch:%d:%d:track", action.TargetID, action.Epoch))
+		if err != nil {
+			return 0, 0, err
 		}
 		trackID = tracked.RunID
-		if _, err := s.db.ExecContext(ctx, `UPDATE availability_watch_target SET track_run_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND availability_epoch = ?`, trackID, targetID, epoch); err != nil {
-			return err
+		if _, err := s.db.ExecContext(ctx, `UPDATE availability_watch_target SET track_run_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND availability_epoch = ?`, trackID, action.TargetID, action.Epoch); err != nil {
+			return 0, 0, err
 		}
-	} else {
-		trackID = trackRunID
 	}
-	if action == "fetch" || action == "track_fetch" {
+	var fetchID int64
+	if action.Action == "fetch" || action.Action == "track_fetch" {
 		var excluded []string
-		_ = json.Unmarshal([]byte(rawExcluded), &excluded)
-		paths, loadErr := s.availabilityWatchFetchPaths(ctx, sourceID, code, excluded)
-		if loadErr != nil {
-			return s.retryAvailabilityWatchAction(ctx, outboxID, targetID, retryCount, loadErr)
+		_ = json.Unmarshal([]byte(action.RawExcluded), &excluded)
+		paths, err := s.availabilityWatchFetchPaths(ctx, action.SourceID, action.Code, excluded)
+		if err != nil {
+			return 0, 0, err
 		}
-		fetched, fetchErr := s.enqueueRemoteWorkSave(ctx, sourceID, code, paths, nil, "", fmt.Sprintf("availability-watch:%d:%d:fetch", targetID, epoch), nil, 0, ownerUserID, workflow.JobPriorityBackground)
-		if fetchErr != nil {
-			return s.retryAvailabilityWatchAction(ctx, outboxID, targetID, retryCount, fetchErr)
+		fetched, err := s.enqueueRemoteWorkSave(ctx, action.SourceID, action.Code, paths, nil, "", fmt.Sprintf("availability-watch:%d:%d:fetch", action.TargetID, action.Epoch), nil, 0, action.OwnerUserID, workflow.JobPriorityBackground)
+		if err != nil {
+			return 0, 0, err
 		}
 		fetchID = fetched.RunID
 	}
+	return trackID, fetchID, nil
+}
+
+func (s *Server) completeAvailabilityWatchAction(ctx context.Context, action availabilityWatchAction, trackID, fetchID int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `UPDATE availability_watch_outbox SET status = 'succeeded', error_message = '', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, outboxID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE availability_watch_outbox SET status = 'succeeded', error_message = '', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, action.OutboxID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE availability_watch_target SET state = 'completed', track_run_id = COALESCE(NULLIF(?, 0), track_run_id), fetch_run_id = COALESCE(NULLIF(?, 0), fetch_run_id), last_error = '', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND availability_epoch = ?`, trackID, fetchID, targetID, epoch); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE availability_watch_target SET state = 'completed', track_run_id = COALESCE(NULLIF(?, 0), track_run_id), fetch_run_id = COALESCE(NULLIF(?, 0), fetch_run_id), last_error = '', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND availability_epoch = ?`, trackID, fetchID, action.TargetID, action.Epoch); err != nil {
 		return err
 	}
 	return tx.Commit()

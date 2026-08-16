@@ -161,56 +161,17 @@ func (s *Store) UpdateOwnAccount(ctx context.Context, input UpdateOwnAccountInpu
 	if displayName == "" {
 		displayName = username
 	}
-	if displayName != currentDisplayName {
-		if _, err := tx.ExecContext(ctx, `UPDATE user_account SET display_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, displayName, input.ID); err != nil {
-			return User{}, err
-		}
-		if err := insertAuditLog(ctx, tx, input.ID, "user.profile_update", input.ID); err != nil {
-			return User{}, err
-		}
+	if err := updateOwnDisplayName(ctx, tx, input.ID, displayName, currentDisplayName); err != nil {
+		return User{}, err
 	}
 	if input.UILocale != nil {
-		normalizedLocale, ok := NormalizeUILocale(*input.UILocale)
-		if !ok {
-			return User{}, ErrInvalidUILocale
-		}
-		if normalizedLocale != currentUILocale {
-			if _, err := tx.ExecContext(ctx, `UPDATE user_account SET ui_locale = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, normalizedLocale, input.ID); err != nil {
-				return User{}, err
-			}
-			if err := insertAuditLog(ctx, tx, input.ID, "user.ui_locale_update", input.ID); err != nil {
-				return User{}, err
-			}
+		if err := updateOwnUILocale(ctx, tx, input.ID, *input.UILocale, currentUILocale); err != nil {
+			return User{}, err
 		}
 	}
 
 	if input.NewPassword != "" {
-		var currentHash string
-		if err := tx.QueryRowContext(ctx, `SELECT password_hash FROM user_password_credential WHERE user_id = ?`, input.ID).Scan(&currentHash); err != nil {
-			return User{}, err
-		}
-		if !VerifyPassword(input.CurrentPassword, currentHash) {
-			return User{}, ErrInvalidCurrentPassword
-		}
-		if VerifyPassword(input.NewPassword, currentHash) {
-			return User{}, ErrPasswordUnchanged
-		}
-		passwordHash, err := HashPassword(input.NewPassword)
-		if err != nil {
-			return User{}, err
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE user_password_credential SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`, passwordHash, input.ID); err != nil {
-			return User{}, err
-		}
-		currentSessionID := strings.TrimSpace(input.CurrentSessionID)
-		if currentSessionID == "" {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM user_session WHERE user_id = ?`, input.ID); err != nil {
-				return User{}, err
-			}
-		} else if _, err := tx.ExecContext(ctx, `DELETE FROM user_session WHERE user_id = ? AND id <> ?`, input.ID, currentSessionID); err != nil {
-			return User{}, err
-		}
-		if err := insertAuditLog(ctx, tx, input.ID, "user.password_change", input.ID); err != nil {
+		if err := updateOwnPassword(ctx, tx, input); err != nil {
 			return User{}, err
 		}
 	}
@@ -219,6 +180,59 @@ func (s *Store) UpdateOwnAccount(ctx context.Context, input UpdateOwnAccountInpu
 		return User{}, err
 	}
 	return s.LoadByID(ctx, input.ID)
+}
+
+func updateOwnDisplayName(ctx context.Context, tx *sql.Tx, userID int64, displayName, currentDisplayName string) error {
+	if displayName == currentDisplayName {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE user_account SET display_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, displayName, userID); err != nil {
+		return err
+	}
+	return insertAuditLog(ctx, tx, userID, "user.profile_update", userID)
+}
+
+func updateOwnUILocale(ctx context.Context, tx *sql.Tx, userID int64, requestedLocale, currentLocale string) error {
+	normalizedLocale, ok := NormalizeUILocale(requestedLocale)
+	if !ok {
+		return ErrInvalidUILocale
+	}
+	if normalizedLocale == currentLocale {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE user_account SET ui_locale = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, normalizedLocale, userID); err != nil {
+		return err
+	}
+	return insertAuditLog(ctx, tx, userID, "user.ui_locale_update", userID)
+}
+
+func updateOwnPassword(ctx context.Context, tx *sql.Tx, input UpdateOwnAccountInput) error {
+	var currentHash string
+	if err := tx.QueryRowContext(ctx, `SELECT password_hash FROM user_password_credential WHERE user_id = ?`, input.ID).Scan(&currentHash); err != nil {
+		return err
+	}
+	if !VerifyPassword(input.CurrentPassword, currentHash) {
+		return ErrInvalidCurrentPassword
+	}
+	if VerifyPassword(input.NewPassword, currentHash) {
+		return ErrPasswordUnchanged
+	}
+	passwordHash, err := HashPassword(input.NewPassword)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE user_password_credential SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`, passwordHash, input.ID); err != nil {
+		return err
+	}
+	currentSessionID := strings.TrimSpace(input.CurrentSessionID)
+	if currentSessionID == "" {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM user_session WHERE user_id = ?`, input.ID); err != nil {
+			return err
+		}
+	} else if _, err := tx.ExecContext(ctx, `DELETE FROM user_session WHERE user_id = ? AND id <> ?`, input.ID, currentSessionID); err != nil {
+		return err
+	}
+	return insertAuditLog(ctx, tx, input.ID, "user.password_change", input.ID)
 }
 
 func (s *Store) DeleteManagedUser(ctx context.Context, actorUserID int64, userID int64) error {

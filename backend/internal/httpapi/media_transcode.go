@@ -70,8 +70,8 @@ func ensureWMAPlaybackAsset(
 	sourcePath string,
 	transcode audioTranscodeFunc,
 ) (string, error) {
-	if locationID <= 0 || strings.TrimSpace(cacheRoot) == "" || transcode == nil {
-		return "", fmt.Errorf("invalid WMA compatibility request")
+	if err := validateWMAPlaybackRequest(cacheRoot, locationID, transcode); err != nil {
+		return "", err
 	}
 	cacheDir, err := safeCachePath(cacheRoot, filepath.ToSlash(filepath.Join("playback-transcode", strconv.FormatInt(locationID, 10))))
 	if err != nil {
@@ -97,6 +97,17 @@ func ensureWMAPlaybackAsset(
 	if err := os.MkdirAll(cacheDir, 0o750); err != nil {
 		return "", err
 	}
+	return transcodeWMAPlaybackAsset(ctx, cacheDir, assetPath, sourcePath, transcode)
+}
+
+func validateWMAPlaybackRequest(cacheRoot string, locationID int64, transcode audioTranscodeFunc) error {
+	if locationID <= 0 || strings.TrimSpace(cacheRoot) == "" || transcode == nil {
+		return fmt.Errorf("invalid WMA compatibility request")
+	}
+	return nil
+}
+
+func transcodeWMAPlaybackAsset(ctx context.Context, cacheDir, assetPath, sourcePath string, transcode audioTranscodeFunc) (string, error) {
 	temporary, err := os.CreateTemp(cacheDir, ".wma-transcode-*.mp3")
 	if err != nil {
 		return "", err

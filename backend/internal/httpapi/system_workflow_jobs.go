@@ -107,16 +107,9 @@ func (s *Server) enqueueLocalScanWithPayload(ctx context.Context, triggerType st
 }
 
 func (s *Server) executeLocalScanJob(ctx context.Context, job workflowJobRecord) error {
-	var payload localScanJobPayload
-	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+	payload, err := s.prepareLocalScanPayload(ctx, job)
+	if err != nil {
 		return err
-	}
-	if payload.ScanDepth <= 0 {
-		payload.ScanDepth = s.configuredLocalScanDepth(ctx)
-	}
-	if strings.TrimSpace(payload.Root) == "" {
-		payload.Root = s.cfg.DataRoot
 	}
 	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "discovering", map[string]any{"root": payload.Root}, 0, 0)
 	workFolders, scanSummary, err := localfs.DiscoverFolders(payload.Root, localfs.Options{ScanDepth: payload.ScanDepth})
@@ -129,142 +122,10 @@ func (s *Server) executeLocalScanJob(ctx context.Context, job workflowJobRecord)
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
-
-	tx, err := s.db.BeginTx(ctx, nil)
+	result, runSummary, err := s.persistLocalScanResults(ctx, job, payload, workFolders, scanSummary, nodeIDs)
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	rollbackAndFail := func(runErr error) error {
-		_ = tx.Rollback()
-		_ = s.failClaimedWorkflowJob(ctx, job, runErr.Error())
-		return runErr
-	}
-	fileSourceID, err := s.upsertLocalFileSource(ctx, tx, payload.ScanDepth)
-	if err != nil {
-		return rollbackAndFail(err)
-	}
-	updatedLocations := 0
-	skippedLocations := 0
-	missingLocations := 0
-	newWorkCodes := []string{}
-	seenWorkIDs := map[int64]bool{}
-	reconciledWorkIDs := map[int64]bool{}
-	duplicateCodes := map[string]bool{}
-	for _, group := range scanSummary.DuplicateGroups {
-		duplicateCodes[strings.ToUpper(strings.TrimSpace(group.Code))] = true
-	}
-	for _, folder := range workFolders {
-		_, existedBefore, err := workIDForCodeInTx(ctx, tx, folder.Code)
-		if err != nil {
-			return rollbackAndFail(err)
-		}
-		workID, err := upsertDetectedWork(ctx, tx, folder)
-		if err != nil {
-			return rollbackAndFail(err)
-		}
-		if !existedBefore {
-			newWorkCodes = append(newWorkCodes, folder.Code)
-		}
-		seenWorkIDs[workID] = true
-		if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
-			WorkID: workID, FileSourceID: fileSourceID, PresenceType: "local",
-			SourceURL: filepath.ToSlash(folder.RelPath), Availability: "available",
-			RawJSON: mustJSON(map[string]any{
-				"code": folder.Code, "title": folder.Title, "rel_path": filepath.ToSlash(folder.RelPath),
-				"files": len(folder.Files), "file_tree_scanned": false,
-			}),
-		}); err != nil {
-			return rollbackAndFail(err)
-		}
-		var managedFetchRootExists bool
-		if err := tx.QueryRowContext(ctx, `
-			SELECT EXISTS (
-				SELECT 1 FROM work_folder_location
-				WHERE work_id = ? AND file_source_id = ? AND role = 'managed_fetch'
-			)
-		`, workID, fileSourceID).Scan(&managedFetchRootExists); err != nil {
-			return rollbackAndFail(err)
-		}
-		if !managedFetchRootExists {
-			if err := upsertWorkFolderLocation(ctx, tx, workID, fileSourceID, folder.RelPath, "external", "active", true); err != nil {
-				return rollbackAndFail(err)
-			}
-		}
-		// A duplicate stays reviewable. Invalidating either folder here would
-		// choose a winner before the user has reviewed the candidate.
-		if !duplicateCodes[strings.ToUpper(strings.TrimSpace(folder.Code))] && !reconciledWorkIDs[workID] {
-			missing, err := markLocalLocationsMissingForChangedFolder(ctx, tx, workID, fileSourceID, folder.RelPath)
-			if err != nil {
-				return rollbackAndFail(err)
-			}
-			missingLocations += missing
-			reconciledWorkIDs[workID] = true
-		}
-	}
-	missingWorkIDs, err := markMissingLocalPresence(ctx, tx, fileSourceID, seenWorkIDs)
-	if err != nil {
-		return rollbackAndFail(err)
-	}
-	for _, workID := range missingWorkIDs {
-		missing, err := markAvailableLocalLocationsMissingForWork(ctx, tx, workID, fileSourceID)
-		if err != nil {
-			return rollbackAndFail(err)
-		}
-		missingLocations += missing
-	}
-	runSummary := map[string]any{
-		"candidate_folders":   scanSummary.CandidateFolders,
-		"detected_works":      scanSummary.DetectedWorks,
-		"scanned_files":       scanSummary.ScannedFiles,
-		"ambiguous_folders":   scanSummary.AmbiguousFolders,
-		"duplicate_groups":    localDuplicateGroupSummaries(scanSummary.DuplicateGroups),
-		"updated_locations":   updatedLocations,
-		"skipped_locations":   skippedLocations,
-		"missing_locations":   missingLocations,
-		"new_work_codes":      newWorkCodes,
-		"follow_up_requested": payload.FollowUpRun,
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, error_message = '', finished_at = CURRENT_TIMESTAMP WHERE id = ?
-	`, mustJSON(map[string]any{
-		"candidate_folders": scanSummary.CandidateFolders, "detected_works": scanSummary.DetectedWorks,
-		"scanned_files": scanSummary.ScannedFiles, "ambiguous_folders": scanSummary.AmbiguousFolders,
-		"skipped_locations": skippedLocations, "missing_locations": missingLocations,
-	}), nodeIDs["discover"]); err != nil {
-		return rollbackAndFail(err)
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE workflow_node_run SET status = 'succeeded', input_json = ?, output_json = ?, error_message = '', finished_at = CURRENT_TIMESTAMP WHERE id = ?
-	`, mustJSON(map[string]any{"detected_works": scanSummary.DetectedWorks}), mustJSON(map[string]any{
-		"matched_works": scanSummary.DetectedWorks, "duplicate_groups": len(scanSummary.DuplicateGroups),
-	}), nodeIDs["match"]); err != nil {
-		return rollbackAndFail(err)
-	}
-	if err := insertLocalDuplicateCandidates(ctx, tx, job.RunID, scanSummary.DuplicateGroups); err != nil {
-		return rollbackAndFail(err)
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE workflow_node_run SET status = 'succeeded', input_json = ?, output_json = ?, error_message = '', finished_at = CURRENT_TIMESTAMP WHERE id = ?
-	`, mustJSON(map[string]any{"file_source_id": fileSourceID}), mustJSON(map[string]any{
-		"updated_locations": updatedLocations, "skipped_locations": skippedLocations,
-		"missing_locations": missingLocations, "new_work_codes": newWorkCodes,
-	}), nodeIDs["sync"]); err != nil {
-		return rollbackAndFail(err)
-	}
-	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET summary_json = ? WHERE id = ?", mustJSON(runSummary), job.RunID); err != nil {
-		return rollbackAndFail(err)
-	}
-	if err := tx.Commit(); err != nil {
-		return rollbackAndFail(err)
-	}
-
-	result := localScanResult{
-		RunID: job.RunID, JobID: job.ID, FileSourceID: fileSourceID, Status: "succeeded",
-		DetectedWorks: scanSummary.DetectedWorks, ScannedFiles: scanSummary.ScannedFiles,
-		UpdatedLocations: updatedLocations, SkippedLocations: skippedLocations,
-		FollowUpRun: payload.FollowUpRun, NewWorkCodes: newWorkCodes, Failures: []string{},
 	}
 	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "finishing", map[string]any{"detected_works": result.DetectedWorks}, result.ScannedFiles, result.ScannedFiles)
 	if err := s.finishQueuedLocalScanJob(ctx, job, nodeIDs["sync"], result, runSummary); err != nil {
@@ -273,6 +134,176 @@ func (s *Server) executeLocalScanJob(ctx context.Context, job workflowJobRecord)
 	}
 	if payload.FollowUpRun {
 		s.queueLocalScanMetadataFollowUp(ctx, job.RunID)
+	}
+	return nil
+}
+
+func (s *Server) prepareLocalScanPayload(ctx context.Context, job workflowJobRecord) (localScanJobPayload, error) {
+	var payload localScanJobPayload
+	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
+		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		return payload, err
+	}
+	if payload.ScanDepth <= 0 {
+		payload.ScanDepth = s.configuredLocalScanDepth(ctx)
+	}
+	if strings.TrimSpace(payload.Root) == "" {
+		payload.Root = s.cfg.DataRoot
+	}
+	return payload, nil
+}
+
+func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRecord, payload localScanJobPayload, workFolders []localfs.WorkFolder, scanSummary localfs.Summary, nodeIDs map[string]int64) (localScanResult, map[string]any, error) {
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return localScanResult{}, nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	fileSourceID, err := s.upsertLocalFileSource(ctx, tx, payload.ScanDepth)
+	if err != nil {
+		return localScanResult{}, nil, err
+	}
+	state := localScanPersistState{duplicateCodes: localScanDuplicateCodes(scanSummary.DuplicateGroups), seenWorkIDs: map[int64]bool{}, reconciledWorkIDs: map[int64]bool{}}
+	for _, folder := range workFolders {
+		if err := s.persistLocalScanFolder(ctx, tx, fileSourceID, folder, &state); err != nil {
+			return localScanResult{}, nil, err
+		}
+	}
+	missingWorkIDs, err := markMissingLocalPresence(ctx, tx, fileSourceID, state.seenWorkIDs)
+	if err != nil {
+		return localScanResult{}, nil, err
+	}
+	for _, workID := range missingWorkIDs {
+		missing, err := markAvailableLocalLocationsMissingForWork(ctx, tx, workID, fileSourceID)
+		if err != nil {
+			return localScanResult{}, nil, err
+		}
+		state.missingLocations += missing
+	}
+	runSummary := map[string]any{
+		"candidate_folders":   scanSummary.CandidateFolders,
+		"detected_works":      scanSummary.DetectedWorks,
+		"scanned_files":       scanSummary.ScannedFiles,
+		"ambiguous_folders":   scanSummary.AmbiguousFolders,
+		"duplicate_groups":    localDuplicateGroupSummaries(scanSummary.DuplicateGroups),
+		"updated_locations":   state.updatedLocations,
+		"skipped_locations":   state.skippedLocations,
+		"missing_locations":   state.missingLocations,
+		"new_work_codes":      state.newWorkCodes,
+		"follow_up_requested": payload.FollowUpRun,
+	}
+	if err := completeLocalScanNodes(ctx, tx, nodeIDs, fileSourceID, scanSummary, state); err != nil {
+		return localScanResult{}, nil, err
+	}
+	if err := insertLocalDuplicateCandidates(ctx, tx, job.RunID, scanSummary.DuplicateGroups); err != nil {
+		return localScanResult{}, nil, err
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET summary_json = ? WHERE id = ?", mustJSON(runSummary), job.RunID); err != nil {
+		return localScanResult{}, nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return localScanResult{}, nil, err
+	}
+	result := localScanResult{
+		RunID: job.RunID, JobID: job.ID, FileSourceID: fileSourceID, Status: "succeeded",
+		DetectedWorks: scanSummary.DetectedWorks, ScannedFiles: scanSummary.ScannedFiles,
+		UpdatedLocations: state.updatedLocations, SkippedLocations: state.skippedLocations,
+		FollowUpRun: payload.FollowUpRun, NewWorkCodes: state.newWorkCodes, Failures: []string{},
+	}
+	return result, runSummary, nil
+}
+
+type localScanPersistState struct {
+	updatedLocations, skippedLocations, missingLocations int
+	newWorkCodes                                         []string
+	seenWorkIDs, reconciledWorkIDs                       map[int64]bool
+	duplicateCodes                                       map[string]bool
+}
+
+func localScanDuplicateCodes(groups []localfs.DuplicateGroup) map[string]bool {
+	result := map[string]bool{}
+	for _, group := range groups {
+		result[strings.ToUpper(strings.TrimSpace(group.Code))] = true
+	}
+	return result
+}
+
+func (s *Server) persistLocalScanFolder(ctx context.Context, tx *sql.Tx, fileSourceID int64, folder localfs.WorkFolder, state *localScanPersistState) error {
+	_, existedBefore, err := workIDForCodeInTx(ctx, tx, folder.Code)
+	if err != nil {
+		return err
+	}
+	workID, err := upsertDetectedWork(ctx, tx, folder)
+	if err != nil {
+		return err
+	}
+	if !existedBefore {
+		state.newWorkCodes = append(state.newWorkCodes, folder.Code)
+	}
+	state.seenWorkIDs[workID] = true
+	if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
+		WorkID: workID, FileSourceID: fileSourceID, PresenceType: "local",
+		SourceURL: filepath.ToSlash(folder.RelPath), Availability: "available",
+		RawJSON: mustJSON(map[string]any{
+			"code": folder.Code, "title": folder.Title, "rel_path": filepath.ToSlash(folder.RelPath),
+			"files": len(folder.Files), "file_tree_scanned": false,
+		}),
+	}); err != nil {
+		return err
+	}
+	var managedFetchRootExists bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM work_folder_location
+			WHERE work_id = ? AND file_source_id = ? AND role = 'managed_fetch'
+		)
+	`, workID, fileSourceID).Scan(&managedFetchRootExists); err != nil {
+		return err
+	}
+	if !managedFetchRootExists {
+		if err := upsertWorkFolderLocation(ctx, tx, workID, fileSourceID, folder.RelPath, "external", "active", true); err != nil {
+			return err
+		}
+	}
+	// A duplicate stays reviewable. Invalidating either folder here would
+	// choose a winner before the user has reviewed the candidate.
+	code := strings.ToUpper(strings.TrimSpace(folder.Code))
+	if !state.duplicateCodes[code] && !state.reconciledWorkIDs[workID] {
+		missing, err := markLocalLocationsMissingForChangedFolder(ctx, tx, workID, fileSourceID, folder.RelPath)
+		if err != nil {
+			return err
+		}
+		state.missingLocations += missing
+		state.reconciledWorkIDs[workID] = true
+	}
+	return nil
+}
+
+func completeLocalScanNodes(ctx context.Context, tx *sql.Tx, nodeIDs map[string]int64, fileSourceID int64, summary localfs.Summary, state localScanPersistState) error {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, error_message = '', finished_at = CURRENT_TIMESTAMP WHERE id = ?
+	`, mustJSON(map[string]any{
+		"candidate_folders": summary.CandidateFolders, "detected_works": summary.DetectedWorks,
+		"scanned_files": summary.ScannedFiles, "ambiguous_folders": summary.AmbiguousFolders,
+		"skipped_locations": state.skippedLocations, "missing_locations": state.missingLocations,
+	}), nodeIDs["discover"]); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_node_run SET status = 'succeeded', input_json = ?, output_json = ?, error_message = '', finished_at = CURRENT_TIMESTAMP WHERE id = ?
+	`, mustJSON(map[string]any{"detected_works": summary.DetectedWorks}), mustJSON(map[string]any{
+		"matched_works": summary.DetectedWorks, "duplicate_groups": len(summary.DuplicateGroups),
+	}), nodeIDs["match"]); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_node_run SET status = 'succeeded', input_json = ?, output_json = ?, error_message = '', finished_at = CURRENT_TIMESTAMP WHERE id = ?
+	`, mustJSON(map[string]any{"file_source_id": fileSourceID}), mustJSON(map[string]any{
+		"updated_locations": state.updatedLocations, "skipped_locations": state.skippedLocations,
+		"missing_locations": state.missingLocations, "new_work_codes": state.newWorkCodes,
+	}), nodeIDs["sync"]); err != nil {
+		return err
 	}
 	return nil
 }

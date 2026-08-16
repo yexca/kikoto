@@ -31,77 +31,95 @@ func (s *Server) resolveWorkEntityLink(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work code"})
 		return
 	}
+	request, err := decodeWorkEntityLinkRequest(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	resolution, stage, err := s.resolveWorkEntityLinkRoute(r.Context(), code, request)
+	if err != nil {
+		if stage == "metadata" {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "Could not load entity metadata for this work."})
+			return
+		}
+		if stage == "catalog" {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "Could not load the series catalog for this circle."})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	if resolution.Route != "" {
+		writeJSON(w, http.StatusOK, workEntityLinkResponse{Kind: request.Kind, Route: resolution.Route, Resolved: true, Fetched: resolution.Fetched})
+		return
+	}
+
+	writeJSON(w, http.StatusNotFound, map[string]string{"error": fmt.Sprintf("No %s link was found for this work.", request.Kind)})
+}
+
+func decodeWorkEntityLinkRequest(r *http.Request) (workEntityLinkRequest, error) {
 	var request workEntityLinkRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
-		return
+		return workEntityLinkRequest{}, errors.New("invalid json")
 	}
 	request.Kind = strings.ToLower(strings.TrimSpace(request.Kind))
 	request.Name = strings.TrimSpace(request.Name)
 	if request.Kind != "circle" && request.Kind != "series" && request.Kind != "voice" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "kind must be circle, series, or voice"})
-		return
+		return workEntityLinkRequest{}, errors.New("kind must be circle, series, or voice")
 	}
+	return request, nil
+}
 
-	if route, err := s.findWorkEntityRoute(r.Context(), code, request); err != nil {
-		writeError(w, err)
-		return
+type workEntityLinkResolution struct {
+	Route   string
+	Fetched bool
+}
+
+func (s *Server) resolveWorkEntityLinkRoute(ctx context.Context, code string, request workEntityLinkRequest) (workEntityLinkResolution, string, error) {
+	if route, err := s.findWorkEntityRoute(ctx, code, request); err != nil {
+		return workEntityLinkResolution{}, "", err
 	} else if route != "" {
-		writeJSON(w, http.StatusOK, workEntityLinkResponse{Kind: request.Kind, Route: route, Resolved: true})
-		return
+		return workEntityLinkResolution{Route: route}, "", nil
 	}
 	// Relationships can lag behind an already persisted snapshot. Materialize
 	// those local relationships before deciding that a provider request is
 	// necessary.
-	if err := s.hydrateWorkEntityLinksFromSnapshots(r.Context(), code); err != nil {
-		writeError(w, err)
-		return
+	if err := s.hydrateWorkEntityLinksFromSnapshots(ctx, code); err != nil {
+		return workEntityLinkResolution{}, "", err
 	}
-	if route, err := s.findWorkEntityRoute(r.Context(), code, request); err != nil {
-		writeError(w, err)
-		return
+	if route, err := s.findWorkEntityRoute(ctx, code, request); err != nil {
+		return workEntityLinkResolution{}, "", err
 	} else if route != "" {
-		writeJSON(w, http.StatusOK, workEntityLinkResponse{Kind: request.Kind, Route: route, Resolved: true})
-		return
+		return workEntityLinkResolution{Route: route}, "", nil
 	}
-
-	if err := s.syncWorkEntityMetadata(r.Context(), code); err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "Could not load entity metadata for this work."})
-		return
+	if err := s.syncWorkEntityMetadata(ctx, code); err != nil {
+		return workEntityLinkResolution{}, "metadata", err
 	}
-	if route, err := s.findWorkEntityRoute(r.Context(), code, request); err != nil {
-		writeError(w, err)
-		return
+	if route, err := s.findWorkEntityRoute(ctx, code, request); err != nil {
+		return workEntityLinkResolution{}, "", err
 	} else if route != "" {
-		writeJSON(w, http.StatusOK, workEntityLinkResponse{Kind: request.Kind, Route: route, Resolved: true, Fetched: true})
-		return
+		return workEntityLinkResolution{Route: route, Fetched: true}, "", nil
 	}
-
-	if request.Kind == "series" {
-		partyID, makerID, err := s.workCircleIdentity(r.Context(), code)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		if partyID > 0 && makerID != "" {
-			_, refreshErr := s.runCircleRefresh(r.Context(), partyID, makerID, circleRefreshRequest{
-				Scope: "catalog", Mode: "incremental", ProductMode: "available",
-			})
-			if refreshErr != nil {
-				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "Could not load the series catalog for this circle."})
-				return
-			}
-			if route, err := s.findWorkEntityRoute(r.Context(), code, request); err != nil {
-				writeError(w, err)
-				return
-			} else if route != "" {
-				writeJSON(w, http.StatusOK, workEntityLinkResponse{Kind: request.Kind, Route: route, Resolved: true, Fetched: true})
-				return
-			}
-		}
+	if request.Kind != "series" {
+		return workEntityLinkResolution{}, "", nil
 	}
-
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": fmt.Sprintf("No %s link was found for this work.", request.Kind)})
+	partyID, makerID, err := s.workCircleIdentity(ctx, code)
+	if err != nil {
+		return workEntityLinkResolution{}, "", err
+	}
+	if partyID <= 0 || makerID == "" {
+		return workEntityLinkResolution{}, "", nil
+	}
+	if _, err := s.runCircleRefresh(ctx, partyID, makerID, circleRefreshRequest{
+		Scope: "catalog", Mode: "incremental", ProductMode: "available",
+	}); err != nil {
+		return workEntityLinkResolution{}, "catalog", err
+	}
+	route, err := s.findWorkEntityRoute(ctx, code, request)
+	if err != nil {
+		return workEntityLinkResolution{}, "", err
+	}
+	return workEntityLinkResolution{Route: route, Fetched: route != ""}, "", nil
 }
 
 func (s *Server) hydrateWorkEntityLinksFromSnapshots(ctx context.Context, code string) error {

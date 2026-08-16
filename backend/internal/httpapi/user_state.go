@@ -28,6 +28,8 @@ type favoriteListResponse struct {
 	Selected    bool   `json:"selected,omitempty"`
 }
 
+var errInvalidFavoriteListID = errors.New("invalid favorite list id")
+
 type favoriteWorksResponse struct {
 	Works        []libraryWorkSummary `json:"works"`
 	Page         int                  `json:"page"`
@@ -122,33 +124,7 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	page := queryInt(r, "page", 1)
-	pageSize := queryInt(r, "pageSize", 24)
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 24
-	}
-	listID := int64(0)
-	if raw := strings.TrimSpace(r.URL.Query().Get("listId")); raw != "" && raw != "all" {
-		parsed, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil || parsed <= 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid favorite list id"})
-			return
-		}
-		listID = parsed
-	}
-	sortKey := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort")))
-	if sortKey == "" {
-		sortKey = "added"
-	}
-	direction := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("direction")))
-	if direction != "asc" {
-		direction = "desc"
-	}
-	randomSeed := int64(queryInt(r, "seed", 1))
-	sourceIDs, err := favoriteSourceIDs(r)
+	query, err := parseFavoriteWorksQuery(r)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -158,28 +134,17 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 		strings.TrimSpace(r.URL.Query().Get("availability")),
 		strings.TrimSpace(r.URL.Query().Get("q")),
 		user.ID,
-		listID,
-		sourceIDs,
+		query.ListID,
+		query.SourceIDs,
 	)
 	where = s.demoWorkWhere(where, "work")
-	countQuery := "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE " + where
-	countArgs := append([]any{user.ID}, args...)
-	var total int
-	if err := s.db.QueryRowContext(r.Context(), countQuery, countArgs...).Scan(&total); err != nil {
-		writeError(w, err)
-		return
-	}
-	favoriteWhere, favoriteArgs := favoriteWorksWhere("all", "all", "", user.ID, 0, nil)
-	favoriteWhere = s.demoWorkWhere(favoriteWhere, "work")
-	favoriteCountQuery := "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE " + favoriteWhere
-	favoriteCountArgs := append([]any{user.ID}, favoriteArgs...)
-	var favoriteTotal int
-	if err := s.db.QueryRowContext(r.Context(), favoriteCountQuery, favoriteCountArgs...).Scan(&favoriteTotal); err != nil {
+	total, favoriteTotal, err := s.favoriteWorksCounts(r.Context(), user.ID, where, args)
+	if err != nil {
 		writeError(w, err)
 		return
 	}
 	rawWorks, err := s.libraryStore.ListMatchingSorted(r.Context(), where, args, library.MatchingListOptions{
-		UserID: user.ID, Page: page, PageSize: pageSize, Sort: sortKey, Direction: direction, RandomSeed: randomSeed, ListID: listID,
+		UserID: user.ID, Page: query.Page, PageSize: query.PageSize, Sort: query.Sort, Direction: query.Direction, RandomSeed: query.RandomSeed, ListID: query.ListID,
 	})
 	if err != nil {
 		writeError(w, err)
@@ -195,14 +160,71 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	statusCounts, err := s.loadFavoriteStatusCounts(r.Context(), user.ID, listID)
+	statusCounts, err := s.loadFavoriteStatusCounts(r.Context(), user.ID, query.ListID)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, favoriteWorksResponse{
-		Works: works, Page: page, PageSize: pageSize, Total: total, ShelfTotal: favoriteTotal, ListCounts: listCounts, StatusCounts: statusCounts,
+		Works: works, Page: query.Page, PageSize: query.PageSize, Total: total, ShelfTotal: favoriteTotal, ListCounts: listCounts, StatusCounts: statusCounts,
 	})
+}
+
+type favoriteWorksQuery struct {
+	Page       int
+	PageSize   int
+	ListID     int64
+	Sort       string
+	Direction  string
+	RandomSeed int64
+	SourceIDs  []int64
+}
+
+func parseFavoriteWorksQuery(r *http.Request) (favoriteWorksQuery, error) {
+	query := favoriteWorksQuery{Page: queryInt(r, "page", 1), PageSize: queryInt(r, "pageSize", 24), Sort: strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort"))), Direction: strings.ToLower(strings.TrimSpace(r.URL.Query().Get("direction"))), RandomSeed: int64(queryInt(r, "seed", 1))}
+	if query.Page < 1 {
+		query.Page = 1
+	}
+	if query.PageSize < 1 || query.PageSize > 100 {
+		query.PageSize = 24
+	}
+	if query.Sort == "" {
+		query.Sort = "added"
+	}
+	if query.Direction != "asc" {
+		query.Direction = "desc"
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("listId")); raw != "" && raw != "all" {
+		parsed, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || parsed <= 0 {
+			return favoriteWorksQuery{}, errors.New("invalid favorite list id")
+		}
+		query.ListID = parsed
+	}
+	sourceIDs, err := favoriteSourceIDs(r)
+	if err != nil {
+		return favoriteWorksQuery{}, err
+	}
+	query.SourceIDs = sourceIDs
+	return query, nil
+}
+
+func (s *Server) favoriteWorksCounts(ctx context.Context, userID int64, where string, args []any) (int, int, error) {
+	countQuery := "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE " + where
+	countArgs := append([]any{userID}, args...)
+	var total int
+	if err := s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
+		return 0, 0, err
+	}
+	favoriteWhere, favoriteArgs := favoriteWorksWhere("all", "all", "", userID, 0, nil)
+	favoriteWhere = s.demoWorkWhere(favoriteWhere, "work")
+	favoriteCountQuery := "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE " + favoriteWhere
+	favoriteCountArgs := append([]any{userID}, favoriteArgs...)
+	var favoriteTotal int
+	if err := s.db.QueryRowContext(ctx, favoriteCountQuery, favoriteCountArgs...).Scan(&favoriteTotal); err != nil {
+		return 0, 0, err
+	}
+	return total, favoriteTotal, nil
 }
 
 func favoriteWorksWhere(status string, availability string, queryText string, userID int64, listID int64, sourceIDs []int64) (string, []any) {
@@ -721,101 +743,11 @@ func (s *Server) setWorkFavoriteLists(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	validRows, err := tx.QueryContext(r.Context(), "SELECT id FROM favorite_list WHERE user_id = ? AND kind = 'user'", user.ID)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	valid := map[int64]bool{}
-	for validRows.Next() {
-		var id int64
-		if err := validRows.Scan(&id); err != nil {
-			_ = validRows.Close()
-			writeError(w, err)
+	if err := applyWorkFavoriteListSelection(r.Context(), tx, user.ID, workID, selected); err != nil {
+		if errors.Is(err, errInvalidFavoriteListID) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		valid[id] = true
-	}
-	if err := validRows.Close(); err != nil {
-		writeError(w, err)
-		return
-	}
-	if err := validRows.Err(); err != nil {
-		writeError(w, err)
-		return
-	}
-	for id := range selected {
-		if !valid[id] {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid favorite list id"})
-			return
-		}
-	}
-	currentRows, err := tx.QueryContext(r.Context(), `
-		SELECT item.list_id
-		FROM favorite_list_item AS item
-		INNER JOIN favorite_list AS list ON list.id = item.list_id
-		WHERE item.work_id = ? AND list.user_id = ? AND list.kind = 'user'
-	`, workID, user.ID)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	current := map[int64]bool{}
-	for currentRows.Next() {
-		var id int64
-		if err := currentRows.Scan(&id); err != nil {
-			_ = currentRows.Close()
-			writeError(w, err)
-			return
-		}
-		current[id] = true
-	}
-	if err := currentRows.Close(); err != nil {
-		writeError(w, err)
-		return
-	}
-	if err := currentRows.Err(); err != nil {
-		writeError(w, err)
-		return
-	}
-	for id := range current {
-		if selected[id] {
-			continue
-		}
-		if _, err := tx.ExecContext(r.Context(), "DELETE FROM favorite_list_item WHERE list_id = ? AND work_id = ?", id, workID); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	for id := range selected {
-		if current[id] {
-			continue
-		}
-		if _, err := tx.ExecContext(r.Context(), `
-			INSERT INTO favorite_list_item (list_id, work_id)
-			VALUES (?, ?)
-			ON CONFLICT(list_id, work_id) DO NOTHING
-		`, id, workID); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	favorite := len(selected) > 0
-	if favorite {
-		if _, err := tx.ExecContext(r.Context(), `
-			INSERT INTO user_work_state (user_id, work_id, listening_status, favorite)
-			VALUES (?, ?, 'none', 1)
-			ON CONFLICT(user_id, work_id) DO UPDATE SET favorite = excluded.favorite
-			WHERE user_work_state.favorite <> excluded.favorite
-		`, user.ID, workID); err != nil {
-			writeError(w, err)
-			return
-		}
-	} else if _, err := tx.ExecContext(r.Context(), `
-		UPDATE user_work_state
-		SET favorite = 0
-		WHERE user_id = ? AND work_id = ? AND favorite <> 0
-	`, user.ID, workID); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -823,12 +755,104 @@ func (s *Server) setWorkFavoriteLists(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	favorite := len(selected) > 0
 	lists, err := s.loadFavoriteLists(r.Context(), user.ID, &workID)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"workId": workID, "favorite": favorite, "lists": lists})
+}
+
+func applyWorkFavoriteListSelection(ctx context.Context, tx *sql.Tx, userID, workID int64, selected map[int64]bool) error {
+	valid, err := loadFavoriteListIDSet(ctx, tx, "SELECT id FROM favorite_list WHERE user_id = ? AND kind = 'user'", userID)
+	if err != nil {
+		return err
+	}
+	for id := range selected {
+		if !valid[id] {
+			return errInvalidFavoriteListID
+		}
+	}
+	current, err := loadFavoriteListIDSet(ctx, tx, `
+		SELECT item.list_id
+		FROM favorite_list_item AS item
+		INNER JOIN favorite_list AS list ON list.id = item.list_id
+		WHERE item.work_id = ? AND list.user_id = ? AND list.kind = 'user'
+	`, workID, userID)
+	if err != nil {
+		return err
+	}
+	if err := removeWorkFromUnselectedFavoriteLists(ctx, tx, workID, selected, current); err != nil {
+		return err
+	}
+	if err := addWorkToSelectedFavoriteLists(ctx, tx, workID, selected, current); err != nil {
+		return err
+	}
+	favorite := len(selected) > 0
+	if favorite {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO user_work_state (user_id, work_id, listening_status, favorite)
+			VALUES (?, ?, 'none', 1)
+			ON CONFLICT(user_id, work_id) DO UPDATE SET favorite = excluded.favorite
+			WHERE user_work_state.favorite <> excluded.favorite
+		`, userID, workID)
+	} else {
+		_, err = tx.ExecContext(ctx, `
+			UPDATE user_work_state
+			SET favorite = 0
+			WHERE user_id = ? AND work_id = ? AND favorite <> 0
+		`, userID, workID)
+	}
+	return err
+}
+
+func loadFavoriteListIDSet(ctx context.Context, tx *sql.Tx, query string, args ...any) (map[int64]bool, error) {
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := map[int64]bool{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids[id] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, rows.Close()
+}
+
+func removeWorkFromUnselectedFavoriteLists(ctx context.Context, tx *sql.Tx, workID int64, selected, current map[int64]bool) error {
+	for id := range current {
+		if selected[id] {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM favorite_list_item WHERE list_id = ? AND work_id = ?", id, workID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func addWorkToSelectedFavoriteLists(ctx context.Context, tx *sql.Tx, workID int64, selected, current map[int64]bool) error {
+	for id := range selected {
+		if current[id] {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO favorite_list_item (list_id, work_id)
+			VALUES (?, ?)
+			ON CONFLICT(list_id, work_id) DO NOTHING
+		`, id, workID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Server) requireWorkExists(ctx context.Context, workID int64) error {

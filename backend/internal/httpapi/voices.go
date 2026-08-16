@@ -534,17 +534,9 @@ func (s *Server) updateVoiceUserState(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
 		return
 	}
-	var payload struct {
-		Rating   *int    `json:"rating"`
-		Note     *string `json:"note"`
-		Favorite *bool   `json:"favorite"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
-		return
-	}
-	if payload.Rating != nil && (*payload.Rating < 0 || *payload.Rating > 5) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "rating must be between 0 and 5"})
+	payload, err := decodeVoiceUserStateUpdate(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	if _, err := s.loadPersonName(r.Context(), personID); err != nil {
@@ -555,48 +547,13 @@ func (s *Server) updateVoiceUserState(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	var currentRating sql.NullInt64
-	currentNote := ""
-	currentFavorite := 0
-	if err := s.db.QueryRowContext(r.Context(), `
-		SELECT rating, COALESCE(note, ''), COALESCE(favorite, 0)
-		FROM user_person_state
-		WHERE user_id = ? AND person_id = ?
-	`, user.ID, personID).Scan(&currentRating, &currentNote, &currentFavorite); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	state, err := s.loadVoiceUserState(r.Context(), user.ID, personID)
+	if err != nil {
 		writeError(w, err)
 		return
 	}
-	ratingValue := any(nil)
-	if currentRating.Valid {
-		ratingValue = int(currentRating.Int64)
-	}
-	if payload.Rating != nil {
-		if *payload.Rating > 0 {
-			ratingValue = *payload.Rating
-		} else {
-			ratingValue = nil
-		}
-	}
-	note := currentNote
-	if payload.Note != nil {
-		note = strings.TrimSpace(*payload.Note)
-	}
-	favorite := currentFavorite
-	if payload.Favorite != nil {
-		favorite = 0
-		if *payload.Favorite {
-			favorite = 1
-		}
-	}
-	if _, err := s.db.ExecContext(r.Context(), `
-		INSERT INTO user_person_state (user_id, person_id, rating, note, favorite, updated_at)
-		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-		ON CONFLICT(user_id, person_id) DO UPDATE SET
-			rating = excluded.rating,
-			note = excluded.note,
-			favorite = excluded.favorite,
-			updated_at = CURRENT_TIMESTAMP
-	`, user.ID, personID, ratingValue, note, favorite); err != nil {
+	state.apply(payload)
+	if err := s.persistVoiceUserState(r.Context(), user.ID, personID, state); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -606,6 +563,78 @@ func (s *Server) updateVoiceUserState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, summary)
+}
+
+type voiceUserStateUpdate struct {
+	Rating   *int    `json:"rating"`
+	Note     *string `json:"note"`
+	Favorite *bool   `json:"favorite"`
+}
+
+type voiceUserStateValues struct {
+	Rating   any
+	Note     string
+	Favorite int
+}
+
+func decodeVoiceUserStateUpdate(r *http.Request) (voiceUserStateUpdate, error) {
+	var payload voiceUserStateUpdate
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		return voiceUserStateUpdate{}, errors.New("invalid json")
+	}
+	if payload.Rating != nil && (*payload.Rating < 0 || *payload.Rating > 5) {
+		return voiceUserStateUpdate{}, errors.New("rating must be between 0 and 5")
+	}
+	return payload, nil
+}
+
+func (s *Server) loadVoiceUserState(ctx context.Context, userID, personID int64) (voiceUserStateValues, error) {
+	var currentRating sql.NullInt64
+	state := voiceUserStateValues{}
+	err := s.db.QueryRowContext(ctx, `
+		SELECT rating, COALESCE(note, ''), COALESCE(favorite, 0)
+		FROM user_person_state
+		WHERE user_id = ? AND person_id = ?
+	`, userID, personID).Scan(&currentRating, &state.Note, &state.Favorite)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return voiceUserStateValues{}, err
+	}
+	if currentRating.Valid {
+		state.Rating = int(currentRating.Int64)
+	}
+	return state, nil
+}
+
+func (state *voiceUserStateValues) apply(payload voiceUserStateUpdate) {
+	if payload.Rating != nil {
+		if *payload.Rating > 0 {
+			state.Rating = *payload.Rating
+		} else {
+			state.Rating = nil
+		}
+	}
+	if payload.Note != nil {
+		state.Note = strings.TrimSpace(*payload.Note)
+	}
+	if payload.Favorite != nil {
+		state.Favorite = 0
+		if *payload.Favorite {
+			state.Favorite = 1
+		}
+	}
+}
+
+func (s *Server) persistVoiceUserState(ctx context.Context, userID, personID int64, state voiceUserStateValues) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO user_person_state (user_id, person_id, rating, note, favorite, updated_at)
+		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(user_id, person_id) DO UPDATE SET
+			rating = excluded.rating,
+			note = excluded.note,
+			favorite = excluded.favorite,
+			updated_at = CURRENT_TIMESTAMP
+	`, userID, personID, state.Rating, state.Note, state.Favorite)
+	return err
 }
 
 func (s *Server) setVoiceUserTags(w http.ResponseWriter, r *http.Request) {
@@ -969,63 +998,68 @@ func scanVoiceSummaryRow(scanner voiceSummaryScanner) (voiceSummary, error) {
 
 func filterVoiceSummaries(items []voiceSummary, query string, filter string, tagFilter string) []voiceSummary {
 	needle := strings.ToLower(strings.TrimSpace(query))
+	filter = strings.ToLower(strings.TrimSpace(filter))
 	filtered := make([]voiceSummary, 0, len(items))
 	for _, item := range items {
-		matchesQuery := needle == "" || strings.Contains(strings.ToLower(item.DisplayName), needle) || strings.Contains(strconv.FormatInt(item.PersonID, 10), needle)
-		if !matchesQuery {
-			for _, alias := range item.Aliases {
-				if strings.Contains(strings.ToLower(alias), needle) {
-					matchesQuery = true
-					break
-				}
-			}
-		}
-		if !matchesQuery {
-			for _, tag := range item.UserTags {
-				if strings.Contains(strings.ToLower(tag.Name), needle) {
-					matchesQuery = true
-					break
-				}
-			}
-		}
-		if !matchesQuery && item.LatestWork != nil {
-			matchesQuery = strings.Contains(strings.ToLower(item.LatestWork.PrimaryCode), needle) || strings.Contains(strings.ToLower(item.LatestWork.Title), needle)
-		}
-		if !matchesQuery {
+		if !voiceSummaryMatchesQuery(item, needle) {
 			continue
 		}
-		if tagFilter != "" {
-			matchesTag := false
-			for _, tag := range item.UserTags {
-				if tag.Name == tagFilter {
-					matchesTag = true
-					break
-				}
-			}
-			if !matchesTag {
-				continue
-			}
+		if tagFilter != "" && !voiceSummaryHasTag(item, tagFilter) {
+			continue
 		}
-		matchesFilter := true
-		switch strings.ToLower(strings.TrimSpace(filter)) {
-		case "favorite":
-			matchesFilter = item.Favorite
-		case "tagged":
-			matchesFilter = len(item.UserTags) > 0
-		case "available":
-			matchesFilter = item.PlayableWorks > 0
-		case "local":
-			matchesFilter = item.LocalWorks > 0
-		case "remote":
-			matchesFilter = item.RemoteWorks > 0
-		case "missing":
-			matchesFilter = item.PlayableWorks == 0
-		}
-		if matchesFilter {
+		if voiceSummaryMatchesFilter(item, filter) {
 			filtered = append(filtered, item)
 		}
 	}
 	return filtered
+}
+
+func voiceSummaryMatchesQuery(item voiceSummary, needle string) bool {
+	if needle == "" || strings.Contains(strings.ToLower(item.DisplayName), needle) || strings.Contains(strconv.FormatInt(item.PersonID, 10), needle) {
+		return true
+	}
+	for _, alias := range item.Aliases {
+		if strings.Contains(strings.ToLower(alias), needle) {
+			return true
+		}
+	}
+	for _, tag := range item.UserTags {
+		if strings.Contains(strings.ToLower(tag.Name), needle) {
+			return true
+		}
+	}
+	if item.LatestWork == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(item.LatestWork.PrimaryCode), needle) || strings.Contains(strings.ToLower(item.LatestWork.Title), needle)
+}
+
+func voiceSummaryHasTag(item voiceSummary, tagFilter string) bool {
+	for _, tag := range item.UserTags {
+		if tag.Name == tagFilter {
+			return true
+		}
+	}
+	return false
+}
+
+func voiceSummaryMatchesFilter(item voiceSummary, filter string) bool {
+	switch filter {
+	case "favorite":
+		return item.Favorite
+	case "tagged":
+		return len(item.UserTags) > 0
+	case "available":
+		return item.PlayableWorks > 0
+	case "local":
+		return item.LocalWorks > 0
+	case "remote":
+		return item.RemoteWorks > 0
+	case "missing":
+		return item.PlayableWorks == 0
+	default:
+		return true
+	}
 }
 
 func (s *Server) loadVoiceLatestWorks(ctx context.Context, personIDs []int64) (map[int64]*creatorLatestWork, error) {
@@ -1201,89 +1235,12 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 		if err != nil {
 			return nil, err
 		}
-		ref, err := s.canonicalWorkForCode(ctx, row.PrimaryCode)
+		item, include, err := s.buildVoiceKnownWork(ctx, userID, row)
 		if err != nil {
 			return nil, err
 		}
-		displayCode := row.PrimaryCode
-		displayWorkID := row.ID
-		remoteCode := ""
-		if ref.Known && ref.Code != "" {
-			displayCode = ref.Code
-			if !strings.EqualFold(row.PrimaryCode, ref.Code) {
-				remoteCode = row.PrimaryCode
-			}
-			if ref.WorkID > 0 {
-				displayWorkID = ref.WorkID
-			}
-		}
-		if s.cfg.IsDemo() {
-			eligible, err := s.demoWorkEligible(ctx, displayWorkID)
-			if err != nil {
-				return nil, err
-			}
-			if !eligible {
-				continue
-			}
-		}
-		metadata := parseDLsiteSnapshot(row.Snapshot)
-		sourceTags, remoteObservations, err := s.workSourceStateByCode(ctx, displayCode)
-		if err != nil {
-			return nil, err
-		}
-		if row.CircleLink.Valid {
-			if name, externalID := parsePartyLink(row.CircleLink.String); name != "" {
-				metadata.Circle = name
-				metadata.CircleExternalID = externalID
-			}
-		}
-		progress, err := s.workProgressSummary(ctx, userID, displayWorkID)
-		if err != nil {
-			return nil, err
-		}
-		releaseDate := nullableString(row.ReleaseDate)
-		updatedAt := ""
-		if releaseDate != nil {
-			updatedAt = *releaseDate
-		}
-		item := voiceKnownWork{
-			WorkID:             displayWorkID,
-			PrimaryCode:        displayCode,
-			RemoteCode:         remoteCode,
-			Title:              row.Title,
-			ReleaseDate:        releaseDate,
-			UpdatedAt:          updatedAt,
-			CoverURL:           s.coverURL(displayCode),
-			DLsiteURL:          dlsiteURL(displayCode),
-			Circle:             metadata.Circle,
-			CircleExternalID:   metadata.CircleExternalID,
-			AgeRating:          row.AgeRating,
-			Rating:             row.Rating,
-			RatingCount:        metadata.RatingCount,
-			Sales:              row.Sales,
-			RegularPrice:       row.RegularPrice,
-			Price:              row.Price,
-			PriceCurrency:      row.PriceCurrency,
-			PermanentlyFree:    row.PermanentlyFree,
-			Tags:               metadata.Tags,
-			VoiceActors:        metadata.VoiceActors,
-			Series:             metadata.Series,
-			SeriesTitleID:      row.SeriesTitleID,
-			ListeningMark:      row.ListeningStatus,
-			Favorite:           row.Favorite,
-			Local:              row.HasLocal || sourceStatsContain(sourceTags, "local"),
-			Remote:             row.HasRemote || sourceStatsContain(sourceTags, "remote"),
-			Cache:              row.HasCache || sourceStatsContain(sourceTags, "cache"),
-			SourceTags:         sourceTags,
-			RemoteObservations: remoteObservations,
-			Progress:           progress,
-		}
-		item.VoiceCredits, err = s.voiceCreditsForWork(ctx, displayWorkID)
-		if err != nil {
-			return nil, err
-		}
-		if err := s.applyManualOverridesToVoiceWork(ctx, &item); err != nil {
-			return nil, err
+		if !include {
+			continue
 		}
 		key := strings.ToUpper(strings.TrimSpace(item.PrimaryCode))
 		if index, ok := seen[key]; ok {
@@ -1318,7 +1275,105 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 	return works, nil
 }
 
+func (s *Server) buildVoiceKnownWork(ctx context.Context, userID int64, row voiceWorkRow) (voiceKnownWork, bool, error) {
+	displayCode, displayWorkID, remoteCode, err := s.voiceKnownWorkIdentity(ctx, row)
+	if err != nil {
+		return voiceKnownWork{}, false, err
+	}
+	if s.cfg.IsDemo() {
+		eligible, err := s.demoWorkEligible(ctx, displayWorkID)
+		if err != nil {
+			return voiceKnownWork{}, false, err
+		}
+		if !eligible {
+			return voiceKnownWork{}, false, nil
+		}
+	}
+	metadata := parseDLsiteSnapshot(row.Snapshot)
+	sourceTags, remoteObservations, err := s.workSourceStateByCode(ctx, displayCode)
+	if err != nil {
+		return voiceKnownWork{}, false, err
+	}
+	progress, err := s.workProgressSummary(ctx, userID, displayWorkID)
+	if err != nil {
+		return voiceKnownWork{}, false, err
+	}
+	item, err := s.newVoiceKnownWork(ctx, row, displayCode, displayWorkID, remoteCode, metadata, sourceTags, remoteObservations, progress)
+	if err != nil {
+		return voiceKnownWork{}, false, err
+	}
+	return item, true, nil
+}
+
+func (s *Server) voiceKnownWorkIdentity(ctx context.Context, row voiceWorkRow) (string, int64, string, error) {
+	ref, err := s.canonicalWorkForCode(ctx, row.PrimaryCode)
+	if err != nil {
+		return "", 0, "", err
+	}
+	displayCode, displayWorkID, remoteCode := row.PrimaryCode, row.ID, ""
+	if ref.Known && ref.Code != "" {
+		displayCode = ref.Code
+		if !strings.EqualFold(row.PrimaryCode, ref.Code) {
+			remoteCode = row.PrimaryCode
+		}
+		if ref.WorkID > 0 {
+			displayWorkID = ref.WorkID
+		}
+	}
+	return displayCode, displayWorkID, remoteCode, nil
+}
+
+func (s *Server) newVoiceKnownWork(
+	ctx context.Context,
+	row voiceWorkRow,
+	displayCode string,
+	displayWorkID int64,
+	remoteCode string,
+	metadata dlsiteSnapshotMetadata,
+	sourceTags []circleSourceStat,
+	remoteObservations []voiceRemoteObservation,
+	progress workProgressSummary,
+) (voiceKnownWork, error) {
+	if row.CircleLink.Valid {
+		if name, externalID := parsePartyLink(row.CircleLink.String); name != "" {
+			metadata.Circle, metadata.CircleExternalID = name, externalID
+		}
+	}
+	releaseDate := nullableString(row.ReleaseDate)
+	updatedAt := ""
+	if releaseDate != nil {
+		updatedAt = *releaseDate
+	}
+	item := voiceKnownWork{
+		WorkID: displayWorkID, PrimaryCode: displayCode, RemoteCode: remoteCode, Title: row.Title,
+		ReleaseDate: releaseDate, UpdatedAt: updatedAt, CoverURL: s.coverURL(displayCode), DLsiteURL: dlsiteURL(displayCode),
+		Circle: metadata.Circle, CircleExternalID: metadata.CircleExternalID, AgeRating: row.AgeRating, Rating: row.Rating,
+		RatingCount: metadata.RatingCount, Sales: row.Sales, RegularPrice: row.RegularPrice, Price: row.Price,
+		PriceCurrency: row.PriceCurrency, PermanentlyFree: row.PermanentlyFree, Tags: metadata.Tags,
+		VoiceActors: metadata.VoiceActors, Series: metadata.Series, SeriesTitleID: row.SeriesTitleID,
+		ListeningMark: row.ListeningStatus, Favorite: row.Favorite,
+		Local: row.HasLocal || sourceStatsContain(sourceTags, "local"), Remote: row.HasRemote || sourceStatsContain(sourceTags, "remote"),
+		Cache: row.HasCache || sourceStatsContain(sourceTags, "cache"), SourceTags: sourceTags,
+		RemoteObservations: remoteObservations, Progress: progress,
+	}
+	voiceCredits, err := s.voiceCreditsForWork(ctx, displayWorkID)
+	if err != nil {
+		return voiceKnownWork{}, err
+	}
+	item.VoiceCredits = voiceCredits
+	if err := s.applyManualOverridesToVoiceWork(ctx, &item); err != nil {
+		return voiceKnownWork{}, err
+	}
+	return item, nil
+}
+
 func mergeVoiceKnownWork(target *voiceKnownWork, item voiceKnownWork) {
+	mergeVoiceKnownWorkIdentity(target, item)
+	mergeVoiceKnownWorkMetadata(target, item)
+	mergeVoiceKnownWorkState(target, item)
+}
+
+func mergeVoiceKnownWorkIdentity(target *voiceKnownWork, item voiceKnownWork) {
 	if target.Title == "" || strings.EqualFold(target.Title, target.PrimaryCode) {
 		target.Title = item.Title
 	}
@@ -1338,6 +1393,9 @@ func mergeVoiceKnownWork(target *voiceKnownWork, item voiceKnownWork) {
 	if target.AgeRating == "" {
 		target.AgeRating = item.AgeRating
 	}
+}
+
+func mergeVoiceKnownWorkMetadata(target *voiceKnownWork, item voiceKnownWork) {
 	if target.Rating == nil {
 		target.Rating = item.Rating
 	}
@@ -1367,6 +1425,9 @@ func mergeVoiceKnownWork(target *voiceKnownWork, item voiceKnownWork) {
 		target.Series = item.Series
 		target.SeriesTitleID = item.SeriesTitleID
 	}
+}
+
+func mergeVoiceKnownWorkState(target *voiceKnownWork, item voiceKnownWork) {
 	if target.ListeningMark == "" || target.ListeningMark == "none" {
 		target.ListeningMark = item.ListeningMark
 	}
@@ -1456,109 +1517,14 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 	projector := s.remoteCatalogProjector(ctx)
 	for index, source := range sources {
 		wait.Add(1)
-		go func() {
+		go func(index int, source remoteSourceForUse) {
 			defer wait.Done()
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
-			for once := true; once; once = false {
-				result := voiceRemoteSourceSet{
-					SourceID:    source.ID,
-					SourceCode:  source.Code,
-					DisplayName: source.DisplayName,
-					Status:      "ok",
-					Works:       []voiceRemoteWork{},
-				}
-				if !isKikoeruSourceType(source.SourceType) {
-					result.Status = "unsupported"
-					results[index] = result
-					continue
-				}
-				if !source.Enabled {
-					result.Status = "disabled"
-					results[index] = result
-					continue
-				}
-				if strings.TrimSpace(source.Endpoint.APIURL) == "" {
-					result.Status = "misconfigured"
-					result.Error = "Remote source API endpoint is not configured."
-					results[index] = result
-					continue
-				}
-				started := time.Now()
-				sourceCtx, cancel := context.WithTimeout(ctx, voiceRemoteSourceTimeout)
-				client := s.kikoeruClientForSource(source)
-				var page kikoeru.WorksPage
-				var err error
-				if s.cfg.IsDemo() {
-					plan := demoRemoteSourceQueryPlan(keyword, source.SourceType)
-					page, err = client.SearchWorksSortedSeeded(sourceCtx, 1, voiceRemotePageSize, plan.PushdownQuery, "create_date", "desc", "")
-				} else {
-					page, err = client.ListWorks(sourceCtx, 1, voiceRemotePageSize, keyword)
-				}
-				cancel()
-				result.ElapsedMS = time.Since(started).Milliseconds()
-				if err != nil {
-					_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
-					result.Status, result.Error = voiceRemoteSourceErrorStatus(err, sourceCtx.Err())
-					result.DebugError = err.Error()
-					results[index] = result
-					continue
-				}
-				_ = s.updateSourceHealth(ctx, source.ID, "healthy")
-				result.Total = page.Pagination.TotalCount
-				if result.Total == 0 {
-					result.Total = page.Pagination.Total
-				}
-				if result.Total == 0 {
-					result.Total = page.Pagination.Count
-				}
-				for _, remoteWork := range page.Works {
-					projected := projector.project(source.ID, remoteWork)
-					code := projected.RemoteCode
-					displayCode := code
-					ref, err := s.canonicalWorkForCode(ctx, code)
-					if err != nil {
-						resultErrors[index] = err
-						continue
-					}
-					if ref.Code != "" {
-						displayCode = ref.Code
-					}
-					flags, err := s.sourceAvailabilityFlags(ctx, source.ID, code)
-					if err != nil {
-						resultErrors[index] = err
-						continue
-					}
-					result.Works = append(result.Works, voiceRemoteWork{
-						SourceID:       source.ID,
-						SourceCode:     source.Code,
-						SourceName:     source.DisplayName,
-						RemoteID:       projected.RemoteID,
-						PrimaryCode:    displayCode,
-						RemoteCode:     code,
-						Title:          firstNonEmpty(projected.Title, displayCode),
-						ReleaseDate:    projected.ReleaseDate,
-						UpdatedAt:      projected.ReleaseDate,
-						CoverURL:       projected.CoverURL,
-						Circle:         projected.Circle,
-						AgeRating:      projected.AgeRating,
-						Rating:         projected.Rating,
-						RatingCount:    projected.RatingCount,
-						Sales:          projected.Sales,
-						Price:          projected.Price,
-						Tags:           projected.Tags,
-						VoiceActors:    projected.VoiceActors,
-						ImportStatus:   remoteImportStatus(flags.WorkID),
-						RemotePlayable: true,
-						WorkID:         flags.WorkID,
-						HasLocal:       flags.HasLocal,
-						HasCache:       flags.HasCache,
-						HasRemote:      flags.HasRemote,
-					})
-				}
-				results[index] = result
-			}
-		}()
+			result, err := s.searchVoiceRemoteSource(ctx, source, keyword, projector)
+			results[index] = result
+			resultErrors[index] = err
+		}(index, source)
 	}
 	wait.Wait()
 	for _, resultErr := range resultErrors {
@@ -1566,6 +1532,105 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 			return nil, resultErr
 		}
 	}
+	workIDs := voiceRemoteWorkIDs(results)
+	availableNonOriginEditions, err := s.loadAvailableNonOriginEditions(ctx, workIDs)
+	if err != nil {
+		return nil, err
+	}
+	applyVoiceRemoteNonOriginFlags(results, availableNonOriginEditions)
+	_, err = s.recordVoiceRemoteSearchWorkflow(ctx, personID, voiceName, keyword, results)
+	return results, err
+}
+
+func (s *Server) searchVoiceRemoteSource(ctx context.Context, source remoteSourceForUse, keyword string, projector remoteCatalogProjector) (voiceRemoteSourceSet, error) {
+	result := voiceRemoteSourceSet{
+		SourceID: source.ID, SourceCode: source.Code, DisplayName: source.DisplayName,
+		Status: "ok", Works: []voiceRemoteWork{},
+	}
+	if !isKikoeruSourceType(source.SourceType) {
+		result.Status = "unsupported"
+		return result, nil
+	}
+	if !source.Enabled {
+		result.Status = "disabled"
+		return result, nil
+	}
+	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
+		result.Status = "misconfigured"
+		result.Error = "Remote source API endpoint is not configured."
+		return result, nil
+	}
+	started := time.Now()
+	sourceCtx, cancel := context.WithTimeout(ctx, voiceRemoteSourceTimeout)
+	client := s.kikoeruClientForSource(source)
+	var page kikoeru.WorksPage
+	var err error
+	if s.cfg.IsDemo() {
+		plan := demoRemoteSourceQueryPlan(keyword, source.SourceType)
+		page, err = client.SearchWorksSortedSeeded(sourceCtx, 1, voiceRemotePageSize, plan.PushdownQuery, "create_date", "desc", "")
+	} else {
+		page, err = client.ListWorks(sourceCtx, 1, voiceRemotePageSize, keyword)
+	}
+	ctxErr := sourceCtx.Err()
+	cancel()
+	result.ElapsedMS = time.Since(started).Milliseconds()
+	if err != nil {
+		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+		result.Status, result.Error = voiceRemoteSourceErrorStatus(err, ctxErr)
+		result.DebugError = err.Error()
+		return result, nil
+	}
+	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+	result.Total = voiceRemotePageTotal(page)
+	for _, remoteWork := range page.Works {
+		work, err := s.projectVoiceRemoteWork(ctx, source, projector, remoteWork)
+		if err != nil {
+			return result, err
+		}
+		result.Works = append(result.Works, work)
+	}
+	return result, nil
+}
+
+func voiceRemotePageTotal(page kikoeru.WorksPage) int {
+	if page.Pagination.TotalCount != 0 {
+		return page.Pagination.TotalCount
+	}
+	if page.Pagination.Total != 0 {
+		return page.Pagination.Total
+	}
+	return page.Pagination.Count
+}
+
+func (s *Server) projectVoiceRemoteWork(ctx context.Context, source remoteSourceForUse, projector remoteCatalogProjector, remoteWork kikoeru.Work) (voiceRemoteWork, error) {
+	projected := projector.project(source.ID, remoteWork)
+	code := projected.RemoteCode
+	displayCode := code
+	ref, err := s.canonicalWorkForCode(ctx, code)
+	if err != nil {
+		return voiceRemoteWork{}, err
+	}
+	if ref.Code != "" {
+		displayCode = ref.Code
+	}
+	flags, err := s.sourceAvailabilityFlags(ctx, source.ID, code)
+	if err != nil {
+		return voiceRemoteWork{}, err
+	}
+	return voiceRemoteWork{
+		SourceID: source.ID, SourceCode: source.Code, SourceName: source.DisplayName,
+		RemoteID: projected.RemoteID, PrimaryCode: displayCode, RemoteCode: code,
+		Title: firstNonEmpty(projected.Title, displayCode), ReleaseDate: projected.ReleaseDate,
+		UpdatedAt: projected.ReleaseDate, CoverURL: projected.CoverURL, Circle: projected.Circle,
+		AgeRating: projected.AgeRating, Rating: projected.Rating, RatingCount: projected.RatingCount,
+		Sales: projected.Sales, Price: projected.Price, Tags: projected.Tags,
+		VoiceActors: projected.VoiceActors, ImportStatus: remoteImportStatus(flags.WorkID),
+		RemotePlayable: true, WorkID: flags.WorkID, HasLocal: flags.HasLocal,
+		HasCache: flags.HasCache, HasRemote: flags.HasRemote,
+	}, nil
+}
+
+func voiceRemoteWorkIDs(results []voiceRemoteSourceSet) []int64 {
 	workIDs := []int64{}
 	for _, result := range results {
 		for _, work := range result.Works {
@@ -1574,20 +1639,18 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 			}
 		}
 	}
-	availableNonOriginEditions, err := s.loadAvailableNonOriginEditions(ctx, workIDs)
-	if err != nil {
-		return nil, err
-	}
+	return workIDs
+}
+
+func applyVoiceRemoteNonOriginFlags(results []voiceRemoteSourceSet, available map[int64]bool) {
 	for resultIndex := range results {
 		for workIndex := range results[resultIndex].Works {
 			workID := results[resultIndex].Works[workIndex].WorkID
 			if workID != nil {
-				results[resultIndex].Works[workIndex].HasNonOrigin = availableNonOriginEditions[*workID]
+				results[resultIndex].Works[workIndex].HasNonOrigin = available[*workID]
 			}
 		}
 	}
-	_, err = s.recordVoiceRemoteSearchWorkflow(ctx, personID, voiceName, keyword, results)
-	return results, err
 }
 
 func voiceRemoteSourceErrorStatus(err error, ctxErr error) (string, string) {
@@ -2006,19 +2069,35 @@ func (s *Server) mergeVoicePeople(ctx context.Context, targetID int64, sourceID 
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var targetName, sourceName string
-	if err := tx.QueryRowContext(ctx, "SELECT display_name FROM person WHERE id = ?", targetID).Scan(&targetName); err != nil {
-		return nil, err
-	}
-	if err := tx.QueryRowContext(ctx, "SELECT display_name FROM person WHERE id = ?", sourceID).Scan(&sourceName); err != nil {
-		return nil, err
-	}
-	snapshot, err := loadPersonMergeSnapshot(ctx, tx, targetID, sourceID)
+	targetName, sourceName, mergeReviewID, err := prepareVoiceMergeReview(ctx, tx, targetID, sourceID)
 	if err != nil {
 		return nil, err
 	}
-	addedAliasSet := map[string]bool{}
-	addedAliasSet[sourceName] = true
+	if err := mergeVoiceRelations(ctx, tx, targetID, sourceID, sourceName); err != nil {
+		return nil, err
+	}
+	if err := deleteMergedVoicePerson(ctx, tx, sourceID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return map[string]any{"mergeId": mergeReviewID, "targetPersonId": targetID, "sourcePersonId": sourceID, "targetName": targetName, "mergedName": sourceName}, nil
+}
+
+func prepareVoiceMergeReview(ctx context.Context, tx *sql.Tx, targetID, sourceID int64) (string, string, int64, error) {
+	var targetName, sourceName string
+	if err := tx.QueryRowContext(ctx, "SELECT display_name FROM person WHERE id = ?", targetID).Scan(&targetName); err != nil {
+		return "", "", 0, err
+	}
+	if err := tx.QueryRowContext(ctx, "SELECT display_name FROM person WHERE id = ?", sourceID).Scan(&sourceName); err != nil {
+		return "", "", 0, err
+	}
+	snapshot, err := loadPersonMergeSnapshot(ctx, tx, targetID, sourceID)
+	if err != nil {
+		return "", "", 0, err
+	}
+	addedAliasSet := map[string]bool{sourceName: true}
 	for _, alias := range snapshot.Aliases {
 		addedAliasSet[alias.Alias] = true
 	}
@@ -2027,18 +2106,19 @@ func (s *Server) mergeVoicePeople(ctx context.Context, targetID int64, sourceID 
 	}
 	snapshotJSON, err := json.Marshal(snapshot)
 	if err != nil {
-		return nil, err
+		return "", "", 0, err
 	}
 	mergeReviewID, err := insertPersonMergeReview(ctx, tx, targetID, sourceID, targetName, sourceName, string(snapshotJSON))
-	if err != nil {
-		return nil, err
-	}
+	return targetName, sourceName, mergeReviewID, err
+}
+
+func mergeVoiceRelations(ctx context.Context, tx *sql.Tx, targetID, sourceID int64, sourceName string) error {
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO person_alias (person_id, alias, source)
 		VALUES (?, ?, 'merged_name')
 		ON CONFLICT(person_id, alias) DO NOTHING
 	`, targetID, sourceName); err != nil {
-		return nil, err
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO person_alias (person_id, alias, source)
@@ -2047,7 +2127,7 @@ func (s *Server) mergeVoicePeople(ctx context.Context, targetID int64, sourceID 
 		WHERE person_id = ?
 		ON CONFLICT(person_id, alias) DO NOTHING
 	`, targetID, sourceID); err != nil {
-		return nil, err
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO work_credit (work_id, person_id, role, provider_id, source, created_at, updated_at)
@@ -2059,7 +2139,7 @@ func (s *Server) mergeVoicePeople(ctx context.Context, targetID int64, sourceID 
 			source = CASE WHEN work_credit.source = '' THEN excluded.source ELSE work_credit.source END,
 			updated_at = CURRENT_TIMESTAMP
 	`, targetID, sourceID); err != nil {
-		return nil, err
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO user_person_state (user_id, person_id, rating, note, favorite, last_viewed_at, created_at, updated_at)
@@ -2073,7 +2153,7 @@ func (s *Server) mergeVoicePeople(ctx context.Context, targetID int64, sourceID 
 			last_viewed_at = COALESCE(user_person_state.last_viewed_at, excluded.last_viewed_at),
 			updated_at = CURRENT_TIMESTAMP
 	`, targetID, sourceID); err != nil {
-		return nil, err
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO user_person_tag_assignment (user_id, person_id, user_person_tag_id, created_at)
@@ -2082,35 +2162,36 @@ func (s *Server) mergeVoicePeople(ctx context.Context, targetID int64, sourceID 
 		WHERE person_id = ?
 		ON CONFLICT(user_id, person_id, user_person_tag_id) DO NOTHING
 	`, targetID, sourceID); err != nil {
-		return nil, err
+		return err
 	}
 	if err := mergeVoiceCatalogPeople(ctx, tx, targetID, sourceID); err != nil {
-		return nil, err
+		return err
 	}
+	return nil
+}
+
+func deleteMergedVoicePerson(ctx context.Context, tx *sql.Tx, sourceID int64) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM work_credit WHERE person_id = ?", sourceID); err != nil {
-		return nil, err
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM user_person_state WHERE person_id = ?", sourceID); err != nil {
-		return nil, err
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM user_person_tag_assignment WHERE person_id = ?", sourceID); err != nil {
-		return nil, err
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM person_alias WHERE person_id = ?", sourceID); err != nil {
-		return nil, err
+		return err
 	}
 	result, err := tx.ExecContext(ctx, "DELETE FROM person WHERE id = ?", sourceID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	deleted, _ := result.RowsAffected()
 	if deleted == 0 {
-		return nil, sql.ErrNoRows
+		return sql.ErrNoRows
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return map[string]any{"mergeId": mergeReviewID, "targetPersonId": targetID, "sourcePersonId": sourceID, "targetName": targetName, "mergedName": sourceName}, nil
+	return nil
 }
 
 func (s *Server) undoVoiceMerge(ctx context.Context, targetID int64, mergeID int64) (map[string]any, error) {
@@ -2119,25 +2200,77 @@ func (s *Server) undoVoiceMerge(ctx context.Context, targetID int64, mergeID int
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-
-	var snapshotRaw string
-	var status string
-	var sourceName string
-	err = tx.QueryRowContext(ctx, `
-		SELECT snapshot_json, status, source_name
-		FROM person_merge_review
-		WHERE id = ? AND target_person_id = ?
-	`, mergeID, targetID).Scan(&snapshotRaw, &status, &sourceName)
+	record, err := loadVoiceMergeUndoRecord(ctx, tx, targetID, mergeID)
 	if err != nil {
 		return nil, err
 	}
-	if status != "merged" {
-		return nil, fmt.Errorf("merge review is already %s", status)
-	}
-	var snapshot personMergeSnapshot
-	if err := json.Unmarshal([]byte(snapshotRaw), &snapshot); err != nil {
+	if err := restoreVoiceMergeSnapshot(ctx, tx, targetID, record.snapshot); err != nil {
 		return nil, err
 	}
+	if err := markVoiceMergeUndone(ctx, tx, targetID, mergeID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return map[string]any{"mergeId": mergeID, "targetPersonId": targetID, "restoredPersonId": record.snapshot.SourcePerson.ID, "restoredName": record.sourceName}, nil
+}
+
+type voiceMergeUndoRecord struct {
+	snapshot   personMergeSnapshot
+	sourceName string
+}
+
+func loadVoiceMergeUndoRecord(ctx context.Context, tx *sql.Tx, targetID, mergeID int64) (voiceMergeUndoRecord, error) {
+	var record voiceMergeUndoRecord
+	var snapshotRaw, status string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT snapshot_json, status, source_name
+		FROM person_merge_review
+		WHERE id = ? AND target_person_id = ?
+	`, mergeID, targetID).Scan(&snapshotRaw, &status, &record.sourceName); err != nil {
+		return record, err
+	}
+	if status != "merged" {
+		return record, fmt.Errorf("merge review is already %s", status)
+	}
+	if err := json.Unmarshal([]byte(snapshotRaw), &record.snapshot); err != nil {
+		return record, err
+	}
+	return record, nil
+}
+
+func restoreVoiceMergeSnapshot(ctx context.Context, tx *sql.Tx, targetID int64, snapshot personMergeSnapshot) error {
+	if err := restoreVoiceMergePerson(ctx, tx, snapshot); err != nil {
+		return err
+	}
+	if err := restoreVoiceMergeCredits(ctx, tx, targetID, snapshot); err != nil {
+		return err
+	}
+	if err := restoreVoiceMergeStates(ctx, tx, targetID, snapshot); err != nil {
+		return err
+	}
+	if err := restoreVoiceMergeTags(ctx, tx, targetID, snapshot); err != nil {
+		return err
+	}
+	for _, alias := range snapshot.AddedAliases {
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM person_alias
+			WHERE person_id = ?
+				AND alias = ?
+				AND source IN ('merged_name', 'merged_primary_name', 'merged_alias')
+		`, targetID, alias); err != nil {
+			return err
+		}
+	}
+	if snapshot.CatalogCaptured {
+		return restoreVoiceCatalogMergeSnapshot(ctx, tx, targetID, snapshot.SourcePerson.ID, snapshot.TargetCatalog, snapshot.SourceCatalog)
+	}
+	return nil
+}
+
+func restoreVoiceMergePerson(ctx context.Context, tx *sql.Tx, snapshot personMergeSnapshot) error {
+	person := snapshot.SourcePerson
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO person (id, display_name, sort_name, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?)
@@ -2145,18 +2278,22 @@ func (s *Server) undoVoiceMerge(ctx context.Context, targetID int64, mergeID int
 			display_name = excluded.display_name,
 			sort_name = excluded.sort_name,
 			updated_at = CURRENT_TIMESTAMP
-	`, snapshot.SourcePerson.ID, snapshot.SourcePerson.DisplayName, snapshot.SourcePerson.SortName, snapshot.SourcePerson.CreatedAt, snapshot.SourcePerson.UpdatedAt); err != nil {
-		return nil, err
+	`, person.ID, person.DisplayName, person.SortName, person.CreatedAt, person.UpdatedAt); err != nil {
+		return err
 	}
 	for _, alias := range snapshot.Aliases {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO person_alias (person_id, alias, source, created_at)
 			VALUES (?, ?, ?, ?)
 			ON CONFLICT(person_id, alias) DO NOTHING
-		`, snapshot.SourcePerson.ID, alias.Alias, alias.Source, alias.CreatedAt); err != nil {
-			return nil, err
+		`, person.ID, alias.Alias, alias.Source, alias.CreatedAt); err != nil {
+			return err
 		}
 	}
+	return nil
+}
+
+func restoreVoiceMergeCredits(ctx context.Context, tx *sql.Tx, targetID int64, snapshot personMergeSnapshot) error {
 	for _, credit := range snapshot.Credits {
 		var provider any
 		if credit.ProviderID != nil {
@@ -2170,10 +2307,10 @@ func (s *Server) undoVoiceMerge(ctx context.Context, targetID int64, mergeID int
 				source = excluded.source,
 				updated_at = CURRENT_TIMESTAMP
 		`, credit.WorkID, snapshot.SourcePerson.ID, credit.Role, provider, credit.Source, credit.CreatedAt, credit.UpdatedAt); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	targetCreditKeys := map[string]bool{}
+	targetCreditKeys := make(map[string]bool, len(snapshot.TargetCredits))
 	for _, credit := range snapshot.TargetCredits {
 		targetCreditKeys[workCreditKey(credit.WorkID, credit.Role)] = true
 	}
@@ -2182,40 +2319,23 @@ func (s *Server) undoVoiceMerge(ctx context.Context, targetID int64, mergeID int
 			continue
 		}
 		if _, err := tx.ExecContext(ctx, "DELETE FROM work_credit WHERE work_id = ? AND person_id = ? AND role = ?", credit.WorkID, targetID, credit.Role); err != nil {
-			return nil, err
+			return err
 		}
 	}
+	return nil
+}
+
+func restoreVoiceMergeStates(ctx context.Context, tx *sql.Tx, targetID int64, snapshot personMergeSnapshot) error {
 	for _, state := range snapshot.States {
-		var rating any
-		if state.Rating != nil {
-			rating = *state.Rating
-		}
-		var lastViewed any
-		if state.LastViewedAt != nil {
-			lastViewed = *state.LastViewedAt
-		}
-		favorite := 0
-		if state.Favorite {
-			favorite = 1
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO user_person_state (user_id, person_id, rating, note, favorite, last_viewed_at, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(user_id, person_id) DO UPDATE SET
-				rating = excluded.rating,
-				note = excluded.note,
-				favorite = excluded.favorite,
-				last_viewed_at = excluded.last_viewed_at,
-				updated_at = CURRENT_TIMESTAMP
-		`, state.UserID, snapshot.SourcePerson.ID, rating, state.Note, favorite, lastViewed, state.CreatedAt, state.UpdatedAt); err != nil {
-			return nil, err
+		if err := restoreUserPersonState(ctx, tx, snapshot.SourcePerson.ID, state); err != nil {
+			return err
 		}
 	}
-	targetStateUsers := map[int64]bool{}
+	targetStateUsers := make(map[int64]bool, len(snapshot.TargetStates))
 	for _, state := range snapshot.TargetStates {
 		targetStateUsers[state.UserID] = true
 		if err := restoreUserPersonState(ctx, tx, targetID, state); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	for _, state := range snapshot.States {
@@ -2223,19 +2343,23 @@ func (s *Server) undoVoiceMerge(ctx context.Context, targetID int64, mergeID int
 			continue
 		}
 		if _, err := tx.ExecContext(ctx, "DELETE FROM user_person_state WHERE user_id = ? AND person_id = ?", state.UserID, targetID); err != nil {
-			return nil, err
+			return err
 		}
 	}
+	return nil
+}
+
+func restoreVoiceMergeTags(ctx context.Context, tx *sql.Tx, targetID int64, snapshot personMergeSnapshot) error {
 	for _, link := range snapshot.TagLinks {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO user_person_tag_assignment (user_id, person_id, user_person_tag_id, created_at)
 			VALUES (?, ?, ?, ?)
 			ON CONFLICT(user_id, person_id, user_person_tag_id) DO NOTHING
 		`, link.UserID, snapshot.SourcePerson.ID, link.UserPersonTagID, link.CreatedAt); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	targetTagKeys := map[string]bool{}
+	targetTagKeys := make(map[string]bool, len(snapshot.TargetTagLinks))
 	for _, link := range snapshot.TargetTagLinks {
 		targetTagKeys[userTagLinkKey(link.UserID, link.UserPersonTagID)] = true
 	}
@@ -2244,36 +2368,20 @@ func (s *Server) undoVoiceMerge(ctx context.Context, targetID int64, mergeID int
 			continue
 		}
 		if _, err := tx.ExecContext(ctx, "DELETE FROM user_person_tag_assignment WHERE user_id = ? AND person_id = ? AND user_person_tag_id = ?", link.UserID, targetID, link.UserPersonTagID); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	for _, alias := range snapshot.AddedAliases {
-		if _, err := tx.ExecContext(ctx, `
-			DELETE FROM person_alias
-			WHERE person_id = ?
-				AND alias = ?
-				AND source IN ('merged_name', 'merged_primary_name', 'merged_alias')
-		`, targetID, alias); err != nil {
-			return nil, err
-		}
-	}
-	if snapshot.CatalogCaptured {
-		if err := restoreVoiceCatalogMergeSnapshot(ctx, tx, targetID, snapshot.SourcePerson.ID, snapshot.TargetCatalog, snapshot.SourceCatalog); err != nil {
-			return nil, err
-		}
-	}
-	if _, err := tx.ExecContext(ctx, `
+	return nil
+}
+
+func markVoiceMergeUndone(ctx context.Context, tx *sql.Tx, targetID, mergeID int64) error {
+	_, err := tx.ExecContext(ctx, `
 		UPDATE person_merge_review
 		SET status = 'undone',
 			undone_at = CURRENT_TIMESTAMP
 		WHERE id = ? AND target_person_id = ? AND status = 'merged'
-	`, mergeID, targetID); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return map[string]any{"mergeId": mergeID, "targetPersonId": targetID, "restoredPersonId": snapshot.SourcePerson.ID, "restoredName": sourceName}, nil
+	`, mergeID, targetID)
+	return err
 }
 
 func insertPersonMergeReview(ctx context.Context, tx *sql.Tx, targetID int64, sourceID int64, targetName string, sourceName string, snapshotJSON string) (int64, error) {
@@ -2288,118 +2396,86 @@ func insertPersonMergeReview(ctx context.Context, tx *sql.Tx, targetID int64, so
 }
 
 func loadPersonMergeSnapshot(ctx context.Context, tx *sql.Tx, targetID int64, personID int64) (personMergeSnapshot, error) {
-	var snapshot personMergeSnapshot
-	if err := tx.QueryRowContext(ctx, `
-		SELECT id, display_name, sort_name, created_at, updated_at
-		FROM person
-		WHERE id = ?
-	`, personID).Scan(&snapshot.SourcePerson.ID, &snapshot.SourcePerson.DisplayName, &snapshot.SourcePerson.SortName, &snapshot.SourcePerson.CreatedAt, &snapshot.SourcePerson.UpdatedAt); err != nil {
-		return snapshot, err
-	}
-	aliases, err := tx.QueryContext(ctx, "SELECT alias, source, created_at FROM person_alias WHERE person_id = ? ORDER BY id ASC", personID)
+	sourcePerson, err := loadPersonSnapshot(ctx, tx, personID)
 	if err != nil {
-		return snapshot, err
+		return personMergeSnapshot{}, err
 	}
-	for aliases.Next() {
-		var item personAliasSnapshot
-		if err := aliases.Scan(&item.Alias, &item.Source, &item.CreatedAt); err != nil {
-			_ = aliases.Close()
-			return snapshot, err
-		}
-		snapshot.Aliases = append(snapshot.Aliases, item)
-	}
-	if err := aliases.Close(); err != nil {
-		return snapshot, err
-	}
-	credits, err := tx.QueryContext(ctx, "SELECT work_id, role, provider_id, source, created_at, updated_at FROM work_credit WHERE person_id = ? ORDER BY work_id ASC", personID)
+	aliases, err := loadPersonAliasSnapshots(ctx, tx, personID)
 	if err != nil {
-		return snapshot, err
+		return personMergeSnapshot{}, err
 	}
-	for credits.Next() {
-		var item workCreditSnapshot
-		var provider sql.NullInt64
-		if err := credits.Scan(&item.WorkID, &item.Role, &provider, &item.Source, &item.CreatedAt, &item.UpdatedAt); err != nil {
-			_ = credits.Close()
-			return snapshot, err
-		}
-		if provider.Valid {
-			value := provider.Int64
-			item.ProviderID = &value
-		}
-		snapshot.Credits = append(snapshot.Credits, item)
-	}
-	if err := credits.Close(); err != nil {
-		return snapshot, err
-	}
-	states, err := tx.QueryContext(ctx, "SELECT user_id, rating, note, favorite, last_viewed_at, created_at, updated_at FROM user_person_state WHERE person_id = ? ORDER BY user_id ASC", personID)
+	credits, err := loadWorkCreditSnapshots(ctx, tx, personID)
 	if err != nil {
-		return snapshot, err
+		return personMergeSnapshot{}, err
 	}
-	for states.Next() {
-		var item userPersonStateSnapshot
-		var rating sql.NullInt64
-		var favorite int
-		var lastViewed sql.NullString
-		if err := states.Scan(&item.UserID, &rating, &item.Note, &favorite, &lastViewed, &item.CreatedAt, &item.UpdatedAt); err != nil {
-			_ = states.Close()
-			return snapshot, err
-		}
-		if rating.Valid {
-			value := int(rating.Int64)
-			item.Rating = &value
-		}
-		item.Favorite = favorite != 0
-		if lastViewed.Valid {
-			value := lastViewed.String
-			item.LastViewedAt = &value
-		}
-		snapshot.States = append(snapshot.States, item)
-	}
-	if err := states.Close(); err != nil {
-		return snapshot, err
-	}
-	links, err := tx.QueryContext(ctx, "SELECT user_id, user_person_tag_id, created_at FROM user_person_tag_assignment WHERE person_id = ? ORDER BY user_id ASC, user_person_tag_id ASC", personID)
+	states, err := loadUserPersonStateSnapshots(ctx, tx, personID)
 	if err != nil {
-		return snapshot, err
+		return personMergeSnapshot{}, err
 	}
-	for links.Next() {
-		var item userPersonTagLinkSnapshot
-		if err := links.Scan(&item.UserID, &item.UserPersonTagID, &item.CreatedAt); err != nil {
-			_ = links.Close()
-			return snapshot, err
-		}
-		snapshot.TagLinks = append(snapshot.TagLinks, item)
-	}
-	if err := links.Close(); err != nil {
-		return snapshot, err
+	links, err := loadUserPersonTagLinkSnapshots(ctx, tx, personID)
+	if err != nil {
+		return personMergeSnapshot{}, err
 	}
 	targetCredits, err := loadWorkCreditSnapshots(ctx, tx, targetID)
 	if err != nil {
-		return snapshot, err
+		return personMergeSnapshot{}, err
 	}
-	snapshot.TargetCredits = targetCredits
 	targetStates, err := loadUserPersonStateSnapshots(ctx, tx, targetID)
 	if err != nil {
-		return snapshot, err
+		return personMergeSnapshot{}, err
 	}
-	snapshot.TargetStates = targetStates
 	targetLinks, err := loadUserPersonTagLinkSnapshots(ctx, tx, targetID)
 	if err != nil {
-		return snapshot, err
+		return personMergeSnapshot{}, err
 	}
-	snapshot.TargetTagLinks = targetLinks
 	sourceCatalog, err := loadVoiceCatalogPersonSnapshot(ctx, tx, personID)
 	if err != nil {
-		return snapshot, err
+		return personMergeSnapshot{}, err
 	}
 	targetCatalog, err := loadVoiceCatalogPersonSnapshot(ctx, tx, targetID)
 	if err != nil {
-		return snapshot, err
+		return personMergeSnapshot{}, err
 	}
-	snapshot.CatalogCaptured = true
-	snapshot.SourceCatalog = sourceCatalog
-	snapshot.TargetCatalog = targetCatalog
-	return snapshot, nil
+	return personMergeSnapshot{
+		SourcePerson:    sourcePerson,
+		Aliases:         aliases,
+		Credits:         credits,
+		States:          states,
+		TagLinks:        links,
+		TargetCredits:   targetCredits,
+		TargetStates:    targetStates,
+		TargetTagLinks:  targetLinks,
+		CatalogCaptured: true,
+		SourceCatalog:   sourceCatalog,
+		TargetCatalog:   targetCatalog,
+	}, nil
+}
+
+func loadPersonSnapshot(ctx context.Context, tx *sql.Tx, personID int64) (personSnapshot, error) {
+	var person personSnapshot
+	err := tx.QueryRowContext(ctx, `
+		SELECT id, display_name, sort_name, created_at, updated_at
+		FROM person
+		WHERE id = ?
+	`, personID).Scan(&person.ID, &person.DisplayName, &person.SortName, &person.CreatedAt, &person.UpdatedAt)
+	return person, err
+}
+
+func loadPersonAliasSnapshots(ctx context.Context, tx *sql.Tx, personID int64) ([]personAliasSnapshot, error) {
+	rows, err := tx.QueryContext(ctx, "SELECT alias, source, created_at FROM person_alias WHERE person_id = ? ORDER BY id ASC", personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []personAliasSnapshot{}
+	for rows.Next() {
+		var item personAliasSnapshot
+		if err := rows.Scan(&item.Alias, &item.Source, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func loadWorkCreditSnapshots(ctx context.Context, tx *sql.Tx, personID int64) ([]workCreditSnapshot, error) {
@@ -2581,6 +2657,28 @@ func (s *Server) loadVoiceUserTags(ctx context.Context, userID int64, personID i
 }
 
 func (s *Server) workSourceStateByCode(ctx context.Context, code string) ([]circleSourceStat, []voiceRemoteObservation, error) {
+	tags, err := s.availableVoiceSourceTags(ctx, code)
+	if err != nil {
+		return nil, nil, err
+	}
+	observedTags, remoteObservations, err := s.observedVoiceSourceTags(ctx, code)
+	if err != nil {
+		return nil, nil, err
+	}
+	tagIndexes := make(map[string]int, len(tags)+len(observedTags))
+	for index, tag := range tags {
+		tagIndexes[circleSourceStatKey(tag)] = index
+	}
+	for _, tag := range observedTags {
+		mergeObservedVoiceSourceTag(&tags, tagIndexes, tag)
+	}
+	if sourceStatsContain(tags, "remote") {
+		tags = append([]circleSourceStat{{Key: "remote", DisplayName: "Remote", Status: "available", Count: 1}}, tags...)
+	}
+	return tags, remoteObservations, nil
+}
+
+func (s *Server) availableVoiceSourceTags(ctx context.Context, code string) ([]circleSourceStat, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT source.id, source.display_name, location.location_type, COUNT(*)
 		FROM media_file_location AS location
@@ -2602,7 +2700,7 @@ func (s *Server) workSourceStateByCode(ctx context.Context, code string) ([]circ
 		ORDER BY source.priority ASC, source.display_name ASC
 	`, code, code)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	defer rows.Close()
 	tags := []circleSourceStat{}
@@ -2612,7 +2710,7 @@ func (s *Server) workSourceStateByCode(ctx context.Context, code string) ([]circ
 		var name, locationType string
 		var count int
 		if err := rows.Scan(&sourceID, &name, &locationType, &count); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		switch locationType {
 		case "local":
@@ -2624,14 +2722,17 @@ func (s *Server) workSourceStateByCode(ctx context.Context, code string) ([]circ
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if err := rows.Close(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
+	return tags, nil
+}
 
-	// Source presence is a work-level availability observation. It can make the
-	// remote source available without implying that concrete media rows exist.
+// Source presence is a work-level availability observation. It can make the
+// remote source available without implying that concrete media rows exist.
+func (s *Server) observedVoiceSourceTags(ctx context.Context, code string) ([]circleSourceStat, []voiceRemoteObservation, error) {
 	presenceRows, err := s.db.QueryContext(ctx, `
 		SELECT source.id, source.code, source.display_name, presence.remote_code, presence.availability, COUNT(*)
 		FROM work_source_presence AS presence
@@ -2700,14 +2801,11 @@ func (s *Server) workSourceStateByCode(ctx context.Context, code string) ([]circ
 	if err := presenceRows.Err(); err != nil {
 		return nil, nil, err
 	}
+	observedTags := make([]circleSourceStat, 0, len(observedSourceOrder))
 	for _, sourceID := range observedSourceOrder {
-		mergeObservedVoiceSourceTag(&tags, tagIndexes, observedStats[sourceID])
+		observedTags = append(observedTags, observedStats[sourceID])
 	}
-
-	if sourceStatsContain(tags, "remote") {
-		tags = append([]circleSourceStat{{Key: "remote", DisplayName: "Remote", Status: "available", Count: 1}}, tags...)
-	}
-	return tags, remoteObservations, nil
+	return observedTags, remoteObservations, nil
 }
 
 func mergeAvailableVoiceSourceTag(tags *[]circleSourceStat, indexes map[string]int, item circleSourceStat) {

@@ -45,30 +45,13 @@ func (e SizeMismatchError) Unwrap() error { return ErrSizeMismatch }
 // WriteFile streams one response body into a temporary file, validates its
 // size, and publishes it only after the complete body has been accepted.
 func WriteFile(body io.Reader, contentLength int64, targetPath string, options Options) (int64, error) {
-	if options.MaxBytes <= 0 {
-		return 0, fmt.Errorf("download size limit must be positive")
+	if err := validateWriteRequest(contentLength, options); err != nil {
+		return 0, err
 	}
-	if options.ExpectedBytes != nil && *options.ExpectedBytes < 0 {
-		return 0, fmt.Errorf("expected download size must not be negative")
-	}
-	if contentLength > options.MaxBytes {
-		return 0, LimitError{LimitBytes: options.MaxBytes, DeclaredBytes: contentLength}
-	}
-	if options.ExpectedBytes != nil {
-		if *options.ExpectedBytes > options.MaxBytes {
-			return 0, LimitError{LimitBytes: options.MaxBytes, DeclaredBytes: *options.ExpectedBytes}
-		}
-		if contentLength >= 0 && contentLength != *options.ExpectedBytes {
-			return 0, SizeMismatchError{ExpectedBytes: *options.ExpectedBytes, ActualBytes: contentLength}
-		}
-	}
-
-	directory := filepath.Dir(targetPath)
-	file, err := os.CreateTemp(directory, "."+filepath.Base(targetPath)+".download-*")
+	file, tempPath, err := createTemporaryDownload(targetPath)
 	if err != nil {
 		return 0, err
 	}
-	tempPath := file.Name()
 	keepTemp := false
 	defer func() {
 		_ = file.Close()
@@ -76,10 +59,54 @@ func WriteFile(body io.Reader, contentLength int64, targetPath string, options O
 			_ = os.Remove(tempPath)
 		}
 	}()
-	if err := file.Chmod(0o644); err != nil {
+	written, err := copyAndValidate(body, file, options)
+	if err != nil {
 		return 0, err
 	}
+	if err := publishDownload(file, tempPath, targetPath); err != nil {
+		return 0, err
+	}
+	keepTemp = true
+	return written, nil
+}
 
+func validateWriteRequest(contentLength int64, options Options) error {
+	if options.MaxBytes <= 0 {
+		return fmt.Errorf("download size limit must be positive")
+	}
+	if options.ExpectedBytes != nil && *options.ExpectedBytes < 0 {
+		return fmt.Errorf("expected download size must not be negative")
+	}
+	if contentLength > options.MaxBytes {
+		return LimitError{LimitBytes: options.MaxBytes, DeclaredBytes: contentLength}
+	}
+	if options.ExpectedBytes == nil {
+		return nil
+	}
+	if *options.ExpectedBytes > options.MaxBytes {
+		return LimitError{LimitBytes: options.MaxBytes, DeclaredBytes: *options.ExpectedBytes}
+	}
+	if contentLength >= 0 && contentLength != *options.ExpectedBytes {
+		return SizeMismatchError{ExpectedBytes: *options.ExpectedBytes, ActualBytes: contentLength}
+	}
+	return nil
+}
+
+func createTemporaryDownload(targetPath string) (*os.File, string, error) {
+	directory := filepath.Dir(targetPath)
+	file, err := os.CreateTemp(directory, "."+filepath.Base(targetPath)+".download-*")
+	if err != nil {
+		return nil, "", err
+	}
+	if err := file.Chmod(0o644); err != nil {
+		_ = file.Close()
+		_ = os.Remove(file.Name())
+		return nil, "", err
+	}
+	return file, file.Name(), nil
+}
+
+func copyAndValidate(body io.Reader, destination io.Writer, options Options) (int64, error) {
 	if options.OnProgress != nil {
 		options.OnProgress(0)
 	}
@@ -88,9 +115,9 @@ func WriteFile(body io.Reader, contentLength int64, targetPath string, options O
 		copyLimit++
 	}
 	limited := &io.LimitedReader{R: body, N: copyLimit}
-	written, copyErr := io.Copy(&progressWriter{writer: file, onProgress: options.OnProgress}, limited)
-	if copyErr != nil {
-		return 0, copyErr
+	written, err := io.Copy(&progressWriter{writer: destination, onProgress: options.OnProgress}, limited)
+	if err != nil {
+		return 0, err
 	}
 	if written > options.MaxBytes {
 		return 0, LimitError{LimitBytes: options.MaxBytes, DeclaredBytes: written}
@@ -98,17 +125,17 @@ func WriteFile(body io.Reader, contentLength int64, targetPath string, options O
 	if options.ExpectedBytes != nil && written != *options.ExpectedBytes {
 		return 0, SizeMismatchError{ExpectedBytes: *options.ExpectedBytes, ActualBytes: written}
 	}
+	return written, nil
+}
+
+func publishDownload(file *os.File, tempPath, targetPath string) error {
 	if err := file.Sync(); err != nil {
-		return 0, err
+		return err
 	}
 	if err := file.Close(); err != nil {
-		return 0, err
+		return err
 	}
-	if err := os.Rename(tempPath, targetPath); err != nil {
-		return 0, err
-	}
-	keepTemp = true
-	return written, nil
+	return os.Rename(tempPath, targetPath)
 }
 
 type progressWriter struct {

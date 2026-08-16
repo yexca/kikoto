@@ -96,15 +96,9 @@ func (s *Server) recordRecommendationEvents(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	var payload struct {
-		Events []recommendationEventInput `json:"events"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
-		return
-	}
-	if len(payload.Events) == 0 || len(payload.Events) > 100 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "events must contain between 1 and 100 items"})
+	events, err := decodeRecommendationEvents(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	tx, err := s.db.BeginTx(r.Context(), nil)
@@ -113,45 +107,82 @@ func (s *Server) recordRecommendationEvents(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	for _, event := range payload.Events {
-		event.EventType = strings.ToLower(strings.TrimSpace(event.EventType))
-		if !validRecommendationEventType(event.EventType) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported recommendation event type"})
+	if err := insertRecommendationEvents(r.Context(), tx, user.ID, events); err != nil {
+		if isRecommendationEventValidationError(err) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		if !recommendationContextIDPattern.MatchString(event.ContextID) || event.Rank < 0 || event.Rank > 10000 || event.Score < 0 || event.Score > 100 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid recommendation event fields"})
-			return
-		}
-		if event.EventType != "reshuffle" && (event.WorkID == nil || *event.WorkID <= 0) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "workId is required for this recommendation event"})
-			return
-		}
-		algorithmVersion := strings.TrimSpace(event.AlgorithmVersion)
-		if algorithmVersion == "" {
-			algorithmVersion = library.RecommendationAlgorithmVersion
-		}
-		if len(algorithmVersion) > 32 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "algorithmVersion is too long"})
-			return
-		}
-		var workID any
-		if event.WorkID != nil {
-			workID = *event.WorkID
-		}
-		if _, err := tx.ExecContext(r.Context(), `
-			INSERT INTO recommendation_event (user_id, work_id, event_type, context_id, algorithm_version, seed, rank, score)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`, user.ID, workID, event.EventType, event.ContextID, algorithmVersion, event.Seed, event.Rank, event.Score); err != nil {
-			writeError(w, err)
-			return
-		}
+		writeError(w, err)
+		return
 	}
 	if err := tx.Commit(); err != nil {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]int{"recorded": len(payload.Events)})
+	writeJSON(w, http.StatusCreated, map[string]int{"recorded": len(events)})
+}
+
+type recommendationEventValidationError struct{ message string }
+
+func (e recommendationEventValidationError) Error() string { return e.message }
+
+func isRecommendationEventValidationError(err error) bool {
+	var validationErr recommendationEventValidationError
+	return errors.As(err, &validationErr)
+}
+
+func decodeRecommendationEvents(r *http.Request) ([]recommendationEventInput, error) {
+	var payload struct {
+		Events []recommendationEventInput `json:"events"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		return nil, errors.New("invalid JSON body")
+	}
+	if len(payload.Events) == 0 || len(payload.Events) > 100 {
+		return nil, errors.New("events must contain between 1 and 100 items")
+	}
+	return payload.Events, nil
+}
+
+func validateRecommendationEvent(event recommendationEventInput) (recommendationEventInput, any, error) {
+	event.EventType = strings.ToLower(strings.TrimSpace(event.EventType))
+	if !validRecommendationEventType(event.EventType) {
+		return recommendationEventInput{}, nil, recommendationEventValidationError{"unsupported recommendation event type"}
+	}
+	if !recommendationContextIDPattern.MatchString(event.ContextID) || event.Rank < 0 || event.Rank > 10000 || event.Score < 0 || event.Score > 100 {
+		return recommendationEventInput{}, nil, recommendationEventValidationError{"invalid recommendation event fields"}
+	}
+	if event.EventType != "reshuffle" && (event.WorkID == nil || *event.WorkID <= 0) {
+		return recommendationEventInput{}, nil, recommendationEventValidationError{"workId is required for this recommendation event"}
+	}
+	event.AlgorithmVersion = strings.TrimSpace(event.AlgorithmVersion)
+	if event.AlgorithmVersion == "" {
+		event.AlgorithmVersion = library.RecommendationAlgorithmVersion
+	}
+	if len(event.AlgorithmVersion) > 32 {
+		return recommendationEventInput{}, nil, recommendationEventValidationError{"algorithmVersion is too long"}
+	}
+	var workID any
+	if event.WorkID != nil {
+		workID = *event.WorkID
+	}
+	return event, workID, nil
+}
+
+func insertRecommendationEvents(ctx context.Context, tx *sql.Tx, userID int64, events []recommendationEventInput) error {
+	for _, input := range events {
+		event, workID, err := validateRecommendationEvent(input)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO recommendation_event (user_id, work_id, event_type, context_id, algorithm_version, seed, rank, score)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`, userID, workID, event.EventType, event.ContextID, event.AlgorithmVersion, event.Seed, event.Rank, event.Score); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Server) getRecommendationTelemetry(w http.ResponseWriter, r *http.Request) {

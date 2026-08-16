@@ -65,6 +65,8 @@ export type LegacyWorkflowTrigger = {
 export type LegacyWorkflowUpgrade =
   { kind: "upgradeable"; document: WorkflowDefinitionDocument } | { kind: "blocked"; reasons: string[] };
 
+type LegacyUpgradeAnalysis = { reasons: string[]; configuredCodes: string[] };
+
 export type WorkflowDefinitionIssue = {
   level: "error" | "warning";
   message: string;
@@ -91,6 +93,18 @@ const inputTypes: readonly WorkflowInputType[] = [
 ];
 const commandAliasPattern = /^[A-Za-z][A-Za-z0-9_-]{1,31}$/;
 const inputKeyPattern = /^[a-z][a-z0-9_]{0,31}$/;
+const sourceSelectionNodeTypes = new Set(["voice_source_works", "source_popular_works", "check_source_availability"]);
+const directLaunchBoundKeys = new Map<string, readonly string[]>([
+  ["circle_catalog", ["maxWorks"]],
+  ["series_catalog", ["maxWorks"]],
+  ["voice_source_works", ["maxWorks", "maxPages"]],
+  ["provider_popular_works", ["maxWorks"]],
+  ["source_popular_works", ["maxWorks"]],
+  ["metadata_sync", ["maxWorks"]],
+  ["subworkflow", ["maxWorks"]],
+  ["track_works", ["maxWorks"]],
+  ["fetch_works", ["maxWorks", "maxFiles", "maxBytes", "minFreeBytes"]],
+]);
 
 export function createEmptyWorkflowDefinition(): WorkflowDefinitionDocument {
   return {
@@ -155,6 +169,21 @@ export function upgradeLegacyWorkflowDefinition(
   nodes: LegacyWorkflowNode[],
   triggers: LegacyWorkflowTrigger[] = [],
 ): LegacyWorkflowUpgrade {
+  const { reasons, configuredCodes } = analyzeLegacyWorkflow(nodes, triggers);
+  if (reasons.length > 0) return { kind: "blocked", reasons: [...new Set(reasons)] };
+
+  return { kind: "upgradeable", document: buildLegacyWorkflowDocument(nodes, triggers, configuredCodes) };
+}
+
+function analyzeLegacyWorkflow(nodes: LegacyWorkflowNode[], triggers: LegacyWorkflowTrigger[]): LegacyUpgradeAnalysis {
+  const reasons = legacyWorkflowNodeReasons(nodes);
+  const selectConfig = nodes[0]?.config ?? {};
+  const configuredCodes = legacyConfiguredWorkCodes(selectConfig);
+  reasons.push(...legacyWorkflowTriggerReasons(triggers, configuredCodes));
+  return { reasons, configuredCodes };
+}
+
+function legacyWorkflowNodeReasons(nodes: LegacyWorkflowNode[]) {
   const reasons: string[] = [];
   if (nodes.length !== 2 || nodes[0]?.type !== "select_works" || nodes[1]?.type !== "sync_metadata") {
     reasons.push("Only Select works to Sync metadata legacy flows can be upgraded safely.");
@@ -166,9 +195,17 @@ export function upgradeLegacyWorkflowDefinition(
     reasons.push(`Select works uses unsupported options: ${unsupportedSelectKeys.join(", ")}.`);
   if (Object.keys(syncConfig).length > 0)
     reasons.push("Sync metadata has legacy options that cannot be preserved losslessly.");
-  const configuredCodes = Array.isArray(selectConfig.codes)
+  return reasons;
+}
+
+function legacyConfiguredWorkCodes(selectConfig: Record<string, unknown>) {
+  return Array.isArray(selectConfig.codes)
     ? selectConfig.codes.filter((value): value is string => typeof value === "string" && value.trim() !== "")
     : [];
+}
+
+function legacyWorkflowTriggerReasons(triggers: LegacyWorkflowTrigger[], configuredCodes: string[]) {
+  const reasons: string[] = [];
   for (const trigger of triggers) {
     if (trigger.triggerType !== "schedule") {
       reasons.push(`The ${trigger.triggerType} trigger is not supported by custom DAGs.`);
@@ -185,8 +222,14 @@ export function upgradeLegacyWorkflowDefinition(
       reasons.push("An existing schedule does not provide the works input.");
     }
   }
-  if (reasons.length > 0) return { kind: "blocked", reasons: [...new Set(reasons)] };
+  return reasons;
+}
 
+function buildLegacyWorkflowDocument(
+  nodes: LegacyWorkflowNode[],
+  triggers: LegacyWorkflowTrigger[],
+  configuredCodes: string[],
+): WorkflowDefinitionDocument {
   const document = createEmptyWorkflowDefinition();
   document.inputs = [
     {
@@ -223,7 +266,7 @@ export function upgradeLegacyWorkflowDefinition(
     },
   ];
   document.policy.requirePreview = triggers.length === 0;
-  return { kind: "upgradeable", document };
+  return document;
 }
 
 export function workflowNodePorts(
@@ -288,9 +331,20 @@ export function wouldCreateWorkflowCycle(
 
 export function validateWorkflowDefinition(document: WorkflowDefinitionDocument, nodeTypes: WorkflowNodeType[]) {
   const issues: WorkflowDefinitionIssue[] = [];
-  const nodeMap = new Map<string, WorkflowNodeDefinition>();
-  const inputKeys = new Set<string>();
+  validateWorkflowHeader(document, issues);
+  const inputKeys = validateWorkflowInputs(document.inputs, issues);
+  const nodeMap = validateWorkflowNodes(document, nodeTypes, inputKeys, issues);
+  const incoming = validateWorkflowEdges(document, nodeTypes, nodeMap, issues);
 
+  if (hasWorkflowCycle(document.nodes, document.edges)) {
+    issues.push({ level: "error", message: "Workflow graph must not contain a cycle." });
+  }
+
+  validateWorkflowRequiredInputs(document, nodeTypes, incoming, issues);
+  return issues;
+}
+
+function validateWorkflowHeader(document: WorkflowDefinitionDocument, issues: WorkflowDefinitionIssue[]) {
   if (document.nodes.length === 0) issues.push({ level: "error", message: "Add at least one node." });
   if (document.command.enabled && !commandAliasPattern.test(document.command.alias)) {
     issues.push({
@@ -298,99 +352,171 @@ export function validateWorkflowDefinition(document: WorkflowDefinitionDocument,
       message: "Quick Action alias must be 2-32 letters, numbers, underscores, or hyphens.",
     });
   }
+}
 
-  for (const input of document.inputs) {
-    if (!inputKeyPattern.test(input.key))
+function validateWorkflowInputs(inputs: WorkflowInputDefinition[], issues: WorkflowDefinitionIssue[]) {
+  const inputKeys = new Set<string>();
+  for (const input of inputs) {
+    if (!inputKeyPattern.test(input.key)) {
       issues.push({ level: "error", message: "Workflow input keys must be lowercase snake_case." });
-    if (inputKeys.has(input.key))
+    }
+    if (inputKeys.has(input.key)) {
       issues.push({ level: "error", message: `Workflow input key "${input.key}" is duplicated.` });
+    }
     inputKeys.add(input.key);
   }
+  return inputKeys;
+}
 
+function validateWorkflowNodes(
+  document: WorkflowDefinitionDocument,
+  nodeTypes: WorkflowNodeType[],
+  inputKeys: Set<string>,
+  issues: WorkflowDefinitionIssue[],
+) {
+  const nodeMap = new Map<string, WorkflowNodeDefinition>();
+  const knownNodeTypes = new Set(nodeTypes.map((candidate) => candidate.type));
   for (const node of document.nodes) {
-    if (!node.id.trim()) issues.push({ level: "error", message: "Node ids cannot be empty.", nodeId: node.id });
-    if (nodeMap.has(node.id))
-      issues.push({ level: "error", message: `Node id "${node.id}" is duplicated.`, nodeId: node.id });
+    validateWorkflowNode(node, document.policy.requirePreview, knownNodeTypes, inputKeys, nodeMap, issues);
     nodeMap.set(node.id, node);
-    if (node.type !== "workflow_input" && !nodeTypes.some((candidate) => candidate.type === node.type)) {
-      issues.push({ level: "error", message: `Unknown node type: ${node.type}.`, nodeId: node.id });
-    }
-    if (node.type === "workflow_input") {
-      const inputKey = stringValue(node.config?.inputKey);
-      if (!inputKeys.has(inputKey)) {
-        issues.push({ level: "error", message: "Input node must reference a workflow input.", nodeId: node.id });
-      }
-    }
-    if (
-      ["voice_source_works", "source_popular_works", "check_source_availability"].includes(node.type) &&
-      !positiveNumber(node.config?.sourceId)
-    ) {
-      issues.push({ level: "error", message: "Select a remote source.", nodeId: node.id });
-    }
-    if (node.type === "subworkflow" && !positiveNumber(node.config?.definitionId)) {
-      issues.push({ level: "error", message: "Select a reusable workflow.", nodeId: node.id });
-    }
-    if (!document.policy.requirePreview) {
-      const requiredBounds =
-        node.type === "circle_catalog" || node.type === "series_catalog"
-          ? ["maxWorks"]
-          : node.type === "voice_source_works"
-            ? ["maxWorks", "maxPages"]
-            : ["provider_popular_works", "source_popular_works", "metadata_sync", "subworkflow"].includes(node.type)
-              ? ["maxWorks"]
-              : node.type === "track_works"
-                ? ["maxWorks"]
-                : node.type === "fetch_works"
-                  ? ["maxWorks", "maxFiles", "maxBytes", "minFreeBytes"]
-                  : [];
-      for (const key of requiredBounds) {
-        if (!positiveNumber(node.config?.[key]))
-          issues.push({ level: "error", message: `${key} is required for bounded direct launch.`, nodeId: node.id });
-      }
-      if (node.type === "fetch_works" && node.config?.allowUnknownSizes === true) {
-        issues.push({ level: "error", message: "Unknown file sizes require preview confirmation.", nodeId: node.id });
-      }
+  }
+  return nodeMap;
+}
+
+function validateWorkflowNode(
+  node: WorkflowNodeDefinition,
+  requirePreview: boolean,
+  knownNodeTypes: Set<string>,
+  inputKeys: Set<string>,
+  nodeMap: Map<string, WorkflowNodeDefinition>,
+  issues: WorkflowDefinitionIssue[],
+) {
+  if (!node.id.trim()) issues.push({ level: "error", message: "Node ids cannot be empty.", nodeId: node.id });
+  if (nodeMap.has(node.id)) {
+    issues.push({ level: "error", message: `Node id "${node.id}" is duplicated.`, nodeId: node.id });
+  }
+  if (node.type !== "workflow_input" && !knownNodeTypes.has(node.type)) {
+    issues.push({ level: "error", message: `Unknown node type: ${node.type}.`, nodeId: node.id });
+  }
+  validateWorkflowNodeReferences(node, inputKeys, issues);
+  validateWorkflowDirectLaunch(node, requirePreview, issues);
+}
+
+function validateWorkflowNodeReferences(
+  node: WorkflowNodeDefinition,
+  inputKeys: Set<string>,
+  issues: WorkflowDefinitionIssue[],
+) {
+  if (node.type === "workflow_input" && !inputKeys.has(stringValue(node.config?.inputKey))) {
+    issues.push({ level: "error", message: "Input node must reference a workflow input.", nodeId: node.id });
+  }
+  if (sourceSelectionNodeTypes.has(node.type) && !positiveNumber(node.config?.sourceId)) {
+    issues.push({ level: "error", message: "Select a remote source.", nodeId: node.id });
+  }
+  if (node.type === "subworkflow" && !positiveNumber(node.config?.definitionId)) {
+    issues.push({ level: "error", message: "Select a reusable workflow.", nodeId: node.id });
+  }
+}
+
+function validateWorkflowDirectLaunch(
+  node: WorkflowNodeDefinition,
+  requirePreview: boolean,
+  issues: WorkflowDefinitionIssue[],
+) {
+  if (requirePreview) return;
+  for (const key of directLaunchBoundKeys.get(node.type) ?? []) {
+    if (!positiveNumber(node.config?.[key])) {
+      issues.push({ level: "error", message: `${key} is required for bounded direct launch.`, nodeId: node.id });
     }
   }
+  if (node.type === "fetch_works" && node.config?.allowUnknownSizes === true) {
+    issues.push({ level: "error", message: "Unknown file sizes require preview confirmation.", nodeId: node.id });
+  }
+}
 
+function validateWorkflowEdges(
+  document: WorkflowDefinitionDocument,
+  nodeTypes: WorkflowNodeType[],
+  nodeMap: Map<string, WorkflowNodeDefinition>,
+  issues: WorkflowDefinitionIssue[],
+) {
   const incoming = new Map<string, number>();
   const edgeIds = new Set<string>();
   for (const edge of document.edges) {
-    if (edgeIds.has(edge.id))
-      issues.push({ level: "error", message: `Edge id "${edge.id}" is duplicated.`, edgeId: edge.id });
-    edgeIds.add(edge.id);
-    const sourceNode = nodeMap.get(edge.source);
-    const targetNode = nodeMap.get(edge.target);
-    if (!sourceNode || !targetNode) {
-      issues.push({ level: "error", message: "Edge references a missing node.", edgeId: edge.id });
-      continue;
-    }
-    const source = workflowNodePorts(document, sourceNode, nodeTypes).outputs.find(
-      (port) => port.id === edge.sourceHandle,
-    );
-    const target = workflowNodePorts(document, targetNode, nodeTypes).inputs.find(
-      (port) => port.id === edge.targetHandle,
-    );
-    if (!source || !target) {
-      issues.push({ level: "error", message: "Edge references a missing port.", edgeId: edge.id });
-    } else if (!canConnectWorkflowPorts(source, target)) {
-      issues.push({ level: "error", message: `${source.type} cannot connect to ${target.type}.`, edgeId: edge.id });
-    }
-    const incomingKey = `${edge.target}:${edge.targetHandle}`;
-    incoming.set(incomingKey, (incoming.get(incomingKey) ?? 0) + 1);
-    if ((incoming.get(incomingKey) ?? 0) > 1 && target?.multiple !== true) {
-      issues.push({
-        level: "error",
-        message: `${target?.label || target?.id || edge.targetHandle} accepts one connection.`,
-        edgeId: edge.id,
-      });
-    }
+    validateWorkflowEdgeId(edge, edgeIds, issues);
+    const connection = validateWorkflowEdgeConnection(document, nodeTypes, nodeMap, edge, issues);
+    if (connection) recordWorkflowIncomingEdge(edge, connection.target, incoming, issues);
   }
+  return incoming;
+}
 
-  if (hasWorkflowCycle(document.nodes, document.edges)) {
-    issues.push({ level: "error", message: "Workflow graph must not contain a cycle." });
+function validateWorkflowEdgeId(edge: WorkflowEdgeDefinition, edgeIds: Set<string>, issues: WorkflowDefinitionIssue[]) {
+  if (edgeIds.has(edge.id)) {
+    issues.push({ level: "error", message: `Edge id "${edge.id}" is duplicated.`, edgeId: edge.id });
   }
+  edgeIds.add(edge.id);
+}
 
+function validateWorkflowEdgeConnection(
+  document: WorkflowDefinitionDocument,
+  nodeTypes: WorkflowNodeType[],
+  nodeMap: Map<string, WorkflowNodeDefinition>,
+  edge: WorkflowEdgeDefinition,
+  issues: WorkflowDefinitionIssue[],
+) {
+  const sourceNode = nodeMap.get(edge.source);
+  const targetNode = nodeMap.get(edge.target);
+  if (!sourceNode || !targetNode) {
+    issues.push({ level: "error", message: "Edge references a missing node.", edgeId: edge.id });
+    return null;
+  }
+  const source = workflowNodePorts(document, sourceNode, nodeTypes).outputs.find(
+    (port) => port.id === edge.sourceHandle,
+  );
+  const target = workflowNodePorts(document, targetNode, nodeTypes).inputs.find(
+    (port) => port.id === edge.targetHandle,
+  );
+  validateWorkflowEdgePorts(edge, source, target, issues);
+  return { target };
+}
+
+function recordWorkflowIncomingEdge(
+  edge: WorkflowEdgeDefinition,
+  target: WorkflowPort | undefined,
+  incoming: Map<string, number>,
+  issues: WorkflowDefinitionIssue[],
+) {
+  const incomingKey = `${edge.target}:${edge.targetHandle}`;
+  const incomingCount = (incoming.get(incomingKey) ?? 0) + 1;
+  incoming.set(incomingKey, incomingCount);
+  if (incomingCount > 1 && target?.multiple !== true) {
+    issues.push({
+      level: "error",
+      message: `${target?.label || target?.id || edge.targetHandle} accepts one connection.`,
+      edgeId: edge.id,
+    });
+  }
+}
+
+function validateWorkflowEdgePorts(
+  edge: WorkflowEdgeDefinition,
+  source: WorkflowPort | undefined,
+  target: WorkflowPort | undefined,
+  issues: WorkflowDefinitionIssue[],
+) {
+  if (!source || !target) {
+    issues.push({ level: "error", message: "Edge references a missing port.", edgeId: edge.id });
+  } else if (!canConnectWorkflowPorts(source, target)) {
+    issues.push({ level: "error", message: `${source.type} cannot connect to ${target.type}.`, edgeId: edge.id });
+  }
+}
+
+function validateWorkflowRequiredInputs(
+  document: WorkflowDefinitionDocument,
+  nodeTypes: WorkflowNodeType[],
+  incoming: Map<string, number>,
+  issues: WorkflowDefinitionIssue[],
+) {
   for (const node of document.nodes) {
     for (const port of workflowNodePorts(document, node, nodeTypes).inputs) {
       if (port.required !== false && !incoming.has(`${node.id}:${port.id}`) && !nodeConfigSuppliesPort(node, port.id)) {
@@ -398,7 +524,6 @@ export function validateWorkflowDefinition(document: WorkflowDefinitionDocument,
       }
     }
   }
-  return issues;
 }
 
 export function createWorkflowEdgeID(source: string, sourceHandle: string, target: string, targetHandle: string) {
