@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="frontend/public/kikoto-icon-192.png" width="128" height="128" alt="Kikoto logo">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/kikoto-readme-icon-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/kikoto-readme-icon-light.svg">
+    <img src="docs/assets/kikoto-readme-icon-light.svg" width="128" height="128" alt="Kikoto logo">
+  </picture>
 </p>
 
 <h1 align="center">Kikoto</h1>

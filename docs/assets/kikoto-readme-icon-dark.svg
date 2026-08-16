@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Kikoto logo</title>
+  <desc id="desc">A light Kikoto mark on a warm dark tile.</desc>
+  <rect width="512" height="512" rx="112" fill="#1a1715"/>
+  <g fill="none" stroke="#f7f4ee" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="64" y="64" width="384" height="384" rx="112" stroke-width="32"/>
+    <path d="M185 137v238M185 256l151-119M185 256l151 119" stroke-width="42"/>
+  </g>
+</svg>
