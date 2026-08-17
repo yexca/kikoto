@@ -626,11 +626,25 @@ type workDetail struct {
 	VoiceCredits     []voiceCredit              `json:"voiceCredits"`
 	ListeningStatus  string                     `json:"listeningStatus"`
 	Favorite         bool                       `json:"favorite"`
+	MetadataView     workMetadataPresentation   `json:"metadataPresentation"`
 	Translations     []workTranslation          `json:"translations"`
 	ManualOverrides  workManualOverrides        `json:"manualOverrides"`
 	SourcePresence   []sourcePresenceItem       `json:"sourcePresence"`
 	LocalFolders     []workFolderLocationDetail `json:"localFolders"`
 	MediaItems       []mediaItemDetail          `json:"mediaItems"`
+}
+
+type workMetadataPresentation struct {
+	DefaultVariantKey string                `json:"defaultVariantKey"`
+	Variants          []workMetadataVariant `json:"variants"`
+}
+
+type workMetadataVariant struct {
+	Key      string   `json:"key"`
+	Language string   `json:"language"`
+	Title    string   `json:"title"`
+	Tags     []string `json:"tags"`
+	Origin   bool     `json:"origin"`
 }
 
 type workFolderLocationDetail struct {
@@ -3034,6 +3048,11 @@ func (s *Server) populateWorkDetailMetadata(ctx context.Context, work *workDetai
 			work.MetadataLanguage = selected.EditionLanguage
 		}
 	}
+	metadataView, err := s.loadWorkMetadataPresentation(ctx, work.ID)
+	if err != nil {
+		return 0, err
+	}
+	work.MetadataView = metadataView
 	work.VoiceActors = metadata.VoiceActors
 	translations, err := s.loadWorkTranslations(ctx, work.PrimaryCode, work.BaseCode, metadata.LanguageEditions)
 	if err != nil {

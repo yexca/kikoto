@@ -100,6 +100,7 @@ import {
   type Work,
   type WorkCoverCandidate,
   type WorkDetail,
+  type WorkMetadataPresentation,
 } from "@/lib/api";
 import { ageRatingPresentation } from "@/lib/ageRating";
 import { currentClientStorageScope, type ClientPrincipalID } from "@/lib/clientStorageScope";
@@ -182,12 +183,14 @@ import { useMediaTree } from "@/features/work-detail/media/useMediaTree";
 import { useWorkPlaybackCursor } from "@/features/work-detail/media/useWorkPlaybackCursor";
 import {
   groupWorkVersions,
+  mergeRemoteWorkVersions,
   preferredWorkVersion,
   workVersionAvailable,
   workVersionKindLabel,
   workVersionMediaState,
   type WorkVersionGroup,
 } from "@/features/work-detail/workVersionModel";
+import { resolveMetadataVariant } from "@/features/work-detail/metadataPresentationModel";
 import {
   buildRemoteTree,
   buildTree,
@@ -3296,6 +3299,7 @@ function RemoteOnlyWorkDetailController({
   const { t } = useTranslation();
   const [detail, setDetail] = useState<RemoteWorkDetail | null>(null);
   const [identityDetail, setIdentityDetail] = useState<RemoteWorkDetail | null>(null);
+  const [selectedMetadataVariantKey, setSelectedMetadataVariantKey] = useState("");
   const [trackedWork, setTrackedWork] = useState<WorkDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [message, setMessage] = useState("");
@@ -3337,6 +3341,10 @@ function RemoteOnlyWorkDetailController({
   const [directoryRoutingRules, setDirectoryRoutingRules] =
     useState<DirectoryRoutingRule[]>(defaultDirectoryRoutingRules);
   const remoteIdentity = identityDetail ?? detail;
+  const activeMetadataVariant = resolveMetadataVariant(
+    remoteIdentity?.metadataPresentation,
+    selectedMetadataVariantKey,
+  );
   const displaySourceName = remoteIdentity?.sourceName ?? source.displayName;
   const displayPrimaryCode = remoteIdentity?.primaryCode || preview?.primaryCode || code;
   const displayRemoteCode = detail
@@ -3463,12 +3471,20 @@ function RemoteOnlyWorkDetailController({
   useEffect(() => {
     setDetail(null);
     setIdentityDetail(null);
+    setSelectedMetadataVariantKey("");
     setTrackedWork(null);
     setNotFound(false);
     setMessage("");
     setTreeLoading(false);
     setTreeError("");
     fetchWorkspace.close();
+  }, [source.id, code]);
+
+  useEffect(() => {
+    setNotFound(false);
+    setMessage("");
+    setTreeError("");
+    setTreeLoading(true);
     const controller = new AbortController();
     let timedOut = false;
     const timeout = window.setTimeout(() => {
@@ -3478,8 +3494,9 @@ function RemoteOnlyWorkDetailController({
     void (async () => {
       try {
         const metadata = await api.getRemoteSourceWorkMetadata(source.id, code, controller.signal);
+        if (controller.signal.aborted) return;
         const next: RemoteWorkDetail = { ...metadata, tracks: [] };
-        setDetail(next);
+        setDetail((current) => ({ ...next, tracks: current?.tracks ?? [] }));
         setIdentityDetail(next);
         setRemoteAvailability((items) =>
           items.map((item) =>
@@ -3500,7 +3517,6 @@ function RemoteOnlyWorkDetailController({
               : item,
           ),
         );
-        setTreeLoading(true);
         try {
           const tracks = await api.getRemoteSourceWorkTracks(source.id, metadata.remoteCode || code, controller.signal);
           if (!controller.signal.aborted) {
@@ -3516,8 +3532,6 @@ function RemoteOnlyWorkDetailController({
                 ? error.message
                 : "Remote directory failed.",
           );
-        } finally {
-          if (!controller.signal.aborted) setTreeLoading(false);
         }
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError" && !timedOut) return;
@@ -3532,6 +3546,9 @@ function RemoteOnlyWorkDetailController({
             : "Remote preview failed.";
         setMessage(text);
         toast.notify({ kind: "error", message: text });
+      } finally {
+        window.clearTimeout(timeout);
+        if (!controller.signal.aborted || timedOut) setTreeLoading(false);
       }
     })();
     return () => {
@@ -3860,7 +3877,7 @@ function RemoteOnlyWorkDetailController({
     fallbackCode: displayPrimaryCode || remoteIdentity?.remoteId || preview?.remoteId || code,
     code: displayPrimaryCode || remoteIdentity?.remoteId || preview?.remoteId || code,
     dlsiteUrl: detail ? dlsiteWorkURL(detail.primaryCode) : "",
-    title: remoteIdentity?.title ?? preview?.title ?? code,
+    title: activeMetadataVariant?.title ?? remoteIdentity?.title ?? preview?.title ?? code,
     circle: remoteIdentity?.circle ?? preview?.circle ?? "",
     circleExternalId: remoteIdentity?.circleRef?.externalId ?? preview?.circleExternalId ?? "",
     series: "",
@@ -3871,7 +3888,11 @@ function RemoteOnlyWorkDetailController({
     ratingCount: remoteIdentity?.ratingCount ?? null,
     sales: remoteIdentity?.sales ?? preview?.sales ?? null,
     baseCode: remoteLanguageEditions.find((edition) => edition.origin)?.remoteCode ?? "",
-    metadataLanguage: remoteLanguageEditions.find((edition) => edition.current)?.language ?? "",
+    metadataLanguage:
+      activeMetadataVariant?.language ?? remoteLanguageEditions.find((edition) => edition.current)?.language ?? "",
+    metadataPresentation: remoteIdentity?.metadataPresentation,
+    activeMetadataVariantKey: activeMetadataVariant?.key ?? "",
+    onMetadataVariantSelect: setSelectedMetadataVariantKey,
     translations: remoteTranslations,
     activeVersionCode: displayRemoteCode,
     onVersionSelect: (translation) => void selectRemoteLanguageEdition(translation.primaryCode),
@@ -3882,7 +3903,7 @@ function RemoteOnlyWorkDetailController({
     sourceInfo,
     voiceActors: remoteIdentity?.voiceActors ?? preview?.voiceActors ?? [],
     voiceCredits: [],
-    tags: remoteIdentity?.tags ?? preview?.tags ?? [],
+    tags: activeMetadataVariant?.tags ?? remoteIdentity?.tags ?? preview?.tags ?? [],
     loading: isDetailLoading,
   };
 
@@ -4011,6 +4032,7 @@ function PersistedWorkDetailController({
   const [favoriteLists, setFavoriteLists] = useState<FavoriteList[]>([]);
   const [activeEdition, setActiveEdition] = useState<WorkDetail | null>(null);
   const [activeEditionCode, setActiveEditionCode] = useState("");
+  const [selectedMetadataVariantKey, setSelectedMetadataVariantKey] = useState("");
   const [isResuming, setIsResuming] = useState(false);
   const [reforkTarget, setReforkTarget] = useState<ReforkTarget | null>(null);
   const [directoryRoutingRules, setDirectoryRoutingRules] =
@@ -4175,7 +4197,8 @@ function PersistedWorkDetailController({
   useEffect(() => {
     setActiveEdition(null);
     setActiveEditionCode("");
-  }, [initialSourceIntent, work?.id]);
+    setSelectedMetadataVariantKey("");
+  }, [work?.id]);
 
   useEffect(() => {
     if (!work || activeEditionCode) return;
@@ -4523,6 +4546,13 @@ function PersistedWorkDetailController({
       await selectEdition(translation);
       return;
     }
+    const availableFromSelectedRemote = selectedRemoteDetail.languageEditions.some(
+      (edition) => edition.remoteCode.toUpperCase() === translation.primaryCode.toUpperCase(),
+    );
+    if (!availableFromSelectedRemote) {
+      await selectEdition(translation);
+      return;
+    }
     setActiveEditionCode(translation.primaryCode);
     const selected = await selectRemoteEdition(translation.primaryCode);
     if (!selected) {
@@ -4568,6 +4598,7 @@ function PersistedWorkDetailController({
   }
 
   const hero = detailHeroModel(code, work, workPreview);
+  const activeMetadataVariant = resolveMetadataVariant(work?.metadataPresentation, selectedMetadataVariantKey);
   const personalTags = work ? (
     <div className="space-y-2 rounded-lg border bg-card p-3">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
@@ -4740,41 +4771,15 @@ function PersistedWorkDetailController({
       onPreview={setPreview}
     />
   );
-  const displayTranslations = (() => {
-    const merged = new Map(
-      (localDirectoryWork?.translations ?? []).map((translation) => [
-        translation.primaryCode.toUpperCase(),
-        translation,
-      ]),
-    );
-    for (const edition of selectedRemoteDetail?.languageEditions ?? []) {
-      const key = edition.remoteCode.toUpperCase();
-      const local = merged.get(key);
-      merged.set(
-        key,
-        local ?? {
-          workId: null,
-          primaryCode: edition.remoteCode,
-          title: edition.label,
-          metadataLanguage: edition.language,
-          editionLabel: edition.label,
-          origin: edition.origin,
-          official: !edition.origin,
-          translationKind: edition.origin ? "origin" : "official",
-          current: edition.current,
-          hasMedia: true,
-          mediaState: "indexed_available",
-        },
-      );
-    }
-    return Array.from(merged.values());
-  })();
+  const displayTranslations = selectedRemoteDetail
+    ? mergeRemoteWorkVersions(localDirectoryWork?.translations ?? [], selectedRemoteDetail.languageEditions)
+    : (localDirectoryWork?.translations ?? []);
   const presentation: UnifiedWorkDetailPresentation = {
     coverUrl: hero.coverUrl,
     fallbackCode: hero.primaryCode,
     code: hero.primaryCode,
     dlsiteUrl: work?.dlsiteUrl ?? "",
-    title: hero.title,
+    title: work?.manualOverrides?.title ?? activeMetadataVariant?.title ?? hero.title,
     circle: hero.circle,
     circleExternalId: hero.circleExternalId,
     series: hero.series,
@@ -4785,7 +4790,10 @@ function PersistedWorkDetailController({
     ratingCount: hero.ratingCount,
     sales: hero.sales,
     baseCode: work?.baseCode,
-    metadataLanguage: work?.metadataLanguage,
+    metadataLanguage: activeMetadataVariant?.language ?? work?.metadataLanguage,
+    metadataPresentation: work?.metadataPresentation,
+    activeMetadataVariantKey: activeMetadataVariant?.key ?? "",
+    onMetadataVariantSelect: setSelectedMetadataVariantKey,
     translations: displayTranslations,
     activeVersionCode: activeEditionCode || selectedRemoteDetail?.remoteCode || hero.primaryCode,
     onVersionSelect: (translation) => void selectDisplayedEdition(translation),
@@ -4796,7 +4804,7 @@ function PersistedWorkDetailController({
     sourceInfo,
     voiceActors: hero.voiceActors,
     voiceCredits: work?.voiceCredits ?? [],
-    tags: hero.tags,
+    tags: activeMetadataVariant?.tags ?? hero.tags,
     personalTags,
     loading: isDetailLoading,
   };
@@ -4901,6 +4909,9 @@ type UnifiedWorkDetailPresentation = {
   sales: number | null;
   baseCode?: string;
   metadataLanguage?: string;
+  metadataPresentation?: WorkMetadataPresentation;
+  activeMetadataVariantKey?: string;
+  onMetadataVariantSelect?: (key: string) => void;
   translations?: WorkDetail["translations"];
   activeVersionCode?: string;
   onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
@@ -4980,6 +4991,9 @@ function DetailHero({
   seriesCircleExternalId,
   baseCode,
   metadataLanguage,
+  metadataPresentation,
+  activeMetadataVariantKey,
+  onMetadataVariantSelect,
   translations,
   activeVersionCode,
   onVersionSelect,
@@ -5011,6 +5025,9 @@ function DetailHero({
   seriesCircleExternalId: string;
   baseCode?: string;
   metadataLanguage?: string;
+  metadataPresentation?: WorkMetadataPresentation;
+  activeMetadataVariantKey?: string;
+  onMetadataVariantSelect?: (key: string) => void;
   translations?: WorkDetail["translations"];
   activeVersionCode?: string;
   onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
@@ -5064,6 +5081,9 @@ function DetailHero({
           dlsiteFetchedAt={dlsiteFetchedAt}
           ageRating={ageRating}
           metadataLanguage={metadataLanguage}
+          metadataPresentation={metadataPresentation}
+          activeMetadataVariantKey={activeMetadataVariantKey}
+          onMetadataVariantSelect={onMetadataVariantSelect}
           baseCode={baseCode}
           translations={translations}
           activeVersionCode={activeVersionCode}
@@ -5104,6 +5124,9 @@ function MobileWorkDetailLayout({
   sales,
   baseCode,
   metadataLanguage,
+  metadataPresentation,
+  activeMetadataVariantKey,
+  onMetadataVariantSelect,
   translations,
   activeVersionCode,
   onVersionSelect,
@@ -5138,6 +5161,9 @@ function MobileWorkDetailLayout({
   sales: number | null;
   baseCode?: string;
   metadataLanguage?: string;
+  metadataPresentation?: WorkMetadataPresentation;
+  activeMetadataVariantKey?: string;
+  onMetadataVariantSelect?: (key: string) => void;
   translations?: WorkDetail["translations"];
   activeVersionCode?: string;
   onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
@@ -5220,6 +5246,9 @@ function MobileWorkDetailLayout({
             dlsiteFetchedAt={dlsiteFetchedAt}
             ageRating={ageRating}
             metadataLanguage={metadataLanguage}
+            metadataPresentation={metadataPresentation}
+            activeMetadataVariantKey={activeMetadataVariantKey}
+            onMetadataVariantSelect={onMetadataVariantSelect}
             baseCode={baseCode}
             translations={translations}
             activeVersionCode={activeVersionCode}
@@ -5422,6 +5451,9 @@ function DetailMetadataContent({
   dlsiteFetchedAt,
   ageRating,
   metadataLanguage,
+  metadataPresentation,
+  activeMetadataVariantKey,
+  onMetadataVariantSelect,
   baseCode,
   translations = [],
   activeVersionCode,
@@ -5444,6 +5476,9 @@ function DetailMetadataContent({
   dlsiteFetchedAt: string;
   ageRating: string;
   metadataLanguage?: string;
+  metadataPresentation?: WorkMetadataPresentation;
+  activeMetadataVariantKey?: string;
+  onMetadataVariantSelect?: (key: string) => void;
   baseCode?: string;
   translations?: WorkDetail["translations"];
   activeVersionCode?: string;
@@ -5463,9 +5498,12 @@ function DetailMetadataContent({
     (translation) => translation.primaryCode.toUpperCase() === (baseCode ?? "").toUpperCase(),
   );
   const versionSelector =
-    metadataLanguage || baseCode || translations.length > 0 ? (
+    metadataLanguage || (metadataPresentation?.variants.length ?? 0) > 0 || baseCode || translations.length > 0 ? (
       <WorkVersionSelector
         metadataLanguage={metadataLanguage ?? ""}
+        metadataPresentation={metadataPresentation}
+        activeMetadataVariantKey={activeMetadataVariantKey ?? ""}
+        onMetadataVariantSelect={onMetadataVariantSelect}
         baseCode={baseCode ?? ""}
         baseAvailable={Boolean(baseTranslation?.workId)}
         translations={translations}
@@ -6684,6 +6722,9 @@ function DirectoryOperationBanner({ runId, status, onOpen }: { runId: number; st
 
 function WorkVersionSelector({
   metadataLanguage,
+  metadataPresentation,
+  activeMetadataVariantKey,
+  onMetadataVariantSelect,
   baseCode,
   baseAvailable,
   translations,
@@ -6692,6 +6733,9 @@ function WorkVersionSelector({
   remoteVersions = false,
 }: {
   metadataLanguage: string;
+  metadataPresentation?: WorkMetadataPresentation;
+  activeMetadataVariantKey: string;
+  onMetadataVariantSelect?: (key: string) => void;
   baseCode: string;
   baseAvailable: boolean;
   translations: WorkDetail["translations"];
@@ -6718,55 +6762,99 @@ function WorkVersionSelector({
       workVersionMediaState(version) === "metadata_only" && !collapsedCodes.has(version.primaryCode.toUpperCase()),
   ).length;
   const groups = showMetadataOnly ? expandedGroups : collapsedGroups;
+  const metadataVariants = metadataPresentation?.variants ?? [];
+  const activeMetadataVariant = resolveMetadataVariant(metadataPresentation, activeMetadataVariantKey);
+  const hasEditionControls = Boolean(baseCode || translations.length > 0);
 
   return (
-    <div className="space-y-2 rounded-lg border bg-card px-3 py-2 text-xs">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-          <Languages className="h-3.5 w-3.5" />
-          <span className="font-medium text-foreground">Versions</span>
-          <span>
-            Metadata <span className="font-semibold text-foreground">Origin</span>
-          </span>
-          {baseCode &&
-            (baseAvailable ? (
-              <button
-                className="font-semibold text-primary hover:underline"
-                onClick={() => openWorkCodeRoute(baseCode)}
-              >
-                Base {baseCode}
-              </button>
-            ) : (
-              <span className="font-semibold text-foreground">Base {baseCode}</span>
-            ))}
+    <div className="rounded-lg border bg-card text-xs">
+      {(activeMetadataVariant || metadataLanguage) && (
+        <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 px-3 py-2">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Languages className="h-3.5 w-3.5" />
+            <span className="font-medium text-foreground">Metadata language</span>
+          </div>
+          {metadataVariants.length > 1 ? (
+            <select
+              className="h-8 min-w-40 max-w-full rounded-md border bg-background px-2 text-xs font-medium text-foreground outline-none focus:ring-2 focus:ring-ring"
+              aria-label="Metadata language"
+              value={activeMetadataVariant?.key ?? ""}
+              onChange={(event) => onMetadataVariantSelect?.(event.target.value)}
+            >
+              {metadataVariants.map((variant) => (
+                <option key={variant.key} value={variant.key}>
+                  {metadataVariantLabel(variant, metadataVariants)}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="font-semibold text-foreground">
+              {activeMetadataVariant
+                ? metadataVariantLabel(activeMetadataVariant, metadataVariants)
+                : languageLabel(metadataLanguage)}
+            </span>
+          )}
         </div>
-        {hiddenMetadataOnlyCount > 0 && (
-          <button
-            type="button"
-            className="font-medium text-primary hover:underline"
-            aria-expanded={showMetadataOnly}
-            onClick={() => setShowMetadataOnly((shown) => !shown)}
-          >
-            {showMetadataOnly ? "Hide" : "Show"} {hiddenMetadataOnlyCount} metadata-only{" "}
-            {hiddenMetadataOnlyCount === 1 ? "edition" : "editions"}
-          </button>
-        )}
-      </div>
-      {groups.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {groups.map((group) => (
-            <WorkLanguageVersionPicker
-              key={group.key}
-              group={group}
-              activeVersionCode={activeVersionCode}
-              onVersionSelect={onVersionSelect}
-              remoteVersions={remoteVersions}
-            />
-          ))}
+      )}
+      {hasEditionControls && (
+        <div className="space-y-2 border-t px-3 py-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+              <FolderTree className="h-3.5 w-3.5" />
+              <span className="font-medium text-foreground">Directory edition</span>
+              {baseCode &&
+                (baseAvailable ? (
+                  <button
+                    className="font-semibold text-primary hover:underline"
+                    onClick={() => openWorkCodeRoute(baseCode)}
+                  >
+                    Base {baseCode}
+                  </button>
+                ) : (
+                  <span className="font-semibold text-foreground">Base {baseCode}</span>
+                ))}
+            </div>
+            {hiddenMetadataOnlyCount > 0 && (
+              <button
+                type="button"
+                className="font-medium text-primary hover:underline"
+                aria-expanded={showMetadataOnly}
+                onClick={() => setShowMetadataOnly((shown) => !shown)}
+              >
+                {showMetadataOnly ? "Hide" : "Show"} {hiddenMetadataOnlyCount} metadata-only{" "}
+                {hiddenMetadataOnlyCount === 1 ? "edition" : "editions"}
+              </button>
+            )}
+          </div>
+          {groups.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {groups.map((group) => (
+                <WorkLanguageVersionPicker
+                  key={group.key}
+                  group={group}
+                  activeVersionCode={activeVersionCode}
+                  onVersionSelect={onVersionSelect}
+                  remoteVersions={remoteVersions}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
   );
+}
+
+function metadataVariantLabel(
+  variant: WorkMetadataPresentation["variants"][number],
+  variants: WorkMetadataPresentation["variants"],
+) {
+  const language = languageLabel(variant.language);
+  const sameLanguageCount = variants.filter(
+    (candidate) => candidate.language.trim().toLowerCase() === variant.language.trim().toLowerCase(),
+  ).length;
+  const prefix = variant.origin ? `Original · ${language}` : language;
+  return sameLanguageCount > 1 ? `${prefix} · ${variant.key}` : prefix;
 }
 
 function WorkLanguageVersionPicker({
@@ -6842,10 +6930,11 @@ function WorkLanguageVersionPicker({
             const available = workVersionAvailable(translation, remoteVersions);
             const active = translation.primaryCode.trim().toUpperCase() === activeCode;
             const mediaState = workVersionMediaState(translation);
-            const stateLabel = remoteVersions
-              ? "Available"
-              : mediaState === "indexed_available"
-                ? "Ready"
+            const stateLabel =
+              mediaState === "indexed_available"
+                ? remoteVersions
+                  ? "Available"
+                  : "Ready"
                 : mediaState === "present_unindexed"
                   ? "Index on open"
                   : mediaState === "metadata_only"

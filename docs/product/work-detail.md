@@ -9,6 +9,14 @@ playback actions for one work.
 - Shows cover, title, code, circle, tags, rating, voice metadata, and DLsite
   link.
 - Shows known language editions for a logical work family.
+- Separates the metadata-language selector from the directory-edition selector.
+  Metadata defaults to the configured language priority for local works and the
+  source request-language hint for remote-only works; a user's temporary switch
+  changes the displayed title and provider tags without being persisted.
+- Treats directory editions as file availability, not metadata availability.
+  A remote sibling is selectable only when that source reports it in its own
+  database; a locally available sibling remains selectable through its local
+  directory even when the selected remote source does not contain it.
 - Shows unavailable metadata-only editions without implying local playback.
 - Renders a card-provided or code-resolved preview first, then loads base detail
   and the media tree as separate stages.

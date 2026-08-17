@@ -237,11 +237,25 @@ export type WorkDetail = {
   voiceCredits: VoiceCredit[];
   listeningStatus: ListeningStatus;
   favorite: boolean;
+  metadataPresentation: WorkMetadataPresentation;
   translations: WorkTranslation[];
   manualOverrides: WorkManualOverrides;
   sourcePresence: SourcePresenceItem[] | null;
   localFolders: WorkFolderLocation[];
   mediaItems: MediaItem[];
+};
+
+export type WorkMetadataPresentation = {
+  defaultVariantKey: string;
+  variants: WorkMetadataVariant[];
+};
+
+export type WorkMetadataVariant = {
+  key: string;
+  language: string;
+  title: string;
+  tags: string[];
+  origin: boolean;
 };
 
 export type WorkFolderLocation = {
@@ -598,6 +612,7 @@ export type RemoteWorkDetail = {
   voiceActors: string[];
   importStatus: string;
   workId: number | null;
+  metadataPresentation: WorkMetadataPresentation;
   tracks: RemoteTrack[];
   languageEditions: RemoteLanguageEdition[];
 };

@@ -86,6 +86,37 @@ func TestListWorksDecodesMixedLanguageEditionShapes(t *testing.T) {
 	}
 }
 
+func TestWorkDecodesConfirmedOtherLanguageEditions(t *testing.T) {
+	var work Work
+	if err := json.Unmarshal([]byte(`{
+		"source_id":"RJ00000000",
+		"other_language_editions_in_db":[
+			{"id":2,"lang":"CHI_HANS","title":"Simplified title","source_id":"RJ00000001","is_original":false,"source_type":"DLsite"}
+		]
+	}`), &work); err != nil {
+		t.Fatal(err)
+	}
+	if len(work.OtherLanguageEditions) != 1 {
+		t.Fatalf("other language editions = %+v", work.OtherLanguageEditions)
+	}
+	edition := work.OtherLanguageEditions[0]
+	if edition.SourceID != "RJ00000001" || edition.Language != "CHI_HANS" || edition.Title != "Simplified title" || edition.IsOriginal {
+		t.Fatalf("other language edition = %+v", edition)
+	}
+}
+
+func TestTagNameForLanguagesNormalizesI18nKeys(t *testing.T) {
+	tag := Tag{
+		Name: "Base tag",
+		I18n: map[string]LocalizedTag{
+			"zh_Hant": {Name: "Traditional tag"},
+		},
+	}
+	if got := TagNameForLanguages(tag, []string{"zh-Hant"}); got != "Traditional tag" {
+		t.Fatalf("TagNameForLanguages() = %q, want Traditional tag", got)
+	}
+}
+
 func TestWorkRejectsNonNumericLanguageEditionObject(t *testing.T) {
 	var work Work
 	err := json.Unmarshal([]byte(`{"language_editions":{"origin":{"workno":"RJ00000001"}}}`), &work)

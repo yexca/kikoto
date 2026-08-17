@@ -1249,13 +1249,34 @@ func TestRemoteFetchRequestResultReturnsExistingRun(t *testing.T) {
 func TestNormalizedRemoteLanguageEditions(t *testing.T) {
 	editions := normalizedRemoteLanguageEditions(kikoeru.Work{
 		SourceID: "RJ00000005",
+		Title:    "Chinese title",
 		LanguageEditions: []kikoeru.LanguageEdition{
 			{WorkNo: "RJ00000005", Language: "CHI_HANS", Label: "Chinese", DisplayOrder: 2},
 			{WorkNo: "RJ00000004", Language: "JPN", Label: "Japanese", DisplayOrder: 1},
+			{WorkNo: "RJ00000006", Language: "ENG", Label: "English", DisplayOrder: 3},
 			{WorkNo: "invalid", Language: "ENG", Label: "Invalid", DisplayOrder: 3},
+		},
+		OtherLanguageEditions: []kikoeru.OtherLanguageEdition{
+			{SourceID: "RJ00000004", Language: "JPN", Title: "Japanese title", IsOriginal: true},
 		},
 	})
 	if len(editions) != 2 || editions[0].RemoteCode != "RJ00000004" || !editions[0].Origin || editions[1].RemoteCode != "RJ00000005" || !editions[1].Current {
 		t.Fatalf("editions = %+v", editions)
+	}
+	if editions[1].Label != "Chinese title" {
+		t.Fatalf("current label = %q, want Chinese title", editions[1].Label)
+	}
+}
+
+func TestNormalizedRemoteLanguageEditionsDoesNotTreatDeclaredFamilyAsAvailable(t *testing.T) {
+	editions := normalizedRemoteLanguageEditions(kikoeru.Work{
+		SourceID: "RJ00000000",
+		LanguageEditions: []kikoeru.LanguageEdition{
+			{WorkNo: "RJ00000000", Language: "JPN", Label: "Japanese", DisplayOrder: 1},
+			{WorkNo: "RJ00000001", Language: "ENG", Label: "English", DisplayOrder: 2},
+		},
+	})
+	if len(editions) != 1 || editions[0].RemoteCode != "RJ00000000" || !editions[0].Current {
+		t.Fatalf("editions = %+v, want only the current confirmed edition", editions)
 	}
 }

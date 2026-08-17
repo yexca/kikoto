@@ -143,6 +143,7 @@ function detail(remoteCode: string): RemoteWorkDetail {
     voiceActors: [],
     importStatus: "remote",
     workId: null,
+    metadataPresentation: { defaultVariantKey: "", variants: [] },
     tracks: [],
     languageEditions: [],
   };

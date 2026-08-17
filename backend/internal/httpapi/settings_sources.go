@@ -294,32 +294,33 @@ type remoteWorkSummary struct {
 }
 
 type remoteWorkDetail struct {
-	SourceID         int64                   `json:"sourceId"`
-	SourceCode       string                  `json:"sourceCode"`
-	SourceName       string                  `json:"sourceName"`
-	RemoteID         string                  `json:"remoteId"`
-	PrimaryCode      string                  `json:"primaryCode"`
-	RemoteCode       string                  `json:"remoteCode"`
-	Title            string                  `json:"title"`
-	CoverURL         string                  `json:"coverUrl"`
-	SourceURL        string                  `json:"sourceUrl"`
-	PublicWorkURL    string                  `json:"publicWorkUrl"`
-	Circle           string                  `json:"circle"`
-	CircleRef        *remoteEntityRef        `json:"circleRef,omitempty"`
-	Rating           *float64                `json:"rating"`
-	RatingCount      *int64                  `json:"ratingCount"`
-	Sales            *int64                  `json:"sales"`
-	Price            *int64                  `json:"price"`
-	AgeRating        string                  `json:"ageRating"`
-	ReleaseDate      string                  `json:"releaseDate"`
-	DurationSeconds  *int64                  `json:"durationSeconds"`
-	Tags             []string                `json:"tags"`
-	VoiceActors      []string                `json:"voiceActors"`
-	VoiceRefs        []remoteEntityRef       `json:"voiceRefs"`
-	ImportStatus     string                  `json:"importStatus"`
-	WorkID           *int64                  `json:"workId"`
-	Tracks           []remoteTrackDetail     `json:"tracks,omitempty"`
-	LanguageEditions []remoteLanguageEdition `json:"languageEditions"`
+	SourceID         int64                    `json:"sourceId"`
+	SourceCode       string                   `json:"sourceCode"`
+	SourceName       string                   `json:"sourceName"`
+	RemoteID         string                   `json:"remoteId"`
+	PrimaryCode      string                   `json:"primaryCode"`
+	RemoteCode       string                   `json:"remoteCode"`
+	Title            string                   `json:"title"`
+	CoverURL         string                   `json:"coverUrl"`
+	SourceURL        string                   `json:"sourceUrl"`
+	PublicWorkURL    string                   `json:"publicWorkUrl"`
+	Circle           string                   `json:"circle"`
+	CircleRef        *remoteEntityRef         `json:"circleRef,omitempty"`
+	Rating           *float64                 `json:"rating"`
+	RatingCount      *int64                   `json:"ratingCount"`
+	Sales            *int64                   `json:"sales"`
+	Price            *int64                   `json:"price"`
+	AgeRating        string                   `json:"ageRating"`
+	ReleaseDate      string                   `json:"releaseDate"`
+	DurationSeconds  *int64                   `json:"durationSeconds"`
+	Tags             []string                 `json:"tags"`
+	VoiceActors      []string                 `json:"voiceActors"`
+	VoiceRefs        []remoteEntityRef        `json:"voiceRefs"`
+	ImportStatus     string                   `json:"importStatus"`
+	WorkID           *int64                   `json:"workId"`
+	MetadataView     workMetadataPresentation `json:"metadataPresentation"`
+	Tracks           []remoteTrackDetail      `json:"tracks,omitempty"`
+	LanguageEditions []remoteLanguageEdition  `json:"languageEditions"`
 }
 
 type remoteWorkTracksDetail struct {
@@ -1207,7 +1208,7 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		s.writeRemoteWorksDisabled(w, id, r, diagnosticURL)
 		return
 	}
-	request := newRemoteSourceWorksRequest(r, source.SourceType, s.preferredMetadataLanguages(r.Context()))
+	request := newRemoteSourceWorksRequest(r, source.SourceType, remoteSourceRequestLanguages(source.Config.RequestLanguage))
 	if err := s.serveRemoteSourceWorksPage(w, r, userID, source, diagnosticURL, request); err != nil {
 		writeError(w, err)
 	}
@@ -1507,7 +1508,7 @@ func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 		writeUpstreamError(w, err)
 		return
 	}
-	languages := s.preferredMetadataLanguages(r.Context())
+	languages := remoteSourceRequestLanguages(source.Config.RequestLanguage)
 	detail, err := s.remoteWorkDetailWithLanguages(r.Context(), source, remoteWork, languages)
 	if err != nil {
 		writeError(w, err)
@@ -5509,6 +5510,7 @@ func (s *Server) remoteWorkDetailWithLanguages(ctx context.Context, source remot
 		VoiceRefs:        projected.VoiceRefs,
 		ImportStatus:     status,
 		WorkID:           workID,
+		MetadataView:     remoteWorkMetadataPresentation(work, languages),
 		LanguageEditions: normalizedRemoteLanguageEditions(work),
 	}, nil
 }
@@ -5536,18 +5538,36 @@ func (s *Server) remoteWorkTracksDetail(ctx context.Context, source remoteSource
 func normalizedRemoteLanguageEditions(work kikoeru.Work) []remoteLanguageEdition {
 	currentCode := normalizedRemoteWorkCode(work)
 	originOrder := earliestRemoteLanguageEditionOrder(work.LanguageEditions)
-	result := make([]remoteLanguageEdition, 0, len(work.LanguageEditions))
-	seen := map[string]bool{}
-	for index, edition := range work.LanguageEditions {
+	declared := make(map[string]kikoeru.LanguageEdition, len(work.LanguageEditions))
+	for _, edition := range work.LanguageEditions {
 		code := strings.ToUpper(strings.TrimSpace(edition.WorkNo))
+		if customWorkflowWorkCodePattern.MatchString(code) {
+			declared[code] = edition
+		}
+	}
+	result := make([]remoteLanguageEdition, 0, len(work.OtherLanguageEditions)+1)
+	seen := map[string]bool{}
+	if currentCode != "" {
+		edition, ok := declared[currentCode]
+		item := newRemoteLanguageEdition(edition, currentCode, currentCode, originOrder, !ok)
+		item.Label = firstNonEmpty(strings.TrimSpace(work.Title), item.Label, currentCode)
+		if originalCode := strings.ToUpper(strings.TrimSpace(work.OriginalWorkNumber)); originalCode != "" {
+			item.Origin = strings.EqualFold(originalCode, currentCode)
+		}
+		result = append(result, item)
+		seen[currentCode] = true
+	}
+	for _, available := range work.OtherLanguageEditions {
+		code := strings.ToUpper(strings.TrimSpace(available.SourceID))
 		if !customWorkflowWorkCodePattern.MatchString(code) || seen[code] {
 			continue
 		}
 		seen[code] = true
-		result = append(result, newRemoteLanguageEdition(edition, code, currentCode, originOrder, index == 0))
-	}
-	if len(result) == 0 && currentCode != "" {
-		result = append(result, remoteLanguageEdition{RemoteCode: currentCode, Label: currentCode, Current: true, Origin: true})
+		item := newRemoteLanguageEdition(declared[code], code, currentCode, originOrder, false)
+		item.Language = firstNonEmpty(strings.TrimSpace(available.Language), item.Language)
+		item.Label = firstNonEmpty(strings.TrimSpace(available.Title), item.Label, item.Language, code)
+		item.Origin = available.IsOriginal || item.Origin
+		result = append(result, item)
 	}
 	sort.SliceStable(result, func(i, j int) bool { return remoteLanguageEditionLess(result[i], result[j]) })
 	return result

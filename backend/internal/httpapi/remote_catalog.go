@@ -2,9 +2,11 @@ package httpapi
 
 import (
 	"context"
+	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 )
 
@@ -41,15 +43,83 @@ func (s *Server) preferredMetadataLanguage(ctx context.Context) string {
 }
 
 func newRemoteCatalogProjector(language string) remoteCatalogProjector {
-	return remoteCatalogProjector{languages: []string{normalizeDLsiteLanguage(language)}}
+	return newRemoteCatalogProjectorWithLanguages([]string{language})
 }
 
 func newRemoteCatalogProjectorWithLanguages(languages []string) remoteCatalogProjector {
-	ordered, ok := parseDLsiteMetadataLanguages(languages)
-	if !ok {
+	ordered := make([]string, 0, len(languages))
+	seen := map[string]bool{}
+	for _, raw := range languages {
+		language := dlsite.NormalizeMetadataLanguage(raw)
+		if language == "" {
+			language = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(raw), "_", "-"))
+		}
+		if language == "" || seen[language] {
+			continue
+		}
+		seen[language] = true
+		ordered = append(ordered, language)
+	}
+	if len(ordered) == 0 {
 		ordered = []string{defaultDLsiteMetadataLanguage}
 	}
 	return remoteCatalogProjector{languages: ordered}
+}
+
+func remoteSourceRequestLanguages(language string) []string {
+	language = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(language), "_", "-"))
+	if language == "" {
+		language = strings.ToLower(defaultRemoteRequestLanguage)
+	}
+	return []string{language}
+}
+
+func remoteWorkMetadataPresentation(work kikoeru.Work, languages []string) workMetadataPresentation {
+	result := workMetadataPresentation{Variants: []workMetadataVariant{}}
+	requested := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(firstNonEmpty(languages...)), "_", "-"))
+	if requested == "" || requested == "origin" {
+		requested = strings.ToLower(defaultRemoteRequestLanguage)
+	}
+	available := map[string]bool{requested: true}
+	for _, tag := range work.Tags {
+		for language, localized := range tag.I18n {
+			language = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(language), "_", "-"))
+			if language != "" && strings.TrimSpace(localized.Name) != "" {
+				available[language] = true
+			}
+		}
+	}
+	ordered := []string{requested}
+	delete(available, requested)
+	for _, language := range dlsite.SupportedMetadataLanguages {
+		if available[language] {
+			ordered = append(ordered, language)
+			delete(available, language)
+		}
+	}
+	extra := make([]string, 0, len(available))
+	for language := range available {
+		extra = append(extra, language)
+	}
+	sort.Strings(extra)
+	ordered = append(ordered, extra...)
+	if len(ordered) > 16 {
+		ordered = ordered[:16]
+	}
+	title := firstNonEmpty(strings.TrimSpace(work.Title), strings.TrimSpace(work.Name), normalizedRemoteWorkCode(work))
+	for _, language := range ordered {
+		tags := make([]string, 0, len(work.Tags))
+		for _, tag := range work.Tags {
+			if name := kikoeru.TagNameForLanguages(tag, []string{language}); name != "" {
+				tags = append(tags, name)
+			}
+		}
+		result.Variants = append(result.Variants, workMetadataVariant{
+			Key: language, Language: language, Title: title, Tags: cleanProjectedTags(tags),
+		})
+	}
+	result.DefaultVariantKey = requested
+	return result
 }
 
 func (projector remoteCatalogProjector) project(sourceID int64, work kikoeru.Work) remoteCatalogWorkProjection {

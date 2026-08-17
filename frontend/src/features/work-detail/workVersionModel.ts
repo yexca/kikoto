@@ -1,4 +1,4 @@
-import type { WorkTranslation } from "@/lib/api";
+import type { RemoteLanguageEdition, WorkTranslation } from "@/lib/api";
 
 export type WorkVersionGroup = {
   key: string;
@@ -20,9 +20,36 @@ export function workVersionMediaState(version: WorkTranslation): WorkTranslation
 }
 
 export function workVersionAvailable(version: WorkTranslation, remoteVersions = false) {
-  if (remoteVersions) return true;
+  void remoteVersions;
   const state = workVersionMediaState(version);
   return state === "indexed_available" || state === "present_unindexed";
+}
+
+export function mergeRemoteWorkVersions(
+  localVersions: WorkTranslation[],
+  remoteEditions: RemoteLanguageEdition[],
+): WorkTranslation[] {
+  const merged = new Map(localVersions.map((version) => [normalizedCode(version.primaryCode), version]));
+  for (const edition of remoteEditions) {
+    const key = normalizedCode(edition.remoteCode);
+    const local = merged.get(key);
+    merged.set(key, {
+      ...(local ?? {
+        workId: null,
+        primaryCode: edition.remoteCode,
+        title: edition.label,
+        metadataLanguage: edition.language,
+        editionLabel: edition.label,
+        origin: edition.origin,
+        official: !edition.origin,
+        translationKind: edition.origin ? ("origin" as const) : ("official" as const),
+        current: edition.current,
+      }),
+      hasMedia: true,
+      mediaState: "indexed_available",
+    });
+  }
+  return Array.from(merged.values());
 }
 
 export function groupWorkVersions(
@@ -90,7 +117,7 @@ export function workVersionKindLabel(version: WorkTranslation) {
 
 function versionRank(version: WorkTranslation, activeCode: string, remoteVersions: boolean) {
   if (normalizedCode(version.primaryCode) === activeCode) return 0;
-  if (remoteVersions) return 1;
+  void remoteVersions;
   switch (workVersionMediaState(version)) {
     case "indexed_available":
       return 1;

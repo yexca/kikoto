@@ -3,10 +3,57 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metasync"
 )
+
+func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64) (workMetadataPresentation, error) {
+	result := workMetadataPresentation{Variants: []workMetadataVariant{}}
+	variants, err := metasync.ListDLsiteMetadataVariants(ctx, s.db, workID)
+	if err != nil {
+		return result, err
+	}
+	selected, selectedOK, err := metasync.SelectDLsiteMetadataVariant(ctx, s.db, workID, s.preferredMetadataLanguages(ctx))
+	if err != nil {
+		return result, err
+	}
+	seen := map[string]bool{}
+	for _, variant := range variants {
+		key := firstNonEmpty(strings.ToUpper(strings.TrimSpace(variant.PrimaryCode)), strings.ToUpper(strings.TrimSpace(variant.ExternalID)))
+		if key == "" {
+			key = "variant:" + strconv.FormatInt(variant.ID, 10)
+		}
+		if seen[key] || strings.TrimSpace(variant.Title) == "" {
+			continue
+		}
+		var tags []string
+		if err := json.Unmarshal([]byte(variant.TagsJSON), &tags); err != nil {
+			return result, err
+		}
+		language := dlsite.EditionMetadataLanguage(variant.EditionLanguage)
+		if language == "" {
+			language = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(variant.EditionLanguage), "_", "-"))
+		}
+		if language == "" {
+			language = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(variant.RequestLocale), "_", "-"))
+		}
+		seen[key] = true
+		result.Variants = append(result.Variants, workMetadataVariant{
+			Key: key, Language: language, Title: strings.TrimSpace(variant.Title),
+			Tags: cleanProjectedTags(tags), Origin: variant.IsCanonical,
+		})
+		if selectedOK && selected.ID == variant.ID {
+			result.DefaultVariantKey = key
+		}
+	}
+	if result.DefaultVariantKey == "" && len(result.Variants) > 0 {
+		result.DefaultVariantKey = result.Variants[0].Key
+	}
+	return result, nil
+}
 
 // loadProjectedDLsiteMetadata returns the language-selected title and tags for
 // a work family.  The canonical work row is normally kept in sync by the

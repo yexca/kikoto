@@ -55,6 +55,13 @@ import {
 
 const DATA_PREFIX = "/data";
 const DEFAULT_SAVE_SUFFIX = "/<source_code>/<code_prefix>_<code_group>/<work_code>";
+const remoteRequestLanguageOptions = [
+  { value: "ja-JP", label: "Japanese" },
+  { value: "en-US", label: "English" },
+  { value: "zh-CN", label: "Simplified Chinese" },
+  { value: "zh-TW", label: "Traditional Chinese" },
+  { value: "ko-KR", label: "Korean" },
+] as const;
 const DEFAULT_CACHE_SUFFIX = "/media/<source_code>/<code_prefix>/<code_group>/<work_code>";
 const CACHE_GROUP_PAGE_SIZE = 50;
 const LEGACY_NUMBER178_SOURCE_TYPE = "kikoeru_compatible_number178";
@@ -352,6 +359,59 @@ export function MaintenancePage({
     }
   };
 
+  const updateSourceRequestLanguage = async (source: FileSource, requestLanguage: string) => {
+    if (readOnly || updatingSourceId !== null) return;
+    const previousLanguage = source.config.requestLanguage ?? "ja-JP";
+    setUpdatingSourceId(source.id);
+    setSettings((current) =>
+      current
+        ? {
+            ...current,
+            fileSources: current.fileSources.map((candidate) =>
+              candidate.id === source.id
+                ? { ...candidate, config: { ...candidate.config, requestLanguage } }
+                : candidate,
+            ),
+          }
+        : current,
+    );
+    try {
+      const updated = await api.updateFileSource(source.id, {
+        displayName: source.displayName,
+        sourceType: source.sourceType,
+        priority: source.priority,
+        enabled: source.enabled,
+        config: { ...source.config, requestLanguage },
+        endpoint: source.endpoint,
+      });
+      setSettings((current) =>
+        current
+          ? {
+              ...current,
+              fileSources: current.fileSources.map((candidate) => (candidate.id === updated.id ? updated : candidate)),
+            }
+          : current,
+      );
+      toast.success(`Request language updated for ${source.displayName}.`);
+    } catch (error) {
+      setSettings((current) =>
+        current
+          ? {
+              ...current,
+              fileSources: current.fileSources.map((candidate) =>
+                candidate.id === source.id
+                  ? { ...candidate, config: { ...candidate.config, requestLanguage: previousLanguage } }
+                  : candidate,
+              ),
+            }
+          : current,
+      );
+      toast.notify(toastFromError(error, "Remote request language could not be saved."));
+    } finally {
+      setUpdatingSourceId(null);
+    }
+  };
+
   const requestDeleteSource = (source: FileSource) => {
     if (readOnly) return;
     setSourcePendingDelete(source);
@@ -593,8 +653,11 @@ export function MaintenancePage({
           <MetadataSettings
             catalogFreshnessDays={catalogFreshnessDays}
             languages={dlsiteMetadataLanguages}
+            remoteSources={remoteSources}
+            updatingSourceId={updatingSourceId}
             onCatalogFreshnessDaysChange={setCatalogFreshnessDays}
             onLanguagesChange={setDlsiteMetadataLanguages}
+            onRequestLanguageChange={updateSourceRequestLanguage}
             onSave={saveRuntimeSettings}
           />
         ) : activeTab === "security" ? (
@@ -1189,14 +1252,20 @@ function RemoteSourcesSettingsSkeleton() {
 function MetadataSettings({
   catalogFreshnessDays,
   languages,
+  remoteSources,
+  updatingSourceId,
   onCatalogFreshnessDaysChange,
   onLanguagesChange,
+  onRequestLanguageChange,
   onSave,
 }: {
   catalogFreshnessDays: number;
   languages: DlsiteMetadataLanguage[];
+  remoteSources: FileSource[];
+  updatingSourceId: number | null;
   onCatalogFreshnessDaysChange: (value: number) => void;
   onLanguagesChange: (value: DlsiteMetadataLanguage[]) => void;
+  onRequestLanguageChange: (source: FileSource, language: string) => Promise<void>;
   onSave: () => Promise<void>;
 }) {
   const [draggedLanguage, setDraggedLanguage] = useState<DlsiteMetadataLanguage | null>(null);
@@ -1362,6 +1431,53 @@ function MetadataSettings({
               );
             })}
           </div>
+        </div>
+
+        <div className="space-y-2 border-t pt-4">
+          <div>
+            <div className="font-medium">Remote source metadata requests</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Sent as an Accept-Language request hint. A remote service may ignore it, fall back, or return
+              mixed-language metadata.
+            </p>
+          </div>
+          {remoteSources.length > 0 ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {remoteSources.map((source) => {
+                const requestLanguage = source.config.requestLanguage ?? "ja-JP";
+                const known = remoteRequestLanguageOptions.some(
+                  (option) => option.value.toLowerCase() === requestLanguage.toLowerCase(),
+                );
+                const value =
+                  remoteRequestLanguageOptions.find(
+                    (option) => option.value.toLowerCase() === requestLanguage.toLowerCase(),
+                  )?.value ?? requestLanguage;
+                return (
+                  <label key={source.id} className="grid gap-1 rounded-md border bg-background p-3 text-sm">
+                    <span className="truncate font-medium">{source.displayName}</span>
+                    <select
+                      className="h-9 min-w-0 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+                      value={value}
+                      disabled={updatingSourceId !== null}
+                      aria-label={`${source.displayName} metadata request language`}
+                      onChange={(event) => void onRequestLanguageChange(source, event.target.value)}
+                    >
+                      {!known && <option value={requestLanguage}>Custom ({requestLanguage})</option>}
+                      {remoteRequestLanguageOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
+              No remote sources configured.
+            </div>
+          )}
         </div>
 
         <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
@@ -2734,23 +2850,6 @@ function SourceModal({
             value={source.endpoint.workUrlTemplate}
             onChange={(value) => patch({ endpoint: { ...source.endpoint, workUrlTemplate: value } })}
           />
-          {REMOTE_SOURCE_TYPES.has(source.sourceType) && (
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium">Request language</span>
-              <input
-                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
-                value={source.config.requestLanguage ?? "ja-JP"}
-                onChange={(event) => patch({ config: { ...source.config, requestLanguage: event.target.value } })}
-                placeholder="ja-JP"
-                spellCheck={false}
-                aria-label="Remote source request language"
-              />
-              <span className="text-xs text-muted-foreground">
-                Sent as a request hint only. The remote service may ignore it, fall back, or return mixed-language
-                metadata.
-              </span>
-            </label>
-          )}
           <TextInput
             label="Fallback URL"
             value={source.endpoint.fallbackUrl}

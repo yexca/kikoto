@@ -18,6 +18,8 @@ type DLsiteMetadataVariant struct {
 	ID              int64
 	LogicalWorkID   int64
 	WorkID          int64
+	PrimaryCode     string
+	ExternalID      string
 	EditionLanguage string
 	RequestLocale   string
 	Title           string
@@ -33,8 +35,20 @@ type DLsiteMetadataVariant struct {
 // language. Unknown edition languages are retained in the table but never
 // become a priority match.
 func SelectDLsiteMetadataVariant(ctx context.Context, db *sql.DB, workID int64, priorities []string) (DLsiteMetadataVariant, bool, error) {
+	variants, err := ListDLsiteMetadataVariants(ctx, db, workID)
+	if err != nil {
+		return DLsiteMetadataVariant{}, false, err
+	}
+	selected := chooseDLsiteMetadataVariant(variants, priorities)
+	return selected, selected.ID > 0, nil
+}
+
+// ListDLsiteMetadataVariants returns the stored title/tag representations for
+// the logical family containing workID. The variants do not create or replace
+// work identities; PrimaryCode is only a stable presentation key.
+func ListDLsiteMetadataVariants(ctx context.Context, db *sql.DB, workID int64) ([]DLsiteMetadataVariant, error) {
 	if db == nil || workID <= 0 {
-		return DLsiteMetadataVariant{}, false, nil
+		return []DLsiteMetadataVariant{}, nil
 	}
 	var logicalWorkID int64
 	err := db.QueryRowContext(ctx, `
@@ -43,17 +57,12 @@ func SelectDLsiteMetadataVariant(ctx context.Context, db *sql.DB, workID int64, 
 		WHERE work_id = ?
 	`, workID).Scan(&logicalWorkID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return DLsiteMetadataVariant{}, false, nil
+		return []DLsiteMetadataVariant{}, nil
 	}
 	if err != nil {
-		return DLsiteMetadataVariant{}, false, err
+		return nil, err
 	}
-	variants, err := loadDLsiteMetadataVariants(ctx, db, logicalWorkID)
-	if err != nil {
-		return DLsiteMetadataVariant{}, false, err
-	}
-	selected := chooseDLsiteMetadataVariant(variants, priorities)
-	return selected, selected.ID > 0, nil
+	return loadDLsiteMetadataVariants(ctx, db, logicalWorkID)
 }
 
 // ProjectDLsiteMetadata updates the canonical work title and DLsite tags for
@@ -125,6 +134,8 @@ func loadDLsiteMetadataVariants(ctx context.Context, queryer metadataVariantQuer
 			variant.id,
 			variant.logical_work_id,
 			variant.work_id,
+			COALESCE(edition.primary_code, ''),
+			variant.external_id,
 			variant.edition_language,
 			variant.request_locale,
 			variant.title,
@@ -149,6 +160,8 @@ func loadDLsiteMetadataVariants(ctx context.Context, queryer metadataVariantQuer
 			&variant.ID,
 			&variant.LogicalWorkID,
 			&variant.WorkID,
+			&variant.PrimaryCode,
+			&variant.ExternalID,
 			&variant.EditionLanguage,
 			&variant.RequestLocale,
 			&variant.Title,

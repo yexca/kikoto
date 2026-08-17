@@ -106,6 +106,13 @@ func TestSyncFamilyStoresAllLanguageVariantsAndProjectsPriority(t *testing.T) {
 	if !ok || selected.Title != "Origin title" {
 		t.Fatalf("origin selection = %+v/%t", selected, ok)
 	}
+	variants, err := ListDLsiteMetadataVariants(context.Background(), db, workIDForTest(t, db, "RJ00000020"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(variants) != len(editions) || variants[0].PrimaryCode == "" || variants[0].ExternalID == "" {
+		t.Fatalf("listed variants = %+v", variants)
+	}
 
 	var snapshotCount int
 	if err := db.QueryRow("SELECT COUNT(*) FROM metadata_snapshot WHERE external_id = 'RJ00000021'").Scan(&snapshotCount); err != nil {

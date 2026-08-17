@@ -33,29 +33,30 @@ const CompatibilityNumber178 = "number178"
 const maxKikoeruJSONBytes int64 = 32 << 20
 
 type Work struct {
-	ID                 int64               `json:"id"`
-	Title              string              `json:"title"`
-	Name               string              `json:"name"`
-	SourceID           string              `json:"source_id"`
-	SourceType         string              `json:"source_type"`
-	SourceURL          string              `json:"source_url"`
-	Release            string              `json:"release"`
-	AgeCategoryString  string              `json:"age_category_string"`
-	NSFW               bool                `json:"nsfw"`
-	Duration           *float64            `json:"duration"`
-	MainCoverURL       string              `json:"mainCoverUrl"`
-	SamCoverURL        string              `json:"samCoverUrl"`
-	ThumbnailCoverURL  string              `json:"thumbnailCoverUrl"`
-	Circle             *Circle             `json:"circle"`
-	Tags               []Tag               `json:"tags"`
-	VAs                []VA                `json:"vas"`
-	RateAverage2DP     *float64            `json:"rate_average_2dp"`
-	ReviewCount        *int64              `json:"review_count"`
-	DLCount            *int64              `json:"dl_count"`
-	Price              *int64              `json:"price"`
-	OriginalWorkNumber string              `json:"original_workno"`
-	OriginalWorkID     int64               `json:"original_work_id"`
-	LanguageEditions   LanguageEditionList `json:"language_editions"`
+	ID                    int64                  `json:"id"`
+	Title                 string                 `json:"title"`
+	Name                  string                 `json:"name"`
+	SourceID              string                 `json:"source_id"`
+	SourceType            string                 `json:"source_type"`
+	SourceURL             string                 `json:"source_url"`
+	Release               string                 `json:"release"`
+	AgeCategoryString     string                 `json:"age_category_string"`
+	NSFW                  bool                   `json:"nsfw"`
+	Duration              *float64               `json:"duration"`
+	MainCoverURL          string                 `json:"mainCoverUrl"`
+	SamCoverURL           string                 `json:"samCoverUrl"`
+	ThumbnailCoverURL     string                 `json:"thumbnailCoverUrl"`
+	Circle                *Circle                `json:"circle"`
+	Tags                  []Tag                  `json:"tags"`
+	VAs                   []VA                   `json:"vas"`
+	RateAverage2DP        *float64               `json:"rate_average_2dp"`
+	ReviewCount           *int64                 `json:"review_count"`
+	DLCount               *int64                 `json:"dl_count"`
+	Price                 *int64                 `json:"price"`
+	OriginalWorkNumber    string                 `json:"original_workno"`
+	OriginalWorkID        int64                  `json:"original_work_id"`
+	LanguageEditions      LanguageEditionList    `json:"language_editions"`
+	OtherLanguageEditions []OtherLanguageEdition `json:"other_language_editions_in_db"`
 }
 
 type LanguageEdition struct {
@@ -63,6 +64,18 @@ type LanguageEdition struct {
 	Language     string `json:"lang"`
 	Label        string `json:"label"`
 	DisplayOrder int    `json:"display_order"`
+}
+
+// OtherLanguageEdition is a sibling edition confirmed to exist in the
+// compatible source's own database. LanguageEditions only describes the
+// provider family and is not an availability signal.
+type OtherLanguageEdition struct {
+	ID         int64  `json:"id"`
+	Language   string `json:"lang"`
+	Title      string `json:"title"`
+	SourceID   string `json:"source_id"`
+	IsOriginal bool   `json:"is_original"`
+	SourceType string `json:"source_type"`
 }
 
 // LanguageEditionList accepts the array used by the Kikoeru API contract and
@@ -332,6 +345,12 @@ func TagNameForLanguages(tag Tag, languages []string) string {
 		language = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(language), "_", "-"))
 		if localized, ok := tag.I18n[language]; ok && strings.TrimSpace(localized.Name) != "" {
 			return strings.TrimSpace(localized.Name)
+		}
+		for candidate, localized := range tag.I18n {
+			candidate = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(candidate), "_", "-"))
+			if candidate == language && strings.TrimSpace(localized.Name) != "" {
+				return strings.TrimSpace(localized.Name)
+			}
 		}
 	}
 	return strings.TrimSpace(tag.Name)
