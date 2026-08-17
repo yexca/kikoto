@@ -94,6 +94,29 @@ func TestWorkRejectsNonNumericLanguageEditionObject(t *testing.T) {
 	}
 }
 
+func TestRequestLanguageIsSentAsAcceptLanguageHint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Accept-Language"); got != "zh-Hant" {
+			t.Fatalf("Accept-Language = %q, want zh-Hant", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodPost {
+			_, _ = w.Write([]byte(`{"works":[],"pagination":{}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"works":[],"pagination":{}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, server.Client()).WithRequestLanguage("zh-Hant")
+	if _, err := client.ListWorks(context.Background(), 1, 10, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.PopularWorks(context.Background(), 1, 10); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestReadLimitedJSONBodyRejectsOversizedResponse(t *testing.T) {
 	if _, err := readLimitedJSONBody(endlessTestReader{}); err == nil {
 		t.Fatal("readLimitedJSONBody() accepted an oversized response")

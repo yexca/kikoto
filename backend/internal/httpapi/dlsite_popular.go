@@ -229,6 +229,7 @@ func (s *Server) executeDLsitePopularCollectionJob(ctx context.Context, job work
 	}
 	syncer := metasync.NewDLsiteSyncer(s.db, client).
 		WithCacheRoot(s.cfg.CacheRoot).
+		WithMetadataPriority(s.preferredMetadataLanguages(ctx)).
 		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.preferredMetadataLanguages(ctx))).
 		WithRequestPacing(
 			requestDelay,

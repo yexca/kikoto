@@ -4,12 +4,13 @@ export const dlsiteMetadataLanguageOptions = [
   { value: "zh-cn", label: "Simplified Chinese" },
   { value: "zh-tw", label: "Traditional Chinese" },
   { value: "ko-kr", label: "Korean" },
+  { value: "origin", label: "Origin" },
 ] as const;
 
 export type DlsiteMetadataLanguage = (typeof dlsiteMetadataLanguageOptions)[number]["value"];
 
 const supportedLanguages = new Set<string>(dlsiteMetadataLanguageOptions.map((option) => option.value));
-const defaultLanguageOrder = dlsiteMetadataLanguageOptions.map((option) => option.value);
+const originLanguage = "origin" as DlsiteMetadataLanguage;
 
 export function normalizeDlsiteMetadataLanguages(
   values: readonly string[] | null | undefined,
@@ -18,12 +19,14 @@ export function normalizeDlsiteMetadataLanguages(
   const seen = new Set<string>();
   for (const value of values ?? []) {
     if (!supportedLanguages.has(value) || seen.has(value)) continue;
+    if (value === originLanguage) {
+      seen.add(value);
+      continue;
+    }
     seen.add(value);
     result.push(value as DlsiteMetadataLanguage);
   }
-  for (const language of defaultLanguageOrder) {
-    if (!seen.has(language)) result.push(language);
-  }
+  result.push(originLanguage);
   return result;
 }
 
@@ -41,6 +44,9 @@ export function moveDlsiteMetadataLanguageTo(
   nextIndex: number,
 ): DlsiteMetadataLanguage[] {
   if (index < 0 || index >= values.length || nextIndex < 0 || nextIndex >= values.length) {
+    return [...values];
+  }
+  if (values[index] === originLanguage || values[nextIndex] === originLanguage) {
     return [...values];
   }
   const next = [...values];

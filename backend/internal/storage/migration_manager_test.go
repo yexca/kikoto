@@ -16,6 +16,8 @@ import (
 
 var numberedMigrationFilePattern = regexp.MustCompile(`^[0-9]{3}_[a-z0-9][a-z0-9_]*\.sql$`)
 
+const latestNumberedMigrationVersion = 31
+
 func TestMigrationChecksumNormalizesLineEndings(t *testing.T) {
 	lf := []byte("CREATE TABLE probe (id INTEGER);\n-- stable\n")
 	crlf := bytes.ReplaceAll(lf, []byte("\n"), []byte("\r\n"))
@@ -38,19 +40,19 @@ func TestMigrateFreshDatabaseUsesBaseline(t *testing.T) {
 	`).Scan(&current, &baseline, &baselineChecksum, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	if current != 30 || baseline != 30 || baselineChecksum == "" || dirty != "" {
-		t.Fatalf("schema state = current %d, baseline %d, checksum %q, dirty %q; want 30/30/non-empty/empty", current, baseline, baselineChecksum, dirty)
+	if current != latestNumberedMigrationVersion || baseline != 30 || baselineChecksum == "" || dirty != "" {
+		t.Fatalf("schema state = current %d, baseline %d, checksum %q, dirty %q; want %d/30/non-empty/empty", current, baseline, baselineChecksum, dirty, latestNumberedMigrationVersion)
 	}
 
 	var historyCount int
 	if err := db.QueryRow("SELECT COUNT(*) FROM schema_migration").Scan(&historyCount); err != nil {
 		t.Fatal(err)
 	}
-	if historyCount != 1 {
-		t.Fatalf("migration history count = %d, want 1 baseline record", historyCount)
+	if historyCount != 2 {
+		t.Fatalf("migration history count = %d, want baseline plus latest migration", historyCount)
 	}
 	var filename string
-	if err := db.QueryRow("SELECT filename FROM schema_migration").Scan(&filename); err != nil {
+	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = 30").Scan(&filename); err != nil {
 		t.Fatal(err)
 	}
 	if filename != "baseline/030_current.sql" {
@@ -102,8 +104,8 @@ func TestMigrateAdoptsLegacyMigrationLedger(t *testing.T) {
 	if err := db.QueryRow("SELECT COUNT(*) FROM schema_migration WHERE checksum <> '' AND version IS NOT NULL").Scan(&history); err != nil {
 		t.Fatal(err)
 	}
-	if current != 30 || history != 30 {
-		t.Fatalf("adopted legacy state = version %d, checksummed history %d; want 30/30", current, history)
+	if current != latestNumberedMigrationVersion || history != latestNumberedMigrationVersion {
+		t.Fatalf("adopted legacy state = version %d, checksummed history %d; want %d/%d", current, history, latestNumberedMigrationVersion, latestNumberedMigrationVersion)
 	}
 }
 
@@ -125,6 +127,64 @@ func TestMigrateBaselineMatchesCompleteIncrementalChain(t *testing.T) {
 	}
 	if got, want := dataSnapshot(t, baseline), dataSnapshot(t, incremental); !equalStringMaps(got, want) {
 		t.Fatalf("baseline seed data differs from complete incremental chain\n%s", diffStringMaps(got, want))
+	}
+}
+
+func TestMigrateLocalizedMetadataDeduplicatesLegacySnapshots(t *testing.T) {
+	migrationDir := copyNumberedMigrations(t, filepath.Join("..", "..", "migrations"))
+	if err := os.Remove(filepath.Join(migrationDir, "031_dlsite_localized_metadata.sql")); err != nil {
+		t.Fatal(err)
+	}
+	db := openMigrationManagerDB(t)
+	if err := Migrate(db, migrationDir); err != nil {
+		t.Fatalf("pre-localized migration error = %v", err)
+	}
+	var providerID int64
+	if err := db.QueryRow("SELECT id FROM metadata_provider WHERE code = 'dlsite'").Scan(&providerID); err != nil {
+		t.Fatal(err)
+	}
+	result, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000000', 'Legacy title')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = db.Exec("INSERT INTO logical_work (canonical_work_id, canonical_code) VALUES (?, 'RJ00000000')", workID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logicalID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, metadata_language, is_canonical)
+		VALUES (?, ?, ?, 'RJ00000000', 'JPN', 1)
+	`, workID, logicalID, providerID); err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 3; index++ {
+		if _, err := db.Exec(`
+			INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
+			VALUES (?, ?, 'RJ00000000', ?)
+		`, workID, providerID, fmt.Sprintf(`{"product_name":"legacy-%d"}`, index)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
+		t.Fatalf("localized migration error = %v", err)
+	}
+	var variants, snapshots int
+	if err := db.QueryRow("SELECT COUNT(*) FROM dlsite_metadata_variant").Scan(&variants); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM metadata_snapshot WHERE work_id = ?", workID).Scan(&snapshots); err != nil {
+		t.Fatal(err)
+	}
+	if variants != 1 || snapshots != 2 {
+		t.Fatalf("legacy localized migration rows = variants %d snapshots %d, want 1/2", variants, snapshots)
 	}
 }
 
@@ -154,7 +214,7 @@ func TestMigrateRejectsFutureSchema(t *testing.T) {
 	if err := Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
 		t.Fatalf("initial Migrate() error = %v", err)
 	}
-	if _, err := db.Exec("UPDATE schema_state SET current_version = 31 WHERE id = 1"); err != nil {
+	if _, err := db.Exec("UPDATE schema_state SET current_version = ? WHERE id = 1", latestNumberedMigrationVersion+1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -301,8 +361,8 @@ func TestMigrateConcurrentStartupIsIdempotent(t *testing.T) {
 	if err := first.QueryRow("SELECT COUNT(*) FROM schema_migration").Scan(&history); err != nil {
 		t.Fatal(err)
 	}
-	if current != 30 || history != 1 {
-		t.Fatalf("concurrent migration state = version %d, history %d; want 30/1", current, history)
+	if current != latestNumberedMigrationVersion || history != 2 {
+		t.Fatalf("concurrent migration state = version %d, history %d; want %d/2", current, history, latestNumberedMigrationVersion)
 	}
 }
 

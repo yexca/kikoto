@@ -67,3 +67,15 @@ func TestLoadRejectsUnknownMode(t *testing.T) {
 		t.Fatal("Load() accepted an unknown runtime mode")
 	}
 }
+
+func TestParseRemoteSourceSeedReadsRequestLanguage(t *testing.T) {
+	seeds := parseRemoteSourceSeedYAML(`
+sources:
+  - display_name: Example Remote
+    api_url: https://example.invalid/api
+    request_language: zh-Hant
+`)
+	if len(seeds) != 1 || seeds[0].RequestLanguage != "zh-Hant" {
+		t.Fatalf("seeds = %#v, want one zh-Hant seed", seeds)
+	}
+}

@@ -1290,6 +1290,14 @@ func (s *Server) buildVoiceKnownWork(ctx context.Context, userID int64, row voic
 		}
 	}
 	metadata := parseDLsiteSnapshot(row.Snapshot)
+	if title, tags, projected, err := s.loadProjectedDLsiteMetadata(ctx, displayWorkID); err != nil {
+		return voiceKnownWork{}, false, err
+	} else if projected {
+		if title != "" {
+			row.Title = title
+		}
+		metadata.Tags = tags
+	}
 	sourceTags, remoteObservations, err := s.workSourceStateByCode(ctx, displayCode)
 	if err != nil {
 		return voiceKnownWork{}, false, err

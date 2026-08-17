@@ -13,6 +13,7 @@ Important tables:
 - `work_external_id`
 - `metadata_provider`
 - `metadata_snapshot`
+- `dlsite_metadata_variant`
 - `tag`
 - `work_tag`
 - `party`
@@ -21,6 +22,12 @@ Important tables:
 
 DLsite metadata sync stores raw snapshots and updates normalized fields used by
 library and detail views.
+
+For DLsite, `dlsite_metadata_variant` stores the title and tags for each
+provider-declared language edition in a logical work family. The `origin`
+display token refers to the canonical edition even when its source language is
+not Japanese. The configured priority only changes the normalized title/tag
+projection; the request locale and the raw snapshot remain provenance data.
 
 `work.rating_average`, `work.sales_count`, and the current commercial fields are
 normalized projections maintained by metadata sync. Interactive rating/sales

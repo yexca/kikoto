@@ -43,6 +43,7 @@ type fakeDLsiteClient struct {
 type localizedFakeDLsiteClient struct {
 	products map[string]map[string]dlsite.Product
 	calls    []string
+	covers   []string
 }
 
 func (f *localizedFakeDLsiteClient) FetchProduct(_ context.Context, workno string) (dlsite.Product, error) {
@@ -59,6 +60,17 @@ func (f *localizedFakeDLsiteClient) FetchProductWithOptions(_ context.Context, w
 	return f.product(workno, "")
 }
 
+func (f *localizedFakeDLsiteClient) FetchProductWithLocale(_ context.Context, workno string, locale string) (dlsite.Product, error) {
+	locale = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(locale, "_", "-")))
+	product, err := f.product(workno, locale)
+	if err != nil {
+		return dlsite.Product{}, err
+	}
+	product.Language = locale
+	product.RequestLocale = locale
+	return product, nil
+}
+
 func (f *localizedFakeDLsiteClient) product(workno string, language string) (dlsite.Product, error) {
 	workno = strings.ToUpper(strings.TrimSpace(workno))
 	f.calls = append(f.calls, workno+":"+language)
@@ -70,8 +82,28 @@ func (f *localizedFakeDLsiteClient) product(workno string, language string) (dls
 	return product, nil
 }
 
-func (f *localizedFakeDLsiteClient) DownloadCover(_ context.Context, _ dlsite.Product, _ string) (string, error) {
+func (f *localizedFakeDLsiteClient) DownloadCover(_ context.Context, product dlsite.Product, _ string) (string, error) {
+	f.covers = append(f.covers, product.WorkNo)
 	return "", nil
+}
+
+func TestSyncProductDoesNotDownloadLocalizedCover(t *testing.T) {
+	db := openTestDB(t)
+	client := &localizedFakeDLsiteClient{products: map[string]map[string]dlsite.Product{
+		"RJ00000029": {
+			"": {WorkNo: "RJ00000029", ProductName: "Origin", Raw: json.RawMessage(`{"workno":"RJ00000029","product_name":"Origin"}`)},
+		},
+	}}
+	product := dlsite.Product{
+		WorkNo: "RJ00000030", ProductName: "Translated", TranslationInfo: dlsite.TranslationInfo{OriginalWorkNo: "RJ00000029"},
+		Raw: json.RawMessage(`{"workno":"RJ00000030","product_name":"Translated"}`),
+	}
+	if _, err := NewDLsiteSyncer(db, client).WithCacheRoot(t.TempDir()).SyncProduct(context.Background(), product); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.covers) != 1 || client.covers[0] != "RJ00000029" {
+		t.Fatalf("cover downloads = %v, want only canonical RJ00000029", client.covers)
+	}
 }
 
 func TestSyncFamilyRestoresCanonicalOriginTitleAfterLocalizedResponse(t *testing.T) {
@@ -466,7 +498,8 @@ func openTestDB(t *testing.T) *sql.DB {
 		`CREATE INDEX idx_work_edition_logical_work ON work_edition(logical_work_id, is_canonical DESC, primary_code)`,
 		`CREATE TABLE work_code_alias (id INTEGER PRIMARY KEY, logical_work_id INTEGER NOT NULL REFERENCES logical_work(id) ON DELETE CASCADE, provider_id INTEGER NOT NULL REFERENCES metadata_provider(id), primary_code TEXT NOT NULL, metadata_language TEXT NOT NULL DEFAULT '', edition_label TEXT NOT NULL DEFAULT '', source_work_id INTEGER REFERENCES work(id) ON DELETE SET NULL, relationship_kind TEXT NOT NULL DEFAULT 'provider_declared', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(provider_id, primary_code))`,
 		`CREATE TABLE work_external_id (id INTEGER PRIMARY KEY, work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE, provider_id INTEGER NOT NULL REFERENCES metadata_provider(id), id_type TEXT NOT NULL, external_id TEXT NOT NULL, url TEXT NOT NULL DEFAULT '', is_primary INTEGER NOT NULL DEFAULT 0, UNIQUE(provider_id, id_type, external_id))`,
-		`CREATE TABLE metadata_snapshot (id INTEGER PRIMARY KEY, work_id INTEGER REFERENCES work(id) ON DELETE SET NULL, provider_id INTEGER NOT NULL REFERENCES metadata_provider(id), external_id TEXT NOT NULL, snapshot_json TEXT NOT NULL, fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+		`CREATE TABLE metadata_snapshot (id INTEGER PRIMARY KEY, work_id INTEGER REFERENCES work(id) ON DELETE SET NULL, provider_id INTEGER NOT NULL REFERENCES metadata_provider(id), external_id TEXT NOT NULL, snapshot_json TEXT NOT NULL, fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, variant_key TEXT NOT NULL DEFAULT '', edition_language TEXT NOT NULL DEFAULT '', request_locale TEXT NOT NULL DEFAULT '', content_hash TEXT NOT NULL DEFAULT '')`,
+		`CREATE TABLE dlsite_metadata_variant (id INTEGER PRIMARY KEY, logical_work_id INTEGER NOT NULL REFERENCES logical_work(id) ON DELETE CASCADE, work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE, provider_id INTEGER NOT NULL REFERENCES metadata_provider(id) ON DELETE CASCADE, external_id TEXT NOT NULL, edition_language TEXT NOT NULL DEFAULT '', request_locale TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', content_hash TEXT NOT NULL DEFAULT '', fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(provider_id, work_id))`,
 		`CREATE TABLE tag (id INTEGER PRIMARY KEY, namespace TEXT NOT NULL, normalized_name TEXT NOT NULL, display_name TEXT NOT NULL, language TEXT NOT NULL DEFAULT '', is_user_defined INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(namespace, normalized_name, language))`,
 		`CREATE TABLE work_tag (work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE, tag_id INTEGER NOT NULL REFERENCES tag(id) ON DELETE CASCADE, source TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(work_id, tag_id, source))`,
 		`CREATE TABLE workflow_definition (id INTEGER PRIMARY KEY, code TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', definition_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,

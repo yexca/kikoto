@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/localfs"
 )
 
@@ -98,8 +99,37 @@ func (s *Server) ensureRemoteFetchMetadata(ctx context.Context, requestedCode st
 }
 
 func (s *Server) remoteFetchMetadataReady(ctx context.Context, requestedCode string) (bool, error) {
-	var originLanguage, snapshotJSON string
+	var originLanguage, editionLanguage, requestLocale string
 	err := s.db.QueryRowContext(ctx, `
+		SELECT origin.metadata_language,
+			variant.edition_language,
+			variant.request_locale
+		FROM work_edition AS requested
+		INNER JOIN work_edition AS origin
+			ON origin.logical_work_id = requested.logical_work_id
+			AND origin.is_canonical = 1
+		INNER JOIN dlsite_metadata_variant AS variant
+			ON variant.work_id = origin.work_id
+		INNER JOIN metadata_provider AS provider
+			ON provider.id = variant.provider_id AND provider.code = 'dlsite'
+		WHERE UPPER(requested.primary_code) = UPPER(?)
+			AND TRIM(variant.title) <> ''
+			AND TRIM(variant.request_locale) <> ''
+		ORDER BY variant.fetched_at DESC, variant.id DESC
+		LIMIT 1
+	`, requestedCode).Scan(&originLanguage, &editionLanguage, &requestLocale)
+	if err == nil {
+		return metadataRequestMatchesEdition(requestLocale, firstNonEmpty(editionLanguage, originLanguage)), nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+	}
+
+	// Keep older installations and snapshots written before the variant table
+	// usable.  The request must match the canonical edition language; it is no
+	// longer assumed that the canonical/origin edition is Japanese.
+	var snapshotJSON string
+	err = s.db.QueryRowContext(ctx, `
 		SELECT origin.metadata_language, snapshot.snapshot_json
 		FROM work_edition AS requested
 		INNER JOIN work_edition AS origin
@@ -118,28 +148,52 @@ func (s *Server) remoteFetchMetadataReady(ctx context.Context, requestedCode str
 	if err != nil {
 		return false, err
 	}
-	return originSnapshotUsesJapaneseLocale(snapshotJSON, originLanguage), nil
+	return originSnapshotMatchesEditionLanguage(snapshotJSON, originLanguage), nil
 }
 
-func originSnapshotUsesJapaneseLocale(snapshotJSON string, editionLanguage string) bool {
+func originSnapshotMatchesEditionLanguage(snapshotJSON string, editionLanguage string) bool {
 	var payload struct {
 		Kikoto struct {
 			ResponseLanguage string `json:"response_language"`
+			RequestLocale    string `json:"request_locale"`
+			EditionLanguage  string `json:"edition_language"`
 		} `json:"_kikoto"`
 	}
 	if err := json.Unmarshal([]byte(snapshotJSON), &payload); err != nil {
 		return false
 	}
-	responseLanguage := strings.ToLower(strings.TrimSpace(payload.Kikoto.ResponseLanguage))
-	if responseLanguage != "" {
-		return responseLanguage == "ja" || responseLanguage == "jp" || responseLanguage == "ja-jp"
+	observed := firstNonEmpty(payload.Kikoto.RequestLocale, payload.Kikoto.ResponseLanguage)
+	if observed == "" {
+		observed = payload.Kikoto.EditionLanguage
 	}
-	switch strings.ToLower(strings.TrimSpace(editionLanguage)) {
-	case "ja", "jp", "ja-jp", "jpn", "japanese", "日本語":
-		return true
-	default:
+	if observed == "" {
 		return false
 	}
+	expected := dlsite.LocaleForMetadataLanguage(editionLanguage)
+	if expected != "" {
+		return normalizeMetadataLocale(observed) == normalizeMetadataLocale(expected)
+	}
+	// Unknown source languages are retained, but there is no reliable locale
+	// mapping to validate.  A non-empty provider declaration is sufficient for
+	// the legacy readiness check; future syncs still preserve the raw value.
+	return strings.TrimSpace(payload.Kikoto.EditionLanguage) != "" || strings.TrimSpace(editionLanguage) != ""
+}
+
+// Kept as a compatibility shim for package-local callers and older tests.
+func originSnapshotUsesJapaneseLocale(snapshotJSON string, editionLanguage string) bool {
+	return originSnapshotMatchesEditionLanguage(snapshotJSON, editionLanguage)
+}
+
+func metadataRequestMatchesEdition(requestLocale, editionLanguage string) bool {
+	expected := dlsite.LocaleForMetadataLanguage(editionLanguage)
+	if expected == "" {
+		return strings.TrimSpace(requestLocale) != ""
+	}
+	return normalizeMetadataLocale(requestLocale) == normalizeMetadataLocale(expected)
+}
+
+func normalizeMetadataLocale(value string) string {
+	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(value), "_", "-"))
 }
 
 func (s *Server) loadRemoteFetchEditions(ctx context.Context, requestedCode string) ([]remoteFetchEdition, error) {

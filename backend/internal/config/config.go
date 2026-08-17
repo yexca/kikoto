@@ -37,6 +37,7 @@ type RemoteSourceSeed struct {
 	BaseURL         string
 	FallbackURL     string
 	WorkURLTemplate string
+	RequestLanguage string
 	SourceType      string
 	Priority        int
 	Enabled         bool
@@ -234,6 +235,8 @@ func applyRemoteSourceSeedYAMLField(seed *RemoteSourceSeed, key, value string) {
 		seed.FallbackURL = value
 	case "work_url_template", "workurltemplate":
 		seed.WorkURLTemplate = value
+	case "request_language", "requestlanguage", "language":
+		seed.RequestLanguage = value
 	case "source_type", "sourcetype", "type":
 		seed.SourceType = value
 	case "priority":

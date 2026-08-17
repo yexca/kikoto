@@ -108,6 +108,9 @@ type Product struct {
 	IsSale            *bool             `json:"is_sale"`
 	IsFree            *bool             `json:"is_free"`
 	Language          string            `json:"-"`
+	// RequestLocale records the locale sent to DLsite. It is deliberately
+	// separate from the edition language, which is provider metadata.
+	RequestLocale string `json:"-"`
 }
 
 func (product Product) IsPermanentlyFree() *bool {
@@ -177,6 +180,77 @@ type LanguageEdition struct {
 
 type ProductOptions struct {
 	Languages []string
+}
+
+const OriginMetadataLanguage = "origin"
+
+var SupportedMetadataLanguages = []string{"ja-jp", "en-us", "zh-cn", "zh-tw", "ko-kr"}
+
+// NormalizeMetadataLanguage converts the locale and DLsite edition spellings
+// used by the provider into the stable tokens exposed by the settings API.
+// Unknown provider languages are intentionally returned as an empty token so
+// callers can retain the raw value without making it configurable.
+func NormalizeMetadataLanguage(value string) string {
+	switch strings.ToLower(strings.TrimSpace(strings.ReplaceAll(value, "_", "-"))) {
+	case OriginMetadataLanguage:
+		return OriginMetadataLanguage
+	case "ja", "jp", "ja-jp", "jpn", "japanese", "日本語":
+		return "ja-jp"
+	case "en", "en-us", "eng", "english":
+		return "en-us"
+	case "zh", "zh-cn", "cn", "chi-hans", "chi-simp", "chi-hans-cn", "simplified chinese", "简体中文":
+		return "zh-cn"
+	case "zh-tw", "tw", "chi-hant", "chi-trad", "chi-hant-tw", "traditional chinese", "繁體中文", "繁体中文":
+		return "zh-tw"
+	case "ko", "ko-kr", "kor", "korean", "한국어":
+		return "ko-kr"
+	default:
+		return ""
+	}
+}
+
+// EditionMetadataLanguage returns a supported settings token for a provider
+// edition language. Unknown values remain unknown to the priority matcher.
+func EditionMetadataLanguage(value string) string {
+	return NormalizeMetadataLanguage(value)
+}
+
+// LocaleForMetadataLanguage returns the locale that most reliably yields
+// metadata for the corresponding DLsite edition.
+func LocaleForMetadataLanguage(value string) string {
+	switch NormalizeMetadataLanguage(value) {
+	case "ja-jp":
+		return "ja-jp"
+	case "en-us":
+		return "en-us"
+	case "zh-cn":
+		return "zh-cn"
+	case "zh-tw":
+		return "zh-tw"
+	case "ko-kr":
+		return "ko-kr"
+	default:
+		return ""
+	}
+}
+
+// NormalizeMetadataPriority removes unsupported values and keeps origin as the
+// final, non-removable fallback. Supported languages are opt-in; a new
+// installation therefore displays the canonical edition until an
+// administrator adds localized preferences.
+func NormalizeMetadataPriority(values []string) []string {
+	result := make([]string, 0, len(SupportedMetadataLanguages)+1)
+	seen := map[string]bool{}
+	for _, value := range values {
+		language := NormalizeMetadataLanguage(value)
+		if language == "" || language == OriginMetadataLanguage || seen[language] {
+			continue
+		}
+		seen[language] = true
+		result = append(result, language)
+	}
+	result = append(result, OriginMetadataLanguage)
+	return result
 }
 
 type Image struct {
@@ -289,6 +363,19 @@ func (c *Client) FetchProduct(ctx context.Context, workno string) (Product, erro
 	return c.FetchProductWithOptions(ctx, workno, ProductOptions{})
 }
 
+// FetchProductWithLocale performs one request with the exact locale selected
+// for an edition. Keeping this as a separate method lets the sync layer use
+// exact matching without changing the compatibility fallback API.
+func (c *Client) FetchProductWithLocale(ctx context.Context, workno string, locale string) (Product, error) {
+	product, err := c.FetchProductWithOptions(ctx, workno, ProductOptions{Languages: []string{locale}})
+	if err != nil {
+		return Product{}, err
+	}
+	product.RequestLocale = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(locale, "_", "-")))
+	product.Language = product.RequestLocale
+	return product, nil
+}
+
 func (c *Client) FetchProductWithOptions(ctx context.Context, workno string, options ProductOptions) (Product, error) {
 	workno = strings.ToUpper(strings.TrimSpace(workno))
 	if workno == "" {
@@ -301,6 +388,7 @@ func (c *Client) FetchProductWithOptions(ctx context.Context, workno string, opt
 			product, err := c.fetchProductFromSite(ctx, site, workno, language)
 			if err == nil {
 				product.Language = language
+				product.RequestLocale = language
 				return product, nil
 			}
 			lastErr = err
@@ -856,7 +944,12 @@ func normalizeLanguages(values []string) []string {
 	languages := []string{}
 	includeDefault := false
 	for _, value := range values {
-		value = strings.ToLower(strings.TrimSpace(value))
+		value = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(value, "_", "-")))
+		if value == OriginMetadataLanguage {
+			// `origin` is a display-priority token, not a DLsite locale.
+			includeDefault = true
+			continue
+		}
 		if value == "" {
 			includeDefault = true
 			continue

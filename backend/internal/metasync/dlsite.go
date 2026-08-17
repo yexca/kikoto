@@ -2,7 +2,9 @@ package metasync
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,17 +27,22 @@ type DLsiteClientWithOptions interface {
 	FetchProductWithOptions(ctx context.Context, workno string, options dlsite.ProductOptions) (dlsite.Product, error)
 }
 
+type DLsiteClientWithLocale interface {
+	FetchProductWithLocale(ctx context.Context, workno string, locale string) (dlsite.Product, error)
+}
+
 type DLsiteSyncer struct {
-	db            *sql.DB
-	client        DLsiteClient
-	cacheRoot     string
-	languages     []string
-	requestDelay  time.Duration
-	backoff       time.Duration
-	maxBackoff    time.Duration
-	triggerType   string
-	triggerReason string
-	triggerID     int64
+	db               *sql.DB
+	client           DLsiteClient
+	cacheRoot        string
+	languages        []string
+	requestDelay     time.Duration
+	backoff          time.Duration
+	maxBackoff       time.Duration
+	metadataPriority []string
+	triggerType      string
+	triggerReason    string
+	triggerID        int64
 }
 
 type DLsiteSyncResult struct {
@@ -93,6 +100,14 @@ func (s *DLsiteSyncer) WithCacheRoot(cacheRoot string) *DLsiteSyncer {
 
 func (s *DLsiteSyncer) WithLanguages(languages []string) *DLsiteSyncer {
 	s.languages = normalizeLanguages(languages)
+	return s
+}
+
+// WithMetadataPriority controls the local projection only. It never changes
+// which language editions are discovered; each edition is requested using its
+// own mapped locale when the provider exposes one.
+func (s *DLsiteSyncer) WithMetadataPriority(languages []string) *DLsiteSyncer {
+	s.metadataPriority = dlsite.NormalizeMetadataPriority(languages)
 	return s
 }
 
@@ -205,9 +220,9 @@ func (s *DLsiteSyncer) SyncAllWithoutWorkflow(ctx context.Context) (DLsiteSyncRe
 }
 
 func (s *DLsiteSyncer) syncTarget(ctx context.Context, target workTarget) syncTargetResult {
-	product, err := s.fetchProduct(ctx, target.PrimaryCode)
+	family, err := s.SyncFamily(ctx, target.PrimaryCode)
 	if err != nil {
-		if errors.Is(err, dlsite.ErrNoProduct) {
+		if family.RequestedUnavailable {
 			if stateErr := s.markDLsiteProviderState(ctx, target.ID, "not_found", err.Error()); stateErr != nil {
 				return syncTargetResult{failures: []string{fmt.Sprintf("%s: record provider status: %s", target.PrimaryCode, stateErr.Error())}}
 			}
@@ -215,25 +230,7 @@ func (s *DLsiteSyncer) syncTarget(ctx context.Context, target workTarget) syncTa
 		}
 		return syncTargetResult{failures: []string{fmt.Sprintf("%s: %s", target.PrimaryCode, err.Error())}}
 	}
-	if err := s.applyProduct(ctx, target.ID, product); err != nil {
-		return syncTargetResult{failures: []string{fmt.Sprintf("%s: %s", target.PrimaryCode, err.Error())}}
-	}
-
-	result := syncTargetResult{synced: true}
-	originProduct, _, originFetched, err := s.syncOriginProduct(ctx, product)
-	if err != nil {
-		result.failures = append(result.failures, fmt.Sprintf("%s origin metadata: %s", target.PrimaryCode, err.Error()))
-	} else if originFetched && s.cacheRoot != "" {
-		if _, err := s.downloadCover(ctx, originProduct); err != nil {
-			result.failures = append(result.failures, fmt.Sprintf("%s origin cover: %s", target.PrimaryCode, err.Error()))
-		}
-	}
-	if s.cacheRoot != "" {
-		if _, err := s.downloadCover(ctx, product); err != nil {
-			result.failures = append(result.failures, fmt.Sprintf("%s cover: %s", target.PrimaryCode, err.Error()))
-		}
-	}
-	return result
+	return syncTargetResult{synced: len(family.SyncedCodes) > 0, failures: family.Failures}
 }
 
 func syncResultStatus(result DLsiteSyncResult) string {
@@ -251,7 +248,7 @@ func (s *DLsiteSyncer) SyncProduct(ctx context.Context, product dlsite.Product) 
 	if err != nil {
 		return 0, err
 	}
-	if s.cacheRoot != "" {
+	if s.cacheRoot != "" && isCanonicalProduct(product) {
 		_, _ = s.downloadCover(ctx, product)
 	}
 	originProduct, _, originFetched, err := s.syncOriginProduct(ctx, product)
@@ -333,7 +330,7 @@ func (s *DLsiteSyncer) syncFamilyCode(
 	skipped map[string]bool,
 	products map[string]dlsite.Product,
 ) error {
-	product, err := s.fetchProduct(ctx, code)
+	product, err := s.fetchProductForEdition(ctx, code)
 	if err != nil {
 		return s.recordFamilyFetchFailure(ctx, requestedCode, code, err, result, skipped)
 	}
@@ -347,7 +344,10 @@ func (s *DLsiteSyncer) syncFamilyCode(
 	}
 	products[code] = product
 	result.SyncedCodes = append(result.SyncedCodes, code)
-	if s.cacheRoot != "" {
+	// Localized editions currently contribute only title and tags. Keep cover
+	// fetching on the canonical/origin edition until image localization has a
+	// separate storage and display contract.
+	if s.cacheRoot != "" && isCanonicalProduct(product) {
 		if _, err := s.downloadCover(ctx, product); err != nil {
 			result.Failures = append(result.Failures, fmt.Sprintf("%s cover: %s", code, err.Error()))
 		}
@@ -412,7 +412,12 @@ func (s *DLsiteSyncer) syncFamilyCanonical(ctx context.Context, result *DLsiteFa
 		return nil
 	}
 	origin, ok := products[result.CanonicalCode]
-	if ok && originResponseLanguage(origin.Language) {
+	// The canonical work code identifies the origin edition.  Its source
+	// language may be English, Chinese, or another provider language, so the
+	// request locale must not be used as an origin test.
+	if ok &&
+		strings.EqualFold(strings.TrimSpace(firstNonEmptyText(origin.WorkNo, origin.ProductID)), result.CanonicalCode) &&
+		(productEditionLanguage(origin) != "" || strings.TrimSpace(origin.TranslationInfo.Lang) != "" || originResponseLanguage(origin.Language)) {
 		return nil
 	}
 	originProduct, _, originFetched, err := s.syncOriginProductForCode(ctx, result.CanonicalCode)
@@ -489,6 +494,70 @@ func (s *DLsiteSyncer) fetchProduct(ctx context.Context, workno string) (dlsite.
 	return s.fetchProductWithLanguages(ctx, workno, s.languages)
 }
 
+// fetchProductForEdition first discovers the provider-declared edition and
+// then retries that same code with the locale mapped to the edition. DLsite
+// often returns a successful but mixed-language response for a mismatched
+// locale, so the second exact request is intentional.
+func (s *DLsiteSyncer) fetchProductForEdition(ctx context.Context, workno string) (dlsite.Product, error) {
+	product, err := s.fetchProduct(ctx, workno)
+	if err != nil {
+		return dlsite.Product{}, err
+	}
+	editionLanguage := productEditionLanguage(product)
+	exactLocale := dlsite.LocaleForMetadataLanguage(editionLanguage)
+	if exactLocale == "" {
+		return product, nil
+	}
+	requestedLocale := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(firstNonEmptyText(product.RequestLocale, product.Language), "_", "-")))
+	if requestedLocale == exactLocale {
+		product.RequestLocale = exactLocale
+		return product, nil
+	}
+	if _, supportsLocale := s.client.(DLsiteClientWithLocale); supportsLocale {
+		exact, exactErr := s.fetchProductWithExactLocale(ctx, workno, exactLocale)
+		if exactErr != nil {
+			return dlsite.Product{}, fmt.Errorf("fetch %s metadata for %s: %w", exactLocale, workno, exactErr)
+		}
+		return exact, nil
+	} else if _, supportsOptions := s.client.(DLsiteClientWithOptions); supportsOptions {
+		exact, exactErr := s.fetchProductWithLanguages(ctx, workno, []string{exactLocale})
+		if exactErr != nil {
+			return dlsite.Product{}, fmt.Errorf("fetch %s metadata for %s: %w", exactLocale, workno, exactErr)
+		}
+		exact.RequestLocale = exactLocale
+		exact.Language = exactLocale
+		return exact, nil
+	}
+	return product, nil
+}
+
+func (s *DLsiteSyncer) fetchProductWithExactLocale(ctx context.Context, workno string, locale string) (dlsite.Product, error) {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := s.waitRequestDelay(ctx); err != nil {
+			return dlsite.Product{}, err
+		}
+		client, ok := s.client.(DLsiteClientWithLocale)
+		if !ok {
+			return dlsite.Product{}, fmt.Errorf("DLsite client does not support exact locale requests")
+		}
+		product, err := client.FetchProductWithLocale(ctx, workno, locale)
+		if err == nil {
+			product.RequestLocale = locale
+			product.Language = locale
+			return product, nil
+		}
+		lastErr = err
+		if errors.Is(err, dlsite.ErrNoProduct) || !dlsite.IsRetryableHTTPError(err) || attempt >= 2 {
+			return dlsite.Product{}, err
+		}
+		if err := sleepWithContext(ctx, s.retryBackoff(err, attempt)); err != nil {
+			return dlsite.Product{}, err
+		}
+	}
+	return dlsite.Product{}, lastErr
+}
+
 func (s *DLsiteSyncer) fetchProductWithLanguages(ctx context.Context, workno string, languages []string) (dlsite.Product, error) {
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
@@ -517,7 +586,23 @@ func (s *DLsiteSyncer) fetchProductWithLanguages(ctx context.Context, workno str
 }
 
 func (s *DLsiteSyncer) fetchOriginProduct(ctx context.Context, workno string) (dlsite.Product, error) {
-	return s.fetchProductWithLanguages(ctx, workno, []string{"ja-jp", ""})
+	product, err := s.fetchProductForEdition(ctx, workno)
+	if err != nil {
+		return dlsite.Product{}, err
+	}
+	// Older provider responses sometimes omit language_editions. Preserve the
+	// historical Japanese origin probe in that case so a localized discovery
+	// response cannot overwrite the canonical title.
+	if productEditionLanguage(product) == "" &&
+		strings.TrimSpace(product.TranslationInfo.Lang) == "" &&
+		!originResponseLanguage(product.Language) {
+		if japanese, japaneseErr := s.fetchProductWithLanguages(ctx, workno, []string{"ja-jp", ""}); japaneseErr == nil {
+			japanese.RequestLocale = "ja-jp"
+			japanese.Language = "ja-jp"
+			return japanese, nil
+		}
+	}
+	return product, nil
 }
 
 func (s *DLsiteSyncer) syncOriginProduct(ctx context.Context, product dlsite.Product) (dlsite.Product, int64, bool, error) {
@@ -529,7 +614,7 @@ func (s *DLsiteSyncer) syncOriginProduct(ctx context.Context, product dlsite.Pro
 	if currentCode == "" || canonicalCode == "" {
 		return dlsite.Product{}, 0, false, fmt.Errorf("product does not expose a stable origin code")
 	}
-	if strings.EqualFold(currentCode, canonicalCode) && originResponseLanguage(product.Language) {
+	if strings.EqualFold(currentCode, canonicalCode) {
 		return product, 0, false, nil
 	}
 	return s.syncOriginProductForCode(ctx, canonicalCode)
@@ -561,6 +646,18 @@ func originResponseLanguage(language string) bool {
 	default:
 		return false
 	}
+}
+
+func isCanonicalProduct(product dlsite.Product) bool {
+	currentCode := strings.ToUpper(strings.TrimSpace(firstNonEmptyText(product.WorkNo, product.ProductID)))
+	canonicalCode := strings.ToUpper(strings.TrimSpace(baseProductCode(product)))
+	if currentCode == "" {
+		return false
+	}
+	if canonicalCode == "" {
+		return true
+	}
+	return strings.EqualFold(currentCode, canonicalCode)
 }
 
 func containsCode(values []string, code string) bool {
@@ -800,20 +897,6 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 	`, workID, providerID, product.WorkNo, productURL(product)); err != nil {
 		return err
 	}
-
-	raw := product.Raw
-	if strings.TrimSpace(product.Language) != "" {
-		raw = snapshotWithKikotoMeta(raw, map[string]any{
-			"response_language": product.Language,
-			"edition_language":  productEditionLanguage(product),
-		})
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
-		VALUES (?, ?, ?, ?)
-	`, workID, providerID, product.WorkNo, string(raw)); err != nil {
-		return err
-	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO work_metadata_provider_state (work_id, provider_id, status, message, checked_at, updated_at)
 		VALUES (?, ?, 'available', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -823,9 +906,6 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 			checked_at = CURRENT_TIMESTAMP,
 			updated_at = CURRENT_TIMESTAMP
 	`, workID, providerID); err != nil {
-		return err
-	}
-	if err := replaceDLsiteWorkTags(ctx, tx, workID, product.Genres, product.Language); err != nil {
 		return err
 	}
 	priceCurrency := ""
@@ -855,18 +935,67 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 	if err := upsertDLsiteWorkEdition(ctx, tx, providerID, workID, product); err != nil {
 		return err
 	}
+	var logicalWorkID int64
+	if err := tx.QueryRowContext(ctx, "SELECT logical_work_id FROM work_edition WHERE work_id = ?", workID).Scan(&logicalWorkID); err != nil {
+		return err
+	}
+
+	editionLanguage := strings.TrimSpace(productEditionLanguage(product))
+	editionToken := dlsite.EditionMetadataLanguage(editionLanguage)
+	if editionToken == "" {
+		editionToken = strings.ToUpper(editionLanguage)
+	}
+	requestLocale := normalizeRequestLocale(firstNonEmptyText(product.RequestLocale, product.Language))
+	if requestLocale == "" {
+		requestLocale = dlsite.LocaleForMetadataLanguage(editionToken)
+	}
+	baseRaw := product.Raw
+	if len(baseRaw) == 0 {
+		baseRaw = json.RawMessage(`{}`)
+	}
+	contentHash := hashSnapshot(baseRaw)
+	variantKey := metadataVariantKey(editionLanguage, editionToken)
+	raw := snapshotWithKikotoMeta(baseRaw, map[string]any{
+		"response_language": product.Language,
+		"request_locale":    requestLocale,
+		"edition_language":  editionLanguage,
+		"variant_key":       variantKey,
+		"content_hash":      contentHash,
+	})
+	if err := upsertDLsiteMetadataSnapshot(ctx, tx, workID, providerID, product.WorkNo, raw, variantKey, editionLanguage, requestLocale, contentHash); err != nil {
+		return err
+	}
+	if err := upsertDLsiteMetadataVariant(ctx, tx, logicalWorkID, workID, providerID, product.WorkNo, editionLanguage, requestLocale, chooseTitle(product), product.Genres, contentHash); err != nil {
+		return err
+	}
+	if err := replaceDLsiteWorkTags(ctx, tx, workID, product.Genres, editionToken, requestLocale); err != nil {
+		return err
+	}
 
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	return s.classifyFamilyEditions(ctx, baseProductCode(product))
+	if err := s.classifyFamilyEditions(ctx, baseProductCode(product)); err != nil {
+		return err
+	}
+	priority := s.metadataPriority
+	if len(priority) == 0 {
+		priority = []string{dlsite.OriginMetadataLanguage}
+	}
+	return ProjectDLsiteMetadataFamily(ctx, s.db, logicalWorkID, priority)
 }
 
-func replaceDLsiteWorkTags(ctx context.Context, tx *sql.Tx, workID int64, genres []dlsite.Genre, language string) error {
+func replaceDLsiteWorkTags(ctx context.Context, tx *sql.Tx, workID int64, genres []dlsite.Genre, language string, requestLocale string) error {
+	// A work row represents one edition. The localized variants table is the
+	// durable record of every language; work_tag is only the current searchable
+	// projection, so clear the old projection before writing this edition.
 	if _, err := tx.ExecContext(ctx, "DELETE FROM work_tag WHERE work_id = ? AND source = 'dlsite'", workID); err != nil {
 		return err
 	}
 	language = strings.TrimSpace(language)
+	if language == "" {
+		language = strings.TrimSpace(requestLocale)
+	}
 	seen := map[string]bool{}
 	for _, genre := range genres {
 		displayName := strings.TrimSpace(firstNonEmptyText(genre.Name, genre.NameBase))
@@ -902,6 +1031,140 @@ func replaceDLsiteWorkTags(ctx context.Context, tx *sql.Tx, workID int64, genres
 		}
 	}
 	return nil
+}
+
+func normalizeRequestLocale(value string) string {
+	return strings.ToLower(strings.TrimSpace(strings.ReplaceAll(value, "_", "-")))
+}
+
+// metadataVariantKey identifies the provider-declared edition.  The locale
+// used to request that edition is provenance and must not create a second
+// display variant when a caller changes its fallback request order.
+func metadataVariantKey(editionLanguage, normalizedLanguage string) string {
+	key := strings.TrimSpace(normalizedLanguage)
+	if key == "" {
+		key = strings.TrimSpace(editionLanguage)
+	}
+	key = strings.ToLower(strings.ReplaceAll(key, "_", "-"))
+	if key == "" {
+		return "unknown"
+	}
+	return key
+}
+
+func hashSnapshot(raw []byte) string {
+	digest := sha256.Sum256(raw)
+	return hex.EncodeToString(digest[:])
+}
+
+func upsertDLsiteMetadataSnapshot(
+	ctx context.Context,
+	tx *sql.Tx,
+	workID int64,
+	providerID int64,
+	externalID string,
+	raw json.RawMessage,
+	variantKey string,
+	editionLanguage string,
+	requestLocale string,
+	contentHash string,
+) error {
+	var existingID int64
+	var existingHash, existingRaw string
+	err := tx.QueryRowContext(ctx, `
+		SELECT id, content_hash, snapshot_json
+		FROM metadata_snapshot
+		WHERE work_id = ? AND provider_id = ? AND external_id = ?
+		ORDER BY fetched_at DESC, id DESC
+		LIMIT 1
+	`, workID, providerID, externalID).Scan(&existingID, &existingHash, &existingRaw)
+	if err == nil && (strings.TrimSpace(existingHash) == contentHash || (strings.TrimSpace(existingHash) == "" && existingRaw == string(raw))) {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE metadata_snapshot
+			SET fetched_at = CURRENT_TIMESTAMP,
+				snapshot_json = ?, variant_key = ?, edition_language = ?, request_locale = ?, content_hash = ?
+			WHERE id = ?
+		`, string(raw), variantKey, editionLanguage, requestLocale, contentHash, existingID); err != nil {
+			return err
+		}
+		return retainMetadataSnapshots(ctx, tx, workID, providerID, externalID)
+	}
+	if !errors.Is(err, sql.ErrNoRows) && err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO metadata_snapshot (
+			work_id, provider_id, external_id, snapshot_json,
+			variant_key, edition_language, request_locale, content_hash
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, workID, providerID, externalID, string(raw), variantKey, editionLanguage, requestLocale, contentHash); err != nil {
+		return err
+	}
+	return retainMetadataSnapshots(ctx, tx, workID, providerID, externalID)
+}
+
+func retainMetadataSnapshots(ctx context.Context, tx *sql.Tx, workID, providerID int64, externalID string) error {
+	_, err := tx.ExecContext(ctx, `
+		DELETE FROM metadata_snapshot
+		WHERE id IN (
+			SELECT id
+			FROM metadata_snapshot
+			WHERE work_id = ? AND provider_id = ? AND external_id = ?
+			ORDER BY fetched_at DESC, id DESC
+			LIMIT -1 OFFSET 2
+		)
+	`, workID, providerID, externalID)
+	return err
+}
+
+func upsertDLsiteMetadataVariant(
+	ctx context.Context,
+	tx *sql.Tx,
+	logicalWorkID int64,
+	workID int64,
+	providerID int64,
+	externalID string,
+	editionLanguage string,
+	requestLocale string,
+	title string,
+	genres []dlsite.Genre,
+	contentHash string,
+) error {
+	tags := make([]string, 0, len(genres))
+	seen := map[string]bool{}
+	for _, genre := range genres {
+		name := strings.TrimSpace(firstNonEmptyText(genre.Name, genre.NameBase))
+		key := strings.ToLower(name)
+		if name == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		tags = append(tags, name)
+	}
+	tagsJSON, err := json.Marshal(tags)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO dlsite_metadata_variant (
+			logical_work_id, work_id, provider_id, external_id,
+			edition_language, request_locale, title, tags_json, content_hash,
+			fetched_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		ON CONFLICT(provider_id, work_id) DO UPDATE SET
+			logical_work_id = excluded.logical_work_id,
+			external_id = excluded.external_id,
+			edition_language = excluded.edition_language,
+			request_locale = excluded.request_locale,
+			title = excluded.title,
+			tags_json = excluded.tags_json,
+			content_hash = excluded.content_hash,
+			fetched_at = CURRENT_TIMESTAMP,
+			updated_at = CURRENT_TIMESTAMP
+	`, logicalWorkID, workID, providerID, externalID, editionLanguage, requestLocale, strings.TrimSpace(title), string(tagsJSON), contentHash)
+	return err
 }
 
 func (s *DLsiteSyncer) ensureWorkForProduct(ctx context.Context, product dlsite.Product) (int64, error) {
@@ -1168,7 +1431,10 @@ func productEditionLanguage(product dlsite.Product) string {
 	if edition, ok := productEdition(product); ok {
 		return strings.TrimSpace(firstNonEmptyText(edition.Lang, edition.Label))
 	}
-	return strings.TrimSpace(firstNonEmptyText(product.TranslationInfo.Lang, product.Language))
+	// Product.Language is the locale requested over HTTP, not a provider
+	// declaration. Falling back to it would misclassify an origin edition when
+	// DLsite omits language_editions.
+	return strings.TrimSpace(product.TranslationInfo.Lang)
 }
 
 func productEditionLabel(product dlsite.Product) string {

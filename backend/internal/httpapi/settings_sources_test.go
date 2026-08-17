@@ -142,6 +142,33 @@ func TestCreateFileSourcePersistsOutboundPolicy(t *testing.T) {
 	if !source.Endpoint.RestrictOutboundHosts || fmt.Sprint(source.Endpoint.AllowedHostPatterns) != "[cdn.example.invalid *.media.example.invalid]" {
 		t.Fatalf("persisted endpoint = %+v", source.Endpoint)
 	}
+	if source.Config.RequestLanguage != defaultRemoteRequestLanguage {
+		t.Fatalf("request language = %q, want %q", source.Config.RequestLanguage, defaultRemoteRequestLanguage)
+	}
+}
+
+func TestCreateFileSourcePersistsConfiguredRequestLanguage(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	request := httptest.NewRequest(http.MethodPost, "/api/file-sources", strings.NewReader(`{
+		"displayName":"Example Remote",
+		"sourceType":"kikoeru_compatible",
+		"config":{"requestLanguage":"zh_hant"},
+		"endpoint":{"apiUrl":"https://example.invalid/api"}
+	}`))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"sources:write"}}))
+	response := httptest.NewRecorder()
+	server.createFileSource(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var source fileSourceSummary
+	if err := json.Unmarshal(response.Body.Bytes(), &source); err != nil {
+		t.Fatal(err)
+	}
+	if source.Config.RequestLanguage != "zh-Hant" {
+		t.Fatalf("request language = %q, want zh-Hant", source.Config.RequestLanguage)
+	}
 }
 
 func TestRuntimeSettingsExposeDeploymentMode(t *testing.T) {
@@ -276,7 +303,7 @@ func TestDLsiteMetadataLanguagePriorityUsesArrayAndLegacyFallback(t *testing.T) 
 	if err := json.Unmarshal(response.Body.Bytes(), &settings); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"zh-cn", "en-us", "ja-jp", "zh-tw", "ko-kr"}
+	want := []string{"zh-cn", "en-us", "ja-jp", "origin"}
 	if !reflect.DeepEqual(settings.DLsiteMetadataLanguages, want) || settings.DLsiteMetadataLanguage != want[0] {
 		t.Fatalf("language settings = %v / %q, want %v / %q", settings.DLsiteMetadataLanguages, settings.DLsiteMetadataLanguage, want, want[0])
 	}
@@ -305,8 +332,13 @@ func TestDLsiteMetadataLanguagePriorityUsesArrayAndLegacyFallback(t *testing.T) 
 	}
 	legacyServer := NewServer(legacyDB, config.Config{})
 	loaded := legacyServer.preferredMetadataLanguages(context.Background())
-	if !reflect.DeepEqual(loaded, []string{"en-us", "ja-jp", "zh-cn", "zh-tw", "ko-kr"}) {
+	if !reflect.DeepEqual(loaded, []string{"en-us", "origin"}) {
 		t.Fatalf("legacy preference = %v", loaded)
+	}
+	freshDB := openMigratedTestDB(t)
+	freshServer := NewServer(freshDB, config.Config{})
+	if loaded := freshServer.preferredMetadataLanguages(context.Background()); !reflect.DeepEqual(loaded, []string{"origin"}) {
+		t.Fatalf("fresh preference = %v", loaded)
 	}
 }
 
@@ -328,9 +360,15 @@ func TestDLsiteMetadataLanguagePriorityRejectsInvalidLists(t *testing.T) {
 	}
 }
 
-func TestDLsiteLanguageFallbacksPreservePriority(t *testing.T) {
-	if got, want := dlsiteLanguageFallbacksForLanguages([]string{"zh-cn", "en-us"}), []string{"zh-cn", "en-us", "ja-jp", "zh-tw", "ko-kr", ""}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("fallbacks = %v, want %v", got, want)
+func TestDLsiteLanguageFallbacksAreIndependentOfDisplayPriority(t *testing.T) {
+	first := dlsiteLanguageFallbacksForLanguages([]string{"zh-cn", "en-us"})
+	second := dlsiteLanguageFallbacksForLanguages([]string{"ko-kr", "ja-jp"})
+	if !reflect.DeepEqual(first, second) {
+		t.Fatalf("discovery fallbacks changed with display priority: %v vs %v", first, second)
+	}
+	want := []string{"ja-jp", "en-us", "zh-cn", "zh-tw", "ko-kr", ""}
+	if !reflect.DeepEqual(first, want) {
+		t.Fatalf("fallbacks = %v, want %v", first, want)
 	}
 }
 

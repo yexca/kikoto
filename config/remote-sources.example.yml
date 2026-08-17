@@ -6,3 +6,4 @@ sources:
     api_url: https://example.invalid/api
     base_url: https://example.invalid
     fallback_url: ""
+    request_language: ja-JP

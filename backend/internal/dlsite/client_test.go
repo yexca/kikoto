@@ -261,6 +261,59 @@ func TestNormalizeLanguagesRetainsAnExplicitDefaultFallback(t *testing.T) {
 	}
 }
 
+func TestMetadataLanguageLocaleMapping(t *testing.T) {
+	tests := []struct {
+		edition  string
+		language string
+		locale   string
+	}{
+		{edition: "JPN", language: "ja-jp", locale: "ja-jp"},
+		{edition: "CHI_HANS", language: "zh-cn", locale: "zh-cn"},
+		{edition: "CHI_HANT", language: "zh-tw", locale: "zh-tw"},
+		{edition: "ENG", language: "en-us", locale: "en-us"},
+		{edition: "KO_KR", language: "ko-kr", locale: "ko-kr"},
+	}
+	for _, test := range tests {
+		if got := EditionMetadataLanguage(test.edition); got != test.language {
+			t.Errorf("EditionMetadataLanguage(%q) = %q, want %q", test.edition, got, test.language)
+		}
+		if got := LocaleForMetadataLanguage(test.edition); got != test.locale {
+			t.Errorf("LocaleForMetadataLanguage(%q) = %q, want %q", test.edition, got, test.locale)
+		}
+	}
+	if got := EditionMetadataLanguage("IND"); got != "" {
+		t.Fatalf("unknown edition language = %q, want empty priority token", got)
+	}
+}
+
+func TestFetchProductWithLocaleUsesExactLocale(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/maniax/api/=/product.json" {
+			if got := r.URL.Query().Get("locale"); got != "zh-tw" {
+				t.Fatalf("locale = %q, want zh-tw", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `[{"workno":"RJ00000002","product_name":"Traditional"}]`)
+			return
+		}
+		if r.URL.Path == "/maniax-touch/product/info/ajax" {
+			_, _ = io.WriteString(w, `{"RJ00000002":{}}`)
+			return
+		}
+		t.Fatalf("path = %s", r.URL.Path)
+	}))
+	defer server.Close()
+	client := NewClient(server.Client())
+	client.baseURL = server.URL
+	product, err := client.FetchProductWithLocale(context.Background(), "RJ00000002", "zh_TW")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if product.Language != "zh-tw" || product.RequestLocale != "zh-tw" {
+		t.Fatalf("product locale = %q/%q, want zh-tw/zh-tw", product.Language, product.RequestLocale)
+	}
+}
+
 func TestFetchMakerCatalogUsesAllLanguageOptions(t *testing.T) {
 	var requestedPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

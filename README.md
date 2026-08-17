@@ -198,7 +198,9 @@ Maintenance -> Library -> Remote sources -> Add source
 ```
 
 The UI manages source identity, priority, enabled state, API endpoint, optional
-fallback, work-link template, health checks, and resolved save-path previews.
+fallback, work-link template, request language hint, health checks, and resolved
+save-path previews. The request language is sent to the remote service as a
+hint only; the service may ignore it or return mixed-language metadata.
 
 ### First-run configuration file
 

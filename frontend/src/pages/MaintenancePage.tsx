@@ -67,7 +67,7 @@ const emptyRemoteSource = {
   sourceType: "kikoeru_compatible",
   priority: 30,
   enabled: true,
-  config: { cacheEnabled: false, cacheLimitGb: 20 },
+  config: { cacheEnabled: false, cacheLimitGb: 20, requestLanguage: "ja-JP" },
   endpoint: {
     baseUrl: "",
     apiUrl: "",
@@ -131,7 +131,9 @@ export function MaintenancePage({
   const [remoteBackoff, setRemoteBackoff] = useState(30);
   const [remoteMaxBackoff, setRemoteMaxBackoff] = useState(300);
   const [catalogFreshnessDays, setCatalogFreshnessDays] = useState(30);
-  const [dlsiteMetadataLanguages, setDlsiteMetadataLanguages] = useState<DlsiteMetadataLanguage[]>(["ja-jp"]);
+  const [dlsiteMetadataLanguages, setDlsiteMetadataLanguages] = useState<DlsiteMetadataLanguage[]>(() =>
+    normalizeDlsiteMetadataLanguages([]),
+  );
   const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>([]);
   const [recommendationThreshold, setRecommendationThreshold] = useState(50);
   const [recommendationConfig, setRecommendationConfig] = useState<RecommendationConfig | null>(null);
@@ -1224,6 +1226,14 @@ function MetadataSettings({
     onLanguagesChange(moveDlsiteMetadataLanguage(languages, index, direction));
   };
 
+  const setLanguageIncluded = (language: DlsiteMetadataLanguage, included: boolean) => {
+    if (language === "origin") return;
+    const next = included
+      ? [...languages.filter((candidate) => candidate !== "origin"), language, "origin"]
+      : languages.filter((candidate) => candidate !== language);
+    onLanguagesChange(normalizeDlsiteMetadataLanguages(next));
+  };
+
   return (
     <Card className="overflow-hidden">
       <CardHeader>
@@ -1239,10 +1249,27 @@ function MetadataSettings({
           <div>
             <div className="font-medium">DLsite title and tag language priority</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Languages are tried from left to right. When localized data is unavailable, sync continues to the next
-              language, then uses DLsite's default response as a final fallback.
+              Stored DLsite editions are matched from left to right. Origin is always retained as the final fallback;
+              the request locale used during sync is independent from this display order.
             </p>
           </div>
+          <fieldset className="grid gap-2 rounded-md border bg-background p-3">
+            <legend className="px-1 text-xs font-semibold text-muted-foreground">Preferred languages</legend>
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              {dlsiteMetadataLanguageOptions
+                .filter((option) => option.value !== "origin")
+                .map((option) => (
+                  <label key={option.value} className="inline-flex min-h-8 items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={languages.includes(option.value)}
+                      onCheckedChange={(checked) => setLanguageIncluded(option.value, checked)}
+                      aria-label={`Prefer ${option.label} metadata`}
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+            </div>
+          </fieldset>
           <div
             className="app-scrollbar flex gap-2 overflow-x-auto pb-1"
             role="list"
@@ -1263,8 +1290,9 @@ function MetadataSettings({
                   <div className="flex min-w-0 items-start gap-2">
                     <button
                       type="button"
-                      className="grid h-8 w-8 shrink-0 touch-none cursor-grab place-items-center rounded-md border bg-card text-muted-foreground active:cursor-grabbing"
+                      className="grid h-8 w-8 shrink-0 touch-none cursor-grab place-items-center rounded-md border bg-card text-muted-foreground active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
                       aria-label={`Drag ${option.label}`}
+                      disabled={language === "origin"}
                       onPointerDown={(event) => {
                         if (!event.isPrimary || event.button !== 0) return;
                         event.preventDefault();
@@ -1313,7 +1341,7 @@ function MetadataSettings({
                         className="grid h-7 w-7 place-items-center rounded-md border text-muted-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-40"
                         aria-label={`Move ${option.label} earlier`}
                         title={`Move ${option.label} earlier`}
-                        disabled={index === 0}
+                        disabled={index === 0 || language === "origin"}
                         onClick={() => moveLanguage(index, -1)}
                       >
                         <ArrowLeft className="h-3.5 w-3.5" />
@@ -1323,7 +1351,7 @@ function MetadataSettings({
                         className="grid h-7 w-7 place-items-center rounded-md border text-muted-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-40"
                         aria-label={`Move ${option.label} later`}
                         title={`Move ${option.label} later`}
-                        disabled={index === languages.length - 1}
+                        disabled={index === languages.length - 1 || language === "origin"}
                         onClick={() => moveLanguage(index, 1)}
                       >
                         <ArrowRight className="h-3.5 w-3.5" />
@@ -2706,6 +2734,23 @@ function SourceModal({
             value={source.endpoint.workUrlTemplate}
             onChange={(value) => patch({ endpoint: { ...source.endpoint, workUrlTemplate: value } })}
           />
+          {REMOTE_SOURCE_TYPES.has(source.sourceType) && (
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">Request language</span>
+              <input
+                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
+                value={source.config.requestLanguage ?? "ja-JP"}
+                onChange={(event) => patch({ config: { ...source.config, requestLanguage: event.target.value } })}
+                placeholder="ja-JP"
+                spellCheck={false}
+                aria-label="Remote source request language"
+              />
+              <span className="text-xs text-muted-foreground">
+                Sent as a request hint only. The remote service may ignore it, fall back, or return mixed-language
+                metadata.
+              </span>
+            </label>
+          )}
           <TextInput
             label="Fallback URL"
             value={source.endpoint.fallbackUrl}

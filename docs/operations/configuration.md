@@ -23,8 +23,10 @@ Kikoto is configured through environment variables and administrator settings.
 
 Maintenance manages local scan depth, cache behavior, the remote per-file
 download limit, failed Fetch staging retention, remote request pacing, DLsite
-metadata language, file sources, creator catalog freshness, and production
-instance access.
+metadata language priority, file sources and their request-language hints,
+creator catalog freshness, and production instance access. A remote source
+request language is sent as a hint only; the upstream service may ignore it,
+fall back, or return mixed-language metadata.
 
 Production anonymous access is an SQLite-backed instance setting rather than an
 environment variable. It defaults to disabled. A super administrator can

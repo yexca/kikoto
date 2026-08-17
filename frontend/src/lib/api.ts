@@ -439,6 +439,7 @@ export type FileSource = {
     cacheLimitGb?: number;
     saveRootTemplate?: string;
     scanDepth?: number;
+    requestLanguage?: string;
   };
   endpoint: {
     baseUrl: string;

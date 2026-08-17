@@ -144,6 +144,7 @@ func (s *Server) syncWorkEntityMetadata(ctx context.Context, code string) error 
 func (s *Server) syncWorkMetadataFamily(ctx context.Context, code string) (metasync.DLsiteFamilySyncResult, error) {
 	syncer := metasync.NewDLsiteSyncer(s.db, s.dlsiteClient).
 		WithCacheRoot(s.cfg.CacheRoot).
+		WithMetadataPriority(s.preferredMetadataLanguages(ctx)).
 		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.preferredMetadataLanguages(ctx))).
 		WithRequestPacing(
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5)),

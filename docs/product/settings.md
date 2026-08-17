@@ -37,6 +37,10 @@ and do not modify Demo server data.
   retain only operational metrics such as source health, recommendation
   telemetry, and managed-cache usage.
 - Library combines the local scan settings and configured remote sources.
+- Metadata settings let administrators choose and reorder the supported DLsite
+  title/tag languages. `Origin` is always retained as the final fallback. Each
+  compatible remote source also has a request-language hint; the upstream may
+  ignore it, fall back, or return mixed-language metadata.
 - Access is visible to super administrators in production and development.
   Anonymous Library browsing and playback default to disabled; changing the
   switch applies to the production access boundary and creates an audit entry.

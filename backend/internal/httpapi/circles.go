@@ -1885,6 +1885,16 @@ func (s *Server) readCircleCatalogWork(ctx context.Context, rows *sql.Rows) (cir
 	if item.WorkID == nil {
 		item.WorkID = nullableInt64(workID)
 	}
+	if item.WorkID != nil {
+		if title, tags, projected, err := s.loadProjectedDLsiteMetadata(ctx, *item.WorkID); err != nil {
+			return item, dlsiteSnapshotMetadata{}, err
+		} else if projected {
+			if title != "" {
+				item.Title = title
+			}
+			item.Tags = tags
+		}
+	}
 	item.Favorite = favorite != 0
 	item.DLsiteAvailable = dlsiteAvailable != 0
 	return item, metadata, nil
@@ -2620,7 +2630,10 @@ func (s *Server) syncCircleProductJSON(ctx context.Context, partyID int64, workC
 	if err != nil {
 		return circleProductSyncResult{}, err
 	}
-	syncer := metasync.NewDLsiteSyncer(s.db, client).WithCacheRoot(s.cfg.CacheRoot)
+	syncer := metasync.NewDLsiteSyncer(s.db, client).
+		WithCacheRoot(s.cfg.CacheRoot).
+		WithMetadataPriority(s.preferredMetadataLanguages(ctx)).
+		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.preferredMetadataLanguages(ctx)))
 	result := circleProductSyncResult{Skipped: len(workCodes) - len(candidates), Failures: []string{}}
 	for _, code := range candidates {
 		failure, err := s.syncCircleProduct(ctx, partyID, code, client, syncer)
@@ -2667,8 +2680,15 @@ func (s *Server) syncCircleProduct(ctx context.Context, partyID int64, code stri
 	if err := s.upsertPartyCatalogItem(ctx, partyID, product.WorkNo, title, release, dlsiteURL(product.WorkNo), "catalog", raw); err != nil {
 		return "", err
 	}
-	workID, err := syncer.SyncProduct(ctx, product)
-	if err != nil {
+	if _, err := syncer.SyncFamily(ctx, product.WorkNo); err != nil {
+		return "", err
+	}
+	var workID int64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT id
+		FROM work
+		WHERE UPPER(primary_code) = UPPER(?)
+	`, product.WorkNo).Scan(&workID); err != nil {
 		return "", err
 	}
 	party := parsedParty{ExternalID: normalizeMakerID(product.MakerID), DisplayName: strings.TrimSpace(product.MakerName)}

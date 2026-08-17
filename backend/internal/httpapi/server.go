@@ -449,6 +449,19 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []l
 		item.Series = metadata.Series
 		works = append(works, item)
 	}
+	projectedWorkIDs := make([]int64, 0, len(works))
+	for _, item := range works {
+		projectedWorkIDs = append(projectedWorkIDs, item.ID)
+	}
+	projectedTags, err := s.loadProjectedDLsiteTagsBatch(ctx, projectedWorkIDs)
+	if err != nil {
+		return nil, err
+	}
+	for index := range works {
+		if tags, ok := projectedTags[works[index].ID]; ok {
+			works[index].Tags = tags
+		}
+	}
 	if err := s.enrichLibraryWorkSummaries(ctx, userID, works); err != nil {
 		return nil, err
 	}
@@ -3003,7 +3016,24 @@ func (s *Server) populateWorkDetailMetadata(ctx context.Context, work *workDetai
 	work.Series = metadata.Series
 	work.SeriesTitleID = s.seriesTitleIDForWork(ctx, work.PrimaryCode)
 	work.SeriesCircleID = work.CircleExternalID
-	work.Tags = metadata.Tags
+	if tags, projected, err := s.loadProjectedDLsiteTags(ctx, work.ID); err != nil {
+		return 0, err
+	} else if projected || tags != nil {
+		work.Tags = tags
+	} else {
+		work.Tags = metadata.Tags
+	}
+	if selected, ok, err := metasync.SelectDLsiteMetadataVariant(ctx, s.db, work.ID, s.preferredMetadataLanguages(ctx)); err != nil {
+		return 0, err
+	} else if ok {
+		if selected.IsCanonical {
+			work.MetadataLanguage = dlsite.OriginMetadataLanguage
+		} else if token := dlsite.EditionMetadataLanguage(selected.EditionLanguage); token != "" {
+			work.MetadataLanguage = token
+		} else if strings.TrimSpace(selected.EditionLanguage) != "" {
+			work.MetadataLanguage = selected.EditionLanguage
+		}
+	}
 	work.VoiceActors = metadata.VoiceActors
 	translations, err := s.loadWorkTranslations(ctx, work.PrimaryCode, work.BaseCode, metadata.LanguageEditions)
 	if err != nil {
@@ -3577,6 +3607,13 @@ func (s *Server) resolveWorkCodeDetail(ctx context.Context, code string) (workRe
 	if permanentlyFree.Valid {
 		permanentlyFreeValue = &permanentlyFree.Bool
 	}
+	projectedTags, projected, err := s.loadProjectedDLsiteTags(ctx, resolvedID)
+	if err != nil {
+		return workResolveResponse{}, err
+	}
+	if !projected {
+		projectedTags = metadata.Tags
+	}
 	return workResolveResponse{
 		RequestedCode:    code,
 		ResolvedCode:     resolvedCode,
@@ -3594,7 +3631,7 @@ func (s *Server) resolveWorkCodeDetail(ctx context.Context, code string) (workRe
 		Price:            nullableInt64(currentPrice),
 		PriceCurrency:    priceCurrency,
 		PermanentlyFree:  permanentlyFreeValue,
-		Tags:             metadata.Tags,
+		Tags:             projectedTags,
 		VoiceActors:      metadata.VoiceActors,
 	}, nil
 }
@@ -4436,6 +4473,7 @@ func (s *Server) createDLsiteSyncRun(w http.ResponseWriter, r *http.Request) {
 func (s *Server) newDLsiteMetadataSyncer(ctx context.Context) *metasync.DLsiteSyncer {
 	return metasync.NewDLsiteSyncer(s.db, s.dlsiteClient).
 		WithCacheRoot(s.cfg.CacheRoot).
+		WithMetadataPriority(s.preferredMetadataLanguages(ctx)).
 		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.preferredMetadataLanguages(ctx))).
 		WithRequestPacing(
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5)),
@@ -4453,26 +4491,17 @@ func durationFromSettingSeconds(value float64) time.Duration {
 
 func dlsiteLanguageFallbacks(language string) []string {
 	language = normalizeDLsiteLanguage(language)
-	if language == "" || language == defaultDLsiteMetadataLanguage {
+	if language == "" || language == dlsite.OriginMetadataLanguage || language == defaultDLsiteMetadataLanguage {
 		return []string{defaultDLsiteMetadataLanguage, ""}
 	}
 	return []string{language, defaultDLsiteMetadataLanguage, ""}
 }
 
-func dlsiteLanguageFallbacksForLanguages(languages []string) []string {
-	ordered := normalizeDLsiteMetadataLanguages(languages)
-	seen := map[string]bool{}
-	result := make([]string, 0, len(ordered)+2)
-	for _, language := range ordered {
-		if !seen[language] {
-			seen[language] = true
-			result = append(result, language)
-		}
-	}
-	if !seen[defaultDLsiteMetadataLanguage] {
-		result = append(result, defaultDLsiteMetadataLanguage)
-	}
-	// An empty locale asks DLsite for its unqualified/default response as a final fallback.
+func dlsiteLanguageFallbacksForLanguages(_ []string) []string {
+	// Discovery is transport policy, not display policy. Always probe the
+	// supported DLsite locales in a stable order so changing the UI priority
+	// cannot change which response becomes the family-discovery seed.
+	result := append([]string(nil), dlsite.SupportedMetadataLanguages...)
 	result = append(result, "")
 	return result
 }

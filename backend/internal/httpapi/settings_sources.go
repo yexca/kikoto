@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,8 +21,10 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/library"
+	"github.com/yexca/kikoto/backend/internal/metasync"
 	"github.com/yexca/kikoto/backend/internal/outbound"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
@@ -33,12 +37,13 @@ const (
 	defaultRemoteWorkURLTemplate   = "/work/{code}"
 	maxRemoteAllowedHostPatterns   = 64
 	defaultDLsiteMetadataLanguage  = "ja-jp"
-	maxDLsiteMetadataLanguages     = 5
+	defaultRemoteRequestLanguage   = "ja-JP"
+	maxDLsiteMetadataLanguages     = 6
 	dlsiteMetadataLanguageSetting  = "dlsite_metadata_language"
 	dlsiteMetadataLanguagesSetting = "dlsite_metadata_languages"
 )
 
-var defaultDLsiteMetadataLanguages = []string{"ja-jp", "en-us", "zh-cn", "zh-tw", "ko-kr"}
+var defaultDLsiteMetadataLanguages = []string{dlsite.OriginMetadataLanguage}
 
 func isKikoeruSourceType(sourceType string) bool {
 	return sourceType == sourceTypeKikoeruCompatible || sourceType == sourceTypeKikoeruCompatible178
@@ -83,6 +88,7 @@ type normalizedRemoteSourceSeed struct {
 	Code            string
 	DisplayName     string
 	SourceType      string
+	RequestLanguage string
 	Priority        int
 	Enabled         bool
 	BaseURL         string
@@ -106,6 +112,15 @@ func normalizeRemoteSourceSeed(seed config.RemoteSourceSeed) (*normalizedRemoteS
 	}
 	baseURL := strings.TrimSpace(seed.BaseURL)
 	fallbackURL := strings.TrimSpace(seed.FallbackURL)
+	requestLanguage := strings.TrimSpace(seed.RequestLanguage)
+	if requestLanguage == "" {
+		requestLanguage = defaultRemoteRequestLanguage
+	} else {
+		requestLanguage = normalizeRemoteRequestLanguage(requestLanguage)
+		if requestLanguage == "" {
+			return nil, fmt.Errorf("remote source seed has an invalid request language")
+		}
+	}
 	for _, candidate := range []string{apiURL, baseURL, fallbackURL} {
 		if candidate == "" {
 			continue
@@ -123,7 +138,8 @@ func normalizeRemoteSourceSeed(seed config.RemoteSourceSeed) (*normalizedRemoteS
 	}
 	return &normalizedRemoteSourceSeed{
 		Code: code, DisplayName: displayName, SourceType: sourceType,
-		Priority: sourcePriority(seed.Priority), Enabled: seed.Enabled,
+		RequestLanguage: requestLanguage,
+		Priority:        sourcePriority(seed.Priority), Enabled: seed.Enabled,
 		BaseURL: baseURL, APIURL: apiURL, FallbackURL: fallbackURL,
 		WorkURLTemplate: remoteWorkURLTemplate(seed.WorkURLTemplate),
 	}, nil
@@ -133,7 +149,7 @@ func insertRemoteSourceSeed(ctx context.Context, tx *sql.Tx, seed normalizedRemo
 	sourceID, err := insertAndID(ctx, tx, `
 		INSERT INTO file_source (code, display_name, source_type, priority, enabled, config_json)
 		VALUES (?, ?, ?, ?, ?, ?)
-	`, seed.Code, seed.DisplayName, seed.SourceType, seed.Priority, seed.Enabled, mustJSON(fileSourceConfig{}))
+	`, seed.Code, seed.DisplayName, seed.SourceType, seed.Priority, seed.Enabled, mustJSON(fileSourceConfig{RequestLanguage: seed.RequestLanguage}))
 	if err != nil {
 		return err
 	}
@@ -202,6 +218,7 @@ type fileSourceConfig struct {
 	CacheLimitGB     *int   `json:"cacheLimitGb,omitempty"`
 	SaveRootTemplate string `json:"saveRootTemplate,omitempty"`
 	ScanDepth        *int   `json:"scanDepth,omitempty"`
+	RequestLanguage  string `json:"requestLanguage,omitempty"`
 }
 
 type fileSourceEndpoint struct {
@@ -593,6 +610,7 @@ func (err remoteWorkSaveConflictError) Error() string {
 }
 
 var sourceCodePattern = regexp.MustCompile(`[^a-z0-9_]+`)
+var remoteRequestLanguagePattern = regexp.MustCompile(`^[A-Za-z]{2,8}(?:[-_][A-Za-z0-9]{2,8})*$`)
 var remoteFetchRequestIDPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{8,128}$`)
 
 type settingsUpdatePayload struct {
@@ -691,6 +709,12 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if payload.LocalScanDepth != nil || payload.RemoteSaveTemplate != nil {
 		s.notifyFilesystemTriggerConfigChanged()
+	}
+	if payload.DLsiteMetadataLanguages != nil || payload.DLsiteMetadataLanguage != nil {
+		if err := metasync.ProjectDLsiteMetadata(r.Context(), s.db, s.preferredMetadataLanguages(r.Context())); err != nil {
+			writeError(w, err)
+			return
+		}
 	}
 	settings, err := s.loadAppSettings(r)
 	if err != nil {
@@ -2066,6 +2090,7 @@ func (s *Server) loadRemoteSourceForUse(ctx context.Context, id int64) (remoteSo
 	if strings.TrimSpace(configJSON) != "" {
 		_ = json.Unmarshal([]byte(configJSON), &source.Config)
 	}
+	normalizeFileSourceConfig(&source.Config, source.SourceType)
 	_ = json.Unmarshal([]byte(allowedHostPatternsJSON), &source.Endpoint.AllowedHostPatterns)
 	if source.Endpoint.AllowedHostPatterns == nil {
 		source.Endpoint.AllowedHostPatterns = []string{}
@@ -2114,6 +2139,7 @@ func (s *Server) loadRemoteSourcesForAvailability(ctx context.Context) ([]remote
 		if strings.TrimSpace(configJSON) != "" {
 			_ = json.Unmarshal([]byte(configJSON), &source.Config)
 		}
+		normalizeFileSourceConfig(&source.Config, source.SourceType)
 		_ = json.Unmarshal([]byte(allowedHostPatternsJSON), &source.Endpoint.AllowedHostPatterns)
 		if source.Endpoint.AllowedHostPatterns == nil {
 			source.Endpoint.AllowedHostPatterns = []string{}
@@ -5955,13 +5981,61 @@ func upsertRemoteWorkMetadata(ctx context.Context, tx *sql.Tx, source remoteSour
 			return 0, err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
-		VALUES (?, ?, ?, ?)
-	`, workID, providerID, code, string(rawWork)); err != nil {
+	if err := upsertRemoteMetadataSnapshot(ctx, tx, workID, providerID, code, rawWork); err != nil {
 		return 0, err
 	}
 	return providerID, nil
+}
+
+func upsertRemoteMetadataSnapshot(ctx context.Context, tx *sql.Tx, workID, providerID int64, externalID string, raw json.RawMessage) error {
+	if len(raw) == 0 {
+		raw = json.RawMessage(`{}`)
+	}
+	digest := sha256.Sum256(raw)
+	hash := hex.EncodeToString(digest[:])
+	const variantKey = "remote"
+	var existingID int64
+	var existingHash, existingRaw string
+	err := tx.QueryRowContext(ctx, `
+		SELECT id, content_hash, snapshot_json
+		FROM metadata_snapshot
+		WHERE work_id = ? AND provider_id = ? AND external_id = ?
+		ORDER BY fetched_at DESC, id DESC
+		LIMIT 1
+	`, workID, providerID, externalID).Scan(&existingID, &existingHash, &existingRaw)
+	if err == nil && (strings.TrimSpace(existingHash) == hash || (strings.TrimSpace(existingHash) == "" && existingRaw == string(raw))) {
+		_, err = tx.ExecContext(ctx, `
+			UPDATE metadata_snapshot
+			SET fetched_at = CURRENT_TIMESTAMP, snapshot_json = ?, variant_key = ?, content_hash = ?
+			WHERE id = ?
+		`, string(raw), variantKey, hash, existingID)
+		if err != nil {
+			return err
+		}
+	} else {
+		if !errors.Is(err, sql.ErrNoRows) && err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO metadata_snapshot (
+				work_id, provider_id, external_id, snapshot_json,
+				variant_key, content_hash
+			)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, workID, providerID, externalID, string(raw), variantKey, hash); err != nil {
+			return err
+		}
+	}
+	_, err = tx.ExecContext(ctx, `
+		DELETE FROM metadata_snapshot
+		WHERE id IN (
+			SELECT id FROM metadata_snapshot
+			WHERE work_id = ? AND provider_id = ? AND external_id = ?
+			ORDER BY fetched_at DESC, id DESC
+			LIMIT -1 OFFSET 2
+		)
+	`, workID, providerID, externalID)
+	return err
 }
 
 func attachRemoteWorkCircleFallback(ctx context.Context, tx *sql.Tx, remoteWork kikoeru.Work, workID, providerID int64) error {
@@ -6354,20 +6428,11 @@ func stablePreferenceID(value string, label string, index int) string {
 }
 
 func normalizeDLsiteLanguage(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", "ja", "jp", "ja-jp":
+	value = strings.TrimSpace(value)
+	if value == "" {
 		return defaultDLsiteMetadataLanguage
-	case "en", "en-us":
-		return "en-us"
-	case "zh", "zh-cn", "cn":
-		return "zh-cn"
-	case "zh-tw", "tw":
-		return "zh-tw"
-	case "ko", "ko-kr":
-		return "ko-kr"
-	default:
-		return ""
 	}
+	return dlsite.NormalizeMetadataLanguage(value)
 }
 
 func normalizeDLsiteMetadataLanguages(values []string) []string {
@@ -6378,18 +6443,7 @@ func normalizeDLsiteMetadataLanguages(values []string) []string {
 }
 
 func completeDLsiteMetadataLanguages(languages []string) []string {
-	result := append([]string(nil), languages...)
-	seen := map[string]bool{}
-	for _, language := range result {
-		seen[language] = true
-	}
-	for _, language := range defaultDLsiteMetadataLanguages {
-		if !seen[language] {
-			seen[language] = true
-			result = append(result, language)
-		}
-	}
-	return result
+	return dlsite.NormalizeMetadataPriority(languages)
 }
 
 func parseDLsiteMetadataLanguages(values []string) ([]string, bool) {
@@ -6403,11 +6457,14 @@ func parseDLsiteMetadataLanguages(values []string) ([]string, bool) {
 			return nil, false
 		}
 		language := normalizeDLsiteLanguage(raw)
+		if strings.EqualFold(strings.TrimSpace(raw), dlsite.OriginMetadataLanguage) {
+			language = dlsite.OriginMetadataLanguage
+		}
 		if language == "" {
 			return nil, false
 		}
 		if seen[language] {
-			continue
+			return nil, false
 		}
 		seen[language] = true
 		normalized = append(normalized, language)
@@ -6442,8 +6499,16 @@ func (s *Server) preferredMetadataLanguages(ctx context.Context) []string {
 			}
 		}
 	}
-	legacy := s.settingStringContext(ctx, dlsiteMetadataLanguageSetting, defaultDLsiteMetadataLanguage)
-	return normalizeDLsiteMetadataLanguages([]string{legacy})
+	var legacyRaw string
+	if err := s.db.QueryRowContext(ctx, "SELECT value_json FROM app_setting WHERE key = ?", dlsiteMetadataLanguageSetting).Scan(&legacyRaw); err == nil {
+		var legacy string
+		if json.Unmarshal([]byte(legacyRaw), &legacy) == nil {
+			if normalized := normalizeDLsiteLanguage(legacy); normalized != "" {
+				return completeDLsiteMetadataLanguages([]string{normalized})
+			}
+		}
+	}
+	return append([]string(nil), defaultDLsiteMetadataLanguages...)
 }
 
 func (s *Server) loadFileSources(r *http.Request) ([]fileSourceSummary, error) {
@@ -6540,6 +6605,7 @@ func scanFileSource(scanner fileSourceScanner) (fileSourceSummary, error) {
 	if strings.TrimSpace(configJSON) != "" {
 		_ = json.Unmarshal([]byte(configJSON), &source.Config)
 	}
+	normalizeFileSourceConfig(&source.Config, source.SourceType)
 	_ = json.Unmarshal([]byte(allowedHostPatternsJSON), &source.Endpoint.AllowedHostPatterns)
 	if source.Endpoint.AllowedHostPatterns == nil {
 		source.Endpoint.AllowedHostPatterns = []string{}
@@ -6591,6 +6657,7 @@ func normalizeFileSourcePayload(payload *fileSourcePayload) {
 	if payload.Priority <= 0 {
 		payload.Priority = 30
 	}
+	normalizeFileSourceConfig(&payload.Config, payload.SourceType)
 }
 
 func validateFileSourcePayload(payload *fileSourcePayload, allowLocal, allowLegacy bool) error {
@@ -6604,6 +6671,9 @@ func validateFileSourcePayload(payload *fileSourcePayload, allowLocal, allowLega
 		return errors.New("unsupported sourceType")
 	}
 	if isKikoeruSourceType(payload.SourceType) {
+		if strings.TrimSpace(payload.Config.RequestLanguage) == "" {
+			return errors.New("config.requestLanguage must be a valid BCP-47-like language tag")
+		}
 		if err := validateRemoteFileSourceEndpoint(&payload.Endpoint); err != nil {
 			return err
 		}
@@ -6612,6 +6682,40 @@ func validateFileSourcePayload(payload *fileSourcePayload, allowLocal, allowLega
 		payload.Endpoint.AllowedHostPatterns = []string{}
 	}
 	return nil
+}
+
+func normalizeFileSourceConfig(config *fileSourceConfig, sourceType string) {
+	if !isKikoeruSourceType(sourceType) {
+		return
+	}
+	raw := strings.TrimSpace(config.RequestLanguage)
+	if raw == "" {
+		config.RequestLanguage = defaultRemoteRequestLanguage
+		return
+	}
+	config.RequestLanguage = normalizeRemoteRequestLanguage(raw)
+}
+
+func normalizeRemoteRequestLanguage(value string) string {
+	value = strings.TrimSpace(strings.ReplaceAll(value, "_", "-"))
+	if value == "" {
+		return defaultRemoteRequestLanguage
+	}
+	if !remoteRequestLanguagePattern.MatchString(value) {
+		return ""
+	}
+	parts := strings.Split(value, "-")
+	parts[0] = strings.ToLower(parts[0])
+	for index := 1; index < len(parts); index++ {
+		if len(parts[index]) == 4 {
+			parts[index] = strings.ToUpper(parts[index][:1]) + strings.ToLower(parts[index][1:])
+		} else if len(parts[index]) == 2 || len(parts[index]) == 3 {
+			parts[index] = strings.ToUpper(parts[index])
+		} else {
+			parts[index] = strings.ToLower(parts[index])
+		}
+	}
+	return strings.Join(parts, "-")
 }
 
 func validateRemoteFileSourceEndpoint(endpoint *fileSourceEndpoint) error {
