@@ -6769,7 +6769,7 @@ function WorkVersionSelector({
   return (
     <div className="rounded-lg border bg-card text-xs">
       {(activeMetadataVariant || metadataLanguage) && (
-        <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 px-3 py-2">
+        <div className="flex min-h-11 flex-wrap items-center gap-2 px-3 py-2">
           <div className="flex items-center gap-2 text-muted-foreground">
             <Languages className="h-3.5 w-3.5" />
             <span className="font-medium text-foreground">Metadata language</span>
@@ -6798,7 +6798,7 @@ function WorkVersionSelector({
       )}
       {hasEditionControls && (
         <div className="space-y-2 border-t px-3 py-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
               <FolderTree className="h-3.5 w-3.5" />
               <span className="font-medium text-foreground">Directory edition</span>

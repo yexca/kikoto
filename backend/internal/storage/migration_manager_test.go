@@ -40,22 +40,22 @@ func TestMigrateFreshDatabaseUsesBaseline(t *testing.T) {
 	`).Scan(&current, &baseline, &baselineChecksum, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	if current != latestNumberedMigrationVersion || baseline != 30 || baselineChecksum == "" || dirty != "" {
-		t.Fatalf("schema state = current %d, baseline %d, checksum %q, dirty %q; want %d/30/non-empty/empty", current, baseline, baselineChecksum, dirty, latestNumberedMigrationVersion)
+	if current != latestNumberedMigrationVersion || baseline != latestNumberedMigrationVersion || baselineChecksum == "" || dirty != "" {
+		t.Fatalf("schema state = current %d, baseline %d, checksum %q, dirty %q; want %d/%d/non-empty/empty", current, baseline, baselineChecksum, dirty, latestNumberedMigrationVersion, latestNumberedMigrationVersion)
 	}
 
 	var historyCount int
 	if err := db.QueryRow("SELECT COUNT(*) FROM schema_migration").Scan(&historyCount); err != nil {
 		t.Fatal(err)
 	}
-	if historyCount != 2 {
-		t.Fatalf("migration history count = %d, want baseline plus latest migration", historyCount)
+	if historyCount != 1 {
+		t.Fatalf("migration history count = %d, want baseline only", historyCount)
 	}
 	var filename string
-	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = 30").Scan(&filename); err != nil {
+	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = ?", latestNumberedMigrationVersion).Scan(&filename); err != nil {
 		t.Fatal(err)
 	}
-	if filename != "baseline/030_current.sql" {
+	if filename != "baseline/031_current.sql" {
 		t.Fatalf("baseline history filename = %q", filename)
 	}
 }
@@ -361,8 +361,8 @@ func TestMigrateConcurrentStartupIsIdempotent(t *testing.T) {
 	if err := first.QueryRow("SELECT COUNT(*) FROM schema_migration").Scan(&history); err != nil {
 		t.Fatal(err)
 	}
-	if current != latestNumberedMigrationVersion || history != 2 {
-		t.Fatalf("concurrent migration state = version %d, history %d; want %d/2", current, history, latestNumberedMigrationVersion)
+	if current != latestNumberedMigrationVersion || history != 1 {
+		t.Fatalf("concurrent migration state = version %d, history %d; want %d/1", current, history, latestNumberedMigrationVersion)
 	}
 }
 

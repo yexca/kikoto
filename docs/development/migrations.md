@@ -34,8 +34,8 @@ The current release boundary is migration `027_voice_catalog.sql` (tag
 `v0.4.1`). Migrations `028` through `031` are present in the current working
 tree after that tag and are part of the next unreleased chain; they must not be
 described as part of v0.4.1 until a release explicitly includes them.
-The working-tree baseline is consequently `030_current.sql`; its presence is
-not a claim that v0.4.1 shipped migrations 028-030.
+The working-tree baseline is consequently `031_current.sql`; its presence is
+not a claim that v0.4.1 shipped migrations 028-031.
 
 ## Fresh Installs And Upgrades
 
