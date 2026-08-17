@@ -62,9 +62,10 @@ func Migrate(db *sql.DB, dir string) error {
 	return MigrateFS(db, os.DirFS(dir), buildinfo.Version)
 }
 
-// MigrateFS validates and applies a migration catalog. A catalog may contain a
-// baseline/<version>_current.sql snapshot; pristine databases use that snapshot
-// and existing databases continue through the immutable numbered chain.
+// MigrateFS validates and applies a migration catalog. A catalog may contain
+// historical baseline/<version>_current.sql snapshots; pristine databases use
+// the highest-version snapshot and existing databases continue through the
+// immutable numbered chain.
 func MigrateFS(db *sql.DB, migrationFS fs.FS, appVersion string) error {
 	if db == nil {
 		return errors.New("migrate database: nil database")
@@ -247,13 +248,16 @@ func loadMigrationCatalog(migrationFS fs.FS) (migrationCatalog, error) {
 	}
 	catalog.current = catalog.migrations[len(catalog.migrations)-1].version
 
-	baseline, err := loadMigrationBaseline(migrationFS, catalog.current)
+	baselines, err := loadMigrationBaselines(migrationFS, catalog.current)
 	if err != nil {
 		return migrationCatalog{}, err
 	}
-	if baseline != nil {
-		catalog.baseline = baseline
-		catalog.byFilename[baseline.filename] = *baseline
+	for index := range baselines {
+		baseline := baselines[index]
+		catalog.byFilename[baseline.filename] = baseline
+	}
+	if len(baselines) > 0 {
+		catalog.baseline = &baselines[len(baselines)-1]
 	}
 	return catalog, nil
 }
@@ -297,15 +301,16 @@ func validateMigrationSequence(migrations []migrationAsset) error {
 	return nil
 }
 
-func loadMigrationBaseline(migrationFS fs.FS, currentVersion int) (*migrationAsset, error) {
+func loadMigrationBaselines(migrationFS fs.FS, currentVersion int) ([]migrationAsset, error) {
 	entries, err := fs.ReadDir(migrationFS, "baseline")
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("read migration baseline: %w", err)
+		return nil, fmt.Errorf("read migration baselines: %w", err)
 	}
-	var baseline *migrationAsset
+	baselines := []migrationAsset{}
+	versions := map[int]string{}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
 			continue
@@ -314,9 +319,6 @@ func loadMigrationBaseline(migrationFS fs.FS, currentVersion int) (*migrationAss
 		if matches == nil {
 			return nil, fmt.Errorf("invalid migration baseline filename %q", entry.Name())
 		}
-		if baseline != nil {
-			return nil, errors.New("migration catalog contains more than one baseline")
-		}
 		version, _ := strconv.Atoi(matches[1])
 		if version == 0 {
 			return nil, errors.New("migration baseline version must be greater than zero")
@@ -324,13 +326,18 @@ func loadMigrationBaseline(migrationFS fs.FS, currentVersion int) (*migrationAss
 		if version > currentVersion {
 			return nil, fmt.Errorf("migration baseline version %03d exceeds current version %03d", version, currentVersion)
 		}
+		if previous, exists := versions[version]; exists {
+			return nil, fmt.Errorf("migration baseline version %03d is used by both %s and %s", version, previous, entry.Name())
+		}
 		asset, err := readMigrationAsset(migrationFS, "baseline/"+entry.Name(), version, true)
 		if err != nil {
 			return nil, err
 		}
-		baseline = &asset
+		versions[version] = entry.Name()
+		baselines = append(baselines, asset)
 	}
-	return baseline, nil
+	sort.Slice(baselines, func(i, j int) bool { return baselines[i].version < baselines[j].version })
+	return baselines, nil
 }
 
 func readMigrationAsset(migrationFS fs.FS, filename string, version int, baseline bool) (migrationAsset, error) {

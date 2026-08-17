@@ -112,6 +112,9 @@ func (s *Server) prepareSystemWorkflowTrigger(ctx context.Context, actor current
 
 func prepareSystemWorkflowTriggerTiming(definition workflowDefinitionRecord, payload workflowTriggerPayload, now time.Time, existing *workflowTriggerRecord) (preparedWorkflowTrigger, error) {
 	prepared := preparedWorkflowTrigger{ConfigJSON: "{}"}
+	if definition.Code == "availability_watch" && payload.TriggerType != "schedule" {
+		return preparedWorkflowTrigger{}, fmt.Errorf("Availability Watch supports one interval schedule only")
+	}
 	switch payload.TriggerType {
 	case "startup":
 	case "schedule":
@@ -144,6 +147,16 @@ func (s *Server) normalizeSystemWorkflowTriggerConfig(
 ) (preparedWorkflowTrigger, []string, error) {
 	requiredPermissions := []string{"workflows:run"}
 	switch definition.Code {
+	case "availability_watch":
+		config := systemWorkflowTriggerConfig{UserID: workflowTriggerOwnerID(actor, existing)}
+		action, err := s.availabilityWatchConfiguredAction(ctx)
+		if err != nil {
+			return preparedWorkflowTrigger{}, nil, err
+		}
+		if availabilityWatchActionRequiresDownloads(action) {
+			requiredPermissions = append(requiredPermissions, "downloads:manage")
+		}
+		prepared.ConfigJSON = mustJSON(config)
 	case "local_library_scan":
 		config, err := normalizeLocalScanTriggerConfig(payload.ConfigJSON)
 		if err != nil {
@@ -187,11 +200,41 @@ func normalizeLocalScanTriggerConfig(raw string) (localScanTriggerConfig, error)
 
 func systemWorkflowSupportsConfigurableTriggers(code string) bool {
 	switch code {
-	case "local_library_scan", "metadata_sync", "remote_popular_collection", "dlsite_popular_collection":
+	case "availability_watch", "local_library_scan", "metadata_sync", "remote_popular_collection", "dlsite_popular_collection":
 		return true
 	default:
 		return false
 	}
+}
+
+func (s *Server) ensureAvailabilityWatchSchedule(ctx context.Context, definition workflowDefinitionRecord, excludeID int64, triggerType string) error {
+	if definition.Code != "availability_watch" {
+		return nil
+	}
+	if triggerType != "schedule" {
+		return fmt.Errorf("Availability Watch supports one interval schedule only")
+	}
+	var count int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM workflow_trigger
+		WHERE workflow_definition_id = ? AND trigger_type = 'schedule' AND id <> ?
+	`, definition.ID, excludeID).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return fmt.Errorf("Availability Watch already has a schedule")
+	}
+	return nil
+}
+
+func (s *Server) availabilityWatchConfiguredAction(ctx context.Context) (string, error) {
+	var action string
+	err := s.db.QueryRowContext(ctx, "SELECT action FROM availability_watch WHERE id = ?", availabilityWatchID).Scan(&action)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "monitor", nil
+	}
+	return action, err
 }
 
 func workflowTriggerOwnerID(actor currentUser, existing *workflowTriggerRecord) int64 {
@@ -437,7 +480,7 @@ func (s *Server) dispatchDueCustomWorkflowTrigger(ctx context.Context) error {
 			AND (
 				(definition.scope = 'user' AND json_extract(definition.definition_json, '$.schemaVersion') = ?)
 				OR (definition.scope = 'system' AND definition.code IN (
-					'local_library_scan', 'metadata_sync',
+					'availability_watch', 'local_library_scan', 'metadata_sync',
 					'remote_popular_collection', 'dlsite_popular_collection'
 				))
 			)
@@ -572,6 +615,8 @@ func (s *Server) executeSystemWorkflowTrigger(ctx context.Context, definition wo
 
 func (s *Server) dispatchSystemWorkflowTrigger(ctx context.Context, definition workflowDefinitionRecord, trigger workflowTriggerRecord, triggerType, triggerReason string) (string, []string, error) {
 	switch definition.Code {
+	case "availability_watch":
+		return s.executeAvailabilityWatchSystemTrigger(ctx, trigger, triggerType, triggerReason)
 	case "local_library_scan":
 		return s.executeLocalLibrarySystemTrigger(ctx, trigger, triggerType, triggerReason)
 	case "metadata_sync":
@@ -583,6 +628,16 @@ func (s *Server) dispatchSystemWorkflowTrigger(ctx context.Context, definition w
 	default:
 		return "", nil, fmt.Errorf("system workflow trigger is not supported")
 	}
+}
+
+func (s *Server) executeAvailabilityWatchSystemTrigger(ctx context.Context, trigger workflowTriggerRecord, triggerType, triggerReason string) (string, []string, error) {
+	config, owner, err := s.loadAvailabilityWatchTriggerExecution(ctx, trigger)
+	if err != nil {
+		return "", nil, err
+	}
+	_ = config
+	_, err = s.enqueueAvailabilityWatch(ctx, owner.ID, workflowRunTrigger{Type: triggerType, Reason: triggerReason, ID: trigger.ID})
+	return "succeeded", nil, err
 }
 
 func (s *Server) executeLocalLibrarySystemTrigger(ctx context.Context, trigger workflowTriggerRecord, triggerType, triggerReason string) (string, []string, error) {
@@ -643,11 +698,28 @@ func (s *Server) executeDLsitePopularSystemTrigger(ctx context.Context, trigger 
 
 func systemWorkflowTriggerIsAsync(code string) bool {
 	switch code {
-	case "local_library_scan", "metadata_sync", "remote_popular_collection", "dlsite_popular_collection":
+	case "availability_watch", "local_library_scan", "metadata_sync", "remote_popular_collection", "dlsite_popular_collection":
 		return true
 	default:
 		return false
 	}
+}
+
+func (s *Server) loadAvailabilityWatchTriggerExecution(ctx context.Context, trigger workflowTriggerRecord) (systemWorkflowTriggerConfig, currentUser, error) {
+	var config systemWorkflowTriggerConfig
+	if err := decodeStrictJSON(trigger.ConfigJSON, &config); err != nil {
+		return config, currentUser{}, fmt.Errorf("Availability Watch trigger config is invalid")
+	}
+	action, err := s.availabilityWatchConfiguredAction(ctx)
+	if err != nil {
+		return config, currentUser{}, err
+	}
+	permissions := []string{"workflows:run"}
+	if availabilityWatchActionRequiresDownloads(action) {
+		permissions = append(permissions, "downloads:manage")
+	}
+	owner, err := s.loadSystemWorkflowTriggerOwner(ctx, config.UserID, permissions)
+	return config, owner, err
 }
 
 func (s *Server) loadRemotePopularTriggerExecution(ctx context.Context, trigger workflowTriggerRecord) (systemWorkflowTriggerConfig, currentUser, error) {

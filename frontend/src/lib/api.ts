@@ -1055,13 +1055,24 @@ export type AvailabilityWatchTarget = {
 
 export type AvailabilityWatch = {
   id: number;
-  enabled: boolean;
-  intervalMinutes: number;
   action: "monitor" | "track" | "fetch" | "track_fetch";
   sourceId: number | null;
   excludeExtensions: string[];
   revision: number;
   targets: AvailabilityWatchTarget[];
+};
+
+export type AvailabilityWatchRunResult = {
+  runId: number;
+  jobId: number;
+  status: string;
+  targetCount: number;
+  checked: number;
+  ready: number;
+  dispatched: number;
+  newlyAvailableCodes: string[];
+  readyCodes: string[];
+  failures: string[];
 };
 
 export type WorkflowTrigger = {
@@ -2165,13 +2176,17 @@ export const api = {
   listWorkflowDefinitions: () => getJSON<WorkflowDefinition[]>("/api/workflow-definitions"),
   getAvailabilityWatch: () => getJSON<AvailabilityWatch>("/api/availability-watch"),
   updateAvailabilityWatch: (payload: {
-    enabled: boolean;
-    intervalMinutes: number;
     action: AvailabilityWatch["action"];
     sourceId: number | null;
     excludeExtensions: string[];
-    targetCodes: string[];
   }) => putJSONBody<AvailabilityWatch>("/api/availability-watch", payload),
+  updateAvailabilityWatchTargets: (targetCodes: string[]) =>
+    putJSONBody<AvailabilityWatch>("/api/availability-watch/targets", { targetCodes }),
+  removeAvailabilityWatchTarget: (id: number) =>
+    deleteJSON<{ ok: boolean }>(`/api/availability-watch/targets/${id}`),
+  trackAvailabilityWatchTarget: (id: number) =>
+    postJSON<RemoteWorkTrackResult>(`/api/availability-watch/targets/${id}/track`),
+  runAvailabilityWatch: () => postJSON<AvailabilityWatchRunResult>("/api/availability-watch/run"),
   listWorkflowNodeTypes: () => getJSON<WorkflowNodeType[]>("/api/workflow-node-types"),
   createWorkflowDefinition: (payload: {
     code: string;

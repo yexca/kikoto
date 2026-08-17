@@ -10,4 +10,4 @@ import "embed"
 //go:embed *.sql baseline/*.sql
 var Files embed.FS
 
-//go:generate go run ../cmd/schema-baseline -migrations . -output baseline/031_current.sql
+//go:generate go run ../cmd/schema-baseline -migrations . -output baseline/032_current.sql

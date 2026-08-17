@@ -587,6 +587,12 @@ export function HeaderActions({
                           className="flex min-w-0 flex-1 items-start gap-3 p-2 text-left text-sm"
                           onClick={() => {
                             setReviewOpen(false);
+                            if (notification.type === "availability_watch_ready") {
+                              onOpenPath(
+                                `/workflows?workflow=availability_watch&dialog=ready&run=${notification.workflowRunId}`,
+                              );
+                              return;
+                            }
                             if (notification.type === "remote_track" && notification.status === "failed") {
                               if (canRunWorkflows) onOpenPath(`/activity?run=${notification.workflowRunId}`);
                               return;
@@ -601,7 +607,9 @@ export function HeaderActions({
                             );
                           }}
                         >
-                          {notification.status === "succeeded" ? (
+                          {notification.type === "availability_watch_ready" ? (
+                            <Bell className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                          ) : notification.status === "succeeded" ? (
                             notification.type === "remote_track" ? (
                               <GitBranchPlus className="mt-0.5 h-4 w-4 shrink-0 text-success" />
                             ) : (

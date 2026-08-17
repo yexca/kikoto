@@ -7,7 +7,10 @@ import {
   Clock3,
   Database,
   Edit3,
+  Eye,
+  ExternalLink,
   FileJson,
+  GitBranchPlus,
   ListChecks,
   Loader2,
   Play,
@@ -42,6 +45,7 @@ import { Switch } from "@/components/ui/switch";
 import { activityViewForRun, type ActivityView } from "@/features/workflows/activityModel";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { useAuth } from "@/auth/AuthProvider";
+import { openWorkDetail } from "@/app/workDetailNavigation";
 import { WorkflowCanvas } from "@/features/workflows/WorkflowCanvas";
 import { WorkflowComposer } from "@/features/workflows/WorkflowComposer";
 import {
@@ -435,6 +439,28 @@ export function WorkflowsPage({
     return tabDefinitions.find((definition) => definition.id === selectedDefinitionId) ?? tabDefinitions[0] ?? null;
   }, [selectedDefinitionId, tabDefinitions]);
 
+  useEffect(() => {
+    if (surface !== "workflows" || visibleDefinitions.length === 0) return;
+    const syncLinkedWorkflow = () => {
+      const code = new URLSearchParams(window.location.search).get("workflow")?.trim();
+      if (!code) return;
+      const linked = visibleDefinitions.find((definition) => definition.code === code);
+      if (!linked) return;
+      const tab = linked.scope === "system" ? "built-in" : "custom";
+      setDefinitionTab(tab);
+      window.localStorage.setItem(workflowDefinitionTabStorageKey, tab);
+      setSelectedDefinitionID(linked.id);
+      storePositiveInt(`${workflowDefinitionStorageKey}:${tab}`, linked.id);
+    };
+    syncLinkedWorkflow();
+    window.addEventListener("popstate", syncLinkedWorkflow);
+    window.addEventListener("kikoto:navigation", syncLinkedWorkflow);
+    return () => {
+      window.removeEventListener("popstate", syncLinkedWorkflow);
+      window.removeEventListener("kikoto:navigation", syncLinkedWorkflow);
+    };
+  }, [surface, visibleDefinitions, workflowDefinitionStorageKey, workflowDefinitionTabStorageKey]);
+
   const refreshRecentRuns = (workflowCode: string) => {
     if (surface !== "workflows" || !workflowCode) {
       setRecentDefinitionRuns([]);
@@ -489,6 +515,13 @@ export function WorkflowsPage({
       `${workflowDefinitionStorageKey}:${definition.scope === "system" ? "built-in" : "custom"}`,
       definition.id,
     );
+    const search = new URLSearchParams(window.location.search);
+    if (search.has("workflow")) {
+      search.delete("workflow");
+      search.delete("dialog");
+      search.delete("run");
+      window.history.replaceState(window.history.state, "", `/workflows${search.size > 0 ? `?${search}` : ""}`);
+    }
   };
 
   const selectDefinitionTab = (tab: WorkflowDefinitionTab) => {
@@ -702,7 +735,19 @@ export function WorkflowsPage({
             ) : !hasWorkflowMetaSnapshot && workflowMetaError ? (
               <WorkflowMetadataErrorState message={workflowMetaError} onRetry={refresh} />
             ) : selectedDefinition?.code === "availability_watch" ? (
-              <AvailabilityWatchPanel readOnly={readOnly} canManageDownloads={canManageDownloads} />
+              <AvailabilityWatchPanel
+                definition={selectedDefinition}
+                triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition.id)}
+                nodeTypes={nodeTypes}
+                recentRuns={recentDefinitionRuns}
+                readOnly={readOnly}
+                canManageDownloads={canManageDownloads}
+                onCreateTrigger={createAutomationTrigger}
+                onEditTrigger={editAutomationTrigger}
+                onToggleTrigger={toggleAutomationTrigger}
+                onOpenRun={openActivityRun}
+                onRunQueued={() => void refreshRecentRuns("availability_watch")}
+              />
             ) : (
               <WorkflowDetail
                 definition={selectedDefinition}
@@ -953,29 +998,45 @@ function Workbench({ left, right }: { left: React.ReactNode; right: React.ReactN
   );
 }
 
-function AvailabilityWatchPanel({ readOnly, canManageDownloads }: { readOnly: boolean; canManageDownloads: boolean }) {
+type AvailabilityWatchDialog = "configure" | "monitoring" | "ready" | null;
+
+function AvailabilityWatchPanel({
+  definition,
+  triggers,
+  nodeTypes,
+  recentRuns,
+  readOnly,
+  canManageDownloads,
+  onCreateTrigger,
+  onEditTrigger,
+  onToggleTrigger,
+  onOpenRun,
+  onRunQueued,
+}: {
+  definition: WorkflowDefinition;
+  triggers: WorkflowTrigger[];
+  nodeTypes: WorkflowNodeType[];
+  recentRuns: WorkflowRun[];
+  readOnly: boolean;
+  canManageDownloads: boolean;
+  onCreateTrigger: (triggerType: CreatableAutomationTriggerType) => void;
+  onEditTrigger: (trigger: WorkflowTrigger) => void;
+  onToggleTrigger: (trigger: WorkflowTrigger, enabled: boolean) => Promise<void>;
+  onOpenRun: (run: WorkflowRun) => void;
+  onRunQueued: () => void;
+}) {
   const toast = useToast();
   const [watch, setWatch] = useState<AvailabilityWatch | null>(null);
   const [sources, setSources] = useState<LibrarySource[]>([]);
-  const [codes, setCodes] = useState("");
-  const [enabled, setEnabled] = useState(false);
-  const [intervalMinutes, setIntervalMinutes] = useState(60);
-  const [action, setAction] = useState<AvailabilityWatch["action"]>("monitor");
-  const [sourceId, setSourceId] = useState(0);
-  const [excluded, setExcluded] = useState("wav");
+  const [dialog, setDialog] = useState<AvailabilityWatchDialog>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const parsed = parseWorkCodes(codes);
+  const [loadError, setLoadError] = useState("");
 
-  const applyWatch = (next: AvailabilityWatch, resetDraft: boolean) => {
+  const refreshWatch = async () => {
+    const next = await api.getAvailabilityWatch();
     setWatch(next);
-    if (!resetDraft) return;
-    setCodes(next.targets.map((target) => target.workCode).join("\n"));
-    setEnabled(next.enabled);
-    setIntervalMinutes(next.intervalMinutes);
-    setAction(next.action);
-    setSourceId(next.sourceId ?? 0);
-    setExcluded(next.excludeExtensions.join(", "));
+    setLoadError("");
+    return next;
   };
 
   useEffect(() => {
@@ -983,11 +1044,17 @@ function AvailabilityWatchPanel({ readOnly, canManageDownloads }: { readOnly: bo
     Promise.all([api.getAvailabilityWatch(), api.listLibrarySources()])
       .then(([next, nextSources]) => {
         if (cancelled) return;
-        applyWatch(next, true);
-        setSources(nextSources.filter((source) => source.enabled && source.sourceType !== "local_folder"));
+        setWatch(next);
+        setSources(
+          nextSources.filter(
+            (source) =>
+              source.enabled && ["kikoeru_compatible", "kikoeru_compatible_number178"].includes(source.sourceType),
+          ),
+        );
+        setLoadError("");
       })
       .catch((error) => {
-        if (!cancelled) toast.notify(toastFromError(error, "Availability Watch could not be loaded."));
+        if (!cancelled) setLoadError(error instanceof Error ? error.message : "Availability Watch could not be loaded.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -998,41 +1065,47 @@ function AvailabilityWatchPanel({ readOnly, canManageDownloads }: { readOnly: bo
   }, []);
 
   useEffect(() => {
+    const syncDialog = () => {
+      const search = new URLSearchParams(window.location.search);
+      if (search.get("workflow") === "availability_watch" && search.get("dialog") === "ready") {
+        setDialog("ready");
+      }
+    };
+    syncDialog();
+    window.addEventListener("popstate", syncDialog);
+    window.addEventListener("kikoto:navigation", syncDialog);
+    return () => {
+      window.removeEventListener("popstate", syncDialog);
+      window.removeEventListener("kikoto:navigation", syncDialog);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!watch) return;
-    const timer = window.setInterval(() => {
-      void api
-        .getAvailabilityWatch()
-        .then((next) => applyWatch(next, false))
-        .catch(() => {});
-    }, 5000);
+    const timer = window.setInterval(() => void refreshWatch().catch(() => undefined), 5000);
     return () => window.clearInterval(timer);
   }, [watch?.id]);
 
-  const save = async () => {
-    if (parsed.invalid.length > 0 || intervalMinutes < 5 || intervalMinutes > 10080) return;
-    setSaving(true);
-    try {
-      const next = await api.updateAvailabilityWatch({
-        enabled,
-        intervalMinutes,
-        action,
-        sourceId: sourceId || null,
-        excludeExtensions: excluded
-          .split(/[\s,;，；]+/u)
-          .map((value) => value.trim())
-          .filter(Boolean),
-        targetCodes: parsed.codes,
-      });
-      applyWatch(next, true);
-      toast.success("Availability Watch updated.");
-    } catch (error) {
-      toast.notify(toastFromError(error, "Availability Watch could not be saved."));
-    } finally {
-      setSaving(false);
+  const openReady = () => {
+    const search = new URLSearchParams(window.location.search);
+    search.set("workflow", "availability_watch");
+    search.set("dialog", "ready");
+    search.delete("run");
+    window.history.replaceState(window.history.state, "", `/workflows?${search}`);
+    setDialog("ready");
+  };
+  const closeDialog = () => {
+    if (dialog === "ready") {
+      const search = new URLSearchParams(window.location.search);
+      search.set("workflow", "availability_watch");
+      search.delete("dialog");
+      search.delete("run");
+      window.history.replaceState(window.history.state, "", `/workflows?${search}`);
     }
+    setDialog(null);
   };
 
-  if (loading)
+  if (loading) {
     return (
       <Card>
         <CardContent className="space-y-3 p-5">
@@ -1041,152 +1114,386 @@ function AvailabilityWatchPanel({ readOnly, canManageDownloads }: { readOnly: bo
         </CardContent>
       </Card>
     );
-  const monitoring = watch?.targets.filter((target) => target.state === "monitoring" || target.state === "error") ?? [];
-  const ready =
-    watch?.targets.filter(
-      (target) => target.state !== "monitoring" && target.state !== "error" && target.state !== "disabled",
-    ) ?? [];
+  }
+  if (!watch || loadError) {
+    return <WorkflowMetadataErrorState message={loadError || "Availability Watch could not be loaded."} onRetry={() => void refreshWatch()} />;
+  }
+
+  const monitoring = watch.targets.filter((target) => target.state === "monitoring" || target.state === "error");
+  const ready = watch.targets.filter(
+    (target) => target.state !== "monitoring" && target.state !== "error" && target.state !== "disabled",
+  );
+  const nodes = parseNodes(definition.definitionJson);
+
   return (
-    <div className="space-y-4">
-      <section className="border-b pb-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold">Availability Watch</h2>
-            <p className="text-sm text-muted-foreground">
-              Maintain a watch pool and dispatch explicit actions when a work becomes available.
-            </p>
+    <Card className="min-w-0">
+      <CardContent className="min-w-0 space-y-5 p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <h3 className="text-lg font-semibold">{definition.displayName}</h3>
+            <p className="mt-1 text-sm text-muted-foreground">{definition.description}</p>
+            <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+              <span>{definition.code}</span>
+              <span>{nodes.length} nodes</span>
+              <span>
+                {triggers.length} trigger{triggers.length === 1 ? "" : "s"}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-sm">
-            <Switch
-              checked={enabled}
-              onCheckedChange={setEnabled}
-              disabled={readOnly}
-              aria-label="Enable Availability Watch"
-            />
-            <span>{enabled ? "Enabled" : "Paused"}</span>
-          </div>
-        </div>
-      </section>
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
-        <Field label="Works">
-          <WorkCodesField value={codes} onChange={setCodes} />
-        </Field>
-        <div className="space-y-3">
-          <Field label="Remote source">
-            <select
-              className="h-10 w-full rounded-md border bg-card px-3 text-sm"
-              value={sourceId}
-              onChange={(event) => setSourceId(Number(event.target.value))}
-            >
-              <option value={0}>Any healthy source</option>
-              {sources.map((source) => (
-                <option key={source.id} value={source.id}>
-                  {source.displayName}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="When available">
-            <select
-              className="h-10 w-full rounded-md border bg-card px-3 text-sm"
-              value={action}
-              onChange={(event) => setAction(event.target.value as AvailabilityWatch["action"])}
-            >
-              <option value="monitor">Monitor only</option>
-              <option value="track">Track</option>
-              <option value="fetch" disabled={!canManageDownloads}>
-                Fetch
-              </option>
-              <option value="track_fetch" disabled={!canManageDownloads}>
-                Track + Fetch
-              </option>
-            </select>
-          </Field>
-          <Field label="Interval (minutes)">
-            <input
-              className="h-10 w-full rounded-md border bg-card px-3 text-sm"
-              type="number"
-              min={5}
-              max={10080}
-              value={intervalMinutes}
-              onChange={(event) => setIntervalMinutes(Number(event.target.value))}
-            />
-          </Field>
-          <Field label="Exclude extensions">
-            <input
-              className="h-10 w-full rounded-md border bg-card px-3 text-sm"
-              value={excluded}
-              onChange={(event) => setExcluded(event.target.value)}
-              placeholder="wav, flac"
-            />
-          </Field>
-          <Button
-            className="w-full"
-            onClick={() => void save()}
-            disabled={readOnly || saving || parsed.invalid.length > 0 || intervalMinutes < 5 || intervalMinutes > 10080}
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Save watch
+          <Button size="sm" onClick={() => setDialog("configure")} disabled={readOnly}>
+            <Settings2 className="h-4 w-4" />
+            Configure
           </Button>
         </div>
-      </section>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <AvailabilityTargetPool
-          title="Monitoring"
-          targets={monitoring}
-          empty="No works are waiting for availability."
+
+        <section className="grid border-y sm:grid-cols-2" aria-label="Availability pools">
+          <div className="flex min-w-0 items-center justify-between gap-3 py-4 sm:pr-5">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold">Monitoring</div>
+              <div className="mt-1 text-2xl font-semibold">{monitoring.length}</div>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setDialog("monitoring")} disabled={readOnly}>
+              <Edit3 className="h-4 w-4" />
+              Edit
+            </Button>
+          </div>
+          <div className="flex min-w-0 items-center justify-between gap-3 border-t py-4 sm:border-l sm:border-t-0 sm:pl-5">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold">Ready</div>
+              <div className="mt-1 text-2xl font-semibold">{ready.length}</div>
+            </div>
+            <Button size="sm" variant="outline" onClick={openReady}>
+              <Eye className="h-4 w-4" />
+              View
+            </Button>
+          </div>
+        </section>
+
+        <WorkflowAutomationPanel
+          definition={definition}
+          triggers={triggers}
+          canManage={!readOnly}
+          onCreate={onCreateTrigger}
+          onEdit={onEditTrigger}
+          onToggle={onToggleTrigger}
         />
-        <AvailabilityTargetPool title="Ready" targets={ready} empty="No available works yet." />
-      </div>
-    </div>
+
+        <DefinitionNodeCanvas nodes={nodes} nodeTypes={nodeTypes} readonly onEditNode={() => undefined} />
+        <RecentWorkflowRuns runs={recentRuns} onOpen={onOpenRun} />
+      </CardContent>
+
+      {dialog === "configure" && (
+        <AvailabilityWatchConfigureDialog
+          watch={watch}
+          sources={sources}
+          readOnly={readOnly}
+          canManageDownloads={canManageDownloads}
+          onClose={closeDialog}
+          onSaved={setWatch}
+          onRunQueued={onRunQueued}
+        />
+      )}
+      {dialog === "monitoring" && (
+        <AvailabilityWatchMonitoringDialog
+          watch={watch}
+          readOnly={readOnly}
+          onClose={closeDialog}
+          onSaved={setWatch}
+        />
+      )}
+      {dialog === "ready" && (
+        <AvailabilityWatchReadyDialog
+          targets={ready}
+          readOnly={readOnly}
+          onClose={closeDialog}
+          onChanged={() => void refreshWatch().catch((error) => toast.notify(toastFromError(error, "Ready pool could not be refreshed.")))}
+        />
+      )}
+    </Card>
   );
 }
 
-function AvailabilityTargetPool({
-  title,
-  targets,
-  empty,
+function AvailabilityWatchConfigureDialog({
+  watch,
+  sources,
+  readOnly,
+  canManageDownloads,
+  onClose,
+  onSaved,
+  onRunQueued,
 }: {
-  title: string;
-  targets: AvailabilityWatch["targets"];
-  empty: string;
+  watch: AvailabilityWatch;
+  sources: LibrarySource[];
+  readOnly: boolean;
+  canManageDownloads: boolean;
+  onClose: () => void;
+  onSaved: (watch: AvailabilityWatch) => void;
+  onRunQueued: () => void;
 }) {
+  const toast = useToast();
+  const [action, setAction] = useState<AvailabilityWatch["action"]>(watch.action);
+  const [sourceId, setSourceId] = useState(watch.sourceId ?? 0);
+  const [excluded, setExcluded] = useState(watch.excludeExtensions.join(", "));
+  const [busy, setBusy] = useState<"save" | "run" | null>(null);
+  const [error, setError] = useState("");
+
+  const save = async (runNow: boolean) => {
+    setBusy(runNow ? "run" : "save");
+    setError("");
+    try {
+      const next = await api.updateAvailabilityWatch({
+        action,
+        sourceId: sourceId || null,
+        excludeExtensions: excluded
+          .split(/[\s,;，；]+/u)
+          .map((value) => value.trim())
+          .filter(Boolean),
+      });
+      onSaved(next);
+      if (runNow) {
+        const result = await api.runAvailabilityWatch();
+        toast.success(`Availability Watch run #${result.runId} queued.`);
+        onRunQueued();
+      } else {
+        toast.success("Availability Watch configuration saved.");
+      }
+      onClose();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Availability Watch could not be saved.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
-    <section className="space-y-2">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">{title}</h3>
-        <Badge variant="outline">{targets.length}</Badge>
+    <Modal title="Configure Availability Watch" onClose={onClose}>
+      <div className="grid gap-4">
+        <Field label="Remote source">
+          <select
+            className="h-10 rounded-md border bg-card px-3 text-sm"
+            value={sourceId}
+            onChange={(event) => setSourceId(Number(event.target.value))}
+            disabled={readOnly || busy !== null}
+          >
+            <option value={0}>Any healthy source</option>
+            {sources.map((source) => (
+              <option key={source.id} value={source.id}>
+                {source.displayName}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="When available">
+          <select
+            className="h-10 rounded-md border bg-card px-3 text-sm"
+            value={action}
+            onChange={(event) => setAction(event.target.value as AvailabilityWatch["action"])}
+            disabled={readOnly || busy !== null}
+          >
+            <option value="monitor">Monitor only</option>
+            <option value="track">Track</option>
+            <option value="fetch" disabled={!canManageDownloads}>
+              Fetch
+            </option>
+            <option value="track_fetch" disabled={!canManageDownloads}>
+              Track + Fetch
+            </option>
+          </select>
+        </Field>
+        <Field label="Exclude extensions">
+          <input
+            className="h-10 rounded-md border bg-card px-3 text-sm"
+            value={excluded}
+            onChange={(event) => setExcluded(event.target.value)}
+            placeholder="wav, flac"
+            disabled={readOnly || busy !== null}
+          />
+        </Field>
+        {error && <ErrorPanel error={error} />}
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="outline" onClick={() => void save(false)} disabled={readOnly || busy !== null}>
+            {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Save
+          </Button>
+          <Button onClick={() => void save(true)} disabled={readOnly || busy !== null}>
+            {busy === "run" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+            Run now
+          </Button>
+        </div>
       </div>
+    </Modal>
+  );
+}
+
+function AvailabilityWatchMonitoringDialog({
+  watch,
+  readOnly,
+  onClose,
+  onSaved,
+}: {
+  watch: AvailabilityWatch;
+  readOnly: boolean;
+  onClose: () => void;
+  onSaved: (watch: AvailabilityWatch) => void;
+}) {
+  const toast = useToast();
+  const [codes, setCodes] = useState(watch.targets.map((target) => target.workCode).join("\n"));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const parsed = parseWorkCodes(codes);
+
+  const save = async () => {
+    if (parsed.invalid.length > 0) return;
+    setSaving(true);
+    setError("");
+    try {
+      const next = await api.updateAvailabilityWatchTargets(parsed.codes);
+      onSaved(next);
+      toast.success("Monitoring pool updated.");
+      onClose();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Monitoring pool could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Edit monitoring pool" onClose={onClose}>
+      <div className="space-y-4">
+        <Field label="Works">
+          <WorkCodesField value={codes} onChange={setCodes} ariaLabel="Works" />
+        </Field>
+        {error && <ErrorPanel error={error} />}
+        <div className="flex justify-end">
+          <Button onClick={() => void save()} disabled={readOnly || saving || parsed.invalid.length > 0}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Save
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function AvailabilityWatchReadyDialog({
+  targets,
+  readOnly,
+  onClose,
+  onChanged,
+}: {
+  targets: AvailabilityWatch["targets"];
+  readOnly: boolean;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState<{ id: number; action: "track" | "remove" } | null>(null);
+
+  const openTarget = (target: AvailabilityWatch["targets"][number]) => {
+    if (!target.availableSourceId) return;
+    openWorkDetail(
+      { kind: "remote-only", sourceId: target.availableSourceId, remoteCode: target.workCode },
+      {
+        returnTo: "/workflows?workflow=availability_watch&dialog=ready",
+        returnLabel: "Back to Availability Watch",
+      },
+    );
+  };
+  const track = async (target: AvailabilityWatch["targets"][number]) => {
+    setBusy({ id: target.id, action: "track" });
+    try {
+      const result = await api.trackAvailabilityWatchTarget(target.id);
+      toast.success(`Track run #${result.runId} queued.`);
+      onChanged();
+    } catch (error) {
+      toast.notify(toastFromError(error, `Could not track ${target.workCode}.`));
+    } finally {
+      setBusy(null);
+    }
+  };
+  const remove = async (target: AvailabilityWatch["targets"][number]) => {
+    setBusy({ id: target.id, action: "remove" });
+    try {
+      await api.removeAvailabilityWatchTarget(target.id);
+      toast.success(`${target.workCode} removed from Availability Watch.`);
+      onChanged();
+    } catch (error) {
+      toast.notify(toastFromError(error, `Could not remove ${target.workCode}.`));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Modal title={`Ready works (${targets.length})`} onClose={onClose}>
       <div className="divide-y rounded-md border">
         {targets.length === 0 ? (
-          <div className="p-4 text-sm text-muted-foreground">{empty}</div>
+          <div className="p-4 text-sm text-muted-foreground">No available works.</div>
         ) : (
-          targets.map((target) => (
-            <div key={target.id} className="flex items-center gap-3 px-3 py-2.5">
-              <div className="min-w-0 flex-1">
-                <div className="font-mono text-sm font-semibold">{target.workCode}</div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {target.lastError || target.lastStatus || "Waiting for first check"}
+          targets.map((target) => {
+            const targetBusy = busy?.id === target.id;
+            return (
+              <div key={target.id} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center">
+                <div className="min-w-0 flex-1">
+                  <div className="font-mono text-sm font-semibold">{target.workCode}</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <Badge variant={target.lastError ? "warning" : "secondary"}>
+                      {target.state === "completed" ? "dispatched" : target.state.replace("_", " ")}
+                    </Badge>
+                    {target.lastError && <span className="text-xs text-error-foreground">{target.lastError}</span>}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => openTarget(target)}
+                    disabled={!target.availableSourceId || targetBusy}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Open
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => void track(target)} disabled={readOnly || targetBusy}>
+                    {targetBusy && busy?.action === "track" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <GitBranchPlus className="h-4 w-4" />
+                    )}
+                    Track
+                  </Button>
+                  {(target.fetchRunId || target.trackRunId) && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      title="Open related activity"
+                      aria-label={`Open activity for ${target.workCode}`}
+                      onClick={() => openActivityRunID(target.fetchRunId ?? target.trackRunId!)}
+                    >
+                      <Activity className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Remove from watch"
+                    aria-label={`Remove ${target.workCode} from watch`}
+                    onClick={() => void remove(target)}
+                    disabled={readOnly || targetBusy}
+                  >
+                    {targetBusy && busy?.action === "remove" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </Button>
                 </div>
               </div>
-              <Badge
-                variant={target.state === "error" ? "warning" : target.state === "completed" ? "default" : "secondary"}
-              >
-                {target.state === "completed" ? "dispatched" : target.state.replace("_", " ")}
-              </Badge>
-              {(target.fetchRunId || target.trackRunId) && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => openActivityRunID(target.fetchRunId ?? target.trackRunId!)}
-                >
-                  Activity
-                </Button>
-              )}
-            </div>
-          ))
+            );
+          })
         )}
       </div>
-    </section>
+    </Modal>
   );
 }
 
@@ -3440,6 +3747,7 @@ function RecentWorkflowRuns({ runs, onOpen }: { runs: WorkflowRun[]; onOpen: (ru
 }
 
 function supportedAutomationTriggerTypes(definition: WorkflowDefinition): AutomationTriggerType[] {
+  if (definition.scope === "system" && definition.code === "availability_watch") return ["schedule"];
   if (definition.scope === "system" && definition.code === "local_library_scan")
     return ["startup", "filesystem_event", "schedule"];
   if (definition.scope === "system" && configurableSystemWorkflowCodes.has(definition.code))
@@ -3494,6 +3802,7 @@ function WorkflowAutomationPanel({
 }) {
   const supportedTypes = supportedAutomationTriggerTypes(definition);
   const hasStartup = triggers.some((trigger) => trigger.triggerType === "startup");
+  const hasSchedule = triggers.some((trigger) => trigger.triggerType === "schedule");
   const orderedTriggers = [...triggers].sort((left, right) => {
     const leftOrder =
       left.triggerType === "startup"
@@ -3528,7 +3837,7 @@ function WorkflowAutomationPanel({
                 Run at startup
               </Button>
             )}
-            {supportedTypes.includes("schedule") && (
+            {supportedTypes.includes("schedule") && (definition.code !== "availability_watch" || !hasSchedule) && (
               <Button size="sm" variant="outline" onClick={() => onCreate("schedule")}>
                 <CalendarClock className="h-4 w-4" />
                 Add schedule

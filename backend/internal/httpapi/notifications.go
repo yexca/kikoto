@@ -36,7 +36,7 @@ const (
 	maxNotificationPage         = 100000
 )
 
-const clearableNotificationTypesSQL = "'remote_fetch', 'remote_track'"
+const clearableNotificationTypesSQL = "'remote_fetch', 'remote_track', 'availability_watch_ready'"
 
 type remoteTrackRunStatus struct {
 	RunID       int64  `json:"runId"`

@@ -20,6 +20,7 @@ workflow_definition
 - Metadata sync.
 - Remote source sync.
 - Source availability check.
+- Availability Watch.
 - Media cache.
 - Remote work fetch.
 - Remote bulk action.
@@ -108,6 +109,24 @@ Source availability is checked by the backend instead of frontend fan-out.
 Source-change checks first probe source health, then check candidate works only
 against reachable sources. The local library scan does not check remote source
 availability.
+
+## Availability Watch
+
+Availability Watch is one instance-level system workflow with a shared
+  monitoring pool, rather than one watch per user. Authorized users can edit the
+  pool of normalized work codes, while its configuration selects a compatible
+remote source (or any healthy compatible source), an action on availability,
+and Fetch extension exclusions. A change to that configuration records the
+user whose permissions govern its scheduled execution.
+
+It supports at most one interval schedule trigger and may also be run directly
+from its configuration surface. Each execution snapshots the active pool,
+records a normal workflow run, node runs, and durable job, then leaves unknown
+remote results as availability state instead of materializing new `work` rows.
+Newly available works move into the Ready pool; configured Track and Fetch
+actions remain child workflows with their own histories. A successful run that
+finds new ready works creates a notification for enabled administrators, and
+the notification opens the shared Ready pool.
 
 ## Voice Catalog Refresh
 

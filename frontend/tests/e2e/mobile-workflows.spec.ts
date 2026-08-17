@@ -74,8 +74,9 @@ const systemDefinitions = [
     id: 6,
     code: "availability_watch",
     displayName: "Availability Watch",
-    description: "Monitor configured works without creating Activity entries.",
-    definitionJson: '{"nodes":[]}',
+    description: "Monitor a shared pool of work codes and dispatch configured actions when a remote source becomes available.",
+    definitionJson:
+      '{"nodes":[{"id":"targets","type":"select_works","displayName":"Monitoring pool"},{"id":"check","type":"check_source_availability","displayName":"Check source availability"},{"id":"ready","type":"filter_candidates","displayName":"Ready pool"},{"id":"dispatch","type":"dispatch_child_workflows","displayName":"Dispatch configured action"}]}',
     scope: "system",
     editable: false,
     ownerUserId: null,
@@ -262,6 +263,42 @@ async function mockWorkflows(
   onAvailabilityWatch?: (payload: unknown) => void,
   onClearSucceeded?: () => void,
 ) {
+  let availabilityWatch = {
+    id: 1,
+    action: "monitor",
+    sourceId: null as number | null,
+    excludeExtensions: ["wav"],
+    revision: 2,
+    targets: [
+      {
+        id: 1,
+        workCode: "RJ00000000",
+        state: "monitoring",
+        nextCheckAt: "2026-07-27T01:00:00Z",
+        lastCheckedAt: "",
+        lastStatus: "",
+        lastError: "",
+        availableSourceId: null as number | null,
+        trackRunId: null as number | null,
+        fetchRunId: null as number | null,
+      },
+      {
+        id: 2,
+        workCode: "RJ00000001",
+        state: "completed",
+        nextCheckAt: "",
+        lastCheckedAt: "2026-07-27T00:00:00Z",
+        lastStatus: "available",
+        lastError: "",
+        availableSourceId: 8 as number | null,
+        trackRunId: null as number | null,
+        fetchRunId: 88 as number | null,
+      },
+    ],
+  };
+  let activeTriggers = [...workflowTriggers];
+  let nextTriggerID = 73;
+
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
@@ -290,7 +327,9 @@ async function mockWorkflows(
       const clearableTotal = response.notifications.filter(
         (notification) =>
           notification.status === "succeeded" &&
-          (notification.type === "remote_fetch" || notification.type === "remote_track"),
+          (notification.type === "remote_fetch" ||
+            notification.type === "remote_track" ||
+            notification.type === "availability_watch_ready"),
       ).length;
       await route.fulfill({
         json: {
@@ -317,21 +356,37 @@ async function mockWorkflows(
       return;
     }
     if (url.pathname === "/api/availability-watch") {
-      const payload = route.request().method() === "PUT" ? route.request().postDataJSON() : null;
-      if (payload) onAvailabilityWatch?.(payload);
-      await route.fulfill({
-        json: {
-          id: 1,
-          enabled: payload ? (payload as { enabled: boolean }).enabled : true,
-          intervalMinutes: payload ? (payload as { intervalMinutes: number }).intervalMinutes : 60,
-          action: payload ? (payload as { action: string }).action : "monitor",
-          sourceId: payload ? (payload as { sourceId: number | null }).sourceId : null,
-          excludeExtensions: payload ? (payload as { excludeExtensions: string[] }).excludeExtensions : ["wav"],
-          revision: 2,
-          targets: [
-            {
-              id: 1,
-              workCode: "RJ00000000",
+      if (route.request().method() === "PUT") {
+        const payload = route.request().postDataJSON() as {
+          action: string;
+          sourceId: number | null;
+          excludeExtensions: string[];
+        };
+        onAvailabilityWatch?.(payload);
+        availabilityWatch = {
+          ...availabilityWatch,
+          action: payload.action,
+          sourceId: payload.sourceId,
+          excludeExtensions: payload.excludeExtensions,
+          revision: availabilityWatch.revision + 1,
+        };
+      }
+      await route.fulfill({ json: availabilityWatch });
+      return;
+    }
+    if (url.pathname === "/api/availability-watch/targets" && route.request().method() === "PUT") {
+      const payload = route.request().postDataJSON() as { targetCodes: string[] };
+      onAvailabilityWatch?.(payload);
+      const currentByCode = new Map(availabilityWatch.targets.map((target) => [target.workCode, target]));
+      availabilityWatch = {
+        ...availabilityWatch,
+        revision: availabilityWatch.revision + 1,
+        targets: payload.targetCodes.map((workCode, index) => {
+          const current = currentByCode.get(workCode);
+          return (
+            current ?? {
+              id: 100 + index,
+              workCode,
               state: "monitoring",
               nextCheckAt: "2026-07-27T01:00:00Z",
               lastCheckedAt: "",
@@ -340,20 +395,51 @@ async function mockWorkflows(
               availableSourceId: null,
               trackRunId: null,
               fetchRunId: null,
-            },
-            {
-              id: 2,
-              workCode: "RJ00000001",
-              state: "completed",
-              nextCheckAt: "",
-              lastCheckedAt: "2026-07-27T00:00:00Z",
-              lastStatus: "available",
-              lastError: "",
-              availableSourceId: 8,
-              trackRunId: null,
-              fetchRunId: 88,
-            },
-          ],
+            }
+          );
+        }),
+      };
+      await route.fulfill({ json: availabilityWatch });
+      return;
+    }
+    if (url.pathname.startsWith("/api/availability-watch/targets/") && route.request().method() === "DELETE") {
+      const targetID = Number(url.pathname.split("/").at(-1));
+      onAvailabilityWatch?.({ deleteTargetId: targetID });
+      availabilityWatch = {
+        ...availabilityWatch,
+        revision: availabilityWatch.revision + 1,
+        targets: availabilityWatch.targets.filter((target) => target.id !== targetID),
+      };
+      await route.fulfill({ json: { ok: true } });
+      return;
+    }
+    if (url.pathname.startsWith("/api/availability-watch/targets/") && route.request().method() === "POST") {
+      const targetID = Number(url.pathname.split("/").at(-2));
+      onAvailabilityWatch?.({ trackTargetId: targetID });
+      availabilityWatch = {
+        ...availabilityWatch,
+        targets: availabilityWatch.targets.map((target) =>
+          target.id === targetID ? { ...target, state: "completed", trackRunId: 89 } : target,
+        ),
+      };
+      await route.fulfill({ json: { runId: 89, status: "queued" } });
+      return;
+    }
+    if (url.pathname === "/api/availability-watch/run" && route.request().method() === "POST") {
+      onAvailabilityWatch?.({ run: true });
+      await route.fulfill({
+        status: 202,
+        json: {
+          runId: 91,
+          jobId: 92,
+          status: "queued",
+          targetCount: availabilityWatch.targets.length,
+          checked: 0,
+          ready: 0,
+          dispatched: 0,
+          newlyAvailableCodes: [],
+          readyCodes: [],
+          failures: [],
         },
       });
       return;
@@ -363,7 +449,32 @@ async function mockWorkflows(
       return;
     }
     if (url.pathname === "/api/workflow-triggers") {
-      await route.fulfill({ json: workflowTriggers });
+      if (route.request().method() === "POST") {
+        const payload = route.request().postDataJSON() as {
+          workflowDefinitionId: number;
+          displayName: string;
+          triggerType: string;
+          enabled: boolean;
+          scheduleJson: string;
+          configJson: string;
+        };
+        const definition = systemDefinitions.find((item) => item.id === payload.workflowDefinitionId);
+        const saved = {
+          id: nextTriggerID++,
+          workflowCode: definition?.code ?? "",
+          nextRunAt: payload.enabled ? "2026-07-27T03:00:00Z" : null,
+          lastRunAt: null,
+          lastSuccessAt: null,
+          lastErrorMessage: "",
+          createdAt: "2026-07-27T00:00:00Z",
+          updatedAt: "2026-07-27T00:00:00Z",
+          ...payload,
+        };
+        activeTriggers = [...activeTriggers, saved];
+        await route.fulfill({ json: saved });
+        return;
+      }
+      await route.fulfill({ json: activeTriggers });
       return;
     }
     if (url.pathname === "/api/workflow-runs") {
@@ -786,29 +897,90 @@ test("legacy custom definitions remain read-only while showing their linear conn
   await expect(page.getByRole("button", { name: "Preview / Run", exact: true })).toHaveCount(0);
 });
 
-test("availability watch keeps monitoring and ready pools outside Activity", async ({ page }) => {
+test("availability watch shares pools, schedules checks, and handles ready works on mobile", async ({ page }) => {
   const updates: unknown[] = [];
   await mockWorkflows(page, undefined, undefined, undefined, (payload) => updates.push(payload));
   await page.goto("/workflows");
 
   await page.getByRole("button", { name: /Availability Watch/ }).click();
   await expect(page.getByRole("heading", { name: "Availability Watch", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Monitoring", exact: true }).locator("..")).toContainText("1");
-  await expect(page.getByRole("heading", { name: "Ready", exact: true }).locator("..")).toContainText("1");
-  await expect(page.getByText("dispatched", { exact: true })).toBeVisible();
+  const pools = page.getByLabel("Availability pools");
+  await expect(pools).toContainText("Monitoring");
+  await expect(pools).toContainText("Ready");
+  await expect(pools).toContainText("1");
+  await expect(page.getByLabel("Workflow node canvas")).toBeVisible();
+  await expect(page.getByText("Recent runs", { exact: true })).toBeVisible();
 
-  const works = page.getByRole("textbox", { name: "Works" });
-  await works.fill("RJ00000000, invalid; RJ00000001");
-  await expect(page.getByText("1 invalid", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Save watch", exact: true })).toBeDisabled();
-  await works.fill("RJ00000000, RJ00000001; RJ00000001");
-  await expect(page.getByText("2 valid", { exact: true })).toBeVisible();
-  await expect(page.getByText("1 duplicate", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Save watch", exact: true }).click();
+  await page.getByRole("button", { name: "Add schedule", exact: true }).click();
+  const scheduleDialog = page.getByRole("dialog", { name: "New schedule" });
+  await scheduleDialog.getByLabel("Name", { exact: true }).fill("Availability interval");
+  await scheduleDialog.getByLabel("Interval (minutes)", { exact: true }).fill("120");
+  await scheduleDialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Edit Availability interval", exact: true })).toBeVisible();
 
-  await expect.poll(() => updates).toHaveLength(1);
-  expect(updates[0]).toMatchObject({ targetCodes: ["RJ00000000", "RJ00000001"], excludeExtensions: ["wav"] });
-  await expect(page).toHaveURL(/\/workflows$/);
+  await page.getByRole("button", { name: "Configure", exact: true }).click();
+  const configureDialog = page.getByRole("dialog", { name: "Configure Availability Watch" });
+  await configureDialog.getByRole("combobox", { name: "Remote source", exact: true }).selectOption({
+    label: "Remote Test",
+  });
+  await configureDialog.getByRole("combobox", { name: "When available", exact: true }).selectOption({ label: "Track" });
+  await configureDialog.getByLabel("Exclude extensions", { exact: true }).fill("wav, flac");
+  await configureDialog.getByRole("button", { name: "Run now", exact: true }).click();
+  await expect(page.getByText("Availability Watch run #91 queued.", { exact: true })).toBeVisible();
+  await expect.poll(() => updates).toHaveLength(2);
+  expect(updates).toContainEqual({ action: "track", sourceId: 8, excludeExtensions: ["wav", "flac"] });
+  expect(updates).toContainEqual({ run: true });
+
+  await pools.getByRole("button", { name: "Edit", exact: true }).click();
+  const monitoringDialog = page.getByRole("dialog", { name: "Edit monitoring pool" });
+  const works = monitoringDialog.getByRole("textbox", { name: "Works" });
+  await works.fill("RJ00000000\nRJ00000001\nRJ00000002");
+  await expect(monitoringDialog.getByText("3 valid", { exact: true })).toBeVisible();
+  await monitoringDialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect.poll(() => updates).toHaveLength(3);
+  expect(updates).toContainEqual({ targetCodes: ["RJ00000000", "RJ00000001", "RJ00000002"] });
+
+  await pools.getByRole("button", { name: "View", exact: true }).click();
+  const readyDialog = page.getByRole("dialog", { name: "Ready works (1)" });
+  await expect(readyDialog.getByText("RJ00000001", { exact: true })).toBeVisible();
+  const bounds = await readyDialog.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(412);
+  expect(await readyDialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await readyDialog.getByRole("button", { name: "Track", exact: true }).click();
+  await expect(page.getByText("Track run #89 queued.", { exact: true })).toBeVisible();
+  await expect.poll(() => updates).toHaveLength(4);
+  expect(updates).toContainEqual({ trackTargetId: 2 });
+  await readyDialog.getByRole("button", { name: "Remove RJ00000001 from watch", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Ready works (0)" }).getByText("No available works.", { exact: true })).toBeVisible();
+  expect(updates).toContainEqual({ deleteTargetId: 2 });
+});
+
+test("availability notifications open the shared ready pool", async ({ page }) => {
+  await mockWorkflows(page, undefined, undefined, {
+    total: 1,
+    notifications: [
+      {
+        id: 9,
+        workflowRunId: 91,
+        type: "availability_watch_ready",
+        status: "succeeded",
+        workId: null,
+        workCode: "RJ00000001",
+        message: "RJ00000001 is now available.",
+        createdAt: "2026-07-27T02:00:00Z",
+      },
+    ],
+  });
+  await page.goto("/workflows");
+
+  await page.getByRole("button", { name: "Notifications", exact: true }).click();
+  await page.getByText("RJ00000001 is now available.", { exact: true }).click();
+  await expect(page).toHaveURL(/\/workflows\?workflow=availability_watch&dialog=ready&run=91$/);
+  await expect(page.getByRole("heading", { name: "Availability Watch", exact: true })).toBeVisible();
+  const readyDialog = page.getByRole("dialog", { name: "Ready works (1)" });
+  await expect(readyDialog.getByText("RJ00000001", { exact: true })).toBeVisible();
 });
 
 test("activity presents overview, canvas, items, and node logs vertically", async ({ page }) => {

@@ -206,7 +206,7 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 	{
 		Code:        "availability_watch",
 		Name:        "Availability Watch",
-		Description: "Monitor a mutable set of work codes and dispatch Track or Fetch only when a configured remote source becomes available.",
+		Description: "Monitor a shared pool of work codes and dispatch configured actions when a remote source becomes available.",
 		Nodes: []map[string]string{
 			{"id": "targets", "type": "select_works", "displayName": "Monitoring pool"},
 			{"id": "check", "type": "check_source_availability", "displayName": "Check source availability"},
@@ -564,6 +564,10 @@ func (s *Server) createWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow definition belongs to another user"})
 		return
 	}
+	if err := s.ensureAvailabilityWatchSchedule(r.Context(), definition, 0, payload.TriggerType); err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
 	if err := s.ensureUniqueWorkflowStartupTrigger(r.Context(), payload.WorkflowDefinitionID, 0, payload.TriggerType); err != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
@@ -692,6 +696,9 @@ func (s *Server) prepareWorkflowTriggerUpdate(ctx context.Context, actor current
 	}
 	if !canUseWorkflowDefinition(actor, definition) {
 		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusForbidden, "workflow definition belongs to another user")
+	}
+	if err := s.ensureAvailabilityWatchSchedule(ctx, definition, id, payload.TriggerType); err != nil {
+		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "%s", err)
 	}
 	if payload.TriggerType == "filesystem_event" && current.TriggerType != "filesystem_event" {
 		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "filesystem watching is a fixed trigger for the local library scan")

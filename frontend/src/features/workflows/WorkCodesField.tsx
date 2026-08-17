@@ -37,10 +37,12 @@ export function WorkCodesField({
   value,
   onChange,
   className = "",
+  ariaLabel,
 }: {
   value: string;
   onChange: (value: string) => void;
   className?: string;
+  ariaLabel?: string;
 }) {
   const parsed = parseWorkCodes(value);
   return (
@@ -50,6 +52,7 @@ export function WorkCodesField({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={"RJ00000000\nRJ00000001"}
+        aria-label={ariaLabel}
         autoCapitalize="off"
         spellCheck={false}
       />

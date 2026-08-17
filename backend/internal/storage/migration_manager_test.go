@@ -16,7 +16,7 @@ import (
 
 var numberedMigrationFilePattern = regexp.MustCompile(`^[0-9]{3}_[a-z0-9][a-z0-9_]*\.sql$`)
 
-const latestNumberedMigrationVersion = 31
+const latestNumberedMigrationVersion = 32
 
 func TestMigrationChecksumNormalizesLineEndings(t *testing.T) {
 	lf := []byte("CREATE TABLE probe (id INTEGER);\n-- stable\n")
@@ -55,8 +55,55 @@ func TestMigrateFreshDatabaseUsesBaseline(t *testing.T) {
 	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = ?", latestNumberedMigrationVersion).Scan(&filename); err != nil {
 		t.Fatal(err)
 	}
-	if filename != "baseline/031_current.sql" {
+	if filename != "baseline/032_current.sql" {
 		t.Fatalf("baseline history filename = %q", filename)
+	}
+}
+
+func TestMigrateUpgradesReleasedBaseline(t *testing.T) {
+	sourceDir := filepath.Join("..", "..", "migrations")
+	previousCatalog := copyNumberedMigrations(t, sourceDir)
+	if err := os.Remove(filepath.Join(previousCatalog, "032_shared_availability_watch.sql")); err != nil {
+		t.Fatal(err)
+	}
+	baselineDir := filepath.Join(previousCatalog, "baseline")
+	if err := os.Mkdir(baselineDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	baseline, err := os.ReadFile(filepath.Join(sourceDir, "baseline", "031_current.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(baselineDir, "031_current.sql"), baseline, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	db := openMigrationManagerDB(t)
+	if err := Migrate(db, previousCatalog); err != nil {
+		t.Fatalf("create released baseline database: %v", err)
+	}
+	if err := Migrate(db, sourceDir); err != nil {
+		t.Fatalf("upgrade released baseline database: %v", err)
+	}
+
+	rows, err := db.Query("SELECT filename FROM schema_migration ORDER BY version")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var filenames []string
+	for rows.Next() {
+		var filename string
+		if err := rows.Scan(&filename); err != nil {
+			t.Fatal(err)
+		}
+		filenames = append(filenames, filename)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(filenames, ","), "baseline/031_current.sql,032_shared_availability_watch.sql"; got != want {
+		t.Fatalf("upgraded baseline history = %q, want %q", got, want)
 	}
 }
 
@@ -135,6 +182,9 @@ func TestMigrateLocalizedMetadataDeduplicatesLegacySnapshots(t *testing.T) {
 	if err := os.Remove(filepath.Join(migrationDir, "031_dlsite_localized_metadata.sql")); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Remove(filepath.Join(migrationDir, "032_shared_availability_watch.sql")); err != nil {
+		t.Fatal(err)
+	}
 	db := openMigrationManagerDB(t)
 	if err := Migrate(db, migrationDir); err != nil {
 		t.Fatalf("pre-localized migration error = %v", err)
@@ -185,6 +235,55 @@ func TestMigrateLocalizedMetadataDeduplicatesLegacySnapshots(t *testing.T) {
 	}
 	if variants != 1 || snapshots != 2 {
 		t.Fatalf("legacy localized migration rows = variants %d snapshots %d, want 1/2", variants, snapshots)
+	}
+}
+
+func TestMigrateSharedAvailabilityWatchMergesTargetsAndPausesConflictingSchedule(t *testing.T) {
+	migrationDir := copyNumberedMigrations(t, filepath.Join("..", "..", "migrations"))
+	if err := os.Remove(filepath.Join(migrationDir, "032_shared_availability_watch.sql")); err != nil {
+		t.Fatal(err)
+	}
+	db := openMigrationManagerDB(t)
+	if err := Migrate(db, migrationDir); err != nil {
+		t.Fatalf("pre-shared Availability Watch migration error = %v", err)
+	}
+	for _, statement := range []string{
+		`INSERT INTO user_account (id, username, role) VALUES (1, 'watch-one', 'admin')`,
+		`INSERT INTO user_account (id, username, role) VALUES (2, 'watch-two', 'admin')`,
+		`INSERT INTO availability_watch (id, owner_user_id, enabled, interval_minutes, action, exclude_extensions_json, updated_at) VALUES (1, 1, 1, 60, 'monitor', '["wav"]', '2026-01-01 00:00:00')`,
+		`INSERT INTO availability_watch (id, owner_user_id, enabled, interval_minutes, action, exclude_extensions_json, updated_at) VALUES (2, 2, 1, 90, 'track', '["flac"]', '2026-01-02 00:00:00')`,
+		`INSERT INTO availability_watch_target (watch_id, work_code, state) VALUES (1, 'RJ00000000', 'monitoring')`,
+		`INSERT INTO availability_watch_target (watch_id, work_code, state) VALUES (2, 'RJ00000000', 'ready')`,
+		`INSERT INTO availability_watch_target (watch_id, work_code, state) VALUES (2, 'RJ00000001', 'monitoring')`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
+		t.Fatalf("shared Availability Watch migration error = %v", err)
+	}
+	var watchID, configuredBy, interval, enabled int
+	var action string
+	if err := db.QueryRow(`
+		SELECT watch.id, watch.configured_by_user_id, watch.action,
+			CAST(json_extract(trigger.schedule_json, '$.intervalMinutes') AS INTEGER), trigger.enabled
+		FROM availability_watch AS watch
+		INNER JOIN workflow_definition AS definition ON definition.code = 'availability_watch'
+		INNER JOIN workflow_trigger AS trigger ON trigger.workflow_definition_id = definition.id
+		WHERE trigger.trigger_type = 'schedule'
+	`).Scan(&watchID, &configuredBy, &action, &interval, &enabled); err != nil {
+		t.Fatal(err)
+	}
+	if watchID != 1 || configuredBy != 2 || action != "track" || interval != 90 || enabled != 0 {
+		t.Fatalf("shared watch = id %d owner %d action %q interval %d enabled %d", watchID, configuredBy, action, interval, enabled)
+	}
+	var targets int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM availability_watch_target WHERE watch_id = 1 AND active = 1`).Scan(&targets); err != nil {
+		t.Fatal(err)
+	}
+	if targets != 2 {
+		t.Fatalf("active merged targets = %d, want 2", targets)
 	}
 }
 

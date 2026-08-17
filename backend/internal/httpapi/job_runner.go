@@ -44,7 +44,6 @@ func (s *Server) StartJobRunner(ctx context.Context) {
 	}
 	s.jobRunnerStarted = true
 	s.jobRunnerMu.Unlock()
-	_, _ = s.db.ExecContext(ctx, "UPDATE availability_watch_outbox SET status = 'pending', next_attempt_at = CURRENT_TIMESTAMP WHERE status = 'running'")
 	defer func() {
 		s.jobRunnerMu.Lock()
 		s.jobRunnerStarted = false
@@ -82,9 +81,6 @@ func (s *Server) runWorkflowCoordinator(ctx context.Context) {
 		}
 		if _, err := workflow.NewStore(s.db).RequeueExpiredJobs(ctx, 30*time.Second); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("requeue expired workflow jobs", "error", err)
-		}
-		if err := s.processAvailabilityWatchTick(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			slog.Error("process availability watch", "error", err)
 		}
 		select {
 		case <-ctx.Done():
@@ -156,6 +152,7 @@ func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobR
 		"cache_orphan_cleanup":       s.executeCacheOrphanCleanupJob,
 		"unlinked_work_source_check": s.executeUnlinkedWorkSourceCheckJob,
 		"custom_workflow":            s.executeCustomWorkflowJob,
+		"availability_watch":         s.executeAvailabilityWatchJob,
 	}
 	executor := executors[job.WorkerType]
 	if executor != nil {

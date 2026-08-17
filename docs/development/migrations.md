@@ -31,11 +31,13 @@ LF line endings so moving a database between Windows and Linux does not look
 like a migration edit.
 
 The current release boundary is migration `027_voice_catalog.sql` (tag
-`v0.4.1`). Migrations `028` through `031` are present in the current working
+`v0.4.1`). Migrations `028` through `032` are present in the current working
 tree after that tag and are part of the next unreleased chain; they must not be
 described as part of v0.4.1 until a release explicitly includes them.
-The working-tree baseline is consequently `031_current.sql`; its presence is
-not a claim that v0.4.1 shipped migrations 028-031.
+The working tree retains the released `031_current.sql` baseline for databases
+whose ledger records it, and packages `032_current.sql` as the newest
+fresh-install snapshot. Neither baseline implies that the corresponding
+unreleased numbered migrations shipped in v0.4.1.
 
 ## Fresh Installs And Upgrades
 
@@ -66,8 +68,10 @@ successfully.
 
 ## Baseline Generation
 
-The baseline is a generated fresh-install optimization, not an upgrade
-migration. Generate it from a clean checkout after the numbered chain changes:
+Baselines are generated fresh-install optimizations, not upgrade migrations.
+The catalog may retain historical snapshots for ledger validation while using
+the highest-version baseline for an empty database. Generate a new snapshot
+from a clean checkout after the numbered chain changes:
 
 ```sh
 cd backend
@@ -79,9 +83,9 @@ database and writes the final tables, indexes, views, triggers, and
 migration-provided reference rows to `migrations/baseline/<version>_current.sql`.
 Timestamp defaults remain defaults rather than being frozen to the generator's
 clock. The generated file is reviewed and checksummed like any other packaged
-asset. It may be regenerated or retained at an earlier version; when it is
-earlier than the catalog head, a fresh install applies the remaining numbered
-migrations after the baseline.
+asset. When a newer snapshot is added, a fresh install uses it and historical
+baselines remain available solely to validate and upgrade databases whose
+ledgers reference them.
 
 Once a released binary can create databases from a baseline, keep that
 baseline filename available in later catalogs (or provide an explicit,
