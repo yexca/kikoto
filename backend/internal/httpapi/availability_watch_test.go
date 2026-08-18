@@ -75,6 +75,101 @@ func TestAvailabilityWatchRunRecordsActivityWithoutMaterializingUnknownWork(t *t
 	}
 }
 
+func TestAvailabilityWatchRunKeepsUnavailableTargetsMonitoring(t *testing.T) {
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/health":
+			_ = json.NewEncoder(w).Encode("ok")
+		case "/api/search/RJ00000001":
+			_ = json.NewEncoder(w).Encode(kikoeru.WorksPage{Works: []kikoeru.Work{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+
+	db := openMigratedTestDB(t)
+	for _, statement := range []string{
+		`INSERT INTO user_account (id, username, role) VALUES (1, 'watch-admin', 'admin')`,
+		`INSERT INTO file_source (id, code, display_name, source_type, enabled) VALUES (1, 'example_remote', 'Example Remote', 'kikoeru_compatible', 1)`,
+		`INSERT INTO availability_watch (id, configured_by_user_id, action, source_id) VALUES (1, 1, 'monitor', 1)`,
+		`INSERT INTO availability_watch_target (id, watch_id, work_code, state, next_check_at) VALUES (1, 1, 'RJ00000001', 'monitoring', CURRENT_TIMESTAMP)`,
+		`INSERT INTO app_setting (key, value_json) VALUES ('remote_request_delay_base_seconds', '0'), ('remote_request_delay_random_seconds', '0')`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO file_source_endpoint (file_source_id, base_url, api_url) VALUES (1, ?, ?)`, remote.URL, remote.URL); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	queued, err := server.enqueueAvailabilityWatch(context.Background(), 1, workflowRunTrigger{Type: "manual", Reason: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.runNextQueuedWorkflowJob(context.Background(), "availability-watch-not-found-test"); err != nil {
+		t.Fatal(err)
+	}
+
+	var state, lastStatus, runStatus, rawSummary string
+	if err := db.QueryRow(`SELECT state, last_status FROM availability_watch_target WHERE id = 1`).Scan(&state, &lastStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT status, summary_json FROM workflow_run WHERE id = ?`, queued.RunID).Scan(&runStatus, &rawSummary); err != nil {
+		t.Fatal(err)
+	}
+	var summary availabilityWatchRunResult
+	if err := json.Unmarshal([]byte(rawSummary), &summary); err != nil {
+		t.Fatal(err)
+	}
+	if state != "monitoring" || lastStatus != "not_found" || runStatus != "succeeded" {
+		t.Fatalf("target = %q/%q, run = %q", state, lastStatus, runStatus)
+	}
+	if summary.Checked != 1 || summary.Ready != 0 || len(summary.Failures) != 0 {
+		t.Fatalf("summary = %+v", summary)
+	}
+}
+
+func TestAvailabilityWatchRunRecordsMissingHealthySourceAsPartial(t *testing.T) {
+	db := openMigratedTestDB(t)
+	for _, statement := range []string{
+		`INSERT INTO user_account (id, username, role) VALUES (1, 'watch-admin', 'admin')`,
+		`INSERT INTO availability_watch (id, configured_by_user_id, action) VALUES (1, 1, 'monitor')`,
+		`INSERT INTO availability_watch_target (id, watch_id, work_code, state, next_check_at) VALUES (1, 1, 'RJ00000002', 'monitoring', CURRENT_TIMESTAMP)`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server := NewServer(db, config.Config{})
+	queued, err := server.enqueueAvailabilityWatch(context.Background(), 1, workflowRunTrigger{Type: "manual", Reason: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.runNextQueuedWorkflowJob(context.Background(), "availability-watch-no-source-test"); err != nil {
+		t.Fatal(err)
+	}
+
+	var state, lastStatus, lastError, runStatus, rawSummary string
+	if err := db.QueryRow(`SELECT state, last_status, last_error FROM availability_watch_target WHERE id = 1`).Scan(&state, &lastStatus, &lastError); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT status, summary_json FROM workflow_run WHERE id = ?`, queued.RunID).Scan(&runStatus, &rawSummary); err != nil {
+		t.Fatal(err)
+	}
+	var summary availabilityWatchRunResult
+	if err := json.Unmarshal([]byte(rawSummary), &summary); err != nil {
+		t.Fatal(err)
+	}
+	if state != "error" || lastStatus != "error" || lastError != "Remote source is unavailable" {
+		t.Fatalf("target = %q/%q error %q", state, lastStatus, lastError)
+	}
+	if runStatus != "partial" || len(summary.Failures) != 1 || !strings.Contains(summary.Failures[0], "no healthy remote source") {
+		t.Fatalf("run = %q, summary = %+v", runStatus, summary)
+	}
+}
+
 func TestAvailabilityWatchTargetUpdatePreservesUnchangedReadyState(t *testing.T) {
 	db := openMigratedTestDB(t)
 	for _, statement := range []string{

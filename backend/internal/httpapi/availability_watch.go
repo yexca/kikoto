@@ -78,6 +78,21 @@ type availabilityWatchJobPayload struct {
 	Targets           []availabilityWatchTargetSnapshot `json:"targets"`
 }
 
+type availabilityWatchExecutionTarget struct {
+	State             string
+	Revision          int
+	LastStatus        string
+	Epoch             int
+	AvailableSourceID int64
+	Active            bool
+}
+
+type availabilityWatchExecution struct {
+	result           availabilityWatchRunResult
+	readySeen        map[string]bool
+	dispatchFailures int
+}
+
 func (s *Server) getAvailabilityWatch(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
 		return
@@ -575,115 +590,174 @@ func (s *Server) executeAvailabilityWatchJob(ctx context.Context, job workflowJo
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
-	result := availabilityWatchRunResult{RunID: job.RunID, JobID: job.ID, Status: "succeeded", TargetCount: len(payload.Targets), NewlyAvailableCodes: []string{}, ReadyCodes: []string{}, Failures: []string{}}
 	healthy, healthErr := s.healthyRemoteSourceIDsForAvailability(ctx, payload.SourceID)
 	if healthErr != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch source health check failed")
 		return healthErr
 	}
-	readySeen := map[string]bool{}
-	dispatchFailures := 0
+	execution := availabilityWatchExecution{
+		result: availabilityWatchRunResult{
+			RunID: job.RunID, JobID: job.ID, Status: "succeeded", TargetCount: len(payload.Targets),
+			NewlyAvailableCodes: []string{}, ReadyCodes: []string{}, Failures: []string{},
+		},
+		readySeen: map[string]bool{},
+	}
 	for index, snapshot := range payload.Targets {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		state, revision, lastStatus, epoch, availableSourceID, active, err := s.loadAvailabilityWatchExecutionTarget(ctx, snapshot.ID)
-		if err != nil {
-			_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch target state could not be loaded")
+		if err := s.executeAvailabilityWatchTarget(ctx, job, payload, snapshot, healthy, &execution); err != nil {
 			return err
 		}
-		if !active || revision != snapshot.Revision {
-			_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "checking", result, index+1, len(payload.Targets))
-			continue
-		}
-		code := strings.ToUpper(strings.TrimSpace(snapshot.WorkCode))
-		if state == "monitoring" || state == "error" {
-			result.Checked++
-			if len(healthy) == 0 {
-				result.Failures = append(result.Failures, code+": no healthy remote source")
-				_ = s.updateAvailabilityWatchTargetError(ctx, snapshot.ID, revision, "Remote source is unavailable")
-				_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "checking", result, index+1, len(payload.Targets))
-				continue
-			}
-			response, checkErr := s.checkWorkSourceAvailabilityForSourcesWithHealth(ctx, code, payload.SourceID, healthy, "availability_watch", "workflow_run")
-			if checkErr != nil {
-				result.Failures = append(result.Failures, code+": availability check failed")
-				_ = s.updateAvailabilityWatchTargetError(ctx, snapshot.ID, revision, "Availability check failed")
-				_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "checking", result, index+1, len(payload.Targets))
-				continue
-			}
-			available := firstAvailableSource(response)
-			if available == nil {
-				if err := s.updateAvailabilityWatchTargetNotFound(ctx, snapshot.ID, revision); err != nil {
-					_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch result could not be saved")
-					return err
-				}
-				_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "checking", result, index+1, len(payload.Targets))
-				continue
-			}
-			if lastStatus != "available" {
-				epoch++
-				result.NewlyAvailableCodes = append(result.NewlyAvailableCodes, code)
-			}
-			if err := s.updateAvailabilityWatchTargetReady(ctx, snapshot.ID, revision, available.SourceID, epoch); err != nil {
-				_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch result could not be saved")
-				return err
-			}
-			state = "ready"
-			availableSourceID = available.SourceID
-		}
-		if state == "ready" || state == "action_queued" || state == "completed" {
-			if !readySeen[code] {
-				readySeen[code] = true
-				result.ReadyCodes = append(result.ReadyCodes, code)
-			}
-		}
-		if state == "ready" && payload.Action != "monitor" {
-			trackRunID, fetchRunID, dispatchErr := s.dispatchAvailabilityWatchTarget(ctx, payload, snapshot.ID, code, availableSourceID, epoch)
-			if dispatchErr != nil {
-				dispatchFailures++
-				result.Failures = append(result.Failures, code+": configured action could not be queued")
-				_, _ = s.db.ExecContext(ctx, `UPDATE availability_watch_target SET state = 'ready', last_error = 'Action failed', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND active = 1`, snapshot.ID)
-			} else {
-				result.Dispatched++
-				_, err = s.db.ExecContext(ctx, `
-					UPDATE availability_watch_target
-					SET state = 'completed', track_run_id = COALESCE(NULLIF(?, 0), track_run_id),
-						fetch_run_id = COALESCE(NULLIF(?, 0), fetch_run_id), last_error = '', updated_at = CURRENT_TIMESTAMP
-					WHERE id = ? AND active = 1
-				`, trackRunID, fetchRunID, snapshot.ID)
-				if err != nil {
-					_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch dispatch state could not be saved")
-					return err
-				}
-			}
-		}
-		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "checking", result, index+1, len(payload.Targets))
+		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "checking", execution.result, index+1, len(payload.Targets))
 	}
-	result.Ready = len(result.ReadyCodes)
-	if len(result.Failures) > 0 {
-		result.Status = "partial"
+	execution.result.Ready = len(execution.result.ReadyCodes)
+	if len(execution.result.Failures) > 0 {
+		execution.result.Status = "partial"
 	}
-	if err := s.finishAvailabilityWatchJob(ctx, job, nodeIDs, result, dispatchFailures); err != nil {
+	if err := s.finishAvailabilityWatchJob(ctx, job, nodeIDs, execution.result, execution.dispatchFailures); err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch run could not be finalized")
 		return err
 	}
 	return nil
 }
 
-func (s *Server) loadAvailabilityWatchExecutionTarget(ctx context.Context, targetID int64) (state string, revision int, lastStatus string, epoch int, sourceID int64, active bool, err error) {
+func (s *Server) executeAvailabilityWatchTarget(
+	ctx context.Context,
+	job workflowJobRecord,
+	payload availabilityWatchJobPayload,
+	snapshot availabilityWatchTargetSnapshot,
+	healthy map[int64]bool,
+	execution *availabilityWatchExecution,
+) error {
+	target, err := s.loadAvailabilityWatchExecutionTarget(ctx, snapshot.ID)
+	if err != nil {
+		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch target state could not be loaded")
+		return err
+	}
+	if !target.Active || target.Revision != snapshot.Revision {
+		return nil
+	}
+	code := strings.ToUpper(strings.TrimSpace(snapshot.WorkCode))
+	if availabilityWatchTargetNeedsCheck(target.State) {
+		ready, err := s.checkAvailabilityWatchExecutionTarget(ctx, job, payload, snapshot.ID, code, healthy, &target, &execution.result)
+		if err != nil || !ready {
+			return err
+		}
+	}
+	execution.recordReady(code, target.State)
+	return s.dispatchReadyAvailabilityWatchTarget(ctx, job, payload, snapshot.ID, code, target, execution)
+}
+
+func availabilityWatchTargetNeedsCheck(state string) bool {
+	return state == "monitoring" || state == "error"
+}
+
+func (s *Server) checkAvailabilityWatchExecutionTarget(
+	ctx context.Context,
+	job workflowJobRecord,
+	payload availabilityWatchJobPayload,
+	targetID int64,
+	code string,
+	healthy map[int64]bool,
+	target *availabilityWatchExecutionTarget,
+	result *availabilityWatchRunResult,
+) (bool, error) {
+	result.Checked++
+	if len(healthy) == 0 {
+		result.Failures = append(result.Failures, code+": no healthy remote source")
+		_ = s.updateAvailabilityWatchTargetError(ctx, targetID, target.Revision, "Remote source is unavailable")
+		return false, nil
+	}
+	response, err := s.checkWorkSourceAvailabilityForSourcesWithHealth(ctx, code, payload.SourceID, healthy, "availability_watch", "workflow_run")
+	if err != nil {
+		result.Failures = append(result.Failures, code+": availability check failed")
+		_ = s.updateAvailabilityWatchTargetError(ctx, targetID, target.Revision, "Availability check failed")
+		return false, nil
+	}
+	available := firstAvailableSource(response)
+	if available == nil {
+		if err := s.updateAvailabilityWatchTargetNotFound(ctx, targetID, target.Revision); err != nil {
+			_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch result could not be saved")
+			return false, err
+		}
+		return false, nil
+	}
+	if target.LastStatus != "available" {
+		target.Epoch++
+		result.NewlyAvailableCodes = append(result.NewlyAvailableCodes, code)
+	}
+	if err := s.updateAvailabilityWatchTargetReady(ctx, targetID, target.Revision, available.SourceID, target.Epoch); err != nil {
+		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch result could not be saved")
+		return false, err
+	}
+	target.State = "ready"
+	target.AvailableSourceID = available.SourceID
+	return true, nil
+}
+
+func (execution *availabilityWatchExecution) recordReady(code string, state string) {
+	if state != "ready" && state != "action_queued" && state != "completed" {
+		return
+	}
+	if execution.readySeen[code] {
+		return
+	}
+	execution.readySeen[code] = true
+	execution.result.ReadyCodes = append(execution.result.ReadyCodes, code)
+}
+
+func (s *Server) dispatchReadyAvailabilityWatchTarget(
+	ctx context.Context,
+	job workflowJobRecord,
+	payload availabilityWatchJobPayload,
+	targetID int64,
+	code string,
+	target availabilityWatchExecutionTarget,
+	execution *availabilityWatchExecution,
+) error {
+	if target.State != "ready" || payload.Action == "monitor" {
+		return nil
+	}
+	trackRunID, fetchRunID, err := s.dispatchAvailabilityWatchTarget(ctx, payload, targetID, code, target.AvailableSourceID, target.Epoch)
+	if err != nil {
+		execution.dispatchFailures++
+		execution.result.Failures = append(execution.result.Failures, code+": configured action could not be queued")
+		_, _ = s.db.ExecContext(ctx, `UPDATE availability_watch_target SET state = 'ready', last_error = 'Action failed', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND active = 1`, targetID)
+		return nil
+	}
+	execution.result.Dispatched++
+	_, err = s.db.ExecContext(ctx, `
+		UPDATE availability_watch_target
+		SET state = 'completed', track_run_id = COALESCE(NULLIF(?, 0), track_run_id),
+			fetch_run_id = COALESCE(NULLIF(?, 0), fetch_run_id), last_error = '', updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND active = 1
+	`, trackRunID, fetchRunID, targetID)
+	if err != nil {
+		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch dispatch state could not be saved")
+	}
+	return err
+}
+
+func (s *Server) loadAvailabilityWatchExecutionTarget(ctx context.Context, targetID int64) (availabilityWatchExecutionTarget, error) {
+	var target availabilityWatchExecutionTarget
 	var nullableSourceID sql.NullInt64
-	err = s.db.QueryRowContext(ctx, `
+	err := s.db.QueryRowContext(ctx, `
 		SELECT state, revision, last_status, availability_epoch, available_source_id, active
 		FROM availability_watch_target WHERE id = ? AND watch_id = ?
-	`, targetID, availabilityWatchID).Scan(&state, &revision, &lastStatus, &epoch, &nullableSourceID, &active)
+	`, targetID, availabilityWatchID).Scan(
+		&target.State, &target.Revision, &target.LastStatus, &target.Epoch, &nullableSourceID, &target.Active,
+	)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", 0, "", 0, 0, false, nil
+		return availabilityWatchExecutionTarget{}, nil
+	}
+	if err != nil {
+		return availabilityWatchExecutionTarget{}, err
 	}
 	if nullableSourceID.Valid {
-		sourceID = nullableSourceID.Int64
+		target.AvailableSourceID = nullableSourceID.Int64
 	}
-	return
+	return target, nil
 }
 
 func (s *Server) updateAvailabilityWatchTargetError(ctx context.Context, targetID int64, revision int, message string) error {

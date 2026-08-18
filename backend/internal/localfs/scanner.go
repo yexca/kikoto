@@ -136,132 +136,186 @@ func DiscoverFolders(root string, options Options) ([]WorkFolder, Summary, error
 // candidate ancestors of each path; it never traverses an unaffected work's
 // media tree.
 func DiscoverChangedFolders(root string, options Options, changedPaths []string) ([]WorkFolder, Summary, error) {
-	if options.ScanDepth <= 0 {
-		options.ScanDepth = 3
-	}
-	absRoot, err := filepath.Abs(root)
+	discovery, err := newChangedFolderDiscovery(root, options.ScanDepth)
 	if err != nil {
 		return nil, Summary{}, err
 	}
-
-	candidates := map[string]WorkFolder{}
-	ambiguous := map[string]bool{}
 	scopes := map[string]string{}
-	addCandidate := func(path string) error {
-		depth, rel, err := relativeDepth(absRoot, path)
-		if err != nil {
-			return err
-		}
-		if depth <= 0 || depth > options.ScanDepth {
-			return nil
-		}
-		info, err := os.Lstat(path)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil
-			}
-			return err
-		}
-		if !info.IsDir() {
-			return nil
-		}
-		code, hasMultipleCodes := ExtractWorkCode(filepath.Base(path))
-		if code == "" {
-			return nil
-		}
-		cleanPath := filepath.Clean(path)
-		key := strings.ToLower(cleanPath)
-		candidates[key] = WorkFolder{
-			Code: code, Title: strings.TrimSpace(filepath.Base(path)), AbsPath: cleanPath,
-			RelPath: filepath.ToSlash(rel), Depth: depth,
-		}
-		if hasMultipleCodes {
-			ambiguous[filepath.ToSlash(rel)] = true
-		}
-		return nil
-	}
 
 	for _, changedPath := range changedPaths {
-		rel := filepath.Clean(filepath.FromSlash(strings.TrimSpace(changedPath)))
-		if rel == "." || filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return nil, Summary{}, &fs.PathError{Op: "resolve changed path", Path: changedPath, Err: fs.ErrInvalid}
+		absPath, rel, err := discovery.resolveChangedPath(changedPath)
+		if err != nil {
+			return nil, Summary{}, err
 		}
-		absPath := filepath.Clean(filepath.Join(absRoot, rel))
-		if !isAncestorOrSame(absRoot, absPath) {
-			return nil, Summary{}, &fs.PathError{Op: "resolve changed path", Path: changedPath, Err: fs.ErrInvalid}
+		if err := discovery.addAncestorCandidates(rel); err != nil {
+			return nil, Summary{}, err
 		}
-
-		ancestor := absRoot
-		parts := strings.Split(rel, string(filepath.Separator))
-		for index, part := range parts {
-			if index >= options.ScanDepth {
-				break
-			}
-			ancestor = filepath.Join(ancestor, part)
-			if err := addCandidate(ancestor); err != nil {
-				return nil, Summary{}, err
-			}
+		isDirectory, err := changedPathIsDirectory(absPath)
+		if err != nil {
+			return nil, Summary{}, err
 		}
-
-		info, statErr := os.Lstat(absPath)
-		if statErr == nil && info.IsDir() {
+		if isDirectory {
 			scopes[strings.ToLower(absPath)] = absPath
-		} else if statErr != nil && !os.IsNotExist(statErr) {
-			return nil, Summary{}, statErr
 		}
 	}
 
+	for _, scope := range minimalChangedScopes(scopes) {
+		if err := discovery.walkScope(scope); err != nil {
+			return nil, Summary{}, err
+		}
+	}
+	return discovery.result()
+}
+
+type changedFolderDiscovery struct {
+	absRoot    string
+	scanDepth  int
+	candidates map[string]WorkFolder
+	ambiguous  map[string]bool
+}
+
+func newChangedFolderDiscovery(root string, scanDepth int) (*changedFolderDiscovery, error) {
+	if scanDepth <= 0 {
+		scanDepth = 3
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return nil, err
+	}
+	return &changedFolderDiscovery{
+		absRoot: absRoot, scanDepth: scanDepth,
+		candidates: map[string]WorkFolder{}, ambiguous: map[string]bool{},
+	}, nil
+}
+
+func (discovery *changedFolderDiscovery) resolveChangedPath(changedPath string) (string, string, error) {
+	rel := filepath.Clean(filepath.FromSlash(strings.TrimSpace(changedPath)))
+	if rel == "." || filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", "", invalidChangedPath(changedPath)
+	}
+	absPath := filepath.Clean(filepath.Join(discovery.absRoot, rel))
+	if !isAncestorOrSame(discovery.absRoot, absPath) {
+		return "", "", invalidChangedPath(changedPath)
+	}
+	return absPath, rel, nil
+}
+
+func invalidChangedPath(path string) error {
+	return &fs.PathError{Op: "resolve changed path", Path: path, Err: fs.ErrInvalid}
+}
+
+func (discovery *changedFolderDiscovery) addAncestorCandidates(rel string) error {
+	ancestor := discovery.absRoot
+	parts := strings.Split(rel, string(filepath.Separator))
+	for index, part := range parts {
+		if index >= discovery.scanDepth {
+			break
+		}
+		ancestor = filepath.Join(ancestor, part)
+		if err := discovery.addCandidate(ancestor); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func changedPathIsDirectory(path string) (bool, error) {
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return info.IsDir(), nil
+}
+
+func minimalChangedScopes(scopes map[string]string) []string {
 	scopePaths := make([]string, 0, len(scopes))
 	for _, scope := range scopes {
 		scopePaths = append(scopePaths, scope)
 	}
 	sort.Slice(scopePaths, func(i, j int) bool { return len(scopePaths[i]) < len(scopePaths[j]) })
-	selectedScopes := make([]string, 0, len(scopePaths))
+	selected := make([]string, 0, len(scopePaths))
 	for _, scope := range scopePaths {
 		covered := false
-		for _, selected := range selectedScopes {
-			if isAncestorOrSame(selected, scope) {
+		for _, parent := range selected {
+			if isAncestorOrSame(parent, scope) {
 				covered = true
 				break
 			}
 		}
 		if !covered {
-			selectedScopes = append(selectedScopes, scope)
+			selected = append(selected, scope)
 		}
 	}
+	return selected
+}
 
-	for _, scope := range selectedScopes {
-		if err := filepath.WalkDir(scope, func(path string, entry fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if !entry.IsDir() {
-				return nil
-			}
-			if path != absRoot && isKikotoInternalDirectory(entry.Name()) {
-				return filepath.SkipDir
-			}
-			depth, _, err := relativeDepth(absRoot, path)
-			if err != nil {
-				return err
-			}
-			if depth > options.ScanDepth {
-				return filepath.SkipDir
-			}
-			return addCandidate(path)
-		}); err != nil {
-			return nil, Summary{}, err
+func (discovery *changedFolderDiscovery) walkScope(scope string) error {
+	return filepath.WalkDir(scope, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
-	}
+		if !entry.IsDir() {
+			return nil
+		}
+		if path != discovery.absRoot && isKikotoInternalDirectory(entry.Name()) {
+			return filepath.SkipDir
+		}
+		depth, _, err := relativeDepth(discovery.absRoot, path)
+		if err != nil {
+			return err
+		}
+		if depth > discovery.scanDepth {
+			return filepath.SkipDir
+		}
+		return discovery.addCandidate(path)
+	})
+}
 
-	candidateList := make([]WorkFolder, 0, len(candidates))
-	for _, candidate := range candidates {
+func (discovery *changedFolderDiscovery) addCandidate(path string) error {
+	depth, rel, err := relativeDepth(discovery.absRoot, path)
+	if err != nil {
+		return err
+	}
+	if depth <= 0 || depth > discovery.scanDepth {
+		return nil
+	}
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return nil
+	}
+	code, hasMultipleCodes := ExtractWorkCode(filepath.Base(path))
+	if code == "" {
+		return nil
+	}
+	cleanPath := filepath.Clean(path)
+	discovery.candidates[strings.ToLower(cleanPath)] = WorkFolder{
+		Code: code, Title: strings.TrimSpace(filepath.Base(path)), AbsPath: cleanPath,
+		RelPath: filepath.ToSlash(rel), Depth: depth,
+	}
+	if hasMultipleCodes {
+		discovery.ambiguous[filepath.ToSlash(rel)] = true
+	}
+	return nil
+}
+
+func (discovery *changedFolderDiscovery) result() ([]WorkFolder, Summary, error) {
+	candidateList := make([]WorkFolder, 0, len(discovery.candidates))
+	for _, candidate := range discovery.candidates {
 		candidateList = append(candidateList, candidate)
 	}
 	workFolders := chooseDeepest(candidateList)
 	sort.Slice(workFolders, func(i, j int) bool { return workFolders[i].RelPath < workFolders[j].RelPath })
-	ambiguousFolders := make([]string, 0, len(ambiguous))
-	for rel := range ambiguous {
+	ambiguousFolders := make([]string, 0, len(discovery.ambiguous))
+	for rel := range discovery.ambiguous {
 		ambiguousFolders = append(ambiguousFolders, rel)
 	}
 	sort.Strings(ambiguousFolders)

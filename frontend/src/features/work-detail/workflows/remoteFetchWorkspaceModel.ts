@@ -32,6 +32,66 @@ export type RemoteFetchDraft = {
   requestId: string;
 };
 
+export type RemoteFetchExtensionSelection = {
+  count: number;
+  checked: boolean;
+  indeterminate: boolean;
+};
+
+export type RemoteFetchPublishState = {
+  readOnly: boolean;
+  disabled: boolean;
+  refreshScheduled: boolean;
+  previewNeedsRefresh: boolean;
+  hasConflict: boolean;
+  selectedEditionCode: string;
+  selectedRemoteCount: number;
+  selectedLocalCount: number;
+};
+
+export function remoteFetchExtensionSelection(
+  paths: string[],
+  selectedPaths: ReadonlySet<string>,
+  extension: string,
+): RemoteFetchExtensionSelection {
+  const suffix = `.${extension.toLowerCase()}`;
+  const matching = paths.filter((path) => path.toLowerCase().endsWith(suffix));
+  const selected = matching.filter((path) => selectedPaths.has(path)).length;
+  return {
+    count: matching.length,
+    checked: matching.length > 0 && selected === matching.length,
+    indeterminate: selected > 0 && selected < matching.length,
+  };
+}
+
+export function setRemoteFetchExtensionIncluded(
+  paths: string[],
+  selectedPaths: ReadonlySet<string>,
+  extension: string,
+  included: boolean,
+) {
+  const suffix = `.${extension.toLowerCase()}`;
+  const next = new Set(selectedPaths);
+  for (const path of paths) {
+    if (!path.toLowerCase().endsWith(suffix)) continue;
+    if (included) next.add(path);
+    else next.delete(path);
+  }
+  return next;
+}
+
+export function canPublishRemoteFetchSelection(state: RemoteFetchPublishState) {
+  return (
+    !state.readOnly &&
+    !state.disabled &&
+    !state.refreshScheduled &&
+    !state.previewNeedsRefresh &&
+    !state.hasConflict &&
+    state.selectedEditionCode.trim() !== "" &&
+    state.selectedRemoteCount + state.selectedLocalCount > 0
+  );
+}
+
 export function createRemoteFetchRequestId(randomUUID?: () => string) {
   const uuid =
     randomUUID ??

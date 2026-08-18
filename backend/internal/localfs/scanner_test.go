@@ -180,6 +180,27 @@ func TestDiscoverChangedFoldersDoesNotTreatDirectorySymlinkAsWorkRoot(t *testing
 	}
 }
 
+func TestDiscoverChangedFoldersRejectsPathsOutsideTheLibraryRoot(t *testing.T) {
+	root := t.TempDir()
+	tests := []struct {
+		name string
+		path string
+	}{
+		{name: "empty", path: ""},
+		{name: "current directory", path: "."},
+		{name: "parent", path: ".."},
+		{name: "parent traversal", path: filepath.Join("..", "outside")},
+		{name: "absolute", path: filepath.Join(root, "RJ00000000")},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, _, err := DiscoverChangedFolders(root, Options{ScanDepth: 2}, []string{test.path}); err == nil {
+				t.Fatalf("DiscoverChangedFolders(%q) succeeded", test.path)
+			}
+		})
+	}
+}
+
 func writeFile(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

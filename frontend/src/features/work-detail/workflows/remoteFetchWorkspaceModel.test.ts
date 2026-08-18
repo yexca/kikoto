@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import type { RemoteWorkDetail, RemoteWorkSavePlan } from "@/lib/api";
 import {
+  canPublishRemoteFetchSelection,
   createDemoRemoteFetchPlan,
   createRemoteFetchDraft,
   createRemoteFetchRequestId,
+  remoteFetchExtensionSelection,
   selectRemoteFetchEdition,
+  setRemoteFetchExtensionIncluded,
 } from "./remoteFetchWorkspaceModel";
 
 describe("remote fetch workspace model", () => {
@@ -118,7 +121,60 @@ describe("remote fetch workspace model", () => {
     });
     expect(preview.preparation.warnings[0]).toContain("preview-only");
   });
+
+  it("reports complete and partial extension selections", () => {
+    const paths = ["Disc/01.MP3", "Disc/02.mp3", "Disc/cover.jpg"];
+
+    expect(remoteFetchExtensionSelection(paths, new Set(["Disc/01.MP3"]), "mp3")).toEqual({
+      count: 2,
+      checked: false,
+      indeterminate: true,
+    });
+    expect(remoteFetchExtensionSelection(paths, new Set(["Disc/01.MP3", "Disc/02.mp3"]), "MP3")).toEqual({
+      count: 2,
+      checked: true,
+      indeterminate: false,
+    });
+  });
+
+  it("changes one extension without discarding other selected files", () => {
+    const paths = ["Disc/01.mp3", "Disc/02.flac", "Disc/cover.jpg"];
+    const selected = new Set(["Disc/cover.jpg"]);
+
+    const included = setRemoteFetchExtensionIncluded(paths, selected, "mp3", true);
+    expect(Array.from(included).sort()).toEqual(["Disc/01.mp3", "Disc/cover.jpg"]);
+
+    const excluded = setRemoteFetchExtensionIncluded(paths, included, "mp3", false);
+    expect(Array.from(excluded)).toEqual(["Disc/cover.jpg"]);
+  });
+
+  it.each([
+    ["read-only", { readOnly: true }],
+    ["busy", { disabled: true }],
+    ["scheduled refresh", { refreshScheduled: true }],
+    ["stale preview", { previewNeedsRefresh: true }],
+    ["conflict", { hasConflict: true }],
+    ["missing edition", { selectedEditionCode: "" }],
+    ["empty selection", { selectedRemoteCount: 0, selectedLocalCount: 0 }],
+  ])("blocks publishing for %s state", (_name, override) => {
+    expect(canPublishRemoteFetchSelection({ ...publishableSelection, ...override })).toBe(false);
+  });
+
+  it("allows a reviewed selection to publish", () => {
+    expect(canPublishRemoteFetchSelection(publishableSelection)).toBe(true);
+  });
 });
+
+const publishableSelection = {
+  readOnly: false,
+  disabled: false,
+  refreshScheduled: false,
+  previewNeedsRefresh: false,
+  hasConflict: false,
+  selectedEditionCode: "RJ00000000",
+  selectedRemoteCount: 1,
+  selectedLocalCount: 0,
+};
 
 function detail(remoteCode: string): RemoteWorkDetail {
   return {
