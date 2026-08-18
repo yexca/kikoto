@@ -261,6 +261,21 @@ type RemoteWorkPreview = WorkPreview &
     remoteId?: string;
   };
 
+const emptyRemoteWorkPreview: RemoteWorkPreview = {
+  primaryCode: "",
+  remoteCode: "",
+  title: "",
+  coverUrl: "",
+  circle: "",
+  circleExternalId: "",
+  rating: null,
+  sales: null,
+  releaseDate: "",
+  tags: [],
+  voiceActors: [],
+  ageRating: "",
+};
+
 type ActiveSourceInfoModel = {
   label: string;
   kind: SourceTabInfo["kind"];
@@ -3280,6 +3295,516 @@ function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (stat
   );
 }
 
+type RemoteOnlyDetailActionsProps = {
+  detail: RemoteWorkDetail | null;
+  source: LibrarySource;
+  busy: boolean;
+  primaryRemoteSelected: boolean;
+  availabilityLoading: boolean;
+  hasTrackedSource: boolean;
+  materializedWorkID: number | null;
+  onEnsureListWork: () => Promise<number | null>;
+  onListSaved: () => Promise<void>;
+  onMark: (status: ListeningStatus) => void;
+  onTrack: () => void;
+  onUntrack: () => void;
+  onFetch: () => void;
+};
+
+function RemoteOnlyDetailActions({
+  detail,
+  source,
+  busy,
+  primaryRemoteSelected,
+  availabilityLoading,
+  hasTrackedSource,
+  materializedWorkID,
+  onEnsureListWork,
+  onListSaved,
+  onMark,
+  onTrack,
+  onUntrack,
+  onFetch,
+}: RemoteOnlyDetailActionsProps) {
+  const identityActions = detail ? (
+    <WorkIdentityActionBar
+      busy={busy}
+      listeningStatus="none"
+      favorite={false}
+      listWorkId={detail.workId}
+      onEnsureListWork={onEnsureListWork}
+      onListSaved={onListSaved}
+      onMark={onMark}
+    />
+  ) : (
+    <DetailSkeletonActions />
+  );
+  const mediaActions =
+    detail && primaryRemoteSelected ? (
+      <MediaContextActionBar
+        busy={busy}
+        mode="remote_source"
+        contextKey={`${remoteSourceTabKey(source.id)}:${hasTrackedSource ? "tracked" : "available"}`}
+        onTrack={onTrack}
+        trackDisabled={availabilityLoading || hasTrackedSource}
+        trackDisabledReason={availabilityLoading ? "Loading tracking state" : "Already tracked"}
+        onUntrack={hasTrackedSource && materializedWorkID ? onUntrack : undefined}
+        onFetch={onFetch}
+        remoteSourceWorkUrl={safeExternalHTTPURL(detail.publicWorkUrl)}
+        remoteSourceName={detail.sourceName}
+        sourceLabel={detail.sourceName}
+        sourceStatus="Available"
+      />
+    ) : undefined;
+  return (
+    <>
+      {identityActions}
+      {mediaActions}
+    </>
+  );
+}
+
+type RemoteOnlyDirectoryPanelProps = {
+  detail: RemoteWorkDetail | null;
+  displaySourceName: string;
+  displayRemoteCode: string;
+  tabs: SourceTabInfo[];
+  activeKey: string;
+  activeTab: SourceTabInfo | null;
+  activeTrackedPresence: SourcePresenceItem | null;
+  activeTrackedForked: boolean;
+  activeRemoteAvailability: RemoteSourceAvailability | null;
+  primaryRemoteSelected: boolean;
+  message: string;
+  treeError: string;
+  isDetailLoading: boolean;
+  treeLoading: boolean;
+  directoryMode: DirectoryMode;
+  root: TreeNode;
+  directoryStats: TreeStats;
+  directoryRoutingRules: DirectoryRoutingRule[];
+  currentLocationId: number | null;
+  currentPlaybackKey: string | null;
+  remoteAvailability: RemoteSourceAvailability[];
+  hasMaterializedWork: boolean;
+  selectionModal: ReactNode;
+  onActiveKeyChange: (key: string) => void;
+  onDirectoryModeChange: (mode: DirectoryMode) => void;
+  onRetry: () => void;
+  onSelectRemote: (remote: RemoteSourceAvailability) => void;
+  onPlayRemote: (tracks: TreeTrack[], locationId: number) => void;
+  onPlayMaterialized: (tracks: TreeTrack[], locationId: number) => void;
+  onQueueRemote: (track: TreeTrack, next: boolean) => void;
+  onQueueMaterialized: (track: TreeTrack, next: boolean) => void;
+  onPreview: (preview: FilePreviewState) => void;
+};
+
+function remoteOnlyDirectoryDescription(props: RemoteOnlyDirectoryPanelProps) {
+  if (props.primaryRemoteSelected) {
+    return primaryRemoteOnlyDirectoryDescription(props);
+  }
+  return alternateRemoteOnlyDirectoryDescription(props);
+}
+
+function primaryRemoteOnlyDirectoryDescription(props: RemoteOnlyDirectoryPanelProps) {
+  if (props.detail && !props.message && !props.treeError) {
+    return `Previewing remote files from ${props.detail.sourceName}; temporary playback does not save progress.`;
+  }
+  return props.message || props.treeError || `Loading remote files from ${props.displaySourceName}...`;
+}
+
+function alternateRemoteOnlyDirectoryDescription(props: RemoteOnlyDirectoryPanelProps) {
+  if (props.activeTab?.kind === "tracked" && props.activeTrackedForked) {
+    const sourceName =
+      props.activeTrackedPresence?.fileSourceName ||
+      props.activeTrackedPresence?.fileSourceCode ||
+      "the selected source";
+    return `Browsing the tracked directory forked from ${sourceName}.`;
+  }
+  if (props.activeTab?.kind === "local" && props.activeTab.status === "available") {
+    return "Browsing local files.";
+  }
+  return (
+    props.activeRemoteAvailability?.summary.error ||
+    `${props.activeTab?.label ?? "Source"} is not selected for this preview.`
+  );
+}
+
+function remoteOnlyPrimaryDirectoryEmptyState(props: RemoteOnlyDirectoryPanelProps) {
+  const error = props.message || props.treeError;
+  if (error) {
+    return <DirectoryLoadErrorPanel message={error} onRetry={props.onRetry} />;
+  }
+  if (props.isDetailLoading || props.treeLoading) {
+    return <DirectorySkeleton />;
+  }
+  return null;
+}
+
+function remoteOnlyDirectoryEmptyState(props: RemoteOnlyDirectoryPanelProps) {
+  if (props.primaryRemoteSelected) {
+    return remoteOnlyPrimaryDirectoryEmptyState(props);
+  }
+  if (props.activeTab?.kind === "local" && props.activeTab.status !== "available") {
+    return (
+      <LocalSourceStatePanel
+        status={props.activeTab.status}
+        remoteSources={props.remoteAvailability}
+        onSelectRemote={props.onSelectRemote}
+      />
+    );
+  }
+  if (props.activeTab?.kind === "tracked" && !props.activeTrackedForked) {
+    return <TrackedUnforkedPanel presence={props.activeTrackedPresence} remoteSources={props.remoteAvailability} />;
+  }
+  if (props.activeRemoteAvailability) {
+    return <RemoteSourceStatePanel remote={props.activeRemoteAvailability} />;
+  }
+  return null;
+}
+
+function remoteOnlyDirectoryPlayback(props: RemoteOnlyDirectoryPanelProps) {
+  if (props.primaryRemoteSelected) {
+    return {
+      onPlayFolder: props.onPlayRemote,
+      onPlayNext: (track: TreeTrack) => props.onQueueRemote(track, true),
+      onAppendQueue: (track: TreeTrack) => props.onQueueRemote(track, false),
+    };
+  }
+  if (props.hasMaterializedWork) {
+    return {
+      onPlayFolder: props.onPlayMaterialized,
+      onPlayNext: (track: TreeTrack) => props.onQueueMaterialized(track, true),
+      onAppendQueue: (track: TreeTrack) => props.onQueueMaterialized(track, false),
+    };
+  }
+  return {};
+}
+
+function RemoteOnlyDirectoryPanel(props: RemoteOnlyDirectoryPanelProps) {
+  const error = props.message || props.treeError;
+  const loading = remoteOnlyDirectoryLoading(props);
+  const playback = remoteOnlyDirectoryPlayback(props);
+  const emptyState = remoteOnlyDirectoryEmptyState(props);
+  return (
+    <SourceDirectoryPanel
+      title="Directory"
+      description={remoteOnlyDirectoryDescription(props)}
+      statsLabel={formatTreeStats(props.directoryStats)}
+      tabs={props.tabs}
+      activeKey={props.activeKey}
+      onActiveKeyChange={props.onActiveKeyChange}
+      directoryMode={props.directoryMode}
+      onDirectoryModeChange={props.onDirectoryModeChange}
+      root={props.root}
+      directoryRoutingRules={props.directoryRoutingRules}
+      currentLocationId={props.currentLocationId}
+      currentPlaybackKey={props.currentPlaybackKey}
+      emptyLabel={props.primaryRemoteSelected ? "No remote files detected." : "This source has no preview loaded."}
+      toolbar={error ? <DirectoryMessage message={error} /> : undefined}
+      emptyState={emptyState}
+      loadingMessage={loading ? `Loading ${props.displayRemoteCode}...` : undefined}
+      selectionModal={props.selectionModal}
+      onPreview={props.onPreview}
+      {...playback}
+    />
+  );
+}
+
+type RemoteOnlyDirectoryLoadingState = Pick<
+  RemoteOnlyDirectoryPanelProps,
+  "primaryRemoteSelected" | "message" | "treeError" | "isDetailLoading" | "treeLoading"
+>;
+
+function remoteOnlyDirectoryLoading(props: RemoteOnlyDirectoryLoadingState) {
+  return (
+    props.primaryRemoteSelected && !props.message && !props.treeError && (props.isDetailLoading || props.treeLoading)
+  );
+}
+
+function remoteOnlySourceInfo(
+  displaySourceName: string,
+  tabs: SourceTabInfo[],
+  activeKey: string,
+  stats: TreeStats,
+  primaryRemoteSelected: boolean,
+  message: string,
+  treeError: string,
+  isDetailLoading: boolean,
+  treeLoading: boolean,
+  detail: RemoteWorkDetail | null,
+): ActiveSourceInfoModel {
+  const activeTab = tabs.find((tab) => tab.key === activeKey);
+  const activeSource = activeTab
+    ? { kind: activeTab.kind, status: activeTab.status, statusLabel: activeTab.statusLabel }
+    : { kind: "remote" as const, status: "degraded" as const, statusLabel: "Loading source" };
+  return {
+    label: displaySourceName,
+    ...activeSource,
+    stats,
+    loading: remoteOnlyDirectoryLoading({
+      primaryRemoteSelected,
+      message,
+      treeError,
+      isDetailLoading,
+      treeLoading,
+    }),
+    metadataDurationSeconds: detail ? detail.durationSeconds : null,
+  };
+}
+
+function remoteOnlyTranslations(editions: RemoteWorkDetail["languageEditions"]): WorkDetail["translations"] {
+  return editions.map((edition) => ({
+    workId: null,
+    primaryCode: edition.remoteCode,
+    title: edition.label,
+    metadataLanguage: edition.language,
+    editionLabel: edition.label,
+    origin: edition.origin,
+    official: !edition.origin,
+    translationKind: edition.origin ? "origin" : "official",
+    current: edition.current,
+    hasMedia: true,
+    mediaState: "indexed_available",
+  }));
+}
+
+type RemoteOnlyPresentationIdentity = {
+  coverUrl: string;
+  title: string;
+  circle: string;
+  circleExternalId: string;
+  rating: number | null;
+  ratingCount: number | null;
+  sales: number | null;
+  releaseDate: string;
+  ageRating: string;
+  voiceActors: string[];
+  tags: string[];
+};
+
+function remoteOnlyPreviewIdentity(preview: RemoteWorkPreview | null, code: string): RemoteOnlyPresentationIdentity {
+  const fallback = preview ?? emptyRemoteWorkPreview;
+  return {
+    coverUrl: fallback.coverUrl,
+    title: preview ? fallback.title : code,
+    circle: fallback.circle,
+    circleExternalId: fallback.circleExternalId,
+    rating: fallback.rating,
+    ratingCount: null,
+    sales: fallback.sales,
+    releaseDate: fallback.releaseDate || "Unknown",
+    ageRating: fallback.ageRating,
+    voiceActors: fallback.voiceActors,
+    tags: fallback.tags,
+  };
+}
+
+function remoteOnlyPresentationIdentity(
+  remoteIdentity: RemoteWorkDetail | null,
+  preview: RemoteWorkPreview | null,
+  code: string,
+): RemoteOnlyPresentationIdentity {
+  const fallback = remoteOnlyPreviewIdentity(preview, code);
+  if (!remoteIdentity) return fallback;
+  return {
+    coverUrl: remoteIdentity.coverUrl,
+    title: remoteIdentity.title,
+    circle: remoteIdentity.circle,
+    circleExternalId: remoteIdentity.circleRef?.externalId ?? fallback.circleExternalId,
+    rating: remoteIdentity.rating ?? fallback.rating,
+    ratingCount: remoteIdentity.ratingCount ?? null,
+    sales: remoteIdentity.sales ?? fallback.sales,
+    releaseDate: remoteIdentity.releaseDate || fallback.releaseDate,
+    ageRating: remoteIdentity.ageRating,
+    voiceActors: remoteIdentity.voiceActors,
+    tags: remoteIdentity.tags,
+  };
+}
+
+function remoteOnlyPresentationMetadata(
+  remoteIdentity: RemoteWorkDetail | null,
+  activeMetadataVariant: ReturnType<typeof resolveMetadataVariant>,
+  identity: RemoteOnlyPresentationIdentity,
+) {
+  const editions = remoteIdentity ? remoteIdentity.languageEditions : [];
+  const origin = editions.find((edition) => edition.origin);
+  const current = editions.find((edition) => edition.current);
+  return {
+    title: activeMetadataVariant ? activeMetadataVariant.title : identity.title,
+    tags: activeMetadataVariant ? activeMetadataVariant.tags : identity.tags,
+    baseCode: origin ? origin.remoteCode : "",
+    language: activeMetadataVariant ? activeMetadataVariant.language : current ? current.language : "",
+    presentation: remoteIdentity ? remoteIdentity.metadataPresentation : undefined,
+    activeVariantKey: activeMetadataVariant ? activeMetadataVariant.key : "",
+    translations: remoteOnlyTranslations(editions),
+  };
+}
+
+function remoteOnlyPresentationCode(
+  displayPrimaryCode: string,
+  remoteIdentity: RemoteWorkDetail | null,
+  preview: RemoteWorkPreview | null,
+  code: string,
+) {
+  const fallback = preview ?? emptyRemoteWorkPreview;
+  return displayPrimaryCode || remoteIdentity?.remoteId || fallback.remoteId || code;
+}
+
+function remoteOnlyWorkDetailPresentation({
+  remoteIdentity,
+  detail,
+  preview,
+  code,
+  displayPrimaryCode,
+  displayRemoteCode,
+  activeMetadataVariant,
+  sourceInfo,
+  loading,
+  onMetadataVariantSelect,
+  onVersionSelect,
+}: {
+  remoteIdentity: RemoteWorkDetail | null;
+  detail: RemoteWorkDetail | null;
+  preview: RemoteWorkPreview | null;
+  code: string;
+  displayPrimaryCode: string;
+  displayRemoteCode: string;
+  activeMetadataVariant: ReturnType<typeof resolveMetadataVariant>;
+  sourceInfo: ActiveSourceInfoModel;
+  loading: boolean;
+  onMetadataVariantSelect: (key: string) => void;
+  onVersionSelect: (code: string) => void;
+}): UnifiedWorkDetailPresentation {
+  const identity = remoteOnlyPresentationIdentity(remoteIdentity, preview, code);
+  const metadata = remoteOnlyPresentationMetadata(remoteIdentity, activeMetadataVariant, identity);
+  const presentationCode = remoteOnlyPresentationCode(displayPrimaryCode, remoteIdentity, preview, code);
+  return {
+    coverUrl: identity.coverUrl,
+    fallbackCode: presentationCode,
+    code: presentationCode,
+    dlsiteUrl: detail ? dlsiteWorkURL(detail.primaryCode) : "",
+    title: metadata.title,
+    circle: identity.circle,
+    circleExternalId: identity.circleExternalId,
+    series: "",
+    seriesTitleId: "",
+    seriesCircleExternalId: "",
+    ratingLabel: "Rating",
+    rating: identity.rating,
+    ratingCount: identity.ratingCount,
+    sales: identity.sales,
+    baseCode: metadata.baseCode,
+    metadataLanguage: metadata.language,
+    metadataPresentation: metadata.presentation,
+    activeMetadataVariantKey: metadata.activeVariantKey,
+    onMetadataVariantSelect,
+    translations: metadata.translations,
+    activeVersionCode: displayRemoteCode,
+    onVersionSelect: (translation) => onVersionSelect(translation.primaryCode),
+    remoteVersions: true,
+    dlsiteFetchedAt: "",
+    releaseDate: identity.releaseDate,
+    ageRating: identity.ageRating,
+    sourceInfo,
+    voiceActors: identity.voiceActors,
+    voiceCredits: [],
+    tags: metadata.tags,
+    loading,
+  };
+}
+
+function remoteOnlyDisplayState(
+  identityDetail: RemoteWorkDetail | null,
+  detail: RemoteWorkDetail | null,
+  preview: RemoteWorkPreview | null,
+  source: LibrarySource,
+  code: string,
+  selectedMetadataVariantKey: string,
+) {
+  const remoteIdentity = identityDetail ?? detail;
+  return {
+    remoteIdentity,
+    activeMetadataVariant: resolveMetadataVariant(remoteIdentity?.metadataPresentation, selectedMetadataVariantKey),
+    displaySourceName: remoteIdentity?.sourceName ?? source.displayName,
+    displayPrimaryCode: remoteIdentity?.primaryCode || preview?.primaryCode || code,
+    displayRemoteCode: detail ? remoteDetailActionCode(detail) : preview?.remoteCode || preview?.primaryCode || code,
+  };
+}
+
+function remoteOnlyActiveSourceState(
+  sourceID: number,
+  activeKey: string,
+  tabs: SourceTabInfo[],
+  availability: RemoteSourceAvailability[],
+) {
+  const primaryRemoteSelected = activeKey === remoteSourceTabKey(sourceID);
+  const activeTab = tabs.find((tab) => tab.key === activeKey) ?? null;
+  const activeTrackedPresence = activeTab?.kind === "tracked" ? (activeTab.presence ?? null) : null;
+  return {
+    primaryRemoteSelected,
+    activeTab,
+    activeTrackedPresence,
+    activeTrackedForked: Boolean(activeTrackedPresence && activeTab?.status === "available"),
+    activeRemoteAvailability: availability.find((item) => remoteSourceTabKey(item.source.id) === activeKey) ?? null,
+    primaryRemoteAvailability: availability.find((item) => item.source.id === sourceID) ?? null,
+  };
+}
+
+function remoteOnlyMaterializedState({
+  trackedWork,
+  sourceID,
+  displayRemoteCode,
+  primaryRemoteAvailability,
+  detail,
+  primaryRemoteSelected,
+  remoteTree,
+  materializedTree,
+  remoteStats,
+}: {
+  trackedWork: WorkDetail | null;
+  sourceID: number;
+  displayRemoteCode: string;
+  primaryRemoteAvailability: RemoteSourceAvailability | null;
+  detail: RemoteWorkDetail | null;
+  primaryRemoteSelected: boolean;
+  remoteTree: TreeNode;
+  materializedTree: TreeNode;
+  remoteStats: TreeStats;
+}) {
+  const trackedSourcePresence = trackedPresenceForRemoteSource(trackedWork, sourceID, displayRemoteCode);
+  const visibleTree = primaryRemoteSelected ? remoteTree : materializedTree;
+  return {
+    hasTrackedSource: Boolean(trackedSourcePresence || primaryRemoteAvailability?.summary.hasTracked),
+    materializedWorkID: trackedWork?.id ?? primaryRemoteAvailability?.summary.workId ?? detail?.workId ?? null,
+    visibleTree,
+    visibleDirectoryStats: primaryRemoteSelected ? remoteStats : treeStats(visibleTree),
+  };
+}
+
+function RemoteOnlyDetailOverlays({
+  manageOpen,
+  tree,
+  filePreview,
+  onManageClose,
+  onPreviewClose,
+}: {
+  manageOpen: boolean;
+  tree: TreeNode;
+  filePreview: FilePreviewState | null;
+  onManageClose: () => void;
+  onPreviewClose: () => void;
+}) {
+  return (
+    <>
+      {manageOpen && (
+        <DirectoryManagerModal root={tree} emptyLabel="No remote files detected." onClose={onManageClose} />
+      )}
+      {filePreview && <FilePreviewModal preview={filePreview} onClose={onPreviewClose} />}
+    </>
+  );
+}
+
 function RemoteOnlyWorkDetailController({
   source,
   sources,
@@ -3340,16 +3865,8 @@ function RemoteOnlyWorkDetailController({
   const isCompactDetailLayout = useCompactDetailLayout();
   const [directoryRoutingRules, setDirectoryRoutingRules] =
     useState<DirectoryRoutingRule[]>(defaultDirectoryRoutingRules);
-  const remoteIdentity = identityDetail ?? detail;
-  const activeMetadataVariant = resolveMetadataVariant(
-    remoteIdentity?.metadataPresentation,
-    selectedMetadataVariantKey,
-  );
-  const displaySourceName = remoteIdentity?.sourceName ?? source.displayName;
-  const displayPrimaryCode = remoteIdentity?.primaryCode || preview?.primaryCode || code;
-  const displayRemoteCode = detail
-    ? remoteDetailActionCode(detail)
-    : preview?.remoteCode || preview?.primaryCode || code;
+  const { remoteIdentity, activeMetadataVariant, displaySourceName, displayPrimaryCode, displayRemoteCode } =
+    remoteOnlyDisplayState(identityDetail, detail, preview, source, code, selectedMetadataVariantKey);
   const isDetailLoading = !detail;
   const tree = useMemo(
     () =>
@@ -3391,17 +3908,14 @@ function RemoteOnlyWorkDetailController({
     [detail, message, remoteAvailability, source.id, trackedWork, treeError, treeLoading],
   );
   const player = useLibraryPlayer();
-  const primaryRemoteTabKey = remoteSourceTabKey(source.id);
-  const primaryRemoteSelected = activeRemoteTab === primaryRemoteTabKey;
-  const activeRemoteTabInfo = remoteTabs.find((tab) => tab.key === activeRemoteTab) ?? null;
-  const activeTrackedPresence = activeRemoteTabInfo?.kind === "tracked" ? (activeRemoteTabInfo.presence ?? null) : null;
-  const activeTrackedForked = Boolean(activeTrackedPresence && activeRemoteTabInfo?.status === "available");
-  const activeRemoteAvailability =
-    remoteAvailability.find((item) => remoteSourceTabKey(item.source.id) === activeRemoteTab) ?? null;
-  const primaryRemoteAvailability = remoteAvailability.find((item) => item.source.id === source.id) ?? null;
-  const trackedSourcePresence = trackedPresenceForRemoteSource(trackedWork, source.id, displayRemoteCode);
-  const hasTrackedSource = Boolean(trackedSourcePresence || primaryRemoteAvailability?.summary.hasTracked);
-  const materializedWorkID = trackedWork?.id ?? primaryRemoteAvailability?.summary.workId ?? detail?.workId ?? null;
+  const {
+    primaryRemoteSelected,
+    activeTab: activeRemoteTabInfo,
+    activeTrackedPresence,
+    activeTrackedForked,
+    activeRemoteAvailability,
+    primaryRemoteAvailability,
+  } = remoteOnlyActiveSourceState(source.id, activeRemoteTab, remoteTabs, remoteAvailability);
   const materializedTree = useMemo(() => {
     if (!trackedWork) return emptyTree();
     if (activeRemoteTabInfo?.kind === "tracked" && activeTrackedForked) {
@@ -3416,8 +3930,17 @@ function RemoteOnlyWorkDetailController({
     }
     return emptyTree();
   }, [activeRemoteTabInfo, activeTrackedForked, activeTrackedPresence?.fileSourceId, trackedWork]);
-  const visibleTree = primaryRemoteSelected ? tree : materializedTree;
-  const visibleDirectoryStats = primaryRemoteSelected ? directoryStats : treeStats(visibleTree);
+  const { hasTrackedSource, materializedWorkID, visibleTree, visibleDirectoryStats } = remoteOnlyMaterializedState({
+    trackedWork,
+    sourceID: source.id,
+    displayRemoteCode,
+    primaryRemoteAvailability,
+    detail,
+    primaryRemoteSelected,
+    remoteTree: tree,
+    materializedTree,
+    remoteStats: directoryStats,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -3738,174 +4261,84 @@ function RemoteOnlyWorkDetailController({
     );
   }
 
-  const identityActions = detail ? (
-    <WorkIdentityActionBar
-      busy={isFetching || fetchWorkspace.isBusy}
-      listeningStatus="none"
-      favorite={false}
-      listWorkId={detail.workId}
-      onEnsureListWork={() => syncForUserState("detail_list_remote")}
-      onListSaved={async () => {
-        await onWorksChanged();
-      }}
-      onMark={(status) => void updateRemoteMark(status)}
-    />
-  ) : (
-    <DetailSkeletonActions />
+  const sourceInfo = remoteOnlySourceInfo(
+    displaySourceName,
+    remoteTabs,
+    activeRemoteTab,
+    visibleDirectoryStats,
+    primaryRemoteSelected,
+    message,
+    treeError,
+    isDetailLoading,
+    treeLoading,
+    detail,
   );
-  const sourceInfo: ActiveSourceInfoModel = {
-    label: displaySourceName,
-    kind: remoteTabs.find((tab) => tab.key === activeRemoteTab)?.kind ?? "remote",
-    status: remoteTabs.find((tab) => tab.key === activeRemoteTab)?.status ?? "degraded",
-    statusLabel: remoteTabs.find((tab) => tab.key === activeRemoteTab)?.statusLabel ?? "Loading source",
-    stats: visibleDirectoryStats,
-    loading: primaryRemoteSelected && !message && !treeError && (isDetailLoading || treeLoading),
-    metadataDurationSeconds: detail?.durationSeconds ?? null,
-  };
-  const mediaActions =
-    detail && primaryRemoteSelected ? (
-      <MediaContextActionBar
-        busy={isFetching || fetchWorkspace.isBusy}
-        mode="remote_source"
-        contextKey={`${remoteSourceTabKey(source.id)}:${hasTrackedSource ? "tracked" : "available"}`}
-        onTrack={() => void fetchWork("manual_track")}
-        trackDisabled={availabilityLoading || hasTrackedSource}
-        trackDisabledReason={availabilityLoading ? "Loading tracking state" : "Already tracked"}
-        onUntrack={hasTrackedSource && materializedWorkID ? () => void untrackRemoteSource() : undefined}
-        onFetch={() => void openSaveWorkspace()}
-        remoteSourceWorkUrl={safeExternalHTTPURL(detail.publicWorkUrl)}
-        remoteSourceName={detail.sourceName}
-        sourceLabel={detail.sourceName}
-        sourceStatus="Available"
-      />
-    ) : undefined;
   const heroActions = (
-    <>
-      {identityActions}
-      {mediaActions}
-    </>
+    <RemoteOnlyDetailActions
+      detail={detail}
+      source={source}
+      busy={isFetching || fetchWorkspace.isBusy}
+      primaryRemoteSelected={primaryRemoteSelected}
+      availabilityLoading={availabilityLoading}
+      hasTrackedSource={hasTrackedSource}
+      materializedWorkID={materializedWorkID}
+      onEnsureListWork={() => syncForUserState("detail_list_remote")}
+      onListSaved={onWorksChanged}
+      onMark={(status) => void updateRemoteMark(status)}
+      onTrack={() => void fetchWork("manual_track")}
+      onUntrack={() => void untrackRemoteSource()}
+      onFetch={openSaveWorkspace}
+    />
   );
   const directoryPanel = (
-    <SourceDirectoryPanel
-      title="Directory"
-      description={
-        !primaryRemoteSelected
-          ? activeRemoteTabInfo?.kind === "tracked" && activeTrackedForked
-            ? `Browsing the tracked directory forked from ${activeTrackedPresence?.fileSourceName || activeTrackedPresence?.fileSourceCode || "the selected source"}.`
-            : activeRemoteTabInfo?.kind === "local" && activeRemoteTabInfo.status === "available"
-              ? "Browsing local files."
-              : activeRemoteAvailability?.summary.error ||
-                `${activeRemoteTabInfo?.label ?? "Source"} is not selected for this preview.`
-          : detail && !message && !treeError
-            ? `Previewing remote files from ${detail.sourceName}; temporary playback does not save progress.`
-            : message || treeError || `Loading remote files from ${displaySourceName}...`
-      }
-      statsLabel={formatTreeStats(visibleDirectoryStats)}
+    <RemoteOnlyDirectoryPanel
+      detail={detail}
+      displaySourceName={displaySourceName}
+      displayRemoteCode={displayRemoteCode}
       tabs={remoteTabs}
       activeKey={activeRemoteTab}
-      onActiveKeyChange={setActiveRemoteTab}
+      activeTab={activeRemoteTabInfo}
+      activeTrackedPresence={activeTrackedPresence}
+      activeTrackedForked={activeTrackedForked}
+      activeRemoteAvailability={activeRemoteAvailability}
+      primaryRemoteSelected={primaryRemoteSelected}
+      message={message}
+      treeError={treeError}
+      isDetailLoading={isDetailLoading}
+      treeLoading={treeLoading}
       directoryMode={directoryMode}
-      onDirectoryModeChange={setDirectoryMode}
       root={visibleTree}
+      directoryStats={visibleDirectoryStats}
       directoryRoutingRules={directoryRoutingRules}
       currentLocationId={player.currentLocationId}
       currentPlaybackKey={player.currentPlaybackKey}
-      emptyLabel={primaryRemoteSelected ? "No remote files detected." : "This source has no preview loaded."}
-      toolbar={message || treeError ? <DirectoryMessage message={message || treeError} /> : undefined}
-      emptyState={
-        primaryRemoteSelected ? (
-          message || treeError ? (
-            <DirectoryLoadErrorPanel
-              message={message || treeError}
-              onRetry={() => setRemoteRetryToken((value) => value + 1)}
-            />
-          ) : isDetailLoading || treeLoading ? (
-            <DirectorySkeleton />
-          ) : undefined
-        ) : activeRemoteTabInfo?.kind === "local" && activeRemoteTabInfo.status !== "available" ? (
-          <LocalSourceStatePanel
-            status={activeRemoteTabInfo.status}
-            remoteSources={remoteAvailability}
-            onSelectRemote={(next) => setActiveRemoteTab(remoteSourceTabKey(next.source.id))}
-          />
-        ) : activeRemoteTabInfo?.kind === "tracked" && !activeTrackedForked ? (
-          <TrackedUnforkedPanel presence={activeTrackedPresence} remoteSources={remoteAvailability} />
-        ) : activeRemoteAvailability ? (
-          <RemoteSourceStatePanel remote={activeRemoteAvailability} />
-        ) : undefined
-      }
-      loadingMessage={
-        primaryRemoteSelected && !message && !treeError && (isDetailLoading || treeLoading)
-          ? `Loading ${displayRemoteCode}...`
-          : undefined
-      }
+      remoteAvailability={remoteAvailability}
+      hasMaterializedWork={Boolean(trackedWork)}
       selectionModal={<RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />}
-      onPlayFolder={primaryRemoteSelected ? playRemoteTracks : trackedWork ? playMaterializedTracks : undefined}
-      onPlayNext={
-        primaryRemoteSelected
-          ? (track) => queueRemoteTrack(track, true)
-          : trackedWork
-            ? (track) => queueMaterializedTrack(track, true)
-            : undefined
-      }
-      onAppendQueue={
-        primaryRemoteSelected
-          ? (track) => queueRemoteTrack(track, false)
-          : trackedWork
-            ? (track) => queueMaterializedTrack(track, false)
-            : undefined
-      }
+      onActiveKeyChange={setActiveRemoteTab}
+      onDirectoryModeChange={setDirectoryMode}
+      onRetry={() => setRemoteRetryToken((value) => value + 1)}
+      onSelectRemote={(next) => setActiveRemoteTab(remoteSourceTabKey(next.source.id))}
+      onPlayRemote={playRemoteTracks}
+      onPlayMaterialized={playMaterializedTracks}
+      onQueueRemote={queueRemoteTrack}
+      onQueueMaterialized={queueMaterializedTrack}
       onPreview={setFilePreview}
     />
   );
-  const remoteLanguageEditions = remoteIdentity?.languageEditions ?? [];
-  const remoteTranslations: WorkDetail["translations"] = remoteLanguageEditions.map((edition) => ({
-    workId: null,
-    primaryCode: edition.remoteCode,
-    title: edition.label,
-    metadataLanguage: edition.language,
-    editionLabel: edition.label,
-    origin: edition.origin,
-    official: !edition.origin,
-    translationKind: edition.origin ? "origin" : "official",
-    current: edition.current,
-    hasMedia: true,
-    mediaState: "indexed_available",
-  }));
-  const presentation: UnifiedWorkDetailPresentation = {
-    coverUrl: remoteIdentity?.coverUrl ?? preview?.coverUrl ?? "",
-    fallbackCode: displayPrimaryCode || remoteIdentity?.remoteId || preview?.remoteId || code,
-    code: displayPrimaryCode || remoteIdentity?.remoteId || preview?.remoteId || code,
-    dlsiteUrl: detail ? dlsiteWorkURL(detail.primaryCode) : "",
-    title: activeMetadataVariant?.title ?? remoteIdentity?.title ?? preview?.title ?? code,
-    circle: remoteIdentity?.circle ?? preview?.circle ?? "",
-    circleExternalId: remoteIdentity?.circleRef?.externalId ?? preview?.circleExternalId ?? "",
-    series: "",
-    seriesTitleId: "",
-    seriesCircleExternalId: "",
-    ratingLabel: "Rating",
-    rating: remoteIdentity?.rating ?? preview?.rating ?? null,
-    ratingCount: remoteIdentity?.ratingCount ?? null,
-    sales: remoteIdentity?.sales ?? preview?.sales ?? null,
-    baseCode: remoteLanguageEditions.find((edition) => edition.origin)?.remoteCode ?? "",
-    metadataLanguage:
-      activeMetadataVariant?.language ?? remoteLanguageEditions.find((edition) => edition.current)?.language ?? "",
-    metadataPresentation: remoteIdentity?.metadataPresentation,
-    activeMetadataVariantKey: activeMetadataVariant?.key ?? "",
-    onMetadataVariantSelect: setSelectedMetadataVariantKey,
-    translations: remoteTranslations,
-    activeVersionCode: displayRemoteCode,
-    onVersionSelect: (translation) => void selectRemoteLanguageEdition(translation.primaryCode),
-    remoteVersions: true,
-    dlsiteFetchedAt: "",
-    releaseDate: remoteIdentity?.releaseDate || preview?.releaseDate || "Unknown",
-    ageRating: remoteIdentity?.ageRating ?? preview?.ageRating ?? "",
+  const presentation = remoteOnlyWorkDetailPresentation({
+    remoteIdentity,
+    detail,
+    preview,
+    code,
+    displayPrimaryCode,
+    displayRemoteCode,
+    activeMetadataVariant,
     sourceInfo,
-    voiceActors: remoteIdentity?.voiceActors ?? preview?.voiceActors ?? [],
-    voiceCredits: [],
-    tags: activeMetadataVariant?.tags ?? remoteIdentity?.tags ?? preview?.tags ?? [],
     loading: isDetailLoading,
-  };
+    onMetadataVariantSelect: setSelectedMetadataVariantKey,
+    onVersionSelect: (editionCode) => void selectRemoteLanguageEdition(editionCode),
+  });
 
   const selectRemoteLanguageEdition = async (editionCode: string) => {
     if (!detail || editionCode.toUpperCase() === remoteDetailActionCode(detail).toUpperCase()) return;
@@ -3938,14 +4371,13 @@ function RemoteOnlyWorkDetailController({
       directory={directoryPanel}
       onBack={onBack}
     >
-      {isManageOpen && (
-        <DirectoryManagerModal
-          root={tree}
-          emptyLabel="No remote files detected."
-          onClose={() => setIsManageOpen(false)}
-        />
-      )}
-      {filePreview && <FilePreviewModal preview={filePreview} onClose={() => setFilePreview(null)} />}
+      <RemoteOnlyDetailOverlays
+        manageOpen={isManageOpen}
+        tree={tree}
+        filePreview={filePreview}
+        onManageClose={() => setIsManageOpen(false)}
+        onPreviewClose={() => setFilePreview(null)}
+      />
     </UnifiedWorkDetailPage>
   );
 }
@@ -8099,8 +8531,7 @@ function DirectoryManagerModal({
   const [showOnlyDeletable, setShowOnlyDeletable] = useState(showCachedFilter);
   const [previewTargets, setPreviewTargets] = useState<MediaDeleteTarget[]>([]);
   const fileTargets = useMemo(
-    () =>
-      directoryManageTargets(root, { allowCacheDelete, allowLocalDelete }).map((target) => ({ ...target, workId })),
+    () => directoryManageTargets(root, { allowCacheDelete, allowLocalDelete }).map((target) => ({ ...target, workId })),
     [root, allowCacheDelete, allowLocalDelete, workId],
   );
   const rootTarget = useMemo<MediaDeleteTarget | null>(() => {
@@ -8134,10 +8565,10 @@ function DirectoryManagerModal({
   const selectedWorkIDs = new Set(selectedTargets.map((target) => target.workId).filter((id) => id > 0));
   const canReviewForget = Boolean(
     canForgetWork &&
-      selectedRootTarget &&
-      allFileTargetsSelected &&
-      selectedWorkIDs.size === 1 &&
-      selectedRootTarget.workId > 0,
+    selectedRootTarget &&
+    allFileTargetsSelected &&
+    selectedWorkIDs.size === 1 &&
+    selectedRootTarget.workId > 0,
   );
   const toggleAll = () => setSelectedKeys(allSelected ? new Set() : new Set(targets.map(mediaDeleteTargetKey)));
   const extensionSelection = (extension: string) => {
@@ -8748,8 +9179,14 @@ function mediaDeleteTargetKey(target: MediaDeleteTarget) {
 }
 
 function isMediaPathWithinRoot(root: string, candidate: string) {
-  const normalizedRoot = root.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").toLowerCase();
-  const normalizedCandidate = candidate.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").toLowerCase();
+  const normalizedRoot = root
+    .replace(/\\/g, "/")
+    .replace(/^\/+|\/+$/g, "")
+    .toLowerCase();
+  const normalizedCandidate = candidate
+    .replace(/\\/g, "/")
+    .replace(/^\/+|\/+$/g, "")
+    .toLowerCase();
   return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(`${normalizedRoot}/`);
 }
 

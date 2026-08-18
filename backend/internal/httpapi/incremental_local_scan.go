@@ -136,32 +136,184 @@ func incrementalLocalScanNeedsFullFallback(root string, changedPaths []string, f
 		return true
 	}
 	for _, affected := range knownRoots {
-		if !localRootAffectedByChanges(affected.Root, changedPaths) {
-			continue
-		}
-		for _, known := range knownRoots {
-			if !strings.EqualFold(affected.Code, known.Code) || sameLocalRelativePath(affected.Root, known.Root) {
-				continue
-			}
-			if knownLocalWorkRootExists(root, known) {
-				return true
-			}
+		if localRootAffectedByChanges(affected.Root, changedPaths) && knownLocalWorkHasExistingDuplicate(root, affected, knownRoots) {
+			return true
 		}
 	}
 	for _, folder := range folders {
-		for _, known := range knownRoots {
-			if !strings.EqualFold(folder.Code, known.Code) || sameLocalRelativePath(folder.RelPath, known.Root) {
-				continue
-			}
-			if localRootAffectedByChanges(known.Root, changedPaths) {
-				continue
-			}
-			if knownLocalWorkRootExists(root, known) {
-				return true
-			}
+		if discoveredLocalWorkHasUnaffectedDuplicate(root, folder, changedPaths, knownRoots) {
+			return true
 		}
 	}
 	return false
+}
+
+func knownLocalWorkHasExistingDuplicate(root string, affected knownLocalWorkRoot, knownRoots []knownLocalWorkRoot) bool {
+	for _, known := range knownRoots {
+		if strings.EqualFold(affected.Code, known.Code) &&
+			!sameLocalRelativePath(affected.Root, known.Root) &&
+			knownLocalWorkRootExists(root, known) {
+			return true
+		}
+	}
+	return false
+}
+
+func discoveredLocalWorkHasUnaffectedDuplicate(root string, folder localfs.WorkFolder, changedPaths []string, knownRoots []knownLocalWorkRoot) bool {
+	for _, known := range knownRoots {
+		if strings.EqualFold(folder.Code, known.Code) &&
+			!sameLocalRelativePath(folder.RelPath, known.Root) &&
+			!localRootAffectedByChanges(known.Root, changedPaths) &&
+			knownLocalWorkRootExists(root, known) {
+			return true
+		}
+	}
+	return false
+}
+
+type incrementalLocalScanPersistence struct {
+	server          *Server
+	ctx             context.Context
+	tx              *sql.Tx
+	dataRoot        string
+	changedPaths    []string
+	fileSourceID    int64
+	knownRoots      []knownLocalWorkRoot
+	state           localScanPersistState
+	affectedWorkIDs map[int64]bool
+	seenRoots       map[string]bool
+}
+
+func newIncrementalLocalScanPersistence(
+	server *Server,
+	ctx context.Context,
+	tx *sql.Tx,
+	payload localScanJobPayload,
+	fileSourceID int64,
+	knownRoots []knownLocalWorkRoot,
+) *incrementalLocalScanPersistence {
+	persistence := &incrementalLocalScanPersistence{
+		server: server, ctx: ctx, tx: tx, dataRoot: payload.Root,
+		changedPaths: payload.ChangedPaths, fileSourceID: fileSourceID, knownRoots: knownRoots,
+		state: localScanPersistState{
+			duplicateCodes: map[string]bool{}, seenWorkIDs: map[int64]bool{}, reconciledWorkIDs: map[int64]bool{},
+		},
+		affectedWorkIDs: map[int64]bool{}, seenRoots: map[string]bool{},
+	}
+	for _, known := range knownRoots {
+		if localRootAffectedByChanges(known.Root, payload.ChangedPaths) {
+			persistence.affectedWorkIDs[known.WorkID] = true
+		}
+	}
+	return persistence
+}
+
+func (persistence *incrementalLocalScanPersistence) persistFolders(folders []localfs.WorkFolder) error {
+	for _, folder := range folders {
+		if err := persistence.persistFolder(folder); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (persistence *incrementalLocalScanPersistence) persistFolder(folder localfs.WorkFolder) error {
+	persistence.seenRoots[strings.ToLower(normalizeFolderRootPath(folder.RelPath))] = true
+	persistence.recordAffectedKnownRoots(folder)
+	workID, err := persistence.server.persistLocalScanFolder(
+		persistence.ctx, persistence.tx, persistence.fileSourceID, folder, &persistence.state,
+	)
+	if err != nil {
+		return err
+	}
+	persistence.affectedWorkIDs[workID] = true
+	if err := persistence.recordLocationChanges(folder); err != nil {
+		return err
+	}
+	seenPaths, err := persistIndexedLocalFiles(persistence.ctx, persistence.tx, workID, persistence.fileSourceID, folder)
+	if err != nil {
+		return err
+	}
+	missing, err := markMissingLocalLocationsForWork(persistence.ctx, persistence.tx, workID, persistence.fileSourceID, seenPaths)
+	if err != nil {
+		return err
+	}
+	persistence.state.missingLocations += missing
+	return updateIncrementalLocalPresence(persistence.ctx, persistence.tx, workID, persistence.fileSourceID, folder)
+}
+
+func (persistence *incrementalLocalScanPersistence) recordAffectedKnownRoots(folder localfs.WorkFolder) {
+	for _, known := range persistence.knownRoots {
+		if strings.EqualFold(folder.Code, known.Code) &&
+			(sameLocalRelativePath(folder.RelPath, known.Root) || !localWorkRootExists(persistence.dataRoot, known.Root)) {
+			persistence.affectedWorkIDs[known.WorkID] = true
+		}
+	}
+}
+
+func (persistence *incrementalLocalScanPersistence) recordLocationChanges(folder localfs.WorkFolder) error {
+	for _, file := range folder.Files {
+		exists, err := localLocationExists(persistence.ctx, persistence.tx, persistence.fileSourceID, file)
+		if err != nil {
+			return err
+		}
+		if exists {
+			persistence.state.skippedLocations++
+		} else {
+			persistence.state.updatedLocations++
+		}
+	}
+	return nil
+}
+
+func (persistence *incrementalLocalScanPersistence) markMissingRoots() error {
+	for _, known := range persistence.knownRoots {
+		if !localRootAffectedByChanges(known.Root, persistence.changedPaths) || persistence.seenRoots[strings.ToLower(known.Root)] {
+			continue
+		}
+		if _, err := persistence.tx.ExecContext(persistence.ctx, `
+			UPDATE work_folder_location
+			SET state = 'missing', is_primary = 0, updated_at = CURRENT_TIMESTAMP
+			WHERE work_id = ? AND file_source_id = ? AND root_path = ?
+				AND role != 'managed_fetch' AND state = 'active'
+		`, known.WorkID, persistence.fileSourceID, known.Root); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (persistence *incrementalLocalScanPersistence) markMissingWorks() error {
+	for workID := range persistence.affectedWorkIDs {
+		if persistence.state.seenWorkIDs[workID] {
+			continue
+		}
+		if _, err := persistence.tx.ExecContext(persistence.ctx, `
+			UPDATE work_source_presence
+			SET availability = 'missing', last_checked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+			WHERE work_id = ? AND file_source_id = ? AND presence_type = 'local'
+		`, workID, persistence.fileSourceID); err != nil {
+			return err
+		}
+		missing, err := markAvailableLocalLocationsMissingForWork(persistence.ctx, persistence.tx, workID, persistence.fileSourceID)
+		if err != nil {
+			return err
+		}
+		persistence.state.missingLocations += missing
+	}
+	return nil
+}
+
+func incrementalLocalScanRunSummary(payload localScanJobPayload, scanSummary localfs.Summary, persistence *incrementalLocalScanPersistence) map[string]any {
+	return map[string]any{
+		"candidate_folders": scanSummary.CandidateFolders, "detected_works": scanSummary.DetectedWorks,
+		"scanned_files": scanSummary.ScannedFiles, "ambiguous_folders": scanSummary.AmbiguousFolders,
+		"duplicate_groups":  localDuplicateGroupSummaries(scanSummary.DuplicateGroups),
+		"updated_locations": persistence.state.updatedLocations, "skipped_locations": persistence.state.skippedLocations,
+		"missing_locations": persistence.state.missingLocations, "new_work_codes": persistence.state.newWorkCodes,
+		"follow_up_requested": false, "scan_mode": localScanModeIncremental,
+		"changed_path_count": len(payload.ChangedPaths), "affected_works": len(persistence.affectedWorkIDs),
+	}
 }
 
 func (s *Server) persistIncrementalLocalScanResults(
@@ -182,94 +334,18 @@ func (s *Server) persistIncrementalLocalScanResults(
 	if err != nil {
 		return localScanResult{}, nil, 0, err
 	}
-	state := localScanPersistState{
-		duplicateCodes: map[string]bool{}, seenWorkIDs: map[int64]bool{}, reconciledWorkIDs: map[int64]bool{},
+	persistence := newIncrementalLocalScanPersistence(s, ctx, tx, payload, fileSourceID, knownRoots)
+	if err := persistence.persistFolders(workFolders); err != nil {
+		return localScanResult{}, nil, 0, err
 	}
-	affectedWorkIDs := map[int64]bool{}
-	seenRoots := map[string]bool{}
-	for _, known := range knownRoots {
-		if localRootAffectedByChanges(known.Root, payload.ChangedPaths) {
-			affectedWorkIDs[known.WorkID] = true
-		}
+	if err := persistence.markMissingRoots(); err != nil {
+		return localScanResult{}, nil, 0, err
 	}
-	for _, folder := range workFolders {
-		seenRoots[strings.ToLower(normalizeFolderRootPath(folder.RelPath))] = true
-		for _, known := range knownRoots {
-			if strings.EqualFold(folder.Code, known.Code) {
-				if sameLocalRelativePath(folder.RelPath, known.Root) || !localWorkRootExists(payload.Root, known.Root) {
-					affectedWorkIDs[known.WorkID] = true
-				}
-			}
-		}
-		workID, err := s.persistLocalScanFolder(ctx, tx, fileSourceID, folder, &state)
-		if err != nil {
-			return localScanResult{}, nil, 0, err
-		}
-		affectedWorkIDs[workID] = true
-		for _, file := range folder.Files {
-			exists, err := localLocationExists(ctx, tx, fileSourceID, file)
-			if err != nil {
-				return localScanResult{}, nil, 0, err
-			}
-			if exists {
-				state.skippedLocations++
-			} else {
-				state.updatedLocations++
-			}
-		}
-		seenPaths, err := persistIndexedLocalFiles(ctx, tx, workID, fileSourceID, folder)
-		if err != nil {
-			return localScanResult{}, nil, 0, err
-		}
-		missing, err := markMissingLocalLocationsForWork(ctx, tx, workID, fileSourceID, seenPaths)
-		if err != nil {
-			return localScanResult{}, nil, 0, err
-		}
-		state.missingLocations += missing
-		if err := updateIncrementalLocalPresence(ctx, tx, workID, fileSourceID, folder); err != nil {
-			return localScanResult{}, nil, 0, err
-		}
+	if err := persistence.markMissingWorks(); err != nil {
+		return localScanResult{}, nil, 0, err
 	}
-	for _, known := range knownRoots {
-		if !localRootAffectedByChanges(known.Root, payload.ChangedPaths) || seenRoots[strings.ToLower(known.Root)] {
-			continue
-		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE work_folder_location
-			SET state = 'missing', is_primary = 0, updated_at = CURRENT_TIMESTAMP
-			WHERE work_id = ? AND file_source_id = ? AND root_path = ?
-				AND role != 'managed_fetch' AND state = 'active'
-		`, known.WorkID, fileSourceID, known.Root); err != nil {
-			return localScanResult{}, nil, 0, err
-		}
-	}
-	for workID := range affectedWorkIDs {
-		if state.seenWorkIDs[workID] {
-			continue
-		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE work_source_presence
-			SET availability = 'missing', last_checked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-			WHERE work_id = ? AND file_source_id = ? AND presence_type = 'local'
-		`, workID, fileSourceID); err != nil {
-			return localScanResult{}, nil, 0, err
-		}
-		missing, err := markAvailableLocalLocationsMissingForWork(ctx, tx, workID, fileSourceID)
-		if err != nil {
-			return localScanResult{}, nil, 0, err
-		}
-		state.missingLocations += missing
-	}
-	runSummary := map[string]any{
-		"candidate_folders": scanSummary.CandidateFolders, "detected_works": scanSummary.DetectedWorks,
-		"scanned_files": scanSummary.ScannedFiles, "ambiguous_folders": scanSummary.AmbiguousFolders,
-		"duplicate_groups":  localDuplicateGroupSummaries(scanSummary.DuplicateGroups),
-		"updated_locations": state.updatedLocations, "skipped_locations": state.skippedLocations,
-		"missing_locations": state.missingLocations, "new_work_codes": state.newWorkCodes,
-		"follow_up_requested": false, "scan_mode": localScanModeIncremental,
-		"changed_path_count": len(payload.ChangedPaths), "affected_works": len(affectedWorkIDs),
-	}
-	if err := completeLocalScanNodes(ctx, tx, nodeIDs, fileSourceID, scanSummary, state); err != nil {
+	runSummary := incrementalLocalScanRunSummary(payload, scanSummary, persistence)
+	if err := completeLocalScanNodes(ctx, tx, nodeIDs, fileSourceID, scanSummary, persistence.state); err != nil {
 		return localScanResult{}, nil, 0, err
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET summary_json = ? WHERE id = ?", mustJSON(runSummary), job.RunID); err != nil {
@@ -281,8 +357,8 @@ func (s *Server) persistIncrementalLocalScanResults(
 	return localScanResult{
 		RunID: job.RunID, JobID: job.ID, FileSourceID: fileSourceID, Status: "succeeded",
 		DetectedWorks: scanSummary.DetectedWorks, ScannedFiles: scanSummary.ScannedFiles,
-		UpdatedLocations: state.updatedLocations, SkippedLocations: state.skippedLocations,
-		NewWorkCodes: state.newWorkCodes, Failures: []string{},
+		UpdatedLocations: persistence.state.updatedLocations, SkippedLocations: persistence.state.skippedLocations,
+		NewWorkCodes: persistence.state.newWorkCodes, Failures: []string{},
 	}, runSummary, fileSourceID, nil
 }
 
