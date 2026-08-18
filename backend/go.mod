@@ -1,11 +1,13 @@
 module github.com/yexca/kikoto/backend
 
-go 1.22
+go 1.26.0
+
+toolchain go1.26.6
 
 require (
 	github.com/fsnotify/fsnotify v1.9.0
-	golang.org/x/crypto v0.24.0
-	golang.org/x/sys v0.22.0
+	golang.org/x/crypto v0.55.0
+	golang.org/x/sys v0.47.0
 	modernc.org/sqlite v1.34.5
 )
 

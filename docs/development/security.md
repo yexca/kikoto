@@ -93,6 +93,31 @@ inline retry state for a blocked task; use a toast for a transient event. A
 render error fallback must not display a raw stack or server error to an
 anonymous user.
 
+## Dependency and Build Integrity
+
+- Use `npm ci --strict-allow-scripts` for normal installs. Review every new
+  install script and record the exact approved package version in
+  `package.json#allowScripts`; record optional scripts that are not needed as
+  explicit `false` entries. Run both `npm audit --audit-level=moderate` and
+  `npm audit signatures` after changing the lockfile.
+- Keep the Go patch version aligned across `go.mod`, CI, Make, and Docker.
+  After a module update, run `go mod tidy`, `go mod verify`, the backend test
+  suite, and `govulncheck ./...`.
+- Gradle wrapper distributions require an official
+  `distributionSha256Sum`. Android dependency changes also require an
+  intentional update of `gradle/verification-metadata.xml`; review every new
+  component and checksum before accepting the generated diff.
+- Pin third-party GitHub Actions to full commit SHAs and retain the release tag
+  as a comment for readability. Checkout steps must not persist credentials
+  unless a specific job requires a later authenticated Git operation.
+- Pin Docker build stages by tag and digest. Public-distribution Compose files
+  may default to `latest` only when the release workflow updates that tag;
+  document a reviewed version or digest for reproducible deployments. Treat a
+  mutable tag as a convenience entry point, not the deployment trust anchor.
+- Do not add a JAR or AAR to a Capacitor `flatDir` directory without an
+  explicit source review and checksum. Those directories do not carry normal
+  repository metadata or transitive dependency information.
+
 ## Public Fixtures and Documentation
 
 - Use reserved domains such as `example.invalid` and documentation address

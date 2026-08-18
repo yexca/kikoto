@@ -58,7 +58,7 @@ Frontend:
 
 ```sh
 cd frontend
-npm install
+npm ci --strict-allow-scripts
 npm run docs:check-links
 npm run build
 ```

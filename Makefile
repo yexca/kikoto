@@ -1,7 +1,7 @@
 .PHONY: backend-test backend-build backend-run frontend-dev frontend-build docker-build docker-up docker-down smoke smoke-api
 
 backend-test:
-	docker run --rm -v "$$(pwd)/backend:/src" -w /src golang:1.22 go test ./...
+	docker run --rm -v "$$(pwd)/backend:/src" -w /src golang:1.26.6@sha256:0d1d3a794be25f809dd2cb3160d8c73276c4056a9f8242a138e908ddeee7b6b6 go test ./...
 
 backend-build:
 	cd backend && go build -ldflags "-X github.com/yexca/kikoto/backend/internal/buildinfo.Version=$$(cat ../VERSION)" -o bin/kikoto ./cmd/kikoto
@@ -10,10 +10,10 @@ backend-run:
 	cd backend && go run -ldflags "-X github.com/yexca/kikoto/backend/internal/buildinfo.Version=$$(cat ../VERSION)" ./cmd/kikoto
 
 frontend-dev:
-	cd frontend && npm install && npm run dev
+	cd frontend && npm ci --strict-allow-scripts && npm run dev
 
 frontend-build:
-	cd frontend && npm install && npm run build
+	cd frontend && npm ci --strict-allow-scripts && npm run build
 
 docker-build:
 	docker build -t kikoto:dev .

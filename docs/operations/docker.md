@@ -23,12 +23,13 @@ The production service uses `restart: unless-stopped`, so Docker restarts it
 after process failures and host or daemon restarts unless it was explicitly
 stopped.
 
-It defaults to `yexca/kikoto:latest`. Override `KIKOTO_IMAGE` to use a pinned
-release or GitHub Container Registry:
+It defaults to `yexca/kikoto:latest`, which is updated by the public release
+workflow. Override `KIKOTO_IMAGE` with a reviewed version or digest when
+reproducible deployment is required:
 
 ```sh
 KIKOTO_IMAGE=yexca/kikoto:0.1.1 docker compose up -d
-KIKOTO_IMAGE=ghcr.io/yexca/kikoto:latest docker compose up -d
+KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d
 ```
 
 Default ports:
@@ -59,16 +60,16 @@ docker compose -f docker-compose.dev.yml up -d --build
 
 ## Demo Stack
 
-Use `docker-compose.demo.yaml` for a public, read-only Demo deployment. It pulls
-the published `yexca/kikoto:latest` image by default:
+Use `docker-compose.demo.yaml` for a public, read-only Demo deployment. It
+pulls `yexca/kikoto:latest` by default:
 
 ```sh
 docker compose -f docker-compose.demo.yaml pull
 docker compose -f docker-compose.demo.yaml up -d
 ```
 
-Set `KIKOTO_DEMO_IMAGE` to pin a release or use another registry, for example
-`yexca/kikoto:0.4.1` or `ghcr.io/yexca/kikoto:0.4.1`.
+Set `KIKOTO_DEMO_IMAGE` to a reviewed version or digest when reproducibility is
+required.
 
 It listens on `http://127.0.0.1:7655` by default. Override the host port with
 `KIKOTO_DEMO_PORT`. Set `KIKOTO_DEMO_REMOTE_SOURCES_ENABLED=true` only when the

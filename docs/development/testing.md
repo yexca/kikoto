@@ -107,8 +107,9 @@ contract.
 
 ```sh
 cd frontend
-npm install
+npm ci --strict-allow-scripts
 npm audit --audit-level=moderate
+npm audit signatures
 npm run format:check
 npm run lint
 npm run test:unit

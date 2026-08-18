@@ -11,7 +11,7 @@ go run ./cmd/kikoto
 
 ```sh
 cd frontend
-npm install
+npm ci --strict-allow-scripts
 npm run dev
 ```
 

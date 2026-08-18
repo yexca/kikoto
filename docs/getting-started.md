@@ -4,8 +4,8 @@
 
 - Docker and Docker Compose.
 - Optional for local development:
-  - Go 1.22 or newer.
-  - Node.js 24 or newer.
+  - Go 1.26.6.
+  - Node.js 24.19.0 with npm 11.17.0.
 
 ## Run With Docker
 
@@ -23,11 +23,12 @@ docker compose pull
 docker compose up -d
 ```
 
-The default image is `yexca/kikoto:latest`. To pull the same release from
-GitHub Container Registry, set the image when starting the stack:
+The default image is `yexca/kikoto:latest`, which the release workflow updates
+for each public release. For a reproducible deployment, override it with a
+reviewed version or digest:
 
 ```sh
-KIKOTO_IMAGE=ghcr.io/yexca/kikoto:latest docker compose up -d
+KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d
 ```
 
 Open:
@@ -80,7 +81,7 @@ Frontend:
 
 ```sh
 cd frontend
-npm install
+npm ci --strict-allow-scripts
 npm run build
 ```
 
