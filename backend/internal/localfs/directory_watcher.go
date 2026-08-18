@@ -31,7 +31,7 @@ type DirectoryWatcher struct {
 	watcher     *fsnotify.Watcher
 	root        string
 	scanDepth   int
-	changes     chan struct{}
+	changes     chan DirectoryChange
 	invalidated chan struct{}
 	errors      chan error
 	done        chan struct{}
@@ -39,6 +39,10 @@ type DirectoryWatcher struct {
 	mu          sync.RWMutex
 	watched     map[string]struct{}
 	excluded    map[string]struct{}
+}
+
+type DirectoryChange struct {
+	Path string
 }
 
 func NewDirectoryWatcher(root string, scanDepth int, excludedRoots ...string) (*DirectoryWatcher, error) {
@@ -62,7 +66,7 @@ func NewDirectoryWatcher(root string, scanDepth int, excludedRoots ...string) (*
 	}
 	result := &DirectoryWatcher{
 		watcher: watcher, root: filepath.Clean(absRoot), scanDepth: scanDepth,
-		changes: make(chan struct{}, 1), invalidated: make(chan struct{}, 1), errors: make(chan error, 8),
+		changes: make(chan DirectoryChange, directoryWatcherEventBuffer), invalidated: make(chan struct{}, 1), errors: make(chan error, 8),
 		done: make(chan struct{}), watched: map[string]struct{}{}, excluded: map[string]struct{}{},
 	}
 	for _, excludedRoot := range excludedRoots {
@@ -79,7 +83,7 @@ func NewDirectoryWatcher(root string, scanDepth int, excludedRoots ...string) (*
 	return result, nil
 }
 
-func (w *DirectoryWatcher) Changes() <-chan struct{} {
+func (w *DirectoryWatcher) Changes() <-chan DirectoryChange {
 	return w.changes
 }
 
@@ -139,7 +143,7 @@ func (w *DirectoryWatcher) processEvent(event fsnotify.Event) {
 		return
 	}
 	w.updateWatchedTree(path, event)
-	w.emitChange(event)
+	w.emitChange(path, event)
 }
 
 func (w *DirectoryWatcher) handleFetchRootMarkerEvent(path string, event fsnotify.Event) bool {
@@ -179,13 +183,14 @@ func (w *DirectoryWatcher) updateWatchedTree(path string, event fsnotify.Event) 
 	}
 }
 
-func (w *DirectoryWatcher) emitChange(event fsnotify.Event) {
+func (w *DirectoryWatcher) emitChange(path string, event fsnotify.Event) {
 	if !event.Has(fsnotify.Create | fsnotify.Write | fsnotify.Remove | fsnotify.Rename) {
 		return
 	}
 	select {
-	case w.changes <- struct{}{}:
+	case w.changes <- DirectoryChange{Path: path}:
 	default:
+		w.emitError(errors.New("filesystem change buffer overflow"))
 	}
 }
 
@@ -210,7 +215,8 @@ func (w *DirectoryWatcher) addTree(start string) error {
 		if err != nil {
 			return err
 		}
-		if depth > w.scanDepth {
+		watchDirectory := depth <= w.scanDepth || w.hasWorkAncestor(path)
+		if !watchDirectory {
 			return filepath.SkipDir
 		}
 		cleanPath := filepath.Clean(path)
@@ -228,6 +234,24 @@ func (w *DirectoryWatcher) addTree(start string) error {
 		w.mu.Unlock()
 		return nil
 	})
+}
+
+func (w *DirectoryWatcher) hasWorkAncestor(path string) bool {
+	rel, err := filepath.Rel(w.root, path)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	parts := strings.Split(rel, string(filepath.Separator))
+	limit := len(parts)
+	if limit > w.scanDepth {
+		limit = w.scanDepth
+	}
+	for _, part := range parts[:limit] {
+		if code, _ := ExtractWorkCode(part); code != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (w *DirectoryWatcher) removeTree(root string) {

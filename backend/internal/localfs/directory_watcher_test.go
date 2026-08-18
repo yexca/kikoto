@@ -40,6 +40,37 @@ func TestDirectoryWatcherReportsVisibleChangesAndRegistersNewTrees(t *testing.T)
 	}
 }
 
+func TestDirectoryWatcherWatchesAllDescendantsBelowWorkRoot(t *testing.T) {
+	root := t.TempDir()
+	deepDir := filepath.Join(root, "Library", "RJ00000024", "Disc 1", "Bonus")
+	if err := os.MkdirAll(deepDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	watcher, err := NewDirectoryWatcher(root, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = watcher.Close() })
+	if watcher.WatchedDirectoryCount() != 5 {
+		t.Fatalf("watched work descendants = %d, want 5", watcher.WatchedDirectoryCount())
+	}
+	trackPath := filepath.Join(deepDir, "track.flac")
+	if err := os.WriteFile(trackPath, []byte("audio"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case change := <-watcher.Changes():
+			if sameFilesystemPath(change.Path, trackPath) {
+				return
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for deep work change")
+		}
+	}
+}
+
 func TestDirectoryWatcherIgnoresInternalTrees(t *testing.T) {
 	root := t.TempDir()
 	watcher, err := NewDirectoryWatcher(root, 4)
@@ -190,7 +221,7 @@ func TestFetchRootMarkerDoesNotHideWorksFromFullDiscovery(t *testing.T) {
 	}
 }
 
-func waitForDirectoryChange(t *testing.T, changes <-chan struct{}) {
+func waitForDirectoryChange(t *testing.T, changes <-chan DirectoryChange) {
 	t.Helper()
 	select {
 	case _, ok := <-changes:

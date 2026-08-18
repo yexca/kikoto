@@ -15,10 +15,11 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/localfs"
 )
 
 type fakeFilesystemWatcher struct {
-	changes     chan struct{}
+	changes     chan localfs.DirectoryChange
 	invalidated chan struct{}
 	errors      chan error
 	count       int
@@ -26,17 +27,17 @@ type fakeFilesystemWatcher struct {
 
 func newFakeFilesystemWatcher(count int) *fakeFilesystemWatcher {
 	return &fakeFilesystemWatcher{
-		changes:     make(chan struct{}, 16),
+		changes:     make(chan localfs.DirectoryChange, 16),
 		invalidated: make(chan struct{}, 1),
 		errors:      make(chan error, 4),
 		count:       count,
 	}
 }
 
-func (w *fakeFilesystemWatcher) Changes() <-chan struct{}     { return w.changes }
-func (w *fakeFilesystemWatcher) Invalidated() <-chan struct{} { return w.invalidated }
-func (w *fakeFilesystemWatcher) Errors() <-chan error         { return w.errors }
-func (w *fakeFilesystemWatcher) WatchedDirectoryCount() int   { return w.count }
+func (w *fakeFilesystemWatcher) Changes() <-chan localfs.DirectoryChange { return w.changes }
+func (w *fakeFilesystemWatcher) Invalidated() <-chan struct{}            { return w.invalidated }
+func (w *fakeFilesystemWatcher) Errors() <-chan error                    { return w.errors }
+func (w *fakeFilesystemWatcher) WatchedDirectoryCount() int              { return w.count }
 
 func TestFilesystemTriggerQueuesDebouncedDirectoryEvent(t *testing.T) {
 	db := openMigratedTestDB(t)
@@ -44,9 +45,9 @@ func TestFilesystemTriggerQueuesDebouncedDirectoryEvent(t *testing.T) {
 	watcher := newFakeFilesystemWatcher(7)
 	startFilesystemWatcherSession(t, server, watcher, 20*time.Millisecond, 20*time.Millisecond)
 
-	watcher.changes <- struct{}{}
-	watcher.changes <- struct{}{}
-	watcher.changes <- struct{}{}
+	watcher.changes <- localfs.DirectoryChange{Path: filepath.Join(server.cfg.DataRoot, "RJ00000000", "track.flac")}
+	watcher.changes <- localfs.DirectoryChange{Path: filepath.Join(server.cfg.DataRoot, "RJ00000000", "track.flac")}
+	watcher.changes <- localfs.DirectoryChange{Path: filepath.Join(server.cfg.DataRoot, "RJ00000000", "cover.jpg")}
 	waitForFilesystemRunCount(t, db, 1)
 	time.Sleep(60 * time.Millisecond)
 	assertFilesystemRunCount(t, db, 1)
@@ -55,12 +56,46 @@ func TestFilesystemTriggerQueuesDebouncedDirectoryEvent(t *testing.T) {
 	if err := db.QueryRow("SELECT trigger_type, trigger_reason, input_json FROM workflow_run WHERE trigger_type = 'filesystem_event'").Scan(&triggerType, &triggerReason, &inputJSON); err != nil {
 		t.Fatal(err)
 	}
-	if triggerType != "filesystem_event" || triggerReason != "data_directories_changed" || !strings.Contains(inputJSON, `"directory_event_at"`) || !strings.Contains(inputJSON, `"observed_directories":7`) {
+	if triggerType != "filesystem_event" || triggerReason != "data_directories_changed" || !strings.Contains(inputJSON, `"directory_event_at"`) || !strings.Contains(inputJSON, `"observed_directories":7`) || !strings.Contains(inputJSON, `"scan_mode":"incremental"`) || !strings.Contains(inputJSON, `"changed_paths":["RJ00000000/cover.jpg","RJ00000000/track.flac"]`) {
 		t.Fatalf("filesystem run = type %q reason %q input %s", triggerType, triggerReason, inputJSON)
 	}
 	if strings.Contains(inputJSON, `"follow_up_run":true`) {
 		t.Fatalf("filesystem run unexpectedly enabled metadata follow-up: %s", inputJSON)
 	}
+}
+
+func TestFilesystemTriggerConfiguredFullOmitsChangedPathBatch(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`UPDATE workflow_trigger SET config_json = '{"followUpRun":false,"scanMode":"full"}' WHERE trigger_type = 'filesystem_event'`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{DataRoot: t.TempDir(), LocalScanDepth: 3})
+	watcher := newFakeFilesystemWatcher(4)
+	startFilesystemWatcherSession(t, server, watcher, 20*time.Millisecond, 20*time.Millisecond)
+	watcher.changes <- localfs.DirectoryChange{Path: filepath.Join(server.cfg.DataRoot, "RJ00000029", "track.flac")}
+	waitForFilesystemRunCount(t, db, 1)
+
+	var inputJSON string
+	if err := db.QueryRow("SELECT input_json FROM workflow_run WHERE trigger_type = 'filesystem_event'").Scan(&inputJSON); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(inputJSON, `"scan_mode":"full"`) || strings.Contains(inputJSON, `"changed_paths"`) {
+		t.Fatalf("configured full input = %s", inputJSON)
+	}
+}
+
+func TestFilesystemTriggerSettleDelayRestartsAfterLaterChange(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: t.TempDir(), LocalScanDepth: 3})
+	watcher := newFakeFilesystemWatcher(2)
+	startFilesystemWatcherSession(t, server, watcher, 120*time.Millisecond, 20*time.Millisecond)
+
+	watcher.changes <- localfs.DirectoryChange{Path: filepath.Join(server.cfg.DataRoot, "RJ00000025", "first.flac")}
+	time.Sleep(80 * time.Millisecond)
+	watcher.changes <- localfs.DirectoryChange{Path: filepath.Join(server.cfg.DataRoot, "RJ00000025", "second.flac")}
+	time.Sleep(70 * time.Millisecond)
+	assertFilesystemRunCount(t, db, 0)
+	waitForFilesystemRunCount(t, db, 1)
 }
 
 func TestFilesystemTriggerCoalescesChangeDuringActiveRun(t *testing.T) {
@@ -69,9 +104,9 @@ func TestFilesystemTriggerCoalescesChangeDuringActiveRun(t *testing.T) {
 	watcher := newFakeFilesystemWatcher(3)
 	startFilesystemWatcherSession(t, server, watcher, 15*time.Millisecond, 15*time.Millisecond)
 
-	watcher.changes <- struct{}{}
+	watcher.changes <- localfs.DirectoryChange{Path: filepath.Join(server.cfg.DataRoot, "RJ00000000", "track.flac")}
 	waitForFilesystemRunCount(t, db, 1)
-	watcher.changes <- struct{}{}
+	watcher.changes <- localfs.DirectoryChange{Path: filepath.Join(server.cfg.DataRoot, "RJ00000000", "cover.jpg")}
 	time.Sleep(40 * time.Millisecond)
 	assertFilesystemRunCount(t, db, 1)
 	if _, err := db.Exec("UPDATE workflow_run SET status = 'succeeded', finished_at = CURRENT_TIMESTAMP WHERE trigger_type = 'filesystem_event'"); err != nil {
@@ -88,7 +123,7 @@ func TestFilesystemTriggerPauseDiscardsPendingAndPausedEvents(t *testing.T) {
 	watcher := newFakeFilesystemWatcher(2)
 	startFilesystemWatcherSession(t, server, watcher, 25*time.Millisecond, 15*time.Millisecond)
 
-	watcher.changes <- struct{}{}
+	watcher.changes <- localfs.DirectoryChange{Path: filepath.Join(server.cfg.DataRoot, "RJ00000000", "track.flac")}
 	if _, err := db.Exec("UPDATE workflow_trigger SET enabled = 0 WHERE trigger_type = 'filesystem_event'"); err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +132,7 @@ func TestFilesystemTriggerPauseDiscardsPendingAndPausedEvents(t *testing.T) {
 	time.Sleep(40 * time.Millisecond)
 	assertFilesystemRunCount(t, db, 0)
 
-	watcher.changes <- struct{}{}
+	watcher.changes <- localfs.DirectoryChange{Path: filepath.Join(server.cfg.DataRoot, "RJ00000000", "track.flac")}
 	time.Sleep(40 * time.Millisecond)
 	if _, err := db.Exec("UPDATE workflow_trigger SET enabled = 1 WHERE trigger_type = 'filesystem_event'"); err != nil {
 		t.Fatal(err)
@@ -107,7 +142,7 @@ func TestFilesystemTriggerPauseDiscardsPendingAndPausedEvents(t *testing.T) {
 	time.Sleep(40 * time.Millisecond)
 	assertFilesystemRunCount(t, db, 0)
 
-	watcher.changes <- struct{}{}
+	watcher.changes <- localfs.DirectoryChange{Path: filepath.Join(server.cfg.DataRoot, "RJ00000000", "track.flac")}
 	waitForFilesystemRunCount(t, db, 1)
 }
 
@@ -120,6 +155,104 @@ func TestFilesystemWatcherErrorRecordsFailureAndQueuesRecoveryScan(t *testing.T)
 	watcher.errors <- errors.New("event queue overflow")
 	waitForFilesystemTriggerError(t, db, filesystemTriggerErrorPrefix+"event queue overflow")
 	waitForFilesystemRunCount(t, db, 1)
+	var inputJSON string
+	if err := db.QueryRow("SELECT input_json FROM workflow_run WHERE trigger_type = 'filesystem_event'").Scan(&inputJSON); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(inputJSON, `"scan_mode":"full"`) || !strings.Contains(inputJSON, `"full_fallback_reason":"watcher_recovery"`) {
+		t.Fatalf("watcher recovery input = %s", inputJSON)
+	}
+}
+
+func TestFilesystemWatcherRootInvalidationQueuesFullScanAfterRecovery(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: t.TempDir(), LocalScanDepth: 2})
+	watchConfig, err := server.loadFilesystemWatcherConfig(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	recoveryFullScan := false
+	firstWatcher := newFakeFilesystemWatcher(2)
+	firstCtx, firstCancel := context.WithCancel(context.Background())
+	defer firstCancel()
+	firstErrC := make(chan error, 1)
+	go func() {
+		firstErrC <- server.runFilesystemWatcherSession(firstCtx, firstWatcher, watchConfig, 20*time.Millisecond, 20*time.Millisecond, &recoveryFullScan)
+	}()
+	waitForFilesystemCondition(t, func() bool {
+		var count int
+		return db.QueryRow("SELECT watched_directory_count FROM filesystem_trigger_state LIMIT 1").Scan(&count) == nil && count == 2
+	}, "first watcher did not become ready")
+	firstWatcher.invalidated <- struct{}{}
+	select {
+	case err := <-firstErrC:
+		if !errors.Is(err, errFilesystemWatchRootInvalidated) {
+			t.Fatalf("root invalidation error = %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("invalidated watcher did not stop")
+	}
+	if !recoveryFullScan {
+		t.Fatal("root invalidation did not retain full-scan recovery")
+	}
+
+	secondWatcher := newFakeFilesystemWatcher(3)
+	secondCtx, secondCancel := context.WithCancel(context.Background())
+	secondErrC := make(chan error, 1)
+	go func() {
+		secondErrC <- server.runFilesystemWatcherSession(secondCtx, secondWatcher, watchConfig, 20*time.Millisecond, 20*time.Millisecond, &recoveryFullScan)
+	}()
+	waitForFilesystemRunCount(t, db, 1)
+	secondCancel()
+	select {
+	case err := <-secondErrC:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("recovered watcher stopped with %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("recovered watcher did not stop")
+	}
+	if recoveryFullScan {
+		t.Fatal("recovery full scan was not acknowledged")
+	}
+	var inputJSON string
+	if err := db.QueryRow("SELECT input_json FROM workflow_run WHERE trigger_type = 'filesystem_event'").Scan(&inputJSON); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(inputJSON, `"scan_mode":"full"`) || !strings.Contains(inputJSON, `"full_fallback_reason":"watcher_recovery"`) {
+		t.Fatalf("root recovery input = %s", inputJSON)
+	}
+}
+
+func TestFilesystemWatcherUnexpectedClosureRetainsFullScanRecovery(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: t.TempDir(), LocalScanDepth: 2})
+	watchConfig, err := server.loadFilesystemWatcherConfig(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	recoveryFullScan := false
+	watcher := newFakeFilesystemWatcher(2)
+	errC := make(chan error, 1)
+	go func() {
+		errC <- server.runFilesystemWatcherSession(context.Background(), watcher, watchConfig, 20*time.Millisecond, 20*time.Millisecond, &recoveryFullScan)
+	}()
+	waitForFilesystemCondition(t, func() bool {
+		var count int
+		return db.QueryRow("SELECT watched_directory_count FROM filesystem_trigger_state LIMIT 1").Scan(&count) == nil && count == 2
+	}, "watcher did not become ready")
+	close(watcher.changes)
+	select {
+	case err := <-errC:
+		if err == nil || err.Error() != "filesystem watcher closed" {
+			t.Fatalf("closed watcher error = %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("closed watcher session did not stop")
+	}
+	if !recoveryFullScan {
+		t.Fatal("unexpected watcher closure did not retain full-scan recovery")
+	}
 }
 
 func TestFilesystemWatcherSessionRequestsReconfigureAfterScanDepthChange(t *testing.T) {
@@ -194,7 +327,7 @@ func TestFilesystemWatcherSessionRequestsReconfigureAfterFetchRootClaim(t *testi
 	}
 }
 
-func TestFixedFilesystemTriggerCanOnlyBeToggled(t *testing.T) {
+func TestFixedFilesystemTriggerCanBeToggledAndChangeScanMode(t *testing.T) {
 	db := openMigratedTestDB(t)
 	ownerID := insertCustomWorkflowAPIUser(t, db, "filesystem-trigger-owner")
 	server := NewServer(db, config.Config{})
@@ -236,6 +369,20 @@ func TestFixedFilesystemTriggerCanOnlyBeToggled(t *testing.T) {
 	}
 	if len(server.filesystemTriggerConfigChanged) != 1 {
 		t.Fatal("fixed trigger update did not notify the watcher coordinator")
+	}
+	modePayload := mustJSON(map[string]any{
+		"workflowDefinitionId": definitionID, "displayName": displayName, "triggerType": "filesystem_event", "enabled": true,
+		"scheduleJson": scheduleJSON, "configJson": `{"followUpRun":false,"scanMode":"full"}`,
+	})
+	modeResponse := requestWorkflowTriggerUpdate(t, server, actor, triggerID, modePayload)
+	if modeResponse.Code != http.StatusOK {
+		t.Fatalf("change fixed trigger mode = %d, %s", modeResponse.Code, modeResponse.Body.String())
+	}
+	if err := db.QueryRow("SELECT config_json FROM workflow_trigger WHERE id = ?", triggerID).Scan(&configJSON); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(configJSON, `"scanMode":"full"`) {
+		t.Fatalf("fixed trigger config = %s", configJSON)
 	}
 
 	create := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(payload))

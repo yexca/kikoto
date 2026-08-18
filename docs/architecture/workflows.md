@@ -53,37 +53,57 @@ store both their trigger reference and the final resolved input.
 ## Local Folder Trigger
 
 `local_library_scan` owns one fixed `filesystem_event` trigger created by the
-database migration and enabled by default. The API allows only pause and resume;
-it rejects manual creation, identity changes, conversion, duplication, and
-deletion.
+database migration and enabled by default. The API allows pause, resume, and a
+choice between `incremental` and `full` scan mode. Incremental is the default.
+It rejects manual creation, identity or name changes, conversion, duplication,
+and deletion.
 
-The coordinator performs one bounded walk at watcher startup to register
-visible directories through the configured scan depth. It then consumes native
-filesystem events and dynamically registers newly created or atomically moved
-directory trees; there is no recurring directory traversal. Events are
-debounced for five seconds before the existing full local-scan graph is queued.
+At watcher startup, the coordinator registers visible directories through the
+configured discovery depth and every descendant directory below a recognized
+work root. It then consumes native filesystem events and dynamically registers
+newly created or atomically moved directory trees; there is no recurring full
+registration walk. The number of native watches therefore scales with the
+directory count inside local works and remains subject to the host's `inotify`
+watch limit.
+
+Each visible Create, Write, Remove, or Rename resets a trailing five-second
+timer. Dispatch occurs only after five seconds without another observed event.
+This is an event-settling guarantee, not proof that an open writer has closed:
+a writer can pause longer than five seconds without emitting an event. Imports
+that require strict publication must write into an excluded staging tree,
+verify the result, and use a same-filesystem rename into the final work root.
+
+The coordinator deduplicates at most 1,024 changed paths into the durable run
+and job input. Incremental execution resolves those paths to affected known or
+new work roots, walks each affected work's complete media tree, and reconciles
+its locations. It does not walk unaffected media trees. A watcher error, path
+batch overflow, invalid or unavailable path batch, watch-root invalidation, or
+duplicate work root switches that run to full mode. An invalidated root retains
+the recovery request across watcher restarts and dispatches it only after the
+replacement watcher has settled.
+
 Kikoto's `.kikoto-staging`, `.kikoto-backup`, and `.kikoto-trash` transaction
-trees are excluded. Claimed per-source Fetch roots are also excluded from the
-native event watcher because Fetch registers final publication directly. A
-markerless root from an older release receives the same exclusion only after
-same-source Fetch history explains its complete visible structure and at least
-one exact historical target exists on disk; watcher configuration does not
-write the missing marker. The Startup and manual workflows continue to run the
-complete local scan. If a scan is already queued or running, later changes
-remain pending and are coalesced into at most one follow-up run. Events while
-the trigger is paused are discarded. Changes made while Kikoto is stopped are
-covered by the default Startup scan; they cannot be recovered by the native
-event stream alone.
+trees are excluded. Claimed per-source Fetch roots are also excluded because
+Fetch registers final publication directly. A markerless root from an older
+release receives the same exclusion only after same-source Fetch history
+explains its complete visible structure and at least one exact historical target
+exists on disk; watcher configuration does not write the missing marker.
+Startup, interval, and manual workflows always run the complete local scan. If a
+filesystem scan is already queued or running, later changes remain pending and
+are coalesced into at most one follow-up run. Events while the trigger is paused
+are discarded. Changes made while Kikoto is stopped are covered by the default
+Startup scan; they cannot be recovered by the native event stream alone.
 
-For one unambiguous detected work folder, the scan compares its normalized root
-with available local media paths already stored for that work. If the folder is
-gone or any available path belongs to a different root, all of that work's
-available locations for the local source become `missing`; the existing lazy
-indexer then rebuilds one consistent tree when the work is opened. This adds no
-per-file filesystem traversal to the folder scan. Duplicate-code groups skip
-automatic invalidation and remain review candidates. Reconciliation changes
-availability only: it neither deletes files nor rewrites `managed_fetch`
-ownership records.
+For one unambiguous affected work folder, incremental execution upserts current
+files and marks previously available paths absent from the folder `missing`. If
+the complete external work root disappears, its folder, source presence, and
+available locations become `missing`; the `work`, `media_item`, and location
+history remain. Application-owned deletion updates its known location state
+immediately and may also produce a native event; the later incremental run is an
+idempotent reconciliation. Full scans retain the existing folder-presence and
+lazy-index repair behavior. Duplicate-code groups skip automatic invalidation,
+fall back to full discovery, and remain review candidates. Neither mode rewrites
+`managed_fetch` ownership records.
 
 Local scan and metadata sync have separate definitions, jobs, resource lanes,
 statuses, failures, review candidates, and retry histories. A local scan never

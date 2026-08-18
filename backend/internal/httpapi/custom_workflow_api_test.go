@@ -472,7 +472,7 @@ func TestLocalLibraryScanAcceptsStartupAndScheduleTriggers(t *testing.T) {
 	if err := json.Unmarshal([]byte(runInputJSON), &runInput); err != nil {
 		t.Fatal(err)
 	}
-	if !runInput.FollowUpRun {
+	if !runInput.FollowUpRun || runInput.ScanMode != localScanModeFull {
 		t.Fatalf("triggered local scan input = %s", runInputJSON)
 	}
 }

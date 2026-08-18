@@ -2,6 +2,7 @@ package localfs
 
 import (
 	"io/fs"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -128,6 +129,146 @@ func DiscoverFolders(root string, options Options) ([]WorkFolder, Summary, error
 	})
 	summary.DetectedWorks = len(workFolders)
 	return workFolders, summary, nil
+}
+
+// DiscoverChangedFolders resolves work roots touched by a bounded set of
+// relative filesystem paths. It walks only changed directory subtrees and the
+// candidate ancestors of each path; it never traverses an unaffected work's
+// media tree.
+func DiscoverChangedFolders(root string, options Options, changedPaths []string) ([]WorkFolder, Summary, error) {
+	if options.ScanDepth <= 0 {
+		options.ScanDepth = 3
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return nil, Summary{}, err
+	}
+
+	candidates := map[string]WorkFolder{}
+	ambiguous := map[string]bool{}
+	scopes := map[string]string{}
+	addCandidate := func(path string) error {
+		depth, rel, err := relativeDepth(absRoot, path)
+		if err != nil {
+			return err
+		}
+		if depth <= 0 || depth > options.ScanDepth {
+			return nil
+		}
+		info, err := os.Lstat(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		if !info.IsDir() {
+			return nil
+		}
+		code, hasMultipleCodes := ExtractWorkCode(filepath.Base(path))
+		if code == "" {
+			return nil
+		}
+		cleanPath := filepath.Clean(path)
+		key := strings.ToLower(cleanPath)
+		candidates[key] = WorkFolder{
+			Code: code, Title: strings.TrimSpace(filepath.Base(path)), AbsPath: cleanPath,
+			RelPath: filepath.ToSlash(rel), Depth: depth,
+		}
+		if hasMultipleCodes {
+			ambiguous[filepath.ToSlash(rel)] = true
+		}
+		return nil
+	}
+
+	for _, changedPath := range changedPaths {
+		rel := filepath.Clean(filepath.FromSlash(strings.TrimSpace(changedPath)))
+		if rel == "." || filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return nil, Summary{}, &fs.PathError{Op: "resolve changed path", Path: changedPath, Err: fs.ErrInvalid}
+		}
+		absPath := filepath.Clean(filepath.Join(absRoot, rel))
+		if !isAncestorOrSame(absRoot, absPath) {
+			return nil, Summary{}, &fs.PathError{Op: "resolve changed path", Path: changedPath, Err: fs.ErrInvalid}
+		}
+
+		ancestor := absRoot
+		parts := strings.Split(rel, string(filepath.Separator))
+		for index, part := range parts {
+			if index >= options.ScanDepth {
+				break
+			}
+			ancestor = filepath.Join(ancestor, part)
+			if err := addCandidate(ancestor); err != nil {
+				return nil, Summary{}, err
+			}
+		}
+
+		info, statErr := os.Lstat(absPath)
+		if statErr == nil && info.IsDir() {
+			scopes[strings.ToLower(absPath)] = absPath
+		} else if statErr != nil && !os.IsNotExist(statErr) {
+			return nil, Summary{}, statErr
+		}
+	}
+
+	scopePaths := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		scopePaths = append(scopePaths, scope)
+	}
+	sort.Slice(scopePaths, func(i, j int) bool { return len(scopePaths[i]) < len(scopePaths[j]) })
+	selectedScopes := make([]string, 0, len(scopePaths))
+	for _, scope := range scopePaths {
+		covered := false
+		for _, selected := range selectedScopes {
+			if isAncestorOrSame(selected, scope) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			selectedScopes = append(selectedScopes, scope)
+		}
+	}
+
+	for _, scope := range selectedScopes {
+		if err := filepath.WalkDir(scope, func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if !entry.IsDir() {
+				return nil
+			}
+			if path != absRoot && isKikotoInternalDirectory(entry.Name()) {
+				return filepath.SkipDir
+			}
+			depth, _, err := relativeDepth(absRoot, path)
+			if err != nil {
+				return err
+			}
+			if depth > options.ScanDepth {
+				return filepath.SkipDir
+			}
+			return addCandidate(path)
+		}); err != nil {
+			return nil, Summary{}, err
+		}
+	}
+
+	candidateList := make([]WorkFolder, 0, len(candidates))
+	for _, candidate := range candidates {
+		candidateList = append(candidateList, candidate)
+	}
+	workFolders := chooseDeepest(candidateList)
+	sort.Slice(workFolders, func(i, j int) bool { return workFolders[i].RelPath < workFolders[j].RelPath })
+	ambiguousFolders := make([]string, 0, len(ambiguous))
+	for rel := range ambiguous {
+		ambiguousFolders = append(ambiguousFolders, rel)
+	}
+	sort.Strings(ambiguousFolders)
+	return workFolders, Summary{
+		CandidateFolders: len(candidateList), DetectedWorks: len(workFolders),
+		AmbiguousFolders: ambiguousFolders, DuplicateGroups: duplicateGroups(workFolders),
+	}, nil
 }
 
 func isKikotoInternalDirectory(name string) bool {

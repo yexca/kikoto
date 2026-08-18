@@ -174,14 +174,21 @@ Recognized audio extensions include MP3, M4A, FLAC, WAV, WMA, OGG, Opus, and
 AAC. Video, image, text, and other files remain visible in the directory tree
 with their corresponding media kind when recognized.
 
-The default Startup workflow scans the library after service startup. A native
-directory watcher queues the same scan while Kikoto is running, and a manual
-scan remains available from Workflows. The scan records folder presence and
-does not wait for metadata synchronization, so the local library becomes usable
-sooner. When one unambiguous work folder disappears or moves, the scan marks its
-stale local file locations missing without deleting files; a moved folder's
-detailed media tree is rebuilt when needed. Duplicate folders remain in Activity
-for review, and this reconciliation does not rewrite Fetch ownership. Manual,
+The default Startup workflow performs a full library scan after service startup,
+and a full manual scan remains available from Workflows. While Kikoto is running,
+the native folder watcher defaults to incremental mode: five seconds after the
+last observed change, it rescans and reconciles only the affected work folders.
+The fixed watcher trigger can instead be configured to run the full scan.
+Watcher errors, event-batch overflow, root invalidation, and duplicate work roots
+fall back to a full scan automatically. The five-second quiet period is an event
+debounce, not proof that an open writer has closed; imports requiring strict
+publication should finish in an excluded staging tree and use a same-filesystem
+rename into their final work folder.
+
+Incremental reconciliation indexes added or changed files and marks externally
+removed folder presence and file locations `missing`. It does not delete the
+`work`, media items, or location history. Duplicate folders remain in Activity
+for review, and reconciliation does not rewrite Fetch ownership. Manual,
 Startup, and interval scans can opt into a disabled-by-default `Follow-up run`
 that queues an independent metadata sync after the scan has finished.
 

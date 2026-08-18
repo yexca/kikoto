@@ -610,6 +610,223 @@ func TestLocalLibraryScanKeepsLocationsUnderCurrentFolder(t *testing.T) {
 	}
 }
 
+func TestIncrementalLocalScanIndexesAddedFilesAndMarksRemovedFilesMissing(t *testing.T) {
+	dataRoot := t.TempDir()
+	workRoot := "RJ00000026 Incremental"
+	firstPath := filepath.Join(dataRoot, workRoot, "01.flac")
+	if err := os.MkdirAll(filepath.Dir(firstPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(firstPath, []byte("first"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 2})
+	executeIncrementalLocalScanForTest(t, server, filepath.ToSlash(workRoot))
+
+	secondRelPath := filepath.ToSlash(filepath.Join(workRoot, "Disc 1", "02.flac"))
+	secondPath := filepath.Join(dataRoot, filepath.FromSlash(secondRelPath))
+	if err := os.MkdirAll(filepath.Dir(secondPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(secondPath, []byte("second"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	executeIncrementalLocalScanForTest(t, server, secondRelPath)
+
+	if err := os.Remove(firstPath); err != nil {
+		t.Fatal(err)
+	}
+	deleteRunID := executeIncrementalLocalScanForTest(t, server, filepath.ToSlash(filepath.Join(workRoot, "01.flac")))
+
+	var availableSecond, missingFirst, locationRows, mediaRows int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location WHERE path = ? AND availability = 'available'`, secondRelPath).Scan(&availableSecond); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location WHERE path = ? AND availability = 'missing'`, filepath.ToSlash(filepath.Join(workRoot, "01.flac"))).Scan(&missingFirst); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location`).Scan(&locationRows); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_item`).Scan(&mediaRows); err != nil {
+		t.Fatal(err)
+	}
+	if availableSecond != 1 || missingFirst != 1 || locationRows != 2 || mediaRows != 2 {
+		t.Fatalf("incremental files = second %d, first missing %d, locations %d, media %d", availableSecond, missingFirst, locationRows, mediaRows)
+	}
+	if missing := localScanMissingLocationCount(t, db, deleteRunID); missing != 1 {
+		t.Fatalf("incremental missing locations = %d, want 1", missing)
+	}
+}
+
+func TestIncrementalLocalScanMarksRemovedWorkMissingWithoutDeletingRecords(t *testing.T) {
+	dataRoot := t.TempDir()
+	workRoot := "Library/RJ00000027 Removed"
+	trackRelPath := filepath.ToSlash(filepath.Join(workRoot, "track.flac"))
+	trackPath := filepath.Join(dataRoot, filepath.FromSlash(trackRelPath))
+	if err := os.MkdirAll(filepath.Dir(trackPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(trackPath, []byte("audio"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 2})
+	executeIncrementalLocalScanForTest(t, server, trackRelPath)
+	if err := os.RemoveAll(filepath.Join(dataRoot, "Library", "RJ00000027 Removed")); err != nil {
+		t.Fatal(err)
+	}
+	executeIncrementalLocalScanForTest(t, server, filepath.ToSlash(workRoot))
+
+	var presence, location, folderState string
+	if err := db.QueryRow(`SELECT availability FROM work_source_presence WHERE presence_type = 'local'`).Scan(&presence); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT availability FROM media_file_location`).Scan(&location); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT state FROM work_folder_location WHERE root_path = ?`, filepath.ToSlash(workRoot)).Scan(&folderState); err != nil {
+		t.Fatal(err)
+	}
+	var works, mediaItems, locations int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM work`).Scan(&works); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_item`).Scan(&mediaItems); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location`).Scan(&locations); err != nil {
+		t.Fatal(err)
+	}
+	if presence != "missing" || location != "missing" || folderState != "missing" || works != 1 || mediaItems != 1 || locations != 1 {
+		t.Fatalf("removed work = presence %q location %q folder %q rows %d/%d/%d", presence, location, folderState, works, mediaItems, locations)
+	}
+}
+
+func TestIncrementalLocalScanReconcilesRenamedWorkRoot(t *testing.T) {
+	dataRoot := t.TempDir()
+	oldRoot := "RJ00000028 Old"
+	newRoot := "RJ00000028 New"
+	oldTrack := filepath.Join(dataRoot, oldRoot, "track.flac")
+	if err := os.MkdirAll(filepath.Dir(oldTrack), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(oldTrack, []byte("audio"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 2})
+	executeIncrementalLocalScanForTest(t, server, filepath.ToSlash(oldRoot))
+	if err := os.Rename(filepath.Join(dataRoot, oldRoot), filepath.Join(dataRoot, newRoot)); err != nil {
+		t.Fatal(err)
+	}
+	executeIncrementalLocalScanForTest(t, server, filepath.ToSlash(oldRoot), filepath.ToSlash(newRoot))
+
+	var sourceURL string
+	if err := db.QueryRow(`SELECT source_url FROM work_source_presence WHERE presence_type = 'local' AND availability = 'available'`).Scan(&sourceURL); err != nil {
+		t.Fatal(err)
+	}
+	var oldMissing, newAvailable int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location WHERE path = ? AND availability = 'missing'`, filepath.ToSlash(filepath.Join(oldRoot, "track.flac"))).Scan(&oldMissing); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location WHERE path = ? AND availability = 'available'`, filepath.ToSlash(filepath.Join(newRoot, "track.flac"))).Scan(&newAvailable); err != nil {
+		t.Fatal(err)
+	}
+	if sourceURL != newRoot || oldMissing != 1 || newAvailable != 1 {
+		t.Fatalf("renamed incremental work = source %q old %d new %d", sourceURL, oldMissing, newAvailable)
+	}
+}
+
+func TestIncrementalLocalScanFallsBackToFullForDuplicateWorkRoots(t *testing.T) {
+	dataRoot := t.TempDir()
+	firstRoot := "A/RJ00000030"
+	secondRoot := "B/RJ00000030"
+	if err := os.MkdirAll(filepath.Join(dataRoot, filepath.FromSlash(firstRoot)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataRoot, filepath.FromSlash(firstRoot), "track.flac"), []byte("first"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 2})
+	executeIncrementalLocalScanForTest(t, server, filepath.ToSlash(firstRoot))
+	if err := os.MkdirAll(filepath.Join(dataRoot, filepath.FromSlash(secondRoot)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataRoot, filepath.FromSlash(secondRoot), "track.flac"), []byte("second"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runID := executeIncrementalLocalScanForTest(t, server, filepath.ToSlash(secondRoot))
+
+	var summaryJSON string
+	if err := db.QueryRow("SELECT summary_json FROM workflow_run WHERE id = ?", runID).Scan(&summaryJSON); err != nil {
+		t.Fatal(err)
+	}
+	var summary struct {
+		ScanMode           string `json:"scan_mode"`
+		FullFallbackReason string `json:"full_fallback_reason"`
+	}
+	if err := json.Unmarshal([]byte(summaryJSON), &summary); err != nil {
+		t.Fatal(err)
+	}
+	var candidates int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM workflow_candidate WHERE workflow_run_id = ? AND candidate_type = 'local_duplicate_work_folder'`, runID).Scan(&candidates); err != nil {
+		t.Fatal(err)
+	}
+	if summary.ScanMode != localScanModeFull || summary.FullFallbackReason != "duplicate_work_roots" || candidates != 1 {
+		t.Fatalf("duplicate fallback = %+v, candidates %d, summary %s", summary, candidates, summaryJSON)
+	}
+}
+
+func TestIncrementalLocalScanKeepsRemainingKnownDuplicateRootAvailable(t *testing.T) {
+	dataRoot := t.TempDir()
+	firstRoot := "A/RJ00000031"
+	secondRoot := "B/RJ00000031"
+	for _, root := range []string{firstRoot, secondRoot} {
+		if err := os.MkdirAll(filepath.Join(dataRoot, filepath.FromSlash(root)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dataRoot, filepath.FromSlash(root), "track.flac"), []byte("audio"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 2})
+	executeIncrementalLocalScanForTest(t, server, filepath.ToSlash(firstRoot), filepath.ToSlash(secondRoot))
+	if err := os.RemoveAll(filepath.Join(dataRoot, filepath.FromSlash(secondRoot))); err != nil {
+		t.Fatal(err)
+	}
+	runID := executeIncrementalLocalScanForTest(t, server, filepath.ToSlash(secondRoot))
+
+	var presence string
+	if err := db.QueryRow(`SELECT availability FROM work_source_presence WHERE presence_type = 'local'`).Scan(&presence); err != nil {
+		t.Fatal(err)
+	}
+	var firstState, secondState string
+	if err := db.QueryRow(`SELECT state FROM work_folder_location WHERE root_path = ?`, filepath.ToSlash(firstRoot)).Scan(&firstState); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT state FROM work_folder_location WHERE root_path = ?`, filepath.ToSlash(secondRoot)).Scan(&secondState); err != nil {
+		t.Fatal(err)
+	}
+	var summary struct {
+		ScanMode           string `json:"scan_mode"`
+		FullFallbackReason string `json:"full_fallback_reason"`
+	}
+	var summaryJSON string
+	if err := db.QueryRow("SELECT summary_json FROM workflow_run WHERE id = ?", runID).Scan(&summaryJSON); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(summaryJSON), &summary); err != nil {
+		t.Fatal(err)
+	}
+	if presence != "available" || firstState != "active" || secondState != "missing" || summary.ScanMode != localScanModeFull || summary.FullFallbackReason != "duplicate_work_roots" {
+		t.Fatalf("known duplicate removal = presence %q folders %q/%q summary %+v", presence, firstState, secondState, summary)
+	}
+}
+
 type seededLocalScanWorkRecord struct {
 	workID      int64
 	mediaItemID int64
@@ -676,6 +893,25 @@ func executeLocalScanForTest(t *testing.T, server *Server) int64 {
 	job, ok, err := server.claimNextQueuedWorkflowJob(context.Background(), "local-folder-reconcile-test")
 	if err != nil || !ok || job.RunID != result.RunID {
 		t.Fatalf("claim local scan job = %#v, %t, %v", job, ok, err)
+	}
+	if err := server.executeLocalScanJob(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	return result.RunID
+}
+
+func executeIncrementalLocalScanForTest(t *testing.T, server *Server, changedPaths ...string) int64 {
+	t.Helper()
+	result, err := server.enqueueLocalScanWithPayload(context.Background(), "filesystem_event", "data_directories_changed", 0, localScanJobPayload{
+		Root: server.cfg.DataRoot, ScanDepth: server.cfg.LocalScanDepth,
+		ScanMode: localScanModeIncremental, ChangedPaths: changedPaths,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, ok, err := server.claimNextQueuedWorkflowJob(context.Background(), "incremental-local-scan-test")
+	if err != nil || !ok || job.RunID != result.RunID {
+		t.Fatalf("claim incremental local scan job = %#v, %t, %v", job, ok, err)
 	}
 	if err := server.executeLocalScanJob(context.Background(), job); err != nil {
 		t.Fatal(err)

@@ -210,6 +210,7 @@ type SystemRunOptions = {
 };
 
 type DLsitePopularPeriod = "day" | "week" | "month" | "year";
+type LocalScanMode = "incremental" | "full";
 
 type DLsitePopularRunOptions = {
   period: DLsitePopularPeriod;
@@ -243,6 +244,7 @@ const REMOTE_POPULAR_TAG_TEMPLATE = "{date}_{remote_name}_popular";
 
 type SystemWorkflowTriggerConfig = {
   followUpRun: boolean;
+  scanMode: LocalScanMode;
   sourceId: number;
   action: "track" | "fetch";
   limit: number;
@@ -3873,19 +3875,17 @@ function WorkflowAutomationPanel({
                 <SummaryCell label="Next" value={workflowTriggerNextRun(trigger)} />
                 <SummaryCell label="Last success" value={trigger.lastSuccessAt ?? "Never"} />
               </div>
-              {canManage &&
-                trigger.triggerType !== "filesystem_event" &&
-                supportedTypes.includes(trigger.triggerType as AutomationTriggerType) && (
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => onEdit(trigger)}
-                    title={`Edit ${trigger.displayName}`}
-                    aria-label={`Edit ${trigger.displayName}`}
-                  >
-                    <Edit3 className="h-4 w-4" />
-                  </Button>
-                )}
+              {canManage && supportedTypes.includes(trigger.triggerType as AutomationTriggerType) && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => onEdit(trigger)}
+                  title={`Edit ${trigger.displayName}`}
+                  aria-label={`Edit ${trigger.displayName}`}
+                >
+                  <Edit3 className="h-4 w-4" />
+                </Button>
+              )}
               {trigger.lastErrorMessage && (
                 <div className="text-xs text-error-foreground md:col-start-2 md:col-end-4">
                   Last error: {trigger.lastErrorMessage}
@@ -4147,8 +4147,12 @@ function TriggerModal({
   onSaved: (trigger: WorkflowTrigger) => void;
   onDeleted: () => void;
 }) {
-  const triggerType: CreatableAutomationTriggerType =
-    trigger?.triggerType === "startup" ? "startup" : initialTriggerType;
+  const triggerType: AutomationTriggerType =
+    trigger?.triggerType === "startup" ||
+    trigger?.triggerType === "filesystem_event" ||
+    trigger?.triggerType === "schedule"
+      ? trigger.triggerType
+      : initialTriggerType;
   const selectedParsed = parseWorkflowDefinition(definition.definitionJson);
   const dagDocument = selectedParsed.kind === "v2" ? selectedParsed.document : null;
   const [systemConfig, setSystemConfig] = useState<SystemWorkflowTriggerConfig>(() =>
@@ -4225,7 +4229,7 @@ function TriggerModal({
             : (trigger?.scheduleJson ?? JSON.stringify({ type: "startup" })),
         configJson: dagDocument
           ? JSON.stringify({ inputs: resolvedInputs })
-          : JSON.stringify(workflowSystemTriggerConfigPayload(definition.code, systemConfig)),
+          : JSON.stringify(workflowSystemTriggerConfigPayload(definition.code, triggerType, systemConfig)),
         nextRunAt: null,
       };
       const saved = trigger
@@ -4266,6 +4270,7 @@ function TriggerModal({
           <input
             className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
             value={displayName}
+            disabled={triggerType === "filesystem_event"}
             onChange={(event) => setDisplayName(event.target.value)}
           />
         </Field>
@@ -4281,10 +4286,15 @@ function TriggerModal({
                 onChange={(event) => setIntervalMinutes(Number(event.target.value))}
               />
             </Field>
-          ) : (
+          ) : triggerType === "startup" ? (
             <div className="grid gap-1 rounded-md border bg-muted/30 px-3 py-2">
               <div className="text-xs text-muted-foreground">Runs</div>
               <div className="text-sm font-medium">When the application service starts</div>
+            </div>
+          ) : (
+            <div className="grid gap-1 rounded-md border bg-muted/30 px-3 py-2">
+              <div className="text-xs text-muted-foreground">Runs</div>
+              <div className="text-sm font-medium">After local library folders settle</div>
             </div>
           )}
           <div className="flex items-center gap-2 self-end pb-1 text-sm">
@@ -4314,7 +4324,12 @@ function TriggerModal({
             ))}
           </div>
         )}
-        <SystemWorkflowTriggerFields definitionCode={definition.code} value={systemConfig} onChange={setSystemConfig} />
+        <SystemWorkflowTriggerFields
+          definitionCode={definition.code}
+          triggerType={triggerType}
+          value={systemConfig}
+          onChange={setSystemConfig}
+        />
         {automationBlockers.length > 0 && (
           <div className="rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-sm text-warning-foreground">
             {automationBlockers.map((blocker) => (
@@ -4324,7 +4339,7 @@ function TriggerModal({
         )}
         {error && <ErrorPanel error={error} />}
         <div className="flex justify-end gap-2">
-          {trigger && (
+          {trigger && triggerType !== "filesystem_event" && (
             <Button variant="outline" onClick={remove} disabled={saving}>
               <Trash2 className="h-4 w-4" />
               Delete
@@ -4354,6 +4369,7 @@ function workflowSystemTriggerConfig(
       : REMOTE_POPULAR_TAG_TEMPLATE;
   return {
     followUpRun: record.followUpRun === true,
+    scanMode: record.scanMode === "full" ? "full" : "incremental",
     sourceId: typeof record.sourceId === "number" ? record.sourceId : 0,
     action: record.action === "fetch" ? "fetch" : "track",
     limit: typeof record.limit === "number" ? record.limit : 25,
@@ -4367,9 +4383,15 @@ function workflowSystemTriggerConfig(
   };
 }
 
-function workflowSystemTriggerConfigPayload(definitionCode: string, value: SystemWorkflowTriggerConfig) {
+function workflowSystemTriggerConfigPayload(
+  definitionCode: string,
+  triggerType: AutomationTriggerType,
+  value: SystemWorkflowTriggerConfig,
+) {
   if (definitionCode === "local_library_scan") {
-    return { followUpRun: value.followUpRun };
+    return triggerType === "filesystem_event"
+      ? { followUpRun: false, scanMode: value.scanMode }
+      : { followUpRun: value.followUpRun };
   }
   if (definitionCode === "remote_popular_collection") {
     return {
@@ -4423,10 +4445,12 @@ function workflowTagTemplateBlockers(template: string, tokens: string[]) {
 
 function SystemWorkflowTriggerFields({
   definitionCode,
+  triggerType,
   value,
   onChange,
 }: {
   definitionCode: string;
+  triggerType: AutomationTriggerType;
   value: SystemWorkflowTriggerConfig;
   onChange: (value: SystemWorkflowTriggerConfig) => void;
 }) {
@@ -4467,6 +4491,38 @@ function SystemWorkflowTriggerFields({
   }, [definitionCode]);
 
   if (definitionCode === "local_library_scan") {
+    if (triggerType === "filesystem_event") {
+      return (
+        <div className="grid gap-1.5 text-sm">
+          <div id="local-scan-mode-label" className="font-medium">
+            Scan mode
+          </div>
+          <div
+            className="grid grid-cols-2 rounded-md border bg-muted/30 p-1"
+            role="radiogroup"
+            aria-labelledby="local-scan-mode-label"
+          >
+            {(["incremental", "full"] as const).map((scanMode) => {
+              const selected = value.scanMode === scanMode;
+              return (
+                <button
+                  key={scanMode}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  className={`h-9 rounded px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    selected ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => onChange({ ...value, scanMode })}
+                >
+                  {scanMode === "incremental" ? "Incremental" : "Full"}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex items-center justify-between gap-4 border-t pt-3">
         <div>

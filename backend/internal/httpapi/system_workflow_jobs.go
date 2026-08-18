@@ -14,12 +14,20 @@ import (
 )
 
 type localScanJobPayload struct {
-	Root                string `json:"root"`
-	ScanDepth           int    `json:"scan_depth"`
-	DirectoryEventAt    string `json:"directory_event_at,omitempty"`
-	ObservedDirectories int    `json:"observed_directories,omitempty"`
-	FollowUpRun         bool   `json:"follow_up_run,omitempty"`
+	Root                string   `json:"root"`
+	ScanDepth           int      `json:"scan_depth"`
+	ScanMode            string   `json:"scan_mode,omitempty"`
+	ChangedPaths        []string `json:"changed_paths,omitempty"`
+	FullFallbackReason  string   `json:"full_fallback_reason,omitempty"`
+	DirectoryEventAt    string   `json:"directory_event_at,omitempty"`
+	ObservedDirectories int      `json:"observed_directories,omitempty"`
+	FollowUpRun         bool     `json:"follow_up_run,omitempty"`
 }
+
+const (
+	localScanModeFull        = "full"
+	localScanModeIncremental = "incremental"
+)
 
 type metadataSyncRunInput struct {
 	SourceRunID int64 `json:"source_run_id,omitempty"`
@@ -32,7 +40,7 @@ func (s *Server) enqueueLocalScan(ctx context.Context, triggerType string, trigg
 func (s *Server) enqueueLocalScanWithOptions(ctx context.Context, triggerType string, triggerReason string, triggerID int64, followUpRun bool) (localScanResult, error) {
 	scanDepth := s.configuredLocalScanDepth(ctx)
 	return s.enqueueLocalScanWithPayload(ctx, triggerType, triggerReason, triggerID, localScanJobPayload{
-		Root: s.cfg.DataRoot, ScanDepth: scanDepth, FollowUpRun: followUpRun,
+		Root: s.cfg.DataRoot, ScanDepth: scanDepth, ScanMode: localScanModeFull, FollowUpRun: followUpRun,
 	})
 }
 
@@ -42,6 +50,9 @@ func (s *Server) enqueueLocalScanWithPayload(ctx context.Context, triggerType st
 	}
 	if payload.ScanDepth <= 0 {
 		payload.ScanDepth = s.configuredLocalScanDepth(ctx)
+	}
+	if payload.ScanMode == "" {
+		payload.ScanMode = localScanModeFull
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -111,7 +122,14 @@ func (s *Server) executeLocalScanJob(ctx context.Context, job workflowJobRecord)
 	if err != nil {
 		return err
 	}
-	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "discovering", map[string]any{"root": payload.Root}, 0, 0)
+	if payload.ScanMode == localScanModeIncremental {
+		return s.executeIncrementalLocalScanJob(ctx, job, payload)
+	}
+	return s.executeFullLocalScanJob(ctx, job, payload)
+}
+
+func (s *Server) executeFullLocalScanJob(ctx context.Context, job workflowJobRecord, payload localScanJobPayload) error {
+	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "discovering", map[string]any{"root": payload.Root, "scan_mode": localScanModeFull}, 0, 0)
 	workFolders, scanSummary, err := localfs.DiscoverFolders(payload.Root, localfs.Options{ScanDepth: payload.ScanDepth})
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
@@ -150,6 +168,17 @@ func (s *Server) prepareLocalScanPayload(ctx context.Context, job workflowJobRec
 	if strings.TrimSpace(payload.Root) == "" {
 		payload.Root = s.cfg.DataRoot
 	}
+	payload.ScanMode = strings.ToLower(strings.TrimSpace(payload.ScanMode))
+	if payload.ScanMode == "" {
+		payload.ScanMode = localScanModeFull
+	}
+	if payload.ScanMode != localScanModeFull && payload.ScanMode != localScanModeIncremental {
+		return payload, errors.New("local scan mode is invalid")
+	}
+	if payload.ScanMode == localScanModeIncremental && len(payload.ChangedPaths) == 0 {
+		payload.ScanMode = localScanModeFull
+		payload.FullFallbackReason = "changed_paths_unavailable"
+	}
 	return payload, nil
 }
 
@@ -165,10 +194,15 @@ func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRec
 		return localScanResult{}, nil, err
 	}
 	state := localScanPersistState{duplicateCodes: localScanDuplicateCodes(scanSummary.DuplicateGroups), seenWorkIDs: map[int64]bool{}, reconciledWorkIDs: map[int64]bool{}}
+	seenRoots := map[string]bool{}
 	for _, folder := range workFolders {
-		if err := s.persistLocalScanFolder(ctx, tx, fileSourceID, folder, &state); err != nil {
+		seenRoots[strings.ToLower(normalizeFolderRootPath(folder.RelPath))] = true
+		if _, err := s.persistLocalScanFolder(ctx, tx, fileSourceID, folder, &state); err != nil {
 			return localScanResult{}, nil, err
 		}
+	}
+	if err := markMissingExternalWorkFolderLocations(ctx, tx, fileSourceID, seenRoots); err != nil {
+		return localScanResult{}, nil, err
 	}
 	missingWorkIDs, err := markMissingLocalPresence(ctx, tx, fileSourceID, state.seenWorkIDs)
 	if err != nil {
@@ -192,6 +226,10 @@ func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRec
 		"missing_locations":   state.missingLocations,
 		"new_work_codes":      state.newWorkCodes,
 		"follow_up_requested": payload.FollowUpRun,
+		"scan_mode":           localScanModeFull,
+	}
+	if payload.FullFallbackReason != "" {
+		runSummary["full_fallback_reason"] = payload.FullFallbackReason
 	}
 	if err := completeLocalScanNodes(ctx, tx, nodeIDs, fileSourceID, scanSummary, state); err != nil {
 		return localScanResult{}, nil, err
@@ -229,14 +267,14 @@ func localScanDuplicateCodes(groups []localfs.DuplicateGroup) map[string]bool {
 	return result
 }
 
-func (s *Server) persistLocalScanFolder(ctx context.Context, tx *sql.Tx, fileSourceID int64, folder localfs.WorkFolder, state *localScanPersistState) error {
+func (s *Server) persistLocalScanFolder(ctx context.Context, tx *sql.Tx, fileSourceID int64, folder localfs.WorkFolder, state *localScanPersistState) (int64, error) {
 	_, existedBefore, err := workIDForCodeInTx(ctx, tx, folder.Code)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	workID, err := upsertDetectedWork(ctx, tx, folder)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if !existedBefore {
 		state.newWorkCodes = append(state.newWorkCodes, folder.Code)
@@ -250,7 +288,7 @@ func (s *Server) persistLocalScanFolder(ctx context.Context, tx *sql.Tx, fileSou
 			"files": len(folder.Files), "file_tree_scanned": false,
 		}),
 	}); err != nil {
-		return err
+		return 0, err
 	}
 	var managedFetchRootExists bool
 	if err := tx.QueryRowContext(ctx, `
@@ -259,11 +297,11 @@ func (s *Server) persistLocalScanFolder(ctx context.Context, tx *sql.Tx, fileSou
 			WHERE work_id = ? AND file_source_id = ? AND role = 'managed_fetch'
 		)
 	`, workID, fileSourceID).Scan(&managedFetchRootExists); err != nil {
-		return err
+		return 0, err
 	}
 	if !managedFetchRootExists {
 		if err := upsertWorkFolderLocation(ctx, tx, workID, fileSourceID, folder.RelPath, "external", "active", true); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	// A duplicate stays reviewable. Invalidating either folder here would
@@ -272,12 +310,12 @@ func (s *Server) persistLocalScanFolder(ctx context.Context, tx *sql.Tx, fileSou
 	if !state.duplicateCodes[code] && !state.reconciledWorkIDs[workID] {
 		missing, err := markLocalLocationsMissingForChangedFolder(ctx, tx, workID, fileSourceID, folder.RelPath)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		state.missingLocations += missing
 		state.reconciledWorkIDs[workID] = true
 	}
-	return nil
+	return workID, nil
 }
 
 func completeLocalScanNodes(ctx context.Context, tx *sql.Tx, nodeIDs map[string]int64, fileSourceID int64, summary localfs.Summary, state localScanPersistState) error {

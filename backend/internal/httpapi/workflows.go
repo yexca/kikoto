@@ -685,7 +685,7 @@ func (s *Server) loadWorkflowTriggerUpdateContext(ctx context.Context, actor cur
 
 func (s *Server) prepareWorkflowTriggerUpdate(ctx context.Context, actor currentUser, id int64, current workflowTriggerRecord, currentDefinition workflowDefinitionRecord, payload workflowTriggerPayload) (workflowTriggerRecord, preparedWorkflowTrigger, bool, error) {
 	if current.TriggerType == "filesystem_event" && !isFixedFilesystemTriggerUpdate(currentDefinition, current, payload) {
-		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "the local library filesystem trigger only supports enable and pause")
+		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "the local library filesystem trigger only supports pause and scan-mode changes")
 	}
 	definition, err := s.loadWorkflowDefinition(ctx, payload.WorkflowDefinitionID)
 	if err != nil {
@@ -717,7 +717,7 @@ func (s *Server) prepareWorkflowTriggerUpdate(ctx context.Context, actor current
 func isFixedFilesystemTriggerUpdate(definition workflowDefinitionRecord, current workflowTriggerRecord, payload workflowTriggerPayload) bool {
 	return definition.Code == "local_library_scan" && payload.WorkflowDefinitionID == current.WorkflowDefinitionID &&
 		payload.TriggerType == current.TriggerType && payload.DisplayName == current.DisplayName &&
-		payload.ScheduleJSON == current.ScheduleJSON && payload.ConfigJSON == current.ConfigJSON
+		payload.ScheduleJSON == current.ScheduleJSON
 }
 
 func (s *Server) persistWorkflowTriggerUpdate(ctx context.Context, id int64, current workflowTriggerRecord, payload workflowTriggerPayload, prepared preparedWorkflowTrigger, enabled bool) error {

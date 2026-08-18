@@ -121,6 +121,65 @@ func TestDiscoverFindsCompactFetchLayoutAtDepthThree(t *testing.T) {
 	}
 }
 
+func TestDiscoverChangedFoldersResolvesDeepMediaPathToWorkRoot(t *testing.T) {
+	root := t.TempDir()
+	relativeFile := filepath.Join("Library", "RJ00000020 Work", "Disc 1", "Bonus", "track.flac")
+	writeFile(t, filepath.Join(root, relativeFile))
+
+	folders, summary, err := DiscoverChangedFolders(root, Options{ScanDepth: 2}, []string{filepath.ToSlash(relativeFile)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(folders) != 1 || folders[0].Code != "RJ00000020" || folders[0].RelPath != "Library/RJ00000020 Work" {
+		t.Fatalf("changed folders = %+v", folders)
+	}
+	if summary.CandidateFolders != 1 || summary.DetectedWorks != 1 {
+		t.Fatalf("changed summary = %+v", summary)
+	}
+}
+
+func TestDiscoverChangedFoldersWalksOnlyChangedDirectoryScope(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "Changed", "RJ00000021", "track.flac"))
+	writeFile(t, filepath.Join(root, "Unchanged", "RJ00000022", "track.flac"))
+
+	folders, _, err := DiscoverChangedFolders(root, Options{ScanDepth: 2}, []string{"Changed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(folders) != 1 || folders[0].Code != "RJ00000021" {
+		t.Fatalf("changed directory folders = %+v", folders)
+	}
+}
+
+func TestDiscoverChangedFoldersLeavesRemovedWorkForDatabaseReconciliation(t *testing.T) {
+	root := t.TempDir()
+	folders, summary, err := DiscoverChangedFolders(root, Options{ScanDepth: 2}, []string{"Library/RJ00000023 Removed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(folders) != 0 || summary.DetectedWorks != 0 {
+		t.Fatalf("removed changed folders = %+v, summary = %+v", folders, summary)
+	}
+}
+
+func TestDiscoverChangedFoldersDoesNotTreatDirectorySymlinkAsWorkRoot(t *testing.T) {
+	root := t.TempDir()
+	target := t.TempDir()
+	link := filepath.Join(root, "RJ00000032 Linked")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("directory symlinks are unavailable: %v", err)
+	}
+
+	folders, summary, err := DiscoverChangedFolders(root, Options{ScanDepth: 2}, []string{filepath.Base(link)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(folders) != 0 || summary.DetectedWorks != 0 {
+		t.Fatalf("symlink folders = %+v, summary = %+v", folders, summary)
+	}
+}
+
 func writeFile(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

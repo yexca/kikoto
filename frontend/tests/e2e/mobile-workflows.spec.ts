@@ -125,7 +125,7 @@ const workflowTriggers = [
     triggerType: "filesystem_event",
     enabled: true,
     scheduleJson: '{"type":"filesystem_event"}',
-    configJson: '{"followUpRun":false}',
+    configJson: '{"followUpRun":false,"scanMode":"incremental"}',
     nextRunAt: null,
     lastRunAt: null,
     lastSuccessAt: null,
@@ -802,8 +802,14 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await expect(page).toHaveURL(/\/activity\?view=completed&run=51/);
 });
 
-test("local scan exposes its fixed folder watcher without edit controls", async ({ page }) => {
+test("local scan folder watcher exposes incremental and full scan modes", async ({ page }) => {
+  const triggerPayloads: Array<Record<string, unknown>> = [];
   await mockWorkflows(page);
+  await page.route("**/api/workflow-triggers/72", async (route) => {
+    const payload = route.request().postDataJSON() as Record<string, unknown>;
+    triggerPayloads.push(payload);
+    await route.fulfill({ json: { ...workflowTriggers[1], configJson: payload.configJson } });
+  });
   await page.goto("/workflows");
 
   await page.getByRole("button", { name: /Scan local library/ }).click();
@@ -813,7 +819,17 @@ test("local scan exposes its fixed folder watcher without edit controls", async 
   );
   await expect(page.getByText("When local library folders change", { exact: true })).toBeVisible();
   await expect(page.getByText("Watching for folder changes", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Edit Watch data folders", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Edit Watch data folders", exact: true }).click();
+  const triggerDialog = page.getByRole("dialog", { name: "Edit trigger" });
+  await expect(triggerDialog.getByRole("radio", { name: "Incremental", exact: true })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await triggerDialog.getByRole("radio", { name: "Full", exact: true }).click();
+  await expect(triggerDialog.getByRole("button", { name: "Delete", exact: true })).toHaveCount(0);
+  await triggerDialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect.poll(() => triggerPayloads).toHaveLength(1);
+  expect(JSON.parse(String(triggerPayloads[0].configJson))).toEqual({ followUpRun: false, scanMode: "full" });
   await expect(page.getByRole("button", { name: "Add filesystem trigger", exact: true })).toHaveCount(0);
 });
 

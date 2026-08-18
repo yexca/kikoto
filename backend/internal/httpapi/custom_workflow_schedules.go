@@ -49,7 +49,8 @@ type systemWorkflowTriggerConfig struct {
 }
 
 type localScanTriggerConfig struct {
-	FollowUpRun bool `json:"followUpRun"`
+	FollowUpRun bool   `json:"followUpRun"`
+	ScanMode    string `json:"scanMode,omitempty"`
 }
 
 var workflowTagTemplateTokenPattern = regexp.MustCompile(`\{[a-z_]+\}`)
@@ -164,6 +165,8 @@ func (s *Server) normalizeSystemWorkflowTriggerConfig(
 		}
 		if payload.TriggerType == "filesystem_event" {
 			config.FollowUpRun = false
+		} else {
+			config.ScanMode = localScanModeFull
 		}
 		prepared.ConfigJSON = mustJSON(config)
 		requiredPermissions = append(requiredPermissions, "metadata:sync")
@@ -188,12 +191,19 @@ func (s *Server) normalizeSystemWorkflowTriggerConfig(
 }
 
 func normalizeLocalScanTriggerConfig(raw string) (localScanTriggerConfig, error) {
-	config := localScanTriggerConfig{}
+	config := localScanTriggerConfig{ScanMode: localScanModeIncremental}
 	if strings.TrimSpace(raw) == "" {
 		raw = "{}"
 	}
 	if err := decodeStrictJSON(raw, &config); err != nil {
 		return config, fmt.Errorf("local scan trigger config is invalid")
+	}
+	config.ScanMode = strings.ToLower(strings.TrimSpace(config.ScanMode))
+	if config.ScanMode == "" {
+		config.ScanMode = localScanModeIncremental
+	}
+	if config.ScanMode != localScanModeIncremental && config.ScanMode != localScanModeFull {
+		return config, fmt.Errorf("local scan trigger mode must be incremental or full")
 	}
 	return config, nil
 }

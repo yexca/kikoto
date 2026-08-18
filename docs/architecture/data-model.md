@@ -112,7 +112,10 @@ remain available for retry.
 
 `filesystem_trigger_state` stores the fixed local-scan trigger's watched
 directory count and most recent event time. It is compact orchestration state,
-not a per-file index or a directory snapshot.
+not a per-file index or a directory snapshot. A bounded changed-path batch is
+stored in the resulting incremental workflow run and job input. A pending batch
+before dispatch is process-local; the default full Startup scan repairs changes
+that occurred while Kikoto was stopped.
 
 ## User State
 

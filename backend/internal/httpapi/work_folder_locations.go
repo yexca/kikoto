@@ -53,3 +53,43 @@ func normalizeFolderRootPath(value string) string {
 	}
 	return strings.Trim(value, "/")
 }
+
+func markMissingExternalWorkFolderLocations(ctx context.Context, tx *sql.Tx, fileSourceID int64, seenRoots map[string]bool) error {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, root_path
+		FROM work_folder_location
+		WHERE file_source_id = ? AND role != 'managed_fetch' AND state = 'active'
+	`, fileSourceID)
+	if err != nil {
+		return err
+	}
+	missingIDs := []int64{}
+	for rows.Next() {
+		var id int64
+		var rootPath string
+		if err := rows.Scan(&id, &rootPath); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		if !seenRoots[strings.ToLower(normalizeFolderRootPath(rootPath))] {
+			missingIDs = append(missingIDs, id)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, id := range missingIDs {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE work_folder_location
+			SET state = 'missing', is_primary = 0, updated_at = CURRENT_TIMESTAMP
+			WHERE id = ? AND role != 'managed_fetch' AND state = 'active'
+		`, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}

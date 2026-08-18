@@ -45,12 +45,18 @@
 - Database contention is reported as a retryable service error and is not
   mistaken for an expired mobile login.
 - Workflow runs preserve structured status and error context.
-- The local folder watcher performs one bounded registration walk, then relies
-  on native filesystem events instead of recurring disk traversal. It debounces
-  changes for five seconds, ignores Fetch transaction directories and claimed
-  per-source Fetch roots, and retains only one pending follow-up while its
-  automatic scan is active. Fetch registers publication directly, while the
-  default Startup and manual scans continue to inspect the complete data tree.
+- The local folder watcher performs one registration walk, then relies on native
+  filesystem events instead of recurring full-tree traversal. It watches through
+  the configured discovery depth and all descendants below recognized work
+  roots, so Linux deployments must leave enough `inotify` watches for those
+  directories. It starts its scan five seconds after the most recent observed
+  event and retains only one pending follow-up while an automatic scan is active.
+  This quiet period does not prove that an open copy has closed; strict importers
+  should publish with a same-filesystem rename from an excluded staging tree.
+  Incremental mode is the default, with automatic full fallback after watcher
+  errors, event overflow, root invalidation, or duplicate roots. Fetch registers
+  publication directly, while Startup, interval, and manual scans continue to
+  inspect the complete data tree.
 - Local scan completion is independent of metadata-provider latency or failure.
   Its optional, disabled-by-default metadata follow-up creates a separate run
   after scan completion, with its own retry and review state.

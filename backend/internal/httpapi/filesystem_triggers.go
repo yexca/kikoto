@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -15,14 +17,19 @@ const (
 	filesystemTriggerSettleDelay = 5 * time.Second
 	filesystemTriggerRetryDelay  = 5 * time.Second
 	filesystemTriggerErrorPrefix = "filesystem watcher: "
+	filesystemTriggerMaxPaths    = 1024
 )
 
-var errFilesystemWatcherReconfigure = errors.New("filesystem watcher configuration changed")
+var (
+	errFilesystemWatcherReconfigure   = errors.New("filesystem watcher configuration changed")
+	errFilesystemWatchRootInvalidated = errors.New("filesystem watch root was removed or renamed")
+)
 
 type filesystemTriggerRecord struct {
 	ID               int64
 	Enabled          bool
 	LastErrorMessage string
+	ConfigJSON       string
 }
 
 type filesystemWatcherConfig struct {
@@ -31,13 +38,14 @@ type filesystemWatcherConfig struct {
 }
 
 type filesystemWatcher interface {
-	Changes() <-chan struct{}
+	Changes() <-chan localfs.DirectoryChange
 	Invalidated() <-chan struct{}
 	Errors() <-chan error
 	WatchedDirectoryCount() int
 }
 
 func (s *Server) runFilesystemTriggerCoordinator(ctx context.Context) {
+	recoveryFullScan := false
 	for {
 		watchConfig, err := s.loadFilesystemWatcherConfig(ctx)
 		if err != nil {
@@ -55,7 +63,7 @@ func (s *Server) runFilesystemTriggerCoordinator(ctx context.Context) {
 			}
 			continue
 		}
-		err = s.runFilesystemWatcherSession(ctx, watcher, watchConfig, filesystemTriggerSettleDelay, filesystemTriggerRetryDelay)
+		err = s.runFilesystemWatcherSession(ctx, watcher, watchConfig, filesystemTriggerSettleDelay, filesystemTriggerRetryDelay, &recoveryFullScan)
 		_ = watcher.Close()
 		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
 			return
@@ -72,7 +80,7 @@ func (s *Server) runFilesystemTriggerCoordinator(ctx context.Context) {
 	}
 }
 
-func (s *Server) runFilesystemWatcherSession(ctx context.Context, watcher filesystemWatcher, watchConfig filesystemWatcherConfig, settleDelay, retryDelay time.Duration) error {
+func (s *Server) runFilesystemWatcherSession(ctx context.Context, watcher filesystemWatcher, watchConfig filesystemWatcherConfig, settleDelay, retryDelay time.Duration, recoveryFullScan ...*bool) error {
 	if err := s.recordFilesystemWatcherReady(ctx, watcher.WatchedDirectoryCount()); err != nil && !isDatabaseBusyError(err) {
 		return err
 	}
@@ -84,21 +92,32 @@ func (s *Server) runFilesystemWatcherSession(ctx context.Context, watcher filesy
 		server: s, watcher: watcher, config: watchConfig,
 		settleDelay: settleDelay, retryDelay: retryDelay, enabled: ok && trigger.Enabled,
 	}
+	if len(recoveryFullScan) > 0 {
+		session.recoveryFullScan = recoveryFullScan[0]
+		if session.recoveryFullScan != nil && !session.enabled {
+			*session.recoveryFullScan = false
+		} else if session.recoveryFullScan != nil && *session.recoveryFullScan {
+			session.scheduleFullScan(settleDelay)
+		}
+	}
 	defer session.stopTimer()
 	return session.run(ctx)
 }
 
 type filesystemWatcherSession struct {
-	server      *Server
-	watcher     filesystemWatcher
-	config      filesystemWatcherConfig
-	settleDelay time.Duration
-	retryDelay  time.Duration
-	enabled     bool
-	pending     bool
-	lastEventAt time.Time
-	timer       *time.Timer
-	timerC      <-chan time.Time
+	server           *Server
+	watcher          filesystemWatcher
+	config           filesystemWatcherConfig
+	settleDelay      time.Duration
+	retryDelay       time.Duration
+	enabled          bool
+	pending          bool
+	forceFull        bool
+	changedPaths     map[string]struct{}
+	recoveryFullScan *bool
+	lastEventAt      time.Time
+	timer            *time.Timer
+	timerC           <-chan time.Time
 }
 
 func (session *filesystemWatcherSession) run(ctx context.Context) error {
@@ -106,22 +125,26 @@ func (session *filesystemWatcherSession) run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case _, ok := <-session.watcher.Changes():
+		case change, ok := <-session.watcher.Changes():
 			if !ok {
+				session.retainFullScanRecovery()
 				return errors.New("filesystem watcher closed")
 			}
-			session.scheduleEvent(session.settleDelay)
+			session.scheduleEvent(change, session.settleDelay)
 		case _, ok := <-session.watcher.Invalidated():
 			if !ok {
+				session.retainFullScanRecovery()
 				return errors.New("filesystem watcher closed")
 			}
-			return errors.New("filesystem watch root was removed or renamed")
+			session.retainFullScanRecovery()
+			return errFilesystemWatchRootInvalidated
 		case watchErr, ok := <-session.watcher.Errors():
 			if !ok {
+				session.retainFullScanRecovery()
 				return errors.New("filesystem watcher closed")
 			}
 			_ = session.server.recordFilesystemWatcherError(ctx, watchErr)
-			session.scheduleEvent(session.settleDelay)
+			session.scheduleFullScan(session.settleDelay)
 		case <-session.server.filesystemTriggerConfigChanged:
 			if err := session.reload(ctx); err != nil {
 				return err
@@ -134,11 +157,44 @@ func (session *filesystemWatcherSession) run(ctx context.Context) error {
 	}
 }
 
-func (session *filesystemWatcherSession) scheduleEvent(delay time.Duration) {
+func (session *filesystemWatcherSession) retainFullScanRecovery() {
+	if session.enabled && session.recoveryFullScan != nil {
+		*session.recoveryFullScan = true
+	}
+}
+
+func (session *filesystemWatcherSession) scheduleEvent(change localfs.DirectoryChange, delay time.Duration) {
+	if !session.enabled {
+		return
+	}
+	if session.changedPaths == nil {
+		session.changedPaths = map[string]struct{}{}
+	}
+	path := filepath.Clean(strings.TrimSpace(change.Path))
+	if path != "." && path != "" {
+		if !session.forceFull {
+			if _, exists := session.changedPaths[path]; !exists {
+				if len(session.changedPaths) >= filesystemTriggerMaxPaths {
+					session.forceFull = true
+					session.changedPaths = nil
+				} else {
+					session.changedPaths[path] = struct{}{}
+				}
+			}
+		}
+	}
+	session.pending = true
+	session.lastEventAt = time.Now().UTC()
+	session.schedule(delay)
+}
+
+func (session *filesystemWatcherSession) scheduleFullScan(delay time.Duration) {
 	if !session.enabled {
 		return
 	}
 	session.pending = true
+	session.forceFull = true
+	session.changedPaths = nil
 	session.lastEventAt = time.Now().UTC()
 	session.schedule(delay)
 }
@@ -175,10 +231,18 @@ func (session *filesystemWatcherSession) reload(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	wasEnabled := session.enabled
 	session.enabled = ok && trigger.Enabled
 	if !session.enabled {
 		session.pending = false
+		session.forceFull = false
+		session.changedPaths = nil
+		if session.recoveryFullScan != nil {
+			*session.recoveryFullScan = false
+		}
 		session.stopTimer()
+	} else if !wasEnabled && session.recoveryFullScan != nil && *session.recoveryFullScan {
+		session.scheduleFullScan(session.settleDelay)
 	}
 	return nil
 }
@@ -188,9 +252,19 @@ func (session *filesystemWatcherSession) dispatch(ctx context.Context) error {
 	if !session.pending {
 		return nil
 	}
-	queued, blocked, err := session.server.dispatchFilesystemTriggeredLocalScan(ctx, session.watcher.WatchedDirectoryCount(), session.lastEventAt)
+	paths := make([]string, 0, len(session.changedPaths))
+	for path := range session.changedPaths {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	queued, blocked, err := session.server.dispatchFilesystemTriggeredLocalScan(ctx, session.watcher.WatchedDirectoryCount(), session.lastEventAt, paths, session.forceFull)
 	if queued {
 		session.pending = false
+		if session.forceFull && session.recoveryFullScan != nil {
+			*session.recoveryFullScan = false
+		}
+		session.forceFull = false
+		session.changedPaths = nil
 	}
 	if err != nil {
 		if ctx.Err() != nil {
@@ -209,6 +283,8 @@ func (session *filesystemWatcherSession) dispatch(ctx context.Context) error {
 	}
 	if !queued {
 		session.pending = false
+		session.forceFull = false
+		session.changedPaths = nil
 	}
 	return nil
 }
@@ -233,7 +309,7 @@ func sameFilesystemWatcherConfig(left filesystemWatcherConfig, right filesystemW
 	return true
 }
 
-func (s *Server) dispatchFilesystemTriggeredLocalScan(ctx context.Context, watchedDirectories int, eventAt time.Time) (bool, bool, error) {
+func (s *Server) dispatchFilesystemTriggeredLocalScan(ctx context.Context, watchedDirectories int, eventAt time.Time, changedPaths []string, forceFull bool) (bool, bool, error) {
 	trigger, ok, err := s.loadFixedFilesystemTrigger(ctx)
 	if err != nil || !ok || !trigger.Enabled {
 		return false, false, err
@@ -249,8 +325,26 @@ func (s *Server) dispatchFilesystemTriggeredLocalScan(ctx context.Context, watch
 	if observedAt.IsZero() {
 		observedAt = time.Now().UTC()
 	}
+	config, err := normalizeLocalScanTriggerConfig(trigger.ConfigJSON)
+	if err != nil {
+		return false, false, err
+	}
+	scanMode := config.ScanMode
+	fallbackReason := ""
+	relativePaths := []string{}
+	if scanMode == localScanModeIncremental && !forceFull {
+		relativePaths, err = relativeFilesystemChangePaths(s.cfg.DataRoot, changedPaths)
+		if err != nil || len(relativePaths) == 0 {
+			scanMode = localScanModeFull
+			fallbackReason = "changed_paths_unavailable"
+		}
+	} else if forceFull {
+		scanMode = localScanModeFull
+		fallbackReason = "watcher_recovery"
+	}
 	_, err = s.enqueueLocalScanWithPayload(ctx, "filesystem_event", "data_directories_changed", trigger.ID, localScanJobPayload{
-		Root: s.cfg.DataRoot, ScanDepth: s.configuredLocalScanDepth(ctx),
+		Root: s.cfg.DataRoot, ScanDepth: s.configuredLocalScanDepth(ctx), ScanMode: scanMode,
+		ChangedPaths: relativePaths, FullFallbackReason: fallbackReason,
 		DirectoryEventAt: formatWorkflowTimestamp(observedAt), ObservedDirectories: watchedDirectories,
 	})
 	if err != nil {
@@ -265,11 +359,38 @@ func (s *Server) dispatchFilesystemTriggeredLocalScan(ctx context.Context, watch
 
 func (s *Server) loadFixedFilesystemTrigger(ctx context.Context) (filesystemTriggerRecord, bool, error) {
 	var trigger filesystemTriggerRecord
-	err := s.db.QueryRowContext(ctx, "SELECT trigger.id, trigger.enabled, trigger.last_error_message FROM workflow_trigger AS trigger INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id WHERE trigger.trigger_type = 'filesystem_event' AND definition.code = 'local_library_scan' ORDER BY trigger.id LIMIT 1").Scan(&trigger.ID, &trigger.Enabled, &trigger.LastErrorMessage)
+	err := s.db.QueryRowContext(ctx, "SELECT trigger.id, trigger.enabled, trigger.last_error_message, trigger.config_json FROM workflow_trigger AS trigger INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id WHERE trigger.trigger_type = 'filesystem_event' AND definition.code = 'local_library_scan' ORDER BY trigger.id LIMIT 1").Scan(&trigger.ID, &trigger.Enabled, &trigger.LastErrorMessage, &trigger.ConfigJSON)
 	if errors.Is(err, sql.ErrNoRows) {
 		return trigger, false, nil
 	}
 	return trigger, err == nil, err
+}
+
+func relativeFilesystemChangePaths(root string, paths []string) ([]string, error) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]string, 0, len(paths))
+	seen := map[string]bool{}
+	for _, path := range paths {
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return nil, err
+		}
+		rel, err := filepath.Rel(absRoot, absPath)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return nil, errors.New("filesystem change path is outside the data root")
+		}
+		rel = filepath.ToSlash(rel)
+		key := strings.ToLower(rel)
+		if !seen[key] {
+			seen[key] = true
+			result = append(result, rel)
+		}
+	}
+	sort.Strings(result)
+	return result, nil
 }
 
 func (s *Server) recordFilesystemWatcherReady(ctx context.Context, watchedDirectories int) error {

@@ -35,16 +35,20 @@ Workflows make backend actions inspectable.
   synchronize metadata. Manual, Startup, and interval scans expose a
   disabled-by-default `Follow-up run`; enabling it queues an independent
   metadata run after the scan finishes.
-- Local scan also ships with one fixed, enabled folder watcher. It can be paused
-  or resumed, but not created, edited, duplicated, converted, or deleted. The
-  watcher registers directories under `/data` once, listens for native
-  filesystem events afterward, and dynamically registers new directory trees.
-  It debounces events for five seconds, ignores Kikoto's staging, backup, trash,
-  and claimed per-source Fetch trees, and queues the same full local scan used
-  by Manual and Startup. Fetch registers its own published locations directly;
-  Manual and Startup still inspect the complete data tree. Changes during an
-  active run produce at most one follow-up scan. Paused events are discarded;
-  offline changes rely on the default Startup scan.
+- Local scan also ships with one fixed, enabled folder watcher. It can be paused,
+  resumed, or switched between Incremental and Full, but it cannot be created,
+  duplicated, converted, renamed, or deleted. Incremental is the default. The
+  watcher registers discovery directories and every descendant directory below
+  a recognized work root, then dynamically registers new directory trees. It
+  waits five seconds after the most recent observed event, ignores Kikoto's
+  staging, backup, trash, and claimed per-source Fetch trees, and reconciles the
+  affected work roots. Removed files and folders become `missing`; database
+  records are retained. Watcher errors, oversized event batches, root
+  invalidation, and duplicate roots automatically use a full scan. Fetch
+  registers its own published locations directly; Manual, Startup, and interval
+  scans always inspect the complete data tree. Changes during an active run
+  produce at most one follow-up scan. Paused events are discarded; offline
+  changes rely on the default Startup scan.
 - Remote and DLsite popular collection surfaces edit tag templates with a
   current-value preview, the complete workflow-specific variable list, and an
   explicit warning when the rendered tag exceeds 40 characters. Manual runs
