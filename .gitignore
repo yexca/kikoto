@@ -17,11 +17,14 @@ demo/
 backend/bin/
 backend/*.db
 backend/*.db-*
+backend/coverage
+backend/coverage*.out
 
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 frontend/*.tsbuildinfo
+frontend/coverage/
 frontend/test-results/
 frontend/playwright-report/
 

@@ -17,6 +17,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"tests/**/*.ts\" \"scripts/**/*.mjs\" \"public/**/*.js\" \"*.{ts,mjs,cjs}\"",
     "preview": "vite preview --host 127.0.0.1",
     "test:unit": "vitest run",
+    "test:unit:coverage": "vitest run --coverage",
     "test:e2e:smoke": "playwright test tests/e2e/smoke.spec.ts",
     "test:e2e": "playwright test",
     "test:e2e:mobile": "playwright test --project=mobile-chromium"
@@ -46,6 +47,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "@vitest/coverage-v8": "4.1.10",
     "autoprefixer": "^10.5.2",
     "eslint": "^10.6.0",
     "eslint-plugin-react-hooks": "^7.1.1",

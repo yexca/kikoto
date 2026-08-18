@@ -103,6 +103,21 @@ Do not export production identifiers only to move a white-box test into the
 integration suite. Extract a domain service first, then test its public
 contract.
 
+### Coverage
+
+Generate the backend profile with cross-package instrumentation so integration
+tests are counted against the packages they exercise:
+
+```sh
+cd backend
+go test -count=1 -covermode atomic -coverpkg ./... -coverprofile coverage.out ./...
+go tool cover -func coverage.out
+```
+
+`coverage.out` is a local report artifact and is ignored by Git. Coverage is a
+diagnostic baseline at this stage; the project does not enforce a single global
+threshold because the browser and unit suites cover different boundaries.
+
 ## Frontend
 
 ```sh
@@ -137,6 +152,20 @@ runs every test stage before Android and Docker release builds begin.
 Current Vitest coverage is primarily pure state and model logic. User-visible
 React interaction belongs in Playwright until a real component-test environment
 is introduced; do not build a large fake component runtime inside a unit test.
+
+To produce the frontend coverage report:
+
+```sh
+cd frontend
+npm ci --strict-allow-scripts
+npm run test:unit:coverage
+```
+
+The Vitest configuration includes every production `.ts` and `.tsx` file under
+`src`, while excluding test files, declarations, and `src/test-support`. The
+text summary is printed in the terminal; JSON and HTML reports are written to
+`frontend/coverage/`. Playwright tests remain the authoritative layer for
+browser interaction, but are not merged into this Vitest source report.
 
 ## Assertions and Locators
 
