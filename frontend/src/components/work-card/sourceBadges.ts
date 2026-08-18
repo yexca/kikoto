@@ -8,6 +8,7 @@ export function sourcePresenceBadges(
   availability: string[] = [],
 ): WorkCardBadge[] {
   const items = sourcePresence ?? [];
+  const hasPlayable = hasPlayableAvailability(availability);
   const badges: WorkCardBadge[] = [];
   const seen = new Set<string>();
   const add = (badge: WorkCardBadge) => {
@@ -18,44 +19,8 @@ export function sourcePresenceBadges(
   };
 
   for (const item of items) {
-    const type = normalizePresenceType(item.type);
-    const availabilityLabel = item.availability || "unknown";
-    if (type === "local") {
-      add({
-        key: "source:local",
-        label: i18n.t("workCard.local"),
-        variant: availabilityLabel === "available" ? "secondary" : "warning",
-        title: i18n.t("workCard.localSource"),
-      });
-      continue;
-    }
-    if (type === "tracked") {
-      if (availabilityLabel !== "available") continue;
-      const sourceName = item.fileSourceName || item.fileSourceCode || "";
-      const unforked = !hasPlayableAvailability(availability);
-      add({
-        key: `source:tracked:${item.fileSourceId ?? (sourceName || "unknown")}`,
-        label: unforked ? i18n.t("workCard.unforked") : i18n.t("workCard.tracked"),
-        variant: unforked ? "warning" : "outline",
-        title: sourceName || undefined,
-      });
-      continue;
-    }
-    if (type === "source") {
-      const sourceName = item.fileSourceName || item.fileSourceCode || i18n.t("workCard.remoteSource");
-      add({
-        key: `source:${item.fileSourceId ?? sourceName}`,
-        label: sourceName,
-        variant: availabilityLabel === "available" ? "outline" : "warning",
-      });
-      continue;
-    }
-    if (type === "remote") {
-      continue;
-    }
-    if (type) {
-      add({ key: `source:${type}`, label: type, variant: availabilityLabel === "available" ? "outline" : "warning" });
-    }
+    const badge = presenceBadge(item, hasPlayable);
+    if (badge) add(badge);
   }
 
   if (badges.length > 0) return sortSourceBadges(badges);
@@ -63,6 +28,42 @@ export function sourcePresenceBadges(
     return [{ key: "source:no-source", label: i18n.t("workCard.noSource"), variant: "warning" }];
   }
   return sortSourceBadges(availabilityBadges(availability));
+}
+
+function presenceBadge(item: SourcePresenceItem, hasPlayable: boolean): WorkCardBadge | null {
+  const type = normalizePresenceType(item.type);
+  const availability = item.availability || "unknown";
+  if (type === "local") {
+    return {
+      key: "source:local",
+      label: i18n.t("workCard.local"),
+      variant: availability === "available" ? "secondary" : "warning",
+      title: i18n.t("workCard.localSource"),
+    };
+  }
+  if (type === "tracked") return trackedPresenceBadge(item, availability, hasPlayable);
+  if (type === "source") {
+    const sourceName = item.fileSourceName || item.fileSourceCode || i18n.t("workCard.remoteSource");
+    return {
+      key: `source:${item.fileSourceId ?? sourceName}`,
+      label: sourceName,
+      variant: availability === "available" ? "outline" : "warning",
+    };
+  }
+  if (!type || type === "remote") return null;
+  return { key: `source:${type}`, label: type, variant: availability === "available" ? "outline" : "warning" };
+}
+
+function trackedPresenceBadge(item: SourcePresenceItem, availability: string, hasPlayable: boolean) {
+  if (availability !== "available") return null;
+  const sourceName = item.fileSourceName || item.fileSourceCode || "";
+  const unforked = !hasPlayable;
+  return {
+    key: `source:tracked:${item.fileSourceId ?? (sourceName || "unknown")}`,
+    label: unforked ? i18n.t("workCard.unforked") : i18n.t("workCard.tracked"),
+    variant: unforked ? ("warning" as const) : ("outline" as const),
+    title: sourceName || undefined,
+  };
 }
 
 export function circleSourceBadges({
