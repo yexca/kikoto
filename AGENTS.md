@@ -127,8 +127,10 @@ Current release boundary:
 
 - `001_initial.sql` is the immutable v0.1.0 database.
 - `002_v0_1_1.sql` is the consolidated v0.1.1 upgrade.
-- Migrations `003` through `027` are the current numbered chain.
-- `VERSION` currently reports v0.4.1; add migration `028` for the next schema
+- Migrations `003` through `032` are the current numbered chain.
+- `baseline/032_v0.5.0.sql` is the fresh-install snapshot for v0.5.0. Existing
+  databases must continue through the numbered chain.
+- `VERSION` currently reports v0.5.0; add migration `033` for the next schema
   change. Do not edit a released migration.
 
 Before handoff, run validation proportional to the change:

@@ -30,14 +30,9 @@ checksum is checked before any new SQL runs. Checksum input normalizes CRLF and
 LF line endings so moving a database between Windows and Linux does not look
 like a migration edit.
 
-The current release boundary is migration `027_voice_catalog.sql` (tag
-`v0.4.1`). Migrations `028` through `032` are present in the current working
-tree after that tag and are part of the next unreleased chain; they must not be
-described as part of v0.4.1 until a release explicitly includes them.
-The working tree retains the released `031_current.sql` baseline for databases
-whose ledger records it, and packages `032_current.sql` as the newest
-fresh-install snapshot. Neither baseline implies that the corresponding
-unreleased numbered migrations shipped in v0.4.1.
+The current release boundary is migration `032_shared_availability_watch.sql`
+for `v0.5.0`. The next schema change must add migration `033`; do not rewrite
+an existing numbered file.
 
 ## Fresh Installs And Upgrades
 
@@ -49,7 +44,7 @@ Startup follows two different paths:
 
 | Database state | Action |
 | --- | --- |
-| Empty SQLite database | Apply `baseline/<version>_current.sql`, then any numbered migrations after that version. |
+| Empty SQLite database | Apply `baseline/<schema-version>_v<release>.sql`, then any numbered migrations after that version. |
 | Existing database with migration history | Validate the ledger and apply only the next numbered migrations. User data is never reconstructed from the baseline. |
 | Application tables without migration history | Stop and require an operator decision; the manager never infers a version. |
 | Dirty migration from an interrupted/failed start | Retry that exact version after the SQL or environment is repaired. |
@@ -69,28 +64,37 @@ successfully.
 ## Baseline Generation
 
 Baselines are generated fresh-install optimizations, not upgrade migrations.
-The catalog may retain historical snapshots for ledger validation while using
-the highest-version baseline for an empty database. Generate a new snapshot
-from a clean checkout after the numbered chain changes:
+The catalog may retain released snapshots for ledger validation while using the
+highest-version baseline for an empty database. Generate a new snapshot from a
+clean checkout after the numbered chain changes or after updating `VERSION` for
+a release:
 
 ```sh
 cd backend
 go generate ./migrations
 ```
 
-The generator applies the complete numbered chain in a temporary SQLite
-database and writes the final tables, indexes, views, triggers, and
-migration-provided reference rows to `migrations/baseline/<version>_current.sql`.
-Timestamp defaults remain defaults rather than being frozen to the generator's
-clock. The generated file is reviewed and checksummed like any other packaged
-asset. When a newer snapshot is added, a fresh install uses it and historical
-baselines remain available solely to validate and upgrade databases whose
-ledgers reference them.
+The generator reads the root `VERSION`, applies the complete numbered chain in
+a temporary SQLite database, and writes the final tables, indexes, views,
+triggers, and migration-provided reference rows to
+`migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
+packages `migrations/baseline/032_v0.5.0.sql`. Timestamp defaults remain
+defaults rather than being frozen to the generator's clock. The generated file
+is reviewed and checksummed like any other packaged asset. When a newer
+snapshot is added, a fresh install uses it and historical released baselines
+remain available solely to validate and upgrade databases whose ledgers
+reference them.
 
-Once a released binary can create databases from a baseline, keep that
-baseline filename available in later catalogs (or provide an explicit,
-reviewed replacement path). Removing it strands those databases because their
-ledger contains the baseline record rather than every skipped numbered file.
+Do not create or retain a `<schema-version>_current.sql` baseline file. A
+release baseline's filename includes both the schema and Kikoto release version.
+The manager retains checksum-only descriptors for the removed pre-release
+`031_current.sql` and `032_current.sql` snapshots so an existing development
+database can validate its ledger and continue through the numbered chain; those
+descriptors never become fresh-install inputs. Once a released binary can
+create databases from a release-named baseline, keep that filename available in
+later catalogs (or provide an explicit, reviewed replacement path). Removing it
+strands those databases because their ledger contains the baseline record rather
+than every skipped numbered file.
 
 Do not use a baseline to upgrade an existing database: data transformations,
 backfills, and conflict-resolution logic in numbered migrations are intentionally

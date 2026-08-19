@@ -55,55 +55,106 @@ func TestMigrateFreshDatabaseUsesBaseline(t *testing.T) {
 	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = ?", latestNumberedMigrationVersion).Scan(&filename); err != nil {
 		t.Fatal(err)
 	}
-	if filename != "baseline/032_current.sql" {
+	if filename != "baseline/032_v0.5.0.sql" {
 		t.Fatalf("baseline history filename = %q", filename)
 	}
 }
 
-func TestMigrateUpgradesReleasedBaseline(t *testing.T) {
+func TestMigrateUpgradesExistingDatabaseThroughNumberedChain(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
 	previousCatalog := copyNumberedMigrations(t, sourceDir)
 	if err := os.Remove(filepath.Join(previousCatalog, "032_shared_availability_watch.sql")); err != nil {
 		t.Fatal(err)
 	}
-	baselineDir := filepath.Join(previousCatalog, "baseline")
-	if err := os.Mkdir(baselineDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	baseline, err := os.ReadFile(filepath.Join(sourceDir, "baseline", "031_current.sql"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(baselineDir, "031_current.sql"), baseline, 0o600); err != nil {
-		t.Fatal(err)
-	}
 
 	db := openMigrationManagerDB(t)
 	if err := Migrate(db, previousCatalog); err != nil {
-		t.Fatalf("create released baseline database: %v", err)
+		t.Fatalf("create existing database: %v", err)
+	}
+	var before int
+	if err := db.QueryRow("SELECT COUNT(*) FROM schema_migration").Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	if before != latestNumberedMigrationVersion-1 {
+		t.Fatalf("existing migration history count = %d, want %d", before, latestNumberedMigrationVersion-1)
 	}
 	if err := Migrate(db, sourceDir); err != nil {
-		t.Fatalf("upgrade released baseline database: %v", err)
+		t.Fatalf("upgrade existing database: %v", err)
 	}
+	var after int
+	if err := db.QueryRow("SELECT COUNT(*) FROM schema_migration").Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	if after != latestNumberedMigrationVersion {
+		t.Fatalf("upgraded migration history count = %d, want %d", after, latestNumberedMigrationVersion)
+	}
+	var filename string
+	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = ?", latestNumberedMigrationVersion).Scan(&filename); err != nil {
+		t.Fatal(err)
+	}
+	if filename != "032_shared_availability_watch.sql" {
+		t.Fatalf("applied migration = %q, want 032_shared_availability_watch.sql", filename)
+	}
+}
 
-	rows, err := db.Query("SELECT filename FROM schema_migration ORDER BY version")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	var filenames []string
-	for rows.Next() {
-		var filename string
-		if err := rows.Scan(&filename); err != nil {
-			t.Fatal(err)
-		}
-		filenames = append(filenames, filename)
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatal(err)
-	}
-	if got, want := strings.Join(filenames, ","), "baseline/031_current.sql,032_shared_availability_watch.sql"; got != want {
-		t.Fatalf("upgraded baseline history = %q, want %q", got, want)
+func TestMigrateUpgradesRetiredBaselineLedger(t *testing.T) {
+	sourceDir := filepath.Join("..", "..", "migrations")
+	for _, testCase := range []struct {
+		name            string
+		baseline        string
+		previousVersion int
+		wantHistory     string
+	}{
+		{
+			name:            "schema version 031 applies the remaining numbered migration",
+			baseline:        "baseline/031_current.sql",
+			previousVersion: 31,
+			wantHistory:     "baseline/031_current.sql,032_shared_availability_watch.sql",
+		},
+		{
+			name:            "schema version 032 remains valid without replaying migrations",
+			baseline:        "baseline/032_current.sql",
+			previousVersion: 32,
+			wantHistory:     "baseline/032_current.sql",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			previousCatalog := copyNumberedMigrations(t, sourceDir)
+			if testCase.previousVersion < latestNumberedMigrationVersion {
+				if err := os.Remove(filepath.Join(previousCatalog, "032_shared_availability_watch.sql")); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			db := openMigrationManagerDB(t)
+			if err := Migrate(db, previousCatalog); err != nil {
+				t.Fatalf("create schema version %03d database: %v", testCase.previousVersion, err)
+			}
+			replaceMigrationHistoryWithRetiredBaseline(t, db, testCase.baseline)
+			if err := Migrate(db, sourceDir); err != nil {
+				t.Fatalf("upgrade retired baseline ledger: %v", err)
+			}
+
+			rows, err := db.Query("SELECT filename FROM schema_migration ORDER BY version")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer rows.Close()
+			var filenames []string
+			for rows.Next() {
+				var filename string
+				if err := rows.Scan(&filename); err != nil {
+					t.Fatal(err)
+				}
+				filenames = append(filenames, filename)
+			}
+			if err := rows.Err(); err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Join(filenames, ","); got != testCase.wantHistory {
+				t.Fatalf("upgraded migration history = %q, want %q", got, testCase.wantHistory)
+			}
+		})
 	}
 }
 
@@ -393,12 +444,12 @@ func TestMigrateDoesNotAbandonFailedBaselineWhenCatalogChanges(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(migrationDir, "baseline"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeMigration(t, filepath.Join(migrationDir, "baseline"), "002_current.sql", "CREATE TABLE probe (id INTEGER PRIMARY KEY); SELECT no_such_table.value FROM no_such_table;")
+	writeMigration(t, filepath.Join(migrationDir, "baseline"), "002_v0.5.0.sql", "CREATE TABLE probe (id INTEGER PRIMARY KEY); SELECT no_such_table.value FROM no_such_table;")
 	db := openMigrationManagerDB(t)
 	if err := MigrateFS(db, os.DirFS(migrationDir), "baseline-failure"); err == nil {
 		t.Fatal("MigrateFS() unexpectedly succeeded with failing baseline")
 	}
-	if err := os.Remove(filepath.Join(migrationDir, "baseline", "002_current.sql")); err != nil {
+	if err := os.Remove(filepath.Join(migrationDir, "baseline", "002_v0.5.0.sql")); err != nil {
 		t.Fatal(err)
 	}
 	err := MigrateFS(db, os.DirFS(migrationDir), "baseline-removed")
@@ -500,6 +551,44 @@ func copyNumberedMigrations(t *testing.T, sourceDir string) string {
 func writeMigration(t *testing.T, dir, filename, contents string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, filename), []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func replaceMigrationHistoryWithRetiredBaseline(t *testing.T, db *sql.DB, filename string) {
+	t.Helper()
+	var baseline migrationAsset
+	for _, candidate := range retiredBaselineLedgerAssets {
+		if candidate.filename == filename {
+			baseline = candidate
+			break
+		}
+	}
+	if baseline.filename == "" {
+		t.Fatalf("retired baseline %q is not declared", filename)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec("DELETE FROM schema_migration"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO schema_migration (filename, version, checksum, app_version, duration_ms)
+		VALUES (?, ?, ?, 'retired-baseline', 0)
+	`, baseline.filename, baseline.version, baseline.checksum); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(`
+		UPDATE schema_state
+		SET current_version = ?, baseline_version = ?, baseline_checksum = ?, dirty_version = NULL
+		WHERE id = 1
+	`, baseline.version, baseline.version, baseline.checksum); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
 }

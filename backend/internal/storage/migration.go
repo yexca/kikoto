@@ -24,7 +24,7 @@ const (
 
 var (
 	migrationFilenamePattern = regexp.MustCompile(`^([0-9]{3})_[a-z0-9][a-z0-9_]*\.sql$`)
-	baselineFilenamePattern  = regexp.MustCompile(`^([0-9]{3})_current\.sql$`)
+	baselineFilenamePattern  = regexp.MustCompile(`^([0-9]{3})_v[0-9]+\.[0-9]+\.[0-9]+\.sql$`)
 )
 
 type migrationAsset struct {
@@ -33,6 +33,25 @@ type migrationAsset struct {
 	checksum string
 	sql      []byte
 	baseline bool
+}
+
+// retiredBaselineLedgerAssets keeps existing development databases upgradeable
+// after their pre-release baseline SQL snapshots are removed. These entries
+// validate a recorded ledger row only; fresh databases can use only a packaged
+// release-named baseline file.
+var retiredBaselineLedgerAssets = []migrationAsset{
+	{
+		version:  31,
+		filename: "baseline/031_current.sql",
+		checksum: "acdfad4639ff583b908f22d27e772261c675f233a671ecceae511a3e150ce77e",
+		baseline: true,
+	},
+	{
+		version:  32,
+		filename: "baseline/032_current.sql",
+		checksum: "6de662434d1520b2b78873d146252782ae32e59b6113f79007fa3dd4fee2b744",
+		baseline: true,
+	},
 }
 
 type migrationCatalog struct {
@@ -62,10 +81,9 @@ func Migrate(db *sql.DB, dir string) error {
 	return MigrateFS(db, os.DirFS(dir), buildinfo.Version)
 }
 
-// MigrateFS validates and applies a migration catalog. A catalog may contain
-// historical baseline/<version>_current.sql snapshots; pristine databases use
-// the highest-version snapshot and existing databases continue through the
-// immutable numbered chain.
+// MigrateFS validates and applies a migration catalog. Pristine databases use
+// the highest-version release-named baseline snapshot; existing databases
+// continue through the immutable numbered chain.
 func MigrateFS(db *sql.DB, migrationFS fs.FS, appVersion string) error {
 	if db == nil {
 		return errors.New("migrate database: nil database")
@@ -255,6 +273,11 @@ func loadMigrationCatalog(migrationFS fs.FS) (migrationCatalog, error) {
 	for index := range baselines {
 		baseline := baselines[index]
 		catalog.byFilename[baseline.filename] = baseline
+	}
+	for _, baseline := range retiredBaselineLedgerAssets {
+		if baseline.version <= catalog.current {
+			catalog.byFilename[baseline.filename] = baseline
+		}
 	}
 	if len(baselines) > 0 {
 		catalog.baseline = &baselines[len(baselines)-1]
