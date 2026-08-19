@@ -11,7 +11,12 @@ export function isNativeApp() {
 export function normalizeServerURL(value: string) {
   let next = value.trim();
   if (!next) throw new Error("Server address is required.");
-  if (!/^https?:\/\//i.test(next)) {
+
+  const explicitProtocol = /^([a-z][a-z\d+.-]*):\/\//i.exec(next)?.[1].toLowerCase();
+  if (explicitProtocol && explicitProtocol !== "http" && explicitProtocol !== "https") {
+    throw new Error("Server address must use http or https.");
+  }
+  if (!explicitProtocol) {
     next = `http://${next}`;
   }
   const parsed = new URL(next);
