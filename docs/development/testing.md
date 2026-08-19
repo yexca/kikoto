@@ -146,8 +146,9 @@ tests, vet, race detection, frontend unit tests, the dependency audit, and the
 production build. `Smoke` runs a small required Playwright suite for the app
 shell and critical routes. `Full E2E` runs the complete Playwright project and
 uploads failure artifacts. Pull requests require Style, Core, and Smoke;
-Full E2E remains visible but is not a merge requirement. Release validation
-runs every test stage before Android and Docker release builds begin.
+Full E2E remains visible but is not a merge requirement. Release waits for the
+ordinary CI run for the exact tagged commit on `main` and starts Android and
+Docker release builds only after that run succeeds.
 
 Current Vitest coverage is primarily pure state and model logic. User-visible
 React interaction belongs in Playwright until a real component-test environment

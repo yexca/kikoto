@@ -44,7 +44,9 @@ Android derives its default monotonic `versionCode` as
 `major * 1,000,000 + minor * 1,000 + patch`.
 
 The release tag must exactly match `VERSION` and point to a commit pushed to
-`main`. Before publishing images or APKs, the release workflow calls the shared
-CI workflow for the tagged commit and requires Style, Core, Smoke, and Full E2E
-to succeed. A failed or cancelled validation stops the release before build or
-publication work begins.
+`main`. Before publishing images or APKs, the release workflow looks up the
+ordinary `CI` workflow run for that exact commit on `main`. If that run is still
+in progress, release waits for it; a successful conclusion permits the release
+builds, while a failed, cancelled, or timed-out run stops the release before
+publication work begins. This reuses the commit's existing CI result instead of
+running the full validation suite a second time.
