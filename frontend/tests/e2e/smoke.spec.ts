@@ -1,4 +1,8 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+
+const appVersion = readFileSync(resolve(__dirname, "../../../VERSION"), "utf8").trim();
 
 async function mockAppShell(page: Page, anonymousAccessEnabled = true, onLibraryRequest: () => void = () => undefined) {
   await page.route("**/api/**", async (route) => {
@@ -22,8 +26,8 @@ async function mockAppShell(page: Page, anonymousAccessEnabled = true, onLibrary
     if (url.pathname === "/api/app-update") {
       await route.fulfill({
         json: {
-          currentVersion: "v0.4.1",
-          latestVersion: "v0.4.1",
+          currentVersion: appVersion,
+          latestVersion: appVersion,
           updateAvailable: false,
           releaseUrl: "",
           checkedAt: "2026-01-01T00:00:00Z",
@@ -79,6 +83,6 @@ test("@smoke opens About without an update icon when current", async ({ page }) 
   await page.goto("/about");
 
   await expect(page.getByRole("heading", { name: "About", exact: true })).toBeVisible();
-  await expect(page.getByText(/About Kikoto.*v0\.4\.1/)).toBeVisible();
+  await expect(page.getByText(new RegExp(`About Kikoto.*${appVersion.replaceAll(".", "\\.")}`))).toBeVisible();
   await expect(page.getByLabel(/Update available/)).toHaveCount(0);
 });
