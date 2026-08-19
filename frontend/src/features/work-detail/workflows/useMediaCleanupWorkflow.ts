@@ -42,11 +42,10 @@ export function useMediaCleanupWorkflow({
     setActiveRunId(null);
     if (run.status === "succeeded" || run.status === "partial") {
       const summary = parseCleanupSummary(run.summaryJson);
-      const mode: MediaCleanupMode =
-        summary.mode === "files_and_forget_work" ? "files_and_forget_work" : "files_only";
+      const mode: MediaCleanupMode = summary.mode === "files_and_forget_work" ? "files_and_forget_work" : "files_only";
       const workForgotten = Boolean(
         summary.work_forgotten === true ||
-          (typeof summary.forgotten_family_count === "number" && summary.forgotten_family_count > 0),
+        (typeof summary.forgotten_family_count === "number" && summary.forgotten_family_count > 0),
       );
       const completion: MediaCleanupCompletion = {
         runId: run.id,

@@ -1056,7 +1056,8 @@ function AvailabilityWatchPanel({
         setLoadError("");
       })
       .catch((error) => {
-        if (!cancelled) setLoadError(error instanceof Error ? error.message : "Availability Watch could not be loaded.");
+        if (!cancelled)
+          setLoadError(error instanceof Error ? error.message : "Availability Watch could not be loaded.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -1118,7 +1119,12 @@ function AvailabilityWatchPanel({
     );
   }
   if (!watch || loadError) {
-    return <WorkflowMetadataErrorState message={loadError || "Availability Watch could not be loaded."} onRetry={() => void refreshWatch()} />;
+    return (
+      <WorkflowMetadataErrorState
+        message={loadError || "Availability Watch could not be loaded."}
+        onRetry={() => void refreshWatch()}
+      />
+    );
   }
 
   const monitoring = watch.targets.filter((target) => target.state === "monitoring" || target.state === "error");
@@ -1196,19 +1202,18 @@ function AvailabilityWatchPanel({
         />
       )}
       {dialog === "monitoring" && (
-        <AvailabilityWatchMonitoringDialog
-          watch={watch}
-          readOnly={readOnly}
-          onClose={closeDialog}
-          onSaved={setWatch}
-        />
+        <AvailabilityWatchMonitoringDialog watch={watch} readOnly={readOnly} onClose={closeDialog} onSaved={setWatch} />
       )}
       {dialog === "ready" && (
         <AvailabilityWatchReadyDialog
           targets={ready}
           readOnly={readOnly}
           onClose={closeDialog}
-          onChanged={() => void refreshWatch().catch((error) => toast.notify(toastFromError(error, "Ready pool could not be refreshed.")))}
+          onChanged={() =>
+            void refreshWatch().catch((error) =>
+              toast.notify(toastFromError(error, "Ready pool could not be refreshed.")),
+            )
+          }
         />
       )}
     </Card>
@@ -1456,7 +1461,12 @@ function AvailabilityWatchReadyDialog({
                     <ExternalLink className="h-4 w-4" />
                     Open
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => void track(target)} disabled={readOnly || targetBusy}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void track(target)}
+                    disabled={readOnly || targetBusy}
+                  >
                     {targetBusy && busy?.action === "track" ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (

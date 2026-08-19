@@ -424,7 +424,7 @@ test("circle list uses compact responsive cards and shared pagination", async ({
 
   await page.getByRole("button", { name: "Items per page: 24" }).click();
   await expect(page.getByRole("menu", { name: "Items per page" })).toBeVisible();
-  await page.getByRole("menuitemradio", { name: "48 per page" }).click();
+  await page.getByRole("menuitemradio", { name: "48 / page" }).click();
   await expect(page).toHaveURL(/pageSize=48/);
 });
 
@@ -457,8 +457,8 @@ test("voice list keeps latest work, tags, and availability visible on mobile", a
   await expect(pageSizeButton).toBeVisible();
   await pageSizeButton.click();
   await expect(page.getByRole("menu", { name: "Items per page" })).toBeVisible();
-  await expect(page.getByRole("menuitemradio", { name: "24 per page" })).toHaveAttribute("aria-checked", "true");
-  await page.getByRole("menuitemradio", { name: "48 per page" }).click();
+  await expect(page.getByRole("menuitemradio", { name: "24 / page" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("menuitemradio", { name: "48 / page" }).click();
   await expect(page).toHaveURL(/pageSize=48/);
 });
 

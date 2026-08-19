@@ -2182,8 +2182,7 @@ export const api = {
   }) => putJSONBody<AvailabilityWatch>("/api/availability-watch", payload),
   updateAvailabilityWatchTargets: (targetCodes: string[]) =>
     putJSONBody<AvailabilityWatch>("/api/availability-watch/targets", { targetCodes }),
-  removeAvailabilityWatchTarget: (id: number) =>
-    deleteJSON<{ ok: boolean }>(`/api/availability-watch/targets/${id}`),
+  removeAvailabilityWatchTarget: (id: number) => deleteJSON<{ ok: boolean }>(`/api/availability-watch/targets/${id}`),
   trackAvailabilityWatchTarget: (id: number) =>
     postJSON<RemoteWorkTrackResult>(`/api/availability-watch/targets/${id}/track`),
   runAvailabilityWatch: () => postJSON<AvailabilityWatchRunResult>("/api/availability-watch/run"),

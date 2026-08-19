@@ -74,7 +74,8 @@ const systemDefinitions = [
     id: 6,
     code: "availability_watch",
     displayName: "Availability Watch",
-    description: "Monitor a shared pool of work codes and dispatch configured actions when a remote source becomes available.",
+    description:
+      "Monitor a shared pool of work codes and dispatch configured actions when a remote source becomes available.",
     definitionJson:
       '{"nodes":[{"id":"targets","type":"select_works","displayName":"Monitoring pool"},{"id":"check","type":"check_source_availability","displayName":"Check source availability"},{"id":"ready","type":"filter_candidates","displayName":"Ready pool"},{"id":"dispatch","type":"dispatch_child_workflows","displayName":"Dispatch configured action"}]}',
     scope: "system",
@@ -969,7 +970,9 @@ test("availability watch shares pools, schedules checks, and handles ready works
   await expect.poll(() => updates).toHaveLength(4);
   expect(updates).toContainEqual({ trackTargetId: 2 });
   await readyDialog.getByRole("button", { name: "Remove RJ00000001 from watch", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Ready works (0)" }).getByText("No available works.", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("dialog", { name: "Ready works (0)" }).getByText("No available works.", { exact: true }),
+  ).toBeVisible();
   expect(updates).toContainEqual({ deleteTargetId: 2 });
 });
 

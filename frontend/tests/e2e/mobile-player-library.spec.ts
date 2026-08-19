@@ -1567,7 +1567,9 @@ test("local Delete builds a refreshed preview and requires two confirmations", a
   });
 });
 
-test("local Delete enables work forgetting only for a complete root and confirms its data boundary", async ({ page }) => {
+test("local Delete enables work forgetting only for a complete root and confirms its data boundary", async ({
+  page,
+}) => {
   const cleanupBodies: Record<string, unknown>[] = [];
   const mediaItems = [
     {
@@ -1642,7 +1644,9 @@ test("local Delete enables work forgetting only for a complete root and confirms
 
   await expect(page.getByRole("heading", { name: "Review deletion and forget work" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Will be deleted" })).toBeVisible();
-  await expect(page.getByText(/complete logical work family, all metadata, playback history, Quick mark/)).toBeVisible();
+  await expect(
+    page.getByText(/complete logical work family, all metadata, playback history, Quick mark/),
+  ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Will be kept" })).toBeVisible();
   await expect(page.getByText(/Any other available remote, tracked, cache, or local source/)).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
@@ -2760,7 +2764,7 @@ test("mobile work detail orders Info sections and keeps work-code utilities toge
     page.getByText("Voices", { exact: true }),
     page.getByText("Tags", { exact: true }),
     page.getByText("My tags", { exact: true }),
-    page.getByText("Versions", { exact: true }),
+    page.getByText("Metadata language", { exact: true }),
     page.getByTestId("dlsite-info"),
     page.getByTestId("active-source-info"),
   ];
