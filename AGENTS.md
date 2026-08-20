@@ -116,6 +116,30 @@ app composition -> domain feature -> shared application code -> primitives
 - Pure visual assertions are appropriate only for a documented layout,
   accessibility, or responsive contract.
 
+## Validation Commands
+
+The `Makefile` is the canonical entry point for repository validation. Prefer
+its targets over reconstructing CI commands by hand, so local checks and GitHub
+Actions continue to exercise the same commands. Use a direct command only when
+the Makefile has no target for the required check.
+
+- Use the smallest sufficient target for the change: `make frontend-docs` for
+  public documentation, `make ci-style` for frontend style checks,
+  `make ci-backend` for backend behavior, and `make ci-frontend` for frontend
+  behavior.
+- Use `make smoke` for Docker/runtime changes, `make frontend-e2e` for browser
+  workflow changes, `make android-build` for Android changes, and
+  `make DOCKER_IMAGE=kikoto:ci docker-build` for production image changes.
+- `make ci-local` runs the complete locally portable Actions sequence, including
+  Docker validation but excluding the Android SDK build. `make ci` adds the
+  Android build and is the full local equivalent when its toolchain is
+  available.
+- Keep validation proportional: do not run the full aggregate target for a
+  narrow change when its affected target is sufficient.
+- Before every commit, run `make sensitive-check` against the actual working
+  tree diff and review any findings. This privacy check is intentionally
+  separate from the GitHub Actions validation sequence.
+
 ## Release and Handoff
 
 Use the repository's normal signed-commit path. If the 1Password signing agent

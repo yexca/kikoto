@@ -1,4 +1,4 @@
-.PHONY: backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-audit frontend-audit-signatures frontend-playwright-install frontend-e2e-smoke frontend-e2e android-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check privacy-check ci-style ci-backend ci-frontend
+.PHONY: backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-audit frontend-audit-signatures frontend-playwright-install frontend-e2e-smoke frontend-e2e android-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check privacy-check ci-style ci-backend ci-frontend ci-local ci
 
 GO ?= go
 NPM ?= npm
@@ -167,3 +167,9 @@ ci-style: frontend-format frontend-lint frontend-docs
 ci-backend: backend-verify backend-vuln backend-test backend-coverage backend-vet backend-race
 
 ci-frontend: frontend-audit frontend-audit-signatures frontend-coverage frontend-build
+
+# ci-local follows every GitHub Actions validation phase available without an Android SDK.
+ci-local: DOCKER_IMAGE := kikoto:ci
+ci-local: ci-style ci-backend ci-frontend smoke frontend-e2e docker-build
+
+ci: ci-local android-build
