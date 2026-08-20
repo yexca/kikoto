@@ -17,7 +17,6 @@ Kikoto is configured through environment variables and administrator settings.
 | `KIKOTO_ROOT_USERNAME` | `root` | Root administrator username. |
 | `KIKOTO_ROOT_PASSWORD` | Required in production | Authoritative root administrator password. A changed value is applied on service startup and revokes existing root sessions. |
 | `KIKOTO_REMOTE_SOURCES_ENABLED` | `false` | Enable first-run remote source seeding. |
-| `KIKOTO_REMOTE_SOURCES_FILE` | `../config/remote-sources.yaml` | Remote source seed file. |
 
 ## Administrator Settings
 
@@ -41,9 +40,11 @@ See [Settings](../product/settings.md) for user-visible behavior.
 
 ## Remote Source Seeds
 
-Remote sources can be seeded on first startup from a mounted file when
-`KIKOTO_REMOTE_SOURCES_ENABLED=true`. Keep real source details in the mounted
-configuration file, not in the repository.
+Remote sources can be seeded on first startup from
+`config/remote-sources.yml` when `KIKOTO_REMOTE_SOURCES_ENABLED=true`. Compose
+mounts that file at `/config/remote-sources.yml`; direct backend runs also check
+`../config/remote-sources.yml` and the legacy `.yaml` extension. Keep real
+source details in the mounted configuration file, not in the repository.
 
 After first startup, Settings is the source of truth for configured sources.
 

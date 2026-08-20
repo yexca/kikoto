@@ -105,7 +105,18 @@ sources:
 	}
 }
 
-func TestLoadRemoteSourceSeedsRequiresOptInAndReadsConfiguredFile(t *testing.T) {
+func TestRemoteSourceSeedFilePathsUseFixedDefaults(t *testing.T) {
+	want := []string{
+		"/config/remote-sources.yml",
+		"../config/remote-sources.yml",
+		"../config/remote-sources.yaml",
+	}
+	if got := remoteSourceSeedFilePaths(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("remoteSourceSeedFilePaths() = %#v, want %#v", got, want)
+	}
+}
+
+func TestLoadRemoteSourceSeedsRequiresOptInAndReadsSeedFile(t *testing.T) {
 	seedPath := filepath.Join(t.TempDir(), "remote-sources.yml")
 	if err := os.WriteFile(seedPath, []byte(`
 sources:
@@ -122,14 +133,13 @@ sources:
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("KIKOTO_REMOTE_SOURCES_FILE", seedPath)
 	t.Setenv("KIKOTO_REMOTE_SOURCES_ENABLED", "false")
-	if seeds := loadRemoteSourceSeeds(); seeds != nil {
+	if seeds := loadRemoteSourceSeedsFromPaths([]string{seedPath}); seeds != nil {
 		t.Fatalf("disabled remote source seeds = %#v, want nil", seeds)
 	}
 
 	t.Setenv("KIKOTO_REMOTE_SOURCES_ENABLED", "true")
-	seeds := loadRemoteSourceSeeds()
+	seeds := loadRemoteSourceSeedsFromPaths([]string{seedPath})
 	if len(seeds) != 1 {
 		t.Fatalf("seeds = %#v, want one complete seed", seeds)
 	}

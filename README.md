@@ -231,12 +231,12 @@ Enable the seed in `.env`:
 
 ```dotenv
 KIKOTO_REMOTE_SOURCES_ENABLED=true
-KIKOTO_REMOTE_SOURCES_FILE=/config/remote-sources.yml
 ```
 
-The file is a first-run seed: Kikoto ignores it once a compatible remote source
-already exists in SQLite. Continue managing sources through the administration
-UI after bootstrap. Keep real endpoints and credentials outside the repository.
+Compose reads `config/remote-sources.yml` from its `/config` mount. The file is
+a first-run seed: Kikoto ignores it once a compatible remote source already
+exists in SQLite. Continue managing sources through the administration UI after
+bootstrap. Keep real endpoints and credentials outside the repository.
 
 See [Configuration](docs/operations/configuration.md),
 [Sources](docs/product/sources.md), and

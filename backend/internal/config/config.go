@@ -149,14 +149,20 @@ func envBool(key string, fallback bool) bool {
 }
 
 func loadRemoteSourceSeeds() []RemoteSourceSeed {
+	return loadRemoteSourceSeedsFromPaths(remoteSourceSeedFilePaths())
+}
+
+func remoteSourceSeedFilePaths() []string {
+	return []string{
+		"/config/remote-sources.yml",
+		"../config/remote-sources.yml",
+		"../config/remote-sources.yaml",
+	}
+}
+
+func loadRemoteSourceSeedsFromPaths(paths []string) []RemoteSourceSeed {
 	if !envBool("KIKOTO_REMOTE_SOURCES_ENABLED", false) {
 		return nil
-	}
-	paths := []string{}
-	if configured := os.Getenv("KIKOTO_REMOTE_SOURCES_FILE"); configured != "" {
-		paths = append(paths, configured)
-	} else {
-		paths = append(paths, "/config/remote-sources.yml", "../config/remote-sources.yml", "../config/remote-sources.yaml")
 	}
 	for _, path := range paths {
 		rawBytes, err := os.ReadFile(path)

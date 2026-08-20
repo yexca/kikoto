@@ -9,7 +9,6 @@ cache/*
 !cache/.gitkeep
 config/*
 !config/.gitkeep
-!config/app.example.yaml
 !config/remote-sources.example.yml
 
 demo/
