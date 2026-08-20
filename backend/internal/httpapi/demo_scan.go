@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/localfs"
 	"github.com/yexca/kikoto/backend/internal/metasync"
@@ -77,6 +76,7 @@ func (s *Server) RunDemoLibraryScan(ctx context.Context) (DemoLibraryScanResult,
 			result.FailedWorks++
 			result.Failures = append(result.Failures, outcome.Failure)
 		}
+		result.Failures = append(result.Failures, outcome.Warnings...)
 		if outcome.Eligible {
 			result.EligibleWorks++
 			result.IndexedFiles += outcome.IndexedFiles
@@ -103,6 +103,7 @@ type demoLibraryFolderOutcome struct {
 	Discarded    bool
 	IndexedFiles int
 	Failure      string
+	Warnings     []string
 }
 
 func (s *Server) processDemoLibraryFolder(ctx context.Context, syncer *metasync.DLsiteSyncer, fileSourceID int64, folder localfs.WorkFolder, duplicateCodes map[string]bool) demoLibraryFolderOutcome {
@@ -117,14 +118,15 @@ func (s *Server) processDemoLibraryFolder(ctx context.Context, syncer *metasync.
 	if fetchedCode := demoProductCode(product); !strings.EqualFold(fetchedCode, code) {
 		return demoLibraryFolderOutcome{Failure: fmt.Sprintf("%s: provider returned mismatched code %q", code, fetchedCode)}
 	}
-	permanentlyFree := product.IsPermanentlyFree()
-	if !contentpolicy.IsAllAges(product.AgeCategoryString) || permanentlyFree == nil || !*permanentlyFree {
+	family, err := syncer.SyncDemoProductFamily(ctx, product)
+	if err != nil {
+		return demoLibraryFolderOutcome{Failure: fmt.Sprintf("%s: %s", code, err.Error())}
+	}
+	if !family.RequestedEligible {
 		return demoLibraryFolderOutcome{Discarded: true}
 	}
-	workID, err := syncer.SyncProductForDemo(ctx, product)
-	if err == nil {
-		err = s.storeDemoLocalWork(ctx, fileSourceID, workID, folder)
-	}
+	workID := family.WorkID
+	err = s.storeDemoLocalWork(ctx, fileSourceID, workID, folder)
 	if err == nil {
 		err = s.syncVoiceCreditsForWorkFromSnapshots(ctx, workID)
 	}
@@ -132,7 +134,11 @@ func (s *Server) processDemoLibraryFolder(ctx context.Context, syncer *metasync.
 		_ = s.hideDemoWork(ctx, workID)
 		return demoLibraryFolderOutcome{Failure: fmt.Sprintf("%s: %s", code, err.Error())}
 	}
-	return demoLibraryFolderOutcome{Eligible: true, IndexedFiles: len(folder.Files)}
+	warnings := make([]string, 0, len(family.Failures))
+	for _, failure := range family.Failures {
+		warnings = append(warnings, fmt.Sprintf("%s language metadata: %s", code, failure))
+	}
+	return demoLibraryFolderOutcome{Eligible: true, IndexedFiles: len(folder.Files), Warnings: warnings}
 }
 
 func finalizeDemoLibraryScanStatus(result *DemoLibraryScanResult) {

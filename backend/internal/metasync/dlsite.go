@@ -12,11 +12,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 var dlsiteWorkNoPattern = regexp.MustCompile(`(?i)^(RJ|BJ|VJ)[0-9]{5,8}$`)
+
+const maxDLsiteFamilyEditions = 32
 
 type DLsiteClient interface {
 	FetchProduct(ctx context.Context, workno string) (dlsite.Product, error)
@@ -69,6 +72,19 @@ type DLsiteFamilySyncResult struct {
 	SkippedCodes         []string `json:"skippedCodes"`
 	Failures             []string `json:"failures"`
 	RequestedUnavailable bool     `json:"requestedUnavailable"`
+}
+
+// DLsiteDemoFamilySyncResult describes the bounded language-edition metadata
+// collected for one Demo-local product. Only versions that independently meet
+// the Demo content policy are materialized.
+type DLsiteDemoFamilySyncResult struct {
+	RequestedCode     string   `json:"requestedCode"`
+	RequestedEligible bool     `json:"requestedEligible"`
+	WorkID            int64    `json:"workId"`
+	SyncedCodes       []string `json:"syncedCodes"`
+	SkippedCodes      []string `json:"skippedCodes"`
+	DiscardedCodes    []string `json:"discardedCodes"`
+	Failures          []string `json:"failures"`
 }
 
 type DLsiteReviewCandidate struct {
@@ -261,22 +277,90 @@ func (s *DLsiteSyncer) SyncProduct(ctx context.Context, product dlsite.Product) 
 	return workID, nil
 }
 
-// SyncProductForDemo synchronizes one product that the caller has already
-// admitted. It refreshes the accepted product and its cover, but deliberately
-// does not follow base-product or language-edition relationships. Demo
-// admission must be evaluated independently for every product that could be
-// materialized.
-func (s *DLsiteSyncer) SyncProductForDemo(ctx context.Context, product dlsite.Product) (int64, error) {
+// SyncDemoProductFamily stores an admitted Demo-local product and eligible
+// provider-declared language editions. It intentionally does not follow base
+// product links or recurse through a sibling response: every materialized
+// edition must independently pass the Demo policy, and only the supplied local
+// product is eligible for file registration by the caller.
+func (s *DLsiteSyncer) SyncDemoProductFamily(ctx context.Context, product dlsite.Product) (DLsiteDemoFamilySyncResult, error) {
+	requestedCode := dlsiteProductCode(product)
+	if requestedCode == "" {
+		return DLsiteDemoFamilySyncResult{}, fmt.Errorf("product does not expose a stable work code")
+	}
+	result := DLsiteDemoFamilySyncResult{
+		RequestedCode:  requestedCode,
+		SyncedCodes:    []string{},
+		SkippedCodes:   []string{},
+		DiscardedCodes: []string{},
+		Failures:       []string{},
+	}
+	if !isDemoEligibleProduct(product) {
+		result.DiscardedCodes = append(result.DiscardedCodes, requestedCode)
+		return result, nil
+	}
+
 	workID, err := s.SyncProductOnly(ctx, product)
 	if err != nil {
-		return 0, err
+		return result, err
 	}
+	result.RequestedEligible = true
+	result.WorkID = workID
+	result.SyncedCodes = append(result.SyncedCodes, requestedCode)
+
+	seen := map[string]bool{requestedCode: true}
+	fetchedEditions := 1
+	for _, edition := range product.LanguageEditions {
+		code := strings.ToUpper(strings.TrimSpace(edition.WorkNo))
+		if !dlsiteWorkNoPattern.MatchString(code) || seen[code] {
+			continue
+		}
+		seen[code] = true
+		if languageEditionExplicitlyUnavailable(product, edition) {
+			result.SkippedCodes = append(result.SkippedCodes, code)
+			continue
+		}
+		if fetchedEditions >= maxDLsiteFamilyEditions {
+			result.Failures = append(result.Failures, fmt.Sprintf("language edition limit of %d reached", maxDLsiteFamilyEditions))
+			break
+		}
+		fetchedEditions++
+
+		localized, fetchErr := s.fetchProductForEdition(ctx, code)
+		if fetchErr != nil {
+			result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, fetchErr.Error()))
+			continue
+		}
+		if fetchedCode := dlsiteProductCode(localized); !strings.EqualFold(fetchedCode, code) {
+			result.Failures = append(result.Failures, fmt.Sprintf("%s: provider returned mismatched code %q", code, fetchedCode))
+			continue
+		}
+		if !isDemoEligibleProduct(localized) {
+			result.DiscardedCodes = append(result.DiscardedCodes, code)
+			continue
+		}
+		if _, syncErr := s.SyncProductOnly(ctx, localized); syncErr != nil {
+			result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, syncErr.Error()))
+			continue
+		}
+		result.SyncedCodes = append(result.SyncedCodes, code)
+	}
+
 	if s.cacheRoot != "" {
-		// A cover is presentation-only. Keep the admitted work playable when a
-		// provider image is temporarily unavailable or the cache is unwritable.
+		// A cover is presentation-only. Keep the admitted local work playable
+		// when a provider image is temporarily unavailable or the cache is
+		// unwritable. Metadata-only siblings do not need their own cover fetch.
 		_, _ = s.downloadCover(ctx, product)
 	}
-	return workID, nil
+	return result, nil
+}
+
+func isDemoEligibleProduct(product dlsite.Product) bool {
+	permanentlyFree := product.IsPermanentlyFree()
+	return contentpolicy.IsAllAges(product.AgeCategoryString) && permanentlyFree != nil && *permanentlyFree
+}
+
+func dlsiteProductCode(product dlsite.Product) string {
+	return strings.ToUpper(strings.TrimSpace(firstNonEmptyText(product.WorkNo, product.ProductID)))
 }
 
 // SyncFamily refreshes a requested product and every language edition that can
@@ -292,8 +376,7 @@ func (s *DLsiteSyncer) SyncFamily(ctx context.Context, requestedCode string) (DL
 	seen := map[string]bool{}
 	skipped := map[string]bool{}
 	products := map[string]dlsite.Product{}
-	const maxFamilyEditions = 32
-	for len(queue) > 0 && len(seen) < maxFamilyEditions {
+	for len(queue) > 0 && len(seen) < maxDLsiteFamilyEditions {
 		code := strings.ToUpper(strings.TrimSpace(queue[0]))
 		queue = queue[1:]
 		if seen[code] || skipped[code] || !dlsiteWorkNoPattern.MatchString(code) {

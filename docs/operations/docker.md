@@ -85,11 +85,15 @@ Put candidate folders containing a supported work code under `./demo/data`.
 On every container start, the synchronous `demo_library_scan` workflow reuses
 the local folder scanner, fetches current DLsite metadata, best-effort caches
 the accepted covers, and indexes only works that are both all-ages and
-permanently free. It never follows related editions or origin products during
-this admission path. Adult, paid, temporary-free, unknown, duplicate, and
-metadata-fetch-failed candidates are not admitted or indexed. Restart the
-container after changing `./demo/data`; live filesystem watching remains
-disabled.
+permanently free. It also collects provider-declared language-edition metadata
+only after each edition independently passes the same policy; a language
+sibling reached from another folder remains metadata-only, and only a
+discovered local folder receives local media records. The workflow never
+follows origin or base-product links and never recurses through a sibling
+response. Adult, paid, temporary-free, unknown, duplicate, and
+metadata-fetch-failed candidates or language editions are not admitted or
+indexed. Restart the container after changing `./demo/data`; live filesystem
+watching remains disabled.
 
 `./demo/config` contains the isolated Demo SQLite database and optional source
 seed file. `./demo/cache` contains only isolated or sanitized assets; startup

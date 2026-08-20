@@ -151,6 +151,181 @@ func TestDemoLibraryScanOnlyStoresEligibleWorks(t *testing.T) {
 	}
 }
 
+func TestDemoLibraryScanStoresEligibleLanguageEditionMetadata(t *testing.T) {
+	db := openMigratedTestDB(t)
+	dataRoot := t.TempDir()
+	writeDemoScanFile(t, dataRoot, "RJ00000010", "track.mp3", "localized audio")
+
+	editions := []dlsite.LanguageEdition{
+		{WorkNo: "RJ00000010", DisplayOrder: 1, Label: "Japanese", Lang: "JPN"},
+		{WorkNo: "RJ00000011", DisplayOrder: 2, Label: "Simplified Chinese", Lang: "CHI_HANS"},
+		{WorkNo: "RJ00000012", DisplayOrder: 3, Label: "English", Lang: "ENG"},
+		{WorkNo: "RJ00000013", DisplayOrder: 4, Label: "Korean", Lang: "KO_KR"},
+	}
+	withEditions := func(product dlsite.Product) dlsite.Product {
+		product.LanguageEditions = editions
+		return product
+	}
+	origin := withEditions(demoScanProduct("RJ00000010", "Origin title", "general", int64Pointer(0), int64Pointer(0), nil))
+	simplified := withEditions(demoScanProduct("RJ00000011", "Simplified title", "general", int64Pointer(0), int64Pointer(0), nil))
+	adult := withEditions(demoScanProduct("RJ00000012", "Adult title", "adult", int64Pointer(0), int64Pointer(0), nil))
+	paid := withEditions(demoScanProduct("RJ00000013", "Paid title", "general", int64Pointer(1000), int64Pointer(1000), nil))
+
+	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('remote_request_delay_base_seconds', '0')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('dlsite_metadata_languages', '["zh-cn","origin"]')`); err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewServer(db, config.Config{Mode: config.ModeDemo, DataRoot: dataRoot, CacheRoot: t.TempDir(), LocalScanDepth: 2})
+	client := &localizedDemoScanDLsiteClient{
+		fakeDemoScanDLsiteClient: &fakeDemoScanDLsiteClient{products: map[string]dlsite.Product{
+			"RJ00000010": origin,
+			"RJ00000011": simplified,
+			"RJ00000012": adult,
+			"RJ00000013": paid,
+		}, calls: map[string]int{}},
+		localizedProducts: map[string]map[string]dlsite.Product{
+			"RJ00000011": {"zh-cn": simplified},
+			"RJ00000012": {"en-us": adult},
+			"RJ00000013": {"ko-kr": paid},
+		},
+	}
+	server.dlsiteClient = client
+
+	result, err := server.RunDemoLibraryScan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "succeeded" || result.EligibleWorks != 1 || result.DiscardedWorks != 0 || result.FailedWorks != 0 || result.IndexedFiles != 1 {
+		t.Fatalf("demo scan result = %#v", result)
+	}
+	if client.coverDownloads != 1 {
+		t.Fatalf("cover downloads = %d, want 1 for the local work only", client.coverDownloads)
+	}
+
+	var rootTitle string
+	if err := db.QueryRow("SELECT title FROM work WHERE primary_code = 'RJ00000010'").Scan(&rootTitle); err != nil {
+		t.Fatal(err)
+	}
+	if rootTitle != "Simplified title" {
+		t.Fatalf("projected Demo title = %q, want Simplified title", rootTitle)
+	}
+	var requestLocale, localizedTitle string
+	if err := db.QueryRow(`
+		SELECT variant.request_locale, variant.title
+		FROM dlsite_metadata_variant AS variant
+		INNER JOIN work ON work.id = variant.work_id
+		WHERE work.primary_code = 'RJ00000011'
+	`).Scan(&requestLocale, &localizedTitle); err != nil {
+		t.Fatal(err)
+	}
+	if requestLocale != "zh-cn" || localizedTitle != "Simplified title" {
+		t.Fatalf("localized metadata = locale %q/title %q", requestLocale, localizedTitle)
+	}
+	if !strings.Contains(strings.Join(client.localeCalls, ","), "RJ00000011:zh-cn") {
+		t.Fatalf("exact locale calls = %v, want simplified Chinese request", client.localeCalls)
+	}
+
+	for _, code := range []string{"RJ00000012", "RJ00000013"} {
+		var works, variants, locations int
+		if err := db.QueryRow("SELECT COUNT(*) FROM work WHERE primary_code = ?", code).Scan(&works); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.QueryRow(`
+			SELECT COUNT(*)
+			FROM dlsite_metadata_variant AS variant
+			INNER JOIN work ON work.id = variant.work_id
+			WHERE work.primary_code = ?
+		`, code).Scan(&variants); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.QueryRow(`
+			SELECT COUNT(*)
+			FROM media_file_location AS location
+			INNER JOIN media_item AS item ON item.id = location.media_item_id
+			INNER JOIN work ON work.id = item.work_id
+			WHERE work.primary_code = ?
+		`, code).Scan(&locations); err != nil {
+			t.Fatal(err)
+		}
+		if works != 0 || variants != 0 || locations != 0 {
+			t.Fatalf("ineligible sibling %s persisted work=%d variant=%d location=%d", code, works, variants, locations)
+		}
+	}
+
+	var siblingLocations int
+	if err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM media_file_location AS location
+		INNER JOIN media_item AS item ON item.id = location.media_item_id
+		INNER JOIN work ON work.id = item.work_id
+		WHERE work.primary_code = 'RJ00000011'
+	`).Scan(&siblingLocations); err != nil {
+		t.Fatal(err)
+	}
+	if siblingLocations != 0 {
+		t.Fatalf("metadata-only sibling locations = %d, want 0", siblingLocations)
+	}
+}
+
+func TestDemoLibraryScanKeepsEligibleLocalWorkWhenLanguageEditionFetchFails(t *testing.T) {
+	db := openMigratedTestDB(t)
+	dataRoot := t.TempDir()
+	writeDemoScanFile(t, dataRoot, "RJ00000014", "track.mp3", "fallback audio")
+	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('remote_request_delay_base_seconds', '0')`); err != nil {
+		t.Fatal(err)
+	}
+	editions := []dlsite.LanguageEdition{
+		{WorkNo: "RJ00000014", DisplayOrder: 1, Label: "Japanese", Lang: "JPN"},
+		{WorkNo: "RJ00000015", DisplayOrder: 2, Label: "Simplified Chinese", Lang: "CHI_HANS"},
+	}
+	origin := demoScanProduct("RJ00000014", "Fallback origin", "general", int64Pointer(0), int64Pointer(0), nil)
+	origin.LanguageEditions = editions
+	sibling := demoScanProduct("RJ00000015", "Unavailable localized title", "general", int64Pointer(0), int64Pointer(0), nil)
+	sibling.LanguageEditions = editions
+	client := &localizedDemoScanDLsiteClient{fakeDemoScanDLsiteClient: &fakeDemoScanDLsiteClient{
+		products: map[string]dlsite.Product{
+			"RJ00000014": origin,
+			"RJ00000015": sibling,
+		},
+		calls: map[string]int{},
+	}}
+	server := NewServer(db, config.Config{Mode: config.ModeDemo, DataRoot: dataRoot, LocalScanDepth: 2})
+	server.dlsiteClient = client
+
+	result, err := server.RunDemoLibraryScan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "partial" || result.EligibleWorks != 1 || result.FailedWorks != 0 || result.IndexedFiles != 1 || len(result.Failures) != 1 {
+		t.Fatalf("demo scan result = %#v", result)
+	}
+	if !strings.Contains(result.Failures[0], "RJ00000015") {
+		t.Fatalf("language edition failure = %q", result.Failures[0])
+	}
+	var workCount, locationCount, siblingCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM work WHERE primary_code = 'RJ00000014'").Scan(&workCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM media_file_location AS location
+		INNER JOIN media_item AS item ON item.id = location.media_item_id
+		INNER JOIN work ON work.id = item.work_id
+		WHERE work.primary_code = 'RJ00000014'
+	`).Scan(&locationCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM work WHERE primary_code = 'RJ00000015'").Scan(&siblingCount); err != nil {
+		t.Fatal(err)
+	}
+	if workCount != 1 || locationCount != 1 || siblingCount != 0 {
+		t.Fatalf("post-warning persistence = root %d locations %d sibling %d", workCount, locationCount, siblingCount)
+	}
+}
+
 func TestDemoLibraryScanCannotRunOutsideDemoMode(t *testing.T) {
 	server := NewServer(openMigratedTestDB(t), config.Config{Mode: config.ModeProduction, DataRoot: t.TempDir()})
 	if _, err := server.RunDemoLibraryScan(context.Background()); err == nil {
@@ -181,6 +356,31 @@ func (client *fakeDemoScanDLsiteClient) FetchProductWithOptions(_ context.Contex
 	if !ok {
 		return dlsite.Product{}, errors.New("product not found")
 	}
+	return product, nil
+}
+
+type localizedDemoScanDLsiteClient struct {
+	*fakeDemoScanDLsiteClient
+	localizedProducts map[string]map[string]dlsite.Product
+	localeCalls       []string
+}
+
+func (client *localizedDemoScanDLsiteClient) FetchProductWithLocale(_ context.Context, workno string, locale string) (dlsite.Product, error) {
+	workno = strings.ToUpper(strings.TrimSpace(workno))
+	locale = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(locale, "_", "-")))
+	client.localeCalls = append(client.localeCalls, workno+":"+locale)
+	if client.calls != nil {
+		client.calls[workno]++
+	}
+	if err := client.errors[workno]; err != nil {
+		return dlsite.Product{}, err
+	}
+	product, ok := client.localizedProducts[workno][locale]
+	if !ok {
+		return dlsite.Product{}, dlsite.ErrNoProduct
+	}
+	product.Language = locale
+	product.RequestLocale = locale
 	return product, nil
 }
 
