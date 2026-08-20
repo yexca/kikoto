@@ -619,7 +619,7 @@ func (s *Server) syncPartiesFromDLsiteSnapshots(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if err := s.upsertPartyCatalogItem(ctx, partyID, snapshot.Code, snapshot.Title, nullableStringValue(snapshot.Release), dlsiteURL(snapshot.Code), "imported", snapshot.Raw); err != nil {
+		if err := s.upsertPartyCatalogItem(ctx, partyID, snapshot.Code, snapshot.Title, nullableStringValue(snapshot.Release), s.dlsiteURL(snapshot.Code), "imported", snapshot.Raw); err != nil {
 			return err
 		}
 		if err := s.upsertAuthoritativeWorkParty(ctx, snapshot.WorkID, partyID, "dlsite_snapshot"); err != nil {
@@ -668,7 +668,7 @@ func (s *Server) dlsitePartyProjectionCurrent(
 			AND external.external_id = ?
 	`, party.DisplayName, strings.ToLower(party.DisplayName), snapshot.Raw,
 		strings.ToUpper(strings.TrimSpace(snapshot.Code)), snapshot.Title, nullableStringValue(snapshot.Release),
-		dlsiteURL(snapshot.Code), snapshot.Raw, snapshot.ProviderID, party.ExternalID,
+		s.dlsiteURL(snapshot.Code), snapshot.Raw, snapshot.ProviderID, party.ExternalID,
 	).Scan(&partyID, &partyMatches, &snapshotMatches, &catalogMatches)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
@@ -804,7 +804,7 @@ func (s *Server) upsertDLsiteParty(ctx context.Context, externalID string, displ
 			party_id = excluded.party_id,
 			url = excluded.url,
 			is_primary = excluded.is_primary
-	`, partyID, providerID, externalID, dlsiteMakerURL(externalID)); err != nil {
+	`, partyID, providerID, externalID, s.dlsiteMakerURL(externalID)); err != nil {
 		return 0, err
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -1825,7 +1825,7 @@ func (s *Server) scanCircleCatalogWork(ctx context.Context, rows *sql.Rows, user
 		}
 	}
 	item.CoverURL = s.coverURL(item.PrimaryCode)
-	item.DLsiteURL = firstNonEmpty(dlsiteURL(item.PrimaryCode), item.DLsiteURL)
+	item.DLsiteURL = firstNonEmpty(s.dlsiteURL(item.PrimaryCode), item.DLsiteURL)
 	item.Circle, item.CircleExternalID = metadata.Circle, metadata.CircleExternalID
 	if err := s.populateCircleCatalogWorkRelations(ctx, &item, userID, partyID); err != nil {
 		return item, false, err
@@ -2294,7 +2294,7 @@ type circleRefreshResult struct {
 }
 
 func (s *Server) runCircleRefresh(ctx context.Context, partyID int64, externalID string, request circleRefreshRequest) (circleRefreshResult, error) {
-	client := dlsite.NewClient(nil)
+	client := s.newDLsiteClient()
 	profile := dlsite.MakerProfile{MakerID: externalID}
 	result := circleRefreshResult{Status: "succeeded", Scope: request.Scope, Mode: request.Mode, ProductMode: request.ProductMode}
 
@@ -2488,7 +2488,7 @@ func (s *Server) applyMakerProfile(ctx context.Context, partyID int64, profile d
 			return err
 		}
 	}
-	if err := upsertMakerCatalogItems(ctx, tx, partyID, providerID, profile.WorkCodes, raw); err != nil {
+	if err := s.upsertMakerCatalogItems(ctx, tx, partyID, providerID, profile.WorkCodes, raw); err != nil {
 		return err
 	}
 	if err := upsertMakerSeries(ctx, tx, partyID, providerID, profile.Series); err != nil {
@@ -2539,7 +2539,7 @@ func pruneMakerProfileRows(ctx context.Context, tx *sql.Tx, partyID, providerID 
 	return err
 }
 
-func upsertMakerCatalogItems(ctx context.Context, tx *sql.Tx, partyID, providerID int64, codes []string, raw string) error {
+func (s *Server) upsertMakerCatalogItems(ctx context.Context, tx *sql.Tx, partyID, providerID int64, codes []string, raw string) error {
 	for _, code := range codes {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO party_catalog_item (party_id, provider_id, primary_code, title, url, catalog_status, dlsite_available, raw_json, last_seen_at)
@@ -2553,7 +2553,7 @@ func upsertMakerCatalogItems(ctx context.Context, tx *sql.Tx, partyID, providerI
 				dlsite_available = 1,
 				raw_json = excluded.raw_json,
 				last_seen_at = CURRENT_TIMESTAMP
-		`, partyID, providerID, code, code, dlsiteURL(code), raw); err != nil {
+		`, partyID, providerID, code, code, s.dlsiteURL(code), raw); err != nil {
 			return err
 		}
 	}
@@ -2631,6 +2631,7 @@ func (s *Server) syncCircleProductJSON(ctx context.Context, partyID int64, workC
 		return circleProductSyncResult{}, err
 	}
 	syncer := metasync.NewDLsiteSyncer(s.db, client).
+		WithProductURLBuilder(s.dlsiteEndpoints.ProductURL).
 		WithCacheRoot(s.cfg.CacheRoot).
 		WithMetadataPriority(s.preferredMetadataLanguages(ctx)).
 		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.preferredMetadataLanguages(ctx)))
@@ -2677,7 +2678,7 @@ func (s *Server) syncCircleProduct(ctx context.Context, partyID int64, code stri
 	raw := string(product.Raw)
 	title := firstNonEmpty(product.WorkName, product.ProductName, product.WorkNo)
 	release := nullableStringFromText(product.RegistDate)
-	if err := s.upsertPartyCatalogItem(ctx, partyID, product.WorkNo, title, release, dlsiteURL(product.WorkNo), "catalog", raw); err != nil {
+	if err := s.upsertPartyCatalogItem(ctx, partyID, product.WorkNo, title, release, s.dlsiteURL(product.WorkNo), "catalog", raw); err != nil {
 		return "", err
 	}
 	if _, err := syncer.SyncFamily(ctx, product.WorkNo); err != nil {
@@ -3375,10 +3376,6 @@ func nullableStringValue(value sql.NullString) *string {
 	return &value.String
 }
 
-func dlsiteMakerURL(externalID string) string {
-	site := "maniax"
-	if strings.HasPrefix(strings.ToUpper(externalID), "VG") {
-		site = "pro"
-	}
-	return fmt.Sprintf("https://www.dlsite.com/%s/circle/profile/=/maker_id/%s.html", site, externalID)
+func (s *Server) dlsiteMakerURL(externalID string) string {
+	return s.dlsiteEndpoints.MakerURL(externalID)
 }

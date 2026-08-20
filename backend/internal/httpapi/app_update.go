@@ -54,7 +54,7 @@ func (s *Server) getAppUpdate(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) fetchAppUpdate(ctx context.Context) (appUpdateResponse, error) {
 	current := buildinfo.Version
-	policy, err := outbound.NewPolicy([]outbound.Destination{{URL: githubTagsURL}}, outbound.Options{})
+	policy, err := outbound.NewPolicy([]outbound.Destination{{URL: s.appUpdateEndpoints.tagsURL}}, outbound.Options{})
 	if err != nil {
 		return appUpdateResponse{}, err
 	}
@@ -63,7 +63,7 @@ func (s *Server) fetchAppUpdate(ctx context.Context) (appUpdateResponse, error) 
 	if s.updateHTTPClient != nil {
 		client = s.updateHTTPClient
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, githubTagsURL, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, s.appUpdateEndpoints.tagsURL, nil)
 	if err != nil {
 		return appUpdateResponse{}, err
 	}
@@ -91,7 +91,7 @@ func (s *Server) fetchAppUpdate(ctx context.Context) (appUpdateResponse, error) 
 	latest := highestStableTag(tags)
 	result := appUpdateResponse{CurrentVersion: current, LatestVersion: latest, UpdateAvailable: compareAppVersions(current, latest) < 0, CheckedAt: time.Now().UTC().Format(time.RFC3339)}
 	if latest != "" {
-		result.ReleaseURL = "https://github.com/yexca/kikoto/releases/tag/" + latest
+		result.ReleaseURL = s.appUpdateEndpoints.releaseURL(latest)
 	}
 	return result, nil
 }

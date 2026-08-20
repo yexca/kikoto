@@ -16,9 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yexca/kikoto/backend/internal/buildinfo"
 	"github.com/yexca/kikoto/backend/internal/download"
-	"github.com/yexca/kikoto/backend/internal/outbound"
 )
 
 var ErrNoProduct = errors.New("dlsite product not found")
@@ -69,7 +67,7 @@ func RetryAfterDuration(value string) time.Duration {
 
 type Client struct {
 	httpClient *http.Client
-	baseURL    string
+	endpoints  Endpoints
 	userAgent  string
 }
 
@@ -341,23 +339,7 @@ type rankingQuery struct {
 	year          int
 }
 
-func NewClient(httpClient *http.Client) *Client {
-	if httpClient == nil {
-		policy, err := outbound.NewPolicy([]outbound.Destination{
-			{URL: "https://www.dlsite.com"},
-			{URL: "https://img.dlsite.jp"},
-		}, outbound.Options{})
-		if err != nil {
-			panic("invalid built-in metadata destination policy")
-		}
-		httpClient = policy.Client(nil, 20*time.Second)
-	}
-	return &Client{
-		httpClient: httpClient,
-		baseURL:    "https://www.dlsite.com",
-		userAgent:  buildinfo.UserAgent(),
-	}
-}
+func NewClient(httpClient *http.Client) *Client { return DefaultEndpoints().NewClient(httpClient) }
 
 func (c *Client) FetchProduct(ctx context.Context, workno string) (Product, error) {
 	return c.FetchProductWithOptions(ctx, workno, ProductOptions{})
@@ -456,7 +438,7 @@ func (c *Client) fetchRankingCodes(ctx context.Context, query rankingQuery) ([]s
 	if query.period == "year" {
 		params.Set("year", strconv.Itoa(query.year))
 	}
-	endpoint := fmt.Sprintf("%s/maniax/ranking/%s?%s", strings.TrimRight(c.baseURL, "/"), query.period, params.Encode())
+	endpoint := fmt.Sprintf("%s/maniax/ranking/%s?%s", c.endpoints.webURL(), query.period, params.Encode())
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -592,7 +574,7 @@ func (p Product) CoverURL() string {
 }
 
 func (c *Client) fetchProductFromSite(ctx context.Context, site string, workno string, language string) (Product, error) {
-	endpoint := fmt.Sprintf("%s/%s/api/=/product.json?workno=%s", strings.TrimRight(c.baseURL, "/"), site, url.QueryEscape(workno))
+	endpoint := fmt.Sprintf("%s/%s/api/=/product.json?workno=%s", c.endpoints.webURL(), site, url.QueryEscape(workno))
 	if language != "" {
 		endpoint += "&locale=" + url.QueryEscape(language)
 	}
@@ -797,7 +779,7 @@ func (state *makerCatalogPageState) appendPageCodes(codes []string, knownCodes m
 
 func (c *Client) fetchMakerProfilePageCandidates(ctx context.Context, site string, makerID string, page int, languages []string) (MakerProfile, error) {
 	var lastErr error
-	for _, endpoint := range makerProfileURLs(c.baseURL, site, makerID, page, languages) {
+	for _, endpoint := range makerProfileURLs(c.endpoints.webURL(), site, makerID, page, languages) {
 		profile, err := c.fetchMakerProfilePage(ctx, site, makerID, endpoint)
 		if err == nil {
 			return profile, nil
@@ -837,7 +819,7 @@ func (c *Client) fetchMakerProfilePage(ctx context.Context, site string, makerID
 		SiteID:       site,
 		URL:          endpoint,
 		WorkCodes:    parseWorkCodes(rawHTML),
-		Series:       parseMakerSeries(rawHTML),
+		Series:       parseMakerSeries(rawHTML, c.endpoints),
 		RawHTML:      rawHTML,
 		PagesFetched: 1,
 		TotalWorks:   parsePageTotal(rawHTML),
@@ -869,7 +851,7 @@ func (c *Client) fetchDynamic(ctx context.Context, product Product) (json.RawMes
 		site = "maniax-touch"
 	}
 
-	endpoint := fmt.Sprintf("%s/%s/product/info/ajax?product_id=%s", strings.TrimRight(c.baseURL, "/"), site, url.QueryEscape(product.WorkNo))
+	endpoint := fmt.Sprintf("%s/%s/product/info/ajax?product_id=%s", c.endpoints.webURL(), site, url.QueryEscape(product.WorkNo))
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, dynamicProductMetadata{}, err
@@ -1043,7 +1025,7 @@ func parseWorkCodes(rawHTML string) []string {
 	return codes
 }
 
-func parseMakerSeries(rawHTML string) []MakerSeries {
+func parseMakerSeries(rawHTML string, endpoints Endpoints) []MakerSeries {
 	searchSpace := rawHTML
 	if start := strings.Index(rawHTML, `class="prof_work_series"`); start >= 0 {
 		searchSpace = rawHTML[start:]
@@ -1068,7 +1050,7 @@ func parseMakerSeries(rawHTML string) []MakerSeries {
 		series = append(series, MakerSeries{
 			TitleID:   titleID,
 			Name:      name,
-			URL:       normalizeDLsiteURL(match[1]),
+			URL:       endpoints.ResolveURL(match[1]),
 			WorkCount: parseSeriesWorkCount(label),
 		})
 	}
@@ -1119,17 +1101,6 @@ func makerWorkListSearchSpace(rawHTML string) string {
 		}
 	}
 	return searchSpace[:end]
-}
-
-func normalizeDLsiteURL(raw string) string {
-	raw = strings.TrimSpace(html.UnescapeString(raw))
-	if strings.HasPrefix(raw, "//") {
-		return "https:" + raw
-	}
-	if strings.HasPrefix(raw, "/") {
-		return "https://www.dlsite.com" + raw
-	}
-	return raw
 }
 
 func (c *Client) fetchMakerSeriesCatalogs(ctx context.Context, series []MakerSeries, languages []string) []MakerSeries {

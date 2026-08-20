@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "endpoints": [
+    {
+      "url": "https://www.dlsite.com",
+      "files": [
+        "backend/internal/dlsite/endpoints.go",
+        "frontend/src/lib/official-links.ts"
+      ],
+      "reason": "Built-in public DLsite metadata and external-link origin."
+    },
+    {
+      "url": "https://img.dlsite.jp",
+      "files": [
+        "backend/internal/dlsite/endpoints.go"
+      ],
+      "reason": "Built-in public DLsite image origin used by the outbound metadata policy."
+    },
+    {
+      "url": "https://api.github.com/repos/yexca/kikoto/tags?per_page=100",
+      "files": [
+        "backend/internal/httpapi/app_update_endpoints.go"
+      ],
+      "reason": "Built-in public release-tag endpoint for update checks."
+    },
+    {
+      "url": "https://github.com/yexca/kikoto/releases",
+      "files": [
+        "backend/internal/httpapi/app_update_endpoints.go"
+      ],
+      "reason": "Built-in public release-page origin for update links."
+    },
+    {
+      "url": "https://github.com/yexca/kikoto",
+      "files": [
+        "frontend/src/lib/official-links.ts"
+      ],
+      "reason": "Built-in public repository origin for About and release links."
+    }
+  ]
+}

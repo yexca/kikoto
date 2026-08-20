@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { APP_CLIENT_VERSION, KIKOTO_RELEASES_URL } from "@/lib/appInfo";
 import { api, type AppUpdate } from "@/lib/api";
+import { KIKOTO_GITHUB_ENDPOINTS } from "@/lib/official-links";
 
 const dependencyGroups = [
   {
@@ -157,13 +158,13 @@ export function AboutPage() {
             <p>{t("about.licenseText")}</p>
             <div className="flex flex-wrap gap-2">
               <Button asChild variant="outline" size="sm">
-                <a href="https://github.com/yexca/kikoto/blob/main/LICENSE" target="_blank" rel="noreferrer">
+                <a href={KIKOTO_GITHUB_ENDPOINTS.licenseURL} target="_blank" rel="noreferrer">
                   <ExternalLink className="h-4 w-4" />
                   {t("about.readLicense")}
                 </a>
               </Button>
               <Button asChild variant="outline" size="sm">
-                <a href="https://github.com/yexca/kikoto" target="_blank" rel="noreferrer">
+                <a href={KIKOTO_GITHUB_ENDPOINTS.repositoryURL} target="_blank" rel="noreferrer">
                   <ExternalLink className="h-4 w-4" />
                   {t("about.viewSource")}
                 </a>

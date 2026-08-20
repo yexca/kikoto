@@ -3,8 +3,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
-const repositoryRoot = path.resolve(scriptDirectory, "..", "..");
-const publicRootFiles = ["README.md", "AGENTS.md", "DESIGN.md", "CONTRIBUTING.md", "SECURITY.md", "PRIVACY.md"];
+const repositoryRoot = path.resolve(scriptDirectory, "..");
+const publicRootFiles = [
+  "README.md",
+  "AGENTS.md",
+  "DESIGN.md",
+  "CONTRIBUTING.md",
+  "SECURITY.md",
+  "PRIVACY.md",
+];
 const markdownLinkPattern = /!?\[[^\]]*\]\(([^)]+)\)/g;
 
 function listMarkdownFiles(directory) {
@@ -85,7 +92,9 @@ function checkFile(file) {
 }
 
 const files = [
-  ...publicRootFiles.map((file) => path.join(repositoryRoot, file)).filter(fs.existsSync),
+  ...publicRootFiles
+    .map((file) => path.join(repositoryRoot, file))
+    .filter(fs.existsSync),
   ...listMarkdownFiles(path.join(repositoryRoot, "docs")),
 ];
 const failures = files.flatMap(checkFile);
@@ -100,5 +109,7 @@ if (failures.length > 0) {
   }
   process.exitCode = 1;
 } else {
-  console.log(`Checked ${files.length} public Markdown files; all relative links resolve.`);
+  console.log(
+    `Checked ${files.length} public Markdown files; all relative links resolve.`,
+  );
 }

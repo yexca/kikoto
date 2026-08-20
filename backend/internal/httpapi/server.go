@@ -30,8 +30,6 @@ import (
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
-const githubTagsURL = "https://api.github.com/repos/yexca/kikoto/tags?per_page=100"
-
 type updateCheckCache struct {
 	checkedAt time.Time
 	result    appUpdateResponse
@@ -44,6 +42,7 @@ type Server struct {
 	libraryStore                   *library.Store
 	workflowStore                  *workflow.Store
 	cfg                            config.Config
+	dlsiteEndpoints                dlsite.Endpoints
 	dlsiteClient                   metasync.DLsiteClient
 	remoteWorkCacheMu              sync.Mutex
 	remoteWorkCache                map[string]remoteWorkSnapshot
@@ -68,6 +67,7 @@ type Server struct {
 	updateCheckMu                  sync.Mutex
 	updateCheck                    *updateCheckCache
 	updateHTTPClient               *http.Client
+	appUpdateEndpoints             appUpdateEndpoints
 }
 
 type localMediaIndexCall struct {
@@ -76,9 +76,11 @@ type localMediaIndexCall struct {
 }
 
 func NewServer(db *sql.DB, cfg config.Config) *Server {
+	dlsiteEndpoints := dlsite.DefaultEndpoints()
 	return &Server{
 		db: db, accountStore: account.NewStore(db), accessPolicy: accesspolicy.NewStore(db), libraryStore: library.NewStore(db), workflowStore: workflow.NewStore(db), cfg: cfg,
-		dlsiteClient:                   dlsite.NewClient(nil),
+		dlsiteEndpoints:                dlsiteEndpoints,
+		dlsiteClient:                   dlsiteEndpoints.NewClient(nil),
 		remoteWorkCache:                map[string]remoteWorkSnapshot{},
 		remoteWorkCacheCalls:           map[string]*remoteWorkCall{},
 		remoteWorkTracksCache:          map[string]remoteWorkTracksSnapshot{},
@@ -88,8 +90,11 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 		activeWorkflowCancels:          map[int64]map[int64]context.CancelFunc{},
 		sourceGate:                     newSourceRequestGate(),
 		filesystemTriggerConfigChanged: make(chan struct{}, 1),
+		appUpdateEndpoints:             defaultAppUpdateEndpoints(),
 	}
 }
+
+func (s *Server) newDLsiteClient() *dlsite.Client { return s.dlsiteEndpoints.NewClient(nil) }
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
@@ -441,7 +446,7 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []l
 		item.ReleaseDate = metadata.ReleaseDate
 		item.UpdatedAt = item.CreatedAt
 		item.CoverURL = s.coverURL(item.PrimaryCode)
-		item.DLsiteURL = dlsiteURL(item.PrimaryCode)
+		item.DLsiteURL = s.dlsiteURL(item.PrimaryCode)
 		item.Circle = metadata.Circle
 		item.CircleExternalID = metadata.CircleExternalID
 		if name, externalID := parsePartyLink(row.PartyLink); name != "" {
@@ -2967,7 +2972,7 @@ func (s *Server) loadWorkDetailBase(ctx context.Context, userID int64, id int64)
 		work.PermanentlyFree = &permanentlyFree.Bool
 	}
 	work.CoverURL = s.coverURL(work.PrimaryCode)
-	work.DLsiteURL = dlsiteURL(work.PrimaryCode)
+	work.DLsiteURL = s.dlsiteURL(work.PrimaryCode)
 	work.SourcePresence = s.sourcePresenceForCode(ctx, work.PrimaryCode)
 	localFolders, err := s.loadWorkFolderLocations(ctx, work.ID)
 	if err != nil {
@@ -4495,6 +4500,7 @@ func (s *Server) createDLsiteSyncRun(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) newDLsiteMetadataSyncer(ctx context.Context) *metasync.DLsiteSyncer {
 	return metasync.NewDLsiteSyncer(s.db, s.dlsiteClient).
+		WithProductURLBuilder(s.dlsiteEndpoints.ProductURL).
 		WithCacheRoot(s.cfg.CacheRoot).
 		WithMetadataPriority(s.preferredMetadataLanguages(ctx)).
 		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.preferredMetadataLanguages(ctx))).
@@ -5616,17 +5622,7 @@ func (s *Server) manualCoverURL(primaryCode string) string {
 	return "/api/assets/manual/" + file
 }
 
-func dlsiteURL(primaryCode string) string {
-	code := strings.ToUpper(strings.TrimSpace(primaryCode))
-	if code == "" {
-		return ""
-	}
-	site := "maniax"
-	if strings.HasPrefix(code, "VJ") {
-		site = "pro"
-	}
-	return fmt.Sprintf("https://www.dlsite.com/%s/work/=/product_id/%s.html", site, code)
-}
+func (s *Server) dlsiteURL(primaryCode string) string { return s.dlsiteEndpoints.WorkURL(primaryCode) }
 
 func safeDataPath(root string, relPath string) (string, error) {
 	if strings.TrimSpace(relPath) == "" || filepath.IsAbs(relPath) {

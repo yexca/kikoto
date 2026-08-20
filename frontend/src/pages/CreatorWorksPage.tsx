@@ -89,6 +89,7 @@ import {
   type VoiceSummary,
 } from "@/lib/api";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
+import { DLSITE_ENDPOINTS } from "@/lib/official-links";
 import {
   NAVIGATION_EVENT,
   currentInternalLocation,
@@ -1883,9 +1884,7 @@ function voiceWorkSales(work: VoiceWorkView) {
 }
 
 function voiceWorkDLsiteURL(work: VoiceWorkView) {
-  return "dlsiteUrl" in work && work.dlsiteUrl
-    ? work.dlsiteUrl
-    : `https://www.dlsite.com/maniax/work/=/product_id/${encodeURIComponent(work.primaryCode)}.html`;
+  return "dlsiteUrl" in work && work.dlsiteUrl ? work.dlsiteUrl : DLSITE_ENDPOINTS.workURL("maniax", work.primaryCode);
 }
 
 function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (status: ListeningStatus) => void }) {

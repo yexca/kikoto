@@ -58,6 +58,7 @@ func (s *Server) RunDemoLibraryScan(ctx context.Context) (DemoLibraryScanResult,
 	}
 
 	syncer := metasync.NewDLsiteSyncer(s.db, s.dlsiteClient).
+		WithProductURLBuilder(s.dlsiteEndpoints.ProductURL).
 		WithCacheRoot(s.cfg.CacheRoot).
 		WithMetadataPriority(s.preferredMetadataLanguages(ctx)).
 		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.preferredMetadataLanguages(ctx))).

@@ -106,6 +106,28 @@ func TestSyncProductDoesNotDownloadLocalizedCover(t *testing.T) {
 	}
 }
 
+func TestSyncProductRecordsConfiguredPublicURL(t *testing.T) {
+	db := openTestDB(t)
+	product := dlsite.Product{
+		WorkNo:      "RJ00000031",
+		ProductName: "Configured URL",
+		Raw:         json.RawMessage(`{"workno":"RJ00000031","product_name":"Configured URL"}`),
+	}
+	syncer := NewDLsiteSyncer(db, fakeDLsiteClient{}).WithProductURLBuilder(func(product dlsite.Product) string {
+		return "https://example.test/work/" + product.WorkNo
+	})
+	if _, err := syncer.SyncProductOnly(context.Background(), product); err != nil {
+		t.Fatal(err)
+	}
+	var stored string
+	if err := db.QueryRow(`SELECT url FROM work_external_id WHERE external_id = ?`, product.WorkNo).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != "https://example.test/work/RJ00000031" {
+		t.Fatalf("stored URL = %q", stored)
+	}
+}
+
 func TestSyncFamilyRestoresCanonicalOriginTitleAfterLocalizedResponse(t *testing.T) {
 	db := openTestDB(t)
 	client := &localizedFakeDLsiteClient{products: map[string]map[string]dlsite.Product{

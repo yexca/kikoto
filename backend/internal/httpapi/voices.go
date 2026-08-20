@@ -1354,7 +1354,7 @@ func (s *Server) newVoiceKnownWork(
 	}
 	item := voiceKnownWork{
 		WorkID: displayWorkID, PrimaryCode: displayCode, RemoteCode: remoteCode, Title: row.Title,
-		ReleaseDate: releaseDate, UpdatedAt: updatedAt, CoverURL: s.coverURL(displayCode), DLsiteURL: dlsiteURL(displayCode),
+		ReleaseDate: releaseDate, UpdatedAt: updatedAt, CoverURL: s.coverURL(displayCode), DLsiteURL: s.dlsiteURL(displayCode),
 		Circle: metadata.Circle, CircleExternalID: metadata.CircleExternalID, AgeRating: row.AgeRating, Rating: row.Rating,
 		RatingCount: metadata.RatingCount, Sales: row.Sales, RegularPrice: row.RegularPrice, Price: row.Price,
 		PriceCurrency: row.PriceCurrency, PermanentlyFree: row.PermanentlyFree, Tags: metadata.Tags,

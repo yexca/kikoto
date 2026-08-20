@@ -139,6 +139,10 @@ the Makefile has no target for the required check.
 - Before every commit, run `make sensitive-check` against the actual working
   tree diff and review any findings. This privacy check is intentionally
   separate from the GitHub Actions validation sequence.
+- Do not bypass the privacy scan with source comments. An approved built-in
+  public endpoint belongs in `scripts/privacy-allowlist.json` as an exact URL
+  with its repository-relative owner files and a reason; review every change to
+  that list before committing.
 
 ## Release and Handoff
 

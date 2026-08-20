@@ -24,13 +24,23 @@ func TestHighestStableTagIgnoresPreReleasesAndNonVersionTags(t *testing.T) {
 	}
 }
 
+func TestAppUpdateEndpointsBuildReleaseURL(t *testing.T) {
+	endpoints := appUpdateEndpoints{releasesURL: "https://example.test/releases"}
+	if got := endpoints.releaseURL("v0.5.0"); got != "https://example.test/releases/tag/v0.5.0" {
+		t.Fatalf("releaseURL() = %q", got)
+	}
+	if got := endpoints.releaseURL(" "); got != "" {
+		t.Fatalf("empty releaseURL() = %q", got)
+	}
+}
+
 func TestAppUpdateCachesSuccessfulGitHubResult(t *testing.T) {
 	var calls atomic.Int32
 	server := NewServer(nil, config.Config{})
 	server.updateHTTPClient = &http.Client{Transport: updateRoundTripper(func(request *http.Request) (*http.Response, error) {
 		calls.Add(1)
-		if request.URL.String() != githubTagsURL {
-			t.Fatalf("URL = %q, want %q", request.URL.String(), githubTagsURL)
+		if request.URL.String() != server.appUpdateEndpoints.tagsURL {
+			t.Fatalf("URL = %q, want %q", request.URL.String(), server.appUpdateEndpoints.tagsURL)
 		}
 		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`[{"name":"v99.0.0"}]`))}, nil
 	})}

@@ -1,4 +1,6 @@
-export const KIKOTO_RELEASES_URL = "https://github.com/yexca/kikoto/releases";
+import { KIKOTO_GITHUB_ENDPOINTS } from "@/lib/official-links";
+
+export const KIKOTO_RELEASES_URL = KIKOTO_GITHUB_ENDPOINTS.releasesURL;
 
 export type AppVersionStatus =
   "compatible" | "client-update-available" | "client-update-required" | "server-update-available";

@@ -13,6 +13,10 @@ import (
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
+func newTestClient(server *httptest.Server) *Client {
+	return Endpoints{webBaseURL: server.URL, imageBaseURL: server.URL}.NewClient(server.Client())
+}
+
 func TestTranslationStatusesAcceptsProviderEmptyArray(t *testing.T) {
 	var info TranslationInfo
 	if err := json.Unmarshal([]byte(`{"translation_status_for_translator":[]}`), &info); err != nil {
@@ -63,8 +67,7 @@ func TestFetchVoiceRankingBuildsOptionsAndParsesOrderedWorks(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.Client())
-	client.baseURL = server.URL
+	client := newTestClient(server)
 	result, err := client.FetchVoiceRanking(context.Background(), RankingOptions{Period: "day", ReleaseWindow: "30d"})
 	if err != nil {
 		t.Fatalf("FetchVoiceRanking() error = %v", err)
@@ -86,8 +89,7 @@ func TestFetchVoiceRankingAnnualUsesYearAndDropsReleaseWindow(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.Client())
-	client.baseURL = server.URL
+	client := newTestClient(server)
 	result, err := client.FetchVoiceRanking(context.Background(), RankingOptions{Period: "year", ReleaseWindow: "30d", Year: 2025})
 	if err != nil {
 		t.Fatalf("FetchVoiceRanking() error = %v", err)
@@ -117,8 +119,7 @@ func TestFetchProductUsesCandidateSiteAndParsesProduct(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.Client())
-	client.baseURL = server.URL
+	client := newTestClient(server)
 
 	product, err := client.FetchProduct(context.Background(), "rj00000001")
 	if err != nil {
@@ -198,8 +199,7 @@ func TestFetchProductAcceptsEmptyCreatorsArray(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.Client())
-	client.baseURL = server.URL
+	client := newTestClient(server)
 
 	product, err := client.FetchProduct(context.Background(), "RJ00000001")
 	if err != nil {
@@ -217,8 +217,7 @@ func TestFetchProductReturnsNoProductSentinel(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.Client())
-	client.baseURL = server.URL
+	client := newTestClient(server)
 
 	_, err := client.FetchProduct(context.Background(), "RJ00000001")
 	if !errors.Is(err, ErrNoProduct) {
@@ -243,8 +242,7 @@ func TestFetchProductWithOptionsSendsLanguage(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.Client())
-	client.baseURL = server.URL
+	client := newTestClient(server)
 
 	product, err := client.FetchProductWithOptions(context.Background(), "RJ00000001", ProductOptions{Languages: []string{"en-us"}})
 	if err != nil {
@@ -303,8 +301,7 @@ func TestFetchProductWithLocaleUsesExactLocale(t *testing.T) {
 		t.Fatalf("path = %s", r.URL.Path)
 	}))
 	defer server.Close()
-	client := NewClient(server.Client())
-	client.baseURL = server.URL
+	client := newTestClient(server)
 	product, err := client.FetchProductWithLocale(context.Background(), "RJ00000002", "zh_TW")
 	if err != nil {
 		t.Fatal(err)
@@ -343,8 +340,7 @@ func TestFetchMakerCatalogUsesAllLanguageOptions(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.Client())
-	client.baseURL = server.URL
+	client := newTestClient(server)
 
 	profile, err := client.FetchMakerCatalog(context.Background(), "RG09999999", MakerCatalogOptions{Mode: "incremental"})
 	if err != nil {
@@ -413,7 +409,7 @@ func TestParseMakerSeries(t *testing.T) {
 			</ul>
 		</div>
 	`
-	series := parseMakerSeries(raw)
+	series := parseMakerSeries(raw, DefaultEndpoints())
 	if len(series) != 1 {
 		t.Fatalf("series = %#v", series)
 	}
@@ -454,8 +450,7 @@ func TestFetchMakerCatalogLoadsSeriesWorksWithLanguageOptions(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.Client())
-	client.baseURL = server.URL
+	client := newTestClient(server)
 
 	profile, err := client.FetchMakerCatalog(context.Background(), "RG09999999", MakerCatalogOptions{Languages: []string{"JPN", "CHI_HANS", "NM"}})
 	if err != nil {

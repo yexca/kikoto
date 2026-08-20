@@ -46,6 +46,7 @@ type DLsiteSyncer struct {
 	triggerType      string
 	triggerReason    string
 	triggerID        int64
+	productURL       func(dlsite.Product) string
 }
 
 type DLsiteSyncResult struct {
@@ -106,7 +107,19 @@ type syncTargetResult struct {
 }
 
 func NewDLsiteSyncer(db *sql.DB, client DLsiteClient) *DLsiteSyncer {
-	return &DLsiteSyncer{db: db, client: client, triggerType: "manual", triggerReason: "manual"}
+	return &DLsiteSyncer{
+		db: db, client: client, triggerType: "manual", triggerReason: "manual",
+		productURL: dlsite.DefaultEndpoints().ProductURL,
+	}
+}
+
+// WithProductURLBuilder supplies the public product URL recorded alongside
+// provider metadata. It is a presentation link, not a remote file source.
+func (s *DLsiteSyncer) WithProductURLBuilder(builder func(dlsite.Product) string) *DLsiteSyncer {
+	if builder != nil {
+		s.productURL = builder
+	}
+	return s
 }
 
 func (s *DLsiteSyncer) WithCacheRoot(cacheRoot string) *DLsiteSyncer {
@@ -977,7 +990,7 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 			work_id = excluded.work_id,
 			url = excluded.url,
 			is_primary = excluded.is_primary
-	`, workID, providerID, product.WorkNo, productURL(product)); err != nil {
+	`, workID, providerID, product.WorkNo, s.productURL(product)); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -1746,16 +1759,4 @@ func snapshotWithKikotoMeta(raw json.RawMessage, metadata map[string]any) json.R
 		}
 	}
 	return raw
-}
-
-func productURL(product dlsite.Product) string {
-	site := product.SiteID
-	if site == "" {
-		if strings.HasPrefix(product.WorkNo, "VJ") {
-			site = "pro"
-		} else {
-			site = "maniax"
-		}
-	}
-	return fmt.Sprintf("https://www.dlsite.com/%s/work/=/product_id/%s.html", site, product.WorkNo)
 }

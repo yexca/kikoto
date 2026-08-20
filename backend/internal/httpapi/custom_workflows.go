@@ -2360,7 +2360,7 @@ func (s *Server) executeCustomCircleCatalog(ctx context.Context, node customWork
 		mode = "stored"
 	}
 	if mode != "stored" {
-		if _, err := s.runCircleCatalogRefresh(ctx, partyID, circleID, mode, dlsite.NewClient(nil)); err != nil {
+		if _, err := s.runCircleCatalogRefresh(ctx, partyID, circleID, mode, s.newDLsiteClient()); err != nil {
 			return customNodeExecution{}, err
 		}
 	}
@@ -2521,7 +2521,7 @@ func (s *Server) executeCustomProviderPopularWorks(ctx context.Context, node cus
 	if period == "" {
 		period = "day"
 	}
-	result, err := dlsite.NewClient(nil).FetchVoiceRanking(ctx, dlsite.RankingOptions{
+	result, err := s.newDLsiteClient().FetchVoiceRanking(ctx, dlsite.RankingOptions{
 		Period: period, ReleaseWindow: strings.ToLower(configString(node.Config, "releaseWindow")), Year: configInt(node.Config, "year", 0),
 	})
 	if err != nil {

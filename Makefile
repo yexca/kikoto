@@ -1,4 +1,4 @@
-.PHONY: backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-audit frontend-audit-signatures frontend-playwright-install frontend-e2e-smoke frontend-e2e android-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check privacy-check ci-style ci-backend ci-frontend ci-local ci
+.PHONY: backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-audit frontend-audit-signatures frontend-playwright-install frontend-e2e-smoke frontend-e2e android-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
 
 GO ?= go
 NPM ?= npm
@@ -139,10 +139,10 @@ docker-logs:
 	$(DOCKER_COMPOSE_DEV) logs --no-color backend
 
 smoke:
-	$(NODE) frontend/scripts/smoke.mjs run
+	$(NODE) scripts/smoke.mjs run
 
 smoke-api:
-	$(NODE) frontend/scripts/smoke.mjs wait-for-health
+	$(NODE) scripts/smoke.mjs wait-for-health
 
 smoke-up:
 	$(DOCKER_COMPOSE_SMOKE) up -d --build
@@ -157,11 +157,14 @@ smoke-logs:
 	$(DOCKER_COMPOSE_SMOKE) logs --no-color backend
 
 sensitive-check:
-	$(NODE) frontend/scripts/check-sensitive.mjs
+	$(NODE) scripts/check-sensitive.mjs
+
+sensitive-check-test:
+	$(NODE) --test scripts/check-sensitive.test.mjs
 
 privacy-check: sensitive-check
 
-ci-style: frontend-format frontend-lint frontend-docs
+ci-style: frontend-format frontend-lint frontend-docs sensitive-check-test
 
 ci-backend: backend-verify backend-vuln backend-test backend-coverage backend-vet backend-race
 

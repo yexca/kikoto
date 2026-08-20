@@ -106,6 +106,7 @@ import { ageRatingPresentation } from "@/lib/ageRating";
 import { currentClientStorageScope, type ClientPrincipalID } from "@/lib/clientStorageScope";
 import { NAVIGATION_EVENT, historyStateWithReturn, navigateToWorkspaceUp } from "@/lib/browserHistory";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
+import { DLSITE_ENDPOINTS } from "@/lib/official-links";
 import { hasPlaybackHistory } from "@/lib/playbackHistory";
 import { readOrCreateRecommendationSession } from "@/lib/recommendationSession";
 import { WORK_CODE_PATH_PATTERN } from "@/lib/workCode";
@@ -3544,7 +3545,7 @@ function SearchClauseEditor({
 
 function dlsiteWorkURL(code: string) {
   const site = code.toUpperCase().startsWith("RJ") ? "maniax" : "home";
-  return `https://www.dlsite.com/${site}/work/=/product_id/${encodeURIComponent(code)}.html`;
+  return DLSITE_ENDPOINTS.workURL(site, code);
 }
 
 function formatTime(seconds: number) {

@@ -3,10 +3,12 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
 
-const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const makeCommand = process.env.MAKE || "make";
-const healthURL = process.env.KIKOTO_SMOKE_HEALTH_URL || "http://127.0.0.1:17659/health";
-const smokeBaseURL = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:17655";
+const healthURL =
+  process.env.KIKOTO_SMOKE_HEALTH_URL || "http://127.0.0.1:17659/health";
+const smokeBaseURL =
+  process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:17655";
 const maxAttempts = 15;
 const requestTimeoutMilliseconds = 2_000;
 const retryDelayMilliseconds = 2_000;
@@ -24,17 +26,26 @@ function run(command, argumentsList, options = {}) {
         resolvePromise();
         return;
       }
-      reject(new Error(`${command} ${argumentsList.join(" ")} exited with ${signal || `code ${code}`}`));
+      reject(
+        new Error(
+          `${command} ${argumentsList.join(" ")} exited with ${signal || `code ${code}`}`,
+        ),
+      );
     });
   });
 }
 
 function runMake(argumentsList, options = {}) {
-  return run(makeCommand, argumentsList, { ...options, cwd: options.cwd || workspaceRoot });
+  return run(makeCommand, argumentsList, {
+    ...options,
+    cwd: options.cwd || workspaceRoot,
+  });
 }
 
 function delay(milliseconds) {
-  return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
+  return new Promise((resolvePromise) =>
+    setTimeout(resolvePromise, milliseconds),
+  );
 }
 
 async function waitForHealth() {
@@ -55,7 +66,9 @@ async function waitForHealth() {
       await delay(retryDelayMilliseconds);
     }
   }
-  throw new Error(`backend health check failed after ${maxAttempts} attempts: ${lastError}`);
+  throw new Error(
+    `backend health check failed after ${maxAttempts} attempts: ${lastError}`,
+  );
 }
 
 async function runSmoke() {
@@ -98,6 +111,6 @@ if (command === "wait-for-health") {
 } else if (command === "run") {
   await runSmoke();
 } else {
-  console.error("usage: node frontend/scripts/smoke.mjs <run|wait-for-health>");
+  console.error("usage: node scripts/smoke.mjs <run|wait-for-health>");
   process.exitCode = 2;
 }

@@ -76,6 +76,7 @@ import {
 } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
+import { DLSITE_ENDPOINTS } from "@/lib/official-links";
 import { hasPlaybackHistory } from "@/lib/playbackHistory";
 import { useAuth } from "@/auth/AuthProvider";
 import { usePermissionGate } from "@/auth/usePermissionGate";
@@ -1864,12 +1865,12 @@ function circleReturnLabelForLocation(location: string) {
 
 function dlsiteMakerURL(externalId: string) {
   const site = externalId.toUpperCase().startsWith("VG") ? "pro" : "maniax";
-  return `https://www.dlsite.com/${site}/circle/profile/=/maker_id/${encodeURIComponent(externalId)}.html`;
+  return DLSITE_ENDPOINTS.makerURL(site, externalId);
 }
 
 function dlsiteWorkURL(code: string) {
   const site = code.toUpperCase().startsWith("VJ") ? "pro" : "maniax";
-  return `https://www.dlsite.com/${site}/work/=/product_id/${encodeURIComponent(code)}.html`;
+  return DLSITE_ENDPOINTS.workURL(site, code);
 }
 
 function formatTime(seconds: number) {

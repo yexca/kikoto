@@ -143,6 +143,7 @@ func (s *Server) syncWorkEntityMetadata(ctx context.Context, code string) error 
 
 func (s *Server) syncWorkMetadataFamily(ctx context.Context, code string) (metasync.DLsiteFamilySyncResult, error) {
 	syncer := metasync.NewDLsiteSyncer(s.db, s.dlsiteClient).
+		WithProductURLBuilder(s.dlsiteEndpoints.ProductURL).
 		WithCacheRoot(s.cfg.CacheRoot).
 		WithMetadataPriority(s.preferredMetadataLanguages(ctx)).
 		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.preferredMetadataLanguages(ctx))).
@@ -206,7 +207,7 @@ func (s *Server) syncPartyForWorkFromSnapshot(ctx context.Context, code string) 
 	if err != nil {
 		return err
 	}
-	if err := s.upsertPartyCatalogItem(ctx, partyID, primaryCode, title, nullableStringValue(release), dlsiteURL(primaryCode), "imported", raw); err != nil {
+	if err := s.upsertPartyCatalogItem(ctx, partyID, primaryCode, title, nullableStringValue(release), s.dlsiteURL(primaryCode), "imported", raw); err != nil {
 		return err
 	}
 	return s.upsertAuthoritativeWorkParty(ctx, workID, partyID, "dlsite_snapshot")

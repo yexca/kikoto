@@ -222,12 +222,13 @@ func dlsitePopularDefinition() map[string]any {
 }
 
 func (s *Server) executeDLsitePopularCollectionJob(ctx context.Context, job workflowJobRecord) error {
-	client := dlsite.NewClient(nil)
+	client := s.newDLsiteClient()
 	requestDelay := durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5))
 	if requestDelay < 500*time.Millisecond {
 		requestDelay = 500 * time.Millisecond
 	}
 	syncer := metasync.NewDLsiteSyncer(s.db, client).
+		WithProductURLBuilder(s.dlsiteEndpoints.ProductURL).
 		WithCacheRoot(s.cfg.CacheRoot).
 		WithMetadataPriority(s.preferredMetadataLanguages(ctx)).
 		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.preferredMetadataLanguages(ctx))).
