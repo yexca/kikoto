@@ -35,18 +35,8 @@ jobs:
           node-version: "24.19.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci --strict-allow-scripts
-      - name: Check formatting
-        working-directory: frontend
-        run: npm run format:check
-      - name: Lint frontend
-        working-directory: frontend
-        run: npm run lint
-      - name: Check documentation links
-        working-directory: frontend
-        run: npm run docs:check-links
+      - name: Run frontend style checks
+        run: make ci-style
 
   core:
     name: Core
@@ -62,20 +52,8 @@ jobs:
         with:
           go-version: "1.26.6"
           cache-dependency-path: backend/go.sum
-      - name: Verify backend dependencies
-        working-directory: backend
-        run: go mod verify
-      - name: Scan backend dependencies
-        working-directory: backend
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
-      - name: Test backend
-        working-directory: backend
-        run: go test ./...
-      - name: Generate backend coverage
-        working-directory: backend
-        run: |
-          go test -count=1 -covermode atomic -coverpkg ./... -coverprofile coverage.out ./...
-          go tool cover -func coverage.out | tail -n 1
+      - name: Run backend core checks
+        run: make ci-backend
       - name: Upload backend coverage
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -83,30 +61,14 @@ jobs:
           name: backend-coverage
           path: backend/coverage.out
           if-no-files-found: ignore
-      - name: Vet backend
-        working-directory: backend
-        run: go vet ./...
-      - name: Test backend with race detector
-        working-directory: backend
-        run: go test -race ./...
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "24.19.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci --strict-allow-scripts
-      - name: Audit frontend dependencies
-        working-directory: frontend
-        run: npm audit --audit-level=moderate
-      - name: Verify frontend registry signatures
-        working-directory: frontend
-        run: npm audit signatures
-      - name: Test frontend units with coverage
-        working-directory: frontend
-        run: npm run test:unit:coverage
+      - name: Run frontend core checks
+        run: make ci-frontend
       - name: Upload frontend coverage
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -114,9 +76,6 @@ jobs:
           name: frontend-coverage
           path: frontend/coverage
           if-no-files-found: ignore
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build
 
   smoke:
     name: Smoke
@@ -127,38 +86,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - name: Build and start development containers
-        run: docker compose -f docker-compose.dev.yml up -d --build
-      - name: Verify backend health
-        shell: bash
-        run: |
-          set -u
-          for attempt in {1..15}; do
-            if curl --fail --silent --show-error --max-time 2 http://127.0.0.1:7659/health; then
-              exit 0
-            fi
-            sleep 2
-          done
-          docker compose -f docker-compose.dev.yml ps
-          docker compose -f docker-compose.dev.yml logs --no-color backend
-          exit 1
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "24.19.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci --strict-allow-scripts
-      - name: Install Playwright browser
-        working-directory: frontend
-        run: npx playwright install --with-deps chromium
-      - name: Run browser smoke tests
-        working-directory: frontend
-        env:
-          PLAYWRIGHT_BASE_URL: http://127.0.0.1:7655
-        run: npm run test:e2e:smoke
+      - name: Run smoke validation
+        run: make smoke
       - name: Upload smoke artifacts
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -166,9 +101,6 @@ jobs:
           name: playwright-smoke-artifacts
           path: frontend/test-results
           if-no-files-found: ignore
-      - name: Stop development containers
-        if: always()
-        run: docker compose -f docker-compose.dev.yml down --volumes
 
   full-e2e:
     name: Full E2E
@@ -185,15 +117,8 @@ jobs:
           node-version: "24.19.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci --strict-allow-scripts
-      - name: Install Playwright browser
-        working-directory: frontend
-        run: npx playwright install --with-deps chromium
       - name: Run full browser regression tests
-        working-directory: frontend
-        run: npm run test:e2e
+        run: make frontend-e2e
       - name: Upload E2E artifacts
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -232,17 +157,8 @@ jobs:
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci --strict-allow-scripts
-      - name: Sync Android web assets
-        working-directory: frontend
-        run: npm run cap:sync
       - name: Build debug APK
-        working-directory: frontend/android
-        run: |
-          chmod +x ./gradlew
-          ./gradlew --dependency-verification strict assembleDebug
+        run: make android-build
 
   docker:
     name: Docker build
@@ -254,11 +170,5 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
       - name: Build production image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
-        with:
-          context: .
-          push: false
-          tags: kikoto:ci
+        run: make DOCKER_IMAGE=kikoto:ci docker-build

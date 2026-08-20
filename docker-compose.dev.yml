@@ -16,17 +16,17 @@ services:
       KIKOTO_REMOTE_SOURCES_ENABLED: ${KIKOTO_REMOTE_SOURCES_ENABLED:-false}
       KIKOTO_REMOTE_SOURCES_FILE: ${KIKOTO_REMOTE_SOURCES_FILE:-/config/remote-sources.yml}
     ports:
-      - "7659:7659"
+      - "${KIKOTO_DEV_BACKEND_PORT:-7659}:7659"
     volumes:
-      - ./config:/config
-      - ./cache:/cache
-      - ./data:/data
+      - "${KIKOTO_DEV_CONFIG_DIR:-./config}:/config"
+      - "${KIKOTO_DEV_CACHE_DIR:-./cache}:/cache"
+      - "${KIKOTO_DEV_DATA_DIR:-./data}:/data"
 
   frontend:
     build:
       context: .
       dockerfile: frontend/Dockerfile
     ports:
-      - "7655:80"
+      - "${KIKOTO_DEV_FRONTEND_PORT:-7655}:80"
     depends_on:
       - backend

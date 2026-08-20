@@ -213,6 +213,10 @@ make smoke
 
 - Run relevant tests.
 - Run `cd frontend && npm run docs:check-links` for public documentation changes.
+- Run `make sensitive-check` to scan the working-tree diff and prospective
+  untracked files for secrets, private paths, runtime data, and non-reserved
+  service URLs. A reviewed test boundary can use a same-line
+  `privacy-check: allow` marker.
 - Check `git status`.
 - Review staged changes for secrets, real source details, private paths, logs,
   databases, and runtime data.
