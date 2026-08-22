@@ -10,7 +10,7 @@
 ## Run With Docker
 
 Download `docker-compose.yml` into an empty directory, then pull and start the
-published Docker Hub image:
+latest published Docker Hub image:
 
 Create a `.env` file in that directory before startup:
 
@@ -19,16 +19,17 @@ KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password
 ```
 
 ```sh
-docker compose pull
-docker compose up -d
+docker compose up -d --pull always
 ```
 
 The default image is `yexca/kikoto:latest`, which the release workflow updates
-for each public release. For a reproducible deployment, override it with a
-reviewed version or digest:
+for each public release. Normal restarts reuse the installed image; run the
+command above with `--pull always` whenever you want to upgrade to the current
+release. For a reproducible deployment, override it with a reviewed version or
+digest:
 
 ```sh
-KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d
+KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d --pull always
 ```
 
 Open:

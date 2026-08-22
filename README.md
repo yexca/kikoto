@@ -93,9 +93,12 @@ folder names.
 ### 3. Start Kikoto
 
 ```sh
-docker compose pull
-docker compose up -d
+docker compose up -d --pull always
 ```
+
+Normal restarts reuse the installed image. Run the same command with
+`--pull always` when upgrading so the default `latest` tag is refreshed before
+the service starts.
 
 Open <http://127.0.0.1:7655>.
 

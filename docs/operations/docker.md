@@ -15,21 +15,23 @@ KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password
 ```
 
 ```sh
-docker compose pull
-docker compose up -d
+docker compose up -d --pull always
 ```
 
 The production service uses `restart: unless-stopped`, so Docker restarts it
 after process failures and host or daemon restarts unless it was explicitly
-stopped.
+stopped. Ordinary `docker compose up -d` runs reuse the installed image without
+contacting the registry. Run `docker compose up -d --pull always` explicitly to
+install or upgrade to the image currently published under the configured tag.
 
 It defaults to `yexca/kikoto:latest`, which is updated by the public release
-workflow. Override `KIKOTO_IMAGE` with a reviewed version or digest when
-reproducible deployment is required:
+workflow. The explicit install and upgrade command above therefore selects the
+latest public release. Override `KIKOTO_IMAGE` with a reviewed version or digest
+when reproducible deployment is required:
 
 ```sh
-KIKOTO_IMAGE=yexca/kikoto:0.1.1 docker compose up -d
-KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d
+KIKOTO_IMAGE=yexca/kikoto:0.1.1 docker compose up -d --pull always
+KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d --pull always
 ```
 
 Default ports:
@@ -48,6 +50,26 @@ Default mounts:
 - `./config:/config`
 - `./cache:/cache`
 - `./data:/data`
+
+## Upgrade
+
+Back up `config/` and `data/` before upgrading. For a live SQLite database,
+follow the consistent backup guidance in [Database](database.md#backups).
+Then refresh the configured image and recreate the service:
+
+```sh
+docker compose up -d --pull always
+```
+
+Without the explicit `--pull always` option, Compose reuses the installed image
+and does not check the registry. A standalone `docker compose pull` also follows
+the service's `never` policy and skips the image. To pull and restart as separate
+steps, override that policy explicitly:
+
+```sh
+docker compose pull --policy always
+docker compose up -d
+```
 
 ## Development Stack
 

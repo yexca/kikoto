@@ -1,17 +1,17 @@
 services:
   kikoto:
     image: ${KIKOTO_IMAGE:-yexca/kikoto:latest}
-    pull_policy: always
+    pull_policy: never
     restart: unless-stopped
     environment:
       KIKOTO_MODE: ${KIKOTO_MODE:-production}
       KIKOTO_ROOT_USERNAME: ${KIKOTO_ROOT_USERNAME:-root}
       KIKOTO_ROOT_PASSWORD: ${KIKOTO_ROOT_PASSWORD:?KIKOTO_ROOT_PASSWORD must be set}
       KIKOTO_HTTP_ADDR: ${KIKOTO_HTTP_ADDR:-0.0.0.0:7659}
-      KIKOTO_DB_PATH: ${KIKOTO_DB_PATH:-/config/kikoto.db}
-      KIKOTO_DATA_ROOT: ${KIKOTO_DATA_ROOT:-/data}
-      KIKOTO_CACHE_ROOT: ${KIKOTO_CACHE_ROOT:-/cache}
-      KIKOTO_STATIC_DIR: ${KIKOTO_STATIC_DIR:-/app/static}
+      KIKOTO_DB_PATH: /config/kikoto.db
+      KIKOTO_DATA_ROOT: /data
+      KIKOTO_CACHE_ROOT: /cache
+      KIKOTO_STATIC_DIR: /app/static
       KIKOTO_LOCAL_SCAN_DEPTH: ${KIKOTO_LOCAL_SCAN_DEPTH:-3}
       KIKOTO_SESSION_COOKIE_SECURE: ${KIKOTO_SESSION_COOKIE_SECURE:-false}
       KIKOTO_REMOTE_SOURCES_ENABLED: ${KIKOTO_REMOTE_SOURCES_ENABLED:-false}
