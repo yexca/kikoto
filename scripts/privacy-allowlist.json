@@ -36,6 +36,27 @@
         "frontend/src/lib/official-links.ts"
       ],
       "reason": "Built-in public repository origin for About and release links."
+    },
+    {
+      "url": "https://github.com/Number178/kikoeru-express",
+      "files": [
+        "frontend/src/pages/AboutPage.tsx"
+      ],
+      "reason": "Public Kikoeru-compatible reference repository linked from the About page."
+    },
+    {
+      "url": "https://github.com/comfyanonymous/ComfyUI",
+      "files": [
+        "frontend/src/pages/AboutPage.tsx"
+      ],
+      "reason": "Public workflow-canvas design reference repository linked from the About page."
+    },
+    {
+      "url": "https://github.com/cherryhq/cherry-studio",
+      "files": [
+        "frontend/src/pages/AboutPage.tsx"
+      ],
+      "reason": "Public AGENTS.md-configuration and application-versioning reference repository linked from the About page."
     }
   ]
 }

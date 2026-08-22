@@ -1,29 +1,46 @@
-import { BookOpen, Boxes, Download, ExternalLink, FolderCode, Scale, Sparkles } from "lucide-react";
+import { BookOpen, Boxes, Download, FolderCode, Github, Scale, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { APP_CLIENT_VERSION, KIKOTO_RELEASES_URL } from "@/lib/appInfo";
+import { APP_CLIENT_VERSION, githubReleaseURL } from "@/lib/appInfo";
 import { api, type AppUpdate } from "@/lib/api";
 import { KIKOTO_GITHUB_ENDPOINTS } from "@/lib/official-links";
 
-const dependencyGroups = [
+const referenceProjects = [
+  {
+    name: "Number178/kikoeru-express",
+    url: "https://github.com/Number178/kikoeru-express",
+    description: "about.kikoeruReference",
+  },
+  {
+    name: "comfyanonymous/ComfyUI",
+    url: "https://github.com/comfyanonymous/ComfyUI",
+    description: "about.comfyReference",
+  },
+  {
+    name: "cherryhq/cherry-studio",
+    url: "https://github.com/cherryhq/cherry-studio",
+    description: "about.cherryReference",
+  },
+] as const;
+
+const technologyGroups = [
   {
     title: "Frontend",
-    items: ["React", "TypeScript", "Vite", "Tailwind CSS", "@xyflow/react", "lucide-react", "Radix Slot"],
+    items: ["React", "TypeScript", "Vite", "Tailwind CSS", "i18next", "@xyflow/react", "lucide-react", "Radix UI Slot"],
   },
   {
     title: "Backend",
-    items: ["Go", "SQLite", "modernc.org/sqlite", "golang.org/x/crypto"],
+    items: ["Go", "SQLite (modernc.org/sqlite)", "fsnotify", "chardet", "golang.org/x/text", "golang.org/x/crypto"],
   },
   {
     title: "Mobile",
     items: ["Capacitor", "Android WebView", "AndroidX", "Gradle"],
   },
   {
-    title: "Runtime & Release",
-    items: ["Docker", "Docker Compose", "GitHub Actions"],
+    title: "Runtime & Delivery",
+    items: ["FFmpeg", "Docker", "Docker Compose", "GitHub Actions"],
   },
 ] as const;
 
@@ -45,22 +62,46 @@ export function AboutPage() {
   return (
     <div className="space-y-5">
       <section className="rounded-lg border bg-card p-5">
-        <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <span>{t("about.label", { version: APP_CLIENT_VERSION })}</span>
-          {update?.releaseUrl && (
-            <a
-              href={update.releaseUrl}
-              target="_blank"
-              rel="noreferrer"
-              aria-label={t("about.updateAvailable", { version: update.latestVersion })}
-              title={t("about.updateAvailable", { version: update.latestVersion })}
-              className="text-info hover:text-info/80"
-            >
-              <Download className="h-4 w-4" />
-            </a>
-          )}
-        </p>
-        <h2 className="mt-1 text-2xl font-semibold">{t("about.title")}</h2>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground">
+              <span>{t("about.label")}</span>
+              <span aria-hidden="true">·</span>
+              <a
+                href={githubReleaseURL(APP_CLIENT_VERSION)}
+                target="_blank"
+                rel="noreferrer"
+                title={t("about.viewRelease", { version: APP_CLIENT_VERSION })}
+                className="rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {APP_CLIENT_VERSION}
+              </a>
+              {update?.releaseUrl && (
+                <a
+                  href={update.releaseUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={t("about.updateAvailable", { version: update.latestVersion })}
+                  title={t("about.updateAvailable", { version: update.latestVersion })}
+                  className="rounded-sm text-info transition-colors hover:text-info/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Download className="h-4 w-4" />
+                </a>
+              )}
+            </p>
+            <h2 className="mt-1 text-2xl font-semibold">{t("about.title")}</h2>
+          </div>
+          <a
+            href={KIKOTO_GITHUB_ENDPOINTS.repositoryURL}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={t("about.openRepository")}
+            title={t("about.openRepository")}
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--control-radius)] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Github className="h-5 w-5" />
+          </a>
+        </div>
         <p className="mt-2 text-sm text-muted-foreground">{t("about.intro")}</p>
       </section>
 
@@ -98,28 +139,26 @@ export function AboutPage() {
               {t("about.referenceProjects")}
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 text-sm text-muted-foreground">
-            <div className="space-y-3">
-              <p>
-                {t("about.kikoeruReference")}{" "}
-                <span className="mx-1 font-medium text-foreground">Number178/kikoeru-express</span>.
-              </p>
-              <Button asChild variant="outline" size="sm">
-                <a href="https://github.com/Number178/kikoeru-express" target="_blank" rel="noreferrer">
-                  <ExternalLink className="h-4 w-4" />
-                  {t("about.openKikoeru")}
-                </a>
-              </Button>
-            </div>
-            <div className="space-y-3 border-t pt-4">
-              <p>{t("about.comfyReference")}</p>
-              <Button asChild variant="outline" size="sm">
-                <a href="https://github.com/comfyanonymous/ComfyUI" target="_blank" rel="noreferrer">
-                  <ExternalLink className="h-4 w-4" />
-                  {t("about.openComfy")}
-                </a>
-              </Button>
-            </div>
+          <CardContent>
+            <ul className="divide-y text-sm">
+              {referenceProjects.map((project) => (
+                <li key={project.name} className="flex items-start gap-2 py-3 first:pt-0 last:pb-0">
+                  <Github className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <p className="min-w-0 leading-6 text-muted-foreground">
+                    <a
+                      href={project.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-sm font-medium text-foreground underline-offset-4 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {project.name}
+                    </a>
+                    {": "}
+                    {t(project.description)}
+                  </p>
+                </li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
 
@@ -127,11 +166,11 @@ export function AboutPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Boxes className="h-4 w-4" />
-              {t("about.dependencies")}
+              {t("about.technologies")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-muted-foreground">
-            {dependencyGroups.map((group) => (
+            {technologyGroups.map((group) => (
               <div key={group.title}>
                 <h3 className="mb-2 font-medium text-foreground">{t(`about.groups.${group.title}`)}</h3>
                 <div className="flex flex-wrap gap-2">
@@ -155,27 +194,21 @@ export function AboutPage() {
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
             <p>{t("about.copyright")}</p>
-            <p>{t("about.licenseText")}</p>
-            <div className="flex flex-wrap gap-2">
-              <Button asChild variant="outline" size="sm">
-                <a href={KIKOTO_GITHUB_ENDPOINTS.licenseURL} target="_blank" rel="noreferrer">
-                  <ExternalLink className="h-4 w-4" />
-                  {t("about.readLicense")}
-                </a>
-              </Button>
-              <Button asChild variant="outline" size="sm">
-                <a href={KIKOTO_GITHUB_ENDPOINTS.repositoryURL} target="_blank" rel="noreferrer">
-                  <ExternalLink className="h-4 w-4" />
-                  {t("about.viewSource")}
-                </a>
-              </Button>
-              <Button asChild variant="outline" size="sm">
-                <a href={KIKOTO_RELEASES_URL} target="_blank" rel="noreferrer">
-                  <ExternalLink className="h-4 w-4" />
-                  {t("about.viewReleases")}
-                </a>
-              </Button>
-            </div>
+            <p>
+              <Trans
+                i18nKey="about.licenseText"
+                components={{
+                  license: (
+                    <a
+                      href={KIKOTO_GITHUB_ENDPOINTS.licenseURL}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-sm font-medium text-foreground underline decoration-border underline-offset-4 transition-colors hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                  ),
+                }}
+              />
+            </p>
           </CardContent>
         </Card>
       </section>

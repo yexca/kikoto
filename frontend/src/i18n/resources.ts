@@ -1195,8 +1195,10 @@ const common = {
         palette: "Command palette",
       },
       about: {
-        label: "About Kikoto · {{version}}",
+        label: "About Kikoto",
         updateAvailable: "Update available: {{version}}",
+        viewRelease: "View release {{version}}",
+        openRepository: "Open Kikoto on GitHub",
         title: "Project background and credits",
         intro:
           "Kikoto is a local-first personal audio library focused on DLsite-style works, unified metadata, compatible remote sources, and browser playback.",
@@ -1211,24 +1213,21 @@ const common = {
           "It includes library browsing, favorites, circles, voice actors, workflow visibility, remote fetch flows, and a browser-based audio player.",
         referenceProjects: "Reference projects",
         kikoeruReference:
-          "Kikoto adapts to Kikoeru-compatible backends and references the public backend interface shape of",
-        openKikoeru: "Open Kikoeru reference",
+          "Kikoto's Kikoeru-compatible remote source integration references this project's public backend interface.",
         comfyReference:
-          "ComfyUI informed the workflow-canvas interaction design. Kikoto does not include or adapt ComfyUI source code; its canvas is an independent React implementation built with @xyflow/react.",
-        openComfy: "Open ComfyUI reference",
-        dependencies: "Dependencies",
+          "Kikoto's workflow-canvas interaction design was informed by this project. Kikoto does not include or adapt its source code; the canvas is an independent implementation built with @xyflow/react.",
+        cherryReference:
+          "Kikoto's AGENTS.md configuration approach and application version-management design were informed by this project.",
+        technologies: "Core technologies",
         license: "License",
         copyright: "Copyright (C) 2026 yexca.",
         licenseText:
-          "Kikoto is free software licensed under GNU AGPL v3. It is provided without warranty; the complete corresponding source is available in the project repository.",
-        readLicense: "Read license",
-        viewSource: "View source",
-        viewReleases: "View releases",
+          "Kikoto is free software licensed under <license>GNU AGPL v3</license>. It is provided without warranty; the complete corresponding source is available in the project repository.",
         groups: {
           Frontend: "Frontend",
           Backend: "Backend",
           Mobile: "Mobile",
-          "Runtime & Release": "Runtime & Release",
+          "Runtime & Delivery": "Runtime & Delivery",
         },
       },
       serverGate: {
@@ -1475,8 +1474,10 @@ const common = {
         palette: "命令面板",
       },
       about: {
-        label: "关于 Kikoto · {{version}}",
+        label: "关于 Kikoto",
         updateAvailable: "有可用更新：{{version}}",
+        viewRelease: "查看 {{version}} 版本",
+        openRepository: "在 GitHub 上打开 Kikoto",
         title: "项目背景与致谢",
         intro: "Kikoto 是一款本地优先的个人音频库，专注于 DLsite 风格作品、统一元数据、兼容的远程来源和浏览器播放。",
         builtWithCodex: "使用 Codex 构建",
@@ -1486,23 +1487,20 @@ const common = {
         overviewOne: "Kikoto 将本地文件夹、DLsite 元数据和 Kikoeru 兼容远程来源统一到一个作品模型中。",
         overviewTwo: "它包含媒体库浏览、收藏、社团、声优、工作流可见性、远程获取流程和基于浏览器的音频播放器。",
         referenceProjects: "参考项目",
-        kikoeruReference: "Kikoto 适配 Kikoeru 兼容后端，并参考其公开后端接口形状：",
-        openKikoeru: "打开 Kikoeru 参考",
+        kikoeruReference: "Kikoto 的 Kikoeru 兼容远程来源集成参考了该项目的公开后端接口。",
         comfyReference:
-          "ComfyUI 为工作流画布交互设计提供了参考。Kikoto 不包含或改编 ComfyUI 源代码；画布是使用 @xyflow/react 独立实现的 React 组件。",
-        openComfy: "打开 ComfyUI 参考",
-        dependencies: "依赖",
+          "Kikoto 的工作流画布交互设计参考了该项目；未包含或改编其源代码，画布使用 @xyflow/react 独立实现。",
+        cherryReference: "Kikoto 的 AGENTS.md 配置方式和程序版本管理设计参考了该项目。",
+        technologies: "主要技术栈",
         license: "许可证",
         copyright: "版权所有 (C) 2026 yexca。",
-        licenseText: "Kikoto 是根据 GNU AGPL v3 授权的自由软件，不提供任何保证；完整对应源代码可在项目仓库中找到。",
-        readLicense: "阅读许可证",
-        viewSource: "查看源代码",
-        viewReleases: "查看版本",
+        licenseText:
+          "Kikoto 是根据 <license>GNU AGPL v3</license> 授权的自由软件，不提供任何保证；完整对应源代码可在项目仓库中找到。",
         groups: {
           Frontend: "前端",
           Backend: "后端",
           Mobile: "移动端",
-          "Runtime & Release": "运行时与发布",
+          "Runtime & Delivery": "运行时与交付",
         },
       },
       serverGate: {
@@ -1749,8 +1747,10 @@ const common = {
         palette: "命令面板",
       },
       about: {
-        label: "關於 Kikoto · {{version}}",
+        label: "關於 Kikoto",
         updateAvailable: "有可用更新：{{version}}",
+        viewRelease: "檢視 {{version}} 版本",
+        openRepository: "在 GitHub 上開啟 Kikoto",
         title: "專案背景與致謝",
         intro: "Kikoto 是一款本機優先的個人音訊庫，專注於 DLsite 風格作品、統一元資料、相容的遠端來源和瀏覽器播放。",
         builtWithCodex: "使用 Codex 建置",
@@ -1760,23 +1760,20 @@ const common = {
         overviewOne: "Kikoto 將本機資料夾、DLsite 元資料和 Kikoeru 相容遠端來源統一到一個作品模型中。",
         overviewTwo: "它包含媒體庫瀏覽、收藏、社團、聲優、工作流程可見性、遠端取得流程和瀏覽器音訊播放器。",
         referenceProjects: "參考專案",
-        kikoeruReference: "Kikoto 適配 Kikoeru 相容後端，並參考其公開後端介面形狀：",
-        openKikoeru: "開啟 Kikoeru 參考",
+        kikoeruReference: "Kikoto 的 Kikoeru 相容遠端來源整合參考了該專案的公開後端介面。",
         comfyReference:
-          "ComfyUI 為工作流程畫布互動設計提供參考。Kikoto 不包含或改編 ComfyUI 原始碼；畫布是使用 @xyflow/react 獨立實作的 React 元件。",
-        openComfy: "開啟 ComfyUI 參考",
-        dependencies: "相依套件",
+          "Kikoto 的工作流程畫布互動設計參考了該專案；未包含或改編其原始碼，畫布使用 @xyflow/react 獨立實作。",
+        cherryReference: "Kikoto 的 AGENTS.md 設定方式和程式版本管理設計參考了該專案。",
+        technologies: "主要技術棧",
         license: "授權條款",
         copyright: "版權所有 (C) 2026 yexca。",
-        licenseText: "Kikoto 是依 GNU AGPL v3 授權的自由軟體，不提供任何保證；完整對應原始碼可在專案儲存庫中取得。",
-        readLicense: "閱讀授權條款",
-        viewSource: "檢視原始碼",
-        viewReleases: "檢視版本",
+        licenseText:
+          "Kikoto 是依 <license>GNU AGPL v3</license> 授權的自由軟體，不提供任何保證；完整對應原始碼可在專案儲存庫中取得。",
         groups: {
           Frontend: "前端",
           Backend: "後端",
           Mobile: "行動端",
-          "Runtime & Release": "執行環境與發佈",
+          "Runtime & Delivery": "執行環境與交付",
         },
       },
       serverGate: {
@@ -2023,8 +2020,10 @@ const common = {
         palette: "コマンドパレット",
       },
       about: {
-        label: "Kikoto について · {{version}}",
+        label: "Kikoto について",
         updateAvailable: "利用可能なアップデート：{{version}}",
+        viewRelease: "リリース {{version}} を表示",
+        openRepository: "GitHub で Kikoto を開く",
         title: "プロジェクトの背景とクレジット",
         intro:
           "Kikoto は、DLsite 形式の作品、統合メタデータ、互換リモートソース、ブラウザー再生に対応したローカルファーストの個人オーディオライブラリです。",
@@ -2038,24 +2037,21 @@ const common = {
           "ライブラリ、お気に入り、サークル、声優、ワークフロー、リモート取得、ブラウザーオーディオプレイヤーを備えています。",
         referenceProjects: "参考プロジェクト",
         kikoeruReference:
-          "Kikoto は Kikoeru 互換バックエンドに対応し、公開バックエンドインターフェースを参考にしています：",
-        openKikoeru: "Kikoeru の参考を開く",
+          "Kikoto の Kikoeru 互換リモートソース連携は、このプロジェクトの公開バックエンドインターフェースを参考にしています。",
         comfyReference:
-          "ComfyUI はワークフローキャンバスの操作設計に影響を与えました。Kikoto は ComfyUI のソースコードを含まず、@xyflow/react で独立した React 実装を使用しています。",
-        openComfy: "ComfyUI の参考を開く",
-        dependencies: "依存関係",
+          "Kikoto のワークフローキャンバス操作設計は、このプロジェクトを参考にしています。ソースコードは含めたり改変したりせず、キャンバスは @xyflow/react で独自に実装しています。",
+        cherryReference:
+          "Kikoto の AGENTS.md 設定方法とアプリケーションのバージョン管理設計は、このプロジェクトを参考にしています。",
+        technologies: "主要技術",
         license: "ライセンス",
         copyright: "Copyright (C) 2026 yexca。",
         licenseText:
-          "Kikoto は GNU AGPL v3 でライセンスされたフリーソフトウェアです。無保証で提供され、対応する完全なソースコードはプロジェクトリポジトリで確認できます。",
-        readLicense: "ライセンスを読む",
-        viewSource: "ソースを表示",
-        viewReleases: "リリースを表示",
+          "Kikoto は <license>GNU AGPL v3</license> でライセンスされたフリーソフトウェアです。無保証で提供され、対応する完全なソースコードはプロジェクトリポジトリで確認できます。",
         groups: {
           Frontend: "フロントエンド",
           Backend: "バックエンド",
           Mobile: "モバイル",
-          "Runtime & Release": "ランタイムとリリース",
+          "Runtime & Delivery": "ランタイムとデリバリー",
         },
       },
       serverGate: {
@@ -2303,8 +2299,10 @@ const common = {
         palette: "명령 팔레트",
       },
       about: {
-        label: "Kikoto 정보 · {{version}}",
+        label: "Kikoto 정보",
         updateAvailable: "업데이트 사용 가능: {{version}}",
+        viewRelease: "{{version}} 릴리스 보기",
+        openRepository: "GitHub에서 Kikoto 열기",
         title: "프로젝트 배경 및 크레딧",
         intro:
           "Kikoto는 DLsite 스타일 작품, 통합 메타데이터, 호환 원격 소스와 브라우저 재생에 초점을 둔 로컬 우선 개인 오디오 라이브러리입니다.",
@@ -2316,24 +2314,20 @@ const common = {
         overviewTwo:
           "라이브러리 탐색, 즐겨찾기, 서클, 성우, 워크플로 가시성, 원격 가져오기와 브라우저 오디오 플레이어를 제공합니다.",
         referenceProjects: "참조 프로젝트",
-        kikoeruReference: "Kikoto는 Kikoeru 호환 백엔드에 맞추고 공개 백엔드 인터페이스 형태를 참고합니다:",
-        openKikoeru: "Kikoeru 참조 열기",
+        kikoeruReference: "Kikoto의 Kikoeru 호환 원격 소스 연동은 이 프로젝트의 공개 백엔드 인터페이스를 참고합니다.",
         comfyReference:
-          "ComfyUI는 워크플로 캔버스 상호작용 설계에 영향을 주었습니다. Kikoto는 ComfyUI 소스 코드를 포함하거나 수정하지 않으며 @xyflow/react로 독립적인 React 구현을 사용합니다.",
-        openComfy: "ComfyUI 참조 열기",
-        dependencies: "종속성",
+          "Kikoto의 워크플로 캔버스 상호작용 설계는 이 프로젝트를 참고했습니다. 소스 코드를 포함하거나 수정하지 않으며 캔버스는 @xyflow/react로 독립 구현했습니다.",
+        cherryReference: "Kikoto의 AGENTS.md 구성 방식과 프로그램 버전 관리 설계는 이 프로젝트를 참고했습니다.",
+        technologies: "주요 기술",
         license: "라이선스",
         copyright: "Copyright (C) 2026 yexca.",
         licenseText:
-          "Kikoto는 GNU AGPL v3에 따라 라이선스된 자유 소프트웨어입니다. 보증 없이 제공되며 전체 소스는 프로젝트 저장소에서 확인할 수 있습니다.",
-        readLicense: "라이선스 읽기",
-        viewSource: "소스 보기",
-        viewReleases: "릴리스 보기",
+          "Kikoto는 <license>GNU AGPL v3</license>에 따라 라이선스된 자유 소프트웨어입니다. 보증 없이 제공되며 전체 소스는 프로젝트 저장소에서 확인할 수 있습니다.",
         groups: {
           Frontend: "프론트엔드",
           Backend: "백엔드",
           Mobile: "모바일",
-          "Runtime & Release": "런타임 및 릴리스",
+          "Runtime & Delivery": "런타임 및 제공",
         },
       },
       serverGate: {
