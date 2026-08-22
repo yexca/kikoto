@@ -54,8 +54,9 @@ methods, and the Demo identity has only library-read and playback permissions.
 Read requests are nevertheless allowed through administration, workflow,
 activity, source, and user surfaces so the isolated deployment can be shown;
 the frontend keeps those controls read-only and all writes are rejected before
-handlers run. It synchronously runs only the dedicated `demo_library_scan`
-workflow at startup. That workflow scans the Demo data root, verifies each
+handlers run. Startup initializes the current system workflow definitions for
+read-only inspection, but synchronously runs only the dedicated
+`demo_library_scan` workflow. That workflow scans the Demo data root, verifies each
 candidate against DLsite, and stores local works and media only when the
 provider reports both all-ages and permanently free metadata. Unknown, failed,
 adult, paid, and temporary-free candidates are discarded. Provider-declared

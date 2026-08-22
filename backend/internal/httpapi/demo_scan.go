@@ -14,6 +14,19 @@ import (
 
 const demoLibraryScanWorkflowCode = "demo_library_scan"
 
+// RunDemoStartupWorkflows initializes the workflow definitions used by the
+// read-only Demo surface and synchronously runs its content-admission scan.
+// It never dispatches production startup triggers or starts background jobs.
+func (s *Server) RunDemoStartupWorkflows(ctx context.Context) (DemoLibraryScanResult, error) {
+	if !s.cfg.IsDemo() {
+		return DemoLibraryScanResult{}, fmt.Errorf("demo startup workflows are only available in demo mode")
+	}
+	if err := s.ensureSystemWorkflowDefinitions(ctx); err != nil {
+		return DemoLibraryScanResult{}, fmt.Errorf("initialize demo workflow definitions: %w", err)
+	}
+	return s.RunDemoLibraryScan(ctx)
+}
+
 type DemoLibraryScanResult struct {
 	RunID            int64    `json:"runId"`
 	Status           string   `json:"status"`
@@ -27,8 +40,8 @@ type DemoLibraryScanResult struct {
 	Failures         []string `json:"failures"`
 }
 
-// RunDemoLibraryScan runs the only startup workflow enabled in Demo mode. It
-// verifies provider metadata before creating local work and media records.
+// RunDemoLibraryScan runs Demo's content-admission workflow. It verifies
+// provider metadata before creating local work and media records.
 func (s *Server) RunDemoLibraryScan(ctx context.Context) (DemoLibraryScanResult, error) {
 	if !s.cfg.IsDemo() {
 		return DemoLibraryScanResult{}, fmt.Errorf("%s is only available in demo mode", demoLibraryScanWorkflowCode)

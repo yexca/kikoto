@@ -16,6 +16,67 @@ import (
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 )
 
+func TestRunDemoStartupWorkflowsInitializesVisibleDefinitions(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{
+		Mode:           config.ModeDemo,
+		DataRoot:       t.TempDir(),
+		CacheRoot:      t.TempDir(),
+		LocalScanDepth: 2,
+	})
+
+	result, err := server.RunDemoStartupWorkflows(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "succeeded" {
+		t.Fatalf("Demo startup scan status = %q, want succeeded", result.Status)
+	}
+
+	for _, code := range []string{
+		"availability_watch",
+		"local_library_scan",
+		"metadata_sync",
+		"remote_popular_collection",
+		"dlsite_popular_collection",
+	} {
+		var count int
+		if err := db.QueryRow("SELECT COUNT(*) FROM workflow_definition WHERE code = ?", code).Scan(&count); err != nil {
+			t.Fatalf("count workflow definition %s: %v", code, err)
+		}
+		if count != 1 {
+			t.Fatalf("workflow definition %s count = %d, want 1", code, count)
+		}
+	}
+
+	var demoRuns, otherRuns int
+	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = ?", demoLibraryScanWorkflowCode).Scan(&demoRuns); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code <> ?", demoLibraryScanWorkflowCode).Scan(&otherRuns); err != nil {
+		t.Fatal(err)
+	}
+	if demoRuns != 1 || otherRuns != 0 {
+		t.Fatalf("Demo startup runs = demo %d, other %d; want demo 1 and other 0", demoRuns, otherRuns)
+	}
+}
+
+func TestRunDemoStartupWorkflowsRejectsNonDemoMode(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{Mode: config.ModeProduction})
+
+	if _, err := server.RunDemoStartupWorkflows(context.Background()); err == nil {
+		t.Fatal("RunDemoStartupWorkflows() succeeded outside Demo mode")
+	}
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_definition WHERE code = 'remote_popular_collection'").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("non-Demo startup inserted %d Demo catalog definitions", count)
+	}
+}
+
 func TestDemoLibraryScanOnlyStoresEligibleWorks(t *testing.T) {
 	db := openMigratedTestDB(t)
 	dataRoot := t.TempDir()

@@ -145,6 +145,8 @@ type localLocationCleanupCheckpoint struct {
 	Result               localCandidateCleanupResult `json:"result"`
 }
 
+// ensureSystemWorkflowDefinitions synchronizes workflow metadata only. It
+// does not create triggers, dispatch runs, or start background work.
 func (s *Server) ensureSystemWorkflowDefinitions(ctx context.Context) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

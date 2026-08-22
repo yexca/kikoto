@@ -66,9 +66,9 @@ func main() {
 		os.Exit(1)
 	}
 	if cfg.IsDemo() {
-		result, err := server.RunDemoLibraryScan(ctx)
+		result, err := server.RunDemoStartupWorkflows(ctx)
 		if err != nil {
-			slog.Error("run demo library scan", "error", err)
+			slog.Error("run demo startup workflows", "error", err)
 			os.Exit(1)
 		}
 		slog.Info("demo library scan finished",
