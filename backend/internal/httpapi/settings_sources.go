@@ -3266,13 +3266,32 @@ func (s *Server) runWorkSourceUntrack(ctx context.Context, workID int64, sourceI
 	}
 	deletedFiles := 0
 	cachePaths := make([]string, 0, len(cacheLocations))
+	lockPaths := make([]string, 0, len(cacheLocations))
+	seenLockPaths := make(map[string]struct{}, len(cacheLocations))
 	for _, location := range cacheLocations {
 		cachePaths = append(cachePaths, location.Path)
-		targetPath, err := validateDestructivePath(s.cfg.CacheRoot, location.Path, true, false)
-		if err != nil {
-			return workSourceUntrackResult{}, err
+		lockPath := filepath.ToSlash(strings.TrimSpace(location.Path))
+		if _, ok := seenLockPaths[lockPath]; !ok {
+			seenLockPaths[lockPath] = struct{}{}
+			lockPaths = append(lockPaths, lockPath)
 		}
-		deleted, _, err := removeDestructiveFile(s.cfg.CacheRoot, location.Path)
+	}
+	sort.Strings(lockPaths)
+	locks := make([]func(), 0, len(lockPaths))
+	defer func() {
+		for index := len(locks) - 1; index >= 0; index-- {
+			locks[index]()
+		}
+	}()
+	for _, lockPath := range lockPaths {
+		release, acquireErr := s.acquireCachePathLock(ctx, lockPath)
+		if acquireErr != nil {
+			return workSourceUntrackResult{}, acquireErr
+		}
+		locks = append(locks, release)
+	}
+	for _, location := range cacheLocations {
+		deleted, _, err := s.removeCacheFileUnlocked(location.Path)
 		if err != nil {
 			return workSourceUntrackResult{}, err
 		}
@@ -3280,9 +3299,6 @@ func (s *Server) runWorkSourceUntrack(ctx context.Context, workID int64, sourceI
 			continue
 		}
 		deletedFiles++
-		if err := pruneEmptyCacheParents(s.cfg.CacheRoot, filepath.Dir(targetPath)); err != nil {
-			return workSourceUntrackResult{}, err
-		}
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -4072,25 +4088,21 @@ func (s *Server) cleanupPromotedFetchCacheItem(
 		return false, nil
 	}
 	seen[key] = true
+	releaseCacheLock, err := s.acquireCachePathLock(ctx, item.CachePath)
+	if err != nil {
+		return false, err
+	}
+	defer releaseCacheLock()
 	var locationID int64
-	err := s.db.QueryRowContext(ctx, `
+	err = s.db.QueryRowContext(ctx, `
 		SELECT id FROM media_file_location
 		WHERE file_source_id = ? AND location_type = 'cache' AND path = ?
 		ORDER BY availability = 'available' DESC, id DESC LIMIT 1
 	`, sourceID, item.CachePath).Scan(&locationID)
 	if errors.Is(err, sql.ErrNoRows) {
-		targetPath, pathErr := validateDestructivePath(s.cfg.CacheRoot, item.CachePath, true, false)
-		if pathErr != nil {
-			return false, pathErr
-		}
-		deleted, _, removeErr := removeDestructiveFile(s.cfg.CacheRoot, item.CachePath)
+		deleted, _, removeErr := s.removeCacheFileUnlocked(item.CachePath)
 		if removeErr != nil {
 			return false, removeErr
-		}
-		if deleted {
-			if pruneErr := pruneEmptyCacheParents(s.cfg.CacheRoot, filepath.Dir(targetPath)); pruneErr != nil {
-				return false, pruneErr
-			}
 		}
 		if err := s.markCacheLocationUnavailable(ctx, sourceID, item.CachePath); err != nil {
 			return false, err
@@ -4100,7 +4112,7 @@ func (s *Server) cleanupPromotedFetchCacheItem(
 	if err != nil {
 		return false, err
 	}
-	_, deleted, err := s.clearCacheLocation(ctx, locationID, item.CachePath)
+	_, deleted, err := s.clearCacheLocationUnlocked(ctx, locationID, item.CachePath)
 	return deleted, err
 }
 

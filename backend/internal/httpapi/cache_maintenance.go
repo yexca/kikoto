@@ -664,6 +664,11 @@ func (s *Server) deleteOrphanCacheFile(ctx context.Context, relPath string) (boo
 	if !strings.HasPrefix(relPath, "media/") {
 		return false, 0, fmt.Errorf("cache maintenance path is outside managed media cache")
 	}
+	releaseCacheLock, err := s.acquireCachePathLock(ctx, relPath)
+	if err != nil {
+		return false, 0, err
+	}
+	defer releaseCacheLock()
 	var available int
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_file_location WHERE location_type = 'cache' AND availability = 'available' AND path = ?", relPath).Scan(&available); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return false, 0, err
@@ -685,15 +690,12 @@ func (s *Server) deleteOrphanCacheFile(ctx context.Context, relPath string) (boo
 	if time.Since(info.ModTime()) < cacheOrphanGracePeriod {
 		return false, 0, nil
 	}
-	deleted, bytes, err := removeDestructiveFile(s.cfg.CacheRoot, relPath)
+	deleted, bytes, err := s.removeCacheFileUnlocked(relPath)
 	if err != nil {
 		return false, 0, err
 	}
 	if !deleted {
 		return false, 0, nil
-	}
-	if err := pruneEmptyCacheParents(s.cfg.CacheRoot, filepath.Dir(targetPath)); err != nil {
-		return false, 0, err
 	}
 	return true, bytes, nil
 }

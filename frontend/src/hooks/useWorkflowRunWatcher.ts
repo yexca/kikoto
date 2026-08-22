@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { api, type WorkflowCandidate, type WorkflowEvent, type WorkflowRunDetail } from "@/lib/api";
+import {
+  api,
+  type WorkflowCandidate,
+  type WorkflowEvent,
+  type WorkflowRunDetail,
+  type WorkflowRunEventStreamMessage,
+} from "@/lib/api";
 
 const activeStatuses = new Set(["queued", "running"]);
 const foregroundPollMs = 1500;
 const backgroundPollMs = 15000;
+const streamReconnectMs = 1000;
 const cacheRetentionMs = 5 * 60 * 1000;
 
 type WorkflowRunSnapshot = {
@@ -22,8 +29,14 @@ type WatcherEntry = {
   pollListeners: number;
   lastEventId: number;
   inFlight: Promise<void> | null;
+  refreshPending: boolean;
   pollTimer: number | null;
   cleanupTimer: number | null;
+  streamAbortController: AbortController | null;
+  streamTask: Promise<void> | null;
+  streamRetryTimer: number | null;
+  streamGeneration: number;
+  streamTerminal: boolean;
   visibilityListener: () => void;
 };
 
@@ -44,9 +57,19 @@ function getEntry(runId: number) {
     pollListeners: 0,
     lastEventId: 0,
     inFlight: null,
+    refreshPending: false,
     pollTimer: null,
     cleanupTimer: null,
-    visibilityListener: () => schedulePoll(entry),
+    streamAbortController: null,
+    streamTask: null,
+    streamRetryTimer: null,
+    streamGeneration: 0,
+    streamTerminal: false,
+    visibilityListener: () => {
+      if (!document.hidden) void refreshEntry(entry);
+      startStream(entry);
+      schedulePoll(entry);
+    },
   };
   entries.set(runId, entry);
   return entry;
@@ -66,7 +89,10 @@ function mergeEvents(entry: WatcherEntry, nextEvents: WorkflowEvent[], replace: 
 }
 
 function refreshEntry(entry: WatcherEntry, replaceEvents = false) {
-  if (entry.inFlight) return entry.inFlight;
+  if (entry.inFlight) {
+    entry.refreshPending = true;
+    return entry.inFlight;
+  }
   if (!entry.snapshot.run) publish(entry, { ...entry.snapshot, loading: true, error: "" });
   entry.inFlight = (async () => {
     try {
@@ -77,6 +103,7 @@ function refreshEntry(entry: WatcherEntry, replaceEvents = false) {
       ]);
       const shouldLoadCandidates = nextRun.candidateCount > 0 || entry.snapshot.candidates.length > 0;
       const nextCandidates = shouldLoadCandidates ? await api.listWorkflowRunCandidates(entry.runId) : [];
+      if (isActiveWorkflowStatus(nextRun.status)) entry.streamTerminal = false;
       publish(entry, {
         run: nextRun,
         events: mergeEvents(entry, nextEvents, replaceEvents),
@@ -92,6 +119,16 @@ function refreshEntry(entry: WatcherEntry, replaceEvents = false) {
       });
     } finally {
       entry.inFlight = null;
+      if (entry.refreshPending) {
+        entry.refreshPending = false;
+        void refreshEntry(entry);
+      }
+      if (entry.listeners.size > 0 && entry.pollListeners > 0 && isActiveWorkflowStatus(entry.snapshot.run?.status)) {
+        startStream(entry);
+        schedulePoll(entry);
+      } else if (!isActiveWorkflowStatus(entry.snapshot.run?.status)) {
+        clearPoll(entry);
+      }
     }
   })();
   return entry.inFlight;
@@ -104,12 +141,94 @@ function clearPoll(entry: WatcherEntry) {
 
 function schedulePoll(entry: WatcherEntry) {
   clearPoll(entry);
-  if (entry.pollListeners === 0 || (entry.snapshot.run && !isActiveWorkflowStatus(entry.snapshot.run.status))) return;
+  if (
+    entry.pollListeners === 0 ||
+    entry.streamTask !== null ||
+    (entry.snapshot.run && !isActiveWorkflowStatus(entry.snapshot.run.status))
+  ) {
+    return;
+  }
   const delay = entry.snapshot.run ? (document.hidden ? backgroundPollMs : foregroundPollMs) : 0;
   entry.pollTimer = window.setTimeout(() => {
     entry.pollTimer = null;
     void refreshEntry(entry).finally(() => schedulePoll(entry));
   }, delay);
+}
+
+function clearStreamRetry(entry: WatcherEntry) {
+  if (entry.streamRetryTimer !== null) window.clearTimeout(entry.streamRetryTimer);
+  entry.streamRetryTimer = null;
+}
+
+function stopStream(entry: WatcherEntry) {
+  entry.streamGeneration += 1;
+  entry.streamAbortController?.abort();
+  entry.streamAbortController = null;
+  entry.streamTask = null;
+  clearStreamRetry(entry);
+}
+
+function scheduleStreamReconnect(entry: WatcherEntry) {
+  if (
+    entry.streamRetryTimer !== null ||
+    entry.streamTerminal ||
+    entry.listeners.size === 0 ||
+    entry.pollListeners === 0 ||
+    !isActiveWorkflowStatus(entry.snapshot.run?.status)
+  ) {
+    return;
+  }
+  entry.streamRetryTimer = window.setTimeout(() => {
+    entry.streamRetryTimer = null;
+    startStream(entry);
+  }, streamReconnectMs);
+}
+
+function startStream(entry: WatcherEntry) {
+  if (
+    entry.streamTask !== null ||
+    entry.streamTerminal ||
+    entry.listeners.size === 0 ||
+    entry.pollListeners === 0 ||
+    !isActiveWorkflowStatus(entry.snapshot.run?.status)
+  ) {
+    return;
+  }
+  clearPoll(entry);
+  clearStreamRetry(entry);
+  const generation = entry.streamGeneration + 1;
+  entry.streamGeneration = generation;
+  const controller = new AbortController();
+  entry.streamAbortController = controller;
+  entry.streamTask = (async () => {
+    try {
+      await api.streamWorkflowRunEvents(entry.runId, entry.lastEventId, controller.signal, (message) => {
+        if (generation !== entry.streamGeneration) return;
+        handleStreamMessage(entry, message);
+      });
+    } catch (cause) {
+      if (!controller.signal.aborted && generation === entry.streamGeneration) {
+        const message = cause instanceof Error ? cause.message : "Workflow event stream failed.";
+        if (!entry.snapshot.error) publish(entry, { ...entry.snapshot, error: message });
+      }
+    } finally {
+      if (generation === entry.streamGeneration) {
+        entry.streamTask = null;
+        entry.streamAbortController = null;
+        if (entry.listeners.size > 0 && entry.pollListeners > 0 && !entry.streamTerminal) {
+          schedulePoll(entry);
+          scheduleStreamReconnect(entry);
+        }
+      }
+    }
+  })();
+}
+
+function handleStreamMessage(entry: WatcherEntry, message: WorkflowRunEventStreamMessage) {
+  if (message.type === "tick" && message.status && !isActiveWorkflowStatus(message.status)) {
+    entry.streamTerminal = true;
+  }
+  void refreshEntry(entry);
 }
 
 function subscribeToRun(runId: number, poll: boolean, listener: (snapshot: WorkflowRunSnapshot) => void) {
@@ -122,8 +241,12 @@ function subscribeToRun(runId: number, poll: boolean, listener: (snapshot: Workf
   listener(entry.snapshot);
   if (wasEmpty) {
     document.addEventListener("visibilitychange", entry.visibilityListener);
-    void refreshEntry(entry, entry.snapshot.events.length === 0).finally(() => schedulePoll(entry));
+    void refreshEntry(entry, entry.snapshot.events.length === 0).finally(() => {
+      startStream(entry);
+      schedulePoll(entry);
+    });
   } else {
+    startStream(entry);
     schedulePoll(entry);
   }
   return () => {
@@ -134,6 +257,7 @@ function subscribeToRun(runId: number, poll: boolean, listener: (snapshot: Workf
       return;
     }
     clearPoll(entry);
+    stopStream(entry);
     document.removeEventListener("visibilitychange", entry.visibilityListener);
     entry.cleanupTimer = window.setTimeout(() => {
       if (entry.listeners.size === 0) entries.delete(runId);

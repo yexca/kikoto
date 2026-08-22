@@ -141,4 +141,23 @@ describe("API client transport", () => {
       minFreeBytes: 2 * 1024 * 1024 * 1024,
     });
   });
+
+  it("treats a terminal workflow tick followed by stream closure as a normal completion", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('event: tick\ndata: {"status":"succeeded","lastEventId":12}\n\n', {
+        headers: { "Content-Type": "text/event-stream" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const messages: unknown[] = [];
+
+    await expect(
+      api.streamWorkflowRunEvents(41, 11, new AbortController().signal, (message) => messages.push(message)),
+    ).resolves.toBeUndefined();
+
+    expect(messages).toEqual([{ type: "tick", status: "succeeded", lastEventId: 12 }]);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/workflow-runs/41/events/stream?afterId=11");
+    expect(new Headers(init.headers).get("Accept")).toBe("text/event-stream");
+  });
 });

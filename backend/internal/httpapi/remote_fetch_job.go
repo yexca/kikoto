@@ -171,18 +171,49 @@ func (s *Server) materializeRemoteWorkFetchItem(
 	if err != nil {
 		return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, err)
 	}
-	if item.Action == "cache_hit" {
-		if existingFileMatches(cacheAbsPath, item.SizeBytes) {
-			_ = s.updateRemoteFetchCacheProgress(ctx, execution.cacheNodeID, index+1, len(execution.plan.Items), item, 0)
-			markProgress()
-			return remoteFetchItemOutcome{cacheHit: true}, nil
+	releaseCacheLock, err := s.acquireCachePathLock(ctx, item.CachePath)
+	if err != nil {
+		return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, err)
+	}
+	defer releaseCacheLock()
+	registerExistingCache := func(info os.FileInfo) (remoteFetchItemOutcome, error) {
+		mediaItemID := item.MediaItemID
+		if mediaItemID <= 0 {
+			var lookupErr error
+			mediaItemID, lookupErr = s.mediaItemIDForRemotePath(ctx, execution.workID, item.Path)
+			if lookupErr != nil {
+				return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, lookupErr)
+			}
 		}
+		cacheSourceID := remoteFetchItemSourceID(item, execution.source.ID)
+		if _, upsertErr := s.upsertCacheLocation(ctx, mediaItemID, cacheSourceID, item.CachePath, "", item.SizeBytes, nil, info.Size()); upsertErr != nil {
+			return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, upsertErr)
+		}
+		_ = s.updateRemoteFetchCacheProgress(ctx, execution.cacheNodeID, index+1, len(execution.plan.Items), item, 0)
+		markProgress()
+		return remoteFetchItemOutcome{cacheHit: true}, nil
+	}
+	if info, statErr := os.Stat(cacheAbsPath); statErr == nil && existingFileMatches(cacheAbsPath, item.SizeBytes) {
+		if item.Action == "cache_download" {
+			item.Action, item.Status = "cache_hit", "cache_hit"
+			execution.plan.Items[index] = item
+			execution.plan.Summary = summarizeRemoteSavePlan(execution.plan.Items)
+			if err := execution.byteProgress.skipDownload(index, item); err != nil {
+				return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, err)
+			}
+			if err := s.persistRemoteFetchCacheAction(ctx, execution.manifest.ID, item.TargetPath, "cache_hit", execution.plan); err != nil {
+				return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, err)
+			}
+		}
+		return registerExistingCache(info)
+	}
+	if item.Action == "cache_hit" {
 		// The plan may have been created before another cleanup removed the
 		// file. Reclassify it durably so retries do not trust the stale hit.
 		item.Action, item.Status = "cache_download", "remote_only"
 		execution.plan.Items[index] = item
 		execution.plan.Summary = summarizeRemoteSavePlan(execution.plan.Items)
-		if err := s.persistRemoteFetchCacheDownloadAction(ctx, execution.manifest.ID, item.TargetPath, execution.plan); err != nil {
+		if err := s.persistRemoteFetchCacheAction(ctx, execution.manifest.ID, item.TargetPath, "cache_download", execution.plan); err != nil {
 			return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, err)
 		}
 		if err := execution.byteProgress.includeDownload(item); err != nil {
@@ -240,7 +271,7 @@ func (s *Server) materializeRemoteWorkFetchItem(
 	return remoteFetchItemOutcome{cacheDownloaded: true}, nil
 }
 
-func (s *Server) persistRemoteFetchCacheDownloadAction(ctx context.Context, manifestID int64, targetPath string, plan remoteWorkSavePlan) error {
+func (s *Server) persistRemoteFetchCacheAction(ctx context.Context, manifestID int64, targetPath string, action string, plan remoteWorkSavePlan) error {
 	if manifestID <= 0 {
 		return nil
 	}
@@ -262,9 +293,9 @@ func (s *Server) persistRemoteFetchCacheDownloadAction(ctx context.Context, mani
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE remote_fetch_manifest_item
-		SET action = 'cache_download', error_message = '', updated_at = CURRENT_TIMESTAMP
+		SET action = ?, error_message = '', updated_at = CURRENT_TIMESTAMP
 		WHERE manifest_id = ? AND target_path = ?
-	`, manifestID, targetPath); err != nil {
+	`, action, manifestID, targetPath); err != nil {
 		return err
 	}
 	return tx.Commit()

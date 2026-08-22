@@ -925,6 +925,9 @@ export type WorkflowEvent = {
   createdAt: string;
 };
 
+export type WorkflowRunEventStreamMessage =
+  { type: "workflow"; event: WorkflowEvent } | { type: "tick"; status: string; lastEventId: number };
+
 export type WorkflowCandidate = {
   id: number;
   runId: number;
@@ -1697,6 +1700,93 @@ async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function streamWorkflowRunEvents(
+  id: number,
+  afterId: number,
+  signal: AbortSignal,
+  onMessage: (message: WorkflowRunEventStreamMessage) => void,
+) {
+  const query = afterId > 0 ? `?afterId=${encodeURIComponent(String(afterId))}` : "";
+  const path = `/api/workflow-runs/${id}/events/stream${query}`;
+  const response = await fetchAPI(path, {
+    signal,
+    headers: { Accept: "text/event-stream" },
+  });
+  if (!response.ok) {
+    throw await responseError(response, `GET ${path} failed with ${response.status}`);
+  }
+  if (!response.body) throw new Error("Workflow event stream is unavailable.");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let eventName = "";
+  let eventID = "";
+  let dataLines: string[] = [];
+  let terminal = false;
+
+  const dispatch = () => {
+    if (dataLines.length === 0) return;
+    const data = dataLines.join("\n");
+    const payload: unknown = JSON.parse(data);
+    if (eventName === "workflow" && typeof payload === "object" && payload !== null && "id" in payload) {
+      onMessage({ type: "workflow", event: payload as WorkflowEvent });
+    } else if (eventName === "tick" && typeof payload === "object" && payload !== null) {
+      const tick = payload as { status?: unknown; lastEventId?: unknown };
+      const message: WorkflowRunEventStreamMessage = {
+        type: "tick",
+        status: typeof tick.status === "string" ? tick.status : "",
+        lastEventId: typeof tick.lastEventId === "number" ? tick.lastEventId : Number(eventID) || 0,
+      };
+      onMessage(message);
+      const status = message.status.trim().toLowerCase();
+      terminal = status !== "" && status !== "queued" && status !== "running";
+    }
+    eventName = "";
+    eventID = "";
+    dataLines = [];
+  };
+
+  const consumeLine = (rawLine: string) => {
+    const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+    if (line === "") {
+      dispatch();
+      return;
+    }
+    if (line.startsWith(":")) return;
+    const separator = line.indexOf(":");
+    const field = separator >= 0 ? line.slice(0, separator) : line;
+    const value = separator >= 0 ? line.slice(separator + 1).replace(/^ /, "") : "";
+    if (field === "event") eventName = value;
+    if (field === "id") eventID = value;
+    if (field === "data") dataLines.push(value);
+  };
+
+  try {
+    while (!terminal) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let newline = buffer.indexOf("\n");
+      while (newline >= 0) {
+        consumeLine(buffer.slice(0, newline));
+        buffer = buffer.slice(newline + 1);
+        newline = buffer.indexOf("\n");
+        if (terminal) break;
+      }
+    }
+    if (!terminal) {
+      buffer += decoder.decode();
+      if (buffer) consumeLine(buffer);
+      dispatch();
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  if (terminal) return;
+  throw new Error("Workflow event stream closed.");
+}
+
 async function postJSON<T>(path: string): Promise<T> {
   const response = await fetchAPI(path, { method: "POST" });
   if (!response.ok) {
@@ -2251,6 +2341,12 @@ export const api = {
   getWorkflowRun: (id: number) => getJSON<WorkflowRunDetail>(`/api/workflow-runs/${id}`),
   listWorkflowRunEvents: (id: number, afterId = 0) =>
     getJSON<WorkflowEvent[]>(`/api/workflow-runs/${id}/events${afterId > 0 ? `?afterId=${afterId}` : ""}`),
+  streamWorkflowRunEvents: (
+    id: number,
+    afterId: number,
+    signal: AbortSignal,
+    onMessage: (message: WorkflowRunEventStreamMessage) => void,
+  ) => streamWorkflowRunEvents(id, afterId, signal, onMessage),
   listWorkflowRunCandidates: (id: number) => getJSON<WorkflowCandidate[]>(`/api/workflow-runs/${id}/candidates`),
   updateWorkflowCandidate: (
     id: number,

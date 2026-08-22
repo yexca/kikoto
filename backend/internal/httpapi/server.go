@@ -50,6 +50,7 @@ type Server struct {
 	remoteWorkTracksCache          map[string]remoteWorkTracksSnapshot
 	remoteWorkTracksCacheCalls     map[string]*remoteWorkTracksCall
 	remoteTrackMu                  sync.Mutex
+	cachePathLocks                 cachePathLocker
 	metadataSyncMu                 sync.Mutex
 	jobRunnerMu                    sync.Mutex
 	jobRunnerStarted               bool
@@ -215,6 +216,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/workflow-runs", s.listWorkflowRuns)
 	mux.HandleFunc("GET /api/workflow-runs/{id}", s.getWorkflowRun)
 	mux.HandleFunc("GET /api/workflow-runs/{id}/events", s.listWorkflowRunEvents)
+	mux.HandleFunc("GET /api/workflow-runs/{id}/events/stream", s.streamWorkflowRunEvents)
 	mux.HandleFunc("GET /api/workflow-runs/{id}/candidates", s.listWorkflowRunCandidates)
 	mux.HandleFunc("POST /api/workflow-runs/{id}/cancel", s.cancelWorkflowRun)
 	mux.HandleFunc("POST /api/workflow-runs/{id}/retry", s.retryWorkflowRun)
@@ -1675,7 +1677,7 @@ func (s *Server) enqueueRemoteMediaCache(ctx context.Context, remoteLocationID i
 	if err != nil {
 		return mediaCacheResult{}, err
 	}
-	if cacheID, ok, err := s.findAvailableCacheLocation(ctx, target.MediaItemID, target.SourceID, target.CachePath); err != nil {
+	if cacheID, ok, err := s.findAvailableCacheLocation(ctx, target.MediaItemID, target.SourceID, target.CachePath, nullableInt64(target.SizeBytes)); err != nil {
 		return mediaCacheResult{}, err
 	} else if ok {
 		_, _ = s.runCacheLimitCleanup(ctx, target.SourceID, cacheID)
@@ -1745,13 +1747,20 @@ func (s *Server) executeRemoteMediaCacheJob(ctx context.Context, job workflowJob
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
-	if cacheID, ok, err := s.findAvailableCacheLocation(ctx, target.MediaItemID, target.SourceID, target.CachePath); err != nil {
+	releaseCacheLock, err := s.acquireCachePathLock(ctx, target.CachePath)
+	if err != nil {
+		_ = s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0)
+		return err
+	}
+	defer releaseCacheLock()
+	if cacheID, ok, err := s.findAvailableCacheLocation(ctx, target.MediaItemID, target.SourceID, target.CachePath, nullableInt64(target.SizeBytes)); err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	} else if ok {
 		if err := s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "succeeded", target.CachePath, "", 0); err != nil {
 			return err
 		}
+		releaseCacheLock()
 		_, _ = s.runCacheLimitCleanup(ctx, target.SourceID, cacheID)
 		return nil
 	}
@@ -1763,6 +1772,19 @@ func (s *Server) executeRemoteMediaCacheJob(ctx context.Context, job workflowJob
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 		_ = s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0)
 		return err
+	}
+	if info, statErr := os.Stat(targetPath); statErr == nil && existingFileMatches(targetPath, nullableInt64(target.SizeBytes)) {
+		cacheLocationID, upsertErr := s.upsertCacheLocation(ctx, target.MediaItemID, target.SourceID, target.CachePath, target.RemoteHash, nullableInt64(target.SizeBytes), nullableInt64(target.DurationSeconds), info.Size())
+		if upsertErr != nil {
+			_ = s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, upsertErr.Error(), 0)
+			return upsertErr
+		}
+		if finishErr := s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "succeeded", target.CachePath, "", info.Size()); finishErr != nil {
+			return finishErr
+		}
+		releaseCacheLock()
+		_, _ = s.runCacheLimitCleanup(ctx, target.SourceID, cacheLocationID)
+		return nil
 	}
 	source, err := s.loadRemoteSourceForUse(ctx, target.SourceID)
 	if err != nil {
@@ -1786,6 +1808,7 @@ func (s *Server) executeRemoteMediaCacheJob(ctx context.Context, job workflowJob
 	if err := s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "succeeded", target.CachePath, "", written); err != nil {
 		return err
 	}
+	releaseCacheLock()
 	if cleanup, err := s.runCacheLimitCleanup(ctx, target.SourceID, cacheLocationID); err == nil && cleanup.Removed > 0 {
 		_, _ = s.db.ExecContext(ctx, `
 			UPDATE workflow_run
@@ -1816,7 +1839,7 @@ func mediaCacheDefinition() map[string]any {
 	}
 }
 
-func (s *Server) findAvailableCacheLocation(ctx context.Context, mediaItemID int64, sourceID int64, cacheRelPath string) (int64, bool, error) {
+func (s *Server) findAvailableCacheLocation(ctx context.Context, mediaItemID int64, sourceID int64, cacheRelPath string, expectedSize *int64) (int64, bool, error) {
 	var id int64
 	var path string
 	if err := s.db.QueryRowContext(ctx, `
@@ -1833,7 +1856,11 @@ func (s *Server) findAvailableCacheLocation(ctx context.Context, mediaItemID int
 		}
 		return 0, false, err
 	}
-	if _, err := os.Stat(filepath.Join(s.cfg.CacheRoot, filepath.FromSlash(path))); err != nil {
+	cachePath, err := safeCachePath(s.cfg.CacheRoot, path)
+	if err != nil {
+		return 0, false, err
+	}
+	if !existingFileMatches(cachePath, expectedSize) {
 		return 0, false, nil
 	}
 	_, _ = s.db.ExecContext(ctx, `
@@ -2167,8 +2194,8 @@ func (s *Server) trimCacheScope(ctx context.Context, sourceID int64, limitBytes 
 	return removed, freed, nil
 }
 
-func cacheLocationKey(sourceID int64, cachePath string) string {
-	return fmt.Sprintf("%d:%s", sourceID, filepath.ToSlash(cachePath))
+func cacheLocationKey(_ int64, cachePath string) string {
+	return filepath.ToSlash(filepath.Clean(filepath.FromSlash(strings.TrimSpace(cachePath))))
 }
 
 // Active Fetch manifests protect every cache object that may still be needed
@@ -2209,7 +2236,7 @@ func (s *Server) activeRemoteFetchCacheKeys(ctx context.Context) (map[string]str
 			if sourceID <= 0 {
 				sourceID = manifestSourceID
 			}
-			if sourceID > 0 && strings.TrimSpace(item.CachePath) != "" {
+			if strings.TrimSpace(item.CachePath) != "" {
 				protected[cacheLocationKey(sourceID, item.CachePath)] = struct{}{}
 			}
 		}
@@ -2269,6 +2296,15 @@ func (s *Server) cacheCleanupCandidates(ctx context.Context, sourceID int64) ([]
 }
 
 func (s *Server) clearCacheLocation(ctx context.Context, cacheLocationID int64, cachePath string) (int64, bool, error) {
+	releaseCacheLock, err := s.acquireCachePathLock(ctx, cachePath)
+	if err != nil {
+		return 0, false, err
+	}
+	defer releaseCacheLock()
+	return s.clearCacheLocationUnlocked(ctx, cacheLocationID, cachePath)
+}
+
+func (s *Server) clearCacheLocationUnlocked(ctx context.Context, cacheLocationID int64, cachePath string) (int64, bool, error) {
 	targetPath, err := validateDestructivePath(s.cfg.CacheRoot, cachePath, true, false)
 	if err != nil {
 		return 0, false, err

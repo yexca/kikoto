@@ -93,6 +93,21 @@ func (p *remoteFetchByteProgress) includeDownload(item remoteWorkSavePlanItem) e
 	return nil
 }
 
+func (p *remoteFetchByteProgress) skipDownload(fileIndex int, item remoteWorkSavePlanItem) error {
+	if item.SizeBytes == nil {
+		if p.unknownItems == 0 {
+			return fmt.Errorf("invalid remote Fetch byte progress")
+		}
+		p.unknownItems--
+	} else {
+		if *item.SizeBytes < 0 || p.total < *item.SizeBytes {
+			return fmt.Errorf("invalid remote Fetch byte progress")
+		}
+		p.total -= *item.SizeBytes
+	}
+	return p.persist(fileIndex, item, 0)
+}
+
 func (p *remoteFetchByteProgress) report(fileIndex int, item remoteWorkSavePlanItem, written int64) {
 	p.current = p.itemBase + written
 	now := time.Now()
