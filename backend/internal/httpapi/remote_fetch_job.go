@@ -172,9 +172,22 @@ func (s *Server) materializeRemoteWorkFetchItem(
 		return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, err)
 	}
 	if item.Action == "cache_hit" {
-		_ = s.updateRemoteFetchCacheProgress(ctx, execution.cacheNodeID, index+1, len(execution.plan.Items), item, 0)
-		markProgress()
-		return remoteFetchItemOutcome{cacheHit: true}, nil
+		if existingFileMatches(cacheAbsPath, item.SizeBytes) {
+			_ = s.updateRemoteFetchCacheProgress(ctx, execution.cacheNodeID, index+1, len(execution.plan.Items), item, 0)
+			markProgress()
+			return remoteFetchItemOutcome{cacheHit: true}, nil
+		}
+		// The plan may have been created before another cleanup removed the
+		// file. Reclassify it durably so retries do not trust the stale hit.
+		item.Action, item.Status = "cache_download", "remote_only"
+		execution.plan.Items[index] = item
+		execution.plan.Summary = summarizeRemoteSavePlan(execution.plan.Items)
+		if err := s.persistRemoteFetchCacheDownloadAction(ctx, execution.manifest.ID, item.TargetPath, execution.plan); err != nil {
+			return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, err)
+		}
+		if err := execution.byteProgress.includeDownload(item); err != nil {
+			return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, err)
+		}
 	}
 	if err := os.MkdirAll(filepath.Dir(cacheAbsPath), 0o755); err != nil {
 		return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, err)
@@ -219,14 +232,42 @@ func (s *Server) materializeRemoteWorkFetchItem(
 		return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, err)
 	}
 	cacheSourceID := remoteFetchItemSourceID(item, execution.source.ID)
-	cacheLocationID, err := s.upsertCacheLocation(ctx, mediaItemID, cacheSourceID, item.CachePath, "", item.SizeBytes, nil, written)
-	if err != nil {
+	if _, err := s.upsertCacheLocation(ctx, mediaItemID, cacheSourceID, item.CachePath, "", item.SizeBytes, nil, written); err != nil {
 		return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, err)
 	}
-	_, _ = s.runCacheLimitCleanup(ctx, cacheSourceID, cacheLocationID)
 	_ = s.updateRemoteFetchCacheProgress(ctx, execution.cacheNodeID, index+1, len(execution.plan.Items), item, written)
 	markProgress()
 	return remoteFetchItemOutcome{cacheDownloaded: true}, nil
+}
+
+func (s *Server) persistRemoteFetchCacheDownloadAction(ctx context.Context, manifestID int64, targetPath string, plan remoteWorkSavePlan) error {
+	if manifestID <= 0 {
+		return nil
+	}
+	planJSON, err := json.Marshal(plan)
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE remote_fetch_manifest
+		SET plan_json = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, string(planJSON), manifestID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE remote_fetch_manifest_item
+		SET action = 'cache_download', error_message = '', updated_at = CURRENT_TIMESTAMP
+		WHERE manifest_id = ? AND target_path = ?
+	`, manifestID, targetPath); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func remoteFetchItemSourceID(item remoteWorkSavePlanItem, fallback int64) int64 {
@@ -296,6 +337,10 @@ func (s *Server) finalizeRemoteWorkFetch(
 	if err := s.finishRemoteWorkFetch(ctx, runID, jobID, execution, manifest, counts, promoted, removedCache, syncedLocations); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
+	// The Fetch no longer needs its cache inputs after publication and
+	// registration. Enforce the global limit once, after all selected files
+	// have been staged, so an earlier file cannot evict a later Fetch input.
+	_, _ = s.runCacheLimitCleanup(ctx, execution.source.ID, 0)
 	return remoteWorkSaveResult{
 		RunID: runID, JobID: jobID, WorkID: execution.workID, PrimaryCode: execution.workCode,
 		Status: "succeeded", SaveRoot: execution.plan.SaveRoot, SavedFiles: promoted,

@@ -1429,7 +1429,6 @@ type mediaCacheTarget struct {
 	WorkCode         string
 	SourceID         int64
 	SourceCode       string
-	SourceConfigJSON string
 	RemotePath       string
 	StreamURL        string
 	DownloadURL      string
@@ -1620,7 +1619,6 @@ func (s *Server) mediaDownloadPath(r *http.Request, idValue string) (string, str
 
 func (s *Server) loadMediaCacheTarget(ctx context.Context, remoteLocationID int64) (mediaCacheTarget, error) {
 	var target mediaCacheTarget
-	var sourceName string
 	var locationType string
 	var availability string
 	if err := s.db.QueryRowContext(ctx, `
@@ -1629,8 +1627,6 @@ func (s *Server) loadMediaCacheTarget(ctx context.Context, remoteLocationID int6
 			work.primary_code,
 			source.id,
 			source.code,
-			source.display_name,
-			source.config_json,
 			location.location_type,
 			location.path,
 			location.stream_url,
@@ -1649,8 +1645,6 @@ func (s *Server) loadMediaCacheTarget(ctx context.Context, remoteLocationID int6
 		&target.WorkCode,
 		&target.SourceID,
 		&target.SourceCode,
-		&sourceName,
-		&target.SourceConfigJSON,
 		&locationType,
 		&target.RemotePath,
 		&target.StreamURL,
@@ -1668,9 +1662,7 @@ func (s *Server) loadMediaCacheTarget(ctx context.Context, remoteLocationID int6
 	if locationType != "remote_stream" || availability != "available" {
 		return mediaCacheTarget{}, fmt.Errorf("media location is not an available remote stream")
 	}
-	var sourceConfig fileSourceConfig
-	_ = json.Unmarshal([]byte(target.SourceConfigJSON), &sourceConfig)
-	if !s.settingBoolContext(ctx, "remote_cache_enabled", false) && !(sourceConfig.CacheEnabled != nil && *sourceConfig.CacheEnabled) {
+	if !s.settingBoolContext(ctx, "remote_cache_enabled", false) {
 		return mediaCacheTarget{}, fmt.Errorf("remote cache is not enabled")
 	}
 	target.RemoteLocationID = remoteLocationID
@@ -1988,28 +1980,20 @@ type cacheLimitCandidate struct {
 
 func (s *Server) enforceRemoteCacheLimits(ctx context.Context, sourceID int64, keepLocationID int64) (remoteCacheLimitResult, error) {
 	totalLimitGB := s.settingIntContext(ctx, "remote_cache_limit_gb", 20)
-	sourceLimitGB := s.cacheLimitGBForSource(ctx, sourceID)
-	result := remoteCacheLimitResult{TotalLimitGB: totalLimitGB, SourceLimitGB: sourceLimitGB}
-	if totalLimitGB <= 0 && sourceLimitGB <= 0 {
+	result := remoteCacheLimitResult{TotalLimitGB: totalLimitGB}
+	if totalLimitGB <= 0 {
 		return result, nil
 	}
-
-	if sourceLimitGB > 0 {
-		removed, freed, err := s.trimCacheScope(ctx, sourceID, gbToBytes(sourceLimitGB), keepLocationID)
-		if err != nil {
-			return result, err
-		}
-		result.Removed += removed
-		result.FreedBytes += freed
+	protected, err := s.activeRemoteFetchCacheKeys(ctx)
+	if err != nil {
+		return result, err
 	}
-	if totalLimitGB > 0 {
-		removed, freed, err := s.trimCacheScope(ctx, 0, gbToBytes(totalLimitGB), keepLocationID)
-		if err != nil {
-			return result, err
-		}
-		result.Removed += removed
-		result.FreedBytes += freed
+	removed, freed, err := s.trimCacheScope(ctx, 0, gbToBytes(totalLimitGB), keepLocationID, protected)
+	if err != nil {
+		return result, err
 	}
+	result.Removed += removed
+	result.FreedBytes += freed
 	result.TotalAfterBytes, _ = s.cacheScopeSize(ctx, 0)
 	result.SourceAfterBytes, _ = s.cacheScopeSize(ctx, sourceID)
 	return result, nil
@@ -2103,26 +2087,16 @@ func (s *Server) executeMediaCacheLimitCleanupJob(ctx context.Context, job workf
 
 func (s *Server) cacheLimitCleanupNeeded(ctx context.Context, sourceID int64) (bool, int, int, error) {
 	totalLimitGB := s.settingIntContext(ctx, "remote_cache_limit_gb", 20)
-	sourceLimitGB := s.cacheLimitGBForSource(ctx, sourceID)
-	if sourceLimitGB > 0 {
-		size, err := s.cacheScopeSize(ctx, sourceID)
-		if err != nil {
-			return false, totalLimitGB, sourceLimitGB, err
-		}
-		if size > gbToBytes(sourceLimitGB) {
-			return true, totalLimitGB, sourceLimitGB, nil
-		}
-	}
 	if totalLimitGB > 0 {
 		size, err := s.cacheScopeSize(ctx, 0)
 		if err != nil {
-			return false, totalLimitGB, sourceLimitGB, err
+			return false, totalLimitGB, 0, err
 		}
 		if size > gbToBytes(totalLimitGB) {
-			return true, totalLimitGB, sourceLimitGB, nil
+			return true, totalLimitGB, 0, nil
 		}
 	}
-	return false, totalLimitGB, sourceLimitGB, nil
+	return false, totalLimitGB, 0, nil
 }
 
 func (s *Server) finishCacheLimitCleanup(ctx context.Context, runID int64, nodeID int64, jobID int64, status string, result remoteCacheLimitResult, errorMessage string) error {
@@ -2154,19 +2128,7 @@ func (s *Server) finishCacheLimitCleanup(ctx context.Context, runID int64, nodeI
 	return err
 }
 
-func (s *Server) cacheLimitGBForSource(ctx context.Context, sourceID int64) int {
-	var raw string
-	if err := s.db.QueryRowContext(ctx, "SELECT config_json FROM file_source WHERE id = ?", sourceID).Scan(&raw); err != nil {
-		return 0
-	}
-	var config fileSourceConfig
-	if err := json.Unmarshal([]byte(raw), &config); err != nil || config.CacheLimitGB == nil {
-		return 0
-	}
-	return *config.CacheLimitGB
-}
-
-func (s *Server) trimCacheScope(ctx context.Context, sourceID int64, limitBytes int64, keepLocationID int64) (int, int64, error) {
+func (s *Server) trimCacheScope(ctx context.Context, sourceID int64, limitBytes int64, keepLocationID int64, protected map[string]struct{}) (int, int64, error) {
 	currentBytes, err := s.cacheScopeSize(ctx, sourceID)
 	if err != nil {
 		return 0, 0, err
@@ -2187,6 +2149,9 @@ func (s *Server) trimCacheScope(ctx context.Context, sourceID int64, limitBytes 
 		if candidate.ID == keepLocationID {
 			continue
 		}
+		if _, ok := protected[cacheLocationKey(candidate.SourceID, candidate.Path)]; ok {
+			continue
+		}
 		bytes, deleted, err := s.clearCacheLocation(ctx, candidate.ID, candidate.Path)
 		if err != nil {
 			return removed, freed, err
@@ -2200,6 +2165,59 @@ func (s *Server) trimCacheScope(ctx context.Context, sourceID int64, limitBytes 
 		removed++
 	}
 	return removed, freed, nil
+}
+
+func cacheLocationKey(sourceID int64, cachePath string) string {
+	return fmt.Sprintf("%d:%s", sourceID, filepath.ToSlash(cachePath))
+}
+
+// Active Fetch manifests protect every cache object that may still be needed
+// by staging or publication. The manifest already contains the durable plan,
+// so this does not require a separate cache lease table.
+func (s *Server) activeRemoteFetchCacheKeys(ctx context.Context) (map[string]struct{}, error) {
+	protected := map[string]struct{}{}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT manifest.remote_source_id, manifest.plan_json
+		FROM remote_fetch_manifest AS manifest
+		INNER JOIN workflow_run AS run ON run.id = manifest.workflow_run_id
+		WHERE run.workflow_code = 'remote_work_fetch'
+			AND run.status IN ('queued', 'running', 'partial')
+			AND manifest.state <> 'completed'
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var manifestSourceID int64
+		var planJSON string
+		if err := rows.Scan(&manifestSourceID, &planJSON); err != nil {
+			return nil, err
+		}
+		var plan remoteWorkSavePlan
+		if err := json.Unmarshal([]byte(planJSON), &plan); err != nil {
+			continue
+		}
+		for _, item := range plan.Items {
+			if item.Action != "cache_hit" && item.Action != "cache_download" {
+				continue
+			}
+			sourceID := item.RemoteSourceID
+			if sourceID <= 0 {
+				sourceID = plan.SourceID
+			}
+			if sourceID <= 0 {
+				sourceID = manifestSourceID
+			}
+			if sourceID > 0 && strings.TrimSpace(item.CachePath) != "" {
+				protected[cacheLocationKey(sourceID, item.CachePath)] = struct{}{}
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return protected, nil
 }
 
 func (s *Server) cacheScopeSize(ctx context.Context, sourceID int64) (int64, error) {
@@ -3305,7 +3323,7 @@ func (s *Server) loadMediaLocationRows(ctx context.Context, mediaWorkID int64, m
 		location.SizeBytes = nullableInt64(sizeBytes)
 		location.DurationSeconds = nullableInt64(locationDurationSeconds)
 		location.LastCheckedAt = nullableString(lastCheckedAt)
-		if location.LocationType == "local" && location.Availability == "available" && location.StreamURL == "" {
+		if (location.LocationType == "local" || location.LocationType == "cache") && location.Availability == "available" && location.StreamURL == "" {
 			location.StreamURL = fmt.Sprintf("/api/media/%d/stream", location.ID)
 		}
 		if index, ok := itemIndexes[mediaItemID]; ok {

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/download"
@@ -78,6 +79,18 @@ func (p *remoteFetchByteProgress) begin(fileIndex int, item remoteWorkSavePlanIt
 	p.itemBase = p.current
 	p.itemUnknown = item.SizeBytes == nil
 	return p.persist(fileIndex, item, 0)
+}
+
+func (p *remoteFetchByteProgress) includeDownload(item remoteWorkSavePlanItem) error {
+	if item.SizeBytes == nil {
+		p.unknownItems++
+		return nil
+	}
+	if *item.SizeBytes < 0 || p.total > math.MaxInt64-*item.SizeBytes {
+		return fmt.Errorf("invalid remote Fetch byte progress")
+	}
+	p.total += *item.SizeBytes
+	return nil
 }
 
 func (p *remoteFetchByteProgress) report(fileIndex int, item remoteWorkSavePlanItem, written int64) {

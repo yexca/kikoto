@@ -563,7 +563,6 @@ async function mockRemoteSource(
             displayName: "Example Remote",
             sourceType: "kikoeru_compatible",
             enabled: options.remoteStatus !== "disabled",
-            cacheEnabled: true,
           },
         ],
       });
@@ -1795,7 +1794,6 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
         displayName: "Remote A",
         sourceType: "kikoeru_compatible",
         enabled: true,
-        cacheEnabled: true,
       },
       {
         id: 8,
@@ -1803,7 +1801,6 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
         displayName: "Remote B",
         sourceType: "kikoeru_compatible",
         enabled: true,
-        cacheEnabled: true,
       },
     ],
     sourceAvailability: availability,

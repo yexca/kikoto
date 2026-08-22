@@ -443,7 +443,6 @@ async function mockComposer(page: Page, runRequests: unknown[], options: MockCom
             displayName: "Local Library",
             sourceType: "local",
             enabled: true,
-            cacheEnabled: false,
           },
           {
             id: 8,
@@ -451,7 +450,6 @@ async function mockComposer(page: Page, runRequests: unknown[], options: MockCom
             displayName: "Remote Test",
             sourceType: "kikoeru_compatible",
             enabled: true,
-            cacheEnabled: true,
           },
         ],
       });

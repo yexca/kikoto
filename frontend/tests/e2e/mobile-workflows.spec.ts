@@ -550,7 +550,6 @@ async function mockWorkflows(
             displayName: "Remote Test",
             sourceType: "kikoeru_compatible",
             enabled: true,
-            cacheEnabled: true,
           },
         ],
       });

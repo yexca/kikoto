@@ -187,6 +187,64 @@ func TestCacheMaintenanceQueuesOnlySelectedWorkCache(t *testing.T) {
 	}
 }
 
+func TestCacheLimitProtectsActiveRemoteFetchInputs(t *testing.T) {
+	cacheRoot := t.TempDir()
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{CacheRoot: cacheRoot})
+	activeRel := "media/example_remote/RJ/RJ00000000/active.mp3"
+	otherRel := "media/example_remote/RJ/RJ00000000/other.mp3"
+	activePath := writeCacheTestFile(t, cacheRoot, activeRel, "active", 48*time.Hour)
+	otherPath := writeCacheTestFile(t, cacheRoot, otherRel, "other", 48*time.Hour)
+	if _, err := db.Exec(`
+		INSERT INTO file_source (id, code, display_name, source_type) VALUES
+			(1, 'example_remote', 'Example Remote', 'kikoeru_compatible'),
+			(2, 'main_local', 'Main local', 'local_folder');
+		INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000000', 'Active Fetch');
+		INSERT INTO media_item (id, work_id, kind, title) VALUES
+			(1, 1, 'audio', 'active.mp3'),
+			(2, 1, 'audio', 'other.mp3');
+		INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, size_bytes, availability, last_checked_at) VALUES
+			(11, 1, 1, 'cache', 'media/example_remote/RJ/RJ00000000/active.mp3', 6, 'available', '2020-01-01 00:00:00'),
+			(12, 2, 1, 'cache', 'media/example_remote/RJ/RJ00000000/other.mp3', 5, 'available', '2020-01-01 00:00:01');
+		INSERT INTO workflow_run (id, workflow_code, display_name, status, trigger_type)
+		VALUES (1, 'remote_work_fetch', 'Active Fetch', 'running', 'manual');
+		INSERT INTO remote_fetch_manifest (
+			id, workflow_run_id, work_id, remote_source_id, local_source_id, edition_code,
+			target_root, staging_root, state, plan_json
+		) VALUES (
+			1, 1, 1, 1, 2, 'RJ00000000', 'library/RJ00000000', '.kikoto-staging/1/work', 'planned',
+			'{"sourceId":1,"items":[{"action":"cache_hit","cachePath":"media/example_remote/RJ/RJ00000000/active.mp3"}]}'
+		);
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	protected, err := server.activeRemoteFetchCacheKeys(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := protected[cacheLocationKey(1, activeRel)]; !ok {
+		t.Fatalf("active Fetch cache key not protected: %#v", protected)
+	}
+	if _, ok := protected[cacheLocationKey(1, otherRel)]; ok {
+		t.Fatalf("unselected cache key was protected: %#v", protected)
+	}
+
+	removed, _, err := server.trimCacheScope(context.Background(), 0, 1, 0, protected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 1 {
+		t.Fatalf("removed = %d, want only the unprotected cache file", removed)
+	}
+	if _, err := os.Stat(activePath); err != nil {
+		t.Fatalf("active Fetch cache was removed: %v", err)
+	}
+	if _, err := os.Stat(otherPath); !os.IsNotExist(err) {
+		t.Fatalf("unprotected cache still exists or stat failed: %v", err)
+	}
+}
+
 func TestCacheMaintenanceRejectsInvalidCleanupRequest(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{CacheRoot: t.TempDir()})

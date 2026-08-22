@@ -32,7 +32,7 @@ func TestFileSourceHandlersListUpdateAndDeleteConfiguredRemoteSources(t *testing
 			"sourceType":"kikoeru_compatible",
 			"priority":30,
 			"enabled":false,
-			"config":{"cacheEnabled":true},
+			"config":{"requestLanguage":"ja-JP"},
 			"endpoint":{"apiUrl":"https://source.example.invalid/api","baseUrl":"https://source.example.invalid"}
 		}`,
 		actor,
@@ -54,7 +54,7 @@ func TestFileSourceHandlersListUpdateAndDeleteConfiguredRemoteSources(t *testing
 	if err := json.NewDecoder(list.Body).Decode(&sources); err != nil {
 		t.Fatal(err)
 	}
-	if list.Code != http.StatusOK || len(sources) != 1 || sources[0].ID != created.ID || !sources[0].CacheEnabled {
+	if list.Code != http.StatusOK || len(sources) != 1 || sources[0].ID != created.ID {
 		t.Fatalf("list status = %d, sources = %#v", list.Code, sources)
 	}
 
@@ -63,7 +63,7 @@ func TestFileSourceHandlersListUpdateAndDeleteConfiguredRemoteSources(t *testing
 		"sourceType":"kikoeru_compatible",
 		"priority":7,
 		"enabled":false,
-		"config":{"cacheEnabled":false},
+		"config":{"requestLanguage":"en-US"},
 		"endpoint":{
 			"apiUrl":"https://source.example.invalid/v2/api",
 			"baseUrl":"https://source.example.invalid/v2",
@@ -80,7 +80,7 @@ func TestFileSourceHandlersListUpdateAndDeleteConfiguredRemoteSources(t *testing
 	if err := json.NewDecoder(update.Body).Decode(&updated); err != nil {
 		t.Fatal(err)
 	}
-	if update.Code != http.StatusOK || updated.DisplayName != "Example Remote Updated" || updated.Priority != 7 || updated.Config.CacheEnabled == nil || *updated.Config.CacheEnabled || !updated.Endpoint.RestrictOutboundHosts {
+	if update.Code != http.StatusOK || updated.DisplayName != "Example Remote Updated" || updated.Priority != 7 || updated.Config.RequestLanguage != "en-US" || !updated.Endpoint.RestrictOutboundHosts {
 		t.Fatalf("update status = %d, source = %#v", update.Code, updated)
 	}
 

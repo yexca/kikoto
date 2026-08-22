@@ -449,8 +449,6 @@ export type FileSource = {
   priority: number;
   enabled: boolean;
   config: {
-    cacheEnabled?: boolean;
-    cacheLimitGb?: number;
     saveRootTemplate?: string;
     scanDepth?: number;
     requestLanguage?: string;
@@ -473,7 +471,6 @@ export type LibrarySource = {
   displayName: string;
   sourceType: string;
   enabled: boolean;
-  cacheEnabled: boolean;
 };
 
 export type RuntimeSettings = {
@@ -1795,6 +1792,8 @@ async function logout() {
   }
 }
 
+const DEFAULT_MANUAL_FETCH_MIN_FREE_BYTES = 2 * 1024 * 1024 * 1024;
+
 export const api = {
   appUpdate: () => getJSON<AppUpdate>("/api/app-update"),
   health: async (baseURL?: string) => {
@@ -1931,12 +1930,26 @@ export const api = {
     postJSONBody<SourceAvailabilityResponse>(`/api/works/${encodeURIComponent(code)}/source-availability`, {
       sourceId,
     }),
-  planRemoteSourceWorkSave: (id: number, code: string, paths: string[]) =>
+  planRemoteSourceWorkSave: (
+    id: number,
+    code: string,
+    paths: string[],
+    minFreeBytes = DEFAULT_MANUAL_FETCH_MIN_FREE_BYTES,
+  ) =>
     postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, {
       paths,
+      minFreeBytes,
     }),
-  saveRemoteSourceWork: (id: number, code: string, paths: string[]) =>
-    postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, { paths }),
+  saveRemoteSourceWork: (
+    id: number,
+    code: string,
+    paths: string[],
+    minFreeBytes = DEFAULT_MANUAL_FETCH_MIN_FREE_BYTES,
+  ) =>
+    postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, {
+      paths,
+      minFreeBytes,
+    }),
   planRemoteSourceWorkFetch: (
     id: number,
     code: string,
@@ -1944,12 +1957,14 @@ export const api = {
     localPaths: string[] = [],
     targetRoot = "",
     decisions: RemoteFetchFileDecision[] = [],
+    minFreeBytes = DEFAULT_MANUAL_FETCH_MIN_FREE_BYTES,
   ) =>
     postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, {
       paths,
       localPaths,
       targetRoot,
       decisions,
+      minFreeBytes,
     }),
   fetchRemoteSourceWork: (
     id: number,
@@ -1959,6 +1974,7 @@ export const api = {
     requestId = "",
     targetRoot = "",
     decisions: RemoteFetchFileDecision[] = [],
+    minFreeBytes = DEFAULT_MANUAL_FETCH_MIN_FREE_BYTES,
   ) =>
     postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, {
       paths,
@@ -1966,6 +1982,7 @@ export const api = {
       requestId,
       targetRoot,
       decisions,
+      minFreeBytes,
     }),
   trackRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
     postJSONBody<RemoteWorkTrackResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/track`, {

@@ -125,4 +125,20 @@ describe("API client transport", () => {
       "/api/remote-sources/7/works/RJ00000001/tracks",
     ]);
   });
+
+  it("sends the manual Fetch disk reserve by default", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.planRemoteSourceWorkFetch(7, "RJ00000000", ["track.mp3"]);
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      paths: ["track.mp3"],
+      localPaths: [],
+      targetRoot: "",
+      decisions: [],
+      minFreeBytes: 2 * 1024 * 1024 * 1024,
+    });
+  });
 });

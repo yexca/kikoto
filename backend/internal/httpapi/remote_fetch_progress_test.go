@@ -24,9 +24,11 @@ func TestRemoteFetchByteProgressPersistsKnownAndUnknownTransfers(t *testing.T) {
 		}
 	}
 	knownBytes := int64(2 << 20)
+	staleBytes := int64(1 << 19)
 	known := remoteWorkSavePlanItem{ItemKey: "remote:known.mp3", Action: "cache_download", SizeBytes: &knownBytes}
 	unknown := remoteWorkSavePlanItem{ItemKey: "remote:unknown.mp3", Action: "cache_download"}
-	progress, err := newRemoteFetchByteProgress(context.Background(), server, 1, 1, []remoteWorkSavePlanItem{known, unknown})
+	stale := remoteWorkSavePlanItem{ItemKey: "remote:stale.mp3", Action: "cache_hit", SizeBytes: &staleBytes}
+	progress, err := newRemoteFetchByteProgress(context.Background(), server, 1, 1, []remoteWorkSavePlanItem{known, unknown, stale})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,12 +49,23 @@ func TestRemoteFetchByteProgressPersistsKnownAndUnknownTransfers(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertFetchByteProgress(t, db, 3<<20, 3<<20, 0)
+	stale.Action = "cache_download"
+	if err := progress.includeDownload(stale); err != nil {
+		t.Fatal(err)
+	}
+	if err := progress.begin(2, stale); err != nil {
+		t.Fatal(err)
+	}
+	if err := progress.complete(3, stale, staleBytes); err != nil {
+		t.Fatal(err)
+	}
+	assertFetchByteProgress(t, db, (3<<20)+staleBytes, (3<<20)+staleBytes, 0)
 
 	run, err := server.workflowStore.LoadRun(context.Background(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if run.ProgressBytesCurrent != 3<<20 || run.ProgressBytesTotal != 3<<20 || run.ProgressBytesUnknownItems != 0 {
+	if run.ProgressBytesCurrent != (3<<20)+staleBytes || run.ProgressBytesTotal != (3<<20)+staleBytes || run.ProgressBytesUnknownItems != 0 {
 		t.Fatalf("run progress = %d/%d unknown=%d", run.ProgressBytesCurrent, run.ProgressBytesTotal, run.ProgressBytesUnknownItems)
 	}
 	var outputJSON string
@@ -63,7 +76,7 @@ func TestRemoteFetchByteProgressPersistsKnownAndUnknownTransfers(t *testing.T) {
 	if err := json.Unmarshal([]byte(outputJSON), &output); err != nil {
 		t.Fatal(err)
 	}
-	if output["bytes_current"] != float64(3<<20) || output["bytes_total"] != float64(3<<20) || output["bytes_unknown_items"] != float64(0) {
+	if output["bytes_current"] != float64((3<<20)+staleBytes) || output["bytes_total"] != float64((3<<20)+staleBytes) || output["bytes_unknown_items"] != float64(0) {
 		t.Fatalf("node output = %v", output)
 	}
 }

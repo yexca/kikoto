@@ -74,7 +74,7 @@ const emptyRemoteSource = {
   sourceType: "kikoeru_compatible",
   priority: 30,
   enabled: true,
-  config: { cacheEnabled: false, cacheLimitGb: 20, requestLanguage: "ja-JP" },
+  config: { requestLanguage: "ja-JP" },
   endpoint: {
     baseUrl: "",
     apiUrl: "",
@@ -331,34 +331,6 @@ export function MaintenancePage({
     toast.success("Source saved.");
   };
 
-  const updateSourceCache = async (source: FileSource, cacheEnabled: boolean) => {
-    if (readOnly) return;
-    setUpdatingSourceId(source.id);
-    try {
-      const updated = await api.updateFileSource(source.id, {
-        displayName: source.displayName,
-        sourceType: source.sourceType,
-        priority: source.priority,
-        enabled: source.enabled,
-        config: { ...source.config, cacheEnabled },
-        endpoint: source.endpoint,
-      });
-      setSettings((current) =>
-        current
-          ? {
-              ...current,
-              fileSources: current.fileSources.map((candidate) => (candidate.id === updated.id ? updated : candidate)),
-            }
-          : current,
-      );
-      toast.success(cacheEnabled ? "Source cache enabled." : "Source cache disabled.");
-    } catch (error) {
-      toast.notify(toastFromError(error, "Source cache setting could not be saved."));
-    } finally {
-      setUpdatingSourceId(null);
-    }
-  };
-
   const updateSourceRequestLanguage = async (source: FileSource, requestLanguage: string) => {
     if (readOnly || updatingSourceId !== null) return;
     const previousLanguage = source.config.requestLanguage ?? "ja-JP";
@@ -609,12 +581,10 @@ export function MaintenancePage({
             <RemoteSourcesSettings
               remoteSources={remoteSources}
               checkingSourceId={checkingSourceId}
-              updatingSourceId={updatingSourceId}
               onCreateSource={openCreateSource}
               onEditSource={openEditSource}
               onDeleteSource={requestDeleteSource}
               onCheckSource={checkSourceHealth}
-              onCacheEnabledChange={updateSourceCache}
             />
           </div>
         ) : activeTab === "recommendation" ? (
@@ -1986,21 +1956,17 @@ function LocalLibrarySettings({
 function RemoteSourcesSettings({
   remoteSources,
   checkingSourceId,
-  updatingSourceId,
   onCreateSource,
   onEditSource,
   onDeleteSource,
   onCheckSource,
-  onCacheEnabledChange,
 }: {
   remoteSources: FileSource[];
   checkingSourceId: number | null;
-  updatingSourceId: number | null;
   onCreateSource: () => void;
   onEditSource: (source: FileSource) => void;
   onDeleteSource: (source: FileSource) => void;
   onCheckSource: (id: number) => Promise<void>;
-  onCacheEnabledChange: (source: FileSource, enabled: boolean) => Promise<void>;
 }) {
   const enabledSources = remoteSources.filter((source) => source.enabled).length;
   const attentionSources = remoteSources.filter(
@@ -2070,7 +2036,7 @@ function RemoteSourcesSettings({
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-3 border-y py-2">
+                <div className="flex items-center gap-1.5 border-y py-2">
                   <div className="flex min-w-0 items-center gap-1.5">
                     <Badge
                       variant={source.enabled ? "outline" : "warning"}
@@ -2090,15 +2056,6 @@ function RemoteSourcesSettings({
                     >
                       <RefreshCw className={`h-4 w-4 ${checkingSourceId === source.id ? "animate-spin" : ""}`} />
                     </Button>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2 text-xs font-medium">
-                    Cache
-                    <Switch
-                      checked={source.config.cacheEnabled ?? false}
-                      onCheckedChange={(enabled) => void onCacheEnabledChange(source, enabled)}
-                      disabled={updatingSourceId !== null}
-                      aria-label={`Cache ${source.displayName}`}
-                    />
                   </div>
                 </div>
 
@@ -2170,6 +2127,7 @@ function CacheFetchSettings({
   const [isScanning, setIsScanning] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
   const [confirmCleanup, setConfirmCleanup] = useState(false);
+  const [confirmEnableCache, setConfirmEnableCache] = useState(false);
   const [cleanupStatus, setCleanupStatus] = useState("");
   const [cleanupMode, setCleanupMode] = useState<"orphans" | "works">("orphans");
   const [selectedCleanupKeys, setSelectedCleanupKeys] = useState<Set<string>>(new Set());
@@ -2226,6 +2184,24 @@ function CacheFetchSettings({
     void scanCache();
   }, []);
 
+  useEffect(() => {
+    if (!confirmEnableCache) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setConfirmEnableCache(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [confirmEnableCache]);
+
+  const handleCacheEnabledChange = (enabled: boolean) => {
+    if (enabled && !cacheEnabled) {
+      setConfirmEnableCache(true);
+      return;
+    }
+    setConfirmEnableCache(false);
+    onCacheEnabledChange(enabled);
+  };
+
   const cleanupCache = async () => {
     if (!confirmCleanup) {
       setConfirmCleanup(true);
@@ -2273,7 +2249,7 @@ function CacheFetchSettings({
             >
               <Switch
                 checked={cacheEnabled}
-                onCheckedChange={onCacheEnabledChange}
+                onCheckedChange={handleCacheEnabledChange}
                 aria-label="Cache remote playback"
               />
             </ConfigurationRow>
@@ -2578,6 +2554,46 @@ function CacheFetchSettings({
           </div>
         </CardContent>
       </Card>
+      {confirmEnableCache && (
+        <div
+          className="fixed inset-0 z-[70] grid place-items-center bg-black/45 p-4"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) setConfirmEnableCache(false);
+          }}
+        >
+          <div
+            className="w-full max-w-lg rounded-lg border bg-card p-5 shadow-xl"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="enable-cache-title"
+            aria-describedby="enable-cache-description"
+          >
+            <h3 id="enable-cache-title" className="text-base font-semibold">
+              Enable remote playback cache?
+            </h3>
+            <p id="enable-cache-description" className="mt-2 text-sm text-muted-foreground">
+              Playback previews may perform a <code className="rounded bg-muted px-1">tracked</code> remote sync to
+              obtain remote media and directory information. This is not a Fetch and does not publish media into
+              <code className="ml-1 rounded bg-muted px-1">/data</code>.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setConfirmEnableCache(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  setConfirmEnableCache(false);
+                  onCacheEnabledChange(true);
+                }}
+              >
+                <Download className="h-4 w-4" />
+                Enable cache
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2909,7 +2925,7 @@ function SourceModal({
               </div>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3">
             <label className="grid gap-1 text-sm">
               <span className="font-medium">Priority</span>
               <input
@@ -2920,16 +2936,6 @@ function SourceModal({
                 onChange={(event) => patch({ priority: Number(event.target.value) })}
               />
             </label>
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium">Cache GB</span>
-              <input
-                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
-                type="number"
-                min={0}
-                value={source.config.cacheLimitGb ?? 0}
-                onChange={(event) => patch({ config: { ...source.config, cacheLimitGb: Number(event.target.value) } })}
-              />
-            </label>
           </div>
           <div className="grid gap-2 rounded-md border p-3 text-sm">
             <div className="flex items-center justify-between gap-3">
@@ -2938,14 +2944,6 @@ function SourceModal({
                 checked={source.enabled}
                 onCheckedChange={(enabled) => patch({ enabled })}
                 aria-label="Enable source"
-              />
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="font-medium">Cache this source</span>
-              <Switch
-                checked={source.config.cacheEnabled ?? false}
-                onCheckedChange={(cacheEnabled) => patch({ config: { ...source.config, cacheEnabled } })}
-                aria-label="Cache this source"
               />
             </div>
           </div>

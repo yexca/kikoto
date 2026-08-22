@@ -214,8 +214,6 @@ type fileSourceHealthCheckResult struct {
 }
 
 type fileSourceConfig struct {
-	CacheEnabled     *bool  `json:"cacheEnabled,omitempty"`
-	CacheLimitGB     *int   `json:"cacheLimitGb,omitempty"`
 	SaveRootTemplate string `json:"saveRootTemplate,omitempty"`
 	ScanDepth        *int   `json:"scanDepth,omitempty"`
 	RequestLanguage  string `json:"requestLanguage,omitempty"`
@@ -256,12 +254,11 @@ const (
 )
 
 type librarySource struct {
-	ID           int64  `json:"id"`
-	Code         string `json:"code"`
-	DisplayName  string `json:"displayName"`
-	SourceType   string `json:"sourceType"`
-	Enabled      bool   `json:"enabled"`
-	CacheEnabled bool   `json:"cacheEnabled"`
+	ID          int64  `json:"id"`
+	Code        string `json:"code"`
+	DisplayName string `json:"displayName"`
+	SourceType  string `json:"sourceType"`
+	Enabled     bool   `json:"enabled"`
 }
 
 type remoteWorkSummary struct {
@@ -904,7 +901,7 @@ func upsertOptionalBoolSetting(r *http.Request, tx *sql.Tx, value *bool, key str
 
 func (s *Server) listLibrarySources(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.QueryContext(r.Context(), `
-		SELECT id, code, display_name, source_type, enabled, config_json
+		SELECT id, code, display_name, source_type, enabled
 		FROM file_source
 		WHERE source_type IN ('kikoeru_compatible', 'kikoeru_compatible_number178')
 		ORDER BY priority ASC, id ASC
@@ -917,14 +914,10 @@ func (s *Server) listLibrarySources(w http.ResponseWriter, r *http.Request) {
 	sources := []librarySource{}
 	for rows.Next() {
 		var source librarySource
-		var configJSON string
-		if err := rows.Scan(&source.ID, &source.Code, &source.DisplayName, &source.SourceType, &source.Enabled, &configJSON); err != nil {
+		if err := rows.Scan(&source.ID, &source.Code, &source.DisplayName, &source.SourceType, &source.Enabled); err != nil {
 			writeError(w, err)
 			return
 		}
-		var config fileSourceConfig
-		_ = json.Unmarshal([]byte(configJSON), &config)
-		source.CacheEnabled = config.CacheEnabled != nil && *config.CacheEnabled
 		sources = append(sources, source)
 	}
 	if err := rows.Err(); err != nil {
@@ -1847,6 +1840,10 @@ func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request
 	plan, err := s.buildRemoteWorkSavePlan(r.Context(), sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.Decisions)
 	if err != nil {
 		writeUpstreamError(w, err)
+		return
+	}
+	if err := s.ensureRemoteWorkSaveDiskReserve(plan, payload.MinFreeBytes); err != nil {
+		writeError(w, err)
 		return
 	}
 	attachRemoteFetchPreparation(&plan, preparation)
@@ -3949,6 +3946,10 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 	if err != nil {
 		return remoteWorkSaveResult{}, err
 	}
+	// Materialization can downgrade a stale cache hit to a download after the
+	// durable plan was created. Recompute the summary before publication and
+	// the terminal workflow result reflects the action that actually ran.
+	execution.plan.Summary = summarizeRemoteSavePlan(execution.plan.Items)
 	return s.finalizeRemoteWorkFetch(ctx, runID, jobID, execution, counts)
 }
 

@@ -49,7 +49,6 @@ async function mockFavorites(
       displayName: string;
       sourceType: string;
       enabled: boolean;
-      cacheEnabled: boolean;
     }>;
     onFavoriteWorksRequest?: (sourceIDs: number[]) => void;
     interactiveQuickMark?: boolean;
@@ -236,7 +235,6 @@ test("desktop favorites keeps type and search left with work controls on the rig
         displayName: "Example Remote A",
         sourceType: "kikoeru_compatible",
         enabled: true,
-        cacheEnabled: true,
       },
     ],
   });
@@ -327,7 +325,6 @@ test("mobile favorites collapses type and search into icon controls", async ({ p
         displayName: "Example Remote A",
         sourceType: "kikoeru_compatible",
         enabled: true,
-        cacheEnabled: true,
       },
     ],
   });
@@ -545,7 +542,6 @@ test("filters favorites by any selected file source and keeps the selection out 
         displayName: "Example Remote A",
         sourceType: "kikoeru_compatible",
         enabled: true,
-        cacheEnabled: true,
       },
       {
         id: 12,
@@ -553,7 +549,6 @@ test("filters favorites by any selected file source and keeps the selection out 
         displayName: "Example Remote B",
         sourceType: "kikoeru_compatible",
         enabled: false,
-        cacheEnabled: false,
       },
     ],
     onFavoriteWorksRequest: (sourceIDs) => sourceRequests.push(sourceIDs),

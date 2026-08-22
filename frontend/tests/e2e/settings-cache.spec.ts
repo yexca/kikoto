@@ -33,11 +33,12 @@ async function mockCacheSettings(
   onSettings: (payload: Record<string, unknown>) => void = () => undefined,
   onHealthCheck: () => void = () => undefined,
   onSourceUpdate: (payload: Record<string, unknown>) => void = () => undefined,
+  initialCacheEnabled = true,
 ) {
   let currentSettings = {
     anonymousAccessEnabled: false,
     localScanDepth: 3,
-    cacheEnabled: true,
+    cacheEnabled: initialCacheEnabled,
     cacheLimitGb: 20,
     remoteDownloadLimitGb: 100,
     fetchStagingRetentionDays: 7,
@@ -92,7 +93,7 @@ async function mockCacheSettings(
         sourceType: "kikoeru_compatible",
         priority: 30,
         enabled: true,
-        config: { cacheEnabled: false, cacheLimitGb: 20, saveRootTemplate: "/data/<source_name>/<work_code>" },
+        config: { saveRootTemplate: "/data/<source_name>/<work_code>" },
         endpoint: {
           baseUrl: "https://remote.example",
           apiUrl: "https://api.remote.example",
@@ -130,7 +131,7 @@ async function mockCacheSettings(
           mode: "development",
           demoMode: false,
           anonymousAccessEnabled: false,
-          cacheEnabled: true,
+          cacheEnabled: currentSettings.cacheEnabled,
           directoryRoutingRules: [],
           recommendationThreshold: 50,
         },
@@ -289,6 +290,45 @@ test("cache settings scan managed media and require cleanup confirmation", async
   await expect.poll(() => cleanupRequests).toHaveLength(1);
   expect(cleanupRequests[0]).toEqual({ mode: "orphans", groupKeys: ["1:remote-a:RJ00000001"] });
   await expect(page.getByText("Cleanup queued in workflow run #52 (4 items).", { exact: true })).toBeVisible();
+});
+
+test("enabling global playback cache explains tracked synchronization before changing settings", async ({ page }) => {
+  const settingsPayloads: Record<string, unknown>[] = [];
+  await mockCacheSettings(
+    page,
+    () => undefined,
+    (payload) => settingsPayloads.push(payload),
+    undefined,
+    undefined,
+    false,
+  );
+  await page.goto("/maintenance?tab=cache");
+
+  const cacheSwitch = page.getByRole("switch", { name: "Cache remote playback", exact: true });
+  await expect(cacheSwitch).toHaveAttribute("aria-checked", "false");
+  await cacheSwitch.click();
+
+  const dialog = page.getByRole("alertdialog", { name: "Enable remote playback cache?" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("tracked");
+  await expect(dialog).toContainText("directory information");
+  expect(settingsPayloads).toHaveLength(0);
+
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(cacheSwitch).toHaveAttribute("aria-checked", "false");
+  await expect(dialog).toBeHidden();
+
+  await cacheSwitch.click();
+  await page
+    .getByRole("alertdialog", { name: "Enable remote playback cache?" })
+    .getByRole("button", { name: "Enable cache", exact: true })
+    .click();
+  await expect(cacheSwitch).toHaveAttribute("aria-checked", "true");
+  expect(settingsPayloads).toHaveLength(0);
+
+  await page.getByRole("button", { name: "Save configuration", exact: true }).click();
+  await expect.poll(() => settingsPayloads).toHaveLength(1);
+  expect(settingsPayloads[0]).toEqual(expect.objectContaining({ cacheEnabled: true }));
 });
 
 test("cache settings can clear referenced cache for selected works", async ({ page }) => {
@@ -489,17 +529,13 @@ test("maintenance combines library sources and exposes read-only paths with heal
   await page.getByRole("button", { name: "Check health", exact: true }).click();
   await expect.poll(() => healthChecks).toBe(1);
   await expect(page.getByText("healthy", { exact: true })).toBeVisible();
-
-  const sourceCacheSwitch = page.getByRole("switch", { name: "Cache Example Remote", exact: true });
-  await expect(sourceCacheSwitch).toHaveAttribute("aria-checked", "false");
-  await sourceCacheSwitch.click();
-  await expect.poll(() => sourceUpdates.length).toBe(1);
-  expect(sourceUpdates[0]?.config).toEqual(expect.objectContaining({ cacheEnabled: true }));
-  await expect(sourceCacheSwitch).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("switch", { name: "Cache Example Remote", exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Configure", exact: true }).click();
   const sourceDialog = page.getByRole("dialog", { name: "Edit remote source" });
   await expect(sourceDialog.getByLabel("Save path preview")).toHaveValue("/data/example-remote/RJ00000000");
+  await expect(sourceDialog.getByText("Cache GB", { exact: true })).toHaveCount(0);
+  await expect(sourceDialog.getByRole("switch", { name: "Cache this source", exact: true })).toHaveCount(0);
   await expect(sourceDialog.getByText("Save path template", { exact: true })).toHaveCount(0);
   await expect(sourceDialog.getByRole("switch", { name: "Restrict outbound hosts" })).toHaveAttribute(
     "aria-checked",
@@ -511,8 +547,8 @@ test("maintenance combines library sources and exposes read-only paths with heal
   await expect(sourceDialog.getByText("https://remote.example", { exact: true })).toBeVisible();
   await sourceDialog.getByLabel("Additional allowed hosts").fill("cdn.example.invalid\n*.media.example.invalid");
   await sourceDialog.getByRole("button", { name: "Save", exact: true }).click();
-  await expect.poll(() => sourceUpdates.length).toBe(2);
-  expect(sourceUpdates[1]?.endpoint).toEqual(
+  await expect.poll(() => sourceUpdates.length).toBe(1);
+  expect(sourceUpdates[0]?.endpoint).toEqual(
     expect.objectContaining({
       restrictOutboundHosts: true,
       allowedHostPatterns: ["cdn.example.invalid", "*.media.example.invalid"],

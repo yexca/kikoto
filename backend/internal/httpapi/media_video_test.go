@@ -57,6 +57,30 @@ func TestLoadWorkMediaDerivesKindForPreviouslyIndexedWMA(t *testing.T) {
 	}
 }
 
+func TestLoadWorkMediaDerivesStreamURLForAvailableCacheLocation(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES (711, 'RJ00000000', 'Cache fixture');
+		INSERT INTO file_source (id, code, display_name, source_type) VALUES (712, 'fixture-remote', 'Fixture remote', 'kikoeru_compatible');
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (713, 711, 'audio', '1', 'cache-1');
+		INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, stream_url, availability)
+		VALUES (714, 713, 712, 'cache', 'media/fixture-remote/RJ/RJ00000000/1.mp3', '', 'available');
+	`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	items, err := server.loadWorkMediaItems(context.Background(), 0, 711)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || len(items[0].Locations) != 1 {
+		t.Fatalf("cache media items = %+v", items)
+	}
+	if got := items[0].Locations[0].StreamURL; got != "/api/media/714/stream" {
+		t.Fatalf("cache stream URL = %q, want /api/media/714/stream", got)
+	}
+}
+
 func TestParseMediaProbeOutputFindsDurationAndAudioStream(t *testing.T) {
 	duration, hasAudio, ok := parseMediaProbeOutput([]byte(`{
 		"streams":[{"codec_type":"video"},{"codec_type":"audio"}],
