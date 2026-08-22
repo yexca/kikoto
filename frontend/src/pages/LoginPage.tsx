@@ -86,8 +86,14 @@ export function LoginPage({ embedded = false, onSuccess }: { embedded?: boolean;
               className="w-full"
               variant="ghost"
               onClick={() => {
-                clearStoredServerURL();
-                window.location.reload();
+                setError("");
+                setIsSubmitting(true);
+                void clearStoredServerURL()
+                  .then(() => window.location.reload())
+                  .catch(() => {
+                    setError(t("serverGate.settingsUnavailable"));
+                    setIsSubmitting(false);
+                  });
               }}
             >
               {t("login.changeServer")}

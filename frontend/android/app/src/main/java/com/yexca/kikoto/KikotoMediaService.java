@@ -20,9 +20,10 @@ import android.support.v4.media.session.PlaybackStateCompat;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.util.Collections;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -46,6 +47,10 @@ public class KikotoMediaService extends Service {
 
     private static final String CHANNEL_ID = "kikoto_playback";
     private static final int NOTIFICATION_ID = 1001;
+    private static final int MAX_COVER_BYTES = 8 * 1024 * 1024;
+    private static final int MAX_COVER_DIMENSION = 8192;
+    private static final long MAX_COVER_PIXELS = 32_000_000L;
+    private static final int COVER_TARGET_SIZE = 512;
 
     private MediaSessionCompat mediaSession;
     private ExecutorService coverExecutor;
@@ -290,23 +295,52 @@ public class KikotoMediaService extends Service {
     }
 
     private Bitmap downloadCover(String sourceUrl) {
-        HttpURLConnection connection = null;
-        try {
-            URL url = new URL(sourceUrl);
-            connection = (HttpURLConnection) url.openConnection();
-            connection.setConnectTimeout(8000);
-            connection.setReadTimeout(10000);
-            connection.setInstanceFollowRedirects(true);
-            int status = connection.getResponseCode();
-            if (status < 200 || status >= 300) return null;
-            try (InputStream input = connection.getInputStream()) {
-                return scaleCover(BitmapFactory.decodeStream(input));
-            }
+        try (KikotoAssetTransport.Response response = KikotoAssetTransport.open(
+            sourceUrl,
+            "GET",
+            Collections.emptyMap()
+        )) {
+            if (response.status() < 200 || response.status() >= 300) return null;
+            return decodeCover(readBounded(response.body(), MAX_COVER_BYTES));
         } catch (Exception ignored) {
             return null;
-        } finally {
-            if (connection != null) connection.disconnect();
         }
+    }
+
+    private static byte[] readBounded(InputStream input, int maxBytes) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream(Math.min(maxBytes, 64 * 1024));
+        byte[] buffer = new byte[16 * 1024];
+        int total = 0;
+        int count;
+        while ((count = input.read(buffer)) >= 0) {
+            if (count == 0) continue;
+            if (count > maxBytes - total) throw new IOException("Cover image exceeds the size limit.");
+            output.write(buffer, 0, count);
+            total += count;
+        }
+        return output.toByteArray();
+    }
+
+    private static Bitmap decodeCover(byte[] data) {
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeByteArray(data, 0, data.length, bounds);
+        if (
+            bounds.outWidth <= 0 ||
+            bounds.outHeight <= 0 ||
+            bounds.outWidth > MAX_COVER_DIMENSION ||
+            bounds.outHeight > MAX_COVER_DIMENSION ||
+            (long) bounds.outWidth * bounds.outHeight > MAX_COVER_PIXELS
+        ) {
+            return null;
+        }
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        int sampleSize = 1;
+        while (Math.max(bounds.outWidth, bounds.outHeight) / sampleSize > COVER_TARGET_SIZE * 2) {
+            sampleSize *= 2;
+        }
+        options.inSampleSize = sampleSize;
+        return scaleCover(BitmapFactory.decodeByteArray(data, 0, data.length, options));
     }
 
     private static Bitmap scaleCover(Bitmap bitmap) {
@@ -314,8 +348,8 @@ public class KikotoMediaService extends Service {
         int width = bitmap.getWidth();
         int height = bitmap.getHeight();
         int maxSide = Math.max(width, height);
-        if (maxSide <= 512) return bitmap;
-        float scale = 512F / maxSide;
+        if (maxSide <= COVER_TARGET_SIZE) return bitmap;
+        float scale = (float) COVER_TARGET_SIZE / maxSide;
         Bitmap scaled = Bitmap.createScaledBitmap(bitmap, Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale)), true);
         if (scaled != bitmap) bitmap.recycle();
         return scaled;

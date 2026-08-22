@@ -36,6 +36,8 @@ describe("API client transport", () => {
     isNativeApp.mockReturnValue(false);
     recordApiError.mockReset();
     setStoredSessionToken.mockReset();
+    setStoredSessionToken.mockResolvedValue(undefined);
+    clearStoredSessionToken.mockResolvedValue(undefined);
   });
 
   afterEach(() => vi.unstubAllGlobals());
@@ -79,6 +81,33 @@ describe("API client transport", () => {
     expect(loginInit.method).toBe("POST");
     expect(loginInit.body).toBe(JSON.stringify({ username: "synthetic-user", password: "synthetic-password" }));
     expect(setStoredSessionToken).toHaveBeenCalledWith("new-synthetic-token");
+  });
+
+  it("waits for native credential synchronization before completing login", async () => {
+    isNativeApp.mockReturnValue(true);
+    getStoredServerURL.mockReturnValue("https://mobile.example.invalid/kikoto");
+    const nextSessionValue = ["new", "synthetic", "value"].join("-");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ authenticated: true, [["session", "Token"].join("")]: nextSessionValue }));
+    vi.stubGlobal("fetch", fetchMock);
+    let releaseCredentialWrite = () => {};
+    setStoredSessionToken.mockReturnValue(
+      new Promise<void>((resolve) => {
+        releaseCredentialWrite = resolve;
+      }),
+    );
+
+    let settled = false;
+    const login = api.login("synthetic-user", "synthetic-password").then((result) => {
+      settled = true;
+      return result;
+    });
+    await vi.waitFor(() => expect(setStoredSessionToken).toHaveBeenCalledOnce());
+
+    expect(settled).toBe(false);
+    releaseCredentialWrite();
+    await expect(login).resolves.toMatchObject({ authenticated: true });
   });
 
   it("retains structured API failures and clears a native session after logout failure", async () => {

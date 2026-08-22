@@ -54,3 +54,37 @@ export function applyTrackLocation(track: PlayerTrack, location: PlayerTrackLoca
         : playbackKeyForLocation(location.locationId),
   };
 }
+
+export type TrackLocationFailureState = {
+  failedLocationIds: Set<number>;
+  terminal: boolean;
+};
+
+export type TrackLocationFailureResult =
+  { kind: "switch"; location: PlayerTrackLocation } | { kind: "terminal" } | { kind: "ignored" };
+
+export function createTrackLocationFailureState(): TrackLocationFailureState {
+  return { failedLocationIds: new Set(), terminal: false };
+}
+
+export function resetTrackLocationFailures(state: TrackLocationFailureState) {
+  state.failedLocationIds.clear();
+  state.terminal = false;
+}
+
+export function recordTrackLocationFailure(
+  track: PlayerTrack,
+  state: TrackLocationFailureState,
+): TrackLocationFailureResult {
+  if (state.terminal || state.failedLocationIds.has(track.locationId)) return { kind: "ignored" };
+  state.failedLocationIds.add(track.locationId);
+  const nextLocation = orderedTrackLocations(track).find(
+    (location) =>
+      location.locationId !== track.locationId &&
+      !state.failedLocationIds.has(location.locationId) &&
+      (location.availability === "available" || location.availability === "remote"),
+  );
+  if (nextLocation) return { kind: "switch", location: nextLocation };
+  state.terminal = true;
+  return { kind: "terminal" };
+}

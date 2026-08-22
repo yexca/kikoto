@@ -4,6 +4,8 @@ const nativePlatform = vi.hoisted(() => vi.fn(() => false));
 const preferenceGet = vi.hoisted(() => vi.fn());
 const preferenceSet = vi.hoisted(() => vi.fn());
 const preferenceRemove = vi.hoisted(() => vi.fn());
+const clearNativeAssetTransport = vi.hoisted(() => vi.fn());
+const configureNativeAssetTransport = vi.hoisted(() => vi.fn());
 
 vi.mock("@capacitor/core", () => ({
   Capacitor: { isNativePlatform: nativePlatform },
@@ -15,6 +17,7 @@ vi.mock("@capacitor/preferences", () => ({
     remove: preferenceRemove,
   },
 }));
+vi.mock("@/lib/nativeAssetTransport", () => ({ clearNativeAssetTransport, configureNativeAssetTransport }));
 
 import {
   clearStoredServerURL,
@@ -48,6 +51,10 @@ describe("mobile server configuration", () => {
     preferenceGet.mockReset();
     preferenceSet.mockReset();
     preferenceRemove.mockReset();
+    clearNativeAssetTransport.mockReset();
+    clearNativeAssetTransport.mockResolvedValue(undefined);
+    configureNativeAssetTransport.mockReset();
+    configureNativeAssetTransport.mockResolvedValue(undefined);
     vi.stubGlobal("localStorage", memoryStorage());
   });
 
@@ -62,20 +69,20 @@ describe("mobile server configuration", () => {
     expect(() => normalizeServerURL("ftp://source.example.invalid")).toThrow("http or https");
   });
 
-  it("keeps browser storage normalized and clears the session with the server", () => {
+  it("keeps browser storage normalized and clears the session with the server", async () => {
     expect(isNativeApp()).toBe(false);
-    setStoredServerURL(" source.example.invalid///?ignored=1 ");
-    setStoredSessionToken(" synthetic-token ");
-    setStoredSessionToken("   ");
+    await setStoredServerURL(" source.example.invalid///?ignored=1 ");
+    await setStoredSessionToken(" synthetic-token ");
+    await setStoredSessionToken("   ");
 
     expect(getStoredServerURL()).toBe("http://source.example.invalid");
     expect(getStoredSessionToken()).toBe("synthetic-token");
     expect(preferenceSet).not.toHaveBeenCalled();
 
-    clearStoredServerURL();
+    await clearStoredServerURL();
     expect(getStoredServerURL()).toBe("");
     expect(getStoredSessionToken()).toBe("");
-    clearStoredSessionToken();
+    await clearStoredSessionToken();
   });
 
   it("synchronizes native preferences during writes, clears, and hydration", async () => {
@@ -84,15 +91,15 @@ describe("mobile server configuration", () => {
       value: key.endsWith("url") ? "https://native.example.invalid" : "native-token",
     }));
 
-    setStoredServerURL("https://source.example.invalid");
-    setStoredSessionToken("synthetic-token");
+    await setStoredServerURL("https://source.example.invalid");
+    await setStoredSessionToken("synthetic-token");
     expect(preferenceSet).toHaveBeenCalledWith({
       key: "kikoto:mobile-server-url",
       value: "https://source.example.invalid",
     });
     expect(preferenceSet).toHaveBeenCalledWith({ key: "kikoto:mobile-session-token", value: "synthetic-token" });
 
-    clearStoredServerURL();
+    await clearStoredServerURL();
     expect(preferenceRemove).toHaveBeenCalledWith({ key: "kikoto:mobile-server-url" });
     expect(preferenceRemove).toHaveBeenCalledWith({ key: "kikoto:mobile-session-token" });
 
@@ -100,5 +107,7 @@ describe("mobile server configuration", () => {
     expect(getStoredServerURL()).toBe("https://native.example.invalid");
     expect(getStoredSessionToken()).toBe("native-token");
     expect(preferenceGet).toHaveBeenCalledTimes(2);
+    expect(configureNativeAssetTransport).toHaveBeenLastCalledWith("https://native.example.invalid", "native-token");
+    expect(clearNativeAssetTransport).toHaveBeenCalledOnce();
   });
 });

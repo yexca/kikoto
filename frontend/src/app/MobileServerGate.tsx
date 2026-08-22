@@ -64,7 +64,7 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
     try {
       const normalized = normalizeServerURL(serverURL);
       const result = await api.health(normalized);
-      setStoredServerURL(normalized);
+      await setStoredServerURL(normalized);
       setVersion(result.version);
       setState("ready");
     } catch (err) {

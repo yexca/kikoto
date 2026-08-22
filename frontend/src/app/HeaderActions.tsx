@@ -262,6 +262,15 @@ export function HeaderActions({
     await navigator.clipboard?.writeText(text).catch(() => {});
   };
 
+  const clearMobileServer = async () => {
+    try {
+      await clearStoredServerURL();
+      window.location.reload();
+    } catch (error) {
+      toast.notify(toastFromError(error, t("serverGate.settingsUnavailable")));
+    }
+  };
+
   return (
     <div className="flex shrink-0 items-center gap-2">
       <Button
@@ -401,8 +410,7 @@ export function HeaderActions({
                     label={t("account.clearServer")}
                     onClick={() => {
                       setMobileAccountOpen(false);
-                      clearStoredServerURL();
-                      window.location.reload();
+                      void clearMobileServer();
                     }}
                   />
                 </div>
@@ -511,8 +519,7 @@ export function HeaderActions({
                   icon={<RotateCcw className="h-4 w-4" />}
                   label={t("account.clearServer")}
                   onClick={() => {
-                    clearStoredServerURL();
-                    window.location.reload();
+                    void clearMobileServer();
                   }}
                 />
                 <ActionItem

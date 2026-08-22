@@ -37,7 +37,13 @@ import { useAuth } from "@/auth/AuthProvider";
 import { addNativeMediaListeners, stopNativeMedia, supportsNativeMedia, updateNativeMedia } from "@/lib/nativeMedia";
 import { playbackKeyForLocation, remotePlaybackKey } from "@/player/playbackIdentity";
 import { lyricsChoiceDisplayLabel, type LyricsChoice } from "@/player/lyricsMatching";
-import { applyTrackLocation, orderedTrackLocations } from "@/player/trackLocations";
+import {
+  applyTrackLocation,
+  createTrackLocationFailureState,
+  orderedTrackLocations,
+  recordTrackLocationFailure,
+  resetTrackLocationFailures,
+} from "@/player/trackLocations";
 import { shouldSaveRemoteProgress, type ProgressSaveMarker } from "@/player/playerProgress";
 import { revalidatePersistedQueue } from "@/player/playerQueueRestore";
 import { normalizePlaybackStartPosition, shouldCheckpointPause } from "@/player/playbackStart";
@@ -373,7 +379,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     pending: new Map(),
   });
   const cacheRequestedRef = useRef<Set<string>>(new Set());
-  const failedLocationIDsRef = useRef<Set<number>>(new Set());
+  const locationFailureStateRef = useRef(createTrackLocationFailureState());
   const nativeControlRef = useRef({
     play: () => {},
     pause: () => {},
@@ -471,8 +477,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, [queue, currentIndex, mode, playbackRate, playerQueueStorageKey, sleepTimer]);
 
   useEffect(() => {
-    failedLocationIDsRef.current.clear();
-  }, [currentTrack?.queueItemId, currentTrack?.mediaItemId, currentPlaybackKey]);
+    resetTrackLocationFailures(locationFailureStateRef.current);
+  }, [currentTrack?.queueItemId, currentTrack?.mediaItemId]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -564,6 +570,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const playQueue = useCallback((tracks: PlayerTrack[], locationId: number, startPositionSeconds?: number) => {
     if (tracks.length === 0) return;
+    resetTrackLocationFailures(locationFailureStateRef.current);
     progressSaveRef.current(false, true);
     const normalizedTracks = tracks.map((track) =>
       withQueueIdentity(applyLyricsPreferenceOverride(track, lyricsPreferenceOverridesRef.current)),
@@ -844,7 +851,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         positionSeconds: normalizePlaybackStartPosition(audioRef.current?.currentTime),
       };
     }
-    failedLocationIDsRef.current.clear();
+    resetTrackLocationFailures(locationFailureStateRef.current);
     setQueue((items) =>
       items.map((item, index) => {
         if (index !== currentIndex) return item;
@@ -856,19 +863,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const tryNextLocation = () => {
     if (!currentTrack) return;
-    failedLocationIDsRef.current.add(currentTrack.locationId);
-    const locations = orderedTrackLocations(currentTrack);
-    const nextLocation = locations.find(
-      (location) =>
-        location.locationId !== currentTrack.locationId &&
-        !failedLocationIDsRef.current.has(location.locationId) &&
-        (location.availability === "available" || location.availability === "remote"),
-    );
-    if (!nextLocation) {
+    const result = recordTrackLocationFailure(currentTrack, locationFailureStateRef.current);
+    if (result.kind === "ignored") {
+      setIsPlaying(false);
+      return;
+    }
+    if (result.kind === "terminal") {
       setIsPlaying(false);
       toast.error(`Playback failed: no working source remains for ${currentTrack.title}.`);
       return;
     }
+    const nextLocation = result.location;
     progressSaveRef.current(false, true);
     if (currentTrack.queueItemId) {
       pendingPlaybackStartRef.current = {

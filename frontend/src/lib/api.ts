@@ -1870,7 +1870,7 @@ async function fetchAPI(path: string, init: RequestInit = {}, baseURL?: string) 
 
 async function login(username: string, password: string) {
   const state = await postJSONBody<AuthState>("/api/auth/login", { username, password });
-  if (state.authenticated && state.sessionToken) setStoredSessionToken(state.sessionToken);
+  if (state.authenticated && state.sessionToken) await setStoredSessionToken(state.sessionToken);
   return state;
 }
 
@@ -1878,7 +1878,7 @@ async function logout() {
   try {
     return await postJSON<{ ok: boolean }>("/api/auth/logout");
   } finally {
-    if (isNativeApp()) clearStoredSessionToken();
+    if (isNativeApp()) await clearStoredSessionToken();
   }
 }
 
