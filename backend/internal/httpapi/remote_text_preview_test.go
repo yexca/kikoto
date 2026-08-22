@@ -40,6 +40,31 @@ func TestGetRemoteSourceWorkTextServesAllowlistedTreeFile(t *testing.T) {
 	}
 }
 
+func TestGetRemoteSourceWorkTextDetectsShiftJIS(t *testing.T) {
+	expected := "[00:01.00]" + strings.Repeat("\u30c6\u30b9\u30c8", 12) + "\n"
+	content := []byte("[00:01.00]")
+	for range 12 {
+		content = append(content, 0x83, 0x65, 0x83, 0x58, 0x83, 0x67)
+	}
+	content = append(content, '\n')
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write(content)
+	}))
+	defer upstream.Close()
+
+	server := newRemoteTextPreviewServer(t, upstream.URL, upstream.URL+"/media/01.lrc")
+	response := httptest.NewRecorder()
+	server.getRemoteSourceWorkText(response, remoteTextPreviewRequest("01.lrc"))
+
+	if response.Code != http.StatusOK || response.Body.String() != expected {
+		t.Fatalf("remote Shift_JIS response = %d %q, want %q", response.Code, response.Body.String(), expected)
+	}
+	if contentType := response.Header().Get("Content-Type"); contentType != "text/plain; charset=utf-8" {
+		t.Fatalf("remote text content type = %q", contentType)
+	}
+}
+
 func TestGetRemoteSourceWorkTextRejectsFilesOutsideTree(t *testing.T) {
 	upstreamRequests := 0
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

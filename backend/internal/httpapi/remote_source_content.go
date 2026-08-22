@@ -16,6 +16,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
 	"github.com/yexca/kikoto/backend/internal/download"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/textdecode"
 )
 
 func (s *Server) kikoeruClientForSource(source remoteSourceForUse) *kikoeru.Client {
@@ -106,9 +107,13 @@ func (s *Server) serveRemoteTextPreview(w http.ResponseWriter, r *http.Request, 
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "text file is too large to preview"})
 		return
 	}
+	decoded, err := textdecode.Decode(r.Context(), content, response.Header.Get("Content-Type"))
+	if err != nil {
+		return
+	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(content)
+	_, _ = w.Write([]byte(decoded))
 }
 
 func remoteTextTrackURL(nodes []kikoeru.Track, targetPath string, basePath string) (string, bool) {

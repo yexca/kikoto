@@ -27,6 +27,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/library"
 	"github.com/yexca/kikoto/backend/internal/localfs"
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/textdecode"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -1533,9 +1534,13 @@ func (s *Server) serveMediaText(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	content, err := textdecode.Decode(r.Context(), bytes, "")
+	if err != nil {
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"path":    filepath.ToSlash(relPath),
-		"content": string(bytes),
+		"content": content,
 	})
 }
 

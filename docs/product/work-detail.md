@@ -72,6 +72,9 @@ playback actions for one work.
 - Keeps available non-playable files such as images and text in Directory while
   counting audio and audio-bearing video together under the Playable source
   metric.
+- Converts local and remote text previews to UTF-8 on demand, using byte-order
+  marks, declared charsets, and automatic legacy-encoding detection without
+  rewriting the source file.
 - Reserves bottom scroll space while the desktop Compact player is active so the
   final queue action remains reachable.
 
