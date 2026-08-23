@@ -1,6 +1,10 @@
-.PHONY: backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-audit frontend-audit-signatures frontend-playwright-install frontend-e2e-smoke frontend-e2e android-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
+.PHONY: backend-format backend-lint backend-lint-full backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-audit frontend-audit-signatures frontend-playwright-install frontend-e2e-smoke frontend-e2e android-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
 
 GO ?= go
+GOLANGCI_LINT_VERSION ?= v2.13.1
+GOLANGCI_LINT_TIMEOUT ?= 5m
+GOLANGCI_LINT_PACKAGE := github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+GOLANGCI_LINT_CONFIG := ../scripts/golangci-lint.yml
 NPM ?= npm
 NPX ?= npx
 NODE ?= node
@@ -49,6 +53,21 @@ APP_VERSION := $(shell powershell -NoProfile -Command "(Get-Content -Raw VERSION
 else
 APP_VERSION := $(shell tr -d '\r\n' < VERSION)
 endif
+
+ifeq ($(CI),true)
+GOLANGCI_LINT_BASE ?= HEAD^
+else
+GOLANGCI_LINT_BASE ?= HEAD
+endif
+
+backend-format:
+	cd backend && $(GO) run ../scripts/check-go-format.go . ../scripts
+
+backend-lint:
+	cd backend && $(GO) run $(GOLANGCI_LINT_PACKAGE) run --config=$(GOLANGCI_LINT_CONFIG) --new-from-rev=$(GOLANGCI_LINT_BASE) --timeout=$(GOLANGCI_LINT_TIMEOUT) --color=never ./...
+
+backend-lint-full:
+	cd backend && $(GO) run $(GOLANGCI_LINT_PACKAGE) run --config=$(GOLANGCI_LINT_CONFIG) --timeout=$(GOLANGCI_LINT_TIMEOUT) --color=never ./...
 
 backend-verify:
 	cd backend && $(GO) mod verify
@@ -167,7 +186,7 @@ privacy-check: sensitive-check
 
 ci-style: frontend-format frontend-lint frontend-docs sensitive-check-test
 
-ci-backend: backend-verify backend-vuln backend-test backend-coverage backend-vet backend-race
+ci-backend: backend-format backend-lint backend-verify backend-vuln backend-test backend-coverage backend-vet backend-race
 
 ci-frontend: frontend-audit frontend-audit-signatures frontend-coverage frontend-build
 

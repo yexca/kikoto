@@ -85,10 +85,25 @@ even when names, credentials, or paths have been partially replaced.
 
 ```sh
 cd backend
+go run ../scripts/check-go-format.go . ../scripts
 go test ./...
 go vet ./...
 go test -race ./...
 ```
+
+The canonical Make targets also run the backend format and lint checks:
+
+```sh
+make backend-format
+make backend-lint
+```
+
+`backend-format` checks backend and validation-script Go files with the standard
+`gofmt` rules while normalizing CRLF input for cross-platform consistency.
+`backend-lint` runs the pinned `scripts/golangci-lint.yml` policy against changes
+after `GOLANGCI_LINT_BASE` (which defaults to `HEAD` locally and the first
+parent in CI), so existing lint debt does not block new work. Use
+`make backend-lint-full` for a complete audit of the current backend.
 
 Backend tests are organized by boundary:
 
