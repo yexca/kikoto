@@ -38,7 +38,8 @@ type migrationAsset struct {
 // retiredBaselineLedgerAssets keeps existing development databases upgradeable
 // after their pre-release baseline SQL snapshots are removed. These entries
 // validate a recorded ledger row only; fresh databases can use only a packaged
-// release-named baseline file.
+// baseline file, which may have been produced by an earlier app release when
+// the numbered SQL chain has not changed.
 var retiredBaselineLedgerAssets = []migrationAsset{
 	{
 		version:  31,
@@ -82,8 +83,9 @@ func Migrate(db *sql.DB, dir string) error {
 }
 
 // MigrateFS validates and applies a migration catalog. Pristine databases use
-// the highest-version release-named baseline snapshot; existing databases
-// continue through the immutable numbered chain.
+// the highest-version packaged baseline snapshot; existing databases continue
+// through the immutable numbered chain. The baseline's release suffix does not
+// need to match appVersion when no numbered SQL changed.
 func MigrateFS(db *sql.DB, migrationFS fs.FS, appVersion string) error {
 	if db == nil {
 		return errors.New("migrate database: nil database")

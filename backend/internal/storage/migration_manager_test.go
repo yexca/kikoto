@@ -26,9 +26,9 @@ func TestMigrationChecksumNormalizesLineEndings(t *testing.T) {
 	}
 }
 
-func TestMigrateFreshDatabaseUsesBaseline(t *testing.T) {
+func TestMigrateFreshDatabaseReusesBaselineAcrossAppReleases(t *testing.T) {
 	db := openMigrationManagerDB(t)
-	if err := MigrateFS(db, migrations.Files, "test-baseline"); err != nil {
+	if err := MigrateFS(db, migrations.Files, "v0.5.1"); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
 

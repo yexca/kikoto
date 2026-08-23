@@ -44,7 +44,7 @@ Startup follows two different paths:
 
 | Database state | Action |
 | --- | --- |
-| Empty SQLite database | Apply `baseline/<schema-version>_v<release>.sql`, then any numbered migrations after that version. |
+| Empty SQLite database | Apply the highest-version packaged baseline, then any numbered migrations after that version. Its release suffix may be older than the running application when the numbered SQL chain did not change. |
 | Existing database with migration history | Validate the ledger and apply only the next numbered migrations. User data is never reconstructed from the baseline. |
 | Application tables without migration history | Stop and require an operator decision; the manager never infers a version. |
 | Dirty migration from an interrupted/failed start | Retry that exact version after the SQL or environment is repaired. |
@@ -65,28 +65,33 @@ successfully.
 
 Baselines are generated fresh-install optimizations, not upgrade migrations.
 The catalog may retain released snapshots for ledger validation while using the
-highest-version baseline for an empty database. Generate a new snapshot from a
-clean checkout after the numbered chain changes or after updating `VERSION` for
-a release:
+highest-version baseline for an empty database. Generate a new snapshot only
+when the numbered SQL chain changes. Updating `VERSION` by itself does not
+require a new baseline; a release with no new SQL reuses the latest packaged
+snapshot (for example, v0.5.1 may continue using `032_v0.5.0.sql`):
 
 ```sh
 cd backend
 go generate ./migrations
 ```
 
-The generator reads the root `VERSION`, applies the complete numbered chain in
-a temporary SQLite database, and writes the final tables, indexes, views,
-triggers, and migration-provided reference rows to
-`migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
+When a new baseline is needed, the generator reads the root `VERSION`, applies
+the complete numbered chain in a temporary SQLite database, and writes the
+final tables, indexes, views, triggers, and migration-provided reference rows
+to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. Timestamp defaults remain
 defaults rather than being frozen to the generator's clock. The generated file
-is reviewed and checksummed like any other packaged asset. When a newer
-snapshot is added, a fresh install uses it and historical released baselines
-remain available solely to validate and upgrade databases whose ledgers
-reference them.
+is reviewed and checksummed like any other packaged asset. A later application
+release that does not add numbered SQL keeps using that file; do not create a
+second baseline with the same schema version only to change the release suffix.
+When a newer schema baseline is added, a fresh install uses it and historical
+released baselines remain available solely to validate and upgrade databases
+whose ledgers reference them.
 
 Do not create or retain a `<schema-version>_current.sql` baseline file. A
-release baseline's filename includes both the schema and Kikoto release version.
+generated baseline's filename includes both the schema version and the Kikoto
+release that produced it; application releases without SQL changes may reuse
+an earlier filename.
 The manager retains checksum-only descriptors for the removed pre-release
 `031_current.sql` and `032_current.sql` snapshots so an existing development
 database can validate its ledger and continue through the numbered chain; those
@@ -107,12 +112,15 @@ not represented by a schema snapshot.
 - Add the next numbered file for each released schema change; never rewrite an
   applied file to resolve a merge conflict.
 - Treat a released baseline file as immutable for the same reason; publish a
-  new baseline version instead of changing its contents in place.
+  new baseline only when the numbered schema chain advances, instead of
+  changing its contents or duplicating its schema version for an app-only
+  release.
 - Keep migration SQL deterministic and make data backfills idempotent where a
   retry can reach them.
 - Update [Data model](../architecture/data-model.md) when schema meaning
   changes, and add a storage regression test for user-visible behavior or a
   recovery invariant.
-- Before release, run the complete numbered chain and the baseline-equivalence
-  test so a fresh install and an upgraded database converge on the same
-  structure.
+- Before a schema-changing release, run the complete numbered chain and the
+  baseline-equivalence test so a fresh install and an upgraded database
+  converge on the same structure. For an app-only release, verify that the
+  existing packaged baseline remains selected and its ledger is still accepted.

@@ -10,9 +10,10 @@ embeds the numbered catalog and the optional generated baseline into the
 executable; production containers do not depend on a migrations directory
 being mounted beside the binary.
 
-On an empty database, startup uses the generated
-`migrations/baseline/<schema-version>_v<release>.sql` snapshot and then applies
-any newer numbered files. On an existing database, startup validates
+On an empty database, startup uses the highest-version packaged baseline (the
+release suffix may belong to an earlier application release when no numbered
+SQL changed) and then applies any newer numbered files. On an existing
+database, startup validates
 `schema_migration` and applies only the next numbered files so user data and
 backfills are preserved. The `schema_state` row records the schema version
 separately from the application version. It also records a SHA-256 baseline
