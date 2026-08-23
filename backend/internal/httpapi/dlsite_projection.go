@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -49,10 +50,43 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 			result.DefaultVariantKey = key
 		}
 	}
+	orderWorkMetadataVariants(result.Variants, s.preferredMetadataLanguages(ctx))
 	if result.DefaultVariantKey == "" && len(result.Variants) > 0 {
 		result.DefaultVariantKey = result.Variants[0].Key
 	}
 	return result, nil
+}
+
+func orderWorkMetadataVariants(variants []workMetadataVariant, priorities []string) {
+	orderedPriorities := dlsite.NormalizeMetadataPriority(priorities)
+	priorityRanks := make(map[string]int, len(orderedPriorities))
+	for index, language := range orderedPriorities {
+		if language != dlsite.OriginMetadataLanguage {
+			priorityRanks[language] = index
+		}
+	}
+	unknownRank := len(orderedPriorities) + 1
+	variantRank := func(variant workMetadataVariant) int {
+		language := dlsite.NormalizeMetadataLanguage(variant.Language)
+		if rank, ok := priorityRanks[language]; ok {
+			return rank
+		}
+		return unknownRank
+	}
+	sort.SliceStable(variants, func(left, right int) bool {
+		if variants[left].Origin != variants[right].Origin {
+			return variants[left].Origin
+		}
+		if leftRank, rightRank := variantRank(variants[left]), variantRank(variants[right]); leftRank != rightRank {
+			return leftRank < rightRank
+		}
+		leftLanguage := strings.ToLower(strings.TrimSpace(variants[left].Language))
+		rightLanguage := strings.ToLower(strings.TrimSpace(variants[right].Language))
+		if leftLanguage != rightLanguage {
+			return leftLanguage < rightLanguage
+		}
+		return strings.ToUpper(variants[left].Key) < strings.ToUpper(variants[right].Key)
+	})
 }
 
 // loadProjectedDLsiteMetadata returns the language-selected title and tags for

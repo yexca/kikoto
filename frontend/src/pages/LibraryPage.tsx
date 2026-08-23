@@ -186,12 +186,13 @@ import {
   groupWorkVersions,
   mergeRemoteWorkVersions,
   preferredWorkVersion,
-  workVersionAvailable,
+  workVersionAvailableForScope,
   workVersionKindLabel,
   workVersionMediaState,
+  type WorkVersionAvailabilityScope,
   type WorkVersionGroup,
 } from "@/features/work-detail/workVersionModel";
-import { resolveMetadataVariant } from "@/features/work-detail/metadataPresentationModel";
+import { orderedMetadataVariants, resolveMetadataVariant } from "@/features/work-detail/metadataPresentationModel";
 import {
   buildRemoteTree,
   buildTree,
@@ -3880,6 +3881,7 @@ function remoteOnlyTranslations(editions: RemoteWorkDetail["languageEditions"]):
     current: edition.current,
     hasMedia: true,
     mediaState: "indexed_available",
+    localAvailable: false,
   }));
 }
 
@@ -5742,9 +5744,9 @@ function PersistedWorkDetailController({
     const currentVersion = translations.find(
       (translation) => translation.primaryCode.toUpperCase() === work.primaryCode.toUpperCase(),
     );
-    if (currentVersion && workVersionAvailable(currentVersion)) return;
+    if (currentVersion && workVersionAvailableForScope(currentVersion, "local")) return;
     const firstPlayableVersion = translations.find(
-      (translation) => translation.workId && workVersionAvailable(translation),
+      (translation) => translation.workId && workVersionAvailableForScope(translation, "local"),
     );
     if (firstPlayableVersion) {
       void selectEdition(firstPlayableVersion);
@@ -6907,6 +6909,7 @@ function DetailMetadataContent({
   const baseTranslation = translations.find(
     (translation) => translation.primaryCode.toUpperCase() === (baseCode ?? "").toUpperCase(),
   );
+  const availabilityScope: WorkVersionAvailabilityScope = remoteVersions ? "source" : "local";
   const versionSelector =
     metadataLanguage || (metadataPresentation?.variants.length ?? 0) > 0 || baseCode || translations.length > 0 ? (
       <WorkVersionSelector
@@ -6915,7 +6918,7 @@ function DetailMetadataContent({
         activeMetadataVariantKey={activeMetadataVariantKey ?? ""}
         onMetadataVariantSelect={onMetadataVariantSelect}
         baseCode={baseCode ?? ""}
-        baseAvailable={Boolean(baseTranslation?.workId)}
+        baseAvailable={Boolean(baseTranslation && workVersionAvailableForScope(baseTranslation, availabilityScope))}
         translations={translations}
         activeVersionCode={activeVersionCode ?? code}
         onVersionSelect={onVersionSelect}
@@ -8403,26 +8406,28 @@ function WorkVersionSelector({
   onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
   remoteVersions?: boolean;
 }) {
-  const [showMetadataOnly, setShowMetadataOnly] = useState(false);
+  const availabilityScope: WorkVersionAvailabilityScope = remoteVersions ? "source" : "local";
+  const [showAllEditions, setShowAllEditions] = useState(false);
   const collapsedGroups = groupWorkVersions(translations, {
     activeCode: activeVersionCode,
     remoteVersions,
     includeMetadataOnly: false,
+    availabilityScope,
   });
   const expandedGroups = groupWorkVersions(translations, {
     activeCode: activeVersionCode,
     remoteVersions,
     includeMetadataOnly: true,
+    availabilityScope,
   });
   const collapsedCodes = new Set(
     collapsedGroups.flatMap((group) => group.versions.map((version) => version.primaryCode.toUpperCase())),
   );
-  const hiddenMetadataOnlyCount = translations.filter(
-    (version) =>
-      workVersionMediaState(version) === "metadata_only" && !collapsedCodes.has(version.primaryCode.toUpperCase()),
+  const hiddenEditionCount = translations.filter(
+    (version) => !collapsedCodes.has(version.primaryCode.toUpperCase()),
   ).length;
-  const groups = showMetadataOnly ? expandedGroups : collapsedGroups;
-  const metadataVariants = metadataPresentation?.variants ?? [];
+  const groups = showAllEditions ? expandedGroups : collapsedGroups;
+  const metadataVariants = orderedMetadataVariants(metadataPresentation?.variants ?? []);
   const activeMetadataVariant = resolveMetadataVariant(metadataPresentation, activeMetadataVariantKey);
   const hasEditionControls = Boolean(baseCode || translations.length > 0);
 
@@ -8474,15 +8479,16 @@ function WorkVersionSelector({
                   <span className="font-semibold text-foreground">Base {baseCode}</span>
                 ))}
             </div>
-            {hiddenMetadataOnlyCount > 0 && (
+            {hiddenEditionCount > 0 && (
               <button
                 type="button"
                 className="font-medium text-primary hover:underline"
-                aria-expanded={showMetadataOnly}
-                onClick={() => setShowMetadataOnly((shown) => !shown)}
+                aria-expanded={showAllEditions}
+                onClick={() => setShowAllEditions((shown) => !shown)}
               >
-                {showMetadataOnly ? "Hide" : "Show"} {hiddenMetadataOnlyCount} metadata-only{" "}
-                {hiddenMetadataOnlyCount === 1 ? "edition" : "editions"}
+                {showAllEditions
+                  ? "Hide all editions"
+                  : `Show all ${hiddenEditionCount} ${hiddenEditionCount === 1 ? "edition" : "editions"}`}
               </button>
             )}
           </div>
@@ -8494,7 +8500,7 @@ function WorkVersionSelector({
                   group={group}
                   activeVersionCode={activeVersionCode}
                   onVersionSelect={onVersionSelect}
-                  remoteVersions={remoteVersions}
+                  availabilityScope={availabilityScope}
                 />
               ))}
             </div>
@@ -8521,24 +8527,24 @@ function WorkLanguageVersionPicker({
   group,
   activeVersionCode,
   onVersionSelect,
-  remoteVersions,
+  availabilityScope,
 }: {
   group: WorkVersionGroup;
   activeVersionCode: string;
   onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
-  remoteVersions: boolean;
+  availabilityScope: WorkVersionAvailabilityScope;
 }) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const language = group.language ? languageLabel(group.language) : "Unknown language";
-  const preferred = preferredWorkVersion(group.versions, activeVersionCode, remoteVersions);
+  const preferred = preferredWorkVersion(group.versions, activeVersionCode, availabilityScope);
   const activeCode = activeVersionCode.trim().toUpperCase();
   const groupActive = group.versions.some((version) => version.primaryCode.trim().toUpperCase() === activeCode);
   const preferredActive = preferred?.primaryCode.trim().toUpperCase() === activeCode;
-  const preferredAvailable = Boolean(preferred && workVersionAvailable(preferred, remoteVersions));
+  const preferredAvailable = Boolean(preferred && workVersionAvailableForScope(preferred, availabilityScope));
   const selectVersion = (translation: WorkDetail["translations"][number]) => {
     const active = translation.primaryCode.trim().toUpperCase() === activeCode;
-    if (active || !workVersionAvailable(translation, remoteVersions)) return;
+    if (active || !workVersionAvailableForScope(translation, availabilityScope)) return;
     setOpen(false);
     if (onVersionSelect) {
       onVersionSelect(translation);
@@ -8587,19 +8593,9 @@ function WorkLanguageVersionPicker({
       >
         <div role="menu" aria-label={`${language} DLsite codes`} className="space-y-1">
           {group.versions.map((translation) => {
-            const available = workVersionAvailable(translation, remoteVersions);
+            const available = workVersionAvailableForScope(translation, availabilityScope);
             const active = translation.primaryCode.trim().toUpperCase() === activeCode;
-            const mediaState = workVersionMediaState(translation);
-            const stateLabel =
-              mediaState === "indexed_available"
-                ? remoteVersions
-                  ? "Available"
-                  : "Ready"
-                : mediaState === "present_unindexed"
-                  ? "Index on open"
-                  : mediaState === "metadata_only"
-                    ? "Metadata only"
-                    : "Unavailable";
+            const stateLabel = workVersionStateLabel(translation, availabilityScope);
             return (
               <button
                 key={translation.primaryCode}
@@ -8629,6 +8625,23 @@ function WorkLanguageVersionPicker({
       </AnchoredPopover>
     </div>
   );
+}
+
+function workVersionStateLabel(version: WorkDetail["translations"][number], scope: WorkVersionAvailabilityScope) {
+  const mediaState = workVersionMediaState(version);
+  if (scope === "local" && !version.localAvailable) {
+    return mediaState === "indexed_available" ? "Remote only" : "Unavailable";
+  }
+  switch (mediaState) {
+    case "indexed_available":
+      return scope === "local" ? "Ready" : "Available";
+    case "present_unindexed":
+      return "Index on open";
+    case "metadata_only":
+      return "Metadata only";
+    default:
+      return "Unavailable";
+  }
 }
 
 function DlsiteMetrics({

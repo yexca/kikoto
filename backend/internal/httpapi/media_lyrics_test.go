@@ -197,6 +197,49 @@ func TestLoadWorkTranslationsPromotesMaterializedEditionMediaState(t *testing.T)
 		if item.PrimaryCode == "RJ00000008" && item.TranslationKind != "third_party" {
 			t.Fatalf("merged translation kind = %q, want third_party", item.TranslationKind)
 		}
+		if item.PrimaryCode == "RJ00000008" && !item.LocalAvailable {
+			t.Fatalf("merged local availability = false, want true for local presence")
+		}
+	}
+}
+
+func TestLoadWorkTranslationsDoesNotTreatRemoteMediaAsLocal(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES (88, 'RJ00000012', 'Cached work');
+		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (88, 88, 'RJ00000012');
+		INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, metadata_language, is_canonical, translation_kind)
+		VALUES (88, 88, 'RJ00000012', 'RJ00000012', 'JPN', 1, 'origin');
+		INSERT INTO file_source (id, code, display_name, source_type) VALUES (94, 'cached-source', 'Cached source', 'kikoeru_compatible');
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (102, 88, 'audio', 'Cached track', 'cached-track');
+		INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability)
+		VALUES (102, 94, 'cache', 'RJ00000012/track.mp3', 'available');
+		INSERT INTO work (id, primary_code, title) VALUES (89, 'RJ00000013', 'Local media work');
+		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (89, 89, 'RJ00000013');
+		INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, metadata_language, is_canonical, translation_kind)
+		VALUES (89, 89, 'RJ00000013', 'RJ00000013', 'JPN', 1, 'origin');
+		INSERT INTO file_source (id, code, display_name, source_type) VALUES (95, 'local-media-source', 'Local media source', 'local_folder');
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (103, 89, 'audio', 'Local track', 'local-track');
+		INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability)
+		VALUES (103, 95, 'local', 'RJ00000013/track.mp3', 'available');
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewServer(db, config.Config{})
+	translations, err := server.loadLogicalWorkTranslations(context.Background(), "RJ00000012")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(translations) != 1 || translations[0].LocalAvailable {
+		t.Fatalf("translations = %+v, want one non-local cached edition", translations)
+	}
+	localTranslations, err := server.loadLogicalWorkTranslations(context.Background(), "RJ00000013")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(localTranslations) != 1 || !localTranslations[0].LocalAvailable {
+		t.Fatalf("local media translations = %+v, want local availability", localTranslations)
 	}
 }
 

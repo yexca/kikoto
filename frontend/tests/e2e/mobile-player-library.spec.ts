@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import type { WorkMetadataPresentation, WorkTranslation } from "../../src/lib/api";
 import { syntheticWorkCode } from "../../src/test-support/workCode";
 
 const work = {
@@ -96,6 +97,8 @@ type MockApplicationFixture = {
   permissions?: string[];
   onLyricsPreference?: (method: "PUT" | "DELETE", audioMediaItemId: number, lyricsMediaItemId: number | null) => void;
   beforeWorksResponse?: () => Promise<void>;
+  detailTranslations?: WorkTranslation[];
+  detailMetadataPresentation?: WorkMetadataPresentation;
 };
 
 type RemoteTrackControl = {
@@ -356,7 +359,8 @@ async function mockApplication(
           durationSeconds: null,
           dlsiteFetchedAt: "",
           voiceCredits: detailWork.voiceCredits,
-          translations: [],
+          translations: fixture.detailTranslations ?? [],
+          ...(fixture.detailMetadataPresentation ? { metadataPresentation: fixture.detailMetadataPresentation } : {}),
           manualOverrides: {},
           mediaItems: url.searchParams.get("includeMedia") === "false" ? [] : mediaItems,
         },
@@ -2716,6 +2720,100 @@ test("work detail groups DLsite and active source information", async ({ page })
       elements.every((element) => element.getBoundingClientRect().height <= 18),
     ),
   ).toBe(true);
+});
+
+test("local work detail lists Origin first and expands from local to all editions", async ({ page }) => {
+  const detailTranslations: WorkTranslation[] = [
+    {
+      workId: 1,
+      primaryCode: "RJ00000000",
+      title: "Origin",
+      metadataLanguage: "JPN",
+      editionLabel: "Japanese",
+      origin: true,
+      official: false,
+      translationKind: "origin",
+      current: true,
+      hasMedia: true,
+      mediaState: "indexed_available",
+      localAvailable: true,
+    },
+    {
+      workId: 2,
+      primaryCode: "RJ00000001",
+      title: "English local",
+      metadataLanguage: "ENG",
+      editionLabel: "English",
+      origin: false,
+      official: true,
+      translationKind: "official",
+      current: false,
+      hasMedia: false,
+      mediaState: "present_unindexed",
+      localAvailable: true,
+    },
+    {
+      workId: 3,
+      primaryCode: "RJ00000002",
+      title: "Chinese remote",
+      metadataLanguage: "CHI_HANS",
+      editionLabel: "Simplified Chinese",
+      origin: false,
+      official: true,
+      translationKind: "official",
+      current: false,
+      hasMedia: true,
+      mediaState: "indexed_available",
+      localAvailable: false,
+    },
+    {
+      workId: null,
+      primaryCode: "RJ00000003",
+      title: "Korean metadata",
+      metadataLanguage: "KO_KR",
+      editionLabel: "Korean",
+      origin: false,
+      official: false,
+      translationKind: "unknown",
+      current: false,
+      hasMedia: false,
+      mediaState: "metadata_only",
+      localAvailable: false,
+    },
+  ];
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    detailTranslations,
+    detailMetadataPresentation: {
+      defaultVariantKey: "english-metadata",
+      variants: [
+        { key: "english-metadata", language: "en-us", title: "English title", tags: [], origin: false },
+        { key: "origin-metadata", language: "ja-jp", title: "Origin title", tags: [], origin: true },
+      ],
+    },
+  });
+  await page.goto("/");
+  await page.getByText(work.title, { exact: true }).click();
+  await page.getByRole("button", { name: "Info", exact: true }).click();
+
+  const metadataSelect = page.getByRole("combobox", { name: "Metadata language" });
+  await expect(metadataSelect).toHaveValue("english-metadata");
+  await expect(metadataSelect.locator("option").first()).toHaveText("Original · Japanese");
+
+  await expect(page.getByRole("group", { name: "Japanese versions" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "English versions" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Simplified Chinese versions" })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "Korean versions" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Show all 2 editions", exact: true }).click();
+  await expect(page.getByRole("group", { name: "Simplified Chinese versions" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Korean versions" })).toBeVisible();
+
+  const chineseVersions = page.getByRole("group", { name: "Simplified Chinese versions" });
+  await chineseVersions.getByRole("button", { name: "Choose Simplified Chinese DLsite code", exact: true }).click();
+  await expect(
+    page
+      .getByRole("menu", { name: "Simplified Chinese DLsite codes", exact: true })
+      .getByRole("menuitemradio", { name: /RJ00000002 Official Remote only/ }),
+  ).toBeDisabled();
 });
 
 test("mobile work detail orders Info sections and keeps work-code utilities together", async ({ page }) => {

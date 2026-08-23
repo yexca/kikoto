@@ -69,6 +69,9 @@ func TestLoadWorkMetadataPresentationReturnsPriorityDefaultAndAllVariants(t *tes
 	if presentation.DefaultVariantKey != "RJ00000031" || len(presentation.Variants) != 2 {
 		t.Fatalf("presentation = %+v", presentation)
 	}
+	if got := []string{presentation.Variants[0].Key, presentation.Variants[1].Key}; got[0] != "RJ00000030" || got[1] != "RJ00000031" {
+		t.Fatalf("variant order = %v, want Origin first", got)
+	}
 	var simplified workMetadataVariant
 	for _, variant := range presentation.Variants {
 		if variant.Key == "RJ00000031" {

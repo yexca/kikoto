@@ -350,6 +350,7 @@ export type WorkTranslation = {
   current: boolean;
   hasMedia: boolean;
   mediaState: "metadata_only" | "present_unindexed" | "indexed_available" | "unavailable";
+  localAvailable: boolean;
 };
 
 export type FavoriteList = {

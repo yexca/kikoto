@@ -12,12 +12,18 @@ playback actions for one work.
 - Separates the metadata-language selector from the directory-edition selector.
   Metadata defaults to the configured language priority for local works and the
   source request-language hint for remote-only works; a user's temporary switch
-  changes the displayed title and provider tags without being persisted.
+  changes the displayed title and provider tags without being persisted. The
+  Origin variant is always listed first while the configured default remains
+  selected.
 - Treats directory editions as file availability, not metadata availability.
+  In a persisted local context, the collapsed selector shows only editions with
+  local folders or local media; the disclosure expands it to all known editions.
   A remote sibling is selectable only when that source reports it in its own
   database; a locally available sibling remains selectable through its local
-  directory even when the selected remote source does not contain it.
-- Shows unavailable metadata-only editions without implying local playback.
+  directory even when the selected remote source does not contain it. Remote
+  contexts default to source-reported availability instead.
+- Shows metadata-only, remote-only, and unavailable editions without implying
+  local playback.
 - Renders a card-provided or code-resolved preview first, then loads base detail
   and the media tree as separate stages.
 - Retains a known work id in card/history previews so Favorites and other

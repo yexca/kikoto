@@ -76,21 +76,32 @@ func remoteSourceRequestLanguages(language string) []string {
 
 func remoteWorkMetadataPresentation(work kikoeru.Work, languages []string) workMetadataPresentation {
 	result := workMetadataPresentation{Variants: []workMetadataVariant{}}
-	requested := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(firstNonEmpty(languages...)), "_", "-"))
+	originLanguage := remoteWorkOriginLanguage(work)
+	requested := normalizeRemotePresentationLanguage(firstNonEmpty(languages...))
 	if requested == "" || requested == "origin" {
-		requested = strings.ToLower(defaultRemoteRequestLanguage)
+		requested = normalizeRemotePresentationLanguage(defaultRemoteRequestLanguage)
 	}
 	available := map[string]bool{requested: true}
+	if originLanguage != "" {
+		available[originLanguage] = true
+	}
 	for _, tag := range work.Tags {
 		for language, localized := range tag.I18n {
-			language = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(language), "_", "-"))
+			language = normalizeRemotePresentationLanguage(language)
 			if language != "" && strings.TrimSpace(localized.Name) != "" {
 				available[language] = true
 			}
 		}
 	}
-	ordered := []string{requested}
+	ordered := make([]string, 0, len(available)+1)
+	if originLanguage != "" {
+		ordered = append(ordered, originLanguage)
+	}
+	if requested != originLanguage {
+		ordered = append(ordered, requested)
+	}
 	delete(available, requested)
+	delete(available, originLanguage)
 	for _, language := range dlsite.SupportedMetadataLanguages {
 		if available[language] {
 			ordered = append(ordered, language)
@@ -110,16 +121,51 @@ func remoteWorkMetadataPresentation(work kikoeru.Work, languages []string) workM
 	for _, language := range ordered {
 		tags := make([]string, 0, len(work.Tags))
 		for _, tag := range work.Tags {
-			if name := kikoeru.TagNameForLanguages(tag, []string{language}); name != "" {
+			if name := remoteTagNameForLanguage(tag, language); name != "" {
 				tags = append(tags, name)
 			}
 		}
 		result.Variants = append(result.Variants, workMetadataVariant{
 			Key: language, Language: language, Title: title, Tags: cleanProjectedTags(tags),
+			Origin: originLanguage != "" && normalizeRemotePresentationLanguage(language) == originLanguage,
 		})
 	}
+	orderWorkMetadataVariants(result.Variants, languages)
 	result.DefaultVariantKey = requested
 	return result
+}
+
+func remoteTagNameForLanguage(tag kikoeru.Tag, language string) string {
+	normalizedLanguage := normalizeRemotePresentationLanguage(language)
+	if localized, ok := tag.I18n[language]; ok && strings.TrimSpace(localized.Name) != "" {
+		return strings.TrimSpace(localized.Name)
+	}
+	for candidate, localized := range tag.I18n {
+		if normalizeRemotePresentationLanguage(candidate) == normalizedLanguage && strings.TrimSpace(localized.Name) != "" {
+			return strings.TrimSpace(localized.Name)
+		}
+	}
+	return strings.TrimSpace(tag.Name)
+}
+
+func remoteWorkOriginLanguage(work kikoeru.Work) string {
+	for _, edition := range normalizedRemoteLanguageEditions(work) {
+		if !edition.Origin {
+			continue
+		}
+		if language := normalizeRemotePresentationLanguage(edition.Language); language != "" {
+			return language
+		}
+	}
+	return ""
+}
+
+func normalizeRemotePresentationLanguage(value string) string {
+	value = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(value), "_", "-"))
+	if normalized := dlsite.NormalizeMetadataLanguage(value); normalized != "" {
+		return normalized
+	}
+	return value
 }
 
 func (projector remoteCatalogProjector) project(sourceID int64, work kikoeru.Work) remoteCatalogWorkProjection {
