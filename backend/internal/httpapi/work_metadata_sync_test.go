@@ -122,3 +122,70 @@ func TestUnavailableProviderStateSkipsDetailRefresh(t *testing.T) {
 		t.Fatalf("result = %+v, want unavailable without queued workflow", run)
 	}
 }
+
+func TestWorkDetailProjectsMetadataSyncStatus(t *testing.T) {
+	t.Run("not synced", func(t *testing.T) {
+		db := openMigratedTestDB(t)
+		server := NewServer(db, config.Config{})
+		result, err := db.Exec(`INSERT INTO work (primary_code, title) VALUES ('RJ00000004', 'Pending')`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		workID, _ := result.LastInsertId()
+		detail, err := server.loadWorkDetail(context.Background(), 0, workID, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if detail.MetadataSync.Status != workMetadataSyncStatusNotSynced || detail.MetadataSync.CheckedAt != "" {
+			t.Fatalf("metadata sync status = %+v, want not_synced without a check", detail.MetadataSync)
+		}
+	})
+
+	t.Run("provider not found", func(t *testing.T) {
+		db := openMigratedTestDB(t)
+		server := NewServer(db, config.Config{})
+		result, err := db.Exec(`INSERT INTO work (primary_code, title) VALUES ('RJ00000005', 'Missing')`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		workID, _ := result.LastInsertId()
+		if _, err := db.Exec(`
+			INSERT INTO work_metadata_provider_state (work_id, provider_id, status, message, checked_at)
+			SELECT ?, id, 'not_found', 'missing', '2026-08-24T00:00:00Z'
+			FROM metadata_provider WHERE code = 'dlsite'
+		`, workID); err != nil {
+			t.Fatal(err)
+		}
+		detail, err := server.loadWorkDetail(context.Background(), 0, workID, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if detail.MetadataSync.Status != workMetadataSyncStatusNotFound || detail.MetadataSync.CheckedAt != "2026-08-24T00:00:00Z" {
+			t.Fatalf("metadata sync status = %+v, want not_found with provider check time", detail.MetadataSync)
+		}
+	})
+
+	t.Run("snapshot available", func(t *testing.T) {
+		db := openMigratedTestDB(t)
+		server := NewServer(db, config.Config{})
+		result, err := db.Exec(`INSERT INTO work (primary_code, title) VALUES ('RJ00000006', 'Available')`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		workID, _ := result.LastInsertId()
+		if _, err := db.Exec(`
+			INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json, fetched_at)
+			SELECT ?, id, 'RJ00000006', '{}', '2026-08-24T01:00:00Z'
+			FROM metadata_provider WHERE code = 'dlsite'
+		`, workID); err != nil {
+			t.Fatal(err)
+		}
+		detail, err := server.loadWorkDetail(context.Background(), 0, workID, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if detail.MetadataSync.Status != workMetadataSyncStatusAvailable || detail.MetadataSync.CheckedAt != "2026-08-24T01:00:00Z" {
+			t.Fatalf("metadata sync status = %+v, want available with snapshot time", detail.MetadataSync)
+		}
+	})
+}

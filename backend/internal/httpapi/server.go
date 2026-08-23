@@ -639,6 +639,7 @@ type workDetail struct {
 	ListeningStatus  string                     `json:"listeningStatus"`
 	Favorite         bool                       `json:"favorite"`
 	MetadataView     workMetadataPresentation   `json:"metadataPresentation"`
+	MetadataSync     workMetadataSyncStatus     `json:"metadataSync"`
 	Translations     []workTranslation          `json:"translations"`
 	ManualOverrides  workManualOverrides        `json:"manualOverrides"`
 	SourcePresence   []sourcePresenceItem       `json:"sourcePresence"`
@@ -3122,6 +3123,10 @@ func (s *Server) populateWorkDetailMetadata(ctx context.Context, work *workDetai
 		return 0, err
 	}
 	work.MetadataView = metadataView
+	work.MetadataSync, err = s.loadWorkMetadataSyncStatus(ctx, work.ID, metadataView, snapshotFetchedAt)
+	if err != nil {
+		return 0, err
+	}
 	work.VoiceActors = metadata.VoiceActors
 	translations, err := s.loadWorkTranslations(ctx, work.PrimaryCode, work.BaseCode, metadata.LanguageEditions)
 	if err != nil {

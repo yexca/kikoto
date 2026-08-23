@@ -101,6 +101,7 @@ import {
   type WorkCoverCandidate,
   type WorkDetail,
   type WorkMetadataPresentation,
+  type WorkMetadataSyncStatus,
 } from "@/lib/api";
 import { ageRatingPresentation } from "@/lib/ageRating";
 import { currentClientStorageScope, type ClientPrincipalID } from "@/lib/clientStorageScope";
@@ -1550,6 +1551,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         initialRemoteCode={detailRemoteCodeFromLocation(window.location.search)}
         principalID={principalID}
         canForgetWork={auth.hasPermission("sources:write")}
+        canSyncMetadata={auth.hasPermission("metadata:sync") && !auth.demoMode}
         onBack={backToLibrary}
         onStatusChange={updateWorkStatus}
         onPlay={() => {
@@ -4888,6 +4890,7 @@ type PersistedDetailActionsProps = {
   hasResumableCursor: boolean;
   activeMetadataRunId: number | null;
   isSyncingDetail: boolean;
+  canSyncMetadata: boolean;
   fetchBusy: boolean;
   isRefreshingLocalFiles: boolean;
   cleanupBusy: boolean;
@@ -4936,9 +4939,9 @@ function PersistedIdentityActions(props: PersistedDetailActionsProps) {
       onListSaved={props.onListSaved}
       onResume={!props.playbackCursorLoading && props.hasResumableCursor ? props.onResume : undefined}
       onMark={props.onMark}
-      onSync={props.onSyncMetadata}
+      onSync={props.canSyncMetadata ? props.onSyncMetadata : undefined}
       onEditMetadata={props.onEditMetadata}
-      metadataSyncBusy={Boolean(props.activeMetadataRunId)}
+      metadataSyncBusy={props.isSyncingDetail || Boolean(props.activeMetadataRunId)}
       syncLabel="Refresh metadata"
     />
   );
@@ -5261,6 +5264,10 @@ function persistedWorkDetailPresentation({
   selectedRemoteDetail,
   personalTags,
   loading,
+  metadataSync,
+  canSyncMetadata,
+  metadataSyncBusy,
+  onSyncMetadata,
   onMetadataVariantSelect,
   onVersionSelect,
 }: {
@@ -5273,6 +5280,10 @@ function persistedWorkDetailPresentation({
   selectedRemoteDetail: RemoteWorkDetail | null;
   personalTags: ReactNode;
   loading: boolean;
+  metadataSync?: WorkMetadataSyncStatus;
+  canSyncMetadata: boolean;
+  metadataSyncBusy: boolean;
+  onSyncMetadata: () => void;
   onMetadataVariantSelect: (key: string) => void;
   onVersionSelect: (translation: WorkDetail["translations"][number]) => void;
 }): UnifiedWorkDetailPresentation {
@@ -5295,6 +5306,10 @@ function persistedWorkDetailPresentation({
     baseCode: fields.baseCode,
     metadataLanguage: fields.metadataLanguage,
     metadataPresentation: fields.metadataPresentation,
+    metadataSync,
+    canSyncMetadata,
+    metadataSyncBusy,
+    onSyncMetadata,
     activeMetadataVariantKey: fields.activeMetadataVariantKey,
     onMetadataVariantSelect,
     translations: displayTranslations,
@@ -5508,6 +5523,7 @@ function PersistedWorkDetailController({
   initialRemoteCode,
   principalID,
   canForgetWork,
+  canSyncMetadata,
   onBack,
   onStatusChange,
   onPlay,
@@ -5525,6 +5541,7 @@ function PersistedWorkDetailController({
   initialRemoteCode: string;
   principalID: ClientPrincipalID;
   canForgetWork: boolean;
+  canSyncMetadata: boolean;
   onBack: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
   onPlay: () => void;
@@ -5864,11 +5881,20 @@ function PersistedWorkDetailController({
   };
 
   const syncDetailMetadata = async () => {
-    if (!work?.primaryCode || activeMetadataRunId) return;
+    if (!work?.primaryCode || activeMetadataRunId || isSyncingDetail) return;
     setIsSyncingDetail(true);
     setMessage("");
     try {
       const result = await api.syncWorkMetadata(work.id);
+      if (result.runId <= 0 || result.status === "unavailable") {
+        await onWorkReload(work.id, true);
+        await onWorksChanged();
+        toast.notify({
+          kind: "warning",
+          message: "Metadata source has no record for this work.",
+        });
+        return;
+      }
       setActiveMetadataRunId(result.runId);
       toast.notify({
         kind: "success",
@@ -6155,6 +6181,7 @@ function PersistedWorkDetailController({
       hasResumableCursor={hasResumableCursor}
       activeMetadataRunId={activeMetadataRunId}
       isSyncingDetail={isSyncingDetail}
+      canSyncMetadata={canSyncMetadata}
       fetchBusy={fetchWorkspace.isBusy}
       isRefreshingLocalFiles={isRefreshingLocalFiles}
       cleanupBusy={mediaCleanup.isBusy}
@@ -6251,6 +6278,10 @@ function PersistedWorkDetailController({
     selectedRemoteDetail,
     personalTags,
     loading: isDetailLoading,
+    metadataSync: work?.metadataSync,
+    canSyncMetadata,
+    metadataSyncBusy: isSyncingDetail || Boolean(activeMetadataRunId),
+    onSyncMetadata: () => void syncDetailMetadata(),
     onMetadataVariantSelect: setSelectedMetadataVariantKey,
     onVersionSelect: (translation) => void selectDisplayedEdition(translation),
   });
@@ -6322,6 +6353,10 @@ type UnifiedWorkDetailPresentation = {
   baseCode?: string;
   metadataLanguage?: string;
   metadataPresentation?: WorkMetadataPresentation;
+  metadataSync?: WorkMetadataSyncStatus;
+  canSyncMetadata?: boolean;
+  metadataSyncBusy?: boolean;
+  onSyncMetadata?: () => void;
   activeMetadataVariantKey?: string;
   onMetadataVariantSelect?: (key: string) => void;
   translations?: WorkDetail["translations"];
@@ -6404,6 +6439,10 @@ function DetailHero({
   baseCode,
   metadataLanguage,
   metadataPresentation,
+  metadataSync,
+  canSyncMetadata = false,
+  metadataSyncBusy = false,
+  onSyncMetadata,
   activeMetadataVariantKey,
   onMetadataVariantSelect,
   translations,
@@ -6438,6 +6477,10 @@ function DetailHero({
   baseCode?: string;
   metadataLanguage?: string;
   metadataPresentation?: WorkMetadataPresentation;
+  metadataSync?: WorkMetadataSyncStatus;
+  canSyncMetadata?: boolean;
+  metadataSyncBusy?: boolean;
+  onSyncMetadata?: () => void;
   activeMetadataVariantKey?: string;
   onMetadataVariantSelect?: (key: string) => void;
   translations?: WorkDetail["translations"];
@@ -6494,6 +6537,10 @@ function DetailHero({
           ageRating={ageRating}
           metadataLanguage={metadataLanguage}
           metadataPresentation={metadataPresentation}
+          metadataSync={metadataSync}
+          canSyncMetadata={canSyncMetadata}
+          metadataSyncBusy={metadataSyncBusy}
+          onSyncMetadata={onSyncMetadata}
           activeMetadataVariantKey={activeMetadataVariantKey}
           onMetadataVariantSelect={onMetadataVariantSelect}
           baseCode={baseCode}
@@ -6537,6 +6584,10 @@ function MobileWorkDetailLayout({
   baseCode,
   metadataLanguage,
   metadataPresentation,
+  metadataSync,
+  canSyncMetadata = false,
+  metadataSyncBusy = false,
+  onSyncMetadata,
   activeMetadataVariantKey,
   onMetadataVariantSelect,
   translations,
@@ -6574,6 +6625,10 @@ function MobileWorkDetailLayout({
   baseCode?: string;
   metadataLanguage?: string;
   metadataPresentation?: WorkMetadataPresentation;
+  metadataSync?: WorkMetadataSyncStatus;
+  canSyncMetadata?: boolean;
+  metadataSyncBusy?: boolean;
+  onSyncMetadata?: () => void;
   activeMetadataVariantKey?: string;
   onMetadataVariantSelect?: (key: string) => void;
   translations?: WorkDetail["translations"];
@@ -6659,6 +6714,10 @@ function MobileWorkDetailLayout({
             ageRating={ageRating}
             metadataLanguage={metadataLanguage}
             metadataPresentation={metadataPresentation}
+            metadataSync={metadataSync}
+            canSyncMetadata={canSyncMetadata}
+            metadataSyncBusy={metadataSyncBusy}
+            onSyncMetadata={onSyncMetadata}
             activeMetadataVariantKey={activeMetadataVariantKey}
             onMetadataVariantSelect={onMetadataVariantSelect}
             baseCode={baseCode}
@@ -6864,6 +6923,10 @@ function DetailMetadataContent({
   ageRating,
   metadataLanguage,
   metadataPresentation,
+  metadataSync,
+  canSyncMetadata,
+  metadataSyncBusy,
+  onSyncMetadata,
   activeMetadataVariantKey,
   onMetadataVariantSelect,
   baseCode,
@@ -6889,6 +6952,10 @@ function DetailMetadataContent({
   ageRating: string;
   metadataLanguage?: string;
   metadataPresentation?: WorkMetadataPresentation;
+  metadataSync?: WorkMetadataSyncStatus;
+  canSyncMetadata?: boolean;
+  metadataSyncBusy?: boolean;
+  onSyncMetadata?: () => void;
   activeMetadataVariantKey?: string;
   onMetadataVariantSelect?: (key: string) => void;
   baseCode?: string;
@@ -6925,6 +6992,15 @@ function DetailMetadataContent({
         remoteVersions={remoteVersions}
       />
     ) : null;
+  const metadataNotice = (
+    <MetadataSyncNotice
+      status={metadataSync?.status}
+      checkedAt={metadataSync?.checkedAt ?? ""}
+      canSync={Boolean(canSyncMetadata && onSyncMetadata)}
+      busy={metadataSyncBusy ?? false}
+      onSync={onSyncMetadata}
+    />
+  );
   const voiceCard = (
     <div className="rounded-lg border bg-card p-3">
       <DetailChipRow
@@ -6975,6 +7051,7 @@ function DetailMetadataContent({
           {dlsiteCard}
           <ActiveSourceInfo info={sourceInfo} />
         </div>
+        {metadataNotice}
         {versionSelector && <div className="sm:col-span-2">{versionSelector}</div>}
       </div>
     );
@@ -6986,10 +7063,60 @@ function DetailMetadataContent({
         {tagsCard}
       </div>
       {supplementary}
+      {metadataNotice}
       {versionSelector}
       {dlsiteCard}
       <ActiveSourceInfo info={sourceInfo} />
     </>
+  );
+}
+
+function MetadataSyncNotice({
+  status,
+  checkedAt,
+  canSync,
+  busy,
+  onSync,
+}: {
+  status?: string;
+  checkedAt: string;
+  canSync: boolean;
+  busy: boolean;
+  onSync?: () => void;
+}) {
+  if (status !== "not_synced" && status !== "not_found") return null;
+  const unavailable = status === "not_found";
+  return (
+    <div
+      className={`rounded-lg border p-3 text-sm sm:col-span-2 ${
+        unavailable
+          ? "border-warning-border bg-warning-surface text-warning-foreground"
+          : "border-info-border bg-info-surface text-info-foreground"
+      }`}
+      data-testid="metadata-sync-notice"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-medium">
+            {unavailable ? "Metadata source has no record" : "Metadata has not been synchronized"}
+          </div>
+          <p className="mt-1 text-xs opacity-80">
+            {unavailable
+              ? "The metadata provider reported that this work is unavailable."
+              : "Synchronize metadata to show language editions, tags, and provider details."}
+          </p>
+          {checkedAt && <div className="mt-1 text-xs opacity-70">Checked {formatDateTime(checkedAt)}</div>}
+        </div>
+        {!unavailable && canSync && onSync && (
+          <Button variant="outline" size="sm" onClick={onSync} disabled={busy}>
+            <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />
+            {busy ? "Syncing metadata" : "Sync metadata"}
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 

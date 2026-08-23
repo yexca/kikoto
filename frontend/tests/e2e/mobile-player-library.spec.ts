@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import type { WorkMetadataPresentation, WorkTranslation } from "../../src/lib/api";
+import type { WorkMetadataPresentation, WorkMetadataSyncStatus, WorkTranslation } from "../../src/lib/api";
 import { syntheticWorkCode } from "../../src/test-support/workCode";
 
 const work = {
@@ -99,6 +99,15 @@ type MockApplicationFixture = {
   beforeWorksResponse?: () => Promise<void>;
   detailTranslations?: WorkTranslation[];
   detailMetadataPresentation?: WorkMetadataPresentation;
+  detailMetadataSync?: WorkMetadataSyncStatus;
+  metadataSyncControl?: {
+    runId: number;
+    status: "queued" | "running" | "succeeded" | "partial" | "failed";
+    detailReady?: boolean;
+    postRequests: number;
+    statusRequests: number;
+    detailRequests: number;
+  };
 };
 
 type RemoteTrackControl = {
@@ -334,9 +343,94 @@ async function mockApplication(
       await route.fulfill({ json: fixture.remoteDetail });
       return;
     }
+    if (url.pathname === "/api/works/1/metadata-sync" && route.request().method() === "POST") {
+      const control = fixture.metadataSyncControl;
+      if (!control) {
+        await route.fulfill({ status: 404, json: { error: "Not mocked" } });
+        return;
+      }
+      control.postRequests += 1;
+      control.status = "succeeded";
+      control.detailReady = true;
+      await route.fulfill({
+        status: 202,
+        json: {
+          runId: control.runId,
+          jobId: control.runId + 1,
+          workId: 1,
+          primaryCode: (fixture.work ?? work).primaryCode,
+          status: "queued",
+          deduplicated: false,
+        },
+      });
+      return;
+    }
+    const metadataRunMatch = url.pathname.match(/^\/api\/workflow-runs\/(\d+)$/);
+    if (
+      metadataRunMatch &&
+      fixture.metadataSyncControl &&
+      Number(metadataRunMatch[1]) === fixture.metadataSyncControl.runId
+    ) {
+      fixture.metadataSyncControl.statusRequests += 1;
+      await route.fulfill({
+        json: {
+          id: fixture.metadataSyncControl.runId,
+          workflowCode: "metadata_family_sync",
+          displayName: "Refresh metadata",
+          status: fixture.metadataSyncControl.status,
+          triggerType: "manual",
+          triggerReason: "work_detail",
+          createdAt: "2026-01-01T00:00:00Z",
+          startedAt: "2026-01-01T00:00:00Z",
+          finishedAt: fixture.metadataSyncControl.status === "running" ? "" : "2026-01-01T00:01:00Z",
+          summaryJson: "{}",
+          nodeRunCount: 1,
+          completedNodeRuns: fixture.metadataSyncControl.status === "running" ? 0 : 1,
+          failedNodeRuns: 0,
+          skippedNodeRuns: 0,
+          jobCount: 1,
+          completedJobs: fixture.metadataSyncControl.status === "running" ? 0 : 1,
+          failedJobs: 0,
+          skippedJobs: 0,
+          progressBytesCurrent: 0,
+          progressBytesTotal: 0,
+          progressBytesUnknownItems: 0,
+          candidateCount: 0,
+          pendingCandidates: 0,
+          acceptedCandidates: 0,
+          rejectedCandidates: 0,
+          reviewedAt: "",
+          reviewedByUserId: null,
+          definitionId: null,
+          triggerId: null,
+          nodeRuns: [],
+          graphJson: "{}",
+        },
+      });
+      return;
+    }
+    const metadataEventsMatch = url.pathname.match(/^\/api\/workflow-runs\/(\d+)\/events$/);
+    if (
+      metadataEventsMatch &&
+      fixture.metadataSyncControl &&
+      Number(metadataEventsMatch[1]) === fixture.metadataSyncControl.runId
+    ) {
+      await route.fulfill({ json: [] });
+      return;
+    }
+    const metadataStreamMatch = url.pathname.match(/^\/api\/workflow-runs\/(\d+)\/events\/stream$/);
+    if (
+      metadataStreamMatch &&
+      fixture.metadataSyncControl &&
+      Number(metadataStreamMatch[1]) === fixture.metadataSyncControl.runId
+    ) {
+      await route.fulfill({ status: 200, contentType: "text/event-stream", body: "" });
+      return;
+    }
     const detailMatch = url.pathname.match(/^\/api\/works\/(\d+)$/);
     if (detailMatch) {
       const id = Number(detailMatch[1]);
+      if (id === 1 && fixture.metadataSyncControl) fixture.metadataSyncControl.detailRequests += 1;
       const fixtureWork = fixture.work ?? work;
       const detailWork =
         id === 1
@@ -351,7 +445,10 @@ async function mockApplication(
         json: {
           ...detailWork,
           baseCode: "",
-          metadataLanguage: "JPN",
+          metadataLanguage:
+            fixture.metadataSyncControl?.detailReady || fixture.detailMetadataSync?.status !== "not_synced"
+              ? "JPN"
+              : "",
           workType: "audio",
           titleKana: "",
           description: "",
@@ -361,6 +458,9 @@ async function mockApplication(
           voiceCredits: detailWork.voiceCredits,
           translations: fixture.detailTranslations ?? [],
           ...(fixture.detailMetadataPresentation ? { metadataPresentation: fixture.detailMetadataPresentation } : {}),
+          metadataSync: fixture.metadataSyncControl?.detailReady
+            ? { status: "available", checkedAt: "2026-01-01T00:01:00Z" }
+            : (fixture.detailMetadataSync ?? { status: "available", checkedAt: "" }),
           manualOverrides: {},
           mediaItems: url.searchParams.get("includeMedia") === "false" ? [] : mediaItems,
         },
@@ -2720,6 +2820,43 @@ test("work detail groups DLsite and active source information", async ({ page })
       elements.every((element) => element.getBoundingClientRect().height <= 18),
     ),
   ).toBe(true);
+});
+
+test("work detail prompts for missing metadata and refreshes after sync completes", async ({ page }) => {
+  const metadataSyncControl = {
+    runId: 77,
+    status: "queued" as const,
+    detailReady: false,
+    postRequests: 0,
+    statusRequests: 0,
+    detailRequests: 0,
+  };
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    authenticated: true,
+    permissions: ["library:read", "playback:use", "metadata:sync"],
+    detailMetadataSync: { status: "not_synced", checkedAt: "" },
+    metadataSyncControl,
+  });
+  await page.goto("/");
+  await page.getByText(work.title, { exact: true }).click();
+  await page.getByRole("button", { name: "Info", exact: true }).click();
+
+  await expect(page.getByTestId("metadata-sync-notice")).toContainText("Metadata has not been synchronized");
+  const syncButton = page.getByRole("button", { name: "Sync metadata", exact: true });
+  await expect(syncButton).toBeVisible();
+  const initialDetailRequests = metadataSyncControl.detailRequests;
+  const syncRequest = page.waitForRequest(
+    (request) => request.method() === "POST" && request.url().endsWith("/api/works/1/metadata-sync"),
+  );
+  await syncButton.click();
+  await syncRequest;
+  await expect.poll(() => metadataSyncControl.postRequests).toBe(1);
+
+  await expect.poll(() => metadataSyncControl.statusRequests).toBeGreaterThan(0);
+  await expect.poll(() => metadataSyncControl.detailRequests).toBeGreaterThan(initialDetailRequests);
+  await expect(page.getByText("Metadata language", { exact: true })).toBeVisible();
+  await expect(page.getByText("Japanese", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("metadata-sync-notice")).toHaveCount(0);
 });
 
 test("local work detail lists Origin first and expands from local to all editions", async ({ page }) => {

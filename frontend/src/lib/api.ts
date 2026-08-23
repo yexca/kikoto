@@ -238,6 +238,7 @@ export type WorkDetail = {
   listeningStatus: ListeningStatus;
   favorite: boolean;
   metadataPresentation: WorkMetadataPresentation;
+  metadataSync: WorkMetadataSyncStatus;
   translations: WorkTranslation[];
   manualOverrides: WorkManualOverrides;
   sourcePresence: SourcePresenceItem[] | null;
@@ -248,6 +249,11 @@ export type WorkDetail = {
 export type WorkMetadataPresentation = {
   defaultVariantKey: string;
   variants: WorkMetadataVariant[];
+};
+
+export type WorkMetadataSyncStatus = {
+  status: "not_synced" | "available" | "not_found" | string;
+  checkedAt: string;
 };
 
 export type WorkMetadataVariant = {
