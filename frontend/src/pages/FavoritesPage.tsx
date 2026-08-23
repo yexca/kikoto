@@ -247,7 +247,10 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
         if (cancelled) return;
         setFileSources(sources);
         const availableSourceIDs = new Set(sources.map((source) => source.id));
-        setSourceIDs((current) => current.filter((sourceID) => availableSourceIDs.has(sourceID)));
+        setSourceIDs((current) => {
+          const available = current.filter((sourceID) => availableSourceIDs.has(sourceID));
+          return available.length === current.length ? current : available;
+        });
       })
       .catch((error) => {
         if (!cancelled) toast.notify(toastFromError(error, "File sources could not be loaded."));
