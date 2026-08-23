@@ -340,6 +340,14 @@ func (s *DLsiteSyncer) SyncDemoProductFamily(ctx context.Context, product dlsite
 
 		localized, fetchErr := s.fetchProductForEdition(ctx, code)
 		if fetchErr != nil {
+			// DLsite can retain an edition in the family relationship after its
+			// product is no longer published. The requested local product has
+			// already passed admission, so an unavailable optional edition is
+			// metadata absence rather than a Demo scan failure.
+			if errors.Is(fetchErr, dlsite.ErrNoProduct) {
+				result.SkippedCodes = append(result.SkippedCodes, code)
+				continue
+			}
 			result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, fetchErr.Error()))
 			continue
 		}

@@ -351,6 +351,9 @@ func TestDemoLibraryScanKeepsEligibleLocalWorkWhenLanguageEditionFetchFails(t *t
 			"RJ00000014": origin,
 			"RJ00000015": sibling,
 		},
+		errors: map[string]error{
+			"RJ00000015": errors.New("provider unavailable"),
+		},
 		calls: map[string]int{},
 	}}
 	server := NewServer(db, config.Config{Mode: config.ModeDemo, DataRoot: dataRoot, LocalScanDepth: 2})
@@ -384,6 +387,44 @@ func TestDemoLibraryScanKeepsEligibleLocalWorkWhenLanguageEditionFetchFails(t *t
 	}
 	if workCount != 1 || locationCount != 1 || siblingCount != 0 {
 		t.Fatalf("post-warning persistence = root %d locations %d sibling %d", workCount, locationCount, siblingCount)
+	}
+}
+
+func TestDemoLibraryScanSkipsUnavailableLanguageEdition(t *testing.T) {
+	db := openMigratedTestDB(t)
+	dataRoot := t.TempDir()
+	writeDemoScanFile(t, dataRoot, "RJ00000016", "track.mp3", "available audio")
+	editions := []dlsite.LanguageEdition{
+		{WorkNo: "RJ00000016", DisplayOrder: 1, Label: "Japanese", Lang: "JPN"},
+		{WorkNo: "RJ00000017", DisplayOrder: 2, Label: "French", Lang: "FRE"},
+	}
+	origin := demoScanProduct("RJ00000016", "Available origin", "general", int64Pointer(0), int64Pointer(0), nil)
+	origin.LanguageEditions = editions
+	client := &localizedDemoScanDLsiteClient{fakeDemoScanDLsiteClient: &fakeDemoScanDLsiteClient{
+		products: map[string]dlsite.Product{
+			"RJ00000016": origin,
+		},
+		errors: map[string]error{
+			"RJ00000017": dlsite.ErrNoProduct,
+		},
+		calls: map[string]int{},
+	}}
+	server := NewServer(db, config.Config{Mode: config.ModeDemo, DataRoot: dataRoot, LocalScanDepth: 2})
+	server.dlsiteClient = client
+
+	result, err := server.RunDemoLibraryScan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "succeeded" || result.EligibleWorks != 1 || result.FailedWorks != 0 || len(result.Failures) != 0 || result.IndexedFiles != 1 {
+		t.Fatalf("demo scan result = %#v", result)
+	}
+	var siblingCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM work WHERE primary_code = 'RJ00000017'").Scan(&siblingCount); err != nil {
+		t.Fatal(err)
+	}
+	if siblingCount != 0 {
+		t.Fatalf("unavailable sibling work count = %d, want 0", siblingCount)
 	}
 }
 
