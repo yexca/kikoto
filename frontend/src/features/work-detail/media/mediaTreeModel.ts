@@ -7,6 +7,7 @@ import {
   type LyricsChoice,
 } from "../../../player/lyricsMatching";
 import { playbackKeyForLocation, remotePlaybackKey } from "../../../player/playbackIdentity";
+import { remoteMediaURL } from "../../../player/mediaPlayback";
 import { applyTrackLocation, preferredTrackLocation } from "../../../player/trackLocations";
 
 export type TreeNode = {
@@ -79,6 +80,10 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
         : item.locations.filter((location) => location.fileSourceId === fileSourceId);
     const location =
       sourceLocations.find((candidate) => candidate.availability === "available" && candidate.streamUrl) ??
+      sourceLocations.find(
+        (candidate) =>
+          candidate.availability === "available" && candidate.locationType === "remote_stream" && candidate.downloadUrl,
+      ) ??
       sourceLocations.find((candidate) => candidate.availability === "available") ??
       sourceLocations.find(
         (candidate) => candidate.availability === "remote" && (candidate.streamUrl || candidate.downloadUrl),
@@ -92,6 +97,12 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
     );
     const parts = displayPathParts(location.path, location.locationType, workCode);
     const fileName = parts.pop() ?? item.title;
+    const locationStreamUrl = playbackStreamURLForLocation(
+      location.id,
+      location.locationType,
+      item.kind,
+      locationPlaybackURL(location),
+    );
     let cursor = root;
     for (const part of parts) {
       if (!cursor.children.has(part)) {
@@ -109,7 +120,7 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
       kind: item.kind,
       folderPath: cursor.path,
       locationType: location.locationType,
-      streamUrl: location.streamUrl,
+      streamUrl: locationStreamUrl,
       downloadUrl: location.downloadUrl,
       assetUrl:
         location.locationType === "local"
@@ -130,11 +141,18 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
       progress: item.progress,
       playbackKey: playbackKeyForLocation(location.id),
       locations: item.locations
-        .filter((candidate) => candidate.streamUrl && ["available", "remote"].includes(candidate.availability))
+        .filter(
+          (candidate) => locationPlaybackURL(candidate) && ["available", "remote"].includes(candidate.availability),
+        )
         .map((candidate) => ({
           locationId: candidate.id,
           locationType: candidate.locationType,
-          streamUrl: candidate.streamUrl,
+          streamUrl: playbackStreamURLForLocation(
+            candidate.id,
+            candidate.locationType,
+            item.kind,
+            locationPlaybackURL(candidate),
+          ),
           sourceId: candidate.fileSourceId,
           sourceName: candidate.fileSourceName,
           availability: candidate.availability,
@@ -145,6 +163,17 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
   const displayRoot = normalizeDisplayTree(root);
   attachLocalLyricsChoices(displayRoot, items, lyricsMatchPathsByLocationID);
   return displayRoot;
+}
+
+function locationPlaybackURL(location: { locationType: string; streamUrl: string; downloadUrl: string }) {
+  return location.streamUrl || (location.locationType === "remote_stream" ? location.downloadUrl : "");
+}
+
+function playbackStreamURLForLocation(locationId: number, locationType: string, kind: string, streamUrl: string) {
+  if (locationType === "remote_stream" && (kind === "audio" || kind === "video") && locationId > 0) {
+    return `/api/media/${locationId}/stream`;
+  }
+  return streamUrl;
 }
 
 export function buildRemoteTree(tracks: RemoteTrack[], identity?: RemoteTreeIdentity): TreeNode {
@@ -163,16 +192,22 @@ export function buildRemoteTree(tracks: RemoteTrack[], identity?: RemoteTreeIden
       }
       const sourcePath = cursor.path ? `${cursor.path}/${title}` : title;
       const hasCache = node.cacheAvailable && node.cacheLocationId !== null;
+      const remoteKind = remotePlayableKind(node.type, title);
+      const hasRemoteMedia = Boolean(node.streamUrl || node.downloadUrl);
+      const remoteStreamUrl =
+        identity && !hasCache && hasRemoteMedia && (remoteKind === "audio" || remoteKind === "video")
+          ? remoteMediaURL(identity.sourceId, identity.workCode, sourcePath)
+          : node.streamUrl;
       cursor.files.push({
         mediaItemId: nextID,
         locationId: hasCache ? node.cacheLocationId! : nextID,
         title,
         baseName: baseNameWithoutExtension(title),
         sourcePath,
-        kind: node.type || "file",
+        kind: remoteKind,
         folderPath: cursor.path,
         locationType: hasCache ? "cache" : "remote_stream",
-        streamUrl: hasCache ? `/api/media/${node.cacheLocationId}/stream` : node.streamUrl,
+        streamUrl: hasCache ? `/api/media/${node.cacheLocationId}/stream` : remoteStreamUrl,
         downloadUrl: node.downloadUrl,
         assetUrl: hasCache ? `/api/media/${node.cacheLocationId}/asset` : node.downloadUrl || node.streamUrl,
         textPreviewUrl:
@@ -220,12 +255,12 @@ export function buildRemoteTree(tracks: RemoteTrack[], identity?: RemoteTreeIden
                 },
               ]
             : []),
-          ...(node.streamUrl
+          ...(remoteStreamUrl
             ? [
                 {
                   locationId: nextID,
                   locationType: "remote_stream",
-                  streamUrl: node.streamUrl,
+                  streamUrl: remoteStreamUrl,
                   sourceId: 0,
                   sourceName: "Remote",
                   availability: "remote",
@@ -639,6 +674,59 @@ function mediaKindFromRemotePath(path: string) {
   ].includes(extension)
     ? "text"
     : "file";
+}
+
+function remotePlayableKind(kind: string, path: string) {
+  const normalizedKind = kind.trim().toLowerCase();
+  if (["audio", "video", "image", "text", "folder"].includes(normalizedKind)) return normalizedKind;
+  const extension = path.slice(path.lastIndexOf(".")).toLowerCase();
+  if ([".mp3", ".m4a", ".aac", ".flac", ".wav", ".wma", ".ogg", ".oga", ".opus"].includes(extension)) {
+    return "audio";
+  }
+  if (
+    [
+      ".mp4",
+      ".m4v",
+      ".mov",
+      ".webm",
+      ".mkv",
+      ".avi",
+      ".wmv",
+      ".flv",
+      ".f4v",
+      ".mpeg",
+      ".mpg",
+      ".mpe",
+      ".m2v",
+      ".m2ts",
+      ".mts",
+      ".ts",
+      ".3gp",
+      ".3g2",
+      ".ogv",
+      ".asf",
+      ".rm",
+      ".rmvb",
+      ".vob",
+      ".divx",
+      ".xvid",
+      ".mxf",
+      ".ogm",
+      ".svi",
+      ".nsv",
+      ".wtv",
+      ".amv",
+      ".mjpeg",
+      ".mjpg",
+      ".dv",
+      ".y4m",
+      ".ismv",
+      ".ism",
+    ].includes(extension)
+  ) {
+    return "video";
+  }
+  return normalizedKind || "file";
 }
 
 function versionedMediaAssetURL(locationId: number, fingerprint: string, sizeBytes: number | null) {

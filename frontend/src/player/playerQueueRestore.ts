@@ -34,11 +34,18 @@ export async function revalidatePersistedQueue(
     const mediaItem = result.mediaItems.find((item) => item.id === track.mediaItemId);
     if (!mediaItem) return [];
     const locations: PlayerTrackLocation[] = mediaItem.locations
-      .filter((location) => location.streamUrl && ["available", "remote"].includes(location.availability))
+      .filter(
+        (location) =>
+          (location.streamUrl || (location.locationType === "remote_stream" && location.downloadUrl)) &&
+          ["available", "remote"].includes(location.availability),
+      )
       .map((location) => ({
         locationId: location.id,
         locationType: location.locationType,
-        streamUrl: location.streamUrl,
+        streamUrl:
+          location.locationType === "remote_stream" && (mediaItem.kind === "audio" || mediaItem.kind === "video")
+            ? `/api/media/${location.id}/stream`
+            : location.streamUrl || location.downloadUrl,
         sourceId: location.fileSourceId,
         sourceName: location.fileSourceName,
         availability: location.availability,

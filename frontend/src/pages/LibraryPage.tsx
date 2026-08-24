@@ -72,6 +72,7 @@ import { isActiveWorkflowStatus, useWorkflowRunWatcher } from "@/hooks/useWorkfl
 import { UserTagRow } from "@/components/UserTagRow";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { openVoiceRoute } from "@/pages/CreatorWorksPage";
+import { playbackURL } from "@/player/mediaPlayback";
 import {
   api,
   ApiError,
@@ -9030,7 +9031,7 @@ function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value
 
 type FilePreviewState =
   | { kind: "image"; title: string; url: string; locationId: number; canSetCover: boolean }
-  | { kind: "video"; title: string; url: string; locationId: number }
+  | { kind: "video"; title: string; url: string; locationId: number; canTranscode: boolean }
   | { kind: "text"; title: string; locationId: number; url?: string };
 
 function useDirectoryLyricsAttachmentVisibility(root: TreeNode) {
@@ -11141,7 +11142,13 @@ function previewForFile(file: TreeTrack): FilePreviewState | null {
     };
   }
   if (file.kind === "video" && file.streamUrl) {
-    return { kind: "video", title: file.title, url: file.streamUrl, locationId: file.locationId };
+    return {
+      kind: "video",
+      title: file.title,
+      url: file.streamUrl,
+      locationId: file.locationId,
+      canTranscode: file.locationType === "local" || file.locationType === "cache",
+    };
   }
   if (file.kind === "text" && (file.locationId > 0 || file.streamUrl || file.downloadUrl)) {
     return {
@@ -11167,6 +11174,11 @@ function FilePreviewModal({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [forceVideoTranscode, setForceVideoTranscode] = useState(false);
+
+  useEffect(() => {
+    setForceVideoTranscode(false);
+  }, [preview]);
 
   useEffect(() => {
     setText(null);
@@ -11242,13 +11254,19 @@ function FilePreviewModal({
             <div className="grid min-h-[240px] place-items-center">
               <video
                 ref={videoRef}
-                src={assetURL(preview.url)}
+                src={assetURL(playbackURL(preview.url, "video", forceVideoTranscode))}
                 controls
                 playsInline
                 preload="metadata"
                 className="max-h-[72vh] w-full bg-black object-contain"
                 onPlay={player.pause}
-                onError={() => setError("This video format is not supported by the browser.")}
+                onError={() => {
+                  if (preview.canTranscode && !forceVideoTranscode) {
+                    setForceVideoTranscode(true);
+                  } else {
+                    setError("This video could not be played.");
+                  }
+                }}
               />
               {error && <div className="mt-3 text-sm text-muted-foreground">{error}</div>}
             </div>

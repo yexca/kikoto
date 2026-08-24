@@ -8,7 +8,7 @@ import (
 )
 
 func TestLocalAndRemoteMediaKindsRecognizeVideo(t *testing.T) {
-	for _, path := range []string{"movie.mp4", "movie.m4v", "movie.webm", "movie.mkv", "movie.mov", "movie.avi"} {
+	for _, path := range []string{"movie.mp4", "movie.m4v", "movie.webm", "movie.mkv", "movie.mov", "movie.avi", "movie.wmv", "movie.flv", "movie.m2ts", "movie.ts", "movie.3gp", "movie.mxf"} {
 		if kind := localFileKind(path); kind != "video" {
 			t.Fatalf("localFileKind(%q) = %q, want video", path, kind)
 		}
@@ -33,6 +33,20 @@ func TestLocalAndRemoteMediaKindsRecognizeWMAAudio(t *testing.T) {
 	}
 	if got := remoteTrackKindForPath("file", "disc/track.wma"); got != "audio" {
 		t.Fatalf("remote WMA kind = %q, want audio", got)
+	}
+}
+
+func TestLocalAndRemoteMediaKindsRecognizeOggAudio(t *testing.T) {
+	for _, path := range []string{"track.ogg", "track.oga", "track.opus"} {
+		if got := localFileKind(path); got != "audio" {
+			t.Fatalf("localFileKind(%q) = %q, want audio", path, got)
+		}
+		if got := mediaKindFromPath(path); got != "audio" {
+			t.Fatalf("mediaKindFromPath(%q) = %q, want audio", path, got)
+		}
+		if got := remoteTrackKindForPath("file", path); got != "audio" {
+			t.Fatalf("remoteTrackKindForPath(%q) = %q, want audio", path, got)
+		}
 	}
 }
 

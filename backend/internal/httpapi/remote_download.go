@@ -25,6 +25,9 @@ type remoteDownloadOptions struct {
 }
 
 func (s *Server) remoteMediaDownloadLimitBytes(ctx context.Context) int64 {
+	if s.db == nil {
+		return int64(defaultRemoteDownloadLimitGB) << 30
+	}
 	limitGB := s.settingIntContext(ctx, "remote_download_limit_gb", defaultRemoteDownloadLimitGB)
 	if limitGB < minimumRemoteDownloadLimitGB || limitGB > maximumRemoteDownloadLimitGB {
 		limitGB = defaultRemoteDownloadLimitGB
