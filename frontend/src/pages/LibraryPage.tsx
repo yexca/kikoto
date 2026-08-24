@@ -65,7 +65,7 @@ import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { FloatingSelect } from "@/components/ui/floating-select";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { isActiveWorkflowStatus, useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
@@ -1490,6 +1490,11 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     setClauseEditor({ mode: "add", index: null, draft: { kind: "text", value: "" } });
   };
 
+  const closeMobileSearch = () => {
+    setMobileSearchOpen(false);
+    setClauseEditor(null);
+  };
+
   const openEditClauseEditor = (clause: SearchClause, index: number) => {
     setClauseEditor({ mode: "edit", index, draft: { kind: clause.kind, value: clause.value } });
   };
@@ -1664,7 +1669,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     <div className="space-y-5">
       <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between" data-toast-avoid>
         <div
-          className={`order-2 min-h-10 flex-1 items-center gap-2 rounded-lg border bg-card px-3 text-sm lg:order-1 lg:flex lg:max-w-xl ${
+          className={`order-2 min-h-10 w-full items-center gap-2 rounded-lg border bg-card px-3 text-sm lg:order-1 lg:flex lg:max-w-xl ${
             mobileSearchOpen ? "flex" : "hidden"
           }`}
         >
@@ -1703,17 +1708,10 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         <div className="order-1 flex w-full flex-wrap justify-end gap-2 lg:order-2 lg:w-auto">
           {mobileNavigationLayout && (
             <IconButton
-              title={
-                searchQuery.trim()
-                  ? t("library.searchActive")
-                  : mobileSearchOpen
-                    ? t("library.hideSearch")
-                    : t("library.searchLibrary")
-              }
-              disabled={Boolean(searchQuery.trim())}
+              title={mobileSearchOpen ? t("library.hideSearch") : t("library.searchLibrary")}
               onClick={() => {
-                if (mobileSearchOpen && !searchQuery.trim()) {
-                  setMobileSearchOpen(false);
+                if (mobileSearchOpen) {
+                  closeMobileSearch();
                   return;
                 }
                 setMobileSearchOpen(true);
@@ -3492,54 +3490,49 @@ function SearchClauseEditor({
   const { t } = useTranslation();
   const value = editor.draft.value;
   return (
-    <div className="flex flex-col gap-2 rounded-lg border bg-card p-2 text-sm shadow-sm sm:flex-row sm:items-center">
-      <Select
-        value={editor.draft.kind}
-        onValueChange={(nextValue) => {
-          const kind = nextValue as SearchClauseKind;
-          onChange({
-            kind,
-            value: kind === "shelf" ? "true" : editor.draft.kind === "shelf" ? "" : editor.draft.value,
-          });
-        }}
-      >
-        <SelectTrigger className="sm:w-40" aria-label={t("library.searchClauseType")}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {editableSearchClauseKinds.map((kind) => (
-            <SelectItem key={kind.value} value={kind.value}>
-              {t(`library.searchClauseKinds.${kind.value}`, { defaultValue: kind.label })}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {editor.draft.kind === "shelf" ? (
-        <Select
-          value={value === "false" ? "false" : "true"}
-          onValueChange={(nextValue) => onChange({ ...editor.draft, value: nextValue })}
-        >
-          <SelectTrigger className="min-w-0 flex-1" aria-label={t("library.shelfMembership")}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="true">{t("library.included")}</SelectItem>
-            <SelectItem value="false">{t("library.notIncluded")}</SelectItem>
-          </SelectContent>
-        </Select>
-      ) : (
-        <input
-          className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
-          value={value}
-          onChange={(event) => onChange({ ...editor.draft, value: event.target.value })}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") onSave();
-            if (event.key === "Escape") onCancel();
+    <div className="grid gap-2 rounded-lg border bg-card p-2 text-sm shadow-sm sm:flex sm:items-center">
+      <div className="grid min-w-0 grid-cols-[minmax(8rem,auto)_minmax(0,1fr)] items-center gap-2 sm:contents">
+        <FloatingSelect
+          value={editor.draft.kind}
+          onValueChange={(nextValue) => {
+            const kind = nextValue as SearchClauseKind;
+            onChange({
+              kind,
+              value: kind === "shelf" ? "true" : editor.draft.kind === "shelf" ? "" : editor.draft.value,
+            });
           }}
-          placeholder={t("library.value")}
+          ariaLabel={t("library.searchClauseType")}
+          className="w-full sm:w-40"
+          options={editableSearchClauseKinds.map((kind) => ({
+            value: kind.value,
+            label: t(`library.searchClauseKinds.${kind.value}`, { defaultValue: kind.label }),
+          }))}
         />
-      )}
-      <div className="flex gap-2">
+        {editor.draft.kind === "shelf" ? (
+          <FloatingSelect
+            value={value === "false" ? "false" : "true"}
+            onValueChange={(nextValue) => onChange({ ...editor.draft, value: nextValue })}
+            ariaLabel={t("library.shelfMembership")}
+            className="w-full min-w-0 sm:flex-1"
+            options={[
+              { value: "true", label: t("library.included") },
+              { value: "false", label: t("library.notIncluded") },
+            ]}
+          />
+        ) : (
+          <input
+            className="h-[var(--control-height)] min-w-0 w-full rounded-md border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring sm:flex-1"
+            value={value}
+            onChange={(event) => onChange({ ...editor.draft, value: event.target.value })}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") onSave();
+              if (event.key === "Escape") onCancel();
+            }}
+            placeholder={t("library.value")}
+          />
+        )}
+      </div>
+      <div className="flex justify-end gap-2 sm:shrink-0">
         <Button size="sm" disabled={!value.trim()} onClick={onSave}>
           <Check className="h-4 w-4" />
           {editor.mode === "add" ? t("library.add") : t("common.save")}
@@ -8574,24 +8567,16 @@ function WorkVersionSelector({
             <span className="font-medium text-foreground">Metadata language</span>
           </div>
           {metadataVariants.length > 1 ? (
-            <Select
+            <FloatingSelect
               value={activeMetadataVariant?.key ?? ""}
               onValueChange={(value) => onMetadataVariantSelect?.(value)}
-            >
-              <SelectTrigger
-                className="w-auto min-w-40 max-w-full px-2 text-xs font-medium"
-                aria-label="Metadata language"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {metadataVariants.map((variant) => (
-                  <SelectItem key={variant.key} value={variant.key}>
-                    {metadataVariantLabel(variant, metadataVariants)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              ariaLabel="Metadata language"
+              className="w-auto min-w-40 max-w-full px-2 text-xs font-medium"
+              options={metadataVariants.map((variant) => ({
+                value: variant.key,
+                label: metadataVariantLabel(variant, metadataVariants),
+              }))}
+            />
           ) : (
             <span className="font-semibold text-foreground">
               {activeMetadataVariant
