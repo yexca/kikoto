@@ -2429,6 +2429,11 @@ test("library search follows the user across scopes and survives navigation", as
   const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
   await search.fill("local term");
   await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("local term");
+  await page.getByRole("button", { name: "Hide library search" }).click();
+  await expect(search).toBeHidden();
+  await page.getByRole("button", { name: "Search library" }).click();
+  await expect(search).toBeVisible();
+  await expect(search).toHaveValue("local term");
   await page.getByRole("button", { name: "Tracked", exact: true }).click();
   await expect(search).toHaveValue("local term");
   await search.fill("tracked term");
@@ -2441,6 +2446,7 @@ test("library search follows the user across scopes and survives navigation", as
 });
 
 test("library search conditions use accessible select menus", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 844 });
   await mockApplication(page);
   await page.goto("/");
 
@@ -2449,6 +2455,41 @@ test("library search conditions use accessible select menus", async ({ page }) =
 
   const clauseType = page.getByRole("combobox", { name: "Search clause type" });
   await expect(clauseType).toHaveText("Text");
+  const searchBox = page.getByPlaceholder("Search title, code, circle, tag, or creator");
+  const toolbar = page.locator("section[data-toast-avoid]").filter({ has: searchBox });
+  await expect(toolbar.getByRole("button", { name: /Items per page:/ })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "Sort: Recommended" })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: /^Columns:/ })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "Filters" })).toBeVisible();
+  const actionButtons = [
+    toolbar.getByRole("button", { name: /Items per page:/ }),
+    toolbar.getByRole("button", { name: /^Columns:/ }),
+    toolbar.getByRole("button", { name: /^Sort:/ }),
+    toolbar.getByRole("button", { name: "Filters" }),
+  ];
+  const actionBoxes = await Promise.all(actionButtons.map((button) => button.boundingBox()));
+  const searchBoxBounds = await searchBox.boundingBox();
+  expect(actionBoxes.every((box) => box !== null)).toBe(true);
+  expect(searchBoxBounds).not.toBeNull();
+  expect(searchBoxBounds!.y).toBeGreaterThanOrEqual(Math.max(...actionBoxes.map((box) => box!.y + box!.height)));
+
+  await toolbar.getByRole("button", { name: "Hide library search" }).click();
+  await expect(clauseType).toHaveCount(0);
+  await expect(searchBox).toBeHidden();
+  await expect(toolbar.getByRole("button", { name: /^Columns:/ })).toBeVisible();
+  await toolbar.getByRole("button", { name: "Search library" }).click();
+  await page.getByRole("button", { name: "Add search condition" }).click();
+  await expect(clauseType).toHaveText("Text");
+
+  const clauseTypeBox = await clauseType.boundingBox();
+  const clauseValueBox = await page.getByPlaceholder("Value").boundingBox();
+  expect(clauseTypeBox).not.toBeNull();
+  expect(clauseValueBox).not.toBeNull();
+  expect(Math.abs(clauseTypeBox!.y - clauseValueBox!.y)).toBeLessThan(1);
+  expect(Math.abs(clauseTypeBox!.height - clauseValueBox!.height)).toBeLessThan(1);
+  const mobileCancelBox = await page.getByRole("button", { name: "Cancel", exact: true }).boundingBox();
+  expect(mobileCancelBox).not.toBeNull();
+  expect(mobileCancelBox!.x + mobileCancelBox!.width).toBeGreaterThanOrEqual(page.viewportSize()!.width - 32);
   await clauseType.click();
   await page.getByRole("listbox").getByRole("option", { name: "On shelf", exact: true }).click();
 
@@ -2460,6 +2501,16 @@ test("library search conditions use accessible select menus", async ({ page }) =
   await expect(membershipOptions.getByRole("option", { name: "Not included", exact: true })).toBeVisible();
   await membershipOptions.getByRole("option", { name: "Not included", exact: true }).click();
   await expect(shelfMembership).toHaveText("Not included");
+
+  await page.setViewportSize({ width: 700, height: page.viewportSize()!.height });
+  const wideClauseTypeBox = await clauseType.boundingBox();
+  const wideClauseValueBox = await shelfMembership.boundingBox();
+  const wideCancelBox = await page.getByRole("button", { name: "Cancel", exact: true }).boundingBox();
+  expect(wideClauseTypeBox).not.toBeNull();
+  expect(wideClauseValueBox).not.toBeNull();
+  expect(wideCancelBox).not.toBeNull();
+  expect(Math.abs(wideClauseTypeBox!.y - wideCancelBox!.y)).toBeLessThan(3);
+  expect(Math.abs(wideClauseValueBox!.y - wideCancelBox!.y)).toBeLessThan(3);
 
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(clauseType).toHaveCount(0);
@@ -3173,9 +3224,22 @@ test("inline lyrics adapt visible rows to height and keep the active line center
   );
 
   await preview.click();
+  const fullPlayer = page.locator("section.fixed.inset-0");
+  const playerBefore = await fullPlayer.boundingBox();
+  expect(playerBefore).not.toBeNull();
   const lyricsSelect = page.getByRole("combobox", { name: "Lyrics" });
   await expect(lyricsSelect).toHaveText("Auto");
   await lyricsSelect.click();
+  await expect(page.locator("body")).not.toHaveAttribute("data-scroll-locked");
+  const playerAfter = await fullPlayer.boundingBox();
+  expect(playerAfter).not.toBeNull();
+  expect(Math.abs(playerAfter!.x - playerBefore!.x)).toBeLessThan(0.5);
+  expect(Math.abs(playerAfter!.width - playerBefore!.width)).toBeLessThan(0.5);
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("listbox")).toBeHidden();
+  await lyricsSelect.click();
+
   const lyricsOptions = page.getByRole("listbox");
   await expect(lyricsOptions.getByRole("option")).toHaveText(["Auto", "lyrics.lrc", "translation.srt"]);
   await lyricsOptions.getByRole("option", { name: "translation.srt", exact: true }).click();

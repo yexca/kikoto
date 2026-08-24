@@ -27,7 +27,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { OverflowMarquee, OverflowMarqueeGroup } from "@/components/ui/overflow-marquee";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { FloatingSelect } from "@/components/ui/floating-select";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { ANDROID_BACK_EVENT, PLAYBACK_CURSOR_UPDATED_EVENT } from "@/app/events";
@@ -2819,22 +2819,20 @@ function LyricsSourceSelector({
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground">
       <span className="shrink-0 font-semibold">Lyrics</span>
-      <Select
+      <FloatingSelect
         value={automatic ? "auto" : String(activeLocationId)}
         onValueChange={(value) => onChoiceChange(value === "auto" ? null : Number(value))}
-      >
-        <SelectTrigger className="w-auto min-w-0 flex-1 px-2 text-xs" aria-label="Lyrics" data-player-no-drag>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent data-player-no-drag>
-          <SelectItem value="auto">Auto</SelectItem>
-          {choices.map((choice) => (
-            <SelectItem key={choice.locationId} value={String(choice.locationId)}>
-              {lyricsChoiceDisplayLabel(choice, choices)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        ariaLabel="Lyrics"
+        className="w-auto min-w-0 flex-1 px-2 text-xs"
+        contentClassName="max-w-[calc(100vw-1.5rem)]"
+        options={[
+          { value: "auto", label: "Auto" },
+          ...choices.map((choice) => ({
+            value: String(choice.locationId),
+            label: lyricsChoiceDisplayLabel(choice, choices),
+          })),
+        ]}
+      />
     </div>
   );
 }

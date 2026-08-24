@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { ThemePalettePicker } from "@/app/ThemePalettePicker";
 import { ThemePresetPicker } from "@/app/ThemePresetPicker";
 import type { ThemeMode, ThemePalette, ThemePreset } from "@/app/theme";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { FloatingSelect } from "@/components/ui/floating-select";
 import { UI_LOCALE_OPTIONS, type UiLocale } from "@/i18n";
 
 export function AppearanceControls({
@@ -36,41 +36,30 @@ export function AppearanceControls({
       <div className="border-b p-3" role="group" aria-label={t("appearance.language")}>
         <AppearanceGroupLabel>{t("appearance.language")}</AppearanceGroupLabel>
         <p className="mb-2 px-2 text-xs text-muted-foreground">{t("appearance.languageDescription")}</p>
-        <Select
+        <FloatingSelect
           value={localePreference}
           disabled={localeBusy}
+          ariaBusy={localeBusy}
+          ariaInvalid={Boolean(localeError)}
+          ariaLabel={t("appearance.language")}
           onValueChange={(value) => void onLocaleChange(value as UiLocale)}
-        >
-          <SelectTrigger
-            className="disabled:cursor-wait"
-            aria-busy={localeBusy}
-            aria-invalid={Boolean(localeError)}
-            aria-label={t("appearance.language")}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {UI_LOCALE_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {t(option.labelKey)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          className="disabled:cursor-wait"
+          options={UI_LOCALE_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))}
+        />
         {localeError && <p className="mt-2 px-2 text-xs text-destructive">{localeError}</p>}
       </div>
       <div className="p-2" role="group" aria-label={t("appearance.mode")}>
         <AppearanceGroupLabel>{t("appearance.mode")}</AppearanceGroupLabel>
-        <Select value={mode} onValueChange={(value) => onModeChange(value as ThemeMode)}>
-          <SelectTrigger aria-label={t("appearance.mode")}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="light">{t("appearance.light")}</SelectItem>
-            <SelectItem value="dark">{t("appearance.dark")}</SelectItem>
-            <SelectItem value="system">{t("appearance.system")}</SelectItem>
-          </SelectContent>
-        </Select>
+        <FloatingSelect
+          value={mode}
+          ariaLabel={t("appearance.mode")}
+          onValueChange={(value) => onModeChange(value as ThemeMode)}
+          options={[
+            { value: "light", label: t("appearance.light") },
+            { value: "dark", label: t("appearance.dark") },
+            { value: "system", label: t("appearance.system") },
+          ]}
+        />
       </div>
       <div className="border-t p-3">
         <div role="group" aria-label={t("appearance.style")}>

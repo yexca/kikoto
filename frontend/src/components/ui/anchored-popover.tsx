@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/utils";
 
-type PopoverPosition = { left: number; top: number; maxHeight: number; visible: boolean };
+type PopoverPosition = { left: number; top: number; maxHeight: number; anchorWidth: number; visible: boolean };
 const openFloatingLayerSelector = "[data-app-floating-layer][data-state='open']";
 
 export function AnchoredPopover({
@@ -17,6 +17,8 @@ export function AnchoredPopover({
   bottomCollisionPadding = collisionPadding,
   zIndex,
   ariaLabel,
+  floatingLayer = false,
+  matchAnchorWidth = false,
   onOpenChange,
 }: {
   open: boolean;
@@ -29,10 +31,18 @@ export function AnchoredPopover({
   bottomCollisionPadding?: number;
   zIndex?: number;
   ariaLabel?: string;
+  floatingLayer?: boolean;
+  matchAnchorWidth?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const [position, setPosition] = useState<PopoverPosition>({ left: 0, top: 0, maxHeight: 0, visible: false });
+  const [position, setPosition] = useState<PopoverPosition>({
+    left: 0,
+    top: 0,
+    maxHeight: 0,
+    anchorWidth: 0,
+    visible: false,
+  });
 
   const updatePosition = useCallback(() => {
     const anchor = anchorRef.current;
@@ -40,6 +50,7 @@ export function AnchoredPopover({
     if (!anchor || !content) return;
     const anchorRect = anchor.getBoundingClientRect();
     const contentRect = content.getBoundingClientRect();
+    const contentWidth = matchAnchorWidth ? Math.max(contentRect.width, anchorRect.width) : contentRect.width;
     const viewport = window.visualViewport;
     const viewportLeft = viewport?.offsetLeft ?? 0;
     const viewportTop = viewport?.offsetTop ?? 0;
@@ -50,9 +61,9 @@ export function AnchoredPopover({
     const availableAbove = anchorRect.top - viewportTop - collisionPadding - gap;
     const openBelow = availableBelow >= contentRect.height || availableBelow >= availableAbove;
     const desiredTop = openBelow ? anchorRect.bottom + gap : anchorRect.top - contentRect.height - gap;
-    const desiredLeft = align === "start" ? anchorRect.left : anchorRect.right - contentRect.width;
+    const desiredLeft = align === "start" ? anchorRect.left : anchorRect.right - contentWidth;
     const minLeft = viewportLeft + collisionPadding;
-    const maxLeft = Math.max(minLeft, viewportLeft + viewportWidth - contentRect.width - collisionPadding);
+    const maxLeft = Math.max(minLeft, viewportLeft + viewportWidth - contentWidth - collisionPadding);
     const minTop = viewportTop + collisionPadding;
     const maxTop = Math.max(minTop, viewportBottom - contentRect.height - bottomCollisionPadding);
     const availableHeight = Math.max(8, openBelow ? availableBelow : availableAbove);
@@ -60,9 +71,10 @@ export function AnchoredPopover({
       left: Math.max(minLeft, Math.min(maxLeft, desiredLeft)),
       top: Math.max(minTop, Math.min(maxTop, desiredTop)),
       maxHeight: availableHeight,
+      anchorWidth: anchorRect.width,
       visible: true,
     });
-  }, [align, anchorRef, bottomCollisionPadding, collisionPadding, gap]);
+  }, [align, anchorRef, bottomCollisionPadding, collisionPadding, gap, matchAnchorWidth]);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -89,16 +101,15 @@ export function AnchoredPopover({
   useLayoutEffect(() => {
     if (!open || !onOpenChange) return;
     const dismiss = (event: PointerEvent) => {
-      if (document.querySelector(openFloatingLayerSelector)) return;
       const target = event.target as Node | null;
       if (target && (anchorRef.current?.contains(target) || contentRef.current?.contains(target))) return;
-      if (target instanceof Element && target.closest("[data-app-floating-layer]")) return;
+      if (target instanceof Element && target.closest(openFloatingLayerSelector)) return;
       onOpenChange(false);
     };
     const dismissWithKeyboard = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !document.querySelector(openFloatingLayerSelector)) {
-        onOpenChange(false);
-      }
+      if (event.key !== "Escape") return;
+      if (!floatingLayer && document.querySelector(openFloatingLayerSelector)) return;
+      onOpenChange(false);
     };
     document.addEventListener("pointerdown", dismiss, true);
     window.addEventListener("keydown", dismissWithKeyboard, true);
@@ -106,13 +117,15 @@ export function AnchoredPopover({
       document.removeEventListener("pointerdown", dismiss, true);
       window.removeEventListener("keydown", dismissWithKeyboard, true);
     };
-  }, [anchorRef, onOpenChange, open]);
+  }, [anchorRef, floatingLayer, onOpenChange, open]);
 
   if (!open) return null;
   return createPortal(
     <div
       ref={contentRef}
       data-android-back-close
+      data-app-floating-layer={floatingLayer ? "true" : undefined}
+      data-state={floatingLayer ? "open" : undefined}
       role={ariaLabel ? "dialog" : undefined}
       aria-label={ariaLabel}
       className={cn(
@@ -123,6 +136,7 @@ export function AnchoredPopover({
         left: position.left,
         top: position.top,
         maxHeight: position.maxHeight > 0 ? position.maxHeight : undefined,
+        minWidth: matchAnchorWidth && position.anchorWidth > 0 ? position.anchorWidth : undefined,
         visibility: position.visible ? "visible" : "hidden",
         zIndex,
       }}

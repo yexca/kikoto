@@ -1355,6 +1355,7 @@ test("mobile header orders actions and separates popovers from the quick-action 
   expect(languageListboxBox!.y + languageListboxBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await languageListbox.getByRole("option", { name: "Auto", exact: true }).click();
   await expect(appearancePopover).toBeVisible();
+  await expect(appearancePopover.getByRole("combobox", { name: "UI language" })).toHaveCSS("box-shadow", "none");
 
   const appearanceBox = await appearancePopover.boundingBox();
   expect(appearanceBox).not.toBeNull();
@@ -1386,6 +1387,25 @@ test("mobile header orders actions and separates popovers from the quick-action 
   await page.getByRole("button", { name: "Account menu" }).click();
   await page.getByRole("dialog", { name: "Account" }).getByRole("button", { name: "Activity", exact: true }).click();
   await expect(page).toHaveURL(/\/activity$/);
+});
+
+test("opening an appearance floating select keeps fixed mobile surfaces stable", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 844 });
+  await mockWorkflows(page);
+  await page.goto("/workflows");
+
+  await page.getByRole("button", { name: "Open appearance settings" }).click();
+  const footer = page.locator("footer");
+  const footerBefore = await footer.boundingBox();
+  expect(footerBefore).not.toBeNull();
+
+  await page.getByRole("dialog", { name: "Appearance" }).getByRole("combobox", { name: "UI language" }).click();
+  await expect(page.locator("body")).not.toHaveAttribute("data-scroll-locked");
+
+  const footerAfter = await footer.boundingBox();
+  expect(footerAfter).not.toBeNull();
+  expect(Math.abs(footerAfter!.x - footerBefore!.x)).toBeLessThan(0.5);
+  expect(Math.abs(footerAfter!.width - footerBefore!.width)).toBeLessThan(0.5);
 });
 
 test("desktop header popovers render above page content", async ({ page }) => {
