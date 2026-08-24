@@ -327,7 +327,7 @@ function AuthenticatedApp() {
           >
             <div className="flex min-w-0 items-center gap-2">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary/10 ring-1 ring-primary/15">
-                <img src="/kikoto-icon.svg" alt="" className="h-7 w-7 dark:invert" />
+                <img src="/kikoto-icon-512.png" alt="" className="h-7 w-7" />
               </span>
               {!sidebarCollapsed && <div className="truncate text-xl font-bold">Kikoto</div>}
             </div>
@@ -375,7 +375,7 @@ function AuthenticatedApp() {
             <div className="flex h-[var(--header-height)] min-w-0 items-center justify-between gap-2 pl-[max(0.75rem,var(--safe-area-left))] pr-[max(0.75rem,var(--safe-area-right))] lg:h-auto lg:min-h-[var(--header-height)] lg:gap-3 lg:px-6 lg:py-2">
               <div className="flex min-w-0 items-center lg:flex-row lg:items-baseline lg:gap-3">
                 {!showMobilePageTitle && (
-                  <img src="/kikoto-icon.svg" alt="Kikoto" className="h-8 w-8 dark:invert lg:hidden" />
+                  <img src="/kikoto-icon-512.png" alt="Kikoto" className="h-8 w-8 lg:hidden" />
                 )}
                 <h1
                   className={cn(

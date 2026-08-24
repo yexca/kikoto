@@ -1,10 +1,9 @@
-const CACHE_NAME = "kikoto-app-v2";
+const CACHE_NAME = "kikoto-app-v3";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/offline.html",
   "/manifest.webmanifest",
-  "/kikoto-icon.svg",
   "/kikoto-icon-192.png",
   "/kikoto-icon-512.png",
   "/kikoto-maskable-512.png",
