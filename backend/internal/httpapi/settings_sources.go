@@ -5828,7 +5828,7 @@ func mediaKindFromPath(path string) string {
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".mp3", ".wav", ".flac", ".m4a", ".wma", ".ogg", ".opus", ".aac":
 		return "audio"
-	case ".mp4", ".m4v", ".webm", ".mkv", ".mov", ".avi":
+	case ".mp4", ".m4v", ".webm", ".mkv", ".mov", ".avi", ".wmv", ".flv", ".f4v", ".mpeg", ".mpg", ".mpe", ".m2v", ".m2ts", ".mts", ".ts", ".3gp", ".3g2", ".ogv", ".asf", ".rm", ".rmvb", ".vob", ".divx", ".xvid", ".mxf", ".ogm", ".svi", ".nsv", ".wtv", ".amv", ".mjpeg", ".mjpg", ".dv", ".y4m", ".ismv", ".ism":
 		return "video"
 	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp":
 		return "image"

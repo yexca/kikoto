@@ -71,6 +71,7 @@ import { isActiveWorkflowStatus, useWorkflowRunWatcher } from "@/hooks/useWorkfl
 import { UserTagRow } from "@/components/UserTagRow";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { openVoiceRoute } from "@/pages/CreatorWorksPage";
+import { playbackURL } from "@/player/mediaPlayback";
 import {
   api,
   ApiError,
@@ -11154,6 +11155,11 @@ function FilePreviewModal({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [forceVideoTranscode, setForceVideoTranscode] = useState(false);
+
+  useEffect(() => {
+    setForceVideoTranscode(false);
+  }, [preview]);
 
   useEffect(() => {
     setText(null);
@@ -11229,13 +11235,19 @@ function FilePreviewModal({
             <div className="grid min-h-[240px] place-items-center">
               <video
                 ref={videoRef}
-                src={assetURL(preview.url)}
+                src={assetURL(playbackURL(preview.url, "video", forceVideoTranscode))}
                 controls
                 playsInline
                 preload="metadata"
                 className="max-h-[72vh] w-full bg-black object-contain"
                 onPlay={player.pause}
-                onError={() => setError("This video format is not supported by the browser.")}
+                onError={() => {
+                  if (!forceVideoTranscode) {
+                    setForceVideoTranscode(true);
+                  } else {
+                    setError("This video could not be played.");
+                  }
+                }}
               />
               {error && <div className="mt-3 text-sm text-muted-foreground">{error}</div>}
             </div>

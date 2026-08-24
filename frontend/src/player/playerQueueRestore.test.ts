@@ -67,6 +67,54 @@ describe("revalidatePersistedQueue", () => {
     expect(result[0].streamUrl).toBe("/api/media/101/stream");
   });
 
+  it("proxies a tracked remote media location after queue restoration", async () => {
+    const mediaItems = [
+      {
+        id: 10,
+        parentId: null,
+        kind: "video",
+        title: "clip.avi",
+        discNo: null,
+        trackNo: null,
+        durationSeconds: 60,
+        hasAudio: true,
+        sizeBytes: 1000,
+        fingerprint: "remote-video",
+        progress: null,
+        locations: [
+          {
+            id: 101,
+            fileSourceId: 7,
+            fileSourceCode: "remote",
+            fileSourceName: "Remote",
+            locationType: "remote_stream",
+            path: "clip.avi",
+            streamUrl: "https://media.invalid/clip.avi",
+            downloadUrl: "",
+            remoteHash: "",
+            sizeBytes: 1000,
+            durationSeconds: 60,
+            availability: "remote",
+            lastCheckedAt: null,
+          },
+        ],
+      },
+    ] satisfies MediaItem[];
+
+    const result = await revalidatePersistedQueue(
+      [
+        {
+          ...persistedTrack,
+          kind: "video",
+          locationType: "remote_stream",
+          streamUrl: "https://media.invalid/clip.avi",
+        },
+      ],
+      async () => mediaItems,
+    );
+    expect(result[0].streamUrl).toBe("/api/media/101/stream");
+  });
+
   it("removes a queue item whose media no longer exists", async () => {
     await expect(revalidatePersistedQueue([persistedTrack], async () => [])).resolves.toEqual([]);
   });

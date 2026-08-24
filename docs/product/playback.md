@@ -4,12 +4,20 @@ Playback is handled by a global browser audio player.
 
 ## Current Behavior
 
-- Local media streams through the backend with range support.
-- Local and cached `.wma` locations are converted on first playback into a
-  fingerprinted MP3 derivative under the cache root. The derivative keeps range
-  support and is reused until the source size or modification time changes.
-  Direct remote `.wma` streams must be cached before this compatibility path is
-  available.
+- Local and cached media is inspected with FFprobe before playback. A browser-
+  compatible container/codec combination is served directly with HTTP range
+  support; every other supported media format is converted by FFmpeg directly
+  to the response stream.
+- Remote preview media is fetched through the configured source policy and
+  converted directly to the response stream. Remote previews do not expose the
+  source URL to the browser, and the playback response is not written to
+  `/cache`; the separate remote-source cache workflow remains independent.
+- Realtime conversion uses a fragmented MP4 (H.264/AAC) video stream or an MP3
+  audio stream. Converted responses are `no-store` and do not support random
+  range seeks; each viewer uses an independent FFmpeg process subject to the
+  server's conversion concurrency limit.
+- The Docker image includes both `ffmpeg` and `ffprobe`. Other deployments must
+  make both binaries available on the backend process `PATH`.
 - Clicking a playable file queues naturally sorted playable files in the same
   folder and starts the selected file at zero.
 - Work detail exposes fixed Resume instead of work-level Play. Resume is disabled

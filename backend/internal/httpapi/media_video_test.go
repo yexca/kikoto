@@ -8,7 +8,7 @@ import (
 )
 
 func TestLocalAndRemoteMediaKindsRecognizeVideo(t *testing.T) {
-	for _, path := range []string{"movie.mp4", "movie.m4v", "movie.webm", "movie.mkv", "movie.mov", "movie.avi"} {
+	for _, path := range []string{"movie.mp4", "movie.m4v", "movie.webm", "movie.mkv", "movie.mov", "movie.avi", "movie.wmv", "movie.flv", "movie.m2ts", "movie.ts", "movie.3gp", "movie.mxf"} {
 		if kind := localFileKind(path); kind != "video" {
 			t.Fatalf("localFileKind(%q) = %q, want video", path, kind)
 		}

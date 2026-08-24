@@ -36,6 +36,7 @@ import { currentScopedStorageKey } from "@/lib/clientStorageScope";
 import { useAuth } from "@/auth/AuthProvider";
 import { addNativeMediaListeners, stopNativeMedia, supportsNativeMedia, updateNativeMedia } from "@/lib/nativeMedia";
 import { playbackKeyForLocation, remotePlaybackKey } from "@/player/playbackIdentity";
+import { playbackURL, remoteMediaPlaybackURL } from "@/player/mediaPlayback";
 import { lyricsChoiceDisplayLabel, type LyricsChoice } from "@/player/lyricsMatching";
 import {
   applyTrackLocation,
@@ -379,6 +380,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     pending: new Map(),
   });
   const cacheRequestedRef = useRef<Set<string>>(new Set());
+  const transcodeRetryRef = useRef<string | null>(null);
   const locationFailureStateRef = useRef(createTrackLocationFailureState());
   const nativeControlRef = useRef({
     play: () => {},
@@ -483,7 +485,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !currentTrack) return;
-    audio.src = assetURL(currentTrack.streamUrl);
+    transcodeRetryRef.current = null;
+    audio.src = assetURL(playerTrackAudioURL(currentTrack));
     setCurrentTime(0);
     setDuration(0);
     setDurationLocationId(currentTrack.locationId);
@@ -863,6 +866,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const tryNextLocation = () => {
     if (!currentTrack) return;
+    const retryKey = `${currentPlaybackInstanceKey ?? ""}:${currentTrack.locationId}`;
+    if (transcodeRetryRef.current !== retryKey) {
+      const audio = audioRef.current;
+      if (audio) {
+        transcodeRetryRef.current = retryKey;
+        audio.src = assetURL(playerTrackAudioURL(currentTrack, true));
+        audio.load();
+        if (isPlaying) void audio.play().catch(() => setIsPlaying(false));
+        return;
+      }
+    }
     const result = recordTrackLocationFailure(currentTrack, locationFailureStateRef.current);
     if (result.kind === "ignored") {
       setIsPlaying(false);
@@ -1200,6 +1214,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       </PlayerContext.Provider>
     </LibraryPlayerContext.Provider>
   );
+}
+
+function playerTrackAudioURL(track: PlayerTrack, forceTranscode = false) {
+  if (track.locationType === "remote_stream" && track.remoteSourceId && track.remoteWorkCode && track.remotePath) {
+    return remoteMediaPlaybackURL(
+      track.remoteSourceId,
+      track.remoteWorkCode,
+      track.remotePath,
+      "audio",
+      forceTranscode,
+    );
+  }
+  return playbackURL(track.streamUrl, "audio", forceTranscode);
 }
 
 export function usePlayer() {

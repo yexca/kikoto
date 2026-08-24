@@ -161,6 +161,35 @@ describe("mediaTreeModel", () => {
     });
   });
 
+  it("proxies tracked remote audio and video locations through the backend", () => {
+    const item = {
+      id: 31,
+      title: "clip.avi",
+      kind: "video",
+      hasAudio: true,
+      fingerprint: "tracked-remote-video",
+      durationSeconds: 30,
+      progress: null,
+      locations: [
+        {
+          id: 41,
+          fileSourceId: 9,
+          fileSourceName: "Remote",
+          locationType: "remote_stream",
+          path: "bonus/clip.avi",
+          streamUrl: "https://media.invalid/clip.avi",
+          downloadUrl: "",
+          availability: "remote",
+          sizeBytes: 2048,
+          durationSeconds: 30,
+        },
+      ],
+    } as MediaItem;
+    const file = flattenTracks(buildTree([item], null, "RJ00000001"))[0];
+    expect(file.streamUrl).toBe("/api/media/41/stream");
+    expect(file.locations[0]?.streamUrl).toBe("/api/media/41/stream");
+  });
+
   it("builds explicit Resume from the cursor media edition and saved source", () => {
     const item = {
       id: 11,
@@ -583,5 +612,57 @@ describe("mediaTreeModel", () => {
     ] as RemoteTrack[]);
 
     expect(flattenTracks(tree)).toMatchObject([{ kind: "video", hasAudio: null }]);
+  });
+
+  it("routes remote video previews through the same-origin media proxy", () => {
+    const tree = buildRemoteTree(
+      [
+        {
+          type: "file",
+          title: "bonus.avi",
+          hash: "video-hash",
+          streamUrl: "https://media.invalid/bonus.avi",
+          downloadUrl: "",
+          sizeBytes: 2048,
+          durationSeconds: 30,
+          cacheAvailable: false,
+          cacheLocationId: null,
+          cachePath: "",
+          localAvailable: false,
+          localLocationId: null,
+          localPath: "",
+          children: [],
+        },
+      ] as RemoteTrack[],
+      { sourceId: 7, workCode: "RJ00000001" },
+    );
+    const file = flattenTracks(tree)[0];
+    expect(file.kind).toBe("video");
+    expect(file.streamUrl).toBe("/api/remote-sources/7/works/RJ00000001/media?path=bonus.avi");
+  });
+
+  it("keeps an explicit remote text type despite a video-like extension", () => {
+    const tree = buildRemoteTree(
+      [
+        {
+          type: "text",
+          title: "captions.ts",
+          hash: "text-hash",
+          streamUrl: "https://media.invalid/captions.ts",
+          downloadUrl: "",
+          sizeBytes: 128,
+          durationSeconds: null,
+          cacheAvailable: false,
+          cacheLocationId: null,
+          cachePath: "",
+          localAvailable: false,
+          localLocationId: null,
+          localPath: "",
+          children: [],
+        },
+      ] as RemoteTrack[],
+      { sourceId: 7, workCode: "RJ00000001" },
+    );
+    expect(flattenTreeFiles(tree)).toMatchObject([{ kind: "text", streamUrl: "https://media.invalid/captions.ts" }]);
   });
 });

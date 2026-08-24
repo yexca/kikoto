@@ -12,6 +12,10 @@ type mediaStreamTarget struct {
 	LocationType string
 	RelativePath string
 	Availability string
+	FileSourceID int64
+	StreamURL    string
+	Kind         string
+	HasAudio     sql.NullBool
 	ExpiresAt    time.Time
 }
 
@@ -34,10 +38,25 @@ func (s *Server) loadMediaStreamTarget(ctx context.Context, locationID int64) (m
 
 	var target mediaStreamTarget
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT location_type, path, availability
-		FROM media_file_location
-		WHERE id = ?
-	`, locationID).Scan(&target.LocationType, &target.RelativePath, &target.Availability); err != nil {
+		SELECT location.location_type,
+			location.path,
+			location.availability,
+			location.file_source_id,
+			location.stream_url,
+			item.kind,
+			item.has_audio
+		FROM media_file_location AS location
+		INNER JOIN media_item AS item ON item.id = location.media_item_id
+		WHERE location.id = ?
+	`, locationID).Scan(
+		&target.LocationType,
+		&target.RelativePath,
+		&target.Availability,
+		&target.FileSourceID,
+		&target.StreamURL,
+		&target.Kind,
+		&target.HasAudio,
+	); err != nil {
 		return mediaStreamTarget{}, false, err
 	}
 	target.ExpiresAt = time.Now().Add(mediaStreamTargetTTL)

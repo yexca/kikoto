@@ -38,7 +38,10 @@ export async function revalidatePersistedQueue(
       .map((location) => ({
         locationId: location.id,
         locationType: location.locationType,
-        streamUrl: location.streamUrl,
+        streamUrl:
+          location.locationType === "remote_stream" && (mediaItem.kind === "audio" || mediaItem.kind === "video")
+            ? `/api/media/${location.id}/stream`
+            : location.streamUrl,
         sourceId: location.fileSourceId,
         sourceName: location.fileSourceName,
         availability: location.availability,
