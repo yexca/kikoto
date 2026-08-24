@@ -190,6 +190,36 @@ describe("mediaTreeModel", () => {
     expect(file.locations[0]?.streamUrl).toBe("/api/media/41/stream");
   });
 
+  it("uses the tracked media proxy when only a remote download URL is present", () => {
+    const item = {
+      id: 32,
+      title: "clip.avi",
+      kind: "video",
+      hasAudio: true,
+      fingerprint: "tracked-remote-download-only",
+      durationSeconds: 30,
+      progress: null,
+      locations: [
+        {
+          id: 42,
+          fileSourceId: 9,
+          fileSourceName: "Remote",
+          locationType: "remote_stream",
+          path: "bonus/clip.avi",
+          streamUrl: "",
+          downloadUrl: "https://media.invalid/clip.avi",
+          availability: "available",
+          sizeBytes: 2048,
+          durationSeconds: 30,
+        },
+      ],
+    } as MediaItem;
+
+    const file = flattenTracks(buildTree([item], null, "RJ00000001"))[0];
+    expect(file.streamUrl).toBe("/api/media/42/stream");
+    expect(file.locations[0]?.streamUrl).toBe("/api/media/42/stream");
+  });
+
   it("builds explicit Resume from the cursor media edition and saved source", () => {
     const item = {
       id: 11,

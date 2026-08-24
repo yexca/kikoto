@@ -9018,7 +9018,7 @@ function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value
 
 type FilePreviewState =
   | { kind: "image"; title: string; url: string; locationId: number; canSetCover: boolean }
-  | { kind: "video"; title: string; url: string; locationId: number }
+  | { kind: "video"; title: string; url: string; locationId: number; canTranscode: boolean }
   | { kind: "text"; title: string; locationId: number; url?: string };
 
 function useDirectoryLyricsAttachmentVisibility(root: TreeNode) {
@@ -11129,7 +11129,13 @@ function previewForFile(file: TreeTrack): FilePreviewState | null {
     };
   }
   if (file.kind === "video" && file.streamUrl) {
-    return { kind: "video", title: file.title, url: file.streamUrl, locationId: file.locationId };
+    return {
+      kind: "video",
+      title: file.title,
+      url: file.streamUrl,
+      locationId: file.locationId,
+      canTranscode: file.locationType === "local" || file.locationType === "cache",
+    };
   }
   if (file.kind === "text" && (file.locationId > 0 || file.streamUrl || file.downloadUrl)) {
     return {
@@ -11242,7 +11248,7 @@ function FilePreviewModal({
                 className="max-h-[72vh] w-full bg-black object-contain"
                 onPlay={player.pause}
                 onError={() => {
-                  if (!forceVideoTranscode) {
+                  if (preview.canTranscode && !forceVideoTranscode) {
                     setForceVideoTranscode(true);
                   } else {
                     setError("This video could not be played.");

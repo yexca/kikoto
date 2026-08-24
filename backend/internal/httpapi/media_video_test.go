@@ -36,6 +36,20 @@ func TestLocalAndRemoteMediaKindsRecognizeWMAAudio(t *testing.T) {
 	}
 }
 
+func TestLocalAndRemoteMediaKindsRecognizeOggAudio(t *testing.T) {
+	for _, path := range []string{"track.ogg", "track.oga", "track.opus"} {
+		if got := localFileKind(path); got != "audio" {
+			t.Fatalf("localFileKind(%q) = %q, want audio", path, got)
+		}
+		if got := mediaKindFromPath(path); got != "audio" {
+			t.Fatalf("mediaKindFromPath(%q) = %q, want audio", path, got)
+		}
+		if got := remoteTrackKindForPath("file", path); got != "audio" {
+			t.Fatalf("remoteTrackKindForPath(%q) = %q, want audio", path, got)
+		}
+	}
+}
+
 func TestLoadWorkMediaDerivesKindForPreviouslyIndexedWMA(t *testing.T) {
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`

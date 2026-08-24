@@ -101,6 +101,18 @@ func newRemoteTextPreviewServer(t *testing.T, endpoint string, textURL string) *
 	t.Helper()
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
+	if _, err := db.Exec(`
+		INSERT INTO file_source (id, code, display_name, source_type, enabled)
+		VALUES (7, 'remote_fixture', 'Remote fixture', 'kikoeru_compatible', 1)
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO file_source_endpoint (file_source_id, api_url, base_url, restrict_outbound_hosts)
+		VALUES (7, ?, ?, 1)
+	`, endpoint, endpoint); err != nil {
+		t.Fatal(err)
+	}
 	source := remoteSourceForUse{
 		ID:          7,
 		Code:        "remote_fixture",

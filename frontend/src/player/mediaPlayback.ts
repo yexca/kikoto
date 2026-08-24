@@ -8,6 +8,9 @@ type CapabilitySpec = {
 const audioCapabilities: CapabilitySpec[] = [
   { key: "audio-mp3", mime: "audio/mpeg" },
   { key: "audio-mp4-aac", mime: 'audio/mp4; codecs="mp4a.40.2"' },
+  { key: "audio-flac", mime: "audio/flac" },
+  { key: "audio-ogg-opus", mime: 'audio/ogg; codecs="opus"' },
+  { key: "audio-ogg-vorbis", mime: 'audio/ogg; codecs="vorbis"' },
   { key: "audio-webm-opus", mime: 'audio/webm; codecs="opus"' },
   { key: "audio-webm-vorbis", mime: 'audio/webm; codecs="vorbis"' },
   { key: "audio-wav", mime: "audio/wav" },
@@ -67,9 +70,8 @@ export function remoteMediaPlaybackURL(
   workCode: string,
   remotePath: string,
   profile: PlaybackProfile,
-  forceTranscode = false,
 ) {
-  return playbackURL(remoteMediaURL(sourceId, workCode, remotePath), profile, forceTranscode);
+  return playbackURL(remoteMediaURL(sourceId, workCode, remotePath), profile);
 }
 
 export function remoteMediaURL(sourceId: number, workCode: string, remotePath: string) {

@@ -7,15 +7,24 @@ Playback is handled by a global browser audio player.
 - Local and cached media is inspected with FFprobe before playback. A browser-
   compatible container/codec combination is served directly with HTTP range
   support; every other supported media format is converted by FFmpeg directly
-  to the response stream.
-- Remote preview media is fetched through the configured source policy and
-  converted directly to the response stream. Remote previews do not expose the
-  source URL to the browser, and the playback response is not written to
-  `/cache`; the separate remote-source cache workflow remains independent.
+  to the response stream. Native browser playback includes FLAC, Ogg Vorbis,
+  and Ogg Opus audio when the browser reports support.
+- Tracked remote and remote-preview media is fetched through the configured
+  source policy and proxied unchanged through the backend by default. The
+  proxy keeps the browser-facing response same-origin and forwards range and
+  conditional request headers, while never exposing the configured source URL.
+  Remote responses are not sent through FFmpeg, including when a client sends
+  `forceTranscode`; unsupported remote media must be fetched into a local or
+  cache location before realtime conversion is available. Remote playback is
+  streamed and is not written to `/cache`; the separate remote-source cache
+  workflow remains independent.
 - Realtime conversion uses a fragmented MP4 (H.264/AAC) video stream or an MP3
   audio stream. Converted responses are `no-store` and do not support random
-  range seeks; each viewer uses an independent FFmpeg process subject to the
-  server's conversion concurrency limit.
+  range seeks. Video frames are padded to even dimensions before `yuv420p`
+  encoding. FFmpeg and FFprobe each have a small fixed concurrency limit and a
+  short, bounded wait queue; requests that cannot acquire a slot promptly are
+  rejected so an upstream response body or process cannot remain occupied for
+  an unbounded period.
 - The Docker image includes both `ffmpeg` and `ffprobe`. Other deployments must
   make both binaries available on the backend process `PATH`.
 - Clicking a playable file queues naturally sorted playable files in the same

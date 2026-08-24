@@ -80,6 +80,10 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
         : item.locations.filter((location) => location.fileSourceId === fileSourceId);
     const location =
       sourceLocations.find((candidate) => candidate.availability === "available" && candidate.streamUrl) ??
+      sourceLocations.find(
+        (candidate) =>
+          candidate.availability === "available" && candidate.locationType === "remote_stream" && candidate.downloadUrl,
+      ) ??
       sourceLocations.find((candidate) => candidate.availability === "available") ??
       sourceLocations.find(
         (candidate) => candidate.availability === "remote" && (candidate.streamUrl || candidate.downloadUrl),
@@ -97,7 +101,7 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
       location.id,
       location.locationType,
       item.kind,
-      location.streamUrl,
+      locationPlaybackURL(location),
     );
     let cursor = root;
     for (const part of parts) {
@@ -137,11 +141,18 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
       progress: item.progress,
       playbackKey: playbackKeyForLocation(location.id),
       locations: item.locations
-        .filter((candidate) => candidate.streamUrl && ["available", "remote"].includes(candidate.availability))
+        .filter(
+          (candidate) => locationPlaybackURL(candidate) && ["available", "remote"].includes(candidate.availability),
+        )
         .map((candidate) => ({
           locationId: candidate.id,
           locationType: candidate.locationType,
-          streamUrl: playbackStreamURLForLocation(candidate.id, candidate.locationType, item.kind, candidate.streamUrl),
+          streamUrl: playbackStreamURLForLocation(
+            candidate.id,
+            candidate.locationType,
+            item.kind,
+            locationPlaybackURL(candidate),
+          ),
           sourceId: candidate.fileSourceId,
           sourceName: candidate.fileSourceName,
           availability: candidate.availability,
@@ -152,6 +163,10 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
   const displayRoot = normalizeDisplayTree(root);
   attachLocalLyricsChoices(displayRoot, items, lyricsMatchPathsByLocationID);
   return displayRoot;
+}
+
+function locationPlaybackURL(location: { locationType: string; streamUrl: string; downloadUrl: string }) {
+  return location.streamUrl || (location.locationType === "remote_stream" ? location.downloadUrl : "");
 }
 
 function playbackStreamURLForLocation(locationId: number, locationType: string, kind: string, streamUrl: string) {

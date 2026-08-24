@@ -14,6 +14,7 @@ type mediaStreamTarget struct {
 	Availability string
 	FileSourceID int64
 	StreamURL    string
+	DownloadURL  string
 	Kind         string
 	HasAudio     sql.NullBool
 	ExpiresAt    time.Time
@@ -42,7 +43,8 @@ func (s *Server) loadMediaStreamTarget(ctx context.Context, locationID int64) (m
 			location.path,
 			location.availability,
 			location.file_source_id,
-			location.stream_url,
+			COALESCE(location.stream_url, ''),
+			COALESCE(location.download_url, ''),
 			item.kind,
 			item.has_audio
 		FROM media_file_location AS location
@@ -54,6 +56,7 @@ func (s *Server) loadMediaStreamTarget(ctx context.Context, locationID int64) (m
 		&target.Availability,
 		&target.FileSourceID,
 		&target.StreamURL,
+		&target.DownloadURL,
 		&target.Kind,
 		&target.HasAudio,
 	); err != nil {

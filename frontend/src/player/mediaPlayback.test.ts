@@ -30,4 +30,13 @@ describe("media playback URLs", () => {
     expect(playbackCapabilities("audio")).toEqual(["audio-mp3", "audio-mp4-aac"]);
     expect(playbackURL("/media.mp3", "audio")).toContain("capabilities=audio-mp3%2Caudio-mp4-aac");
   });
+
+  it("reports native FLAC and Ogg audio capabilities", () => {
+    vi.stubGlobal("document", {
+      createElement: () => ({
+        canPlayType: (mime: string) => (mime.includes("flac") || mime.includes("ogg") ? "probably" : ""),
+      }),
+    });
+    expect(playbackCapabilities("audio")).toEqual(["audio-flac", "audio-ogg-opus", "audio-ogg-vorbis"]);
+  });
 });

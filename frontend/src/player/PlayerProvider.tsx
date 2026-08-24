@@ -867,7 +867,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const tryNextLocation = () => {
     if (!currentTrack) return;
     const retryKey = `${currentPlaybackInstanceKey ?? ""}:${currentTrack.locationId}`;
-    if (transcodeRetryRef.current !== retryKey) {
+    const canRetryWithTranscode = currentTrack.locationType === "local" || currentTrack.locationType === "cache";
+    if (canRetryWithTranscode && transcodeRetryRef.current !== retryKey) {
       const audio = audioRef.current;
       if (audio) {
         transcodeRetryRef.current = retryKey;
@@ -1218,13 +1219,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
 function playerTrackAudioURL(track: PlayerTrack, forceTranscode = false) {
   if (track.locationType === "remote_stream" && track.remoteSourceId && track.remoteWorkCode && track.remotePath) {
-    return remoteMediaPlaybackURL(
-      track.remoteSourceId,
-      track.remoteWorkCode,
-      track.remotePath,
-      "audio",
-      forceTranscode,
-    );
+    return remoteMediaPlaybackURL(track.remoteSourceId, track.remoteWorkCode, track.remotePath, "audio");
   }
   return playbackURL(track.streamUrl, "audio", forceTranscode);
 }

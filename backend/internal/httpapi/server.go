@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -65,8 +64,13 @@ type Server struct {
 	localMediaWriteSlot            chan struct{}
 	localDurationProbeMu           sync.Mutex
 	mediaStreamCache               sync.Map
-	realtimeTranscodeMu            sync.Mutex
+	realtimeResourceMu             sync.Mutex
+	realtimeProbeSlots             chan struct{}
+	realtimeProbeQueue             chan struct{}
+	realtimeProbeCacheMu           sync.Mutex
+	realtimeProbeCache             map[string]playbackProbeCacheEntry
 	realtimeTranscodeSlots         chan struct{}
+	realtimeTranscodeQueue         chan struct{}
 	filesystemTriggerConfigChanged chan struct{}
 	updateCheckMu                  sync.Mutex
 	updateCheck                    *updateCheckCache
@@ -90,6 +94,7 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 		remoteWorkTracksCache:          map[string]remoteWorkTracksSnapshot{},
 		remoteWorkTracksCacheCalls:     map[string]*remoteWorkTracksCall{},
 		localMediaIndexes:              map[string]*localMediaIndexCall{},
+		realtimeProbeCache:             map[string]playbackProbeCacheEntry{},
 		localMediaWriteSlot:            make(chan struct{}, 1),
 		activeWorkflowCancels:          map[int64]map[int64]context.CancelFunc{},
 		sourceGate:                     newSourceRequestGate(),
@@ -1394,21 +1399,21 @@ func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if target.LocationType == "remote_stream" {
+		remoteURL := firstNonEmpty(target.StreamURL, target.DownloadURL)
 		if (target.Availability != "available" && target.Availability != "remote") ||
-			target.FileSourceID <= 0 || strings.TrimSpace(target.StreamURL) == "" {
+			target.FileSourceID <= 0 || strings.TrimSpace(remoteURL) == "" {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "remote media location is not available"})
 			return
 		}
-		source, sourceErr := s.loadRemoteSourceForUse(r.Context(), target.FileSourceID)
+		source, sourceErr := s.loadRemotePlaybackSource(r.Context(), target.FileSourceID)
 		if sourceErr != nil {
-			if errors.Is(sourceErr, sql.ErrNoRows) {
-				writeJSON(w, http.StatusNotFound, map[string]string{"error": "remote media source is not available"})
+			if writeRemotePlaybackSourceError(w, sourceErr) {
 				return
 			}
 			writeUpstreamError(w, sourceErr)
 			return
 		}
-		s.streamRemoteURL(w, r, source, target.StreamURL, target.RelativePath, effectiveMediaKind(target.Kind, target.RelativePath))
+		s.streamRemoteURL(w, r, source, remoteURL, target.RelativePath, effectiveMediaKind(target.Kind, target.RelativePath))
 		return
 	}
 	if (target.LocationType != "local" && target.LocationType != "cache") || target.Availability != "available" {
@@ -4742,28 +4747,6 @@ func localDuplicateFolderSummaries(folders []localfs.WorkFolder) []map[string]an
 	return summaries
 }
 
-func probeLocalMediaMetadata(ctx context.Context, folders []localfs.WorkFolder) {
-	for folderIndex := range folders {
-		for fileIndex := range folders[folderIndex].Files {
-			file := &folders[folderIndex].Files[fileIndex]
-			kind := localFileKind(file.WorkRelPath)
-			if kind != "audio" && kind != "video" {
-				continue
-			}
-			duration, hasAudio, ok := probeMediaMetadataSeconds(ctx, file.AbsPath)
-			if ok {
-				if duration > 0 {
-					file.DurationSeconds = &duration
-				}
-				file.HasAudio = &hasAudio
-			} else if kind == "audio" {
-				hasAudio = true
-				file.HasAudio = &hasAudio
-			}
-		}
-	}
-}
-
 func (s *Server) probeLocalDurationsForFiles(ctx context.Context, fileSourceID int64, files []localfs.LocalFile) {
 	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
@@ -4772,7 +4755,7 @@ func (s *Server) probeLocalDurationsForFiles(ctx context.Context, fileSourceID i
 		if kind != "audio" && kind != "video" {
 			continue
 		}
-		duration, hasAudio, ok := probeMediaMetadataSeconds(probeCtx, file.AbsPath)
+		duration, hasAudio, ok := s.probeMediaMetadataSeconds(probeCtx, file.AbsPath)
 		if !ok && kind == "video" {
 			continue
 		}
@@ -4785,20 +4768,8 @@ func (s *Server) probeLocalDurationsForFiles(ctx context.Context, fileSourceID i
 	}
 }
 
-func probeMediaMetadataSeconds(ctx context.Context, path string) (int64, bool, bool) {
-	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	output, err := exec.CommandContext(
-		probeCtx,
-		"ffprobe",
-		"-v",
-		"error",
-		"-show_entries",
-		"format=duration:stream=codec_type",
-		"-of",
-		"json",
-		path,
-	).Output()
+func (s *Server) probeMediaMetadataSeconds(ctx context.Context, path string) (int64, bool, bool) {
+	output, err := s.runBoundedFFprobe(ctx, path, "format=duration:stream=codec_type")
 	if err != nil {
 		return 0, false, false
 	}
@@ -5252,7 +5223,7 @@ func markMissingLocalPresence(ctx context.Context, tx *sql.Tx, fileSourceID int6
 func localFileKind(path string) string {
 	extension := strings.ToLower(filepath.Ext(path))
 	switch extension {
-	case ".mp3", ".m4a", ".flac", ".wav", ".wma", ".ogg", ".opus", ".aac":
+	case ".mp3", ".m4a", ".flac", ".wav", ".wma", ".ogg", ".oga", ".opus", ".aac":
 		return "audio"
 	case ".mp4", ".m4v", ".webm", ".mkv", ".mov", ".avi", ".wmv", ".flv", ".f4v", ".mpeg", ".mpg", ".mpe", ".m2v", ".m2ts", ".mts", ".ts", ".3gp", ".3g2", ".ogv", ".asf", ".rm", ".rmvb", ".vob", ".divx", ".xvid", ".mxf", ".ogm", ".svi", ".nsv", ".wtv", ".amv", ".mjpeg", ".mjpg", ".dv", ".y4m", ".ismv", ".ism":
 		return "video"

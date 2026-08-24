@@ -9,12 +9,15 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
@@ -22,12 +25,19 @@ import (
 )
 
 const (
-	realtimeProbeTimeout       = 5 * time.Second
-	realtimeTranscodeStartup   = 15 * time.Second
-	realtimeTranscodeTimeout   = 2 * time.Hour
-	realtimeInputShutdown      = 5 * time.Second
-	realtimeProbeOutputLimit   = 128 << 10
-	realtimeTranscodeSlotsSize = 2
+	realtimeProbeTimeout          = 5 * time.Second
+	realtimeProbeQueueTimeout     = 1 * time.Second
+	realtimeProbeSlotsSize        = 2
+	realtimeProbeQueueSize        = 2
+	realtimeProbeCacheTTL         = 2 * time.Minute
+	realtimeProbeCacheSize        = 128
+	realtimeTranscodeStartup      = 15 * time.Second
+	realtimeTranscodeTimeout      = 2 * time.Hour
+	realtimeTranscodeQueueTimeout = 1 * time.Second
+	realtimeTranscodeSlotsSize    = 2
+	realtimeTranscodeQueueSize    = 2
+	remotePlaybackTimeout         = 2 * time.Hour
+	realtimeProbeOutputLimit      = 128 << 10
 )
 
 const (
@@ -38,6 +48,9 @@ const (
 const (
 	capAudioMP3            = "audio-mp3"
 	capAudioMP4AAC         = "audio-mp4-aac"
+	capAudioFLAC           = "audio-flac"
+	capAudioOggOpus        = "audio-ogg-opus"
+	capAudioOggVorbis      = "audio-ogg-vorbis"
 	capAudioWebMOpus       = "audio-webm-opus"
 	capAudioWebMVorbis     = "audio-webm-vorbis"
 	capAudioWAV            = "audio-wav"
@@ -68,6 +81,14 @@ type playbackProbeStream struct {
 	PixelFmt  string `json:"pix_fmt"`
 	Width     int    `json:"width"`
 	Height    int    `json:"height"`
+}
+
+type playbackProbeCacheEntry struct {
+	Probe     playbackProbe
+	SizeBytes int64
+	ModTime   time.Time
+	ExpiresAt time.Time
+	UsedAt    time.Time
 }
 
 type limitedCommandOutput struct {
@@ -147,6 +168,9 @@ func playbackCapabilities(r *http.Request) map[string]bool {
 	allowed := map[string]bool{
 		capAudioMP3:            true,
 		capAudioMP4AAC:         true,
+		capAudioFLAC:           true,
+		capAudioOggOpus:        true,
+		capAudioOggVorbis:      true,
 		capAudioWebMOpus:       true,
 		capAudioWebMVorbis:     true,
 		capAudioWAV:            true,
@@ -178,18 +202,169 @@ func forcePlaybackTranscode(r *http.Request) bool {
 	return value == "1" || value == "true" || value == "yes"
 }
 
+type realtimeResourceKind uint8
+
+const (
+	realtimeResourceProbe realtimeResourceKind = iota
+	realtimeResourceTranscode
+)
+
+var errRealtimeResourceBusy = errors.New("realtime media resource is busy")
+
+func (s *Server) realtimeResourceChannels(kind realtimeResourceKind) (chan struct{}, chan struct{}) {
+	s.realtimeResourceMu.Lock()
+	defer s.realtimeResourceMu.Unlock()
+	if kind == realtimeResourceProbe {
+		if s.realtimeProbeSlots == nil {
+			s.realtimeProbeSlots = make(chan struct{}, realtimeProbeSlotsSize)
+		}
+		if s.realtimeProbeQueue == nil {
+			s.realtimeProbeQueue = make(chan struct{}, realtimeProbeQueueSize)
+		}
+		return s.realtimeProbeSlots, s.realtimeProbeQueue
+	}
+	if s.realtimeTranscodeSlots == nil {
+		s.realtimeTranscodeSlots = make(chan struct{}, realtimeTranscodeSlotsSize)
+	}
+	if s.realtimeTranscodeQueue == nil {
+		s.realtimeTranscodeQueue = make(chan struct{}, realtimeTranscodeQueueSize)
+	}
+	return s.realtimeTranscodeSlots, s.realtimeTranscodeQueue
+}
+
+func (s *Server) acquireRealtimeResource(ctx context.Context, kind realtimeResourceKind, queueTimeout time.Duration) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	slots, queue := s.realtimeResourceChannels(kind)
+	newRelease := func() func() {
+		var releaseOnce sync.Once
+		return func() {
+			releaseOnce.Do(func() { <-slots })
+		}
+	}
+	select {
+	case slots <- struct{}{}:
+		return newRelease(), nil
+	default:
+	}
+	select {
+	case queue <- struct{}{}:
+	default:
+		return nil, errRealtimeResourceBusy
+	}
+	defer func() { <-queue }()
+	queueContext, cancel := context.WithTimeout(ctx, queueTimeout)
+	defer cancel()
+	select {
+	case slots <- struct{}{}:
+		return newRelease(), nil
+	case <-queueContext.Done():
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return nil, errRealtimeResourceBusy
+	}
+}
+
+func (s *Server) acquireRealtimeProbe(ctx context.Context) (func(), error) {
+	return s.acquireRealtimeResource(ctx, realtimeResourceProbe, realtimeProbeQueueTimeout)
+}
+
+func (s *Server) acquireRealtimeTranscode(ctx context.Context) (func(), error) {
+	return s.acquireRealtimeResource(ctx, realtimeResourceTranscode, realtimeTranscodeQueueTimeout)
+}
+
+func (s *Server) cachedPlaybackProbe(path string, sizeBytes int64, modTime time.Time) (playbackProbe, bool) {
+	now := time.Now()
+	s.realtimeProbeCacheMu.Lock()
+	defer s.realtimeProbeCacheMu.Unlock()
+	if s.realtimeProbeCache == nil {
+		s.realtimeProbeCache = make(map[string]playbackProbeCacheEntry)
+	}
+	entry, ok := s.realtimeProbeCache[path]
+	if !ok || now.After(entry.ExpiresAt) || entry.SizeBytes != sizeBytes || !entry.ModTime.Equal(modTime) {
+		if ok {
+			delete(s.realtimeProbeCache, path)
+		}
+		return playbackProbe{}, false
+	}
+	entry.UsedAt = now
+	s.realtimeProbeCache[path] = entry
+	return entry.Probe, true
+}
+
+func (s *Server) cachePlaybackProbe(path string, info os.FileInfo, probe playbackProbe) {
+	now := time.Now()
+	s.realtimeProbeCacheMu.Lock()
+	defer s.realtimeProbeCacheMu.Unlock()
+	if s.realtimeProbeCache == nil {
+		s.realtimeProbeCache = make(map[string]playbackProbeCacheEntry)
+	}
+	for key, entry := range s.realtimeProbeCache {
+		if now.After(entry.ExpiresAt) {
+			delete(s.realtimeProbeCache, key)
+		}
+	}
+	for len(s.realtimeProbeCache) >= realtimeProbeCacheSize {
+		var oldestKey string
+		var oldest time.Time
+		for key, entry := range s.realtimeProbeCache {
+			if oldestKey == "" || entry.UsedAt.Before(oldest) {
+				oldestKey, oldest = key, entry.UsedAt
+			}
+		}
+		if oldestKey == "" {
+			break
+		}
+		delete(s.realtimeProbeCache, oldestKey)
+	}
+	s.realtimeProbeCache[path] = playbackProbeCacheEntry{
+		Probe: probe, SizeBytes: info.Size(), ModTime: info.ModTime(),
+		ExpiresAt: now.Add(realtimeProbeCacheTTL), UsedAt: now,
+	}
+}
+
 func (s *Server) probePlaybackFile(ctx context.Context, path string) (playbackProbe, error) {
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return playbackProbe{}, fmt.Errorf("media file was not found")
+	}
+	if probe, ok := s.cachedPlaybackProbe(path, info.Size(), info.ModTime()); ok {
+		return probe, nil
+	}
+	output, err := s.runBoundedFFprobe(ctx, path, "format=format_name:stream=codec_type,codec_name,profile,pix_fmt,width,height")
+	if err != nil {
+		return playbackProbe{}, err
+	}
+	var result playbackProbe
+	if err := json.Unmarshal(output, &result); err != nil {
+		return playbackProbe{}, fmt.Errorf("media probe returned invalid output")
+	}
+	s.cachePlaybackProbe(path, info, result)
+	return result, nil
+}
+
+func (s *Server) runBoundedFFprobe(ctx context.Context, path string, showEntries string) ([]byte, error) {
 	probeContext, cancel := context.WithTimeout(ctx, realtimeProbeTimeout)
 	defer cancel()
+	release, err := s.acquireRealtimeProbe(probeContext)
+	if err != nil {
+		return nil, fmt.Errorf("media probe is busy: %w", err)
+	}
+	defer release()
 	ffprobePath, err := exec.LookPath("ffprobe")
 	if err != nil {
-		return playbackProbe{}, fmt.Errorf("ffprobe is unavailable")
+		return nil, fmt.Errorf("ffprobe is unavailable")
 	}
 	command := exec.CommandContext(
 		probeContext,
 		ffprobePath,
 		"-v", "error",
-		"-show_entries", "format=format_name:stream=codec_type,codec_name,profile,pix_fmt,width,height",
+		"-threads", "1",
+		"-probesize", "32M",
+		"-analyzeduration", "10M",
+		"-show_entries", showEntries,
 		"-of", "json",
 		path,
 	)
@@ -198,18 +373,14 @@ func (s *Server) probePlaybackFile(ctx context.Context, path string) (playbackPr
 	command.Stdout = output
 	if err := command.Run(); err != nil {
 		if output.exceeded {
-			return playbackProbe{}, fmt.Errorf("ffprobe output exceeded limit")
+			return nil, fmt.Errorf("ffprobe output exceeded limit")
 		}
 		if errors.Is(probeContext.Err(), context.DeadlineExceeded) {
-			return playbackProbe{}, fmt.Errorf("media probe timed out")
+			return nil, fmt.Errorf("media probe timed out")
 		}
-		return playbackProbe{}, fmt.Errorf("media probe failed")
+		return nil, fmt.Errorf("media probe failed")
 	}
-	var result playbackProbe
-	if err := json.Unmarshal(output.buffer.Bytes(), &result); err != nil {
-		return playbackProbe{}, fmt.Errorf("media probe returned invalid output")
-	}
-	return result, nil
+	return append([]byte(nil), output.buffer.Bytes()...), nil
 }
 
 func firstPlaybackStream(probe playbackProbe, codecType string) *playbackProbeStream {
@@ -246,13 +417,23 @@ func directPlaybackContentType(probe playbackProbe, profile string, capabilities
 			if (playbackFormatIncludes(probe, "mov") || playbackFormatIncludes(probe, "mp4") || playbackFormatIncludes(probe, "m4a") || playbackFormatIncludes(probe, "3gp")) && capabilities[capAudioMP4AAC] {
 				return "audio/mp4", true
 			}
+		case "flac":
+			if playbackFormatIncludes(probe, "flac") && capabilities[capAudioFLAC] {
+				return "audio/flac", true
+			}
 		case "opus":
 			if playbackFormatIncludes(probe, "webm") && capabilities[capAudioWebMOpus] {
 				return "audio/webm", true
 			}
+			if (playbackFormatIncludes(probe, "ogg") || playbackFormatIncludes(probe, "opus")) && capabilities[capAudioOggOpus] {
+				return `audio/ogg; codecs="opus"`, true
+			}
 		case "vorbis":
 			if playbackFormatIncludes(probe, "webm") && capabilities[capAudioWebMVorbis] {
 				return "audio/webm", true
+			}
+			if playbackFormatIncludes(probe, "ogg") && capabilities[capAudioOggVorbis] {
+				return `audio/ogg; codecs="vorbis"`, true
 			}
 		case "pcm_s16le", "pcm_s24le", "pcm_s32le":
 			if playbackFormatIncludes(probe, "wav") && capabilities[capAudioWAV] {
@@ -335,6 +516,10 @@ func fallbackDirectPlaybackContentType(path string, profile string) (string, boo
 			return "audio/mp4", true
 		case ".wav":
 			return "audio/wav", true
+		case ".flac":
+			return "audio/flac", true
+		case ".oga", ".ogg", ".opus":
+			return "audio/ogg", true
 		case ".webm":
 			return "audio/webm", true
 		}
@@ -376,6 +561,11 @@ func (s *Server) serveAutomaticLocalPlayback(w http.ResponseWriter, r *http.Requ
 	forceTranscode := forcePlaybackTranscode(r)
 	if !forceTranscode {
 		probe, probeErr := s.probePlaybackFile(r.Context(), path)
+		if errors.Is(probeErr, errRealtimeResourceBusy) {
+			w.Header().Set("Retry-After", "1")
+			writeAPIError(w, http.StatusServiceUnavailable, "media_probe_busy", "media playback inspection is temporarily busy", true)
+			return
+		}
 		if probeErr == nil {
 			if contentType, direct := directPlaybackContentType(probe, profile, capabilities); direct {
 				s.serveDirectPlaybackFile(w, r, path, contentType)
@@ -443,32 +633,15 @@ func stopRealtimeCommand(cancel context.CancelFunc, command *exec.Cmd, stdout io
 	return command.Wait()
 }
 
-func closeRealtimeReader(reader io.Reader) {
-	if closer, ok := reader.(io.Closer); ok {
-		_ = closer.Close()
-	}
-}
-
-func (s *Server) acquireRealtimeTranscode(ctx context.Context) (func(), error) {
-	s.realtimeTranscodeMu.Lock()
-	if s.realtimeTranscodeSlots == nil {
-		s.realtimeTranscodeSlots = make(chan struct{}, realtimeTranscodeSlotsSize)
-	}
-	slots := s.realtimeTranscodeSlots
-	s.realtimeTranscodeMu.Unlock()
-	select {
-	case slots <- struct{}{}:
-		return func() { <-slots }, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-}
-
 func realtimeFFmpegArgs(profile string, input string) []string {
 	args := []string{
 		"-nostdin",
 		"-hide_banner",
 		"-loglevel", "error",
+		"-threads", "2",
+		"-filter_threads", "1",
+		"-filter_complex_threads", "1",
+		"-max_alloc", "268435456",
 		"-protocol_whitelist", "file,pipe",
 		"-i", input,
 		"-map_metadata", "-1",
@@ -480,6 +653,7 @@ func realtimeFFmpegArgs(profile string, input string) []string {
 			"-map", "0:a:0",
 			"-vn",
 			"-c:a", "libmp3lame",
+			"-threads:a", "1",
 			"-q:a", "4",
 			"-f", "mp3",
 			"pipe:1",
@@ -489,11 +663,14 @@ func realtimeFFmpegArgs(profile string, input string) []string {
 		"-map", "0:v:0",
 		"-map", "0:a:0?",
 		"-c:v", "libx264",
+		"-threads:v", "2",
 		"-preset", "veryfast",
 		"-tune", "zerolatency",
 		"-crf", "23",
+		"-vf", "pad=width=ceil(iw/2)*2:height=ceil(ih/2)*2:x=0:y=0",
 		"-pix_fmt", "yuv420p",
 		"-c:a", "aac",
+		"-threads:a", "1",
 		"-b:a", "160k",
 		"-movflags", "frag_keyframe+empty_moov+default_base_moof",
 		"-f", "mp4",
@@ -506,16 +683,23 @@ func (s *Server) streamFFmpegFile(w http.ResponseWriter, r *http.Request, path s
 	defer cancel()
 	release, err := s.acquireRealtimeTranscode(contextWithTimeout)
 	if err != nil {
+		w.Header().Set("Retry-After", "1")
 		writeAPIError(w, http.StatusServiceUnavailable, "media_transcode_busy", "media playback is temporarily busy", true)
 		return err
 	}
+	return s.streamFFmpegFileWithLease(w, r, path, profile, contextWithTimeout, release)
+}
+
+func (s *Server) streamFFmpegFileWithLease(w http.ResponseWriter, r *http.Request, path string, profile string, contextWithTimeout context.Context, release func()) error {
 	defer release()
+	commandContext, cancel := context.WithCancel(contextWithTimeout)
+	defer cancel()
 	ffmpegPath, err := exec.LookPath("ffmpeg")
 	if err != nil {
 		writeAPIError(w, http.StatusServiceUnavailable, "media_transcode_unavailable", "media playback preparation is unavailable", true)
 		return err
 	}
-	command := exec.CommandContext(contextWithTimeout, ffmpegPath, realtimeFFmpegArgs(profile, path)...)
+	command := exec.CommandContext(commandContext, ffmpegPath, realtimeFFmpegArgs(profile, path)...)
 	command.Stderr = io.Discard
 	stdout, err := command.StdoutPipe()
 	if err != nil {
@@ -526,7 +710,7 @@ func (s *Server) streamFFmpegFile(w http.ResponseWriter, r *http.Request, path s
 		writeAPIError(w, http.StatusServiceUnavailable, "media_transcode_unavailable", "media playback preparation is unavailable", true)
 		return err
 	}
-	initial, initialErr := readTranscodeStart(contextWithTimeout, stdout)
+	initial, initialErr := readTranscodeStart(commandContext, stdout)
 	if len(initial) == 0 && initialErr != nil {
 		_ = stopRealtimeCommand(cancel, command, stdout)
 		return writeTranscodeFailure(w, initialErr)
@@ -560,122 +744,6 @@ func (s *Server) streamFFmpegFile(w http.ResponseWriter, r *http.Request, path s
 	return nil
 }
 
-func (s *Server) streamFFmpegReader(w http.ResponseWriter, r *http.Request, reader io.Reader, profile string, maxBytes int64) error {
-	contextWithTimeout, cancel := context.WithTimeout(r.Context(), realtimeTranscodeTimeout)
-	defer cancel()
-	release, err := s.acquireRealtimeTranscode(contextWithTimeout)
-	if err != nil {
-		writeAPIError(w, http.StatusServiceUnavailable, "media_transcode_busy", "media playback is temporarily busy", true)
-		return err
-	}
-	defer release()
-	ffmpegPath, err := exec.LookPath("ffmpeg")
-	if err != nil {
-		writeAPIError(w, http.StatusServiceUnavailable, "media_transcode_unavailable", "media playback preparation is unavailable", true)
-		return err
-	}
-	command := exec.CommandContext(contextWithTimeout, ffmpegPath, realtimeFFmpegArgs(profile, "pipe:0")...)
-	command.Stderr = io.Discard
-	stdin, err := command.StdinPipe()
-	if err != nil {
-		return err
-	}
-	stdout, err := command.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	if err := command.Start(); err != nil {
-		writeAPIError(w, http.StatusServiceUnavailable, "media_transcode_unavailable", "media playback preparation is unavailable", true)
-		return err
-	}
-	inputErr := make(chan error, 1)
-	go func() {
-		<-contextWithTimeout.Done()
-		closeRealtimeReader(reader)
-		_ = stdin.Close()
-	}()
-	go func() {
-		const maxInt64 = int64(^uint64(0) >> 1)
-		limited := reader
-		if maxBytes > 0 && maxBytes < maxInt64 {
-			limited = io.LimitReader(reader, maxBytes+1)
-		}
-		written, copyErr := io.Copy(stdin, limited)
-		closeErr := stdin.Close()
-		if copyErr == nil && closeErr != nil {
-			copyErr = closeErr
-		}
-		if copyErr == nil && maxBytes > 0 && written > maxBytes {
-			copyErr = fmt.Errorf("remote media exceeds stream limit")
-		}
-		inputErr <- copyErr
-		if copyErr != nil {
-			cancel()
-		}
-	}()
-	initial, initialErr := readTranscodeStart(contextWithTimeout, stdout)
-	if len(initial) == 0 && initialErr != nil {
-		cancel()
-		closeRealtimeReader(reader)
-		_ = stopRealtimeCommand(cancel, command, stdout)
-		return writeTranscodeFailure(w, initialErr)
-	}
-	s.setRealtimePlaybackHeaders(w, realtimeContentType(profile))
-	w.WriteHeader(http.StatusOK)
-	if flusher, ok := w.(http.Flusher); ok {
-		flusher.Flush()
-	}
-	if len(initial) > 0 {
-		if _, err := w.Write(initial); err != nil {
-			cancel()
-			closeRealtimeReader(reader)
-			_ = stopRealtimeCommand(cancel, command, stdout)
-			return err
-		}
-	}
-	_, copyErr := io.Copy(w, stdout)
-	if copyErr != nil {
-		cancel()
-		_ = stdout.Close()
-		closeRealtimeReader(reader)
-	} else {
-		// FFmpeg can finish after consuming only the useful part of an
-		// upstream response. Close the body so the feeder goroutine cannot
-		// keep the transcode slot occupied waiting for trailing bytes.
-		closeRealtimeReader(reader)
-	}
-	waitErr := command.Wait()
-	cancel()
-	var remoteCopyErr error
-	shutdownTimer := time.NewTimer(realtimeInputShutdown)
-	select {
-	case remoteCopyErr = <-inputErr:
-	case <-contextWithTimeout.Done():
-		remoteCopyErr = contextWithTimeout.Err()
-	case <-shutdownTimer.C:
-		remoteCopyErr = nil
-	}
-	if !shutdownTimer.Stop() {
-		select {
-		case <-shutdownTimer.C:
-		default:
-		}
-	}
-	if copyErr != nil && !errors.Is(copyErr, context.Canceled) && !errors.Is(copyErr, context.DeadlineExceeded) {
-		return copyErr
-	}
-	if remoteCopyErr != nil {
-		return remoteCopyErr
-	}
-	if waitErr != nil {
-		if errors.Is(contextWithTimeout.Err(), context.DeadlineExceeded) {
-			return fmt.Errorf("remote media transcoding timed out")
-		}
-		return waitErr
-	}
-	return nil
-}
-
 func remotePlaybackURLAllowed(value string, source remoteSourceForUse) (*url.URL, error) {
 	parsed, err := url.Parse(strings.TrimSpace(value))
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil {
@@ -687,10 +755,184 @@ func remotePlaybackURLAllowed(value string, source remoteSourceForUse) (*url.URL
 	return parsed, nil
 }
 
+var errRemotePlaybackSourceUnavailable = errors.New("remote playback source is unavailable")
+
+func remotePlaybackSourceUsable(source remoteSourceForUse) bool {
+	return source.ID > 0 && source.Enabled && isKikoeruSourceType(source.SourceType) && strings.TrimSpace(source.Endpoint.APIURL) != ""
+}
+
+func (s *Server) loadRemotePlaybackSource(ctx context.Context, sourceID int64) (remoteSourceForUse, error) {
+	if sourceID <= 0 || s.db == nil {
+		return remoteSourceForUse{}, errRemotePlaybackSourceUnavailable
+	}
+	source, err := s.loadRemoteSourceForUse(ctx, sourceID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return remoteSourceForUse{}, errRemotePlaybackSourceUnavailable
+		}
+		return remoteSourceForUse{}, err
+	}
+	if !remotePlaybackSourceUsable(source) {
+		return remoteSourceForUse{}, errRemotePlaybackSourceUnavailable
+	}
+	return source, nil
+}
+
+func writeRemotePlaybackSourceError(w http.ResponseWriter, err error) bool {
+	if errors.Is(err, errRemotePlaybackSourceUnavailable) || errors.Is(err, sql.ErrNoRows) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "remote media source is not available"})
+		return true
+	}
+	return false
+}
+
+func (s *Server) openRemotePlaybackResponse(ctx context.Context, r *http.Request, source remoteSourceForUse, parsed *url.URL) (*http.Response, error) {
+	request, err := http.NewRequestWithContext(ctx, r.Method, parsed.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
+	request.Header.Set("Accept-Encoding", "identity")
+	for _, header := range []string{"Range", "If-Range", "If-Match", "If-None-Match", "If-Modified-Since", "If-Unmodified-Since"} {
+		if value := strings.TrimSpace(r.Header.Get(header)); value != "" {
+			request.Header.Set(header, value)
+		}
+	}
+	if source.Config.RequestLanguage != "" {
+		request.Header.Set("Accept-Language", source.Config.RequestLanguage)
+	}
+	return s.sourceHTTPClient(source, 0).Do(request)
+}
+
+func remotePlaybackContentType(response *http.Response, path string) string {
+	contentType := strings.TrimSpace(response.Header.Get("Content-Type"))
+	if strings.HasPrefix(strings.ToLower(contentType), "audio/") || strings.HasPrefix(strings.ToLower(contentType), "video/") {
+		return contentType
+	}
+	extension := strings.ToLower(filepath.Ext(path))
+	switch extension {
+	case ".mp3":
+		return "audio/mpeg"
+	case ".m4a":
+		return "audio/mp4"
+	case ".flac":
+		return "audio/flac"
+	case ".wav":
+		return "audio/wav"
+	case ".wma":
+		return "audio/x-ms-wma"
+	case ".oga", ".ogg", ".opus":
+		return "audio/ogg"
+	case ".aac":
+		return "audio/aac"
+	case ".mp4", ".m4v", ".ism", ".ismv":
+		return "video/mp4"
+	case ".webm":
+		return "video/webm"
+	case ".mkv":
+		return "video/x-matroska"
+	case ".mov":
+		return "video/quicktime"
+	case ".avi", ".divx", ".xvid":
+		return "video/x-msvideo"
+	case ".wmv":
+		return "video/x-ms-wmv"
+	case ".flv", ".f4v":
+		return "video/x-flv"
+	case ".mpeg", ".mpg", ".mpe", ".m2v", ".vob":
+		return "video/mpeg"
+	case ".m2ts", ".mts", ".ts":
+		return "video/mp2t"
+	case ".3gp":
+		return "video/3gpp"
+	case ".3g2":
+		return "video/3gpp2"
+	case ".ogv", ".ogm":
+		return "video/ogg"
+	case ".asf":
+		return "video/x-ms-asf"
+	case ".mjpeg", ".mjpg":
+		return "video/x-motion-jpeg"
+	case ".y4m":
+		return "video/x-yuv4mpeg"
+	}
+	if guessed := mime.TypeByExtension(extension); strings.HasPrefix(strings.ToLower(guessed), "audio/") || strings.HasPrefix(strings.ToLower(guessed), "video/") {
+		return guessed
+	}
+	return ""
+}
+
+func copyRemotePlaybackHeaders(w http.ResponseWriter, response *http.Response, contentType string, maxBytes int64) {
+	if contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	}
+	for _, header := range []string{"Content-Range", "Accept-Ranges", "ETag", "Last-Modified"} {
+		if value := response.Header.Get(header); value != "" {
+			w.Header().Set(header, value)
+		}
+	}
+	if response.ContentLength >= 0 && (maxBytes <= 0 || response.ContentLength <= maxBytes) {
+		w.Header().Set("Content-Length", strconv.FormatInt(response.ContentLength, 10))
+	}
+	w.Header().Set("Cache-Control", "private, no-cache")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+}
+
+func (s *Server) serveRemotePlaybackResponse(w http.ResponseWriter, r *http.Request, response *http.Response, path string, maxBytes int64) error {
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode == http.StatusNotModified || response.StatusCode == http.StatusRequestedRangeNotSatisfiable {
+		copyRemotePlaybackHeaders(w, response, "", maxBytes)
+		w.WriteHeader(response.StatusCode)
+		return nil
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		writeAPIError(w, http.StatusBadGateway, "remote_media_unavailable", "remote media source could not be read", true)
+		return fmt.Errorf("remote media returned status %d", response.StatusCode)
+	}
+	if response.ContentLength > maxBytes && maxBytes > 0 {
+		writeAPIError(w, http.StatusRequestEntityTooLarge, "remote_media_too_large", "remote media is too large to play", false)
+		return fmt.Errorf("remote media exceeds stream limit")
+	}
+	contentType := remotePlaybackContentType(response, path)
+	if contentType == "" {
+		writeAPIError(w, http.StatusBadGateway, "remote_media_type_unknown", "remote media type could not be determined", true)
+		return fmt.Errorf("remote media content type is not supported")
+	}
+	copyRemotePlaybackHeaders(w, response, contentType, maxBytes)
+	w.WriteHeader(response.StatusCode)
+	if r.Method == http.MethodHead {
+		return nil
+	}
+	if maxBytes <= 0 {
+		_, err := io.Copy(w, response.Body)
+		return err
+	}
+	limited := &io.LimitedReader{R: response.Body, N: maxBytes}
+	if _, err := io.Copy(w, limited); err != nil {
+		return err
+	}
+	if limited.N > 0 {
+		return nil
+	}
+	var extra [1]byte
+	read, err := io.ReadFull(response.Body, extra[:])
+	if read > 0 {
+		return fmt.Errorf("remote media exceeded stream limit")
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return nil
+	}
+	return err
+}
+
 func (s *Server) streamRemoteURL(w http.ResponseWriter, r *http.Request, source remoteSourceForUse, remoteURL string, path string, kind string) {
-	profile, err := s.playbackProfile(r, kind)
+	_, err := s.playbackProfile(r, kind)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if !remotePlaybackSourceUsable(source) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "remote media source is not available"})
 		return
 	}
 	parsed, err := remotePlaybackURLAllowed(remoteURL, source)
@@ -698,44 +940,26 @@ func (s *Server) streamRemoteURL(w http.ResponseWriter, r *http.Request, source 
 		writeAPIError(w, http.StatusBadGateway, "remote_media_blocked", "remote media source is not allowed", true)
 		return
 	}
-	contextWithTimeout, cancel := context.WithTimeout(r.Context(), realtimeTranscodeTimeout)
-	defer cancel()
 	method := r.Method
 	if method != http.MethodGet && method != http.MethodHead {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	request, err := http.NewRequestWithContext(contextWithTimeout, method, parsed.String(), nil)
-	if err != nil {
-		writeAPIError(w, http.StatusBadGateway, "remote_media_unavailable", "remote media request could not be created", true)
-		return
-	}
-	request.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
-	if source.Config.RequestLanguage != "" {
-		request.Header.Set("Accept-Language", source.Config.RequestLanguage)
-	}
-	response, err := s.sourceHTTPClient(source, 0).Do(request)
+	contextWithTimeout, cancel := context.WithTimeout(r.Context(), remotePlaybackTimeout)
+	defer cancel()
+	response, err := s.openRemotePlaybackResponse(contextWithTimeout, r, source, parsed)
 	if err != nil {
 		writeUpstreamError(w, err)
 		return
 	}
-	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		writeAPIError(w, http.StatusBadGateway, "remote_media_unavailable", "remote media source could not be read", true)
-		return
-	}
 	maxBytes := s.remoteMediaDownloadLimitBytes(r.Context())
 	if response.ContentLength > maxBytes && maxBytes > 0 {
+		_ = response.Body.Close()
 		writeAPIError(w, http.StatusRequestEntityTooLarge, "remote_media_too_large", "remote media is too large to play", false)
 		return
 	}
-	if method == http.MethodHead {
-		s.setRealtimePlaybackHeaders(w, realtimeContentType(profile))
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	if err := s.streamFFmpegReader(w, r, response.Body, profile, maxBytes); err != nil {
-		slog.Warn("realtime remote media transcode failed", "path", path, "profile", profile, "error", err)
+	if err := s.serveRemotePlaybackResponse(w, r, response, path, maxBytes); err != nil {
+		slog.Warn("remote media proxy failed", "path", path, "error", err)
 	}
 }
 
@@ -751,7 +975,15 @@ func (s *Server) streamRemoteSourceMedia(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code and media path are required"})
 		return
 	}
-	source, _, tracks, err := s.loadRemoteWorkTracksCached(r.Context(), id, code)
+	source, err := s.loadRemotePlaybackSource(r.Context(), id)
+	if err != nil {
+		if writeRemotePlaybackSourceError(w, err) {
+			return
+		}
+		writeUpstreamError(w, err)
+		return
+	}
+	_, _, tracks, err := s.loadRemoteWorkTracksCached(r.Context(), id, code)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})

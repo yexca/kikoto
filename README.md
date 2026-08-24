@@ -176,10 +176,11 @@ recorded target still exists; otherwise the normal blocking review remains.
 Recognized audio extensions include MP3, M4A, FLAC, WAV, WMA, OGG, Opus, and
 AAC. Video, image, text, and other files remain visible in the directory tree
 with their corresponding media kind when recognized. During playback, FFprobe
-selects direct browser streaming when the container and codecs are compatible;
-otherwise FFmpeg converts the media in real time without creating a playback
-file under `/cache`; an explicitly enabled remote source cache remains a
-separate download workflow.
+selects direct browser streaming for compatible local or cached media;
+otherwise FFmpeg converts that local file in real time without creating a
+playback file under `/cache`. Remote media is proxied unchanged through the
+configured source policy and is never sent through FFmpeg; an explicitly
+enabled remote source cache remains a separate download workflow.
 
 The default Startup workflow performs a full library scan after service startup,
 and a full manual scan remains available from Workflows. While Kikoto is running,
