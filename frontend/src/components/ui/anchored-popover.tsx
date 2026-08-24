@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
 type PopoverPosition = { left: number; top: number; maxHeight: number; visible: boolean };
+const openFloatingLayerSelector = "[data-app-floating-layer][data-state='open']";
 
 export function AnchoredPopover({
   open,
@@ -88,18 +89,22 @@ export function AnchoredPopover({
   useLayoutEffect(() => {
     if (!open || !onOpenChange) return;
     const dismiss = (event: PointerEvent) => {
+      if (document.querySelector(openFloatingLayerSelector)) return;
       const target = event.target as Node | null;
       if (target && (anchorRef.current?.contains(target) || contentRef.current?.contains(target))) return;
+      if (target instanceof Element && target.closest("[data-app-floating-layer]")) return;
       onOpenChange(false);
     };
     const dismissWithKeyboard = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onOpenChange(false);
+      if (event.key === "Escape" && !document.querySelector(openFloatingLayerSelector)) {
+        onOpenChange(false);
+      }
     };
-    document.addEventListener("pointerdown", dismiss);
-    window.addEventListener("keydown", dismissWithKeyboard);
+    document.addEventListener("pointerdown", dismiss, true);
+    window.addEventListener("keydown", dismissWithKeyboard, true);
     return () => {
-      document.removeEventListener("pointerdown", dismiss);
-      window.removeEventListener("keydown", dismissWithKeyboard);
+      document.removeEventListener("pointerdown", dismiss, true);
+      window.removeEventListener("keydown", dismissWithKeyboard, true);
     };
   }, [anchorRef, onOpenChange, open]);
 

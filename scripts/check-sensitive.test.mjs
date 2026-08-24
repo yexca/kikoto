@@ -33,6 +33,34 @@ function approvedAllowlist() {
   );
 }
 
+test("allows only the exact public npm registry host", () => {
+  const registryHost = ["registry", "npmjs", "org"].join(".");
+  const findings = [];
+
+  scanLine(
+    {
+      file: "frontend/package-lock.json",
+      line: 1,
+      text: `"resolved": "${endpointFor(registryHost)}package.tgz"`,
+    },
+    findings,
+    new Map(),
+  );
+  assert.deepEqual(findings, []);
+
+  scanLine(
+    {
+      file: "frontend/package-lock.json",
+      line: 2,
+      text: `"resolved": "${endpointFor(`mirror.${registryHost}`)}package.tgz"`,
+    },
+    findings,
+    new Map(),
+  );
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].kind, "non-reserved service URL");
+});
+
 test("allows an exact approved endpoint only in its declared file", () => {
   const endpoint = approvedEndpoint();
   const allowlist = approvedAllowlist();

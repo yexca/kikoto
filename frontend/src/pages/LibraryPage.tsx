@@ -65,6 +65,7 @@ import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { isActiveWorkflowStatus, useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
@@ -3492,34 +3493,40 @@ function SearchClauseEditor({
   const value = editor.draft.value;
   return (
     <div className="flex flex-col gap-2 rounded-lg border bg-card p-2 text-sm shadow-sm sm:flex-row sm:items-center">
-      <select
-        className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring sm:w-40"
+      <Select
         value={editor.draft.kind}
-        onChange={(event) => {
-          const kind = event.target.value as SearchClauseKind;
+        onValueChange={(nextValue) => {
+          const kind = nextValue as SearchClauseKind;
           onChange({
             kind,
             value: kind === "shelf" ? "true" : editor.draft.kind === "shelf" ? "" : editor.draft.value,
           });
         }}
-        aria-label={t("library.searchClauseType")}
       >
-        {editableSearchClauseKinds.map((kind) => (
-          <option key={kind.value} value={kind.value}>
-            {t(`library.searchClauseKinds.${kind.value}`, { defaultValue: kind.label })}
-          </option>
-        ))}
-      </select>
+        <SelectTrigger className="sm:w-40" aria-label={t("library.searchClauseType")}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {editableSearchClauseKinds.map((kind) => (
+            <SelectItem key={kind.value} value={kind.value}>
+              {t(`library.searchClauseKinds.${kind.value}`, { defaultValue: kind.label })}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       {editor.draft.kind === "shelf" ? (
-        <select
-          className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+        <Select
           value={value === "false" ? "false" : "true"}
-          onChange={(event) => onChange({ ...editor.draft, value: event.target.value })}
-          aria-label={t("library.shelfMembership")}
+          onValueChange={(nextValue) => onChange({ ...editor.draft, value: nextValue })}
         >
-          <option value="true">{t("library.included")}</option>
-          <option value="false">{t("library.notIncluded")}</option>
-        </select>
+          <SelectTrigger className="min-w-0 flex-1" aria-label={t("library.shelfMembership")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="true">{t("library.included")}</SelectItem>
+            <SelectItem value="false">{t("library.notIncluded")}</SelectItem>
+          </SelectContent>
+        </Select>
       ) : (
         <input
           className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
@@ -8567,18 +8574,24 @@ function WorkVersionSelector({
             <span className="font-medium text-foreground">Metadata language</span>
           </div>
           {metadataVariants.length > 1 ? (
-            <select
-              className="h-8 min-w-40 max-w-full rounded-md border bg-background px-2 text-xs font-medium text-foreground outline-none focus:ring-2 focus:ring-ring"
-              aria-label="Metadata language"
+            <Select
               value={activeMetadataVariant?.key ?? ""}
-              onChange={(event) => onMetadataVariantSelect?.(event.target.value)}
+              onValueChange={(value) => onMetadataVariantSelect?.(value)}
             >
-              {metadataVariants.map((variant) => (
-                <option key={variant.key} value={variant.key}>
-                  {metadataVariantLabel(variant, metadataVariants)}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger
+                className="w-auto min-w-40 max-w-full px-2 text-xs font-medium"
+                aria-label="Metadata language"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {metadataVariants.map((variant) => (
+                  <SelectItem key={variant.key} value={variant.key}>
+                    {metadataVariantLabel(variant, metadataVariants)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : (
             <span className="font-semibold text-foreground">
               {activeMetadataVariant

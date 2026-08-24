@@ -1,10 +1,10 @@
-import { CheckCircle2, Command, Loader2, Moon, Sun } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ThemePalettePicker } from "@/app/ThemePalettePicker";
 import { ThemePresetPicker } from "@/app/ThemePresetPicker";
 import type { ThemeMode, ThemePalette, ThemePreset } from "@/app/theme";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UI_LOCALE_OPTIONS, type UiLocale } from "@/i18n";
 
 export function AppearanceControls({
@@ -36,34 +36,41 @@ export function AppearanceControls({
       <div className="border-b p-3" role="group" aria-label={t("appearance.language")}>
         <AppearanceGroupLabel>{t("appearance.language")}</AppearanceGroupLabel>
         <p className="mb-2 px-2 text-xs text-muted-foreground">{t("appearance.languageDescription")}</p>
-        <select
-          className="h-[var(--control-height)] w-full rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-wait disabled:opacity-60"
+        <Select
           value={localePreference}
           disabled={localeBusy}
-          aria-busy={localeBusy}
-          aria-label={t("appearance.language")}
-          onChange={(event) => void onLocaleChange(event.target.value as UiLocale)}
+          onValueChange={(value) => void onLocaleChange(value as UiLocale)}
         >
-          {UI_LOCALE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {t(option.labelKey)}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger
+            className="disabled:cursor-wait"
+            aria-busy={localeBusy}
+            aria-invalid={Boolean(localeError)}
+            aria-label={t("appearance.language")}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {UI_LOCALE_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {t(option.labelKey)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {localeError && <p className="mt-2 px-2 text-xs text-destructive">{localeError}</p>}
       </div>
       <div className="p-2" role="group" aria-label={t("appearance.mode")}>
         <AppearanceGroupLabel>{t("appearance.mode")}</AppearanceGroupLabel>
-        <select
-          className="h-[var(--control-height)] w-full rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          value={mode}
-          aria-label={t("appearance.mode")}
-          onChange={(event) => onModeChange(event.target.value as ThemeMode)}
-        >
-          <option value="light">{t("appearance.light")}</option>
-          <option value="dark">{t("appearance.dark")}</option>
-          <option value="system">{t("appearance.system")}</option>
-        </select>
+        <Select value={mode} onValueChange={(value) => onModeChange(value as ThemeMode)}>
+          <SelectTrigger aria-label={t("appearance.mode")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="light">{t("appearance.light")}</SelectItem>
+            <SelectItem value="dark">{t("appearance.dark")}</SelectItem>
+            <SelectItem value="system">{t("appearance.system")}</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       <div className="border-t p-3">
         <div role="group" aria-label={t("appearance.style")}>

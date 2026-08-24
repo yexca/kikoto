@@ -1345,7 +1345,33 @@ test("mobile header orders actions and separates popovers from the quick-action 
   expect(modeBox!.x).toBeGreaterThanOrEqual(0);
   expect(modeBox!.x + modeBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 
-  await modeGroup.getByRole("combobox").selectOption("dark");
+  await appearancePopover.getByRole("combobox", { name: "UI language" }).click();
+  const languageListbox = page.getByRole("listbox");
+  await expect(languageListbox.getByRole("option")).toHaveCount(6);
+  const languageListboxBox = await languageListbox.boundingBox();
+  expect(languageListboxBox).not.toBeNull();
+  expect(languageListboxBox!.x).toBeGreaterThanOrEqual(0);
+  expect(languageListboxBox!.x + languageListboxBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  expect(languageListboxBox!.y + languageListboxBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  await languageListbox.getByRole("option", { name: "Auto", exact: true }).click();
+  await expect(appearancePopover).toBeVisible();
+
+  const appearanceBox = await appearancePopover.boundingBox();
+  expect(appearanceBox).not.toBeNull();
+  await appearancePopover.getByRole("combobox", { name: "UI language" }).click();
+  await page.mouse.click(appearanceBox!.x + 12, appearanceBox!.y + 12);
+  await expect(languageListbox).toBeHidden();
+  await expect(appearancePopover).toBeVisible();
+
+  await appearancePopover.getByRole("combobox", { name: "UI language" }).click();
+  await expect(languageListbox).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(languageListbox).toBeHidden();
+  await expect(appearancePopover).toBeVisible();
+
+  await modeGroup.getByRole("combobox").click();
+  await page.getByRole("listbox").getByRole("option", { name: "Dark", exact: true }).click();
+  await expect(appearancePopover).toBeVisible();
   await expect(page.locator("html")).toHaveClass(/dark/);
   await appearancePopover.getByRole("button", { name: "Apple", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");
@@ -1376,7 +1402,8 @@ test("desktop header popovers render above page content", async ({ page }) => {
   expect(headerBox).not.toBeNull();
   expect(popoverBox).not.toBeNull();
   expect(popoverBox!.y + popoverBox!.height).toBeGreaterThan(headerBox!.y + headerBox!.height);
-  await page.getByRole("group", { name: "Mode" }).getByRole("combobox").selectOption("dark");
+  await page.getByRole("group", { name: "Mode" }).getByRole("combobox").click();
+  await page.getByRole("listbox").getByRole("option", { name: "Dark", exact: true }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
 });
 

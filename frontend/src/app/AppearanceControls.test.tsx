@@ -23,7 +23,7 @@ describe("AppearanceControls", () => {
     }
     expect(rendered).toContain('aria-label="UI language"');
     expect(rendered).toContain('aria-label="Mode"');
-    expect(rendered).toContain("<select");
+    expect(rendered.match(/role="combobox"/g)).toHaveLength(2);
   });
 
   it("keeps each style preview's authored accent color", () => {

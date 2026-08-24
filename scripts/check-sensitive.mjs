@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, "..");
 const approvedEndpointAllowlistFile = "scripts/privacy-allowlist.json";
+const approvedPublicArtifactHosts = new Set(["registry.npmjs.org"]);
 const urlPattern = /\b(?:https?|wss?):\/\/[^\s<>"'`]+/giu;
 const ipv4Pattern = /\b(?:\d{1,3}\.){3}\d{1,3}\b/gu;
 const knownTokenPatterns = [
@@ -290,6 +291,7 @@ function isAllowedHost(host) {
     normalized === "0.0.0.0" ||
     normalized === "::1" ||
     normalized.startsWith("127.") ||
+    approvedPublicArtifactHosts.has(normalized) ||
     ["example.com", "example.net", "example.org", "example.invalid"].some(
       (domain) => normalized === domain || normalized.endsWith(`.${domain}`),
     ) ||

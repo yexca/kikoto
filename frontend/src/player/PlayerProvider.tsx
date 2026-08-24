@@ -27,6 +27,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { OverflowMarquee, OverflowMarqueeGroup } from "@/components/ui/overflow-marquee";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { ANDROID_BACK_EVENT, PLAYBACK_CURSOR_UPDATED_EVENT } from "@/app/events";
@@ -2794,21 +2795,25 @@ function LyricsSourceSelector({
   if (choices.length <= 1 && automatic)
     return <div className="truncate text-xs font-semibold text-muted-foreground">{title}</div>;
   return (
-    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+    <div className="flex items-center gap-2 text-xs text-muted-foreground">
       <span className="shrink-0 font-semibold">Lyrics</span>
-      <select
-        className="min-w-0 flex-1 truncate rounded-md border bg-background px-2 py-1"
+      <Select
         value={automatic ? "auto" : String(activeLocationId)}
-        onChange={(event) => onChoiceChange(event.target.value === "auto" ? null : Number(event.target.value))}
+        onValueChange={(value) => onChoiceChange(value === "auto" ? null : Number(value))}
       >
-        <option value="auto">Auto</option>
-        {choices.map((choice) => (
-          <option key={choice.locationId} value={choice.locationId}>
-            {lyricsChoiceDisplayLabel(choice, choices)}
-          </option>
-        ))}
-      </select>
-    </label>
+        <SelectTrigger className="w-auto min-w-0 flex-1 px-2 text-xs" aria-label="Lyrics" data-player-no-drag>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent data-player-no-drag>
+          <SelectItem value="auto">Auto</SelectItem>
+          {choices.map((choice) => (
+            <SelectItem key={choice.locationId} value={String(choice.locationId)}>
+              {lyricsChoiceDisplayLabel(choice, choices)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 

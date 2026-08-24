@@ -2440,6 +2440,31 @@ test("library search follows the user across scopes and survives navigation", as
   await expect(search).toHaveValue("tracked term");
 });
 
+test("library search conditions use accessible select menus", async ({ page }) => {
+  await mockApplication(page);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Search library" }).click();
+  await page.getByRole("button", { name: "Add search condition" }).click();
+
+  const clauseType = page.getByRole("combobox", { name: "Search clause type" });
+  await expect(clauseType).toHaveText("Text");
+  await clauseType.click();
+  await page.getByRole("listbox").getByRole("option", { name: "On shelf", exact: true }).click();
+
+  const shelfMembership = page.getByRole("combobox", { name: "Shelf membership" });
+  await expect(shelfMembership).toHaveText("Included");
+  await shelfMembership.click();
+  const membershipOptions = page.getByRole("listbox");
+  await expect(membershipOptions.getByRole("option", { name: "Included", exact: true })).toBeVisible();
+  await expect(membershipOptions.getByRole("option", { name: "Not included", exact: true })).toBeVisible();
+  await membershipOptions.getByRole("option", { name: "Not included", exact: true }).click();
+  await expect(shelfMembership).toHaveText("Not included");
+
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(clauseType).toHaveCount(0);
+});
+
 test("anonymous quick marks show an actionable toast above protected mobile controls", async ({ page }) => {
   await mockApplication(page);
   await page.goto("/");
@@ -2933,8 +2958,11 @@ test("local work detail lists Origin first and expands from local to all edition
   await page.getByRole("button", { name: "Info", exact: true }).click();
 
   const metadataSelect = page.getByRole("combobox", { name: "Metadata language" });
-  await expect(metadataSelect).toHaveValue("english-metadata");
-  await expect(metadataSelect.locator("option").first()).toHaveText("Original · Japanese");
+  await expect(metadataSelect).toHaveText("English");
+  await metadataSelect.click();
+  const metadataListbox = page.getByRole("listbox");
+  await expect(metadataListbox.getByRole("option").first()).toHaveText("Original · Japanese");
+  await page.keyboard.press("Escape");
 
   await expect(page.getByRole("group", { name: "Japanese versions" })).toBeVisible();
   await expect(page.getByRole("group", { name: "English versions" })).toBeVisible();
@@ -3083,8 +3111,30 @@ test("mobile full player gives artwork room and does not latch transport feedbac
 });
 
 test("inline lyrics adapt visible rows to height and keep the active line centered", async ({ page }) => {
+  const lyricsTrack = {
+    ...persistedTrack,
+    lyricsLocationId: 9,
+    lyricsTitle: "lyrics.lrc",
+    autoLyricsLocationId: 9,
+    lyricsChoices: [
+      {
+        mediaItemId: 9,
+        locationId: 9,
+        title: "lyrics.lrc",
+        path: "Main/lyrics.lrc",
+        reason: "same_stem" as const,
+      },
+      {
+        mediaItemId: 10,
+        locationId: 10,
+        title: "translation.srt",
+        path: "Main/translation.srt",
+        reason: "shared_folder" as const,
+      },
+    ],
+  };
   await mockApplication(page);
-  await seedPlayer(page, { ...persistedTrack, lyricsLocationId: 9, lyricsTitle: "lyrics.lrc" });
+  await seedPlayer(page, lyricsTrack);
   await page.goto("/");
   await page.getByText("Test track", { exact: true }).click();
   await page.getByRole("button", { name: "Lyrics hidden. Show preview" }).click();
@@ -3121,6 +3171,15 @@ test("inline lyrics adapt visible rows to height and keep the active line center
     "style",
     new RegExp(`translateY\\(${expectedOffset}px\\)`),
   );
+
+  await preview.click();
+  const lyricsSelect = page.getByRole("combobox", { name: "Lyrics" });
+  await expect(lyricsSelect).toHaveText("Auto");
+  await lyricsSelect.click();
+  const lyricsOptions = page.getByRole("listbox");
+  await expect(lyricsOptions.getByRole("option")).toHaveText(["Auto", "lyrics.lrc", "translation.srt"]);
+  await lyricsOptions.getByRole("option", { name: "translation.srt", exact: true }).click();
+  await expect(lyricsSelect).toHaveText("translation.srt");
 });
 
 test("desktop player uses playback speed without volume or colored play glow", async ({ page }) => {
