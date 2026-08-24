@@ -87,6 +87,22 @@ func TestCircleDetailReadDoesNotQueueARefreshWorkflow(t *testing.T) {
 	}
 }
 
+func TestCircleWorkSourceTagsUsesAnEmptyArrayWhenNoSourceExists(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := &Server{db: db}
+
+	tags, err := server.workSourceTags(context.Background(), 0, "RJ00000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tags == nil {
+		t.Fatal("source tags = nil, want an empty slice")
+	}
+	if len(tags) != 0 {
+		t.Fatalf("source tags = %+v, want empty", tags)
+	}
+}
+
 func TestLoadVoiceSummariesIncludesLatestKnownWork(t *testing.T) {
 	db := openMigratedTestDB(t)
 	statements := []string{

@@ -75,7 +75,7 @@ export function circleSourceBadges({
   local?: boolean;
   remote?: boolean;
   cache?: boolean;
-  sourceTags?: CircleSourceStat[];
+  sourceTags?: CircleSourceStat[] | null;
 }): WorkCardBadge[] {
   const badges: WorkCardBadge[] = [];
   if (local)
@@ -86,7 +86,7 @@ export function circleSourceBadges({
       title: i18n.t("workCard.localSource"),
     });
 
-  const availableSources = sourceTags.filter((source) => source.status === "available" || source.count > 0);
+  const availableSources = (sourceTags ?? []).filter((source) => source.status === "available" || source.count > 0);
   for (const source of availableSources) {
     if (source.key === "local" || source.key === "cache" || source.key === "remote") continue;
     if (source.sourceId !== null && source.sourceId !== undefined) {

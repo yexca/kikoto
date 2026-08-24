@@ -51,4 +51,12 @@ describe("circle source badges", () => {
     ]);
     expect(badges[2].label).toBe("Example Remote");
   });
+
+  it("treats a null source summary from an older API as empty", () => {
+    expect(
+      circleSourceBadges({
+        sourceTags: null,
+      }),
+    ).toEqual([]);
+  });
 });

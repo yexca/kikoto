@@ -2129,7 +2129,9 @@ func splitCatalogCodes(raw string) []string {
 }
 
 func (s *Server) workSourceTags(ctx context.Context, partyID int64, code string) ([]circleSourceStat, error) {
-	tags := workSourceTagAccumulator{sourceIDs: map[int64]bool{}}
+	// Keep the JSON contract stable for catalog-only works: an empty source
+	// collection must encode as [] rather than null for frontend consumers.
+	tags := workSourceTagAccumulator{items: []circleSourceStat{}, sourceIDs: map[int64]bool{}}
 	if err := s.loadWorkMediaSourceTags(ctx, code, &tags); err != nil {
 		return nil, err
 	}
