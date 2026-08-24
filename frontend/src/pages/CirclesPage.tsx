@@ -24,6 +24,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { MobileSheet } from "@/components/ui/mobile-sheet";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { UserTagRow } from "@/components/UserTagRow";
+import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
 import { CollectionPagination } from "@/components/collection/CollectionPagination";
 import {
   CreatorCard,
@@ -284,7 +285,7 @@ function CircleListPage({ active }: { active: boolean }) {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="relative space-y-5">
       <section className="space-y-3">
         <CreatorListToolbar
           label="Circles"
@@ -350,6 +351,7 @@ function CircleListPage({ active }: { active: boolean }) {
         )}
         <CollectionPagination {...paginationProps} placement="bottom" />
       </section>
+      <BrowseLoadingIndicator refreshing={isLoading && hasLoaded} label="Refreshing circles" />
     </div>
   );
 }
@@ -769,7 +771,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   }
 
   return (
-    <div className="space-y-5">
+    <div className="relative space-y-5">
       <Button variant="outline" size="sm" onClick={navigateToList}>
         <ChevronLeft className="h-4 w-4" />
         {compactLayout ? "Back to circles" : circleReturnLabel()}
@@ -1263,6 +1265,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
         onRun={(scope, mode) => void refresh(scope, mode)}
       />
       <RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
+      <BrowseLoadingIndicator refreshing={isLoading || refreshingScope !== null} label="Loading circle details" />
     </div>
   );
 }

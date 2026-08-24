@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { UserTagRow } from "@/components/UserTagRow";
 import { CollectionPagination } from "@/components/collection/CollectionPagination";
@@ -286,7 +287,7 @@ function VoiceListPage({ active }: { active: boolean }) {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="relative space-y-5">
       {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
 
       <section className="space-y-3">
@@ -360,6 +361,7 @@ function VoiceListPage({ active }: { active: boolean }) {
 
         <CollectionPagination {...paginationProps} placement="bottom" />
       </section>
+      <BrowseLoadingIndicator refreshing={isLoading && hasLoaded} label="Refreshing voice actors" />
     </div>
   );
 }
@@ -889,7 +891,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="relative space-y-5">
       <Button variant="outline" size="sm" onClick={navigateToList}>
         <ChevronLeft className="h-4 w-4" />
         {voiceReturnLabel(mobileNavigationLayout)}
@@ -1318,6 +1320,10 @@ function VoiceDetailPage({ personId }: { personId: number }) {
         />
       )}
       <RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
+      <BrowseLoadingIndicator
+        refreshing={isWorksLoading || isRemoteLoading || catalogRefreshActive}
+        label="Refreshing voice details"
+      />
     </div>
   );
 }

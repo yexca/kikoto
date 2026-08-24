@@ -61,6 +61,7 @@ import { useTranslation } from "react-i18next";
 
 import { Badge, badgeVariants } from "@/components/ui/badge";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
+import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
 import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -1666,8 +1667,10 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const localTopPagination = (
     <WorkCollectionPagination {...localPaginationProps} placement="top" compactMobile compactTop />
   );
+  const browseRefreshing = activeTab.kind === "source" ? isRemoteLoading && remoteResult !== null : isLibraryLoading;
+  const browseLoadingLabel = activeTab.kind === "source" ? "Refreshing remote works" : "Refreshing library works";
   return (
-    <div className="space-y-5">
+    <div className="relative space-y-5">
       <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between" data-toast-avoid>
         <div
           className={`order-2 min-h-10 w-full items-center gap-2 rounded-lg border bg-card px-3 text-sm lg:order-1 lg:flex lg:max-w-xl ${
@@ -1932,6 +1935,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         <RecommendationExplanationModal state={recommendationDialog} onClose={() => setRecommendationDialog(null)} />
       )}
       <RemoteFetchWorkspaceDialog workspace={trackedFetchWorkspace} />
+      <BrowseLoadingIndicator refreshing={browseRefreshing} label={browseLoadingLabel} />
     </div>
   );
 }

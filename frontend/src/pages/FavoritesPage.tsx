@@ -29,6 +29,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
+import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -708,7 +709,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   };
 
   return (
-    <section className="space-y-5">
+    <section className="relative space-y-5">
       <div
         hidden={mobileNavigationLayout}
         className={`${mobileNavigationLayout ? "hidden" : "flex"} flex-col space-y-3`}
@@ -1117,6 +1118,10 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
           )}
         </>
       )}
+      <BrowseLoadingIndicator
+        refreshing={favoriteEntity === "works" && isLoading && hasWorksSnapshot}
+        label="Refreshing favorite works"
+      />
     </section>
   );
 }
