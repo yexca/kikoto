@@ -104,7 +104,6 @@ import {
 import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
 
 const PLACEHOLDER_CIRCLE_ID = "RG012345";
-const TRANSLATION_CIRCLE_ID = "RG60289";
 const circlePageSizeOptions = [24, 48, 96] as const;
 const catalogWorkPageSizeOptions = [24, 48] as const;
 type CatalogWorkPageSize = (typeof catalogWorkPageSizeOptions)[number];
@@ -841,12 +840,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                   size="sm"
                   className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
                   aria-label={firstPull ? "First pull circle catalog" : "Refresh circle"}
-                  disabled={
-                    !canRefreshCatalog ||
-                    isLoading ||
-                    refreshingScope !== null ||
-                    isTranslationCircle(circle.externalId)
-                  }
+                  disabled={!canRefreshCatalog || isLoading || refreshingScope !== null}
                   onClick={runPrimaryRefresh}
                 >
                   <RefreshCw className="h-4 w-4" />
@@ -1259,7 +1253,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
         catalogOnlyCount={catalogOnlyCount}
         availableCount={availableWorkCount}
         refreshingScope={refreshingScope}
-        isTranslationCircle={isTranslationCircle(circle.externalId)}
         canRefresh={canRefreshCatalog}
         onClose={() => setAdvancedRefreshOpen(false)}
         onRun={(scope, mode) => void refresh(scope, mode)}
@@ -1831,10 +1824,6 @@ function circleWorkRemoteTarget(
   return remote?.sourceId
     ? { sourceId: remote.sourceId, code: work.remoteCode || work.primaryCode, sourceDisplayName: remote.displayName }
     : null;
-}
-
-function isTranslationCircle(externalId: string) {
-  return externalId.toUpperCase() === TRANSLATION_CIRCLE_ID;
 }
 
 function openWorkDirectoryRoute(target: WorkDetailIntent, work: CircleCatalogWork) {

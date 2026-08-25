@@ -124,6 +124,96 @@ type circleRefreshRequest struct {
 	ProductMode string `json:"productMode"`
 }
 
+// circleCatalogProjection keeps catalog discovery attached to the party that
+// owns the canonical edition of a known logical work. The physical catalog
+// row remains under its source party so translator identity and raw provider
+// provenance are preserved. Unknown or metadata-only codes fall back to the
+// physical party because there is no safe ownership relationship to infer.
+const circleCatalogProjection = `(
+	SELECT
+		catalog.id,
+		COALESCE(
+			CASE WHEN canonical_circle.source = 'manual_override' THEN canonical_circle.party_id END,
+			origin_external.party_id,
+			canonical_circle.party_id,
+			catalog.party_id
+		) AS party_id,
+		catalog.party_id AS source_party_id,
+		catalog.provider_id,
+		catalog.primary_code,
+		catalog.title,
+		catalog.release_date,
+		catalog.url,
+		catalog.catalog_status,
+		catalog.dlsite_available,
+		catalog.raw_json,
+		catalog.last_seen_at
+	FROM party_catalog_item AS catalog
+	LEFT JOIN work AS catalog_work
+		ON UPPER(catalog_work.primary_code) = UPPER(catalog.primary_code)
+	LEFT JOIN work_edition AS catalog_edition
+		ON catalog_edition.work_id = catalog_work.id
+	LEFT JOIN logical_work AS logical
+		ON logical.id = catalog_edition.logical_work_id
+	LEFT JOIN work_edition AS origin_edition
+		ON origin_edition.logical_work_id = logical.id
+		AND origin_edition.is_canonical = 1
+	LEFT JOIN metadata_provider AS dlsite_provider
+		ON dlsite_provider.code = 'dlsite'
+	LEFT JOIN party_external_id AS origin_external
+		ON origin_external.provider_id = dlsite_provider.id
+		AND origin_external.id_type = 'maker_id'
+		AND UPPER(origin_external.external_id) = UPPER(origin_edition.maker_id)
+	LEFT JOIN work_primary_circle AS canonical_circle
+		ON canonical_circle.work_id = COALESCE(logical.canonical_work_id, catalog_work.id)
+)`
+
+// circlePartyVisibilityPredicate is built only with trusted SQL aliases from
+// this file. The catalog evidence clause covers old databases where a
+// translation edition was persisted before its work_party relation was
+// materialized; unknown or incomplete editions deliberately remain visible.
+func circlePartyVisibilityPredicate(partyRef string) string {
+	return fmt.Sprintf(`(
+		EXISTS (
+			SELECT 1
+			FROM work_party AS owned_relation
+			WHERE owned_relation.party_id = %[1]s
+				AND owned_relation.role = 'circle'
+		)
+		OR (
+			NOT EXISTS (
+				SELECT 1
+				FROM work_party AS translation_relation
+				WHERE translation_relation.party_id = %[1]s
+					AND translation_relation.role IN ('translator_circle', 'official_translation_brand')
+			)
+			AND NOT EXISTS (
+				SELECT 1
+				FROM party_catalog_item AS catalog
+				INNER JOIN work AS catalog_work
+					ON UPPER(catalog_work.primary_code) = UPPER(catalog.primary_code)
+				INNER JOIN work_edition AS edition ON edition.work_id = catalog_work.id
+				INNER JOIN party_external_id AS external
+					ON external.party_id = %[1]s
+				INNER JOIN metadata_provider AS external_provider
+					ON external_provider.id = external.provider_id
+					AND external_provider.code = 'dlsite'
+				WHERE catalog.party_id = %[1]s
+					AND external.id_type = 'maker_id'
+					AND UPPER(external.external_id) = UPPER(edition.maker_id)
+					AND edition.is_canonical = 0
+					AND (
+						edition.translation_kind IN ('third_party', 'official')
+						OR (
+							edition.origin_maker_id <> ''
+							AND UPPER(edition.origin_maker_id) <> UPPER(edition.maker_id)
+						)
+					)
+			)
+		)
+	)`, partyRef)
+}
+
 func (s *Server) listCircles(w http.ResponseWriter, r *http.Request) {
 	userID := optionalUserID(r.Context())
 	items, err := s.loadCircleSummaries(r.Context(), userID)
@@ -167,7 +257,7 @@ func (s *Server) loadCircleSummaries(ctx context.Context, userID int64) ([]circl
 				)
 				OR EXISTS (
 					SELECT 1
-					FROM party_catalog_item AS demo_catalog
+					FROM ` + circleCatalogProjection + ` AS demo_catalog
 					INNER JOIN work AS demo_work ON UPPER(demo_work.primary_code) = UPPER(demo_catalog.primary_code)
 					WHERE demo_catalog.party_id = party.id
 						AND ` + contentpolicy.DemoEligibleWorkSQL("demo_work") + `
@@ -200,6 +290,7 @@ func (s *Server) loadCircleSummaries(ctx context.Context, userID int64) ([]circl
 		WHERE party.party_type IN ('circle', 'brand', 'maker')
 			AND provider.code = 'dlsite'
 			AND external.id_type = 'maker_id'
+			AND `+circlePartyVisibilityPredicate("party.id")+`
 			`+demoWhere+`
 		ORDER BY party.display_name ASC
 	`, userID)
@@ -271,6 +362,15 @@ func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	visible, err := s.circlePartyVisible(r.Context(), partyID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !visible {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "circle not found"})
+		return
+	}
 	if s.cfg.IsDemo() {
 		eligible, err := s.demoCircleEligible(r.Context(), partyID)
 		if err != nil {
@@ -309,6 +409,13 @@ func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
 		Works:          works,
 		Series:         series,
 	})
+}
+
+func (s *Server) circlePartyVisible(ctx context.Context, partyID int64) (bool, error) {
+	var visible bool
+	query := "SELECT " + circlePartyVisibilityPredicate("party.id") + " FROM party WHERE party.id = ?"
+	err := s.db.QueryRowContext(ctx, query, partyID).Scan(&visible)
+	return visible, err
 }
 
 type circleUserStatePatch struct {
@@ -468,30 +575,20 @@ func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	visible, err := s.circlePartyVisible(r.Context(), partyID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !visible {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "circle not found"})
+		return
+	}
 	var payload circleRefreshRequest
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&payload)
 	}
 	payload = normalizeCircleRefreshRequest(payload)
-	if isTranslationUmbrellaCircle(externalID) && (circleRefreshIncludesCatalog(payload.Scope) || circleRefreshIncludesSource(payload.Scope)) {
-		writeJSON(w, http.StatusAccepted, map[string]any{
-			"runId":           0,
-			"externalId":      externalID,
-			"status":          "skipped",
-			"scope":           payload.Scope,
-			"catalogWorks":    0,
-			"pagesFetched":    0,
-			"productSynced":   0,
-			"productSkipped":  0,
-			"productFailed":   0,
-			"productFailures": []string{},
-			"sourceSynced":    0,
-			"mode":            payload.Mode,
-			"productMode":     payload.ProductMode,
-			"reason":          "translation umbrella circle",
-		})
-		return
-	}
 	result, err := s.runCircleRefresh(r.Context(), partyID, externalID, payload)
 	if err != nil {
 		writeUpstreamError(w, err)
@@ -551,10 +648,28 @@ func (s *Server) deleteCircleCatalogWork(w http.ResponseWriter, r *http.Request)
 		writeError(w, err)
 		return
 	}
+	visible, err := s.circlePartyVisible(r.Context(), partyID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !visible {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "circle not found"})
+		return
+	}
 	result, err := s.db.ExecContext(r.Context(), `
 		DELETE FROM party_catalog_item
-		WHERE party_id = ? AND provider_id = ? AND UPPER(primary_code) = ?
-	`, partyID, providerID, code)
+		WHERE provider_id = ?
+			AND id IN (
+				SELECT projected.id
+				FROM `+circleCatalogProjection+` AS projected
+				LEFT JOIN work AS catalog_work ON UPPER(catalog_work.primary_code) = UPPER(projected.primary_code)
+				LEFT JOIN work_edition AS catalog_edition ON catalog_edition.work_id = catalog_work.id
+				LEFT JOIN logical_work AS catalog_logical ON catalog_logical.id = catalog_edition.logical_work_id
+				WHERE projected.party_id = ?
+					AND UPPER(COALESCE(catalog_logical.canonical_code, projected.primary_code)) = ?
+			)
+	`, providerID, partyID, code)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -626,7 +741,7 @@ func (s *Server) syncPartiesFromDLsiteSnapshots(ctx context.Context) error {
 			return err
 		}
 	}
-	return nil
+	return s.reconcileDLsiteCircleOwnership(ctx)
 }
 
 func (s *Server) dlsitePartyProjectionCurrent(
@@ -680,33 +795,20 @@ func (s *Server) dlsitePartyProjectionCurrent(
 		return false, nil
 	}
 
-	role, err := s.authoritativeWorkPartyRole(ctx, snapshot.WorkID)
-	if err != nil {
-		return false, err
-	}
 	var relationMatches int
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT
-			EXISTS (
-				SELECT 1
-				FROM work_party AS relation
-				WHERE relation.work_id = ?
-					AND relation.party_id = ?
-					AND relation.role = ?
-					AND (
-						relation.source = 'manual_override'
-						OR (relation.provider_id = ? AND relation.source = 'dlsite_snapshot')
-					)
-			)
-			AND NOT EXISTS (
-				SELECT 1
-				FROM work_party AS relation
-				WHERE relation.work_id = ?
-					AND relation.role IN ('circle', 'translator_circle', 'official_translation_brand')
-					AND relation.source IN ('dlsite_snapshot', 'dlsite_product', 'dlsite_edition', 'remote_source', 'circle_refresh', 'remote_source_catalog')
-					AND (relation.party_id <> ? OR relation.role <> ?)
-			)
-	`, snapshot.WorkID, partyID, role, snapshot.ProviderID, snapshot.WorkID, partyID, role).Scan(&relationMatches); err != nil {
+		SELECT EXISTS (
+			SELECT 1
+			FROM work_party AS relation
+			WHERE relation.work_id = ?
+				AND relation.party_id = ?
+				AND relation.role IN ('circle', 'translator_circle', 'official_translation_brand')
+				AND (
+					relation.source = 'manual_override'
+					OR (relation.provider_id = ? AND relation.source = 'dlsite_snapshot')
+				)
+		)
+	`, snapshot.WorkID, partyID, snapshot.ProviderID).Scan(&relationMatches); err != nil {
 		return false, err
 	}
 	return relationMatches != 0, nil
@@ -855,12 +957,74 @@ func (s *Server) upsertPartyCatalogItemForProvider(ctx context.Context, partyID 
 	return err
 }
 
+type authoritativePartyRelation struct {
+	PartyID int64
+	Role    string
+}
+
+func (s *Server) authoritativeDLsitePartyRelations(ctx context.Context, workID, currentPartyID int64) ([]authoritativePartyRelation, error) {
+	var isCanonical int
+	var translationKind, makerID, originMakerID string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT is_canonical, translation_kind, maker_id, origin_maker_id
+		FROM work_edition
+		WHERE work_id = ?
+	`, workID).Scan(&isCanonical, &translationKind, &makerID, &originMakerID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return []authoritativePartyRelation{{PartyID: currentPartyID, Role: "circle"}}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if isCanonical != 0 {
+		return []authoritativePartyRelation{{PartyID: currentPartyID, Role: "circle"}}, nil
+	}
+
+	makerID = normalizeMakerID(makerID)
+	originMakerID = normalizeMakerID(originMakerID)
+	if originMakerID != "" && !strings.EqualFold(originMakerID, makerID) {
+		var providerID int64
+		err := s.db.QueryRowContext(ctx, "SELECT id FROM metadata_provider WHERE code = 'dlsite'").Scan(&providerID)
+		if errors.Is(err, sql.ErrNoRows) {
+			providerID, err = s.metadataProviderID(ctx, "dlsite", "DLsite")
+		}
+		if err != nil {
+			return nil, err
+		}
+		var originPartyID int64
+		err = s.db.QueryRowContext(ctx, `
+			SELECT party_id
+			FROM party_external_id
+			WHERE provider_id = ? AND id_type = 'maker_id' AND UPPER(external_id) = UPPER(?)
+		`, providerID, originMakerID).Scan(&originPartyID)
+		if errors.Is(err, sql.ErrNoRows) && dlsiteMakerIDPattern.MatchString(originMakerID) {
+			originPartyID, err = s.ensurePlaceholderCircle(ctx, originMakerID)
+		}
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+		if originPartyID > 0 && originPartyID != currentPartyID {
+			return []authoritativePartyRelation{
+				{PartyID: originPartyID, Role: "circle"},
+				{PartyID: currentPartyID, Role: "translator_circle"},
+			}, nil
+		}
+	}
+
+	role := "translator_circle"
+	if strings.EqualFold(strings.TrimSpace(translationKind), "official") ||
+		(originMakerID != "" && strings.EqualFold(makerID, originMakerID)) {
+		role = "official_translation_brand"
+	}
+	return []authoritativePartyRelation{{PartyID: currentPartyID, Role: role}}, nil
+}
+
 func (s *Server) upsertAuthoritativeWorkParty(ctx context.Context, workID int64, partyID int64, source string) error {
 	providerID, err := s.metadataProviderID(ctx, "dlsite", "DLsite")
 	if err != nil {
 		return err
 	}
-	role, err := s.authoritativeWorkPartyRole(ctx, workID)
+	relations, err := s.authoritativeDLsitePartyRelations(ctx, workID, partyID)
 	if err != nil {
 		return err
 	}
@@ -874,46 +1038,131 @@ func (s *Server) upsertAuthoritativeWorkParty(ctx context.Context, workID int64,
 		WHERE work_id = ?
 			AND role IN ('circle', 'translator_circle', 'official_translation_brand')
 			AND source IN ('dlsite_snapshot', 'dlsite_product', 'dlsite_edition', 'remote_source', 'circle_refresh', 'remote_source_catalog')
-			AND (party_id <> ? OR role <> ?)
-	`, workID, partyID, role); err != nil {
+	`, workID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO work_party (work_id, party_id, role, provider_id, source, updated_at)
-		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-		ON CONFLICT(work_id, party_id, role) DO UPDATE SET
-			provider_id = excluded.provider_id,
-			source = excluded.source,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE work_party.source <> 'manual_override'
-	`, workID, partyID, role, providerID, strings.TrimSpace(source)); err != nil {
-		return err
+	for _, relation := range relations {
+		if relation.PartyID <= 0 || relation.Role == "" {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO work_party (work_id, party_id, role, provider_id, source, updated_at)
+			VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+			ON CONFLICT(work_id, party_id, role) DO UPDATE SET
+				provider_id = excluded.provider_id,
+				source = excluded.source,
+				updated_at = CURRENT_TIMESTAMP
+			WHERE work_party.source <> 'manual_override'
+				AND (work_party.provider_id IS NOT excluded.provider_id OR work_party.source <> excluded.source)
+		`, workID, relation.PartyID, relation.Role, providerID, strings.TrimSpace(source)); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
 
-func (s *Server) authoritativeWorkPartyRole(ctx context.Context, workID int64) (string, error) {
-	var isCanonical int
-	var translationKind, makerID, originMakerID string
-	err := s.db.QueryRowContext(ctx, `
-		SELECT is_canonical, translation_kind, maker_id, origin_maker_id
-		FROM work_edition
-		WHERE work_id = ?
-	`, workID).Scan(&isCanonical, &translationKind, &makerID, &originMakerID)
+// reconcileDLsiteCircleOwnership repairs relations created before the
+// translation-aware projection existed. It is deliberately driven by the
+// persisted edition maker ids, never by catalog display names.
+func (s *Server) reconcileDLsiteCircleOwnership(ctx context.Context) error {
+	var providerID int64
+	err := s.db.QueryRowContext(ctx, "SELECT id FROM metadata_provider WHERE code = 'dlsite'").Scan(&providerID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "circle", nil
+		return nil
 	}
 	if err != nil {
-		return "", err
+		return err
 	}
-	if isCanonical != 0 {
-		return "circle", nil
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT edition.work_id, external.party_id
+		FROM work_edition AS edition
+		INNER JOIN party_external_id AS external
+			ON external.provider_id = ?
+			AND external.id_type = 'maker_id'
+			AND UPPER(external.external_id) = UPPER(edition.maker_id)
+		WHERE edition.maker_id <> ''
+	`, providerID)
+	if err != nil {
+		return err
 	}
-	if strings.EqualFold(strings.TrimSpace(translationKind), "official") ||
-		(strings.TrimSpace(originMakerID) != "" && strings.EqualFold(strings.TrimSpace(makerID), strings.TrimSpace(originMakerID))) {
-		return "official_translation_brand", nil
+	type workParty struct{ workID, partyID int64 }
+	pairs := []workParty{}
+	for rows.Next() {
+		var pair workParty
+		if err := rows.Scan(&pair.workID, &pair.partyID); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		pairs = append(pairs, pair)
 	}
-	return "translator_circle", nil
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, pair := range pairs {
+		needsRepair, err := s.dlsiteCircleOwnershipNeedsRepair(ctx, pair.workID, pair.partyID, providerID)
+		if err != nil {
+			return err
+		}
+		if !needsRepair {
+			continue
+		}
+		if err := s.upsertAuthoritativeWorkParty(ctx, pair.workID, pair.partyID, "dlsite_edition"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Server) dlsiteCircleOwnershipNeedsRepair(ctx context.Context, workID, partyID, providerID int64) (bool, error) {
+	relations, err := s.authoritativeDLsitePartyRelations(ctx, workID, partyID)
+	if err != nil {
+		return false, err
+	}
+	want := map[string]bool{}
+	for _, relation := range relations {
+		want[fmt.Sprintf("%d:%s", relation.PartyID, relation.Role)] = true
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT party_id, role, provider_id, source
+		FROM work_party
+		WHERE work_id = ?
+			AND role IN ('circle', 'translator_circle', 'official_translation_brand')
+			AND source IN ('dlsite_snapshot', 'dlsite_product', 'dlsite_edition', 'remote_source', 'circle_refresh', 'remote_source_catalog')
+	`, workID)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+	seen := map[string]bool{}
+	for rows.Next() {
+		var relationPartyID int64
+		var relationProviderID sql.NullInt64
+		var role, source string
+		if err := rows.Scan(&relationPartyID, &role, &relationProviderID, &source); err != nil {
+			return false, err
+		}
+		key := fmt.Sprintf("%d:%s", relationPartyID, role)
+		if !want[key] || !relationProviderID.Valid || relationProviderID.Int64 != providerID ||
+			(source != "dlsite_snapshot" && source != "dlsite_product" && source != "dlsite_edition") {
+			return true, nil
+		}
+		seen[key] = true
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	if len(seen) != len(want) {
+		return true, nil
+	}
+	for key := range want {
+		if !seen[key] {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s *Server) ensurePlaceholderCircle(ctx context.Context, externalID string) (int64, error) {
@@ -963,7 +1212,7 @@ func (s *Server) demoCircleEligible(ctx context.Context, partyID int64) (bool, e
 			)
 			OR EXISTS (
 				SELECT 1
-				FROM party_catalog_item AS catalog
+				FROM `+circleCatalogProjection+` AS catalog
 				INNER JOIN work AS demo_work ON UPPER(demo_work.primary_code) = UPPER(catalog.primary_code)
 				WHERE catalog.party_id = ?
 					AND `+contentpolicy.DemoEligibleWorkSQL("demo_work")+`
@@ -1055,7 +1304,7 @@ func (s *Server) loadCircleAvailableWorkCounts(ctx context.Context, partyIDs []i
 	query, args := int64InQuery(`
 		WITH catalog_codes AS (
 			SELECT DISTINCT catalog.party_id, UPPER(COALESCE(catalog_logical.canonical_code, catalog.primary_code)) AS code
-			FROM party_catalog_item AS catalog
+			FROM `+circleCatalogProjection+` AS catalog
 			LEFT JOIN work AS catalog_work ON UPPER(catalog_work.primary_code) = UPPER(catalog.primary_code)
 			LEFT JOIN work_edition AS catalog_edition ON catalog_edition.work_id = catalog_work.id
 			LEFT JOIN logical_work AS catalog_logical ON catalog_logical.id = catalog_edition.logical_work_id
@@ -1083,7 +1332,7 @@ func (s *Server) loadCircleAvailableWorkCounts(ctx context.Context, partyIDs []i
 			`+demoPresenceWhere+`
 		), available_remote_catalog_codes AS (
 			SELECT DISTINCT remote_catalog.party_id, UPPER(COALESCE(remote_logical.canonical_code, remote_catalog.primary_code)) AS code
-			FROM party_catalog_item AS remote_catalog
+			FROM `+circleCatalogProjection+` AS remote_catalog
 			INNER JOIN metadata_provider AS remote_provider ON remote_provider.id = remote_catalog.provider_id
 			INNER JOIN file_source AS remote_source ON remote_provider.code = 'kikoeru_source_' || remote_source.code
 			LEFT JOIN work AS remote_work ON UPPER(remote_work.primary_code) = UPPER(remote_catalog.primary_code)
@@ -1130,7 +1379,7 @@ func (s *Server) fillCircleStats(ctx context.Context, userID int64, item *circle
 	var catalogWorks int
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(DISTINCT COALESCE(logical.canonical_code, catalog.primary_code))
-		FROM party_catalog_item AS catalog
+		FROM `+circleCatalogProjection+` AS catalog
 		LEFT JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
 		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
 		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
@@ -1166,11 +1415,6 @@ func (s *Server) fillCircleStats(ctx context.Context, userID int64, item *circle
 }
 
 func setCircleSyncState(item *circleSummary, freshnessDays int, now time.Time) {
-	if isTranslationUmbrellaCircle(item.ExternalID) {
-		item.SyncState = catalogSyncNotApplicable
-		item.SyncReason = "not_applicable"
-		return
-	}
 	lastSuccessAt := ""
 	if item.LastSyncedAt != nil {
 		lastSuccessAt = *item.LastSyncedAt
@@ -1314,12 +1558,15 @@ func (s *Server) loadCircleLatestWorks(ctx context.Context, partyIDs []int64) (m
 		WITH candidates AS (
 			SELECT
 				catalog.party_id,
-				UPPER(catalog.primary_code) AS primary_code,
-				COALESCE(NULLIF(work.title, ''), NULLIF(catalog.title, ''), UPPER(catalog.primary_code)) AS title,
-				COALESCE(work.release_date, catalog.release_date) AS release_date
-			FROM party_catalog_item AS catalog
+				UPPER(COALESCE(logical.canonical_code, catalog.primary_code)) AS primary_code,
+				COALESCE(NULLIF(canonical_work.title, ''), NULLIF(work.title, ''), NULLIF(catalog.title, ''), UPPER(catalog.primary_code)) AS title,
+				COALESCE(canonical_work.release_date, work.release_date, catalog.release_date) AS release_date
+			FROM `+circleCatalogProjection+` AS catalog
 			INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id AND provider.code = 'dlsite'
 			LEFT JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
+			LEFT JOIN work_edition AS edition ON edition.work_id = work.id
+			LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+			LEFT JOIN work AS canonical_work ON canonical_work.id = logical.canonical_work_id
 			WHERE 1 = 1
 				`+catalogDemoWhere+`
 			UNION ALL
@@ -1328,13 +1575,13 @@ func (s *Server) loadCircleLatestWorks(ctx context.Context, partyIDs []int64) (m
 				UPPER(work.primary_code),
 				work.title,
 				work.release_date
-			FROM work_party AS relation
+			FROM work_primary_circle AS relation
 			INNER JOIN work ON work.id = relation.work_id
 			WHERE relation.role = 'circle'
 				`+relationDemoWhere+`
 				AND NOT EXISTS (
 					SELECT 1
-					FROM party_catalog_item AS catalog
+					FROM `+circleCatalogProjection+` AS catalog
 					INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id AND provider.code = 'dlsite'
 					WHERE catalog.party_id = relation.party_id AND UPPER(catalog.primary_code) = UPPER(work.primary_code)
 				)
@@ -1374,7 +1621,7 @@ func (s *Server) loadCircleCatalogCounts(ctx context.Context, partyIDs []int64) 
 	}
 	query, args := int64InQuery(`
 		SELECT catalog.party_id, COUNT(DISTINCT COALESCE(logical.canonical_code, catalog.primary_code))
-		FROM party_catalog_item AS catalog
+		FROM `+circleCatalogProjection+` AS catalog
 		LEFT JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
 		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
 		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
@@ -1428,7 +1675,7 @@ func circleAvailabilityDemoWhere(isDemo bool) string {
 func (s *Server) loadCircleMediaAvailabilityCounts(ctx context.Context, partyIDs []int64, demoWhere string) (map[int64]int, map[int64]int, error) {
 	query, args := int64InQuery(`
 		SELECT relation.party_id, location.location_type, COUNT(DISTINCT COALESCE(logical.canonical_code, work.primary_code))
-		FROM work_party AS relation
+		FROM work_primary_circle AS relation
 		INNER JOIN work ON work.id = relation.work_id
 		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
 		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
@@ -1468,7 +1715,7 @@ func (s *Server) loadCircleMediaAvailabilityCounts(ctx context.Context, partyIDs
 func (s *Server) loadCircleCatalogAvailabilityCounts(ctx context.Context, partyIDs []int64, demoWhere string) (map[int64]int, error) {
 	query, args := int64InQuery(`
 		SELECT catalog.party_id, COUNT(DISTINCT COALESCE(logical.canonical_code, catalog.primary_code))
-		FROM party_catalog_item AS catalog
+		FROM `+circleCatalogProjection+` AS catalog
 		INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id
 		INNER JOIN file_source AS source ON provider.code = 'kikoeru_source_' || source.code
 		LEFT JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
@@ -1503,7 +1750,7 @@ func (s *Server) loadCircleCatalogAvailabilityCounts(ctx context.Context, partyI
 func (s *Server) loadCirclePresenceAvailabilityCounts(ctx context.Context, partyIDs []int64, demoWhere string) (map[int64]int, error) {
 	query, args := int64InQuery(`
 		SELECT relation.party_id, COUNT(DISTINCT COALESCE(logical.canonical_code, work.primary_code))
-		FROM work_party AS relation
+		FROM work_primary_circle AS relation
 		INNER JOIN work ON work.id = relation.work_id
 		INNER JOIN work_source_presence AS presence ON presence.work_id = work.id
 		INNER JOIN file_source AS source ON source.id = presence.file_source_id
@@ -1579,7 +1826,7 @@ func (s *Server) loadCircleMediaSourceStats(ctx context.Context, partyID int64) 
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT source.id, source.display_name, location.location_type, COUNT(DISTINCT COALESCE(logical.canonical_code, work.primary_code))
-		FROM work_party AS relation
+		FROM work_primary_circle AS relation
 		INNER JOIN work ON work.id = relation.work_id
 		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
 		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
@@ -1639,7 +1886,7 @@ func (s *Server) mergeCircleCatalogSourceStats(ctx context.Context, partyID int6
 	}
 	remoteRows, err := s.db.QueryContext(ctx, `
 		SELECT source.id, source.display_name, COUNT(DISTINCT COALESCE(logical.canonical_code, catalog.primary_code))
-		FROM party_catalog_item AS catalog
+		FROM `+circleCatalogProjection+` AS catalog
 		INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id
 		INNER JOIN file_source AS source ON provider.code = 'kikoeru_source_' || source.code
 		LEFT JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
@@ -1695,6 +1942,23 @@ func finalizeCircleSourceStats(combined map[string]circleSourceStat) []circleSou
 
 func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int64) ([]circleCatalogWork, error) {
 	rows, err := s.db.QueryContext(ctx, `
+		WITH projected_codes AS (
+			SELECT DISTINCT
+				catalog.primary_code,
+				UPPER(COALESCE(catalog_logical.canonical_code, catalog.primary_code)) AS logical_code,
+				COALESCE(catalog.release_date, '') AS release_date
+			FROM `+circleCatalogProjection+` AS catalog
+			LEFT JOIN work AS catalog_work ON UPPER(catalog_work.primary_code) = UPPER(catalog.primary_code)
+			LEFT JOIN work_edition AS catalog_edition ON catalog_edition.work_id = catalog_work.id
+			LEFT JOIN logical_work AS catalog_logical ON catalog_logical.id = catalog_edition.logical_work_id
+			WHERE catalog.party_id = ?
+		), selected_logical_codes AS (
+			SELECT logical_code
+			FROM projected_codes
+			GROUP BY logical_code
+			ORDER BY MAX(release_date) DESC, logical_code DESC
+			LIMIT 100
+		)
 		SELECT
 			codes.primary_code,
 			COALESCE(dlsite_catalog.title, remote_catalog.title, codes.primary_code),
@@ -1730,18 +1994,18 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 			), '')
 		FROM (
 			SELECT DISTINCT primary_code
-			FROM party_catalog_item
-			WHERE party_id = ?
+			FROM projected_codes
+			WHERE logical_code IN (SELECT logical_code FROM selected_logical_codes)
 		) AS codes
 		LEFT JOIN metadata_provider AS dlsite_provider ON dlsite_provider.code = 'dlsite'
-		LEFT JOIN party_catalog_item AS dlsite_catalog
+		LEFT JOIN `+circleCatalogProjection+` AS dlsite_catalog
 			ON dlsite_catalog.party_id = ?
 			AND dlsite_catalog.provider_id = dlsite_provider.id
 			AND UPPER(dlsite_catalog.primary_code) = UPPER(codes.primary_code)
-		LEFT JOIN party_catalog_item AS remote_catalog
+		LEFT JOIN `+circleCatalogProjection+` AS remote_catalog
 			ON remote_catalog.id = (
 				SELECT catalog.id
-				FROM party_catalog_item AS catalog
+				FROM `+circleCatalogProjection+` AS catalog
 				INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id
 				WHERE catalog.party_id = ?
 					AND UPPER(catalog.primary_code) = UPPER(codes.primary_code)
@@ -1752,7 +2016,6 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		LEFT JOIN work ON UPPER(work.primary_code) = UPPER(codes.primary_code)
 		LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?
 		ORDER BY COALESCE(dlsite_catalog.release_date, remote_catalog.release_date, '') DESC, codes.primary_code DESC
-		LIMIT 100
 	`, partyID, partyID, partyID, partyID, userID)
 	if err != nil {
 		return nil, err
@@ -1858,6 +2121,10 @@ func (s *Server) readCircleCatalogWork(ctx context.Context, rows *sql.Rows) (cir
 	if permanentlyFree.Valid {
 		item.PermanentlyFree = &permanentlyFree.Bool
 	}
+	item.ReleaseDate = nullableString(release)
+	if item.ReleaseDate != nil {
+		item.UpdatedAt = *item.ReleaseDate
+	}
 	originalCode := item.PrimaryCode
 	ref, err := s.canonicalWorkForCode(ctx, item.PrimaryCode)
 	if err != nil {
@@ -1874,13 +2141,14 @@ func (s *Server) readCircleCatalogWork(ctx context.Context, rows *sql.Rows) (cir
 	}
 	item.Series, item.SeriesTitleID = parseSeriesLink(seriesLink)
 	metadata := parseDLsiteSnapshot(snapshot)
+	if ref.Known && ref.WorkID > 0 && !strings.EqualFold(originalCode, ref.Code) {
+		if err := s.projectCircleCatalogWorkToCanonical(ctx, &item, &metadata, ref.WorkID); err != nil {
+			return item, dlsiteSnapshotMetadata{}, err
+		}
+	}
 	item.RatingCount, item.Tags, item.VoiceActors = metadata.RatingCount, metadata.Tags, metadata.VoiceActors
 	if item.Series == "" {
 		item.Series = metadata.Series
-	}
-	item.ReleaseDate = nullableString(release)
-	if item.ReleaseDate != nil {
-		item.UpdatedAt = *item.ReleaseDate
 	}
 	if item.WorkID == nil {
 		item.WorkID = nullableInt64(workID)
@@ -1898,6 +2166,90 @@ func (s *Server) readCircleCatalogWork(ctx context.Context, rows *sql.Rows) (cir
 	item.Favorite = favorite != 0
 	item.DLsiteAvailable = dlsiteAvailable != 0
 	return item, metadata, nil
+}
+
+func (s *Server) projectCircleCatalogWorkToCanonical(ctx context.Context, item *circleCatalogWork, metadata *dlsiteSnapshotMetadata, workID int64) error {
+	var title, ageRating, snapshot string
+	var release sql.NullString
+	var rating sql.NullFloat64
+	var sales, regularPrice, currentPrice sql.NullInt64
+	var currency sql.NullString
+	var permanentlyFree sql.NullBool
+	err := s.db.QueryRowContext(ctx, `
+		SELECT
+			work.title,
+			work.release_date,
+			work.age_rating,
+			work.rating_average,
+			work.sales_count,
+			work.regular_price,
+			work.current_price,
+			work.price_currency,
+			work.is_permanently_free,
+			COALESCE((
+				SELECT snapshot_json
+				FROM metadata_snapshot
+				INNER JOIN metadata_provider AS provider ON provider.id = metadata_snapshot.provider_id
+				WHERE metadata_snapshot.work_id = work.id AND provider.code = 'dlsite'
+				ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC
+				LIMIT 1
+			), '')
+		FROM work
+		WHERE work.id = ?
+	`, workID).Scan(&title, &release, &ageRating, &rating, &sales, &regularPrice, &currentPrice, &currency, &permanentlyFree, &snapshot)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if title != "" {
+		item.Title = title
+	}
+	if release.Valid {
+		item.ReleaseDate = &release.String
+		item.UpdatedAt = release.String
+	}
+	if ageRating != "" {
+		item.AgeRating = ageRating
+	}
+	item.Rating = nullableFloat64(rating)
+	item.Sales = nullableInt64(sales)
+	item.RegularPrice = nullableInt64(regularPrice)
+	item.Price = nullableInt64(currentPrice)
+	if currency.Valid {
+		item.PriceCurrency = currency.String
+	}
+	if permanentlyFree.Valid {
+		item.PermanentlyFree = &permanentlyFree.Bool
+	}
+	if snapshot != "" {
+		canonicalMetadata := parseDLsiteSnapshot(snapshot)
+		if canonicalMetadata.Circle != "" {
+			metadata.Circle = canonicalMetadata.Circle
+			metadata.CircleExternalID = canonicalMetadata.CircleExternalID
+		}
+		if canonicalMetadata.RatingCount != nil {
+			metadata.RatingCount = canonicalMetadata.RatingCount
+		}
+		if len(canonicalMetadata.Tags) > 0 {
+			metadata.Tags = canonicalMetadata.Tags
+		}
+		if len(canonicalMetadata.VoiceActors) > 0 {
+			metadata.VoiceActors = canonicalMetadata.VoiceActors
+		}
+		if metadata.Series == "" {
+			metadata.Series = canonicalMetadata.Series
+		}
+	}
+	if metadata.CircleExternalID == "" {
+		_ = s.db.QueryRowContext(ctx, `
+			SELECT display_name, external_id
+			FROM work_primary_circle
+			WHERE work_id = ?
+		`, workID).Scan(&metadata.Circle, &metadata.CircleExternalID)
+	}
+	return nil
 }
 
 func (s *Server) populateCircleCatalogWorkRelations(ctx context.Context, item *circleCatalogWork, userID, partyID int64) error {
@@ -2064,7 +2416,7 @@ func (s *Server) loadCircleSeries(ctx context.Context, partyID int64) ([]circleS
 			SELECT DISTINCT UPPER(code.primary_code) AS primary_code
 			FROM (
 				SELECT item.primary_code
-				FROM party_catalog_item AS item
+				FROM `+circleCatalogProjection+` AS item
 				INNER JOIN metadata_provider AS provider ON provider.id = item.provider_id
 				WHERE item.party_id = ? AND provider.code != 'dlsite'
 				UNION
@@ -2212,7 +2564,7 @@ func (s *Server) loadWorkMediaSourceTags(ctx context.Context, code string, tags 
 func (s *Server) mergeWorkCatalogSourceTags(ctx context.Context, partyID int64, code string, tags *workSourceTagAccumulator) error {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT source.id, source.display_name, COUNT(*)
-		FROM party_catalog_item AS catalog
+		FROM `+circleCatalogProjection+` AS catalog
 		INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id
 		INNER JOIN file_source AS source ON provider.code = 'kikoeru_source_' || source.code
 		WHERE catalog.party_id = ?
@@ -2397,7 +2749,7 @@ func (s *Server) loadCircleProfileForRefresh(ctx context.Context, partyID int64,
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT DISTINCT primary_code
 		FROM party_catalog_item
-		WHERE party_id = ?
+		WHERE party_id = ? AND provider_id = (SELECT id FROM metadata_provider WHERE code = 'dlsite')
 		ORDER BY last_seen_at DESC, id DESC
 	`, partyID)
 	if err != nil {
@@ -2873,7 +3225,11 @@ func (s *Server) upsertRemoteSourceCatalogWork(ctx context.Context, partyID int6
 }
 
 func (s *Server) knownCircleCatalogCodes(ctx context.Context, partyID int64) (map[string]bool, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT DISTINCT primary_code FROM party_catalog_item WHERE party_id = ?", partyID)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT primary_code
+		FROM party_catalog_item
+		WHERE party_id = ?
+	`, partyID)
 	if err != nil {
 		return nil, err
 	}
@@ -2881,7 +3237,11 @@ func (s *Server) knownCircleCatalogCodes(ctx context.Context, partyID int64) (ma
 }
 
 func (s *Server) knownCircleCatalogCodesForProvider(ctx context.Context, partyID int64, providerID int64) (map[string]bool, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT DISTINCT primary_code FROM party_catalog_item WHERE party_id = ? AND provider_id = ?", partyID, providerID)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT primary_code
+		FROM party_catalog_item
+		WHERE party_id = ? AND provider_id = ?
+	`, partyID, providerID)
 	if err != nil {
 		return nil, err
 	}
@@ -2915,7 +3275,7 @@ func (s *Server) circleCatalogCodesMissingMetadata(ctx context.Context, partyID 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT DISTINCT catalog.primary_code
 		FROM party_catalog_item AS catalog
-		LEFT JOIN metadata_provider AS provider ON provider.code = 'dlsite'
+		INNER JOIN metadata_provider AS provider ON provider.code = 'dlsite' AND provider.id = catalog.provider_id
 		LEFT JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
 		WHERE catalog.party_id = ?
 			AND NOT EXISTS (
@@ -2946,7 +3306,7 @@ func (s *Server) circleCatalogCodesMissingMetadata(ctx context.Context, partyID 
 func (s *Server) availableCircleCatalogCodes(ctx context.Context, partyID int64, workCodes []string) (map[string]bool, error) {
 	result, err := s.queryCircleCatalogCodes(ctx, `
 		SELECT DISTINCT catalog.primary_code
-		FROM party_catalog_item AS catalog
+		FROM `+circleCatalogProjection+` AS catalog
 		INNER JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
 		INNER JOIN media_item AS item ON item.work_id = work.id
 		INNER JOIN media_file_location AS location ON location.media_item_id = item.id
@@ -2958,7 +3318,7 @@ func (s *Server) availableCircleCatalogCodes(ctx context.Context, partyID int64,
 	}
 	otherCodes, err := s.queryCircleCatalogCodes(ctx, `
 		SELECT DISTINCT catalog.primary_code
-		FROM party_catalog_item AS catalog
+		FROM `+circleCatalogProjection+` AS catalog
 		INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id
 		WHERE catalog.party_id = ?
 			AND provider.code != 'dlsite'
@@ -3357,10 +3717,6 @@ func lastInsertID(tx *sql.Tx) (int64, error) {
 
 func normalizeMakerID(value string) string {
 	return strings.ToUpper(strings.TrimSpace(value))
-}
-
-func isTranslationUmbrellaCircle(externalID string) bool {
-	return normalizeMakerID(externalID) == "RG60289"
 }
 
 func nullableIntPointer(value sql.NullInt64) *int {

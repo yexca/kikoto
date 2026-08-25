@@ -576,14 +576,12 @@ func (s *DLsiteSyncer) classifyFamilyEditions(ctx context.Context, canonicalCode
 		SET origin_maker_id = ?,
 			translation_kind = CASE
 				WHEN is_canonical = 1 THEN 'origin'
-				WHEN UPPER(maker_id) = 'RG60289' THEN 'community'
 				WHEN ? <> '' AND UPPER(maker_id) = ? THEN 'official'
 				WHEN maker_id <> '' THEN 'third_party'
 				ELSE 'unknown'
 			END,
 			classification_source = CASE
 				WHEN is_canonical = 1 THEN 'canonical'
-				WHEN UPPER(maker_id) = 'RG60289' THEN 'translation_umbrella'
 				WHEN ? <> '' AND UPPER(maker_id) = ? THEN 'maker_match'
 				WHEN maker_id <> '' THEN 'maker_mismatch'
 				ELSE 'incomplete_metadata'

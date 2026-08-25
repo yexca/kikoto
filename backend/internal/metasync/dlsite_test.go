@@ -410,7 +410,7 @@ func TestSyncFamilyClassifiesMakerRelationships(t *testing.T) {
 	if result.CanonicalCode != "RJ00000000" || len(result.SyncedCodes) != 3 {
 		t.Fatalf("result = %+v", result)
 	}
-	want := map[string]string{"RJ00000000": "origin", "RJ00000001": "official", "RJ00000002": "community"}
+	want := map[string]string{"RJ00000000": "origin", "RJ00000001": "official", "RJ00000002": "third_party"}
 	rows, err := db.Query("SELECT primary_code, translation_kind FROM work_edition")
 	if err != nil {
 		t.Fatal(err)

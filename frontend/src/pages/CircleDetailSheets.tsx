@@ -20,7 +20,6 @@ export function CircleAdvancedRefreshSheet({
   catalogOnlyCount,
   availableCount,
   refreshingScope,
-  isTranslationCircle,
   canRefresh,
   onClose,
   onRun,
@@ -32,7 +31,6 @@ export function CircleAdvancedRefreshSheet({
   catalogOnlyCount: number;
   availableCount: number;
   refreshingScope: CircleRefreshScope | null;
-  isTranslationCircle: boolean;
   canRefresh: boolean;
   onClose: () => void;
   onRun: (scope: CircleRefreshScope, mode: CircleRefreshMode) => void;
@@ -50,7 +48,7 @@ export function CircleAdvancedRefreshSheet({
       <RefreshActionRow
         title="Catalog"
         description={`${circle.catalogWorks} works · ${circle.lastSyncedAt ? `last ${circle.lastSyncedAt}` : "never synced"}`}
-        disabled={!canRefresh || refreshingScope !== null || isTranslationCircle}
+        disabled={!canRefresh || refreshingScope !== null}
         active={refreshingScope === "catalog" || refreshingScope === "all"}
         onRun={(mode) => onRun("catalog", mode)}
       />
@@ -64,15 +62,10 @@ export function CircleAdvancedRefreshSheet({
       <RefreshActionRow
         title="Sources"
         description={`${circle.localWorks} local · ${circle.remoteWorks} remote · ${circle.missingWorks} missing`}
-        disabled={!canRefresh || refreshingScope !== null || isTranslationCircle}
+        disabled={!canRefresh || refreshingScope !== null}
         active={refreshingScope === "source" || refreshingScope === "all"}
         onRun={(mode) => onRun("source", mode)}
       />
-      {isTranslationCircle && (
-        <p className="text-xs text-muted-foreground">
-          Catalog and source refresh are disabled for translation umbrella circles.
-        </p>
-      )}
     </>
   );
   const content = (

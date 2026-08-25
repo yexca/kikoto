@@ -1358,7 +1358,7 @@ func normalizeCustomTextInput(value any) (string, error) {
 func normalizeCustomCircleIDInput(value any) (string, error) {
 	text, ok := value.(string)
 	text = normalizeMakerID(text)
-	if !ok || !dlsiteMakerIDPattern.MatchString(text) || isTranslationUmbrellaCircle(text) {
+	if !ok || !dlsiteMakerIDPattern.MatchString(text) {
 		return "", fmt.Errorf("invalid circle id")
 	}
 	return text, nil
@@ -2348,12 +2348,19 @@ func executeCustomTemplateNode(payload customWorkflowJobPayload, node customWork
 
 func (s *Server) executeCustomCircleCatalog(ctx context.Context, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
 	circleID := normalizeMakerID(firstNonEmpty(inputs["circle"].Text, configString(node.Config, "circleId")))
-	if !dlsiteMakerIDPattern.MatchString(circleID) || isTranslationUmbrellaCircle(circleID) {
+	if !dlsiteMakerIDPattern.MatchString(circleID) {
 		return customNodeExecution{}, fmt.Errorf("invalid circle id")
 	}
 	partyID, err := s.ensurePlaceholderCircle(ctx, circleID)
 	if err != nil {
 		return customNodeExecution{}, err
+	}
+	visible, err := s.circlePartyVisible(ctx, partyID)
+	if err != nil {
+		return customNodeExecution{}, err
+	}
+	if !visible {
+		return customNodeExecution{}, fmt.Errorf("circle is translation-only")
 	}
 	mode := strings.ToLower(configString(node.Config, "mode"))
 	if mode == "" {
