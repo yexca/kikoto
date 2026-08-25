@@ -7653,7 +7653,10 @@ function SourceDirectoryPanel({
           </div>
         </div>
         {routeSummary && (
-          <DirectoryRouteSummary summary={routeSummary} onSelect={() => setRequestedRoutePath(routeSummary.path)} />
+          <DirectoryRouteSummary
+            summary={routeSummary}
+            onSelect={() => setRequestedRoutePath([...routeSummary.path])}
+          />
         )}
       </div>
       <Card>
