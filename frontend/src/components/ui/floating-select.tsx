@@ -2,7 +2,7 @@ import { Check, ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/tailwindClassNames";
 
 export type FloatingSelectOption = {
   value: string;

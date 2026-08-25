@@ -2,7 +2,7 @@ import { Circle, Feather, Layers3, Shapes, type LucideIcon } from "lucide-react"
 import { useTranslation } from "react-i18next";
 
 import { THEME_PRESET_OPTIONS, type ThemePalette, type ThemePreset } from "@/app/theme";
-import { cn } from "@/lib/utils";
+import { cx } from "@/lib/classNames";
 
 const presetIcons: Record<ThemePreset, LucideIcon> = {
   anthropic: Feather,
@@ -32,7 +32,7 @@ export function ThemePresetPicker({
           <button
             key={option.value}
             type="button"
-            className={cn(
+            className={cx(
               "group flex min-w-0 items-center gap-2 rounded-md border text-left transition-[color,background-color,border-color,box-shadow,transform] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[var(--press-scale)] motion-reduce:active:scale-100",
               compact ? "min-h-[var(--control-height)] px-2" : "min-h-14 px-3",
               selected
@@ -42,9 +42,9 @@ export function ThemePresetPicker({
             aria-pressed={selected}
             onClick={() => onChange(option.value)}
           >
-            <Icon className={cn("shrink-0", compact ? "h-3.5 w-3.5" : "h-4 w-4")} />
+            <Icon className={cx("shrink-0", compact ? "h-3.5 w-3.5" : "h-4 w-4")} />
             <span className="min-w-0 flex-1">
-              <span className={cn("block truncate font-medium", compact ? "text-xs" : "text-sm")}>{option.label}</span>
+              <span className={cx("block truncate font-medium", compact ? "text-xs" : "text-sm")}>{option.label}</span>
               {!compact && (
                 <span className="mt-1 flex gap-1" aria-hidden="true">
                   {[option.previewAccents[palette], option.swatches[1], option.swatches[2]].map((swatch) => (

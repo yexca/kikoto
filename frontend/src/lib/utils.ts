@@ -1,6 +1,3 @@
-import { type ClassValue, clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+// Compatibility exports for callers outside the frontend source tree.
+export { cx } from "./classNames";
+export { cn } from "./tailwindClassNames";

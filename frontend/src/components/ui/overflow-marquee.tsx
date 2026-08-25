@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/tailwindClassNames";
 
 type MarqueeStyle = CSSProperties & {
   "--marquee-distance"?: string;

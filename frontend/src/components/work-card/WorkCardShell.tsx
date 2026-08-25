@@ -37,7 +37,7 @@ import {
 } from "@/lib/api";
 import { ageRatingPresentation } from "@/lib/ageRating";
 import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/tailwindClassNames";
 import { visibleBadgeCountForRows } from "./tagLayout";
 
 export type WorkCardBadge = {

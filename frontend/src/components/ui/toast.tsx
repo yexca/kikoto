@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/tailwindClassNames";
 import { ApiError } from "@/lib/api";
 import { LOGIN_REQUEST_EVENT } from "@/app/events";
 

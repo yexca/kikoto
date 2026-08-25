@@ -25,7 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { LoginPage } from "@/pages/LoginPage";
-import { cn } from "@/lib/utils";
+import { cx } from "@/lib/classNames";
 import { PlayerDock, PlayerProvider } from "@/player/PlayerProvider";
 import { HeaderActions } from "@/app/HeaderActions";
 import { NotFoundPage } from "@/app/NotFoundPage";
@@ -321,14 +321,14 @@ function AuthenticatedApp() {
     <PlayerProvider key={clientStorageScope}>
       <RemoteTrackWorkflowBridge />
       <div
-        className={cn(
+        className={cx(
           "app-shell min-h-screen bg-background lg:grid",
           sidebarCollapsed ? "lg:grid-cols-[76px_minmax(0,1fr)]" : "lg:grid-cols-[248px_minmax(0,1fr)]",
         )}
       >
         <aside className="theme-shell-surface sticky top-0 hidden h-screen border-r bg-card lg:flex lg:flex-col">
           <div
-            className={cn(
+            className={cx(
               "flex h-[var(--header-height)] items-center border-b",
               sidebarCollapsed ? "justify-center px-3" : "px-5",
             )}
@@ -340,11 +340,11 @@ function AuthenticatedApp() {
               {!sidebarCollapsed && <div className="truncate text-xl font-bold">Kikoto</div>}
             </div>
           </div>
-          <nav className={cn("app-scroll min-h-0 flex-1 overflow-y-auto", sidebarCollapsed ? "p-2" : "p-3")}>
+          <nav className={cx("app-scroll min-h-0 flex-1 overflow-y-auto", sidebarCollapsed ? "p-2" : "p-3")}>
             {visibleNavItems.map((item) => (
               <Button
                 key={item.id}
-                className={cn(
+                className={cx(
                   "mb-1 w-full",
                   sidebarCollapsed ? "justify-center px-0" : "justify-start",
                   page === item.id && "bg-muted",
@@ -360,11 +360,11 @@ function AuthenticatedApp() {
               </Button>
             ))}
           </nav>
-          <div className={cn("border-t", sidebarCollapsed ? "p-2" : "p-3")}>
+          <div className={cx("border-t", sidebarCollapsed ? "p-2" : "p-3")}>
             <Button
               variant="ghost"
               size={sidebarCollapsed ? "icon" : "default"}
-              className={cn("w-full", sidebarCollapsed ? "justify-center px-0" : "justify-start")}
+              className={cx("w-full", sidebarCollapsed ? "justify-center px-0" : "justify-start")}
               aria-label={sidebarCollapsed ? t("app.expandSidebar") : t("app.collapseSidebar")}
               title={sidebarCollapsed ? t("app.expandSidebar") : undefined}
               onClick={toggleSidebar}
@@ -384,7 +384,7 @@ function AuthenticatedApp() {
               <div className="flex min-w-0 items-center lg:flex-row lg:items-baseline lg:gap-3">
                 {!showMobilePageTitle && <img src="/kikoto-icon-512.png" alt="Kikoto" className="h-8 w-8 lg:hidden" />}
                 <h1
-                  className={cn(
+                  className={cx(
                     "truncate text-base font-semibold lg:text-2xl",
                     !showMobilePageTitle && "hidden lg:block",
                   )}
@@ -493,7 +493,7 @@ function AuthenticatedApp() {
                 return (
                   <button
                     key={item.id}
-                    className={cn(
+                    className={cx(
                       "flex h-[var(--mobile-navigation-height)] flex-col items-center justify-center gap-1 text-[11px] text-muted-foreground",
                       page === item.id && "bg-muted text-foreground",
                     )}

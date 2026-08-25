@@ -1,7 +1,7 @@
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/tailwindClassNames";
 
 type PopoverPosition = { left: number; top: number; maxHeight: number; anchorWidth: number; visible: boolean };
 const openFloatingLayerSelector = "[data-app-floating-layer][data-state='open']";

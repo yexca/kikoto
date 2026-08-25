@@ -1,7 +1,7 @@
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/tailwindClassNames";
 
 const badgeVariants = cva(
   "inline-flex items-center rounded-[var(--badge-radius)] border px-2.5 py-0.5 text-xs font-medium transition-colors",

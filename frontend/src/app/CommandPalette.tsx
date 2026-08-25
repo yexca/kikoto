@@ -16,7 +16,7 @@ import {
 } from "@/features/workflows/workflowCommands";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { api, type WorkflowDefinition } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cx } from "@/lib/classNames";
 import { isWorkCode } from "@/lib/workCode";
 
 const WorkflowRunDialog = lazy(() =>
@@ -279,7 +279,7 @@ export function CommandPalette({
         actions.map((action, index) => (
           <button
             key={action.id}
-            className={cn(
+            className={cx(
               "flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm",
               action.disabled && "cursor-not-allowed opacity-55",
               index === activeIndex ? "bg-muted text-foreground" : "hover:bg-muted",

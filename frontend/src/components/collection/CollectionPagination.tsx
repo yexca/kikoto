@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { paginationItems } from "@/components/work-collection/paginationModel";
 import i18n from "@/i18n";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/tailwindClassNames";
 
 export type CollectionPaginationProps = {
   placement: "top" | "bottom";

@@ -1,5 +1,5 @@
 import { THEME_PALETTE_OPTIONS, THEME_PRESET_OPTIONS, type ThemePalette, type ThemePreset } from "@/app/theme";
-import { cn } from "@/lib/utils";
+import { cx } from "@/lib/classNames";
 import { useTranslation } from "react-i18next";
 
 export function ThemePalettePicker({
@@ -18,14 +18,14 @@ export function ThemePalettePicker({
     THEME_PRESET_OPTIONS.find((option) => option.value === preset)?.swatches[0] ?? THEME_PRESET_OPTIONS[0].swatches[0];
 
   return (
-    <div className={cn("grid gap-2", compact ? "grid-cols-4" : "grid-cols-2")} aria-label={t("appearance.themeColor")}>
+    <div className={cx("grid gap-2", compact ? "grid-cols-4" : "grid-cols-2")} aria-label={t("appearance.themeColor")}>
       {THEME_PALETTE_OPTIONS.map((option) => {
         const selected = value === option.value;
         return (
           <button
             key={option.value}
             type="button"
-            className={cn(
+            className={cx(
               "flex min-w-0 items-center justify-center gap-2 rounded-[var(--control-radius)] border transition-[color,background-color,border-color,box-shadow,transform] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[var(--press-scale)] motion-reduce:active:scale-100",
               compact ? "h-[var(--control-height)] px-2" : "min-h-[var(--control-height)] px-3 text-sm font-medium",
               selected
