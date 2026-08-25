@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { I18nextProvider } from "react-i18next";
 
 import i18n, {
+  ensureUiLocale,
   normalizeUiLocale,
   readAnonymousUiLocale,
   resolveUiLocale,
@@ -30,10 +31,23 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   const resolvedLocale = useMemo(() => resolveUiLocale(preference, systemLanguages), [preference, systemLanguages]);
 
   useEffect(() => {
-    void i18n.changeLanguage(resolvedLocale);
+    let cancelled = false;
+    void ensureUiLocale(resolvedLocale)
+      .then(() => {
+        if (cancelled) return;
+        return i18n.changeLanguage(resolvedLocale);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        document.documentElement.lang = "en";
+        return i18n.changeLanguage("en");
+      });
     document.documentElement.lang =
       resolvedLocale === "zh-Hans" ? "zh-Hans" : resolvedLocale === "zh-Hant" ? "zh-Hant" : resolvedLocale;
     document.documentElement.dir = "ltr";
+    return () => {
+      cancelled = true;
+    };
   }, [resolvedLocale]);
 
   useEffect(() => {

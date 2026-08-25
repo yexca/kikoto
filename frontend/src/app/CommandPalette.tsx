@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowRight, FileAudio, Loader2, Search, Workflow, X } from "lucide-react";
 
@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { MobileSheet, MobileSheetBody, MobileSheetHeader } from "@/components/ui/mobile-sheet";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { parseWorkflowDefinition } from "@/features/workflows/definitionModel";
-import { WorkflowRunDialog } from "@/features/workflows/WorkflowRunDialog";
 import {
   parseWorkflowCommand,
   publishedWorkflowCommandsForUser,
@@ -19,6 +18,10 @@ import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { api, type WorkflowDefinition } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { isWorkCode } from "@/lib/workCode";
+
+const WorkflowRunDialog = lazy(() =>
+  import("@/features/workflows/WorkflowRunDialog").then((module) => ({ default: module.WorkflowRunDialog })),
+);
 
 type CommandPaletteProps = {
   open: boolean;
@@ -196,19 +199,21 @@ export function CommandPalette({
   if (open && workflowLaunch) {
     const parsed = parseWorkflowDefinition(workflowLaunch.definition.definitionJson);
     return (
-      <WorkflowRunDialog
-        definition={workflowLaunch.definition}
-        initialInputs={workflowLaunch.inputs}
-        autoPreview
-        autoConfirmWhenAllowed={parsed.kind === "v2" && !parsed.document.policy.requirePreview}
-        onClose={() => setWorkflowLaunch(null)}
-        onBusyChange={handleWorkflowBusyChange}
-        onQueued={(runId) => {
-          setWorkflowLaunch(null);
-          onOpenChange(false);
-          onOpenPath(`/activity?view=running&run=${runId}`);
-        }}
-      />
+      <Suspense fallback={null}>
+        <WorkflowRunDialog
+          definition={workflowLaunch.definition}
+          initialInputs={workflowLaunch.inputs}
+          autoPreview
+          autoConfirmWhenAllowed={parsed.kind === "v2" && !parsed.document.policy.requirePreview}
+          onClose={() => setWorkflowLaunch(null)}
+          onBusyChange={handleWorkflowBusyChange}
+          onQueued={(runId) => {
+            setWorkflowLaunch(null);
+            onOpenChange(false);
+            onOpenPath(`/activity?view=running&run=${runId}`);
+          }}
+        />
+      </Suspense>
     );
   }
 

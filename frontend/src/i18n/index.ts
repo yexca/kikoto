@@ -1,7 +1,7 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 
-import { resources } from "@/i18n/resources";
+import { englishResource } from "@/i18n/resources";
 import { currentScopedStorageKey } from "@/lib/clientStorageScope";
 
 export type UiLocale = "auto" | "en" | "zh-Hans" | "zh-Hant" | "ja" | "ko";
@@ -19,8 +19,20 @@ export const UI_LOCALE_OPTIONS: readonly { value: UiLocale; labelKey: string }[]
 export const DEFAULT_UI_LOCALE: UiLocale = "auto";
 const ANONYMOUS_LOCALE_KEY = "kikoto:ui-locale";
 
+type LocaleResourceMap = Record<string, { translation: object }>;
+type DeferredLocale = Exclude<ResolvedUiLocale, "en">;
+
+const deferredLocaleLoaders: Record<DeferredLocale, () => Promise<LocaleResourceMap>> = {
+  "zh-Hans": () => import("@/i18n/resources/zh-Hans").then(({ zhHansResource }) => zhHansResource),
+  "zh-Hant": () => import("@/i18n/resources/zh-Hant").then(({ zhHantResource }) => zhHantResource),
+  ja: () => import("@/i18n/resources/ja").then(({ japaneseResource }) => japaneseResource),
+  ko: () => import("@/i18n/resources/ko").then(({ koreanResource }) => koreanResource),
+};
+
+const deferredLocaleLoads = new Map<DeferredLocale, Promise<void>>();
+
 void i18n.use(initReactI18next).init({
-  resources,
+  resources: englishResource,
   lng: "en",
   fallbackLng: "en",
   supportedLngs: ["en", "zh-Hans", "zh-Hant", "ja", "ko"],
@@ -33,6 +45,26 @@ void i18n.use(initReactI18next).init({
 });
 
 export default i18n;
+
+export async function ensureUiLocale(locale: ResolvedUiLocale): Promise<void> {
+  if (locale === "en" || i18n.hasResourceBundle(locale, "translation")) return;
+
+  const existing = deferredLocaleLoads.get(locale);
+  if (existing) return existing;
+
+  const load = deferredLocaleLoaders[locale]()
+    .then((resourceMap) => {
+      const resource = resourceMap[locale];
+      if (!resource) throw new Error(`Missing translation resource for ${locale}`);
+      i18n.addResourceBundle(locale, "translation", resource.translation, true, true);
+    })
+    .catch((error) => {
+      deferredLocaleLoads.delete(locale);
+      throw error;
+    });
+  deferredLocaleLoads.set(locale, load);
+  return load;
+}
 
 export function isUiLocale(value: unknown): value is UiLocale {
   return (

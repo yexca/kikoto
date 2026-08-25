@@ -28,7 +28,6 @@ import { LoginPage } from "@/pages/LoginPage";
 import { cn } from "@/lib/utils";
 import { PlayerDock, PlayerProvider } from "@/player/PlayerProvider";
 import { HeaderActions } from "@/app/HeaderActions";
-import { CommandPalette } from "@/app/CommandPalette";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { RouteErrorBoundary } from "@/app/RouteErrorBoundary";
 import { useScrollRestoration } from "@/app/scrollRestoration";
@@ -73,6 +72,9 @@ const CreatorWorksPage = lazy(() =>
 );
 const CirclesPage = lazy(() => import("@/pages/CirclesPage").then((module) => ({ default: module.CirclesPage })));
 const AboutPage = lazy(() => import("@/pages/AboutPage").then((module) => ({ default: module.AboutPage })));
+const CommandPalette = lazy(() =>
+  import("@/app/CommandPalette").then((module) => ({ default: module.CommandPalette })),
+);
 
 const preferredMobileTabs: PageID[] = ["library", "favorites", "circles", "voice-actors"];
 const SIDEBAR_COLLAPSED_KEY = "kikoto:sidebar-collapsed";
@@ -99,6 +101,7 @@ function AuthenticatedApp() {
     () => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true",
   );
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [commandPaletteRequested, setCommandPaletteRequested] = useState(false);
   const [commandPaletteBusy, setCommandPaletteBusy] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const mobileRuntime = useMobileRuntime();
@@ -106,6 +109,11 @@ function AuthenticatedApp() {
   const exitBackDeadlineRef = useRef(0);
   const authState = auth.user ? "authenticated" : "anonymous";
   const clientStorageScope = currentClientStorageScope(auth.user?.id ?? null);
+
+  const openCommandPalette = useCallback(() => {
+    setCommandPaletteRequested(true);
+    setCommandPaletteOpen(true);
+  }, []);
 
   useEffect(() => {
     locale.syncAccountPreference(auth.user?.id ?? null, auth.user?.uiLocale, auth.user?.demoMode ?? false);
@@ -236,12 +244,12 @@ function AuthenticatedApp() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setCommandPaletteOpen(true);
+        openCommandPalette();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [openCommandPalette]);
 
   useEffect(() => {
     const openLogin = () => setLoginOpen(true);
@@ -374,9 +382,7 @@ function AuthenticatedApp() {
           >
             <div className="flex h-[var(--header-height)] min-w-0 items-center justify-between gap-2 pl-[max(0.75rem,var(--safe-area-left))] pr-[max(0.75rem,var(--safe-area-right))] lg:h-auto lg:min-h-[var(--header-height)] lg:gap-3 lg:px-6 lg:py-2">
               <div className="flex min-w-0 items-center lg:flex-row lg:items-baseline lg:gap-3">
-                {!showMobilePageTitle && (
-                  <img src="/kikoto-icon-512.png" alt="Kikoto" className="h-8 w-8 lg:hidden" />
-                )}
+                {!showMobilePageTitle && <img src="/kikoto-icon-512.png" alt="Kikoto" className="h-8 w-8 lg:hidden" />}
                 <h1
                   className={cn(
                     "truncate text-base font-semibold lg:text-2xl",
@@ -404,7 +410,7 @@ function AuthenticatedApp() {
                 onOpenLogin={() => setLoginOpen(true)}
                 onOpenPage={openPage}
                 onOpenPath={openPath}
-                onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+                onOpenCommandPalette={openCommandPalette}
                 onLocaleChange={updateLocale}
               />
             </div>
@@ -502,16 +508,20 @@ function AuthenticatedApp() {
           </footer>
         )}
         {!mobileRuntime.keyboardOpen && <PlayerDock />}
-        <CommandPalette
-          open={commandPaletteOpen}
-          onOpenChange={setCommandPaletteOpen}
-          hasPermission={effectiveHasPermission}
-          visibleNavItems={visibleNavItems}
-          currentUserId={auth.user?.id ?? null}
-          onBusyChange={setCommandPaletteBusy}
-          onOpenPage={openPage}
-          onOpenPath={openPath}
-        />
+        {commandPaletteRequested && (
+          <Suspense fallback={null}>
+            <CommandPalette
+              open={commandPaletteOpen}
+              onOpenChange={setCommandPaletteOpen}
+              hasPermission={effectiveHasPermission}
+              visibleNavItems={visibleNavItems}
+              currentUserId={auth.user?.id ?? null}
+              onBusyChange={setCommandPaletteBusy}
+              onOpenPage={openPage}
+              onOpenPath={openPath}
+            />
+          </Suspense>
+        )}
         {loginOpen && <LoginOverlay onClose={() => setLoginOpen(false)} />}
       </div>
     </PlayerProvider>

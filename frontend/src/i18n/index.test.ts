@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import {
+import i18n, {
   DEFAULT_UI_LOCALE,
+  ensureUiLocale,
   intlLocaleFor,
   isUiLocale,
   normalizeUiLocale,
   resolveUiLocale,
   UI_LOCALE_OPTIONS,
 } from "@/i18n";
-import { resources } from "@/i18n/resources";
+import { resources } from "@/i18n/resources/all";
 
 describe("UI locale resolution", () => {
   it("accepts only supported stored preferences", () => {
@@ -39,6 +40,14 @@ describe("UI locale resolution", () => {
 });
 
 describe("translation resources", () => {
+  it("loads deferred locale resources on demand", async () => {
+    await Promise.all([ensureUiLocale("zh-Hans"), ensureUiLocale("ja"), ensureUiLocale("ko")]);
+
+    expect(i18n.getResource("zh-Hans", "translation", "app.name")).toBe("Kikoto");
+    expect(i18n.getResource("ja", "translation", "app.name")).toBe("Kikoto");
+    expect(i18n.getResource("ko", "translation", "app.name")).toBe("Kikoto");
+  });
+
   it("keeps the language picker labels in each language's own script", () => {
     const expected = ["Auto", "English", "简体中文", "正體中文", "日本語", "한국어"];
     for (const resource of Object.values(resources)) {
