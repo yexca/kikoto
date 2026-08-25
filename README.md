@@ -22,6 +22,10 @@
   <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/github/license/yexca/kikoto"></a>
 </p>
 
+<p align="center">
+  <img src="docs/assets/kikoto-showcase.png" width="1200" alt="Kikoto library, source browser, and player showcase">
+</p>
+
 Kikoto combines DLsite-style metadata, local folders, rebuildable cache, and
 Kikoeru-compatible remote file sources under one unified work model. It ships
 as a self-hosted web application with a responsive player and an Android client.
