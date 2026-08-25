@@ -3335,7 +3335,7 @@ test("compact player supports relative drag seeking and global playback shortcut
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockApplication(page);
   await seedPlayer(page);
-  await page.route("**/api/media/1/stream", (route) =>
+  await page.route(/\/api\/media\/1\/stream(?:\?.*)?$/, (route) =>
     route.fulfill({ status: 200, contentType: "audio/wav", body: silentWav(100) }),
   );
   await page.goto("/");
