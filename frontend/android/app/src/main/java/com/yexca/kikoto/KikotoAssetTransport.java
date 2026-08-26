@@ -16,11 +16,17 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 final class KikotoAssetTransport {
     private static final int CONNECT_TIMEOUT_MS = 10_000;
     private static final int READ_TIMEOUT_MS = 30_000;
     private static final int MAX_REDIRECTS = 3;
+    private static final Pattern CONTENT_RANGE_PATTERN = Pattern.compile(
+        "^bytes\\s+(\\d+)-(\\d+)/(\\d+|\\*)$",
+        Pattern.CASE_INSENSITIVE
+    );
     private static final AtomicReference<KikotoAssetRequestPolicy> POLICY = new AtomicReference<>();
     private static final Set<String> BLOCKED_REQUEST_HEADERS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
         "authorization",
@@ -139,7 +145,9 @@ final class KikotoAssetTransport {
             connection.disconnect();
             return new Response(status, reason, headers, new ByteArrayInputStream(new byte[0]));
         }
-        return new Response(status, reason, headers, new DisconnectingInputStream(input, connection));
+        long virtualRangePrefix = status == HttpURLConnection.HTTP_PARTIAL ? contentRangeStart(headers) : 0;
+        InputStream responseBody = new WebViewRangeInputStream(input, virtualRangePrefix);
+        return new Response(status, reason, headers, new DisconnectingInputStream(responseBody, connection));
     }
 
     private static Map<String, String> responseHeaders(HttpURLConnection connection) {
@@ -158,6 +166,27 @@ final class KikotoAssetTransport {
             result.put(name, joinHeaderValues(values));
         }
         return Collections.unmodifiableMap(result);
+    }
+
+    static long contentRangeStart(Map<String, String> headers) {
+        if (headers == null) return 0;
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null || !"content-range".equalsIgnoreCase(entry.getKey())) {
+                continue;
+            }
+            Matcher match = CONTENT_RANGE_PATTERN.matcher(entry.getValue().trim());
+            if (!match.matches()) return 0;
+            try {
+                long start = Long.parseLong(match.group(1));
+                long end = Long.parseLong(match.group(2));
+                if (start > end) return 0;
+                if (!"*".equals(match.group(3)) && end >= Long.parseLong(match.group(3))) return 0;
+                return start;
+            } catch (NumberFormatException ignored) {
+                return 0;
+            }
+        }
+        return 0;
     }
 
     private static String joinHeaderValues(List<String> values) {
@@ -210,6 +239,34 @@ final class KikotoAssetTransport {
         @Override
         public void close() throws IOException {
             body.close();
+        }
+    }
+
+    static final class WebViewRangeInputStream extends FilterInputStream {
+        private long virtualPrefixRemaining;
+
+        WebViewRangeInputStream(InputStream input, long virtualPrefixLength) {
+            super(input);
+            this.virtualPrefixRemaining = Math.max(0, virtualPrefixLength);
+        }
+
+        @Override
+        public int available() throws IOException {
+            int upstreamAvailable = super.available();
+            if (virtualPrefixRemaining >= Integer.MAX_VALUE - upstreamAvailable) return Integer.MAX_VALUE;
+            return (int) virtualPrefixRemaining + upstreamAvailable;
+        }
+
+        @Override
+        public long skip(long count) throws IOException {
+            if (count <= 0) return 0;
+
+            // WebView seeks the Range offset inside WebResourceResponse even though
+            // the upstream 206 body already starts at that offset.
+            long virtualSkipped = Math.min(count, virtualPrefixRemaining);
+            virtualPrefixRemaining -= virtualSkipped;
+            if (virtualSkipped == count) return virtualSkipped;
+            return virtualSkipped + super.skip(count - virtualSkipped);
         }
     }
 

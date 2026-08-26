@@ -3,8 +3,10 @@ package com.yexca.kikoto;
 import static org.junit.Assert.assertEquals;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetAddress;
@@ -70,6 +72,7 @@ public class KikotoAssetTransportTest {
         )) {
             assertEquals(206, response.status());
             assertEquals("bytes 2-4/5", header(response.headers(), "Content-Range"));
+            assertEquals(2, response.body().skip(2));
             assertEquals("cde", readBody(response));
         }
 
@@ -77,6 +80,45 @@ public class KikotoAssetTransportTest {
         assertEquals("Bearer synthetic-token", authorization.get());
         assertEquals("1", mobileHeader.get());
         assertEquals(null, serverFailure.get());
+    }
+
+    @Test
+    public void exposesPartialResponseOffsetAsVirtualPrefix() throws Exception {
+        try (InputStream input = new KikotoAssetTransport.WebViewRangeInputStream(
+            new ByteArrayInputStream("cde".getBytes(StandardCharsets.UTF_8)),
+            2
+        )) {
+            assertEquals(5, input.available());
+            assertEquals(2, input.skip(2));
+            assertEquals(3, input.available());
+            assertEquals("cde", readBody(input));
+        }
+    }
+
+    @Test
+    public void capsAvailableBytesForLargeRangeOffsets() throws Exception {
+        try (InputStream input = new KikotoAssetTransport.WebViewRangeInputStream(
+            new ByteArrayInputStream(new byte[] { 1 }),
+            Long.MAX_VALUE
+        )) {
+            assertEquals(Integer.MAX_VALUE, input.available());
+        }
+    }
+
+    @Test
+    public void validatesContentRangeBeforeMappingItsOffset() {
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("content-range", "bytes 1867776-1898556/1898557");
+        assertEquals(1_867_776L, KikotoAssetTransport.contentRangeStart(headers));
+
+        headers.put("content-range", "bytes */1898557");
+        assertEquals(0L, KikotoAssetTransport.contentRangeStart(headers));
+
+        headers.put("content-range", "bytes 9-2/10");
+        assertEquals(0L, KikotoAssetTransport.contentRangeStart(headers));
+
+        headers.put("content-range", "bytes 2-10/10");
+        assertEquals(0L, KikotoAssetTransport.contentRangeStart(headers));
     }
 
     private void serveRange() {
@@ -123,10 +165,14 @@ public class KikotoAssetTransportTest {
     }
 
     private static String readBody(KikotoAssetTransport.Response response) throws IOException {
+        return readBody(response.body());
+    }
+
+    private static String readBody(InputStream input) throws IOException {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         byte[] buffer = new byte[16];
         int count;
-        while ((count = response.body().read(buffer)) >= 0) {
+        while ((count = input.read(buffer)) >= 0) {
             if (count > 0) output.write(buffer, 0, count);
         }
         return new String(output.toByteArray(), StandardCharsets.UTF_8);
