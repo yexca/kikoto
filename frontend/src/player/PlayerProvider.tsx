@@ -46,7 +46,12 @@ import {
   recordTrackLocationFailure,
   resetTrackLocationFailures,
 } from "@/player/trackLocations";
-import { shouldSaveRemoteProgress, type ProgressSaveMarker } from "@/player/playerProgress";
+import {
+  NATIVE_MEDIA_POSITION_INTERVAL_MS,
+  shouldCommitPlayerTime,
+  shouldSaveRemoteProgress,
+  type ProgressSaveMarker,
+} from "@/player/playerProgress";
 import { revalidatePersistedQueue } from "@/player/playerQueueRestore";
 import { normalizePlaybackStartPosition, shouldCheckpointPause } from "@/player/playbackStart";
 
@@ -375,6 +380,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const pendingPlaybackStartRef = useRef<PendingPlaybackStart | null>(null);
   const completedPlaybackInstanceRef = useRef<string | null>(null);
   const lastSavedRef = useRef<ProgressSaveMarker | null>(null);
+  const lastPlayerTimeCommitRef = useRef<number | null>(null);
   const progressSaveRef = useRef<(completed: boolean, force?: boolean) => void>(() => {});
   const progressSaveQueueRef = useRef<{ inFlight: boolean; pending: Map<number, ProgressSavePayload> }>({
     inFlight: false,
@@ -392,6 +398,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     seekForward: () => {},
     seekTo: (_seconds: number) => {},
   });
+  const nativeMediaSyncRef = useRef<() => void>(() => {});
   const currentTrack = queue[currentIndex] ?? null;
   const currentPlaybackKey = trackPlaybackKey(currentTrack);
   const currentPlaybackInstanceKey =
@@ -488,6 +495,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (!audio || !currentTrack) return;
     transcodeRetryRef.current = null;
     audio.src = assetURL(playerTrackAudioURL(currentTrack));
+    lastPlayerTimeCommitRef.current = null;
     setCurrentTime(0);
     setDuration(0);
     setDurationLocationId(currentTrack.locationId);
@@ -960,51 +968,46 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  const syncNativeMedia = useCallback(() => {
+    if (!supportsNativeMedia() || !currentTrack) return;
+    const currentMediaDuration = durationLocationId === currentTrack.locationId ? duration : 0;
+    const durationSeconds = [
+      currentMediaDuration,
+      currentTrack.durationSeconds,
+      currentTrack.progress?.durationSeconds,
+    ].find((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+    const durationMs = durationSeconds ? Math.floor(durationSeconds * 1000) : 0;
+    const positionSeconds = audioRef.current?.currentTime ?? 0;
+    const positionMs = Math.min(Math.max(0, Math.floor(positionSeconds * 1000)), durationMs || Number.MAX_SAFE_INTEGER);
+    void updateNativeMedia({
+      title: currentTrack.title || currentTrack.workTitle || "Kikoto",
+      artist: currentTrack.circle || currentTrack.workTitle || "Kikoto",
+      album: currentTrack.workTitle || currentTrack.workCode || "Kikoto",
+      coverUrl: currentTrack.coverUrl ? new URL(assetURL(currentTrack.coverUrl), window.location.href).href : "",
+      playing: isPlaying,
+      positionMs,
+      durationMs,
+      playbackRate,
+      canPrevious: currentIndex > 0 || mode === "loop",
+      canNext: currentIndex < queue.length - 1 || mode === "loop",
+    });
+  }, [currentTrack, currentIndex, queue.length, isPlaying, duration, durationLocationId, playbackRate, mode]);
+  nativeMediaSyncRef.current = syncNativeMedia;
+
   useEffect(() => {
     if (!supportsNativeMedia()) return;
     if (!currentTrack) {
       void stopNativeMedia();
       return;
     }
-    let cancelled = false;
-    async function syncNativeMedia() {
-      if (cancelled) return;
-      const currentMediaDuration = durationLocationId === currentTrack.locationId ? duration : 0;
-      const durationSeconds = [
-        currentMediaDuration,
-        currentTrack.durationSeconds,
-        currentTrack.progress?.durationSeconds,
-      ].find((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
-      const durationMs = durationSeconds ? Math.floor(durationSeconds * 1000) : 0;
-      const positionMs = Math.min(Math.max(0, Math.floor(currentTime * 1000)), durationMs || Number.MAX_SAFE_INTEGER);
-      await updateNativeMedia({
-        title: currentTrack.title || currentTrack.workTitle || "Kikoto",
-        artist: currentTrack.circle || currentTrack.workTitle || "Kikoto",
-        album: currentTrack.workTitle || currentTrack.workCode || "Kikoto",
-        coverUrl: currentTrack.coverUrl ? new URL(assetURL(currentTrack.coverUrl), window.location.href).href : "",
-        playing: isPlaying,
-        positionMs,
-        durationMs,
-        playbackRate,
-        canPrevious: currentIndex > 0 || mode === "loop",
-        canNext: currentIndex < queue.length - 1 || mode === "loop",
-      });
-    }
-    void syncNativeMedia();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    currentTrack,
-    currentIndex,
-    queue.length,
-    isPlaying,
-    currentTime,
-    duration,
-    durationLocationId,
-    playbackRate,
-    mode,
-  ]);
+    syncNativeMedia();
+  }, [currentTrack, syncNativeMedia]);
+
+  useEffect(() => {
+    if (!supportsNativeMedia() || !currentTrack || !isPlaying) return;
+    const interval = window.setInterval(syncNativeMedia, NATIVE_MEDIA_POSITION_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [currentTrack, isPlaying, syncNativeMedia]);
 
   useEffect(
     () => () => {
@@ -1014,7 +1017,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   );
 
   useEffect(() => {
-    if (!("mediaSession" in navigator)) return;
+    if (supportsNativeMedia() || !("mediaSession" in navigator)) return;
     if (currentTrack) {
       const artwork = currentTrack.coverUrl
         ? [{ src: new URL(assetURL(currentTrack.coverUrl), window.location.href).href }]
@@ -1065,7 +1068,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   ]);
 
   useEffect(() => {
-    if (!("mediaSession" in navigator)) return;
+    if (supportsNativeMedia() || !("mediaSession" in navigator)) return;
     navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
     if (duration > 0 && Number.isFinite(duration) && currentTime >= 0 && currentTime <= duration) {
       try {
@@ -1193,7 +1196,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           ref={audioRef}
           preload="metadata"
           onTimeUpdate={(event) => {
-            setCurrentTime(event.currentTarget.currentTime);
+            const now = performance.now();
+            if (shouldCommitPlayerTime(lastPlayerTimeCommitRef.current, now)) {
+              lastPlayerTimeCommitRef.current = now;
+              setCurrentTime(event.currentTarget.currentTime);
+            }
             saveProgress(false);
           }}
           onDurationChange={(event) =>
@@ -1204,12 +1211,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             setIsPlaying(true);
           }}
           onPause={() => {
+            const audio = audioRef.current;
+            if (audio) {
+              lastPlayerTimeCommitRef.current = performance.now();
+              setCurrentTime(audio.currentTime);
+            }
             if (shouldCheckpointPause(completedPlaybackInstanceRef.current, currentPlaybackInstanceKey)) {
               saveProgress(false, true);
             }
             setIsPlaying(false);
           }}
-          onSeeked={() => saveProgress(false, true)}
+          onSeeked={(event) => {
+            lastPlayerTimeCommitRef.current = performance.now();
+            setCurrentTime(event.currentTarget.currentTime);
+            nativeMediaSyncRef.current();
+            saveProgress(false, true);
+          }}
           onEnded={handleEnded}
           onError={tryNextLocation}
         />
@@ -2561,8 +2578,8 @@ function SeekBar({
     <div className="relative h-5">
       <div className="absolute left-0 right-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-white/45 shadow-inner dark:bg-white/10">
         <div
-          className="h-full rounded-full bg-primary shadow-[0_0_14px_hsl(var(--primary)/0.32)] transition-[width] duration-200"
-          style={{ width: `${clampedProgress}%` }}
+          className="h-full origin-left rounded-full bg-primary shadow-[0_0_14px_hsl(var(--primary)/0.32)] transition-transform duration-200"
+          style={{ transform: `scaleX(${clampedProgress / 100})` }}
         />
       </div>
       <div

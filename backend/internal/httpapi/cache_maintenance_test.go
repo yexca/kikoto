@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -264,17 +265,62 @@ func TestCacheMaintenanceRequiresDownloadsManage(t *testing.T) {
 	for _, request := range []*http.Request{
 		httptest.NewRequest(http.MethodGet, "/api/cache/overview", nil),
 		httptest.NewRequest(http.MethodPost, "/api/cache/cleanup", nil),
+		httptest.NewRequest(http.MethodDelete, "/api/cache/transcodes", nil),
 	} {
 		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"library:read"}}))
 		response := httptest.NewRecorder()
 		if request.Method == http.MethodGet {
 			server.getCacheOverview(response, request)
+		} else if request.Method == http.MethodDelete {
+			server.clearTranscodeCache(response, request)
 		} else {
 			server.cleanupOrphanCache(response, request)
 		}
 		if response.Code != http.StatusForbidden {
 			t.Fatalf("%s status = %d, want %d", request.Method, response.Code, http.StatusForbidden)
 		}
+	}
+}
+
+func TestCacheMaintenanceReportsAndClearsTranscodes(t *testing.T) {
+	cacheRoot := t.TempDir()
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{CacheRoot: cacheRoot})
+	writeCacheTestFile(t, cacheRoot, "transcodes/hls/1/revision/segment-000000.ts", "first", time.Hour)
+	writeCacheTestFile(t, cacheRoot, "transcodes/hls/1/revision/segment-000001.ts", "second", time.Hour)
+	actor := currentUser{ID: 1, Permissions: []string{"downloads:manage"}}
+
+	overviewRequest := httptest.NewRequest(http.MethodGet, "/api/cache/overview", nil)
+	overviewRequest = overviewRequest.WithContext(context.WithValue(overviewRequest.Context(), currentUserKey, actor))
+	overviewResponse := httptest.NewRecorder()
+	server.getCacheOverview(overviewResponse, overviewRequest)
+	if overviewResponse.Code != http.StatusOK {
+		t.Fatalf("overview status = %d, body = %s", overviewResponse.Code, overviewResponse.Body.String())
+	}
+	var overview cacheOverview
+	if err := json.Unmarshal(overviewResponse.Body.Bytes(), &overview); err != nil {
+		t.Fatal(err)
+	}
+	if overview.Transcode.Files != 2 || overview.Transcode.Bytes != 11 || overview.Transcode.LimitBytes != int64(5)<<30 {
+		t.Fatalf("transcode overview = %+v", overview.Transcode)
+	}
+
+	clearRequest := httptest.NewRequest(http.MethodDelete, "/api/cache/transcodes", nil)
+	clearRequest = clearRequest.WithContext(context.WithValue(clearRequest.Context(), currentUserKey, actor))
+	clearResponse := httptest.NewRecorder()
+	server.clearTranscodeCache(clearResponse, clearRequest)
+	if clearResponse.Code != http.StatusOK {
+		t.Fatalf("clear status = %d, body = %s", clearResponse.Code, clearResponse.Body.String())
+	}
+	var cleared transcodeCacheClearResult
+	if err := json.Unmarshal(clearResponse.Body.Bytes(), &cleared); err != nil {
+		t.Fatal(err)
+	}
+	if cleared.DeletedFiles != 2 || cleared.FreedBytes != 11 {
+		t.Fatalf("clear result = %+v", cleared)
+	}
+	if _, err := os.Stat(filepath.Join(cacheRoot, "transcodes")); !os.IsNotExist(err) {
+		t.Fatalf("transcode cache root still exists or stat failed: %v", err)
 	}
 }
 

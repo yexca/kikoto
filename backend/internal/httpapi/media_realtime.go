@@ -72,6 +72,7 @@ type playbackProbe struct {
 
 type playbackProbeFormat struct {
 	FormatName string `json:"format_name"`
+	Duration   string `json:"duration"`
 }
 
 type playbackProbeStream struct {
@@ -333,7 +334,7 @@ func (s *Server) probePlaybackFile(ctx context.Context, path string) (playbackPr
 	if probe, ok := s.cachedPlaybackProbe(path, info.Size(), info.ModTime()); ok {
 		return probe, nil
 	}
-	output, err := s.runBoundedFFprobe(ctx, path, "format=format_name:stream=codec_type,codec_name,profile,pix_fmt,width,height")
+	output, err := s.runBoundedFFprobe(ctx, path, "format=format_name,duration:stream=codec_type,codec_name,profile,pix_fmt,width,height")
 	if err != nil {
 		return playbackProbe{}, err
 	}

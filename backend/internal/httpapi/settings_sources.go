@@ -165,6 +165,7 @@ type appSettingsResponse struct {
 	LocalScanDepth            int                          `json:"localScanDepth"`
 	CacheEnabled              bool                         `json:"cacheEnabled"`
 	CacheLimitGB              int                          `json:"cacheLimitGb"`
+	TranscodeCacheLimitGB     int                          `json:"transcodeCacheLimitGb"`
 	RemoteDownloadLimitGB     int                          `json:"remoteDownloadLimitGb"`
 	FetchStagingRetentionDays int                          `json:"fetchStagingRetentionDays"`
 	RemoteSaveTemplate        string                       `json:"remoteSaveTemplate"`
@@ -615,6 +616,7 @@ type settingsUpdatePayload struct {
 	LocalScanDepth            *int             `json:"localScanDepth"`
 	CacheEnabled              *bool            `json:"cacheEnabled"`
 	CacheLimitGB              *int             `json:"cacheLimitGb"`
+	TranscodeCacheLimitGB     *int             `json:"transcodeCacheLimitGb"`
 	RemoteDownloadLimitGB     *int             `json:"remoteDownloadLimitGb"`
 	FetchStagingRetentionDays *int             `json:"fetchStagingRetentionDays"`
 	RemoteSaveTemplate        *string          `json:"remoteSaveTemplate"`
@@ -714,6 +716,11 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if payload.TranscodeCacheLimitGB != nil {
+		if _, err := s.enforceTranscodeCacheLimit(r.Context(), 0); err != nil {
+			slog.Warn("transcode cache limit enforcement failed after settings update", "error", err)
+		}
+	}
 	settings, err := s.loadAppSettings(r)
 	if err != nil {
 		writeError(w, err)
@@ -773,6 +780,7 @@ func applyGeneralSettings(r *http.Request, tx *sql.Tx, payload settingsUpdatePay
 	}{
 		{payload.LocalScanDepth, "local_scan_depth", 1, 8, "localScanDepth must be between 1 and 8"},
 		{payload.CacheLimitGB, "remote_cache_limit_gb", 0, 4096, "cacheLimitGb must be between 0 and 4096"},
+		{payload.TranscodeCacheLimitGB, transcodeCacheLimitSetting, 1, 4096, "transcodeCacheLimitGb must be between 1 and 4096"},
 		{payload.RemoteDownloadLimitGB, "remote_download_limit_gb", minimumRemoteDownloadLimitGB, maximumRemoteDownloadLimitGB, "remoteDownloadLimitGb must be between 1 and 2048"},
 		{payload.FetchStagingRetentionDays, "fetch_staging_retention_days", minimumFetchStagingRetentionDays, maximumFetchStagingRetentionDays, "fetchStagingRetentionDays must be between 1 and 365"},
 		{payload.CatalogFreshnessDays, "catalog_freshness_days", minimumCatalogFreshnessDays, maximumCatalogFreshnessDays, "catalogFreshnessDays must be between 1 and 365"},
@@ -6343,6 +6351,7 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		LocalScanDepth:            s.settingInt(r, "local_scan_depth", s.cfg.LocalScanDepth),
 		CacheEnabled:              s.settingBool(r, "remote_cache_enabled", false),
 		CacheLimitGB:              s.settingInt(r, "remote_cache_limit_gb", 20),
+		TranscodeCacheLimitGB:     s.settingInt(r, transcodeCacheLimitSetting, defaultTranscodeCacheLimitGB),
 		RemoteDownloadLimitGB:     int(s.remoteMediaDownloadLimitBytes(r.Context()) >> 30),
 		FetchStagingRetentionDays: s.configuredFetchStagingRetentionDays(r.Context()),
 		RemoteSaveTemplate:        s.settingString(r, "remote_save_root_template", defaultRemoteSaveRootTemplate),

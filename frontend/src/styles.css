@@ -921,4 +921,22 @@ svg.lucide {
   :root {
     --header-height: 3.5rem;
   }
+
+  .backdrop-blur,
+  .backdrop-blur-sm,
+  .backdrop-blur-2xl,
+  .theme-floating-surface,
+  .theme-shell-surface {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+html[data-native-app="true"] .backdrop-blur,
+html[data-native-app="true"] .backdrop-blur-sm,
+html[data-native-app="true"] .backdrop-blur-2xl,
+html[data-native-app="true"] .theme-floating-surface,
+html[data-native-app="true"] .theme-shell-surface {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }

@@ -502,6 +502,7 @@ export type AppSettings = {
   localScanDepth: number;
   cacheEnabled: boolean;
   cacheLimitGb: number;
+  transcodeCacheLimitGb: number;
   remoteDownloadLimitGb: number;
   fetchStagingRetentionDays: number;
   remoteSaveTemplate: string;
@@ -1614,6 +1615,26 @@ export type CacheOverview = {
   missingReferences: number;
   emptyDirectories: number;
   works: CacheWorkOverview[];
+  transcode: TranscodeCacheOverview;
+};
+
+export type TranscodeCacheOverview = {
+  files: number;
+  bytes: number;
+  limitBytes: number;
+  scannedAt: string;
+};
+
+export type TranscodeCacheClearResult = {
+  deletedFiles: number;
+  freedBytes: number;
+};
+
+export type VideoPlaybackInfo = {
+  delivery: "direct" | "hls";
+  url: string;
+  durationSeconds: number;
+  seekable: boolean;
 };
 
 export type CacheMaintenanceResult = {
@@ -1970,6 +1991,7 @@ export const api = {
     sort: FavoriteSort = "added",
     direction: SortDirection = "desc",
     seed = 1,
+    signal?: AbortSignal,
   ) => {
     const params = new URLSearchParams({
       page: String(page),
@@ -1983,14 +2005,14 @@ export const api = {
     });
     for (const sourceID of sourceIDs) params.append("sourceId", String(sourceID));
     if (query.trim()) params.set("q", query.trim());
-    return getJSON<FavoriteWorksPage>(`/api/favorite-works?${params.toString()}`);
+    return getJSON<FavoriteWorksPage>(`/api/favorite-works?${params.toString()}`, signal);
   },
-  listLibrarySources: () => getJSON<LibrarySource[]>("/api/library-sources"),
-  listRecentlyPlayedWorks: (limit = 10) =>
-    getJSON<RecentlyPlayedWorksResponse>(`/api/recently-played-works?limit=${limit}`),
+  listLibrarySources: (signal?: AbortSignal) => getJSON<LibrarySource[]>("/api/library-sources", signal),
+  listRecentlyPlayedWorks: (limit = 10, signal?: AbortSignal) =>
+    getJSON<RecentlyPlayedWorksResponse>(`/api/recently-played-works?limit=${limit}`, signal),
   getWorkPlaybackCursor: (id: number, signal?: AbortSignal) =>
     getJSON<WorkPlaybackCursorResponse>(`/api/works/${id}/playback-cursor`, signal),
-  getRuntimeSettings: () => getJSON<RuntimeSettings>("/api/runtime-settings"),
+  getRuntimeSettings: (signal?: AbortSignal) => getJSON<RuntimeSettings>("/api/runtime-settings", signal),
   listRemoteSourceWorks: (
     id: number,
     page = 1,
@@ -2123,7 +2145,7 @@ export const api = {
     getJSON<WorkResolveResponse>(`/api/works/${encodeURIComponent(code)}/resolve`, signal),
   resolveWorkEntityLink: (code: string, kind: WorkEntityLink["kind"], name = "") =>
     postJSONBody<WorkEntityLink>(`/api/works/${encodeURIComponent(code)}/entity-links/resolve`, { kind, name }),
-  listFavoriteLists: () => getJSON<FavoriteList[]>("/api/favorite-lists"),
+  listFavoriteLists: (signal?: AbortSignal) => getJSON<FavoriteList[]>("/api/favorite-lists", signal),
   createFavoriteList: (payload: { name: string; description?: string }) =>
     postJSONBody<FavoriteList>("/api/favorite-lists", payload),
   updateFavoriteList: (id: number, payload: { name?: string; description?: string; sortOrder?: number }) =>
@@ -2138,6 +2160,13 @@ export const api = {
   setWorkUserTags: (id: number, tags: string[]) =>
     putJSONBody<{ workId: number; userTags: UserTag[] }>(`/api/works/${id}/tags`, { tags }),
   getMediaText: (locationId: number) => getJSON<MediaTextPreview>(`/api/media/${locationId}/text`),
+  getVideoPlaybackInfo: (locationId: number, capabilities: string[], forceTranscode = false, signal?: AbortSignal) => {
+    const query = new URLSearchParams();
+    if (capabilities.length > 0) query.set("capabilities", capabilities.join(","));
+    if (forceTranscode) query.set("forceTranscode", "1");
+    const suffix = query.size > 0 ? `?${query.toString()}` : "";
+    return getJSON<VideoPlaybackInfo>(`/api/media/${locationId}/playback${suffix}`, signal);
+  },
   setMediaLyricsPreference: (audioMediaItemId: number, lyricsMediaItemId: number) =>
     putJSONBody<{ audioMediaItemId: number; lyricsMediaItemId: number }>(
       `/api/media/${audioMediaItemId}/lyrics-preference`,
@@ -2151,6 +2180,7 @@ export const api = {
   cacheRemoteSourceWorkMedia: (id: number, code: string, path: string) =>
     postJSONBody<MediaCacheResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/cache`, { path }),
   getCacheOverview: () => getJSON<CacheOverview>("/api/cache/overview"),
+  clearTranscodeCache: () => deleteJSON<TranscodeCacheClearResult>("/api/cache/transcodes"),
   cleanupCache: (payload: { mode: "orphans"; groupKeys: string[] } | { mode: "works"; workIds: number[] }) =>
     postJSONBody<CacheMaintenanceResult>("/api/cache/cleanup", payload),
   deleteMediaCacheLocation: (locationId: number) => deleteJSON<MediaCleanupResult>(`/api/media/${locationId}/cache`),
@@ -2167,8 +2197,8 @@ export const api = {
     const page = await getJSON<CircleSummaryPage>(`/api/circles${search}`, options.signal);
     return { ...page, circles: page.circles.map(normalizeCreatorSyncState) };
   },
-  getCircle: async (externalId: string) =>
-    normalizeCreatorSyncState(await getJSON<CircleDetail>(`/api/circles/${encodeURIComponent(externalId)}`)),
+  getCircle: async (externalId: string, signal?: AbortSignal) =>
+    normalizeCreatorSyncState(await getJSON<CircleDetail>(`/api/circles/${encodeURIComponent(externalId)}`, signal)),
   listVoices: async (options: CreatorListOptions = {}) => {
     const search = creatorListSearch(options);
     const page = await getJSON<VoiceSummaryPage>(`/api/voices${search}`, options.signal);
@@ -2176,15 +2206,19 @@ export const api = {
   },
   getVoice: async (personId: number | string) =>
     normalizeCreatorSyncState(await getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(String(personId))}`)),
-  getVoiceSummary: async (personId: number | string) =>
+  getVoiceSummary: async (personId: number | string, signal?: AbortSignal) =>
     normalizeCreatorSyncState(
-      await getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(String(personId))}?includeWorks=false`),
+      await getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(String(personId))}?includeWorks=false`, signal),
     ),
-  getVoiceWorks: (personId: number | string) =>
-    getJSON<{ personId: number; works: VoiceKnownWork[] }>(`/api/voices/${encodeURIComponent(String(personId))}/works`),
-  getVoiceRemoteMatches: (personId: number | string) =>
+  getVoiceWorks: (personId: number | string, signal?: AbortSignal) =>
+    getJSON<{ personId: number; works: VoiceKnownWork[] }>(
+      `/api/voices/${encodeURIComponent(String(personId))}/works`,
+      signal,
+    ),
+  getVoiceRemoteMatches: (personId: number | string, signal?: AbortSignal) =>
     getJSON<{ personId: number; remoteMatches: VoiceRemoteSourceSet[]; refresh: VoiceCatalogRefreshState }>(
       `/api/voices/${encodeURIComponent(String(personId))}/remote-matches`,
+      signal,
     ),
   refreshVoiceCatalog: (personId: number | string, payload?: VoiceCatalogRefreshRequest) => {
     const path = `/api/voices/${encodeURIComponent(String(personId))}/catalog/refresh`;
@@ -2252,6 +2286,7 @@ export const api = {
     localScanDepth?: number;
     cacheEnabled?: boolean;
     cacheLimitGb?: number;
+    transcodeCacheLimitGb?: number;
     remoteDownloadLimitGb?: number;
     fetchStagingRetentionDays?: number;
     remoteSaveTemplate?: string;

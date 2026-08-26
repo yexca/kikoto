@@ -6,9 +6,19 @@ Playback is handled by a global browser audio player.
 
 - Local and cached media is inspected with FFprobe before playback. A browser-
   compatible container/codec combination is served directly with HTTP range
-  support; every other supported media format is converted by FFmpeg directly
-  to the response stream. Native browser playback includes FLAC, Ogg Vorbis,
-  and Ogg Opus audio when the browser reports support.
+  support. Native browser playback includes FLAC, Ogg Vorbis, and Ogg Opus
+  audio when the browser reports support.
+- Incompatible audio is converted by FFmpeg directly to an MP3 response stream.
+  Incompatible video first returns its probed total duration and a complete HLS
+  VOD playlist. Six-second H.264/AAC segments are generated independently on
+  demand, so the player can request a later segment without transcoding every
+  preceding segment. Hls.js supplies MSE playback where needed; clients with
+  native HLS support use the same playlist directly.
+- Generated video segments are rebuildable cache data under
+  `/cache/transcodes/hls`. They use a separate LRU quota, defaulting to 5 GiB,
+  and are invalidated by the source path, size, modification time, or transcode
+  profile changing. A segment is capped at 16 MiB and a generation attempt at
+  two minutes. Stale partial files left by an interrupted process are reclaimed.
 - Tracked remote and remote-preview media is fetched through the configured
   source policy and proxied unchanged through the backend by default. The
   proxy keeps the browser-facing response same-origin and forwards range and
@@ -18,12 +28,13 @@ Playback is handled by a global browser audio player.
   cache location before realtime conversion is available. Remote playback is
   streamed and is not written to `/cache`; the separate remote-source cache
   workflow remains independent.
-- Realtime conversion uses a fragmented MP4 (H.264/AAC) video stream or an MP3
-  audio stream. Converted responses are `no-store` and do not support random
-  range seeks. Video frames are padded to even dimensions before `yuv420p`
-  encoding. FFmpeg and FFprobe each have a small fixed concurrency limit and a
-  short, bounded wait queue; requests that cannot acquire a slot promptly are
-  rejected so an upstream response body or process cannot remain occupied for
+- Audio conversion responses are `no-store` and do not support random range
+  seeks. HLS video segments are immutable for their source revision and are
+  seekable through the complete VOD timeline. Video output is bounded to 720p,
+  padded to even dimensions before `yuv420p` encoding, and produced with a
+  conservative two-thread profile. FFmpeg and FFprobe each have a small fixed
+  concurrency limit and a short, bounded wait queue; requests that cannot
+  acquire a slot promptly are rejected so a process cannot remain occupied for
   an unbounded period.
 - The Docker image includes both `ffmpeg` and `ffprobe`. Other deployments must
   make both binaries available on the backend process `PATH`.
@@ -32,6 +43,9 @@ Playback is handled by a global browser audio player.
 - Work detail exposes fixed Resume instead of work-level Play. Resume is disabled
   without a positive unfinished cursor.
 - Playback continues across navigation.
+- Desktop keeps the four primary browse workspaces mounted after first use.
+  Mobile keeps only the two most recent workspaces mounted, preserving quick
+  return while bounding hidden DOM and request work on older devices.
 - Browser queue persistence is isolated by server identity and authenticated
   user (or the anonymous principal when instance access is enabled). Unscoped
   v1 queue/progress state is discarded because it has no reliable owner; Dock
@@ -51,6 +65,11 @@ Playback is handled by a global browser audio player.
 - Mobile full playback uses edge-to-edge safe areas on every side. Bottom
   controls retain at least 44px touch height and additional home-indicator
   separation.
+- Player time rendering is bounded to about two updates per second. The Android
+  bridge coalesces pending state and normally calibrates native position every
+  five seconds, while pause, seek, track, and speed changes remain immediate.
+  Native builds use the Android media session only and disable backdrop blur;
+  browser builds retain the browser Media Session integration.
 - Compact metadata keeps the track title and circle visible, falling back to
   the work title when no circle is available. The two lines scroll as one
   measured group and pause briefly at the origin between loops, with

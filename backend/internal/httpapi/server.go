@@ -71,6 +71,9 @@ type Server struct {
 	realtimeProbeCache             map[string]playbackProbeCacheEntry
 	realtimeTranscodeSlots         chan struct{}
 	realtimeTranscodeQueue         chan struct{}
+	transcodeCacheActivityMu       sync.RWMutex
+	transcodeCacheQuotaMu          sync.Mutex
+	transcodeCacheReservedBytes    int64
 	filesystemTriggerConfigChanged chan struct{}
 	updateCheckMu                  sync.Mutex
 	updateCheck                    *updateCheckCache
@@ -180,12 +183,15 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/assets/covers/", s.getCoverAsset)
 	mux.HandleFunc("GET /api/assets/manual/{file}", s.getManualAsset)
 	mux.HandleFunc("GET /api/media/{id}/stream", s.streamMedia)
+	mux.HandleFunc("GET /api/media/{id}/playback", s.getVideoPlaybackInfo)
+	mux.HandleFunc("GET /api/media/{id}/hls/{file}", s.serveVideoHLS)
 	mux.HandleFunc("POST /api/media/{id}/cache", s.cacheMediaLocation)
 	mux.HandleFunc("DELETE /api/media/{id}/cache", s.deleteMediaCacheLocation)
 	mux.HandleFunc("DELETE /api/media/{id}/local", s.deleteMediaLocalLocation)
 	mux.HandleFunc("POST /api/media/cleanup", s.cleanupMediaLocations)
 	mux.HandleFunc("GET /api/cache/overview", s.getCacheOverview)
 	mux.HandleFunc("POST /api/cache/cleanup", s.cleanupOrphanCache)
+	mux.HandleFunc("DELETE /api/cache/transcodes", s.clearTranscodeCache)
 	mux.HandleFunc("GET /api/media/{id}/asset", s.serveMediaAsset)
 	mux.HandleFunc("GET /api/media/{id}/text", s.serveMediaText)
 	mux.HandleFunc("GET /api/media/{id}/download", s.downloadMedia)

@@ -73,7 +73,7 @@ import { isActiveWorkflowStatus, useWorkflowRunWatcher } from "@/hooks/useWorkfl
 import { UserTagRow } from "@/components/UserTagRow";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { openVoiceRoute } from "@/pages/CreatorWorksPage";
-import { playbackURL } from "@/player/mediaPlayback";
+import { VideoPreview } from "@/features/work-detail/media/VideoPreview";
 import {
   api,
   ApiError,
@@ -541,6 +541,9 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const [isUntracking, setIsUntracking] = useState(false);
   const libraryRequestSeq = useRef(0);
   const remoteRequestSeq = useRef(0);
+  const loadedLibraryRequestKey = useRef("");
+  const loadedRemoteRequestKey = useRef("");
+  const recentlyPlayedLoaded = useRef(false);
   const recommendationContextRef = useRef<{ id: string; seed: number } | null>(null);
   const skipNextLibraryEffect = useRef(false);
   const skipNextRemoteEffect = useRef(false);
@@ -697,11 +700,24 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   }, [activeTab, searchQuery, debouncedRemoteSearchQuery]);
 
   useEffect(() => {
-    if (!browseHydrated || activeTab.kind === "source") return;
+    if (!active || !browseHydrated || activeTab.kind === "source") return;
     if (skipNextLibraryEffect.current) {
       skipNextLibraryEffect.current = false;
       return;
     }
+    const requestKey = JSON.stringify([
+      workPage,
+      workPageSize,
+      librarySearchQuery,
+      workScope,
+      statusFilter,
+      librarySort,
+      sortDirection,
+      randomSeed,
+      recommendBadgesEnabled,
+      recommendationSession.id,
+    ]);
+    if (loadedLibraryRequestKey.current === requestKey) return;
     const controller = new AbortController();
     const requestSeq = ++libraryRequestSeq.current;
     setLibraryLoadError("");
@@ -722,6 +738,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       )
       .then((page) => {
         if (requestSeq !== libraryRequestSeq.current) return;
+        loadedLibraryRequestKey.current = requestKey;
         setWorks(page.works);
         setWorkTotal(page.total);
         if (librarySort === "recommend") {
@@ -757,6 +774,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       });
     return () => controller.abort();
   }, [
+    active,
     activeTab.kind,
     browseHydrated,
     librarySearchQuery,
@@ -773,12 +791,13 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   ]);
 
   useEffect(() => {
-    if (auth.isLoading) return;
+    if (!active || auth.isLoading || sourceRoutesReady) return;
+    const controller = new AbortController();
     let cancelled = false;
     setBrowseHydrated(false);
     setSourceRoutesReady(false);
     api
-      .listLibrarySources()
+      .listLibrarySources(controller.signal)
       .then((items) => {
         if (cancelled) return;
         setSources(items);
@@ -811,37 +830,46 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [auth.isLoading, browseStorageScope, sessionDefaultBrowseState]);
+  }, [active, auth.isLoading, browseStorageScope, sessionDefaultBrowseState, sourceRoutesReady]);
 
   useEffect(() => {
+    if (!active || settings) return;
+    const controller = new AbortController();
     api
-      .getRuntimeSettings()
+      .getRuntimeSettings(controller.signal)
       .then((next) => {
         setSettings(next);
         window.localStorage.setItem("kikoto:recommend-threshold", String(next.recommendationThreshold));
       })
       .catch(() => setSettings(null));
-  }, []);
+    return () => controller.abort();
+  }, [active, settings]);
 
   useEffect(() => {
-    if (selectedCode !== null) return;
+    if (!active || selectedCode !== null || recentlyPlayedLoaded.current) return;
+    const controller = new AbortController();
     let cancelled = false;
     api
-      .listRecentlyPlayedWorks(10)
+      .listRecentlyPlayedWorks(10, controller.signal)
       .then((result) => {
-        if (!cancelled) setRecentWorks(result.works);
+        if (!cancelled) {
+          recentlyPlayedLoaded.current = true;
+          setRecentWorks(result.works);
+        }
       })
       .catch(() => {
         if (!cancelled) setRecentWorks([]);
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [selectedCode]);
+  }, [active, selectedCode]);
 
   useEffect(() => {
-    if (!browseHydrated) return;
+    if (!active || !browseHydrated) return;
     if (activeTab.kind !== "source") {
       setRemoteResult(null);
       setIsRemoteLoading(false);
@@ -853,6 +881,17 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     }
     const controller = new AbortController();
     const sourceState = remoteSourceStates[activeTab.source.id] ?? defaultRemoteSourceViewState;
+    const requestKey = JSON.stringify([
+      activeTab.source.id,
+      sourceState.page,
+      sourceState.pageSize,
+      remoteSearchQuery,
+      librarySort,
+      sortDirection,
+      randomSeed,
+      recommendBadgesEnabled,
+    ]);
+    if (loadedRemoteRequestKey.current === requestKey) return;
     const requestSeq = ++remoteRequestSeq.current;
     setRemoteResult((current) => (current?.sourceId === activeTab.source.id ? current : null));
     setIsRemoteLoading(true);
@@ -870,6 +909,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       )
       .then((result) => {
         if (requestSeq !== remoteRequestSeq.current) return;
+        loadedRemoteRequestKey.current = requestKey;
         setRemoteResult(result);
         completeResultsUpdate();
       })
@@ -898,6 +938,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       });
     return () => controller.abort();
   }, [
+    active,
     activeTab,
     browseHydrated,
     librarySort,
@@ -913,6 +954,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   }, [activeTab.kind, activeTab.kind === "source" ? activeTab.source.id : 0]);
 
   useEffect(() => {
+    if (!active) return;
     if (selectedCode === null) {
       setSelectedWork(null);
       setSelectedWorkNotFound(false);
@@ -985,7 +1027,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       controller.signal,
     );
     return () => controller.abort();
-  }, [selectedCode, works.length]);
+  }, [active, selectedCode, works.length]);
 
   useEffect(() => {
     if (!active) {
@@ -1080,7 +1122,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   }, [activeTab.kind, isLibraryLoading, workPage, workPageSize, workTotal]);
 
   useEffect(() => {
-    if (selectedCode !== null || selectedRemoteTarget !== null) return;
+    if (!active || selectedCode !== null || selectedRemoteTarget !== null) return;
     let pendingWrite: number | null = null;
     const flushScroll = () => {
       if (pendingWrite !== null) window.clearTimeout(pendingWrite);
@@ -1104,6 +1146,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       if (browseSurfaceActive.current) flushScroll();
     };
   }, [
+    active,
     activeTab,
     localScope,
     selectedCode,
@@ -1414,6 +1457,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   };
 
   useEffect(() => {
+    if (!active) return;
     const refreshAfterTrack = (event: Event) => {
       const terminal = (event as CustomEvent<RemoteTrackTerminalDetail>).detail;
       if (!terminal || (terminal.status !== "succeeded" && terminal.status !== "partial")) return;
@@ -1427,7 +1471,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     };
     window.addEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshAfterTrack);
     return () => window.removeEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshAfterTrack);
-  }, [activeRemoteSourceState.page, activeTab, remoteSearchQuery]);
+  }, [active, activeRemoteSourceState.page, activeTab, remoteSearchQuery]);
 
   const trackedFetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged: refreshCurrentWorksPage });
   const openTrackedFetchSelection = (work: Work, presence: SourcePresenceItem) => {
@@ -9023,7 +9067,14 @@ function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value
 
 type FilePreviewState =
   | { kind: "image"; title: string; url: string; locationId: number; canSetCover: boolean }
-  | { kind: "video"; title: string; url: string; locationId: number; canTranscode: boolean }
+  | {
+      kind: "video";
+      title: string;
+      url: string;
+      locationId: number;
+      durationSeconds: number | null;
+      canTranscode: boolean;
+    }
   | { kind: "text"; title: string; locationId: number; url?: string };
 
 function useDirectoryLyricsAttachmentVisibility(root: TreeNode) {
@@ -11139,6 +11190,7 @@ function previewForFile(file: TreeTrack): FilePreviewState | null {
       title: file.title,
       url: file.streamUrl,
       locationId: file.locationId,
+      durationSeconds: file.durationSeconds,
       canTranscode: file.locationType === "local" || file.locationType === "cache",
     };
   }
@@ -11163,14 +11215,8 @@ function FilePreviewModal({
   onSetCover?: (locationId: number) => void | Promise<void>;
 }) {
   const player = usePlayer();
-  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [forceVideoTranscode, setForceVideoTranscode] = useState(false);
-
-  useEffect(() => {
-    setForceVideoTranscode(false);
-  }, [preview]);
 
   useEffect(() => {
     setText(null);
@@ -11192,10 +11238,6 @@ function FilePreviewModal({
         setError(err instanceof Error ? err.message : "Text preview failed.");
       });
   }, [preview]);
-
-  useEffect(() => {
-    if (preview.kind === "video" && player.isPlaying) videoRef.current?.pause();
-  }, [player.isPlaying, preview.kind]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -11244,23 +11286,14 @@ function FilePreviewModal({
             />
           ) : preview.kind === "video" ? (
             <div className="grid min-h-[240px] place-items-center">
-              <video
-                ref={videoRef}
-                src={assetURL(playbackURL(preview.url, "video", forceVideoTranscode))}
-                controls
-                playsInline
-                preload="metadata"
-                className="max-h-[72vh] w-full bg-black object-contain"
+              <VideoPreview
+                locationId={preview.locationId}
+                fallbackUrl={preview.url}
+                durationSeconds={preview.durationSeconds}
+                canTranscode={preview.canTranscode}
+                pauseRequested={player.isPlaying}
                 onPlay={player.pause}
-                onError={() => {
-                  if (preview.canTranscode && !forceVideoTranscode) {
-                    setForceVideoTranscode(true);
-                  } else {
-                    setError("This video could not be played.");
-                  }
-                }}
               />
-              {error && <div className="mt-3 text-sm text-muted-foreground">{error}</div>}
             </div>
           ) : error ? (
             <div className="text-sm text-muted-foreground">{error}</div>

@@ -169,7 +169,7 @@ function VoiceCreatorWorksPage({ active }: { active: boolean }) {
     };
   }, [active]);
   const personId = voicePersonIdFromPath(path);
-  if (personId) return <VoiceDetailPage personId={personId} />;
+  if (personId) return <VoiceDetailPage personId={personId} active={active} />;
   return <VoiceListPage active={active} />;
 }
 
@@ -199,6 +199,7 @@ function VoiceListPage({ active }: { active: boolean }) {
   const [pageSize, setPageSize] = useState(initialBrowseState.pageSize);
   const [total, setTotal] = useState(0);
   const [reloadToken, setReloadToken] = useState(0);
+  const loadedRequestKey = useRef("");
 
   useEffect(() => {
     const timer = window.setTimeout(() => setRequestQuery(query), 250);
@@ -214,12 +215,16 @@ function VoiceListPage({ active }: { active: boolean }) {
   }, [active, filter, page, pageSize, query, storageScope]);
 
   useEffect(() => {
+    if (!active) return;
+    const requestKey = JSON.stringify([page, pageSize, requestQuery, filter, reloadToken]);
+    if (loadedRequestKey.current === requestKey) return;
     const controller = new AbortController();
     setIsLoading(true);
     setLoadError("");
     api
       .listVoices({ page, pageSize, query: requestQuery, filter, signal: controller.signal })
       .then((result) => {
+        loadedRequestKey.current = requestKey;
         setVoices(result.voices);
         setTotal(result.total);
         setHasLoaded(true);
@@ -239,7 +244,7 @@ function VoiceListPage({ active }: { active: boolean }) {
         if (!controller.signal.aborted) setIsLoading(false);
       });
     return () => controller.abort();
-  }, [filter, page, pageSize, reloadToken, requestQuery]);
+  }, [active, filter, page, pageSize, reloadToken, requestQuery]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const changeFilter = (value: VoiceFilter) => {
@@ -370,7 +375,7 @@ function EntitySkeletonLine({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-muted ${className}`} />;
 }
 
-function VoiceDetailPage({ personId }: { personId: number }) {
+function VoiceDetailPage({ personId, active }: { personId: number; active: boolean }) {
   const auth = useAuth();
   const toast = useToast();
   const requireDownloadsManage = usePermissionGate("downloads:manage");
@@ -401,8 +406,12 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const advancedActionRef = useRef<HTMLButtonElement | null>(null);
   const aliasPanelID = useId();
   const advancedPanelID = useId();
+  const loadedPersonID = useRef<number | null>(null);
+  const loadedCatalogPersonID = useRef<number | null>(null);
 
   useEffect(() => {
+    if (!active || loadedPersonID.current === personId) return;
+    const controller = new AbortController();
     setIsLoading(true);
     setDetailPanel(null);
     setWorkOptionsOpen(false);
@@ -410,32 +419,40 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setCatalogRefresh(null);
     setRemoteError("");
     setNotFound(false);
-    api
-      .getVoiceSummary(personId)
-      .then((item) => {
+    void (async () => {
+      try {
+        const item = await api.getVoiceSummary(personId, controller.signal);
+        if (controller.signal.aborted) return;
         setDetail(item);
         setMessage("");
         setIsWorksLoading(true);
-        api
-          .getVoiceWorks(personId)
-          .then((result) => {
-            setDetail((current) => (current?.personId === personId ? { ...current, works: result.works } : current));
-          })
-          .catch((error) => {
+        try {
+          const result = await api.getVoiceWorks(personId, controller.signal);
+          if (controller.signal.aborted) return;
+          setDetail((current) => (current?.personId === personId ? { ...current, works: result.works } : current));
+          loadedPersonID.current = personId;
+        } catch (error) {
+          if (!controller.signal.aborted) {
             toast.notify(toastFromError(error, "Voice works are unavailable."));
-          })
-          .finally(() => setIsWorksLoading(false));
-      })
-      .catch((error) => {
+          }
+        } finally {
+          if (!controller.signal.aborted) setIsWorksLoading(false);
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return;
         setDetail(null);
         if (error instanceof ApiError && error.status === 404) {
+          loadedPersonID.current = personId;
           setNotFound(true);
           return;
         }
         toast.notify(toastFromError(error, "Voice actor detail is unavailable."));
-      })
-      .finally(() => setIsLoading(false));
-  }, [personId]);
+      } finally {
+        if (!controller.signal.aborted) setIsLoading(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [active, personId]);
 
   const loadRemoteMatches = async (notify = false) => {
     setIsRemoteLoading(true);
@@ -466,14 +483,16 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const canForceRefreshCatalog = auth.hasPermission("metadata:sync") && !auth.demoMode;
 
   useEffect(() => {
-    if (!detail) return;
+    if (!active || !detail || loadedCatalogPersonID.current === personId) return;
+    const controller = new AbortController();
     let cancelled = false;
     const loadPersistedCatalog = async () => {
       setIsRemoteLoading(true);
       setRemoteError("");
       try {
-        const persisted = await api.getVoiceRemoteMatches(personId);
+        const persisted = await api.getVoiceRemoteMatches(personId, controller.signal);
         if (cancelled) return;
+        loadedCatalogPersonID.current = personId;
         setRemoteMatches(persisted.remoteMatches);
         setCatalogRefresh(persisted.refresh);
       } catch (error) {
@@ -488,12 +507,13 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     void loadPersistedCatalog();
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [detail?.personId, personId]);
+  }, [active, detail?.personId, personId]);
 
   const catalogRefreshActive = catalogRefresh?.status === "queued" || catalogRefresh?.status === "running";
   useEffect(() => {
-    if (!catalogRefreshActive) return;
+    if (!active || !catalogRefreshActive) return;
     let cancelled = false;
     let requestRunning = false;
     const poll = async () => {
@@ -526,7 +546,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [catalogRefresh?.runId, catalogRefreshActive, personId]);
+  }, [active, catalogRefresh?.runId, catalogRefreshActive, personId]);
 
   const refreshVoiceCatalog = async (request: VoiceCatalogRefreshRequest, queuedMessage: string) => {
     if (!canForceRefreshCatalog) {
@@ -653,6 +673,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   };
 
   useEffect(() => {
+    if (!active) return;
     const refreshTrackedWork = (event: Event) => {
       const terminal = (event as CustomEvent<RemoteTrackTerminalDetail>).detail;
       if (
@@ -668,7 +689,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     };
     window.addEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshTrackedWork);
     return () => window.removeEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshTrackedWork);
-  }, [mergedWorks]);
+  }, [active, mergedWorks]);
   const fetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged: refreshDetail });
 
   const saveVoiceTags = async (tags: string[]) => {

@@ -97,4 +97,29 @@ describe("native media bridge", () => {
     await expect(requestNativeAudioFocus()).resolves.toBe(false);
     await expect(abandonNativeAudioFocus()).resolves.toBeUndefined();
   });
+
+  it("coalesces bridge updates while one native call is in flight", async () => {
+    isNativeApp.mockReturnValue(true);
+    let releaseFirst: () => void = () => {};
+    plugin.update.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        }),
+    );
+    plugin.update.mockResolvedValue(undefined);
+    const first = updateNativeMedia(mediaState);
+    const secondState = { ...mediaState, positionMs: 2_000 };
+    const latestState = { ...mediaState, positionMs: 3_000, playing: false };
+    const second = updateNativeMedia(secondState);
+    const latest = updateNativeMedia(latestState);
+
+    expect(plugin.update).toHaveBeenCalledTimes(1);
+    expect(plugin.update).toHaveBeenNthCalledWith(1, mediaState);
+    releaseFirst();
+    await Promise.all([first, second, latest]);
+
+    expect(plugin.update).toHaveBeenCalledTimes(2);
+    expect(plugin.update).toHaveBeenNthCalledWith(2, latestState);
+  });
 });

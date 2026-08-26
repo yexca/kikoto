@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicReference;
 final class KikotoAssetTransport {
     private static final int CONNECT_TIMEOUT_MS = 10_000;
     private static final int READ_TIMEOUT_MS = 30_000;
+    private static final int HLS_SEGMENT_READ_TIMEOUT_MS = 120_000;
     private static final int MAX_REDIRECTS = 3;
     private static final AtomicReference<KikotoAssetRequestPolicy> POLICY = new AtomicReference<>();
     private static final Set<String> BLOCKED_REQUEST_HEADERS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
@@ -108,7 +109,7 @@ final class KikotoAssetTransport {
         if (!(rawConnection instanceof HttpURLConnection)) throw new IOException("Unsupported mobile asset protocol.");
         HttpURLConnection connection = (HttpURLConnection) rawConnection;
         connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
-        connection.setReadTimeout(READ_TIMEOUT_MS);
+        connection.setReadTimeout(policy.isHLSSegment(uri) ? HLS_SEGMENT_READ_TIMEOUT_MS : READ_TIMEOUT_MS);
         connection.setInstanceFollowRedirects(false);
         connection.setRequestMethod(method);
         if (requestHeaders != null) {
