@@ -208,20 +208,30 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const [listActionsOpen, setListActionsOpen] = useState(false);
   const listActionsRef = useRef<HTMLDivElement | null>(null);
   const requestSeq = useRef(0);
+  const favoriteListsLoadedFor = useRef<number | null>(null);
+  const fileSourcesLoadedFor = useRef<number | null>(null);
+  const entitiesLoadedRequestKey = useRef("");
+  const worksLoadedRequestKey = useRef("");
   const mobileNavigationLayout = useMobileNavigationLayout();
 
   useEffect(() => {
     if (!auth.user) {
+      favoriteListsLoadedFor.current = null;
       setFavoriteLists([]);
       setAreFavoriteListsLoading(false);
       return;
     }
+    if (!active || favoriteListsLoadedFor.current === principalID) return;
+    const controller = new AbortController();
     let cancelled = false;
     setAreFavoriteListsLoading(true);
     api
-      .listFavoriteLists()
+      .listFavoriteLists(controller.signal)
       .then((lists) => {
-        if (!cancelled) setFavoriteLists(lists);
+        if (!cancelled) {
+          favoriteListsLoadedFor.current = principalID;
+          setFavoriteLists(lists);
+        }
       })
       .catch((error) => {
         if (!cancelled) toast.notify(toastFromError(error, "Favorite lists could not be loaded."));
@@ -231,21 +241,26 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [auth.user]);
+  }, [active, auth.user, principalID]);
 
   useEffect(() => {
     if (!auth.user) {
+      fileSourcesLoadedFor.current = null;
       setFileSources([]);
       setAreFileSourcesLoading(false);
       return;
     }
+    if (!active || fileSourcesLoadedFor.current === principalID) return;
+    const controller = new AbortController();
     let cancelled = false;
     setAreFileSourcesLoading(true);
     api
-      .listLibrarySources()
+      .listLibrarySources(controller.signal)
       .then((sources) => {
         if (cancelled) return;
+        fileSourcesLoadedFor.current = principalID;
         setFileSources(sources);
         const availableSourceIDs = new Set(sources.map((source) => source.id));
         setSourceIDs((current) => {
@@ -261,11 +276,13 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [auth.user]);
+  }, [active, auth.user, principalID]);
 
   useEffect(() => {
     if (!auth.user) {
+      entitiesLoadedRequestKey.current = "";
       setCircles([]);
       setVoices([]);
       setEntitySnapshotUserID(null);
@@ -273,15 +290,20 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       setIsEntitiesLoading(false);
       return;
     }
+    if (!active) return;
+    const requestKey = `${principalID ?? "anonymous"}:${entityReloadToken}`;
+    if (entitiesLoadedRequestKey.current === requestKey) return;
+    const controller = new AbortController();
     let cancelled = false;
     setIsEntitiesLoading(true);
     setEntityLoadError("");
     Promise.all([
-      api.listCircles({ filter: "favorite", pageSize: 100 }),
-      api.listVoices({ filter: "favorite", pageSize: 100 }),
+      api.listCircles({ filter: "favorite", pageSize: 100, signal: controller.signal }),
+      api.listVoices({ filter: "favorite", pageSize: 100, signal: controller.signal }),
     ])
       .then(([circlePage, voicePage]) => {
         if (cancelled) return;
+        entitiesLoadedRequestKey.current = requestKey;
         setCircles(circlePage.circles);
         setVoices(voicePage.voices);
         setEntitySnapshotUserID(principalID);
@@ -297,11 +319,13 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [auth.user, entityReloadToken]);
+  }, [active, auth.user, entityReloadToken, principalID]);
 
   useEffect(() => {
     if (!auth.user) {
+      worksLoadedRequestKey.current = "";
       setWorks([]);
       setTotalWorks(0);
       setFavoriteTotal(0);
@@ -316,6 +340,23 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       setIsLoading(false);
       return;
     }
+    if (!active) return;
+    const requestKey = JSON.stringify([
+      principalID,
+      page,
+      pageSize,
+      query,
+      activeList,
+      statusFilter,
+      availabilityFilter,
+      sourceIDs,
+      sort,
+      sortDirection,
+      randomSeed,
+      worksReloadToken,
+    ]);
+    if (worksLoadedRequestKey.current === requestKey) return;
+    const controller = new AbortController();
     const seq = ++requestSeq.current;
     setIsLoading(true);
     setWorksLoadError("");
@@ -331,9 +372,11 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
         sort,
         sortDirection,
         randomSeed,
+        controller.signal,
       )
       .then((result) => {
-        if (seq !== requestSeq.current) return;
+        if (controller.signal.aborted || seq !== requestSeq.current) return;
+        worksLoadedRequestKey.current = requestKey;
         setWorks(result.works);
         setTotalWorks(result.total);
         setFavoriteTotal(result.shelfTotal);
@@ -342,20 +385,23 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
         setWorksSnapshotUserID(principalID);
       })
       .catch((error) => {
-        if (seq !== requestSeq.current) return;
+        if (controller.signal.aborted || seq !== requestSeq.current) return;
         setWorksLoadError("Favorites could not be loaded.");
         toast.notify(toastFromError(error, "Favorites could not be loaded."));
       })
       .finally(() => {
-        if (seq === requestSeq.current) setIsLoading(false);
+        if (!controller.signal.aborted && seq === requestSeq.current) setIsLoading(false);
       });
+    return () => controller.abort();
   }, [
+    active,
     activeList,
     availabilityFilter,
     auth.user,
     favoriteEntity,
     page,
     pageSize,
+    principalID,
     query,
     randomSeed,
     sort,

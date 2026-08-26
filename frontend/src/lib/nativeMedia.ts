@@ -32,18 +32,33 @@ type KikotoMediaPlugin = {
 };
 
 const KikotoMedia = registerPlugin<KikotoMediaPlugin>("KikotoMedia");
+let pendingMediaState: NativeMediaState | null = null;
+let mediaUpdatePromise: Promise<void> | null = null;
 
 export function supportsNativeMedia() {
   return isNativeApp();
 }
 
-export async function updateNativeMedia(state: NativeMediaState) {
-  if (!supportsNativeMedia()) return;
-  await KikotoMedia.update(state).catch(() => {});
+export function updateNativeMedia(state: NativeMediaState) {
+  if (!supportsNativeMedia()) return Promise.resolve();
+  pendingMediaState = state;
+  mediaUpdatePromise ??= flushNativeMediaUpdates();
+  return mediaUpdatePromise;
+}
+
+async function flushNativeMediaUpdates() {
+  while (pendingMediaState) {
+    const state = pendingMediaState;
+    pendingMediaState = null;
+    await KikotoMedia.update(state).catch(() => {});
+  }
+  mediaUpdatePromise = null;
 }
 
 export async function stopNativeMedia() {
   if (!supportsNativeMedia()) return;
+  pendingMediaState = null;
+  await mediaUpdatePromise;
   await KikotoMedia.stop().catch(() => {});
 }
 

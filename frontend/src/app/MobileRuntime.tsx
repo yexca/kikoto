@@ -53,6 +53,16 @@ export function MobileRuntimeProvider({ children }: { children: React.ReactNode 
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const keyboardBaselineHeight = useRef(0);
 
+  useEffect(() => {
+    const root = document.documentElement;
+    if (!isNativeApp()) {
+      root.removeAttribute("data-native-app");
+      return;
+    }
+    root.dataset.nativeApp = "true";
+    return () => root.removeAttribute("data-native-app");
+  }, []);
+
   const applyHealth = useCallback((health: HealthStatus) => {
     const minimumClientVersion = health.minAndroidClientVersion || health.minClientVersion || "";
     const versionStatus = appVersionStatus(APP_CLIENT_VERSION, health.version, minimumClientVersion);

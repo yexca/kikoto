@@ -30,6 +30,9 @@ The backend is a Go HTTP API with SQLite persistence.
 - Serve library and detail APIs.
 - Browse and sync remote sources.
 - Stream local media with range support.
+- Publish complete-duration HLS VOD manifests for incompatible local or cached
+  video and generate independently seekable, quota-bounded segments under the
+  disposable cache root.
 - Record workflow runs and activity state.
 - Claim durable workflow jobs by priority and serialize jobs that share a
   resource lane.

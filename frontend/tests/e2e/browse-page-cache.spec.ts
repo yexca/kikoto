@@ -90,11 +90,17 @@ type BrowsePageMockOptions = {
 
 async function mockBrowsePages(page: Page, requests: Record<string, number>, options: BrowsePageMockOptions = {}) {
   let releaseAliasResolution: (() => void) | null = null;
+  let settleAliasResolution: (() => void) | null = null;
   const aliasResolution = options.deferAliasResolution
     ? new Promise<void>((resolve) => {
         releaseAliasResolution = resolve;
       })
     : null;
+  const aliasResolutionSettled = options.deferAliasResolution
+    ? new Promise<void>((resolve) => {
+        settleAliasResolution = resolve;
+      })
+    : Promise.resolve();
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     const count = (key: string) => {
@@ -181,29 +187,33 @@ async function mockBrowsePages(page: Page, requests: Record<string, number>, opt
     if (url.pathname === "/api/works/RJ00000001/resolve") {
       count("alias-resolve");
       await aliasResolution;
-      await route.fulfill({
-        json: {
-          requestedCode: "RJ00000001",
-          resolvedCode: "RJ00000000",
-          workId: 1,
-          baseCode: "",
-          isTranslation: true,
-          title: cachedWork.title,
-          coverUrl: "",
-          circle: cachedWork.circle,
-          circleExternalId: cachedWork.circleExternalId,
-          releaseDate: cachedWork.releaseDate,
-          rating: null,
-          sales: null,
-          regularPrice: null,
-          price: null,
-          priceCurrency: "JPY",
-          permanentlyFree: false,
-          tags: [],
-          voiceActors: [],
-          voiceCredits: [],
-        },
-      });
+      try {
+        await route.fulfill({
+          json: {
+            requestedCode: "RJ00000001",
+            resolvedCode: "RJ00000000",
+            workId: 1,
+            baseCode: "",
+            isTranslation: true,
+            title: cachedWork.title,
+            coverUrl: "",
+            circle: cachedWork.circle,
+            circleExternalId: cachedWork.circleExternalId,
+            releaseDate: cachedWork.releaseDate,
+            rating: null,
+            sales: null,
+            regularPrice: null,
+            price: null,
+            priceCurrency: "JPY",
+            permanentlyFree: false,
+            tags: [],
+            voiceActors: [],
+            voiceCredits: [],
+          },
+        });
+      } finally {
+        settleAliasResolution?.();
+      }
       return;
     }
     if (url.pathname === "/api/circles") {
@@ -273,10 +283,12 @@ async function mockBrowsePages(page: Page, requests: Record<string, number>, opt
 
   return {
     releaseAliasResolution: () => releaseAliasResolution?.(),
+    waitForAliasResolution: () => aliasResolutionSettled,
   };
 }
 
 test("keeps visited browse workspaces mounted for the current user and server", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
   const requests: Record<string, number> = {};
   await mockBrowsePages(page, requests);
   await page.goto("/");
@@ -305,6 +317,29 @@ test("keeps visited browse workspaces mounted for the current user and server", 
     voices: initialRequests.voices,
     "favorite-works": initialRequests["favorite-works"],
   });
+});
+
+test("keeps only the two most recent browse workspaces mounted on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const requests: Record<string, number> = {};
+  await mockBrowsePages(page, requests);
+  await page.goto("/");
+
+  const tabs = page.locator("footer");
+  await tabs.getByRole("button", { name: "Circles", exact: true }).click();
+  await tabs.getByRole("button", { name: "Voice Actors", exact: true }).click();
+  await tabs.getByRole("button", { name: "Favorites", exact: true }).click();
+
+  await expect(page.locator("[data-browse-page]")).toHaveCount(2);
+  await expect(page.locator('[data-browse-page="voice-actors"]')).toHaveCount(1);
+  await expect(page.locator('[data-browse-page="favorites"]')).toHaveCount(1);
+  await expect(page.locator('[data-browse-page="library"]')).toHaveCount(0);
+
+  await tabs.getByRole("button", { name: "Library", exact: true }).click();
+  await expect(page.locator("[data-browse-page]")).toHaveCount(2);
+  await expect(page.locator('[data-browse-page="favorites"]')).toHaveCount(1);
+  await expect(page.locator('[data-browse-page="library"]')).toHaveCount(1);
+  await expect(page.locator('[data-browse-page="voice-actors"]')).toHaveCount(0);
 });
 
 test("restores cached mobile detail workspaces through bottom navigation history", async ({ page }) => {
@@ -398,6 +433,7 @@ test("does not let an inactive Library detail redirect replace another mobile wo
   await expect(page).toHaveURL(/\/circles(?:\?|$)/);
 
   mocks.releaseAliasResolution();
-  await expect.poll(() => (requests["work-media"] ?? 0) > 0).toBe(true);
+  await mocks.waitForAliasResolution();
+  expect(requests["work-media"] ?? 0).toBe(0);
   await expect(page).toHaveURL(/\/circles(?:\?|$)/);
 });

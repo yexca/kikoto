@@ -66,6 +66,11 @@ and do not modify Demo server data.
 - Cache & Fetch includes the per-file remote media limit and the retention age
   for unpublished staging from failed or cancelled Fetch runs. The defaults are
   100 GB per media file and seven days of staging retention.
+- Cache & Fetch exposes an independent video transcode cache limit from 1 to
+  4096 GB. It defaults to 5 GB, reports current HLS segment usage and available
+  quota, and provides a confirmed clear action. This rebuildable cache lives
+  under `/cache/transcodes` and does not change the managed remote-media cache
+  limit.
 - Managed media cache cleanup is grouped by source scope. Groups can be
   collapsed and selected as a unit while the bounded list scrolls independently
   for large libraries. Cleanup remains a two-step destructive action.

@@ -131,6 +131,7 @@ export function MaintenancePage({
   const [localScanDepth, setLocalScanDepth] = useState(3);
   const [cacheEnabled, setCacheEnabled] = useState(false);
   const [cacheLimitGb, setCacheLimitGb] = useState(20);
+  const [transcodeCacheLimitGb, setTranscodeCacheLimitGb] = useState(5);
   const [remoteDownloadLimitGb, setRemoteDownloadLimitGb] = useState(100);
   const [fetchStagingRetentionDays, setFetchStagingRetentionDays] = useState(7);
   const [remoteDelayBase, setRemoteDelayBase] = useState(0.5);
@@ -169,6 +170,7 @@ export function MaintenancePage({
         setLocalScanDepth(next.localScanDepth);
         setCacheEnabled(next.cacheEnabled);
         setCacheLimitGb(next.cacheLimitGb);
+        setTranscodeCacheLimitGb(next.transcodeCacheLimitGb ?? 5);
         setRemoteDownloadLimitGb(next.remoteDownloadLimitGb);
         setFetchStagingRetentionDays(next.fetchStagingRetentionDays);
         setRemoteDelayBase(next.remoteDelayBaseSeconds);
@@ -240,6 +242,7 @@ export function MaintenancePage({
       localScanDepth,
       cacheEnabled,
       cacheLimitGb,
+      transcodeCacheLimitGb,
       remoteDownloadLimitGb,
       fetchStagingRetentionDays,
       remoteDelayBaseSeconds: remoteDelayBase,
@@ -255,6 +258,7 @@ export function MaintenancePage({
     setSettings(next);
     setCacheEnabled(next.cacheEnabled);
     setCacheLimitGb(next.cacheLimitGb);
+    setTranscodeCacheLimitGb(next.transcodeCacheLimitGb ?? 5);
     setRemoteDownloadLimitGb(next.remoteDownloadLimitGb);
     setFetchStagingRetentionDays(next.fetchStagingRetentionDays);
     setCatalogFreshnessDays(next.catalogFreshnessDays);
@@ -603,6 +607,7 @@ export function MaintenancePage({
           <CacheFetchSettings
             cacheEnabled={cacheEnabled}
             cacheLimitGb={cacheLimitGb}
+            transcodeCacheLimitGb={transcodeCacheLimitGb}
             remoteDownloadLimitGb={remoteDownloadLimitGb}
             fetchStagingRetentionDays={fetchStagingRetentionDays}
             remoteDelayBase={remoteDelayBase}
@@ -611,6 +616,7 @@ export function MaintenancePage({
             remoteMaxBackoff={remoteMaxBackoff}
             onCacheEnabledChange={setCacheEnabled}
             onCacheLimitChange={setCacheLimitGb}
+            onTranscodeCacheLimitChange={setTranscodeCacheLimitGb}
             onRemoteDownloadLimitChange={setRemoteDownloadLimitGb}
             onFetchStagingRetentionChange={setFetchStagingRetentionDays}
             onRemoteDelayBaseChange={setRemoteDelayBase}
@@ -2088,6 +2094,7 @@ function RemoteSourcesSettings({
 function CacheFetchSettings({
   cacheEnabled,
   cacheLimitGb,
+  transcodeCacheLimitGb,
   remoteDownloadLimitGb,
   fetchStagingRetentionDays,
   remoteDelayBase,
@@ -2096,6 +2103,7 @@ function CacheFetchSettings({
   remoteMaxBackoff,
   onCacheEnabledChange,
   onCacheLimitChange,
+  onTranscodeCacheLimitChange,
   onRemoteDownloadLimitChange,
   onFetchStagingRetentionChange,
   onRemoteDelayBaseChange,
@@ -2106,6 +2114,7 @@ function CacheFetchSettings({
 }: {
   cacheEnabled: boolean;
   cacheLimitGb: number;
+  transcodeCacheLimitGb: number;
   remoteDownloadLimitGb: number;
   fetchStagingRetentionDays: number;
   remoteDelayBase: number;
@@ -2114,6 +2123,7 @@ function CacheFetchSettings({
   remoteMaxBackoff: number;
   onCacheEnabledChange: (value: boolean) => void;
   onCacheLimitChange: (value: number) => void;
+  onTranscodeCacheLimitChange: (value: number) => void;
   onRemoteDownloadLimitChange: (value: number) => void;
   onFetchStagingRetentionChange: (value: number) => void;
   onRemoteDelayBaseChange: (value: number) => void;
@@ -2126,9 +2136,12 @@ function CacheFetchSettings({
   const [overview, setOverview] = useState<CacheOverview | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
+  const [isClearingTranscodes, setIsClearingTranscodes] = useState(false);
   const [confirmCleanup, setConfirmCleanup] = useState(false);
+  const [confirmTranscodeCleanup, setConfirmTranscodeCleanup] = useState(false);
   const [confirmEnableCache, setConfirmEnableCache] = useState(false);
   const [cleanupStatus, setCleanupStatus] = useState("");
+  const [transcodeCleanupStatus, setTranscodeCleanupStatus] = useState("");
   const [cleanupMode, setCleanupMode] = useState<"orphans" | "works">("orphans");
   const [selectedCleanupKeys, setSelectedCleanupKeys] = useState<Set<string>>(new Set());
   const [expandedCleanupGroups, setExpandedCleanupGroups] = useState<Set<string>>(new Set());
@@ -2229,6 +2242,29 @@ function CacheFetchSettings({
     }
   };
 
+  const clearTranscodeCache = async () => {
+    if (!confirmTranscodeCleanup) {
+      setConfirmTranscodeCleanup(true);
+      return;
+    }
+    setIsClearingTranscodes(true);
+    try {
+      const result = await api.clearTranscodeCache();
+      setConfirmTranscodeCleanup(false);
+      setTranscodeCleanupStatus(
+        result.deletedFiles > 0
+          ? `Removed ${result.deletedFiles} segments and freed ${formatByteSize(result.freedBytes)}.`
+          : "The video transcode cache is already empty.",
+      );
+      toast.success(result.deletedFiles > 0 ? "Video transcode cache cleared." : "Video transcode cache is empty.");
+      await scanCache();
+    } catch (error) {
+      toast.notify(toastFromError(error, "Video transcode cache could not be cleared."));
+    } finally {
+      setIsClearingTranscodes(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <Card className="overflow-hidden" data-testid="cache-configuration-card">
@@ -2265,6 +2301,20 @@ function CacheFetchSettings({
                 />
                 <span className="flex items-center border-l bg-muted px-3 text-xs text-muted-foreground">GB</span>
               </div>
+            </ConfigurationRow>
+            <ConfigurationRow
+              title="Video transcode cache limit"
+              description="Maximum rebuildable HLS segment cache size. Old segments are removed least-recently-used."
+            >
+              <ConfigurationNumberInput
+                label="Video transcode cache limit"
+                value={transcodeCacheLimitGb}
+                min={1}
+                max={4096}
+                step={1}
+                unit="GB"
+                onChange={onTranscodeCacheLimitChange}
+              />
             </ConfigurationRow>
 
             <ConfigurationSectionLabel>Transfer safety</ConfigurationSectionLabel>
@@ -2349,6 +2399,57 @@ function CacheFetchSettings({
             <Save className="h-4 w-4" />
             Save configuration
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card role="region" aria-label="Video transcode cache">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <PlayCircle className="h-4 w-4" />
+            Video transcode cache
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <CacheMetric
+              label="On disk"
+              value={overview ? formatByteSize(overview.transcode.bytes) : "--"}
+              detail={overview ? `${overview.transcode.files} segments` : "Scanning"}
+            />
+            <CacheMetric
+              label="Limit"
+              value={overview ? formatByteSize(overview.transcode.limitBytes) : `${transcodeCacheLimitGb} GB`}
+              detail="Independent from media cache"
+            />
+            <CacheMetric
+              label="Available"
+              value={
+                overview ? formatByteSize(Math.max(0, overview.transcode.limitBytes - overview.transcode.bytes)) : "--"
+              }
+              detail="LRU-managed space"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => void clearTranscodeCache()}
+              disabled={isClearingTranscodes || isScanning || !overview}
+            >
+              <Trash2 className="h-4 w-4" />
+              {isClearingTranscodes
+                ? "Clearing..."
+                : confirmTranscodeCleanup
+                  ? `Confirm clear (${overview?.transcode.files ?? 0} segments)`
+                  : "Clear video transcode cache"}
+            </Button>
+            {confirmTranscodeCleanup && (
+              <Button variant="ghost" size="sm" onClick={() => setConfirmTranscodeCleanup(false)}>
+                Cancel
+              </Button>
+            )}
+            {transcodeCleanupStatus && <span className="text-xs text-muted-foreground">{transcodeCleanupStatus}</span>}
+          </div>
         </CardContent>
       </Card>
 

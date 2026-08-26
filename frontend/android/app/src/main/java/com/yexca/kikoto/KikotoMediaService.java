@@ -67,6 +67,7 @@ public class KikotoMediaService extends Service {
     private float playbackRate = 1.0F;
     private boolean canPrevious = false;
     private boolean canNext = false;
+    private boolean foregroundStarted = false;
 
     @Override
     public void onCreate() {
@@ -141,18 +142,38 @@ public class KikotoMediaService extends Service {
             return START_NOT_STICKY;
         }
         if (ACTION_UPDATE.equals(action) && intent != null) {
-            title = value(intent, EXTRA_TITLE, title);
-            artist = value(intent, EXTRA_ARTIST, artist);
-            album = value(intent, EXTRA_ALBUM, album);
-            updateCover(value(intent, EXTRA_COVER_URL, ""));
-            playing = intent.getBooleanExtra(EXTRA_PLAYING, playing);
-            positionMs = Math.max(0L, intent.getLongExtra(EXTRA_POSITION_MS, positionMs));
-            durationMs = Math.max(0L, intent.getLongExtra(EXTRA_DURATION_MS, durationMs));
-            playbackRate = intent.getFloatExtra(EXTRA_PLAYBACK_RATE, playbackRate);
-            canPrevious = intent.getBooleanExtra(EXTRA_CAN_PREVIOUS, canPrevious);
-            canNext = intent.getBooleanExtra(EXTRA_CAN_NEXT, canNext);
-            updateMediaSession();
-            startForeground(NOTIFICATION_ID, buildNotification());
+            String nextTitle = value(intent, EXTRA_TITLE, title);
+            String nextArtist = value(intent, EXTRA_ARTIST, artist);
+            String nextAlbum = value(intent, EXTRA_ALBUM, album);
+            boolean nextPlaying = intent.getBooleanExtra(EXTRA_PLAYING, playing);
+            long nextPositionMs = Math.max(0L, intent.getLongExtra(EXTRA_POSITION_MS, positionMs));
+            long nextDurationMs = Math.max(0L, intent.getLongExtra(EXTRA_DURATION_MS, durationMs));
+            float nextPlaybackRate = intent.getFloatExtra(EXTRA_PLAYBACK_RATE, playbackRate);
+            boolean nextCanPrevious = intent.getBooleanExtra(EXTRA_CAN_PREVIOUS, canPrevious);
+            boolean nextCanNext = intent.getBooleanExtra(EXTRA_CAN_NEXT, canNext);
+            boolean textChanged = !Objects.equals(title, nextTitle)
+                || !Objects.equals(artist, nextArtist)
+                || !Objects.equals(album, nextAlbum);
+            boolean coverChanged = updateCover(value(intent, EXTRA_COVER_URL, ""));
+            boolean metadataChanged = textChanged || coverChanged || durationMs != nextDurationMs;
+            boolean notificationChanged = textChanged
+                || coverChanged
+                || playing != nextPlaying
+                || canPrevious != nextCanPrevious
+                || canNext != nextCanNext;
+
+            title = nextTitle;
+            artist = nextArtist;
+            album = nextAlbum;
+            playing = nextPlaying;
+            positionMs = nextPositionMs;
+            durationMs = nextDurationMs;
+            playbackRate = nextPlaybackRate;
+            canPrevious = nextCanPrevious;
+            canNext = nextCanNext;
+            if (!foregroundStarted || metadataChanged) updateMediaMetadata();
+            updatePlaybackState();
+            if (!foregroundStarted || notificationChanged) publishNotification();
             return START_STICKY;
         }
         return START_NOT_STICKY;
@@ -176,6 +197,7 @@ public class KikotoMediaService extends Service {
             coverExecutor.shutdownNow();
             coverExecutor = null;
         }
+        foregroundStarted = false;
         super.onDestroy();
     }
 
@@ -218,7 +240,7 @@ public class KikotoMediaService extends Service {
         return flags;
     }
 
-    private void updateMediaSession() {
+    private void updateMediaMetadata() {
         if (mediaSession == null) return;
         MediaMetadataCompat.Builder metadata = new MediaMetadataCompat.Builder()
             .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
@@ -231,7 +253,10 @@ public class KikotoMediaService extends Service {
             metadata.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, coverBitmap);
         }
         mediaSession.setMetadata(metadata.build());
+    }
 
+    private void updatePlaybackState() {
+        if (mediaSession == null) return;
         long actions = PlaybackStateCompat.ACTION_PLAY
             | PlaybackStateCompat.ACTION_PAUSE
             | PlaybackStateCompat.ACTION_PLAY_PAUSE
@@ -258,12 +283,13 @@ public class KikotoMediaService extends Service {
     private void stopPlaybackService() {
         coverRequestVersion++;
         playing = false;
-        updateMediaSession();
+        updatePlaybackState();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE);
         } else {
             stopForeground(true);
         }
+        foregroundStarted = false;
         stopSelf();
     }
 
@@ -275,12 +301,12 @@ public class KikotoMediaService extends Service {
         if (manager != null) manager.createNotificationChannel(channel);
     }
 
-    private void updateCover(String nextCoverUrl) {
-        if (Objects.equals(coverUrl, nextCoverUrl)) return;
+    private boolean updateCover(String nextCoverUrl) {
+        if (Objects.equals(coverUrl, nextCoverUrl)) return false;
         coverUrl = nextCoverUrl;
         coverBitmap = null;
         int requestVersion = ++coverRequestVersion;
-        if (coverUrl.isEmpty() || coverExecutor == null) return;
+        if (coverUrl.isEmpty() || coverExecutor == null) return true;
         String requestedCoverUrl = coverUrl;
         coverExecutor.execute(() -> {
             Bitmap bitmap = downloadCover(requestedCoverUrl);
@@ -288,10 +314,22 @@ public class KikotoMediaService extends Service {
             mainHandler.post(() -> {
                 if (requestVersion != coverRequestVersion) return;
                 coverBitmap = bitmap;
-                updateMediaSession();
-                startForeground(NOTIFICATION_ID, buildNotification());
+                updateMediaMetadata();
+                publishNotification();
             });
         });
+        return true;
+    }
+
+    private void publishNotification() {
+        Notification notification = buildNotification();
+        if (!foregroundStarted) {
+            startForeground(NOTIFICATION_ID, notification);
+            foregroundStarted = true;
+            return;
+        }
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager != null) manager.notify(NOTIFICATION_ID, notification);
     }
 
     private Bitmap downloadCover(String sourceUrl) {

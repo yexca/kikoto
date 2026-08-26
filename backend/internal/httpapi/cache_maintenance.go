@@ -50,17 +50,18 @@ type cacheWorkOverview struct {
 }
 
 type cacheOverview struct {
-	ScannedAt         string              `json:"scannedAt"`
-	MediaFiles        int                 `json:"mediaFiles"`
-	MediaBytes        int64               `json:"mediaBytes"`
-	ReferencedFiles   int                 `json:"referencedFiles"`
-	ReferencedBytes   int64               `json:"referencedBytes"`
-	OrphanFiles       int                 `json:"orphanFiles"`
-	OrphanBytes       int64               `json:"orphanBytes"`
-	ProtectedFiles    int                 `json:"protectedFiles"`
-	MissingReferences int                 `json:"missingReferences"`
-	EmptyDirectories  int                 `json:"emptyDirectories"`
-	Works             []cacheWorkOverview `json:"works"`
+	ScannedAt         string                 `json:"scannedAt"`
+	MediaFiles        int                    `json:"mediaFiles"`
+	MediaBytes        int64                  `json:"mediaBytes"`
+	ReferencedFiles   int                    `json:"referencedFiles"`
+	ReferencedBytes   int64                  `json:"referencedBytes"`
+	OrphanFiles       int                    `json:"orphanFiles"`
+	OrphanBytes       int64                  `json:"orphanBytes"`
+	ProtectedFiles    int                    `json:"protectedFiles"`
+	MissingReferences int                    `json:"missingReferences"`
+	EmptyDirectories  int                    `json:"emptyDirectories"`
+	Works             []cacheWorkOverview    `json:"works"`
+	Transcode         transcodeCacheOverview `json:"transcode"`
 }
 
 type cacheMaintenanceScan struct {
@@ -104,6 +105,12 @@ func (s *Server) getCacheOverview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	transcode, err := s.scanTranscodeCache(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	scan.Overview.Transcode = transcode
 	writeJSON(w, http.StatusOK, scan.Overview)
 }
 

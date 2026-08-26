@@ -88,6 +88,10 @@ small shared contract should resolve cross-domain needs.
   must not discard an already rendered detail shell.
 - Prefer icons for compact controls and reserve text buttons for clear commands.
 - Keep playback global so navigation does not interrupt the current queue.
+- Keep high-frequency playback position out of bridge and notification rebuild
+  paths. Browser time rendering is sampled, Android bridge updates are
+  coalesced and periodically calibrated, and a Native build does not register a
+  second browser Media Session.
 - Treat bottom navigation, safe areas, Compact player placement, page clearance,
   and update notices as one fixed-surface layout contract.
 - Size mobile search and modal layers against the visual viewport. The frontend
@@ -98,6 +102,9 @@ small shared contract should resolve cross-domain needs.
   Switching destinations restores that destination's last stable list or detail
   route, history state, and scroll position for the current server and user;
   dialogs, pending mutations, and other transient overlays are not resumed.
+- Bound mounted browse workspaces by layout: desktop may retain all four primary
+  destinations, while mobile retains only the two most recently used. An
+  inactive workspace cancels unfinished detail/list work and pauses polling.
 - Tapping the active Library, Circles, or Voice Actors destination from its
   detail route returns to that workspace's last list state. Work detail routes
   remain part of Library regardless of the workspace that opened them.

@@ -32,6 +32,7 @@ import { NotFoundPage } from "@/app/NotFoundPage";
 import { RouteErrorBoundary } from "@/app/RouteErrorBoundary";
 import { useScrollRestoration } from "@/app/scrollRestoration";
 import { MobileRuntimeProvider, useMobileRuntime } from "@/app/MobileRuntime";
+import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { ANDROID_BACK_EVENT, LOGIN_REQUEST_EVENT } from "@/app/events";
 import { isNativeApp } from "@/lib/serverConfig";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
@@ -532,37 +533,43 @@ const cachedBrowsePages = ["library", "favorites", "circles", "voice-actors"] as
 type CachedBrowsePage = (typeof cachedBrowsePages)[number];
 
 function CachedBrowsePages({ activePage }: { activePage: AppPage | null }) {
-  const [visitedPages, setVisitedPages] = useState<ReadonlySet<CachedBrowsePage>>(() => {
-    return activePage && isCachedBrowsePage(activePage) ? new Set([activePage]) : new Set();
-  });
+  const mobile = useMobileNavigationLayout();
+  const [visitedPages, setVisitedPages] = useState<readonly CachedBrowsePage[]>(() =>
+    activePage && isCachedBrowsePage(activePage) ? [activePage] : [],
+  );
   const pageToMount = activePage && isCachedBrowsePage(activePage) ? activePage : null;
-  const mountedPages = new Set(visitedPages);
-  if (pageToMount) mountedPages.add(pageToMount);
+  const orderedPages = pageToMount
+    ? [...visitedPages.filter((page) => page !== pageToMount), pageToMount]
+    : visitedPages;
+  const mountedPages = new Set(mobile ? orderedPages.slice(-2) : orderedPages);
 
   useEffect(() => {
     if (!pageToMount) return;
-    setVisitedPages((current) => (current.has(pageToMount) ? current : new Set([...current, pageToMount])));
+    setVisitedPages((current) => {
+      if (current[current.length - 1] === pageToMount) return current;
+      return [...current.filter((page) => page !== pageToMount), pageToMount];
+    });
   }, [pageToMount]);
 
   return (
     <>
       {mountedPages.has("library") && (
-        <div hidden={activePage !== "library"}>
+        <div data-browse-page="library" hidden={activePage !== "library"}>
           <LibraryPage active={activePage === "library"} />
         </div>
       )}
       {mountedPages.has("favorites") && (
-        <div hidden={activePage !== "favorites"}>
+        <div data-browse-page="favorites" hidden={activePage !== "favorites"}>
           <FavoritesPage active={activePage === "favorites"} />
         </div>
       )}
       {mountedPages.has("circles") && (
-        <div hidden={activePage !== "circles"}>
+        <div data-browse-page="circles" hidden={activePage !== "circles"}>
           <CirclesPage active={activePage === "circles"} />
         </div>
       )}
       {mountedPages.has("voice-actors") && (
-        <div hidden={activePage !== "voice-actors"}>
+        <div data-browse-page="voice-actors" hidden={activePage !== "voice-actors"}>
           <CreatorWorksPage kind="voice" active={activePage === "voice-actors"} />
         </div>
       )}

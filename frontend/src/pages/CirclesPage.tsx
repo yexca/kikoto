@@ -147,7 +147,7 @@ export function CirclesPage({ active = true }: { active?: boolean }) {
   }, [active]);
   const route = circleRouteFromPath(path);
   if (route) {
-    return <CircleDetailPage externalId={route.externalId} seriesCode={route.seriesCode} />;
+    return <CircleDetailPage externalId={route.externalId} seriesCode={route.seriesCode} active={active} />;
   }
   return <CircleListPage active={active} />;
 }
@@ -198,6 +198,7 @@ function CircleListPage({ active }: { active: boolean }) {
   const [pageSize, setPageSize] = useState(initialBrowseState.pageSize);
   const [total, setTotal] = useState(0);
   const [reloadToken, setReloadToken] = useState(0);
+  const loadedRequestKey = useRef("");
 
   useEffect(() => {
     const timer = window.setTimeout(() => setRequestQuery(query), 250);
@@ -213,12 +214,16 @@ function CircleListPage({ active }: { active: boolean }) {
   }, [active, filter, page, pageSize, query, storageScope]);
 
   useEffect(() => {
+    if (!active) return;
+    const requestKey = JSON.stringify([page, pageSize, requestQuery, filter, reloadToken]);
+    if (loadedRequestKey.current === requestKey) return;
     const controller = new AbortController();
     setIsLoading(true);
     setLoadError("");
     api
       .listCircles({ page, pageSize, query: requestQuery, filter, signal: controller.signal })
       .then((result) => {
+        loadedRequestKey.current = requestKey;
         setCircles(result.circles);
         setTotal(result.total);
         setHasLoaded(true);
@@ -233,7 +238,7 @@ function CircleListPage({ active }: { active: boolean }) {
         if (!controller.signal.aborted) setIsLoading(false);
       });
     return () => controller.abort();
-  }, [filter, page, pageSize, reloadToken, requestQuery]);
+  }, [active, filter, page, pageSize, reloadToken, requestQuery]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const changeFilter = (value: CircleFilter) => {
@@ -354,7 +359,15 @@ function CircleListPage({ active }: { active: boolean }) {
     </div>
   );
 }
-function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seriesCode?: string | null }) {
+function CircleDetailPage({
+  externalId,
+  seriesCode,
+  active,
+}: {
+  externalId: string;
+  seriesCode?: string | null;
+  active: boolean;
+}) {
   const auth = useAuth();
   const toast = useToast();
   const requireDownloadsManage = usePermissionGate("downloads:manage");
@@ -380,18 +393,23 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const [availabilityFilter, setAvailabilityFilter] = useState<CircleAvailabilityFilter>("all");
   const [workPage, setWorkPage] = useState(1);
   const [workPageSize, setWorkPageSize] = useState<CatalogWorkPageSize>(24);
+  const loadedExternalID = useRef("");
 
   const loadCircleDetail = useCallback(
-    async (showLoading = false) => {
+    async (showLoading = false, signal?: AbortSignal) => {
+      if (!active) return null;
       if (showLoading) {
         setIsLoading(true);
       }
       try {
-        const next = await api.getCircle(externalId);
+        const next = await api.getCircle(externalId, signal);
+        if (signal?.aborted) return null;
+        loadedExternalID.current = externalId;
         setDetail(next);
         setNotFound(false);
         return next;
       } catch (error) {
+        if (signal?.aborted) return null;
         setDetail(null);
         if (error instanceof ApiError && error.status === 404) {
           setNotFound(true);
@@ -405,10 +423,11 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
         }
       }
     },
-    [externalId],
+    [active, externalId],
   );
 
   useEffect(() => {
+    if (!active) return;
     const refreshTrackedWork = (event: Event) => {
       const terminal = (event as CustomEvent<RemoteTrackTerminalDetail>).detail;
       if (
@@ -424,11 +443,14 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     };
     window.addEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshTrackedWork);
     return () => window.removeEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshTrackedWork);
-  }, [detail?.works, loadCircleDetail]);
+  }, [active, detail?.works, loadCircleDetail]);
 
   useEffect(() => {
-    void loadCircleDetail(true);
-  }, [loadCircleDetail]);
+    if (!active || loadedExternalID.current === externalId) return;
+    const controller = new AbortController();
+    void loadCircleDetail(true, controller.signal);
+    return () => controller.abort();
+  }, [active, externalId, loadCircleDetail]);
 
   const circle = detail ?? emptyCircleDetail(externalId);
   const filteredWorks = useMemo(() => {

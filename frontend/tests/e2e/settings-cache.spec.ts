@@ -35,11 +35,13 @@ async function mockCacheSettings(
   onSourceUpdate: (payload: Record<string, unknown>) => void = () => undefined,
   initialCacheEnabled = true,
 ) {
+  const transcodeClearRequests: string[] = [];
   let currentSettings = {
     anonymousAccessEnabled: false,
     localScanDepth: 3,
     cacheEnabled: initialCacheEnabled,
     cacheLimitGb: 20,
+    transcodeCacheLimitGb: 5,
     remoteDownloadLimitGb: 100,
     fetchStagingRetentionDays: 7,
     remoteSaveTemplate: "/data/<source_code>/<code_prefix>_<code_group>/<work_code>",
@@ -210,6 +212,12 @@ async function mockCacheSettings(
           protectedFiles: 1,
           missingReferences: 2,
           emptyDirectories: 1,
+          transcode: {
+            files: 4,
+            bytes: 25165824,
+            limitBytes: 5368709120,
+            scannedAt: "2026-07-14T00:00:00Z",
+          },
           works: [
             {
               groupKey: "1:remote-a:RJ00000001",
@@ -238,15 +246,21 @@ async function mockCacheSettings(
       await route.fulfill({ status: 202, json: { runId: 52, jobId: 53, status: "queued", queued: 4 } });
       return;
     }
+    if (url.pathname === "/api/cache/transcodes" && route.request().method() === "DELETE") {
+      transcodeClearRequests.push(url.pathname);
+      await route.fulfill({ json: { deletedFiles: 4, freedBytes: 25165824 } });
+      return;
+    }
     await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } });
   });
+  return { transcodeClearRequests };
 }
 
 test("cache settings scan managed media and require cleanup confirmation", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const cleanupRequests: unknown[] = [];
   const settingsPayloads: Record<string, unknown>[] = [];
-  await mockCacheSettings(
+  const mocks = await mockCacheSettings(
     page,
     (payload) => {
       cleanupRequests.push(payload);
@@ -260,17 +274,32 @@ test("cache settings scan managed media and require cleanup confirmation", async
   await expect(page.getByText("Managed media cache", { exact: true })).toBeVisible();
   await expect(page.getByTestId("maintenance-content")).toHaveCSS("max-width", "896px");
   await expect(page.getByTestId("cache-configuration-card")).toHaveCSS("max-width", "none");
-  const cacheSections = await page.getByText(/^(Configuration|Managed media cache)$/).allTextContents();
-  expect(cacheSections).toEqual(["Configuration", "Managed media cache"]);
+  const cacheSections = await page
+    .getByText(/^(Configuration|Video transcode cache|Managed media cache)$/)
+    .allTextContents();
+  expect(cacheSections).toEqual(["Configuration", "Video transcode cache", "Managed media cache"]);
   await expect(page.getByText("Save path template", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Per-file download limit")).toHaveValue("100");
   await expect(page.getByLabel("Failed staging retention")).toHaveValue("7");
+  await expect(page.getByLabel("Video transcode cache limit")).toHaveValue("5");
   await page.getByRole("button", { name: "Save configuration" }).click();
   await expect.poll(() => settingsPayloads).toHaveLength(1);
   expect(settingsPayloads[0]).not.toHaveProperty("remoteSaveTemplate");
   expect(settingsPayloads[0]).toEqual(
-    expect.objectContaining({ remoteDownloadLimitGb: 100, fetchStagingRetentionDays: 7 }),
+    expect.objectContaining({
+      transcodeCacheLimitGb: 5,
+      remoteDownloadLimitGb: 100,
+      fetchStagingRetentionDays: 7,
+    }),
   );
+  await expect(page.getByText("24 MB", { exact: true })).toBeVisible();
+  const transcodeCache = page.getByRole("region", { name: "Video transcode cache" });
+  await expect(transcodeCache.getByText("5.0 GB", { exact: true })).toHaveCount(2);
+  await page.getByRole("button", { name: "Clear video transcode cache", exact: true }).click();
+  expect(mocks.transcodeClearRequests).toHaveLength(0);
+  await page.getByRole("button", { name: "Confirm clear (4 segments)", exact: true }).click();
+  await expect.poll(() => mocks.transcodeClearRequests).toEqual(["/api/cache/transcodes"]);
+  await expect(page.getByText("Removed 4 segments and freed 24 MB.", { exact: true })).toBeVisible();
   await expect(page.getByText("150 MB", { exact: true })).toBeVisible();
   await expect(page.getByText("30 MB", { exact: true })).toBeVisible();
   await expect(page.getByText("1 groups · 1 works", { exact: true })).toBeVisible();

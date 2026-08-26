@@ -221,6 +221,9 @@ func TestLoadAppSettingsIsReadOnly(t *testing.T) {
 	if settings.RemoteDownloadLimitGB != defaultRemoteDownloadLimitGB || settings.FetchStagingRetentionDays != defaultFetchStagingRetentionDays {
 		t.Fatalf("transfer settings = %d GB / %d days", settings.RemoteDownloadLimitGB, settings.FetchStagingRetentionDays)
 	}
+	if settings.TranscodeCacheLimitGB != defaultTranscodeCacheLimitGB {
+		t.Fatalf("transcode cache limit = %d GB, want %d GB", settings.TranscodeCacheLimitGB, defaultTranscodeCacheLimitGB)
+	}
 	localSources := 0
 	for _, source := range settings.FileSources {
 		if source.Code == "main_local_library" {
@@ -401,6 +404,39 @@ func TestUpdateSettingsValidatesAndPersistsFetchTransferLimits(t *testing.T) {
 			}
 			if settings.RemoteDownloadLimitGB != 256 || settings.FetchStagingRetentionDays != 14 {
 				t.Fatalf("settings = %d GB / %d days", settings.RemoteDownloadLimitGB, settings.FetchStagingRetentionDays)
+			}
+		})
+	}
+}
+
+func TestUpdateSettingsValidatesAndPersistsTranscodeCacheLimit(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		body       string
+		wantStatus int
+	}{
+		{name: "valid", body: `{"transcodeCacheLimitGb":12}`, wantStatus: http.StatusOK},
+		{name: "zero", body: `{"transcodeCacheLimitGb":0}`, wantStatus: http.StatusBadRequest},
+		{name: "too large", body: `{"transcodeCacheLimitGb":4097}`, wantStatus: http.StatusBadRequest},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := openMigratedTestDB(t)
+			server := NewServer(db, config.Config{CacheRoot: t.TempDir()})
+			request := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(test.body))
+			request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"sources:write"}}))
+			response := httptest.NewRecorder()
+			server.updateSettings(response, request)
+			if response.Code != test.wantStatus {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+			if test.name == "valid" {
+				var settings appSettingsResponse
+				if err := json.Unmarshal(response.Body.Bytes(), &settings); err != nil {
+					t.Fatal(err)
+				}
+				if settings.TranscodeCacheLimitGB != 12 {
+					t.Fatalf("transcode cache limit = %d GB, want 12 GB", settings.TranscodeCacheLimitGB)
+				}
 			}
 		})
 	}
