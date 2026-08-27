@@ -38,6 +38,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { addNativeMediaListeners, stopNativeMedia, supportsNativeMedia, updateNativeMedia } from "@/lib/nativeMedia";
 import { playbackKeyForLocation, remotePlaybackKey } from "@/player/playbackIdentity";
 import { playbackURL, remoteMediaPlaybackURL } from "@/player/mediaPlayback";
+import { isActivePlaybackRequest } from "@/player/playbackRequest";
 import { lyricsChoiceDisplayLabel, type LyricsChoice } from "@/player/lyricsMatching";
 import {
   applyTrackLocation,
@@ -376,6 +377,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [sleepRemainingSeconds, setSleepRemainingSeconds] = useState(0);
   const queueRef = useRef(queue);
   const currentIndexRef = useRef(currentIndex);
+  const isPlayingRef = useRef(isPlaying);
+  const playbackGenerationRef = useRef(0);
+  const currentPlaybackInstanceKeyRef = useRef<string | null>(null);
+  const sourceLoadingRef = useRef(false);
   const restoredMediaItemRef = useRef<string | null>(null);
   const pendingPlaybackStartRef = useRef<PendingPlaybackStart | null>(null);
   const completedPlaybackInstanceRef = useRef<string | null>(null);
@@ -399,14 +404,66 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     seekTo: (_seconds: number) => {},
   });
   const nativeMediaSyncRef = useRef<() => void>(() => {});
+  isPlayingRef.current = isPlaying;
+
+  const updatePlayingState = useCallback((next: boolean | ((current: boolean) => boolean)) => {
+    const resolved = typeof next === "function" ? next(isPlayingRef.current) : next;
+    isPlayingRef.current = resolved;
+    setIsPlaying(resolved);
+  }, []);
+  const invalidatePlaybackRequests = useCallback(() => {
+    playbackGenerationRef.current += 1;
+  }, []);
+
   const currentTrack = queue[currentIndex] ?? null;
   const currentPlaybackKey = trackPlaybackKey(currentTrack);
   const currentPlaybackInstanceKey =
     currentTrack && currentPlaybackKey
-      ? `${currentTrack.queueItemId ?? ""}:${currentPlaybackKey}:${currentTrack.locationId}`
+      ? `${currentTrack.queueItemId ?? ""}:${currentPlaybackKey}:${currentTrack.locationId}:${currentTrack.streamUrl}`
       : null;
   queueRef.current = queue;
   currentIndexRef.current = currentIndex;
+  currentPlaybackInstanceKeyRef.current = currentPlaybackInstanceKey;
+
+  const requestAudioPlay = useCallback(
+    (audio: HTMLAudioElement, playbackKey: string | null) => {
+      const generation = playbackGenerationRef.current + 1;
+      playbackGenerationRef.current = generation;
+      const request = { generation, playbackKey };
+      const handleFailure = () => {
+        if (
+          !isActivePlaybackRequest(
+            request,
+            playbackGenerationRef.current,
+            currentPlaybackInstanceKeyRef.current,
+            isPlayingRef.current,
+          )
+        )
+          return;
+        sourceLoadingRef.current = false;
+        updatePlayingState(false);
+      };
+      let result: Promise<void> | void;
+      try {
+        result = audio.play();
+      } catch {
+        handleFailure();
+        return;
+      }
+      void Promise.resolve(result).then(() => {
+        if (
+          isActivePlaybackRequest(
+            request,
+            playbackGenerationRef.current,
+            currentPlaybackInstanceKeyRef.current,
+            isPlayingRef.current,
+          )
+        )
+          sourceLoadingRef.current = false;
+      }, handleFailure);
+    },
+    [updatePlayingState],
+  );
 
   useEffect(() => {
     discardObsoletePlayerState(obsoletePlayerProgressStorageKey);
@@ -426,6 +483,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         )
           return;
         const currentQueueItemID = current[currentIndexRef.current]?.queueItemId;
+        invalidatePlaybackRequests();
         setQueue(validated);
         setCurrentIndex(
           Math.max(
@@ -492,18 +550,28 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !currentTrack) return;
+    if (!audio) return;
+    invalidatePlaybackRequests();
+    if (!currentTrack) {
+      sourceLoadingRef.current = false;
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+      setCurrentTime(0);
+      setDuration(0);
+      setDurationLocationId(null);
+      return;
+    }
     transcodeRetryRef.current = null;
+    sourceLoadingRef.current = true;
+    audio.pause();
     audio.src = assetURL(playerTrackAudioURL(currentTrack));
     lastPlayerTimeCommitRef.current = null;
     setCurrentTime(0);
     setDuration(0);
     setDurationLocationId(currentTrack.locationId);
     restoredMediaItemRef.current = null;
-    if (isPlaying) {
-      void audio.play().catch(() => setIsPlaying(false));
-    }
-  }, [currentPlaybackInstanceKey, currentTrack?.locationId, currentTrack?.streamUrl]);
+  }, [currentPlaybackInstanceKey, currentTrack?.locationId, currentTrack?.streamUrl, invalidatePlaybackRequests]);
 
   useEffect(() => {
     if (auth.demoMode || !currentTrack || currentTrack.locationType !== "remote_stream") return;
@@ -574,62 +642,71 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const audio = audioRef.current;
     if (!audio || !currentTrack) return;
     if (isPlaying) {
-      void audio.play().catch(() => setIsPlaying(false));
+      requestAudioPlay(audio, currentPlaybackInstanceKey);
     } else {
+      sourceLoadingRef.current = false;
+      invalidatePlaybackRequests();
       audio.pause();
     }
-  }, [isPlaying, currentTrack]);
+  }, [isPlaying, currentTrack, currentPlaybackInstanceKey, invalidatePlaybackRequests, requestAudioPlay]);
 
-  const playQueue = useCallback((tracks: PlayerTrack[], locationId: number, startPositionSeconds?: number) => {
-    if (tracks.length === 0) return;
-    resetTrackLocationFailures(locationFailureStateRef.current);
-    progressSaveRef.current(false, true);
-    const normalizedTracks = tracks.map((track) =>
-      withQueueIdentity(applyLyricsPreferenceOverride(track, lyricsPreferenceOverridesRef.current)),
-    );
-    const nextIndex = Math.max(
-      0,
-      normalizedTracks.findIndex((track) => track.locationId === locationId),
-    );
-    const startTrack = normalizedTracks[nextIndex];
-    pendingPlaybackStartRef.current = startTrack?.queueItemId
-      ? {
-          queueItemId: startTrack.queueItemId,
-          positionSeconds: normalizePlaybackStartPosition(startPositionSeconds),
-        }
-      : null;
-    setQueue(normalizedTracks);
-    setCurrentIndex(nextIndex);
-    setIsPlaying(true);
-  }, []);
+  const playQueue = useCallback(
+    (tracks: PlayerTrack[], locationId: number, startPositionSeconds?: number) => {
+      if (tracks.length === 0) return;
+      invalidatePlaybackRequests();
+      resetTrackLocationFailures(locationFailureStateRef.current);
+      progressSaveRef.current(false, true);
+      const normalizedTracks = tracks.map((track) =>
+        withQueueIdentity(applyLyricsPreferenceOverride(track, lyricsPreferenceOverridesRef.current)),
+      );
+      const nextIndex = Math.max(
+        0,
+        normalizedTracks.findIndex((track) => track.locationId === locationId),
+      );
+      const startTrack = normalizedTracks[nextIndex];
+      pendingPlaybackStartRef.current = startTrack?.queueItemId
+        ? {
+            queueItemId: startTrack.queueItemId,
+            positionSeconds: normalizePlaybackStartPosition(startPositionSeconds),
+          }
+        : null;
+      setQueue(normalizedTracks);
+      setCurrentIndex(nextIndex);
+      updatePlayingState(true);
+    },
+    [invalidatePlaybackRequests, updatePlayingState],
+  );
 
   const selectTrack = (index: number) => {
     if (index < 0 || index >= queue.length) return;
     if (index !== currentIndex) progressSaveRef.current(false, true);
+    if (index !== currentIndex) invalidatePlaybackRequests();
     setCurrentIndex(index);
-    setIsPlaying(true);
+    updatePlayingState(true);
   };
 
   const next = () => {
     if (queue.length === 0) return;
     const nextIndex = currentIndex < queue.length - 1 ? currentIndex + 1 : mode === "loop" ? 0 : currentIndex;
     if (nextIndex !== currentIndex) progressSaveRef.current(false, true);
+    if (nextIndex !== currentIndex) invalidatePlaybackRequests();
     setCurrentIndex(nextIndex);
-    setIsPlaying(true);
+    updatePlayingState(true);
   };
 
   const previous = () => {
     if (queue.length === 0) return;
     const nextIndex = currentIndex > 0 ? currentIndex - 1 : mode === "loop" ? queue.length - 1 : currentIndex;
     if (nextIndex !== currentIndex) progressSaveRef.current(false, true);
+    if (nextIndex !== currentIndex) invalidatePlaybackRequests();
     setCurrentIndex(nextIndex);
-    setIsPlaying(true);
+    updatePlayingState(true);
   };
 
   const seekTo = (seconds: number) => {
     const audio = audioRef.current;
-    if (!audio || !Number.isFinite(seconds)) return;
-    audio.currentTime = Math.max(0, Math.min(seconds, audio.duration || seconds));
+    if (!audio || !Number.isFinite(seconds) || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+    audio.currentTime = Math.max(0, Math.min(seconds, audio.duration));
   };
 
   const seekBy = (seconds: number) => {
@@ -717,7 +794,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       saveProgress(false, true);
-      setIsPlaying(false);
+      updatePlayingState(false);
       setSleepTimer(null);
     };
     checkDeadline();
@@ -735,25 +812,27 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     saveProgress(true, true);
     if (sleepTimer?.waitingForTrackEnd) {
       setSleepTimer(null);
-      setIsPlaying(false);
+      updatePlayingState(false);
       return;
     }
     if (mode === "single" && audio) {
       audio.currentTime = 0;
-      void audio.play();
+      sourceLoadingRef.current = false;
+      updatePlayingState(true);
+      requestAudioPlay(audio, currentPlaybackInstanceKey);
       return;
     }
     if (currentIndex < queue.length - 1) {
       setCurrentIndex((index) => index + 1);
-      setIsPlaying(true);
+      updatePlayingState(true);
       return;
     }
     if (mode === "loop" && queue.length > 0) {
       setCurrentIndex(0);
-      setIsPlaying(true);
+      updatePlayingState(true);
       return;
     }
-    setIsPlaying(false);
+    updatePlayingState(false);
   };
 
   const playNext = useCallback(
@@ -829,7 +908,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   };
 
   const removeQueueItem = (queueItemId: string) => {
-    if (queue[currentIndex]?.queueItemId === queueItemId) progressSaveRef.current(false, true);
+    if (queue[currentIndex]?.queueItemId === queueItemId) {
+      progressSaveRef.current(false, true);
+      invalidatePlaybackRequests();
+    }
     setQueue((items) => {
       const removedIndex = items.findIndex((item) => item.queueItemId === queueItemId);
       if (removedIndex < 0) return items;
@@ -837,7 +919,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       const next = items.filter((item) => item.queueItemId !== queueItemId);
       if (next.length === 0) {
         setCurrentIndex(0);
-        setIsPlaying(false);
+        updatePlayingState(false);
       } else if (removedIndex < currentIndex) {
         setCurrentIndex((index) => Math.max(0, index - 1));
       } else if (removingCurrent) {
@@ -849,14 +931,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const clearQueue = () => {
     progressSaveRef.current(false, true);
+    invalidatePlaybackRequests();
     setQueue([]);
     setCurrentIndex(0);
-    setIsPlaying(false);
+    updatePlayingState(false);
     setSleepTimer(null);
   };
 
   const selectLocation = (locationId: number) => {
     if (currentTrack?.locationId !== locationId) progressSaveRef.current(false, true);
+    if (currentTrack?.locationId !== locationId) invalidatePlaybackRequests();
     if (currentTrack?.queueItemId) {
       pendingPlaybackStartRef.current = {
         queueItemId: currentTrack.queueItemId,
@@ -881,19 +965,24 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       const audio = audioRef.current;
       if (audio) {
         transcodeRetryRef.current = retryKey;
+        playbackGenerationRef.current += 1;
+        sourceLoadingRef.current = true;
+        audio.pause();
         audio.src = assetURL(playerTrackAudioURL(currentTrack, true));
         audio.load();
-        if (isPlaying) void audio.play().catch(() => setIsPlaying(false));
+        if (isPlayingRef.current) requestAudioPlay(audio, currentPlaybackInstanceKey);
         return;
       }
     }
     const result = recordTrackLocationFailure(currentTrack, locationFailureStateRef.current);
     if (result.kind === "ignored") {
-      setIsPlaying(false);
+      sourceLoadingRef.current = false;
+      updatePlayingState(false);
       return;
     }
     if (result.kind === "terminal") {
-      setIsPlaying(false);
+      sourceLoadingRef.current = false;
+      updatePlayingState(false);
       toast.error(`Playback failed: no working source remains for ${currentTrack.title}.`);
       return;
     }
@@ -905,17 +994,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         positionSeconds: normalizePlaybackStartPosition(audioRef.current?.currentTime),
       };
     }
+    playbackGenerationRef.current += 1;
+    sourceLoadingRef.current = true;
     setQueue((items) =>
       items.map((item, index) => (index === currentIndex ? applyTrackLocation(item, nextLocation) : item)),
     );
-    setIsPlaying(true);
+    updatePlayingState(true);
     toast.warning(`Playback source failed. Switched to ${nextLocation.sourceName || nextLocation.locationType}.`);
   };
 
   useEffect(() => {
     nativeControlRef.current = {
-      play: () => setIsPlaying((value) => (currentTrack ? true : value)),
-      pause: () => setIsPlaying(false),
+      play: () => updatePlayingState((value) => (currentTrack ? true : value)),
+      pause: () => updatePlayingState(false),
       previous,
       next,
       seekBackward: () => seekBy(-5),
@@ -1032,8 +1123,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       navigator.mediaSession.metadata = null;
     }
     const handlers: Array<[MediaSessionAction, MediaSessionActionHandler | null]> = [
-      ["play", () => setIsPlaying(true)],
-      ["pause", () => setIsPlaying(false)],
+      ["play", () => updatePlayingState(true)],
+      ["pause", () => updatePlayingState(false)],
       ["previoustrack", previous],
       ["nexttrack", next],
       ["seekbackward", (details) => seekBy(-(details.seekOffset ?? 5))],
@@ -1090,7 +1181,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (event.code === "Space") {
         if (event.repeat) return;
         event.preventDefault();
-        setIsPlaying((value) => !value);
+        updatePlayingState((value) => !value);
         return;
       }
       const offset = event.key === "ArrowLeft" ? -5 : event.key === "ArrowRight" ? 10 : 0;
@@ -1099,7 +1190,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       const audio = audioRef.current;
       if (!audio) return;
       const nextTime = audio.currentTime + offset;
-      audio.currentTime = Math.max(0, Math.min(nextTime, audio.duration || nextTime));
+      seekTo(nextTime);
     };
     window.addEventListener("keydown", handlePlayerShortcut);
     return () => window.removeEventListener("keydown", handlePlayerShortcut);
@@ -1119,8 +1210,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       mode,
       playQueue,
       selectTrack,
-      togglePlay: () => setIsPlaying((value) => (currentTrack ? !value : false)),
-      pause: () => setIsPlaying(false),
+      togglePlay: () => updatePlayingState((value) => (currentTrack ? !value : false)),
+      pause: () => updatePlayingState(false),
       next,
       previous,
       seekBy,
@@ -1197,9 +1288,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           preload="metadata"
           onTimeUpdate={(event) => {
             const now = performance.now();
-            if (shouldCommitPlayerTime(lastPlayerTimeCommitRef.current, now)) {
+            const nextTime = event.currentTarget.currentTime;
+            const jumped = Math.abs(nextTime - currentTime) >= 1;
+            if (shouldCommitPlayerTime(lastPlayerTimeCommitRef.current, now, jumped)) {
               lastPlayerTimeCommitRef.current = now;
-              setCurrentTime(event.currentTarget.currentTime);
+              setCurrentTime(nextTime);
             }
             saveProgress(false);
           }}
@@ -1207,10 +1300,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)
           }
           onPlay={() => {
+            if (!isPlayingRef.current) {
+              audioRef.current?.pause();
+              return;
+            }
+            sourceLoadingRef.current = false;
             completedPlaybackInstanceRef.current = null;
-            setIsPlaying(true);
+            updatePlayingState(true);
           }}
           onPause={() => {
+            if (sourceLoadingRef.current || isPlayingRef.current) return;
             const audio = audioRef.current;
             if (audio) {
               lastPlayerTimeCommitRef.current = performance.now();
@@ -1219,7 +1318,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             if (shouldCheckpointPause(completedPlaybackInstanceRef.current, currentPlaybackInstanceKey)) {
               saveProgress(false, true);
             }
-            setIsPlaying(false);
+            updatePlayingState(false);
           }}
           onSeeked={(event) => {
             lastPlayerTimeCommitRef.current = performance.now();
@@ -2574,6 +2673,7 @@ function SeekBar({
   onSeek: (seconds: number) => void;
 }) {
   const clampedProgress = Math.max(0, Math.min(100, progress));
+  const hasDuration = Number.isFinite(duration) && duration > 0;
   return (
     <div className="relative h-5">
       <div className="absolute left-0 right-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-white/45 shadow-inner dark:bg-white/10">
@@ -2590,9 +2690,10 @@ function SeekBar({
         className="player-scrub absolute inset-0 h-5 w-full cursor-pointer"
         type="range"
         min={0}
-        max={duration || 0}
+        max={hasDuration ? duration : 1}
         step={0.1}
-        value={Math.min(currentTime, duration || currentTime)}
+        value={hasDuration ? Math.min(currentTime, duration) : 0}
+        disabled={!hasDuration}
         onChange={(event) => onSeek(Number(event.currentTarget.value))}
         aria-label="Seek"
       />

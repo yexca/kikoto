@@ -1,6 +1,7 @@
 package com.yexca.kikoto;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
@@ -29,6 +30,9 @@ public class KikotoAssetTransportTest {
     private final AtomicReference<String> authorization = new AtomicReference<>();
     private final AtomicReference<String> mobileHeader = new AtomicReference<>();
     private final AtomicReference<String> range = new AtomicReference<>();
+    private final AtomicReference<String> acceptEncoding = new AtomicReference<>();
+    private final AtomicReference<String> responseContentRange = new AtomicReference<>("bytes 2-4/5");
+    private final AtomicReference<Integer> responseContentLength = new AtomicReference<>(3);
     private final AtomicReference<Throwable> serverFailure = new AtomicReference<>();
 
     @Before
@@ -72,11 +76,14 @@ public class KikotoAssetTransportTest {
         )) {
             assertEquals(206, response.status());
             assertEquals("bytes 2-4/5", header(response.headers(), "Content-Range"));
+            assertEquals("", header(response.headers(), "Content-Length"));
+            assertEquals(5, response.body().available());
             assertEquals(2, response.body().skip(2));
             assertEquals("cde", readBody(response));
         }
 
         assertEquals("bytes=2-", range.get());
+        assertEquals("identity", acceptEncoding.get());
         assertEquals("Bearer synthetic-token", authorization.get());
         assertEquals("1", mobileHeader.get());
         assertEquals(null, serverFailure.get());
@@ -85,12 +92,14 @@ public class KikotoAssetTransportTest {
     @Test
     public void exposesPartialResponseOffsetAsVirtualPrefix() throws Exception {
         try (InputStream input = new KikotoAssetTransport.WebViewRangeInputStream(
-            new ByteArrayInputStream("cde".getBytes(StandardCharsets.UTF_8)),
-            2
+            new ZeroAvailableInputStream("cde".getBytes(StandardCharsets.UTF_8)),
+            2,
+            3,
+            5
         )) {
             assertEquals(5, input.available());
             assertEquals(2, input.skip(2));
-            assertEquals(3, input.available());
+            assertEquals(5, input.available());
             assertEquals("cde", readBody(input));
         }
     }
@@ -99,10 +108,61 @@ public class KikotoAssetTransportTest {
     public void capsAvailableBytesForLargeRangeOffsets() throws Exception {
         try (InputStream input = new KikotoAssetTransport.WebViewRangeInputStream(
             new ByteArrayInputStream(new byte[] { 1 }),
+            Long.MAX_VALUE,
+            1,
             Long.MAX_VALUE
         )) {
             assertEquals(Integer.MAX_VALUE, input.available());
         }
+    }
+
+    @Test
+    public void boundsReadsToTheDeclaredRangeBody() throws Exception {
+        try (InputStream input = new KikotoAssetTransport.WebViewRangeInputStream(
+            new ByteArrayInputStream("cdef".getBytes(StandardCharsets.UTF_8)),
+            2,
+            2,
+            10
+        )) {
+            assertEquals(10, input.available());
+            assertEquals("cd", readBody(input));
+            assertEquals(-1, input.read());
+        }
+    }
+
+    @Test
+    public void rejectsInconsistentPartialResponseLength() {
+        responseContentLength.set(2);
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Range", "bytes=2-");
+
+        assertThrows(
+            IOException.class,
+            () -> KikotoAssetTransport.open(serverUrl + "/api/media/7/stream", "GET", headers)
+        );
+    }
+
+    @Test
+    public void rejectsPartialResponseWithoutCompleteLength() {
+        responseContentRange.set("bytes 2-4/*");
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Range", "bytes=2-");
+
+        assertThrows(
+            IOException.class,
+            () -> KikotoAssetTransport.open(serverUrl + "/api/media/7/stream", "GET", headers)
+        );
+    }
+
+    @Test
+    public void rejectsPartialResponseForAnotherRange() {
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Range", "bytes=1-");
+
+        assertThrows(
+            IOException.class,
+            () -> KikotoAssetTransport.open(serverUrl + "/api/media/7/stream", "GET", headers)
+        );
     }
 
     @Test
@@ -136,6 +196,7 @@ public class KikotoAssetTransportTest {
                 String name = line.substring(0, separator).trim().toLowerCase(Locale.ROOT);
                 String value = line.substring(separator + 1).trim();
                 if ("authorization".equals(name)) authorization.set(value);
+                if ("accept-encoding".equals(name)) acceptEncoding.set(value);
                 if ("x-kikoto-mobile".equals(name)) mobileHeader.set(value);
                 if ("range".equals(name)) range.set(value);
             }
@@ -144,8 +205,8 @@ public class KikotoAssetTransportTest {
                 "HTTP/1.1 206 Partial Content\r\n" +
                 "Content-Type: audio/mpeg\r\n" +
                 "Accept-Ranges: bytes\r\n" +
-                "Content-Range: bytes 2-4/5\r\n" +
-                "Content-Length: " + body.length + "\r\n" +
+                "Content-Range: " + responseContentRange.get() + "\r\n" +
+                "Content-Length: " + responseContentLength.get() + "\r\n" +
                 "Connection: close\r\n\r\n"
             ).getBytes(StandardCharsets.US_ASCII);
             OutputStream output = socket.getOutputStream();
@@ -176,5 +237,16 @@ public class KikotoAssetTransportTest {
             if (count > 0) output.write(buffer, 0, count);
         }
         return new String(output.toByteArray(), StandardCharsets.UTF_8);
+    }
+
+    private static final class ZeroAvailableInputStream extends ByteArrayInputStream {
+        ZeroAvailableInputStream(byte[] data) {
+            super(data);
+        }
+
+        @Override
+        public int available() {
+            return 0;
+        }
     }
 }

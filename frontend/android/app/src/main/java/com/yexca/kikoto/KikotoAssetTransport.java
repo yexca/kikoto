@@ -24,12 +24,18 @@ final class KikotoAssetTransport {
     private static final int READ_TIMEOUT_MS = 30_000;
     private static final int HLS_SEGMENT_READ_TIMEOUT_MS = 120_000;
     private static final int MAX_REDIRECTS = 3;
+    private static final long UNKNOWN_LENGTH = -1L;
     private static final Pattern CONTENT_RANGE_PATTERN = Pattern.compile(
         "^bytes\\s+(\\d+)-(\\d+)/(\\d+|\\*)$",
         Pattern.CASE_INSENSITIVE
     );
+    private static final Pattern REQUESTED_RANGE_START_PATTERN = Pattern.compile(
+        "^bytes\\s*=\\s*(\\d+)-.*$",
+        Pattern.CASE_INSENSITIVE
+    );
     private static final AtomicReference<KikotoAssetRequestPolicy> POLICY = new AtomicReference<>();
     private static final Set<String> BLOCKED_REQUEST_HEADERS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+        "accept-encoding",
         "authorization",
         "connection",
         "content-length",
@@ -45,6 +51,7 @@ final class KikotoAssetTransport {
     )));
     private static final Set<String> BLOCKED_RESPONSE_HEADERS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
         "connection",
+        "content-length",
         "keep-alive",
         "proxy-authenticate",
         "set-cookie",
@@ -97,7 +104,7 @@ final class KikotoAssetTransport {
                     current = next;
                     continue;
                 }
-                return response(connection, requestMethod, status);
+                return response(connection, requestMethod, status, requestHeaders);
             } catch (IOException | RuntimeException error) {
                 connection.disconnect();
                 throw error;
@@ -128,13 +135,21 @@ final class KikotoAssetTransport {
                 connection.setRequestProperty(name, value);
             }
         }
+        // Media ranges must describe the bytes exposed by the response stream.
+        // Do not let transparent HTTP compression change that byte coordinate.
+        connection.setRequestProperty("Accept-Encoding", "identity");
         connection.setRequestProperty("X-Kikoto-Mobile", "1");
         String authorization = policy.authorizationHeader();
         if (!authorization.isEmpty()) connection.setRequestProperty("Authorization", authorization);
         return connection;
     }
 
-    private static Response response(HttpURLConnection connection, String method, int status) throws IOException {
+    private static Response response(
+        HttpURLConnection connection,
+        String method,
+        int status,
+        Map<String, String> requestHeaders
+    ) throws IOException {
         Map<String, String> headers = responseHeaders(connection);
         String reason = "HTTP " + status;
         if ("HEAD".equals(method) || status == HttpURLConnection.HTTP_NO_CONTENT || status == HttpURLConnection.HTTP_NOT_MODIFIED) {
@@ -146,14 +161,43 @@ final class KikotoAssetTransport {
             connection.disconnect();
             return new Response(status, reason, headers, new ByteArrayInputStream(new byte[0]));
         }
-        long virtualRangePrefix = status == HttpURLConnection.HTTP_PARTIAL ? contentRangeStart(headers) : 0;
-        InputStream responseBody = new WebViewRangeInputStream(input, virtualRangePrefix);
+        ContentRange contentRange = status == HttpURLConnection.HTTP_PARTIAL ? parseContentRange(headers) : null;
+        if (status == HttpURLConnection.HTTP_PARTIAL && contentRange == null) {
+            throw new IOException("Mobile asset response has an invalid Content-Range.");
+        }
+        Long requestedRangeStart = requestedRangeStart(requestHeaders);
+        if (contentRange != null && requestedRangeStart != null && contentRange.start != requestedRangeStart) {
+            throw new IOException("Mobile asset response does not match the requested range.");
+        }
+        long declaredLength = connection.getContentLengthLong();
+        long bodyLength = declaredLength;
+        long logicalLength = declaredLength;
+        long virtualRangePrefix = 0;
+        if (contentRange != null) {
+            bodyLength = contentRange.length();
+            if (declaredLength >= 0 && declaredLength != bodyLength) {
+                throw new IOException("Mobile asset response has inconsistent range length.");
+            }
+            virtualRangePrefix = contentRange.start;
+            if (contentRange.total < 0) {
+                throw new IOException("Mobile asset response has an unknown range length.");
+            }
+            logicalLength = contentRange.total;
+        }
+        InputStream responseBody = new WebViewRangeInputStream(
+            input,
+            virtualRangePrefix,
+            bodyLength,
+            logicalLength
+        );
         return new Response(status, reason, headers, new DisconnectingInputStream(responseBody, connection));
     }
 
     private static Map<String, String> responseHeaders(HttpURLConnection connection) {
         Map<String, String> result = new LinkedHashMap<>();
-        for (Map.Entry<String, List<String>> entry : connection.getHeaderFields().entrySet()) {
+        Map<String, List<String>> fields = connection.getHeaderFields();
+        if (fields == null) return Collections.unmodifiableMap(result);
+        for (Map.Entry<String, List<String>> entry : fields.entrySet()) {
             String name = entry.getKey();
             List<String> values = entry.getValue();
             if (
@@ -170,24 +214,45 @@ final class KikotoAssetTransport {
     }
 
     static long contentRangeStart(Map<String, String> headers) {
-        if (headers == null) return 0;
-        for (Map.Entry<String, String> entry : headers.entrySet()) {
-            if (entry.getKey() == null || entry.getValue() == null || !"content-range".equalsIgnoreCase(entry.getKey())) {
-                continue;
-            }
-            Matcher match = CONTENT_RANGE_PATTERN.matcher(entry.getValue().trim());
-            if (!match.matches()) return 0;
-            try {
-                long start = Long.parseLong(match.group(1));
-                long end = Long.parseLong(match.group(2));
-                if (start > end) return 0;
-                if (!"*".equals(match.group(3)) && end >= Long.parseLong(match.group(3))) return 0;
-                return start;
-            } catch (NumberFormatException ignored) {
-                return 0;
-            }
+        ContentRange range = parseContentRange(headers);
+        return range == null ? 0 : range.start;
+    }
+
+    private static ContentRange parseContentRange(Map<String, String> headers) {
+        String value = headerValue(headers, "content-range");
+        if (value == null) return null;
+        Matcher match = CONTENT_RANGE_PATTERN.matcher(value.trim());
+        if (!match.matches()) return null;
+        try {
+            long start = Long.parseLong(match.group(1));
+            long end = Long.parseLong(match.group(2));
+            if (start > end || end - start == Long.MAX_VALUE) return null;
+            long total = "*".equals(match.group(3)) ? UNKNOWN_LENGTH : Long.parseLong(match.group(3));
+            if (total == 0 || (total >= 0 && end >= total)) return null;
+            return new ContentRange(start, end, total);
+        } catch (NumberFormatException ignored) {
+            return null;
         }
-        return 0;
+    }
+
+    private static String headerValue(Map<String, String> headers, String name) {
+        if (headers == null) return null;
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            if (entry.getKey() != null && name.equalsIgnoreCase(entry.getKey())) return entry.getValue();
+        }
+        return null;
+    }
+
+    private static Long requestedRangeStart(Map<String, String> headers) {
+        String value = headerValue(headers, "range");
+        if (value == null) return null;
+        Matcher match = REQUESTED_RANGE_START_PATTERN.matcher(value.trim());
+        if (!match.matches()) return null;
+        try {
+            return Long.parseLong(match.group(1));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private static String joinHeaderValues(List<String> values) {
@@ -243,19 +308,76 @@ final class KikotoAssetTransport {
         }
     }
 
+    private static final class ContentRange {
+        private final long start;
+        private final long end;
+        private final long total;
+
+        ContentRange(long start, long end, long total) {
+            this.start = start;
+            this.end = end;
+            this.total = total;
+        }
+
+        long length() {
+            return end - start + 1;
+        }
+    }
+
     static final class WebViewRangeInputStream extends FilterInputStream {
         private long virtualPrefixRemaining;
+        private long bodyRemaining;
+        private final long logicalLength;
 
-        WebViewRangeInputStream(InputStream input, long virtualPrefixLength) {
+        WebViewRangeInputStream(
+            InputStream input,
+            long virtualPrefixLength,
+            long bodyLength,
+            long logicalLength
+        ) {
             super(input);
             this.virtualPrefixRemaining = Math.max(0, virtualPrefixLength);
+            this.bodyRemaining = bodyLength < 0 ? UNKNOWN_LENGTH : bodyLength;
+            this.logicalLength = logicalLength < 0 ? UNKNOWN_LENGTH : logicalLength;
         }
 
         @Override
         public int available() throws IOException {
-            int upstreamAvailable = super.available();
-            if (virtualPrefixRemaining >= Integer.MAX_VALUE - upstreamAvailable) return Integer.MAX_VALUE;
-            return (int) virtualPrefixRemaining + upstreamAvailable;
+            // Chromium's Android stream loader uses available() as the logical
+            // resource size while it verifies a requested Range. A regular
+            // network InputStream only reports immediately readable bytes, so
+            // use the HTTP-declared size whenever it is known.
+            if (logicalLength >= 0) return asAvailable(logicalLength);
+            // Returning the underlying network stream's value would make
+            // Chromium treat the currently buffered bytes as the file size.
+            return 0;
+        }
+
+        @Override
+        public int read() throws IOException {
+            if (bodyRemaining == 0) return -1;
+            int value = super.read();
+            if (value < 0) {
+                bodyRemaining = 0;
+                return -1;
+            }
+            decrementBody(1);
+            return value;
+        }
+
+        @Override
+        public int read(byte[] buffer, int offset, int length) throws IOException {
+            if (length == 0) return 0;
+            if (bodyRemaining == 0) return -1;
+            int requested = length;
+            if (bodyRemaining > 0) requested = (int) Math.min((long) length, bodyRemaining);
+            int count = super.read(buffer, offset, requested);
+            if (count < 0) {
+                bodyRemaining = 0;
+                return -1;
+            }
+            decrementBody(count);
+            return count;
         }
 
         @Override
@@ -267,7 +389,25 @@ final class KikotoAssetTransport {
             long virtualSkipped = Math.min(count, virtualPrefixRemaining);
             virtualPrefixRemaining -= virtualSkipped;
             if (virtualSkipped == count) return virtualSkipped;
-            return virtualSkipped + super.skip(count - virtualSkipped);
+            long remaining = count - virtualSkipped;
+            if (bodyRemaining == 0) return virtualSkipped;
+            if (bodyRemaining > 0) remaining = Math.min(remaining, bodyRemaining);
+            long skipped = super.skip(remaining);
+            if (skipped == 0 && remaining > 0) {
+                int value = super.read();
+                if (value >= 0) skipped = 1;
+                else bodyRemaining = 0;
+            }
+            decrementBody(skipped);
+            return virtualSkipped + skipped;
+        }
+
+        private void decrementBody(long count) {
+            if (bodyRemaining > 0) bodyRemaining = Math.max(0, bodyRemaining - count);
+        }
+
+        private static int asAvailable(long length) {
+            return length >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) length;
         }
     }
 
