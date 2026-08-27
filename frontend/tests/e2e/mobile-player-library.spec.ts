@@ -1430,7 +1430,25 @@ test("new detail navigation starts at the top, preserves user scroll while media
   await page.evaluate(() => window.scrollTo(0, 300));
   await page.waitForTimeout(650);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(50);
+
+  const firstListFrame = page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        const startedAt = performance.now();
+        let firstListY: number | null = null;
+        const sample = () => {
+          if (window.location.pathname === "/" && firstListY === null) firstListY = window.scrollY;
+          if (firstListY !== null || performance.now() - startedAt >= 1500) {
+            resolve(firstListY ?? window.scrollY);
+            return;
+          }
+          requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+      }),
+  );
   await page.getByRole("button", { name: "Back to library" }).click();
+  expect(await firstListFrame).toBeGreaterThan(savedScroll - 80);
   await expect(page).toHaveURL(/^http:\/\/[^/]+\/(?:\?.*)?$/);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(savedScroll - 80);
 });
