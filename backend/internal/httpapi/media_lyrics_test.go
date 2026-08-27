@@ -165,6 +165,104 @@ func TestEnsureLocalMediaIndexedIndexesRequestedEditionDespiteSiblingMedia(t *te
 	}
 }
 
+func TestGetWorkMediaIndexesLocallyPresentEditionOnlyOnce(t *testing.T) {
+	dataRoot := t.TempDir()
+	originRoot := filepath.Join(dataRoot, "RJ00000017")
+	if err := os.MkdirAll(originRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	translationRoot := filepath.Join(dataRoot, "RJ00000018")
+	if err := os.MkdirAll(translationRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(translationRoot, "first.mp3"), []byte("first audio"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES
+			(111, 'RJ00000017', 'Origin work'),
+			(112, 'RJ00000018', 'Local translation');
+		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (111, 111, 'RJ00000017');
+		INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, metadata_language, is_canonical) VALUES
+			(111, 111, 'RJ00000017', 'RJ00000017', 'JPN', 1),
+			(112, 111, 'RJ00000018', 'RJ00000017', 'ENG', 0);
+		INSERT INTO file_source (id, code, display_name, source_type) VALUES (113, 'local-edition', 'Local edition', 'local_folder');
+		INSERT INTO work_source_presence (work_id, file_source_id, presence_type, source_url, availability, raw_json) VALUES
+			(111, 113, 'local', 'RJ00000017', 'available', '{"file_tree_scanned":true}'),
+			(112, 113, 'local', 'RJ00000018', 'available', '{"file_tree_scanned":false}');
+	`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{DataRoot: dataRoot})
+	requestMedia := func() *httptest.ResponseRecorder {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodGet, "/api/works/111/media", nil)
+		request.SetPathValue("id", "111")
+		response := httptest.NewRecorder()
+		server.getWorkMedia(response, request)
+		return response
+	}
+
+	response := requestMedia()
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"mediaWorkId":112`) || !strings.Contains(response.Body.String(), "first.mp3") {
+		t.Fatalf("initial media response status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if err := os.WriteFile(filepath.Join(translationRoot, "second.mp3"), []byte("second audio"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	response = requestMedia()
+	if response.Code != http.StatusOK || strings.Contains(response.Body.String(), "second.mp3") {
+		t.Fatalf("indexed media was refreshed automatically: status = %d, body = %s", response.Code, response.Body.String())
+	}
+
+	var availableLocations int
+	if err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM media_file_location AS location
+		INNER JOIN media_item AS item ON item.id = location.media_item_id
+		WHERE item.work_id = 112 AND location.location_type = 'local' AND location.availability = 'available'
+	`).Scan(&availableLocations); err != nil {
+		t.Fatal(err)
+	}
+	if availableLocations != 1 {
+		t.Fatalf("available locations after repeated open = %d, want 1", availableLocations)
+	}
+}
+
+func TestWorkDetailEditionCoverFallsBackToCanonicalAsset(t *testing.T) {
+	cacheRoot := t.TempDir()
+	coverFile := coverAssetRelativePath("RJ00000019", ".jpg")
+	coverPath := filepath.Join(cacheRoot, "cover", filepath.FromSlash(coverFile))
+	if err := os.MkdirAll(filepath.Dir(coverPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(coverPath, []byte("canonical cover"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES
+			(121, 'RJ00000019', 'Origin work'),
+			(122, 'RJ00000020', 'Local translation');
+		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (121, 121, 'RJ00000019');
+		INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, metadata_language, is_canonical) VALUES
+			(121, 121, 'RJ00000019', 'RJ00000019', 'JPN', 1),
+			(122, 121, 'RJ00000020', 'RJ00000019', 'ENG', 0);
+	`); err != nil {
+		t.Fatal(err)
+	}
+	detail, err := NewServer(db, config.Config{CacheRoot: cacheRoot}).loadWorkDetailBase(context.Background(), 0, 122)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.CoverURL == "" || !strings.Contains(detail.CoverURL, coverFile) {
+		t.Fatalf("edition cover URL = %q, want canonical asset %q", detail.CoverURL, coverFile)
+	}
+}
+
 func TestLoadWorkTranslationsPromotesMaterializedEditionMediaState(t *testing.T) {
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`

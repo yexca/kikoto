@@ -154,10 +154,11 @@ describe("mediaTreeModel", () => {
     } as Parameters<typeof toPreferredPlayerTrack>[1];
     const track = flattenTracks(buildTree([item], null, work.primaryCode))[0];
 
-    expect(toPreferredPlayerTrack(track, work)).toMatchObject({
+    expect(toPreferredPlayerTrack(track, work, "/api/assets/covers/origin.jpg")).toMatchObject({
       locationId: 21,
       locationType: "local",
       streamUrl: "/api/media/21/stream",
+      coverUrl: "/api/assets/covers/origin.jpg",
     });
   });
 

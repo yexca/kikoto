@@ -97,6 +97,7 @@ type MockApplicationFixture = {
   permissions?: string[];
   onLyricsPreference?: (method: "PUT" | "DELETE", audioMediaItemId: number, lyricsMediaItemId: number | null) => void;
   beforeWorksResponse?: () => Promise<void>;
+  beforeWorkDetailResponse?: (workId: number) => Promise<void>;
   detailTranslations?: WorkTranslation[];
   detailMetadataPresentation?: WorkMetadataPresentation;
   detailMetadataSync?: WorkMetadataSyncStatus;
@@ -430,6 +431,7 @@ async function mockApplication(
     const detailMatch = url.pathname.match(/^\/api\/works\/(\d+)$/);
     if (detailMatch) {
       const id = Number(detailMatch[1]);
+      await fixture.beforeWorkDetailResponse?.(id);
       if (id === 1 && fixture.metadataSyncControl) fixture.metadataSyncControl.detailRequests += 1;
       const fixtureWork = fixture.work ?? work;
       const detailWork =
@@ -3048,6 +3050,73 @@ test("local work detail lists Origin first and expands from local to all edition
       .getByRole("menu", { name: "Simplified Chinese DLsite codes", exact: true })
       .getByRole("menuitemradio", { name: /RJ00000002 Official Remote only/ }),
   ).toBeDisabled();
+});
+
+test("local work detail stays loading while an automatically selected local edition is opening", async ({ page }) => {
+  let releaseEdition = () => undefined;
+  let reportEditionRequest = () => undefined;
+  const editionGate = new Promise<void>((resolve) => {
+    releaseEdition = resolve;
+  });
+  const editionRequested = new Promise<void>((resolve) => {
+    reportEditionRequest = resolve;
+  });
+  const detailTranslations: WorkTranslation[] = [
+    {
+      workId: 1,
+      primaryCode: "RJ00000000",
+      title: "Origin",
+      metadataLanguage: "JPN",
+      editionLabel: "Japanese",
+      origin: true,
+      official: false,
+      translationKind: "origin",
+      current: true,
+      hasMedia: false,
+      mediaState: "metadata_only",
+      localAvailable: false,
+    },
+    {
+      workId: 2,
+      primaryCode: "RJ00000001",
+      title: "English local",
+      metadataLanguage: "ENG",
+      editionLabel: "English",
+      origin: false,
+      official: true,
+      translationKind: "official",
+      current: false,
+      hasMedia: false,
+      mediaState: "present_unindexed",
+      localAvailable: true,
+    },
+  ];
+  await mockApplication(
+    page,
+    undefined,
+    false,
+    1,
+    0,
+    [mediaFixture(201, "translated.mp3", "RJ00000001/translated.mp3", "audio")],
+    undefined,
+    {
+      detailTranslations,
+      beforeWorkDetailResponse: async (workId) => {
+        if (workId !== 2) return;
+        reportEditionRequest();
+        await editionGate;
+      },
+    },
+  );
+  await page.goto("/");
+  await page.getByText(work.title, { exact: true }).click();
+  await editionRequested;
+
+  await expect(page.getByTestId("directory-skeleton")).toBeVisible();
+  await expect(page.getByText("No local files detected.", { exact: true })).toHaveCount(0);
+
+  releaseEdition();
+  await expect(page.getByText("translated.mp3", { exact: true })).toBeVisible();
 });
 
 test("mobile work detail orders Info sections and keeps work-code utilities together", async ({ page }) => {

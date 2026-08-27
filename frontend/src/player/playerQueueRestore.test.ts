@@ -61,10 +61,24 @@ describe("revalidatePersistedQueue", () => {
       },
     ] satisfies MediaItem[];
 
-    const result = await revalidatePersistedQueue([persistedTrack], async () => mediaItems);
+    const result = await revalidatePersistedQueue(
+      [persistedTrack],
+      async () => mediaItems,
+      async () => ({
+        primaryCode: "RJ00000000",
+        title: "Refreshed work",
+        coverUrl: "/api/assets/covers/RJ/000/RJ00000000.jpg",
+        circle: "Refreshed circle",
+      }),
+    );
     expect(result).toHaveLength(1);
     expect(result[0].locationId).toBe(101);
     expect(result[0].streamUrl).toBe("/api/media/101/stream");
+    expect(result[0]).toMatchObject({
+      workTitle: "Refreshed work",
+      coverUrl: "/api/assets/covers/RJ/000/RJ00000000.jpg",
+      circle: "Refreshed circle",
+    });
   });
 
   it("proxies a tracked remote media location after queue restoration", async () => {
