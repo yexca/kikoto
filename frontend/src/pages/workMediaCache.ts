@@ -27,6 +27,7 @@ export function getCachedWorkMedia(workId: number, principalID: ClientPrincipalI
 export function setCachedWorkMedia(workId: number, principalID: ClientPrincipalID, mediaItems: MediaItem[]) {
   const key = workMediaCacheKey(workId, principalID);
   workMediaCache.delete(key);
+  if (mediaItems.length === 0) return;
   workMediaCache.set(key, { mediaItems, itemCount: mediaItems.length, accessedAt: Date.now() });
   pruneWorkMediaCache();
 }

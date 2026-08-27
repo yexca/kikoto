@@ -387,6 +387,43 @@ func TestDLsiteMetadataSyncQueuesIndependentRuns(t *testing.T) {
 	}
 }
 
+func TestLocalLibraryScanPreservesCompletedIndexForUnchangedFolder(t *testing.T) {
+	dataRoot := t.TempDir()
+	root := "RJ00000015 Empty indexed work"
+	if err := os.MkdirAll(filepath.Join(dataRoot, root), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(openMigratedTestDB(t), config.Config{DataRoot: dataRoot, LocalScanDepth: 2})
+	executeLocalScanForTest(t, server)
+
+	var workID int64
+	if err := server.db.QueryRow("SELECT id FROM work WHERE primary_code = 'RJ00000015'").Scan(&workID); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.ensureLocalMediaIndexed(context.Background(), workID); err != nil {
+		t.Fatal(err)
+	}
+	executeLocalScanForTest(t, server)
+
+	var scanned int
+	if err := server.db.QueryRow(`
+		SELECT COALESCE(json_extract(raw_json, '$.file_tree_scanned'), 0)
+		FROM work_source_presence
+		WHERE work_id = ? AND presence_type = 'local'
+	`, workID).Scan(&scanned); err != nil {
+		t.Fatal(err)
+	}
+	if scanned != 1 {
+		t.Fatalf("file_tree_scanned after unchanged library scan = %d, want 1", scanned)
+	}
+	if err := os.RemoveAll(filepath.Join(dataRoot, root)); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.ensureLocalMediaIndexed(context.Background(), workID); err != nil {
+		t.Fatalf("completed empty index was refreshed: %v", err)
+	}
+}
+
 func TestLocalLibraryScanInvalidatesMovedFolderLocationsAndReindexesLazily(t *testing.T) {
 	tests := []struct {
 		name                 string

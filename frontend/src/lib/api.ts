@@ -2117,7 +2117,7 @@ export const api = {
   getWorkSummary: (id: number, signal?: AbortSignal) =>
     getJSON<WorkDetail>(`/api/works/${id}?includeMedia=false`, signal),
   getWorkMedia: (id: number, signal?: AbortSignal) =>
-    getJSON<{ workId: number; mediaItems: MediaItem[] }>(`/api/works/${id}/media`, signal),
+    getJSON<{ workId: number; mediaWorkId: number; mediaItems: MediaItem[] }>(`/api/works/${id}/media`, signal),
   refreshWorkLocalFiles: (id: number, fileSourceId?: number | null) =>
     postJSONBody<LocalMediaRefreshResult>(`/api/works/${id}/local-files/refresh`, { fileSourceId: fileSourceId ?? 0 }),
   getWorkManualOverrides: (id: number) => getJSON<WorkManualOverrides>(`/api/works/${id}/manual-overrides`),

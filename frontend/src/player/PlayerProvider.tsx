@@ -416,25 +416,35 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const restored = restoredQueue.queue;
     if (restored.length === 0) return;
     let cancelled = false;
-    void revalidatePersistedQueue(restored, async (workID) => (await api.getWorkMedia(workID)).mediaItems).then(
-      (validated) => {
-        if (cancelled) return;
-        const current = queueRef.current;
-        if (
-          current.length !== restored.length ||
-          current.some((track, index) => track.queueItemId !== restored[index]?.queueItemId)
-        )
-          return;
-        const currentQueueItemID = current[currentIndexRef.current]?.queueItemId;
-        setQueue(validated);
-        setCurrentIndex(
-          Math.max(
-            0,
-            validated.findIndex((track) => track.queueItemId === currentQueueItemID),
-          ),
-        );
+    void revalidatePersistedQueue(
+      restored,
+      async (workID) => (await api.getWorkMedia(workID)).mediaItems,
+      async (workID) => {
+        const work = await api.getWorkSummary(workID);
+        return {
+          primaryCode: work.primaryCode,
+          title: work.title,
+          coverUrl: work.coverUrl,
+          circle: work.circle,
+        };
       },
-    );
+    ).then((validated) => {
+      if (cancelled) return;
+      const current = queueRef.current;
+      if (
+        current.length !== restored.length ||
+        current.some((track, index) => track.queueItemId !== restored[index]?.queueItemId)
+      )
+        return;
+      const currentQueueItemID = current[currentIndexRef.current]?.queueItemId;
+      setQueue(validated);
+      setCurrentIndex(
+        Math.max(
+          0,
+          validated.findIndex((track) => track.queueItemId === currentQueueItemID),
+        ),
+      );
+    });
     return () => {
       cancelled = true;
     };

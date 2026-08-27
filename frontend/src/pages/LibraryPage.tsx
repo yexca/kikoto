@@ -5664,6 +5664,10 @@ function PersistedWorkDetailController({
   const [favoriteLists, setFavoriteLists] = useState<FavoriteList[]>([]);
   const [activeEdition, setActiveEdition] = useState<WorkDetail | null>(null);
   const [activeEditionCode, setActiveEditionCode] = useState("");
+  const [editionLoadingCode, setEditionLoadingCode] = useState("");
+  const [editionError, setEditionError] = useState("");
+  const [editionErrorCode, setEditionErrorCode] = useState("");
+  const editionRequestSeq = useRef(0);
   const [selectedMetadataVariantKey, setSelectedMetadataVariantKey] = useState("");
   const [isResuming, setIsResuming] = useState(false);
   const [reforkTarget, setReforkTarget] = useState<ReforkTarget | null>(null);
@@ -5672,6 +5676,7 @@ function PersistedWorkDetailController({
   const [mobileDetailTab, setMobileDetailTab] = useState<"info" | "directory">("directory");
   const isCompactDetailLayout = useCompactDetailLayout();
   const localDirectoryWork = activeEdition ?? work;
+  const playbackCoverUrl = work?.coverUrl || workPreview?.coverUrl || "";
   const localRoot = useMemo(() => {
     const sourceID = selectedSource?.fileSourceId;
     if (!localDirectoryWork || !sourceID) return null;
@@ -5687,8 +5692,8 @@ function PersistedWorkDetailController({
   }, [localDirectoryWork, selectedSource?.fileSourceId]);
   const { tree, isDirectoryLoading } = useMediaTree(
     persistedMediaTreeInput({
-      mediaLoading,
-      localDirectoryWork,
+      mediaLoading: mediaLoading || editionLoadingCode !== "",
+      localDirectoryWork: editionLoadingCode ? null : localDirectoryWork,
       work,
       selectedTrackedForked,
       selectedTrackedSourceID,
@@ -5802,7 +5807,7 @@ function PersistedWorkDetailController({
     selectedRemoteDetail,
     selectedRemoteTreeError,
     selectedRemoteTreeLoading,
-    mediaError,
+    mediaError: mediaError || editionError,
     isDirectoryLoading,
   });
 
@@ -5819,8 +5824,12 @@ function PersistedWorkDetailController({
   };
 
   useEffect(() => {
+    editionRequestSeq.current += 1;
     setActiveEdition(null);
     setActiveEditionCode("");
+    setEditionLoadingCode("");
+    setEditionError("");
+    setEditionErrorCode("");
     setSelectedMetadataVariantKey("");
   }, [work?.id]);
 
@@ -5874,7 +5883,7 @@ function PersistedWorkDetailController({
     if (!localDirectoryWork || tracks.length === 0) return;
     onPlay();
     player.playQueue(
-      tracks.map((track) => toPlayerTrack(track, localDirectoryWork)),
+      tracks.map((track) => toPlayerTrack(track, localDirectoryWork, playbackCoverUrl)),
       locationId,
     );
   };
@@ -5888,7 +5897,7 @@ function PersistedWorkDetailController({
         localDirectoryWork,
         playbackTree,
       );
-      const resumeQueue = buildWorkResumeQueue(flattenTracks(resumeTree), resumeWork, playbackCursor);
+      const resumeQueue = buildWorkResumeQueue(flattenTracks(resumeTree), resumeWork, playbackCursor, playbackCoverUrl);
       if (!resumeQueue) throw new Error("The saved track or source is no longer available.");
       if (resumeWork.id !== localDirectoryWork?.id) {
         setActiveEdition(resumeWork);
@@ -5915,7 +5924,7 @@ function PersistedWorkDetailController({
     const queuedTrack = selectedRemoteDetail
       ? toRemotePreviewPlayerTrack(track, selectedRemoteDetail, flattenTreeFiles(tree))
       : localDirectoryWork
-        ? toPlayerTrack(track, localDirectoryWork)
+        ? toPlayerTrack(track, localDirectoryWork, playbackCoverUrl)
         : null;
     if (!queuedTrack) return;
     if (next) player.playNext(queuedTrack);
@@ -6160,15 +6169,31 @@ function PersistedWorkDetailController({
 
   const selectEdition = async (translation: WorkDetail["translations"][number]) => {
     if (!translation.workId || !work) return;
-    setActiveEditionCode(translation.primaryCode);
+    const requestSeq = ++editionRequestSeq.current;
+    setEditionError("");
+    setEditionErrorCode("");
     if (translation.workId === work.id) {
+      setEditionLoadingCode("");
       setActiveEdition(null);
+      setActiveEditionCode(translation.primaryCode);
       setActiveSourceKey("local");
       return;
     }
-    const detail = await api.getWork(translation.workId);
-    setActiveEdition(detail);
-    setActiveSourceKey("local");
+    setEditionLoadingCode(translation.primaryCode);
+    try {
+      const detail = await api.getWork(translation.workId);
+      if (requestSeq !== editionRequestSeq.current) return;
+      setCachedWorkMedia(detail.id, principalID, detail.mediaItems);
+      setActiveEdition(detail);
+      setActiveEditionCode(detail.primaryCode);
+      setActiveSourceKey("local");
+    } catch (error) {
+      if (requestSeq !== editionRequestSeq.current) return;
+      setEditionError(directoryLoadErrorMessage(error));
+      setEditionErrorCode(translation.primaryCode);
+    } finally {
+      if (requestSeq === editionRequestSeq.current) setEditionLoadingCode("");
+    }
   };
 
   const selectDisplayedEdition = async (translation: WorkDetail["translations"][number]) => {
@@ -6323,7 +6348,11 @@ function PersistedWorkDetailController({
           void refreshAvailability();
           selectSource(remoteSourceTabKey(selectedRemoteSource.source.id));
         } else if (work) {
-          void onWorkReload(work.id, true);
+          const failedEdition = work.translations.find(
+            (translation) => translation.primaryCode.toUpperCase() === editionErrorCode.toUpperCase(),
+          );
+          if (failedEdition) void selectEdition(failedEdition);
+          else void onWorkReload(work.id, true);
         }
       }}
       onSelectRemote={(remote) => changeSourceKey(remoteSourceTabKey(remote.source.id))}

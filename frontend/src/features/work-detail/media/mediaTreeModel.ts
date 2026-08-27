@@ -442,7 +442,7 @@ export function formatTrackDuration(value: number | null) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
-export function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
+export function toPlayerTrack(track: TreeTrack, work: WorkDetail, fallbackCoverUrl = ""): PlayerTrack {
   const lyricsChoices = track.lyricsChoices ?? findLyricsMatches(track.sourcePath || track.title, work.mediaItems);
   const audioItem = work.mediaItems.find((item) => item.id === track.mediaItemId);
   const automaticLyrics = lyricsChoices[0] ?? null;
@@ -457,7 +457,7 @@ export function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
     workId: work.id,
     workCode: work.primaryCode,
     workTitle: work.title,
-    coverUrl: work.coverUrl,
+    coverUrl: work.coverUrl || fallbackCoverUrl,
     circle: work.circle,
     progress: track.progress,
     progressRecordable: true,
@@ -470,8 +470,8 @@ export function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
   };
 }
 
-export function toPreferredPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
-  const playerTrack = toPlayerTrack(track, work);
+export function toPreferredPlayerTrack(track: TreeTrack, work: WorkDetail, fallbackCoverUrl = ""): PlayerTrack {
+  const playerTrack = toPlayerTrack(track, work, fallbackCoverUrl);
   const preferredLocation = preferredTrackLocation(playerTrack);
   return preferredLocation ? applyTrackLocation(playerTrack, preferredLocation) : playerTrack;
 }
@@ -486,6 +486,7 @@ export function buildWorkResumeQueue(
   tracks: TreeTrack[],
   work: WorkDetail,
   cursor: WorkProgressSummary | null,
+  fallbackCoverUrl = "",
 ): WorkResumeQueue | null {
   if (
     !cursor?.mediaItemId ||
@@ -496,7 +497,7 @@ export function buildWorkResumeQueue(
   ) {
     return null;
   }
-  const queue = tracks.map((track) => toPreferredPlayerTrack(track, work));
+  const queue = tracks.map((track) => toPreferredPlayerTrack(track, work, fallbackCoverUrl));
   const startIndex = queue.findIndex((track) => track.mediaItemId === cursor.mediaItemId);
   if (startIndex < 0) return null;
 

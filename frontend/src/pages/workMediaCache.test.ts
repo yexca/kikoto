@@ -40,6 +40,12 @@ describe("work media cache", () => {
     expect(getCachedWorkMedia(2, 102)).toBeNull();
   });
 
+  it("does not retain an empty media result", () => {
+    setCachedWorkMedia(3, 102, []);
+
+    expect(getCachedWorkMedia(3, 102)).toBeNull();
+  });
+
   it("retains recently used entries while bounding the number of cached works", () => {
     for (let workID = 0; workID < 20; workID++) {
       setCachedWorkMedia(workID, 103, mediaItems());

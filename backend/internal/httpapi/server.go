@@ -777,7 +777,7 @@ func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
 
 	includeMedia := r.URL.Query().Get("includeMedia") != "false"
 	if includeMedia {
-		if err := s.ensureLocalMediaIndexed(r.Context(), id); err != nil {
+		if _, err := s.ensureLocalMediaIndexedForRequest(r.Context(), id); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -806,7 +806,7 @@ func (s *Server) getWorkMedia(w http.ResponseWriter, r *http.Request) {
 	if !s.requireDemoWork(w, r, id) {
 		return
 	}
-	if err := s.ensureLocalMediaIndexed(r.Context(), id); err != nil {
+	if _, err := s.ensureLocalMediaIndexedForRequest(r.Context(), id); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -824,7 +824,7 @@ func (s *Server) getWorkMedia(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"workId": id, "mediaItems": mediaItems})
+	writeJSON(w, http.StatusOK, map[string]any{"workId": id, "mediaWorkId": mediaWorkID, "mediaItems": mediaItems})
 }
 
 func (s *Server) workCodeExists(ctx context.Context, code string) bool {
@@ -3062,7 +3062,11 @@ func (s *Server) loadWorkDetailBase(ctx context.Context, userID int64, id int64)
 	if permanentlyFree.Valid {
 		work.PermanentlyFree = &permanentlyFree.Bool
 	}
-	work.CoverURL = s.coverURL(work.PrimaryCode)
+	coverURL, err := s.workCoverURL(ctx, work.ID, work.PrimaryCode)
+	if err != nil {
+		return workDetail{}, err
+	}
+	work.CoverURL = coverURL
 	work.DLsiteURL = s.dlsiteURL(work.PrimaryCode)
 	work.SourcePresence = s.sourcePresenceForCode(ctx, work.PrimaryCode)
 	localFolders, err := s.loadWorkFolderLocations(ctx, work.ID)
@@ -3497,6 +3501,63 @@ func (s *Server) ensureLocalMediaIndexed(ctx context.Context, workID int64) erro
 		return err
 	}
 	return s.indexLocalMediaForWork(ctx, targetWorkID, fileSourceID, relPath)
+}
+
+func (s *Server) ensureLocalMediaIndexedForRequest(ctx context.Context, workID int64) (int64, error) {
+	targetWorkID, err := s.resolveLocalMediaIndexWorkIDForRequest(ctx, workID)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.ensureLocalMediaIndexed(ctx, targetWorkID); err != nil {
+		return 0, err
+	}
+	return targetWorkID, nil
+}
+
+func (s *Server) resolveLocalMediaIndexWorkIDForRequest(ctx context.Context, workID int64) (int64, error) {
+	if available, err := s.workHasAvailableLocalMedia(ctx, workID); err != nil {
+		return 0, err
+	} else if available {
+		return workID, nil
+	}
+	canonical, err := s.workIsCanonicalEdition(ctx, workID)
+	if err != nil || !canonical {
+		return workID, err
+	}
+	var primaryCode string
+	if err := s.db.QueryRowContext(ctx, "SELECT primary_code FROM work WHERE id = ?", workID).Scan(&primaryCode); err != nil {
+		return 0, err
+	}
+	translations, err := s.loadLogicalWorkTranslations(ctx, primaryCode)
+	if err != nil {
+		return 0, err
+	}
+	for _, translation := range translations {
+		if translation.WorkID == nil || *translation.WorkID == workID {
+			continue
+		}
+		if available, err := s.workHasAvailableLocalMedia(ctx, *translation.WorkID); err != nil {
+			return 0, err
+		} else if available {
+			return *translation.WorkID, nil
+		}
+	}
+	if present, err := s.workHasUnindexedAvailableLocalPresence(ctx, workID); err != nil {
+		return 0, err
+	} else if present {
+		return workID, nil
+	}
+	for _, translation := range translations {
+		if translation.WorkID == nil || *translation.WorkID == workID {
+			continue
+		}
+		if present, err := s.workHasUnindexedAvailableLocalPresence(ctx, *translation.WorkID); err != nil {
+			return 0, err
+		} else if present {
+			return *translation.WorkID, nil
+		}
+	}
+	return workID, nil
 }
 
 func (s *Server) indexLocalMediaForWork(ctx context.Context, workID int64, fileSourceID int64, relPath string) error {
@@ -4043,9 +4104,9 @@ func (s *Server) loadLogicalWorkTranslations(ctx context.Context, primaryCode st
 }
 
 func (s *Server) resolveMediaWorkID(ctx context.Context, currentWorkID int64, translations []workTranslation) (int64, error) {
-	if hasMedia, err := s.workHasMedia(ctx, currentWorkID); err != nil {
+	if hasLocal, err := s.workHasAvailableLocalMedia(ctx, currentWorkID); err != nil {
 		return 0, err
-	} else if hasMedia {
+	} else if hasLocal {
 		return currentWorkID, nil
 	}
 	canonical, err := s.workIsCanonicalEdition(ctx, currentWorkID)
@@ -4066,6 +4127,11 @@ func (s *Server) resolveMediaWorkID(ctx context.Context, currentWorkID int64, tr
 		if hasLocal {
 			return *translation.WorkID, nil
 		}
+	}
+	if hasMedia, err := s.workHasMedia(ctx, currentWorkID); err != nil {
+		return 0, err
+	} else if hasMedia {
+		return currentWorkID, nil
 	}
 	for _, translation := range translations {
 		if translation.WorkID != nil && *translation.WorkID != currentWorkID && translation.HasMedia {
@@ -4119,6 +4185,25 @@ func (s *Server) workHasAvailableLocalPresence(ctx context.Context, workID int64
 				AND presence.presence_type = 'local'
 				AND presence.availability = 'available'
 				AND source.source_type = 'local_folder'
+		)
+	`, workID).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+func (s *Server) workHasUnindexedAvailableLocalPresence(ctx context.Context, workID int64) (bool, error) {
+	var exists bool
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM work_source_presence AS presence
+			INNER JOIN file_source AS source ON source.id = presence.file_source_id
+			WHERE presence.work_id = ?
+				AND presence.presence_type = 'local'
+				AND presence.availability = 'available'
+				AND source.source_type = 'local_folder'
+				AND COALESCE(json_extract(presence.raw_json, '$.file_tree_scanned'), 0) = 0
 		)
 	`, workID).Scan(&exists); err != nil {
 		return false, err
@@ -5664,6 +5749,29 @@ func (s *Server) coverURL(primaryCode string) string {
 		}
 	}
 	return ""
+}
+
+func (s *Server) workCoverURL(ctx context.Context, workID int64, primaryCode string) (string, error) {
+	if coverURL := s.coverURL(primaryCode); coverURL != "" {
+		return coverURL, nil
+	}
+	var canonicalCode string
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT canonical.primary_code
+		FROM work_edition AS edition
+		INNER JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+		INNER JOIN work AS canonical ON canonical.id = logical.canonical_work_id
+		WHERE edition.work_id = ?
+	`, workID).Scan(&canonicalCode); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", nil
+		}
+		return "", err
+	}
+	if strings.EqualFold(strings.TrimSpace(canonicalCode), strings.TrimSpace(primaryCode)) {
+		return "", nil
+	}
+	return s.coverURL(canonicalCode), nil
 }
 
 func coverAssetRelativePath(code string, extension string) string {

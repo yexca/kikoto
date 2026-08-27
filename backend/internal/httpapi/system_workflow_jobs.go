@@ -280,13 +280,46 @@ func (s *Server) persistLocalScanFolder(ctx context.Context, tx *sql.Tx, fileSou
 		state.newWorkCodes = append(state.newWorkCodes, folder.Code)
 	}
 	state.seenWorkIDs[workID] = true
+	var previousRoot, previousAvailability, previousScannedAt string
+	var previousScanned int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT source_url,
+			availability,
+			COALESCE(json_extract(raw_json, '$.file_tree_scanned'), 0),
+			COALESCE(json_extract(raw_json, '$.file_tree_scanned_at'), '')
+		FROM work_source_presence
+		WHERE work_id = ? AND file_source_id = ? AND presence_type = 'local'
+	`, workID, fileSourceID).Scan(&previousRoot, &previousAvailability, &previousScanned, &previousScannedAt); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	code := strings.ToUpper(strings.TrimSpace(folder.Code))
+	missingLocations := 0
+	// A duplicate stays reviewable. Invalidating either folder here would
+	// choose a winner before the user has reviewed the candidate.
+	if !state.duplicateCodes[code] && !state.reconciledWorkIDs[workID] {
+		missingLocations, err = markLocalLocationsMissingForChangedFolder(ctx, tx, workID, fileSourceID, folder.RelPath)
+		if err != nil {
+			return 0, err
+		}
+		state.missingLocations += missingLocations
+		state.reconciledWorkIDs[workID] = true
+	}
+	currentRoot := filepath.ToSlash(folder.RelPath)
+	preserveCompletedIndex := previousScanned != 0 &&
+		previousAvailability == "available" &&
+		strings.EqualFold(normalizeFolderRootPath(previousRoot), normalizeFolderRootPath(currentRoot)) &&
+		missingLocations == 0 &&
+		!state.duplicateCodes[code]
+	rawPresence := map[string]any{
+		"code": folder.Code, "title": folder.Title, "rel_path": currentRoot,
+		"files": len(folder.Files), "file_tree_scanned": preserveCompletedIndex,
+	}
+	if preserveCompletedIndex && previousScannedAt != "" {
+		rawPresence["file_tree_scanned_at"] = previousScannedAt
+	}
 	if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
 		WorkID: workID, FileSourceID: fileSourceID, PresenceType: "local",
-		SourceURL: filepath.ToSlash(folder.RelPath), Availability: "available",
-		RawJSON: mustJSON(map[string]any{
-			"code": folder.Code, "title": folder.Title, "rel_path": filepath.ToSlash(folder.RelPath),
-			"files": len(folder.Files), "file_tree_scanned": false,
-		}),
+		SourceURL: currentRoot, Availability: "available", RawJSON: mustJSON(rawPresence),
 	}); err != nil {
 		return 0, err
 	}
@@ -303,17 +336,6 @@ func (s *Server) persistLocalScanFolder(ctx context.Context, tx *sql.Tx, fileSou
 		if err := upsertWorkFolderLocation(ctx, tx, workID, fileSourceID, folder.RelPath, "external", "active", true); err != nil {
 			return 0, err
 		}
-	}
-	// A duplicate stays reviewable. Invalidating either folder here would
-	// choose a winner before the user has reviewed the candidate.
-	code := strings.ToUpper(strings.TrimSpace(folder.Code))
-	if !state.duplicateCodes[code] && !state.reconciledWorkIDs[workID] {
-		missing, err := markLocalLocationsMissingForChangedFolder(ctx, tx, workID, fileSourceID, folder.RelPath)
-		if err != nil {
-			return 0, err
-		}
-		state.missingLocations += missing
-		state.reconciledWorkIDs[workID] = true
 	}
 	return workID, nil
 }
