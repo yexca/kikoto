@@ -425,6 +425,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
         if (controller.signal.aborted) return;
         setDetail(item);
         setMessage("");
+        setIsLoading(false);
         setIsWorksLoading(true);
         try {
           const result = await api.getVoiceWorks(personId, controller.signal);
