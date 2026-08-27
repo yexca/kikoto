@@ -243,6 +243,19 @@ func buildRecommendationGeneration(
 		return 0, err
 	}
 
+	if _, err := tx.ExecContext(
+		ctx,
+		recommendationGenerationInsertSQL(config),
+		userID, userID, userID, generationID,
+	); err != nil {
+		return 0, err
+	}
+	return generationID, nil
+}
+
+// recommendationGenerationInsertSQL aggregates each user's entity evidence
+// once, then derives per-work signals without repeating history scans.
+func recommendationGenerationInsertSQL(config RecommendationConfig) string {
 	scoreExpression := recommendationScoreFromSignalExpressions(
 		config,
 		"favorite",
@@ -253,19 +266,73 @@ func buildRecommendationGeneration(
 		"negative_voice_matches",
 		"negative_circle_matches",
 	)
-	query := fmt.Sprintf(`
-		WITH recommendation_signals AS (
+	return fmt.Sprintf(`
+		WITH candidate_entities(entity_type, work_id, entity_id) AS MATERIALIZED (
+			SELECT 'tag', work_tag.work_id, work_tag.tag_id
+			FROM work_tag
+			INNER JOIN tag ON tag.id = work_tag.tag_id
+			WHERE tag.namespace = 'dlsite'
+			GROUP BY work_tag.work_id, work_tag.tag_id
+			UNION ALL
+			SELECT 'voice', work_credit.work_id, work_credit.person_id
+			FROM work_credit
+			WHERE work_credit.role = 'voice_actor'
+			GROUP BY work_credit.work_id, work_credit.person_id
+			UNION ALL
+			SELECT 'circle', work_party.work_id, work_party.party_id
+			FROM work_party
+			WHERE work_party.role = 'circle'
+			GROUP BY work_party.work_id, work_party.party_id
+		),
+		user_entity_evidence AS MATERIALIZED (
+			SELECT candidate_entities.entity_type, candidate_entities.entity_id,
+				SUM(CASE WHEN evidence_state.listening_status = 'relisten' OR evidence_state.favorite = 1 THEN 1 ELSE 0 END) AS positive_work_count,
+				SUM(CASE WHEN evidence_state.listening_status = 'paused' AND evidence_state.favorite = 0 THEN 1 ELSE 0 END) AS paused_work_count
+			FROM candidate_entities
+			INNER JOIN user_work_state AS evidence_state
+				ON evidence_state.work_id = candidate_entities.work_id AND evidence_state.user_id = ?
+			WHERE evidence_state.listening_status IN ('relisten', 'paused') OR evidence_state.favorite = 1
+			GROUP BY candidate_entities.entity_type, candidate_entities.entity_id
+		),
+		candidate_entity_evidence AS (
+			SELECT candidate_entities.work_id, candidate_entities.entity_type,
+				COALESCE(user_entity_evidence.positive_work_count, 0)
+					- CASE WHEN candidate_state.listening_status = 'relisten' OR candidate_state.favorite = 1 THEN 1 ELSE 0 END
+					AS positive_other_work_count,
+				COALESCE(user_entity_evidence.paused_work_count, 0)
+					- CASE WHEN candidate_state.listening_status = 'paused' AND candidate_state.favorite = 0 THEN 1 ELSE 0 END
+					AS paused_other_work_count
+			FROM candidate_entities
+			LEFT JOIN user_entity_evidence
+				ON user_entity_evidence.entity_type = candidate_entities.entity_type
+				AND user_entity_evidence.entity_id = candidate_entities.entity_id
+			LEFT JOIN user_work_state AS candidate_state
+				ON candidate_state.work_id = candidate_entities.work_id AND candidate_state.user_id = ?
+		),
+		work_entity_signals AS (
+			SELECT work_id,
+				SUM(CASE WHEN entity_type = 'tag' AND positive_other_work_count > 0 THEN 1 ELSE 0 END) AS positive_tag_matches,
+				SUM(CASE WHEN entity_type = 'voice' AND positive_other_work_count > 0 THEN 1 ELSE 0 END) AS positive_voice_matches,
+				SUM(CASE WHEN entity_type = 'circle' AND positive_other_work_count > 0 THEN 1 ELSE 0 END) AS positive_circle_matches,
+				SUM(CASE WHEN entity_type = 'tag' AND paused_other_work_count >= %d AND positive_other_work_count = 0 THEN 1 ELSE 0 END) AS negative_tag_matches,
+				SUM(CASE WHEN entity_type = 'voice' AND paused_other_work_count >= %d AND positive_other_work_count = 0 THEN 1 ELSE 0 END) AS negative_voice_matches,
+				SUM(CASE WHEN entity_type = 'circle' AND paused_other_work_count >= %d AND positive_other_work_count = 0 THEN 1 ELSE 0 END) AS negative_circle_matches
+			FROM candidate_entity_evidence
+			GROUP BY work_id
+		),
+		recommendation_signals AS MATERIALIZED (
 			SELECT work.id AS work_id,
 				COALESCE(user_work_state.listening_status, 'none') AS listening_status,
 				COALESCE(user_work_state.favorite, 0) AS favorite,
-				%s AS positive_tag_matches,
-				%s AS positive_voice_matches,
-				%s AS positive_circle_matches,
-				%s AS negative_tag_matches,
-				%s AS negative_voice_matches,
-				%s AS negative_circle_matches
+				COALESCE(work_entity_signals.positive_tag_matches, 0) AS positive_tag_matches,
+				COALESCE(work_entity_signals.positive_voice_matches, 0) AS positive_voice_matches,
+				COALESCE(work_entity_signals.positive_circle_matches, 0) AS positive_circle_matches,
+				COALESCE(work_entity_signals.negative_tag_matches, 0) AS negative_tag_matches,
+				COALESCE(work_entity_signals.negative_voice_matches, 0) AS negative_voice_matches,
+				COALESCE(work_entity_signals.negative_circle_matches, 0) AS negative_circle_matches
 			FROM work
 			LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?
+			LEFT JOIN work_entity_signals ON work_entity_signals.work_id = work.id
 		)
 		INSERT INTO recommendation_snapshot (
 			generation_id, work_id, listening_status, favorite,
@@ -276,15 +343,7 @@ func buildRecommendationGeneration(
 			positive_tag_matches, positive_voice_matches, positive_circle_matches,
 			negative_tag_matches, negative_voice_matches, negative_circle_matches, %s
 		FROM recommendation_signals
-	`, positiveTagMatchCountExpression, positiveVoiceMatchCountExpression, positiveCircleMatchCountExpression,
-		negativeTagMatchCountExpression(config.NegativeMinEvidence), negativeVoiceMatchCountExpression(config.NegativeMinEvidence),
-		negativeCircleMatchCountExpression(config.NegativeMinEvidence), scoreExpression)
-	args := recommendationUserArgs(userID)
-	args = append(args, userID, generationID)
-	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
-		return 0, err
-	}
-	return generationID, nil
+	`, config.NegativeMinEvidence, config.NegativeMinEvidence, config.NegativeMinEvidence, scoreExpression)
 }
 
 // RecommendationSnapshotBreakdown returns the explanation stored with a

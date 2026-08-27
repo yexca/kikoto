@@ -99,6 +99,35 @@ configured file sources without creating per-source work copies or requesting
 a live remote refresh. List creation and contextual list management share the
 fixed overflow menu beside the horizontally scrollable list row.
 
+## TODO
+
+### Large-Library Recommendation Candidate Retrieval
+
+If measured recommendation-generation latency becomes material as libraries
+grow, evaluate a two-stage retrieval and ranking path instead of immediately
+scoring every work. This is a scale-triggered option, not current behavior or a
+committed replacement for exact full-library snapshots.
+
+- Build one candidate pool from several indexed channels: positive tag, voice,
+  and circle affinity; explicit listening-intent lanes; recent or new works;
+  and a bounded exploration share for works without a positive match.
+- Merge and deduplicate channel results before applying the existing exact
+  affinity scoring and lane mix. Independent per-tag quotas are insufficient
+  because overlapping tags can shrink the pool, bias multi-tag works, and make
+  its final size unpredictable.
+- Prefer deterministic weighted sampling without replacement, derived from the
+  recommendation generation and work identity, over separate random queries
+  for each tag.
+- Size and persist the candidate pool for an explicit pagination horizon. A
+  stable deterministic tail or expansion rule must prevent duplicates,
+  omissions, and earlier-page reordering when browsing beyond that horizon.
+- Preserve the immutable client-session generation contract. Pagination and
+  ordinary reshuffles must not rebuild or silently replace the candidate pool.
+- Adopt this path only after representative high-cardinality benchmarks show
+  that full generation misses a concrete latency or SQLite-contention target;
+  include realistic entity relationships and user history, not work count
+  alone, in that decision.
+
 ## Identity
 
 Library cards represent unified works, not per-source copies. Remote cards can
