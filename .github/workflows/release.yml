@@ -182,7 +182,7 @@ jobs:
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
-          java-version: "21.0.12+8"
+          java-version: "21.0.12+8.0.LTS"
           verify-signature: true
 
       - name: Set up Android SDK
