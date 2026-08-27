@@ -5,14 +5,17 @@ import (
 	"context"
 	"database/sql"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -246,6 +249,113 @@ func TestStreamRemoteSourceMediaProxiesNativeResponseAndRange(t *testing.T) {
 	}
 	if response.Header().Get("Cache-Control") != "private, no-cache" {
 		t.Fatalf("remote native cache header = %q", response.Header().Get("Cache-Control"))
+	}
+}
+
+func TestStreamRemoteSourceMediaUsesRemoteDemoAdmissionForRemoteOnlyWork(t *testing.T) {
+	tests := []struct {
+		name              string
+		code              string
+		admitted          bool
+		wantStatus        int
+		wantBody          []byte
+		wantTrackRequests int
+		wantMediaRequests int
+	}{
+		{
+			name:              "admitted remote-only work",
+			code:              "RJ00000042",
+			admitted:          true,
+			wantStatus:        http.StatusOK,
+			wantBody:          testWAVBytes(),
+			wantTrackRequests: 1,
+			wantMediaRequests: 1,
+		},
+		{
+			name:              "work absent from filtered search",
+			code:              "RJ00000043",
+			admitted:          false,
+			wantStatus:        http.StatusNotFound,
+			wantTrackRequests: 0,
+			wantMediaRequests: 0,
+		},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			var trackRequests, mediaRequests int
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case strings.HasPrefix(r.URL.Path, "/api/search/"):
+					keyword, err := url.PathUnescape(strings.TrimPrefix(r.URL.EscapedPath(), "/api/search/"))
+					if err != nil {
+						t.Errorf("decode search keyword: %v", err)
+					}
+					wantKeyword := demoRemoteSourceFilterQuery + " " + testCase.code
+					if keyword != wantKeyword {
+						t.Errorf("search keyword = %q, want %q", keyword, wantKeyword)
+					}
+					works := []kikoeru.Work{}
+					if testCase.admitted {
+						paid := int64(900)
+						works = append(works, kikoeru.Work{
+							ID: 420, SourceID: testCase.code, Title: "Remote-only fixture",
+							// Demo admission comes from the filtered search membership.
+							AgeCategoryString: "adult", Price: &paid,
+						})
+					}
+					_ = json.NewEncoder(w).Encode(kikoeru.WorksPage{Works: works})
+				case r.URL.Path == "/api/tracks/420":
+					trackRequests++
+					_ = json.NewEncoder(w).Encode([]kikoeru.Track{{
+						Type: "audio", Title: "track.wav", MediaStreamURL: "/media/track.wav",
+					}})
+				case r.URL.Path == "/media/track.wav":
+					mediaRequests++
+					w.Header().Set("Content-Type", "audio/wav")
+					_, _ = w.Write(testWAVBytes())
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer upstream.Close()
+
+			db := openMigratedTestDB(t)
+			if _, err := db.Exec(`
+				INSERT INTO file_source (id, code, display_name, source_type, enabled)
+				VALUES (7, 'remote_fixture', 'Remote fixture', 'kikoeru_compatible', 1)
+			`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(`
+				INSERT INTO file_source_endpoint (file_source_id, api_url, base_url, restrict_outbound_hosts)
+				VALUES (7, ?, ?, 1)
+			`, upstream.URL, upstream.URL); err != nil {
+				t.Fatal(err)
+			}
+			server := NewServer(db, config.Config{Mode: config.ModeDemo})
+			request := httptest.NewRequest(http.MethodGet, "/api/remote-sources/7/works/"+testCase.code+"/media?path=track.wav&profile=audio", nil)
+			request.SetPathValue("id", "7")
+			request.SetPathValue("code", testCase.code)
+			response := httptest.NewRecorder()
+			server.streamRemoteSourceMedia(response, request)
+
+			if response.Code != testCase.wantStatus {
+				t.Fatalf("remote Demo status = %d, want %d; body = %s", response.Code, testCase.wantStatus, response.Body.String())
+			}
+			if testCase.wantBody != nil && !bytes.Equal(response.Body.Bytes(), testCase.wantBody) {
+				t.Fatalf("remote Demo body = %d bytes, want %d", response.Body.Len(), len(testCase.wantBody))
+			}
+			if trackRequests != testCase.wantTrackRequests || mediaRequests != testCase.wantMediaRequests {
+				t.Fatalf("upstream track/media requests = %d/%d, want %d/%d", trackRequests, mediaRequests, testCase.wantTrackRequests, testCase.wantMediaRequests)
+			}
+			var localWorks int
+			if err := db.QueryRow("SELECT COUNT(*) FROM work").Scan(&localWorks); err != nil {
+				t.Fatal(err)
+			}
+			if localWorks != 0 {
+				t.Fatalf("remote preview materialized %d local works", localWorks)
+			}
+		})
 	}
 }
 

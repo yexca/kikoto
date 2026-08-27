@@ -998,13 +998,9 @@ func (s *Server) streamRemoteSourceMedia(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "remote media file was not found"})
 		return
 	}
-	if s.cfg.IsDemo() {
-		eligible, eligibleErr := s.demoWorkCodeEligible(r.Context(), code)
-		if eligibleErr != nil || !eligible {
-			writeAPIError(w, http.StatusNotFound, "not_found", "media file was not found", false)
-			return
-		}
-	}
+	// In Demo mode, loadRemoteWorkTracksCached resolves the exact work through
+	// the remote source's filtered search contract. Remote-only previews have no
+	// local work row, so the local demoWorkCodeEligible check does not apply.
 	s.streamRemoteURL(w, r, source, remoteURL, path, kind)
 }
 
