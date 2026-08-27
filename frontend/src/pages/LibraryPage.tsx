@@ -49,6 +49,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -628,6 +629,22 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       anchor.scrollIntoView({ behavior, block: "start" });
     });
   };
+
+  useLayoutEffect(() => {
+    if (!active || selectedCode !== null || selectedRemoteTarget !== null) return;
+    const scrollY = pendingScrollRestore.current;
+    if (scrollY === null) return;
+
+    // Position a returned list before the browser paints its first frame.
+    const scrollingElement = document.scrollingElement ?? document.documentElement;
+    const maxScrollY = Math.max(0, scrollingElement.scrollHeight - window.innerHeight);
+    window.scrollTo({ top: scrollY, behavior: "auto" });
+    if (scrollY <= maxScrollY + 1) {
+      pendingScrollRestore.current = null;
+      pendingResultsScroll.current = false;
+    }
+  });
+
   const queueResultsScroll = () => {
     pendingScrollRestore.current = null;
     pendingResultsScroll.current = true;
@@ -1085,6 +1102,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     const flushScroll = () => {
       if (pendingWrite !== null) window.clearTimeout(pendingWrite);
       pendingWrite = null;
+      if (codeFromLocation(window.location.pathname, window.location.search) !== null) return;
       const browseState = { ...activeBrowseState, scrollY: window.scrollY };
       writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
       writeLibraryHistoryBrowseState(browseStorageScope, browseState);
@@ -1101,6 +1119,10 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     return () => {
       window.removeEventListener("scroll", rememberScroll);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (pendingWrite !== null) {
+        window.clearTimeout(pendingWrite);
+        pendingWrite = null;
+      }
       if (browseSurfaceActive.current) flushScroll();
     };
   }, [
@@ -1207,8 +1229,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       fallbackState: { libraryBrowseScope: browseStorageScope, libraryBrowseState: activeBrowseState },
       isWorkspaceListLocation: (location) => normalizeLibraryBrowseLocation(location) !== null,
     });
-    setSelectedCode(null);
-    setSelectedRemoteTarget(null);
   };
 
   const changeTab = (tab: LibraryTab) => {
