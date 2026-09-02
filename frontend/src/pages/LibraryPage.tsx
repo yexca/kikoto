@@ -224,6 +224,14 @@ import {
   type TreeTrack,
 } from "@/features/work-detail/media/mediaTreeModel";
 import {
+  captureInitialPlaybackTrack,
+  currentPlaybackDirectoryPath,
+  playbackSourceSelection,
+  playbackTrackMatchesPersistedWork,
+  playbackTrackMatchesRemoteWork,
+  type PlaybackRouteSnapshot,
+} from "@/features/work-detail/media/playbackDirectoryRouting";
+import {
   useMediaCleanupWorkflow,
   type MediaCleanupCompletion,
   type MediaCleanupMode,
@@ -3771,6 +3779,8 @@ type RemoteOnlyDirectoryPanelProps = {
   directoryRoutingRules: DirectoryRoutingRule[];
   currentLocationId: number | null;
   currentPlaybackKey: string | null;
+  autoRoutePath?: string[] | null;
+  routeStateKey?: string;
   remoteAvailability: RemoteSourceAvailability[];
   hasMaterializedWork: boolean;
   selectionModal: ReactNode;
@@ -3886,6 +3896,8 @@ function RemoteOnlyDirectoryPanel(props: RemoteOnlyDirectoryPanelProps) {
       directoryRoutingRules={props.directoryRoutingRules}
       currentLocationId={props.currentLocationId}
       currentPlaybackKey={props.currentPlaybackKey}
+      autoRoutePath={props.autoRoutePath}
+      routeStateKey={props.routeStateKey}
       emptyLabel={props.primaryRemoteSelected ? "No remote files detected." : "This source has no preview loaded."}
       toolbar={error ? <DirectoryMessage message={error} /> : undefined}
       emptyState={emptyState}
@@ -4328,6 +4340,24 @@ function RemoteOnlyWorkDetailController({
     materializedTree,
     remoteStats: directoryStats,
   });
+  const playbackMatchesWork = playbackTrackMatchesRemoteWork(player.currentTrack, detail, code, source.id);
+  const autoPlaybackRouteKey = `remote:${source.id}:${code}`;
+  const [manualPlaybackRouteKey, setManualPlaybackRouteKey] = useState("");
+  useEffect(() => setManualPlaybackRouteKey(""), [autoPlaybackRouteKey]);
+  const autoPlaybackRoutingEnabled = manualPlaybackRouteKey !== autoPlaybackRouteKey;
+  const autoPlaybackSnapshotRef = useRef<PlaybackRouteSnapshot>({ routeKey: "", track: null });
+  const autoPlaybackTrack = captureInitialPlaybackTrack(
+    autoPlaybackSnapshotRef,
+    autoPlaybackRouteKey,
+    player.currentTrack,
+    player.isPlaying,
+    playbackMatchesWork,
+  );
+  const autoRoutePath = useMemo(
+    () => (autoPlaybackRoutingEnabled ? currentPlaybackDirectoryPath(visibleTree, autoPlaybackTrack) : null),
+    [autoPlaybackRoutingEnabled, autoPlaybackTrack, visibleTree],
+  );
+  const autoRouteStateKey = `${autoPlaybackRouteKey}:${autoPlaybackRoutingEnabled ? "automatic" : "manual"}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -4648,6 +4678,10 @@ function RemoteOnlyWorkDetailController({
     treeLoading,
     detail,
   );
+  const selectRemoteSourceTab = (key: string) => {
+    setManualPlaybackRouteKey(autoPlaybackRouteKey);
+    setActiveRemoteTab(key);
+  };
   const heroActions = (
     <RemoteOnlyDetailActions
       detail={detail}
@@ -4687,13 +4721,15 @@ function RemoteOnlyWorkDetailController({
       directoryRoutingRules={directoryRoutingRules}
       currentLocationId={player.currentLocationId}
       currentPlaybackKey={player.currentPlaybackKey}
+      autoRoutePath={autoRoutePath}
+      routeStateKey={autoRouteStateKey}
       remoteAvailability={remoteAvailability}
       hasMaterializedWork={Boolean(trackedWork)}
       selectionModal={<RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />}
-      onActiveKeyChange={setActiveRemoteTab}
+      onActiveKeyChange={selectRemoteSourceTab}
       onDirectoryModeChange={setDirectoryMode}
       onRetry={() => setRemoteRetryToken((value) => value + 1)}
-      onSelectRemote={(next) => setActiveRemoteTab(remoteSourceTabKey(next.source.id))}
+      onSelectRemote={(next) => selectRemoteSourceTab(remoteSourceTabKey(next.source.id))}
       onPlayRemote={playRemoteTracks}
       onPlayMaterialized={playMaterializedTracks}
       onQueueRemote={queueRemoteTrack}
@@ -5086,6 +5122,8 @@ type PersistedDirectoryPanelProps = {
   directoryRoutingRules: DirectoryRoutingRule[];
   currentLocationId: number | null;
   currentPlaybackKey: string | null;
+  autoRoutePath?: string[] | null;
+  routeStateKey?: string;
   showNoSourceDirectory: boolean;
   selectedRemoteSource: RemoteSourceAvailability | null | undefined;
   selectedSource: SourceTabInfo | null | undefined;
@@ -5199,6 +5237,8 @@ function PersistedDirectoryPanel(props: PersistedDirectoryPanelProps) {
       directoryRoutingRules={props.directoryRoutingRules}
       currentLocationId={props.currentLocationId}
       currentPlaybackKey={props.currentPlaybackKey}
+      autoRoutePath={props.autoRoutePath}
+      routeStateKey={props.routeStateKey}
       emptyLabel={persistedDirectoryEmptyLabel(props)}
       toolbar={persistedDirectoryToolbar(props)}
       selectionModal={props.selectionModal}
@@ -5746,6 +5786,54 @@ function PersistedWorkDetailController({
     [isManageOpen, localDirectoryWork, selectedTrackedPresence, selectedTrackedSourceID, tree],
   );
   const player = useLibraryPlayer();
+  const playbackMatchesWork = playbackTrackMatchesPersistedWork(player.currentTrack, work, workPreview, code);
+  const autoPlaybackRouteKey = `persisted:${code}:${initialSourceIntent}:${initialTrackedSourceID ?? 0}:${initialRemoteCode}`;
+  const [manualPlaybackRouteKey, setManualPlaybackRouteKey] = useState("");
+  const autoPlaybackRoutingEnabled = manualPlaybackRouteKey !== autoPlaybackRouteKey;
+  const autoPlaybackSnapshotRef = useRef<PlaybackRouteSnapshot>({ routeKey: "", track: null });
+  const autoPlaybackTrack = captureInitialPlaybackTrack(
+    autoPlaybackSnapshotRef,
+    autoPlaybackRouteKey,
+    player.currentTrack,
+    player.isPlaying,
+    playbackMatchesWork,
+  );
+  const autoRoutePath = useMemo(
+    () => (autoPlaybackRoutingEnabled ? currentPlaybackDirectoryPath(tree, autoPlaybackTrack) : null),
+    [autoPlaybackRoutingEnabled, autoPlaybackTrack, tree],
+  );
+  const autoRouteStateKey = `${autoPlaybackRouteKey}:${autoPlaybackRoutingEnabled ? "automatic" : "manual"}`;
+  const autoSourceSelectionRef = useRef<string | null>(null);
+  useEffect(() => {
+    setManualPlaybackRouteKey("");
+    autoSourceSelectionRef.current = null;
+  }, [autoPlaybackRouteKey]);
+  useEffect(() => {
+    if (!autoPlaybackRoutingEnabled || initialSourceIntent !== "local" || !autoPlaybackTrack) return;
+    const selection = playbackSourceSelection(autoPlaybackTrack, sourceTabs, trackedPresenceOptions);
+    if (!selection) return;
+    if (autoSourceSelectionRef.current === autoPlaybackRouteKey) return;
+    autoSourceSelectionRef.current = autoPlaybackRouteKey;
+    if (selection.trackedKey) {
+      if (selectedTrackedPresenceKey !== selection.trackedKey || resolvedActiveSourceKey !== "tracked") {
+        selectTrackedPresence(selection.trackedKey);
+      }
+      return;
+    }
+    if (resolvedActiveSourceKey !== selection.sourceKey) selectSource(selection.sourceKey);
+  }, [
+    autoPlaybackRouteKey,
+    autoPlaybackRoutingEnabled,
+    autoPlaybackTrack,
+    initialSourceIntent,
+    resolvedActiveSourceKey,
+    selectedTrackedPresenceKey,
+    selectSource,
+    selectTrackedPresence,
+    sourceTabs,
+    trackedPresenceOptions,
+  ]);
+  const disableAutomaticPlaybackRouting = () => setManualPlaybackRouteKey(autoPlaybackRouteKey);
   const fetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged });
   const openFetchWorkspace = () => {
     if (!fetchRemote) return;
@@ -6107,6 +6195,7 @@ function PersistedWorkDetailController({
 
   const untrackSelectedSource = async () => {
     if (!work) return;
+    disableAutomaticPlaybackRouting();
     setIsSyncingDetail(true);
     setMessage("");
     try {
@@ -6169,6 +6258,7 @@ function PersistedWorkDetailController({
 
   const selectEdition = async (translation: WorkDetail["translations"][number]) => {
     if (!translation.workId || !work) return;
+    disableAutomaticPlaybackRouting();
     const requestSeq = ++editionRequestSeq.current;
     setEditionError("");
     setEditionErrorCode("");
@@ -6197,6 +6287,7 @@ function PersistedWorkDetailController({
   };
 
   const selectDisplayedEdition = async (translation: WorkDetail["translations"][number]) => {
+    disableAutomaticPlaybackRouting();
     if (!selectedRemoteDetail) {
       await selectEdition(translation);
       return;
@@ -6217,6 +6308,7 @@ function PersistedWorkDetailController({
   };
 
   const changeSourceKey = (key: string) => {
+    disableAutomaticPlaybackRouting();
     selectSource(key);
     const nextSource = sourceTabs.find((source) => source.key === key);
     if (nextSource?.kind !== "local") {
@@ -6228,6 +6320,7 @@ function PersistedWorkDetailController({
   const changeTrackedPresence = (key: string) => {
     const option = trackedPresenceOptions.find((candidate) => candidate.key === key);
     if (!option) return;
+    disableAutomaticPlaybackRouting();
     selectTrackedPresence(key);
     setActiveEdition(null);
     setActiveEditionCode(work?.primaryCode ?? "");
@@ -6326,6 +6419,8 @@ function PersistedWorkDetailController({
       directoryRoutingRules={directoryRoutingRules}
       currentLocationId={player.currentLocationId}
       currentPlaybackKey={player.currentPlaybackKey}
+      autoRoutePath={autoRoutePath}
+      routeStateKey={autoRouteStateKey}
       showNoSourceDirectory={showNoSourceDirectory}
       selectedRemoteSource={selectedRemoteSource}
       selectedSource={selectedSource}
@@ -7436,6 +7531,7 @@ function SourceDirectoryContent({
   root,
   directoryRoutingRules,
   requestedRoutePath,
+  routeRequestKey,
   currentLocationId,
   currentPlaybackKey,
   emptyLabel,
@@ -7449,6 +7545,7 @@ function SourceDirectoryContent({
   root: TreeNode;
   directoryRoutingRules: DirectoryRoutingRule[];
   requestedRoutePath: string[] | null;
+  routeRequestKey?: string;
   currentLocationId: number | null;
   currentPlaybackKey: string | null;
   emptyLabel: string;
@@ -7470,10 +7567,14 @@ function SourceDirectoryContent({
     onPreview,
   };
   return directoryMode === "browse" ? (
-    <DirectoryBrowser {...sharedProps} routePath={requestedRoutePath ?? undefined} />
+    <DirectoryBrowser {...sharedProps} routePath={requestedRoutePath ?? undefined} routeRequestKey={routeRequestKey} />
   ) : (
-    <DirectoryTree {...sharedProps} focusPath={requestedRoutePath ?? undefined} />
+    <DirectoryTree {...sharedProps} focusPath={requestedRoutePath ?? undefined} focusRequestKey={routeRequestKey} />
   );
+}
+
+function directoryRouteRequestKey(routeStateKey: string | undefined, activeKey: string, trackedPresenceKey: string) {
+  return [routeStateKey ?? "", activeKey, trackedPresenceKey].join("\u0000");
 }
 
 function SourceDirectoryPanel({
@@ -7505,6 +7606,8 @@ function SourceDirectoryPanel({
   onPlayNext,
   onAppendQueue,
   onPreview,
+  autoRoutePath,
+  routeStateKey,
 }: {
   title: string;
   description: string;
@@ -7534,24 +7637,47 @@ function SourceDirectoryPanel({
   onPlayNext?: (track: TreeTrack) => void;
   onAppendQueue?: (track: TreeTrack) => void;
   onPreview?: (preview: FilePreviewState) => void;
+  autoRoutePath?: string[] | null;
+  routeStateKey?: string;
 }) {
   const [trackedMenuOpen, setTrackedMenuOpen] = useState(false);
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const [requestedRoutePath, setRequestedRoutePath] = useState<string[] | null>(null);
+  const [requestedRouteStateKey, setRequestedRouteStateKey] = useState(() =>
+    directoryRouteRequestKey(routeStateKey, activeKey, selectedTrackedPresenceKey),
+  );
   const trackedMenuRef = useRef<HTMLDivElement | null>(null);
   const mobileActionsRef = useRef<HTMLButtonElement | null>(null);
   const mobileNavigationLayout = useMobileNavigationLayout();
+  const routeRequestKey = directoryRouteRequestKey(routeStateKey, activeKey, selectedTrackedPresenceKey);
   useEffect(() => {
     setTrackedMenuOpen(false);
     setMobileActionsOpen(false);
   }, [activeKey, selectedTrackedPresenceKey]);
+  useEffect(() => {
+    if (requestedRouteStateKey === routeRequestKey) return;
+    setRequestedRouteStateKey(routeRequestKey);
+    setRequestedRoutePath(null);
+  }, [requestedRouteStateKey, routeRequestKey]);
+  useEffect(() => {
+    if (
+      requestedRouteStateKey !== routeRequestKey ||
+      autoRoutePath === null ||
+      autoRoutePath === undefined ||
+      requestedRoutePath !== null
+    )
+      return;
+    if (nodeAtPath(root, autoRoutePath)) setRequestedRoutePath([...autoRoutePath]);
+  }, [autoRoutePath, requestedRoutePath, requestedRouteStateKey, root, routeRequestKey]);
+  const effectiveRequestedRoutePath = requestedRouteStateKey === routeRequestKey ? requestedRoutePath : null;
   const content = (
     <SourceDirectoryContent
       emptyState={emptyState}
       directoryMode={directoryMode}
       root={root}
       directoryRoutingRules={directoryRoutingRules}
-      requestedRoutePath={requestedRoutePath}
+      requestedRoutePath={effectiveRequestedRoutePath}
+      routeRequestKey={routeRequestKey}
       currentLocationId={currentLocationId}
       currentPlaybackKey={currentPlaybackKey}
       emptyLabel={emptyLabel}
@@ -9188,6 +9314,7 @@ function DirectoryTree({
   root,
   directoryRoutingRules,
   focusPath,
+  focusRequestKey,
   currentLocationId,
   currentPlaybackKey,
   onPlayFolder,
@@ -9199,6 +9326,7 @@ function DirectoryTree({
   root: TreeNode;
   directoryRoutingRules: DirectoryRoutingRule[];
   focusPath?: string[];
+  focusRequestKey?: string;
   currentLocationId: number | null;
   currentPlaybackKey: string | null;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
@@ -9211,6 +9339,7 @@ function DirectoryTree({
     initialExpandedTreePaths(root, directoryRoutingRules),
   );
   const [visibleLimit, setVisibleLimit] = useState(160);
+  const appliedFocusRequestKeyRef = useRef<string | null>(null);
   const lyricsAttachments = useDirectoryLyricsAttachmentVisibility(root);
   useEffect(() => {
     setExpandedPaths(initialExpandedTreePaths(root, directoryRoutingRules));
@@ -9218,6 +9347,9 @@ function DirectoryTree({
   }, [root, directoryRoutingRules]);
   useEffect(() => {
     if (!focusPath || !nodeAtPath(root, focusPath)) return;
+    const requestKey = focusRequestKey ?? focusPath.join("\u0000");
+    if (appliedFocusRequestKeyRef.current === requestKey) return;
+    appliedFocusRequestKeyRef.current = requestKey;
     setExpandedPaths((current) => {
       const next = new Set(current);
       let cursor: TreeNode | null = root;
@@ -9228,7 +9360,7 @@ function DirectoryTree({
       }
       return next;
     });
-  }, [focusPath, root]);
+  }, [focusPath, focusRequestKey, root]);
   const rows = useMemo(
     () =>
       flattenVisibleTreeRows(root, expandedPaths).filter(
@@ -9433,6 +9565,7 @@ function DirectoryBrowser({
   root,
   directoryRoutingRules,
   routePath,
+  routeRequestKey,
   currentLocationId,
   currentPlaybackKey,
   onPlayFolder,
@@ -9444,6 +9577,7 @@ function DirectoryBrowser({
   root: TreeNode;
   directoryRoutingRules: DirectoryRoutingRule[];
   routePath?: string[];
+  routeRequestKey?: string;
   currentLocationId: number | null;
   currentPlaybackKey: string | null;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
@@ -9453,6 +9587,7 @@ function DirectoryBrowser({
   emptyLabel?: string;
 }) {
   const [path, setPath] = useState<string[]>(() => recommendedDirectoryPath(root, directoryRoutingRules));
+  const appliedRouteRequestKeyRef = useRef<string | null>(null);
   const lyricsAttachments = useDirectoryLyricsAttachmentVisibility(root);
   const current = useMemo(() => nodeAtPath(root, path) ?? root, [root, path]);
   const folders = sortedFolders(current);
@@ -9469,8 +9604,12 @@ function DirectoryBrowser({
     setPath(recommendedDirectoryPath(root, directoryRoutingRules));
   }, [root, directoryRoutingRules]);
   useEffect(() => {
-    if (routePath && nodeAtPath(root, routePath)) setPath(routePath);
-  }, [routePath, root]);
+    if (!routePath || !nodeAtPath(root, routePath)) return;
+    const requestKey = routeRequestKey ?? routePath.join("\u0000");
+    if (appliedRouteRequestKeyRef.current === requestKey) return;
+    appliedRouteRequestKeyRef.current = requestKey;
+    setPath(routePath);
+  }, [routePath, routeRequestKey, root]);
 
   if (folders.length === 0 && files.length === 0) {
     return <div className="text-sm text-muted-foreground">{emptyLabel}</div>;

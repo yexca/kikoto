@@ -68,6 +68,14 @@ public class KikotoMediaPlugin extends Plugin {
         intent.putExtra(KikotoMediaService.EXTRA_PLAYBACK_RATE, call.getFloat("playbackRate", 1.0F));
         intent.putExtra(KikotoMediaService.EXTRA_CAN_PREVIOUS, call.getBoolean("canPrevious", false));
         intent.putExtra(KikotoMediaService.EXTRA_CAN_NEXT, call.getBoolean("canNext", false));
+        intent.putExtra(
+            KikotoMediaService.EXTRA_SEEK_BACKWARD_SECONDS,
+            call.getInt("seekBackwardSeconds", 10)
+        );
+        intent.putExtra(
+            KikotoMediaService.EXTRA_SEEK_FORWARD_SECONDS,
+            call.getInt("seekForwardSeconds", 30)
+        );
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             getContext().startForegroundService(intent);
         } else {

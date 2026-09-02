@@ -55,6 +55,13 @@ import {
 } from "@/player/playerProgress";
 import { revalidatePersistedQueue } from "@/player/playerQueueRestore";
 import { normalizePlaybackStartPosition, shouldCheckpointPause } from "@/player/playbackStart";
+import {
+  getStoredPlaybackSeekPreferences,
+  playbackSeekPreferencesStorageKey,
+  PLAYER_SEEK_PREFERENCES_CHANGE_EVENT,
+  type PlaybackSeekPreferences,
+  type PlaybackSeekPreferencesChangeDetail,
+} from "@/player/playbackPreferences";
 
 export type PlayMode = "order" | "loop" | "single";
 type DockMode = "full" | "compact" | "mini";
@@ -155,6 +162,10 @@ type PlayerContextValue = {
   previous: () => void;
   seekBy: (seconds: number) => void;
   seekTo: (seconds: number) => void;
+  seekBackward: () => void;
+  seekForward: () => void;
+  seekBackwardSeconds: number;
+  seekForwardSeconds: number;
   cyclePlaybackRate: () => void;
   playNext: (track: PlayerTrack) => void;
   appendQueue: (tracks: PlayerTrack[]) => void;
@@ -173,6 +184,8 @@ type PlayerContextValue = {
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 type LibraryPlayerContextValue = {
+  currentTrack: PlayerTrack | null;
+  isPlaying: boolean;
   currentLocationId: number | null;
   currentPlaybackKey: string | null;
   playQueue: (tracks: PlayerTrack[], locationId: number, startPositionSeconds?: number) => void;
@@ -354,6 +367,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     OBSOLETE_PLAYER_PROGRESS_STORAGE_BASE_KEY,
     principalID,
   );
+  const seekPreferencesStorageKey = playbackSeekPreferencesStorageKey(principalID);
   const toast = useToast();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const restoredQueueRef = useRef<ReturnType<typeof loadPersistedQueue> | null>(null);
@@ -373,6 +387,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [durationLocationId, setDurationLocationId] = useState<number | null>(null);
   const [playbackRate, setPlaybackRate] = useState(restoredQueue.playbackRate);
   const [mode, setMode] = useState<PlayMode>(restoredQueue.mode);
+  const [seekPreferences, setSeekPreferences] = useState<PlaybackSeekPreferences>(() =>
+    getStoredPlaybackSeekPreferences(principalID),
+  );
   const [sleepTimer, setSleepTimer] = useState<SleepTimerState>(restoredQueue.sleepTimer);
   const [sleepRemainingSeconds, setSleepRemainingSeconds] = useState(0);
   const queueRef = useRef(queue);
@@ -405,6 +422,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   });
   const nativeMediaSyncRef = useRef<() => void>(() => {});
   isPlayingRef.current = isPlaying;
+  const seekPreferencesRef = useRef(seekPreferences);
+  seekPreferencesRef.current = seekPreferences;
 
   const updatePlayingState = useCallback((next: boolean | ((current: boolean) => boolean)) => {
     const resolved = typeof next === "function" ? next(isPlayingRef.current) : next;
@@ -468,6 +487,25 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     discardObsoletePlayerState(obsoletePlayerProgressStorageKey);
   }, [obsoletePlayerProgressStorageKey]);
+
+  useEffect(() => {
+    setSeekPreferences(getStoredPlaybackSeekPreferences(principalID));
+    const syncCustomEvent = (event: Event) => {
+      const detail = (event as CustomEvent<PlaybackSeekPreferencesChangeDetail>).detail;
+      if (!detail || detail.storageKey !== seekPreferencesStorageKey) return;
+      setSeekPreferences(detail.preferences);
+    };
+    const syncStorageEvent = (event: StorageEvent) => {
+      if (event.key !== seekPreferencesStorageKey) return;
+      setSeekPreferences(getStoredPlaybackSeekPreferences(principalID));
+    };
+    window.addEventListener(PLAYER_SEEK_PREFERENCES_CHANGE_EVENT, syncCustomEvent);
+    window.addEventListener("storage", syncStorageEvent);
+    return () => {
+      window.removeEventListener(PLAYER_SEEK_PREFERENCES_CHANGE_EVENT, syncCustomEvent);
+      window.removeEventListener("storage", syncStorageEvent);
+    };
+  }, [principalID, seekPreferencesStorageKey]);
 
   useEffect(() => {
     const restored = restoredQueue.queue;
@@ -713,17 +751,23 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     updatePlayingState(true);
   };
 
-  const seekTo = (seconds: number) => {
+  const seekTo = useCallback((seconds: number) => {
     const audio = audioRef.current;
     if (!audio || !Number.isFinite(seconds) || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
     audio.currentTime = Math.max(0, Math.min(seconds, audio.duration));
-  };
+  }, []);
 
-  const seekBy = (seconds: number) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    seekTo(audio.currentTime + seconds);
-  };
+  const seekBy = useCallback(
+    (seconds: number) => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      seekTo(audio.currentTime + seconds);
+    },
+    [seekTo],
+  );
+
+  const seekBackward = useCallback(() => seekBy(-seekPreferencesRef.current.seekBackwardSeconds), [seekBy]);
+  const seekForward = useCallback(() => seekBy(seekPreferencesRef.current.seekForwardSeconds), [seekBy]);
 
   const saveProgress = (completed: boolean, force = false) => {
     const audio = audioRef.current;
@@ -1019,8 +1063,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       pause: () => updatePlayingState(false),
       previous,
       next,
-      seekBackward: () => seekBy(-5),
-      seekForward: () => seekBy(10),
+      seekBackward,
+      seekForward,
       seekTo,
     };
   });
@@ -1091,8 +1135,21 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       playbackRate,
       canPrevious: currentIndex > 0 || mode === "loop",
       canNext: currentIndex < queue.length - 1 || mode === "loop",
+      seekBackwardSeconds: seekPreferences.seekBackwardSeconds,
+      seekForwardSeconds: seekPreferences.seekForwardSeconds,
     });
-  }, [currentTrack, currentIndex, queue.length, isPlaying, duration, durationLocationId, playbackRate, mode]);
+  }, [
+    currentTrack,
+    currentIndex,
+    queue.length,
+    isPlaying,
+    duration,
+    durationLocationId,
+    playbackRate,
+    mode,
+    seekPreferences.seekBackwardSeconds,
+    seekPreferences.seekForwardSeconds,
+  ]);
   nativeMediaSyncRef.current = syncNativeMedia;
 
   useEffect(() => {
@@ -1137,8 +1194,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       ["pause", () => updatePlayingState(false)],
       ["previoustrack", previous],
       ["nexttrack", next],
-      ["seekbackward", (details) => seekBy(-(details.seekOffset ?? 5))],
-      ["seekforward", (details) => seekBy(details.seekOffset ?? 10)],
+      ["seekbackward", seekBackward],
+      ["seekforward", seekForward],
       ["seekto", (details) => seekTo(details.seekTime ?? 0)],
     ];
     for (const [action, handler] of handlers) {
@@ -1166,6 +1223,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     currentTrack?.coverUrl,
     currentIndex,
     queue.length,
+    seekBackward,
+    seekForward,
   ]);
 
   useEffect(() => {
@@ -1194,17 +1253,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         updatePlayingState((value) => !value);
         return;
       }
-      const offset = event.key === "ArrowLeft" ? -5 : event.key === "ArrowRight" ? 10 : 0;
-      if (offset === 0) return;
+      const seek = event.key === "ArrowLeft" ? seekBackward : event.key === "ArrowRight" ? seekForward : null;
+      if (!seek) return;
       event.preventDefault();
-      const audio = audioRef.current;
-      if (!audio) return;
-      const nextTime = audio.currentTime + offset;
-      seekTo(nextTime);
+      seek();
     };
     window.addEventListener("keydown", handlePlayerShortcut);
     return () => window.removeEventListener("keydown", handlePlayerShortcut);
-  }, [currentPlaybackKey, currentTrack?.locationId]);
+  }, [currentPlaybackKey, currentTrack?.locationId, seekBackward, seekForward]);
 
   const value = useMemo<PlayerContextValue>(
     () => ({
@@ -1226,6 +1282,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       previous,
       seekBy,
       seekTo,
+      seekBackward,
+      seekForward,
+      seekBackwardSeconds: seekPreferences.seekBackwardSeconds,
+      seekForwardSeconds: seekPreferences.seekForwardSeconds,
       cyclePlaybackRate: () =>
         setPlaybackRate((value) => {
           const rates = [0.75, 1, 1.25, 1.5, 2];
@@ -1264,12 +1324,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       sleepTimer,
       sleepRemainingSeconds,
       mode,
+      seekPreferences.seekBackwardSeconds,
+      seekPreferences.seekForwardSeconds,
+      seekBackward,
+      seekForward,
       lyricsPreferenceOverrides,
       changeLyricsChoice,
     ],
   );
   const libraryValue = useMemo<LibraryPlayerContextValue>(
     () => ({
+      currentTrack,
+      isPlaying,
       currentLocationId: currentTrack?.locationId ?? null,
       currentPlaybackKey,
       playQueue,
@@ -1280,6 +1346,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       currentPlaybackKey,
+      currentTrack,
+      isPlaying,
       currentTrack?.locationId,
       playQueue,
       playNext,
@@ -2249,10 +2317,10 @@ export function PlayerDock() {
               className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"
               variant="outline"
               size="icon"
-              onClick={() => player.seekBy(-5)}
-              aria-label="Back 5 seconds"
+              onClick={player.seekBackward}
+              aria-label={`Back ${player.seekBackwardSeconds} seconds`}
             >
-              <SeekIcon direction="back" seconds={5} />
+              <SeekIcon direction="back" seconds={player.seekBackwardSeconds} />
             </Button>
             <Button
               className="h-14 w-14 rounded-full shadow-sm transition-[transform,box-shadow] hover:scale-[1.04] hover:shadow-lg active:scale-95 motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
@@ -2266,10 +2334,10 @@ export function PlayerDock() {
               className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"
               variant="outline"
               size="icon"
-              onClick={() => player.seekBy(10)}
-              aria-label="Forward 10 seconds"
+              onClick={player.seekForward}
+              aria-label={`Forward ${player.seekForwardSeconds} seconds`}
             >
-              <SeekIcon direction="forward" seconds={10} />
+              <SeekIcon direction="forward" seconds={player.seekForwardSeconds} />
             </Button>
             <Button
               className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"

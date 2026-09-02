@@ -33,6 +33,8 @@ const mediaState = {
   playbackRate: 1,
   canPrevious: false,
   canNext: true,
+  seekBackwardSeconds: 10,
+  seekForwardSeconds: 30,
 };
 
 describe("native media bridge", () => {

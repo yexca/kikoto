@@ -389,6 +389,25 @@ test("personal settings stay separate from administrator maintenance", async ({ 
   await expect(page.getByText("User directory", { exact: true })).toBeVisible();
 });
 
+test("personal playback seek intervals use the requested defaults and persist locally", async ({ page }) => {
+  await mockCacheSettings(page, () => undefined);
+  await page.goto("/settings");
+
+  const forward = page.getByRole("spinbutton", { name: /Forward seek/ });
+  const backward = page.getByRole("spinbutton", { name: /Backward seek/ });
+  await expect(forward).toHaveValue("30");
+  await expect(backward).toHaveValue("10");
+
+  await forward.fill("45");
+  await backward.fill("15");
+  await page.getByRole("button", { name: "Save playback", exact: true }).click();
+  await expect(page.getByText("Playback seek settings updated.", { exact: true })).toBeVisible();
+
+  await page.reload();
+  await expect(forward).toHaveValue("45");
+  await expect(backward).toHaveValue("15");
+});
+
 test("development super administrator can configure production anonymous access", async ({ page }) => {
   let anonymousAccessEnabled = false;
   let runtimeRequests = 0;

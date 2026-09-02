@@ -14,6 +14,7 @@ import {
   remoteSelectablePaths,
   toPreferredPlayerTrack,
   toRemotePreviewPlayerTrack,
+  treePathForTrack,
   treeStats,
 } from "./mediaTreeModel";
 
@@ -107,6 +108,43 @@ describe("mediaTreeModel", () => {
     expect(tracks[0].sourcePath).toBe("audio/01.mp3");
     expect(tracks[0].locations.map((location) => location.locationId)).toEqual([21, 22]);
     expect(treeStats(tree)).toMatchObject({ files: 1, audio: 1, sizeBytes: 1024, durationSeconds: 90 });
+  });
+
+  it("finds a playing file's displayed directory path", () => {
+    const tree = buildTree(
+      [
+        localMediaItem(1, "audio", "library/RJ00000000/Main/01.mp3"),
+        localMediaItem(2, "audio", "library/RJ00000000/Bonus/02.mp3"),
+      ],
+      1,
+      "RJ00000000",
+    );
+    const track = flattenTracks(tree).find((candidate) => candidate.locationId === 101);
+
+    expect(track).toBeDefined();
+    expect(treePathForTrack(tree, { playbackKey: track?.playbackKey })).toEqual(["Main"]);
+  });
+
+  it("keeps a collapsed single-child directory in the displayed path", () => {
+    const tree = buildTree(
+      [
+        localMediaItem(1, "audio", "library/RJ00000000/root.mp3"),
+        localMediaItem(2, "audio", "library/RJ00000000/Folder/Inner/Sub/02.mp3"),
+      ],
+      1,
+      "RJ00000000",
+    );
+    const track = flattenTracks(tree).find((candidate) => candidate.locationId === 102);
+
+    expect(track).toBeDefined();
+    expect(treePathForTrack(tree, { playbackKey: track?.playbackKey })).toEqual(["Folder", "Inner/Sub"]);
+  });
+
+  it("returns the root path for a root file and falls back to its location id", () => {
+    const tree = buildTree([localMediaItem(1, "audio", "library/RJ00000000/root.mp3")], 1, "RJ00000000");
+
+    expect(treePathForTrack(tree, { playbackKey: "location:missing", locationId: 101 })).toEqual([]);
+    expect(treePathForTrack(tree, { playbackKey: "location:missing", locationId: 999 })).toBeNull();
   });
 
   it("selects the best available location for work-level playback", () => {

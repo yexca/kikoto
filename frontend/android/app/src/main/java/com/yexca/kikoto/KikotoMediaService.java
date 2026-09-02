@@ -44,6 +44,8 @@ public class KikotoMediaService extends Service {
     public static final String EXTRA_PLAYBACK_RATE = "playbackRate";
     public static final String EXTRA_CAN_PREVIOUS = "canPrevious";
     public static final String EXTRA_CAN_NEXT = "canNext";
+    public static final String EXTRA_SEEK_BACKWARD_SECONDS = "seekBackwardSeconds";
+    public static final String EXTRA_SEEK_FORWARD_SECONDS = "seekForwardSeconds";
 
     private static final String CHANNEL_ID = "kikoto_playback";
     private static final int NOTIFICATION_ID = 1001;
@@ -67,6 +69,8 @@ public class KikotoMediaService extends Service {
     private float playbackRate = 1.0F;
     private boolean canPrevious = false;
     private boolean canNext = false;
+    private int seekBackwardSeconds = 10;
+    private int seekForwardSeconds = 30;
     private boolean foregroundStarted = false;
 
     @Override
@@ -151,6 +155,14 @@ public class KikotoMediaService extends Service {
             float nextPlaybackRate = intent.getFloatExtra(EXTRA_PLAYBACK_RATE, playbackRate);
             boolean nextCanPrevious = intent.getBooleanExtra(EXTRA_CAN_PREVIOUS, canPrevious);
             boolean nextCanNext = intent.getBooleanExtra(EXTRA_CAN_NEXT, canNext);
+            int nextSeekBackwardSeconds = boundedSeekSeconds(
+                intent.getIntExtra(EXTRA_SEEK_BACKWARD_SECONDS, seekBackwardSeconds),
+                seekBackwardSeconds
+            );
+            int nextSeekForwardSeconds = boundedSeekSeconds(
+                intent.getIntExtra(EXTRA_SEEK_FORWARD_SECONDS, seekForwardSeconds),
+                seekForwardSeconds
+            );
             boolean textChanged = !Objects.equals(title, nextTitle)
                 || !Objects.equals(artist, nextArtist)
                 || !Objects.equals(album, nextAlbum);
@@ -160,7 +172,9 @@ public class KikotoMediaService extends Service {
                 || coverChanged
                 || playing != nextPlaying
                 || canPrevious != nextCanPrevious
-                || canNext != nextCanNext;
+                || canNext != nextCanNext
+                || seekBackwardSeconds != nextSeekBackwardSeconds
+                || seekForwardSeconds != nextSeekForwardSeconds;
 
             title = nextTitle;
             artist = nextArtist;
@@ -171,6 +185,8 @@ public class KikotoMediaService extends Service {
             playbackRate = nextPlaybackRate;
             canPrevious = nextCanPrevious;
             canNext = nextCanNext;
+            seekBackwardSeconds = nextSeekBackwardSeconds;
+            seekForwardSeconds = nextSeekForwardSeconds;
             if (!foregroundStarted || metadataChanged) updateMediaMetadata();
             updatePlaybackState();
             if (!foregroundStarted || notificationChanged) publishNotification();
@@ -220,9 +236,9 @@ public class KikotoMediaService extends Service {
                 .setShowActionsInCompactView(0, 2, 4));
 
         builder.addAction(new NotificationCompat.Action.Builder(android.R.drawable.ic_media_previous, "Previous", controlIntent("previous")).build());
-        builder.addAction(new NotificationCompat.Action.Builder(android.R.drawable.ic_media_rew, "Back 5s", controlIntent("seekBackward")).build());
+        builder.addAction(new NotificationCompat.Action.Builder(android.R.drawable.ic_media_rew, "Back " + seekBackwardSeconds + "s", controlIntent("seekBackward")).build());
         builder.addAction(new NotificationCompat.Action.Builder(playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play, playing ? "Pause" : "Play", controlIntent(playing ? "pause" : "play")).build());
-        builder.addAction(new NotificationCompat.Action.Builder(android.R.drawable.ic_media_ff, "Forward 10s", controlIntent("seekForward")).build());
+        builder.addAction(new NotificationCompat.Action.Builder(android.R.drawable.ic_media_ff, "Forward " + seekForwardSeconds + "s", controlIntent("seekForward")).build());
         builder.addAction(new NotificationCompat.Action.Builder(android.R.drawable.ic_media_next, "Next", controlIntent("next")).build());
         return builder.build();
     }
@@ -232,6 +248,10 @@ public class KikotoMediaService extends Service {
         intent.setAction(ACTION_CONTROL);
         intent.putExtra(EXTRA_COMMAND, command);
         return PendingIntent.getService(this, command.hashCode(), intent, pendingIntentFlags());
+    }
+
+    private int boundedSeekSeconds(int value, int fallback) {
+        return value >= 1 && value <= 300 ? value : fallback;
     }
 
     private int pendingIntentFlags() {
