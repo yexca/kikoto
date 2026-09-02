@@ -26,11 +26,15 @@ final class KikotoAssetTransport {
     private static final int MAX_REDIRECTS = 3;
     private static final long UNKNOWN_LENGTH = -1L;
     private static final Pattern CONTENT_RANGE_PATTERN = Pattern.compile(
-        "^bytes\\s+(\\d+)-(\\d+)/(\\d+|\\*)$",
+        "^bytes\\s+(\\d+)\\s*-\\s*(\\d+)\\s*/\\s*(\\d+|\\*)$",
         Pattern.CASE_INSENSITIVE
     );
     private static final Pattern REQUESTED_RANGE_START_PATTERN = Pattern.compile(
         "^bytes\\s*=\\s*(\\d+)-.*$",
+        Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern OPEN_ENDED_REQUESTED_RANGE_PATTERN = Pattern.compile(
+        "^bytes\\s*=\\s*\\d+\\s*-\\s*$",
         Pattern.CASE_INSENSITIVE
     );
     private static final AtomicReference<KikotoAssetRequestPolicy> POLICY = new AtomicReference<>();
@@ -166,6 +170,7 @@ final class KikotoAssetTransport {
             throw new IOException("Mobile asset response has an invalid Content-Range.");
         }
         Long requestedRangeStart = requestedRangeStart(requestHeaders);
+        boolean openEndedRangeRequested = requestsOpenEndedRange(requestHeaders);
         if (contentRange != null && requestedRangeStart != null && contentRange.start != requestedRangeStart) {
             throw new IOException("Mobile asset response does not match the requested range.");
         }
@@ -175,14 +180,13 @@ final class KikotoAssetTransport {
         long virtualRangePrefix = 0;
         if (contentRange != null) {
             bodyLength = contentRange.length();
-            if (declaredLength >= 0 && declaredLength != bodyLength) {
-                throw new IOException("Mobile asset response has inconsistent range length.");
-            }
             virtualRangePrefix = contentRange.start;
-            if (contentRange.total < 0) {
-                throw new IOException("Mobile asset response has an unknown range length.");
-            }
-            logicalLength = contentRange.total;
+            // Content-Range describes the body more reliably than a
+            // proxy-preserved Content-Length header. Only an open-ended request
+            // can use the returned end offset as a useful fallback total.
+            logicalLength = contentRange.total >= 0
+                ? contentRange.total
+                : (openEndedRangeRequested ? contentRange.inferredTotal() : UNKNOWN_LENGTH);
         }
         InputStream responseBody = new WebViewRangeInputStream(
             input,
@@ -322,6 +326,15 @@ final class KikotoAssetTransport {
         long length() {
             return end - start + 1;
         }
+
+        long inferredTotal() {
+            return end == Long.MAX_VALUE ? UNKNOWN_LENGTH : end + 1;
+        }
+    }
+
+    private static boolean requestsOpenEndedRange(Map<String, String> headers) {
+        String value = headerValue(headers, "range");
+        return value != null && OPEN_ENDED_REQUESTED_RANGE_PATTERN.matcher(value.trim()).matches();
     }
 
     static final class WebViewRangeInputStream extends FilterInputStream {

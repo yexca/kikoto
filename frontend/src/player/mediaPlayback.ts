@@ -55,13 +55,14 @@ function appendQuery(url: string, query: URLSearchParams) {
   return `${base}${separator}${query.toString()}${hash}`;
 }
 
-export function playbackURL(url: string, profile: PlaybackProfile, forceTranscode = false) {
+export function playbackURL(url: string, profile: PlaybackProfile, forceTranscode = false, forceDirect = false) {
   if (!url) return "";
   const query = new URLSearchParams();
   query.set("profile", profile);
   const capabilities = playbackCapabilities(profile);
   if (capabilities.length > 0) query.set("capabilities", capabilities.join(","));
   if (forceTranscode) query.set("forceTranscode", "1");
+  if (forceDirect) query.set("forceDirect", "1");
   return appendQuery(url, query);
 }
 
@@ -82,5 +83,11 @@ export function remoteMediaURL(sourceId: number, workCode: string, remotePath: s
 export function forcePlaybackTranscodeURL(url: string) {
   if (!url) return "";
   const query = new URLSearchParams({ forceTranscode: "1" });
+  return appendQuery(url, query);
+}
+
+export function forcePlaybackDirectURL(url: string) {
+  if (!url) return "";
+  const query = new URLSearchParams({ forceDirect: "1" });
   return appendQuery(url, query);
 }

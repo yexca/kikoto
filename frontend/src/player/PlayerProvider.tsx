@@ -12,6 +12,7 @@ import {
   PanelBottom,
   Pause,
   Play,
+  RefreshCw,
   Repeat,
   Repeat1,
   RotateCcw,
@@ -129,6 +130,8 @@ export type PlayerTrackLocation = {
   availability: string;
 };
 
+export type PlaybackCompatibilityScope = "off" | "track" | "queue" | "always";
+
 type SleepTimerState = {
   mode: "deadline";
   deadline: number;
@@ -156,6 +159,10 @@ type PlayerContextValue = {
   seekBy: (seconds: number) => void;
   seekTo: (seconds: number) => void;
   cyclePlaybackRate: () => void;
+  setPlaybackRate: (rate: number) => void;
+  playbackCompatibilityScope: PlaybackCompatibilityScope;
+  compatibilityPlaybackEnabled: boolean;
+  setPlaybackCompatibility: (scope: PlaybackCompatibilityScope, resume?: boolean) => void;
   playNext: (track: PlayerTrack) => void;
   appendQueue: (tracks: PlayerTrack[]) => void;
   moveQueueItem: (queueItemId: string, direction: -1 | 1) => void;
@@ -189,6 +196,33 @@ const LEGACY_PLAYER_QUEUE_STORAGE_KEY = "kikoto:player-queue:v1";
 const LEGACY_PLAYER_PROGRESS_STORAGE_KEY = "kikoto:player-progress:v1";
 const MINI_POSITION_STORAGE_KEY = "kikoto:player-mini-position:v1";
 const DOCK_MODE_STORAGE_KEY = "kikoto:player-dock-mode:v1";
+const PLAYBACK_COMPATIBILITY_STORAGE_BASE_KEY = "kikoto:player-compatibility:v1";
+
+function isPlaybackCompatibilityScope(value: unknown): value is PlaybackCompatibilityScope {
+  return value === "off" || value === "track" || value === "queue" || value === "always";
+}
+
+function loadPersistedPlaybackCompatibility(storageKey: string): PlaybackCompatibilityScope {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(storageKey) ?? "null") as {
+      version?: number;
+      scope?: unknown;
+    } | null;
+    return isPlaybackCompatibilityScope(parsed?.scope) && parsed.scope === "always" ? "always" : "off";
+  } catch {
+    return "off";
+  }
+}
+
+function createPlaybackSessionID() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function isExpectedPlaybackInterruption(error: unknown) {
+  if (!error || typeof error !== "object" || !("name" in error)) return false;
+  return error.name === "AbortError" || error.name === "NotAllowedError";
+}
 
 function discardObsoletePlayerState(scopedProgressStorageKey: string) {
   try {
@@ -354,6 +388,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     OBSOLETE_PLAYER_PROGRESS_STORAGE_BASE_KEY,
     principalID,
   );
+  const playbackCompatibilityStorageKey = currentScopedStorageKey(PLAYBACK_COMPATIBILITY_STORAGE_BASE_KEY, principalID);
   const toast = useToast();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const restoredQueueRef = useRef<ReturnType<typeof loadPersistedQueue> | null>(null);
@@ -375,6 +410,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [mode, setMode] = useState<PlayMode>(restoredQueue.mode);
   const [sleepTimer, setSleepTimer] = useState<SleepTimerState>(restoredQueue.sleepTimer);
   const [sleepRemainingSeconds, setSleepRemainingSeconds] = useState(0);
+  const [playbackCompatibilityScope, setPlaybackCompatibilityScopeState] = useState<PlaybackCompatibilityScope>(() =>
+    loadPersistedPlaybackCompatibility(playbackCompatibilityStorageKey),
+  );
+  const [playbackCompatibilityTarget, setPlaybackCompatibilityTarget] = useState<string | null>(null);
+  const [playbackCompatibilityLoadedKey, setPlaybackCompatibilityLoadedKey] = useState(playbackCompatibilityStorageKey);
   const queueRef = useRef(queue);
   const currentIndexRef = useRef(currentIndex);
   const isPlayingRef = useRef(isPlaying);
@@ -386,13 +426,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const completedPlaybackInstanceRef = useRef<string | null>(null);
   const lastSavedRef = useRef<ProgressSaveMarker | null>(null);
   const lastPlayerTimeCommitRef = useRef<number | null>(null);
+  const pendingSeekTargetRef = useRef<number | null>(null);
+  const pendingSeekTimerRef = useRef<number | null>(null);
   const progressSaveRef = useRef<(completed: boolean, force?: boolean) => void>(() => {});
   const progressSaveQueueRef = useRef<{ inFlight: boolean; pending: Map<number, ProgressSavePayload> }>({
     inFlight: false,
     pending: new Map(),
   });
   const cacheRequestedRef = useRef<Set<string>>(new Set());
-  const transcodeRetryRef = useRef<string | null>(null);
+  const queueSessionRef = useRef(createPlaybackSessionID());
+  const playbackCompatibilityScopeRef = useRef(playbackCompatibilityScope);
+  const playbackCompatibilityTargetRef = useRef(playbackCompatibilityTarget);
+  const playbackCompatibilityStorageKeyRef = useRef(playbackCompatibilityStorageKey);
+  const currentTrackRef = useRef<PlayerTrack | null>(null);
+  const playbackErrorSequenceRef = useRef(0);
+  const playbackErrorAbortRef = useRef<AbortController | null>(null);
+  const playbackErrorHandlerRef = useRef<() => void>(() => {});
   const locationFailureStateRef = useRef(createTrackLocationFailureState());
   const nativeControlRef = useRef({
     play: () => {},
@@ -414,6 +463,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const invalidatePlaybackRequests = useCallback(() => {
     playbackGenerationRef.current += 1;
   }, []);
+  const clearPendingSeek = useCallback(() => {
+    pendingSeekTargetRef.current = null;
+    if (pendingSeekTimerRef.current !== null) window.clearTimeout(pendingSeekTimerRef.current);
+    pendingSeekTimerRef.current = null;
+  }, []);
 
   const currentTrack = queue[currentIndex] ?? null;
   const currentPlaybackKey = trackPlaybackKey(currentTrack);
@@ -424,13 +478,105 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   queueRef.current = queue;
   currentIndexRef.current = currentIndex;
   currentPlaybackInstanceKeyRef.current = currentPlaybackInstanceKey;
+  currentTrackRef.current = currentTrack;
+  playbackCompatibilityScopeRef.current = playbackCompatibilityScope;
+  playbackCompatibilityTargetRef.current = playbackCompatibilityTarget;
+
+  const compatibilityTrackKey = currentTrack
+    ? (currentTrack.queueItemId ?? `media:${currentTrack.mediaItemId}:${currentTrack.workCode}`)
+    : null;
+  const compatibilityLocationEligible =
+    currentTrack?.locationType === "local" || currentTrack?.locationType === "cache";
+  const compatibilityPlaybackEnabled = Boolean(
+    compatibilityLocationEligible &&
+    playbackCompatibilityLoadedKey === playbackCompatibilityStorageKey &&
+    ((playbackCompatibilityScope === "always" && playbackCompatibilityTarget === null) ||
+      (playbackCompatibilityScope === "track" && playbackCompatibilityTarget === compatibilityTrackKey) ||
+      (playbackCompatibilityScope === "queue" && playbackCompatibilityTarget === queueSessionRef.current)),
+  );
+  const compatibilityPlaybackEnabledRef = useRef(compatibilityPlaybackEnabled);
+  compatibilityPlaybackEnabledRef.current = compatibilityPlaybackEnabled;
+
+  const setPlaybackCompatibility = useCallback(
+    (scope: PlaybackCompatibilityScope, resume = false) => {
+      const track = currentTrackRef.current;
+      if (scope !== "off" && !track) return;
+      const target =
+        scope === "track"
+          ? (track?.queueItemId ?? (track ? `media:${track.mediaItemId}:${track.workCode}` : null))
+          : scope === "queue"
+            ? queueSessionRef.current
+            : null;
+      const nextCompatibilityEnabled = Boolean(
+        track && (track.locationType === "local" || track.locationType === "cache") && scope !== "off",
+      );
+      if (nextCompatibilityEnabled !== compatibilityPlaybackEnabledRef.current && track?.queueItemId) {
+        pendingPlaybackStartRef.current = {
+          queueItemId: track.queueItemId,
+          positionSeconds: normalizePlaybackStartPosition(audioRef.current?.currentTime),
+        };
+      }
+      playbackCompatibilityScopeRef.current = scope;
+      playbackCompatibilityTargetRef.current = target;
+      setPlaybackCompatibilityScopeState(scope);
+      setPlaybackCompatibilityTarget(target);
+      playbackErrorAbortRef.current?.abort();
+      playbackErrorAbortRef.current = null;
+      playbackErrorSequenceRef.current += 1;
+      if (resume && track) updatePlayingState(true);
+    },
+    [updatePlayingState],
+  );
+
+  const resetTransientPlaybackCompatibility = useCallback(() => {
+    queueSessionRef.current = createPlaybackSessionID();
+    if (playbackCompatibilityScopeRef.current === "always") {
+      playbackCompatibilityTargetRef.current = null;
+      setPlaybackCompatibilityTarget(null);
+      return;
+    }
+    playbackCompatibilityScopeRef.current = "off";
+    playbackCompatibilityTargetRef.current = null;
+    setPlaybackCompatibilityScopeState("off");
+    setPlaybackCompatibilityTarget(null);
+  }, []);
+
+  useEffect(() => {
+    if (playbackCompatibilityStorageKeyRef.current !== playbackCompatibilityStorageKey) {
+      playbackCompatibilityStorageKeyRef.current = playbackCompatibilityStorageKey;
+      const restoredScope = loadPersistedPlaybackCompatibility(playbackCompatibilityStorageKey);
+      playbackCompatibilityScopeRef.current = restoredScope;
+      playbackCompatibilityTargetRef.current = null;
+      setPlaybackCompatibilityScopeState(restoredScope);
+      setPlaybackCompatibilityTarget(null);
+      setPlaybackCompatibilityLoadedKey(playbackCompatibilityStorageKey);
+      return;
+    }
+    try {
+      if (playbackCompatibilityScope === "always") {
+        localStorage.setItem(playbackCompatibilityStorageKey, JSON.stringify({ version: 1, scope: "always" }));
+      } else {
+        localStorage.removeItem(playbackCompatibilityStorageKey);
+      }
+    } catch {
+      // Playback remains usable when browser storage is unavailable.
+    }
+  }, [playbackCompatibilityLoadedKey, playbackCompatibilityScope, playbackCompatibilityStorageKey]);
+
+  useEffect(() => {
+    if (playbackCompatibilityScope !== "track" || playbackCompatibilityTarget === compatibilityTrackKey) return;
+    playbackCompatibilityScopeRef.current = "off";
+    playbackCompatibilityTargetRef.current = null;
+    setPlaybackCompatibilityScopeState("off");
+    setPlaybackCompatibilityTarget(null);
+  }, [compatibilityTrackKey, playbackCompatibilityScope, playbackCompatibilityTarget]);
 
   const requestAudioPlay = useCallback(
     (audio: HTMLAudioElement, playbackKey: string | null) => {
       const generation = playbackGenerationRef.current + 1;
       playbackGenerationRef.current = generation;
       const request = { generation, playbackKey };
-      const handleFailure = () => {
+      const handleFailure = (error: unknown) => {
         if (
           !isActivePlaybackRequest(
             request,
@@ -442,12 +588,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           return;
         sourceLoadingRef.current = false;
         updatePlayingState(false);
+        if (!isExpectedPlaybackInterruption(error)) playbackErrorHandlerRef.current();
       };
       let result: Promise<void> | void;
       try {
         result = audio.play();
-      } catch {
-        handleFailure();
+      } catch (error) {
+        handleFailure(error);
         return;
       }
       void Promise.resolve(result).then(() => {
@@ -562,6 +709,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const audio = audioRef.current;
     if (!audio) return;
     invalidatePlaybackRequests();
+    playbackErrorAbortRef.current?.abort();
+    playbackErrorAbortRef.current = null;
+    playbackErrorSequenceRef.current += 1;
+    clearPendingSeek();
     if (!currentTrack) {
       sourceLoadingRef.current = false;
       audio.pause();
@@ -572,16 +723,23 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setDurationLocationId(null);
       return;
     }
-    transcodeRetryRef.current = null;
     sourceLoadingRef.current = true;
     audio.pause();
-    audio.src = assetURL(playerTrackAudioURL(currentTrack));
+    audio.src = assetURL(playerTrackAudioURL(currentTrack, compatibilityPlaybackEnabled));
+    audio.load();
     lastPlayerTimeCommitRef.current = null;
     setCurrentTime(0);
     setDuration(0);
     setDurationLocationId(currentTrack.locationId);
     restoredMediaItemRef.current = null;
-  }, [currentPlaybackInstanceKey, currentTrack?.locationId, currentTrack?.streamUrl, invalidatePlaybackRequests]);
+  }, [
+    compatibilityPlaybackEnabled,
+    currentPlaybackInstanceKey,
+    currentTrack?.locationId,
+    currentTrack?.streamUrl,
+    clearPendingSeek,
+    invalidatePlaybackRequests,
+  ]);
 
   useEffect(() => {
     if (auth.demoMode || !currentTrack || currentTrack.locationType !== "remote_stream") return;
@@ -646,7 +804,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     } else {
       restoredMediaItemRef.current = currentPlaybackInstanceKey;
     }
-  }, [currentPlaybackInstanceKey, currentTrack?.locationId, currentTrack?.mediaItemId]);
+  }, [compatibilityPlaybackEnabled, currentPlaybackInstanceKey, currentTrack?.locationId, currentTrack?.mediaItemId]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -658,11 +816,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       invalidatePlaybackRequests();
       audio.pause();
     }
-  }, [isPlaying, currentTrack, currentPlaybackInstanceKey, invalidatePlaybackRequests, requestAudioPlay]);
+  }, [
+    compatibilityPlaybackEnabled,
+    isPlaying,
+    currentTrack,
+    currentPlaybackInstanceKey,
+    invalidatePlaybackRequests,
+    requestAudioPlay,
+  ]);
 
   const playQueue = useCallback(
     (tracks: PlayerTrack[], locationId: number, startPositionSeconds?: number) => {
       if (tracks.length === 0) return;
+      resetTransientPlaybackCompatibility();
       invalidatePlaybackRequests();
       resetTrackLocationFailures(locationFailureStateRef.current);
       progressSaveRef.current(false, true);
@@ -684,7 +850,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setCurrentIndex(nextIndex);
       updatePlayingState(true);
     },
-    [invalidatePlaybackRequests, updatePlayingState],
+    [invalidatePlaybackRequests, resetTransientPlaybackCompatibility, updatePlayingState],
   );
 
   const selectTrack = (index: number) => {
@@ -715,8 +881,30 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const seekTo = (seconds: number) => {
     const audio = audioRef.current;
-    if (!audio || !Number.isFinite(seconds) || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
-    audio.currentTime = Math.max(0, Math.min(seconds, audio.duration));
+    if (!audio || !Number.isFinite(seconds)) return;
+    const mediaDuration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : duration;
+    if (!Number.isFinite(mediaDuration) || mediaDuration <= 0) return;
+    const nextTime = Math.max(0, Math.min(seconds, mediaDuration));
+    clearPendingSeek();
+    pendingSeekTargetRef.current = nextTime;
+    try {
+      audio.currentTime = nextTime;
+    } catch {
+      pendingSeekTargetRef.current = null;
+      return;
+    }
+    pendingSeekTimerRef.current = window.setTimeout(() => {
+      if (pendingSeekTargetRef.current !== nextTime) return;
+      clearPendingSeek();
+      const currentAudio = audioRef.current;
+      if (!currentAudio) return;
+      lastPlayerTimeCommitRef.current = performance.now();
+      setCurrentTime(currentAudio.currentTime);
+      nativeMediaSyncRef.current();
+    }, 3_000);
+    lastPlayerTimeCommitRef.current = performance.now();
+    setCurrentTime(nextTime);
+    nativeMediaSyncRef.current();
   };
 
   const seekBy = (seconds: number) => {
@@ -730,9 +918,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (!audio || !currentTrack) return;
     if (!currentTrack.progressRecordable) return;
     if (currentTrack.mediaItemId <= 0) return;
-    const position = completed ? audio.duration || audio.currentTime : audio.currentTime;
+    const durationValue =
+      [
+        audio.duration,
+        durationLocationId === currentTrack.locationId ? duration : null,
+        currentTrack.durationSeconds,
+        currentTrack.progress?.durationSeconds,
+      ].find((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0) ?? null;
+    const position = completed ? (durationValue ?? audio.currentTime) : audio.currentTime;
     if (!Number.isFinite(position) || position < 0) return;
-    const durationValue = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : null;
     const now = Date.now();
     const marker = { mediaItemId: currentTrack.mediaItemId, position, completed, at: now };
     if (!auth.user || auth.demoMode) return;
@@ -763,6 +957,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   };
 
   progressSaveRef.current = saveProgress;
+
+  useEffect(() => () => clearPendingSeek(), [clearPendingSeek]);
 
   useEffect(() => {
     const flushProgress = () => progressSaveRef.current(false, true);
@@ -941,6 +1137,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const clearQueue = () => {
     progressSaveRef.current(false, true);
+    resetTransientPlaybackCompatibility();
     invalidatePlaybackRequests();
     setQueue([]);
     setCurrentIndex(0);
@@ -967,51 +1164,110 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
-  const tryNextLocation = () => {
-    if (!currentTrack) return;
-    const retryKey = `${currentPlaybackInstanceKey ?? ""}:${currentTrack.locationId}`;
-    const canRetryWithTranscode = currentTrack.locationType === "local" || currentTrack.locationType === "cache";
-    if (canRetryWithTranscode && transcodeRetryRef.current !== retryKey) {
-      const audio = audioRef.current;
-      if (audio) {
-        transcodeRetryRef.current = retryKey;
-        playbackGenerationRef.current += 1;
-        sourceLoadingRef.current = true;
-        audio.pause();
-        audio.src = assetURL(playerTrackAudioURL(currentTrack, true));
-        audio.load();
-        if (isPlayingRef.current) requestAudioPlay(audio, currentPlaybackInstanceKey);
+  const switchAfterLocationFailure = useCallback(
+    (failedTrack: PlayerTrack, instanceKey: string | null) => {
+      if (!instanceKey || currentPlaybackInstanceKeyRef.current !== instanceKey) return;
+      const activeTrack = currentTrackRef.current;
+      if (!activeTrack || activeTrack.locationId !== failedTrack.locationId) return;
+      const result = recordTrackLocationFailure(activeTrack, locationFailureStateRef.current);
+      if (result.kind === "ignored") {
+        sourceLoadingRef.current = false;
+        updatePlayingState(false);
         return;
       }
-    }
-    const result = recordTrackLocationFailure(currentTrack, locationFailureStateRef.current);
-    if (result.kind === "ignored") {
-      sourceLoadingRef.current = false;
-      updatePlayingState(false);
-      return;
-    }
-    if (result.kind === "terminal") {
-      sourceLoadingRef.current = false;
-      updatePlayingState(false);
-      toast.error(`Playback failed: no working source remains for ${currentTrack.title}.`);
-      return;
-    }
-    const nextLocation = result.location;
-    progressSaveRef.current(false, true);
-    if (currentTrack.queueItemId) {
-      pendingPlaybackStartRef.current = {
-        queueItemId: currentTrack.queueItemId,
-        positionSeconds: normalizePlaybackStartPosition(audioRef.current?.currentTime),
-      };
-    }
-    playbackGenerationRef.current += 1;
-    sourceLoadingRef.current = true;
-    setQueue((items) =>
-      items.map((item, index) => (index === currentIndex ? applyTrackLocation(item, nextLocation) : item)),
-    );
-    updatePlayingState(true);
-    toast.warning(`Playback source failed. Switched to ${nextLocation.sourceName || nextLocation.locationType}.`);
-  };
+      if (result.kind === "terminal") {
+        sourceLoadingRef.current = false;
+        updatePlayingState(false);
+        toast.error(`Playback failed: no working source remains for ${activeTrack.title}.`);
+        return;
+      }
+      const nextLocation = result.location;
+      progressSaveRef.current(false, true);
+      if (activeTrack.queueItemId) {
+        pendingPlaybackStartRef.current = {
+          queueItemId: activeTrack.queueItemId,
+          positionSeconds: normalizePlaybackStartPosition(audioRef.current?.currentTime),
+        };
+      }
+      playbackGenerationRef.current += 1;
+      playbackErrorSequenceRef.current += 1;
+      sourceLoadingRef.current = true;
+      setQueue((items) =>
+        items.map((item, index) =>
+          index === currentIndexRef.current && item.locationId === activeTrack.locationId
+            ? applyTrackLocation(item, nextLocation)
+            : item,
+        ),
+      );
+      updatePlayingState(true);
+      toast.warning(`Playback source failed. Switched to ${nextLocation.sourceName || nextLocation.locationType}.`);
+    },
+    [toast, updatePlayingState],
+  );
+
+  const handlePlaybackError = useCallback(() => {
+    const failedTrack = currentTrackRef.current;
+    const instanceKey = currentPlaybackInstanceKeyRef.current;
+    const audio = audioRef.current;
+    if (!failedTrack || !instanceKey || !audio) return;
+    const sequence = playbackErrorSequenceRef.current;
+    playbackErrorAbortRef.current?.abort();
+    const controller = new AbortController();
+    playbackErrorAbortRef.current = controller;
+    let timedOut = false;
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 3_000);
+    const sourceURL =
+      audio.currentSrc || assetURL(playerTrackAudioURL(failedTrack, compatibilityPlaybackEnabledRef.current));
+    sourceLoadingRef.current = false;
+    updatePlayingState(false);
+
+    void (async () => {
+      let status: number | null = null;
+      try {
+        if (typeof fetch === "function") {
+          const response = await fetch(sourceURL, {
+            method: "HEAD",
+            credentials: "include",
+            cache: "no-store",
+            headers: { Accept: "*/*" },
+            signal: controller.signal,
+          });
+          status = response.status;
+        }
+      } catch {
+        if (controller.signal.aborted && !timedOut) return;
+      } finally {
+        window.clearTimeout(timeout);
+      }
+      if (sequence !== playbackErrorSequenceRef.current || currentPlaybackInstanceKeyRef.current !== instanceKey)
+        return;
+      playbackErrorAbortRef.current = null;
+      if (status === 404) {
+        switchAfterLocationFailure(failedTrack, instanceKey);
+        return;
+      }
+      const canUseCompatibility = failedTrack.locationType === "local" || failedTrack.locationType === "cache";
+      if (canUseCompatibility && !compatibilityPlaybackEnabledRef.current) {
+        toast.notify({
+          kind: "error",
+          message: `Playback failed for ${failedTrack.title}.`,
+          actionLabel: "Try compatibility",
+          onAction: () => {
+            if (currentPlaybackInstanceKeyRef.current !== instanceKey) return;
+            setPlaybackCompatibility("track", true);
+          },
+        });
+        return;
+      }
+      switchAfterLocationFailure(failedTrack, instanceKey);
+    })();
+  }, [setPlaybackCompatibility, switchAfterLocationFailure, toast, updatePlayingState]);
+
+  playbackErrorHandlerRef.current = handlePlaybackError;
+  const tryNextLocation = handlePlaybackError;
 
   useEffect(() => {
     nativeControlRef.current = {
@@ -1218,6 +1474,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       sleepTimer,
       sleepRemainingSeconds,
       mode,
+      playbackCompatibilityScope,
+      compatibilityPlaybackEnabled,
+      setPlaybackCompatibility,
       playQueue,
       selectTrack,
       togglePlay: () => updatePlayingState((value) => (currentTrack ? !value : false)),
@@ -1232,6 +1491,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           const index = rates.indexOf(value);
           return rates[(index + 1) % rates.length];
         }),
+      setPlaybackRate: (rate) => {
+        if ([0.75, 1, 1.25, 1.5, 2].includes(rate)) setPlaybackRate(rate);
+      },
       playNext,
       appendQueue,
       moveQueueItem,
@@ -1264,6 +1526,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       sleepTimer,
       sleepRemainingSeconds,
       mode,
+      playbackCompatibilityScope,
+      compatibilityPlaybackEnabled,
+      setPlaybackCompatibility,
       lyricsPreferenceOverrides,
       changeLyricsChoice,
     ],
@@ -1299,6 +1564,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           onTimeUpdate={(event) => {
             const now = performance.now();
             const nextTime = event.currentTarget.currentTime;
+            const pendingSeekTarget = pendingSeekTargetRef.current;
+            if (pendingSeekTarget !== null) {
+              if (Math.abs(nextTime - pendingSeekTarget) > 0.5) return;
+              clearPendingSeek();
+            }
             const jumped = Math.abs(nextTime - currentTime) >= 1;
             if (shouldCommitPlayerTime(lastPlayerTimeCommitRef.current, now, jumped)) {
               lastPlayerTimeCommitRef.current = now;
@@ -1306,9 +1576,28 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             }
             saveProgress(false);
           }}
-          onDurationChange={(event) =>
-            setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)
-          }
+          onLoadedMetadata={(event) => {
+            const mediaDuration = event.currentTarget.duration;
+            const knownDuration = currentTrackRef.current?.durationSeconds ?? null;
+            setDuration(
+              Number.isFinite(mediaDuration) && mediaDuration > 0
+                ? mediaDuration
+                : typeof knownDuration === "number" && Number.isFinite(knownDuration) && knownDuration > 0
+                  ? knownDuration
+                  : 0,
+            );
+          }}
+          onDurationChange={(event) => {
+            const mediaDuration = event.currentTarget.duration;
+            if (Number.isFinite(mediaDuration) && mediaDuration > 0) {
+              setDuration(mediaDuration);
+              return;
+            }
+            const knownDuration = currentTrackRef.current?.durationSeconds ?? null;
+            if (typeof knownDuration === "number" && Number.isFinite(knownDuration) && knownDuration > 0) {
+              setDuration(knownDuration);
+            }
+          }}
           onPlay={() => {
             if (!isPlayingRef.current) {
               audioRef.current?.pause();
@@ -1331,8 +1620,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             updatePlayingState(false);
           }}
           onSeeked={(event) => {
+            const nextTime = event.currentTarget.currentTime;
+            const pendingSeekTarget = pendingSeekTargetRef.current;
+            if (pendingSeekTarget !== null && Math.abs(nextTime - pendingSeekTarget) > 0.5) return;
+            clearPendingSeek();
             lastPlayerTimeCommitRef.current = performance.now();
-            setCurrentTime(event.currentTarget.currentTime);
+            setCurrentTime(nextTime);
             nativeMediaSyncRef.current();
             saveProgress(false, true);
           }}
@@ -1344,11 +1637,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-function playerTrackAudioURL(track: PlayerTrack, forceTranscode = false) {
+function playerTrackAudioURL(track: PlayerTrack, compatibilityMode = false) {
   if (track.locationType === "remote_stream" && track.remoteSourceId && track.remoteWorkCode && track.remotePath) {
     return remoteMediaPlaybackURL(track.remoteSourceId, track.remoteWorkCode, track.remotePath, "audio");
   }
-  return playbackURL(track.streamUrl, "audio", forceTranscode);
+  return playbackURL(track.streamUrl, "audio", compatibilityMode, !compatibilityMode);
 }
 
 export function usePlayer() {
@@ -1418,6 +1711,8 @@ export function PlayerDock() {
   const desktopFullHeight = useDesktopFullPlayerHeight(isMobile);
   const compactFullLayout = !isMobile && desktopFullHeight < 540;
   const track = player.currentTrack;
+  const moreButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
   const parsedLyrics = useMemo(() => parseTimedLyrics(lyricsText ?? ""), [lyricsText]);
   const activeLyricIndex = useMemo(
     () => activeTimedLyricIndex(parsedLyrics.lines, player.currentTime),
@@ -1582,6 +1877,10 @@ export function PlayerDock() {
   }, [dockMode, track?.locationId]);
 
   useEffect(() => {
+    setIsMoreOpen(false);
+  }, [dockMode, track?.queueItemId]);
+
+  useEffect(() => {
     if (!compactScrub?.dragging) return;
     const cancel = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -1623,6 +1922,11 @@ export function PlayerDock() {
         event.preventDefault();
         return;
       }
+      if (isMoreOpen) {
+        setIsMoreOpen(false);
+        event.preventDefault();
+        return;
+      }
       if (lyricsDisplayMode === "full") {
         setLyricsDisplayMode("hidden");
         event.preventDefault();
@@ -1651,6 +1955,7 @@ export function PlayerDock() {
     isMobile,
     isSleepOpen,
     isSourceOpen,
+    isMoreOpen,
     lyricsDisplayMode,
     miniActionsOpen,
     panel,
@@ -2346,19 +2651,6 @@ export function PlayerDock() {
               )}
             </Button>
             <Button
-              data-compact-control
-              className="h-11 rounded-full border-primary/15 lg:h-8"
-              variant={player.playbackRate === 1 ? "outline" : "secondary"}
-              size="sm"
-              onClick={player.cyclePlaybackRate}
-              aria-label={`Playback speed ${player.playbackRate} times`}
-              title="Playback speed"
-            >
-              <Gauge className="h-4 w-4" />
-              <span className="text-[10px]">{player.playbackRate}×</span>
-            </Button>
-
-            <Button
               ref={sleepButtonRef}
               className="h-11 rounded-full border-primary/15 lg:h-8"
               variant={player.sleepTimer ? "secondary" : "outline"}
@@ -2464,6 +2756,67 @@ export function PlayerDock() {
                     <X className="mr-2 h-4 w-4" /> Cancel timer
                   </button>
                 )}
+              </div>
+            </AnchoredPopover>
+
+            <Button
+              ref={moreButtonRef}
+              data-compact-control
+              className="h-11 rounded-full border-primary/15 lg:h-8"
+              variant={player.playbackRate !== 1 || player.compatibilityPlaybackEnabled ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => setIsMoreOpen((value) => !value)}
+              aria-label="More player options"
+              aria-expanded={isMoreOpen}
+              aria-haspopup="dialog"
+              title="More player options"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+
+            <AnchoredPopover
+              open={isMoreOpen}
+              anchorRef={moreButtonRef}
+              onOpenChange={setIsMoreOpen}
+              floatingLayer
+              ariaLabel="More player options"
+              className="w-[min(19rem,calc(100vw-1.5rem))] rounded-lg border bg-card p-3 text-card-foreground shadow-xl"
+            >
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 px-1 text-xs font-semibold text-muted-foreground">
+                  <Gauge className="h-4 w-4" />
+                  <span>Playback speed</span>
+                </div>
+                <FloatingSelect
+                  value={String(player.playbackRate)}
+                  options={[0.75, 1, 1.25, 1.5, 2].map((rate) => ({
+                    value: String(rate),
+                    label: `${rate}×`,
+                  }))}
+                  onValueChange={(value) => player.setPlaybackRate(Number(value))}
+                  ariaLabel="Playback speed"
+                  className="h-10"
+                />
+
+                <div className="flex items-center gap-2 px-1 text-xs font-semibold text-muted-foreground">
+                  <RefreshCw className="h-4 w-4" />
+                  <span>Compatibility playback</span>
+                </div>
+                <FloatingSelect
+                  value={player.playbackCompatibilityScope}
+                  options={[
+                    { value: "off", label: "Direct playback" },
+                    { value: "track", label: "Only current track" },
+                    { value: "queue", label: "Current queue" },
+                    { value: "always", label: "Always enabled" },
+                  ]}
+                  onValueChange={(value) => {
+                    if (isPlaybackCompatibilityScope(value)) player.setPlaybackCompatibility(value);
+                  }}
+                  ariaLabel="Compatibility playback scope"
+                  disabled={!track || (track.locationType !== "local" && track.locationType !== "cache")}
+                  className="h-10"
+                />
               </div>
             </AnchoredPopover>
           </div>
@@ -2684,27 +3037,52 @@ function SeekBar({
 }) {
   const clampedProgress = Math.max(0, Math.min(100, progress));
   const hasDuration = Number.isFinite(duration) && duration > 0;
+  const safeCurrentTime = hasDuration
+    ? Math.max(0, Math.min(Number.isFinite(currentTime) ? currentTime : 0, duration))
+    : 0;
+  const [draftValue, setDraftValue] = useState<number | null>(null);
+  const [interacting, setInteracting] = useState(false);
+  const value = draftValue ?? safeCurrentTime;
+  const displayedProgress = hasDuration ? Math.max(0, Math.min(100, (value / duration) * 100)) : clampedProgress;
+
+  useEffect(() => {
+    if (interacting || draftValue === null || Math.abs(safeCurrentTime - draftValue) > 0.25) return;
+    setDraftValue(null);
+  }, [draftValue, interacting, safeCurrentTime]);
+
   return (
     <div className="relative h-5">
       <div className="absolute left-0 right-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-white/45 shadow-inner dark:bg-white/10">
         <div
           className="h-full origin-left rounded-full bg-primary shadow-[0_0_14px_hsl(var(--primary)/0.32)] transition-transform duration-200"
-          style={{ transform: `scaleX(${clampedProgress / 100})` }}
+          style={{ transform: `scaleX(${displayedProgress / 100})` }}
         />
       </div>
       <div
         className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-card bg-primary shadow-lg shadow-primary/30 transition-[left] duration-200"
-        style={{ left: `${clampedProgress}%` }}
+        style={{ left: `${displayedProgress}%` }}
       />
       <input
         className="player-scrub absolute inset-0 h-5 w-full cursor-pointer"
+        data-player-no-drag
         type="range"
         min={0}
         max={hasDuration ? duration : 1}
         step={0.1}
-        value={hasDuration ? Math.min(currentTime, duration) : 0}
+        value={value}
         disabled={!hasDuration}
-        onChange={(event) => onSeek(Number(event.currentTarget.value))}
+        onPointerDown={() => {
+          setInteracting(true);
+          setDraftValue(value);
+        }}
+        onInput={(event) => {
+          const next = Number(event.currentTarget.value);
+          setDraftValue(next);
+          onSeek(next);
+        }}
+        onPointerUp={() => setInteracting(false)}
+        onPointerCancel={() => setInteracting(false)}
+        onBlur={() => setInteracting(false)}
         aria-label="Seek"
       />
     </div>

@@ -3333,13 +3333,67 @@ test("inline lyrics adapt visible rows to height and keep the active line center
   await expect(lyricsSelect).toHaveText("translation.srt");
 });
 
-test("desktop player uses playback speed without volume or colored play glow", async ({ page }) => {
+test("desktop player keeps speed and compatibility playback under More", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockApplication(page);
   await seedPlayer(page);
+  const mediaRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/media/1/stream" && request.method() === "GET") mediaRequests.push(request.url());
+  });
   await page.goto("/");
 
-  await expect(page.getByRole("button", { name: "Playback speed 1 times" })).toBeVisible();
+  await expect
+    .poll(() => mediaRequests.some((requestURL) => new URL(requestURL).searchParams.get("forceDirect") === "1"))
+    .toBe(true);
+  await expect(page.getByRole("button", { name: /Playback speed .* times/ })).toHaveCount(0);
+  const more = page.getByRole("button", { name: "More player options" });
+  await more.click();
+  const speed = page.getByRole("combobox", { name: "Playback speed" });
+  const compatibility = page.getByRole("combobox", { name: "Compatibility playback scope" });
+  await expect(speed).toHaveText("1×");
+  await expect(compatibility).toHaveText("Direct playback");
+
+  await speed.click();
+  await page.getByRole("option", { name: "1.25×", exact: true }).click();
+  await expect(speed).toHaveText("1.25×");
+
+  await compatibility.click();
+  await expect(page.getByRole("listbox", { name: "Compatibility playback scope" }).getByRole("option")).toHaveText([
+    "Direct playback",
+    "Only current track",
+    "Current queue",
+    "Always enabled",
+  ]);
+  await page.getByRole("option", { name: "Only current track", exact: true }).click();
+  await expect(compatibility).toHaveText("Only current track");
+  await expect
+    .poll(() => mediaRequests.some((requestURL) => new URL(requestURL).searchParams.get("forceTranscode") === "1"))
+    .toBe(true);
+
+  await compatibility.click();
+  await page.getByRole("option", { name: "Current queue", exact: true }).click();
+  await expect(compatibility).toHaveText("Current queue");
+  await compatibility.click();
+  await page.getByRole("option", { name: "Always enabled", exact: true }).click();
+  await expect(compatibility).toHaveText("Always enabled");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const key = `kikoto:player-compatibility:v1:${encodeURIComponent(window.location.origin)}:anonymous`;
+        return JSON.parse(localStorage.getItem(key) ?? "null")?.scope;
+      }),
+    )
+    .toBe("always");
+
+  mediaRequests.length = 0;
+  await page.reload();
+  await expect
+    .poll(() => mediaRequests.some((requestURL) => new URL(requestURL).searchParams.get("forceTranscode") === "1"))
+    .toBe(true);
+  await page.getByRole("button", { name: "More player options" }).click();
+  await expect(page.getByRole("combobox", { name: "Compatibility playback scope" })).toHaveText("Always enabled");
   await expect(page.getByRole("button", { name: "Volume" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Play", exact: true })).not.toHaveClass(/shadow-primary/);
 });
@@ -3426,12 +3480,25 @@ test("compact player supports relative drag seeking and global playback shortcut
     route.fulfill({ status: 200, contentType: "audio/wav", body: silentWav(100) }),
   );
   await page.goto("/");
-  await page.getByRole("button", { name: "Collapse player" }).click();
-
   const audio = page.locator("audio");
   await expect.poll(() => audio.evaluate((element) => element.duration)).toBeGreaterThan(99);
+  const seek = page.getByRole("slider", { name: "Seek" });
+  await seek.fill("60");
+  await expect(seek).toHaveValue("60");
   await audio.evaluate((element) => {
     Object.defineProperty(element, "currentTime", { configurable: true, writable: true, value: 40 });
+    element.dispatchEvent(new Event("timeupdate"));
+    element.dispatchEvent(new Event("seeked"));
+  });
+  await expect(seek).toHaveValue("60");
+  await audio.evaluate((element) => {
+    element.currentTime = 60;
+    element.dispatchEvent(new Event("seeked"));
+  });
+
+  await page.getByRole("button", { name: "Collapse player" }).click();
+  await audio.evaluate((element) => {
+    element.currentTime = 40;
     element.dispatchEvent(new Event("timeupdate"));
   });
   await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBeGreaterThan(39);
@@ -3569,7 +3636,14 @@ test("mini player reveals actions on tap, persists its snapped edge, and compact
   expect(restored!.x).toBeLessThanOrEqual(10);
 });
 
-test("failed sources fall back automatically and the sleep timer survives a reload", async ({ page }) => {
+test("failed direct playback offers compatibility before source fallback and the sleep timer survives a reload", async ({
+  page,
+}) => {
+  const mediaRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/media/1/stream") mediaRequests.push(request.url());
+  });
   await mockApplication(page, undefined, true);
   await seedPlayer(page, {
     ...persistedTrack,
@@ -3587,6 +3661,14 @@ test("failed sources fall back automatically and the sleep timer survives a relo
   });
   await page.goto("/");
 
+  await expect(page.getByText("Playback failed for Test track.")).toBeVisible();
+  await expect
+    .poll(() => mediaRequests.some((requestURL) => new URL(requestURL).searchParams.get("forceDirect") === "1"))
+    .toBe(true);
+  await page.getByRole("button", { name: "Try compatibility" }).click();
+  await expect
+    .poll(() => mediaRequests.some((requestURL) => new URL(requestURL).searchParams.get("forceTranscode") === "1"))
+    .toBe(true);
   await expect(page.getByText("Playback source failed. Switched to Remote.")).toBeVisible();
   await page.getByText("Test track", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Choose playback source" })).toContainText("Remote");

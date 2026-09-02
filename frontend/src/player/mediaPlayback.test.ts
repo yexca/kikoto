@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { playbackCapabilities, playbackURL, remoteMediaPlaybackURL, remoteMediaURL } from "./mediaPlayback";
+import {
+  forcePlaybackDirectURL,
+  playbackCapabilities,
+  playbackURL,
+  remoteMediaPlaybackURL,
+  remoteMediaURL,
+} from "./mediaPlayback";
 
 describe("media playback URLs", () => {
   afterEach(() => {
@@ -13,6 +19,13 @@ describe("media playback URLs", () => {
     expect(value).toContain("profile=audio");
     expect(value).toContain("forceTranscode=1");
     expect(value.endsWith("#fragment")).toBe(true);
+  });
+
+  it("can request direct extension playback without changing the transcode helper", () => {
+    const value = playbackURL("/api/media/4/stream", "audio", false, true);
+    expect(value).toContain("forceDirect=1");
+    expect(value).not.toContain("forceTranscode=1");
+    expect(forcePlaybackDirectURL("/api/media/4/stream?source=local")).toContain("forceDirect=1");
   });
 
   it("builds a same-origin remote media proxy URL", () => {

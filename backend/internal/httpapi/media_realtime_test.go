@@ -142,6 +142,37 @@ func TestServeAutomaticLocalPlaybackTranscodesToResponseWithoutCache(t *testing.
 	}
 }
 
+func TestServeAutomaticLocalPlaybackForceDirectSkipsProbe(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "track.wav")
+	if err := os.WriteFile(path, testWAVBytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(nil, config.Config{})
+	request := httptest.NewRequest(http.MethodGet, "/api/media/1/stream?profile=audio&forceDirect=1", nil)
+	response := httptest.NewRecorder()
+	server.serveAutomaticLocalPlayback(response, request, mediaStreamTarget{Kind: "audio", RelativePath: "track.wav"}, path)
+	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "audio/wav" || !bytes.Equal(response.Body.Bytes(), testWAVBytes()) {
+		t.Fatalf("forced direct response = %d/%q/%d bytes", response.Code, response.Header().Get("Content-Type"), response.Body.Len())
+	}
+}
+
+func TestServeAutomaticLocalPlaybackForceDirectTranscodesUnknownExtension(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg is not installed")
+	}
+	path := filepath.Join(t.TempDir(), "track.unknown")
+	if err := os.WriteFile(path, testWAVBytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(nil, config.Config{})
+	request := httptest.NewRequest(http.MethodGet, "/api/media/1/stream?profile=audio&forceDirect=1", nil)
+	response := httptest.NewRecorder()
+	server.serveAutomaticLocalPlayback(response, request, mediaStreamTarget{Kind: "audio", RelativePath: "track.unknown"}, path)
+	if response.Code != http.StatusOK || len(response.Body.Bytes()) < 3 || string(response.Body.Bytes()[:3]) != "ID3" {
+		t.Fatalf("unknown extension transcode response = %d, %d bytes, prefix %q", response.Code, response.Body.Len(), response.Body.String())
+	}
+}
+
 func TestServeAutomaticLocalPlaybackTranscodesAVI(t *testing.T) {
 	ffmpegPath, ffmpegErr := exec.LookPath("ffmpeg")
 	if ffmpegErr != nil {

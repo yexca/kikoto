@@ -603,6 +603,7 @@
   .player-scrub {
     appearance: none;
     background: transparent;
+    touch-action: none;
   }
 
   .player-scrub::-webkit-slider-runnable-track {

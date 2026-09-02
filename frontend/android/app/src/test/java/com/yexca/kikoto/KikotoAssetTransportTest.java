@@ -131,27 +131,45 @@ public class KikotoAssetTransportTest {
     }
 
     @Test
-    public void rejectsInconsistentPartialResponseLength() {
+    public void trustsContentRangeWhenProxyLengthIsInconsistent() throws Exception {
         responseContentLength.set(2);
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("Range", "bytes=2-");
 
-        assertThrows(
-            IOException.class,
-            () -> KikotoAssetTransport.open(serverUrl + "/api/media/7/stream", "GET", headers)
-        );
+        try (KikotoAssetTransport.Response response = KikotoAssetTransport.open(
+            serverUrl + "/api/media/7/stream", "GET", headers
+        )) {
+            assertEquals(206, response.status());
+            assertEquals("cde", readBody(response));
+        }
     }
 
     @Test
-    public void rejectsPartialResponseWithoutCompleteLength() {
+    public void infersLogicalLengthWhenPartialResponseOmitsTotal() throws Exception {
         responseContentRange.set("bytes 2-4/*");
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("Range", "bytes=2-");
 
-        assertThrows(
-            IOException.class,
-            () -> KikotoAssetTransport.open(serverUrl + "/api/media/7/stream", "GET", headers)
-        );
+        try (KikotoAssetTransport.Response response = KikotoAssetTransport.open(
+            serverUrl + "/api/media/7/stream", "GET", headers
+        )) {
+            assertEquals(5, response.body().available());
+            assertEquals("cde", readBody(response));
+        }
+    }
+
+    @Test
+    public void leavesLogicalLengthUnknownForBoundedRangeWithoutTotal() throws Exception {
+        responseContentRange.set("bytes 2-4/*");
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Range", "bytes=2-4");
+
+        try (KikotoAssetTransport.Response response = KikotoAssetTransport.open(
+            serverUrl + "/api/media/7/stream", "GET", headers
+        )) {
+            assertEquals(0, response.body().available());
+            assertEquals("cde", readBody(response));
+        }
     }
 
     @Test
@@ -179,6 +197,9 @@ public class KikotoAssetTransportTest {
 
         headers.put("content-range", "bytes 2-10/10");
         assertEquals(0L, KikotoAssetTransport.contentRangeStart(headers));
+
+        headers.put("content-range", "bytes 2 - 4 / *");
+        assertEquals(2L, KikotoAssetTransport.contentRangeStart(headers));
     }
 
     private void serveRange() {

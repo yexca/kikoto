@@ -203,6 +203,11 @@ func forcePlaybackTranscode(r *http.Request) bool {
 	return value == "1" || value == "true" || value == "yes"
 }
 
+func forcePlaybackDirect(r *http.Request) bool {
+	value := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("forceDirect")))
+	return value == "1" || value == "true" || value == "yes"
+}
+
 type realtimeResourceKind uint8
 
 const (
@@ -560,27 +565,38 @@ func (s *Server) serveAutomaticLocalPlayback(w http.ResponseWriter, r *http.Requ
 	}
 	capabilities := playbackCapabilities(r)
 	forceTranscode := forcePlaybackTranscode(r)
+	forceDirect := forcePlaybackDirect(r)
 	if !forceTranscode {
-		probe, probeErr := s.probePlaybackFile(r.Context(), path)
-		if errors.Is(probeErr, errRealtimeResourceBusy) {
-			w.Header().Set("Retry-After", "1")
-			writeAPIError(w, http.StatusServiceUnavailable, "media_probe_busy", "media playback inspection is temporarily busy", true)
-			return
-		}
-		if probeErr == nil {
-			if contentType, direct := directPlaybackContentType(probe, profile, capabilities); direct {
+		if forceDirect {
+			// The current player deliberately trusts a known media extension first.
+			// A browser decode error can then opt into the explicit compatibility
+			// path without making every request wait for FFprobe.
+			if contentType, direct := fallbackDirectPlaybackContentType(path, profile); direct {
 				s.serveDirectPlaybackFile(w, r, path, contentType)
 				return
 			}
-		}
-		if probeErr != nil && len(capabilities) == 0 {
-			// A small number of legacy/demo files are not probeable despite having a
-			// browser-native extension. Keep those streams usable; valid media always
-			// takes the probe decision above, and unknown extensions still transcode.
-			if contentType, direct := fallbackDirectPlaybackContentType(path, profile); direct {
-				slog.Warn("media probe failed; using extension fallback", "path", path, "profile", profile, "error", probeErr)
-				s.serveDirectPlaybackFile(w, r, path, contentType)
+		} else {
+			probe, probeErr := s.probePlaybackFile(r.Context(), path)
+			if errors.Is(probeErr, errRealtimeResourceBusy) {
+				w.Header().Set("Retry-After", "1")
+				writeAPIError(w, http.StatusServiceUnavailable, "media_probe_busy", "media playback inspection is temporarily busy", true)
 				return
+			}
+			if probeErr == nil {
+				if contentType, direct := directPlaybackContentType(probe, profile, capabilities); direct {
+					s.serveDirectPlaybackFile(w, r, path, contentType)
+					return
+				}
+			}
+			if probeErr != nil && len(capabilities) == 0 {
+				// A small number of legacy/demo files are not probeable despite having a
+				// browser-native extension. Keep those streams usable; valid media always
+				// takes the probe decision above, and unknown extensions still transcode.
+				if contentType, direct := fallbackDirectPlaybackContentType(path, profile); direct {
+					slog.Warn("media probe failed; using extension fallback", "path", path, "profile", profile, "error", probeErr)
+					s.serveDirectPlaybackFile(w, r, path, contentType)
+					return
+				}
 			}
 		}
 	}

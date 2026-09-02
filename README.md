@@ -175,14 +175,16 @@ recorded target still exists; otherwise the normal blocking review remains.
 
 Recognized audio extensions include MP3, M4A, FLAC, WAV, WMA, OGG, Opus, and
 AAC. Video, image, text, and other files remain visible in the directory tree
-with their corresponding media kind when recognized. During playback, FFprobe
-selects direct browser streaming for compatible local or cached media.
-Incompatible audio is converted directly to the response stream. Incompatible
-video uses a complete seekable HLS VOD timeline and creates bounded, on-demand
-segments under `/cache/transcodes/hls`; its independent LRU quota defaults to
-5 GiB and is configurable in Maintenance. Remote media is proxied unchanged
-through the configured source policy and is never sent through FFmpeg; an
-explicitly enabled remote source cache remains a separate download workflow.
+with their corresponding media kind when recognized. Local and cached audio
+with a browser-oriented extension is streamed directly with range support. If
+native decoding fails, the player offers an explicit compatibility mode that
+converts the audio directly to the response stream; unsupported audio
+extensions use the same conversion path automatically. Incompatible video uses
+a complete seekable HLS VOD timeline and creates bounded, on-demand segments
+under `/cache/transcodes/hls`; its independent LRU quota defaults to 5 GiB and
+is configurable in Maintenance. Remote media is proxied unchanged through the
+configured source policy and is never sent through FFmpeg; an explicitly
+enabled remote source cache remains a separate download workflow.
 
 The default Startup workflow performs a full library scan after service startup,
 and a full manual scan remains available from Workflows. While Kikoto is running,

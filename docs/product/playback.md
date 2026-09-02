@@ -4,13 +4,18 @@ Playback is handled by a global browser audio player.
 
 ## Current Behavior
 
-- Local and cached media is inspected with FFprobe before playback. A browser-
-  compatible container/codec combination is served directly with HTTP range
-  support. Native browser playback includes FLAC, Ogg Vorbis, and Ogg Opus
-  audio when the browser reports support.
-- Incompatible audio is converted by FFmpeg directly to an MP3 response stream.
-  Incompatible video first returns its probed total duration and a complete HLS
-  VOD playlist. Six-second H.264/AAC segments are generated independently on
+- Local and cached audio with a browser-oriented extension is served directly
+  with HTTP range support. This keeps startup and duration discovery on the
+  browser's native media path without waiting for FFprobe.
+- When direct audio decoding fails and the file still exists, the player offers
+  compatibility playback for only the current track, the current queue, or all
+  future local and cached playback. Compatibility playback and audio with an
+  unsupported extension are converted by FFmpeg directly to an MP3 response
+  stream. A confirmed missing file continues through the normal source fallback
+  order instead of offering conversion.
+- Local and cached video is inspected before playback. Incompatible video first
+  returns its probed total duration and a complete HLS VOD playlist. Six-second
+  H.264/AAC segments are generated independently on
   demand, so the player can request a later segment without transcoding every
   preceding segment. Hls.js supplies MSE playback where needed; clients with
   native HLS support use the same playlist directly.
@@ -59,7 +64,9 @@ Playback is handled by a global browser audio player.
   metadata is refreshed from the server, while only explicit Resume applies
   the durable work cursor's saved position.
 - The player dock supports collapsed and expanded states, queue view, seeking,
-  previous/next, skip controls, volume, and playback mode.
+  previous/next, skip controls, and playback mode. Sleep timer is the
+  second-last secondary action; playback speed and compatibility scope share
+  the final More menu.
 - Compact playback reserves page space on mobile and desktop so final actions
   are not covered. PWA update notices stack above the Compact dock.
 - Mobile full playback uses edge-to-edge safe areas on every side. Bottom
