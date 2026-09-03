@@ -13,6 +13,8 @@ type NativeMediaState = {
   playbackRate: number;
   canPrevious: boolean;
   canNext: boolean;
+  seekBackwardSeconds: number;
+  seekForwardSeconds: number;
 };
 
 type NativeMediaControl = {

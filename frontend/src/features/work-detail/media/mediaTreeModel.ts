@@ -323,6 +323,33 @@ export function flattenTreeFiles(root: TreeNode) {
   return files;
 }
 
+export function treePathForTrack(
+  root: TreeNode,
+  match: { playbackKey?: string | null; locationId?: number | null },
+): string[] | null {
+  const playbackKey = match.playbackKey?.trim() ?? "";
+  if (playbackKey) {
+    const path = findTreeTrackPath(root, (file) => file.playbackKey === playbackKey);
+    if (path) return path;
+  }
+  if (typeof match.locationId === "number" && Number.isFinite(match.locationId)) {
+    return findTreeTrackPath(root, (file) => file.locationId === match.locationId);
+  }
+  return null;
+}
+
+function findTreeTrackPath(root: TreeNode, predicate: (file: TreeTrack) => boolean) {
+  const visit = (node: TreeNode, path: string[]): string[] | null => {
+    if (node.files.some(predicate)) return path;
+    for (const child of node.children.values()) {
+      const result = visit(child, [...path, child.name]);
+      if (result) return result;
+    }
+    return null;
+  };
+  return visit(root, []);
+}
+
 export type DirectoryLyricsAttachments = {
   hiddenLocationIds: Set<number>;
   sharedLocationIds: Set<number>;

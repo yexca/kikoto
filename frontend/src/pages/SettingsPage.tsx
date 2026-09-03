@@ -1,4 +1,4 @@
-import { KeyRound, LoaderCircle, Monitor, Moon, Save, Sun, UserRound } from "lucide-react";
+import { FastForward, KeyRound, LoaderCircle, Monitor, Moon, Rewind, Save, Sun, UserRound } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
@@ -26,6 +26,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, type CurrentUser } from "@/lib/api";
 import { validatePasswordChange, type PasswordChangeDraft } from "@/pages/accountSettings";
+import {
+  getStoredPlaybackSeekPreferences,
+  normalizeSeekSeconds,
+  PLAYER_SEEK_PREFERENCES_CHANGE_EVENT,
+  playbackSeekPreferencesStorageKey,
+  SEEK_SECONDS_MAX,
+  SEEK_SECONDS_MIN,
+  storePlaybackSeekPreferences,
+  type PlaybackSeekPreferences,
+} from "@/player/playbackPreferences";
 
 const emptyPasswordDraft: PasswordChangeDraft = {
   currentPassword: "",
@@ -52,10 +62,58 @@ export function SettingsPage({
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [isProfileSaving, setIsProfileSaving] = useState(false);
   const [isPasswordSaving, setIsPasswordSaving] = useState(false);
+  const [seekPreferences, setSeekPreferences] = useState<PlaybackSeekPreferences>(() =>
+    getStoredPlaybackSeekPreferences(user.id),
+  );
+  const [seekDraft, setSeekDraft] = useState(() => ({
+    forward: String(seekPreferences.seekForwardSeconds),
+    backward: String(seekPreferences.seekBackwardSeconds),
+  }));
+  const [seekError, setSeekError] = useState<string | null>(null);
 
   useEffect(() => {
     setDisplayName(user.displayName || user.username);
   }, [user.displayName, user.username]);
+
+  useEffect(() => {
+    const preferences = getStoredPlaybackSeekPreferences(user.id);
+    setSeekPreferences(preferences);
+    setSeekDraft({
+      forward: String(preferences.seekForwardSeconds),
+      backward: String(preferences.seekBackwardSeconds),
+    });
+    setSeekError(null);
+  }, [user.id]);
+
+  useEffect(() => {
+    const storageKey = playbackSeekPreferencesStorageKey(user.id);
+    const syncPreferences = (event: Event) => {
+      const detail = (event as CustomEvent<{ storageKey?: string; preferences?: PlaybackSeekPreferences }>).detail;
+      if (detail?.storageKey !== storageKey || !detail.preferences) return;
+      setSeekPreferences(detail.preferences);
+      setSeekDraft({
+        forward: String(detail.preferences.seekForwardSeconds),
+        backward: String(detail.preferences.seekBackwardSeconds),
+      });
+      setSeekError(null);
+    };
+    const syncStorage = (event: StorageEvent) => {
+      if (event.key !== storageKey) return;
+      const preferences = getStoredPlaybackSeekPreferences(user.id);
+      setSeekPreferences(preferences);
+      setSeekDraft({
+        forward: String(preferences.seekForwardSeconds),
+        backward: String(preferences.seekBackwardSeconds),
+      });
+      setSeekError(null);
+    };
+    window.addEventListener(PLAYER_SEEK_PREFERENCES_CHANGE_EVENT, syncPreferences);
+    window.addEventListener("storage", syncStorage);
+    return () => {
+      window.removeEventListener(PLAYER_SEEK_PREFERENCES_CHANGE_EVENT, syncPreferences);
+      window.removeEventListener("storage", syncStorage);
+    };
+  }, [user.id]);
 
   useEffect(() => {
     const syncMode = (event: Event) => setThemeMode((event as CustomEvent<ThemeMode>).detail ?? getStoredThemeMode());
@@ -89,6 +147,34 @@ export function SettingsPage({
     setThemePalette(palette);
     applyThemePalette(palette);
     storeThemePalette(palette);
+  };
+
+  const saveSeekPreferences = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const forward = Number(seekDraft.forward);
+    const backward = Number(seekDraft.backward);
+    const validForward = normalizeSeekSeconds(forward, Number.NaN);
+    const validBackward = normalizeSeekSeconds(backward, Number.NaN);
+    if (!Number.isFinite(validForward) || !Number.isFinite(validBackward)) {
+      setSeekError(
+        t("settings.seekInvalid", {
+          min: SEEK_SECONDS_MIN,
+          max: SEEK_SECONDS_MAX,
+        }),
+      );
+      return;
+    }
+    const preferences = storePlaybackSeekPreferences(user.id, {
+      seekForwardSeconds: validForward,
+      seekBackwardSeconds: validBackward,
+    });
+    setSeekPreferences(preferences);
+    setSeekDraft({
+      forward: String(preferences.seekForwardSeconds),
+      backward: String(preferences.seekBackwardSeconds),
+    });
+    setSeekError(null);
+    toast.success(t("settings.seekUpdated"));
   };
 
   const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
@@ -297,6 +383,91 @@ export function SettingsPage({
           </CardContent>
         </Card>
       </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FastForward className="h-4 w-4" />
+            {t("settings.playback")}
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">{t("settings.playbackDescription")}</p>
+        </CardHeader>
+        <CardContent>
+          <form className="space-y-4" onSubmit={saveSeekPreferences}>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block space-y-1 text-sm" htmlFor="seek-forward-seconds">
+                <span className="flex items-center gap-2 font-medium">
+                  <FastForward className="h-4 w-4 text-muted-foreground" />
+                  {t("settings.seekForward")}
+                </span>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="seek-forward-seconds"
+                    className="h-[var(--control-height)] w-full rounded-md border bg-background px-3 text-sm disabled:bg-muted"
+                    type="number"
+                    min={SEEK_SECONDS_MIN}
+                    max={SEEK_SECONDS_MAX}
+                    step={1}
+                    inputMode="numeric"
+                    value={seekDraft.forward}
+                    onChange={(event) => {
+                      setSeekDraft((current) => ({ ...current, forward: event.target.value }));
+                      setSeekError(null);
+                    }}
+                    aria-describedby="seek-preferences-error seek-preferences-range"
+                  />
+                  <span className="shrink-0 text-sm text-muted-foreground">{t("settings.seconds")}</span>
+                </div>
+              </label>
+              <label className="block space-y-1 text-sm" htmlFor="seek-backward-seconds">
+                <span className="flex items-center gap-2 font-medium">
+                  <Rewind className="h-4 w-4 text-muted-foreground" />
+                  {t("settings.seekBackward")}
+                </span>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="seek-backward-seconds"
+                    className="h-[var(--control-height)] w-full rounded-md border bg-background px-3 text-sm disabled:bg-muted"
+                    type="number"
+                    min={SEEK_SECONDS_MIN}
+                    max={SEEK_SECONDS_MAX}
+                    step={1}
+                    inputMode="numeric"
+                    value={seekDraft.backward}
+                    onChange={(event) => {
+                      setSeekDraft((current) => ({ ...current, backward: event.target.value }));
+                      setSeekError(null);
+                    }}
+                    aria-describedby="seek-preferences-error seek-preferences-range"
+                  />
+                  <span className="shrink-0 text-sm text-muted-foreground">{t("settings.seconds")}</span>
+                </div>
+              </label>
+            </div>
+            <p id="seek-preferences-range" className="text-xs text-muted-foreground">
+              {t("settings.seekRange", { min: SEEK_SECONDS_MIN, max: SEEK_SECONDS_MAX })}
+            </p>
+            <p
+              id="seek-preferences-error"
+              className="min-h-5 text-sm text-destructive"
+              role={seekError ? "alert" : undefined}
+            >
+              {seekError}
+            </p>
+            <div className="flex justify-end">
+              <Button
+                type="submit"
+                disabled={
+                  Number(seekDraft.forward) === seekPreferences.seekForwardSeconds &&
+                  Number(seekDraft.backward) === seekPreferences.seekBackwardSeconds
+                }
+              >
+                <Save className="h-4 w-4" />
+                {t("settings.savePlayback")}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

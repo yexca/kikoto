@@ -48,6 +48,11 @@ Playback is handled by a global browser audio player.
 - Work detail exposes fixed Resume instead of work-level Play. Resume is disabled
   without a positive unfinished cursor.
 - Playback continues across navigation.
+- Entering Work detail while a matching work is actively playing selects the
+  current playback source and opens that track's folder. A paused queue, an
+  unrelated playing work, and later playback started after the page opens keep
+  the normal recommended directory. Manual source or edition changes also
+  return directory navigation to the user's control.
 - Desktop keeps the four primary browse workspaces mounted after first use.
   Mobile keeps only the two most recent workspaces mounted, preserving quick
   return while bounding hidden DOM and request work on older devices.
@@ -67,6 +72,10 @@ Playback is handled by a global browser audio player.
   previous/next, skip controls, and playback mode. Sleep timer is the
   second-last secondary action; playback speed and compatibility scope share
   the final More menu.
+- Backward and forward seeking default to 10 and 30 seconds. Settings accepts
+  whole-second values from 1 through 300 and stores them per server and user in
+  the browser. The same values drive player buttons, keyboard shortcuts,
+  browser Media Session actions, and Android media controls.
 - Compact playback reserves page space on mobile and desktop so final actions
   are not covered. PWA update notices stack above the Compact dock.
 - Mobile full playback uses edge-to-edge safe areas on every side. Bottom

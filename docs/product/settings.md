@@ -1,7 +1,7 @@
 # Settings
 
-Settings exposes per-user account controls and browser-local appearance
-preferences. Instance and user administration remain in Maintenance.
+Settings exposes per-user account controls and browser-local appearance and
+playback preferences. Instance and user administration remain in Maintenance.
 
 ## Current Settings
 
@@ -12,6 +12,8 @@ preferences. Instance and user administration remain in Maintenance.
 - Light, dark, and system appearance preferences.
 - Anthropic, OpenAI, Apple, and Google Material Design style preferences.
 - Original, Graphite, Cobalt, and Iris color preferences.
+- Backward and forward seek intervals. They default to 10 and 30 seconds,
+  respectively, and accept whole-second values from 1 through 300.
 
 ## Account Boundaries
 
@@ -26,9 +28,11 @@ value and restarting Kikoto replaces the stored root password and revokes its
 existing sessions. Other super administrators remain account-managed and can
 change their own passwords normally.
 
-Demo mode keeps account-backed Settings read-only. Appearance controls remain
-available because theme mode, style, and color are browser-local preferences
-and do not modify Demo server data.
+Demo mode keeps account-backed Settings read-only. Appearance and playback
+controls remain available because theme mode, style, color, and seek intervals
+are browser-local preferences and do not modify Demo server data. Playback
+preferences are isolated by server identity and authenticated user, or by the
+anonymous principal when anonymous access is enabled.
 
 ## Maintenance Organization
 
