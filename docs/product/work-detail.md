@@ -58,14 +58,19 @@ playback actions for one work.
   active tracked directory without adding source names to the tab row.
 - Uses the selected tracked source name in the Directory description and keeps
   the selection in the detail URL.
-- Places desktop Hero actions immediately after the title, then presents
-  metadata as independent columns beside the cover: Voices,
-  Tags, and personal tags are on the left; one combined DLsite info card and an
-  active Source info card are on the right, followed by a full-width version
-  selector. Source info reports file/audio counts, size and duration coverage,
-  and labels a metadata-duration fallback instead of silently replacing source
-  duration. On compact screens, voice credits remain visible above the primary
-  actions while Mark, List, DLsite, Metadata, and Source collapse to icons.
+- Places the work code and DLsite link, title, circle, and series in a
+  full-width desktop heading above the cover and metadata. Medium-width detail
+  pages use two independent columns, with Voices, Tags, and personal tags
+  flowing directly below the cover and source facts, version controls, and Hero
+  actions flowing from the top of the second column.
+  Wide detail pages use three columns for the cover, identity metadata, and
+  source metadata. Notices and version controls span the two metadata columns
+  immediately below their content, with Hero actions directly beneath them;
+  the cover height does not push these controls downward. Source info reports
+  file/audio counts, size and duration coverage, and labels a metadata-duration
+  fallback instead of silently replacing source duration. On compact screens,
+  voice credits remain visible above the primary actions while Mark, List,
+  DLsite, Metadata, and Source collapse to icons.
 - Uses one two-line row for every directory file type on mobile and desktop,
   placing the complete name above type, precise audio duration, and size.
 - Folds matched same-folder lyrics sidecars out of the default Browse and Tree

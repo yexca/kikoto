@@ -6692,69 +6692,68 @@ function DetailHero({
   actions?: ReactNode;
 }) {
   const entityResolver = useDetailEntityResolver(code);
-
-  return (
-    <section className="grid items-start gap-5 lg:grid-cols-[minmax(340px,520px)_minmax(0,1fr)]">
-      <div className="overflow-hidden rounded-lg border bg-muted">
-        <div className="aspect-[4/3]">
-          {coverUrl ? (
-            <img src={assetURL(coverUrl)} alt="" className="h-full w-full object-contain" />
-          ) : (
-            <div className="grid h-full place-items-center text-4xl font-bold">{fallbackCode.slice(0, 2)}</div>
-          )}
-        </div>
-      </div>
-
-      <div className="min-w-0 space-y-4 lg:py-1">
-        <DetailTitleBlock
-          fallbackCode={fallbackCode}
-          code={code}
-          dlsiteUrl={dlsiteUrl}
-          title={title}
-          circle={circle}
-          circleExternalId={circleExternalId}
-          series={series}
-          seriesTitleId={seriesTitleId}
-          seriesCircleExternalId={seriesCircleExternalId}
-          loading={loading}
-          entityResolver={entityResolver}
-        />
-        <DetailMetadataContent
-          layout="matrix"
-          ratingLabel={ratingLabel}
-          rating={rating}
-          ratingCount={ratingCount}
-          sales={sales}
-          releaseDate={releaseDate}
-          dlsiteFetchedAt={dlsiteFetchedAt}
-          ageRating={ageRating}
-          metadataLanguage={metadataLanguage}
-          metadataPresentation={metadataPresentation}
-          metadataSync={metadataSync}
-          canSyncMetadata={canSyncMetadata}
-          metadataSyncBusy={metadataSyncBusy}
-          onSyncMetadata={onSyncMetadata}
-          activeMetadataVariantKey={activeMetadataVariantKey}
-          onMetadataVariantSelect={onMetadataVariantSelect}
-          baseCode={baseCode}
-          translations={translations}
-          activeVersionCode={activeVersionCode}
-          onVersionSelect={onVersionSelect}
-          remoteVersions={remoteVersions}
-          sourceInfo={sourceInfo}
-          voiceActors={voiceActors}
-          voiceCredits={voiceCredits}
-          tags={tags}
-          code={code}
-          entityResolver={entityResolver}
-          supplementary={personalTags}
-        />
-        {actions && (
-          <div data-testid="hero-actions" className="flex flex-wrap gap-2 rounded-lg border bg-card p-3">
-            {actions}
-          </div>
+  const wideLayout = useWideDetailLayout();
+  const cover = (
+    <div className="overflow-hidden rounded-lg border bg-muted" data-testid="detail-cover">
+      <div className="aspect-[4/3]">
+        {coverUrl ? (
+          <img src={assetURL(coverUrl)} alt="" className="h-full w-full object-contain" />
+        ) : (
+          <div className="grid h-full place-items-center text-4xl font-bold">{fallbackCode.slice(0, 2)}</div>
         )}
       </div>
+    </div>
+  );
+
+  return (
+    <section className="space-y-4">
+      <DetailTitleBlock
+        fallbackCode={fallbackCode}
+        code={code}
+        dlsiteUrl={dlsiteUrl}
+        title={title}
+        circle={circle}
+        circleExternalId={circleExternalId}
+        series={series}
+        seriesTitleId={seriesTitleId}
+        seriesCircleExternalId={seriesCircleExternalId}
+        loading={loading}
+        entityResolver={entityResolver}
+      />
+
+      <DetailMetadataContent
+        layout="matrix"
+        matrixCover={cover}
+        wideMatrix={wideLayout}
+        ratingLabel={ratingLabel}
+        rating={rating}
+        ratingCount={ratingCount}
+        sales={sales}
+        releaseDate={releaseDate}
+        dlsiteFetchedAt={dlsiteFetchedAt}
+        ageRating={ageRating}
+        metadataLanguage={metadataLanguage}
+        metadataPresentation={metadataPresentation}
+        metadataSync={metadataSync}
+        canSyncMetadata={canSyncMetadata}
+        metadataSyncBusy={metadataSyncBusy}
+        onSyncMetadata={onSyncMetadata}
+        activeMetadataVariantKey={activeMetadataVariantKey}
+        onMetadataVariantSelect={onMetadataVariantSelect}
+        baseCode={baseCode}
+        translations={translations}
+        activeVersionCode={activeVersionCode}
+        onVersionSelect={onVersionSelect}
+        remoteVersions={remoteVersions}
+        sourceInfo={sourceInfo}
+        voiceActors={voiceActors}
+        voiceCredits={voiceCredits}
+        tags={tags}
+        code={code}
+        entityResolver={entityResolver}
+        supplementary={personalTags}
+        matrixFooter={actions}
+      />
     </section>
   );
 }
@@ -7107,6 +7106,8 @@ function DetailTitleBlock({
 
 function DetailMetadataContent({
   layout = "stacked",
+  matrixCover,
+  wideMatrix = false,
   ratingLabel,
   rating,
   ratingCount,
@@ -7134,8 +7135,11 @@ function DetailMetadataContent({
   code,
   entityResolver,
   supplementary,
+  matrixFooter,
 }: {
   layout?: "stacked" | "matrix";
+  matrixCover?: ReactNode;
+  wideMatrix?: boolean;
   ratingLabel: string;
   rating: number | null;
   ratingCount: number | null;
@@ -7163,6 +7167,7 @@ function DetailMetadataContent({
   code: string;
   entityResolver: DetailEntityResolver;
   supplementary?: ReactNode;
+  matrixFooter?: ReactNode;
 }) {
   const displayVoiceCredits =
     voiceCredits.length > 0 ? voiceCredits : voiceActors.map((name) => ({ personId: 0, displayName: name }));
@@ -7194,6 +7199,7 @@ function DetailMetadataContent({
       onSync={onSyncMetadata}
     />
   );
+  const showMetadataNotice = metadataSync?.status === "not_synced" || metadataSync?.status === "not_found";
   const voiceCard = (
     <div className="rounded-lg border bg-card p-3">
       <DetailChipRow
@@ -7232,20 +7238,56 @@ function DetailMetadataContent({
       ageRating={ageRating}
     />
   );
-  if (layout === "matrix") {
-    return (
-      <div className="grid items-start gap-3 sm:grid-cols-2">
-        <div className="min-w-0 space-y-3">
-          {voiceCard}
-          {tagsCard}
-          {supplementary}
-        </div>
-        <div className="min-w-0 space-y-3">
-          {dlsiteCard}
-          <ActiveSourceInfo info={sourceInfo} />
-        </div>
+  const identityMetadata = (
+    <div className="min-w-0 space-y-3" data-testid="detail-identity-metadata">
+      {voiceCard}
+      {tagsCard}
+      {supplementary}
+    </div>
+  );
+  const sourceMetadata = (
+    <div className="min-w-0 space-y-3" data-testid="detail-source-metadata">
+      {dlsiteCard}
+      <ActiveSourceInfo info={sourceInfo} />
+    </div>
+  );
+  const matrixTrailing =
+    showMetadataNotice || versionSelector || matrixFooter ? (
+      <div className="min-w-0 space-y-3">
         {metadataNotice}
-        {versionSelector && <div className="sm:col-span-2">{versionSelector}</div>}
+        {versionSelector}
+        {matrixFooter && (
+          <div data-testid="hero-actions" className="flex min-w-0 flex-wrap gap-2 rounded-lg border bg-card p-3">
+            {matrixFooter}
+          </div>
+        )}
+      </div>
+    ) : null;
+  if (layout === "matrix") {
+    if (wideMatrix) {
+      return (
+        <div className="grid grid-cols-[minmax(18rem,1.15fr)_minmax(0,2fr)] items-start gap-5">
+          {matrixCover}
+          <div className="min-w-0 space-y-3">
+            <div className="grid grid-cols-[minmax(15rem,1fr)_minmax(15rem,1fr)] items-start gap-3">
+              {identityMetadata}
+              {sourceMetadata}
+            </div>
+            {matrixTrailing}
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start gap-5">
+        <div className="min-w-0 space-y-5">
+          {matrixCover}
+          {identityMetadata}
+        </div>
+        <div className="min-w-0 space-y-3">
+          {sourceMetadata}
+          {matrixTrailing}
+        </div>
       </div>
     );
   }
@@ -7409,6 +7451,19 @@ function useCompactDetailLayout() {
   }, []);
 
   return compact;
+}
+
+function useWideDetailLayout() {
+  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1280px)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1280px)");
+    const update = () => setWide(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  return wide;
 }
 
 function TrackedUnforkedPanel({
