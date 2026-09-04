@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { devices, expect, test, type Page } from "@playwright/test";
 
 const nodeTypes = [
   nodeType(
@@ -168,98 +168,108 @@ test("custom workflow detail exposes its single input for repeated quick preview
   expect(runRequests[1]).toEqual({ mode: "preview", inputs: { circle: "RG076544" } });
 });
 
-test("composes a typed DAG and launches a slash command through preview", async ({ page }, testInfo) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  const runRequests: unknown[] = [];
-  await mockComposer(page, runRequests);
-  await page.goto("/workflows");
+test.describe("desktop workflow composition", () => {
+  test.use({
+    viewport: devices["Desktop Chrome"].viewport,
+    userAgent: devices["Desktop Chrome"].userAgent,
+    deviceScaleFactor: devices["Desktop Chrome"].deviceScaleFactor,
+    isMobile: devices["Desktop Chrome"].isMobile,
+    hasTouch: devices["Desktop Chrome"].hasTouch,
+  });
 
-  await expect(page.getByRole("heading", { name: "Circle fetch demo" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Foreign circle fetch/ })).toBeVisible();
-  const previewCanvas = page.getByLabel("Workflow DAG canvas");
-  await expect(previewCanvas).toBeVisible();
-  await expect.poll(() => previewCanvas.locator(".workflow-data-edge").count()).toBeGreaterThan(0);
-  await expect(previewCanvas.locator(".react-flow__arrowhead")).toHaveCount(0);
-  const previewEdgeColors = await previewCanvas
-    .locator(".react-flow__edge-path")
-    .evaluateAll((paths) => paths.map((path) => getComputedStyle(path).stroke));
-  expect(previewEdgeColors).toContain("rgb(139, 92, 246)");
-  await expect(previewCanvas.locator(".react-flow__controls-button")).toHaveCount(4);
-  await expect(previewCanvas.getByLabel("Workflow minimap")).toHaveCount(0);
-  await previewCanvas.getByRole("button", { name: "Show minimap" }).click();
-  await expect(previewCanvas.getByLabel("Workflow minimap")).toBeVisible();
-  await page.getByRole("button", { name: "Edit workflow" }).click();
-  const composer = page.getByRole("dialog", { name: "Edit workflow" });
-  await expect(composer).toBeVisible();
-  const composerCanvas = page.getByLabel("Workflow composer canvas");
-  await expect(composerCanvas).toBeVisible();
-  const composerBounds = await composer.boundingBox();
-  const canvasBoundsBeforePanels = await composerCanvas.boundingBox();
-  expect(composerBounds).toEqual({ x: 0, y: 0, width: 1440, height: 900 });
-  expect(canvasBoundsBeforePanels).not.toBeNull();
-  await expect(composer.locator(".react-flow__node", { hasText: "Fetch without WAV" })).toBeVisible();
-  await expect(composer.locator('aside[aria-label="Node library"]')).toHaveCount(0);
-  const viewportControls = composer.getByLabel("Workflow viewport controls");
-  await expect(viewportControls.locator(".react-flow__controls-button")).toHaveCount(4);
-  const controlsBoundsBeforeInspector = await viewportControls.boundingBox();
-  expect(controlsBoundsBeforeInspector).not.toBeNull();
+  test("composes a typed DAG and launches a slash command through preview", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const runRequests: unknown[] = [];
+    await mockComposer(page, runRequests);
+    await page.goto("/workflows");
 
-  await composer.locator(".react-flow__node", { hasText: "Check availability" }).dispatchEvent("click");
-  await expect(page.getByLabel("Delete selected node")).toBeVisible();
-  await expect
-    .poll(async () => (await viewportControls.boundingBox())?.x)
-    .toBeLessThan(controlsBoundsBeforeInspector!.x - 300);
-  const canvasBoundsWithInspector = await composerCanvas.boundingBox();
-  expect(canvasBoundsWithInspector?.width).toBe(canvasBoundsBeforePanels?.width);
-  await expect(page.getByLabel("Remote source")).toHaveValue("8");
-  await expect(page.getByLabel("Remote source").getByRole("option", { name: "Local Library" })).toHaveCount(0);
-  await composer.getByRole("button", { name: "Open node library" }).click();
-  const canvasBoundsWithBothPanels = await composerCanvas.boundingBox();
-  expect(canvasBoundsWithBothPanels?.width).toBe(canvasBoundsBeforePanels?.width);
-  await viewportControls.getByRole("button", { name: "Show minimap" }).click();
-  const miniMap = composer.getByLabel("Workflow minimap");
-  await expect(miniMap).toBeVisible();
-  const miniMapBounds = await miniMap.boundingBox();
-  const controlsBoundsWithInspector = await viewportControls.boundingBox();
-  const inspectorBounds = await composer.getByLabel("Node inspector").boundingBox();
-  expect(miniMapBounds).not.toBeNull();
-  expect(controlsBoundsWithInspector).not.toBeNull();
-  expect(inspectorBounds).not.toBeNull();
-  expect(miniMapBounds!.x + miniMapBounds!.width).toBeLessThanOrEqual(controlsBoundsWithInspector!.x);
-  expect(controlsBoundsWithInspector!.x + controlsBoundsWithInspector!.width).toBeLessThanOrEqual(inspectorBounds!.x);
-  await page.getByRole("button", { name: /Tag works/ }).click();
-  await expect(composer.locator(".react-flow__node", { hasText: "Tag works" })).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath("workflow-composer.png"), fullPage: true });
-  await page.getByRole("button", { name: "Close workflow composer" }).click();
+    await expect(page.getByRole("heading", { name: "Circle fetch demo" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Foreign circle fetch/ })).toBeVisible();
+    const previewCanvas = page.getByLabel("Workflow DAG canvas");
+    await expect(previewCanvas).toBeVisible();
+    await expect.poll(() => previewCanvas.locator(".workflow-data-edge").count()).toBeGreaterThan(0);
+    await expect(previewCanvas.locator(".react-flow__arrowhead")).toHaveCount(0);
+    const previewEdgeColors = await previewCanvas
+      .locator(".react-flow__edge-path")
+      .evaluateAll((paths) => paths.map((path) => getComputedStyle(path).stroke));
+    expect(previewEdgeColors).toContain("rgb(139, 92, 246)");
+    await expect(previewCanvas.locator(".react-flow__controls-button")).toHaveCount(4);
+    await expect(previewCanvas.getByLabel("Workflow minimap")).toHaveCount(0);
+    await previewCanvas.getByRole("button", { name: "Show minimap" }).click();
+    await expect(previewCanvas.getByLabel("Workflow minimap")).toBeVisible();
+    await page.getByRole("button", { name: "Edit workflow" }).click();
+    const composer = page.getByRole("dialog", { name: "Edit workflow" });
+    await expect(composer).toBeVisible();
+    const composerCanvas = page.getByLabel("Workflow composer canvas");
+    await expect(composerCanvas).toBeVisible();
+    const composerBounds = await composer.boundingBox();
+    const canvasBoundsBeforePanels = await composerCanvas.boundingBox();
+    expect(composerBounds).toEqual({ x: 0, y: 0, width: 1440, height: 900 });
+    expect(canvasBoundsBeforePanels).not.toBeNull();
+    await expect(composer.locator(".react-flow__node", { hasText: "Fetch without WAV" })).toBeVisible();
+    await expect(composer.locator('aside[aria-label="Node library"]')).toHaveCount(0);
+    const viewportControls = composer.getByLabel("Workflow viewport controls");
+    await expect(viewportControls.locator(".react-flow__controls-button")).toHaveCount(4);
+    const controlsBoundsBeforeInspector = await viewportControls.boundingBox();
+    expect(controlsBoundsBeforeInspector).not.toBeNull();
 
-  await page.getByRole("button", { name: "Add schedule", exact: true }).click();
-  await expect(page.getByText("New schedule", { exact: true })).toBeVisible();
-  await expect(
-    page.getByText("Disable Require preview in the workflow before automating it.", { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText("Provide required inputs: Circle.", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
-  await page.getByRole("button", { name: "Close", exact: true }).click();
+    await composer.locator(".react-flow__node", { hasText: "Check availability" }).dispatchEvent("click");
+    await expect(page.getByLabel("Delete selected node")).toBeVisible();
+    await expect
+      .poll(async () => (await viewportControls.boundingBox())?.x)
+      .toBeLessThan(controlsBoundsBeforeInspector!.x - 300);
+    const canvasBoundsWithInspector = await composerCanvas.boundingBox();
+    expect(canvasBoundsWithInspector?.width).toBe(canvasBoundsBeforePanels?.width);
+    await expect(page.getByLabel("Remote source")).toHaveValue("8");
+    await expect(page.getByLabel("Remote source").getByRole("option", { name: "Local Library" })).toHaveCount(0);
+    await composer.getByRole("button", { name: "Open node library" }).click();
+    const canvasBoundsWithBothPanels = await composerCanvas.boundingBox();
+    expect(canvasBoundsWithBothPanels?.width).toBe(canvasBoundsBeforePanels?.width);
+    await viewportControls.getByRole("button", { name: "Show minimap" }).click();
+    const miniMap = composer.getByLabel("Workflow minimap");
+    await expect(miniMap).toBeVisible();
+    const miniMapBounds = await miniMap.boundingBox();
+    const controlsBoundsWithInspector = await viewportControls.boundingBox();
+    const inspectorBounds = await composer.getByLabel("Node inspector").boundingBox();
+    expect(miniMapBounds).not.toBeNull();
+    expect(controlsBoundsWithInspector).not.toBeNull();
+    expect(inspectorBounds).not.toBeNull();
+    expect(miniMapBounds!.x + miniMapBounds!.width).toBeLessThanOrEqual(controlsBoundsWithInspector!.x);
+    expect(controlsBoundsWithInspector!.x + controlsBoundsWithInspector!.width).toBeLessThanOrEqual(inspectorBounds!.x);
+    await page.getByRole("button", { name: /Tag works/ }).click();
+    await expect(composer.locator(".react-flow__node", { hasText: "Tag works" })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("workflow-composer.png"), fullPage: true });
+    await page.getByRole("button", { name: "Close workflow composer" }).click();
 
-  await page.getByRole("button", { name: "Quick actions" }).click();
-  const commandPalette = page.getByRole("dialog", { name: "Command palette" });
-  await expect(commandPalette.getByRole("button", { name: "Close command palette" })).toHaveCount(1);
-  await page.getByPlaceholder("Search, open a work code, or type /workflow").fill("/getCircle RG01234");
-  await expect(page.getByRole("button", { name: /Preview Circle fetch demo/ })).toHaveCount(1);
-  await expect(page.getByRole("button", { name: /Preview Foreign circle fetch/ })).toHaveCount(0);
-  await page.getByRole("button", { name: /Preview Circle fetch demo/ }).click();
-  await expect(page.getByRole("dialog", { name: "Run Circle fetch demo" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Workflow preview" })).toBeVisible();
-  await expect(page.getByText("Unknown", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("Maximum bytes", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Queue run" }).click();
+    await page.getByRole("button", { name: "Add schedule", exact: true }).click();
+    await expect(page.getByText("New schedule", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Disable Require preview in the workflow before automating it.", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText("Provide required inputs: Circle.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: "Close", exact: true }).click();
 
-  await expect.poll(() => runRequests).toHaveLength(2);
-  expect(runRequests).toEqual([
-    { mode: "preview", inputs: { circle: "RG01234" } },
-    { mode: "confirm", inputs: { circle: "RG01234" }, previewToken: "preview_42" },
-  ]);
-  await expect(page).toHaveURL(/\/activity\?view=running&run=77/);
+    await page.getByRole("button", { name: "Quick actions" }).click();
+    const commandPalette = page.getByRole("dialog", { name: "Command palette" });
+    await expect(commandPalette.getByRole("button", { name: "Close command palette" })).toHaveCount(1);
+    await page.getByPlaceholder("Search, open a work code, or type /workflow").fill("/getCircle RG01234");
+    await expect(page.getByRole("button", { name: /Preview Circle fetch demo/ })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: /Preview Foreign circle fetch/ })).toHaveCount(0);
+    await page.getByRole("button", { name: /Preview Circle fetch demo/ }).click();
+    await expect(page.getByRole("dialog", { name: "Run Circle fetch demo" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Workflow preview" })).toBeVisible();
+    await expect(page.getByText("Unknown", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Maximum bytes", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Queue run" }).click();
+
+    await expect.poll(() => runRequests).toHaveLength(2);
+    expect(runRequests).toEqual([
+      { mode: "preview", inputs: { circle: "RG01234" } },
+      { mode: "confirm", inputs: { circle: "RG01234" }, previewToken: "synthetic_preview_42" },
+    ]);
+    await expect(page).toHaveURL(/\/activity\?view=running&run=77/);
+  });
 });
 
 test("mobile composer keeps node creation, canvas, inspector, and actions in bounds", async ({ page }, testInfo) => {
@@ -477,7 +487,7 @@ async function mockComposer(page: Page, runRequests: unknown[], options: MockCom
             definitionId: 42,
             workflowCode: definition.code,
             status: "preview",
-            previewToken: "preview_42",
+            previewToken: "synthetic_preview_42",
             requiredPermissions: ["workflows:run", "downloads:manage"],
             normalizedInputs: { circle: "RG01234" },
             plan: {

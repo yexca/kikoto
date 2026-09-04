@@ -6,6 +6,9 @@ import {
   Panel,
   Position,
   ReactFlow,
+  useNodesInitialized,
+  useReactFlow,
+  useUpdateNodeInternals,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -88,23 +91,41 @@ export function WorkflowCanvas({
     return () => window.clearTimeout(timeout);
   }, [connectionNotice]);
 
+  const flowNodesSynchronized = useMemo(
+    () => flowNodesMatchDocument(flowNodes, document, nodeTypes),
+    [document, flowNodes, nodeTypes],
+  );
   const flowEdges = useMemo<Edge[]>(
     () =>
-      document.edges.map((edge) => {
-        const sourceNode = document.nodes.find((node) => node.id === edge.source);
-        const sourcePort = sourceNode
-          ? workflowNodePorts(document, sourceNode, nodeTypes).outputs.find((port) => port.id === edge.sourceHandle)
-          : null;
-        const color = workflowDataTypeColor(sourcePort?.type);
-        return {
-          ...edge,
-          type: "bezier",
-          className: workflowEdgeClassName("idle"),
-          style: { stroke: color, strokeWidth: 2, "--workflow-edge-color": color } as CSSProperties,
-          selected: edge.id === selectedEdgeId,
-        };
-      }),
-    [document, nodeTypes, selectedEdgeId],
+      flowNodesSynchronized
+        ? document.edges.map((edge) => {
+            const sourceNode = document.nodes.find((node) => node.id === edge.source);
+            const sourcePort = sourceNode
+              ? workflowNodePorts(document, sourceNode, nodeTypes).outputs.find((port) => port.id === edge.sourceHandle)
+              : null;
+            const color = workflowDataTypeColor(sourcePort?.type);
+            return {
+              ...edge,
+              type: "default",
+              className: workflowEdgeClassName("idle"),
+              style: { stroke: color, strokeWidth: 2, "--workflow-edge-color": color } as CSSProperties,
+              selected: edge.id === selectedEdgeId,
+            };
+          })
+        : [],
+    [document, flowNodesSynchronized, nodeTypes, selectedEdgeId],
+  );
+
+  const nodeIDs = useMemo(() => flowNodes.map((node) => node.id), [flowNodes]);
+  const layoutKey = useMemo(
+    () =>
+      flowNodes
+        .map(
+          (node) =>
+            `${node.id}:${node.data.inputs.map((port) => port.id).join(",")}:${node.data.outputs.map((port) => port.id).join(",")}`,
+        )
+        .join("|"),
+    [flowNodes],
   );
 
   const connectionIssue = useCallback(
@@ -239,7 +260,7 @@ export function WorkflowCanvas({
         nodesDraggable={!readonly}
         nodesConnectable={!readonly}
         edgesReconnectable={false}
-        defaultEdgeOptions={{ type: "bezier" }}
+        defaultEdgeOptions={{ type: "default" }}
         deleteKeyCode={readonly ? null : ["Backspace", "Delete"]}
         fitView
         fitViewOptions={{ padding: 0.28, maxZoom: 1 }}
@@ -250,6 +271,7 @@ export function WorkflowCanvas({
         onlyRenderVisibleElements
         proOptions={{ hideAttribution: true }}
       >
+        <WorkflowCanvasRuntimeSync nodeIDs={nodeIDs} layoutKey={flowNodesSynchronized ? layoutKey : ""} />
         <Background gap={24} size={1} color="hsl(var(--workflow-grid))" />
         {connectionNotice && (
           <Panel
@@ -264,6 +286,27 @@ export function WorkflowCanvas({
       </ReactFlow>
     </div>
   );
+}
+
+function WorkflowCanvasRuntimeSync({ nodeIDs, layoutKey }: { nodeIDs: string[]; layoutKey: string }) {
+  const nodesInitialized = useNodesInitialized();
+  const reactFlow = useReactFlow<WorkflowCanvasNode, Edge>();
+  const updateNodeInternals = useUpdateNodeInternals();
+
+  useEffect(() => {
+    if (!layoutKey || nodeIDs.length === 0) return;
+    updateNodeInternals(nodeIDs);
+  }, [layoutKey, nodeIDs, updateNodeInternals]);
+
+  useEffect(() => {
+    if (!layoutKey || !nodesInitialized || !reactFlow.viewportInitialized) return;
+    const frame = window.requestAnimationFrame(() => {
+      void reactFlow.fitView({ padding: 0.28, maxZoom: 1 });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [layoutKey, nodesInitialized, reactFlow]);
+
+  return null;
 }
 
 const WorkflowEditorNode = memo(function WorkflowEditorNode({ data, selected }: NodeProps<WorkflowCanvasNode>) {
@@ -338,6 +381,24 @@ const WorkflowEditorNode = memo(function WorkflowEditorNode({ data, selected }: 
 });
 
 const workflowEditorNodeTypes = { workflowEditor: WorkflowEditorNode };
+
+function flowNodesMatchDocument(
+  flowNodes: WorkflowCanvasNode[],
+  document: WorkflowDefinitionDocument,
+  nodeTypes: WorkflowNodeType[],
+) {
+  if (flowNodes.length !== document.nodes.length) return false;
+  return flowNodes.every((flowNode, index) => {
+    const definition = document.nodes[index];
+    if (!definition || flowNode.id !== definition.id || flowNode.data.definition !== definition) return false;
+    const ports = workflowNodePorts(document, definition, nodeTypes);
+    return samePortIDs(flowNode.data.inputs, ports.inputs) && samePortIDs(flowNode.data.outputs, ports.outputs);
+  });
+}
+
+function samePortIDs(left: WorkflowPort[], right: WorkflowPort[]) {
+  return left.length === right.length && left.every((port, index) => port.id === right[index]?.id);
+}
 
 function reconcileFlowNodes(
   current: WorkflowCanvasNode[],

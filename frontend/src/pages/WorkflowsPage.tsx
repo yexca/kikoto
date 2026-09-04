@@ -1992,10 +1992,10 @@ function WorkflowDetail({
     );
   }, [definitionID, definitionJson]);
 
+  const parsedDefinition = useMemo(() => parseWorkflowDefinition(definitionJson), [definitionJson]);
   if (!definition) {
     return <EmptyPanel text={emptyText} />;
   }
-  const parsedDefinition = parseWorkflowDefinition(definition.definitionJson);
   const nodes = parsedDefinition.kind === "v2" ? parsedDefinition.document.nodes : parsedDefinition.nodes;
   const workflowInputs = parsedDefinition.kind === "v2" ? parsedDefinition.document.inputs : [];
   const quickRunInput =
@@ -3661,7 +3661,7 @@ function WorkflowNodeCanvas({
           sourceHandle: "out",
           target: connection.target,
           targetHandle: "in",
-          type: "bezier",
+          type: "default",
           className: workflowEdgeClassName(state),
           style: { stroke: color, strokeWidth: 2, "--workflow-edge-color": color } as CSSProperties,
           animated: state === "active",
