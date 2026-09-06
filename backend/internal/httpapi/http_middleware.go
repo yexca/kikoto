@@ -179,6 +179,9 @@ func isMobileAppOrigin(origin string) bool {
 	if err != nil {
 		return false
 	}
+	if parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Port() != "" {
+		return false
+	}
 	if !strings.EqualFold(parsed.Hostname(), "localhost") {
 		return false
 	}

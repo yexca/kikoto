@@ -157,13 +157,13 @@ Current release boundary:
 - `002_v0_1_1.sql` is the consolidated v0.1.1 upgrade.
 - Migrations `003` through `032` are the current numbered chain.
 - `baseline/032_v0.5.0.sql` is the packaged fresh-install snapshot for schema
-  032 and remains in use for v0.5.1 because no numbered SQL changed. Existing
+  032 and remains in use for v0.5.4 because no numbered SQL changed. Existing
   databases must continue through the numbered chain.
-- `VERSION` currently reports v0.5.1; add migration `033` for the next schema
+- `VERSION` currently reports v0.5.4; add migration `033` for the next schema
   change. Do not edit a released migration.
 - A release with no new numbered SQL migration reuses the highest packaged
   baseline. Do not create a release-only duplicate such as
-  `baseline/032_v0.5.1.sql`; generate a new baseline only when the numbered
+  `baseline/032_v0.5.4.sql`; generate a new baseline only when the numbered
   schema chain advances.
 
 Before handoff, run validation proportional to the change:

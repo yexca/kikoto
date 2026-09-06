@@ -58,6 +58,42 @@ func TestCORSAllowsLoopbackOnlyInDevMode(t *testing.T) {
 	}
 }
 
+func TestCORSRestrictsMobileAppOriginsInProduction(t *testing.T) {
+	server := NewServer(nil, config.Config{})
+	handler := server.withCORS(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+
+	tests := []struct {
+		name    string
+		origin  string
+		allowed bool
+	}{
+		{name: "capacitor", origin: "capacitor://localhost", allowed: true},
+		{name: "http localhost", origin: "http://localhost", allowed: true},
+		{name: "https localhost", origin: "https://localhost", allowed: true},
+		{name: "development port", origin: "http://localhost:5173"},
+		{name: "path", origin: "http://localhost/app"},
+		{name: "credentials", origin: fmt.Sprintf("%s://%s:%s@%s", "http", "user", "pass", "localhost")},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodOptions, "/api/works", nil)
+			request.Header.Set("Origin", test.origin)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if test.allowed {
+				if response.Code != http.StatusNoContent || response.Header().Get("Access-Control-Allow-Origin") != test.origin {
+					t.Fatalf("response = %d, origin = %q", response.Code, response.Header().Get("Access-Control-Allow-Origin"))
+				}
+				return
+			}
+			if response.Code != http.StatusForbidden || response.Header().Get("Access-Control-Allow-Origin") != "" {
+				t.Fatalf("response = %d, origin = %q", response.Code, response.Header().Get("Access-Control-Allow-Origin"))
+			}
+		})
+	}
+}
+
 func TestDemoReadOnlyMiddlewareRejectsMutations(t *testing.T) {
 	server := NewServer(nil, config.Config{Mode: config.ModeDemo})
 	called := false
