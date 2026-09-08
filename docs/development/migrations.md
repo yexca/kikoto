@@ -30,10 +30,11 @@ checksum is checked before any new SQL runs. Checksum input normalizes CRLF and
 LF line endings so moving a database between Windows and Linux does not look
 like a migration edit.
 
-The current schema boundary remains migration
-`032_shared_availability_watch.sql`, first released with v0.5.0. v0.5.1 adds
-no numbered SQL and reuses `baseline/032_v0.5.0.sql`. The next schema change
-must add migration `033`; do not rewrite an existing numbered file.
+The current schema boundary is the highest numbered migration present in
+`backend/migrations/`. Inspect that directory before adding a change and append
+the next contiguous number; do not hard-code a migration number from an older
+release or rewrite an existing numbered file. The application release is read
+from the root `VERSION` file.
 
 ## Fresh Installs And Upgrades
 
@@ -69,7 +70,7 @@ The catalog may retain released snapshots for ledger validation while using the
 highest-version baseline for an empty database. Generate a new snapshot only
 when the numbered SQL chain changes. Updating `VERSION` by itself does not
 require a new baseline; a release with no new SQL reuses the latest packaged
-snapshot. v0.5.1 therefore continues using `032_v0.5.0.sql`:
+snapshot:
 
 ```sh
 cd backend

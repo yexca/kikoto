@@ -6,6 +6,10 @@ the repository [Security Policy](../../SECURITY.md), and
 [Runtime security](../operations/security.md) before changing authentication,
 sources, media access, filesystems, or outbound networking.
 
+This document is for contributors changing the codebase. Operators should use
+[Runtime security](../operations/security.md), and vulnerability reporters
+should use the repository [Security Policy](../../SECURITY.md).
+
 ## Trust Boundaries
 
 - Production requires authentication by default. Anonymous Library browsing and

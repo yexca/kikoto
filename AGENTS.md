@@ -151,29 +151,32 @@ requires approval or is unavailable, stop and ask the user. Do not disable
 commit signing, pass a no-sign flag, replace the configured signer, or otherwise
 bypass the agent.
 
-Current release boundary:
+Release and migration boundaries are derived from repository state:
 
-- `001_initial.sql` is the immutable v0.1.0 database.
-- `002_v0_1_1.sql` is the consolidated v0.1.1 upgrade.
-- Migrations `003` through `032` are the current numbered chain.
-- `baseline/032_v0.5.0.sql` is the packaged fresh-install snapshot for schema
-  032 and remains in use for v0.5.1 because no numbered SQL changed. Existing
-  databases must continue through the numbered chain.
-- `VERSION` currently reports v0.5.1; add migration `033` for the next schema
-  change. Do not edit a released migration.
-- A release with no new numbered SQL migration reuses the highest packaged
-  baseline. Do not create a release-only duplicate such as
-  `baseline/032_v0.5.1.sql`; generate a new baseline only when the numbered
-  schema chain advances.
+- Read `VERSION` for the application version; do not hard-code the current
+  release in agent instructions or infer it from an old release note.
+- `001_initial.sql` and every numbered migration after it are immutable once
+  released. Add the next contiguous number after the highest existing
+  migration for a schema change; never edit an applied migration.
+- For a fresh install, use the highest packaged baseline whose schema version
+  matches the numbered chain. A release with no new numbered SQL reuses that
+  baseline; do not create a release-only duplicate with the same schema
+  version.
+- Existing databases must continue through the numbered migration chain and
+  must never be reconstructed from a fresh-install baseline.
+- Before release or migration work, inspect `VERSION`, the highest numbered
+  migration, and the packaged baseline filenames. Keep the corresponding
+  release notes and migration documentation aligned with those files.
 
 Before handoff, run validation proportional to the change:
 
-- Backend tests, vet, and race coverage for backend behavior.
-- Frontend lint, unit tests, build, and relevant Playwright coverage for UI or
-  client behavior.
-- Docker validation for image, Compose, mount, or runtime changes.
-- `npm run docs:check-links` from `frontend` for public documentation changes.
-- A tracked-file privacy scan over the actual diff.
+- Use the corresponding Makefile target: `make ci-backend` for backend
+  behavior, `make ci-frontend` for frontend behavior, `make frontend-e2e` for
+  browser workflows, `make smoke` for Docker/runtime changes, and
+  `make frontend-docs` for public documentation changes.
+- Use `make android-build` for Android changes and
+  `make DOCKER_IMAGE=kikoto:ci docker-build` for production image changes.
+- `make sensitive-check`, reviewing the tracked-file scan over the actual diff.
 
 Public tracked code and docs must use generic remote-source examples, reserved
 domains, and obviously synthetic identifiers. Never commit real configured

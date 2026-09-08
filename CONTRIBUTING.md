@@ -8,10 +8,11 @@ small, focused changes are easiest to review and keep stable.
 Read the public docs that match the area you are changing:
 
 - Architecture changes: `docs/architecture/`
-- User-facing behavior: `docs/product/`
+- User-facing behavior: `docs/user/` and `docs/product/`
 - Runtime or deployment behavior: `docs/operations/`
 - Development workflow: `docs/development/`
-- Security-sensitive implementation: `docs/development/security.md`
+- Security-sensitive implementation: `docs/security/` and
+  `docs/development/security.md`
 - Major design decisions: `docs/decisions/`
 
 ## Core Rules
@@ -47,7 +48,28 @@ pull requests. Follow the private reporting process in the
 
 ## Validation
 
-Backend:
+The Makefile is the canonical validation entry point. Use the smallest target
+that covers the files you changed:
+
+```sh
+make frontend-docs       # public documentation and link checks
+make ci-style            # frontend format/lint/docs and privacy-test checks
+make ci-backend          # backend format/lint/tests/vet/race/vulnerability checks
+make ci-frontend         # frontend audits, unit coverage, and build
+make smoke               # Docker/runtime changes
+make frontend-e2e        # browser workflow changes
+```
+
+For a complete locally portable check, run `make ci-local`; `make ci` also
+builds Android when its toolchain is available. Before every commit, run the
+privacy scan against the actual working tree diff:
+
+```sh
+make sensitive-check
+```
+
+Direct commands can be useful for focused iteration, but they do not replace
+the corresponding Makefile target. For example:
 
 ```sh
 cd backend
@@ -72,11 +94,14 @@ docker compose -f docker-compose.dev.yml up -d --build
 ## Documentation Rules
 
 - Put stable public documentation under `docs/`.
+- Put user entry points under `docs/user/`.
 - Put product behavior in `docs/product/`.
 - Put system boundaries and module design in `docs/architecture/`.
 - Put runtime setup, configuration, reliability, and troubleshooting in
   `docs/operations/`.
 - Put local development and test instructions in `docs/development/`.
+- Use `docs/security/` to map reporting, deployment, development, and privacy
+  security guidance.
 - Capture durable architectural decisions as ADRs in `docs/decisions/`.
 
 ## Sensitive Data Check

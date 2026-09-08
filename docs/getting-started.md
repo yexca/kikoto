@@ -35,7 +35,10 @@ KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bce
 Open:
 
 - Frontend: `http://127.0.0.1:7655`
-- Backend: `http://127.0.0.1:7659`
+
+The production Compose stack publishes the web application and API together on
+port `7655`. Port `7659` is the container's internal backend port; it is
+published separately only by the development Compose stack.
 
 The default runtime mounts are:
 
@@ -71,14 +74,17 @@ installing its APK remains an explicit user-confirmed Android system flow.
 
 ## Validate The Build
 
-Backend:
+The commands below validate a source checkout. For the complete and consistent
+repository checks, prefer the corresponding [Makefile](../Makefile) targets.
+
+Backend (source checkout only):
 
 ```sh
 cd backend
 go test ./...
 ```
 
-Frontend:
+Frontend (source checkout only):
 
 ```sh
 cd frontend

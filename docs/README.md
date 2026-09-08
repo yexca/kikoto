@@ -6,6 +6,8 @@ decisions.
 
 ## Start Here
 
+- [User guide](user/index.md): installation, library use, playback, and
+  application settings.
 - [Overview](overview.md)
 - [Getting started](getting-started.md)
 - [Configuration](operations/configuration.md)
@@ -20,9 +22,8 @@ decisions.
   reliability, security, and troubleshooting.
 - [Development](development/local-dev.md): local setup, testing, migrations, and
   contribution workflow.
-- [Security policy](../SECURITY.md) and
-  [privacy/data handling](../PRIVACY.md): reporting, trust boundaries, and data
-  flows.
+- [Security documentation](security/index.md): reporting, deployment,
+  development, and privacy guidance.
 - [Decisions](decisions/index.md): durable architecture decision records.
 - [History](history/index.md): public historical notes and release-oriented
   summaries.
@@ -31,10 +32,17 @@ decisions.
 
 New users should read:
 
+- [User guide](user/index.md)
 - [Overview](overview.md)
-- [Getting started](getting-started.md)
-- [Sources](product/sources.md)
-- [Playback](product/playback.md)
+
+Operators should read:
+
+- [Docker](operations/docker.md)
+- [Configuration](operations/configuration.md)
+- [Database](operations/database.md)
+- [Reliability](operations/reliability.md)
+- [Deployment security](operations/security.md)
+- [Privacy and data handling](../PRIVACY.md)
 
 Developers should read:
 
@@ -47,14 +55,10 @@ Developers should read:
 - [Secure development](development/security.md)
 - [Commit and release](development/commit-and-release.md)
 
-Operators should read:
+Security reporters should read:
 
-- [Docker](operations/docker.md)
-- [Configuration](operations/configuration.md)
-- [Database](operations/database.md)
-- [Reliability](operations/reliability.md)
-- [Security](operations/security.md)
-- [Privacy and data handling](../PRIVACY.md)
+- [Security policy](../SECURITY.md)
+- [Security documentation map](security/index.md)
 
 ## Documentation Rules
 
