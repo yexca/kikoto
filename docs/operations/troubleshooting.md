@@ -38,6 +38,6 @@
 
 ## Related Docs
 
-- [Getting started](../getting-started.md)
+- [Getting started](../user/en/getting-started.md)
 - [Reliability](reliability.md)
-- [Workflows](../product/workflows.md)
+- [Workflows](../user/en/workflows.md)

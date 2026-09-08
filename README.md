@@ -16,6 +16,14 @@
 </p>
 
 <p align="center">
+  <a href="README.md">English</a> ·
+  <a href="README.zh-Hans.md">简体中文</a> ·
+  <a href="README.zh-Hant.md">繁體中文</a> ·
+  <a href="README.ja.md">日本語</a> ·
+  <a href="README.ko.md">한국어</a>
+</p>
+
+<p align="center">
   <a href="https://github.com/yexca/kikoto/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/yexca/kikoto"></a>
   <a href="https://kikoto.yexca.net"><img alt="Live demo" src="https://img.shields.io/badge/demo-kikoto.yexca.net-0f766e"></a>
   <a href="https://hub.docker.com/r/yexca/kikoto"><img alt="Docker image" src="https://img.shields.io/badge/docker-yexca%2Fkikoto-2496ed?logo=docker&amp;logoColor=white"></a>
@@ -141,8 +149,8 @@ database, reliability, and troubleshooting.
 | Goal | Start here |
 | --- | --- |
 | Use Kikoto | [User Guide](docs/user/index.md) |
-| Install and scan a first library | [Getting Started](docs/getting-started.md) |
-| Understand user-visible behavior | [Product Specs](docs/product/index.md) |
+| Install and scan a first library | [Getting Started](docs/user/en/getting-started.md) |
+| Understand user-visible behavior | [Product Specs](docs/user/en/index.md) |
 | Configure and operate an instance | [Operations](docs/operations/configuration.md) |
 | Understand data and system boundaries | [Architecture](docs/architecture/index.md) |
 | Review design and security contracts | [Design](DESIGN.md) · [Security](SECURITY.md) · [Privacy](PRIVACY.md) |

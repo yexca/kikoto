@@ -143,6 +143,6 @@ source configuration. Keep them out of source control.
 
 ## Related Docs
 
-- [Getting started](../getting-started.md)
+- [Getting started](../user/en/getting-started.md)
 - [Configuration](configuration.md)
 - [Troubleshooting](troubleshooting.md)

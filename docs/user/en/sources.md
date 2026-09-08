@@ -1,4 +1,5 @@
 # Sources
+[English](../en/sources.md) · [简体中文](../zh-Hans/sources.md) · [繁體中文](../zh-Hant/sources.md) · [日本語](../ja/sources.md) · [한국어](../ko/sources.md)
 
 Sources describe where files come from.
 
@@ -84,5 +85,5 @@ unselected cache objects remain available.
 
 - [Work detail](work-detail.md)
 - [Settings](settings.md)
-- [Source presence](../architecture/source-presence.md)
-- [Reliability](../operations/reliability.md)
+- [Source presence](../../architecture/source-presence.md)
+- [Reliability](../../operations/reliability.md)

@@ -78,6 +78,6 @@ most reliable playback paths.
 
 ## Related Docs
 
-- [Sources](../product/sources.md)
+- [Sources](../user/en/sources.md)
 - [Workflows](../architecture/workflows.md)
 - [Troubleshooting](troubleshooting.md)

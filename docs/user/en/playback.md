@@ -1,4 +1,5 @@
 # Playback
+[English](../en/playback.md) · [简体中文](../zh-Hans/playback.md) · [繁體中文](../zh-Hant/playback.md) · [日本語](../ja/playback.md) · [한국어](../ko/playback.md)
 
 Playback is handled by a global browser audio player.
 
@@ -139,4 +140,4 @@ local or cached playback.
 
 - [Work detail](work-detail.md)
 - [Sources](sources.md)
-- [Reliability](../operations/reliability.md)
+- [Reliability](../../operations/reliability.md)

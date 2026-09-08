@@ -1,0 +1,17 @@
+# 声优
+
+[English](../en/voices.md) · [简体中文](../zh-Hans/voices.md) · [繁體中文](../zh-Hant/voices.md) · [日本語](../ja/voices.md) · [한국어](../ko/voices.md)
+
+声优页面显示声优目录及相关 Work 的可用性。
+
+## 主要内容
+
+- 搜索声优，并以服务器分页显示目录项目。
+- 支持目录刷新、详情、收藏、个人标签、评分和备注。
+- 相关作品使用与 Library 相同的响应式卡片，并显示 Local、Cache、Tracked 和远程状态。
+- 目录项目不会直接创建 Work 的元数据或播放位置。
+
+## 相关文档
+
+- [媒体库 / ライブラリ](library.md)
+- [来源 / ソース](sources.md)

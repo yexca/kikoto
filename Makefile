@@ -116,7 +116,7 @@ frontend-lint: frontend-install
 	cd frontend && $(NPM) run lint
 
 frontend-docs: frontend-install
-	cd frontend && $(NPM) run docs:check-links
+	cd frontend && $(NPM) run docs:check-links && $(NPM) run docs:check-locales
 
 frontend-audit: frontend-install
 	cd frontend && $(NPM) audit --audit-level=moderate

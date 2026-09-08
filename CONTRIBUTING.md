@@ -8,7 +8,7 @@ small, focused changes are easiest to review and keep stable.
 Read the public docs that match the area you are changing:
 
 - Architecture changes: `docs/architecture/`
-- User-facing behavior: `docs/user/` and `docs/product/`
+- User-facing behavior: `docs/user/` and `docs/user/en/`
 - Runtime or deployment behavior: `docs/operations/`
 - Development workflow: `docs/development/`
 - Security-sensitive implementation: `docs/security/` and
@@ -95,7 +95,7 @@ docker compose -f docker-compose.dev.yml up -d --build
 
 - Put stable public documentation under `docs/`.
 - Put user entry points under `docs/user/`.
-- Put product behavior in `docs/product/`.
+- Put product behavior in `docs/user/en/`.
 - Put system boundaries and module design in `docs/architecture/`.
 - Put runtime setup, configuration, reliability, and troubleshooting in
   `docs/operations/`.

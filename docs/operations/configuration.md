@@ -36,7 +36,7 @@ and saves the same option so its automatic root identity can inspect every
 production administration surface, but all development requests remain
 authenticated as root. Demo mode does not expose or use the option.
 
-See [Settings](../product/settings.md) for user-visible behavior.
+See [Settings](../user/en/settings.md) for user-visible behavior.
 
 ## Remote Source Seeds
 
@@ -76,4 +76,4 @@ credentials, or personal data.
 
 - [Docker](docker.md)
 - [Security](security.md)
-- [Sources](../product/sources.md)
+- [Sources](../user/en/sources.md)

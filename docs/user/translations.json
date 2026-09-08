@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "sourceLocale": "en",
+  "documents": [
+    { "id": "index", "source": "en/index.md" },
+    { "id": "getting-started", "source": "en/getting-started.md" },
+    { "id": "library", "source": "en/library.md" },
+    { "id": "sources", "source": "en/sources.md" },
+    { "id": "playback", "source": "en/playback.md" },
+    { "id": "settings", "source": "en/settings.md" },
+    { "id": "work-detail", "source": "en/work-detail.md" },
+    { "id": "workflows", "source": "en/workflows.md" },
+    { "id": "circles", "source": "en/circles.md" },
+    { "id": "voices", "source": "en/voices.md" }
+  ],
+  "locales": ["en", "zh-Hans", "zh-Hant", "ja", "ko"]
+}
