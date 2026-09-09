@@ -1,4 +1,4 @@
-.PHONY: backend-format backend-lint backend-lint-full backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-audit frontend-audit-signatures frontend-playwright-install frontend-e2e-smoke frontend-e2e android-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
+.PHONY: backend-format backend-lint backend-lint-full backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-audit frontend-audit-signatures frontend-playwright-install frontend-e2e-smoke frontend-e2e android-test android-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
 
 GO ?= go
 GOLANGCI_LINT_VERSION ?= v2.13.1
@@ -134,10 +134,16 @@ frontend-e2e: frontend-playwright-install
 	cd frontend && $(NPM) run test:e2e
 
 ifeq ($(OS),Windows_NT)
+android-test: frontend-install
+	cd frontend/android && gradlew.bat --dependency-verification strict testDebugUnitTest
+
 android-build: frontend-install
 	cd frontend && $(NPM) run cap:sync
 	cd frontend/android && gradlew.bat --dependency-verification strict assembleDebug
 else
+android-test: frontend-install
+	cd frontend/android && chmod +x ./gradlew && ./gradlew --dependency-verification strict testDebugUnitTest
+
 android-build: frontend-install
 	cd frontend && $(NPM) run cap:sync
 	cd frontend/android && chmod +x ./gradlew && ./gradlew --dependency-verification strict assembleDebug
@@ -194,4 +200,4 @@ ci-frontend: frontend-audit frontend-audit-signatures frontend-coverage frontend
 ci-local: DOCKER_IMAGE := kikoto:ci
 ci-local: ci-style ci-backend ci-frontend smoke frontend-e2e docker-build
 
-ci: ci-local android-build
+ci: ci-local android-test android-build

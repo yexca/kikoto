@@ -256,7 +256,7 @@ async function mockCacheSettings(
   return { transcodeClearRequests };
 }
 
-test("cache settings scan managed media and require cleanup confirmation", async ({ page }) => {
+test("@desktop cache settings scan managed media and require cleanup confirmation", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const cleanupRequests: unknown[] = [];
   const settingsPayloads: Record<string, unknown>[] = [];

@@ -226,7 +226,7 @@ async function mockFavorites(
   });
 }
 
-test("desktop favorites keeps type and search left with work controls on the right", async ({ page }) => {
+test("@desktop favorites keeps type and search left with work controls on the right", async ({ page }) => {
   await mockFavorites(page, {
     sources: [
       {

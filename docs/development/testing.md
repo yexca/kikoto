@@ -148,22 +148,37 @@ npm run test:e2e
 ```
 
 Vitest unit tests stay beside their source under `frontend/src`.
-Playwright browser tests live under `frontend/tests/e2e`; Android JVM and device
-tests use the standard Gradle `src/test` and `src/androidTest` source sets.
+Playwright browser regression tests live under `frontend/tests/e2e`. They run the
+Vite application and intercept the API boundary, so they verify browser behavior
+and client request contracts without claiming to exercise a live backend. The
+suite uses mobile Chromium by default and runs tests tagged `@desktop` in
+Desktop Chrome.
+
+Android JVM tests live under `frontend/android/app/src/test` and run through:
+
+```sh
+make android-test
+```
+
+Android device tests belong under `frontend/android/app/src/androidTest` and need
+an emulator-backed `connectedDebugAndroidTest` run. The repository currently has
+no device-test suite or emulator CI job. Build the debug APK separately with
+`make android-build`.
 CI runs staged validation in this order:
 
 ```text
-Style -> Core -> Smoke -> Full E2E -> Build
+Style -> Core -> Smoke -> Browser regression -> Android and Docker builds
 ```
 
 `Style` checks formatting, lint, and documentation links. `Core` runs backend
 tests, vet, race detection, frontend unit tests, the dependency audit, and the
 production build. `Smoke` runs a small required Playwright suite for the app
-shell and critical routes. `Full E2E` runs the complete Playwright project and
-uploads failure artifacts. Pull requests require Style, Core, and Smoke;
-Full E2E remains visible but is not a merge requirement. Release waits for the
-ordinary CI run for the exact tagged commit on `main` and starts Android and
-Docker release builds only after that run succeeds.
+shell and critical routes. `Browser regression` runs the complete Playwright
+project with its deterministic API interception and uploads failure artifacts.
+Pull requests require Style, Core, and Smoke; Browser regression remains visible
+but is not a merge requirement. The Android job runs JVM tests before building
+the APK. Release waits for the ordinary CI run for the exact tagged commit on
+`main` and starts Android and Docker release builds only after that run succeeds.
 
 Current Vitest coverage is primarily pure state and model logic. User-visible
 React interaction belongs in Playwright until a real component-test environment

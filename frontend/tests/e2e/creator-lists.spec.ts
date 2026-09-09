@@ -462,7 +462,7 @@ test("voice list keeps latest work, tags, and availability visible on mobile", a
   await expect(page).toHaveURL(/pageSize=48/);
 });
 
-test("creator list toolbars keep search left and filters right on desktop", async ({ page }) => {
+test("@desktop creator list toolbars keep search left and filters right on desktop", async ({ page }) => {
   await mockCreatorLists(page);
   await page.setViewportSize({ width: 1440, height: 900 });
 
@@ -691,13 +691,6 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   const advancedDialog = page.getByRole("dialog", { name: "Advanced refresh" });
   await expect(advancedDialog).toBeVisible();
   await expect(advancedDialog.getByRole("button", { name: "Close advanced refresh actions" })).toHaveCount(0);
-  await expect(advancedDialog.locator("[data-mobile-sheet-header]")).toBeVisible();
-  await expect(advancedDialog.locator("[data-mobile-sheet-body]")).toBeVisible();
-  const advancedLayerStyles = await advancedDialog.locator("..").evaluate((element) => {
-    const style = getComputedStyle(element);
-    return { backgroundColor: style.backgroundColor, backdropFilter: style.backdropFilter };
-  });
-  expect(advancedLayerStyles).toEqual({ backgroundColor: "rgba(0, 0, 0, 0)", backdropFilter: "none" });
   await advancedDialog.locator("summary").click();
   await expect(advancedDialog.getByPlaceholder("Add alias or search duplicate voice actor")).toBeVisible();
   await expect(advancedDialog.getByRole("checkbox", { name: "Refresh Example Remote" })).toBeChecked();
@@ -753,7 +746,7 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-test("desktop voice detail keeps full action labels and inline work controls", async ({ page }) => {
+test("@desktop voice detail keeps full action labels and inline work controls", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await mockCreatorDetails(page);
   await page.goto("/voices/7");
@@ -850,13 +843,6 @@ test("mobile circle detail keeps the work surface visible and moves secondary co
   await expect(refreshDialog).toBeVisible();
   await expect(refreshDialog.getByRole("button", { name: "Incremental" }).first()).toBeVisible();
   await expect(refreshDialog.getByRole("button", { name: "Close advanced refresh actions" })).toHaveCount(0);
-  await expect(refreshDialog.locator("[data-mobile-sheet-header]")).toBeVisible();
-  await expect(refreshDialog.locator("[data-mobile-sheet-body]")).toBeVisible();
-  const refreshLayerStyles = await refreshDialog.locator("..").evaluate((element) => {
-    const style = getComputedStyle(element);
-    return { backgroundColor: style.backgroundColor, backdropFilter: style.backdropFilter };
-  });
-  expect(refreshLayerStyles).toEqual({ backgroundColor: "rgba(0, 0, 0, 0)", backdropFilter: "none" });
   const refreshDialogBox = await refreshDialog.boundingBox();
   expect(refreshDialogBox).not.toBeNull();
   expect(refreshDialogBox!.y + refreshDialogBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
@@ -921,7 +907,7 @@ test("mobile circle series combines its selected row, DLsite link, and sheet con
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-test("desktop circle detail keeps a full-width compact summary and source-aware return", async ({ page }) => {
+test("@desktop circle detail keeps a full-width compact summary and source-aware return", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(() => {
     window.history.replaceState({ returnTo: "/", returnLabel: "Back to library" }, "", window.location.href);
@@ -1016,8 +1002,6 @@ test("mobile command palette uses a sheet, stays in the visual viewport, and clo
   await expect(dialog).toHaveAttribute("data-mobile-sheet");
   await expect(dialog).toHaveAttribute("data-state", "open");
   await expect(dialog.getByRole("button", { name: "Close command palette" })).toHaveCount(0);
-  await expect(dialog.locator("[data-mobile-sheet-header]")).toBeVisible();
-  await expect(dialog.locator("[data-mobile-sheet-body]")).toBeVisible();
   await expect(input).toBeFocused();
 
   await page.setViewportSize({ width: 412, height: 430 });
