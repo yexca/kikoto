@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 
 export type UserTag = {
   id: number;
@@ -18,6 +19,7 @@ type UserTagRowProps = {
 };
 
 export function UserTagRow({ tags, onSave, className = "", compact = false }: UserTagRowProps) {
+  const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -45,7 +47,7 @@ export function UserTagRow({ tags, onSave, className = "", compact = false }: Us
           className="h-8 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder="tag1, tag2"
+          placeholder={t("tags.placeholder")}
           autoFocus
           onKeyDown={(event) => {
             if (event.key === "Enter") void save();
@@ -53,12 +55,12 @@ export function UserTagRow({ tags, onSave, className = "", compact = false }: Us
           }}
         />
         <Button size="sm" variant="outline" disabled={isSaving} onClick={() => void save()}>
-          Save
+          {t("tags.save")}
         </Button>
         <Button
           size="icon"
           variant="ghost"
-          aria-label="Cancel tag edit"
+          aria-label={t("tags.cancelEdit")}
           disabled={isSaving}
           onClick={() => setIsEditing(false)}
         >
@@ -84,8 +86,8 @@ export function UserTagRow({ tags, onSave, className = "", compact = false }: Us
         variant={tags.length > 0 ? "ghost" : "outline"}
         size="icon"
         className="h-7 w-7"
-        aria-label="Add tag"
-        title="Add tag"
+        aria-label={t("tags.add")}
+        title={t("tags.add")}
         onClick={(event) => {
           event.stopPropagation();
           setDraft(tags.map((tag) => tag.name).join(", "));

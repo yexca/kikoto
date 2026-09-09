@@ -21,6 +21,7 @@ import {
 } from "@xyflow/react";
 import { Braces, CircleDot, Download, Filter, GitBranch, Tags, Type, Workflow } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
   canConnectWorkflowPorts,
@@ -63,6 +64,7 @@ export function WorkflowCanvas({
   onChange: (document: WorkflowDefinitionDocument) => void;
   onSelectNode: (nodeId: string) => void;
 }) {
+  const { t } = useTranslation();
   const [selectedEdgeId, setSelectedEdgeId] = useState("");
   const [connectionNotice, setConnectionNotice] = useState("");
   const [flowNodes, setFlowNodes] = useState<WorkflowCanvasNode[]>(() =>
@@ -226,7 +228,7 @@ export function WorkflowCanvas({
   return (
     <div
       className={`workflow-canvas workflow-composer-canvas overflow-hidden ${compact ? "h-64 min-h-64 rounded-md border" : "h-full min-h-0 lg:min-h-[32rem]"}`}
-      aria-label={readonly ? "Workflow DAG canvas" : "Workflow composer canvas"}
+      aria-label={readonly ? t("workflowCanvas.dagCanvas") : t("workflowCanvas.composerCanvas")}
     >
       <ReactFlow
         nodes={flowNodes}

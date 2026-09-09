@@ -1,4 +1,5 @@
 import { libraryHans, collectionHans, workCardHans } from "../resources";
+import { surfaceHans } from "../surfaces";
 
 export const zhHansResource = {
   "zh-Hans": {
@@ -45,6 +46,7 @@ export const zhHansResource = {
       library: libraryHans,
       collection: collectionHans,
       workCard: workCardHans,
+      ...surfaceHans,
       appearance: {
         title: "外观",
         subtitle: "界面语言、模式、样式和颜色",
@@ -57,6 +59,7 @@ export const zhHansResource = {
         themePreference: "主题偏好",
         themeStyle: "主题样式",
         themeColor: "主题颜色",
+        palette: { original: "原始", graphite: "石墨", cobalt: "钴蓝", iris: "鸢尾紫" },
         openSettings: "打开外观设置",
         summary: "外观：{{mode}}、{{style}}、{{color}}",
         light: "浅色",
@@ -243,6 +246,16 @@ export const zhHansResource = {
         nothingNew: "暂无新内容",
         empty: "目前没有通知。",
         workflowStatus: "工作流 #{{id}} · {{status}}",
+        availabilityReady: "{{workCode}} 的可用性检查已准备就绪。",
+        remoteTrackFailed: "{{workCode}} 的远程音轨失败。",
+        remoteTrackSucceeded: "{{workCode}} 的远程音轨已就绪。",
+        generic: "{{workCode}} 的工作流更新。",
+        statusQueued: "已排队",
+        statusRunning: "运行中",
+        statusSucceeded: "已成功",
+        statusFailed: "失败",
+        statusCancelled: "已取消",
+        statusUnknown: "未知",
         dismissFor: "关闭 {{workCode}} 的通知",
         dismiss: "关闭通知",
         clearSucceeded: "清除已成功通知",

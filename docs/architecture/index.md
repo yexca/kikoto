@@ -45,7 +45,7 @@ operations may still remain bound to an HTTP request.
 
 ## Related Docs
 
-- [Product specs](../product/index.md)
+- [User guide](../user/index.md)
 - [Backend guidelines](../development/backend-guidelines.md)
 - [Migrations](../development/migrations.md)
 - [ADR index](../decisions/index.md)

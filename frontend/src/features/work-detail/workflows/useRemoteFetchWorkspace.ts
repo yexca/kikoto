@@ -1,4 +1,6 @@
 import { useMemo, useRef, useState } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
 import { usePermissionGate } from "@/auth/usePermissionGate";
@@ -24,6 +26,7 @@ export function useRemoteFetchWorkspace({
   onWorksChanged?: () => void | Promise<void>;
 } = {}) {
   const toast = useToast();
+  const { t } = useTranslation();
   const auth = useAuth();
   const requireDownloadsManage = usePermissionGate("downloads:manage");
   const [draft, setDraft] = useState<RemoteFetchDraft | null>(null);
@@ -46,7 +49,7 @@ export function useRemoteFetchWorkspace({
     const remoteCode = intent.remoteCode.trim();
     if (intent.sourceId <= 0 || !remoteCode || (!auth.demoMode && !requireDownloadsManage())) return false;
     if (!beginOperation()) return false;
-    toast.info("Preparing language editions, source files, and the final Fetch tree…");
+    toast.info(t("remoteFetch.preparing"));
     try {
       const detail =
         fetchIntentDetailMatches(intent, remoteCode) && intent.detail!.tracks.length > 0
@@ -56,7 +59,7 @@ export function useRemoteFetchWorkspace({
         buildRemoteTree(detail.tracks, { sourceId: detail.sourceId, workCode: remoteDetailActionCode(detail) }),
       );
       if (paths.length === 0) {
-        toast.notify({ kind: "warning", message: "No remote files are available to fetch." });
+        toast.notify({ kind: "warning", message: t("remoteFetch.noFiles") });
         return false;
       }
       const plan = auth.demoMode
@@ -83,7 +86,7 @@ export function useRemoteFetchWorkspace({
         buildRemoteTree(detail.tracks, { sourceId: detail.sourceId, workCode: remoteDetailActionCode(detail) }),
       );
       if (paths.length === 0) {
-        toast.notify({ kind: "warning", message: `No remote files are available for the ${cleanCode} edition.` });
+        toast.notify({ kind: "warning", message: t("remoteFetch.noEditionFiles", { code: cleanCode }) });
         return false;
       }
       setDraft((current) => {
@@ -100,8 +103,8 @@ export function useRemoteFetchWorkspace({
       });
       return true;
     } catch (error) {
-      const sourceName = draft.intent.sourceDisplayName || draft.detail.sourceName || "this source";
-      toast.notify(toastFromError(error, `The ${cleanCode} edition is not available from ${sourceName}.`));
+      const sourceName = draft.intent.sourceDisplayName || draft.detail.sourceName || t("remoteFetch.thisSource");
+      toast.notify(toastFromError(error, t("remoteFetch.editionUnavailable", { code: cleanCode, source: sourceName })));
       return false;
     } finally {
       endOperation();
@@ -171,7 +174,7 @@ export function useRemoteFetchWorkspace({
         draft.targetRoot || draft.plan.saveRoot,
         decisionList(draft.decisions),
       );
-      notifyFetchQueued(toast, result);
+      notifyFetchQueued(toast, result, t);
       setDraft(null);
       try {
         await onWorksChanged?.();
@@ -180,15 +183,15 @@ export function useRemoteFetchWorkspace({
           kind: "warning",
           message:
             error instanceof Error
-              ? `Fetch was queued, but the current view could not refresh: ${error.message}`
-              : "Fetch was queued, but the current view could not refresh.",
+              ? t("remoteFetch.queuedRefreshFailedWithReason", { reason: error.message })
+              : t("remoteFetch.queuedRefreshFailed"),
         });
       }
     } catch (error) {
       if (!publishing) {
-        toast.notify(toastFromError(error, "Fetch plan failed."));
+        toast.notify(toastFromError(error, t("remoteFetch.planFailed")));
       } else if (error instanceof ApiError && error.status === 401) {
-        toast.notify(toastFromError(error, "Fetch submission failed."));
+        toast.notify(toastFromError(error, t("remoteFetch.submissionFailed")));
       } else if (error instanceof ApiError && error.status === 409) {
         try {
           const plan = await api.planRemoteSourceWorkFetch(
@@ -210,12 +213,12 @@ export function useRemoteFetchWorkspace({
                 }
               : current,
           );
-          toast.notify({ kind: "warning", message: "The Fetch destination changed and requires review." });
+          toast.notify({ kind: "warning", message: t("remoteFetch.destinationChanged") });
         } catch (refreshError) {
-          toast.notify(toastFromError(refreshError, "Fetch conflict review could not be refreshed."));
+          toast.notify(toastFromError(refreshError, t("remoteFetch.conflictRefreshFailed")));
         }
       } else {
-        notifyFetchUnconfirmed(toast);
+        notifyFetchUnconfirmed(toast, t);
       }
     } finally {
       endOperation();
@@ -286,23 +289,22 @@ function fetchIntentDetailMatches(intent: FetchIntent, remoteCode: string) {
   );
 }
 
-function notifyFetchQueued(toast: ReturnType<typeof useToast>, result: RemoteWorkSaveResult) {
+function notifyFetchQueued(toast: ReturnType<typeof useToast>, result: RemoteWorkSaveResult, t: TFunction) {
   toast.notify({
     kind: "success",
     message: result.deduplicated
-      ? `Fetch was already queued as workflow run #${result.runId}.`
-      : `Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`,
-    actionLabel: "Activity",
+      ? t("remoteFetch.alreadyQueued", { runId: result.runId })
+      : t("remoteFetch.queued", { code: result.primaryCode, runId: result.runId }),
+    actionLabel: t("remoteFetch.activity"),
     onAction: () => openActivity(`/activity?run=${result.runId}`),
   });
 }
 
-function notifyFetchUnconfirmed(toast: ReturnType<typeof useToast>) {
+function notifyFetchUnconfirmed(toast: ReturnType<typeof useToast>, t: TFunction) {
   toast.notify({
     kind: "warning",
-    message:
-      "Fetch submission could not be confirmed. It may still be running; check Activity or retry this selection.",
-    actionLabel: "Activity",
+    message: t("remoteFetch.unconfirmed"),
+    actionLabel: t("remoteFetch.activity"),
     onAction: () => openActivity("/activity"),
   });
 }

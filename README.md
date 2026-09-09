@@ -16,6 +16,14 @@
 </p>
 
 <p align="center">
+  <a href="README.md">English</a> ·
+  <a href="README.zh-Hans.md">简体中文</a> ·
+  <a href="README.zh-Hant.md">繁體中文</a> ·
+  <a href="README.ja.md">日本語</a> ·
+  <a href="README.ko.md">한국어</a>
+</p>
+
+<p align="center">
   <a href="https://github.com/yexca/kikoto/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/yexca/kikoto"></a>
   <a href="https://kikoto.yexca.net"><img alt="Live demo" src="https://img.shields.io/badge/demo-kikoto.yexca.net-0f766e"></a>
   <a href="https://hub.docker.com/r/yexca/kikoto"><img alt="Docker image" src="https://img.shields.io/badge/docker-yexca%2Fkikoto-2496ed?logo=docker&amp;logoColor=white"></a>
@@ -86,9 +94,8 @@ mkdir config cache data
 
 ### 2. Add local media
 
-Place supported work folders under the host `data/` directory. See
-[Library Layout and Scan Rules](#library-layout-and-scan-rules) for accepted
-folder names.
+Place supported work folders under the host `data/` directory. See the
+[User Guide](docs/user/index.md) for library layout and scan rules.
 
 ### 3. Start Kikoto
 
@@ -98,7 +105,10 @@ docker compose up -d --pull always
 
 Normal restarts reuse the installed image. Run the same command with
 `--pull always` when upgrading so the default `latest` tag is refreshed before
-the service starts.
+the service starts. For a reproducible deployment, set `KIKOTO_IMAGE` to a
+reviewed release tag or image digest and update it deliberately during an
+upgrade. Back up `config/` and `data/` before upgrading; existing databases are
+migrated on startup and are never rebuilt from the fresh-install baseline.
 
 Open <http://127.0.0.1:7655>.
 
@@ -127,160 +137,20 @@ for deployment options, including the isolated read-only Demo stack.
 Do not commit any of these runtime directories. They may contain private media,
 account state, source endpoints, workflow diagnostics, or credentials.
 
-## Library Layout and Scan Rules
+## User documentation
 
-Kikoto identifies a work from a directory name containing a supported code. The
-match is case-insensitive and follows these rules:
-
-- Prefix: `RJ`, `BJ`, `VJ`, or `CC`.
-- Number: 5 to 8 digits.
-- Optional separator between the prefix and number: one space, `_`, or `-`.
-- Additional text may appear before or after the code.
-
-The following tree uses synthetic identifiers:
-
-```text
-data/
-├── RJ00000 Example Work/
-│   ├── 01 Introduction.flac
-│   └── cover.jpg
-└── collection/
-    └── VJ_00000 Example Edition/
-        └── main.wav
-```
-
-The default Compose scan depth is 3. Administrators can set a value from 1 to 8
-under Maintenance. For nested matching directories, Kikoto selects the deepest
-non-overlapping candidate. Duplicate codes are retained for Activity review.
-Fetch transaction directories named `.kikoto-staging`, `.kikoto-backup`, and
-`.kikoto-trash` are excluded from discovery.
-
-For compatible remote sources, the default Fetch layout is
-`/data/<source_code>/<code_prefix>_<code_group>/<work_code>`. Kikoto claims a
-Fetch-managed root under `/data`; Fetch registers published files directly, so
-changes below a claimed Fetch root do not trigger the native folder watcher.
-Startup and manual scans still inspect the complete data tree. The new default
-has three data-root directory levels; existing four-level Fetch folders are not
-moved automatically and require scan depth 4 when they must remain discoverable.
-Per-source templates and an already saved global template remain authoritative.
-Kikoto writes a machine ownership marker and a multilingual `README.md` in each
-claimed root; store manually managed works elsewhere in the data directory. A
-non-empty, unclaimed directory at the same path blocks the first Fetch and
-appears in the Fetch review instead of being silently adopted. When upgrading
-from a version that predates the marker, Kikoto recognizes only same-source
-Fetch targets recorded by successful workflow history or active managed-folder
-locations. It adopts the root only when every existing entry is explained by
-those targets (apart from a regular root-level `README.md`) and at least one
-recorded target still exists; otherwise the normal blocking review remains.
-
-Recognized audio extensions include MP3, M4A, FLAC, WAV, WMA, OGG, Opus, and
-AAC. Video, image, text, and other files remain visible in the directory tree
-with their corresponding media kind when recognized. Local and cached audio
-with a browser-oriented extension is streamed directly with range support. If
-native decoding fails, the player offers an explicit compatibility mode that
-converts the audio directly to the response stream; unsupported audio
-extensions use the same conversion path automatically. Incompatible video uses
-a complete seekable HLS VOD timeline and creates bounded, on-demand segments
-under `/cache/transcodes/hls`; its independent LRU quota defaults to 5 GiB and
-is configurable in Maintenance. Remote media is proxied unchanged through the
-configured source policy and is never sent through FFmpeg; an explicitly
-enabled remote source cache remains a separate download workflow.
-
-The default Startup workflow performs a full library scan after service startup,
-and a full manual scan remains available from Workflows. While Kikoto is running,
-the native folder watcher defaults to incremental mode: five seconds after the
-last observed change, it rescans and reconciles only the affected work folders.
-The fixed watcher trigger can instead be configured to run the full scan.
-Watcher errors, event-batch overflow, root invalidation, and duplicate work roots
-fall back to a full scan automatically. The five-second quiet period is an event
-debounce, not proof that an open writer has closed; imports requiring strict
-publication should finish in an excluded staging tree and use a same-filesystem
-rename into their final work folder.
-
-Incremental reconciliation indexes added or changed files and marks externally
-removed folder presence and file locations `missing`. It does not delete the
-`work`, media items, or location history. Duplicate folders remain in Activity
-for review, and reconciliation does not rewrite Fetch ownership. Manual,
-Startup, and interval scans can opt into a disabled-by-default `Follow-up run`
-that queues an independent metadata sync after the scan has finished.
-
-## Remote Sources
-
-Kikoto supports two configuration paths for new compatible remote sources.
-
-### Administration UI
-
-For normal operation, sign in as an administrator and open:
-
-```text
-Maintenance -> Library -> Remote sources -> Add source
-```
-
-The Library tab manages source identity, priority, enabled state, API endpoint,
-optional fallback, work-link template, health checks, and resolved save-path
-previews. Set each source's metadata request language under
-`Maintenance -> Metadata`. The language is sent to the remote service as a hint
-only; the service may ignore it or return mixed-language metadata.
-
-### First-run configuration file
-
-For automated deployment, copy
-[`config/remote-sources.example.yml`](config/remote-sources.example.yml) to
-`config/remote-sources.yml` and replace the reserved example values locally:
-
-```yaml
-sources:
-  - display_name: Example Remote
-    source_type: kikoeru_compatible
-    enabled: true
-    priority: 30
-    api_url: https://example.invalid/api
-    base_url: https://example.invalid
-    fallback_url: ""
-```
-
-Enable the seed in `.env`:
-
-```dotenv
-KIKOTO_REMOTE_SOURCES_ENABLED=true
-```
-
-Compose reads `config/remote-sources.yml` from its `/config` mount. The file is
-a first-run seed: Kikoto ignores it once a compatible remote source already
-exists in SQLite. Continue managing sources through the administration UI after
-bootstrap. Keep real endpoints and credentials outside the repository.
-
-See [Configuration](docs/operations/configuration.md),
-[Sources](docs/product/sources.md), and
-[Secure Development](docs/development/security.md) for the complete boundary.
-
-## Browse, Track, Sync, Cache, and Fetch
-
-| Action | What it keeps | Media location |
-| --- | --- | --- |
-| **Browse** | A live source-scoped catalog or directory view | Remote source only |
-| **Track** | The unified work, source relationship, metadata snapshot, and browsable remote directory tree | SQLite and remote locations; no media publication to `/data` |
-| **Sync** | A refreshed remote snapshot and directory tree for the selected source | SQLite and remote locations |
-| **Cache** | Selected remote media for reusable playback | `/cache`; rebuildable |
-| **Fetch** | Reviewed files promoted into the durable local library | `/data`; persistent |
-
-Fetch first builds a plan, resolves file conflicts and source choices, verifies
-disk reserve, and then runs as a recoverable workflow. Files are materialized,
-staged, verified, published, and registered as local locations. A queued or
-running Fetch is unique per canonical work, so repeated requests reuse the same
-run instead of downloading the work twice.
-
-Track does not publish media into `data/`; it persists the selected source's
-browsable tree so the work remains available in the Tracked view. Cache is for
-rebuildable playback material. Fetch is the action that creates durable local
-media.
+The [User Guide](docs/user/index.md) covers library layout and scanning, remote
+sources, playback, work details, workflows, and settings. The [Operations
+docs](docs/operations/configuration.md) cover deployment, configuration,
+database, reliability, and troubleshooting.
 
 ## Documentation
 
 | Goal | Start here |
 | --- | --- |
-| Install and scan a first library | [Getting Started](docs/getting-started.md) |
-| Understand user-visible behavior | [Product Specs](docs/product/index.md) |
+| Use Kikoto | [User Guide](docs/user/index.md) |
+| Install and scan a first library | [Getting Started](docs/user/en/getting-started.md) |
+| Understand user-visible behavior | [Product Specs](docs/user/en/index.md) |
 | Configure and operate an instance | [Operations](docs/operations/configuration.md) |
 | Understand data and system boundaries | [Architecture](docs/architecture/index.md) |
 | Review design and security contracts | [Design](DESIGN.md) · [Security](SECURITY.md) · [Privacy](PRIVACY.md) |

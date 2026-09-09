@@ -1,10 +1,10 @@
 export const dlsiteMetadataLanguageOptions = [
-  { value: "ja-jp", label: "Japanese" },
-  { value: "en-us", label: "English" },
-  { value: "zh-cn", label: "Simplified Chinese" },
-  { value: "zh-tw", label: "Traditional Chinese" },
-  { value: "ko-kr", label: "Korean" },
-  { value: "origin", label: "Origin" },
+  { value: "ja-jp", labelKey: "metadata.japanese" },
+  { value: "en-us", labelKey: "metadata.english" },
+  { value: "zh-cn", labelKey: "metadata.simplifiedChinese" },
+  { value: "zh-tw", labelKey: "metadata.traditionalChinese" },
+  { value: "ko-kr", labelKey: "metadata.korean" },
+  { value: "origin", labelKey: "metadata.origin" },
 ] as const;
 
 export type DlsiteMetadataLanguage = (typeof dlsiteMetadataLanguageOptions)[number]["value"];

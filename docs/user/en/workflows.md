@@ -1,4 +1,5 @@
 # Workflows
+[English](../en/workflows.md) · [简体中文](../zh-Hans/workflows.md) · [繁體中文](../zh-Hant/workflows.md) · [日本語](../ja/workflows.md) · [한국어](../ko/workflows.md)
 
 Workflows make backend actions inspectable.
 
@@ -92,6 +93,6 @@ Workflows make backend actions inspectable.
 
 ## Related Docs
 
-- [Architecture workflows](../architecture/workflows.md)
-- [Reliability](../operations/reliability.md)
-- [Testing](../development/testing.md)
+- [Architecture workflows](../../architecture/workflows.md)
+- [Reliability](../../operations/reliability.md)
+- [Testing](../../development/testing.md)

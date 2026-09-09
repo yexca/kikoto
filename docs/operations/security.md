@@ -10,6 +10,10 @@ controls when an instance must be private.
 For privately reporting a vulnerability, see the repository
 [Security Policy](../../SECURITY.md).
 
+This document is for operators. For vulnerability reporting, use the
+[Security Policy](../../SECURITY.md); for implementation rules, use [Secure
+Development](../development/security.md).
+
 ## Network Exposure
 
 The default Compose mapping publishes port `7655` on every host interface. If

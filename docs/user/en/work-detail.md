@@ -1,4 +1,5 @@
 # Work Detail
+[English](../en/work-detail.md) · [简体中文](../zh-Hans/work-detail.md) · [繁體中文](../zh-Hant/work-detail.md) · [日本語](../ja/work-detail.md) · [한국어](../ko/work-detail.md)
 
 Work detail presents metadata, editions, file trees, source availability, and
 playback actions for one work.
@@ -132,4 +133,4 @@ corresponding Options command is selected.
 - [Library](library.md)
 - [Sources](sources.md)
 - [Playback](playback.md)
-- [Source presence](../architecture/source-presence.md)
+- [Source presence](../../architecture/source-presence.md)

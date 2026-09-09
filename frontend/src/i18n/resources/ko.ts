@@ -1,4 +1,5 @@
 import { libraryKorean, collectionKorean, workCardKorean } from "../resources";
+import { surfaceKorean } from "../surfaces";
 
 export const koreanResource = {
   ko: {
@@ -45,6 +46,7 @@ export const koreanResource = {
       library: libraryKorean,
       collection: collectionKorean,
       workCard: workCardKorean,
+      ...surfaceKorean,
       appearance: {
         title: "외관",
         subtitle: "UI 언어, 모드, 스타일 및 색상",
@@ -57,6 +59,7 @@ export const koreanResource = {
         themePreference: "테마 설정",
         themeStyle: "테마 스타일",
         themeColor: "테마 색상",
+        palette: { original: "기본", graphite: "그래파이트", cobalt: "코발트", iris: "아이리스" },
         openSettings: "외관 설정 열기",
         summary: "외관: {{mode}}, {{style}}, {{color}}",
         light: "라이트",
@@ -246,6 +249,16 @@ export const koreanResource = {
         nothingNew: "새 알림 없음",
         empty: "현재 알림이 없습니다.",
         workflowStatus: "워크플로 #{{id}} · {{status}}",
+        availabilityReady: "{{workCode}}의 가용성 확인이 준비되었습니다.",
+        remoteTrackFailed: "{{workCode}}의 원격 트랙에 실패했습니다.",
+        remoteTrackSucceeded: "{{workCode}}의 원격 트랙을 사용할 수 있습니다.",
+        generic: "{{workCode}}의 워크플로 업데이트입니다.",
+        statusQueued: "대기 중",
+        statusRunning: "실행 중",
+        statusSucceeded: "성공",
+        statusFailed: "실패",
+        statusCancelled: "취소됨",
+        statusUnknown: "알 수 없음",
         dismissFor: "{{workCode}} 알림 닫기",
         dismiss: "알림 닫기",
         clearSucceeded: "성공한 알림 지우기",

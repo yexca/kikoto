@@ -19,6 +19,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Badge } from "@/components/ui/badge";
@@ -142,10 +144,11 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
 ];
 
 export function CreatorWorksPage({ kind, active = true }: { kind: CreatorKind; active?: boolean }) {
+  const { t } = useTranslation();
   if (kind !== "voice") {
     return (
       <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
-        Circle creator view has moved to Circles.
+        {t("creatorBrowse.circleViewMoved")}
       </div>
     );
   }
@@ -174,6 +177,7 @@ function VoiceCreatorWorksPage({ active }: { active: boolean }) {
 }
 
 function VoiceListPage({ active }: { active: boolean }) {
+  const { t } = useTranslation();
   const auth = useAuth();
   const toast = useToast();
   const storageScope = currentClientStorageScope(auth.user?.id ?? null);
@@ -200,6 +204,23 @@ function VoiceListPage({ active }: { active: boolean }) {
   const [total, setTotal] = useState(0);
   const [reloadToken, setReloadToken] = useState(0);
   const loadedRequestKey = useRef("");
+  const localizedFilterOptions = voiceFilterOptions.map((option) => ({
+    ...option,
+    label:
+      option.value === "all"
+        ? t("creatorBrowse.allVoices")
+        : option.value === "favorite"
+          ? t("creatorBrowse.favorite")
+          : option.value === "tagged"
+            ? t("creatorBrowse.tagged")
+            : option.value === "available"
+              ? t("content.available")
+              : option.value === "local"
+                ? t("detailActions.local")
+                : option.value === "remote"
+                  ? t("detailActions.remote")
+                  : t("detailActions.missing"),
+  }));
 
   useEffect(() => {
     const timer = window.setTimeout(() => setRequestQuery(query), 250);
@@ -229,16 +250,14 @@ function VoiceListPage({ active }: { active: boolean }) {
         setTotal(result.total);
         setHasLoaded(true);
         setMessage(
-          result.total === 0 && !requestQuery.trim() && filter === "all"
-            ? "No voice actor credits have been derived from known work metadata yet."
-            : "",
+          result.total === 0 && !requestQuery.trim() && filter === "all" ? t("creatorBrowse.noVoiceCredits") : "",
         );
         if (result.page !== page) setPage(result.page);
       })
       .catch((error) => {
         if (controller.signal.aborted) return;
-        setLoadError("Voice actors could not be loaded.");
-        toast.notify(toastFromError(error, "Voice actor API is unavailable."));
+        setLoadError(t("errors.unavailable"));
+        toast.notify(toastFromError(error, t("errors.unavailable")));
       })
       .finally(() => {
         if (!controller.signal.aborted) setIsLoading(false);
@@ -260,12 +279,12 @@ function VoiceListPage({ active }: { active: boolean }) {
     pageSize,
     totalItems: total,
     totalPages,
-    itemLabel: "voice actors",
-    ariaLabel: "Voice actor pages",
+    itemLabel: t("creatorBrowse.voiceActors"),
+    ariaLabel: t("creatorBrowse.voicePages"),
     compactMobile: true,
     compactTop: true,
     refreshing: isLoading && hasLoaded,
-    refreshingLabel: "Refreshing voice actors",
+    refreshingLabel: t("creatorBrowse.refreshingVoices"),
     onPageChange: setPage,
   };
 
@@ -278,7 +297,7 @@ function VoiceListPage({ active }: { active: boolean }) {
     try {
       updateVoice({ ...voice, ...(await api.updateVoiceUserState(voice.personId, { favorite: !voice.favorite })) });
     } catch (error) {
-      toast.notify(toastFromError(error, "Voice favorite update failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.favoriteUpdateFailed")));
     }
   };
 
@@ -287,7 +306,7 @@ function VoiceListPage({ active }: { active: boolean }) {
       const result = await api.setVoiceUserTags(voice.personId, tags);
       updateVoice({ ...voice, userTags: result.userTags });
     } catch (error) {
-      toast.notify(toastFromError(error, "Voice tags update failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.tagsUpdateFailed")));
     }
   };
 
@@ -297,12 +316,12 @@ function VoiceListPage({ active }: { active: boolean }) {
 
       <section className="space-y-3">
         <CreatorListToolbar
-          label="Voice actors"
+          label={t("creatorBrowse.voiceActors")}
           query={query}
-          placeholder="Search voices or tags"
+          placeholder={t("creatorBrowse.searchVoices")}
           filter={filter}
           defaultFilter="all"
-          filterOptions={voiceFilterOptions}
+          filterOptions={localizedFilterOptions}
           pageSize={pageSize}
           pageSizeOptions={voicePageSizeOptions}
           onQueryChange={setQuery}
@@ -313,7 +332,7 @@ function VoiceListPage({ active }: { active: boolean }) {
         <CollectionPagination {...paginationProps} placement="top" />
 
         {isLoading && !hasLoaded ? (
-          <CreatorCollectionSkeleton label="Loading voice actors" />
+          <CreatorCollectionSkeleton label={t("creatorBrowse.loadingVoices")} />
         ) : !hasLoaded && loadError ? (
           <Card className={creatorCardMinHeightClassName} role="alert">
             <CardContent
@@ -321,7 +340,7 @@ function VoiceListPage({ active }: { active: boolean }) {
             >
               <span>{loadError}</span>
               <Button size="sm" variant="outline" onClick={() => setReloadToken((value) => value + 1)}>
-                Retry
+                {t("creatorBrowse.retry")}
               </Button>
             </CardContent>
           </Card>
@@ -329,7 +348,7 @@ function VoiceListPage({ active }: { active: boolean }) {
           <div
             className={creatorCollectionClassName}
             role="region"
-            aria-label="Voice actor results"
+            aria-label={t("creatorBrowse.voiceResults")}
             aria-busy={isLoading}
           >
             {voices.length > 0 ? (
@@ -337,7 +356,7 @@ function VoiceListPage({ active }: { active: boolean }) {
                 <CreatorCard
                   key={voice.personId}
                   name={voice.displayName}
-                  identityLabel={voice.latestWork ? undefined : "Voice actor"}
+                  identityLabel={voice.latestWork ? undefined : t("creatorBrowse.voiceActor")}
                   aliases={voice.aliases}
                   latestWork={voice.latestWork}
                   favorite={voice.favorite}
@@ -357,7 +376,7 @@ function VoiceListPage({ active }: { active: boolean }) {
                 <CardContent
                   className={`grid ${creatorCardMinHeightClassName} place-items-center p-5 text-sm text-muted-foreground`}
                 >
-                  No voice actors match this view.
+                  {t("creatorBrowse.noVoices")}
                 </CardContent>
               </Card>
             )}
@@ -366,7 +385,7 @@ function VoiceListPage({ active }: { active: boolean }) {
 
         <CollectionPagination {...paginationProps} placement="bottom" />
       </section>
-      <BrowseLoadingIndicator refreshing={isLoading && hasLoaded} label="Refreshing voice actors" />
+      <BrowseLoadingIndicator refreshing={isLoading && hasLoaded} label={t("creatorBrowse.refreshingVoices")} />
     </div>
   );
 }
@@ -376,6 +395,7 @@ function EntitySkeletonLine({ className = "" }: { className?: string }) {
 }
 
 function VoiceDetailPage({ personId, active }: { personId: number; active: boolean }) {
+  const { t } = useTranslation();
   const auth = useAuth();
   const toast = useToast();
   const requireDownloadsManage = usePermissionGate("downloads:manage");
@@ -434,7 +454,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
           loadedPersonID.current = personId;
         } catch (error) {
           if (!controller.signal.aborted) {
-            toast.notify(toastFromError(error, "Voice works are unavailable."));
+            toast.notify(toastFromError(error, t("errors.unavailable")));
           }
         } finally {
           if (!controller.signal.aborted) setIsWorksLoading(false);
@@ -447,13 +467,13 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
           setNotFound(true);
           return;
         }
-        toast.notify(toastFromError(error, "Voice actor detail is unavailable."));
+        toast.notify(toastFromError(error, t("errors.unavailable")));
       } finally {
         if (!controller.signal.aborted) setIsLoading(false);
       }
     })();
     return () => controller.abort();
-  }, [active, personId]);
+  }, [active, personId, t]);
 
   const loadRemoteMatches = async (notify = false) => {
     setIsRemoteLoading(true);
@@ -467,15 +487,17 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
         const timedOut = failed.some((source) => source.status === "timeout");
         const message =
           failed.length > 0
-            ? `${failed.length} remote source${failed.length === 1 ? "" : "s"} ${timedOut ? "timed out or failed" : "failed"}.`
-            : "Voice catalog loaded.";
+            ? timedOut
+              ? t("creatorBrowse.remoteSourcesTimedOut", { count: failed.length })
+              : t("creatorBrowse.remoteSourcesFailed", { count: failed.length })
+            : t("creatorBrowse.voiceCatalogLoaded");
         if (failed.length > 0) toast.info(message);
         else toast.success(message);
       }
     } catch (error) {
-      const fallback = error instanceof Error ? error.message : "Remote matches unavailable.";
+      const fallback = t("errors.unavailable");
       setRemoteError(fallback);
-      toast.notify(toastFromError(error, "Remote matches unavailable."));
+      toast.notify(toastFromError(error, fallback));
     } finally {
       setIsRemoteLoading(false);
     }
@@ -498,9 +520,9 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
         setCatalogRefresh(persisted.refresh);
       } catch (error) {
         if (cancelled) return;
-        const fallback = error instanceof Error ? error.message : "Voice catalog unavailable.";
+        const fallback = t("errors.unavailable");
         setRemoteError(fallback);
-        toast.notify(toastFromError(error, "Voice catalog unavailable."));
+        toast.notify(toastFromError(error, t("errors.unavailable")));
       } finally {
         if (!cancelled) setIsRemoteLoading(false);
       }
@@ -537,7 +559,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
         }
         if (!cancelled) setCatalogRefresh(result.refresh);
       } catch (error) {
-        if (!cancelled) setRemoteError(error instanceof Error ? error.message : "Voice catalog unavailable.");
+        if (!cancelled) setRemoteError(t("errors.unavailable"));
       } finally {
         requestRunning = false;
       }
@@ -560,11 +582,13 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
       const refresh = await api.refreshVoiceCatalog(personId, request);
       setCatalogRefresh(refresh);
       toast.info(
-        refresh.status === "queued" || refresh.status === "running" ? queuedMessage : "Voice catalog is current.",
+        refresh.status === "queued" || refresh.status === "running"
+          ? queuedMessage
+          : t("creatorBrowse.voiceCatalogCurrent"),
       );
     } catch (error) {
-      setRemoteError(error instanceof Error ? error.message : "Voice catalog refresh failed.");
-      toast.notify(toastFromError(error, "Voice catalog refresh failed."));
+      setRemoteError(t("creatorBrowse.voiceCatalogRefreshFailed"));
+      toast.notify(toastFromError(error, t("creatorBrowse.voiceCatalogRefreshFailed")));
     } finally {
       setIsRemoteLoading(false);
     }
@@ -573,19 +597,19 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
   const refreshVoiceMetadata = (mode: "incremental" | "full") =>
     void refreshVoiceCatalog(
       { scope: "metadata", mode },
-      mode === "full" ? "Full voice metadata refresh queued." : "Voice metadata refresh queued.",
+      mode === "full" ? t("creatorBrowse.fullVoiceMetadataQueued") : t("creatorBrowse.voiceMetadataQueued"),
     );
   const retryVoiceMetadata = () => refreshVoiceMetadata("incremental");
   const refreshAllRemoteSources = () => {
     const sourceIds = remoteMatches.filter(isVoiceCatalogSourceSelectable).map((source) => source.sourceId);
     return void refreshVoiceCatalog(
       { scope: "remote", mode: "incremental", ...(sourceIds.length > 0 ? { sourceIds } : {}) },
-      "Voice remote refresh queued.",
+      t("creatorBrowse.voiceRemoteRefreshQueued"),
     );
   };
   const firstPull = detail?.syncState === "never";
   const firstPullVoiceCatalog = () =>
-    void refreshVoiceCatalog({ scope: "all", mode: "full" }, "First voice catalog pull queued.");
+    void refreshVoiceCatalog({ scope: "all", mode: "full" }, t("creatorBrowse.firstVoiceCatalogQueued"));
 
   const knownWorks = detail?.works ?? [];
   const alternateAliasCount = useMemo(
@@ -663,7 +687,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
         current ? { ...current, ...next, works: current.works, remoteMatches: current.remoteMatches } : current,
       );
     } catch (error) {
-      toast.notify(toastFromError(error, "Favorite update failed."));
+      toast.notify(toastFromError(error, t("errors.unavailable")));
     }
   };
 
@@ -699,7 +723,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
       const result = await api.setVoiceUserTags(detail.personId, tags);
       setDetail((current) => (current ? { ...current, userTags: result.userTags } : current));
     } catch (error) {
-      toast.notify(toastFromError(error, "Voice tags update failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.tagsUpdateFailed")));
     }
   };
 
@@ -722,7 +746,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
           : current,
       );
     } catch (error) {
-      toast.notify(toastFromError(error, "Listening mark update failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.markUpdateFailed")));
     }
   };
 
@@ -734,10 +758,10 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
     try {
       const syncResult = await api.syncRemoteSourceWork(target.sourceId, target.code, "voice_mark_interest");
       await api.updateWorkUserState(syncResult.workId, { listeningStatus: status });
-      toast.success(`Saved and marked ${syncResult.primaryCode}.`);
+      toast.success(t("creatorBrowse.savedAndMarked", { code: syncResult.primaryCode }));
       await refreshDetail();
     } catch (error) {
-      toast.notify(toastFromError(error, "Listening mark update failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.markUpdateFailed")));
     } finally {
       setIsBulkBusy(false);
     }
@@ -759,7 +783,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
       await refreshDetail();
       return nextWorkId;
     } catch (error) {
-      toast.notify(toastFromError(error, "Save for list failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.saveForListFailed")));
       return null;
     }
   };
@@ -804,12 +828,12 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
       const failed = results.reduce((total, result) => total + result.failed, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      const message = `Bulk workflow ${runIds}: tracked ${synced}, queued ${fetched} Fetch jobs, failed ${failed}.`;
+      const message = t("creatorBrowse.bulkTrackFetchSummary", { runIds, synced, fetched, failed });
       if (failed > 0) toast.warning(message);
       else toast.success(message);
       await refreshDetail();
     } catch (error) {
-      toast.notify(toastFromError(error, "Bulk track/fetch failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.bulkTrackFetchFailed")));
     } finally {
       setIsBulkBusy(false);
     }
@@ -830,12 +854,12 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
       const failed = results.reduce((total, result) => total + result.failed, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      const message = `Bulk workflow ${runIds}: queued ${fetched} Fetch jobs, failed ${failed}.`;
+      const message = t("creatorBrowse.bulkFetchSummary", { runIds, fetched, failed });
       if (failed > 0) toast.warning(message);
       else toast.success(message);
       await refreshDetail();
     } catch (error) {
-      toast.notify(toastFromError(error, "Bulk fetch failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.bulkFetchFailed")));
     } finally {
       setIsBulkBusy(false);
       setSaveConfirm(null);
@@ -873,11 +897,11 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
       toast.notify({
         kind: "info",
         message: result.deduplicated
-          ? `Track workflow #${result.runId} is already queued.`
-          : `Track workflow #${result.runId} queued.`,
+          ? t("creatorBrowse.trackAlreadyQueued", { id: result.runId })
+          : t("creatorBrowse.trackQueued", { id: result.runId }),
       });
     } catch (error) {
-      toast.notify(toastFromError(error, "Track failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.trackFailed")));
     } finally {
       setIsBulkBusy(false);
     }
@@ -890,8 +914,8 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
   if (notFound) {
     return (
       <NotFoundPage
-        title="Voice actor not found"
-        message={`Voice actor ${personId} is not available in the current catalog.`}
+        title={t("creatorBrowse.voiceActorNotFound")}
+        message={t("creatorBrowse.voiceActorUnavailable", { id: personId })}
         onBack={navigateToList}
         onOpenLibrary={() => {
           window.history.pushState({}, "", "/");
@@ -929,31 +953,38 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline">#{detail.personId}</Badge>
                   <CatalogSyncBadge state={detail.syncState} />
-                  {detail.favorite && <Badge variant="secondary">Favorite</Badge>}
+                  {detail.favorite && <Badge variant="secondary">{t("detailActions.favorite")}</Badge>}
                 </div>
                 <h2 className="mt-3 truncate text-2xl font-semibold lg:text-3xl">{detail.displayName}</h2>
-                <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5" aria-label="Voice actor statistics">
+                <div
+                  className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5"
+                  aria-label={t("detailActions.voiceActorStatistics")}
+                >
                   <Badge variant={detail.localWorks > 0 ? "secondary" : "outline"} className="tabular-nums">
-                    Local {detail.localWorks}
+                    {t("detailActions.localCount", { count: detail.localWorks })}
                   </Badge>
                   <Badge variant="outline" className="tabular-nums">
-                    Remote {detail.remoteWorks}
+                    {t("detailActions.remoteCount", { count: detail.remoteWorks })}
                   </Badge>
                   <UserTagRow tags={detail.userTags} onSave={saveVoiceTags} className="min-w-0 flex-1" />
                 </div>
               </div>
-              <div className="flex flex-nowrap shrink-0 gap-1.5 lg:gap-2" role="group" aria-label="Voice actor actions">
+              <div
+                className="flex flex-nowrap shrink-0 gap-1.5 lg:gap-2"
+                role="group"
+                aria-label={t("detailActions.voiceActorActions")}
+              >
                 <Button
                   variant={detail.favorite ? "default" : "outline"}
                   size="icon"
                   className="h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-                  aria-label={detail.favorite ? "Remove favorite" : "Add favorite"}
+                  aria-label={detail.favorite ? t("creator.removeFavorite") : t("creator.addFavorite")}
                   aria-pressed={detail.favorite}
-                  title={detail.favorite ? "Remove favorite" : "Add favorite"}
+                  title={detail.favorite ? t("creator.removeFavorite") : t("creator.addFavorite")}
                   onClick={() => void toggleFavorite()}
                 >
                   <Heart className={`h-4 w-4 ${detail.favorite ? "fill-current" : ""}`} />
-                  <span className="hidden lg:inline">Favorite</span>
+                  <span className="hidden lg:inline">{t("detailActions.favorite")}</span>
                 </Button>
                 {!mobileNavigationLayout && (
                   <Button
@@ -967,7 +998,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
                     onClick={() => setDetailPanel((current) => (current === "aliases" ? null : "aliases"))}
                   >
                     <Tags className="h-4 w-4" />
-                    Aliases
+                    {t("detailActions.aliases")}
                     {alternateAliasCount > 0 && <span className="tabular-nums">{alternateAliasCount}</span>}
                   </Button>
                 )}
@@ -976,7 +1007,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
                     variant="default"
                     size="sm"
                     className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
-                    aria-label="First pull voice catalog"
+                    aria-label={t("detailActions.firstPull")}
                     disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
                     onClick={firstPullVoiceCatalog}
                   >
@@ -985,7 +1016,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
                     ) : (
                       <RefreshCw className="h-4 w-4" />
                     )}
-                    <span>First pull</span>
+                    <span>{t("detailActions.firstPull")}</span>
                   </Button>
                 ) : (
                   <>
@@ -993,8 +1024,8 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
                       variant="outline"
                       size="sm"
                       className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-                      aria-label="Retry voice metadata"
-                      title="Retry metadata"
+                      aria-label={t("detailActions.retryMetadata")}
+                      title={t("detailActions.retryMetadata")}
                       disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
                       onClick={retryVoiceMetadata}
                     >
@@ -1003,15 +1034,15 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
                       ) : (
                         <RefreshCw className="h-4 w-4" />
                       )}
-                      <span className="lg:hidden">Metadata</span>
-                      <span className="hidden lg:inline">Retry metadata</span>
+                      <span className="lg:hidden">{t("detailActions.metadata")}</span>
+                      <span className="hidden lg:inline">{t("detailActions.retryMetadata")}</span>
                     </Button>
                     <Button
                       variant="outline"
                       size="sm"
                       className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-                      aria-label="Refresh voice remote sources"
-                      title="Refresh remote"
+                      aria-label={t("detailActions.refreshRemote")}
+                      title={t("detailActions.refreshRemote")}
                       disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
                       onClick={refreshAllRemoteSources}
                     >
@@ -1020,8 +1051,8 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
                       ) : (
                         <Cloud className="h-4 w-4" />
                       )}
-                      <span className="lg:hidden">Remote</span>
-                      <span className="hidden lg:inline">Refresh remote</span>
+                      <span className="lg:hidden">{t("detailActions.remote")}</span>
+                      <span className="hidden lg:inline">{t("detailActions.refreshRemote")}</span>
                     </Button>
                   </>
                 )}
@@ -1035,10 +1066,10 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
                   aria-controls={detailPanel === "advanced" ? advancedPanelID : undefined}
                   aria-label={
                     remoteSourceWarning
-                      ? "Open advanced refresh actions with attention"
-                      : "Open advanced refresh actions"
+                      ? t("detailActions.openAdvancedRefreshActionsAttention")
+                      : t("detailActions.openAdvancedRefreshActions")
                   }
-                  title="Advanced refresh"
+                  title={t("detailActions.advancedRefresh")}
                   onClick={() => setDetailPanel((current) => (current === "advanced" ? null : "advanced"))}
                 >
                   {mobileNavigationLayout ? (
@@ -1046,7 +1077,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
                   ) : (
                     <SlidersHorizontal className="h-4 w-4" />
                   )}
-                  <span className="hidden lg:inline">Advanced</span>
+                  <span className="hidden lg:inline">{t("detailActions.advanced")}</span>
                   {remoteSourceWarning && <span className="text-warning-foreground">!</span>}
                 </Button>
               </div>
@@ -1063,7 +1094,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
             bottomCollisionPadding={96}
             zIndex={70}
           >
-            <div id={aliasPanelID} role="dialog" aria-label="Aliases">
+            <div id={aliasPanelID} role="dialog" aria-label={t("creatorBrowse.aliasesTitle")}>
               <AliasReviewPanel
                 personId={detail.personId}
                 aliases={detail.aliasRecords ?? []}
@@ -1124,7 +1155,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
           }
           onClose={() => setDetailPanel(null)}
           onRefreshCatalog={(mode, sourceIds) =>
-            void refreshVoiceCatalog({ scope: "remote", mode, sourceIds }, "Voice remote refresh queued.")
+            void refreshVoiceCatalog({ scope: "remote", mode, sourceIds }, t("creatorBrowse.voiceRemoteRefreshQueued"))
           }
           onRefreshMetadata={refreshVoiceMetadata}
         />
@@ -1139,7 +1170,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
               value={query}
               onKeyDown={dismissKeyboardOnEnter}
               onChange={(event) => changeWorkQuery(event.target.value)}
-              placeholder="Search voice works"
+              placeholder={t("sheets.searchVoiceWorks")}
             />
           </div>
           <div className="hidden shrink-0 gap-2 lg:flex">
@@ -1153,16 +1184,16 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
               className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={filter}
               onChange={(event) => changeWorkFilter(event.target.value as VoiceWorkFilter)}
-              aria-label="Work filter"
+              aria-label={t("sheets.voiceWorkAvailability")}
             >
-              <option value="all">All works</option>
-              <option value="available">Available</option>
-              <option value="local">Local</option>
-              <option value="remote">Remote</option>
-              <option value="missing">Missing</option>
+              <option value="all">{t("detailActions.allWorks")}</option>
+              <option value="available">{t("content.available")}</option>
+              <option value="local">{t("detailActions.local")}</option>
+              <option value="remote">{t("detailActions.remote")}</option>
+              <option value="missing">{t("detailActions.missing")}</option>
             </select>
             <Button variant={selectionMode ? "default" : "outline"} size="sm" onClick={toggleSelectionMode}>
-              Select
+              {t("detailActions.select")}
             </Button>
           </div>
         </div>
@@ -1175,14 +1206,14 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
             totalPages={totalPages}
             compactMobile
             refreshing={isWorksLoading || isRemoteLoading || catalogRefreshActive}
-            refreshingLabel="Refreshing voice works"
+            refreshingLabel={t("creatorBrowse.refreshingVoiceWorks")}
             leadingControls={
               <Button
                 variant="outline"
                 size="icon"
                 className="relative h-11 w-11"
-                aria-label={`Open voice work options${query.trim() || filter !== "all" || selectionMode ? ", filters active" : ""}`}
-                title="Voice work options"
+                aria-label={t("creatorBrowse.openVoiceWorkOptions")}
+                title={t("sheets.voiceWorkOptions")}
                 aria-haspopup="dialog"
                 aria-expanded={workOptionsOpen}
                 onClick={() => setWorkOptionsOpen(true)}
@@ -1223,13 +1254,13 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
                   selectablePageWorks.every((work) => selectedWorkKeys.has(voiceWorkSelectionKey(work)))
                 }
                 onCheckedChange={toggleVisibleSelection}
-                aria-label="Select visible works"
+                aria-label={t("detailActions.select")}
               />
-              {selectedWorks.length} selected
+              {t("creatorBrowse.selectedWorks", { count: selectedWorks.length })}
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" onClick={() => toggleVisibleSelection(true)}>
-                Select all
+                {t("library.selectAll")}
               </Button>
               <Button
                 variant="outline"
@@ -1239,7 +1270,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
                   setSelectionMode(false);
                 }}
               >
-                Cancel selection
+                {t("library.cancelSelection")}
               </Button>
               <Button
                 variant="outline"
@@ -1248,7 +1279,8 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
                 onClick={() => void bulkSyncAndSave()}
               >
                 <GitBranchPlus className="h-4 w-4" />
-                Track + Fetch {selectedSyncable.length}
+                {t("library.trackCount", { count: selectedSyncable.length })} +{" "}
+                {t("library.fetchCount", { count: selectedSyncable.length })}
               </Button>
               <Button
                 variant="outline"
@@ -1257,7 +1289,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
                 onClick={() => void bulkSave()}
               >
                 <HardDriveDownload className="h-4 w-4" />
-                Fetch {selectedSaveable.length}
+                {t("library.fetchCount", { count: selectedSaveable.length })}
               </Button>
             </div>
           </div>
@@ -1298,14 +1330,14 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
           </div>
         ) : isWorksLoading || isRemoteLoading || catalogRefreshActive ? (
           <WorkCollectionLoadingState
-            label="Loading voice works"
+            label={t("creatorBrowse.loadingVoiceWorks")}
             mobileColumns={mobileColumns}
             desktopColumns={desktopColumns}
           />
         ) : (
           <Card className="min-h-72">
             <CardContent className="grid min-h-72 place-items-center p-5 text-sm text-muted-foreground">
-              No works match this view.
+              {t("creatorBrowse.noVoiceWorks")}
             </CardContent>
           </Card>
         )}
@@ -1344,7 +1376,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
       <RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
       <BrowseLoadingIndicator
         refreshing={isWorksLoading || isRemoteLoading || catalogRefreshActive}
-        label="Refreshing voice details"
+        label={t("creatorBrowse.refreshingVoiceDetails")}
       />
     </div>
   );
@@ -1373,6 +1405,7 @@ function VoiceWorkCard({
   onFavoriteSaved: (favorite: boolean) => void;
   onEnsureWork: () => Promise<number | null>;
 }) {
+  const { t } = useTranslation();
   const isKnown = "local" in work;
   const local = "local" in work ? work.local : work.hasLocal;
   const remote = voiceWorkHasRemoteAvailability(work);
@@ -1382,7 +1415,7 @@ function VoiceWorkCard({
   const listeningMark = "listeningMark" in work ? work.listeningMark : "none";
   const isUnavailable = voiceWorkIsExplicitlyUnavailable(work);
   const canOpen = Boolean((isKnown && workId) || (!isKnown && work.primaryCode));
-  const view = voiceWorkCardView(work);
+  const view = voiceWorkCardView(work, t);
 
   return (
     <WorkCardShell
@@ -1406,7 +1439,7 @@ function VoiceWorkCard({
           right={
             <>
               <WorkCardActionButton
-                title="Track"
+                title={t("detailActions.track")}
                 disabled={!voiceWorkRemoteTarget(work)}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -1416,7 +1449,7 @@ function VoiceWorkCard({
                 <GitBranchPlus className="h-4 w-4" />
               </WorkCardActionButton>
               <WorkCardActionButton
-                title="Fetch"
+                title={t("detailActions.fetch")}
                 disabled={!voiceWorkRemoteTarget(work)}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -1460,6 +1493,7 @@ function AliasReviewPanel({
   onMerged: () => void;
   onMessage: (message: string) => void;
 }) {
+  const { t } = useTranslation();
   const [aliasDraft, setAliasDraft] = useState("");
   const [candidates, setCandidates] = useState<VoiceAliasCandidate[]>([]);
   const [mergeReviews, setMergeReviews] = useState<VoiceMergeReview[]>([]);
@@ -1480,7 +1514,7 @@ function AliasReviewPanel({
     try {
       setCandidates(await api.listVoiceAliasCandidates(personId, aliasDraft));
     } catch (error) {
-      onMessage(error instanceof Error ? error.message : "Alias candidate search failed.");
+      onMessage(t("creatorBrowse.aliasCandidateSearchFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -1494,7 +1528,7 @@ function AliasReviewPanel({
     try {
       setMergeReviews(await api.listVoiceMergeReviews(personId));
     } catch (error) {
-      onMessage(error instanceof Error ? error.message : "Merge review history failed.");
+      onMessage(t("creatorBrowse.mergeHistoryFailed"));
     }
   };
 
@@ -1533,9 +1567,9 @@ function AliasReviewPanel({
       const next = await api.createVoiceAlias(personId, aliasDraft);
       onAliasesChange(next);
       setAliasDraft("");
-      onMessage("Alias saved.");
+      onMessage(t("creatorBrowse.aliasSaved"));
     } catch (error) {
-      onMessage(error instanceof Error ? error.message : "Alias save failed.");
+      onMessage(t("creatorBrowse.aliasSaveFailed"));
     }
   };
 
@@ -1543,41 +1577,41 @@ function AliasReviewPanel({
     try {
       const result = await api.deleteVoiceAlias(personId, alias.id);
       onAliasesChange(result.aliases);
-      onMessage(result.deleted > 0 ? "Alias deleted." : "Primary alias is kept.");
+      onMessage(result.deleted > 0 ? t("creatorBrowse.aliasDeleted") : t("creatorBrowse.primaryAliasKept"));
     } catch (error) {
-      onMessage(error instanceof Error ? error.message : "Alias delete failed.");
+      onMessage(t("creatorBrowse.aliasDeleteFailed"));
     }
   };
 
   const mergeCandidate = async (candidate: VoiceAliasCandidate) => {
     try {
       const result = await api.mergeVoiceAliasCandidate(personId, candidate.personId);
-      onMessage(`Merged ${result.mergedName} into ${result.targetName}.`);
+      onMessage(t("creatorBrowse.aliasMerged", { merged: result.mergedName, target: result.targetName }));
       onMerged();
       setCandidates((items) => items.filter((item) => item.personId !== candidate.personId));
       setMergeTarget(null);
       void loadMergeReviews();
     } catch (error) {
-      onMessage(error instanceof Error ? error.message : "Alias merge failed.");
+      onMessage(t("creatorBrowse.aliasMergeFailed"));
     }
   };
 
   const undoMerge = async (review: VoiceMergeReview) => {
     try {
       const result = await api.undoVoiceMerge(personId, review.id);
-      onMessage(`Restored ${result.restoredName}.`);
+      onMessage(t("creatorBrowse.mergeRestored", { name: result.restoredName }));
       onMerged();
       void loadMergeReviews();
     } catch (error) {
-      onMessage(error instanceof Error ? error.message : "Merge undo failed.");
+      onMessage(t("creatorBrowse.mergeUndoFailed"));
     }
   };
 
   return (
     <div className="space-y-3">
       <div>
-        <h3 className="font-semibold">Aliases</h3>
-        <p className="text-sm text-muted-foreground">Review alternate names and merge duplicate voice actors.</p>
+        <h3 className="font-semibold">{t("creatorBrowse.aliasesTitle")}</h3>
+        <p className="text-sm text-muted-foreground">{t("creatorBrowse.aliasesDescription")}</p>
       </div>
       <div className="flex flex-wrap gap-1.5">
         {aliases.length > 0 ? (
@@ -1587,7 +1621,7 @@ function AliasReviewPanel({
               {canManage && alias.source !== "primary_name" && (
                 <button
                   className="rounded-sm hover:text-destructive"
-                  aria-label={`Delete alias ${alias.alias}`}
+                  aria-label={t("creatorBrowse.deleteAlias", { name: alias.alias })}
                   onClick={() => void deleteAlias(alias)}
                 >
                   <Trash2 className="h-3 w-3" />
@@ -1596,7 +1630,7 @@ function AliasReviewPanel({
             </Badge>
           ))
         ) : (
-          <Badge variant="warning">No aliases</Badge>
+          <Badge variant="warning">{t("creatorBrowse.noAliases")}</Badge>
         )}
       </div>
       {canManage && (
@@ -1614,11 +1648,11 @@ function AliasReviewPanel({
                     setAliasDraft(event.target.value);
                     setIsSuggestOpen(true);
                   }}
-                  placeholder="Add alias or search duplicate voice actor"
+                  placeholder={t("creatorBrowse.aliasPlaceholder")}
                 />
               </div>
               <Button variant="outline" size="sm" onClick={() => void addAlias()}>
-                <Plus className="h-4 w-4" /> Add
+                <Plus className="h-4 w-4" /> {t("creatorBrowse.add")}
               </Button>
             </div>
             {shouldShowSuggestions && (
@@ -1637,14 +1671,14 @@ function AliasReviewPanel({
                     <span className="min-w-0">
                       <span className="block truncate font-medium">{candidate.displayName}</span>
                       <span className="block truncate text-xs text-muted-foreground">
-                        {candidate.knownWorks} works ·{" "}
+                        {t("creatorBrowse.worksCount", { count: candidate.knownWorks })} ·{" "}
                         {[
                           ...new Set(
                             candidate.aliases
                               .map((alias) => alias.alias)
                               .filter((alias) => alias !== candidate.displayName),
                           ),
-                        ].join(", ") || "No extra aliases"}
+                        ].join(", ") || t("creatorBrowse.noExtraAliases")}
                       </span>
                     </span>
                     <GitMerge className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1655,7 +1689,7 @@ function AliasReviewPanel({
           </div>
           {aliasDraft.trim().length >= aliasSuggestMinChars && candidates.length > aliasSuggestMaxResults && (
             <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">
-              Too many matches. Keep typing to narrow candidates.
+              {t("creatorBrowse.tooManyMatches")}
             </div>
           )}
           {candidates.length > 0 && candidates.length <= aliasSuggestMaxResults && (
@@ -1668,19 +1702,19 @@ function AliasReviewPanel({
                   <div className="min-w-0">
                     <div className="truncate font-medium">{candidate.displayName}</div>
                     <div className="truncate text-xs text-muted-foreground">
-                      {candidate.knownWorks} works ·{" "}
+                      {t("creatorBrowse.worksCount", { count: candidate.knownWorks })} ·{" "}
                       {[
                         ...new Set(
                           candidate.aliases
                             .map((alias) => alias.alias)
                             .filter((alias) => alias !== candidate.displayName),
                         ),
-                      ].join(", ") || "No extra aliases"}
+                      ].join(", ") || t("creatorBrowse.noExtraAliases")}
                     </div>
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => setMergeTarget(candidate)}>
                     <GitMerge className="h-4 w-4" />
-                    Merge
+                    {t("creatorBrowse.merge")}
                   </Button>
                 </div>
               ))}
@@ -1690,7 +1724,7 @@ function AliasReviewPanel({
       )}
       {mergeReviews.length > 0 && (
         <div className="space-y-2 border-t pt-3">
-          <div className="text-sm font-medium">Merge history</div>
+          <div className="text-sm font-medium">{t("creatorBrowse.mergeHistory")}</div>
           {mergeReviews.slice(0, 4).map((review) => (
             <div
               key={review.id}
@@ -1699,7 +1733,8 @@ function AliasReviewPanel({
               <div className="min-w-0">
                 <div className="truncate font-medium">{review.sourceName}</div>
                 <div className="truncate text-xs text-muted-foreground">
-                  {review.status === "undone" ? "Undone" : "Merged"} · {review.createdAt}
+                  {review.status === "undone" ? t("creatorBrowse.undone") : t("creatorBrowse.merged")} ·{" "}
+                  {review.createdAt}
                 </div>
               </div>
               {canManage && (
@@ -1709,7 +1744,7 @@ function AliasReviewPanel({
                   disabled={review.status !== "merged"}
                   onClick={() => void undoMerge(review)}
                 >
-                  Undo
+                  {t("creatorBrowse.undo")}
                 </Button>
               )}
             </div>
@@ -1718,9 +1753,9 @@ function AliasReviewPanel({
       )}
       {mergeTarget && (
         <FloatingConfirm
-          title="Merge voice actor"
-          description={`Merge ${mergeTarget.displayName} into this voice actor? You can undo it from merge history.`}
-          confirmLabel="Merge"
+          title={t("creatorBrowse.mergeVoiceActor")}
+          description={t("creatorBrowse.mergeVoiceActorDescription", { name: mergeTarget.displayName })}
+          confirmLabel={t("creatorBrowse.merge")}
           onClose={() => setMergeTarget(null)}
           onConfirm={() => void mergeCandidate(mergeTarget)}
         />
@@ -1772,22 +1807,23 @@ function SaveConfirmModal({
   onClose: () => void;
   onConfirm: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
       <div
         className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <h3 className="text-base font-semibold">Fetch remote directory</h3>
+        <h3 className="text-base font-semibold">{t("detailActions.fetchRemoteDirectory")}</h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          This will download the full remote directory for {count} selected work{count === 1 ? "" : "s"}.
+          {t("detailActions.fetchRemoteDirectoryDescription", { count })}
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>
-            Cancel
+            {t("content.cancel")}
           </Button>
           <Button size="sm" onClick={onConfirm}>
-            Fetch
+            {t("detailActions.fetch")}
           </Button>
         </div>
       </div>
@@ -1796,6 +1832,7 @@ function SaveConfirmModal({
 }
 
 function WorkProgressLine({ progress }: { progress: NonNullable<VoiceKnownWork["progress"]> }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-1">
       <div className="h-1.5 overflow-hidden rounded-full bg-muted">
@@ -1803,14 +1840,17 @@ function WorkProgressLine({ progress }: { progress: NonNullable<VoiceKnownWork["
       </div>
       <div className="truncate text-xs text-muted-foreground">
         {progress.completed
-          ? "Finished"
-          : `Resume ${progress.title || "track"} at ${formatTime(progress.positionSeconds)}`}
+          ? t("favorites.finished")
+          : t("favorites.resumeAt", {
+              title: progress.title || t("player.track"),
+              time: formatTime(progress.positionSeconds),
+            })}
       </div>
     </div>
   );
 }
 
-function voiceWorkCardView(work: VoiceWorkView): WorkCardViewModel {
+function voiceWorkCardView(work: VoiceWorkView, t: TFunction): WorkCardViewModel {
   const isKnown = "local" in work;
   const sourceName = "sourceName" in work ? work.sourceName : "";
   const observedSourceTags = voiceWorkObservedSourceTags(work);
@@ -1822,22 +1862,22 @@ function voiceWorkCardView(work: VoiceWorkView): WorkCardViewModel {
         cache: work.hasCache,
         sourceTags: observedSourceTags,
       });
-  const observedStatusBadges = voiceObservedStatusBadges(observedSourceTags);
+  const observedStatusBadges = voiceObservedStatusBadges(observedSourceTags, t);
   const sourceBadges =
     availableBadges.length > 0 || observedStatusBadges.length > 0
       ? [...availableBadges, ...observedStatusBadges]
       : [
           {
             key: "source:unknown",
-            label: "Not checked",
+            label: t("creatorBrowse.sourceNotChecked"),
             variant: "warning" as const,
-            title: "No source availability observation has been recorded.",
+            title: t("creatorBrowse.sourceNotCheckedDescription"),
           },
         ];
   return {
-    code: work.primaryCode || sourceName || "Source",
+    code: work.primaryCode || sourceName || t("detailActions.source"),
     title: work.title,
-    circle: work.circle || sourceName || "Unknown circle",
+    circle: work.circle || sourceName || t("workCard.unknownCircle"),
     circleExternalId: "circleExternalId" in work ? work.circleExternalId : undefined,
     ageRating: work.ageRating,
     voiceActors: work.voiceActors,
@@ -1863,6 +1903,7 @@ function remoteSourceFailed(source: VoiceRemoteSourceSet) {
 }
 
 function VoiceDetailSkeleton() {
+  const { t } = useTranslation();
   return (
     <div className="space-y-5">
       <EntitySkeletonLine className="h-9 w-32" />
@@ -1880,7 +1921,7 @@ function VoiceDetailSkeleton() {
           </CardContent>
         </Card>
       </section>
-      <WorkCollectionLoadingState label="Loading voice works" />
+      <WorkCollectionLoadingState label={t("creatorBrowse.loadingVoiceWorks")} />
     </div>
   );
 }
@@ -1916,6 +1957,7 @@ function voiceWorkDLsiteURL(work: VoiceWorkView) {
 }
 
 function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (status: ListeningStatus) => void }) {
+  const { t } = useTranslation();
   return (
     <div className="absolute bottom-10 left-0 z-20 w-44 overflow-hidden rounded-md border bg-popover p-1 shadow-lg">
       {listeningStatusOptions.map((option) => (
@@ -1927,7 +1969,7 @@ function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (stat
           <ListChecks
             className={value === option.value && value !== "none" ? "h-3.5 w-3.5 text-primary" : "h-3.5 w-3.5"}
           />
-          {option.label}
+          {t(`library.status.${option.value}`, { defaultValue: option.label })}
         </button>
       ))}
     </div>
@@ -1938,38 +1980,38 @@ function normalizeListeningStatus(status: string): ListeningStatus {
   return listeningStatusOptions.some((option) => option.value === status) ? (status as ListeningStatus) : "none";
 }
 
-function listeningStatusLabel(status: string) {
-  return (
-    listeningStatusOptions.find((option) => option.value === normalizeListeningStatus(status))?.label ?? "Unmarked"
-  );
+function listeningStatusLabel(status: string, t?: TFunction) {
+  return t
+    ? t(`library.status.${normalizeListeningStatus(status)}`)
+    : (listeningStatusOptions.find((option) => option.value === normalizeListeningStatus(status))?.label ?? "Unmarked");
 }
 
-function voiceObservedStatusBadges(sourceTags: CircleSourceStat[]): WorkCardBadge[] {
+function voiceObservedStatusBadges(sourceTags: CircleSourceStat[], t: TFunction): WorkCardBadge[] {
   return sourceTags
     .filter((source) => source.sourceId && source.key !== "cache" && source.status !== "available" && source.count <= 0)
     .map((source) => {
-      const status = voiceSourceStatusLabel(source.status);
+      const status = voiceSourceStatusLabel(source.status, t);
       return {
         key: `source:observed:${source.sourceId}`,
-        label: `${source.displayName || "Remote source"}: ${status}`,
+        label: `${source.displayName || t("detailActions.remote")}: ${status}`,
         variant: "warning" as const,
-        title: `Observed source status: ${status}`,
+        title: t("creatorBrowse.observedSourceStatus", { status }),
       };
     });
 }
 
-function voiceSourceStatusLabel(status: string) {
+function voiceSourceStatusLabel(status: string, t: TFunction) {
   switch (status) {
     case "not_found":
-      return "Not found";
+      return t("errors.notFound");
     case "unavailable":
-      return "Unavailable";
+      return t("detailActions.unavailable");
     case "disabled":
-      return "Disabled";
+      return t("sources.disabled");
     case "error":
-      return "Error";
+      return t("creatorBrowse.sourceError");
     default:
-      return "Not checked";
+      return t("creatorBrowse.sourceNotChecked");
   }
 }
 
@@ -1988,28 +2030,27 @@ function CatalogPagination({
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: 24 | 48) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        {totalItems} works · page {page} of {totalPages}
-      </div>
+      <div>{t("collection.pageOf", { page, totalPages, totalItems, itemLabel: t("collection.works") })}</div>
       <div className="flex items-center gap-2">
         <select
           className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
           value={pageSize}
           onChange={(event) => onPageSizeChange(Number(event.target.value) as 24 | 48)}
-          aria-label="Works per page"
+          aria-label={t("sheets.voiceWorkPageSize")}
         >
           {workPageSizeOptions.map((value) => (
             <option key={value} value={value}>
-              {value} / page
+              {t("collection.perPageOption", { value })}
             </option>
           ))}
         </select>
         <Button
           variant="outline"
           size="icon"
-          aria-label="Previous page"
+          aria-label={t("collection.previousPage")}
           disabled={page <= 1}
           onClick={() => onPageChange(Math.max(1, page - 1))}
         >
@@ -2018,7 +2059,7 @@ function CatalogPagination({
         <Button
           variant="outline"
           size="icon"
-          aria-label="Next page"
+          aria-label={t("collection.nextPage")}
           disabled={page >= totalPages}
           onClick={() => onPageChange(Math.min(totalPages, page + 1))}
         >

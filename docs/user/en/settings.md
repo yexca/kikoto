@@ -1,4 +1,5 @@
 # Settings
+[English](../en/settings.md) · [简体中文](../zh-Hans/settings.md) · [繁體中文](../zh-Hant/settings.md) · [日本語](../ja/settings.md) · [한국어](../ko/settings.md)
 
 Settings exposes per-user account controls and browser-local appearance and
 playback preferences. Instance and user administration remain in Maintenance.
@@ -84,6 +85,6 @@ anonymous principal when anonymous access is enabled.
 
 ## Related Docs
 
-- [Configuration](../operations/configuration.md)
-- [Security](../operations/security.md)
+- [Configuration](../../operations/configuration.md)
+- [Security](../../operations/security.md)
 - [Sources](sources.md)

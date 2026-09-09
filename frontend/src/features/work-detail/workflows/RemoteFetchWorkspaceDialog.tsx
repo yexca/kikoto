@@ -1,5 +1,6 @@
 import { AlertTriangle, HardDriveDownload, Languages, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -297,20 +298,26 @@ function RemoteFetchDialogHeader({
   disabled: boolean;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex min-h-12 items-center justify-between gap-3 border-b px-4">
       <div>
         <div className="flex items-center gap-2">
           <h3 id="remote-fetch-workspace-title" className="text-base font-semibold">
-            Fetch selection
+            {t("remoteFetch.title")}
           </h3>
-          {readOnly && <Badge variant="outline">Demo preview</Badge>}
+          {readOnly && <Badge variant="outline">{t("remoteFetch.demoPreview")}</Badge>}
         </div>
-        <p className="text-xs text-muted-foreground">
-          Compare the exact language edition, remote source, and final published directory.
-        </p>
+        <p className="text-xs text-muted-foreground">{t("remoteFetch.description")}</p>
       </div>
-      <Button variant="ghost" size="icon" title="Close" onClick={onClose} disabled={disabled}>
+      <Button
+        variant="ghost"
+        size="icon"
+        title={t("remoteFetch.close")}
+        aria-label={t("remoteFetch.close")}
+        onClick={onClose}
+        disabled={disabled}
+      >
         <X className="h-4 w-4" />
       </Button>
     </div>
@@ -336,15 +343,16 @@ function RemoteFetchLanguagePicker({
   disabled: boolean;
   onSelect: (code: string, selected: boolean) => void;
 }) {
+  const { t } = useTranslation();
   if (!preparation) return null;
   const viewingEditionCode = activeEditionCode || plan?.primaryCode || "";
   return (
     <div className="flex shrink-0 items-stretch gap-2 overflow-x-auto border-b bg-muted/30 px-3 py-2">
       <div className="flex min-w-28 shrink-0 flex-col justify-center text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5 font-medium uppercase tracking-wide">
-          <Languages className="h-3.5 w-3.5" /> Languages
+          <Languages className="h-3.5 w-3.5" /> {t("remoteFetch.languages")}
         </span>
-        <span className="mt-1">
+        <span className="mt-1" title={t("remoteFetch.metadataStatus")}>
           <Badge variant={preparation.metadataStatus === "complete" ? "secondary" : "outline"}>
             {preparation.metadataStatus}
           </Badge>
@@ -383,6 +391,7 @@ function RemoteFetchEditionOption({
   disabled: boolean;
   onSelect: (code: string, selected: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const normalizedCode = edition.primaryCode.toUpperCase();
   const viewing = viewingEditionCode.toUpperCase() === normalizedCode;
   const selected = selectedEditionCode.toUpperCase() === normalizedCode;
@@ -398,26 +407,32 @@ function RemoteFetchEditionOption({
       <Checkbox
         checked={selected}
         disabled={disabled || checking}
-        aria-label={`Select ${edition.primaryCode}`}
+        aria-label={t("remoteFetch.selectEdition", { code: edition.primaryCode })}
         onCheckedChange={(checked) => onSelect(edition.primaryCode, checked)}
       />
       <span className="min-w-0 flex-1 leading-tight">
         <span className="flex items-center justify-between gap-2 text-xs">
           <span className="truncate font-semibold">
-            {languageLabel(edition.metadataLanguage || edition.editionLabel)}
+            {languageLabel(edition.metadataLanguage || edition.editionLabel, t)}
           </span>
           <span className="shrink-0 text-[10px] text-muted-foreground">
-            {translationKindLabel(edition.translationKind)}
+            {translationKindLabel(edition.translationKind, t)}
           </span>
         </span>
         <span className="mt-1 flex items-center gap-1 whitespace-nowrap text-[10px] text-muted-foreground">
           <span className="font-mono">{edition.primaryCode}</span>
           <span>·</span>
-          <span>{edition.localRoots.length} local</span>
+          <span>{t("remoteFetch.localCount", { count: edition.localRoots.length })}</span>
           <span>·</span>
-          <span>{availableSources} remote</span>
+          <span>{t("remoteFetch.remoteCount", { count: availableSources })}</span>
           <span>·</span>
-          <span>{checking ? "checking" : viewing || selectedSourceAvailable ? "available" : "not checked"}</span>
+          <span>
+            {checking
+              ? t("remoteFetch.checking")
+              : viewing || selectedSourceAvailable
+                ? t("remoteFetch.available")
+                : t("remoteFetch.notChecked")}
+          </span>
         </span>
       </span>
     </label>
@@ -445,26 +460,35 @@ function RemoteFetchSelectionToolbar({
   refreshScheduled: boolean;
   onChange: (paths: Set<string>) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-wrap items-center gap-2 border-b p-3">
       <Badge variant="secondary">
-        {selectedPaths.size} remote / {allPaths.length}
+        {t("remoteFetch.remoteCount", { count: selectedPaths.size })} / {allPaths.length}
       </Badge>
-      {plan && plan.localFiles.length > 0 && <Badge variant="secondary">{selectedLocalPaths.size} local</Badge>}
-      {plan && plan.summary.conflict > 0 && <Badge variant="error">{plan.summary.conflict} conflicts</Badge>}
+      {plan && plan.localFiles.length > 0 && (
+        <Badge variant="secondary">{t("remoteFetch.localCount", { count: selectedLocalPaths.size })}</Badge>
+      )}
+      {plan && plan.summary.conflict > 0 && (
+        <Badge variant="error">{t("remoteFetch.conflicts", { count: plan.summary.conflict })}</Badge>
+      )}
       {plan && plan.summary.conflict === 0 && (
         <Badge variant="outline">
-          {plan.summary.promote} {readOnly ? "preview only" : "to fetch"}
+          {plan.summary.promote} {readOnly ? t("remoteFetch.previewOnly") : t("remoteFetch.toFetch")}
         </Badge>
       )}
       {previewNeedsRefresh && (
         <Badge variant="outline">
-          {disabled ? "Refreshing preview" : refreshScheduled ? "Preview scheduled" : "Preview required"}
+          {disabled
+            ? t("remoteFetch.refreshingPreview")
+            : refreshScheduled
+              ? t("remoteFetch.previewScheduled")
+              : t("remoteFetch.previewRequired")}
         </Badge>
       )}
       <div className="ml-auto flex flex-wrap gap-2">
         <Button variant="outline" size="sm" disabled={disabled} onClick={() => onChange(new Set(allPaths))}>
-          All
+          {t("remoteFetch.all")}
         </Button>
         {(["mp3", "wav", "flac"] as const).map((extension) => (
           <RemoteFetchExtensionToggle
@@ -477,7 +501,7 @@ function RemoteFetchSelectionToolbar({
           />
         ))}
         <Button variant="outline" size="sm" disabled={disabled} onClick={() => onChange(new Set())}>
-          None
+          {t("remoteFetch.none")}
         </Button>
       </div>
     </div>
@@ -497,6 +521,7 @@ function RemoteFetchExtensionToggle({
   disabled: boolean;
   onChange: (paths: Set<string>) => void;
 }) {
+  const { t } = useTranslation();
   const selection = remoteFetchExtensionSelection(allPaths, selectedPaths, extension);
   const setIncluded = (included: boolean) => {
     onChange(setRemoteFetchExtensionIncluded(allPaths, selectedPaths, extension, included));
@@ -508,7 +533,7 @@ function RemoteFetchExtensionToggle({
         indeterminate={selection.indeterminate}
         disabled={disabled || selection.count === 0}
         onCheckedChange={() => setIncluded(!selection.checked)}
-        aria-label={`Include ${extension.toUpperCase()}`}
+        aria-label={t("remoteFetch.include", { extension: extension.toUpperCase() })}
       />
       <span>{extension.toUpperCase()}</span>
     </label>
@@ -516,6 +541,7 @@ function RemoteFetchExtensionToggle({
 }
 
 function RemoteFetchRootConflictAlert({ plan }: { plan?: RemoteWorkSavePlan | null }) {
+  const { t } = useTranslation();
   if (!plan?.fetchRoot.conflict) return null;
   return (
     <div
@@ -524,7 +550,7 @@ function RemoteFetchRootConflictAlert({ plan }: { plan?: RemoteWorkSavePlan | nu
     >
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
       <div className="min-w-0">
-        <div className="font-medium">Fetch folder requires review</div>
+        <div className="font-medium">{t("remoteFetch.fetchFolderReview")}</div>
         {plan.fetchRoot.rootPath && <div className="mt-0.5 break-all font-mono text-xs">{plan.fetchRoot.rootPath}</div>}
         <div className="mt-1 text-xs text-warning-foreground/80">{plan.fetchRoot.message}</div>
       </div>
@@ -541,6 +567,7 @@ function RemoteFetchPaneTabs({
   hasLocalFiles: boolean;
   onChange: (pane: FetchPane) => void;
 }) {
+  const { t } = useTranslation();
   const panes: FetchPane[] = hasLocalFiles ? ["local", "remote", "result"] : ["remote", "result"];
   return (
     <div className={`grid ${hasLocalFiles ? "grid-cols-3" : "grid-cols-2"} border-b bg-background p-1 md:hidden`}>
@@ -553,7 +580,11 @@ function RemoteFetchPaneTabs({
           onClick={() => onChange(pane)}
           className="capitalize"
         >
-          {pane}
+          {pane === "local"
+            ? t("remoteFetch.localFiles")
+            : pane === "remote"
+              ? t("remoteFetch.remoteFiles")
+              : t("remoteFetch.afterFetch")}
         </Button>
       ))}
     </div>
@@ -655,6 +686,7 @@ function RemoteFetchLocalPane({
   onChange: (paths: Set<string>) => void;
   onTargetRootChange?: (root: string) => void;
 }) {
+  const { t } = useTranslation();
   const localTree = useMemo(() => buildRemoteFetchLocalTree(plan), [plan]);
   const editionCode = (activeEditionCode || plan.primaryCode).toUpperCase();
   const activeEdition = preparation?.editions.find((edition) => edition.primaryCode.toUpperCase() === editionCode);
@@ -664,11 +696,11 @@ function RemoteFetchLocalPane({
       className={`${active ? "block" : "hidden"} app-scroll min-h-0 overflow-auto border-b p-2 md:block md:border-b-0 md:border-r`}
     >
       <div className="mb-2 flex items-center justify-between gap-2 px-1">
-        <div className="text-sm font-medium">Local files</div>
-        <Badge variant="secondary">{selectedPaths.size} selected</Badge>
+        <div className="text-sm font-medium">{t("remoteFetch.localFiles")}</div>
+        <Badge variant="secondary">{t("remoteFetch.selected", { count: selectedPaths.size })}</Badge>
       </div>
       <label className="mb-2 block space-y-1 px-1 text-xs text-muted-foreground">
-        <span>Publish target</span>
+        <span>{t("remoteFetch.publishTarget")}</span>
         <select
           className="h-8 w-full rounded-md border bg-background px-2 text-xs text-foreground"
           value={targetRoot || plan.saveRoot}
@@ -676,13 +708,14 @@ function RemoteFetchLocalPane({
           onChange={(event) => onTargetRootChange?.(event.target.value)}
         >
           <option value={plan.saveRoot}>
-            {plannedRoot?.role === "external" ? "Existing" : "Managed"} · {plan.saveRoot}
+            {plannedRoot?.role === "external" ? t("remoteFetch.existing") : t("remoteFetch.managed")} · {plan.saveRoot}
           </option>
           {(activeEdition?.localRoots ?? [])
             .filter((candidate) => candidate.rootPath !== plan.saveRoot)
             .map((candidate) => (
               <option key={candidate.id} value={candidate.rootPath}>
-                {candidate.role === "managed_fetch" ? "Managed" : "Existing"} · {candidate.rootPath}
+                {candidate.role === "managed_fetch" ? t("remoteFetch.managed") : t("remoteFetch.existing")} ·{" "}
+                {candidate.rootPath}
               </option>
             ))}
         </select>
@@ -716,14 +749,15 @@ function RemoteFetchRemotePane({
   disabled: boolean;
   onChange: (paths: Set<string>) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={`${active ? "block" : "hidden"} app-scroll min-h-0 overflow-auto border-b p-2 md:block md:border-b-0 md:border-r`}
     >
       {showHeader && (
         <div className="mb-2 flex items-center justify-between gap-2 px-1">
-          <div className="text-sm font-medium">Remote files</div>
-          <Badge variant="secondary">{selectedPaths.size} selected</Badge>
+          <div className="text-sm font-medium">{t("remoteFetch.remoteFiles")}</div>
+          <Badge variant="secondary">{t("remoteFetch.selected", { count: selectedPaths.size })}</Badge>
         </div>
       )}
       <RemoteSelectionNode
@@ -750,22 +784,24 @@ function RemoteFetchResultPane({
   active: boolean;
   onDecisionChange?: (decision: RemoteFetchFileDecision) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className={`${active ? "block" : "hidden"} app-scroll min-h-0 overflow-auto p-2 md:block`}>
       <div className="mb-2 flex items-center justify-between gap-2 px-1">
-        <div className="text-sm font-medium">After Fetch</div>
-        <Badge variant="secondary">{plan?.items.length ?? 0} files</Badge>
+        <div className="text-sm font-medium">{t("remoteFetch.afterFetch")}</div>
+        <Badge variant="secondary">{t("remoteFetch.files", { count: plan?.items.length ?? 0 })}</Badge>
       </div>
       {plan ? (
         <RemoteFetchResultTree plan={plan} decisions={decisions} onDecisionChange={onDecisionChange} />
       ) : (
-        <FetchPaneEmpty label="Refresh the comparison to build the result tree." />
+        <FetchPaneEmpty label={t("remoteFetch.refreshComparison")} />
       )}
     </div>
   );
 }
 
 function RemoteFetchStatus({ message, conflict }: { message: string; conflict: boolean }) {
+  const { t } = useTranslation();
   return (
     <div
       aria-live="polite"
@@ -773,7 +809,7 @@ function RemoteFetchStatus({ message, conflict }: { message: string; conflict: b
     >
       {message || (
         <span className="invisible" aria-hidden="true">
-          Fetch preview status
+          {t("remoteFetch.fetchPreviewStatus")}
         </span>
       )}
     </div>
@@ -795,14 +831,19 @@ function RemoteFetchFooter({
   onClose: () => void;
   onSave: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-wrap justify-end gap-2 border-t p-3">
       <Button variant="outline" onClick={onClose} disabled={disabled}>
-        Cancel
+        {t("remoteFetch.cancel")}
       </Button>
       <Button onClick={onSave} disabled={!canPublish}>
         <HardDriveDownload className="h-4 w-4" />
-        {readOnly ? "Preview only" : disabled || refreshScheduled ? "Refreshing preview" : "Publish Fetch"}
+        {readOnly
+          ? t("remoteFetch.previewOnly")
+          : disabled || refreshScheduled
+            ? t("remoteFetch.refreshingPreview")
+            : t("remoteFetch.publishFetch")}
       </Button>
     </div>
   );

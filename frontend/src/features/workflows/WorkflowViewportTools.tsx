@@ -1,11 +1,13 @@
 import { ControlButton, Controls, MiniMap } from "@xyflow/react";
 import { Map as MapIcon } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const VIEWPORT_EDGE_GAP = 12;
 const CONTROL_COLUMN_WIDTH_WITH_GAP = 48;
 
 export function WorkflowViewportTools({ compact = false, rightInset = 0 }: { compact?: boolean; rightInset?: number }) {
+  const { t } = useTranslation();
   const [miniMapVisible, setMiniMapVisible] = useState(false);
   const controlsRight = rightInset + VIEWPORT_EDGE_GAP;
 
@@ -16,7 +18,7 @@ export function WorkflowViewportTools({ compact = false, rightInset = 0 }: { com
           pannable
           zoomable
           position="bottom-right"
-          ariaLabel="Workflow minimap"
+          ariaLabel={t("workflowCanvas.minimap")}
           className="workflow-viewport-minimap border border-border"
           style={{
             right: controlsRight + CONTROL_COLUMN_WIDTH_WITH_GAP,
@@ -34,12 +36,12 @@ export function WorkflowViewportTools({ compact = false, rightInset = 0 }: { com
         position="bottom-right"
         className="workflow-viewport-controls"
         style={{ right: controlsRight, bottom: VIEWPORT_EDGE_GAP }}
-        aria-label="Workflow viewport controls"
+        aria-label={t("workflowCanvas.viewportControls")}
       >
         <ControlButton
           className="workflow-minimap-toggle"
-          aria-label={miniMapVisible ? "Hide minimap" : "Show minimap"}
-          title={miniMapVisible ? "Hide minimap" : "Show minimap"}
+          aria-label={t("workflowCanvas.minimap")}
+          title={t("workflowCanvas.minimap")}
           aria-pressed={miniMapVisible}
           onClick={() => setMiniMapVisible((visible) => !visible)}
         >

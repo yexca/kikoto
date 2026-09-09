@@ -1,4 +1,5 @@
 # Voices
+[English](../en/voices.md) · [简体中文](../zh-Hans/voices.md) · [繁體中文](../zh-Hant/voices.md) · [日本語](../ja/voices.md) · [한국어](../ko/voices.md)
 
 Voice pages present persisted person and credit data.
 
@@ -49,4 +50,4 @@ when duplicate person records are consolidated.
 
 - [Library](library.md)
 - [Work detail](work-detail.md)
-- [Data model](../architecture/data-model.md)
+- [Data model](../../architecture/data-model.md)

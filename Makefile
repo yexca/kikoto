@@ -1,4 +1,4 @@
-.PHONY: backend-format backend-lint backend-lint-full backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-audit frontend-audit-signatures frontend-playwright-install frontend-e2e-smoke frontend-e2e android-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
+.PHONY: backend-format backend-lint backend-lint-full backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-i18n frontend-audit frontend-audit-signatures frontend-playwright-install frontend-e2e-smoke frontend-e2e android-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
 
 GO ?= go
 GOLANGCI_LINT_VERSION ?= v2.13.1
@@ -116,7 +116,10 @@ frontend-lint: frontend-install
 	cd frontend && $(NPM) run lint
 
 frontend-docs: frontend-install
-	cd frontend && $(NPM) run docs:check-links
+	cd frontend && $(NPM) run docs:check-links && $(NPM) run docs:check-locales
+
+frontend-i18n:
+	$(NODE) scripts/check-ui-copy.mjs
 
 frontend-audit: frontend-install
 	cd frontend && $(NPM) audit --audit-level=moderate
@@ -184,7 +187,7 @@ sensitive-check-test:
 
 privacy-check: sensitive-check
 
-ci-style: frontend-format frontend-lint frontend-docs sensitive-check-test
+ci-style: frontend-format frontend-lint frontend-docs frontend-i18n sensitive-check-test
 
 ci-backend: backend-format backend-lint backend-verify backend-vuln backend-test backend-coverage backend-vet backend-race
 

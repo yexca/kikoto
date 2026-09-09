@@ -9,6 +9,7 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -74,6 +75,7 @@ function RemoteFetchResultNodeView({
   onDecisionChange?: (decision: RemoteFetchFileDecision) => void;
   isRoot?: boolean;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(true);
   const folders = Array.from(node.children.values()).sort((left, right) => naturalCompare(left.name, right.name));
   const items = [...node.items].sort((left, right) => naturalCompare(left.path, right.path));
@@ -126,14 +128,14 @@ function RemoteFetchResultNodeView({
                   variant={item.action === "skip" || item.targetConflict ? "outline" : "secondary"}
                   className={item.targetConflict ? "border-destructive/40 text-destructive" : ""}
                 >
-                  {fetchResultActionLabel(item.action)}
+                  {t(fetchResultActionKey(item.action))}
                 </Badge>
               </div>
               {showEditor && (
                 <div className="grid gap-2 border-t px-2 py-2 text-xs sm:grid-cols-2">
                   {item.sourceOptions.length > 1 && (
                     <label className="space-y-1">
-                      <span className="text-muted-foreground">Remote source</span>
+                      <span className="text-muted-foreground">{t("remoteFetch.remoteSource")}</span>
                       <select
                         className="h-8 w-full rounded-md border bg-background px-2"
                         value={decision.sourceId || item.remoteSourceId}
@@ -150,7 +152,7 @@ function RemoteFetchResultNodeView({
                   )}
                   {(item.targetConflict || decision.resolution !== "auto") && (
                     <label className="space-y-1">
-                      <span className="text-muted-foreground">Conflict action</span>
+                      <span className="text-muted-foreground">{t("remoteFetch.conflictAction")}</span>
                       <select
                         className="h-8 w-full rounded-md border bg-background px-2"
                         value={decision.resolution}
@@ -158,18 +160,18 @@ function RemoteFetchResultNodeView({
                           updateDecision({ resolution: event.target.value as RemoteFetchResolution })
                         }
                       >
-                        <option value="auto">Unresolved</option>
-                        <option value="keep_local">Keep local</option>
-                        <option value="replace">Replace with selected source</option>
-                        <option value="keep_both">Keep both</option>
-                        <option value="rename">Rename incoming</option>
-                        <option value="exclude">Exclude</option>
+                        <option value="auto">{t("remoteFetch.unresolved")}</option>
+                        <option value="keep_local">{t("remoteFetch.keepLocal")}</option>
+                        <option value="replace">{t("remoteFetch.replaceSelected")}</option>
+                        <option value="keep_both">{t("remoteFetch.keepBoth")}</option>
+                        <option value="rename">{t("remoteFetch.renameIncoming")}</option>
+                        <option value="exclude">{t("remoteFetch.exclude")}</option>
                       </select>
                     </label>
                   )}
                   {decision.resolution === "rename" && (
                     <label className="space-y-1 sm:col-span-2">
-                      <span className="text-muted-foreground">Target path inside Fetch root</span>
+                      <span className="text-muted-foreground">{t("remoteFetch.targetPath")}</span>
                       <input
                         className="h-8 w-full rounded-md border bg-background px-2"
                         value={decision.targetPath}
@@ -218,6 +220,7 @@ export function RemoteFetchLocalTreeNode({
   isRoot?: boolean;
   onChange: (paths: Set<string>) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(isRoot);
   const folders = Array.from(node.children.values()).sort((left, right) => naturalCompare(left.name, right.name));
   const items = [...node.items].sort((left, right) => naturalCompare(left.name, right.name));
@@ -244,8 +247,8 @@ export function RemoteFetchLocalTreeNode({
           <button
             className="rounded p-0.5 hover:bg-background"
             onClick={() => setOpen((value) => !value)}
-            title={open ? "Collapse" : "Expand"}
-            aria-label={open ? "Collapse" : "Expand"}
+            title={open ? t("remoteFetch.collapse") : t("remoteFetch.expand")}
+            aria-label={open ? t("remoteFetch.collapse") : t("remoteFetch.expand")}
           >
             {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
           </button>
@@ -254,7 +257,7 @@ export function RemoteFetchLocalTreeNode({
             indeterminate={mixed}
             disabled={disabled || descendantItems.length === 0}
             onCheckedChange={toggleNode}
-            aria-label={`Select ${node.name}`}
+            aria-label={t("remoteFetch.select", { name: node.name })}
           />
           <Folder className="h-4 w-4 text-primary" />
           <span className="min-w-0 flex-1 truncate" title={node.path}>
@@ -293,7 +296,7 @@ export function RemoteFetchLocalTreeNode({
                 else next.delete(item.fullPath);
                 onChange(next);
               }}
-              aria-label={`Select ${item.name}`}
+              aria-label={t("remoteFetch.select", { name: item.name })}
             />
             <HardDrive className="h-4 w-4 text-muted-foreground" />
             <span className="min-w-0 flex-1 truncate" title={item.fullPath}>
@@ -323,6 +326,7 @@ export function RemoteSelectionNode({
   isRoot?: boolean;
   onChange: (paths: Set<string>) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(isRoot);
   const folders = Array.from(node.children.values()).sort((left, right) => naturalCompare(left.name, right.name));
   const files = [...node.files].sort((left, right) => naturalCompare(left.title, right.title));
@@ -350,8 +354,8 @@ export function RemoteSelectionNode({
             className="rounded p-0.5 hover:bg-background"
             disabled={!hasChildren}
             onClick={() => setOpen((value) => !value)}
-            title={open ? "Collapse" : "Expand"}
-            aria-label={open ? "Collapse" : "Expand"}
+            title={open ? t("remoteFetch.collapse") : t("remoteFetch.expand")}
+            aria-label={open ? t("remoteFetch.collapse") : t("remoteFetch.expand")}
           >
             {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
           </button>
@@ -360,7 +364,7 @@ export function RemoteSelectionNode({
             indeterminate={mixed}
             disabled={disabled || nodePaths.length === 0}
             onCheckedChange={toggleNode}
-            aria-label={`Select ${node.name}`}
+            aria-label={t("remoteFetch.select", { name: node.name })}
           />
           <Folder className="h-4 w-4 text-primary" />
           <span className="min-w-0 flex-1 truncate">{node.name}</span>
@@ -400,7 +404,7 @@ export function RemoteSelectionNode({
                   else next.delete(path);
                   onChange(next);
                 }}
-                aria-label={`Select ${file.title}`}
+                aria-label={t("remoteFetch.select", { name: file.title })}
               />
               {fileIcon(file)}
               <span className="min-w-0 flex-1 truncate">{file.title}</span>
@@ -491,28 +495,43 @@ export function remoteFetchCurrentEditionCode(plan: RemoteWorkSavePlan | null | 
   return plannedEdition?.primaryCode ?? plan.primaryCode;
 }
 
-function fetchResultActionLabel(action: string) {
+function fetchResultActionKey(action: string) {
   switch (action) {
     case "preview":
-      return "Preview";
+      return "remoteFetch.actionPreview";
     case "skip":
-      return "Keep";
+      return "remoteFetch.actionKeep";
     case "copy_local":
-      return "Local";
+      return "remoteFetch.actionLocal";
     case "cache_hit":
-      return "Cached";
+      return "remoteFetch.actionCached";
     case "cache_download":
-      return "Add";
+      return "remoteFetch.actionAdd";
     case "conflict":
-      return "Conflict";
+      return "remoteFetch.actionConflict";
     case "exclude":
-      return "Excluded";
+      return "remoteFetch.actionExcluded";
     default:
       return action;
   }
 }
 
-export function translationKindLabel(kind: string) {
+export function translationKindLabel(kind: string, translate?: (key: string) => string) {
+  const key = (() => {
+    switch (kind) {
+      case "origin":
+        return "remoteFetch.origin";
+      case "official":
+        return "remoteFetch.official";
+      case "community":
+        return "remoteFetch.community";
+      case "third_party":
+        return "remoteFetch.thirdParty";
+      default:
+        return "remoteFetch.unknown";
+    }
+  })();
+  if (translate && key !== "remoteFetch.unknown") return translate(key);
   switch (kind) {
     case "origin":
       return "Origin";
@@ -527,8 +546,36 @@ export function translationKindLabel(kind: string) {
   }
 }
 
-export function languageLabel(value: string) {
-  switch (value.trim().toLowerCase()) {
+export function languageLabel(value: string, translate?: (key: string) => string) {
+  const normalizedValue = value.trim();
+  const key = (() => {
+    switch (normalizedValue.toLowerCase()) {
+      case "ja":
+      case "ja-jp":
+      case "jpn":
+        return "metadata.japanese";
+      case "en":
+      case "en-us":
+      case "eng":
+        return "metadata.english";
+      case "zh":
+      case "zh-cn":
+      case "chi_hans":
+        return "metadata.simplifiedChinese";
+      case "zh-tw":
+      case "chi_hant":
+        return "metadata.traditionalChinese";
+      case "ko":
+      case "ko-kr":
+      case "ko_kr":
+        return "metadata.korean";
+      default:
+        return "remoteFetch.unknown";
+    }
+  })();
+  if (translate && key !== "remoteFetch.unknown") return translate(key);
+  if (normalizedValue === "") return translate ? translate("remoteFetch.unknown") : "Unknown";
+  switch (normalizedValue.toLowerCase()) {
     case "ja":
     case "ja-jp":
     case "jpn":
@@ -549,7 +596,7 @@ export function languageLabel(value: string) {
     case "ko_kr":
       return "Korean";
     default:
-      return value || "Unknown";
+      return normalizedValue;
   }
 }
 

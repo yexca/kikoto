@@ -1,4 +1,5 @@
 import { libraryHant, collectionHant, workCardHant } from "../resources";
+import { surfaceHant } from "../surfaces";
 
 export const zhHantResource = {
   "zh-Hant": {
@@ -45,6 +46,7 @@ export const zhHantResource = {
       library: libraryHant,
       collection: collectionHant,
       workCard: workCardHant,
+      ...surfaceHant,
       appearance: {
         title: "外觀",
         subtitle: "介面語言、模式、樣式和色彩",
@@ -57,6 +59,7 @@ export const zhHantResource = {
         themePreference: "主題偏好",
         themeStyle: "主題樣式",
         themeColor: "主題色彩",
+        palette: { original: "原始", graphite: "石墨", cobalt: "鈷藍", iris: "鳶尾紫" },
         openSettings: "開啟外觀設定",
         summary: "外觀：{{mode}}、{{style}}、{{color}}",
         light: "淺色",
@@ -243,6 +246,16 @@ export const zhHantResource = {
         nothingNew: "沒有新通知",
         empty: "目前沒有通知。",
         workflowStatus: "工作流程 #{{id}} · {{status}}",
+        availabilityReady: "{{workCode}} 的可用性檢查已準備就緒。",
+        remoteTrackFailed: "{{workCode}} 的遠端音軌失敗。",
+        remoteTrackSucceeded: "{{workCode}} 的遠端音軌已就緒。",
+        generic: "{{workCode}} 的工作流程更新。",
+        statusQueued: "已排隊",
+        statusRunning: "執行中",
+        statusSucceeded: "已成功",
+        statusFailed: "失敗",
+        statusCancelled: "已取消",
+        statusUnknown: "未知",
         dismissFor: "關閉 {{workCode}} 的通知",
         dismiss: "關閉通知",
         clearSucceeded: "清除已成功通知",

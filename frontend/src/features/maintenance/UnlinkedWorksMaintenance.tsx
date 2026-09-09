@@ -1,10 +1,13 @@
 import { ChevronLeft, ChevronRight, ExternalLink, ImageOff, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { formatNumber } from "@/i18n/format";
+import { useLocale } from "@/i18n/LocaleProvider";
 import { api, assetURL, type Work, type WorksPage } from "@/lib/api";
 import { currentPageSelection, pageAfterUnlinkedDelete, setCurrentPageSelected } from "./unlinkedWorksModel";
 
@@ -17,6 +20,8 @@ type PendingDelete = {
 
 export function UnlinkedWorksMaintenance() {
   const toast = useToast();
+  const { t } = useTranslation();
+  const { resolvedLocale } = useLocale();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(25);
   const [query, setQuery] = useState("");
@@ -44,8 +49,8 @@ export function UnlinkedWorksMaintenance() {
       })
       .catch((error) => {
         if (controller.signal.aborted) return;
-        setLoadError("Unlinked works could not be loaded.");
-        toast.notify(toastFromError(error, "Unlinked works could not be loaded."));
+        setLoadError(t("errors.unavailable"));
+        toast.notify(toastFromError(error, t("errors.unavailable")));
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -101,11 +106,11 @@ export function UnlinkedWorksMaintenance() {
           `Source check #${response.runId} queued for ${response.queued} ${response.queued === 1 ? "work" : "works"}.`,
         );
       } else {
-        toast.warning("The selected works are no longer eligible for a source check.");
+        toast.warning(t("errors.unavailable"));
         setRefreshKey((current) => current + 1);
       }
     } catch (error) {
-      toast.notify(toastFromError(error, "Source check could not be queued."));
+      toast.notify(toastFromError(error, t("errors.unavailable")));
     } finally {
       setCheckingWorkIds(new Set());
     }
@@ -140,7 +145,7 @@ export function UnlinkedWorksMaintenance() {
       if (nextPage !== page) setPage(nextPage);
       else setRefreshKey((current) => current + 1);
     } catch (error) {
-      toast.notify(toastFromError(error, "Local work information could not be deleted."));
+      toast.notify(toastFromError(error, t("errors.unavailable")));
     } finally {
       setDeleting(false);
     }
@@ -151,10 +156,10 @@ export function UnlinkedWorksMaintenance() {
       <div className="flex flex-col gap-3 border-b px-4 py-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-base font-semibold">Unlinked works</h2>
-            <Badge variant="outline">{formatCount(result.total)}</Badge>
+            <h2 className="text-base font-semibold">{t("unlinked.title")}</h2>
+            <Badge variant="outline">{formatNumber(result.total, resolvedLocale)}</Badge>
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">Database works without an available file source.</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t("unlinked.description")}</p>
         </div>
         <form className="flex min-w-0 gap-2 sm:w-[min(100%,28rem)]" onSubmit={submitSearch}>
           <div className="relative min-w-0 flex-1">
@@ -163,8 +168,8 @@ export function UnlinkedWorksMaintenance() {
               type="search"
               value={queryDraft}
               onChange={(event) => setQueryDraft(event.target.value)}
-              placeholder="Search code, title, circle, tag..."
-              aria-label="Search unlinked works"
+              placeholder={t("unlinked.searchPlaceholder")}
+              aria-label={t("unlinked.searchLabel")}
               className="h-10 w-full rounded-md border bg-background pl-9 pr-9 text-sm outline-none focus:ring-2 focus:ring-ring"
             />
             {queryDraft && (
@@ -172,14 +177,20 @@ export function UnlinkedWorksMaintenance() {
                 type="button"
                 className="absolute right-1 top-1 grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
                 onClick={clearSearch}
-                aria-label="Clear search"
-                title="Clear search"
+                aria-label={t("unlinked.clearSearch")}
+                title={t("unlinked.clearSearch")}
               >
                 <X className="h-4 w-4" />
               </button>
             )}
           </div>
-          <Button type="submit" size="icon" variant="outline" aria-label="Search" title="Search">
+          <Button
+            type="submit"
+            size="icon"
+            variant="outline"
+            aria-label={t("unlinked.search")}
+            title={t("unlinked.search")}
+          >
             <Search className="h-4 w-4" />
           </Button>
           <Button
@@ -188,8 +199,8 @@ export function UnlinkedWorksMaintenance() {
             variant="ghost"
             onClick={() => setRefreshKey((current) => current + 1)}
             disabled={loading}
-            aria-label="Refresh list"
-            title="Refresh list"
+            aria-label={t("unlinked.refresh")}
+            title={t("unlinked.refresh")}
           >
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </Button>
@@ -204,12 +215,16 @@ export function UnlinkedWorksMaintenance() {
             setSelectedWorkIds((current) => setCurrentPageSelected(pageWorkIds, current, checked))
           }
           disabled={pageWorkIds.length === 0 || checking || deleting}
-          aria-label="Select current page"
+          aria-label={t("unlinked.selectPage")}
         />
         <span className="mr-auto text-sm text-muted-foreground">
           {selection.selectedCount > 0
-            ? `${selection.selectedCount} selected`
-            : `${rangeStart}-${rangeEnd} of ${formatCount(result.total)}`}
+            ? t("unlinked.selected", { count: selection.selectedCount })
+            : t("unlinked.range", {
+                first: rangeStart,
+                last: rangeEnd,
+                total: formatNumber(result.total, resolvedLocale),
+              })}
         </span>
         <Button
           size="sm"
@@ -218,7 +233,7 @@ export function UnlinkedWorksMaintenance() {
           disabled={selection.selectedCount === 0 || checking || deleting}
         >
           <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} />
-          Check sources
+          {t("unlinked.checkSources")}
         </Button>
         <Button
           size="sm"
@@ -227,7 +242,7 @@ export function UnlinkedWorksMaintenance() {
           disabled={selection.selectedCount === 0 || checking || deleting}
         >
           <Trash2 className="h-4 w-4" />
-          Delete local information
+          {t("unlinked.deleteInfo")}
         </Button>
       </div>
 
@@ -237,9 +252,11 @@ export function UnlinkedWorksMaintenance() {
             className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-destructive/30 bg-destructive/5 px-4 py-2"
             role="alert"
           >
-            <span className="text-sm text-destructive">{loadError} Existing results are still shown.</span>
+            <span className="text-sm text-destructive">
+              {loadError} {t("unlinked.existingResultsShown")}
+            </span>
             <Button size="sm" variant="outline" onClick={() => setRefreshKey((current) => current + 1)}>
-              Retry
+              {t("common.retry")}
             </Button>
           </div>
         )}
@@ -253,7 +270,7 @@ export function UnlinkedWorksMaintenance() {
                 variant="outline"
                 onClick={() => setRefreshKey((current) => current + 1)}
               >
-                Retry
+                {t("common.retry")}
               </Button>
             </div>
           </div>
@@ -262,7 +279,7 @@ export function UnlinkedWorksMaintenance() {
         ) : result.works.length === 0 ? (
           <div className="grid min-h-64 place-items-center px-4 py-10 text-center">
             <div>
-              <p className="text-sm font-medium">{query ? "No matching unlinked works" : "No unlinked works"}</p>
+              <p className="text-sm font-medium">{query ? t("unlinked.noMatching") : t("unlinked.noWorks")}</p>
               {query && (
                 <Button className="mt-4" size="sm" variant="outline" onClick={clearSearch}>
                   Clear search
@@ -323,7 +340,13 @@ export function UnlinkedWorksMaintenance() {
                       </td>
                       <td className="px-4 py-2 align-middle">
                         <div className="flex justify-end gap-1">
-                          <Button asChild size="icon" variant="ghost" className="h-9 w-9" title="Open DLsite page">
+                          <Button
+                            asChild
+                            size="icon"
+                            variant="ghost"
+                            className="h-9 w-9"
+                            title={t("unlinked.openDlsite")}
+                          >
                             <a
                               href={work.dlsiteUrl}
                               target="_blank"
@@ -340,7 +363,7 @@ export function UnlinkedWorksMaintenance() {
                             onClick={() => void checkSources([work.id])}
                             disabled={checking || deleting}
                             aria-label={`Check sources for ${work.primaryCode}`}
-                            title="Check sources"
+                            title={t("unlinked.checkSources")}
                           >
                             <RefreshCw className={`h-4 w-4 ${rowChecking ? "animate-spin" : ""}`} />
                           </Button>
@@ -350,8 +373,8 @@ export function UnlinkedWorksMaintenance() {
                             className="h-9 w-9 text-destructive hover:text-destructive"
                             onClick={() => requestDelete([work])}
                             disabled={checking || deleting}
-                            aria-label={`Delete local information for ${work.primaryCode}`}
-                            title="Delete local information"
+                            aria-label={t("unlinked.deleteFor", { code: work.primaryCode })}
+                            title={t("unlinked.deleteInfo")}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -394,8 +417,8 @@ export function UnlinkedWorksMaintenance() {
             className="h-9 w-9"
             onClick={() => setPage((current) => Math.max(1, current - 1))}
             disabled={page <= 1 || loading}
-            aria-label="Previous page"
-            title="Previous page"
+            aria-label={t("collection.previousPage")}
+            title={t("collection.previousPage")}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -405,8 +428,8 @@ export function UnlinkedWorksMaintenance() {
             className="h-9 w-9"
             onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
             disabled={page >= totalPages || loading}
-            aria-label="Next page"
-            title="Next page"
+            aria-label={t("collection.nextPage")}
+            title={t("collection.nextPage")}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
@@ -436,6 +459,7 @@ function UnlinkedWorkDeleteDialog({
   onConfirm: () => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className="fixed inset-0 z-[70] grid place-items-center bg-black/45 p-4"
@@ -452,11 +476,10 @@ function UnlinkedWorkDeleteDialog({
         aria-describedby="delete-unlinked-description"
       >
         <h3 id="delete-unlinked-title" className="text-base font-semibold">
-          Delete local work information?
+          {t("unlinked.confirmTitle")}
         </h3>
         <p id="delete-unlinked-description" className="mt-2 text-sm text-muted-foreground">
-          This deletes database metadata and personal state for the complete language family. Media files are retained.
-          Any work that gains an available source before deletion is skipped.
+          {t("unlinked.confirmDescription")}
         </p>
         <div className="mt-4 max-h-40 overflow-y-auto rounded-md border bg-muted/25 px-3 py-2 text-xs">
           {pending.labels.slice(0, 12).map((label) => (
@@ -470,11 +493,11 @@ function UnlinkedWorkDeleteDialog({
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="outline" onClick={onClose} disabled={deleting}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button variant="destructive" onClick={onConfirm} disabled={deleting}>
             <Trash2 className="h-4 w-4" />
-            {deleting ? "Deleting..." : `Delete ${pending.workIds.length}`}
+            {deleting ? t("unlinked.deleting") : t("unlinked.deleteCount", { count: pending.workIds.length })}
           </Button>
         </div>
       </div>
@@ -483,8 +506,9 @@ function UnlinkedWorkDeleteDialog({
 }
 
 function UnlinkedWorksTableSkeleton() {
+  const { t } = useTranslation();
   return (
-    <div className="overflow-x-auto" role="status" aria-label="Loading unlinked works" aria-busy="true">
+    <div className="overflow-x-auto" role="status" aria-label={t("unlinked.loading")} aria-busy="true">
       <table className="w-full min-w-[760px] table-fixed text-left text-sm">
         <UnlinkedWorksTableHead />
         <tbody className="divide-y" aria-hidden="true">
@@ -514,23 +538,20 @@ function UnlinkedWorksTableSkeleton() {
 }
 
 function UnlinkedWorksTableHead() {
+  const { t } = useTranslation();
   return (
     <thead className="border-b bg-muted/35 text-xs text-muted-foreground">
       <tr>
         <th className="w-12 px-4 py-2 font-medium">
-          <span className="sr-only">Select</span>
+          <span className="sr-only">{t("unlinked.select")}</span>
         </th>
         <th className="w-16 px-2 py-2 font-medium">
-          <span className="sr-only">Cover</span>
+          <span className="sr-only">{t("unlinked.cover")}</span>
         </th>
-        <th className="w-40 px-2 py-2 font-medium">Code</th>
-        <th className="px-2 py-2 font-medium">Title</th>
-        <th className="w-40 px-4 py-2 text-right font-medium">Actions</th>
+        <th className="w-40 px-2 py-2 font-medium">{t("unlinked.code")}</th>
+        <th className="px-2 py-2 font-medium">{t("unlinked.titleColumn")}</th>
+        <th className="w-40 px-4 py-2 text-right font-medium">{t("unlinked.actions")}</th>
       </tr>
     </thead>
   );
-}
-
-function formatCount(value: number) {
-  return new Intl.NumberFormat().format(Math.max(0, value));
 }

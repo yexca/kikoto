@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Background,
   Handle,
@@ -80,6 +81,19 @@ import {
   type WorkflowTrigger,
 } from "@/lib/api";
 import { currentScopedStorageKey } from "@/lib/clientStorageScope";
+import i18n from "@/i18n";
+
+const workflowCopy = (key: string, options?: Record<string, unknown>) => i18n.t(`workflowPage.${key}`, options);
+
+function localizedWorkflowDefinition(definition: WorkflowDefinition) {
+  if (definition.scope !== "system") return definition;
+  const key = `workflowPage.builtInDefinitions.${definition.code}`;
+  return {
+    ...definition,
+    displayName: i18n.exists(`${key}.name`) ? i18n.t(`${key}.name`) : definition.displayName,
+    description: i18n.exists(`${key}.description`) ? i18n.t(`${key}.description`) : definition.description,
+  };
+}
 
 type Surface = "workflows" | "activity";
 type ModalMode = "create-workflow" | "edit-workflow" | "edit-node" | "create-trigger" | "edit-trigger" | null;
@@ -294,6 +308,7 @@ export function WorkflowsPage({
   readOnly?: boolean;
 }) {
   const toast = useToast();
+  const { t } = useTranslation();
   const auth = useAuth();
   const workflowDefinitionStorageKey = currentScopedStorageKey(workflowDefinitionStorageBaseKey, auth.user?.id ?? null);
   const workflowDefinitionTabStorageKey = currentScopedStorageKey(
@@ -360,7 +375,7 @@ export function WorkflowsPage({
         setHasWorkflowMetaSnapshot(true);
       })
       .catch(() => {
-        if (seq === workflowMetaRequestSeq.current) setWorkflowMetaError("Workflow data could not be loaded.");
+        if (seq === workflowMetaRequestSeq.current) setWorkflowMetaError(workflowCopy("metadataLoadFailed"));
       })
       .finally(() => {
         if (seq === workflowMetaRequestSeq.current) setIsWorkflowMetaLoading(false);
@@ -384,7 +399,7 @@ export function WorkflowsPage({
       })
       .catch(() => {
         if (!controller.signal.aborted && seq === runsRequestSeq.current) {
-          setRunsError("Activity could not be loaded.");
+          setRunsError(workflowCopy("activityLoadFailed"));
         }
       })
       .finally(() => {
@@ -500,7 +515,7 @@ export function WorkflowsPage({
   const selectedSystemRunKinds = selectedDefinition
     ? manuallyRunnableSystemWorkflows[selectedDefinition.code]
     : undefined;
-  const definitionEmptyText = "No runnable or custom workflow definitions exist yet.";
+  const definitionEmptyText = workflowCopy("definitionEmpty");
 
   useEffect(() => {
     if (isWorkflowMetaLoading) return;
@@ -572,10 +587,10 @@ export function WorkflowsPage({
     setIsRunningScan(true);
     try {
       const result = await api.runLocalScan({ followUpRun });
-      toast.success(`Local scan run #${result.runId} created.`);
+      toast.success(workflowCopy("localScanCreated", { runId: result.runId }));
       void refreshRecentRuns("local_library_scan");
     } catch (error) {
-      toast.notify(toastFromError(error, "Local scan run could not be created."));
+      toast.notify(toastFromError(error, workflowCopy("localScanCreateFailed")));
     } finally {
       setIsRunningScan(false);
     }
@@ -585,10 +600,10 @@ export function WorkflowsPage({
     setIsSyncingMetadata(true);
     try {
       const result = await api.runDLsiteSync();
-      toast.success(`Metadata sync run #${result.runId} created.`);
+      toast.success(workflowCopy("metadataSyncCreated", { runId: result.runId }));
       void refreshRecentRuns("metadata_sync");
     } catch (error) {
-      toast.notify(toastFromError(error, "Metadata sync run could not be created."));
+      toast.notify(toastFromError(error, workflowCopy("metadataSyncCreateFailed")));
     } finally {
       setIsSyncingMetadata(false);
     }
@@ -598,12 +613,12 @@ export function WorkflowsPage({
     setRunningSystemAction("remote_popular");
     try {
       const result = await api.runRemotePopularCollection(options);
-      toast.success(`Remote popular run #${result.runId} queued with tag ${result.tagName}.`);
+      toast.success(workflowCopy("remotePopularQueued", { runId: result.runId, tag: result.tagName }));
       refresh();
       setActivityView("running");
       setRunPage(1);
     } catch (error) {
-      toast.notify(toastFromError(error, "Remote popular collection could not be queued."));
+      toast.notify(toastFromError(error, workflowCopy("remotePopularQueueFailed")));
     } finally {
       setRunningSystemAction(null);
     }
@@ -613,12 +628,12 @@ export function WorkflowsPage({
     setRunningSystemAction("dlsite_popular");
     try {
       const result = await api.runDLsitePopularCollection(options);
-      toast.success(`DLsite popular run #${result.runId} queued with tag ${result.tagName}.`);
+      toast.success(workflowCopy("dlsitePopularQueued", { runId: result.runId, tag: result.tagName }));
       refresh();
       setActivityView("running");
       setRunPage(1);
     } catch (error) {
-      toast.notify(toastFromError(error, "DLsite popular collection could not be queued."));
+      toast.notify(toastFromError(error, workflowCopy("dlsitePopularQueueFailed")));
     } finally {
       setRunningSystemAction(null);
     }
@@ -671,7 +686,12 @@ export function WorkflowsPage({
       setTriggers((current) => current.map((item) => (item.id === saved.id ? saved : item)));
     } catch (error) {
       setTriggers((current) => current.map((item) => (item.id === trigger.id ? trigger : item)));
-      toast.notify(toastFromError(error, `Could not ${enabled ? "enable" : "pause"} trigger.`));
+      toast.notify(
+        toastFromError(
+          error,
+          workflowCopy("triggerUpdateFailed", { action: enabled ? workflowCopy("enable") : workflowCopy("pause") }),
+        ),
+      );
     }
   };
 
@@ -684,10 +704,10 @@ export function WorkflowsPage({
   const recoverStaleRuns = async () => {
     try {
       const result = await api.recoverStaleWorkflowRuns();
-      toast.success(`${result.recovered ?? 0} stale runs recovered.`);
+      toast.success(workflowCopy("staleRunsRecovered", { count: result.recovered ?? 0 }));
       refreshRuns(runPage, activityView, runQuery);
     } catch (error) {
-      toast.notify(toastFromError(error, "Recover stale runs failed."));
+      toast.notify(toastFromError(error, workflowCopy("recoverStaleFailed")));
     }
   };
 
@@ -698,7 +718,7 @@ export function WorkflowsPage({
           className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-muted-foreground"
           role="status"
         >
-          Demo mode is read-only. Workflow definitions, schedules, runs, and reviews cannot be changed.
+          {t("workflow.demoReadOnly")}
         </div>
       )}
       {surface === "workflows" && hasWorkflowMetaSnapshot && workflowMetaError && (
@@ -706,9 +726,11 @@ export function WorkflowsPage({
           className="flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2"
           role="alert"
         >
-          <span className="text-sm text-destructive">{workflowMetaError} Existing workflow data is still shown.</span>
+          <span className="text-sm text-destructive">
+            {workflowMetaError} {t("workflow.existingDataShown")}
+          </span>
           <Button size="sm" variant="outline" onClick={refresh}>
-            Retry
+            {t("common.retry")}
           </Button>
         </div>
       )}
@@ -796,7 +818,7 @@ export function WorkflowsPage({
               onClick={() => switchActivityView("running", surface, setActivityView, setRunPage, setSelectedRunID)}
               icon={<Activity className="h-4 w-4" />}
             >
-              Running
+              {workflowCopy("activityRunning")}
             </ViewButton>
             <ViewButton
               active={activityView === "review"}
@@ -804,7 +826,7 @@ export function WorkflowsPage({
               onClick={() => switchActivityView("review", surface, setActivityView, setRunPage, setSelectedRunID)}
               icon={<FileJson className="h-4 w-4" />}
             >
-              Review
+              {workflowCopy("activityReview")}
             </ViewButton>
             <ViewButton
               active={activityView === "failed"}
@@ -812,16 +834,16 @@ export function WorkflowsPage({
               onClick={() => switchActivityView("failed", surface, setActivityView, setRunPage, setSelectedRunID)}
               icon={<AlertCircle className="h-4 w-4" />}
             >
-              Failed
+              {workflowCopy("activityFailed")}
             </ViewButton>
             <ViewButton
               active={activityView === "completed"}
               count={activityTotals.completed}
-              mobileLabel="Done"
+              mobileLabel={workflowCopy("activityDone")}
               onClick={() => switchActivityView("completed", surface, setActivityView, setRunPage, setSelectedRunID)}
               icon={<ListChecks className="h-4 w-4" />}
             >
-              Completed
+              {workflowCopy("activityCompleted")}
             </ViewButton>
           </SegmentedNav>
           <ActivityToolbar
@@ -840,9 +862,11 @@ export function WorkflowsPage({
               className="flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2"
               role="alert"
             >
-              <span className="text-sm text-destructive">{runsError} Existing activity is still shown.</span>
+              <span className="text-sm text-destructive">
+                {runsError} {t("workflow.existingDataShown")}
+              </span>
               <Button size="sm" variant="outline" onClick={() => refreshRuns(runPage, activityView, runQuery)}>
-                Retry
+                {t("common.retry")}
               </Button>
             </div>
           )}
@@ -923,7 +947,7 @@ export function WorkflowsPage({
               setSelectedDefinitionID(null);
               setModalMode(null);
               refresh();
-              toast.success(`${deletedName} deleted.`);
+              toast.success(workflowCopy("deletedWorkflow", { name: deletedName }));
             }}
             onSaved={(definition) => {
               selectDefinition(definition);
@@ -1057,7 +1081,7 @@ function AvailabilityWatchPanel({
       })
       .catch((error) => {
         if (!cancelled)
-          setLoadError(error instanceof Error ? error.message : "Availability Watch could not be loaded.");
+          setLoadError(error instanceof Error ? error.message : workflowCopy("availabilityWatchLoadFailed"));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -1121,7 +1145,7 @@ function AvailabilityWatchPanel({
   if (!watch || loadError) {
     return (
       <WorkflowMetadataErrorState
-        message={loadError || "Availability Watch could not be loaded."}
+        message={loadError || workflowCopy("availabilityWatchLoadFailed")}
         onRetry={() => void refreshWatch()}
       />
     );
@@ -1132,47 +1156,48 @@ function AvailabilityWatchPanel({
     (target) => target.state !== "monitoring" && target.state !== "error" && target.state !== "disabled",
   );
   const nodes = parseNodes(definition.definitionJson);
+  const displayDefinition = localizedWorkflowDefinition(definition);
 
   return (
     <Card className="min-w-0">
       <CardContent className="min-w-0 space-y-5 p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <h3 className="text-lg font-semibold">{definition.displayName}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">{definition.description}</p>
+            <h3 className="text-lg font-semibold">{displayDefinition.displayName}</h3>
+            <p className="mt-1 text-sm text-muted-foreground">{displayDefinition.description}</p>
             <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
               <span>{definition.code}</span>
-              <span>{nodes.length} nodes</span>
+              <span>{workflowCopy("nodesCount", { count: nodes.length })}</span>
               <span>
-                {triggers.length} trigger{triggers.length === 1 ? "" : "s"}
+                {triggers.length} {workflowCopy("triggers")}
               </span>
             </div>
           </div>
           <Button size="sm" onClick={() => setDialog("configure")} disabled={readOnly}>
             <Settings2 className="h-4 w-4" />
-            Configure
+            {workflowCopy("configure")}
           </Button>
         </div>
 
-        <section className="grid border-y sm:grid-cols-2" aria-label="Availability pools">
+        <section className="grid border-y sm:grid-cols-2" aria-label={workflowCopy("availabilityPools")}>
           <div className="flex min-w-0 items-center justify-between gap-3 py-4 sm:pr-5">
             <div className="min-w-0">
-              <div className="text-sm font-semibold">Monitoring</div>
+              <div className="text-sm font-semibold">{workflowCopy("monitoring")}</div>
               <div className="mt-1 text-2xl font-semibold">{monitoring.length}</div>
             </div>
             <Button size="sm" variant="outline" onClick={() => setDialog("monitoring")} disabled={readOnly}>
               <Edit3 className="h-4 w-4" />
-              Edit
+              {workflowCopy("editNode")}
             </Button>
           </div>
           <div className="flex min-w-0 items-center justify-between gap-3 border-t py-4 sm:border-l sm:border-t-0 sm:pl-5">
             <div className="min-w-0">
-              <div className="text-sm font-semibold">Ready</div>
+              <div className="text-sm font-semibold">{workflowCopy("ready")}</div>
               <div className="mt-1 text-2xl font-semibold">{ready.length}</div>
             </div>
             <Button size="sm" variant="outline" onClick={openReady}>
               <Eye className="h-4 w-4" />
-              View
+              {workflowCopy("view")}
             </Button>
           </div>
         </section>
@@ -1211,7 +1236,7 @@ function AvailabilityWatchPanel({
           onClose={closeDialog}
           onChanged={() =>
             void refreshWatch().catch((error) =>
-              toast.notify(toastFromError(error, "Ready pool could not be refreshed.")),
+              toast.notify(toastFromError(error, workflowCopy("readyPoolRefreshFailed"))),
             )
           }
         />
@@ -1259,30 +1284,30 @@ function AvailabilityWatchConfigureDialog({
       onSaved(next);
       if (runNow) {
         const result = await api.runAvailabilityWatch();
-        toast.success(`Availability Watch run #${result.runId} queued.`);
+        toast.success(workflowCopy("availabilityWatchRunQueued", { runId: result.runId }));
         onRunQueued();
       } else {
-        toast.success("Availability Watch configuration saved.");
+        toast.success(workflowCopy("availabilityWatchSaved"));
       }
       onClose();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Availability Watch could not be saved.");
+      setError(saveError instanceof Error ? saveError.message : workflowCopy("availabilityWatchSaveFailed"));
     } finally {
       setBusy(null);
     }
   };
 
   return (
-    <Modal title="Configure Availability Watch" onClose={onClose}>
+    <Modal title={workflowCopy("configureAvailabilityWatch")} onClose={onClose}>
       <div className="grid gap-4">
-        <Field label="Remote source">
+        <Field label={workflowCopy("remoteSource")}>
           <select
             className="h-10 rounded-md border bg-card px-3 text-sm"
             value={sourceId}
             onChange={(event) => setSourceId(Number(event.target.value))}
             disabled={readOnly || busy !== null}
           >
-            <option value={0}>Any healthy source</option>
+            <option value={0}>{workflowCopy("anyHealthySource")}</option>
             {sources.map((source) => (
               <option key={source.id} value={source.id}>
                 {source.displayName}
@@ -1290,29 +1315,29 @@ function AvailabilityWatchConfigureDialog({
             ))}
           </select>
         </Field>
-        <Field label="When available">
+        <Field label={workflowCopy("whenAvailable")}>
           <select
             className="h-10 rounded-md border bg-card px-3 text-sm"
             value={action}
             onChange={(event) => setAction(event.target.value as AvailabilityWatch["action"])}
             disabled={readOnly || busy !== null}
           >
-            <option value="monitor">Monitor only</option>
-            <option value="track">Track</option>
+            <option value="monitor">{workflowCopy("monitorOnly")}</option>
+            <option value="track">{workflowCopy("track")}</option>
             <option value="fetch" disabled={!canManageDownloads}>
-              Fetch
+              {workflowCopy("fetch")}
             </option>
             <option value="track_fetch" disabled={!canManageDownloads}>
-              Track + Fetch
+              {workflowCopy("trackFetch")}
             </option>
           </select>
         </Field>
-        <Field label="Exclude extensions">
+        <Field label={workflowCopy("excludeExtensions")}>
           <input
             className="h-10 rounded-md border bg-card px-3 text-sm"
             value={excluded}
             onChange={(event) => setExcluded(event.target.value)}
-            placeholder="wav, flac"
+            placeholder={workflowCopy("extensionsPlaceholder")}
             disabled={readOnly || busy !== null}
           />
         </Field>
@@ -1320,11 +1345,11 @@ function AvailabilityWatchConfigureDialog({
         <div className="flex flex-wrap justify-end gap-2">
           <Button variant="outline" onClick={() => void save(false)} disabled={readOnly || busy !== null}>
             {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Save
+            {workflowCopy("save")}
           </Button>
           <Button onClick={() => void save(true)} disabled={readOnly || busy !== null}>
             {busy === "run" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-            Run now
+            {workflowCopy("runNow")}
           </Button>
         </div>
       </div>
@@ -1356,20 +1381,20 @@ function AvailabilityWatchMonitoringDialog({
     try {
       const next = await api.updateAvailabilityWatchTargets(parsed.codes);
       onSaved(next);
-      toast.success("Monitoring pool updated.");
+      toast.success(workflowCopy("monitoringPoolUpdated"));
       onClose();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Monitoring pool could not be saved.");
+      setError(saveError instanceof Error ? saveError.message : workflowCopy("monitoringPoolSaveFailed"));
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Modal title="Edit monitoring pool" onClose={onClose}>
+    <Modal title={workflowCopy("editMonitoringPool")} onClose={onClose}>
       <div className="space-y-4">
-        <Field label="Works">
-          <WorkCodesField value={codes} onChange={setCodes} ariaLabel="Works" />
+        <Field label={workflowCopy("works")}>
+          <WorkCodesField value={codes} onChange={setCodes} ariaLabel={workflowCopy("works")} />
         </Field>
         {error && <ErrorPanel error={error} />}
         <div className="flex justify-end">
@@ -1403,7 +1428,7 @@ function AvailabilityWatchReadyDialog({
       { kind: "remote-only", sourceId: target.availableSourceId, remoteCode: target.workCode },
       {
         returnTo: "/workflows?workflow=availability_watch&dialog=ready",
-        returnLabel: "Back to Availability Watch",
+        returnLabel: workflowCopy("backToAvailabilityWatch"),
       },
     );
   };
@@ -1411,10 +1436,10 @@ function AvailabilityWatchReadyDialog({
     setBusy({ id: target.id, action: "track" });
     try {
       const result = await api.trackAvailabilityWatchTarget(target.id);
-      toast.success(`Track run #${result.runId} queued.`);
+      toast.success(workflowCopy("trackRunQueued", { runId: result.runId }));
       onChanged();
     } catch (error) {
-      toast.notify(toastFromError(error, `Could not track ${target.workCode}.`));
+      toast.notify(toastFromError(error, workflowCopy("trackTargetFailed", { workCode: target.workCode })));
     } finally {
       setBusy(null);
     }
@@ -1423,20 +1448,20 @@ function AvailabilityWatchReadyDialog({
     setBusy({ id: target.id, action: "remove" });
     try {
       await api.removeAvailabilityWatchTarget(target.id);
-      toast.success(`${target.workCode} removed from Availability Watch.`);
+      toast.success(workflowCopy("removedFromWatch", { workCode: target.workCode }));
       onChanged();
     } catch (error) {
-      toast.notify(toastFromError(error, `Could not remove ${target.workCode}.`));
+      toast.notify(toastFromError(error, workflowCopy("removeTargetFailed", { workCode: target.workCode })));
     } finally {
       setBusy(null);
     }
   };
 
   return (
-    <Modal title={`Ready works (${targets.length})`} onClose={onClose}>
+    <Modal title={workflowCopy("readyWorks", { count: targets.length })} onClose={onClose}>
       <div className="divide-y rounded-md border">
         {targets.length === 0 ? (
-          <div className="p-4 text-sm text-muted-foreground">No available works.</div>
+          <div className="p-4 text-sm text-muted-foreground">{workflowCopy("noAvailableWorks")}</div>
         ) : (
           targets.map((target) => {
             const targetBusy = busy?.id === target.id;
@@ -1446,7 +1471,7 @@ function AvailabilityWatchReadyDialog({
                   <div className="font-mono text-sm font-semibold">{target.workCode}</div>
                   <div className="mt-1 flex flex-wrap items-center gap-2">
                     <Badge variant={target.lastError ? "warning" : "secondary"}>
-                      {target.state === "completed" ? "dispatched" : target.state.replace("_", " ")}
+                      {target.state === "completed" ? workflowCopy("dispatched") : target.state.replace("_", " ")}
                     </Badge>
                     {target.lastError && <span className="text-xs text-error-foreground">{target.lastError}</span>}
                   </div>
@@ -1459,7 +1484,7 @@ function AvailabilityWatchReadyDialog({
                     disabled={!target.availableSourceId || targetBusy}
                   >
                     <ExternalLink className="h-4 w-4" />
-                    Open
+                    {workflowCopy("open")}
                   </Button>
                   <Button
                     size="sm"
@@ -1472,14 +1497,14 @@ function AvailabilityWatchReadyDialog({
                     ) : (
                       <GitBranchPlus className="h-4 w-4" />
                     )}
-                    Track
+                    {workflowCopy("track")}
                   </Button>
                   {(target.fetchRunId || target.trackRunId) && (
                     <Button
                       size="icon"
                       variant="ghost"
-                      title="Open related activity"
-                      aria-label={`Open activity for ${target.workCode}`}
+                      title={workflowCopy("openRelatedActivity")}
+                      aria-label={workflowCopy("openActivityFor", { workCode: target.workCode })}
                       onClick={() => openActivityRunID(target.fetchRunId ?? target.trackRunId!)}
                     >
                       <Activity className="h-4 w-4" />
@@ -1488,8 +1513,8 @@ function AvailabilityWatchReadyDialog({
                   <Button
                     size="icon"
                     variant="ghost"
-                    title="Remove from watch"
-                    aria-label={`Remove ${target.workCode} from watch`}
+                    title={workflowCopy("removeFromWatch")}
+                    aria-label={workflowCopy("removeFromWatchAria", { workCode: target.workCode })}
                     onClick={() => void remove(target)}
                     disabled={readOnly || targetBusy}
                   >
@@ -1520,7 +1545,7 @@ function SkeletonLine({ className = "" }: { className?: string }) {
 
 function WorkflowMetadataLoadingState() {
   return (
-    <Card className="min-h-72" role="status" aria-label="Loading workflow data" aria-busy="true">
+    <Card className="min-h-72" role="status" aria-label={workflowCopy("loadingWorkflowData")} aria-busy="true">
       <CardContent className="flex min-h-72 flex-col justify-center gap-3 p-6">
         <SkeletonLine className="h-5 w-40" />
         <SkeletonLine className="h-4 w-72 max-w-full" />
@@ -1537,7 +1562,7 @@ function WorkflowMetadataErrorState({ message, onRetry }: { message: string; onR
         <div>
           <p className="text-sm text-destructive">{message}</p>
           <Button className="mt-4" size="sm" variant="outline" onClick={onRetry}>
-            Retry
+            {workflowCopy("retry")}
           </Button>
         </div>
       </CardContent>
@@ -1586,7 +1611,7 @@ function DefinitionSidebar({
         <div
           className="grid grid-cols-2 rounded-md border bg-muted/30 p-1"
           role="tablist"
-          aria-label="Workflow definition type"
+          aria-label={workflowCopy("workflowDefinitionType")}
         >
           {(["built-in", "custom"] as const).map((tab) => {
             const count = tab === "built-in" ? builtInDefinitions.length : customDefinitions.length;
@@ -1598,7 +1623,8 @@ function DefinitionSidebar({
                 className={`rounded px-2 py-1.5 text-xs font-medium ${activeTab === tab ? "bg-background shadow-sm" : "text-muted-foreground"}`}
                 onClick={() => onTabChange(tab)}
               >
-                {tab === "built-in" ? "Built-in" : "Custom"} <span className="ml-1 text-muted-foreground">{count}</span>
+                {tab === "built-in" ? workflowCopy("builtIn") : workflowCopy("custom")}{" "}
+                <span className="ml-1 text-muted-foreground">{count}</span>
               </button>
             );
           })}
@@ -1632,12 +1658,12 @@ function DefinitionSidebar({
             </>
           )}
           {!loading && !error && (activeTab === "built-in" ? builtInDefinitions : customDefinitions).length === 0 && (
-            <EmptyPanel text={activeTab === "custom" ? "No custom definitions yet." : emptyText} />
+            <EmptyPanel text={activeTab === "custom" ? workflowCopy("noCustomDefinitions") : emptyText} />
           )}
           {!loading && !error && canCreate && activeTab === "custom" && (
             <Button variant="outline" className="w-full" onClick={onCreate}>
               <Plus className="h-4 w-4" />
-              New workflow
+              {workflowCopy("newWorkflow")}
             </Button>
           )}
         </div>
@@ -1658,6 +1684,7 @@ function DefinitionListItem({
   onSelect: (definition: WorkflowDefinition) => void;
 }) {
   const automationModes = workflowDefinitionAutomationModes(triggers);
+  const displayDefinition = localizedWorkflowDefinition(definition);
   return (
     <button
       className={`w-full rounded-md border p-3 text-left transition-colors ${selected ? "border-primary bg-secondary" : "bg-card hover:bg-muted"}`}
@@ -1665,7 +1692,7 @@ function DefinitionListItem({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <div className="line-clamp-2 text-sm font-semibold">{definition.displayName}</div>
+          <div className="line-clamp-2 text-sm font-semibold">{displayDefinition.displayName}</div>
           <div className="truncate text-xs text-muted-foreground">{definition.code}</div>
         </div>
       </div>
@@ -1708,7 +1735,7 @@ function ActivityToolbar({
         <input
           className="min-w-0 flex-1 bg-transparent outline-none"
           value={query}
-          placeholder="Search runs"
+          placeholder={workflowCopy("searchRuns")}
           onChange={(event) => onQueryChange(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") onSearch();
@@ -1718,7 +1745,7 @@ function ActivityToolbar({
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground md:justify-end">
         <Button size="sm" variant="outline" onClick={() => void onRecoverStale()} disabled={readOnly}>
           <RotateCcw className="h-3.5 w-3.5" />
-          Recover stale
+          {workflowCopy("recoverStale")}
         </Button>
       </div>
     </div>
@@ -1730,7 +1757,7 @@ function ActivityLoadingState() {
     <div
       className="flex min-h-32 items-center rounded-lg border bg-card p-4"
       role="status"
-      aria-label="Loading runs"
+      aria-label={workflowCopy("loadingRuns")}
       aria-busy="true"
     >
       <div className="flex items-center gap-3">
@@ -1766,14 +1793,14 @@ function ActivityErrorState({ message, onRetry }: { message: string; onRetry: ()
 
 function ActivityEmptyState({ view, filtered }: { view: ActivityView; filtered: boolean }) {
   const messages: Record<ActivityView, string> = {
-    running: "No workflows are running.",
-    review: "No runs need review.",
-    failed: "No workflow runs have failed.",
-    completed: "No completed workflow runs yet.",
+    running: workflowCopy("noWorkflowsRunning"),
+    review: workflowCopy("noRunsNeedReview"),
+    failed: workflowCopy("noFailedWorkflowRuns"),
+    completed: workflowCopy("noCompletedWorkflowRuns"),
   };
   return (
     <div className="grid min-h-32 place-items-center rounded-lg border border-dashed bg-card/40 px-4 py-8 text-center text-sm text-muted-foreground">
-      {filtered ? "No runs match this search." : messages[view]}
+      {filtered ? workflowCopy("noRunsMatchSearch") : messages[view]}
     </div>
   );
 }
@@ -1808,10 +1835,13 @@ function RunSidebar({
         <div className="flex items-center justify-between px-1 text-sm">
           <div className="flex items-start gap-2">
             {loading && (
-              <Loader2 className="mt-0.5 h-3.5 w-3.5 animate-spin text-primary" aria-label="Refreshing runs" />
+              <Loader2
+                className="mt-0.5 h-3.5 w-3.5 animate-spin text-primary"
+                aria-label={workflowCopy("refreshingRuns")}
+              />
             )}
             <div>
-              <div className="font-semibold">Runs</div>
+              <div className="font-semibold">{workflowCopy("runs")}</div>
               <div className="text-xs text-muted-foreground">
                 {start}-{end} of {total}
               </div>
@@ -1824,7 +1854,7 @@ function RunSidebar({
               className="h-8 w-8"
               disabled={page <= 1}
               onClick={onPrevious}
-              aria-label="Previous runs page"
+              aria-label={workflowCopy("previousRunsPage")}
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -1834,7 +1864,7 @@ function RunSidebar({
               className="h-8 w-8"
               disabled={page >= totalPages}
               onClick={onNext}
-              aria-label="Next runs page"
+              aria-label={workflowCopy("nextRunsPage")}
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
@@ -1859,7 +1889,7 @@ function RunSidebar({
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     <StatusBadge status={run.status} />
-                    {run.reviewedAt && <Badge variant="secondary">Reviewed</Badge>}
+                    {run.reviewedAt && <Badge variant="secondary">{workflowCopy("reviewed")}</Badge>}
                   </div>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -1877,12 +1907,10 @@ function RunSidebar({
             ))
           )}
         </div>
-        {!loading && runs.length === 0 && <EmptyPanel text="No runs in this view." />}
+        {!loading && runs.length === 0 && <EmptyPanel text={workflowCopy("noRunsInView")} />}
         <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
-          <span>
-            Page {page} / {totalPages}
-          </span>
-          <span>{pageSize} per page</span>
+          <span>{workflowCopy("pageOf", { page, totalPages })}</span>
+          <span>{workflowCopy("perPage", { count: pageSize })}</span>
         </div>
       </CardContent>
     </Card>
@@ -1946,7 +1974,7 @@ function WorkflowDetail({
   recentRuns = [],
   onOpenRun,
   onRunDefinition,
-  emptyText = "Select a workflow to inspect its node pipeline.",
+  emptyText = workflowCopy("selectWorkflowNodePipeline"),
   onEditDefinition,
   onCreateTrigger,
   onEditTrigger,
@@ -2005,20 +2033,23 @@ function WorkflowDetail({
       ? upgradeLegacyWorkflowDefinition(parsedDefinition.nodes, definitionTriggers)
       : null;
   const composerEditable = parsedDefinition.kind === "v2";
+  const displayDefinition = localizedWorkflowDefinition(definition);
   return (
     <Card className="min-w-0">
       <CardContent className="min-w-0 space-y-5 p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-lg font-semibold">{definition.displayName}</h3>
+              <h3 className="text-lg font-semibold">{displayDefinition.displayName}</h3>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">{definition.description || "No description."}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {displayDefinition.description || workflowCopy("noDescription")}
+            </p>
             <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
               <span>{definition.code}</span>
-              <span>{nodes.length} nodes</span>
+              <span>{workflowCopy("nodesCount", { count: nodes.length })}</span>
               <span>
-                {definition.triggerCount} trigger{definition.triggerCount === 1 ? "" : "s"}
+                {definition.triggerCount} {definition.triggerCount === 1 ? "trigger" : "triggers"}
               </span>
             </div>
           </div>
@@ -2026,24 +2057,19 @@ function WorkflowDetail({
             {composerEditable && onEditDefinition && (
               <Button size="sm" onClick={onEditDefinition}>
                 <Edit3 className="h-4 w-4" />
-                Edit workflow
+                {workflowCopy("editWorkflow")}
               </Button>
             )}
             {!readonly && parsedDefinition.kind === "legacy" && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled
-                title="Legacy workflow upgrade is reserved for a future release."
-              >
+              <Button size="sm" variant="outline" disabled title={workflowCopy("legacyUpgradeReserved")}>
                 <FileJson className="h-4 w-4" />
-                Upgrade workflow
+                {workflowCopy("upgradeWorkflow")}
               </Button>
             )}
             {onRunDefinition && parsedDefinition.kind === "v2" && !quickRunInput && (
               <Button size="sm" onClick={() => onRunDefinition()}>
                 <Play className="h-4 w-4" />
-                {workflowInputs.length > 0 ? "Configure" : "Preview / Run"}
+                {workflowInputs.length > 0 ? workflowCopy("configure") : workflowCopy("previewRun")}
               </Button>
             )}
             {definition.scope === "system" &&
@@ -2062,7 +2088,7 @@ function WorkflowDetail({
                       disabled={running || !allowed}
                     >
                       <Play className="h-4 w-4" />
-                      {running ? "Creating" : systemRunKindLabel(kind)}
+                      {running ? workflowCopy("creating") : systemRunKindLabel(kind)}
                     </Button>
                   );
                 })}
@@ -2083,7 +2109,7 @@ function WorkflowDetail({
                       disabled={running || !allowed}
                     >
                       <Settings2 className="h-4 w-4" />
-                      {running ? "Queueing" : "Configure"}
+                      {running ? workflowCopy("queueing") : workflowCopy("configure")}
                     </Button>
                   );
                 })}
@@ -2110,17 +2136,16 @@ function WorkflowDetail({
 
         {definition.scope === "system" && (
           <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-            {systemRunKinds?.length
-              ? "This system workflow is read-only, but it exposes a manual action."
-              : "This system workflow is read-only and is triggered by application actions."}
+            {systemRunKinds?.length ? workflowCopy("systemManualNotice") : workflowCopy("systemTriggeredNotice")}
           </div>
         )}
         {definition.scope === "user" && parsedDefinition.kind === "legacy" && (
           <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-            Legacy upgrade is reserved for a future release. This definition remains read-only, and its original linear
-            connections are shown below.
+            {workflowCopy("legacyNotice")}
             {legacyUpgrade?.kind === "blocked" && (
-              <span className="ml-1">Compatibility check: {legacyUpgrade.reasons.join(" ")}</span>
+              <span className="ml-1">
+                {workflowCopy("compatibilityCheck", { reasons: legacyUpgrade.reasons.join(" ") })}
+              </span>
             )}
           </div>
         )}
@@ -2141,7 +2166,7 @@ function WorkflowDetail({
         {parsedDefinition.kind === "legacy" && <WorkflowHints nodes={nodes} nodeTypes={nodeTypes} compact />}
       </CardContent>
       {configuredSystemRun === "local_scan" && onRunSystemAction && (
-        <Modal title="Configure local library scan" onClose={() => setConfiguredSystemRun(null)}>
+        <Modal title={workflowCopy("configureLocalScan")} onClose={() => setConfiguredSystemRun(null)}>
           <LocalScanRunPanel
             running={isSystemActionRunning?.("local_scan") ?? false}
             allowed={canRunSystemAction?.("local_scan") ?? false}
@@ -2150,7 +2175,7 @@ function WorkflowDetail({
         </Modal>
       )}
       {configuredSystemRun === "dlsite_popular" && onRunDLsitePopular && (
-        <Modal title="Configure DLsite popular collection" onClose={() => setConfiguredSystemRun(null)}>
+        <Modal title={workflowCopy("configureDLsitePopular")} onClose={() => setConfiguredSystemRun(null)}>
           <DLsitePopularRunPanel
             running={isSystemActionRunning?.("dlsite_popular") ?? false}
             allowed={canRunSystemAction?.("dlsite_popular") ?? false}
@@ -2159,7 +2184,7 @@ function WorkflowDetail({
         </Modal>
       )}
       {configuredSystemRun === "remote_popular" && onRunRemotePopular && (
-        <Modal title="Configure remote popular collection" onClose={() => setConfiguredSystemRun(null)}>
+        <Modal title={workflowCopy("configureRemotePopular")} onClose={() => setConfiguredSystemRun(null)}>
           <RemotePopularRunPanel
             running={isSystemActionRunning?.("remote_popular") ?? false}
             allowed={canRunSystemAction?.("remote_popular") ?? false}
@@ -2186,21 +2211,19 @@ function LocalScanRunPanel({
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/30 px-3 py-3">
         <div>
-          <div className="text-sm font-medium">Follow-up run</div>
-          <div className="text-xs text-muted-foreground">
-            Queue an independent metadata sync after this local scan completes.
-          </div>
+          <div className="text-sm font-medium">{workflowCopy("followUpRun")}</div>
+          <div className="text-xs text-muted-foreground">{workflowCopy("followUpDescription")}</div>
         </div>
         <Switch
           checked={followUpRun}
           onCheckedChange={setFollowUpRun}
-          aria-label="Follow-up run"
+          aria-label={workflowCopy("followUpRun")}
           disabled={running || !allowed}
         />
       </div>
       <Button className="w-full" disabled={running || !allowed} onClick={() => void onRun(followUpRun)}>
         <Play className="h-4 w-4" />
-        {running ? "Creating" : "Run scan"}
+        {running ? workflowCopy("creating") : workflowCopy("runScan")}
       </Button>
     </div>
   );
@@ -2225,7 +2248,7 @@ function CustomWorkflowQuickRun({
         event.preventDefault();
         if (!missingRequiredValue) onPreview();
       }}
-      aria-label="Quick run inputs"
+      aria-label={workflowCopy("quickRunInputs")}
     >
       <label className="grid min-w-0 flex-1 gap-1.5 text-sm">
         <span className="font-medium">
@@ -2243,7 +2266,7 @@ function CustomWorkflowQuickRun({
       </label>
       <Button type="submit" size="sm" className="h-9 shrink-0" disabled={missingRequiredValue}>
         <Play className="h-4 w-4" />
-        Preview
+        {workflowCopy("preview")}
       </Button>
     </form>
   );
@@ -2258,7 +2281,7 @@ function workflowInputPlaceholder(input: WorkflowInputDefinition) {
     case "work_code":
       return "RJ00000000";
     case "voice_name":
-      return "Voice name";
+      return workflowCopy("voiceName");
     default:
       return input.label;
   }
@@ -2267,13 +2290,13 @@ function workflowInputPlaceholder(input: WorkflowInputDefinition) {
 function systemRunKindLabel(kind: SystemRunKind) {
   switch (kind) {
     case "local_scan":
-      return "Run local scan";
+      return workflowCopy("runLocalScan");
     case "metadata_sync":
-      return "Sync metadata";
+      return workflowCopy("syncMetadata");
     case "remote_popular":
-      return "Collect remote popular";
+      return workflowCopy("collectRemotePopular");
     case "dlsite_popular":
-      return "Collect DLsite popular";
+      return workflowCopy("collectDLsitePopular");
   }
 }
 
@@ -2341,7 +2364,7 @@ function RemotePopularRunPanel({
       <div className="grid gap-4">
         <div className="space-y-4">
           <label className="grid gap-2 text-sm font-medium">
-            Remote source
+            {workflowCopy("remoteSource")}
             <select
               className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={sourceId}
@@ -2349,7 +2372,9 @@ function RemotePopularRunPanel({
               onChange={(event) => setSourceId(Number(event.target.value))}
             >
               {compatibleSources.length === 0 && (
-                <option value={0}>{loadingSources ? "Loading sources" : "No compatible source"}</option>
+                <option value={0}>
+                  {loadingSources ? workflowCopy("loadingSources") : workflowCopy("noCompatibleSource")}
+                </option>
               )}
               {compatibleSources.map((source) => (
                 <option key={source.id} value={source.id}>
@@ -2361,8 +2386,11 @@ function RemotePopularRunPanel({
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <div className="text-sm font-medium">Action</div>
-              <div className="mt-2 inline-flex rounded-md border bg-muted/40 p-1" aria-label="Remote popular action">
+              <div className="text-sm font-medium">{workflowCopy("action")}</div>
+              <div
+                className="mt-2 inline-flex rounded-md border bg-muted/40 p-1"
+                aria-label={workflowCopy("remotePopularAction")}
+              >
                 {(["track", "fetch"] as const).map((item) => (
                   <button
                     key={item}
@@ -2370,16 +2398,16 @@ function RemotePopularRunPanel({
                     aria-pressed={action === item}
                     onClick={() => setAction(item)}
                   >
-                    {item}
+                    {item === "track" ? workflowCopy("track") : workflowCopy("fetch")}
                   </button>
                 ))}
               </div>
               {action === "fetch" && !canFetch && (
-                <div className="mt-1 text-xs text-error-foreground">Fetch requires download management permission.</div>
+                <div className="mt-1 text-xs text-error-foreground">{workflowCopy("fetchPermissionRequired")}</div>
               )}
             </div>
             <label className="grid content-start gap-2 text-sm font-medium">
-              Work limit
+              {workflowCopy("workLimit")}
               <select
                 className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                 value={limit}
@@ -2387,7 +2415,7 @@ function RemotePopularRunPanel({
               >
                 {[10, 25, 50, 100].map((item) => (
                   <option key={item} value={item}>
-                    {item} works
+                    {workflowCopy("worksCount", { count: item })}
                   </option>
                 ))}
               </select>
@@ -2412,7 +2440,7 @@ function RemotePopularRunPanel({
             onClick={() => void onRun({ sourceId, action, limit, tagNameTemplate: tagNameTemplate.trim() })}
           >
             <Play className="h-4 w-4" />
-            {running ? "Queueing" : "Run collection"}
+            {running ? workflowCopy("queueing") : workflowCopy("runCollection")}
           </Button>
         </div>
       </div>
@@ -2445,10 +2473,10 @@ function DLsitePopularRunPanel({
   )[0];
   const years = Array.from({ length: currentYear - 1999 }, (_, index) => currentYear - index);
   const periodOptions: { value: DLsitePopularPeriod; label: string }[] = [
-    { value: "day", label: "24h" },
-    { value: "week", label: "7d" },
-    { value: "month", label: "30d" },
-    { value: "year", label: "Year" },
+    { value: "day", label: workflowCopy("period24Hours") },
+    { value: "week", label: workflowCopy("period7Days") },
+    { value: "month", label: workflowCopy("period30Days") },
+    { value: "year", label: workflowCopy("periodAnnual") },
   ];
 
   useEffect(() => {
@@ -2460,10 +2488,10 @@ function DLsitePopularRunPanel({
       <div className="grid gap-4">
         <div className="space-y-4">
           <div>
-            <div className="text-sm font-medium">Ranking period</div>
+            <div className="text-sm font-medium">{workflowCopy("rankingPeriod")}</div>
             <div
               className="mt-2 inline-flex max-w-full gap-1 overflow-x-auto rounded-md border bg-muted/40 p-1"
-              aria-label="DLsite ranking period"
+              aria-label={workflowCopy("rankingPeriod")}
             >
               {periodOptions.map((option) => (
                 <button
@@ -2480,7 +2508,7 @@ function DLsitePopularRunPanel({
 
           {period === "year" ? (
             <label className="grid max-w-56 gap-2 text-sm font-medium">
-              Ranking year
+              {workflowCopy("rankingYear")}
               <select
                 className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                 value={year}
@@ -2489,7 +2517,7 @@ function DLsitePopularRunPanel({
                 {years.map((item) => (
                   <option key={item} value={item}>
                     {item}
-                    {item === currentYear ? " (current)" : ""}
+                    {item === currentYear ? ` (${workflowCopy("current")})` : ""}
                   </option>
                 ))}
               </select>
@@ -2497,13 +2525,13 @@ function DLsitePopularRunPanel({
           ) : (
             <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/30 px-3 py-2.5">
               <div>
-                <div className="text-sm font-medium">Recent releases only</div>
-                <div className="text-xs text-muted-foreground">Limit the ranking to works released within 30 days.</div>
+                <div className="text-sm font-medium">{workflowCopy("recentReleasesOnly")}</div>
+                <div className="text-xs text-muted-foreground">{workflowCopy("recentReleasesDescription")}</div>
               </div>
               <Switch
                 checked={recentOnly}
                 onCheckedChange={setRecentOnly}
-                aria-label="Only works released within 30 days"
+                aria-label={workflowCopy("onlyWorksReleased30Days")}
               />
             </div>
           )}
@@ -2536,7 +2564,7 @@ function DLsitePopularRunPanel({
             }
           >
             <Play className="h-4 w-4" />
-            {running ? "Queueing" : "Run collection"}
+            {running ? workflowCopy("queueing") : workflowCopy("runCollection")}
           </Button>
         </div>
       </div>
@@ -2640,7 +2668,7 @@ function RunDetail({
 }) {
   const recentlyStartedNodeRuns = useRecentWorkflowNodeStarts(run?.id ?? null, run?.status ?? "", events);
   if (!run) {
-    return loading ? <RunDetailSkeleton /> : <EmptyPanel text="Select a run to inspect execution by node." />;
+    return loading ? <RunDetailSkeleton /> : <EmptyPanel text={workflowCopy("selectRunNodeDetail")} />;
   }
   const nodeRuns = "nodeRuns" in run ? run.nodeRuns : [];
   const runGraph = "graphJson" in run ? parseWorkflowRunGraph(run.graphJson) : null;
@@ -2692,7 +2720,7 @@ function RunDetail({
         </div>
         {loading ? <RunOverviewSkeleton /> : <RunOverview run={run} nodeRuns={nodeRuns} />}
         <section className="space-y-2">
-          <div className="text-sm font-semibold">Execution</div>
+          <div className="text-sm font-semibold">{workflowCopy("execution")}</div>
           {loading ? (
             <RunNodePipelineSkeleton />
           ) : nodeRuns.length > 0 ? (
@@ -2709,7 +2737,7 @@ function RunDetail({
               }}
             />
           ) : (
-            <EmptyPanel text="This run has no node detail yet." />
+            <EmptyPanel text={workflowCopy("noNodeDetail")} />
           )}
         </section>
         {loading ? (
@@ -2834,19 +2862,19 @@ function RunOverview({ run, nodeRuns }: { run: WorkflowRunDetail | WorkflowRun; 
     <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <FetchTransferProgress run={run} />
       <div className="min-w-0 rounded-md border bg-muted/30 p-3">
-        <div className="text-sm font-semibold">Summary</div>
-        <JsonPreview value={run.summaryJson} empty="No summary recorded." />
+        <div className="text-sm font-semibold">{workflowCopy("summary")}</div>
+        <JsonPreview value={run.summaryJson} empty={workflowCopy("noSummary")} />
       </div>
       <div className="grid content-start gap-2">
-        <SummaryCell label="Started" value={run.startedAt || "not recorded"} />
-        <SummaryCell label="Finished" value={run.finishedAt || "not finished"} />
+        <SummaryCell label={workflowCopy("started")} value={run.startedAt || workflowCopy("notRecorded")} />
+        <SummaryCell label={workflowCopy("finished")} value={run.finishedAt || workflowCopy("notFinished")} />
         <SummaryCell
-          label="Trigger"
+          label={workflowCopy("trigger")}
           value={`${run.triggerType}${run.triggerReason ? ` · ${run.triggerReason}` : ""}`}
         />
         <SummaryCell
-          label="Run signals"
-          value={`${pendingReviewCount(run)} pending review, ${run.skippedNodeRuns + run.skippedJobs} skipped`}
+          label={workflowCopy("runSignals")}
+          value={`${pendingReviewCount(run)} ${workflowCopy("pendingReview")}, ${run.skippedNodeRuns + run.skippedJobs} ${workflowCopy("skipped")}`}
         />
       </div>
       {nodeRuns.some((node) => node.errorMessage) && (
@@ -2868,25 +2896,25 @@ function FetchTransferProgress({ run }: { run: WorkflowRunDetail | WorkflowRun }
   const percent = determinate ? Math.min(100, Math.max(0, (current / total) * 100)) : 0;
   const label =
     unknownItems > 0
-      ? `${formatBytes(current)} transferred · ${formatBytes(total)} known total · ${unknownItems} unknown-size ${unknownItems === 1 ? "file" : "files"}`
+      ? `${formatBytes(current)} ${workflowCopy("transferred")} · ${formatBytes(total)} ${workflowCopy("knownTotal")} · ${unknownItems} ${workflowCopy(unknownItems === 1 ? "unknownSizeFile" : "unknownSizeFiles")}`
       : total > 0
-        ? `${formatBytes(current)} of ${formatBytes(total)}`
-        : `${formatBytes(current)} transferred`;
+        ? `${formatBytes(current)} ${workflowCopy("of")} ${formatBytes(total)}`
+        : `${formatBytes(current)} ${workflowCopy("transferred")}`;
   return (
     <div
       className="space-y-2 rounded-md border bg-muted/30 p-3 lg:col-span-2"
       role="status"
-      aria-label="Fetch transfer progress"
+      aria-label={workflowCopy("fetchTransferProgress")}
     >
       <div className="flex items-center justify-between gap-3 text-sm">
-        <span className="font-semibold">Transfer</span>
+        <span className="font-semibold">{workflowCopy("transfer")}</span>
         <span className="tabular-nums text-muted-foreground">{label}</span>
       </div>
       {determinate ? (
         <div
           className="h-2 overflow-hidden rounded-full bg-muted"
           role="progressbar"
-          aria-label="Fetch byte progress"
+          aria-label={workflowCopy("fetchByteProgress")}
           aria-valuemin={0}
           aria-valuemax={total}
           aria-valuenow={Math.min(current, total)}
@@ -2916,27 +2944,27 @@ function RunItems({
 }) {
   return (
     <div className="space-y-3">
-      <div className="text-sm font-semibold">Items</div>
+      <div className="text-sm font-semibold">{workflowCopy("items")}</div>
       <div className="grid gap-2 sm:grid-cols-3">
         <Metric
           icon={<FileJson className="h-3.5 w-3.5" />}
-          label="pending review"
+          label={workflowCopy("pendingReview")}
           value={`${pendingReviewCount(run)}`}
         />
         <Metric
           icon={<AlertCircle className="h-3.5 w-3.5" />}
-          label="failed items"
+          label={workflowCopy("failedItems")}
           value={`${run.failedNodeRuns + run.failedJobs}`}
         />
         <Metric
           icon={<Clock3 className="h-3.5 w-3.5" />}
-          label="skipped items"
+          label={workflowCopy("skippedItems")}
           value={`${run.skippedNodeRuns + run.skippedJobs}`}
         />
       </div>
       {candidates.length > 0 && (
         <div className="space-y-2">
-          <div className="text-sm font-semibold">Candidates</div>
+          <div className="text-sm font-semibold">{workflowCopy("candidates")}</div>
           <div className="divide-y rounded-md border">
             {candidates.map((candidate) => (
               <CandidateReviewCard
@@ -2950,9 +2978,7 @@ function RunItems({
         </div>
       )}
       {candidates.length === 0 && (
-        <div className="rounded-md border p-3 text-sm text-muted-foreground">
-          No reviewable items recorded for this run.
-        </div>
+        <div className="rounded-md border p-3 text-sm text-muted-foreground">{workflowCopy("noReviewableItems")}</div>
       )}
     </div>
   );
@@ -2983,7 +3009,7 @@ function ActivityNodeSections({
   const runEvents = events.filter((event) => event.nodeRunId === null);
   return (
     <section className="space-y-3">
-      <div className="text-sm font-semibold">Node logs</div>
+      <div className="text-sm font-semibold">{workflowCopy("nodeLogs")}</div>
       <div className="divide-y rounded-md border">
         {nodes.map((node) => {
           const open = openNodes.has(node.id);
@@ -3012,9 +3038,9 @@ function ActivityNodeSections({
                 <div className="space-y-3 border-t bg-muted/15 px-3 py-3">
                   {node.errorMessage && <ErrorPanel error={node.errorMessage} />}
                   {hasNonEmptyJSON(node.outputJson) && (
-                    <JsonPreview value={node.outputJson} empty="No output payload." compact />
+                    <JsonPreview value={node.outputJson} empty={workflowCopy("noOutputPayload")} compact />
                   )}
-                  <WorkflowEventRows events={nodeEvents} empty="No events recorded for this node." />
+                  <WorkflowEventRows events={nodeEvents} empty={workflowCopy("noEventsNode")} />
                 </div>
               )}
             </section>
@@ -3023,9 +3049,9 @@ function ActivityNodeSections({
       </div>
       {runEvents.length > 0 && (
         <div className="space-y-2">
-          <div className="text-sm font-semibold">Run events</div>
+          <div className="text-sm font-semibold">{workflowCopy("runEvents")}</div>
           <div className="rounded-md border">
-            <WorkflowEventRows events={runEvents} empty="No run events." />
+            <WorkflowEventRows events={runEvents} empty={workflowCopy("noRunEvents")} />
           </div>
         </div>
       )}
@@ -3113,7 +3139,7 @@ function CandidateReviewCard({
       {candidate.type === "local_fetch_merge_cleanup" && (
         <div className="rounded-md border bg-muted/40 p-2 text-xs">
           <div className="mb-1 font-medium">
-            {archivedRoots.length > 0 ? "Archived local roots" : "Old local locations"}
+            {archivedRoots.length > 0 ? workflowCopy("archivedLocalRoots") : workflowCopy("oldLocalLocations")}
           </div>
           {archivedRoots.map((root) => (
             <div key={root.folderId} className="space-y-1 border-b py-2 last:border-b-0">
@@ -3146,7 +3172,7 @@ function CandidateReviewCard({
                 </div>
               ))
             : archivedRoots.length === 0 && (
-                <div className="text-muted-foreground">No selectable local locations in this candidate.</div>
+                <div className="text-muted-foreground">{workflowCopy("noSelectableLocalLocations")}</div>
               )}
           {archivedRoots.length === 0 && cleanupLocations.length > 8 && (
             <div className="pt-1 text-muted-foreground">+{cleanupLocations.length - 8} more</div>
@@ -3156,7 +3182,7 @@ function CandidateReviewCard({
 
       {candidate.type === "local_duplicate_work_folder" && (
         <div className="rounded-md border bg-muted/40 p-2 text-xs">
-          <div className="mb-1 font-medium">Duplicate local folders</div>
+          <div className="mb-1 font-medium">{workflowCopy("duplicateLocalFolders")}</div>
           {duplicateFolders.map((folder) => (
             <div key={folder.relPath} className="grid gap-0.5 py-1">
               <div className="truncate">{folder.relPath}</div>
@@ -3170,22 +3196,21 @@ function CandidateReviewCard({
 
       {originBlocked && (
         <div className="min-w-0 rounded-md border border-warning-border bg-warning-surface p-3 text-sm">
-          <div className="font-medium text-warning-foreground">Outbound origin blocked</div>
+          <div className="font-medium text-warning-foreground">{workflowCopy("outboundOriginBlocked")}</div>
           <div className="mt-1 break-all font-mono text-xs text-warning-foreground">
-            {blockedOrigin || "Origin was not recorded"}
+            {blockedOrigin || workflowCopy("originNotRecorded")}
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            This source restricts outbound hosts. Add the hostname to the source allowlist, or change the source policy,
-            then retry this Fetch.
-          </p>
+          <p className="mt-2 text-xs text-muted-foreground">{workflowCopy("originBlockedDescription")}</p>
         </div>
       )}
 
       {candidate.type !== "local_fetch_merge_cleanup" &&
         candidate.type !== "local_duplicate_work_folder" &&
-        !originBlocked && <JsonPreview value={candidate.payloadJson} empty="No candidate payload." compact />}
+        !originBlocked && (
+          <JsonPreview value={candidate.payloadJson} empty={workflowCopy("noCandidatePayload")} compact />
+        )}
       {hasNonEmptyJSON(candidate.decisionJson) && (
-        <JsonPreview value={candidate.decisionJson} empty="No decision payload." compact />
+        <JsonPreview value={candidate.decisionJson} empty={workflowCopy("noDecisionPayload")} compact />
       )}
       {needsReview && !readOnly && (
         <div className="flex flex-wrap gap-2">
@@ -3194,7 +3219,7 @@ function CandidateReviewCard({
               {blockedSourceID !== null && blockedSourceID > 0 && (
                 <Button size="sm" variant="outline" onClick={() => openRemoteSourceConfiguration(blockedSourceID)}>
                   <Settings2 className="h-4 w-4" />
-                  Configure source
+                  {workflowCopy("configureSource")}
                 </Button>
               )}
               <Button
@@ -3206,14 +3231,14 @@ function CandidateReviewCard({
                 }}
               >
                 <RotateCcw className="h-4 w-4" />
-                Retry Fetch
+                {workflowCopy("retryFetch")}
               </Button>
             </>
           )}
           {candidate.type === "local_fetch_merge_cleanup" && cleanupLocations.length > 0 && (
             <>
               <Button size="sm" variant="outline" onClick={() => void cleanup("mark_unavailable")}>
-                Hide old locations
+                {workflowCopy("hideOldLocations")}
               </Button>
               <Button
                 size="sm"
@@ -3221,14 +3246,14 @@ function CandidateReviewCard({
                 className="border-destructive/40 text-destructive hover:text-destructive"
                 onClick={() => setConfirmDeleteOldFiles(true)}
               >
-                Delete old files
+                {workflowCopy("deleteOldFiles")}
               </Button>
             </>
           )}
           {candidate.type === "local_fetch_merge_cleanup" && archivedRoots.length > 0 && (
             <>
               <Button size="sm" variant="outline" onClick={() => void reviewArchive("keep_archived")}>
-                Keep archived
+                {workflowCopy("keepArchived")}
               </Button>
               <Button
                 size="sm"
@@ -3236,7 +3261,7 @@ function CandidateReviewCard({
                 className="border-destructive/40 text-destructive hover:text-destructive"
                 onClick={() => setArchiveDeleteStep(1)}
               >
-                Delete archive
+                {workflowCopy("deleteArchive")}
               </Button>
             </>
           )}
@@ -3250,7 +3275,7 @@ function CandidateReviewCard({
                   await onCandidateUpdate();
                 }}
               >
-                Mark resolved
+                {workflowCopy("markResolved")}
               </Button>
               <Button
                 size="sm"
@@ -3260,7 +3285,7 @@ function CandidateReviewCard({
                   await onCandidateUpdate();
                 }}
               >
-                Ignore
+                {workflowCopy("ignore")}
               </Button>
             </>
           )}
@@ -3268,20 +3293,18 @@ function CandidateReviewCard({
       )}
       {confirmDeleteOldFiles && (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3">
-          <div className="text-sm font-semibold text-destructive">Delete old local files?</div>
-          <div className="mt-1 text-sm text-muted-foreground">
-            This deletes the selected old files from disk and marks their locations unavailable. Work metadata is kept.
-          </div>
+          <div className="text-sm font-semibold text-destructive">{workflowCopy("deleteOldLocalFilesTitle")}</div>
+          <div className="mt-1 text-sm text-muted-foreground">{workflowCopy("deleteOldLocalFilesDescription")}</div>
           <div className="mt-3 flex flex-wrap justify-end gap-2">
             <Button size="sm" variant="outline" onClick={() => setConfirmDeleteOldFiles(false)}>
-              Cancel
+              {workflowCopy("cancel")}
             </Button>
             <Button
               size="sm"
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => void cleanup("delete_files")}
             >
-              Delete files
+              {workflowCopy("deleteFiles")}
             </Button>
           </div>
         </div>
@@ -3289,12 +3312,10 @@ function CandidateReviewCard({
       {archiveDeleteStep > 0 && (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3">
           <div className="text-sm font-semibold text-destructive">
-            {archiveDeleteStep === 1 ? "Review archived directories" : "Final confirmation"}
+            {archiveDeleteStep === 1 ? workflowCopy("reviewArchivedDirectories") : workflowCopy("finalConfirmation")}
           </div>
           <div className="mt-1 text-sm text-muted-foreground">
-            {archiveDeleteStep === 1
-              ? "These archived roots will be permanently removed from disk."
-              : "This cannot be undone. Work metadata and the published Fetch result will be kept."}
+            {archiveDeleteStep === 1 ? workflowCopy("archivePermanentlyRemoved") : workflowCopy("cannotUndoKeep")}
           </div>
           <div className="mt-2 space-y-1 text-xs">
             {archivedRoots.map((root) => (
@@ -3305,11 +3326,11 @@ function CandidateReviewCard({
           </div>
           <div className="mt-3 flex flex-wrap justify-end gap-2">
             <Button size="sm" variant="outline" onClick={() => setArchiveDeleteStep(0)}>
-              Cancel
+              {workflowCopy("cancel")}
             </Button>
             {archiveDeleteStep === 1 ? (
               <Button size="sm" variant="outline" onClick={() => setArchiveDeleteStep(2)}>
-                Continue
+                {workflowCopy("continue")}
               </Button>
             ) : (
               <Button
@@ -3317,7 +3338,7 @@ function CandidateReviewCard({
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 onClick={() => void reviewArchive("delete_archived")}
               >
-                Permanently delete
+                {workflowCopy("permanentlyDelete")}
               </Button>
             )}
           </div>
@@ -3675,7 +3696,7 @@ function WorkflowNodeCanvas({
       ref={canvasRef}
       className={`workflow-canvas overflow-hidden rounded-md border ${responsiveLayout ? "" : compact ? "h-48" : "h-64"}`}
       style={responsiveLayout ? { height: responsiveLayout.height } : undefined}
-      aria-label="Workflow node canvas"
+      aria-label={workflowCopy("workflowNodeCanvas")}
     >
       <ReactFlow
         nodes={flowNodes}
@@ -3722,7 +3743,7 @@ function normalizedWorkflowNodeStatus(status: string) {
 
 function StatusPoint({ status }: { status: string }) {
   if (status === "running")
-    return <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-info" aria-label="Running" />;
+    return <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-info" aria-label={workflowCopy("running")} />;
   const color =
     status === "succeeded"
       ? "bg-success"
@@ -3737,7 +3758,7 @@ function StatusPoint({ status }: { status: string }) {
 function RecentWorkflowRuns({ runs, onOpen }: { runs: WorkflowRun[]; onOpen: (run: WorkflowRun) => void }) {
   return (
     <section className="space-y-2">
-      <div className="text-sm font-semibold">Recent runs</div>
+      <div className="text-sm font-semibold">{workflowCopy("recentRuns")}</div>
       <div className="divide-y rounded-md border">
         {runs.map((run) => (
           <button
@@ -3752,7 +3773,9 @@ function RecentWorkflowRuns({ runs, onOpen }: { runs: WorkflowRun[]; onOpen: (ru
             <StatusBadge status={run.status} />
           </button>
         ))}
-        {runs.length === 0 && <div className="px-3 py-4 text-sm text-muted-foreground">No recent runs.</div>}
+        {runs.length === 0 && (
+          <div className="px-3 py-4 text-sm text-muted-foreground">{workflowCopy("noRecentRuns")}</div>
+        )}
       </div>
     </section>
   );
@@ -3780,21 +3803,21 @@ function workflowDefinitionAutomationModes(
 }
 
 function workflowTriggerCondition(trigger: WorkflowTrigger) {
-  if (trigger.triggerType === "startup") return "When the application service starts";
-  if (trigger.triggerType === "filesystem_event") return "When local library folders change";
+  if (trigger.triggerType === "startup") return workflowCopy("whenServiceStarts");
+  if (trigger.triggerType === "filesystem_event") return workflowCopy("whenFoldersChange");
   if (trigger.triggerType === "schedule") {
     const interval = parseJSONRecord(trigger.scheduleJson).intervalMinutes;
-    if (typeof interval === "number") return `Every ${interval} minute${interval === 1 ? "" : "s"}`;
-    return "Interval schedule";
+    if (typeof interval === "number") return workflowCopy("everyMinutes", { count: interval });
+    return workflowCopy("intervalSchedule");
   }
   return trigger.triggerType.replace(/_/g, " ");
 }
 
 function workflowTriggerNextRun(trigger: WorkflowTrigger) {
-  if (!trigger.enabled) return "Paused";
-  if (trigger.triggerType === "startup") return "Next service start";
-  if (trigger.triggerType === "filesystem_event") return "Watching for folder changes";
-  return trigger.nextRunAt ?? "Pending calculation";
+  if (!trigger.enabled) return workflowCopy("paused");
+  if (trigger.triggerType === "startup") return workflowCopy("nextServiceStart");
+  if (trigger.triggerType === "filesystem_event") return workflowCopy("watchingFolderChanges");
+  return trigger.nextRunAt ?? workflowCopy("pendingCalculation");
 }
 
 function WorkflowAutomationPanel({
@@ -3835,24 +3858,24 @@ function WorkflowAutomationPanel({
     return leftOrder - rightOrder || left.id - right.id;
   });
   return (
-    <section className="border-b pb-5 pt-4" aria-label="Workflow automations">
+    <section className="border-b pb-5 pt-4" aria-label={workflowCopy("workflowAutomations")}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="text-sm font-semibold">Triggers</div>
-          <div className="text-xs text-muted-foreground">Automatic execution conditions for this workflow.</div>
+          <div className="text-sm font-semibold">{workflowCopy("triggers")}</div>
+          <div className="text-xs text-muted-foreground">{workflowCopy("triggerDescription")}</div>
         </div>
         {canManage && supportedTypes.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {supportedTypes.includes("startup") && !hasStartup && (
               <Button size="sm" variant="outline" onClick={() => onCreate("startup")}>
                 <Plus className="h-4 w-4" />
-                Run at startup
+                {workflowCopy("runAtStartup")}
               </Button>
             )}
             {supportedTypes.includes("schedule") && (definition.code !== "availability_watch" || !hasSchedule) && (
               <Button size="sm" variant="outline" onClick={() => onCreate("schedule")}>
                 <CalendarClock className="h-4 w-4" />
-                Add schedule
+                {workflowCopy("addSchedule")}
               </Button>
             )}
           </div>
@@ -3871,7 +3894,7 @@ function WorkflowAutomationPanel({
                   checked={trigger.enabled}
                   disabled={!canManage || !supportedTypes.includes(trigger.triggerType as AutomationTriggerType)}
                   onCheckedChange={(enabled) => void onToggle(trigger, enabled)}
-                  aria-label={`${trigger.enabled ? "Pause" : "Enable"} ${trigger.displayName}`}
+                  aria-label={`${trigger.enabled ? workflowCopy("pause") : workflowCopy("enable")} ${trigger.displayName}`}
                 />
                 <div className="min-w-0">
                   <div className="truncate text-sm font-medium">{trigger.displayName}</div>
@@ -3881,9 +3904,12 @@ function WorkflowAutomationPanel({
                 </div>
               </div>
               <div className="grid min-w-0 gap-1 text-xs sm:grid-cols-3 sm:gap-3">
-                <SummaryCell label="Runs" value={workflowTriggerCondition(trigger)} />
-                <SummaryCell label="Next" value={workflowTriggerNextRun(trigger)} />
-                <SummaryCell label="Last success" value={trigger.lastSuccessAt ?? "Never"} />
+                <SummaryCell label={workflowCopy("runsLabel")} value={workflowTriggerCondition(trigger)} />
+                <SummaryCell label={workflowCopy("next")} value={workflowTriggerNextRun(trigger)} />
+                <SummaryCell
+                  label={workflowCopy("lastSuccess")}
+                  value={trigger.lastSuccessAt ?? workflowCopy("never")}
+                />
               </div>
               {canManage && supportedTypes.includes(trigger.triggerType as AutomationTriggerType) && (
                 <Button
@@ -3898,7 +3924,7 @@ function WorkflowAutomationPanel({
               )}
               {trigger.lastErrorMessage && (
                 <div className="text-xs text-error-foreground md:col-start-2 md:col-end-4">
-                  Last error: {trigger.lastErrorMessage}
+                  {workflowCopy("lastError")}: {trigger.lastErrorMessage}
                 </div>
               )}
             </div>
@@ -3906,9 +3932,7 @@ function WorkflowAutomationPanel({
         </div>
       ) : (
         <div className="mt-3 py-3 text-sm text-muted-foreground">
-          {supportedTypes.length > 0
-            ? "No automatic triggers configured."
-            : "This workflow has no configurable automatic triggers."}
+          {supportedTypes.length > 0 ? workflowCopy("noAutomaticTriggers") : workflowCopy("noConfigurableTriggers")}
         </div>
       )}
     </section>
@@ -3938,7 +3962,7 @@ function WorkflowModal({
   onSaved: (definition: WorkflowDefinition) => void;
 }) {
   const [code, setCode] = useState(definition?.code ?? `custom_workflow_${Date.now().toString().slice(-5)}`);
-  const [displayName, setDisplayName] = useState(definition?.displayName ?? "New workflow");
+  const [displayName, setDisplayName] = useState(definition?.displayName ?? workflowCopy("newWorkflow"));
   const [description, setDescription] = useState(definition?.description ?? "");
   const [templateId, setTemplateID] = useState(workflowTemplates[1].id);
   const [nodes, setNodes] = useState<WorkflowNode[]>(
@@ -3963,7 +3987,7 @@ function WorkflowModal({
         : await api.createWorkflowDefinition(payload);
       onSaved(saved);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      setError(err instanceof Error ? err.message : workflowCopy("saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -3976,7 +4000,7 @@ function WorkflowModal({
       await api.deleteWorkflowDefinition(definition.id);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      setError(err instanceof Error ? err.message : workflowCopy("deleteFailed"));
     } finally {
       setSaving(false);
     }
@@ -3986,7 +4010,7 @@ function WorkflowModal({
     <Modal title={title} onClose={onClose}>
       <div className="grid gap-3">
         <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Code">
+          <Field label={workflowCopy("code")}>
             <input
               className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
               value={code}
@@ -3994,7 +4018,7 @@ function WorkflowModal({
               onChange={(event) => setCode(event.target.value)}
             />
           </Field>
-          <Field label="Name">
+          <Field label={workflowCopy("name")}>
             <input
               className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={displayName}
@@ -4003,7 +4027,7 @@ function WorkflowModal({
           </Field>
         </div>
         {!definition && (
-          <Field label="Template">
+          <Field label={workflowCopy("template")}>
             <select
               className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={templateId}
@@ -4023,7 +4047,7 @@ function WorkflowModal({
             </select>
           </Field>
         )}
-        <Field label="Description">
+        <Field label={workflowCopy("description")}>
           <textarea
             className="min-h-20 rounded-md border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
             value={description}
@@ -4032,13 +4056,13 @@ function WorkflowModal({
         </Field>
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-sm font-medium">Nodes</div>
+            <div className="text-sm font-medium">{workflowCopy("nodes")}</div>
             <div className="flex items-center gap-2">
               <select
                 className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                 value={insertPhase}
                 onChange={(event) => setInsertPhase(event.target.value)}
-                aria-label="Node phase to add"
+                aria-label={workflowCopy("nodePhaseToAdd")}
               >
                 {availableInsertPhases(nodeTypes).map((phase) => (
                   <option key={phase} value={phase}>
@@ -4054,7 +4078,7 @@ function WorkflowModal({
                 }
               >
                 <Plus className="h-4 w-4" />
-                Add node
+                {workflowCopy("addNode")}
               </Button>
             </div>
           </div>
@@ -4076,12 +4100,12 @@ function WorkflowModal({
           {definition && (
             <Button variant="outline" onClick={remove} disabled={saving}>
               <Trash2 className="h-4 w-4" />
-              Delete
+              {workflowCopy("delete")}
             </Button>
           )}
           <Button onClick={save} disabled={saving}>
             <Save className="h-4 w-4" />
-            {saving ? "Saving" : "Save"}
+            {saving ? workflowCopy("saving") : workflowCopy("save")}
           </Button>
         </div>
       </div>
@@ -4120,21 +4144,21 @@ function NodeModal({
       });
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      setError(err instanceof Error ? err.message : workflowCopy("saveFailed"));
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Modal title="Edit node" onClose={onClose}>
+    <Modal title={workflowCopy("editNode")} onClose={onClose}>
       <div className="space-y-3">
         <NodeInlineEditor node={node} nodeTypes={nodeTypes} onChange={(patch) => setNode({ ...node, ...patch })} />
         {error && <ErrorPanel error={error} />}
         <div className="flex justify-end">
           <Button onClick={save} disabled={saving}>
             <Save className="h-4 w-4" />
-            {saving ? "Saving" : "Save"}
+            {saving ? workflowCopy("saving") : workflowCopy("save")}
           </Button>
         </div>
       </div>
@@ -4169,7 +4193,8 @@ function TriggerModal({
     workflowSystemTriggerConfig(definition.code, trigger),
   );
   const [displayName, setDisplayName] = useState(
-    trigger?.displayName ?? (triggerType === "startup" ? "Run at startup" : "Scheduled workflow"),
+    trigger?.displayName ??
+      (triggerType === "startup" ? workflowCopy("runAtStartup") : workflowCopy("scheduledWorkflow")),
   );
   const [enabled, setEnabled] = useState(trigger?.enabled ?? true);
   const [intervalMinutes, setIntervalMinutes] = useState(() => {
@@ -4202,15 +4227,15 @@ function TriggerModal({
     ) ?? [];
   const systemConfigBlockers = workflowSystemTriggerConfigBlockers(definition.code, systemConfig);
   const automationBlockers = [
-    ...(dagDocument?.policy.requirePreview ? ["Disable Require preview in the workflow before automating it."] : []),
+    ...(dagDocument?.policy.requirePreview ? [workflowCopy("disableRequirePreview")] : []),
     ...(triggerType === "schedule" && (intervalMinutes < 5 || intervalMinutes > 10080)
-      ? ["Interval must be between 5 and 10080 minutes."]
+      ? [workflowCopy("intervalRange")]
       : []),
     ...(missingScheduledInputs.length > 0
-      ? [`Provide required inputs: ${missingScheduledInputs.map((input) => input.label).join(", ")}.`]
+      ? [workflowCopy("requiredInputs", { inputs: missingScheduledInputs.map((input) => input.label).join(", ") })]
       : []),
     ...(invalidScheduledInputs.length > 0
-      ? [`Fix invalid work codes in: ${invalidScheduledInputs.map((input) => input.label).join(", ")}.`]
+      ? [workflowCopy("invalidWorkCodes", { inputs: invalidScheduledInputs.map((input) => input.label).join(", ") })]
       : []),
     ...systemConfigBlockers,
   ];
@@ -4247,7 +4272,7 @@ function TriggerModal({
         : await api.createWorkflowTrigger(payload);
       onSaved(saved);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      setError(err instanceof Error ? err.message : workflowCopy("saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -4260,7 +4285,7 @@ function TriggerModal({
       await api.deleteWorkflowTrigger(trigger.id);
       onDeleted();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      setError(err instanceof Error ? err.message : workflowCopy("deleteFailed"));
     } finally {
       setSaving(false);
     }
@@ -4268,15 +4293,21 @@ function TriggerModal({
 
   return (
     <Modal
-      title={trigger ? "Edit trigger" : triggerType === "startup" ? "New startup trigger" : "New schedule"}
+      title={
+        trigger
+          ? workflowCopy("editTrigger")
+          : triggerType === "startup"
+            ? workflowCopy("newStartupTrigger")
+            : workflowCopy("newSchedule")
+      }
       onClose={onClose}
     >
       <div className="grid gap-3">
         <div className="grid gap-1 rounded-md border bg-muted/30 px-3 py-2">
-          <div className="text-xs text-muted-foreground">Workflow</div>
-          <div className="text-sm font-medium">{definition.displayName}</div>
+          <div className="text-xs text-muted-foreground">{workflowCopy("workflow")}</div>
+          <div className="text-sm font-medium">{localizedWorkflowDefinition(definition).displayName}</div>
         </div>
-        <Field label="Name">
+        <Field label={workflowCopy("name")}>
           <input
             className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
             value={displayName}
@@ -4286,7 +4317,7 @@ function TriggerModal({
         </Field>
         <div className="grid gap-3 md:grid-cols-2">
           {triggerType === "schedule" ? (
-            <Field label="Interval (minutes)">
+            <Field label={workflowCopy("intervalMinutes")}>
               <input
                 className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                 type="number"
@@ -4298,18 +4329,18 @@ function TriggerModal({
             </Field>
           ) : triggerType === "startup" ? (
             <div className="grid gap-1 rounded-md border bg-muted/30 px-3 py-2">
-              <div className="text-xs text-muted-foreground">Runs</div>
-              <div className="text-sm font-medium">When the application service starts</div>
+              <div className="text-xs text-muted-foreground">{workflowCopy("runsLabel")}</div>
+              <div className="text-sm font-medium">{workflowCopy("whenServiceStarts")}</div>
             </div>
           ) : (
             <div className="grid gap-1 rounded-md border bg-muted/30 px-3 py-2">
-              <div className="text-xs text-muted-foreground">Runs</div>
-              <div className="text-sm font-medium">After local library folders settle</div>
+              <div className="text-xs text-muted-foreground">{workflowCopy("runsLabel")}</div>
+              <div className="text-sm font-medium">{workflowCopy("afterFoldersSettle")}</div>
             </div>
           )}
           <div className="flex items-center gap-2 self-end pb-1 text-sm">
-            <Switch checked={enabled} onCheckedChange={setEnabled} aria-label="Enable trigger" />
-            <span>Enabled</span>
+            <Switch checked={enabled} onCheckedChange={setEnabled} aria-label={workflowCopy("enableTrigger")} />
+            <span>{workflowCopy("enabled")}</span>
           </div>
         </div>
         {dagDocument && dagDocument.inputs.length > 0 && (
@@ -4352,12 +4383,12 @@ function TriggerModal({
           {trigger && triggerType !== "filesystem_event" && (
             <Button variant="outline" onClick={remove} disabled={saving}>
               <Trash2 className="h-4 w-4" />
-              Delete
+              {workflowCopy("delete")}
             </Button>
           )}
           <Button onClick={save} disabled={saving || automationBlockers.length > 0 || !displayName.trim()}>
             <Save className="h-4 w-4" />
-            {saving ? "Saving" : "Save"}
+            {saving ? workflowCopy("saving") : workflowCopy("save")}
           </Button>
         </div>
       </div>
@@ -4425,16 +4456,16 @@ function workflowSystemTriggerConfigPayload(
 function workflowSystemTriggerConfigBlockers(definitionCode: string, value: SystemWorkflowTriggerConfig) {
   if (definitionCode === "remote_popular_collection") {
     return [
-      ...(value.sourceId <= 0 ? ["Select a remote source."] : []),
-      ...(value.action === "fetch" ? ["Automated remote collection supports Track only."] : []),
-      ...(value.limit <= 0 || value.limit > 100 ? ["Work limit must be between 1 and 100."] : []),
+      ...(value.sourceId <= 0 ? [workflowCopy("selectRemoteSource")] : []),
+      ...(value.action === "fetch" ? [workflowCopy("automatedTrackOnly")] : []),
+      ...(value.limit <= 0 || value.limit > 100 ? [workflowCopy("workLimitRange")] : []),
       ...workflowTagTemplateBlockers(value.tagNameTemplate, ["date", "remote_name", "source_code", "action"]),
     ];
   }
   if (definitionCode === "dlsite_popular_collection") {
     return [
       ...(value.period === "year" && (value.year < 2000 || value.year > new Date().getUTCFullYear())
-        ? [`Year must be between 2000 and ${new Date().getUTCFullYear()}.`]
+        ? [workflowCopy("yearRange", { year: new Date().getUTCFullYear() })]
         : []),
       ...workflowTagTemplateBlockers(value.tagNameTemplate, ["date", "period", "release_window", "year"]),
     ];
@@ -4443,13 +4474,13 @@ function workflowSystemTriggerConfigBlockers(definitionCode: string, value: Syst
 }
 
 function workflowTagTemplateBlockers(template: string, tokens: string[]) {
-  if (!template.trim()) return ["Tag template is required."];
+  if (!template.trim()) return [workflowCopy("tagTemplateRequired")];
   if ([...template].length > TAG_TEMPLATE_MAX_LENGTH)
-    return [`Tag template must be at most ${TAG_TEMPLATE_MAX_LENGTH} characters.`];
+    return [workflowCopy("tagTemplateMaxLength", { count: TAG_TEMPLATE_MAX_LENGTH })];
   const matches = template.match(/\{[a-z_]+\}/g) ?? [];
   const unsupported = matches.find((token) => !tokens.includes(token.slice(1, -1)));
-  if (unsupported) return [`Unsupported tag template token: ${unsupported}.`];
-  if (/[{}]/.test(template.replace(/\{[a-z_]+\}/g, ""))) return ["Tag template contains an invalid token."];
+  if (unsupported) return [workflowCopy("unsupportedTemplatePlaceholder", { placeholder: unsupported })];
+  if (/[{}]/.test(template.replace(/\{[a-z_]+\}/g, ""))) return [workflowCopy("invalidTemplatePlaceholder")];
   return [];
 }
 
@@ -4505,7 +4536,7 @@ function SystemWorkflowTriggerFields({
       return (
         <div className="grid gap-1.5 text-sm">
           <div id="local-scan-mode-label" className="font-medium">
-            Scan mode
+            {workflowCopy("scanMode")}
           </div>
           <div
             className="grid grid-cols-2 rounded-md border bg-muted/30 p-1"
@@ -4525,7 +4556,7 @@ function SystemWorkflowTriggerFields({
                   }`}
                   onClick={() => onChange({ ...value, scanMode })}
                 >
-                  {scanMode === "incremental" ? "Incremental" : "Full"}
+                  {scanMode === "incremental" ? workflowCopy("incremental") : workflowCopy("full")}
                 </button>
               );
             })}
@@ -4536,15 +4567,13 @@ function SystemWorkflowTriggerFields({
     return (
       <div className="flex items-center justify-between gap-4 border-t pt-3">
         <div>
-          <div className="text-sm font-medium">Follow-up run</div>
-          <div className="text-xs text-muted-foreground">
-            Queue an independent metadata sync after each scan completes.
-          </div>
+          <div className="text-sm font-medium">{workflowCopy("followUpRun")}</div>
+          <div className="text-xs text-muted-foreground">{workflowCopy("followUpEachDescription")}</div>
         </div>
         <Switch
           checked={value.followUpRun}
           onCheckedChange={(followUpRun) => onChange({ ...value, followUpRun })}
-          aria-label="Follow-up run"
+          aria-label={workflowCopy("followUpRun")}
         />
       </div>
     );
@@ -4560,7 +4589,7 @@ function SystemWorkflowTriggerFields({
     )[0];
     return (
       <div className="grid gap-3 border-t pt-3 md:grid-cols-2">
-        <Field label="Remote source">
+        <Field label={workflowCopy("remoteSource")}>
           <select
             className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
             value={value.sourceId}
@@ -4568,7 +4597,9 @@ function SystemWorkflowTriggerFields({
             onChange={(event) => onChange({ ...value, sourceId: Number(event.target.value) })}
           >
             {compatibleSources.length === 0 && (
-              <option value={0}>{loadingSources ? "Loading sources" : "No compatible source"}</option>
+              <option value={0}>
+                {loadingSources ? workflowCopy("loadingSources") : workflowCopy("noCompatibleSource")}
+              </option>
             )}
             {compatibleSources.map((source) => (
               <option key={source.id} value={source.id}>
@@ -4577,19 +4608,19 @@ function SystemWorkflowTriggerFields({
             ))}
           </select>
         </Field>
-        <Field label="Action">
+        <Field label={workflowCopy("action")}>
           <select
             className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
             value={value.action}
             onChange={(event) => onChange({ ...value, action: event.target.value === "fetch" ? "fetch" : "track" })}
           >
-            <option value="track">Track</option>
+            <option value="track">{workflowCopy("track")}</option>
             <option value="fetch" disabled>
-              Fetch (manual only)
+              {workflowCopy("fetchManualOnly")}
             </option>
           </select>
         </Field>
-        <Field label="Work limit">
+        <Field label={workflowCopy("workLimit")}>
           <select
             className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
             value={value.limit}
@@ -4597,7 +4628,7 @@ function SystemWorkflowTriggerFields({
           >
             {[10, 25, 50, 100].map((limit) => (
               <option key={limit} value={limit}>
-                {limit} works
+                {workflowCopy("worksCount", { count: limit })}
               </option>
             ))}
           </select>
@@ -4625,7 +4656,7 @@ function SystemWorkflowTriggerFields({
     )[0];
     return (
       <div className="grid gap-3 border-t pt-3 md:grid-cols-2">
-        <Field label="Ranking period">
+        <Field label={workflowCopy("rankingPeriod")}>
           <select
             className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
             value={value.period}
@@ -4638,14 +4669,14 @@ function SystemWorkflowTriggerFields({
               onChange({ ...value, period, tagNameTemplate });
             }}
           >
-            <option value="day">24 hours</option>
-            <option value="week">7 days</option>
-            <option value="month">30 days</option>
-            <option value="year">Annual</option>
+            <option value="day">{workflowCopy("period24Hours")}</option>
+            <option value="week">{workflowCopy("period7Days")}</option>
+            <option value="month">{workflowCopy("period30Days")}</option>
+            <option value="year">{workflowCopy("periodAnnual")}</option>
           </select>
         </Field>
         {value.period === "year" ? (
-          <Field label="Ranking year">
+          <Field label={workflowCopy("rankingYear")}>
             <input
               className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
               type="number"
@@ -4656,14 +4687,14 @@ function SystemWorkflowTriggerFields({
             />
           </Field>
         ) : (
-          <Field label="Release window">
+          <Field label={workflowCopy("releaseWindow")}>
             <select
               className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={value.releaseWindow}
               onChange={(event) => onChange({ ...value, releaseWindow: event.target.value === "30d" ? "30d" : "" })}
             >
-              <option value="30d">Released in 30 days</option>
-              <option value="">All releases</option>
+              <option value="30d">{workflowCopy("releasedIn30Days")}</option>
+              <option value="">{workflowCopy("allReleases")}</option>
             </select>
           </Field>
         )}
@@ -4721,7 +4752,7 @@ function TagTemplateField({
         <div className="flex items-center justify-between gap-2 font-medium">
           <label className="flex items-center gap-1.5" htmlFor={id}>
             <Tag className="h-3.5 w-3.5" />
-            Tag template
+            {workflowCopy("tagTemplate")}
           </label>
           <Button
             type="button"
@@ -4730,8 +4761,8 @@ function TagTemplateField({
             className="h-7 w-7"
             disabled={value === defaultValue}
             onClick={() => onChange(defaultValue)}
-            title="Reset tag template"
-            aria-label="Reset tag template"
+            title={workflowCopy("resetTagTemplate")}
+            aria-label={workflowCopy("resetTagTemplate")}
           >
             <RotateCcw className="h-3.5 w-3.5" />
           </Button>
@@ -4748,7 +4779,7 @@ function TagTemplateField({
       </div>
 
       <div className="grid gap-1.5">
-        <div className="text-xs font-medium text-muted-foreground">Available variables</div>
+        <div className="text-xs font-medium text-muted-foreground">{workflowCopy("availableVariables")}</div>
         <div className="divide-y rounded-md border">
           {tokens.map((token) => (
             <button
@@ -4756,7 +4787,7 @@ function TagTemplateField({
               type="button"
               className="grid w-full min-w-0 gap-0.5 px-2.5 py-2 text-left hover:bg-muted/50 sm:grid-cols-[minmax(135px,0.8fr)_minmax(0,1.2fr)_minmax(90px,0.7fr)] sm:items-center sm:gap-3"
               onClick={() => insertToken(token.name)}
-              title={`Insert {${token.name}}`}
+              title={workflowCopy("insertTemplatePlaceholder", { placeholder: `{${token.name}}` })}
             >
               <code className="text-xs font-semibold text-primary">{`{${token.name}}`}</code>
               <span className="text-xs text-muted-foreground">{token.description}</span>
@@ -4770,7 +4801,7 @@ function TagTemplateField({
 
       <div className="grid gap-1 rounded-md bg-muted/35 px-3 py-2" aria-live="polite">
         <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-          <span>Preview</span>
+          <span>{workflowCopy("preview")}</span>
           <span>
             {Math.min(preview.renderedLength, TAG_NAME_MAX_LENGTH)}/{TAG_NAME_MAX_LENGTH}
           </span>
@@ -4778,7 +4809,7 @@ function TagTemplateField({
         <code className="break-all text-xs text-foreground">{preview.value || "-"}</code>
         {preview.truncated && (
           <span className="text-xs text-warning-foreground">
-            The rendered tag exceeds {TAG_NAME_MAX_LENGTH} characters and will be truncated.
+            {workflowCopy("tagTemplateTruncated", { count: TAG_NAME_MAX_LENGTH })}
           </span>
         )}
       </div>
@@ -4886,13 +4917,13 @@ function NodeInlineEditor({
     try {
       const parsed = JSON.parse(configDraft);
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        setConfigError("Config must be a JSON object.");
+        setConfigError(workflowCopy("configMustJson"));
         return;
       }
       setConfigError("");
       onChange({ config: parsed as Record<string, unknown> });
     } catch {
-      setConfigError("Config JSON is invalid.");
+      setConfigError(workflowCopy("configJsonInvalid"));
     }
   };
 
@@ -4923,7 +4954,7 @@ function NodeInlineEditor({
             );
           })}
           {visibleTypes.some((type) => !phaseOrder.includes(type.phase as (typeof phaseOrder)[number])) && (
-            <optgroup label="other">
+            <optgroup label={workflowCopy("other")}>
               {visibleTypes
                 .filter((type) => !phaseOrder.includes(type.phase as (typeof phaseOrder)[number]))
                 .map((option) => (
@@ -4936,12 +4967,12 @@ function NodeInlineEditor({
         </select>
         <input
           className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-          placeholder="Display name"
+          placeholder={workflowCopy("displayName")}
           value={node.displayName ?? ""}
           onChange={(event) => onChange({ displayName: event.target.value })}
         />
         {onRemove && (
-          <Button size="icon" variant="outline" aria-label="Remove node" onClick={onRemove}>
+          <Button size="icon" variant="outline" aria-label={workflowCopy("removeNode")} onClick={onRemove}>
             <Trash2 className="h-4 w-4" />
           </Button>
         )}
@@ -4965,7 +4996,7 @@ function NodeInlineEditor({
               config={node.config ?? {}}
               onChange={(config) => onChange({ config })}
             />
-            <Field label="Config JSON">
+            <Field label={workflowCopy("configJson")}>
               <textarea
                 className="min-h-24 rounded-md border bg-card px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring"
                 value={configDraft}
@@ -4993,7 +5024,7 @@ function ConfigFields({
   if (fields.length === 0) {
     return (
       <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-        No structured config fields.
+        {workflowCopy("noStructuredConfigFields")}
       </div>
     );
   }
@@ -5010,7 +5041,7 @@ function ConfigFields({
 
   return (
     <div className="grid gap-2 rounded-md border bg-background p-3">
-      <div className="text-xs font-medium text-muted-foreground">Config fields</div>
+      <div className="text-xs font-medium text-muted-foreground">{workflowCopy("configFields")}</div>
       <div className="grid gap-2 sm:grid-cols-2">
         {fields.map((field) => {
           const kind = configFieldKind(field);
@@ -5025,7 +5056,7 @@ function ConfigFields({
                 <Switch
                   checked={Boolean(value)}
                   onCheckedChange={(checked) => updateField(field, checked)}
-                  aria-label={`Toggle ${field}`}
+                  aria-label={workflowCopy("toggleField", { field })}
                 />
               </div>
             );
@@ -5059,7 +5090,7 @@ function WorkflowHints({
   if (hints.length === 0) {
     return compact ? null : (
       <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
-        Workflow shape looks consistent.
+        {workflowCopy("workflowShapeConsistent")}
       </div>
     );
   }
@@ -5087,7 +5118,7 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
       >
         <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-card px-4 py-3">
           <div className="font-semibold">{title}</div>
-          <Button size="icon" variant="ghost" aria-label="Close" onClick={onClose}>
+          <Button size="icon" variant="ghost" aria-label={workflowCopy("close")} onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -5156,11 +5187,19 @@ function RunMetrics({ run }: { run: WorkflowRun }) {
     <div className="grid gap-2 sm:grid-cols-3">
       <Metric
         icon={<ListChecks className="h-3.5 w-3.5" />}
-        label="nodes"
+        label={workflowCopy("nodes")}
         value={`${run.completedNodeRuns}/${run.nodeRunCount}`}
       />
-      <Metric icon={<Database className="h-3.5 w-3.5" />} label="jobs" value={`${run.completedJobs}/${run.jobCount}`} />
-      <Metric icon={<Activity className="h-3.5 w-3.5" />} label="review" value={`${pendingReviewCount(run)}`} />
+      <Metric
+        icon={<Database className="h-3.5 w-3.5" />}
+        label={workflowCopy("jobs")}
+        value={`${run.completedJobs}/${run.jobCount}`}
+      />
+      <Metric
+        icon={<Activity className="h-3.5 w-3.5" />}
+        label={workflowCopy("review")}
+        value={`${pendingReviewCount(run)}`}
+      />
     </div>
   );
 }
@@ -5212,7 +5251,7 @@ function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () =>
               else void cancel();
             }}
           >
-            Cancel
+            {workflowCopy("cancel")}
           </Button>
         )}
         {retryable && (
@@ -5224,7 +5263,7 @@ function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () =>
               await onRunAction();
             }}
           >
-            Retry
+            {workflowCopy("retry")}
           </Button>
         )}
       </div>
@@ -5239,28 +5278,28 @@ function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () =>
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 id={`cancel-run-${run.id}-title`} className="font-semibold">
-                  Cancel deletion workflow?
+                  {workflowCopy("cancelDeletionTitle")}
                 </h3>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Cancelling will not restore files already deleted. Completed deletions cannot be undone; cancellation
-                  only stops deletions that have not started.
-                </p>
+                <p className="mt-2 text-sm text-muted-foreground">{workflowCopy("cancelDeletionDescription")}</p>
                 {run.workflowCode === "media_cleanup_forget_work" && (
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    If the forget step has not started, it will be skipped.
-                  </p>
+                  <p className="mt-2 text-sm text-muted-foreground">{workflowCopy("forgetStepSkipped")}</p>
                 )}
               </div>
-              <Button size="icon" variant="ghost" aria-label="Close" onClick={() => setConfirmingCancel(false)}>
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label={workflowCopy("close")}
+                onClick={() => setConfirmingCancel(false)}
+              >
                 <X className="h-4 w-4" />
               </Button>
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setConfirmingCancel(false)}>
-                Keep running
+                {workflowCopy("keepRunning")}
               </Button>
               <Button variant="destructive" onClick={() => void cancel()}>
-                Cancel workflow
+                {workflowCopy("cancelWorkflow")}
               </Button>
             </div>
           </div>

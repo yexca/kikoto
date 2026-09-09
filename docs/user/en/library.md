@@ -1,4 +1,5 @@
 # Library
+[English](../en/library.md) · [简体中文](../zh-Hans/library.md) · [繁體中文](../zh-Hant/library.md) · [日本語](../ja/library.md) · [한국어](../ko/library.md)
 
 The Library is the main browsing surface for works.
 
@@ -145,4 +146,4 @@ tracked, cache, and remote facts all point back to the same work model.
 
 - [Work detail](work-detail.md)
 - [Sources](sources.md)
-- [Core boundaries](../architecture/core-boundaries.md)
+- [Core boundaries](../../architecture/core-boundaries.md)

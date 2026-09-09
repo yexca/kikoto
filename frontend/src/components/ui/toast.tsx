@@ -1,9 +1,11 @@
 import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/tailwindClassNames";
 import { ApiError } from "@/lib/api";
 import { LOGIN_REQUEST_EVENT } from "@/app/events";
+import i18n from "@/i18n";
 
 export type ToastKind = "success" | "info" | "warning" | "error";
 
@@ -85,16 +87,39 @@ export function toastFromError(error: unknown, fallback: string): ToastInput {
   if (error instanceof ApiError && error.status === 401) {
     return {
       kind: "warning",
-      message: "Please sign in to use this feature.",
-      actionLabel: "Sign in",
+      message: i18n.t("errors.authenticationRequired"),
+      actionLabel: i18n.t("account.signIn"),
       onAction: () => window.dispatchEvent(new Event(LOGIN_REQUEST_EVENT)),
     };
   }
-  if (error instanceof ApiError && error.code === "database_busy") {
-    return { kind: "warning", message: "The database is busy. Please retry in a moment." };
+  if (error instanceof ApiError) {
+    const messageKey = apiErrorMessageKeys[error.code];
+    if (messageKey) {
+      return {
+        kind: error.retryable || error.code === "database_busy" ? "warning" : "error",
+        message: i18n.t(messageKey),
+      };
+    }
   }
-  return { kind: "error", message: error instanceof Error ? error.message : fallback };
+  return { kind: "error", message: fallback };
 }
+
+// Public errors use the stable API classification; diagnostic messages stay in
+// the existing API diagnostics store instead of leaking into translated UI copy.
+const apiErrorMessageKeys: Record<string, string> = {
+  database_busy: "errorFeedback.databaseBusy",
+  invalid_request: "errorFeedback.invalidRequest",
+  invalid_ui_locale: "errors.invalidLanguage",
+  authentication_required: "errors.authenticationRequired",
+  permission_denied: "errors.permissionDenied",
+  demo_read_only: "permissions.demoReadOnly",
+  not_found: "errors.notFound",
+  conflict: "errorFeedback.conflict",
+  rate_limited: "errorFeedback.rateLimited",
+  upstream_unavailable: "errors.unavailable",
+  service_unavailable: "errors.unavailable",
+  internal_error: "errorFeedback.internalError",
+};
 
 function ToastViewport({ items, onClose }: { items: ToastItem[]; onClose: (id: number) => void }) {
   const top = useToastTopOffset(items.length > 0);
@@ -114,6 +139,7 @@ function ToastViewport({ items, onClose }: { items: ToastItem[]; onClose: (id: n
 }
 
 function ToastNotice({ toast, onClose }: { toast: ToastItem; onClose: () => void }) {
+  const { t } = useTranslation();
   const Icon = toast.kind === "error" ? AlertCircle : toast.kind === "success" ? CheckCircle2 : Info;
   return (
     <div className={cn("relative overflow-hidden rounded-lg border bg-card shadow-xl", toastTone(toast.kind))}>
@@ -133,7 +159,7 @@ function ToastNotice({ toast, onClose }: { toast: ToastItem; onClose: () => void
         )}
         <button
           className="absolute right-2 top-2 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-          aria-label="Dismiss notification"
+          aria-label={t("errorFeedback.dismiss")}
           onClick={onClose}
         >
           <X className="h-3.5 w-3.5" />

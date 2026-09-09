@@ -9,6 +9,10 @@ Deployment and runtime hardening guidance is documented in
 For a factual description of stored data and outbound data flows, see
 [PRIVACY.md](PRIVACY.md).
 
+The [security documentation map](docs/security/index.md) explains which
+document to use for vulnerability reporting, deployment, development, and
+privacy questions.
+
 ## Supported Versions
 
 Security fixes target the latest tagged release.

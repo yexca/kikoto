@@ -32,9 +32,9 @@ export function ThemePalettePicker({
                 ? "border-primary bg-primary/10 text-primary ring-1 ring-primary/20"
                 : "bg-background text-muted-foreground hover:text-foreground",
             )}
-            aria-label={option.label}
+            aria-label={t(`appearance.palette.${option.value}`)}
             aria-pressed={selected}
-            title={compact ? option.label : undefined}
+            title={compact ? t(`appearance.palette.${option.value}`) : undefined}
             onClick={() => onChange(option.value)}
           >
             <span
@@ -43,9 +43,9 @@ export function ThemePalettePicker({
               aria-hidden="true"
             />
             {compact ? (
-              <span className="sr-only">{option.label}</span>
+              <span className="sr-only">{t(`appearance.palette.${option.value}`)}</span>
             ) : (
-              <span className="truncate">{option.label}</span>
+              <span className="truncate">{t(`appearance.palette.${option.value}`)}</span>
             )}
           </button>
         );
