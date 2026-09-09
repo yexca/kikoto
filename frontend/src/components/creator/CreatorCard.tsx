@@ -1,5 +1,6 @@
 import { Heart, ImageOff } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { UserTagRow, type UserTag } from "@/components/UserTagRow";
 import { Badge } from "@/components/ui/badge";
@@ -61,6 +62,7 @@ export function CreatorCard({
   onFavoriteToggle: () => void;
   onTagsSave: (tags: string[]) => Promise<void> | void;
 }) {
+  const { t } = useTranslation();
   const [imageFailed, setImageFailed] = useState(false);
   useEffect(() => setImageFailed(false), [latestWork?.coverUrl]);
   const visibleAliases = showAliases ? aliases.filter((alias) => alias && alias !== name) : [];
@@ -74,8 +76,8 @@ export function CreatorCard({
           type="button"
           className="group relative aspect-[4/3] w-28 shrink-0 self-start overflow-hidden rounded-md border bg-muted sm:w-[7.5rem]"
           onClick={onOpen}
-          aria-label={`Open ${name}`}
-          title={`Open ${name}`}
+          aria-label={t("creator.open", { name })}
+          title={t("creator.open", { name })}
         >
           {latestWork?.coverUrl && !imageFailed ? (
             <img
@@ -88,7 +90,7 @@ export function CreatorCard({
           ) : (
             <span className="flex h-full flex-col items-center justify-center gap-1 bg-secondary px-2 text-secondary-foreground">
               <ImageOff className="h-5 w-5" />
-              <span className="text-[11px] font-medium">No cover</span>
+              <span className="text-[11px] font-medium">{t("creator.noCover")}</span>
             </span>
           )}
         </button>
@@ -98,7 +100,9 @@ export function CreatorCard({
             <button type="button" className="min-w-0 flex-1 text-left" onClick={onOpen}>
               <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                 {identityLabel && <Badge variant="outline">{identityLabel}</Badge>}
-                {latestWork && <span className="truncate">Latest {latestWork.primaryCode}</span>}
+                {latestWork && (
+                  <span className="truncate">{t("creator.latest", { code: latestWork.primaryCode })}</span>
+                )}
               </div>
               <h3 className="mt-1 line-clamp-2 text-base font-semibold leading-5">{name}</h3>
               {visibleAliases.length > 0 && (
@@ -112,8 +116,8 @@ export function CreatorCard({
               variant={favorite ? "default" : "outline"}
               size="icon"
               className="h-8 w-8 shrink-0"
-              aria-label={favorite ? "Remove favorite" : "Add favorite"}
-              title={favorite ? "Remove favorite" : "Add favorite"}
+              aria-label={favorite ? t("creator.removeFavorite") : t("creator.addFavorite")}
+              title={favorite ? t("creator.removeFavorite") : t("creator.addFavorite")}
               onClick={onFavoriteToggle}
             >
               <Heart className={`h-4 w-4 ${favorite ? "fill-current" : ""}`} />
@@ -126,15 +130,15 @@ export function CreatorCard({
             <CatalogSyncBadge state={syncState} />
             {availabilitySummary ? (
               <Badge variant={availabilitySummary.available > 0 ? "success" : "warning"} className="tabular-nums">
-                Available {availabilitySummary.available}/{availabilitySummary.total}
+                {t("creator.available", availabilitySummary)}
               </Badge>
             ) : availabilityCounts ? (
               <>
                 <Badge variant={availabilityCounts.local > 0 ? "secondary" : "outline"} className="tabular-nums">
-                  Local {availabilityCounts.local}
+                  {t("creator.local", { count: availabilityCounts.local })}
                 </Badge>
                 <Badge variant="outline" className="tabular-nums">
-                  Remote {availabilityCounts.remote}
+                  {t("creator.remote", { count: availabilityCounts.remote })}
                 </Badge>
               </>
             ) : (
@@ -147,10 +151,14 @@ export function CreatorCard({
                     </Badge>
                   ))
                 ) : (
-                  <Badge variant="warning">Unavailable</Badge>
+                  <Badge variant="warning">{t("creator.unavailable")}</Badge>
                 )}
-                {showUnavailableCount && <Badge variant="warning">{unavailableCount} unavailable</Badge>}
-                <span className="ml-auto whitespace-nowrap tabular-nums">{workCount} works</span>
+                {showUnavailableCount && (
+                  <Badge variant="warning">{t("creator.unavailableCount", { count: unavailableCount })}</Badge>
+                )}
+                <span className="ml-auto whitespace-nowrap tabular-nums">
+                  {t("creator.works", { count: workCount })}
+                </span>
               </>
             )}
           </div>
@@ -176,9 +184,11 @@ export function CreatorCardSkeleton() {
   );
 }
 
-export function CreatorCollectionSkeleton({ label = "Loading creators" }: { label?: string }) {
+export function CreatorCollectionSkeleton({ label }: { label?: string }) {
+  const { t } = useTranslation();
+  const resolvedLabel = label ?? t("creator.loading");
   return (
-    <div className={creatorCollectionClassName} role="status" aria-label={label} aria-busy="true">
+    <div className={creatorCollectionClassName} role="status" aria-label={resolvedLabel} aria-busy="true">
       <CreatorCardSkeleton />
       <div className="hidden lg:block" aria-hidden="true">
         <CreatorCardSkeleton />

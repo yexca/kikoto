@@ -66,4 +66,19 @@ describe("translation resources", () => {
       expect(keyPaths(resource.translation).sort()).toEqual(englishKeys);
     }
   });
+
+  it("keeps interpolation variables aligned across locales", () => {
+    const values = (value: unknown, prefix = ""): Record<string, string[]> => {
+      if (!value || typeof value !== "object") return {};
+      return Object.entries(value).reduce<Record<string, string[]>>((result, [key, child]) => {
+        const path = prefix ? `${prefix}.${key}` : key;
+        if (typeof child === "string") {
+          result[path] = [...child.matchAll(/\{\{\s*([\w-]+)/g)].map((match) => match[1]).sort();
+        } else Object.assign(result, values(child, path));
+        return result;
+      }, {});
+    };
+    const englishValues = values(resources.en.translation);
+    for (const resource of Object.values(resources)) expect(values(resource.translation)).toEqual(englishValues);
+  });
 });

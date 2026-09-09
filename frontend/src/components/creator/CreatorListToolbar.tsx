@@ -5,6 +5,7 @@ import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
+import { useTranslation } from "react-i18next";
 
 export type CreatorListToolbarFilterOption<Value extends string> = {
   value: Value;
@@ -36,6 +37,7 @@ export function CreatorListToolbar<FilterValue extends string>({
   onFilterChange: (value: FilterValue) => void;
   onPageSizeChange: (value: number) => void;
 }) {
+  const { t } = useTranslation();
   const mobileNavigationLayout = useMobileNavigationLayout();
   const [mobileSearchOpen, setMobileSearchOpen] = useState(() => Boolean(query.trim()));
   const mobileSearchInputRef = useRef<HTMLInputElement | null>(null);
@@ -72,7 +74,7 @@ export function CreatorListToolbar<FilterValue extends string>({
             type="button"
             className="text-muted-foreground hover:text-foreground"
             onClick={() => onQueryChange("")}
-            aria-label="Clear search"
+            aria-label={t("collection.clearSearch")}
           >
             <X className="h-4 w-4" />
           </button>
@@ -83,10 +85,10 @@ export function CreatorListToolbar<FilterValue extends string>({
           <CreatorListToolbarIconButton
             title={
               query.trim()
-                ? `${label} search is active`
+                ? t("collection.searchActive", { label })
                 : mobileSearchOpen
-                  ? `Hide ${label.toLowerCase()} search`
-                  : `Search ${label.toLowerCase()}`
+                  ? t("collection.hideSearch", { label })
+                  : t("collection.search", { label })
             }
             disabled={Boolean(query.trim())}
             onClick={() => {
@@ -151,9 +153,10 @@ function CreatorListFilterPicker<FilterValue extends string>({
   options: readonly CreatorListToolbarFilterOption<FilterValue>[];
   onChange: (value: FilterValue) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
-  const selectedLabel = options.find((option) => option.value === value)?.label ?? "Filter";
+  const selectedLabel = options.find((option) => option.value === value)?.label ?? t("collection.filter");
   const active = value !== defaultValue;
 
   return (
@@ -171,10 +174,10 @@ function CreatorListFilterPicker<FilterValue extends string>({
         onOpenChange={setOpen}
         className="w-[min(13rem,calc(100vw-1.5rem))] p-1 text-sm"
       >
-        <div role="menu" aria-label={`${label} filters`}>
+        <div role="menu" aria-label={t("collection.filters", { label })}>
           <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground">
             <Filter className="h-4 w-4" />
-            <span>Filter</span>
+            <span>{t("collection.filter")}</span>
           </div>
           {options.map((option) => (
             <button

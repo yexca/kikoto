@@ -4,9 +4,10 @@ import {
   workCollectionStyle,
   type WorkCollectionColumnSetting,
 } from "@/components/work-collection/WorkCollectionLayout";
+import { useTranslation } from "react-i18next";
 
 export function WorkCollectionLoadingState({
-  label = "Loading works",
+  label,
   mobileColumns = "auto",
   desktopColumns = "auto",
 }: {
@@ -14,12 +15,14 @@ export function WorkCollectionLoadingState({
   mobileColumns?: WorkCollectionColumnSetting;
   desktopColumns?: WorkCollectionColumnSetting;
 }) {
+  const { t } = useTranslation();
+  const resolvedLabel = label ?? t("collection.loadingWorks");
   return (
     <div
       className={`${workCollectionClassName()} min-h-72`}
       style={workCollectionStyle(mobileColumns, desktopColumns)}
       role="status"
-      aria-label={label}
+      aria-label={resolvedLabel}
       aria-busy="true"
     >
       <Card className="overflow-hidden" aria-hidden="true">

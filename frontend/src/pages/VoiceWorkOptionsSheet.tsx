@@ -4,22 +4,9 @@ import { useEffect, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import type { WorkCollectionColumnSetting } from "@/components/work-collection/WorkCollectionLayout";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
+import { useTranslation } from "react-i18next";
 
 export type VoiceWorkFilter = "all" | "available" | "local" | "remote" | "missing";
-
-const filterOptions: { value: VoiceWorkFilter; label: string }[] = [
-  { value: "all", label: "All works" },
-  { value: "available", label: "Available" },
-  { value: "local", label: "Local" },
-  { value: "remote", label: "Remote" },
-  { value: "missing", label: "Missing" },
-];
-
-const columnOptions: { value: WorkCollectionColumnSetting; label: string; ariaLabel: string }[] = [
-  { value: "auto", label: "Auto", ariaLabel: "Automatic columns" },
-  { value: 1, label: "1", ariaLabel: "1 column" },
-  { value: 2, label: "2", ariaLabel: "2 columns" },
-];
 
 export function VoiceWorkOptionsSheet({
   open,
@@ -50,6 +37,7 @@ export function VoiceWorkOptionsSheet({
   selectionMode: boolean;
   onSelectWorks: () => void;
 }) {
+  const { t } = useTranslation();
   useEffect(() => {
     if (!open) return;
     const closeWithEscape = (event: KeyboardEvent) => {
@@ -60,6 +48,19 @@ export function VoiceWorkOptionsSheet({
   }, [onClose, open]);
 
   if (!open) return null;
+
+  const filterOptions: { value: VoiceWorkFilter; label: string }[] = [
+    { value: "all", label: t("detailActions.allWorks") },
+    { value: "available", label: t("content.available") },
+    { value: "local", label: t("detailActions.local") },
+    { value: "remote", label: t("detailActions.remote") },
+    { value: "missing", label: t("detailActions.missing") },
+  ];
+  const columnOptions: { value: WorkCollectionColumnSetting; label: string; ariaLabel: string }[] = [
+    { value: "auto", label: t("collection.auto"), ariaLabel: t("collection.automaticColumns") },
+    { value: 1, label: "1", ariaLabel: t("collection.column", { count: 1 }) },
+    { value: 2, label: "2", ariaLabel: t("collection.column", { count: 2 }) },
+  ];
 
   return (
     <div
@@ -78,17 +79,17 @@ export function VoiceWorkOptionsSheet({
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 id="voice-work-options-title" className="text-base font-semibold">
-              Voice work options
+              {t("sheets.voiceWorkOptions")}
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">Filter and choose how works are arranged.</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t("sheets.catalogOptionsDescription")}</p>
           </div>
-          <Button variant="ghost" size="icon" aria-label="Close voice work options" onClick={onClose}>
+          <Button variant="ghost" size="icon" aria-label={t("sheets.closeCatalogOptions")} onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>
 
         <fieldset className="mt-4 space-y-2">
-          <legend className="text-sm font-medium">Search</legend>
+          <legend className="text-sm font-medium">{t("sheets.search")}</legend>
           <div className="flex min-h-11 items-center gap-2 rounded-md border bg-background px-3">
             <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <input
@@ -96,16 +97,16 @@ export function VoiceWorkOptionsSheet({
               value={query}
               onKeyDown={dismissKeyboardOnEnter}
               onChange={(event) => onQueryChange(event.target.value)}
-              placeholder="Search voice works"
-              aria-label="Search voice works"
+              placeholder={t("sheets.searchVoiceWorks", { defaultValue: "Search voice works" })}
+              aria-label={t("sheets.searchVoiceWorks", { defaultValue: "Search voice works" })}
             />
             {query.trim() && (
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 shrink-0"
-                aria-label="Clear voice work search"
-                title="Clear voice work search"
+                aria-label={t("sheets.clearVoiceWorkSearch", { defaultValue: "Clear voice work search" })}
+                title={t("sheets.clearVoiceWorkSearch", { defaultValue: "Clear voice work search" })}
                 onClick={() => onQueryChange("")}
               >
                 <X className="h-4 w-4" />
@@ -115,8 +116,8 @@ export function VoiceWorkOptionsSheet({
         </fieldset>
 
         <fieldset className="mt-4 space-y-2">
-          <legend className="text-sm font-medium">Availability</legend>
-          <div className="grid grid-cols-2 gap-2" role="group" aria-label="Voice work availability">
+          <legend className="text-sm font-medium">{t("sheets.availability")}</legend>
+          <div className="grid grid-cols-2 gap-2" role="group" aria-label={t("sheets.voiceWorkAvailability")}>
             {filterOptions.map((option) => (
               <OptionButton
                 key={option.value}
@@ -129,8 +130,8 @@ export function VoiceWorkOptionsSheet({
         </fieldset>
 
         <fieldset className="mt-4 space-y-2">
-          <legend className="text-sm font-medium">Columns</legend>
-          <div className="grid grid-cols-3 gap-2" role="group" aria-label="Mobile voice work columns">
+          <legend className="text-sm font-medium">{t("sheets.columns")}</legend>
+          <div className="grid grid-cols-3 gap-2" role="group" aria-label={t("sheets.mobileVoiceWorkColumns")}>
             {columnOptions.map((option) => (
               <OptionButton
                 key={String(option.value)}
@@ -147,14 +148,18 @@ export function VoiceWorkOptionsSheet({
         <fieldset className="mt-4 space-y-2">
           <legend className="flex items-center gap-2 text-sm font-medium">
             <ListMusic className="h-4 w-4" aria-hidden="true" />
-            Per page
+            {t("sheets.perPage")}
           </legend>
-          <div className="grid grid-cols-2 gap-2" role="group" aria-label="Voice work page size">
+          <div
+            className="grid grid-cols-2 gap-2"
+            role="group"
+            aria-label={t("sheets.voiceWorkPageSize", { defaultValue: "Voice work page size" })}
+          >
             {pageSizeOptions.map((option) => (
               <OptionButton
                 key={option}
                 active={pageSize === option}
-                label={`${option} per page`}
+                label={t("sheets.perPageOption", { value: option })}
                 onClick={() => onPageSizeChange(option)}
               />
             ))}
@@ -163,7 +168,7 @@ export function VoiceWorkOptionsSheet({
 
         <Button className="mt-4 w-full" variant={selectionMode ? "default" : "outline"} onClick={onSelectWorks}>
           <Check className="h-4 w-4" />
-          {selectionMode ? "Exit selection mode" : "Select works"}
+          {selectionMode ? t("sheets.exitSelectionMode") : t("sheets.selectWorks")}
         </Button>
       </div>
     </div>

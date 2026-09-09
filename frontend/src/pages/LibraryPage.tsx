@@ -790,7 +790,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
         if (requestSeq !== libraryRequestSeq.current) return;
-        setLibraryLoadError(error instanceof Error ? error.message : "Library request failed.");
+        setLibraryLoadError(error instanceof Error ? error.message : t("library.couldNotLoad"));
         setOptimisticLibrarySearchClauses(null);
         pendingResultsScroll.current = false;
       })
@@ -1207,7 +1207,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       },
       {
         returnTo: libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState),
-        returnLabel: "Back to library",
+        returnLabel: t("nav.library"),
         workPreview: work,
       },
     );
@@ -1230,7 +1230,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             ? {
                 ...current,
                 loading: false,
-                error: error instanceof Error ? error.message : "Recommendation explanation failed.",
+                error: error instanceof Error ? error.message : t("errors.unavailable"),
               }
             : current,
         );
@@ -1251,7 +1251,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         work.primaryCode,
         code,
         libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState),
-        "Back to library",
+        t("nav.library"),
         preview,
       );
       setSelectedWorkPreview(preview);
@@ -1264,7 +1264,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       source.id,
       code,
       libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState),
-      "Back to library",
+      t("nav.library"),
       preview,
     );
     setSelectedCode(codeFromLocation(window.location.pathname, window.location.search));
@@ -1345,7 +1345,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         recordWorkRecommendationEvent(work, status === "paused" ? "paused_mark" : "positive_mark");
       }
     } catch (error) {
-      toast.notify(toastFromError(error, "Mark update failed."));
+      toast.notify(toastFromError(error, t("errors.unavailable")));
     }
   };
 
@@ -1357,11 +1357,14 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     try {
       await api.untrackWorkSource(ownerWorkID, sourceID);
       toast.success(
-        `Untracked ${work.primaryCode} from ${source.fileSourceName || source.fileSourceCode || "the source"}.`,
+        i18n.t("libraryDetail.untrackedFromSource", {
+          code: work.primaryCode,
+          source: source.fileSourceName || source.fileSourceCode || i18n.t("libraryDetail.sourceInfo"),
+        }),
       );
       await refreshCurrentWorksPage();
     } catch (error) {
-      toast.notify(toastFromError(error, "Untrack failed."));
+      toast.notify(toastFromError(error, t("errors.unavailable")));
     } finally {
       setIsUntracking(false);
     }
@@ -1405,7 +1408,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       })
       .catch((error) => {
         if (requestSeq !== libraryRequestSeq.current) return;
-        setLibraryLoadError(error instanceof Error ? error.message : "Library request failed.");
+        setLibraryLoadError(error instanceof Error ? error.message : t("library.couldNotLoad"));
         setOptimisticLibrarySearchClauses(null);
         pendingResultsScroll.current = false;
       })
@@ -1612,7 +1615,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       return (
         <NotFoundPage
           title={t("library.workNotFound")}
-          message={`${selectedCode} is not available in the current library or configured sources.`}
+          message={t("library.workUnavailableInLibrary", { code: selectedCode })}
           onBack={backToLibrary}
           onOpenLibrary={openLibraryHome}
         />
@@ -1740,7 +1743,8 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     <WorkCollectionPagination {...localPaginationProps} placement="top" compactMobile compactTop />
   );
   const browseRefreshing = activeTab.kind === "source" ? isRemoteLoading && remoteResult !== null : isLibraryLoading;
-  const browseLoadingLabel = activeTab.kind === "source" ? "Refreshing remote works" : "Refreshing library works";
+  const browseLoadingLabel =
+    activeTab.kind === "source" ? t("library.refreshingRemoteWorks") : t("library.refreshingLibraryWorks");
   return (
     <div className="relative space-y-5">
       <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between" data-toast-avoid>
@@ -2249,8 +2253,8 @@ function useRemoteSourceActions({
       toast.notify({
         kind: "info",
         message: result.deduplicated
-          ? `Track workflow #${result.runId} is already queued.`
-          : `Track workflow #${result.runId} queued.`,
+          ? t("workflowPage.trackAlreadyQueued", { runId: result.runId })
+          : t("workflowPage.trackQueued", { runId: result.runId }),
       });
       return result.runId;
     } catch (error) {
@@ -2270,12 +2274,16 @@ function useRemoteSourceActions({
         sourceId: source.id,
         codes: selectedSaveable.map(remoteWorkActionCode),
       });
-      const message = `Bulk workflow #${parent.runId}: queued ${parent.fetched} Fetch jobs, failed ${parent.failed}.`;
+      const message = t("library.bulkFetchSummary", {
+        runId: parent.runId,
+        fetched: parent.fetched,
+        failed: parent.failed,
+      });
       if (parent.failed > 0) toast.warning(message);
       else toast.success(message);
       await onSynced(0);
     } catch (error) {
-      toast.notify(toastFromError(error, "Bulk fetch failed."));
+      toast.notify(toastFromError(error, t("library.bulkFetchFailed")));
     } finally {
       setIsBulkBusy(false);
       setSaveConfirm(null);
@@ -2291,12 +2299,16 @@ function useRemoteSourceActions({
         sourceId: source.id,
         codes: selectedSyncable.map(remoteWorkActionCode),
       });
-      const message = `Bulk workflow #${parent.runId}: tracked ${parent.synced}, failed ${parent.failed}.`;
+      const message = t("library.bulkTrackSummary", {
+        runId: parent.runId,
+        synced: parent.synced,
+        failed: parent.failed,
+      });
       if (parent.failed > 0) toast.warning(message);
       else toast.success(message);
       await onSynced(0);
     } catch (error) {
-      toast.notify(toastFromError(error, "Bulk track failed."));
+      toast.notify(toastFromError(error, t("library.bulkTrackFailed")));
     } finally {
       setIsBulkBusy(false);
     }
@@ -2322,10 +2334,10 @@ function useRemoteSourceActions({
       if (!workId) return;
       await api.updateWorkUserState(workId, { listeningStatus: status });
       onWorkStateChanged(work.primaryCode, { workId, listeningStatus: status });
-      toast.success(`Saved and marked ${work.primaryCode}.`);
+      toast.success(t("library.savedAndMarked", { code: work.primaryCode }));
       await onSynced(workId);
     } catch (error) {
-      toast.notify(toastFromError(error, "Mark update failed."));
+      toast.notify(toastFromError(error, t("errors.unavailable")));
     } finally {
       setIsSyncingCode(null);
     }
@@ -2337,10 +2349,10 @@ function useRemoteSourceActions({
     setIsSyncingCode(work.primaryCode);
     try {
       const result = await api.syncRemoteSourceWork(source.id, remoteWorkActionCode(work), "list_remote");
-      toast.success(`Saved ${result.primaryCode} for list selection.`);
+      toast.success(t("library.savedForList", { code: result.primaryCode }));
       return result.workId;
     } catch (error) {
-      toast.notify(toastFromError(error, "Remote sync failed."));
+      toast.notify(toastFromError(error, t("errors.unavailable")));
       return null;
     } finally {
       setIsSyncingCode(null);
@@ -2751,9 +2763,9 @@ function RecentlyPlayedStrip({ works, onOpen }: { works: Work[]; onOpen: (work: 
               </span>
               <span
                 className="mt-1 block w-full shrink-0 truncate text-[10px] text-muted-foreground"
-                title={recentProgressLabel(work.progress)}
+                title={recentProgressLabel(work.progress, t)}
               >
-                {recentProgressLabel(work.progress)}
+                {recentProgressLabel(work.progress, t)}
               </span>
             </button>
           ))}
@@ -2763,11 +2775,11 @@ function RecentlyPlayedStrip({ works, onOpen }: { works: Work[]; onOpen: (work: 
   );
 }
 
-function recentProgressLabel(progress: Work["progress"]) {
-  if (progress.completed) return `Finished · ${progress.title || "Track"}`;
+function recentProgressLabel(progress: Work["progress"], t: TFunction) {
+  if (progress.completed) return `${t("library.finished")} · ${progress.title || t("library.track")}`;
   const duration =
     progress.durationSeconds && progress.durationSeconds > 0 ? ` / ${formatTime(progress.durationSeconds)}` : "";
-  return `${progress.title || "Track"} · ${formatTime(progress.positionSeconds)}${duration}`;
+  return `${progress.title || t("library.track")} · ${formatTime(progress.positionSeconds)}${duration}`;
 }
 
 function recentWorkSourceIntent(work: Work): DetailSourceIntent {
@@ -2807,6 +2819,7 @@ function WorkCard({
   onFetch?: (source: SourcePresenceItem) => void;
   isFetchBusy?: boolean;
 }) {
+  const { t } = useTranslation();
   const view = libraryWorkCardView(work, onUserTagOpen, showRecommendationScore);
   const trackedSources = trackedSourcesForWork(work);
   const trackedSource = trackedSources[0] ?? null;
@@ -2833,7 +2846,7 @@ function WorkCard({
               {onUntrack && trackedSources.length > 0 && (
                 <div className="relative" ref={untrackAnchorRef}>
                   <WorkCardActionButton
-                    title="Untrack source"
+                    title={i18n.t("detailActions.untrack")}
                     disabled={isUntracking}
                     onClick={(event) => {
                       event.stopPropagation();
@@ -2851,14 +2864,12 @@ function WorkCard({
                     zIndex={70}
                   >
                     <div className="space-y-2">
-                      <div className="font-medium">Untrack source?</div>
-                      <p className="text-xs text-muted-foreground">
-                        Work information, marks, lists, metadata, and local files will be kept. Cached files for this
-                        source will be deleted.
-                      </p>
+                      <div className="font-medium">{i18n.t("libraryDetail.untrackSource")}</div>
+                      <p className="text-xs text-muted-foreground">{t("libraryDetail.untrackDescription")}</p>
                       <div className="space-y-1">
                         {trackedSources.map((source) => {
-                          const sourceName = source.fileSourceName || source.fileSourceCode || "this source";
+                          const sourceName =
+                            source.fileSourceName || source.fileSourceCode || t("libraryDetail.sourceInfo");
                           return (
                             <button
                               key={`${source.workId ?? work.id}:${source.fileSourceId ?? 0}`}
@@ -2870,7 +2881,9 @@ function WorkCard({
                               }}
                             >
                               <Unlink className="h-4 w-4 shrink-0" />
-                              <span className="min-w-0 flex-1 truncate">Untrack {sourceName}</span>
+                              <span className="min-w-0 flex-1 truncate">
+                                {t("libraryDetail.untrackNamedSource", { source: sourceName })}
+                              </span>
                             </button>
                           );
                         })}
@@ -2881,7 +2894,7 @@ function WorkCard({
               )}
               {onUntrack && (
                 <WorkCardActionButton
-                  title="Fetch"
+                  title={i18n.t("detailActions.fetch")}
                   disabled={!trackedSource || isFetchBusy}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -2958,7 +2971,7 @@ function RemoteWorkCard({
           right={
             <>
               <WorkCardActionButton
-                title="Track"
+                title={i18n.t("detailActions.track")}
                 disabled={isBusy || !work.primaryCode}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -2968,7 +2981,7 @@ function RemoteWorkCard({
                 <GitBranchPlus className="h-4 w-4" />
               </WorkCardActionButton>
               <WorkCardActionButton
-                title="Fetch"
+                title={i18n.t("detailActions.fetch")}
                 disabled={isBusy || !work.primaryCode}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -3038,16 +3051,16 @@ function SaveConfirmModal({
         className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <h3 className="text-base font-semibold">Fetch remote directory</h3>
+        <h3 className="text-base font-semibold">{i18n.t("libraryDetail.fetchRemoteDirectory")}</h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          This will download the full remote directory for {count} selected work{count === 1 ? "" : "s"}.
+          {i18n.t("libraryDetail.fetchRemoteDirectoryDescription", { count })}
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>
-            Cancel
+            {i18n.t("content.cancel")}
           </Button>
           <Button size="sm" onClick={onConfirm}>
-            Fetch
+            {i18n.t("detailActions.fetch")}
           </Button>
         </div>
       </div>
@@ -3092,14 +3105,14 @@ function RecommendationExplanationModal({
             <div className="truncate text-sm font-semibold">{state.work.title}</div>
             <div className="text-xs text-muted-foreground">{state.work.primaryCode}</div>
           </div>
-          <IconButton title="Close recommendation explanation" onClick={onClose}>
+          <IconButton title={i18n.t("content.close")} onClick={onClose}>
             <X className="h-4 w-4" />
           </IconButton>
         </div>
         <div className="space-y-4 p-4">
           {state.loading ? (
             <div className="flex min-h-36 items-center justify-center text-sm text-muted-foreground">
-              <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Loading score
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> {i18n.t("libraryDetail.loadingScore")}
             </div>
           ) : state.error ? (
             <div className="text-sm text-destructive">{state.error}</div>
@@ -3107,7 +3120,7 @@ function RecommendationExplanationModal({
             <>
               <div className="flex items-end justify-between gap-4 border-b pb-3">
                 <div>
-                  <div className="text-xs text-muted-foreground">Affinity score</div>
+                  <div className="text-xs text-muted-foreground">{i18n.t("libraryDetail.affinityScore")}</div>
                   <div className="text-3xl font-semibold">{state.breakdown.score}</div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
@@ -3115,32 +3128,29 @@ function RecommendationExplanationModal({
                   <Badge variant="outline">{state.breakdown.algorithmVersion}</Badge>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Listening state controls placement in the recommendation mix. Within each state, affinity is adjusted by
-                the current seeded discovery boost and result variation.
-              </p>
+              <p className="text-xs text-muted-foreground">{i18n.t("libraryDetail.recommendationExplanation")}</p>
               {state.breakdown.ordering && (
                 <div className="space-y-2 border-t pt-3 text-sm">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">Current shuffle adjustment</span>
+                    <span className="text-muted-foreground">{i18n.t("libraryDetail.shuffleAdjustment")}</span>
                     <span className="font-semibold tabular-nums">
                       {formatRecommendationAdjustment(state.breakdown.ordering.totalAdjustment)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">Discovery boost</span>
+                    <span className="text-muted-foreground">{i18n.t("libraryDetail.discoveryBoost")}</span>
                     <span className="font-medium tabular-nums">
                       {formatRecommendationAdjustment(state.breakdown.ordering.explorationBoost)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">Result variation</span>
+                    <span className="text-muted-foreground">{i18n.t("libraryDetail.resultVariation")}</span>
                     <span className="font-medium tabular-nums">
                       {formatRecommendationAdjustment(state.breakdown.ordering.jitter)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-3 border-t pt-2">
-                    <span className="font-medium">Ranking score</span>
+                    <span className="font-medium">{i18n.t("libraryDetail.rankingScore")}</span>
                     <span className="font-semibold tabular-nums">
                       {state.breakdown.ordering.rankingScore.toFixed(1)}
                     </span>
@@ -3154,7 +3164,7 @@ function RecommendationExplanationModal({
                       <div className="font-medium">{component.label}</div>
                       {component.matchCount > 0 && component.key !== "state" && (
                         <div className="text-xs text-muted-foreground">
-                          {component.matchCount} matched signal{component.matchCount === 1 ? "" : "s"}
+                          {i18n.t("libraryDetail.matchedSignals", { count: component.matchCount })}
                         </div>
                       )}
                     </div>
@@ -3171,7 +3181,10 @@ function RecommendationExplanationModal({
               </div>
               {state.breakdown.rawScore !== state.breakdown.score && (
                 <div className="border-t pt-3 text-xs text-muted-foreground">
-                  Raw {state.breakdown.rawScore}, bounded to {state.breakdown.score}
+                  {i18n.t("libraryDetail.rawScoreBounded", {
+                    raw: state.breakdown.rawScore,
+                    score: state.breakdown.score,
+                  })}
                 </div>
               )}
             </>
@@ -3190,17 +3203,17 @@ function formatRecommendationAdjustment(value: number) {
 function recommendationLaneLabel(lane: RecommendationBreakdown["lane"]) {
   switch (lane) {
     case "listening":
-      return "Listening priority";
+      return i18n.t("libraryDetail.listeningPriority");
     case "want":
-      return "Want priority";
+      return i18n.t("libraryDetail.wantPriority");
     case "relisten":
-      return "Relisten mix";
+      return i18n.t("libraryDetail.relistenMix");
     case "finished":
-      return "Finished mix";
+      return i18n.t("libraryDetail.finishedMix");
     case "shelved":
-      return "Shelved fallback";
+      return i18n.t("libraryDetail.shelvedFallback");
     default:
-      return "Unmarked discovery";
+      return i18n.t("libraryDetail.unmarkedDiscovery");
   }
 }
 
@@ -3212,7 +3225,7 @@ function libraryWorkCardView(
   return {
     code: work.primaryCode,
     title: work.title,
-    circle: work.circle || "Unknown circle",
+    circle: work.circle || i18n.t("workCard.unknownCircle"),
     circleExternalId: work.circleExternalId,
     ageRating: work.ageRating,
     voiceActors: work.voiceActors,
@@ -3258,7 +3271,7 @@ function remoteWorkCardView(work: RemoteWork, source: LibrarySource): WorkCardVi
   return {
     code: work.primaryCode || work.remoteId,
     title: work.title,
-    circle: work.circle || sourceLabel || "Unknown circle",
+    circle: work.circle || sourceLabel || i18n.t("workCard.unknownCircle"),
     ageRating: work.ageRating,
     voiceActors: work.voiceActors,
     coverUrl: work.coverUrl,
@@ -3720,6 +3733,7 @@ function RemoteOnlyDetailActions({
   onUntrack,
   onFetch,
 }: RemoteOnlyDetailActionsProps) {
+  const { t } = useTranslation();
   const identityActions = detail ? (
     <WorkIdentityActionBar
       busy={busy}
@@ -3741,13 +3755,15 @@ function RemoteOnlyDetailActions({
         contextKey={`${remoteSourceTabKey(source.id)}:${hasTrackedSource ? "tracked" : "available"}`}
         onTrack={onTrack}
         trackDisabled={availabilityLoading || hasTrackedSource}
-        trackDisabledReason={availabilityLoading ? "Loading tracking state" : "Already tracked"}
+        trackDisabledReason={
+          availabilityLoading ? t("detailActions.loadingTrackingState") : t("detailActions.alreadyTracked")
+        }
         onUntrack={hasTrackedSource && materializedWorkID ? onUntrack : undefined}
         onFetch={onFetch}
         remoteSourceWorkUrl={safeExternalHTTPURL(detail.publicWorkUrl)}
         remoteSourceName={detail.sourceName}
         sourceLabel={detail.sourceName}
-        sourceStatus="Available"
+        sourceStatus={t("content.available")}
       />
     ) : undefined;
   return (
@@ -3804,9 +3820,13 @@ function remoteOnlyDirectoryDescription(props: RemoteOnlyDirectoryPanelProps) {
 
 function primaryRemoteOnlyDirectoryDescription(props: RemoteOnlyDirectoryPanelProps) {
   if (props.detail && !props.message && !props.treeError) {
-    return `Previewing remote files from ${props.detail.sourceName}; temporary playback does not save progress.`;
+    return i18n.t("libraryDetail.remoteFilesPreviewDescription", { source: props.detail.sourceName });
   }
-  return props.message || props.treeError || `Loading remote files from ${props.displaySourceName}...`;
+  return (
+    props.message ||
+    props.treeError ||
+    i18n.t("libraryDetail.loadingRemoteFilesFrom", { source: props.displaySourceName })
+  );
 }
 
 function alternateRemoteOnlyDirectoryDescription(props: RemoteOnlyDirectoryPanelProps) {
@@ -3814,15 +3834,17 @@ function alternateRemoteOnlyDirectoryDescription(props: RemoteOnlyDirectoryPanel
     const sourceName =
       props.activeTrackedPresence?.fileSourceName ||
       props.activeTrackedPresence?.fileSourceCode ||
-      "the selected source";
-    return `Browsing the tracked directory forked from ${sourceName}.`;
+      i18n.t("libraryDetail.sourceInfo");
+    return i18n.t("libraryDetail.browsingTrackedFork", { source: sourceName });
   }
   if (props.activeTab?.kind === "local" && props.activeTab.status === "available") {
-    return "Browsing local files.";
+    return i18n.t("libraryDetail.browsingLocalFiles");
   }
   return (
     props.activeRemoteAvailability?.summary.error ||
-    `${props.activeTab?.label ?? "Source"} is not selected for this preview.`
+    i18n.t("libraryDetail.sourceNotSelectedPreview", {
+      source: props.activeTab?.label ?? i18n.t("libraryDetail.sourceInfo"),
+    })
   );
 }
 
@@ -3884,7 +3906,7 @@ function RemoteOnlyDirectoryPanel(props: RemoteOnlyDirectoryPanelProps) {
   const emptyState = remoteOnlyDirectoryEmptyState(props);
   return (
     <SourceDirectoryPanel
-      title="Directory"
+      title={i18n.t("libraryDetail.directory")}
       description={remoteOnlyDirectoryDescription(props)}
       statsLabel={formatTreeStats(props.directoryStats)}
       tabs={props.tabs}
@@ -3898,10 +3920,16 @@ function RemoteOnlyDirectoryPanel(props: RemoteOnlyDirectoryPanelProps) {
       currentPlaybackKey={props.currentPlaybackKey}
       autoRoutePath={props.autoRoutePath}
       routeStateKey={props.routeStateKey}
-      emptyLabel={props.primaryRemoteSelected ? "No remote files detected." : "This source has no preview loaded."}
+      emptyLabel={
+        props.primaryRemoteSelected
+          ? i18n.t("libraryDetail.noRemoteFiles")
+          : i18n.t("libraryDetail.sourcePreviewNotLoaded")
+      }
       toolbar={error ? <DirectoryMessage message={error} /> : undefined}
       emptyState={emptyState}
-      loadingMessage={loading ? `Loading ${props.displayRemoteCode}...` : undefined}
+      loadingMessage={
+        loading ? i18n.t("libraryDetail.remoteDirectoryLoading", { code: props.displayRemoteCode }) : undefined
+      }
       selectionModal={props.selectionModal}
       onPreview={props.onPreview}
       {...playback}
@@ -3935,7 +3963,7 @@ function remoteOnlySourceInfo(
   const activeTab = tabs.find((tab) => tab.key === activeKey);
   const activeSource = activeTab
     ? { kind: activeTab.kind, status: activeTab.status, statusLabel: activeTab.statusLabel }
-    : { kind: "remote" as const, status: "degraded" as const, statusLabel: "Loading source" };
+    : { kind: "remote" as const, status: "degraded" as const, statusLabel: i18n.t("libraryDetail.loadingSource") };
   return {
     label: displaySourceName,
     ...activeSource,
@@ -3992,7 +4020,7 @@ function remoteOnlyPreviewIdentity(preview: RemoteWorkPreview | null, code: stri
     rating: fallback.rating,
     ratingCount: null,
     sales: fallback.sales,
-    releaseDate: fallback.releaseDate || "Unknown",
+    releaseDate: fallback.releaseDate || i18n.t("libraryDetail.unknownReleaseDate"),
     ageRating: fallback.ageRating,
     voiceActors: fallback.voiceActors,
     tags: fallback.tags,
@@ -4089,7 +4117,7 @@ function remoteOnlyWorkDetailPresentation({
     series: "",
     seriesTitleId: "",
     seriesCircleExternalId: "",
-    ratingLabel: "Rating",
+    ratingLabel: i18n.t("libraryDetail.rating"),
     rating: identity.rating,
     ratingCount: identity.ratingCount,
     sales: identity.sales,
@@ -4197,7 +4225,7 @@ function RemoteOnlyDetailOverlays({
   return (
     <>
       {manageOpen && (
-        <DirectoryManagerModal root={tree} emptyLabel="No remote files detected." onClose={onManageClose} />
+        <DirectoryManagerModal root={tree} emptyLabel={i18n.t("libraryDetail.noRemoteFiles")} onClose={onManageClose} />
       )}
       {filePreview && <FilePreviewModal preview={filePreview} onClose={onPreviewClose} />}
     </>
@@ -4496,11 +4524,11 @@ function RemoteOnlyWorkDetailController({
       toast.notify({
         kind: "info",
         message: result.deduplicated
-          ? `Track workflow #${result.runId} is already queued.`
-          : `Track workflow #${result.runId} queued.`,
+          ? t("libraryDetail.trackAlreadyQueued", { runId: result.runId })
+          : t("libraryDetail.trackQueued", { runId: result.runId }),
       });
     } catch (error) {
-      toast.notify(toastFromError(error, "Track could not be queued."));
+      toast.notify(toastFromError(error, t("libraryDetail.trackQueueFailed")));
     } finally {
       setIsFetching(false);
     }
@@ -4516,7 +4544,7 @@ function RemoteOnlyWorkDetailController({
       setDetail((current) => (current ? { ...current, workId: result.workId, importStatus: "synced" } : current));
       return result.workId;
     } catch (error) {
-      toast.notify(toastFromError(error, "Remote sync failed."));
+      toast.notify(toastFromError(error, t("errors.unavailable")));
       return null;
     } finally {
       setIsFetching(false);
@@ -4537,7 +4565,7 @@ function RemoteOnlyWorkDetailController({
       );
       await onWorksChanged();
     } catch (error) {
-      toast.notify(toastFromError(error, "Mark update failed."));
+      toast.notify(toastFromError(error, t("errors.unavailable")));
     }
   };
 
@@ -4575,9 +4603,9 @@ function RemoteOnlyWorkDetailController({
           return summary ? { ...item, summary } : item;
         }),
       );
-      toast.success(`Untracked ${detail.primaryCode} from ${sourceName}.`);
+      toast.success(t("libraryDetail.untrackedFromSource", { code: detail.primaryCode, source: sourceName }));
     } catch (error) {
-      toast.notify(toastFromError(error, "Untrack failed."));
+      toast.notify(toastFromError(error, t("errors.unavailable")));
     } finally {
       setIsFetching(false);
     }
@@ -4613,7 +4641,7 @@ function RemoteOnlyWorkDetailController({
           );
         }
       })().catch((error) => {
-        toast.notify(toastFromError(error, "Track completed, but this detail could not be refreshed."));
+        toast.notify(toastFromError(error, t("libraryDetail.trackCompletedReloadFailed")));
       });
     };
     window.addEventListener(REMOTE_TRACK_TERMINAL_EVENT, reconcileTrack);
@@ -4633,7 +4661,11 @@ function RemoteOnlyWorkDetailController({
     const queuedTrack = toRemotePreviewPlayerTrack(track, detail, remoteFiles);
     if (next) player.playNext(queuedTrack);
     else player.appendQueue([queuedTrack]);
-    toast.info(next ? `Playing ${track.title} next.` : `Added ${track.title} to the queue.`);
+    toast.info(
+      next
+        ? t("libraryDetail.playingNext", { title: track.title })
+        : t("libraryDetail.addedToQueue", { title: track.title }),
+    );
   };
 
   const playMaterializedTracks = (tracks: TreeTrack[], locationId: number) => {
@@ -4649,14 +4681,18 @@ function RemoteOnlyWorkDetailController({
     const queuedTrack = toPlayerTrack(track, trackedWork);
     if (next) player.playNext(queuedTrack);
     else player.appendQueue([queuedTrack]);
-    toast.info(next ? `Playing ${track.title} next.` : `Added ${track.title} to the queue.`);
+    toast.info(
+      next
+        ? t("libraryDetail.playingNext", { title: track.title })
+        : t("libraryDetail.addedToQueue", { title: track.title }),
+    );
   };
 
   if (notFound) {
     return (
       <NotFoundPage
-        title="Remote work not found"
-        message={`${code} is not available from ${source.displayName}.`}
+        title={i18n.t("library.remoteSourceUnavailableTitle")}
+        message={i18n.t("libraryDetail.remoteWorkUnavailableFrom", { code, source: source.displayName })}
         onBack={onBack}
         onOpenLibrary={() => {
           window.history.pushState({}, "", "/");
@@ -4764,8 +4800,13 @@ function RemoteOnlyWorkDetailController({
       const tracks = await api.getRemoteSourceWorkTracks(source.id, metadata.remoteCode || editionCode);
       setDetail((current) => (current ? { ...current, tracks: tracks.tracks } : current));
     } catch (error) {
-      setTreeError(error instanceof Error ? error.message : "Remote directory failed.");
-      toast.notify(toastFromError(error, `The ${editionCode} edition is not available from ${source.displayName}.`));
+      setTreeError(error instanceof Error ? error.message : t("libraryDetail.remoteDirectoryFailed"));
+      toast.notify(
+        toastFromError(
+          error,
+          t("libraryDetail.editionUnavailableFromNamedSource", { code: editionCode, source: source.displayName }),
+        ),
+      );
     } finally {
       setIsFetching(false);
       setTreeLoading(false);
@@ -4860,7 +4901,7 @@ async function resolvePersistedResumeContext(
     cursor.mediaWorkId && cursor.mediaWorkId !== localDirectoryWork?.id
       ? await api.getWork(cursor.mediaWorkId)
       : localDirectoryWork;
-  if (!resumeWork) throw new Error("The saved playback edition is unavailable.");
+  if (!resumeWork) throw new Error(i18n.t("libraryDetail.savedTrackUnavailable"));
   return {
     resumeWork,
     resumeTree:
@@ -4902,23 +4943,27 @@ function persistedDirectoryDescription({
   if (selectedTrackedPresence) {
     if (selectedTrackedForked) {
       const sourceName =
-        selectedTrackedPresence.fileSourceName || selectedTrackedPresence.fileSourceCode || "the selected source";
-      return `Browsing the tracked directory forked from ${sourceName}.`;
+        selectedTrackedPresence.fileSourceName ||
+        selectedTrackedPresence.fileSourceCode ||
+        i18n.t("libraryDetail.sourceInfo");
+      return i18n.t("libraryDetail.browsingTrackedFork", { source: sourceName });
     }
     const sourceName =
-      selectedTrackedPresence.fileSourceName || selectedTrackedPresence.fileSourceCode || "The selected source";
-    return `${sourceName} is tracked, but its directory has not been forked.`;
+      selectedTrackedPresence.fileSourceName ||
+      selectedTrackedPresence.fileSourceCode ||
+      i18n.t("libraryDetail.sourceInfo");
+    return i18n.t("libraryDetail.trackedSourceUnforkedDescription", { source: sourceName });
   }
   if (selectedSource?.kind === "tracked") {
-    return "This work is not tracked yet. Track a remote source to keep a browsable source relationship.";
+    return i18n.t("libraryDetail.workNotTrackedDescription");
   }
   if (selectedRemoteSource) {
-    return `Previewing remote files from ${selectedRemoteSource.source.displayName}.`;
+    return i18n.t("libraryDetail.remoteFilesPreviewShort", { source: selectedRemoteSource.source.displayName });
   }
   if (workHasNoLinkedSource) {
-    return "No local, cached, tracked, or remote source is currently linked to this work.";
+    return i18n.t("libraryDetail.noLinkedSourceDescription");
   }
-  return "File locations are grouped by local, cache, and remote source.";
+  return i18n.t("libraryDetail.fileLocationsGrouped");
 }
 
 function persistedDetailActionMode(
@@ -5047,16 +5092,8 @@ function PersistedIdentityActions(props: PersistedDetailActionsProps) {
       onSync={props.canSyncMetadata ? props.onSyncMetadata : undefined}
       onEditMetadata={props.onEditMetadata}
       metadataSyncBusy={props.isSyncingDetail || Boolean(props.activeMetadataRunId)}
-      syncLabel="Refresh metadata"
     />
   );
-}
-
-function persistedTrackDisabledReason(props: PersistedDetailActionsProps) {
-  if (props.selectedSourceDetailsLoading) return "Loading source details";
-  if (props.selectedRemoteSource?.error) return "Source details unavailable";
-  if (props.selectedRemoteHasTracked) return "Already tracked";
-  return "Source unavailable";
 }
 
 function persistedMediaActionBindings(props: PersistedDetailActionsProps) {
@@ -5075,6 +5112,7 @@ function persistedMediaActionBindings(props: PersistedDetailActionsProps) {
 }
 
 function PersistedMediaActions(props: PersistedDetailActionsProps) {
+  const { t } = useTranslation();
   if (!props.work) return null;
   const busy = props.isSyncingDetail || props.fetchBusy || props.isRefreshingLocalFiles || props.cleanupBusy;
   const actions = persistedMediaActionBindings(props);
@@ -5083,7 +5121,15 @@ function PersistedMediaActions(props: PersistedDetailActionsProps) {
       busy={busy}
       mode={props.actionMode}
       contextKey={props.sourceContextKey}
-      trackDisabledReason={persistedTrackDisabledReason(props)}
+      trackDisabledReason={
+        props.selectedSourceDetailsLoading
+          ? t("detailActions.loadingTrackingState")
+          : props.selectedRemoteSource?.error
+            ? t("detailActions.sourceDetailsUnavailable")
+            : props.selectedRemoteHasTracked
+              ? t("detailActions.alreadyTracked")
+              : t("detailActions.sourceUnavailable")
+      }
       untrackDisabled={props.isSyncingDetail}
       forkSources={props.forkSources}
       currentForkSource={props.currentForkSource}
@@ -5151,9 +5197,9 @@ type PersistedDirectoryPanelProps = {
 };
 
 function persistedDirectoryEmptyLabel(props: PersistedDirectoryPanelProps) {
-  if (props.showNoSourceDirectory) return "No source linked.";
-  if (props.selectedRemoteSource) return "No remote files detected.";
-  return "No local files detected.";
+  if (props.showNoSourceDirectory) return i18n.t("libraryDetail.noSourceLinked");
+  if (props.selectedRemoteSource) return i18n.t("libraryDetail.noRemoteFiles");
+  return i18n.t("libraryDetail.noLocalFiles");
 }
 
 function persistedDirectoryToolbar(props: PersistedDirectoryPanelProps) {
@@ -5209,17 +5255,20 @@ function persistedDirectoryEmptyState(props: PersistedDirectoryPanelProps) {
 
 function persistedDirectoryLoadingMessage(props: PersistedDirectoryPanelProps) {
   if (!props.selectedRemoteSource || props.selectedRemoteDetail || props.selectedRemoteSource.loading) return "";
-  return props.selectedRemoteSource.error || "Remote directory is not loaded yet.";
+  return props.selectedRemoteSource.error || i18n.t("libraryDetail.remoteDirectoryNotLoaded");
 }
 
 function PersistedDirectoryPanel(props: PersistedDirectoryPanelProps) {
   const description = props.activeEdition
-    ? `Showing files from ${props.activeEdition.primaryCode} ${languageLabel(props.activeEdition.metadataLanguage)}.`
+    ? i18n.t("libraryDetail.showingFilesFrom", {
+        code: props.activeEdition.primaryCode,
+        language: languageLabel(props.activeEdition.metadataLanguage),
+      })
     : props.description;
   const emptyState = persistedDirectoryEmptyState(props);
   return (
     <SourceDirectoryPanel
-      title="Directory"
+      title={i18n.t("libraryDetail.directory")}
       description={description}
       statsLabel={formatTreeStats(props.directoryStats)}
       tabs={props.tabs}
@@ -5258,7 +5307,7 @@ function persistedPersonalTags(work: WorkDetail | null, onSave: (tags: string[])
     <div className="space-y-2 rounded-lg border bg-card p-3">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
         <Tags className="h-4 w-4" />
-        My tags
+        {i18n.t("libraryDetail.myTags")}
       </div>
       <UserTagRow tags={work.userTags ?? []} onSave={onSave} />
     </div>
@@ -5274,7 +5323,7 @@ function persistedActiveSourceLabel(
     selectedTrackedPresence?.fileSourceCode ||
     selectedSource?.sourceName ||
     selectedSource?.label ||
-    "Source"
+    i18n.t("libraryDetail.sourceInfo")
   );
 }
 
@@ -5297,7 +5346,7 @@ function persistedSourceInfo({
 }): ActiveSourceInfoModel {
   const source = selectedSource
     ? { kind: selectedSource.kind, status: selectedSource.status, statusLabel: selectedSource.statusLabel }
-    : { kind: "no_source" as const, status: "degraded" as const, statusLabel: "Loading source" };
+    : { kind: "no_source" as const, status: "degraded" as const, statusLabel: i18n.t("libraryDetail.loadingSource") };
   return {
     label,
     ...source,
@@ -5408,7 +5457,7 @@ function persistedWorkDetailPresentation({
     series: hero.series,
     seriesTitleId: fields.seriesTitleId,
     seriesCircleExternalId: fields.seriesCircleExternalId,
-    ratingLabel: "DL rating",
+    ratingLabel: i18n.t("libraryDetail.dlRating"),
     rating: hero.rating,
     ratingCount: hero.ratingCount,
     sales: hero.sales,
@@ -5426,7 +5475,7 @@ function persistedWorkDetailPresentation({
     onVersionSelect,
     remoteVersions: Boolean(selectedRemoteDetail),
     dlsiteFetchedAt: hero.dlsiteFetchedAt,
-    releaseDate: hero.releaseDate ?? "Unknown",
+    releaseDate: hero.releaseDate || i18n.t("libraryDetail.unknownReleaseDate"),
     ageRating: hero.ageRating,
     sourceInfo,
     voiceActors: hero.voiceActors,
@@ -5455,11 +5504,11 @@ function PersistedFilePreviewOverlay({
     ? async (locationId: number) => {
         try {
           await api.setWorkCoverOverride(work.id, locationId);
-          toast.success("Cover override saved.");
+          toast.success(i18n.t("libraryDetail.coverOverrideSaved"));
           onClose();
           await onMetadataSaved();
         } catch (error) {
-          toast.notify(toastFromError(error, "Cover override could not be saved."));
+          toast.notify(toastFromError(error, i18n.t("libraryDetail.coverOverrideSaveFailed")));
         }
       }
     : undefined;
@@ -5492,17 +5541,17 @@ function PersistedDirectoryManagerOverlay({
   onClose: () => void;
 }) {
   if (!open) return null;
-  const title = selectedTrackedPresence ? "Manage cache" : "Manage files";
+  const title = selectedTrackedPresence ? i18n.t("libraryDetail.manageCache") : i18n.t("libraryDetail.manageFiles");
   const description = selectedTrackedPresence
-    ? "Review cached files for this tracked source."
-    : "Review file operations in the same folder structure as the directory tree.";
+    ? i18n.t("libraryDetail.reviewCachedFiles")
+    : i18n.t("libraryDetail.reviewFileOperations");
   const emptyLabel = selectedTrackedPresence
-    ? "No cached files detected."
+    ? i18n.t("libraryDetail.noCachedFiles")
     : showNoSourceDirectory
-      ? "No source linked."
+      ? i18n.t("libraryDetail.noSourceLinked")
       : selectedRemoteSource
-        ? "No remote files detected."
-        : "No local files detected.";
+        ? i18n.t("libraryDetail.noRemoteFiles")
+        : i18n.t("libraryDetail.noLocalFiles");
   return (
     <DirectoryManagerModal
       root={root}
@@ -5551,7 +5600,7 @@ function PersistedReforkOverlay({
   if (!target) return null;
   return (
     <ReforkConfirmModal
-      currentName={target.current?.source.displayName ?? "the current fork"}
+      currentName={target.current?.source.displayName ?? i18n.t("libraryDetail.currentFork")}
       nextName={target.next.source.displayName}
       busy={busy}
       onClose={onClose}
@@ -5568,8 +5617,8 @@ function remoteOnlyLoadCancelled(error: unknown, timedOut: boolean) {
 }
 
 function remoteOnlyTreeErrorMessage(error: unknown, timedOut: boolean) {
-  if (timedOut) return "Remote directory timed out. Retry to try again.";
-  return error instanceof Error ? error.message : "Remote directory failed.";
+  if (timedOut) return i18n.t("libraryDetail.remoteDirectoryTimedOut");
+  return error instanceof Error ? error.message : i18n.t("libraryDetail.remoteDirectoryFailed");
 }
 
 function remoteOnlyDetailErrorOutcome(error: unknown, timedOut: boolean): RemoteOnlyDetailLoadOutcome {
@@ -5578,10 +5627,10 @@ function remoteOnlyDetailErrorOutcome(error: unknown, timedOut: boolean): Remote
   return {
     kind: "failed",
     message: timedOut
-      ? "Remote preview timed out. Retry to try again."
+      ? i18n.t("libraryDetail.remotePreviewTimedOut")
       : error instanceof Error
         ? error.message
-        : "Remote preview failed.",
+        : i18n.t("libraryDetail.remotePreviewFailed"),
   };
 }
 
@@ -5658,6 +5707,7 @@ function PersistedWorkDetailController({
   onWorksChanged: () => Promise<void>;
 }) {
   const toast = useToast();
+  const { t } = useTranslation();
   const sourceContext = useWorkSourceContext({
     code,
     work,
@@ -5904,9 +5954,9 @@ function PersistedWorkDetailController({
     try {
       await api.setWorkUserTags(work.id, tags);
       await Promise.all([onWorkReload(work.id), onWorksChanged()]);
-      toast.success("My tags updated.");
+      toast.success(t("libraryDetail.myTagsUpdated"));
     } catch (error) {
-      toast.notify(toastFromError(error, "My tags could not be updated."));
+      toast.notify(toastFromError(error, t("libraryDetail.myTagsUpdateFailed")));
       throw error;
     }
   };
@@ -5986,7 +6036,7 @@ function PersistedWorkDetailController({
         playbackTree,
       );
       const resumeQueue = buildWorkResumeQueue(flattenTracks(resumeTree), resumeWork, playbackCursor, playbackCoverUrl);
-      if (!resumeQueue) throw new Error("The saved track or source is no longer available.");
+      if (!resumeQueue) throw new Error(t("libraryDetail.savedTrackUnavailable"));
       if (resumeWork.id !== localDirectoryWork?.id) {
         setActiveEdition(resumeWork);
         setActiveEditionCode(resumeWork.primaryCode);
@@ -5994,7 +6044,7 @@ function PersistedWorkDetailController({
       onPlay();
       player.playQueue(resumeQueue.tracks, resumeQueue.locationId, resumeQueue.positionSeconds);
     } catch (error) {
-      toast.notify(toastFromError(error, "Saved playback could not be resumed."));
+      toast.notify(toastFromError(error, t("libraryDetail.savedPlaybackResumeFailed")));
     } finally {
       setIsResuming(false);
     }
@@ -6017,7 +6067,11 @@ function PersistedWorkDetailController({
     if (!queuedTrack) return;
     if (next) player.playNext(queuedTrack);
     else player.appendQueue([queuedTrack]);
-    toast.info(next ? `Playing ${track.title} next.` : `Added ${track.title} to the queue.`);
+    toast.info(
+      next
+        ? t("libraryDetail.playingNext", { title: track.title })
+        : t("libraryDetail.addedToQueue", { title: track.title }),
+    );
   };
 
   const refreshLocalFiles = async () => {
@@ -6038,9 +6092,9 @@ function PersistedWorkDetailController({
         await onWorkReload(result.workId, true);
       }
       await onWorksChanged();
-      toast.success(`Refreshed ${result.indexedFiles} local files.`);
+      toast.success(t("libraryDetail.localFilesRefreshed", { count: result.indexedFiles }));
     } catch (error) {
-      toast.notify(toastFromError(error, "Local files could not be refreshed."));
+      toast.notify(toastFromError(error, t("libraryDetail.localFilesRefreshFailed")));
     } finally {
       setIsRefreshingLocalFiles(false);
     }
@@ -6057,7 +6111,7 @@ function PersistedWorkDetailController({
         await onWorksChanged();
         toast.notify({
           kind: "warning",
-          message: "Metadata source has no record for this work.",
+          message: t("libraryDetail.metadataNotRecorded"),
         });
         return;
       }
@@ -6065,13 +6119,13 @@ function PersistedWorkDetailController({
       toast.notify({
         kind: "success",
         message: result.deduplicated
-          ? `Metadata refresh is already running as workflow #${result.runId}.`
-          : `Metadata refresh queued for ${result.primaryCode} as workflow #${result.runId}.`,
-        actionLabel: "Activity",
+          ? t("libraryDetail.metadataRefreshAlreadyQueued", { runId: result.runId })
+          : t("libraryDetail.metadataRefreshQueued", { code: result.primaryCode, runId: result.runId }),
+        actionLabel: t("nav.activity"),
         onAction: () => openActivityRun(result.runId),
       });
     } catch (error) {
-      toast.notify(toastFromError(error, "Metadata refresh could not be queued."));
+      toast.notify(toastFromError(error, t("libraryDetail.metadataRefreshFailed")));
     } finally {
       setIsSyncingDetail(false);
     }
@@ -6088,20 +6142,20 @@ function PersistedWorkDetailController({
           await onWorksChanged();
           toast.notify({
             kind: run.status === "succeeded" ? "success" : "warning",
-            message: `Metadata workflow #${run.id} ${run.status}.`,
-            actionLabel: "Activity",
+            message: t("libraryDetail.metadataWorkflowStatus", { runId: run.id, status: run.status }),
+            actionLabel: t("nav.activity"),
             onAction: () => openActivityRun(run.id),
           });
         } catch (error) {
-          toast.notify(toastFromError(error, "Metadata refreshed, but work detail could not be reloaded."));
+          toast.notify(toastFromError(error, t("libraryDetail.metadataRefreshedReloadFailed")));
         }
       })();
       return;
     }
     toast.notify({
       kind: "error",
-      message: `Metadata workflow #${run.id} ${run.status}.`,
-      actionLabel: "Activity",
+      message: t("libraryDetail.metadataWorkflowStatus", { runId: run.id, status: run.status }),
+      actionLabel: t("nav.activity"),
       onAction: () => openActivityRun(run.id),
     });
   }, [activeMetadataRunId, metadataRun.run, onWorkReload, onWorksChanged, toast, work]);
@@ -6128,7 +6182,7 @@ function PersistedWorkDetailController({
         return;
       void Promise.all([onWorkReload(terminal.workId, true), onWorksChanged(), refreshAvailability()]).catch(
         (error) => {
-          toast.notify(toastFromError(error, "Track completed, but this detail could not be refreshed."));
+          toast.notify(toastFromError(error, t("libraryDetail.trackCompletedReloadFailed")));
         },
       );
     };
@@ -6147,11 +6201,11 @@ function PersistedWorkDetailController({
       toast.notify({
         kind: "info",
         message: result.deduplicated
-          ? `Track workflow #${result.runId} is already queued.`
-          : `Track workflow #${result.runId} queued.`,
+          ? t("libraryDetail.trackAlreadyQueued", { runId: result.runId })
+          : t("libraryDetail.trackQueued", { runId: result.runId }),
       });
     } catch (error) {
-      toast.notify(toastFromError(error, "Track could not be queued."));
+      toast.notify(toastFromError(error, t("libraryDetail.trackQueueFailed")));
     } finally {
       setIsSyncingDetail(false);
     }
@@ -6187,9 +6241,9 @@ function PersistedWorkDetailController({
     try {
       const result = await refreshAvailability();
       if (!result) return;
-      toast.success("Source availability updated.");
+      toast.success(t("libraryDetail.sourceAvailabilityUpdated"));
     } catch (error) {
-      toast.notify(toastFromError(error, "Source check failed."));
+      toast.notify(toastFromError(error, t("libraryDetail.sourceCheckFailed")));
     }
   };
 
@@ -6208,9 +6262,9 @@ function PersistedWorkDetailController({
       if (!presence?.fileSourceId) throw new Error("Tracked source could not be resolved.");
       const sourceID = presence.fileSourceId;
       const ownerWorkID = presence.workId || work.id;
-      const sourceName = presence.fileSourceName || presence.fileSourceCode || "the source";
+      const sourceName = presence.fileSourceName || presence.fileSourceCode || t("libraryDetail.sourceInfo");
       await api.untrackWorkSource(ownerWorkID, sourceID);
-      toast.success(`Untracked ${work.primaryCode} from ${sourceName}.`);
+      toast.success(t("libraryDetail.untrackedFromSource", { code: work.primaryCode, source: sourceName }));
       const remoteToKeep = selectedRemoteSource ?? selectedTrackedRemoteSource;
       if (remoteToKeep) setActiveSourceKey(remoteSourceTabKey(remoteToKeep.source.id));
       await onWorkReload(work.id, true);
@@ -6221,7 +6275,7 @@ function PersistedWorkDetailController({
         // The work detail reload is authoritative; availability can be checked again from Source.
       }
     } catch (error) {
-      toast.notify(toastFromError(error, "Untrack failed."));
+      toast.notify(toastFromError(error, t("errors.unavailable")));
     } finally {
       setIsSyncingDetail(false);
     }
@@ -6238,11 +6292,11 @@ function PersistedWorkDetailController({
       toast.notify({
         kind: "info",
         message: result.deduplicated
-          ? `Fork workflow #${result.runId} is already queued.`
-          : `Fork workflow #${result.runId} queued.`,
+          ? t("libraryDetail.forkAlreadyQueued", { runId: result.runId })
+          : t("libraryDetail.forkQueued", { runId: result.runId }),
       });
     } catch (error) {
-      toast.notify(toastFromError(error, "Fork could not be queued."));
+      toast.notify(toastFromError(error, t("libraryDetail.forkQueueFailed")));
     } finally {
       setIsSyncingDetail(false);
     }
@@ -6303,7 +6357,7 @@ function PersistedWorkDetailController({
     const selected = await selectRemoteEdition(translation.primaryCode);
     if (!selected) {
       setActiveEditionCode(selectedRemoteDetail.remoteCode);
-      toast.error(`The ${translation.primaryCode} edition is not available from this source.`);
+      toast.error(t("libraryDetail.editionUnavailableFromSource", { code: translation.primaryCode }));
     }
   };
 
@@ -6336,10 +6390,12 @@ function PersistedWorkDetailController({
       <div className="space-y-4">
         <Button variant="outline" size="sm" onClick={onBack}>
           <ChevronLeft className="h-4 w-4" />
-          Back
+          {t("detailActions.back")}
         </Button>
         <Card>
-          <CardContent className="p-6 text-sm text-muted-foreground">Loading {code}...</CardContent>
+          <CardContent className="p-6 text-sm text-muted-foreground">
+            {t("libraryDetail.remoteDirectoryLoading", { code })}
+          </CardContent>
         </Card>
       </div>
     );
@@ -6592,7 +6648,7 @@ function UnifiedWorkDetailPage({
     <div className="space-y-5">
       <Button variant="outline" size="sm" onClick={onBack}>
         <ChevronLeft className="h-4 w-4" />
-        {mobileNavigationLayout ? "Back to library" : detailReturnTarget("library").label}
+        {mobileNavigationLayout ? i18n.t("nav.library") : detailReturnTarget("library").label}
       </Button>
 
       {compact ? (
@@ -6884,13 +6940,13 @@ function MobileWorkDetailLayout({
           className={`min-h-10 rounded-md px-3 font-medium ${activeTab === "info" ? "bg-muted text-foreground" : "text-muted-foreground"}`}
           onClick={() => onActiveTabChange("info")}
         >
-          Info
+          {i18n.t("libraryDetail.info")}
         </button>
         <button
           className={`min-h-10 rounded-md px-3 font-medium ${activeTab === "directory" ? "bg-muted text-foreground" : "text-muted-foreground"}`}
           onClick={() => onActiveTabChange("directory")}
         >
-          Directory
+          {i18n.t("libraryDetail.directory")}
         </button>
       </div>
 
@@ -6948,7 +7004,7 @@ function MobileVoiceSummary({
     voiceCredits.length > 0 ? voiceCredits : voiceActors.map((displayName) => ({ personId: 0, displayName }));
   if (credits.length === 0) return null;
   return (
-    <div className="flex min-w-0 items-center gap-2" aria-label="Voice actors">
+    <div className="flex min-w-0 items-center gap-2" aria-label={i18n.t("libraryDetail.voiceActors")}>
       <UserRound className="h-4 w-4 shrink-0 text-muted-foreground" />
       <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
         {credits.slice(0, 2).map((credit) => (
@@ -6987,12 +7043,18 @@ function useDetailEntityResolver(code: string): DetailEntityResolver {
   const resolveEntity = async (kind: DetailEntityKind, name: string) => {
     if (resolvingEntity || !code) return;
     setResolvingEntity(kind);
-    toast.info(kind === "series" ? "Loading series information..." : `Loading ${kind} information...`);
+    toast.info(
+      kind === "series"
+        ? i18n.t("workCard.loadingSeries")
+        : i18n.t("workCard.loadingEntity", { kind: i18n.t(`workCard.entityKinds.${kind}`) }),
+    );
     try {
       const result = await api.resolveWorkEntityLink(code, kind, name);
       if (result.route) openResolvedEntityRoute(result.route);
     } catch (error) {
-      toast.notify(toastFromError(error, `Could not open this ${kind}.`));
+      toast.notify(
+        toastFromError(error, i18n.t("workCard.couldNotOpenEntity", { kind: i18n.t(`workCard.entityKinds.${kind}`) })),
+      );
     } finally {
       setResolvingEntity(null);
     }
@@ -7026,26 +7088,30 @@ function DetailTitleBlock({
   entityResolver: DetailEntityResolver;
 }) {
   const toast = useToast();
-  const codeLabel = code || fallbackCode || "Remote";
+  const codeLabel = code || fallbackCode || i18n.t("libraryDetail.remoteOnly");
   const copyWorkCode = async () => {
     try {
       if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
       await navigator.clipboard.writeText(codeLabel);
-      toast.success(`Copied ${codeLabel}.`);
+      toast.success(i18n.t("libraryDetail.copiedWorkCode", { code: codeLabel }));
     } catch {
-      toast.error("Could not copy the work code.");
+      toast.error(i18n.t("libraryDetail.copyWorkCodeFailed"));
     }
   };
 
   return (
     <div className="space-y-2">
       <div className="space-y-1.5">
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Work code actions">
+        <div
+          className="flex flex-wrap items-center gap-1.5"
+          role="group"
+          aria-label={i18n.t("libraryDetail.workCodeActions")}
+        >
           <button
             type="button"
             className={badgeVariants({ variant: "secondary", className: "w-fit cursor-copy" })}
-            aria-label={`Copy work code ${codeLabel}`}
-            title="Copy work code"
+            aria-label={i18n.t("libraryDetail.copyWorkCodeFor", { code: codeLabel })}
+            title={i18n.t("libraryDetail.work")}
             onClick={() => void copyWorkCode()}
           >
             {codeLabel}
@@ -7056,9 +7122,14 @@ function DetailTitleBlock({
               size="icon"
               className="h-[22px] w-[22px] shrink-0 p-0"
               asChild
-              title="Open DLsite"
+              title={i18n.t("workCard.openDLsite")}
             >
-              <a href={dlsiteUrl} target="_blank" rel="noreferrer" aria-label={`Open DLsite for ${codeLabel}`}>
+              <a
+                href={dlsiteUrl}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={i18n.t("libraryDetail.openDlsiteFor", { code: codeLabel })}
+              >
                 <ExternalLink className="h-3 w-3" />
               </a>
             </Button>
@@ -7076,12 +7147,12 @@ function DetailTitleBlock({
             }
           >
             <CircleUserRound className="h-4 w-4 shrink-0" />
-            <span className="truncate">{circle || "Unknown circle"}</span>
+            <span className="truncate">{circle || i18n.t("workCard.unknownCircle")}</span>
           </button>
         ) : (
           <span className="inline-flex max-w-full items-center gap-1 truncate">
             <CircleUserRound className="h-4 w-4 shrink-0" />
-            <span className="truncate">{circle || "Unknown circle"}</span>
+            <span className="truncate">{circle || i18n.t("workCard.unknownCircle")}</span>
           </span>
         )}
         {series && (
@@ -7204,8 +7275,8 @@ function DetailMetadataContent({
     <div className="rounded-lg border bg-card p-3">
       <DetailChipRow
         icon={<UserRound className="h-4 w-4" />}
-        label="Voices"
-        emptyLabel="No voice actor metadata"
+        label={i18n.t("libraryDetail.voiceActors")}
+        emptyLabel={i18n.t("libraryDetail.noVoiceActorMetadata")}
         items={displayVoiceCredits.map((credit) => ({
           key: `${credit.personId}:${credit.displayName}`,
           label: credit.displayName,
@@ -7221,8 +7292,8 @@ function DetailMetadataContent({
     <div className="rounded-lg border bg-card p-3">
       <DetailChipRow
         icon={<Tags className="h-4 w-4" />}
-        label="Tags"
-        emptyLabel="No tag metadata"
+        label={i18n.t("libraryDetail.tags")}
+        emptyLabel={i18n.t("libraryDetail.noTagMetadata")}
         items={tags.map((tag) => ({ key: tag, label: tag, onClick: () => openDetailTagSearch(tag) }))}
       />
     </div>
@@ -7335,19 +7406,21 @@ function MetadataSyncNotice({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="font-medium">
-            {unavailable ? "Metadata source has no record" : "Metadata has not been synchronized"}
+            {unavailable ? i18n.t("metadata.sourceUnavailable") : i18n.t("libraryDetail.metadataNotSynced")}
           </div>
           <p className="mt-1 text-xs opacity-80">
-            {unavailable
-              ? "The metadata provider reported that this work is unavailable."
-              : "Synchronize metadata to show language editions, tags, and provider details."}
+            {unavailable ? i18n.t("libraryDetail.metadataNotRecorded") : i18n.t("libraryDetail.metadataNotSynced")}
           </p>
-          {checkedAt && <div className="mt-1 text-xs opacity-70">Checked {formatDateTime(checkedAt)}</div>}
+          {checkedAt && (
+            <div className="mt-1 text-xs opacity-70">
+              {i18n.t("common.checking")} {formatDateTime(checkedAt)}
+            </div>
+          )}
         </div>
         {!unavailable && canSync && onSync && (
           <Button variant="outline" size="sm" onClick={onSync} disabled={busy}>
             <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />
-            {busy ? "Syncing metadata" : "Sync metadata"}
+            {busy ? i18n.t("sheets.refreshingVoiceMetadata") : i18n.t("sheets.metadataRefresh")}
           </Button>
         )}
       </div>
@@ -7397,11 +7470,11 @@ function DirectoryLoadErrorPanel({ message, onRetry }: { message: string; onRetr
       className="min-h-[22rem] rounded-md border border-warning-border bg-warning-surface p-4 text-sm text-warning-foreground"
       data-testid="directory-load-error"
     >
-      <div className="font-medium">Directory unavailable</div>
+      <div className="font-medium">{i18n.t("libraryDetail.directoryUnavailable")}</div>
       <p className="mt-1 text-warning-foreground/80">{message}</p>
       {onRetry && (
         <Button className="mt-3" variant="outline" size="sm" onClick={onRetry}>
-          <RefreshCw className="h-4 w-4" /> Retry
+          <RefreshCw className="h-4 w-4" /> {i18n.t("common.retry")}
         </Button>
       )}
     </div>
@@ -7476,15 +7549,15 @@ function TrackedUnforkedPanel({
   const candidates = remoteSources.filter((remote) => remoteSourceCanBrowse(remote.summary));
   return (
     <div className="rounded-md border border-warning-border bg-warning-surface p-4 text-sm text-warning-foreground">
-      <div className="font-medium">{presence ? "Tracked directory not forked" : "No tracked source linked"}</div>
+      <div className="font-medium">
+        {presence ? i18n.t("libraryDetail.trackedSourceNoFolder") : i18n.t("libraryDetail.noSourceLinked")}
+      </div>
       <p className="mt-1 text-warning-foreground/80">
-        {presence
-          ? "Choose a fork source from Source to create the browsable tracked directory."
-          : "Track a remote source from its source tab to create a browsable tracked directory."}
+        {presence ? i18n.t("libraryDetail.trackedSourceNoFolderDescription") : i18n.t("libraryDetail.noSourceLinked")}
       </p>
       {candidates.length === 0 && (
         <Badge variant="warning" className="mt-3">
-          No browsable remote source
+          {i18n.t("libraryDetail.noSourceLinked")}
         </Badge>
       )}
     </div>
@@ -7505,17 +7578,17 @@ function LocalSourceStatePanel({
     <div
       className={`rounded-md border p-4 text-sm ${status === "unavailable" ? "border-error-border bg-error-surface text-error-foreground" : "border-warning-border bg-warning-surface text-warning-foreground"}`}
     >
-      <div className="font-medium">Local files unavailable</div>
+      <div className="font-medium">{i18n.t("libraryDetail.localFilesUnavailable")}</div>
       <div className="mt-3 flex flex-wrap gap-2">
         {availableSources.length > 0 ? (
           availableSources.map((remote) => (
             <Button key={remote.source.id} variant="outline" size="sm" onClick={() => onSelectRemote(remote)}>
-              Fetch from {remote.source.displayName}
+              {i18n.t("detailActions.fetch")} {remote.source.displayName}
             </Button>
           ))
         ) : (
           <Badge variant={status === "unavailable" ? "error" : "warning"}>
-            {status === "unavailable" ? "No remote source available" : "Check remote sources"}
+            {status === "unavailable" ? i18n.t("detailActions.sourceUnavailable") : i18n.t("sources.title")}
           </Badge>
         )}
       </div>
@@ -7551,16 +7624,13 @@ function NoSourceDirectoryPanel({
   const availableSources = remoteSources.filter((remote) => remoteSourceCanBrowse(remote.summary));
   return (
     <div className="rounded-md border border-warning-border bg-warning-surface p-4 text-sm text-warning-foreground">
-      <div className="font-medium">No source linked</div>
-      <p className="mt-1 text-warning-foreground/80">
-        This work exists in the local database, but Kikoto has no local files, cache, tracked source, or known source
-        presence for it yet.
-      </p>
+      <div className="font-medium">{i18n.t("libraryDetail.noSourceLinked")}</div>
+      <p className="mt-1 text-warning-foreground/80">{i18n.t("libraryDetail.noSourceDirectoryDescription")}</p>
       {availableSources.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {availableSources.map((remote) => (
             <Badge key={remote.source.id} variant="outline">
-              {remote.source.displayName} available
+              {i18n.t("libraryDetail.sourceAvailable", { source: remote.source.displayName })}
             </Badge>
           ))}
         </div>
@@ -7568,10 +7638,12 @@ function NoSourceDirectoryPanel({
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" onClick={onRefresh} disabled={checking}>
           <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} />
-          Refresh sources
+          {i18n.t("libraryDetail.refreshSources")}
         </Button>
         {!checking && checkedAt && (
-          <span className="text-xs text-warning-foreground/80">Checked {formatDateTime(checkedAt)}</span>
+          <span className="text-xs text-warning-foreground/80">
+            {i18n.t("libraryDetail.checkedAt", { time: formatDateTime(checkedAt) })}
+          </span>
         )}
       </div>
     </div>
@@ -7784,10 +7856,10 @@ function SourceDirectoryPanel({
                     </button>
                     <button
                       className={`grid w-7 place-items-center border-l ${source.key === activeKey ? "border-primary-foreground/25 hover:bg-primary-foreground/10" : "border-border hover:bg-muted"}`}
-                      aria-label="Choose tracked source"
+                      aria-label={i18n.t("detailActions.switchFork")}
                       aria-haspopup="menu"
                       aria-expanded={trackedMenuOpen}
-                      title="Choose tracked source"
+                      title={i18n.t("detailActions.switchFork")}
                       onClick={() => setTrackedMenuOpen((open) => !open)}
                     >
                       <ChevronDown className="h-3.5 w-3.5" />
@@ -7799,7 +7871,7 @@ function SourceDirectoryPanel({
                       className="w-56 p-1 text-sm"
                       zIndex={70}
                     >
-                      <div role="menu" aria-label="Tracked sources">
+                      <div role="menu" aria-label={i18n.t("libraryDetail.trackedSources")}>
                         {trackedPresenceOptions.map((option) => (
                           <button
                             key={option.key}
@@ -7818,7 +7890,7 @@ function SourceDirectoryPanel({
                             <span className="min-w-0 flex-1">
                               <span className="block truncate">{option.label}</span>
                               <span className="block text-[11px] text-muted-foreground">
-                                {option.forked ? "Forked" : "Unforked"}
+                                {option.forked ? i18n.t("libraryDetail.forked") : i18n.t("libraryDetail.unforked")}
                               </span>
                             </span>
                             {option.key === selectedTrackedPresenceKey && (
@@ -7854,10 +7926,10 @@ function SourceDirectoryPanel({
               <IconButton
                 title={
                   checkingSources
-                    ? "Checking sources"
+                    ? i18n.t("libraryDetail.checkingSources")
                     : checkedAt
-                      ? `Check sources · Last checked ${formatDateTime(checkedAt)}`
-                      : "Check sources"
+                      ? i18n.t("libraryDetail.checkSourcesLastChecked", { time: formatDateTime(checkedAt) })
+                      : i18n.t("libraryDetail.checkSources")
                 }
                 onClick={onCheckSources}
                 disabled={checkingSources}
@@ -7871,10 +7943,10 @@ function SourceDirectoryPanel({
                   ref={mobileActionsRef}
                   type="button"
                   className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                  aria-label="More directory actions"
+                  aria-label={i18n.t("libraryDetail.directoryActions")}
                   aria-haspopup="menu"
                   aria-expanded={mobileActionsOpen}
-                  title="More directory actions"
+                  title={i18n.t("libraryDetail.directoryActions")}
                   onClick={() => setMobileActionsOpen((open) => !open)}
                 >
                   <MoreHorizontal className="h-4 w-4" />
@@ -7887,7 +7959,7 @@ function SourceDirectoryPanel({
                   bottomCollisionPadding={96}
                   zIndex={70}
                 >
-                  <div role="menu" aria-label="Directory actions">
+                  <div role="menu" aria-label={i18n.t("libraryDetail.directoryActions")}>
                     {onCheckSources && (
                       <button
                         role="menuitem"
@@ -7899,11 +7971,17 @@ function SourceDirectoryPanel({
                         }}
                       >
                         <RefreshCw className={`h-4 w-4 shrink-0 ${checkingSources ? "animate-spin" : ""}`} />
-                        <span>{checkingSources ? "Checking sources" : "Check sources"}</span>
+                        <span>
+                          {checkingSources
+                            ? i18n.t("libraryDetail.checkingSources")
+                            : i18n.t("libraryDetail.checkSources")}
+                        </span>
                       </button>
                     )}
                     <div className="my-1 border-t" />
-                    <div className="px-2 py-1 text-[11px] font-semibold uppercase text-muted-foreground">View</div>
+                    <div className="px-2 py-1 text-[11px] font-semibold uppercase text-muted-foreground">
+                      {i18n.t("libraryDetail.view")}
+                    </div>
                     {(["browse", "tree"] as DirectoryMode[]).map((mode) => (
                       <button
                         key={mode}
@@ -7916,7 +7994,9 @@ function SourceDirectoryPanel({
                         }}
                       >
                         {mode === "browse" ? <Folder className="h-4 w-4" /> : <FolderTree className="h-4 w-4" />}
-                        <span className="flex-1">{mode === "browse" ? "Browse" : "Tree"}</span>
+                        <span className="flex-1">
+                          {mode === "browse" ? i18n.t("libraryDetail.browse") : i18n.t("libraryDetail.tree")}
+                        </span>
                         {directoryMode === mode && <Check className="h-4 w-4 text-primary" />}
                       </button>
                     ))}
@@ -7957,21 +8037,21 @@ function DirectoryModeSwitch({ mode, onChange }: { mode: DirectoryMode; onChange
         className={`inline-flex h-7 items-center gap-1 rounded px-2 text-xs font-medium ${
           mode === "browse" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
         }`}
-        title="Browse directory"
+        title={i18n.t("libraryDetail.browse")}
         onClick={() => onChange("browse")}
       >
         <Folder className="h-3.5 w-3.5" />
-        Browse
+        {i18n.t("libraryDetail.browse")}
       </button>
       <button
         className={`inline-flex h-7 items-center gap-1 rounded px-2 text-xs font-medium ${
           mode === "tree" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
         }`}
-        title="Tree view"
+        title={i18n.t("libraryDetail.tree")}
         onClick={() => onChange("tree")}
       >
         <FolderTree className="h-3.5 w-3.5" />
-        Tree
+        {i18n.t("libraryDetail.tree")}
       </button>
     </div>
   );
@@ -7985,38 +8065,42 @@ function DirectoryRouteSummary({ summary, onSelect }: { summary: DirectoryRouteM
       <div className="flex min-w-0 items-center rounded-md border bg-card px-3 py-2 text-xs lg:hidden">
         {hasMatch ? (
           <>
-            <span className="shrink-0 font-medium text-muted-foreground">Matched</span>
+            <span className="shrink-0 font-medium text-muted-foreground">{i18n.t("libraryDetail.matched")}</span>
             <button
               type="button"
               className="ml-2 min-w-0 max-w-full truncate rounded-md border bg-secondary px-2 py-0.5 text-left font-medium text-secondary-foreground hover:bg-secondary/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              title={`Open ${summary.pathLabel}`}
-              aria-label={`Matched ${summary.pathLabel}`}
+              title={i18n.t("libraryDetail.openPath", { path: summary.pathLabel })}
+              aria-label={i18n.t("libraryDetail.matchedPath", { path: summary.pathLabel })}
               onClick={onSelect}
             >
               {summary.pathLabel}
             </button>
           </>
         ) : (
-          <span className="truncate font-medium text-muted-foreground">No matching folder</span>
+          <span className="truncate font-medium text-muted-foreground">{i18n.t("libraryDetail.noMatchingFolder")}</span>
         )}
       </div>
       <div className="hidden flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2 text-xs lg:flex">
-        <span className="font-medium text-muted-foreground">Default folder</span>
+        <span className="font-medium text-muted-foreground">{i18n.t("libraryDetail.defaultFolder")}</span>
         <button
           type="button"
           className="max-w-full truncate rounded-md border bg-secondary px-2 py-0.5 font-medium text-secondary-foreground hover:bg-secondary/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          title={`Open ${summary.pathLabel}`}
+          title={i18n.t("libraryDetail.openPath", { path: summary.pathLabel })}
           onClick={onSelect}
         >
           {summary.pathLabel}
         </button>
         {hasMatch ? (
-          <span className="min-w-0 text-muted-foreground">matched {summary.positiveMatches.join(" + ")}</span>
+          <span className="min-w-0 text-muted-foreground">
+            {i18n.t("libraryDetail.matchedRules", { rules: summary.positiveMatches.join(" + ") })}
+          </span>
         ) : (
-          <span className="text-muted-foreground">fallback: most playable media</span>
+          <span className="text-muted-foreground">{i18n.t("libraryDetail.fallbackPlayableMedia")}</span>
         )}
         {summary.negativeMatches.length > 0 && (
-          <span className="text-muted-foreground">excluded {summary.negativeMatches.join(" + ")}</span>
+          <span className="text-muted-foreground">
+            {i18n.t("libraryDetail.excludedRules", { rules: summary.negativeMatches.join(" + ") })}
+          </span>
         )}
       </div>
     </>
@@ -8053,19 +8137,20 @@ function SourceDirectoryToolbar({
           {onPlay && (
             <Button size="sm" onClick={onPlay}>
               <Play className="h-4 w-4" />
-              Play
+              {i18n.t("player.play")}
             </Button>
           )}
           {onOpenLocal && (
             <Button size="sm" onClick={onOpenLocal}>
               <MoreHorizontal className="h-4 w-4" />
-              Open local detail
+              {i18n.t("libraryDetail.openLocalDetail")}
             </Button>
           )}
           {onSelectSaveFiles && (
             <Button size="sm" disabled={busy} onClick={onSelectSaveFiles}>
               <HardDriveDownload className="h-4 w-4" />
-              Fetch{selectedCount !== undefined ? ` (${selectedCount})` : ""}
+              {i18n.t("detailActions.fetch")}
+              {selectedCount !== undefined ? ` (${selectedCount})` : ""}
             </Button>
           )}
         </div>
@@ -8142,7 +8227,7 @@ function useWorkCoverCandidates(workId: number, toast: ReturnType<typeof useToas
         setSelectedCoverId(result.candidates.find((candidate) => candidate.selected)?.locationId ?? null);
       })
       .catch((error) => {
-        if (!cancelled) toast.notify(toastFromError(error, "Cover candidates could not be loaded."));
+        if (!cancelled) toast.notify(toastFromError(error, i18n.t("libraryDetail.coverCandidatesLoadFailed")));
       })
       .finally(() => {
         if (!cancelled) setLoadingCovers(false);
@@ -8185,11 +8270,11 @@ function MetadataEditorCoverSection({
       )}
       {loadingCovers ? (
         <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
-          Loading cover candidates...
+          {i18n.t("libraryDetail.loadingCoverCandidates")}
         </div>
       ) : coverCandidates.length === 0 ? (
         <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
-          No indexed local images found for this work.
+          {i18n.t("libraryDetail.noIndexedLocalImages")}
         </div>
       ) : (
         <div className="grid gap-2 sm:grid-cols-2">
@@ -8217,7 +8302,7 @@ function MetadataEditorCoverSection({
       )}
       <div className="flex justify-end">
         <Button variant="outline" size="sm" disabled={saving || !manualCover} onClick={onReset}>
-          Reset cover
+          {i18n.t("libraryDetail.resetCover")}
         </Button>
       </div>
     </>
@@ -8248,12 +8333,12 @@ function MetadataEditorCircleSection({
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-[1fr_180px]">
-        <LabeledInput label="Name" value={name} onChange={onNameChange} />
-        <LabeledInput label="External ID" value={externalId} onChange={onExternalIdChange} />
+        <LabeledInput label={i18n.t("libraryDetail.name")} value={name} onChange={onNameChange} />
+        <LabeledInput label={i18n.t("libraryDetail.externalId")} value={externalId} onChange={onExternalIdChange} />
       </div>
       <SuggestionList
         truncated={suggestions.truncated}
-        emptyLabel="Type at least two characters to search circles."
+        emptyLabel={i18n.t("libraryDetail.typeToSearchCircles")}
         items={suggestions.items.map((item) => ({
           key: String(item.partyId),
           label: item.name,
@@ -8263,7 +8348,7 @@ function MetadataEditorCircleSection({
       />
       <div className="flex justify-end">
         <Button variant="outline" size="sm" disabled={saving || !hasManualValue} onClick={onReset}>
-          Reset circle
+          {i18n.t("libraryDetail.resetCircle")}
         </Button>
       </div>
     </>
@@ -8298,13 +8383,17 @@ function MetadataEditorSeriesSection({
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-[1fr_160px_180px]">
-        <LabeledInput label="Name" value={name} onChange={onNameChange} />
-        <LabeledInput label="Title ID" value={titleId} onChange={onTitleIdChange} />
-        <LabeledInput label="Circle ID" value={circleExternalId} onChange={onCircleExternalIdChange} />
+        <LabeledInput label={i18n.t("libraryDetail.name")} value={name} onChange={onNameChange} />
+        <LabeledInput label={i18n.t("libraryDetail.titleId")} value={titleId} onChange={onTitleIdChange} />
+        <LabeledInput
+          label={i18n.t("libraryDetail.circle")}
+          value={circleExternalId}
+          onChange={onCircleExternalIdChange}
+        />
       </div>
       <SuggestionList
         truncated={suggestions.truncated}
-        emptyLabel="Type at least two characters to search series."
+        emptyLabel={i18n.t("libraryDetail.typeToSearchSeries")}
         items={suggestions.items.map((item) => ({
           key: String(item.seriesId),
           label: item.name,
@@ -8314,7 +8403,7 @@ function MetadataEditorSeriesSection({
       />
       <div className="flex justify-end">
         <Button variant="outline" size="sm" disabled={saving || !hasManualValue} onClick={onReset}>
-          Reset series
+          {i18n.t("libraryDetail.resetSeries")}
         </Button>
       </div>
     </>
@@ -8352,13 +8441,13 @@ function MetadataEditorVoiceActorsSection({
         {voiceActors.map((actor, index) => (
           <div key={`${index}:${actor.personId}`} className="grid gap-2 sm:grid-cols-[1fr_120px_auto]">
             <LabeledInput
-              label="Name"
+              label={i18n.t("libraryDetail.name")}
               value={actor.name}
               onFocus={() => onFocus(index)}
               onChange={(value) => onUpdate(index, { name: value, personId: 0 })}
             />
             <LabeledInput
-              label="Person ID"
+              label={i18n.t("libraryDetail.personId")}
               value={actor.personId ? String(actor.personId) : ""}
               onChange={(value) => onUpdate(index, { personId: Number(value) || 0 })}
             />
@@ -8367,7 +8456,7 @@ function MetadataEditorVoiceActorsSection({
               size="icon"
               className="mt-5 h-9 w-9"
               onClick={() => onRemove(index)}
-              aria-label="Remove voice actor"
+              aria-label={i18n.t("libraryDetail.removeVoiceActor")}
             >
               <X className="h-4 w-4" />
             </Button>
@@ -8376,11 +8465,11 @@ function MetadataEditorVoiceActorsSection({
         {focusedVoiceIndex >= 0 && (
           <SuggestionList
             truncated={suggestions.truncated}
-            emptyLabel="Type at least two characters to search voices."
+            emptyLabel={i18n.t("libraryDetail.typeToSearchVoices")}
             items={suggestions.items.map((item) => ({
               key: String(item.personId),
               label: item.name,
-              detail: `Person #${item.personId}`,
+              detail: i18n.t("libraryDetail.personNumber", { id: item.personId }),
               onSelect: () => onSuggestionSelect(item),
             }))}
           />
@@ -8389,10 +8478,10 @@ function MetadataEditorVoiceActorsSection({
       <div className="flex flex-wrap justify-between gap-2">
         <Button variant="outline" size="sm" onClick={onAdd}>
           <Plus className="h-4 w-4" />
-          Add voice
+          {i18n.t("libraryDetail.addVoice")}
         </Button>
         <Button variant="outline" size="sm" disabled={saving || !hasManualValue} onClick={onReset}>
-          Reset voices
+          {i18n.t("libraryDetail.resetVoices")}
         </Button>
       </div>
     </>
@@ -8486,11 +8575,11 @@ function useMetadataEditorActions({
         }),
       );
       if (selectedCoverId !== null) await api.setWorkCoverOverride(work.id, selectedCoverId);
-      toast.success("Metadata overrides saved.");
+      toast.success(i18n.t("libraryDetail.metadataOverridesSaved"));
       onSaved();
       onClose();
     } catch (error) {
-      toast.notify(toastFromError(error, "Metadata overrides could not be saved."));
+      toast.notify(toastFromError(error, i18n.t("libraryDetail.metadataOverridesSaveFailed")));
     } finally {
       setSaving(false);
     }
@@ -8500,11 +8589,11 @@ function useMetadataEditorActions({
     setSaving(true);
     try {
       await api.deleteWorkManualOverride(work.id, field);
-      toast.success("Override reset.");
+      toast.success(i18n.t("libraryDetail.overrideReset"));
       onSaved();
       onClose();
     } catch (error) {
-      toast.notify(toastFromError(error, "Override could not be reset."));
+      toast.notify(toastFromError(error, i18n.t("libraryDetail.overrideResetFailed")));
     } finally {
       setSaving(false);
     }
@@ -8573,16 +8662,22 @@ function WorkMetadataEditorModal({
       <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border bg-card shadow-lg">
         <div className="flex items-start justify-between gap-3 border-b px-4 py-3">
           <div>
-            <h3 className="text-base font-semibold">Edit metadata</h3>
+            <h3 className="text-base font-semibold">{i18n.t("libraryDetail.editMetadata")}</h3>
             <p className="mt-1 text-xs text-muted-foreground">{work.primaryCode}</p>
           </div>
-          <Button variant="outline" size="icon" className="h-8 w-8" onClick={onClose} aria-label="Close">
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={onClose}
+            aria-label={i18n.t("content.close")}
+          >
             <X className="h-4 w-4" />
           </Button>
         </div>
         <div className="app-scroll min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
-          <EditorSection title="Work">
-            <LabeledInput label="Title" value={title} onChange={setTitle} />
+          <EditorSection title={i18n.t("libraryDetail.work")}>
+            <LabeledInput label={i18n.t("libraryDetail.title")} value={title} onChange={setTitle} />
             <div className="flex justify-end">
               <Button
                 variant="outline"
@@ -8590,12 +8685,12 @@ function WorkMetadataEditorModal({
                 disabled={saving || !manual.title}
                 onClick={() => void resetField("title")}
               >
-                Reset title
+                {i18n.t("libraryDetail.resetTitle")}
               </Button>
             </div>
           </EditorSection>
 
-          <EditorSection title="Cover">
+          <EditorSection title={i18n.t("libraryDetail.cover")}>
             <MetadataEditorCoverSection
               manualCover={manual.cover}
               coverCandidates={coverState.coverCandidates}
@@ -8607,7 +8702,7 @@ function WorkMetadataEditorModal({
             />
           </EditorSection>
 
-          <EditorSection title="Circle">
+          <EditorSection title={i18n.t("libraryDetail.circle")}>
             <MetadataEditorCircleSection
               name={circleName}
               externalId={circleExternalId}
@@ -8626,7 +8721,7 @@ function WorkMetadataEditorModal({
             />
           </EditorSection>
 
-          <EditorSection title="Series">
+          <EditorSection title={i18n.t("libraryDetail.series")}>
             <MetadataEditorSeriesSection
               name={seriesName}
               titleId={seriesTitleId}
@@ -8647,7 +8742,7 @@ function WorkMetadataEditorModal({
             />
           </EditorSection>
 
-          <EditorSection title="Voice actors">
+          <EditorSection title={i18n.t("libraryDetail.voiceActors")}>
             <MetadataEditorVoiceActorsSection
               voiceActors={voiceActors}
               suggestions={voiceSuggestions}
@@ -8668,10 +8763,10 @@ function WorkMetadataEditorModal({
         </div>
         <div className="flex justify-end gap-2 border-t px-4 py-3">
           <Button variant="outline" size="sm" disabled={saving} onClick={onClose}>
-            Cancel
+            {i18n.t("content.cancel")}
           </Button>
           <Button size="sm" disabled={saving} onClick={() => void save()}>
-            {saving ? "Saving" : "Save"}
+            {saving ? i18n.t("common.saving") : i18n.t("content.save")}
           </Button>
         </div>
       </div>
@@ -8713,7 +8808,7 @@ function SuggestionList({
         </button>
       ))}
       {truncated && (
-        <div className="px-2 py-1 text-xs text-muted-foreground">Too many matches. Keep typing to narrow results.</div>
+        <div className="px-2 py-1 text-xs text-muted-foreground">{i18n.t("libraryDetail.tooManyMatches")}</div>
       )}
     </div>
   );
@@ -8780,13 +8875,13 @@ function DirectoryOperationBanner({ runId, status, onOpen }: { runId: number; st
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border bg-background px-3 py-2 text-sm">
       <div>
-        <div className="font-medium">File operation in progress</div>
+        <div className="font-medium">{i18n.t("libraryDetail.fileOperationInProgress")}</div>
         <div className="text-xs text-muted-foreground">
           Workflow #{runId} · {status}
         </div>
       </div>
       <Button size="sm" variant="outline" onClick={onOpen}>
-        View Activity
+        {i18n.t("remoteFetch.activity")}
       </Button>
     </div>
   );
@@ -8846,13 +8941,13 @@ function WorkVersionSelector({
         <div className="flex min-h-11 flex-wrap items-center gap-2 px-3 py-2">
           <div className="flex items-center gap-2 text-muted-foreground">
             <Languages className="h-3.5 w-3.5" />
-            <span className="font-medium text-foreground">Metadata language</span>
+            <span className="font-medium text-foreground">{i18n.t("libraryDetail.metadataLanguage")}</span>
           </div>
           {metadataVariants.length > 1 ? (
             <FloatingSelect
               value={activeMetadataVariant?.key ?? ""}
               onValueChange={(value) => onMetadataVariantSelect?.(value)}
-              ariaLabel="Metadata language"
+              ariaLabel={i18n.t("libraryDetail.metadataLanguage")}
               className="w-auto min-w-40 max-w-full px-2 text-xs font-medium"
               options={metadataVariants.map((variant) => ({
                 value: variant.key,
@@ -8873,17 +8968,19 @@ function WorkVersionSelector({
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
               <FolderTree className="h-3.5 w-3.5" />
-              <span className="font-medium text-foreground">Directory edition</span>
+              <span className="font-medium text-foreground">{i18n.t("libraryDetail.directoryEdition")}</span>
               {baseCode &&
                 (baseAvailable ? (
                   <button
                     className="font-semibold text-primary hover:underline"
                     onClick={() => openWorkCodeRoute(baseCode)}
                   >
-                    Base {baseCode}
+                    {i18n.t("libraryDetail.baseCode", { code: baseCode })}
                   </button>
                 ) : (
-                  <span className="font-semibold text-foreground">Base {baseCode}</span>
+                  <span className="font-semibold text-foreground">
+                    {i18n.t("libraryDetail.baseCode", { code: baseCode })}
+                  </span>
                 ))}
             </div>
             {hiddenEditionCount > 0 && (
@@ -8894,8 +8991,8 @@ function WorkVersionSelector({
                 onClick={() => setShowAllEditions((shown) => !shown)}
               >
                 {showAllEditions
-                  ? "Hide all editions"
-                  : `Show all ${hiddenEditionCount} ${hiddenEditionCount === 1 ? "edition" : "editions"}`}
+                  ? i18n.t("libraryDetail.hideAllEditions")
+                  : i18n.t("libraryDetail.showAllEditions", { count: hiddenEditionCount })}
               </button>
             )}
           </div>
@@ -8926,7 +9023,7 @@ function metadataVariantLabel(
   const sameLanguageCount = variants.filter(
     (candidate) => candidate.language.trim().toLowerCase() === variant.language.trim().toLowerCase(),
   ).length;
-  const prefix = variant.origin ? `Original · ${language}` : language;
+  const prefix = variant.origin ? `${i18n.t("libraryDetail.original")} · ${language}` : language;
   return sameLanguageCount > 1 ? `${prefix} · ${variant.key}` : prefix;
 }
 
@@ -8943,7 +9040,7 @@ function WorkLanguageVersionPicker({
 }) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
-  const language = group.language ? languageLabel(group.language) : "Unknown language";
+  const language = group.language ? languageLabel(group.language) : i18n.t("libraryDetail.unknownLanguage");
   const preferred = preferredWorkVersion(group.versions, activeVersionCode, availabilityScope);
   const activeCode = activeVersionCode.trim().toUpperCase();
   const groupActive = group.versions.some((version) => version.primaryCode.trim().toUpperCase() === activeCode);
@@ -8961,7 +9058,7 @@ function WorkLanguageVersionPicker({
   };
 
   return (
-    <div ref={anchorRef} role="group" aria-label={`${language} versions`}>
+    <div ref={anchorRef} role="group" aria-label={i18n.t("libraryDetail.languageVersions", { language })}>
       <div
         className={`inline-flex overflow-hidden rounded-md border ${
           groupActive
@@ -8984,7 +9081,7 @@ function WorkLanguageVersionPicker({
         <button
           type="button"
           className={`border-l px-1.5 ${groupActive ? "border-primary-foreground/30" : "border-current/20"} hover:bg-black/10`}
-          aria-label={`Choose ${language} DLsite code`}
+          aria-label={i18n.t("libraryDetail.chooseLanguageCode", { language })}
           aria-expanded={open}
           onClick={() => setOpen((current) => !current)}
         >
@@ -8998,7 +9095,7 @@ function WorkLanguageVersionPicker({
         align="start"
         className="w-[min(19rem,calc(100vw-1.5rem))] p-1 text-sm"
       >
-        <div role="menu" aria-label={`${language} DLsite codes`} className="space-y-1">
+        <div role="menu" aria-label={i18n.t("libraryDetail.languageCodes", { language })} className="space-y-1">
           {group.versions.map((translation) => {
             const available = workVersionAvailableForScope(translation, availabilityScope);
             const active = translation.primaryCode.trim().toUpperCase() === activeCode;
@@ -9037,17 +9134,19 @@ function WorkLanguageVersionPicker({
 function workVersionStateLabel(version: WorkDetail["translations"][number], scope: WorkVersionAvailabilityScope) {
   const mediaState = workVersionMediaState(version);
   if (scope === "local" && !version.localAvailable) {
-    return mediaState === "indexed_available" ? "Remote only" : "Unavailable";
+    return mediaState === "indexed_available"
+      ? i18n.t("libraryDetail.remoteOnly")
+      : i18n.t("detailActions.unavailable");
   }
   switch (mediaState) {
     case "indexed_available":
-      return scope === "local" ? "Ready" : "Available";
+      return scope === "local" ? i18n.t("libraryDetail.ready") : i18n.t("content.available");
     case "present_unindexed":
-      return "Index on open";
+      return i18n.t("libraryDetail.indexOnOpen");
     case "metadata_only":
-      return "Metadata only";
+      return i18n.t("libraryDetail.metadataOnly");
     default:
-      return "Unavailable";
+      return i18n.t("detailActions.unavailable");
   }
 }
 
@@ -9068,7 +9167,7 @@ function DlsiteMetrics({
   dlsiteFetchedAt: string;
   ageRating: string;
 }) {
-  const normalizedRatingLabel = ratingLabel.toLowerCase().includes("dl") ? "Rate" : ratingLabel;
+  const normalizedRatingLabel = ratingLabel.toLowerCase().includes("dl") ? i18n.t("workCard.ratingShort") : ratingLabel;
   const rateValue =
     rating === null ? "—" : `${rating.toFixed(2)}${ratingCount ? ` (${ratingCount.toLocaleString()})` : ""}`;
   const age = ageRatingPresentation(ageRating);
@@ -9076,19 +9175,26 @@ function DlsiteMetrics({
   const dateValue = dlsiteFetchedAt ? `${releaseDate} / ${dlsiteFetchedAt}` : releaseDate;
   return (
     <div data-testid="dlsite-info" className="w-full rounded-lg border bg-card p-3 text-sm">
-      <div className="mb-2 text-xs font-medium text-muted-foreground">DLsite info</div>
+      <div className="mb-2 text-xs font-medium text-muted-foreground">{i18n.t("libraryDetail.dlsiteInfo")}</div>
       <div className="space-y-2">
         <div
           data-testid="dlsite-primary-metrics"
           className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[11px] leading-4"
         >
           <InlineDlsiteMetric label={normalizedRatingLabel} value={rateValue} />
-          <InlineDlsiteMetric label="Age" value={ageValue} valueClassName={age.textClassName} />
-          <InlineDlsiteMetric label="Sales" value={sales === null ? "—" : sales.toLocaleString()} />
+          <InlineDlsiteMetric
+            label={i18n.t("library.searchClauseKinds.age")}
+            value={ageValue}
+            valueClassName={age.textClassName}
+          />
+          <InlineDlsiteMetric
+            label={i18n.t("library.sortOptions.sales")}
+            value={sales === null ? "—" : sales.toLocaleString()}
+          />
         </div>
         <MetricLine
           icon={<Clock3 className="h-3.5 w-3.5" />}
-          label={dlsiteFetchedAt ? "Released / Updated" : "Released"}
+          label={dlsiteFetchedAt ? i18n.t("libraryDetail.releasedUpdated") : i18n.t("libraryDetail.released")}
           value={dateValue}
         />
       </div>
@@ -9109,31 +9215,36 @@ function ActiveSourceInfo({ info }: { info: ActiveSourceInfoModel }) {
   const sizeValue = info.stats.knownSizeFiles > 0 ? formatBytes(info.stats.sizeBytes) : noFilesValue;
   const sizeDetail =
     info.stats.knownSizeFiles > 0 && info.stats.knownSizeFiles < info.stats.files
-      ? `${info.stats.knownSizeFiles}/${info.stats.files} files measured`
+      ? i18n.t("libraryDetail.filesMeasured", { known: info.stats.knownSizeFiles, total: info.stats.files })
       : info.stats.knownSizeFiles > 0
-        ? "All file sizes measured"
-        : "No measured file size";
+        ? i18n.t("libraryDetail.allFileSizesMeasured")
+        : i18n.t("libraryDetail.noMeasuredFileSize");
   const hasMeasuredDuration = info.stats.knownDurationMedia > 0;
   const durationValue = hasMeasuredDuration
     ? formatDuration(info.stats.durationSeconds)
     : info.metadataDurationSeconds
       ? formatDuration(info.metadataDurationSeconds)
       : noFilesValue;
-  const durationLabel = hasMeasuredDuration ? "Playable duration" : "Metadata duration";
+  const durationLabel = hasMeasuredDuration
+    ? i18n.t("libraryDetail.playableDuration")
+    : i18n.t("libraryDetail.metadataDuration");
   const durationDetail = hasMeasuredDuration
     ? info.stats.knownDurationMedia < info.stats.playable
-      ? `${info.stats.knownDurationMedia}/${info.stats.playable} playable files measured`
-      : "All playable durations measured"
+      ? i18n.t("libraryDetail.playableFilesMeasured", {
+          known: info.stats.knownDurationMedia,
+          total: info.stats.playable,
+        })
+      : i18n.t("libraryDetail.allPlayableDurationsMeasured")
     : info.metadataDurationSeconds
-      ? "No measured source duration"
-      : "No known duration";
+      ? i18n.t("libraryDetail.noMeasuredSourceDuration")
+      : i18n.t("libraryDetail.noKnownDuration");
 
   return (
     <div data-testid="active-source-info" className="w-full rounded-lg border bg-card p-3 text-sm">
       <div className="mb-3 min-w-0">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
           <SourceIcon className="h-4 w-4 shrink-0" />
-          <span>Source info</span>
+          <span>{i18n.t("libraryDetail.sourceInfo")}</span>
         </div>
         <div className="mt-1 truncate font-semibold" title={info.label}>
           {info.label}
@@ -9146,7 +9257,7 @@ function ActiveSourceInfo({ info }: { info: ActiveSourceInfoModel }) {
       <div className="space-y-2.5">
         <SourceInfoRow
           testId="source-info-audio-row"
-          firstLabel="Playable"
+          firstLabel={i18n.t("libraryDetail.playable")}
           firstValue={info.loading && info.stats.files === 0 ? "..." : info.stats.playable.toLocaleString()}
           secondLabel={durationLabel}
           secondValue={durationValue}
@@ -9154,9 +9265,9 @@ function ActiveSourceInfo({ info }: { info: ActiveSourceInfoModel }) {
         />
         <SourceInfoRow
           testId="source-info-files-row"
-          firstLabel="Files"
+          firstLabel={i18n.t("libraryDetail.filesLabel")}
           firstValue={info.loading && info.stats.files === 0 ? "..." : info.stats.files.toLocaleString()}
-          secondLabel="Size"
+          secondLabel={i18n.t("libraryDetail.size")}
           secondValue={sizeValue}
           detail={sizeDetail}
         />
@@ -9360,7 +9471,7 @@ function LyricsAttachmentsToggle({
       aria-pressed={showingAll}
     >
       <Captions className="h-4 w-4" />
-      {showingAll ? "Hide attached lyrics" : `Show attached lyrics (${count})`}
+      {showingAll ? i18n.t("libraryDetail.hideAttachedLyrics") : i18n.t("libraryDetail.showAttachedLyrics", { count })}
     </Button>
   );
 }
@@ -9376,7 +9487,7 @@ function DirectoryTree({
   onPlayNext,
   onAppendQueue,
   onPreview,
-  emptyLabel = "No local files detected.",
+  emptyLabel = i18n.t("libraryDetail.noLocalFiles"),
 }: {
   root: TreeNode;
   directoryRoutingRules: DirectoryRoutingRule[];
@@ -9500,7 +9611,7 @@ function openDetailTagSearch(tag: string) {
 function openResolvedEntityRoute(route: string) {
   if (!route.startsWith("/")) return;
   const returnTo = `${window.location.pathname}${window.location.search}`;
-  window.history.pushState(historyStateWithReturn(returnTo, "Back"), "", route);
+  window.history.pushState(historyStateWithReturn(returnTo, i18n.t("detailActions.back")), "", route);
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 
@@ -9524,14 +9635,16 @@ function ConfirmMediaDeleteModal({
       >
         <div className="flex items-start justify-between gap-3 border-b p-4">
           <div>
-            <h3 className="text-base font-semibold">{isLocal ? "Delete local file" : "Delete cached file"}</h3>
+            <h3 className="text-base font-semibold">
+              {isLocal ? i18n.t("libraryDetail.deleteLocalFile") : i18n.t("libraryDetail.deleteCachedFile")}
+            </h3>
             <p className="mt-1 text-sm text-muted-foreground">
               {isLocal
-                ? "This removes only this local file location."
-                : "The remote source and saved local files will not be deleted."}
+                ? i18n.t("libraryDetail.localDeleteLocationNotice")
+                : i18n.t("libraryDetail.remoteSourceKeptNotice")}
             </p>
           </div>
-          <IconButton title="Close" onClick={onCancel}>
+          <IconButton title={i18n.t("content.close")} onClick={onCancel}>
             <X className="h-4 w-4" />
           </IconButton>
         </div>
@@ -9543,14 +9656,12 @@ function ConfirmMediaDeleteModal({
             </div>
           </div>
           <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive">
-            {isLocal
-              ? "This removes the local file from disk and marks only this location unavailable. Work progress and marks are preserved."
-              : "This removes the cached file from disk and marks the cache location unavailable."}
+            {isLocal ? i18n.t("libraryDetail.localDeleteWarning") : i18n.t("libraryDetail.cacheDeleteWarning")}
           </div>
         </div>
         <div className="flex justify-end gap-2 border-t p-4">
           <Button variant="outline" onClick={onCancel} disabled={deleting}>
-            Cancel
+            {i18n.t("content.cancel")}
           </Button>
           <Button
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
@@ -9558,7 +9669,11 @@ function ConfirmMediaDeleteModal({
             disabled={deleting}
           >
             <Trash2 className="h-4 w-4" />
-            {deleting ? "Deleting" : isLocal ? "Delete local" : "Delete cache"}
+            {deleting
+              ? i18n.t("libraryDetail.deleting")
+              : isLocal
+                ? i18n.t("libraryDetail.deleteLocal")
+                : i18n.t("libraryDetail.deleteCache")}
           </Button>
         </div>
       </div>
@@ -9587,28 +9702,25 @@ function ReforkConfirmModal({
       >
         <div className="flex items-start justify-between gap-3 border-b p-4">
           <div>
-            <h3 className="text-base font-semibold">Switch fork source</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Choose a different remote source for this tracked directory.
-            </p>
+            <h3 className="text-base font-semibold">{i18n.t("libraryDetail.switchForkSource")}</h3>
+            <p className="mt-1 text-sm text-muted-foreground">{i18n.t("libraryDetail.chooseDifferentRemoteSource")}</p>
           </div>
-          <IconButton title="Close" onClick={onClose}>
+          <IconButton title={i18n.t("content.close")} onClick={onClose}>
             <X className="h-4 w-4" />
           </IconButton>
         </div>
         <div className="space-y-3 p-4 text-sm">
           <div className="rounded-md border bg-muted px-3 py-2 text-muted-foreground">
-            {currentName} will be replaced by {nextName}. Cached files for the current fork should be cleaned when
-            backend reFork cleanup is added.
+            {i18n.t("libraryDetail.forkReplacementNotice", { current: currentName, next: nextName })}
           </div>
         </div>
         <div className="flex justify-end gap-2 border-t p-4">
           <Button variant="outline" onClick={onClose} disabled={busy}>
-            Cancel
+            {i18n.t("content.cancel")}
           </Button>
           <Button onClick={onConfirm} disabled={busy}>
             <GitBranchPlus className="h-4 w-4" />
-            Switch fork
+            {i18n.t("libraryDetail.switchForkSource")}
           </Button>
         </div>
       </div>
@@ -9627,7 +9739,7 @@ function DirectoryBrowser({
   onPlayNext,
   onAppendQueue,
   onPreview,
-  emptyLabel = "No local files detected.",
+  emptyLabel = i18n.t("libraryDetail.localFilesUnavailable"),
 }: {
   root: TreeNode;
   directoryRoutingRules: DirectoryRoutingRule[];
@@ -9685,7 +9797,7 @@ function DirectoryBrowser({
             onClick={() => setPath(path.slice(0, -1))}
           >
             <ChevronLeft className="h-4 w-4 text-muted-foreground" />
-            <span>Parent folder</span>
+            <span>{i18n.t("libraryDetail.parentFolder")}</span>
           </button>
         )}
         {folders.map((folder) => (
@@ -9733,11 +9845,11 @@ function DirectoryBreadcrumb({ path, onChange }: { path: string[]; onChange: (pa
     <nav
       data-testid="directory-breadcrumb"
       className="min-h-9 min-w-0 rounded-md border bg-background px-2 text-sm"
-      aria-label="Directory path"
+      aria-label={i18n.t("libraryDetail.parentFolder")}
     >
       <div className="flex min-h-9 min-w-0 items-center gap-1 overflow-hidden lg:hidden">
         <button className="shrink-0 rounded px-2 py-1 font-medium hover:bg-muted" onClick={() => onChange([])}>
-          root
+          {i18n.t("libraryDetail.root")}
         </button>
         {path.length > 0 && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
         {ancestors.length > 0 && (
@@ -9746,7 +9858,7 @@ function DirectoryBreadcrumb({ path, onChange }: { path: string[]; onChange: (pa
               ref={ancestorMenuRef}
               className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
               onClick={() => setAncestorMenuOpen((open) => !open)}
-              aria-label={`Show ${ancestors.length} parent folder${ancestors.length === 1 ? "" : "s"}`}
+              aria-label={i18n.t("libraryDetail.showParentFolders", { count: ancestors.length })}
               aria-haspopup="menu"
               aria-expanded={ancestorMenuOpen}
             >
@@ -9760,7 +9872,7 @@ function DirectoryBreadcrumb({ path, onChange }: { path: string[]; onChange: (pa
               className="w-[min(20rem,calc(100vw-1.5rem))] p-1"
               bottomCollisionPadding={96}
             >
-              <div role="menu" aria-label="Parent folders">
+              <div role="menu" aria-label={i18n.t("libraryDetail.parentFolder")}>
                 {ancestors.map((part, index) => (
                   <button
                     key={`${part}:${index}`}
@@ -9791,7 +9903,7 @@ function DirectoryBreadcrumb({ path, onChange }: { path: string[]; onChange: (pa
 
       <div className="app-scrollbar hidden min-h-9 min-w-0 items-center gap-1 overflow-x-auto whitespace-nowrap lg:flex">
         <button className="shrink-0 rounded px-2 py-1 font-medium hover:bg-muted" onClick={() => onChange([])}>
-          root
+          {i18n.t("libraryDetail.root")}
         </button>
         {path.map((part, index) => {
           const isCurrent = index === path.length - 1;
@@ -9898,7 +10010,7 @@ function treeFileMeta(file: TreeTrack) {
   return [
     fileKindLabel(file.kind),
     file.kind === "audio" || file.kind === "video" ? formatTrackDuration(file.durationSeconds) : "",
-    file.sizeBytes === null ? "Unknown size" : formatBytes(file.sizeBytes),
+    file.sizeBytes === null ? i18n.t("libraryDetail.unknownSize") : formatBytes(file.sizeBytes),
   ]
     .filter(Boolean)
     .join(" · ");
@@ -10009,10 +10121,10 @@ function TreeFileLyricsActions({
           onCloseMore();
           onOpenChange(!open);
         }}
-        aria-label={`Lyrics for ${file.title}`}
+        aria-label={i18n.t("libraryDetail.lyricsFor", { title: file.title })}
         aria-haspopup="dialog"
         aria-expanded={open}
-        title="Lyrics"
+        title={i18n.t("libraryDetail.lyrics")}
       >
         <Captions className="h-4 w-4" />
       </button>
@@ -10023,14 +10135,14 @@ function TreeFileLyricsActions({
         className="w-[min(22rem,calc(100vw-1.5rem))] rounded-lg border bg-card p-2 text-card-foreground shadow-xl"
         bottomCollisionPadding={96}
       >
-        <div role="dialog" aria-label={`Lyrics for ${file.title}`} className="space-y-2">
+        <div role="dialog" aria-label={i18n.t("libraryDetail.lyricsFor", { title: file.title })} className="space-y-2">
           <div className="px-1 py-0.5">
-            <div className="text-sm font-semibold">Lyrics</div>
+            <div className="text-sm font-semibold">{i18n.t("libraryDetail.lyrics")}</div>
             <div className="mt-0.5 truncate text-xs text-muted-foreground" title={file.title}>
               {file.title}
             </div>
           </div>
-          <div role="radiogroup" aria-label="Lyrics source" className="space-y-1">
+          <div role="radiogroup" aria-label={i18n.t("libraryDetail.lyricsSource")} className="space-y-1">
             <button
               role="radio"
               aria-checked={automaticLyrics}
@@ -10038,11 +10150,13 @@ function TreeFileLyricsActions({
               onClick={() => void player.changeLyricsChoice(file, null)}
             >
               <span className="min-w-0 flex-1">
-                <span className="block font-medium">Auto</span>
+                <span className="block font-medium">{i18n.t("libraryDetail.auto")}</span>
                 <span className="block truncate text-xs text-muted-foreground">
                   {selectedLyricsChoice
-                    ? `Matches ${lyricsChoiceDisplayLabel(selectedLyricsChoice, choices)}`
-                    : "No available match"}
+                    ? i18n.t("libraryDetail.matchesLyrics", {
+                        label: lyricsChoiceDisplayLabel(selectedLyricsChoice, choices),
+                      })
+                    : i18n.t("libraryDetail.noAvailableMatch")}
                 </span>
               </span>
               {automaticLyrics && <Check className="h-4 w-4 shrink-0 text-primary" />}
@@ -10079,7 +10193,7 @@ function TreeFileLyricsActions({
               }}
             >
               <FileText className="h-4 w-4" />
-              Preview
+              {i18n.t("remoteFetch.actionPreview")}
             </button>
             {selectedLyricsChoice && isLyricsAttachmentHidden?.(selectedLyricsChoice.locationId) && (
               <button
@@ -10090,13 +10204,13 @@ function TreeFileLyricsActions({
                 }}
               >
                 <Folder className="h-4 w-4" />
-                Show in directory
+                {i18n.t("libraryDetail.showInDirectory")}
               </button>
             )}
           </div>
           {file.lyricsPreferencePersistable === false && (
             <div className="rounded-md bg-muted px-2 py-1.5 text-xs text-muted-foreground">
-              This remote preview selection is temporary.
+              {i18n.t("libraryDetail.temporaryPreview")}
             </div>
           )}
         </div>
@@ -10142,7 +10256,7 @@ function TreeFileMoreActions({
           onCloseLyrics();
           onOpenChange(!open);
         }}
-        aria-label={`More actions for ${file.title}`}
+        aria-label={i18n.t("libraryDetail.moreActionsFor", { title: file.title })}
         aria-haspopup="menu"
         aria-expanded={open}
       >
@@ -10153,7 +10267,7 @@ function TreeFileMoreActions({
         anchorRef={anchorRef}
         className={`w-52 rounded-lg border bg-card p-1 text-sm text-card-foreground shadow-xl ${hasQueueActions ? "" : "lg:hidden"}`}
       >
-        <div role="menu" aria-label={`More actions for ${file.title}`}>
+        <div role="menu" aria-label={i18n.t("libraryDetail.moreActionsFor", { title: file.title })}>
           {choices.length > 0 && (
             <button
               role="menuitem"
@@ -10165,7 +10279,7 @@ function TreeFileMoreActions({
               aria-haspopup="dialog"
             >
               <Captions className="h-4 w-4" />
-              Lyrics
+              {i18n.t("libraryDetail.lyrics")}
             </button>
           )}
           {canPlay && file.kind === "video" && (
@@ -10178,7 +10292,7 @@ function TreeFileMoreActions({
               }}
             >
               <Headphones className="h-4 w-4" />
-              Play as audio
+              {i18n.t("libraryDetail.playAsAudio")}
             </button>
           )}
           {canPlay && onPlayNext && (
@@ -10190,7 +10304,7 @@ function TreeFileMoreActions({
                 onOpenChange(false);
               }}
             >
-              Play next
+              {i18n.t("libraryDetail.playNext")}
             </button>
           )}
           {canPlay && onAppendQueue && (
@@ -10202,7 +10316,7 @@ function TreeFileMoreActions({
                 onOpenChange(false);
               }}
             >
-              Add to queue
+              {i18n.t("libraryDetail.addToQueue")}
             </button>
           )}
         </div>
@@ -10289,7 +10403,7 @@ function TreeFile({
       </span>
       <span ref={actionAreaRef} className="flex shrink-0 items-start gap-2 pt-0.5 text-xs text-muted-foreground">
         {file.kind === "file" && actionState.canDownload && (
-          <ExternalLink className="h-3.5 w-3.5 text-primary" aria-label="Downloads in new tab" />
+          <ExternalLink className="h-3.5 w-3.5 text-primary" aria-label={i18n.t("libraryDetail.downloadsNewTab")} />
         )}
         {actionState.lyricsChoices.length > 0 && (
           <TreeFileLyricsActions
@@ -10330,10 +10444,10 @@ function TreeFile({
 }
 
 function lyricsMatchReasonLabel(reason: LyricsChoice["reason"]) {
-  if (reason === "exact_sidecar") return "Exact sidecar";
-  if (reason === "same_stem") return "Matching file name";
-  if (reason === "normalized_name") return "Normalized file name";
-  return "Shared in this folder";
+  if (reason === "exact_sidecar") return i18n.t("libraryDetail.exactSidecar");
+  if (reason === "same_stem") return i18n.t("libraryDetail.matchingFileName");
+  if (reason === "normalized_name") return i18n.t("libraryDetail.normalizedFileName");
+  return i18n.t("libraryDetail.sharedInFolder");
 }
 
 function lyricsChoicePreview(choice: LyricsChoice): FilePreviewState {
@@ -10365,7 +10479,7 @@ function directoryManagerRootTarget({
     locationId: representative.locationId,
     folderId: localRoot.folderId,
     expectedPath: localRoot.path,
-    title: "Work root",
+    title: i18n.t("libraryDetail.workRoot"),
     path: localRoot.path,
     sizeBytes: null,
     workId,
@@ -10449,7 +10563,7 @@ function DirectoryManagerSelectionToolbar({
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2">
       <Button variant="outline" size="sm" disabled={targets.length === 0 || deleting} onClick={onSelectAll}>
-        All
+        {i18n.t("remoteFetch.all")}
       </Button>
       {(["mp3", "wav", "flac"] as const).map((extension) => {
         const state = directoryManagerExtensionState(targets, selectedKeys, extension);
@@ -10463,23 +10577,23 @@ function DirectoryManagerSelectionToolbar({
               indeterminate={state.indeterminate}
               disabled={deleting || state.count === 0}
               onCheckedChange={() => onSetExtensionIncluded(extension, !state.checked)}
-              aria-label={`Include ${extension.toUpperCase()}`}
+              aria-label={i18n.t("libraryDetail.includeExtension", { extension: extension.toUpperCase() })}
             />
             <span>{extension.toUpperCase()}</span>
           </label>
         );
       })}
       <Button variant="outline" size="sm" disabled={deleting} onClick={onClear}>
-        None
+        {i18n.t("libraryDetail.none")}
       </Button>
       {showCachedFilter && (
         <label className="ml-auto inline-flex h-8 items-center gap-2 rounded-md border bg-background px-2 text-xs">
           <Checkbox
             checked={showOnlyDeletable}
             onCheckedChange={onShowOnlyDeletableChange}
-            aria-label="Show cached files only"
+            aria-label={i18n.t("libraryDetail.cachedOnly")}
           />
-          <span>Cached only</span>
+          <span>{i18n.t("libraryDetail.cachedOnly")}</span>
         </label>
       )}
     </div>
@@ -10497,19 +10611,21 @@ function DirectoryManagerPreview({
     <div className="app-scroll min-h-0 overflow-auto p-3">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
-          <div className="text-sm font-medium">Delete preview</div>
+          <div className="text-sm font-medium">{i18n.t("libraryDetail.deletePreview")}</div>
         </div>
         <Badge variant={previewRefreshing ? "outline" : "secondary"}>
-          {previewRefreshing ? "Refreshing" : `${previewTargets.length} items`}
+          {previewRefreshing
+            ? i18n.t("sources.refreshing")
+            : i18n.t("libraryDetail.itemsCount", { count: previewTargets.length })}
         </Badge>
       </div>
       {previewRefreshing && (
         <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
-          <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Updating after your selection changes
+          <RefreshCw className="h-3.5 w-3.5 animate-spin" /> {i18n.t("libraryDetail.fileOperationInProgress")}
         </div>
       )}
       {previewTargets.length === 0 ? (
-        <div className="text-sm text-muted-foreground">Select deletable files to build the preview.</div>
+        <div className="text-sm text-muted-foreground">{i18n.t("libraryDetail.selectDeletableDescription")}</div>
       ) : (
         <div className="space-y-1">
           {previewTargets.map((target) => (
@@ -10558,10 +10674,10 @@ function DirectoryManagerFooter({
     <div className="flex flex-wrap items-center justify-between gap-2 border-t p-3">
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" disabled={targets.length === 0 || deleting} onClick={onToggleAll}>
-          {allSelected ? "Clear all" : "Select all"}
+          {allSelected ? i18n.t("libraryDetail.clearAll") : i18n.t("libraryDetail.selectAll")}
         </Button>
         <span className="text-xs text-muted-foreground">
-          {selectedCount} selected / {targets.length} deletable
+          {i18n.t("libraryDetail.selectedDeletableCount", { selected: selectedCount, total: targets.length })}
         </span>
       </div>
       <div className="flex flex-wrap justify-end gap-2">
@@ -10572,7 +10688,11 @@ function DirectoryManagerFooter({
           onClick={() => onStartConfirmation("files_only")}
         >
           <Trash2 className="h-4 w-4" />
-          {deleting ? "Deleting" : previewRefreshing ? "Refreshing preview" : "Review file deletion"}
+          {deleting
+            ? i18n.t("libraryDetail.deleting")
+            : previewRefreshing
+              ? i18n.t("libraryDetail.refreshingPreview")
+              : i18n.t("libraryDetail.reviewFileDeletion")}
         </Button>
         <Button
           className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
@@ -10580,13 +10700,13 @@ function DirectoryManagerFooter({
           disabled={!canReviewForget || previewRefreshing || deleting}
           title={
             canReviewForget
-              ? "Delete the selected files, then forget the work if no source remains."
-              : "Select the complete local work root and every deletable file from one work."
+              ? i18n.t("libraryDetail.deleteSelectedThenForget")
+              : i18n.t("libraryDetail.selectCompleteWorkRoot")
           }
           onClick={() => onStartConfirmation("files_and_forget_work")}
         >
           <ShieldAlert className="h-4 w-4" />
-          {deleting ? "Deleting" : "Review deletion and forget work"}
+          {deleting ? i18n.t("libraryDetail.deleting") : i18n.t("libraryDetail.reviewDeletionForget")}
         </Button>
       </div>
     </div>
@@ -10595,8 +10715,8 @@ function DirectoryManagerFooter({
 
 function DirectoryManagerModal({
   root,
-  title = "Manage files",
-  description = "Review file operations in the same folder structure as the directory tree.",
+  title = i18n.t("libraryDetail.manageFiles"),
+  description = i18n.t("libraryDetail.reviewFileOperations"),
   emptyLabel,
   onClose,
   deleting = false,
@@ -10686,7 +10806,7 @@ function DirectoryManagerModal({
             <h3 className="text-base font-semibold">{title}</h3>
             <p className="text-xs text-muted-foreground">{description}</p>
           </div>
-          <IconButton title="Close" onClick={onClose}>
+          <IconButton title={i18n.t("content.close")} onClick={onClose}>
             <X className="h-4 w-4" />
           </IconButton>
         </div>
@@ -10783,7 +10903,7 @@ function DirectoryManager({
                 checked={checked}
                 indeterminate={mixed}
                 onCheckedChange={() => rootTargets.forEach((target) => onToggleTarget(target, !checked))}
-                aria-label={`Select work root ${rootTarget.path}`}
+                aria-label={i18n.t("libraryDetail.selectWorkRoot", { path: rootTarget.path })}
               />
               <Folder className="h-4 w-4 shrink-0 text-primary" />
               <span className="min-w-0 flex-1 truncate" title={rootTarget.path}>
@@ -10856,7 +10976,11 @@ function DirectoryManagerNode({
             type="button"
             className="rounded p-0.5 hover:bg-background"
             onClick={() => setOpen((value) => !value)}
-            aria-label={open ? `Collapse ${node.name}` : `Expand ${node.name}`}
+            aria-label={
+              open
+                ? i18n.t("libraryDetail.collapseFolder", { name: node.name })
+                : i18n.t("libraryDetail.expandFolder", { name: node.name })
+            }
           >
             {open ? (
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -10869,7 +10993,7 @@ function DirectoryManagerNode({
             indeterminate={mixed}
             disabled={nodeTargets.length === 0}
             onCheckedChange={toggleNode}
-            aria-label={`Select ${node.name}`}
+            aria-label={i18n.t("libraryDetail.selectFolder", { name: node.name })}
           />
           <Folder className="h-4 w-4 shrink-0 text-primary" />
           <button
@@ -10954,7 +11078,7 @@ function ManagedFileRow({
         indeterminate={mixed}
         disabled={targets.length === 0}
         onCheckedChange={toggleFile}
-        aria-label={`Select ${file.title}`}
+        aria-label={i18n.t("libraryDetail.selectFile", { name: file.title })}
       />
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
@@ -10969,11 +11093,13 @@ function ManagedFileRow({
       <div className="flex flex-wrap justify-end gap-1">
         {targets.map((target) => (
           <Badge key={mediaDeleteTargetKey(target)} variant="outline">
-            {target.kind === "cache" ? "Cache" : "Local"}
+            {target.kind === "cache" ? i18n.t("libraryDetail.cache") : i18n.t("libraryDetail.local")}
           </Badge>
         ))}
         {targets.length === 0 && (
-          <span className="inline-flex h-8 items-center text-xs text-muted-foreground">No file action</span>
+          <span className="inline-flex h-8 items-center text-xs text-muted-foreground">
+            {i18n.t("libraryDetail.noFileAction")}
+          </span>
         )}
       </div>
     </div>
@@ -11012,30 +11138,30 @@ function ConfirmMediaBatchDeleteModal({
             <h3 className="text-base font-semibold">
               {step === 1
                 ? forgetWork
-                  ? "Review deletion and forget work"
-                  : "Review file deletion"
-                : "Final confirmation"}
+                  ? i18n.t("libraryDetail.reviewDeletionForget")
+                  : i18n.t("libraryDetail.reviewFileDeletion")
+                : i18n.t("libraryDetail.finalConfirmation")}
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
               {step === 1
                 ? forgetWork
-                  ? "The second confirmation will delete files first, then re-check every source before forgetting the work."
-                  : "The second confirmation deletes files only; work history and marks remain."
+                  ? i18n.t("libraryDetail.reviewDeletionForgetDescription")
+                  : i18n.t("libraryDetail.reviewDeletionFilesOnlyDescription")
                 : forgetWork
-                  ? "This action cannot be undone. Review both lists before continuing."
-                  : "Deleted files cannot be restored by Kikoto."}
+                  ? i18n.t("libraryDetail.actionCannotUndoReview")
+                  : i18n.t("libraryDetail.deletedFilesCannotRestore")}
             </p>
           </div>
-          <IconButton title="Close" onClick={onCancel}>
+          <IconButton title={i18n.t("content.close")} onClick={onCancel}>
             <X className="h-4 w-4" />
           </IconButton>
         </div>
         <div className="space-y-3 p-4 text-sm">
           <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive">
-            Delete {targets.length} selected location{targets.length === 1 ? "" : "s"}
-            {localCount > 0 ? `, including ${localCount} local` : ""}
-            {cacheCount > 0 ? ` and ${cacheCount} cache` : ""}
-            {rootCount > 0 ? ", including the complete local work root" : ""}.
+            {i18n.t("libraryDetail.deleteSelectedLocations", { count: targets.length })}
+            {localCount > 0 ? `, ${i18n.t("libraryDetail.includingLocal", { count: localCount })}` : ""}
+            {cacheCount > 0 ? ` ${i18n.t("libraryDetail.includingCache", { count: cacheCount })}` : ""}
+            {rootCount > 0 ? `, ${i18n.t("libraryDetail.includingWorkRoot")}` : ""}.
           </div>
           <div className="app-scroll max-h-44 overflow-auto rounded-md border bg-muted px-3 py-2 text-xs text-muted-foreground">
             {targets.slice(0, 10).map((target) => (
@@ -11044,35 +11170,34 @@ function ConfirmMediaBatchDeleteModal({
                 <span className="min-w-0 flex-1 truncate">{target.path}</span>
               </div>
             ))}
-            {targets.length > 10 && <div className="pt-1">...and {targets.length - 10} more</div>}
+            {targets.length > 10 && (
+              <div className="pt-1">{i18n.t("libraryDetail.moreCount", { count: targets.length - 10 })}</div>
+            )}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <section className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
-              <h4 className="font-semibold text-destructive">Will be deleted</h4>
+              <h4 className="font-semibold text-destructive">{i18n.t("libraryDetail.willBeDeleted")}</h4>
               <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-                <li>The selected cache and local files, plus their location availability state.</li>
+                <li>{i18n.t("libraryDetail.selectedFilesLocations")}</li>
                 {forgetWork ? (
-                  <li>
-                    If no available source remains after the file step: the complete logical work family, all metadata,
-                    playback history, Quick mark, and every List membership for every user.
-                  </li>
+                  <li>{i18n.t("libraryDetail.noSourceRemainsDeleted")}</li>
                 ) : (
-                  <li>No work-level data, playback history, Quick mark, List membership, or metadata.</li>
+                  <li>{i18n.t("libraryDetail.noWorkLevelData")}</li>
                 )}
               </ul>
             </section>
             <section className="rounded-md border bg-muted/30 p-3">
-              <h4 className="font-semibold">Will be kept</h4>
+              <h4 className="font-semibold">{i18n.t("libraryDetail.willBeKept")}</h4>
               <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
                 {forgetWork ? (
                   <>
-                    <li>Any other available remote, tracked, cache, or local source; in that case the work stays.</li>
-                    <li>Shared tags, people, circles, catalog discovery, audit history, and workflow history.</li>
+                    <li>{i18n.t("libraryDetail.otherSourcesKept")}</li>
+                    <li>{i18n.t("libraryDetail.sharedHistoryKept")}</li>
                   </>
                 ) : (
                   <>
-                    <li>Playback records, Resume/recent playback, Quick mark, and all List memberships.</li>
-                    <li>Work metadata and every other source or unselected file.</li>
+                    <li>{i18n.t("libraryDetail.playbackStateKept")}</li>
+                    <li>{i18n.t("libraryDetail.metadataKept")}</li>
                   </>
                 )}
               </ul>
@@ -11080,18 +11205,17 @@ function ConfirmMediaBatchDeleteModal({
           </div>
           {forgetWork && (
             <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
-              If another source is still available, the workflow finishes as partial: files are deleted, but the work
-              and all work-level user data are retained.
+              {i18n.t("libraryDetail.sourceStillAvailablePartial")}
             </p>
           )}
         </div>
         <div className="flex justify-end gap-2 border-t p-4">
           <Button variant="outline" onClick={onCancel} disabled={deleting}>
-            Cancel
+            {i18n.t("content.cancel")}
           </Button>
           {step === 1 ? (
             <Button onClick={onContinue} disabled={targets.length === 0}>
-              Continue
+              {i18n.t("libraryDetail.continue")}
             </Button>
           ) : (
             <Button
@@ -11100,7 +11224,11 @@ function ConfirmMediaBatchDeleteModal({
               disabled={deleting || targets.length === 0}
             >
               <Trash2 className="h-4 w-4" />
-              {deleting ? "Deleting" : forgetWork ? "Delete files and forget work" : "Delete files only"}
+              {deleting
+                ? i18n.t("sources.refreshing")
+                : forgetWork
+                  ? i18n.t("libraryDetail.deleteFilesForget")
+                  : i18n.t("libraryDetail.deleteFilesOnly")}
             </Button>
           )}
         </div>
@@ -11393,9 +11521,11 @@ function folderSummary(node: TreeNode) {
 function formatFolderStats(stats: TreeStats, directPlayableCount: number) {
   const countLabel =
     directPlayableCount > 0
-      ? `${directPlayableCount} ${stats.video > 0 ? "playable" : "audio"}`
+      ? i18n.t(stats.video > 0 ? "libraryDetail.playableCount" : "libraryDetail.audioCount", {
+          count: directPlayableCount,
+        })
       : stats.files > 0
-        ? `${stats.files} files`
+        ? i18n.t("libraryDetail.filesCount", { count: stats.files })
         : "";
   const sizeLabel = stats.knownSizeFiles > 0 ? formatBytes(stats.sizeBytes) : "";
   return [countLabel, sizeLabel].filter(Boolean).join(" · ");
@@ -11410,11 +11540,11 @@ function fileIcon(file: TreeTrack) {
 }
 
 function fileKindLabel(kind: string) {
-  if (kind === "audio") return "Audio";
-  if (kind === "video") return "Video";
-  if (kind === "image") return "Image";
-  if (kind === "text") return "Text";
-  return "File";
+  if (kind === "audio") return i18n.t("libraryDetail.audio");
+  if (kind === "video") return i18n.t("libraryDetail.video");
+  if (kind === "image") return i18n.t("libraryDetail.image");
+  if (kind === "text") return i18n.t("libraryDetail.text");
+  return i18n.t("libraryDetail.file");
 }
 
 function previewForFile(file: TreeTrack): FilePreviewState | null {
@@ -11467,18 +11597,18 @@ function FilePreviewModal({
     if (preview.kind !== "text") return;
     const request = preview.url
       ? fetch(assetURL(preview.url), { headers: { Accept: "text/plain,text/*" } }).then(async (response) => {
-          if (!response.ok) throw new Error(`Text preview returned HTTP ${response.status}.`);
+          if (!response.ok) throw new Error(i18n.t("libraryDetail.textPreviewHttpError", { status: response.status }));
           const length = Number(response.headers.get("content-length") ?? 0);
-          if (length > 512 * 1024) throw new Error("Text file is too large to preview.");
+          if (length > 512 * 1024) throw new Error(i18n.t("libraryDetail.textFileTooLarge"));
           const content = await response.text();
-          if (content.length > 512 * 1024) throw new Error("Text file is too large to preview.");
+          if (content.length > 512 * 1024) throw new Error(i18n.t("libraryDetail.textFileTooLarge"));
           return { content };
         })
       : api.getMediaText(preview.locationId);
     request
       .then((result) => setText(result.content))
       .catch((err) => {
-        setError(err instanceof Error ? err.message : "Text preview failed.");
+        setError(err instanceof Error ? err.message : i18n.t("libraryDetail.textPreviewFailed"));
       });
   }, [preview]);
 
@@ -11512,10 +11642,10 @@ function FilePreviewModal({
                 onClick={() => void onSetCover?.(preview.locationId)}
               >
                 <ImageIcon className="h-4 w-4" />
-                Set cover
+                {i18n.t("libraryDetail.setCover")}
               </Button>
             )}
-            <IconButton title="Close preview" onClick={onClose}>
+            <IconButton title={i18n.t("content.close")} onClick={onClose}>
               <X className="h-4 w-4" />
             </IconButton>
           </div>
@@ -11553,7 +11683,7 @@ function FilePreviewModal({
 
 function TextPreviewSkeleton() {
   return (
-    <div className="space-y-3" aria-label="Loading text preview">
+    <div className="space-y-3" aria-label={i18n.t("libraryDetail.loadingTextPreview")}>
       <div className="h-4 w-40 animate-pulse rounded bg-muted" />
       <div className="space-y-2">
         <div className="h-4 w-full animate-pulse rounded bg-muted" />
@@ -11622,7 +11752,7 @@ const languageLabels: Record<string, string> = {
 };
 
 function languageLabel(value: string) {
-  return languageLabels[value.trim().toLowerCase()] ?? (value || "Unknown");
+  return languageLabels[value.trim().toLowerCase()] ?? (value || i18n.t("libraryDetail.unknownLanguage"));
 }
 
 function openWorkCodeRoute(code: string, sourceIntent?: DetailSourceIntent, trackedSourceID?: number | null) {
@@ -11637,7 +11767,7 @@ function openWorkCodeRoute(code: string, sourceIntent?: DetailSourceIntent, trac
     },
     {
       returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`,
-      returnLabel: "Back",
+      returnLabel: i18n.t("detailActions.back"),
     },
   );
 }
@@ -11666,7 +11796,10 @@ function detailReturnTarget(fallbackPath: string) {
   const state = window.history.state as { returnTo?: unknown; returnLabel?: unknown } | null;
   const path =
     typeof state?.returnTo === "string" && isInternalReturnPath(state.returnTo) ? state.returnTo : fallbackPath;
-  const label = typeof state?.returnLabel === "string" && state.returnLabel.trim() ? state.returnLabel : "Back";
+  const label =
+    typeof state?.returnLabel === "string" && state.returnLabel.trim()
+      ? state.returnLabel
+      : i18n.t("detailActions.back");
   return { path, label };
 }
 
@@ -11728,7 +11861,7 @@ function directoryLoadErrorMessage(error: unknown) {
   if (error instanceof ApiError && error.code === "database_busy") {
     return "The database is busy. The work details remain available; retry the directory shortly.";
   }
-  return error instanceof Error && error.message ? error.message : "The directory could not be loaded.";
+  return error instanceof Error && error.message ? error.message : i18n.t("libraryDetail.remoteDirectoryFailed");
 }
 
 function knownLibraryRoute(path: string, search: string, sources: LibrarySource[]) {

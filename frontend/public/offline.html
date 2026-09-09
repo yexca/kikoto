@@ -4,25 +4,111 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f7f3ed" />
-    <title>Kikoto is offline</title>
+    <title data-i18n="title">Kikoto is offline</title>
     <style>
-      :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
-      body { min-height: 100vh; margin: 0; display: grid; place-items: center; background: #f7f3ed; color: #302a26; }
-      main { max-width: 28rem; padding: 2rem; text-align: center; }
-      img { width: 5rem; height: 5rem; }
-      button { border: 0; border-radius: .5rem; padding: .75rem 1.25rem; background: #ad4f2f; color: white; font: inherit; }
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        min-height: 100vh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        background: #f7f3ed;
+        color: #302a26;
+      }
+      main {
+        max-width: 28rem;
+        padding: 2rem;
+        text-align: center;
+      }
+      img {
+        width: 5rem;
+        height: 5rem;
+      }
+      button {
+        border: 0;
+        border-radius: 0.5rem;
+        padding: 0.75rem 1.25rem;
+        background: #ad4f2f;
+        color: white;
+        font: inherit;
+      }
       @media (prefers-color-scheme: dark) {
-        body { background: #1a1715; color: #eee7df; }
-        button { background: #ed946f; color: #2b1d17; }
+        body {
+          background: #1a1715;
+          color: #eee7df;
+        }
+        button {
+          background: #ed946f;
+          color: #2b1d17;
+        }
       }
     </style>
   </head>
   <body>
     <main>
       <img src="/kikoto-icon-192.png" alt="" />
-      <h1>Kikoto is offline</h1>
-      <p>The app shell is available, but library data and audio still require a connection to your Kikoto server.</p>
-      <button onclick="location.reload()">Try again</button>
+      <h1 data-i18n="heading">Kikoto is offline</h1>
+      <p data-i18n="description">
+        The app shell is available, but library data and audio still require a connection to your Kikoto server.
+      </p>
+      <button onclick="location.reload()" data-i18n="retry">Try again</button>
     </main>
+    <script>
+      (() => {
+        const language = (navigator.language || "en").toLowerCase().replaceAll("_", "-");
+        const locale =
+          language.includes("hant") ||
+          ["zh-tw", "zh-hk", "zh-mo"].some((tag) => language === tag || language.startsWith(`${tag}-`))
+            ? "zh-Hant"
+            : language === "zh" || language.startsWith("zh-")
+              ? "zh-Hans"
+              : language.startsWith("ja")
+                ? "ja"
+                : language.startsWith("ko")
+                  ? "ko"
+                  : "en";
+        const copy = {
+          en: {
+            title: "Kikoto is offline",
+            heading: "Kikoto is offline",
+            description:
+              "The app shell is available, but library data and audio still require a connection to your Kikoto server.",
+            retry: "Try again",
+          },
+          "zh-Hans": {
+            title: "Kikoto 已离线",
+            heading: "Kikoto 已离线",
+            description: "应用外壳仍可使用，但媒体库数据和音频仍需要连接到 Kikoto 服务器。",
+            retry: "重试",
+          },
+          "zh-Hant": {
+            title: "Kikoto 已離線",
+            heading: "Kikoto 已離線",
+            description: "應用程式外殼仍可使用，但媒體庫資料和音訊仍需要連線到 Kikoto 伺服器。",
+            retry: "重試",
+          },
+          ja: {
+            title: "Kikoto はオフラインです",
+            heading: "Kikoto はオフラインです",
+            description: "アプリシェルは利用できますが、ライブラリデータと音声には Kikoto サーバーへの接続が必要です。",
+            retry: "再試行",
+          },
+          ko: {
+            title: "Kikoto 오프라인",
+            heading: "Kikoto 오프라인",
+            description: "앱 셸은 사용할 수 있지만 라이브러리 데이터와 오디오는 Kikoto 서버 연결이 필요합니다.",
+            retry: "다시 시도",
+          },
+        }[locale];
+        document.documentElement.lang = locale;
+        document.querySelectorAll("[data-i18n]").forEach((element) => {
+          const key = element.getAttribute("data-i18n");
+          if (key && copy[key]) element.textContent = copy[key];
+        });
+      })();
+    </script>
   </body>
 </html>

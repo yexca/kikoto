@@ -1,4 +1,5 @@
 import { libraryJapanese, collectionJapanese, workCardJapanese } from "../resources";
+import { surfaceJapanese } from "../surfaces";
 
 export const japaneseResource = {
   ja: {
@@ -45,6 +46,7 @@ export const japaneseResource = {
       library: libraryJapanese,
       collection: collectionJapanese,
       workCard: workCardJapanese,
+      ...surfaceJapanese,
       appearance: {
         title: "外観",
         subtitle: "UI 言語、モード、スタイル、カラー",
@@ -57,6 +59,7 @@ export const japaneseResource = {
         themePreference: "テーマ設定",
         themeStyle: "テーマスタイル",
         themeColor: "テーマカラー",
+        palette: { original: "オリジナル", graphite: "グラファイト", cobalt: "コバルト", iris: "アイリス" },
         openSettings: "外観設定を開く",
         summary: "外観：{{mode}}、{{style}}、{{color}}",
         light: "ライト",
@@ -249,6 +252,16 @@ export const japaneseResource = {
         nothingNew: "新しい通知はありません",
         empty: "現在、通知はありません。",
         workflowStatus: "ワークフロー #{{id}} · {{status}}",
+        availabilityReady: "{{workCode}} の利用可能性チェックの準備ができました。",
+        remoteTrackFailed: "{{workCode}} のリモートトラックに失敗しました。",
+        remoteTrackSucceeded: "{{workCode}} のリモートトラックを利用できます。",
+        generic: "{{workCode}} のワークフロー更新です。",
+        statusQueued: "キュー済み",
+        statusRunning: "実行中",
+        statusSucceeded: "成功",
+        statusFailed: "失敗",
+        statusCancelled: "キャンセル済み",
+        statusUnknown: "不明",
         dismissFor: "{{workCode}} の通知を閉じる",
         dismiss: "通知を閉じる",
         clearSucceeded: "成功した通知をクリア",

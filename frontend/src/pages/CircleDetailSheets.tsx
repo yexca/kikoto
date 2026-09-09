@@ -7,6 +7,7 @@ import { MobileSheet, MobileSheetBody, MobileSheetHeader } from "@/components/ui
 import type { CircleDetail } from "@/lib/api";
 import type { WorkCollectionColumnSetting } from "@/components/work-collection/WorkCollectionLayout";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
+import { useTranslation } from "react-i18next";
 
 export type CircleAvailabilityFilter = "all" | "available" | "unavailable" | "local" | "remote";
 export type CircleRefreshScope = "all" | "catalog" | "work" | "source" | "metadata";
@@ -35,33 +36,41 @@ export function CircleAdvancedRefreshSheet({
   onClose: () => void;
   onRun: (scope: CircleRefreshScope, mode: CircleRefreshMode) => void;
 }) {
+  const { t } = useTranslation();
   const headerContent = (
     <div className="min-w-0">
       <h2 id="circle-advanced-refresh-title" className="text-base font-semibold">
-        Advanced refresh
+        {t("sheets.advancedRefresh")}
       </h2>
-      <p className="mt-1 text-sm text-muted-foreground">Run a targeted catalog, metadata, or source workflow.</p>
+      <p className="mt-1 text-sm text-muted-foreground">{t("sheets.advancedRefreshDescription")}</p>
     </div>
   );
   const actionContent = (
     <>
       <RefreshActionRow
-        title="Catalog"
-        description={`${circle.catalogWorks} works · ${circle.lastSyncedAt ? `last ${circle.lastSyncedAt}` : "never synced"}`}
+        title={t("sheets.catalog")}
+        description={t("sheets.catalogSummary", {
+          count: circle.catalogWorks,
+          last: circle.lastSyncedAt ? `last ${circle.lastSyncedAt}` : t("sync.never"),
+        })}
         disabled={!canRefresh || refreshingScope !== null}
         active={refreshingScope === "catalog" || refreshingScope === "all"}
         onRun={(mode) => onRun("catalog", mode)}
       />
       <RefreshActionRow
-        title="Work metadata"
-        description={`${catalogOnlyCount} catalog only · ${availableCount} available`}
+        title={t("sheets.workMetadata")}
+        description={t("sheets.workMetadataSummary", { catalogOnly: catalogOnlyCount, available: availableCount })}
         disabled={!canRefresh || refreshingScope !== null}
         active={refreshingScope === "work" || refreshingScope === "all"}
         onRun={(mode) => onRun("work", mode)}
       />
       <RefreshActionRow
-        title="Sources"
-        description={`${circle.localWorks} local · ${circle.remoteWorks} remote · ${circle.missingWorks} missing`}
+        title={t("sheets.sources")}
+        description={t("sheets.sourceSummary", {
+          local: circle.localWorks,
+          remote: circle.remoteWorks,
+          missing: circle.missingWorks,
+        })}
         disabled={!canRefresh || refreshingScope !== null}
         active={refreshingScope === "source" || refreshingScope === "all"}
         onRun={(mode) => onRun("source", mode)}
@@ -73,7 +82,7 @@ export function CircleAdvancedRefreshSheet({
       <div className="flex items-start justify-between gap-3">
         {headerContent}
         {!mobile && (
-          <Button variant="ghost" size="icon" aria-label="Close advanced refresh actions" onClick={onClose}>
+          <Button variant="ghost" size="icon" aria-label={t("sheets.closeAdvancedRefresh")} onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         )}
@@ -154,20 +163,21 @@ export function CircleCatalogOptionsSheet({
   onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
   onSelectWorks: () => void;
 }) {
+  const { t } = useTranslation();
   useSheetEscape(open, onClose);
 
   if (!open) return null;
   const availabilityOptions: { value: CircleAvailabilityFilter; label: string }[] = [
-    { value: "all", label: "All works" },
-    { value: "available", label: "Available" },
-    { value: "unavailable", label: "Unavailable" },
-    { value: "local", label: "Local" },
-    { value: "remote", label: "Remote" },
+    { value: "all", label: t("detailActions.allWorks") },
+    { value: "available", label: t("content.available") },
+    { value: "unavailable", label: t("detailActions.unavailable") },
+    { value: "local", label: t("detailActions.local") },
+    { value: "remote", label: t("detailActions.remote") },
   ];
   const columnOptions: { value: WorkCollectionColumnSetting; label: string; ariaLabel: string }[] = [
-    { value: "auto", label: "Auto", ariaLabel: "Automatic columns" },
-    { value: 1, label: "1", ariaLabel: "1 column" },
-    { value: 2, label: "2", ariaLabel: "2 columns" },
+    { value: "auto", label: t("collection.auto"), ariaLabel: t("collection.automaticColumns") },
+    { value: 1, label: "1", ariaLabel: t("collection.column", { count: 1 }) },
+    { value: 2, label: "2", ariaLabel: t("collection.column", { count: 2 }) },
   ];
 
   return (
@@ -187,17 +197,17 @@ export function CircleCatalogOptionsSheet({
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 id="circle-catalog-options-title" className="text-base font-semibold">
-              Catalog options
+              {t("sheets.catalogOptions")}
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">Filter and choose how works are arranged.</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t("sheets.catalogOptionsDescription")}</p>
           </div>
-          <Button variant="ghost" size="icon" aria-label="Close catalog options" onClick={onClose}>
+          <Button variant="ghost" size="icon" aria-label={t("sheets.closeCatalogOptions")} onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>
 
         <fieldset className="mt-4 space-y-2">
-          <legend className="text-sm font-medium">Search</legend>
+          <legend className="text-sm font-medium">{t("sheets.search")}</legend>
           <div className="flex min-h-11 items-center gap-2 rounded-md border bg-background px-3">
             <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <input
@@ -205,16 +215,16 @@ export function CircleCatalogOptionsSheet({
               value={query}
               onKeyDown={dismissKeyboardOnEnter}
               onChange={(event) => onQueryChange(event.target.value)}
-              placeholder="Search circle catalog works"
-              aria-label="Search circle catalog works"
+              placeholder={t("sheets.searchCircleCatalogWorks", { defaultValue: "Search circle catalog works" })}
+              aria-label={t("sheets.searchCircleCatalogWorks", { defaultValue: "Search circle catalog works" })}
             />
             {query.trim() && (
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 shrink-0"
-                aria-label="Clear circle catalog search"
-                title="Clear circle catalog search"
+                aria-label={t("sheets.clearCatalogSearch", { defaultValue: "Clear circle catalog search" })}
+                title={t("sheets.clearCatalogSearch", { defaultValue: "Clear circle catalog search" })}
                 onClick={() => onQueryChange("")}
               >
                 <X className="h-4 w-4" />
@@ -224,8 +234,8 @@ export function CircleCatalogOptionsSheet({
         </fieldset>
 
         <fieldset className="mt-4 space-y-2">
-          <legend className="text-sm font-medium">Availability</legend>
-          <div className="grid grid-cols-2 gap-2" role="group" aria-label="Catalog availability">
+          <legend className="text-sm font-medium">{t("sheets.availability")}</legend>
+          <div className="grid grid-cols-2 gap-2" role="group" aria-label={t("sheets.catalogAvailability")}>
             {availabilityOptions.map((option) => (
               <button
                 key={option.value}
@@ -246,8 +256,8 @@ export function CircleCatalogOptionsSheet({
         </fieldset>
 
         <fieldset className="mt-4 space-y-2">
-          <legend className="text-sm font-medium">Columns</legend>
-          <div className="grid grid-cols-3 gap-2" role="group" aria-label="Mobile catalog columns">
+          <legend className="text-sm font-medium">{t("sheets.columns")}</legend>
+          <div className="grid grid-cols-3 gap-2" role="group" aria-label={t("sheets.mobileCatalogColumns")}>
             {columnOptions.map((option) => (
               <CatalogOptionButton
                 key={option.value}
@@ -265,14 +275,18 @@ export function CircleCatalogOptionsSheet({
           <fieldset className="mt-4 space-y-2">
             <legend className="flex items-center gap-2 text-sm font-medium">
               <ListMusic className="h-4 w-4" aria-hidden="true" />
-              Per page
+              {t("sheets.perPage")}
             </legend>
-            <div className="grid grid-cols-2 gap-2" role="group" aria-label="Catalog work page size">
+            <div
+              className="grid grid-cols-2 gap-2"
+              role="group"
+              aria-label={t("sheets.catalogWorkPageSize", { defaultValue: "Catalog work page size" })}
+            >
               {pageSizeOptions.map((option) => (
                 <CatalogOptionButton
                   key={option}
                   active={pageSize === option}
-                  label={`${option} per page`}
+                  label={t("sheets.perPageOption", { value: option })}
                   icon={<Rows3 className="h-4 w-4" />}
                   onClick={() => onPageSizeChange(option)}
                 />
@@ -284,7 +298,7 @@ export function CircleCatalogOptionsSheet({
         {!isSeriesView && (
           <Button className="mt-4 w-full" variant={selectionMode ? "default" : "outline"} onClick={onSelectWorks}>
             <Check className="h-4 w-4" />
-            {selectionMode ? "Exit selection mode" : "Select works"}
+            {selectionMode ? t("sheets.exitSelectionMode") : t("sheets.selectWorks")}
           </Button>
         )}
       </div>
@@ -337,6 +351,7 @@ function RefreshActionRow({
   active?: boolean;
   onRun: (mode: CircleRefreshMode) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-md border bg-background px-3 py-2">
       <div className="mb-1.5 flex items-start justify-between gap-3">
@@ -348,10 +363,10 @@ function RefreshActionRow({
       </div>
       <div className="grid grid-cols-2 gap-2">
         <Button className="h-8" variant="outline" size="sm" disabled={disabled} onClick={() => onRun("incremental")}>
-          Incremental
+          {t("sheets.incremental")}
         </Button>
         <Button className="h-8" variant="outline" size="sm" disabled={disabled} onClick={() => onRun("full")}>
-          Full
+          {t("sheets.full")}
         </Button>
       </div>
     </div>

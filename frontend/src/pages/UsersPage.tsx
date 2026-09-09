@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ChevronLeft,
   ChevronRight,
@@ -36,6 +37,7 @@ export function UsersPage({
   embedded?: boolean;
 }) {
   const toast = useToast();
+  const { t } = useTranslation();
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -69,8 +71,8 @@ export function UsersPage({
       }
     } catch (err) {
       if (seq !== requestSeq.current) return;
-      setLoadError("Users could not be loaded.");
-      toast.notify(toastFromError(err, "Failed to load users"));
+      setLoadError(t("admin.loadFailed"));
+      toast.notify(toastFromError(err, t("admin.loadError")));
     } finally {
       if (seq === requestSeq.current) setIsLoading(false);
     }
@@ -90,9 +92,9 @@ export function UsersPage({
       setUsers((items) => [...items, created]);
       setSelectedUserId(created.id);
       setIsCreateModalOpen(false);
-      toast.success("User created");
+      toast.success(t("admin.created"));
     } catch (err) {
-      toast.notify(toastFromError(err, "Create failed"));
+      toast.notify(toastFromError(err, t("admin.createFailed")));
     } finally {
       setIsSaving(false);
     }
@@ -112,9 +114,9 @@ export function UsersPage({
       }
       const updated = await api.updateUser(selectedUser.id, updatePayload);
       setUsers((items) => items.map((item) => (item.id === updated.id ? updated : item)));
-      toast.success("User updated");
+      toast.success(t("admin.updatedToast"));
     } catch (err) {
-      toast.notify(toastFromError(err, "Save failed"));
+      toast.notify(toastFromError(err, t("admin.saveFailed")));
     } finally {
       setIsSaving(false);
     }
@@ -126,9 +128,9 @@ export function UsersPage({
       await api.deleteUser(user.id);
       setUsers((items) => items.filter((item) => item.id !== user.id));
       setSelectedUserId(null);
-      toast.success("User deleted");
+      toast.success(t("admin.deleted"));
     } catch (err) {
-      toast.notify(toastFromError(err, "Delete failed"));
+      toast.notify(toastFromError(err, t("admin.deleteFailed")));
     } finally {
       setIsSaving(false);
     }
@@ -140,18 +142,30 @@ export function UsersPage({
         <section className="rounded-lg border bg-card p-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Administration</p>
-              <h2 className="mt-1 text-2xl font-semibold">Users</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Create accounts, assign roles, and keep access tidy.</p>
+              <p className="text-sm font-medium text-muted-foreground">{t("admin.heading")}</p>
+              <h2 className="mt-1 text-2xl font-semibold">{t("admin.users")}</h2>
+              <p className="mt-2 text-sm text-muted-foreground">{t("admin.subtitle")}</p>
             </div>
             <div className="grid grid-cols-3 gap-2 text-sm sm:flex">
               {initialLoading ? (
                 <UserMetricSkeletons count={3} />
               ) : (
                 <>
-                  <UserMetric icon={<Users className="h-4 w-4" />} label="Users" value={String(users.length)} />
-                  <UserMetric icon={<Shield className="h-4 w-4" />} label="Enabled" value={String(enabledCount)} />
-                  <UserMetric icon={<Crown className="h-4 w-4" />} label="Admins" value={String(adminCount)} />
+                  <UserMetric
+                    icon={<Users className="h-4 w-4" />}
+                    label={t("admin.users")}
+                    value={String(users.length)}
+                  />
+                  <UserMetric
+                    icon={<Shield className="h-4 w-4" />}
+                    label={t("admin.enabled")}
+                    value={String(enabledCount)}
+                  />
+                  <UserMetric
+                    icon={<Crown className="h-4 w-4" />}
+                    label={t("admin.admins")}
+                    value={String(adminCount)}
+                  />
                 </>
               )}
             </div>
@@ -166,10 +180,10 @@ export function UsersPage({
         >
           <span className="text-sm text-destructive">
             {loadError}
-            {hasLoaded ? " Existing user data is still shown." : ""}
+            {hasLoaded ? ` ${t("admin.existingDataShown")}` : ""}
           </span>
           <Button size="sm" variant="outline" onClick={() => void refresh()}>
-            Retry
+            {t("admin.retry")}
           </Button>
         </div>
       )}
@@ -180,19 +194,19 @@ export function UsersPage({
             <CardContent className="space-y-3 p-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-semibold">User directory</h2>
+                  <h2 className="text-lg font-semibold">{t("admin.userDirectory")}</h2>
                   <p className="text-sm text-muted-foreground">
-                    Page {currentPage} of {totalPages} · {users.length} account{users.length === 1 ? "" : "s"}
+                    {t("admin.pageOf", { page: currentPage, total: totalPages, count: users.length })}
                   </p>
                 </div>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={isLoading}>
                     <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-                    Refresh
+                    {t("admin.refresh")}
                   </Button>
                   <Button size="sm" onClick={() => setIsCreateModalOpen(true)} disabled={readOnly}>
                     <Plus className="h-4 w-4" />
-                    Add user
+                    {t("admin.addUser")}
                   </Button>
                 </div>
               </div>
@@ -202,7 +216,7 @@ export function UsersPage({
                   size="icon"
                   onClick={() => setUserPage((page) => Math.max(1, page - 1))}
                   disabled={currentPage <= 1}
-                  aria-label="Previous users"
+                  aria-label={t("admin.previousUsers")}
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
@@ -234,7 +248,7 @@ export function UsersPage({
                   )}
                   {!initialLoading && visibleUsers.length === 0 && (
                     <div className="grid min-h-14 flex-1 place-items-center rounded-md border border-dashed text-sm text-muted-foreground">
-                      No users on this page.
+                      {t("admin.noUsersPage")}
                     </div>
                   )}
                 </div>
@@ -243,7 +257,7 @@ export function UsersPage({
                   size="icon"
                   onClick={() => setUserPage((page) => Math.min(totalPages, page + 1))}
                   disabled={currentPage >= totalPages}
-                  aria-label="Next users"
+                  aria-label={t("admin.nextUsers")}
                 >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -253,10 +267,8 @@ export function UsersPage({
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold">User management</h2>
-              <p className="text-sm text-muted-foreground">
-                {superAdminCount} super administrator{superAdminCount === 1 ? "" : "s"} can grant protected access.
-              </p>
+              <h2 className="text-lg font-semibold">{t("admin.userManagement")}</h2>
+              <p className="text-sm text-muted-foreground">{t("admin.superAdminGrant", { count: superAdminCount })}</p>
             </div>
           </div>
 
@@ -267,17 +279,17 @@ export function UsersPage({
               <>
                 <RoleSummaryCard
                   icon={<UserRound className="h-4 w-4" />}
-                  label="Standard users"
+                  label={t("admin.standardUsers")}
                   value={String(users.filter((user) => user.role === "user").length)}
                 />
                 <RoleSummaryCard
                   icon={<Shield className="h-4 w-4" />}
-                  label="Administrators"
+                  label={t("admin.administrators")}
                   value={String(users.filter((user) => user.role === "admin").length)}
                 />
                 <RoleSummaryCard
                   icon={<Crown className="h-4 w-4" />}
-                  label="Super admins"
+                  label={t("admin.superAdmins")}
                   value={String(superAdminCount)}
                 />
               </>
@@ -290,11 +302,11 @@ export function UsersPage({
                 <table className="w-full min-w-[680px] border-collapse text-sm">
                   <thead className="border-b bg-muted/60 text-left text-xs uppercase text-muted-foreground">
                     <tr>
-                      <th className="px-4 py-3 font-semibold">User</th>
-                      <th className="px-4 py-3 font-semibold">Role</th>
-                      <th className="px-4 py-3 font-semibold">Status</th>
-                      <th className="px-4 py-3 font-semibold">Updated</th>
-                      <th className="px-4 py-3 text-right font-semibold">Action</th>
+                      <th className="px-4 py-3 font-semibold">{t("admin.user")}</th>
+                      <th className="px-4 py-3 font-semibold">{t("admin.role")}</th>
+                      <th className="px-4 py-3 font-semibold">{t("admin.status")}</th>
+                      <th className="px-4 py-3 font-semibold">{t("admin.updated")}</th>
+                      <th className="px-4 py-3 text-right font-semibold">{t("admin.action")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -317,7 +329,7 @@ export function UsersPage({
                         </td>
                         <td className="px-4 py-3">
                           <Badge variant={user.enabled ? "secondary" : "warning"}>
-                            {user.enabled ? "enabled" : "disabled"}
+                            {user.enabled ? t("admin.enabledStatus") : t("admin.disabledStatus")}
                           </Badge>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">{user.updatedAt}</td>
@@ -329,7 +341,7 @@ export function UsersPage({
                             disabled={readOnly}
                           >
                             <UserCog className="h-4 w-4" />
-                            Edit
+                            {t("admin.edit")}
                           </Button>
                         </td>
                       </tr>
@@ -337,7 +349,7 @@ export function UsersPage({
                     {!initialLoading && users.length === 0 && (
                       <tr>
                         <td className="px-4 py-8 text-center text-muted-foreground" colSpan={5}>
-                          No users found.
+                          {t("admin.noUsersFound")}
                         </td>
                       </tr>
                     )}
@@ -397,6 +409,7 @@ function UserEditor({
   onSave: (payload: UserFormPayload) => Promise<void>;
   onDelete: (user: ManagedUser) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [username, setUsername] = useState(user?.username ?? "");
   const [displayName, setDisplayName] = useState(user?.displayName ?? "");
   const [role, setRole] = useState<ManagedUser["role"]>(user?.role ?? "user");
@@ -425,9 +438,9 @@ function UserEditor({
         <CardTitle className="flex items-center gap-3">
           {user ? <UserAvatar user={user} size="lg" /> : <EmptyUserAvatar />}
           <span className="min-w-0">
-            <span className="block truncate">{user ? "Edit user" : "New user"}</span>
+            <span className="block truncate">{user ? t("admin.editUser") : t("admin.newUser")}</span>
             <span className="block truncate text-xs font-normal text-muted-foreground">
-              {user ? `@${user.username}` : "Create a local Kikoto account"}
+              {user ? `@${user.username}` : t("admin.createAccount")}
             </span>
           </span>
         </CardTitle>
@@ -436,17 +449,19 @@ function UserEditor({
         <form className="space-y-3" onSubmit={submit}>
           <div className="grid gap-2 rounded-lg border bg-background p-3 text-sm">
             <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">Role</span>
+              <span className="text-muted-foreground">{t("admin.role")}</span>
               <RoleBadge role={role} />
             </div>
             <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">Status</span>
-              <Badge variant={enabled ? "secondary" : "warning"}>{enabled ? "enabled" : "disabled"}</Badge>
+              <span className="text-muted-foreground">{t("admin.status")}</span>
+              <Badge variant={enabled ? "secondary" : "warning"}>
+                {enabled ? t("admin.enabledStatus") : t("admin.disabledStatus")}
+              </Badge>
             </div>
           </div>
 
           <label className="grid gap-1.5 text-sm font-medium">
-            Username
+            {t("admin.username")}
             <input
               className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
               value={username}
@@ -457,7 +472,7 @@ function UserEditor({
           </label>
 
           <label className="grid gap-1.5 text-sm font-medium">
-            Display name
+            {t("admin.displayName")}
             <input
               className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={displayName}
@@ -467,7 +482,7 @@ function UserEditor({
           </label>
 
           <label className="grid gap-1.5 text-sm font-medium">
-            Role
+            {t("admin.role")}
             <select
               className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
               value={role}
@@ -483,21 +498,21 @@ function UserEditor({
           </label>
 
           <label className="grid gap-1.5 text-sm font-medium">
-            Password
+            {t("admin.credentialField")}
             <input
               className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               disabled={readOnly}
-              placeholder={user ? "Leave blank to keep current" : "At least 8 characters"}
+              placeholder={user ? t("admin.keepCurrentCredential") : t("admin.atLeastEight")}
               autoComplete={user ? "new-password" : "current-password"}
             />
           </label>
 
           <SwitchField
-            label="Enabled"
-            description="Allow this account to sign in and use assigned permissions."
+            label={t("admin.enabled")}
+            description={t("admin.allowAssignedPermissions")}
             checked={enabled}
             onChange={setEnabled}
             disabled={readOnly}
@@ -506,17 +521,17 @@ function UserEditor({
           {(isEditingSelf || !canEditRole || (user && !canDelete)) && (
             <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
               {isEditingSelf
-                ? "You cannot delete your own active account from this panel."
+                ? t("admin.cannotDeleteSelf")
                 : !canEditRole
-                  ? "Only a super administrator can modify protected super administrator access."
-                  : "Protected accounts cannot be deleted by your current role."}
+                  ? t("admin.protectedRole")
+                  : t("admin.protectedDelete")}
             </div>
           )}
 
           <div className="flex flex-wrap gap-2 pt-1">
             <Button disabled={readOnly || isSaving}>
               <Save className="h-4 w-4" />
-              {isSaving ? "Saving" : "Save"}
+              {isSaving ? t("admin.saving") : t("admin.save")}
             </Button>
             {user && (
               <Button
@@ -526,7 +541,7 @@ function UserEditor({
                 onClick={() => void onDelete(user)}
               >
                 <Trash2 className="h-4 w-4" />
-                Delete
+                {t("admin.delete")}
               </Button>
             )}
           </div>
@@ -537,22 +552,21 @@ function UserEditor({
 }
 
 function EmptyUserEditor() {
+  const { t } = useTranslation();
   return (
     <Card className="self-start overflow-hidden">
       <CardHeader>
         <CardTitle className="flex items-center gap-3">
           <EmptyUserAvatar />
           <span>
-            <span className="block">Select a user</span>
-            <span className="block text-xs font-normal text-muted-foreground">
-              Use the user bar or table to edit an account.
-            </span>
+            <span className="block">{t("admin.selectUser")}</span>
+            <span className="block text-xs font-normal text-muted-foreground">{t("admin.selectUserHint")}</span>
           </span>
         </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="rounded-lg border border-dashed bg-background p-4 text-sm text-muted-foreground">
-          Add users from the top toolbar. Existing accounts open here for role, status, password, and deletion controls.
+          {t("admin.addUsersHint")}
         </div>
       </CardContent>
     </Card>
@@ -651,6 +665,7 @@ function UserCreateModal({
   onSave: (payload: UserFormPayload) => Promise<void>;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<ManagedUser["role"]>("user");
@@ -674,13 +689,19 @@ function UserCreateModal({
             <span className="flex min-w-0 items-center gap-3">
               <EmptyUserAvatar />
               <span className="min-w-0">
-                <span className="block truncate">Add user</span>
+                <span className="block truncate">{t("admin.addUser")}</span>
                 <span className="block truncate text-xs font-normal text-muted-foreground">
-                  Create a local Kikoto account
+                  {t("admin.createAccount")}
                 </span>
               </span>
             </span>
-            <Button type="button" variant="outline" size="icon" onClick={onClose} aria-label="Close add user dialog">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={onClose}
+              aria-label={t("admin.closeAddDialog")}
+            >
               <X className="h-4 w-4" />
             </Button>
           </CardTitle>
@@ -688,7 +709,7 @@ function UserCreateModal({
         <CardContent>
           <form className="space-y-3" onSubmit={submit}>
             <label className="grid gap-1.5 text-sm font-medium">
-              Username
+              {t("admin.username")}
               <input
                 className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                 value={username}
@@ -699,7 +720,7 @@ function UserCreateModal({
             </label>
 
             <label className="grid gap-1.5 text-sm font-medium">
-              Display name
+              {t("admin.displayName")}
               <input
                 className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                 value={displayName}
@@ -708,7 +729,7 @@ function UserCreateModal({
             </label>
 
             <label className="grid gap-1.5 text-sm font-medium">
-              Role
+              {t("admin.role")}
               <select
                 className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                 value={role}
@@ -723,32 +744,32 @@ function UserCreateModal({
             </label>
 
             <label className="grid gap-1.5 text-sm font-medium">
-              Password
+              {t("admin.credentialField")}
               <input
                 className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                placeholder="At least 8 characters"
+                placeholder={t("admin.atLeastEight")}
                 autoComplete="new-password"
                 required
               />
             </label>
 
             <SwitchField
-              label="Enabled"
-              description="Allow this account to sign in immediately."
+              label={t("admin.enabled")}
+              description={t("admin.allowImmediateSignIn")}
               checked={enabled}
               onChange={setEnabled}
             />
 
             <div className="flex flex-wrap justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button disabled={isSaving || username.trim() === "" || password.trim() === ""}>
                 <Save className="h-4 w-4" />
-                {isSaving ? "Creating" : "Create user"}
+                {isSaving ? t("admin.creating") : t("admin.createUser")}
               </Button>
             </div>
           </form>
@@ -759,9 +780,10 @@ function UserCreateModal({
 }
 
 function RoleBadge({ role }: { role: ManagedUser["role"] }) {
-  if (role === "super_admin") return <Badge>super admin</Badge>;
-  if (role === "admin") return <Badge variant="secondary">admin</Badge>;
-  return <Badge variant="outline">user</Badge>;
+  const { t } = useTranslation();
+  if (role === "super_admin") return <Badge>{t("admin.roles.super_admin")}</Badge>;
+  if (role === "admin") return <Badge variant="secondary">{t("admin.roles.admin")}</Badge>;
+  return <Badge variant="outline">{t("admin.roles.user")}</Badge>;
 }
 
 function SwitchField({

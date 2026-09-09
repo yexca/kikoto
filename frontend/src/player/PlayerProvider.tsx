@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
@@ -395,6 +396,7 @@ async function saveProgressWithBusyRetry(mediaItemId: number, payload: ProgressS
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
+  const { t } = useTranslation();
   const principalID = auth.user?.id ?? null;
   const playerQueueStorageKey = currentScopedStorageKey(PLAYER_QUEUE_STORAGE_BASE_KEY, principalID);
   const obsoletePlayerProgressStorageKey = currentScopedStorageKey(
@@ -1225,7 +1227,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (result.kind === "terminal") {
         sourceLoadingRef.current = false;
         updatePlayingState(false);
-        toast.error(`Playback failed: no working source remains for ${activeTrack.title}.`);
+        toast.error(t("player.playbackFailed", { title: activeTrack.title }));
         return;
       }
       const nextLocation = result.location;
@@ -1247,9 +1249,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         ),
       );
       updatePlayingState(true);
-      toast.warning(`Playback source failed. Switched to ${nextLocation.sourceName || nextLocation.locationType}.`);
+      toast.warning(
+        t("player.sourceFailed", {
+          source:
+            nextLocation.sourceName ||
+            t(`player.locationTypes.${nextLocation.locationType}`, { defaultValue: nextLocation.locationType }),
+        }),
+      );
     },
-    [toast, updatePlayingState],
+    [t, toast, updatePlayingState],
   );
 
   const handlePlaybackError = useCallback(() => {
@@ -1300,8 +1308,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (canUseCompatibility && !compatibilityPlaybackEnabledRef.current) {
         toast.notify({
           kind: "error",
-          message: `Playback failed for ${failedTrack.title}.`,
-          actionLabel: "Try compatibility",
+          message: t("player.trackFailed", { title: failedTrack.title }),
+          actionLabel: t("player.compatibility"),
           onAction: () => {
             if (currentPlaybackInstanceKeyRef.current !== instanceKey) return;
             setPlaybackCompatibility("track", true);
@@ -1311,7 +1319,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       }
       switchAfterLocationFailure(failedTrack, instanceKey);
     })();
-  }, [setPlaybackCompatibility, switchAfterLocationFailure, toast, updatePlayingState]);
+  }, [setPlaybackCompatibility, switchAfterLocationFailure, t, toast, updatePlayingState]);
 
   playbackErrorHandlerRef.current = handlePlaybackError;
   const tryNextLocation = handlePlaybackError;
@@ -1750,6 +1758,7 @@ function trackPlaybackKey(track: PlayerTrack | null) {
 export function PlayerDock() {
   const player = usePlayer();
   const toast = useToast();
+  const { t } = useTranslation();
   const isMobile = useIsMobilePlayer();
   const sleepButtonRef = useRef<HTMLButtonElement | null>(null);
   const sleepPopoverRef = useRef<HTMLDivElement | null>(null);
@@ -2080,7 +2089,7 @@ export function PlayerDock() {
   if (!track) return null;
 
   const progress = player.duration > 0 ? Math.min(100, (player.currentTime / player.duration) * 100) : 0;
-  const modeLabel = player.mode === "order" ? "Order" : player.mode === "loop" ? "Loop" : "Repeat one";
+  const modeLabel = t(`player.modes.${player.mode}`, { defaultValue: player.mode });
   const availableLocations = orderedTrackLocations(track);
   const currentLocation =
     availableLocations.find((location) => location.locationId === track.locationId) ?? availableLocations[0];
@@ -2241,8 +2250,8 @@ export function PlayerDock() {
               event.stopPropagation();
               player.togglePlay();
             }}
-            aria-label={player.isPlaying ? "Pause" : "Play"}
-            title={player.isPlaying ? "Pause" : "Play"}
+            aria-label={player.isPlaying ? t("player.pause") : t("player.play")}
+            title={player.isPlaying ? t("player.pause") : t("player.play")}
           >
             {player.isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           </button>
@@ -2257,8 +2266,8 @@ export function PlayerDock() {
               setMiniActionsOpen(false);
               setPreferredDockMode("compact");
             }}
-            aria-label="Open compact player"
-            title="Compact"
+            aria-label={t("player.openCompact")}
+            title={t("player.compact")}
           >
             <PanelBottom className="h-4 w-4" />
           </Button>
@@ -2273,8 +2282,8 @@ export function PlayerDock() {
               setMiniActionsOpen(false);
               setPreferredDockMode("full");
             }}
-            aria-label="Open full player"
-            title="Full"
+            aria-label={t("player.openFull")}
+            title={t("player.full")}
           >
             <Maximize2 className="h-4 w-4" />
           </Button>
@@ -2359,7 +2368,7 @@ export function PlayerDock() {
               size="icon"
               variant="outline"
               onClick={() => setPreferredDockMode("mini")}
-              aria-label="Mini player"
+              aria-label={t("player.mini")}
             >
               <CircleDot className="h-4 w-4" />
             </Button>
@@ -2368,7 +2377,7 @@ export function PlayerDock() {
               className="h-11 w-11 rounded-full shadow-sm hover:scale-[1.04] hover:shadow-lg active:scale-95"
               size="icon"
               onClick={player.togglePlay}
-              aria-label={player.isPlaying ? "Pause" : "Play"}
+              aria-label={player.isPlaying ? t("player.pause") : t("player.play")}
             >
               {player.isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
@@ -2443,7 +2452,7 @@ export function PlayerDock() {
             }
             setPreferredDockMode("compact");
           }}
-          aria-label="Collapse player"
+          aria-label={t("player.collapse")}
         >
           <span className="h-1.5 w-12 rounded-full bg-muted-foreground/25" />
         </button>
@@ -2487,17 +2496,17 @@ export function PlayerDock() {
                       />
                     )
                   ) : (
-                    <div className="p-3 text-sm text-muted-foreground">No lyrics matched for this track.</div>
+                    <div className="p-3 text-sm text-muted-foreground">{t("player.noLyrics")}</div>
                   )
                 ) : (
                   <div className="space-y-1">
                     <div className="flex items-center justify-between px-2 py-1 text-xs text-muted-foreground">
-                      <span>{player.queue.length} queued</span>
+                      <span>{t("player.queued", { count: player.queue.length })}</span>
                       <button
                         className="rounded px-2 py-1 hover:bg-muted hover:text-foreground"
                         onClick={player.clearQueue}
                       >
-                        Clear
+                        {t("player.clearQueue")}
                       </button>
                     </div>
                     {player.queue.map((item, index) => (
@@ -2524,8 +2533,8 @@ export function PlayerDock() {
                 className={`mx-auto w-full touch-manipulation rounded-[var(--player-radius-panel)] bg-white/25 p-2 shadow-inner transition-[max-width,transform] duration-200 hover:scale-[1.015] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white/5 ${compactFullLayout ? "max-w-[min(68vw,210px)]" : lyricsDisplayMode === "hidden" ? "max-w-[min(92vw,390px)] lg:max-w-[340px]" : "max-w-[min(86vw,340px)] lg:max-w-[282px]"}`}
                 onClick={handleCoverClick}
                 onDoubleClick={isMobile ? undefined : openWorkDetail}
-                title="Double-click to open work detail"
-                aria-label="Open work detail"
+                title={t("player.openWorkTitle")}
+                aria-label={t("player.openWork")}
               >
                 <CoverImage
                   track={track}
@@ -2570,11 +2579,16 @@ export function PlayerDock() {
               className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-primary/15 bg-card/55 px-2.5 py-1 hover:bg-muted"
               onClick={() => setIsSourceOpen((value) => !value)}
               data-player-no-drag
-              aria-label="Choose playback source"
+              aria-label={t("player.chooseSource")}
             >
               <HardDrive className="h-3.5 w-3.5 shrink-0" />
               <span className="max-w-36 truncate">
-                {currentLocation?.sourceName || currentLocation?.locationType || "Playback source"}
+                {currentLocation?.sourceName ||
+                  (currentLocation?.locationType
+                    ? t(`player.locationTypes.${currentLocation.locationType}`, {
+                        defaultValue: currentLocation.locationType,
+                      })
+                    : t("player.playbackSource"))}
               </span>
             </button>
             {isSourceOpen && (
@@ -2589,10 +2603,23 @@ export function PlayerDock() {
                     }}
                   >
                     <span className="min-w-0">
-                      <span className="block truncate font-medium">{location.sourceName || location.locationType}</span>
-                      <span className="block text-xs text-muted-foreground">{location.locationType}</span>
+                      <span className="block truncate font-medium">
+                        {location.sourceName ||
+                          t(`player.locationTypes.${location.locationType}`, {
+                            defaultValue: location.locationType,
+                          })}
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        {t(`player.locationTypes.${location.locationType}`, {
+                          defaultValue: location.locationType,
+                        })}
+                      </span>
                     </span>
-                    <span className="text-xs text-muted-foreground">{location.availability}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {t(`player.availability.${location.availability}`, {
+                        defaultValue: location.availability,
+                      })}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -2617,7 +2644,7 @@ export function PlayerDock() {
               variant="outline"
               size="icon"
               onClick={player.previous}
-              aria-label="Previous"
+              aria-label={t("player.previous")}
             >
               <SkipBack className="h-4 w-4" />
             </Button>
@@ -2626,7 +2653,7 @@ export function PlayerDock() {
               variant="outline"
               size="icon"
               onClick={player.seekBackward}
-              aria-label={`Back ${player.seekBackwardSeconds} seconds`}
+              aria-label={t("player.backward", { seconds: player.seekBackwardSeconds })}
             >
               <SeekIcon direction="back" seconds={player.seekBackwardSeconds} />
             </Button>
@@ -2634,7 +2661,7 @@ export function PlayerDock() {
               className="h-14 w-14 rounded-full shadow-sm transition-[transform,box-shadow] hover:scale-[1.04] hover:shadow-lg active:scale-95 motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
               size="icon"
               onClick={player.togglePlay}
-              aria-label={player.isPlaying ? "Pause" : "Play"}
+              aria-label={player.isPlaying ? t("player.pause") : t("player.play")}
             >
               {player.isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
             </Button>
@@ -2643,7 +2670,7 @@ export function PlayerDock() {
               variant="outline"
               size="icon"
               onClick={player.seekForward}
-              aria-label={`Forward ${player.seekForwardSeconds} seconds`}
+              aria-label={t("player.forward", { seconds: player.seekForwardSeconds })}
             >
               <SeekIcon direction="forward" seconds={player.seekForwardSeconds} />
             </Button>
@@ -2652,7 +2679,7 @@ export function PlayerDock() {
               variant="outline"
               size="icon"
               onClick={player.next}
-              aria-label="Next"
+              aria-label={t("player.next")}
             >
               <SkipForward className="h-4 w-4" />
             </Button>
@@ -2664,7 +2691,7 @@ export function PlayerDock() {
               variant={player.mode === "order" ? "outline" : "secondary"}
               size="sm"
               onClick={player.cycleMode}
-              aria-label={`${modeLabel}. Change playback mode`}
+              aria-label={t("player.changeMode", { mode: modeLabel })}
               title={modeLabel}
             >
               {player.mode === "order" ? (
@@ -2684,8 +2711,8 @@ export function PlayerDock() {
                 setLyricsDisplayMode("hidden");
                 setPanel((value) => (value === "queue" ? null : "queue"));
               }}
-              aria-label="Playback queue"
-              title="Playback queue"
+              aria-label={t("player.queue")}
+              title={t("player.queue")}
             >
               <ListMusic className="h-4 w-4" />
             </Button>
@@ -2698,19 +2725,19 @@ export function PlayerDock() {
               disabled={!activeLyricsLocationId}
               aria-label={
                 lyricsDisplayMode === "hidden"
-                  ? "Lyrics hidden. Show preview"
+                  ? t("player.lyricsHiddenShowPreview")
                   : lyricsDisplayMode === "preview"
-                    ? "Lyrics preview. View lyrics"
-                    : "Viewing lyrics. Hide lyrics"
+                    ? t("player.lyricsPreviewView")
+                    : t("player.lyricsViewingHide")
               }
               title={
                 !activeLyricsLocationId
-                  ? "No matched lyrics"
+                  ? t("player.noMatchedLyrics")
                   : lyricsDisplayMode === "hidden"
-                    ? "Show lyrics preview"
+                    ? t("player.showLyricsPreview")
                     : lyricsDisplayMode === "preview"
-                      ? "View lyrics"
-                      : "Hide lyrics"
+                      ? t("player.viewLyrics")
+                      : t("player.hideLyrics")
               }
             >
               {lyricsDisplayMode === "hidden" ? (
@@ -2727,13 +2754,15 @@ export function PlayerDock() {
               variant={player.sleepTimer ? "secondary" : "outline"}
               size="sm"
               onClick={() => setIsSleepOpen((value) => !value)}
-              aria-label="Sleep timer"
-              title="Sleep timer"
+              aria-label={t("player.sleepTimer")}
+              title={t("player.sleepTimer")}
             >
               <Timer className="h-4 w-4" />
               {player.sleepTimer && (
                 <span className="text-[10px]">
-                  {player.sleepTimer.waitingForTrackEnd ? "Track" : formatSleepRemaining(player.sleepRemainingSeconds)}
+                  {player.sleepTimer.waitingForTrackEnd
+                    ? t("player.track")
+                    : formatSleepRemaining(player.sleepRemainingSeconds)}
                 </span>
               )}
             </Button>
@@ -2745,19 +2774,19 @@ export function PlayerDock() {
             >
               <div ref={sleepPopoverRef} className="p-2">
                 <div className="flex items-center justify-between px-2 pb-2 text-xs font-semibold text-muted-foreground">
-                  <span>Sleep timer</span>
+                  <span>{t("player.sleepTimer")}</span>
                   {player.sleepTimer && (
                     <span>
                       {player.sleepTimer.waitingForTrackEnd
-                        ? "Finishing track"
+                        ? t("player.finishingTrack")
                         : formatSleepRemaining(player.sleepRemainingSeconds)}
                     </span>
                   )}
                 </div>
                 <label className="mb-1 flex min-h-10 cursor-pointer items-center justify-between gap-3 rounded-md px-2 text-sm hover:bg-muted">
                   <span>
-                    <span className="block font-medium">Finish current track</span>
-                    <span className="block text-xs text-muted-foreground">After the timer expires</span>
+                    <span className="block font-medium">{t("player.finishTrack")}</span>
+                    <span className="block text-xs text-muted-foreground">{t("player.afterTimerExpires")}</span>
                   </span>
                   <Switch
                     checked={finishCurrentTrack}
@@ -2765,7 +2794,7 @@ export function PlayerDock() {
                       setFinishCurrentTrack(enabled);
                       if (player.sleepTimer) player.setSleepFinishCurrentTrack(enabled);
                     }}
-                    aria-label="Finish current track"
+                    aria-label={t("player.finishTrack")}
                   />
                 </label>
                 {[30, 60].map((minutes) => (
@@ -2777,7 +2806,7 @@ export function PlayerDock() {
                       setIsSleepOpen(false);
                     }}
                   >
-                    {minutes} min
+                    {t("player.minutesCount", { count: minutes })}
                   </button>
                 ))}
                 <button
@@ -2785,12 +2814,12 @@ export function PlayerDock() {
                   onClick={() => setIsCustomSleepOpen((value) => !value)}
                   aria-expanded={isCustomSleepOpen}
                 >
-                  Custom
+                  {t("player.custom")}
                 </button>
                 {isCustomSleepOpen && (
                   <div className="flex items-center gap-2 px-2 py-2">
                     <label className="min-w-0 flex-1 text-xs text-muted-foreground">
-                      Minutes
+                      {t("player.minutes")}
                       <input
                         className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
                         type="number"
@@ -2800,7 +2829,7 @@ export function PlayerDock() {
                         inputMode="numeric"
                         value={customSleepMinutes}
                         onChange={(event) => setCustomSleepMinutes(event.currentTarget.value)}
-                        aria-label="Custom sleep minutes"
+                        aria-label={t("player.customSleepMinutes")}
                       />
                     </label>
                     <Button
@@ -2812,7 +2841,7 @@ export function PlayerDock() {
                         setIsSleepOpen(false);
                       }}
                     >
-                      Set
+                      {t("player.setTimer")}
                     </Button>
                   </div>
                 )}
@@ -2824,7 +2853,7 @@ export function PlayerDock() {
                       setIsSleepOpen(false);
                     }}
                   >
-                    <X className="mr-2 h-4 w-4" /> Cancel timer
+                    <X className="mr-2 h-4 w-4" /> {t("player.cancelTimer")}
                   </button>
                 )}
               </div>
@@ -2837,10 +2866,10 @@ export function PlayerDock() {
               variant={player.playbackRate !== 1 || player.compatibilityPlaybackEnabled ? "secondary" : "outline"}
               size="sm"
               onClick={() => setIsMoreOpen((value) => !value)}
-              aria-label="More player options"
+              aria-label={t("player.moreOptions")}
               aria-expanded={isMoreOpen}
               aria-haspopup="dialog"
-              title="More player options"
+              title={t("player.moreOptions")}
             >
               <MoreHorizontal className="h-4 w-4" />
             </Button>
@@ -2850,13 +2879,13 @@ export function PlayerDock() {
               anchorRef={moreButtonRef}
               onOpenChange={setIsMoreOpen}
               floatingLayer
-              ariaLabel="More player options"
+              ariaLabel={t("player.moreOptions")}
               className="w-[min(19rem,calc(100vw-1.5rem))] rounded-lg border bg-card p-3 text-card-foreground shadow-xl"
             >
               <div className="space-y-3">
                 <div className="flex items-center gap-2 px-1 text-xs font-semibold text-muted-foreground">
                   <Gauge className="h-4 w-4" />
-                  <span>Playback speed</span>
+                  <span>{t("player.playbackSpeed")}</span>
                 </div>
                 <FloatingSelect
                   value={String(player.playbackRate)}
@@ -2865,26 +2894,26 @@ export function PlayerDock() {
                     label: `${rate}×`,
                   }))}
                   onValueChange={(value) => player.setPlaybackRate(Number(value))}
-                  ariaLabel="Playback speed"
+                  ariaLabel={t("player.playbackSpeed")}
                   className="h-10"
                 />
 
                 <div className="flex items-center gap-2 px-1 text-xs font-semibold text-muted-foreground">
                   <RefreshCw className="h-4 w-4" />
-                  <span>Compatibility playback</span>
+                  <span>{t("player.compatibility")}</span>
                 </div>
                 <FloatingSelect
                   value={player.playbackCompatibilityScope}
                   options={[
-                    { value: "off", label: "Direct playback" },
-                    { value: "track", label: "Only current track" },
-                    { value: "queue", label: "Current queue" },
-                    { value: "always", label: "Always enabled" },
+                    { value: "off", label: t("player.directPlayback") },
+                    { value: "track", label: t("player.onlyCurrentTrack") },
+                    { value: "queue", label: t("player.currentQueue") },
+                    { value: "always", label: t("player.alwaysEnabled") },
                   ]}
                   onValueChange={(value) => {
                     if (isPlaybackCompatibilityScope(value)) player.setPlaybackCompatibility(value);
                   }}
-                  ariaLabel="Compatibility playback scope"
+                  ariaLabel={t("player.compatibilityScope")}
                   disabled={!track || (track.locationType !== "local" && track.locationType !== "cache")}
                   className="h-10"
                 />
@@ -2914,6 +2943,7 @@ function PlayerQueueRow({
   onMove: (queueItemId: string, direction: -1 | 1) => void;
   onRemove: (queueItemId: string) => void;
 }) {
+  const { t } = useTranslation();
   const [optionsOpen, setOptionsOpen] = useState(false);
   const optionsRef = useRef<HTMLButtonElement | null>(null);
   const active = index === currentIndex;
@@ -2942,7 +2972,7 @@ function PlayerQueueRow({
         ref={optionsRef}
         className="grid h-8 w-8 shrink-0 place-items-center rounded hover:bg-background/70"
         onClick={() => setOptionsOpen((value) => !value)}
-        aria-label={`Options for ${item.title}`}
+        aria-label={t("player.optionsFor", { title: item.title })}
         aria-haspopup="menu"
         aria-expanded={optionsOpen}
       >
@@ -2955,14 +2985,14 @@ function PlayerQueueRow({
         zIndex={70}
         className="w-44 p-1 text-sm"
       >
-        <div role="menu" aria-label={`Queue options for ${item.title}`}>
+        <div role="menu" aria-label={t("player.queueOptionsFor", { title: item.title })}>
           <button
             role="menuitem"
             className="flex h-9 w-full items-center gap-2 rounded-md px-2 hover:bg-muted disabled:opacity-40"
             disabled={index === 0 || !item.queueItemId}
             onClick={() => item.queueItemId && runAction(() => onMove(item.queueItemId!, -1))}
           >
-            <ArrowUp className="h-4 w-4" /> Move up
+            <ArrowUp className="h-4 w-4" /> {t("player.moveUp")}
           </button>
           <button
             role="menuitem"
@@ -2970,7 +3000,7 @@ function PlayerQueueRow({
             disabled={index === queueLength - 1 || !item.queueItemId}
             onClick={() => item.queueItemId && runAction(() => onMove(item.queueItemId!, 1))}
           >
-            <ArrowDown className="h-4 w-4" /> Move down
+            <ArrowDown className="h-4 w-4" /> {t("player.moveDown")}
           </button>
           <button
             role="menuitem"
@@ -2978,7 +3008,7 @@ function PlayerQueueRow({
             disabled={!item.queueItemId}
             onClick={() => item.queueItemId && runAction(() => onRemove(item.queueItemId!))}
           >
-            <Trash2 className="h-4 w-4" /> Remove
+            <Trash2 className="h-4 w-4" /> {t("player.remove")}
           </button>
         </div>
       </AnchoredPopover>
@@ -3106,6 +3136,7 @@ function SeekBar({
   progress: number;
   onSeek: (seconds: number) => void;
 }) {
+  const { t } = useTranslation();
   const clampedProgress = Math.max(0, Math.min(100, progress));
   const hasDuration = Number.isFinite(duration) && duration > 0;
   const safeCurrentTime = hasDuration
@@ -3154,15 +3185,16 @@ function SeekBar({
         onPointerUp={() => setInteracting(false)}
         onPointerCancel={() => setInteracting(false)}
         onBlur={() => setInteracting(false)}
-        aria-label="Seek"
+        aria-label={t("player.seek")}
       />
     </div>
   );
 }
 
 function LyricsLoadingSkeleton() {
+  const { t } = useTranslation();
   return (
-    <div className="space-y-3 p-3" aria-label="Loading lyrics">
+    <div className="space-y-3 p-3" aria-label={t("player.loadingLyrics")}>
       <div className="mx-auto h-4 w-32 animate-pulse rounded bg-muted" />
       <div className="space-y-2 pt-2">
         <div className="mx-auto h-4 w-4/5 animate-pulse rounded bg-muted" />
@@ -3218,6 +3250,7 @@ function InlineLyricsPreview({
   rows: number;
   onOpen: () => void;
 }) {
+  const { t } = useTranslation();
   const visibleRows = Math.max(1, rows);
   const activeOffset = Math.floor(visibleRows / 2);
   const firstVisibleIndex = Math.max(
@@ -3231,7 +3264,7 @@ function InlineLyricsPreview({
       onClick={onOpen}
       data-player-no-drag
       data-visible-rows={visibleRows}
-      aria-label="Open lyrics"
+      aria-label={t("player.openLyrics")}
     >
       <div
         className="will-change-transform transition-transform duration-500 ease-out"
@@ -3391,19 +3424,20 @@ function LyricsSourceSelector({
   automatic: boolean;
   onChoiceChange: (locationId: number | null) => void;
 }) {
+  const { t } = useTranslation();
   if (choices.length <= 1 && automatic)
     return <div className="truncate text-xs font-semibold text-muted-foreground">{title}</div>;
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      <span className="shrink-0 font-semibold">Lyrics</span>
+      <span className="shrink-0 font-semibold">{t("player.lyrics")}</span>
       <FloatingSelect
         value={automatic ? "auto" : String(activeLocationId)}
         onValueChange={(value) => onChoiceChange(value === "auto" ? null : Number(value))}
-        ariaLabel="Lyrics"
+        ariaLabel={t("player.lyrics")}
         className="w-auto min-w-0 flex-1 px-2 text-xs"
         contentClassName="max-w-[calc(100vw-1.5rem)]"
         options={[
-          { value: "auto", label: "Auto" },
+          { value: "auto", label: t("common.auto") },
           ...choices.map((choice) => ({
             value: String(choice.locationId),
             label: lyricsChoiceDisplayLabel(choice, choices),

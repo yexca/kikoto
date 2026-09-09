@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useReducer, useState } from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,6 +82,7 @@ export function WorkflowComposer({
   onSaved: (definition: WorkflowDefinition) => void;
   readOnly?: boolean;
 }) {
+  const { t } = useTranslation();
   const parsed = definition ? parseWorkflowDefinition(definition.definitionJson) : null;
   const legacyUpgrade = parsed?.kind === "legacy" ? upgradeLegacyWorkflowDefinition(parsed.nodes, triggers) : null;
   const [code, setCode] = useState(definition?.code ?? `custom_workflow_${Date.now().toString().slice(-5)}`);
@@ -283,7 +285,7 @@ export function WorkflowComposer({
         : await api.createWorkflowDefinition(payload);
       onSaved(saved);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Workflow could not be saved.");
+      setError(t("workflowComposer.saveFailed", { defaultValue: "Workflow could not be saved." }));
     } finally {
       setSaving(false);
     }
@@ -298,7 +300,7 @@ export function WorkflowComposer({
       onDeleted?.();
     } catch (cause) {
       setConfirmingDelete(false);
-      setError(cause instanceof Error ? cause.message : "Workflow could not be deleted.");
+      setError(t("workflowComposer.deleteFailed", { defaultValue: "Workflow could not be deleted." }));
     } finally {
       setDeleting(false);
     }
@@ -323,29 +325,37 @@ export function WorkflowComposer({
       className="fixed inset-0 z-50"
       role="dialog"
       aria-modal="true"
-      aria-label={definition ? "Edit workflow" : "New workflow"}
+      aria-label={definition ? t("workflowComposer.editWorkflow") : t("workflowComposer.newWorkflow")}
     >
       <div className="workflow-composer-shell flex h-full w-full flex-col overflow-hidden">
         <header className="flex min-h-14 items-center gap-3 border-b bg-card px-3 lg:px-4">
           <Workflow className="h-4 w-4 shrink-0 text-primary" />
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold">{definition ? `Edit ${displayName}` : "New workflow"}</div>
+            <div className="truncate text-sm font-semibold">
+              {definition ? `${t("workflowComposer.editWorkflow")} ${displayName}` : t("workflowComposer.newWorkflow")}
+            </div>
             <div className="truncate text-xs text-muted-foreground">{code}</div>
           </div>
           <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex">
-            <span>{document.nodes.length} nodes</span>
-            <span>{document.edges.length} connections</span>
+            <span>
+              {document.nodes.length} {t("workflowComposer.nodes")}
+            </span>
+            <span>
+              {document.edges.length} {t("workflowComposer.connections")}
+            </span>
             {errors.length > 0 ? (
-              <Badge variant="warning">{errors.length} errors</Badge>
+              <Badge variant="warning">
+                {errors.length} {t("workflowComposer.errors")}
+              </Badge>
             ) : (
-              <Badge variant="secondary">Ready</Badge>
+              <Badge variant="secondary">{t("workflowComposer.ready")}</Badge>
             )}
           </div>
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Undo workflow edit"
-            title="Undo"
+            aria-label={t("workflowComposer.undo")}
+            title={t("workflowComposer.undo")}
             onClick={() => dispatchHistory({ type: "undo" })}
             disabled={history.past.length === 0}
           >
@@ -354,8 +364,8 @@ export function WorkflowComposer({
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Redo workflow edit"
-            title="Redo"
+            aria-label={t("workflowComposer.redo")}
+            title={t("workflowComposer.redo")}
             onClick={() => dispatchHistory({ type: "redo" })}
             disabled={history.future.length === 0}
           >
@@ -366,8 +376,8 @@ export function WorkflowComposer({
               variant="ghost"
               size="icon"
               className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-              aria-label="Delete workflow"
-              title="Delete workflow"
+              aria-label={t("workflowComposer.deleteWorkflow")}
+              title={t("workflowComposer.deleteWorkflow")}
               onClick={() => setConfirmingDelete(true)}
               disabled={saving || deleting}
             >
@@ -375,7 +385,7 @@ export function WorkflowComposer({
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={onClose}>
-            Cancel
+            {t("workflowComposer.cancel")}
           </Button>
           <Button
             size="sm"
@@ -383,9 +393,13 @@ export function WorkflowComposer({
             disabled={readOnly || saving || errors.length > 0 || !displayName.trim()}
           >
             <Save className="h-4 w-4" />
-            {readOnly ? "Preview only" : saving ? "Saving" : "Save"}
+            {readOnly
+              ? t("workflowComposer.previewOnly")
+              : saving
+                ? t("workflowComposer.saving")
+                : t("workflowComposer.save")}
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Close workflow composer" onClick={onClose}>
+          <Button variant="ghost" size="icon" aria-label={t("workflowComposer.close")} onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </header>
@@ -393,13 +407,13 @@ export function WorkflowComposer({
         <div className="relative flex min-h-0 flex-1 flex-col lg:block">
           <nav
             className="hidden w-11 flex-col items-center gap-1 border-r bg-card py-2 lg:absolute lg:inset-y-0 lg:left-0 lg:z-30 lg:flex"
-            aria-label="Workflow canvas tools"
+            aria-label={t("workflowComposer.canvasTools")}
           >
             <Button
               variant={paletteOpen ? "secondary" : "ghost"}
               size="icon"
-              aria-label={paletteOpen ? "Close node library" : "Open node library"}
-              title={paletteOpen ? "Close node library" : "Open node library"}
+              aria-label={paletteOpen ? t("workflowComposer.closeNodeLibrary") : t("workflowComposer.openNodeLibrary")}
+              title={paletteOpen ? t("workflowComposer.closeNodeLibrary") : t("workflowComposer.openNodeLibrary")}
               aria-pressed={paletteOpen}
               onClick={() => setPaletteOpen((open) => !open)}
             >
@@ -410,17 +424,19 @@ export function WorkflowComposer({
           {paletteVisible && (
             <aside
               className={`app-scroll order-2 min-h-0 shrink-0 overflow-y-auto bg-card lg:order-none ${wideLayout ? "absolute inset-y-0 left-11 z-20 w-60 border-r shadow-xl" : "max-h-[38vh] min-h-48 w-full border-t"}`}
-              aria-label="Node library"
+              aria-label={t("workflowComposer.nodeLibrary")}
             >
               <div className="sticky top-0 z-10 border-b bg-card p-3">
-                <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Nodes</div>
+                <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+                  {t("workflowComposer.nodes")}
+                </div>
                 <label className="flex h-9 items-center gap-2 rounded-md border bg-background px-2">
                   <Search className="h-3.5 w-3.5 text-muted-foreground" />
                   <input
                     className="min-w-0 flex-1 bg-transparent text-xs outline-none"
                     value={paletteQuery}
                     onChange={(event) => setPaletteQuery(event.target.value)}
-                    placeholder="Find a node"
+                    placeholder={t("workflowComposer.findNode")}
                   />
                 </label>
               </div>
@@ -442,7 +458,7 @@ export function WorkflowComposer({
                 onClick={() => setMobilePanel((panel) => (panel === "palette" ? null : "palette"))}
               >
                 <PanelLeftOpen className="h-4 w-4" />
-                Nodes
+                {t("workflowComposer.nodes")}
               </Button>
               <Button
                 size="sm"
@@ -451,7 +467,7 @@ export function WorkflowComposer({
                 onClick={() => setMobilePanel((panel) => (panel === "inspector" ? null : "inspector"))}
               >
                 <PanelRightOpen className="h-4 w-4" />
-                {selectedNode ? "Node" : "Workflow"}
+                {selectedNode ? t("workflowComposer.node") : t("workflowComposer.workflow")}
               </Button>
             </div>
             <div className="min-h-0 flex-1">
@@ -470,7 +486,7 @@ export function WorkflowComposer({
             <aside
               className={`app-scroll order-2 min-h-0 shrink-0 overflow-y-auto bg-card lg:order-none ${wideLayout ? "absolute inset-y-0 right-11 z-20 border-l shadow-xl" : "max-h-[38vh] min-h-48 w-full border-t"}`}
               style={wideLayout ? { width: WORKFLOW_INSPECTOR_WIDTH } : undefined}
-              aria-label={selectedNode ? "Node inspector" : "Workflow inspector"}
+              aria-label={selectedNode ? t("workflowComposer.inspector") : t("workflowComposer.workflowInspector")}
             >
               {selectedNode ? (
                 <NodeInspector
@@ -509,13 +525,13 @@ export function WorkflowComposer({
 
           <nav
             className="hidden w-11 flex-col items-center gap-1 border-l bg-card py-2 lg:absolute lg:inset-y-0 lg:right-0 lg:z-30 lg:flex"
-            aria-label="Workflow view tools"
+            aria-label={t("workflowComposer.canvasTools")}
           >
             <Button
               variant={inspectorOpen ? "secondary" : "ghost"}
               size="icon"
-              aria-label={inspectorOpen ? "Close inspector" : "Open inspector"}
-              title={inspectorOpen ? "Close inspector" : "Open inspector"}
+              aria-label={t("workflowComposer.workflowInspector")}
+              title={t("workflowComposer.workflowInspector")}
               aria-pressed={inspectorOpen}
               onClick={() => setInspectorOpen((open) => !open)}
             >
@@ -542,15 +558,14 @@ export function WorkflowComposer({
             onMouseDown={(event) => event.stopPropagation()}
           >
             <h2 id="delete-workflow-title" className="text-base font-semibold">
-              Delete workflow?
+              {t("workflowComposer.deleteConfirmTitle")}
             </h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Delete “{definition.displayName}”? Its definition and Quick Action will be removed. Existing run history
-              is kept.
+              {t("workflowComposer.deleteConfirmDescription", { name: definition.displayName })}
             </p>
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
-                Cancel
+                {t("workflowComposer.cancel")}
               </Button>
               <Button
                 size="sm"
@@ -559,7 +574,7 @@ export function WorkflowComposer({
                 disabled={deleting}
               >
                 <Trash2 className="h-4 w-4" />
-                {deleting ? "Deleting" : "Delete"}
+                {deleting ? t("workflowComposer.deleting") : t("workflowComposer.delete")}
               </Button>
             </div>
           </div>
@@ -581,10 +596,11 @@ function NodePalette({
   onAddInput: (input: (typeof inputPresets)[number]) => void;
   onAddNode: (nodeType: WorkflowNodeType) => void;
 }) {
+  const { t } = useTranslation();
   const groups = ["discover", "refine", "decision", "action"] as const;
   return (
     <div className="space-y-5 p-3">
-      <PaletteGroup label="Inputs">
+      <PaletteGroup label={t("workflowComposer.inputs")}>
         {inputs.map((input) => (
           <PaletteButton
             key={input.type}
@@ -603,12 +619,12 @@ function NodePalette({
             key={group}
             label={
               group === "refine"
-                ? "Refine"
+                ? t("workflowComposer.refine")
                 : group === "decision"
-                  ? "Decisions"
+                  ? t("workflowComposer.decisions")
                   : group === "action"
-                    ? "Actions"
-                    : "Discover"
+                    ? t("workflowComposer.actions")
+                    : t("workflowComposer.discover")
             }
           >
             {items.map((nodeType) => (
@@ -624,7 +640,9 @@ function NodePalette({
         );
       })}
       {nodeTypes.length === 0 && (
-        <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">No matching nodes.</div>
+        <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+          {t("workflowComposer.noMatchingNodes")}
+        </div>
       )}
     </div>
   );
@@ -689,14 +707,15 @@ function WorkflowInspector({
   onDescriptionChange: (value: string) => void;
   onDocumentChange: (document: WorkflowDefinitionDocument) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-5 p-4">
       <div>
-        <h3 className="text-sm font-semibold">Workflow</h3>
-        <p className="text-xs text-muted-foreground">Definition and launch policy</p>
+        <h3 className="text-sm font-semibold">{t("workflowComposer.workflow")}</h3>
+        <p className="text-xs text-muted-foreground">{t("workflowComposer.definition")}</p>
       </div>
       <div className="space-y-3">
-        <InspectorField label="Code">
+        <InspectorField label={t("workflowComposer.code")}>
           <input
             className={inputClass}
             value={code}
@@ -704,14 +723,14 @@ function WorkflowInspector({
             onChange={(event) => onCodeChange(event.target.value)}
           />
         </InspectorField>
-        <InspectorField label="Name">
+        <InspectorField label={t("workflowComposer.name")}>
           <input
             className={inputClass}
             value={displayName}
             onChange={(event) => onDisplayNameChange(event.target.value)}
           />
         </InspectorField>
-        <InspectorField label="Description">
+        <InspectorField label={t("workflowComposer.description")}>
           <textarea
             className={`${inputClass} min-h-20 py-2`}
             value={description}
@@ -722,17 +741,17 @@ function WorkflowInspector({
       <section className="space-y-3 border-t pt-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-medium">Quick Action</div>
-            <div className="text-xs text-muted-foreground">Publish a slash command</div>
+            <div className="text-sm font-medium">{t("workflowComposer.quickAction")}</div>
+            <div className="text-xs text-muted-foreground">{t("workflowComposer.publishSlashCommand")}</div>
           </div>
           <Switch
             checked={document.command.enabled}
             onCheckedChange={(enabled) => onDocumentChange({ ...document, command: { ...document.command, enabled } })}
-            aria-label="Publish as Quick Action"
+            aria-label={t("workflowComposer.publishAsQuickAction")}
           />
         </div>
         {document.command.enabled && (
-          <InspectorField label="Command alias">
+          <InspectorField label={t("workflowComposer.commandAlias")}>
             <div className="flex h-9 items-center rounded-md border bg-background pl-3 focus-within:ring-2 focus-within:ring-ring">
               <span className="text-sm text-muted-foreground">/</span>
               <input
@@ -754,24 +773,24 @@ function WorkflowInspector({
       <section className="space-y-3 border-t pt-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-medium">Require preview</div>
-            <div className="text-xs text-muted-foreground">Confirm the computed plan before queueing</div>
+            <div className="text-sm font-medium">{t("workflowComposer.requirePreview")}</div>
+            <div className="text-xs text-muted-foreground">{t("workflowComposer.confirmComputedPlan")}</div>
           </div>
           <Switch
             checked={document.policy.requirePreview}
             onCheckedChange={(requirePreview) => onDocumentChange({ ...document, policy: { requirePreview } })}
-            aria-label="Require workflow preview"
+            aria-label={t("workflowComposer.requireWorkflowPreview")}
           />
         </div>
         {!document.policy.requirePreview && (
           <div className="rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-xs text-warning-foreground">
-            Bounded actions may launch after a server preview. The server rejects actions without explicit limits.
+            {t("workflowComposer.boundedActionsWarning")}
           </div>
         )}
       </section>
       {issues.length > 0 && (
         <section className="space-y-2 border-t pt-4">
-          <div className="text-xs font-semibold uppercase text-muted-foreground">Checks</div>
+          <div className="text-xs font-semibold uppercase text-muted-foreground">{t("workflowComposer.checks")}</div>
           {issues.slice(0, 8).map((issue, index) => (
             <div key={`${issue.message}-${index}`} className="flex gap-2 text-xs text-muted-foreground">
               {issue.level === "error" ? (
@@ -787,7 +806,7 @@ function WorkflowInspector({
       {issues.length === 0 && (
         <div className="flex items-center gap-2 border-t pt-4 text-xs text-muted-foreground">
           <CheckCircle2 className="h-4 w-4 text-success" />
-          Graph is ready to save.
+          {t("workflowComposer.graphReady")}
         </div>
       )}
     </div>
@@ -815,6 +834,7 @@ function NodeInspector({
   onDocumentChange: (document: WorkflowDefinitionDocument) => void;
   onRemove: () => void;
 }) {
+  const { t } = useTranslation();
   const metadata = nodeTypes.find((candidate) => candidate.type === node.type);
   const ports = workflowNodePorts(document, node, nodeTypes);
   const inputKey = node.type === "workflow_input" ? stringValue(node.config?.inputKey) : "";
@@ -827,11 +847,11 @@ function NodeInspector({
           <h3 className="truncate text-sm font-semibold">{node.displayName || metadata?.displayName || node.id}</h3>
           <p className="truncate text-xs text-muted-foreground">{node.type}</p>
         </div>
-        <Button variant="outline" size="icon" aria-label="Delete selected node" onClick={onRemove}>
+        <Button variant="outline" size="icon" aria-label={t("workflowComposer.deleteSelectedNode")} onClick={onRemove}>
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
-      <InspectorField label="Node name">
+      <InspectorField label={t("workflowComposer.node")}>
         <input
           className={inputClass}
           value={node.displayName ?? ""}
@@ -860,7 +880,7 @@ function NodeInspector({
         />
       )}
       <section className="space-y-2 border-t pt-4">
-        <div className="text-xs font-semibold uppercase text-muted-foreground">Ports</div>
+        <div className="text-xs font-semibold uppercase text-muted-foreground">{t("workflowComposer.ports")}</div>
         {[
           ...ports.inputs.map((port) => ({ ...port, direction: "in" })),
           ...ports.outputs.map((port) => ({ ...port, direction: "out" })),
@@ -874,7 +894,7 @@ function NodeInspector({
       </section>
       {metadata?.requiredPermissions && metadata.requiredPermissions.length > 0 && (
         <div className="border-t pt-4 text-xs text-muted-foreground">
-          Requires {metadata.requiredPermissions.join(", ")}
+          {t("workflowComposer.requiredPermissions", { permissions: metadata.requiredPermissions.join(", ") })}
         </div>
       )}
     </div>
@@ -892,6 +912,7 @@ function InputInspector({
   node: WorkflowNodeDefinition;
   onDocumentChange: (document: WorkflowDefinitionDocument) => void;
 }) {
+  const { t } = useTranslation();
   const update = (patch: Partial<WorkflowInputDefinition>) => {
     const next = { ...input, ...patch };
     const keyChanged = patch.key !== undefined && patch.key !== input.key;
@@ -909,17 +930,17 @@ function InputInspector({
   };
   return (
     <section className="space-y-3 border-t pt-4">
-      <InspectorField label="Input key">
+      <InspectorField label={t("workflowComposer.inputKey")}>
         <input
           className={inputClass}
           value={input.key}
           onChange={(event) => update({ key: event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })}
         />
       </InspectorField>
-      <InspectorField label="Label">
+      <InspectorField label={t("workflowComposer.label")}>
         <input className={inputClass} value={input.label} onChange={(event) => update({ label: event.target.value })} />
       </InspectorField>
-      <InspectorField label="Type">
+      <InspectorField label={t("workflowComposer.type")}>
         <select
           className={inputClass}
           value={input.type}
@@ -932,7 +953,7 @@ function InputInspector({
           ))}
         </select>
       </InspectorField>
-      <InspectorField label="Default value">
+      <InspectorField label={t("workflowComposer.defaultValue")}>
         {input.type === "work_codes" ? (
           <WorkCodesField
             value={input.defaultValue ?? ""}
@@ -947,11 +968,11 @@ function InputInspector({
         )}
       </InspectorField>
       <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
-        <span>Required</span>
+        <span>{t("workflowComposer.required")}</span>
         <Switch
           checked={input.required}
           onCheckedChange={(required) => update({ required })}
-          aria-label="Input is required"
+          aria-label={t("workflowComposer.required")}
         />
       </div>
     </section>
@@ -971,6 +992,7 @@ function ConfigInspector({
   workflowDefinitions: WorkflowDefinition[];
   onChange: (patch: Partial<WorkflowNodeDefinition>) => void;
 }) {
+  const { t } = useTranslation();
   const schema = parseSchema(metadata?.configSchema);
   const fields = Object.entries(schema.properties ?? {});
   const [jsonDraft, setJsonDraft] = useState(() => JSON.stringify(node.config ?? {}, null, 2));
@@ -983,7 +1005,9 @@ function ConfigInspector({
   return (
     <section className="space-y-3 border-t pt-4">
       <div>
-        <div className="text-xs font-semibold uppercase text-muted-foreground">Configuration</div>
+        <div className="text-xs font-semibold uppercase text-muted-foreground">
+          {t("workflowComposer.configuration")}
+        </div>
         {metadata?.description && <p className="mt-1 text-xs text-muted-foreground">{metadata.description}</p>}
       </div>
       {fields.map(([key, field]) => (
@@ -999,12 +1023,12 @@ function ConfigInspector({
       ))}
       {fields.length === 0 && (
         <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
-          This node has no structured options.
+          {t("workflowComposer.noStructuredOptions")}
         </div>
       )}
       <details className="group rounded-md border">
         <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-xs font-medium">
-          Advanced JSON
+          {t("workflowComposer.advancedJson")}
           <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
         </summary>
         <div className="border-t p-2">
@@ -1019,7 +1043,7 @@ function ConfigInspector({
                 onChange({ config: parsed });
                 setJsonError("");
               } catch {
-                setJsonError("Config must be a JSON object.");
+                setJsonError(t("workflowComposer.configMustJson"));
               }
             }}
           />
@@ -1045,20 +1069,25 @@ function ConfigField({
   workflowDefinitions: WorkflowDefinition[];
   onChange: (value: unknown) => void;
 }) {
+  const { t } = useTranslation();
   const label = stringValue(schema.title) || humanize(name);
   const enumValues = Array.isArray(schema.enum) ? schema.enum.map(String) : [];
   const kind = stringValue(schema.type) || inferredFieldType(name, value);
   if (/sourceId$/i.test(name)) {
     const remoteSources = sources.filter((source) => source.enabled && source.sourceType !== "local");
     return (
-      <InspectorField label="Remote source">
+      <InspectorField label={t("workflowComposer.remoteSource")}>
         <select
           className={inputClass}
           value={String(value ?? "")}
           onChange={(event) => onChange(Number(event.target.value))}
           disabled={remoteSources.length === 0}
         >
-          <option value="">{remoteSources.length > 0 ? "Select source" : "No enabled remote sources"}</option>
+          <option value="">
+            {remoteSources.length > 0
+              ? t("workflowComposer.selectSource")
+              : t("workflowComposer.noEnabledRemoteSources")}
+          </option>
           {remoteSources.map((source) => (
             <option key={source.id} value={source.id}>
               {source.displayName}
@@ -1077,7 +1106,11 @@ function ConfigField({
           onChange={(event) => onChange(Number(event.target.value))}
           disabled={workflowDefinitions.length === 0}
         >
-          <option value="">{workflowDefinitions.length > 0 ? "Select workflow" : "No reusable workflows"}</option>
+          <option value="">
+            {workflowDefinitions.length > 0
+              ? t("workflowComposer.selectWorkflow")
+              : t("workflowComposer.noReusableWorkflows")}
+          </option>
           {workflowDefinitions.map((definition) => (
             <option key={definition.id} value={definition.id}>
               {definition.displayName}

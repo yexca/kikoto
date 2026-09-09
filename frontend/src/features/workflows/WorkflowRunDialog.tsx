@@ -1,5 +1,6 @@
 import { AlertCircle, CheckCircle2, Loader2, Play, ShieldCheck, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ export function WorkflowRunDialog({
   onQueued: (runId: number) => void;
   onBusyChange?: (busy: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const parsed = parseWorkflowDefinition(definition.definitionJson);
   const document = parsed.kind === "v2" ? parsed.document : null;
   const [inputs, setInputs] = useState<Record<string, unknown>>(() =>
@@ -86,7 +88,10 @@ export function WorkflowRunDialog({
       { mode: "confirm", inputs: requestInputs, previewToken: nextPreview.previewToken },
       signal,
     );
-    if (result.mode !== "confirm") throw new Error("Workflow confirmation returned an unexpected response.");
+    if (result.mode !== "confirm")
+      throw new Error(
+        t("workflowRun.previewFailed", { defaultValue: "Workflow confirmation returned an unexpected response." }),
+      );
     if (!active.current || signal.aborted) return;
     onQueued(result.runId);
   };
@@ -100,14 +105,17 @@ export function WorkflowRunDialog({
         { mode: "preview", inputs: requestInputs },
         controller.signal,
       );
-      if (result.mode !== "preview") throw new Error("Workflow preview returned an unexpected response.");
+      if (result.mode !== "preview")
+        throw new Error(
+          t("workflowRun.previewFailed", { defaultValue: "Workflow preview returned an unexpected response." }),
+        );
       if (!active.current || controller.signal.aborted) return;
       setPreview(result);
       if (allowAutoConfirm && document && !document.policy.requirePreview)
         await confirmPreview(result, controller.signal);
     } catch (cause) {
       if (active.current && !isAbortError(cause))
-        setError(cause instanceof Error ? cause.message : "Workflow preview failed.");
+        setError(t("workflowRun.previewFailed", { defaultValue: "Workflow preview failed." }));
     } finally {
       finishRequest(controller);
     }
@@ -128,7 +136,7 @@ export function WorkflowRunDialog({
       await confirmPreview(preview, controller.signal);
     } catch (cause) {
       if (active.current && !isAbortError(cause))
-        setError(cause instanceof Error ? cause.message : "Workflow could not be queued.");
+        setError(t("workflowRun.queueFailed", { defaultValue: "Workflow could not be queued." }));
     } finally {
       finishRequest(controller);
     }
@@ -139,16 +147,18 @@ export function WorkflowRunDialog({
       className="fixed inset-0 z-[60] grid place-items-center bg-background/70 p-3 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      aria-label={`Run ${definition.displayName}`}
+      aria-label={t("workflowRun.run", { name: definition.displayName })}
     >
       <div className="app-scroll max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-md border bg-card shadow-xl">
         <header className="sticky top-0 z-10 flex min-h-14 items-center gap-3 border-b bg-card px-4">
           <ShieldCheck className="h-4 w-4 text-primary" />
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-semibold">{preview ? "Workflow preview" : definition.displayName}</h2>
+            <h2 className="truncate text-sm font-semibold">
+              {preview ? t("workflowRun.previewTitle") : definition.displayName}
+            </h2>
             <p className="truncate text-xs text-muted-foreground">{definition.code}</p>
           </div>
-          <Button variant="ghost" size="icon" aria-label="Close workflow preview" onClick={onClose} disabled={busy}>
+          <Button variant="ghost" size="icon" aria-label={t("workflowRun.close")} onClick={onClose} disabled={busy}>
             <X className="h-4 w-4" />
           </Button>
         </header>
@@ -170,12 +180,11 @@ export function WorkflowRunDialog({
               )}
               {document.inputs.length === 0 && (
                 <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                  This workflow does not require launch inputs.
+                  {t("workflowRun.noLaunchInputs")}
                 </div>
               )}
               <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                The server validates permissions, graph limits, and current definition state before issuing a preview
-                token.
+                {t("workflowRun.validationNotice")}
               </div>
             </>
           ) : (
@@ -185,7 +194,7 @@ export function WorkflowRunDialog({
           {busy && autoPreview && !preview && (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Computing preview
+              {t("workflowRun.computingPreview")}
             </div>
           )}
           {error && (
@@ -197,7 +206,7 @@ export function WorkflowRunDialog({
 
           <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
             <Button variant="outline" onClick={onClose} disabled={busy}>
-              Cancel
+              {t("workflowRun.cancel")}
             </Button>
             {!preview ? (
               <Button
@@ -208,11 +217,13 @@ export function WorkflowRunDialog({
                   hasInvalidWorkCodeInputs(document.inputs, inputs)
                 }
               >
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}Preview
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                {t("workflowRun.preview")}
               </Button>
             ) : (
               <Button onClick={() => void queue()} disabled={busy}>
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}Queue run
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                {t("workflowRun.queueRun")}
               </Button>
             )}
           </div>
@@ -258,14 +269,15 @@ function RunInput({
 }
 
 function PreviewPlan({ preview, onEdit }: { preview: WorkflowDefinitionRunPreview; onEdit: () => void }) {
+  const { t } = useTranslation();
   const estimates = preview.plan.estimates;
   return (
     <>
       <section className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold">Normalized inputs</h3>
+          <h3 className="text-sm font-semibold">{t("workflowRun.normalizedInputs")}</h3>
           <Button size="sm" variant="outline" onClick={onEdit}>
-            Edit inputs
+            {t("workflowRun.editInputs")}
           </Button>
         </div>
         <pre className="max-h-40 overflow-auto rounded-md border bg-muted/30 p-3 text-xs">
@@ -273,16 +285,27 @@ function PreviewPlan({ preview, onEdit }: { preview: WorkflowDefinitionRunPrevie
         </pre>
       </section>
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <PreviewMetric label="Candidates" value={formatEstimate(estimates?.candidateCount)} />
-        <PreviewMetric label="Files" value={formatEstimate(estimates?.fileCount)} />
-        <PreviewMetric label="Bytes" value={formatBytes(estimates?.totalBytes)} />
-        <PreviewMetric label="Steps" value={String(preview.plan.nodeCount)} />
+        <PreviewMetric
+          label={t("workflowRun.candidates")}
+          value={formatEstimate(estimates?.candidateCount, t("workflowRun.unknown"))}
+        />
+        <PreviewMetric
+          label={t("workflowRun.files")}
+          value={formatEstimate(estimates?.fileCount, t("workflowRun.unknown"))}
+        />
+        <PreviewMetric
+          label={t("workflowRun.bytes")}
+          value={formatBytes(estimates?.totalBytes, t("workflowRun.unknown"))}
+        />
+        <PreviewMetric label={t("workflowRun.steps")} value={String(preview.plan.nodeCount)} />
       </section>
 
       <section className="space-y-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">Actions</h3>
-          <span className="text-xs text-muted-foreground">{preview.plan.edgeCount} connections</span>
+          <h3 className="text-sm font-semibold">{t("workflowRun.actions")}</h3>
+          <span className="text-xs text-muted-foreground">
+            {t("workflowRun.connections", { count: preview.plan.edgeCount })}
+          </span>
         </div>
         <div className="divide-y rounded-md border">
           {preview.plan.actions.map((action, index) => {
@@ -298,7 +321,7 @@ function PreviewPlan({ preview, onEdit }: { preview: WorkflowDefinitionRunPrevie
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">{item.phase || item.nodeType}</span>
                 </span>
-                {item.requiresConfirmation && <Badge variant="warning">writes</Badge>}
+                {item.requiresConfirmation && <Badge variant="warning">{t("workflowRun.writes")}</Badge>}
               </div>
             );
           })}
@@ -307,7 +330,7 @@ function PreviewPlan({ preview, onEdit }: { preview: WorkflowDefinitionRunPrevie
 
       {(preview.plan.limits?.length ?? 0) > 0 && (
         <section className="space-y-2">
-          <h3 className="text-sm font-semibold">Limits</h3>
+          <h3 className="text-sm font-semibold">{t("workflowRun.limits")}</h3>
           <div className="grid gap-2 sm:grid-cols-2">
             {preview.plan.limits?.map((limit) => (
               <PreviewLimitRow key={limit.key} limit={limit} />
@@ -317,7 +340,7 @@ function PreviewPlan({ preview, onEdit }: { preview: WorkflowDefinitionRunPrevie
       )}
       {(preview.requiredPermissions?.length ?? 0) > 0 && (
         <section className="space-y-2">
-          <h3 className="text-sm font-semibold">Permissions</h3>
+          <h3 className="text-sm font-semibold">{t("workflowRun.permissions")}</h3>
           <div className="flex flex-wrap gap-2">
             {preview.requiredPermissions?.map((permission) => (
               <Badge key={permission} variant="outline">
@@ -329,7 +352,7 @@ function PreviewPlan({ preview, onEdit }: { preview: WorkflowDefinitionRunPrevie
       )}
       {(preview.warnings?.length ?? 0) > 0 && (
         <section className="space-y-2">
-          <h3 className="text-sm font-semibold">Review</h3>
+          <h3 className="text-sm font-semibold">{t("workflowRun.review")}</h3>
           {preview.warnings?.map((warning) => (
             <div
               key={warning}
@@ -343,7 +366,7 @@ function PreviewPlan({ preview, onEdit }: { preview: WorkflowDefinitionRunPrevie
       )}
       <div className="flex items-center gap-2 rounded-md border border-success-border bg-success-surface px-3 py-2 text-xs text-success-foreground">
         <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
-        Preview is bound to this definition and these normalized inputs.
+        {t("workflowRun.previewBound")}
       </div>
     </>
   );
@@ -391,12 +414,12 @@ function hasInvalidWorkCodeInputs(inputs: WorkflowInputDefinition[], values: Rec
   );
 }
 
-function formatEstimate(value: number | null | undefined) {
-  return typeof value === "number" && value >= 0 ? value.toLocaleString() : "Unknown";
+function formatEstimate(value: number | null | undefined, unknownLabel = "Unknown") {
+  return typeof value === "number" && value >= 0 ? value.toLocaleString() : unknownLabel;
 }
 
-function formatBytes(value: number | null | undefined) {
-  if (typeof value !== "number" || value < 0) return "Unknown";
+function formatBytes(value: number | null | undefined, unknownLabel = "Unknown") {
+  if (typeof value !== "number" || value < 0) return unknownLabel;
   if (value < 1024) return `${value} B`;
   if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`;
   if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(1)} MB`;

@@ -26,6 +26,8 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
@@ -152,6 +154,7 @@ type FavoritesEntryState = {
 };
 
 export function FavoritesPage({ active = true }: { active?: boolean }) {
+  const { t } = useTranslation();
   const toast = useToast();
   const auth = useAuth();
   const principalID = auth.user?.id ?? null;
@@ -234,7 +237,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
         }
       })
       .catch((error) => {
-        if (!cancelled) toast.notify(toastFromError(error, "Favorite lists could not be loaded."));
+        if (!cancelled) toast.notify(toastFromError(error, t("errors.unavailable")));
       })
       .finally(() => {
         if (!cancelled) setAreFavoriteListsLoading(false);
@@ -269,7 +272,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
         });
       })
       .catch((error) => {
-        if (!cancelled) toast.notify(toastFromError(error, "File sources could not be loaded."));
+        if (!cancelled) toast.notify(toastFromError(error, t("errors.unavailable")));
       })
       .finally(() => {
         if (!cancelled) setAreFileSourcesLoading(false);
@@ -310,8 +313,8 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       })
       .catch((error) => {
         if (!cancelled) {
-          setEntityLoadError("Favorite people and circles could not be loaded.");
-          toast.notify(toastFromError(error, "Favorite people and circles could not be loaded."));
+          setEntityLoadError(t("errors.unavailable"));
+          toast.notify(toastFromError(error, t("errors.unavailable")));
         }
       })
       .finally(() => {
@@ -386,8 +389,8 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       })
       .catch((error) => {
         if (controller.signal.aborted || seq !== requestSeq.current) return;
-        setWorksLoadError("Favorites could not be loaded.");
-        toast.notify(toastFromError(error, "Favorites could not be loaded."));
+        setWorksLoadError(t("errors.unavailable"));
+        toast.notify(toastFromError(error, t("errors.unavailable")));
       })
       .finally(() => {
         if (!controller.signal.aborted && seq === requestSeq.current) setIsLoading(false);
@@ -502,9 +505,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   if (!auth.user) {
     return (
       <Card>
-        <CardContent className="p-6 text-sm text-muted-foreground">
-          Sign in to view and manage your favorites.
-        </CardContent>
+        <CardContent className="p-6 text-sm text-muted-foreground">{t("favorites.signInDescription")}</CardContent>
       </Card>
     );
   }
@@ -655,7 +656,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       setActiveList(list.id);
     }
     setListEditor(null);
-    toast.success("Favorite list saved.");
+    toast.success(t("favorites.listSaved"));
   };
 
   const openFavoriteListManager = () => {
@@ -680,9 +681,9 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       setDeleteListTarget(null);
       if (activeList === deletingList.id) setActiveList("all");
       await reloadFavoriteLists();
-      toast.success("Favorite list deleted.");
+      toast.success(t("favorites.listDeleted"));
     } catch (error) {
-      toast.notify(toastFromError(error, "Favorite list could not be deleted."));
+      toast.notify(toastFromError(error, t("favorites.listDeleteFailed")));
     } finally {
       setIsDeletingList(false);
     }
@@ -707,10 +708,10 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       await Promise.all(reordered.map((list, index) => api.updateFavoriteList(list.id, { sortOrder: index })));
       await reloadFavoriteLists();
       setActiveList(listID);
-      toast.success("Favorite list reordered.");
+      toast.success(t("favorites.reordered"));
     } catch (error) {
       setFavoriteLists(previousLists);
-      toast.notify(toastFromError(error, "Favorite lists could not be reordered."));
+      toast.notify(toastFromError(error, t("errors.unavailable")));
     }
   };
 
@@ -746,9 +747,9 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       setSelectedWorkIDs(new Set());
       setSelectionMode(false);
       setListDialogTarget(null);
-      toast.success(`Updated list membership for ${targetWorks.length} work${targetWorks.length === 1 ? "" : "s"}.`);
+      toast.success(t("favorites.membershipUpdated", { count: targetWorks.length }));
     } catch (error) {
-      toast.notify(toastFromError(error, "Bulk list update failed."));
+      toast.notify(toastFromError(error, t("errors.unavailable")));
     } finally {
       setIsBulkUpdating(false);
     }
@@ -767,10 +768,10 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
             value={query}
             placeholder={
               favoriteEntity === "works"
-                ? "Search title, code, circle, tag, or creator"
+                ? t("library.searchPlaceholder")
                 : favoriteEntity === "circles"
-                  ? "Search circles"
-                  : "Search voice actors"
+                  ? t("creatorBrowse.searchCircles")
+                  : t("creatorBrowse.searchVoices")
             }
             onChange={changeFavoriteQuery}
           />
@@ -841,7 +842,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
               compactMobile
               compactTop
               refreshing={isLoading && hasWorksSnapshot}
-              refreshingLabel="Refreshing favorites"
+              refreshingLabel={t("favorites.refreshing")}
               onPageChange={setPage}
             />
           </>
@@ -908,15 +909,15 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
               <div
                 className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden overscroll-x-contain"
                 role="region"
-                aria-label="Favorite list tabs"
+                aria-label={t("favorites.listTabs")}
               >
-                <div className="flex w-max min-w-full gap-2" role="group" aria-label="Favorite lists">
+                <div className="flex w-max min-w-full gap-2" role="group" aria-label={t("favorites.lists")}>
                   {areFavoriteListsLoading ? (
                     <FavoriteListTabSkeletons />
                   ) : (
                     <FavoriteListTab
                       active={activeList === "all"}
-                      label="All Favorites"
+                      label={t("favorites.all")}
                       count={favoriteTotal}
                       onClick={() => {
                         setActiveList("all");
@@ -927,9 +928,9 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                   {markedList && (
                     <FavoriteListTab
                       active={activeList === markedList.id}
-                      label="Marked"
+                      label={t("favorites.marked")}
                       count={listCounts[String(markedList.id)] ?? 0}
-                      title="Works with a quick mark"
+                      title={t("favorites.quickMarkWorks")}
                       onClick={() => {
                         setActiveList(markedList.id);
                         setPage(1);
@@ -958,8 +959,8 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                   className="group -m-1 h-11 w-11 hover:bg-transparent lg:m-0 lg:h-8 lg:w-8"
                   disabled={areFavoriteListsLoading}
                   onClick={() => setListActionsOpen((open) => !open)}
-                  aria-label="Favorite list options"
-                  title="Manage favorite lists"
+                  aria-label={t("favorites.listOptions")}
+                  title={t("favorites.manageLists")}
                 >
                   <span className="grid h-9 w-9 place-items-center rounded-[var(--control-radius)] border border-input bg-card transition-colors group-hover:bg-muted lg:h-8 lg:w-8">
                     <MoreHorizontal className="h-4 w-4" />
@@ -971,10 +972,10 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                   onOpenChange={setListActionsOpen}
                   className="w-52 p-1 text-sm"
                 >
-                  <div role="menu" aria-label="Favorite list options">
+                  <div role="menu" aria-label={t("favorites.listOptions")}>
                     <FavoriteListAction
                       icon={<Check className="h-4 w-4" />}
-                      label={selectionMode ? "Exit selection" : "Select works"}
+                      label={selectionMode ? t("favorites.exitSelection") : t("favorites.selectWorks")}
                       onClick={() => {
                         setListActionsOpen(false);
                         toggleSelectionMode();
@@ -982,7 +983,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                     />
                     <FavoriteListAction
                       icon={<Pencil className="h-4 w-4" />}
-                      label="Edit lists"
+                      label={t("favorites.editLists")}
                       onClick={() => {
                         setListActionsOpen(false);
                         openFavoriteListManager();
@@ -993,10 +994,10 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
               </div>
             </div>
 
-            <div className="flex items-center gap-1 overflow-x-auto pb-1" aria-label="Listening status filters">
+            <div className="flex items-center gap-1 overflow-x-auto pb-1" aria-label={t("favorites.statusFilters")}>
               <span className="mr-1 inline-flex h-7 shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground">
                 <Filter className="h-3 w-3" />
-                Status
+                {t("admin.status")}
               </span>
               {statusTabs.map((tab) => (
                 <button
@@ -1009,7 +1010,9 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                   aria-pressed={statusFilter === tab.value}
                 >
                   <tab.icon className="h-3 w-3" />
-                  {tab.label}
+                  {tab.value === "all"
+                    ? t("favorites.all")
+                    : t(`library.status.${tab.value}`, { defaultValue: tab.label })}
                   <span className="text-[11px] tabular-nums opacity-65">
                     {tab.value === "all"
                       ? activeList === "all"
@@ -1032,7 +1035,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
               compactMobile
               compactTop
               refreshing={isLoading && hasWorksSnapshot}
-              refreshingLabel="Refreshing favorites"
+              refreshingLabel={t("favorites.refreshing")}
               onPageChange={setPage}
             />
           </div>
@@ -1044,13 +1047,13 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                   checked={allPagedWorksSelected}
                   disabled={works.length === 0}
                   onCheckedChange={togglePagedSelection}
-                  aria-label="Select current page"
+                  aria-label={t("favorites.selectPage")}
                 />
-                {selectedWorks.length} selected
+                {t("favorites.selected", { count: selectedWorks.length })}
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" size="sm" onClick={() => togglePagedSelection(true)}>
-                  Select page
+                  {t("favorites.selectPage")}
                 </Button>
                 <Button
                   variant="outline"
@@ -1060,7 +1063,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                     setSelectionMode(false);
                   }}
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
                 <div className="relative">
                   <Button
@@ -1069,11 +1072,11 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                     disabled={selectedWorks.length === 0 || isBulkUpdating}
                     onClick={() => setListDialogTarget((target) => (target ? null : { mode: "bulk" }))}
                   >
-                    Change lists
+                    {t("favorites.changeLists")}
                   </Button>
                   {listDialogTarget && (
                     <ListMembershipPopover
-                      title={`${selectedWorks.length} selected works`}
+                      title={t("favorites.selectedWorks", { count: selectedWorks.length })}
                       work={null}
                       favoriteLists={userFavoriteLists}
                       defaultSelectedListIDs={selectedList ? [selectedList.id] : undefined}
@@ -1100,7 +1103,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
               <FavoriteLoadError message={worksLoadError} onRetry={() => setWorksReloadToken((value) => value + 1)} />
             ) : (
               <WorkCollectionLoadingState
-                label="Loading favorite works"
+                label={t("favorites.loadingWorks")}
                 mobileColumns={mobileColumns}
                 desktopColumns={desktopColumns}
               />
@@ -1123,7 +1126,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                       isListSaving={isBulkUpdating}
                       onListsChanged={async () => {
                         await reloadFavoriteLists();
-                        toast.success(`Updated list membership for ${work.primaryCode}.`);
+                        toast.success(t("favorites.workMembershipUpdated", { code: work.primaryCode }));
                       }}
                       onOpen={() => openWork(work)}
                       onUserTagOpen={openShelfUserTag}
@@ -1166,7 +1169,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       )}
       <BrowseLoadingIndicator
         refreshing={favoriteEntity === "works" && isLoading && hasWorksSnapshot}
-        label="Refreshing favorite works"
+        label={t("favorites.refreshing")}
       />
     </section>
   );
@@ -1181,12 +1184,13 @@ function FavoriteEntityPicker({
   onChange: (value: FavoriteEntity) => void;
   compact?: boolean;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const options: { value: FavoriteEntity; label: string; icon: typeof ListMusic }[] = [
-    { value: "works", label: "Works", icon: Album },
-    { value: "circles", label: "Circles", icon: UsersRound },
-    { value: "voices", label: "Voice Actors", icon: Mic2 },
+    { value: "works", label: t("detailActions.works"), icon: Album },
+    { value: "circles", label: t("creatorBrowse.circles"), icon: UsersRound },
+    { value: "voices", label: t("creatorBrowse.voiceActors"), icon: Mic2 },
   ];
   const selected = options.find((option) => option.value === value) ?? options[0];
   return (
@@ -1196,8 +1200,8 @@ function FavoriteEntityPicker({
         size={compact ? "icon" : "sm"}
         className={compact ? "h-8 w-8" : "h-9 min-w-32 justify-between"}
         onClick={() => setOpen((current) => !current)}
-        aria-label={`Favorite type: ${selected.label}`}
-        title={`Favorite type: ${selected.label}`}
+        aria-label={`${t("favorites.entityType")}: ${selected.label}`}
+        title={`${t("favorites.entityType")}: ${selected.label}`}
       >
         {compact ? (
           <selected.icon className="h-4 w-4" />
@@ -1212,7 +1216,7 @@ function FavoriteEntityPicker({
         )}
       </Button>
       <AnchoredPopover open={open} anchorRef={anchorRef} onOpenChange={setOpen} className="w-44 p-1 text-sm">
-        <div role="menu" aria-label="Favorite types">
+        <div role="menu" aria-label={t("favorites.entityType")}>
           {options.map((option) => (
             <button
               key={option.value}
@@ -1248,15 +1252,16 @@ function FavoriteMobileToolbar({
   onEntityChange: (value: FavoriteEntity) => void;
   onQueryChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   const [searchOpen, setSearchOpen] = useState(() => Boolean(query.trim()));
   const searchAnchorRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const placeholder =
     favoriteEntity === "works"
-      ? "Search title, code, circle, tag, or creator"
+      ? t("library.searchPlaceholder")
       : favoriteEntity === "circles"
-        ? "Search circles"
-        : "Search voice actors";
+        ? t("creatorBrowse.searchCircles")
+        : t("creatorBrowse.searchVoices");
 
   useEffect(() => {
     if (query.trim()) setSearchOpen(true);
@@ -1281,8 +1286,8 @@ function FavoriteMobileToolbar({
           size="icon"
           className={`h-8 w-8 ${query.trim() ? "border-primary/30 bg-primary/10 text-primary" : ""}`}
           onClick={() => setSearchOpen((open) => !open)}
-          aria-label={query.trim() ? "Edit favorite search" : "Search favorites"}
-          title={query.trim() ? "Edit favorite search" : "Search favorites"}
+          aria-label={t("library.searchLibrary")}
+          title={t("library.searchLibrary")}
         >
           <Search className="h-4 w-4" />
         </Button>
@@ -1312,8 +1317,8 @@ function FavoriteMobileToolbar({
                 size="icon"
                 className="h-8 w-8 shrink-0"
                 onClick={() => onQueryChange("")}
-                aria-label="Clear search"
-                title="Clear search"
+                aria-label={t("library.clearSearch")}
+                title={t("library.clearSearch")}
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -1335,6 +1340,7 @@ function FavoriteSearchInput({
   placeholder: string;
   onChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <label className="flex min-w-0 max-w-xl flex-1 items-center gap-2 rounded-lg border bg-card px-3 text-sm">
       <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1351,7 +1357,7 @@ function FavoriteSearchInput({
           type="button"
           className="text-muted-foreground hover:text-foreground"
           onClick={() => onChange("")}
-          aria-label="Clear search"
+          aria-label={t("favorites.clearSearch")}
         >
           <X className="h-4 w-4" />
         </button>
@@ -1383,8 +1389,9 @@ function FavoriteDesktopListRow({
   onToggleSelection: () => void;
   onEditLists: () => void;
 }) {
+  const { t } = useTranslation();
   return (
-    <div className="flex items-center gap-2" aria-label="Favorite lists">
+    <div className="flex items-center gap-2" aria-label={t("favorites.lists")}>
       <div className="min-w-0 flex-1 overflow-x-auto">
         <div className="flex w-max min-w-full gap-2">
           {loading ? (
@@ -1392,7 +1399,7 @@ function FavoriteDesktopListRow({
           ) : (
             <FavoriteListTab
               active={activeList === "all"}
-              label="All Favorites"
+              label={t("favorites.all")}
               count={favoriteTotal}
               onClick={() => onListChange("all")}
             />
@@ -1400,7 +1407,7 @@ function FavoriteDesktopListRow({
           {markedList && (
             <FavoriteListTab
               active={activeList === markedList.id}
-              label="Marked"
+              label={t("favorites.marked")}
               count={listCounts[String(markedList.id)] ?? 0}
               onClick={() => onListChange(markedList.id)}
             />
@@ -1435,6 +1442,7 @@ function FavoriteDesktopListActions({
   onToggleSelection: () => void;
   onEditLists: () => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const close = () => setOpen(false);
@@ -1445,8 +1453,8 @@ function FavoriteDesktopListActions({
         size="icon"
         className="h-8 w-8"
         onClick={() => setOpen((current) => !current)}
-        aria-label="Favorite list options"
-        title="Favorite list options"
+        aria-label={t("favorites.listOptions")}
+        title={t("favorites.listOptions")}
       >
         <MoreHorizontal className="h-4 w-4" />
       </Button>
@@ -1457,10 +1465,10 @@ function FavoriteDesktopListActions({
         align="end"
         className="w-52 p-1 text-sm"
       >
-        <div role="menu" aria-label="Favorite list options">
+        <div role="menu" aria-label={t("favorites.listOptions")}>
           <FavoriteListAction
             icon={<Check className="h-4 w-4" />}
-            label={selectionMode ? "Exit selection" : "Select works"}
+            label={selectionMode ? t("favorites.exitSelection") : t("favorites.selectWorks")}
             onClick={() => {
               close();
               onToggleSelection();
@@ -1468,7 +1476,7 @@ function FavoriteDesktopListActions({
           />
           <FavoriteListAction
             icon={<Pencil className="h-4 w-4" />}
-            label="Edit lists"
+            label={t("favorites.editLists")}
             onClick={() => {
               close();
               onEditLists();
@@ -1491,11 +1499,12 @@ function FavoriteDesktopStatusFilters({
   favoriteTotal: number;
   onChange: (value: ListeningStatus | "all") => void;
 }) {
+  const { t } = useTranslation();
   return (
-    <div className="flex items-center gap-1 overflow-x-auto pb-1" aria-label="Listening status filters">
+    <div className="flex items-center gap-1 overflow-x-auto pb-1" aria-label={t("favorites.statusFilters")}>
       <span className="mr-1 inline-flex h-7 shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground">
         <Filter className="h-3 w-3" />
-        Status
+        {t("favorites.status")}
       </span>
       {statusTabs.map((tab) => (
         <button
@@ -1506,7 +1515,7 @@ function FavoriteDesktopStatusFilters({
           aria-pressed={value === tab.value}
         >
           <tab.icon className="h-3 w-3" />
-          {tab.label}
+          {tab.value === "all" ? t("favorites.all") : t(`library.status.${tab.value}`, { defaultValue: tab.label })}
           <span className="text-[11px] tabular-nums opacity-65">
             {tab.value === "all" ? favoriteTotal : (counts[tab.value] ?? 0)}
           </span>
@@ -1534,10 +1543,11 @@ function FavoriteResourceFilter({
   loading: boolean;
   onChange: (selection: FavoriteResourceSelection) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const selection: FavoriteResourceSelection = { availability, sourceIDs: selectedSourceIDs };
-  const label = favoriteResourceLabel(sources, selection);
+  const label = favoriteResourceLabel(sources, selection, t);
   const disabled = loading;
   const select = (next: FavoriteResourceSelection) => {
     onChange(next);
@@ -1552,8 +1562,8 @@ function FavoriteResourceFilter({
         className={`h-8 max-w-48 ${availability !== "all" || selectedSourceIDs.length > 0 ? "border-primary/30 bg-primary/10 text-primary" : ""}`}
         disabled={disabled}
         onClick={() => setOpen((current) => !current)}
-        aria-label={`Resource: ${label}`}
-        title={`Resource: ${label}`}
+        aria-label={`${t("favorites.resource")}: ${label}`}
+        title={`${t("favorites.resource")}: ${label}`}
       >
         <Cloud className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">{label}</span>
@@ -1565,25 +1575,25 @@ function FavoriteResourceFilter({
         align="start"
         className="w-[min(18rem,calc(100vw-1.5rem))] p-1 text-sm"
       >
-        <div role="menu" aria-label="Resource filters">
-          <div className="px-3 py-2 text-xs font-semibold text-foreground">Resource</div>
+        <div role="menu" aria-label={t("favorites.resourceFilters")}>
+          <div className="px-3 py-2 text-xs font-semibold text-foreground">{t("favorites.resource")}</div>
           <FavoriteResourceOption
-            label="Any available"
+            label={t("favorites.anyAvailable")}
             selected={availability === "all" && selectedSourceIDs.length === 0}
             onClick={() => select({ availability: "all", sourceIDs: [] })}
           />
           <FavoriteResourceOption
-            label="Local"
+            label={t("detailActions.local")}
             selected={availability === "local" && selectedSourceIDs.length === 0}
             onClick={() => select({ availability: "local", sourceIDs: [] })}
           />
           <FavoriteResourceOption
-            label="Cached"
+            label={t("favorites.cached")}
             selected={availability === "cache" && selectedSourceIDs.length === 0}
             onClick={() => select({ availability: "cache", sourceIDs: [] })}
           />
           <FavoriteResourceOption
-            label="Any remote"
+            label={t("favorites.anyRemote")}
             selected={availability === "remote" && selectedSourceIDs.length === 0}
             onClick={() => select({ availability: "remote", sourceIDs: [] })}
           />
@@ -1596,11 +1606,11 @@ function FavoriteResourceFilter({
               }
               onClick={() => select({ availability: "remote", sourceIDs: [source.id] })}
               icon={<Cloud className="h-3.5 w-3.5 shrink-0" />}
-              suffix={!source.enabled ? "Disabled" : undefined}
+              suffix={!source.enabled ? t("favorites.disabled") : undefined}
             />
           ))}
           <FavoriteResourceOption
-            label="Missing"
+            label={t("favorites.missing")}
             selected={availability === "missing" && selectedSourceIDs.length === 0}
             onClick={() => select({ availability: "missing", sourceIDs: [] })}
           />
@@ -1639,22 +1649,26 @@ function FavoriteResourceOption({
   );
 }
 
-function favoriteResourceLabel(sources: LibrarySource[], selection: FavoriteResourceSelection) {
+function favoriteResourceLabel(
+  sources: LibrarySource[],
+  selection: FavoriteResourceSelection,
+  translate: (key: string) => string,
+) {
   if (selection.sourceIDs.length === 1) {
     const source = sources.find((candidate) => candidate.id === selection.sourceIDs[0]);
-    return source?.displayName || source?.code || "Remote source";
+    return source?.displayName || source?.code || translate("detailActions.source");
   }
   switch (selection.availability) {
     case "local":
-      return "Local";
+      return translate("detailActions.local");
     case "cache":
-      return "Cached";
+      return translate("favorites.cached");
     case "remote":
-      return "Any remote";
+      return translate("favorites.anyRemote");
     case "missing":
-      return "Missing";
+      return translate("favorites.missing");
     default:
-      return "Any available";
+      return translate("favorites.anyAvailable");
   }
 }
 
@@ -1681,6 +1695,7 @@ function FavoriteEntitySection({
   onCircleChange: (circle: CircleSummary) => void;
   onVoiceChange: (voice: VoiceSummary) => void;
 }) {
+  const { t } = useTranslation();
   const needle = query.trim().toLowerCase();
   const filteredCircles = circles.filter(
     (circle) =>
@@ -1697,12 +1712,13 @@ function FavoriteEntitySection({
       ),
   );
   const items = kind === "circles" ? filteredCircles : filteredVoices;
+  const entityLabel = kind === "circles" ? t("creatorBrowse.circles") : t("creatorBrowse.voiceActors");
 
   if (!hasSnapshot) {
     return loadError ? (
       <FavoriteLoadError message={loadError} onRetry={onRetry} />
     ) : (
-      <CreatorCollectionSkeleton label={`Loading favorite ${kind === "circles" ? "circles" : "voice actors"}`} />
+      <CreatorCollectionSkeleton label={`${t("favorites.loadingSources")}: ${entityLabel}`} />
     );
   }
   if (items.length === 0) {
@@ -1711,7 +1727,7 @@ function FavoriteEntitySection({
         <CardContent
           className={`grid ${creatorCardMinHeightClassName} place-items-center p-5 text-sm text-muted-foreground`}
         >
-          No favorite {kind === "circles" ? "circles" : "voice actors"} match this view.
+          {t("favorites.noMatches")} · {entityLabel}
         </CardContent>
       </Card>
     );
@@ -1720,7 +1736,7 @@ function FavoriteEntitySection({
     <div
       className={creatorCollectionClassName}
       role="region"
-      aria-label={`Favorite ${kind === "circles" ? "circle" : "voice actor"} results`}
+      aria-label={`${t("favorites.all")}: ${entityLabel}`}
       aria-busy={isLoading}
     >
       {kind === "circles"
@@ -1741,13 +1757,14 @@ function FavoriteCircleCard({
   circle: CircleSummary;
   onChange: (circle: CircleSummary) => void;
 }) {
+  const { t } = useTranslation();
   const toast = useToast();
   const saveTags = async (tags: string[]) => {
     try {
       const result = await api.setCircleUserTags(circle.externalId, tags);
       onChange({ ...circle, userTags: result.userTags });
     } catch (error) {
-      toast.notify(toastFromError(error, "Circle tags update failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.tagsUpdateFailed")));
     }
   };
   const removeFavorite = async () => {
@@ -1755,7 +1772,7 @@ function FavoriteCircleCard({
       const next = await api.updateCircleUserState(circle.externalId, { favorite: false });
       onChange({ ...circle, ...next });
     } catch (error) {
-      toast.notify(toastFromError(error, "Circle favorite update failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.favoriteUpdateFailed")));
     }
   };
   return (
@@ -1780,13 +1797,14 @@ function FavoriteCircleCard({
 }
 
 function FavoriteVoiceCard({ voice, onChange }: { voice: VoiceSummary; onChange: (voice: VoiceSummary) => void }) {
+  const { t } = useTranslation();
   const toast = useToast();
   const saveTags = async (tags: string[]) => {
     try {
       const result = await api.setVoiceUserTags(voice.personId, tags);
       onChange({ ...voice, userTags: result.userTags });
     } catch (error) {
-      toast.notify(toastFromError(error, "Voice tags update failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.tagsUpdateFailed")));
     }
   };
   const removeFavorite = async () => {
@@ -1794,13 +1812,13 @@ function FavoriteVoiceCard({ voice, onChange }: { voice: VoiceSummary; onChange:
       const next = await api.updateVoiceUserState(voice.personId, { favorite: false });
       onChange({ ...voice, ...next });
     } catch (error) {
-      toast.notify(toastFromError(error, "Voice favorite update failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.favoriteUpdateFailed")));
     }
   };
   return (
     <CreatorCard
       name={voice.displayName}
-      identityLabel={voice.latestWork ? undefined : "Voice actor"}
+      identityLabel={voice.latestWork ? undefined : t("creatorBrowse.voiceActor")}
       aliases={voice.aliases}
       latestWork={voice.latestWork}
       favorite={voice.favorite}
@@ -1899,6 +1917,7 @@ function FavoriteLoadError({
   compact?: boolean;
   onRetry: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={`${compact ? "flex min-h-12 items-center justify-between gap-3 px-3 py-2" : "grid min-h-40 place-items-center px-4 py-8 text-center"} rounded-lg border border-destructive/30 bg-destructive/5`}
@@ -1906,7 +1925,7 @@ function FavoriteLoadError({
     >
       <p className="text-sm text-destructive">{message}</p>
       <Button size="sm" variant="outline" onClick={onRetry}>
-        Retry
+        {t("common.retry")}
       </Button>
     </div>
   );
@@ -1935,7 +1954,8 @@ function FavoriteWorkCard({
   onUserTagOpen: (tag: string) => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
 }) {
-  const view = favoriteWorkCardView(work, onUserTagOpen);
+  const { t } = useTranslation();
+  const view = favoriteWorkCardView(work, onUserTagOpen, t);
 
   return (
     <WorkCardShell
@@ -1971,8 +1991,9 @@ function FavoriteWorkCard({
 }
 
 function WorkProgress({ progress }: { progress: Work["progress"] }) {
+  const { t } = useTranslation();
   if (!progress.mediaItemId || !progress.lastPlayedAt) {
-    return <div className="h-8 text-xs text-muted-foreground">No playback yet</div>;
+    return <div className="h-8 text-xs text-muted-foreground">{t("favorites.noPlaybackYet")}</div>;
   }
   return (
     <div className="space-y-1">
@@ -1981,18 +2002,25 @@ function WorkProgress({ progress }: { progress: Work["progress"] }) {
       </div>
       <div className="truncate text-xs text-muted-foreground">
         {progress.completed
-          ? "Finished"
-          : `Resume ${progress.title || "track"} at ${formatTime(progress.positionSeconds)}`}
+          ? t("favorites.finished")
+          : t("favorites.resumeAt", {
+              title: progress.title || t("player.track"),
+              time: formatTime(progress.positionSeconds),
+            })}
       </div>
     </div>
   );
 }
 
-function favoriteWorkCardView(work: Work, onUserTagOpen?: (tag: string) => void): WorkCardViewModel {
+function favoriteWorkCardView(
+  work: Work,
+  onUserTagOpen: ((tag: string) => void) | undefined,
+  t: TFunction,
+): WorkCardViewModel {
   return {
     code: work.primaryCode,
     title: work.title,
-    circle: work.circle || "Unknown circle",
+    circle: work.circle || t("workCard.unknownCircle"),
     circleExternalId: work.circleExternalId,
     ageRating: work.ageRating,
     voiceActors: work.voiceActors,
@@ -2010,7 +2038,7 @@ function favoriteWorkCardView(work: Work, onUserTagOpen?: (tag: string) => void)
     dlsiteTags: [
       {
         key: `status:${work.listeningStatus}`,
-        label: listeningStatusLabel(work.listeningStatus),
+        label: listeningStatusLabel(work.listeningStatus, t),
         variant: "secondary",
       },
       ...dlsiteTagBadges(work.tags),
@@ -2037,10 +2065,25 @@ function FavoriteSortControls({
   onDirectionChange: (value: SortDirection) => void;
   onReshuffle: () => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
-  const label = favoriteSortOptions.find((option) => option.value === value)?.label ?? "Sort";
-  const directionTitle = value === "random" ? "Reshuffle" : direction === "asc" ? "Ascending" : "Descending";
+  const localizedOptions = favoriteSortOptions.map((option) => ({
+    ...option,
+    label:
+      option.value === "activity"
+        ? t("favorites.sortActivity")
+        : option.value === "added"
+          ? t("favorites.sortMarkedOrAdded")
+          : t(`library.sortOptions.${option.value}`, { defaultValue: option.label }),
+  }));
+  const label = localizedOptions.find((option) => option.value === value)?.label ?? t("library.sort");
+  const directionTitle =
+    value === "random"
+      ? t("library.reshuffle")
+      : direction === "asc"
+        ? t("library.ascending")
+        : t("library.descending");
   return (
     <div className="relative" ref={anchorRef}>
       <div className="inline-flex h-8 shrink-0 items-center rounded-md border bg-background">
@@ -2049,8 +2092,8 @@ function FavoriteSortControls({
           className={`inline-flex h-7 items-center gap-1.5 rounded-l-md px-2 text-xs text-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-50 ${compact ? "w-8 justify-center px-0" : "min-w-0 max-w-40"}`}
           disabled={disabled}
           onClick={() => setOpen((current) => !current)}
-          aria-label={`Sort favorite works: ${label}`}
-          title={`Sort favorite works: ${label}`}
+          aria-label={t("library.sortLabel", { label })}
+          title={t("library.sortLabel", { label })}
         >
           <ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           {!compact && <span className="truncate">{label}</span>}
@@ -2079,8 +2122,8 @@ function FavoriteSortControls({
         onOpenChange={setOpen}
         className="w-[min(12rem,calc(100vw-1.5rem))] p-1 text-sm"
       >
-        <div role="menu" aria-label="Favorite sort options">
-          {favoriteSortOptions.map((option) => (
+        <div role="menu" aria-label={t("favorites.sortOptions")}>
+          {localizedOptions.map((option) => (
             <button
               key={option.value}
               type="button"
@@ -2101,11 +2144,15 @@ function FavoriteSortControls({
   );
 }
 
-function favoriteSourceFilterLabel(sources: LibrarySource[], selectedSourceIDs: number[]) {
-  if (selectedSourceIDs.length === 0) return "All sources";
-  if (selectedSourceIDs.length > 1) return `${selectedSourceIDs.length} sources`;
+function favoriteSourceFilterLabel(
+  sources: LibrarySource[],
+  selectedSourceIDs: number[],
+  translate: (key: string, options?: { count: number }) => string,
+) {
+  if (selectedSourceIDs.length === 0) return translate("favorites.allSources");
+  if (selectedSourceIDs.length > 1) return translate("favorites.sourcesCount", { count: selectedSourceIDs.length });
   const selected = sources.find((source) => source.id === selectedSourceIDs[0]);
-  return selected?.displayName || selected?.code || "1 source";
+  return selected?.displayName || selected?.code || translate("favorites.oneSource");
 }
 
 function FavoriteMobileWorksControls({
@@ -2145,13 +2192,13 @@ function FavoriteMobileWorksControls({
   onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
   onDesktopColumnsChange: (value: WorkCollectionColumnSetting) => void;
 }) {
-  const availabilityLabel =
-    availabilityFilters.find((option) => option.value === availability)?.label ?? "Any available";
+  const { t } = useTranslation();
+  const availabilityLabel = favoriteResourceLabel(sources, { availability, sourceIDs: [] }, t);
   const sourceLabel = sourcesLoading
-    ? "Loading sources"
+    ? t("favorites.loadingSources")
     : sources.length === 0
-      ? "No sources"
-      : favoriteSourceFilterLabel(sources, selectedSourceIDs);
+      ? t("favorites.noSources")
+      : favoriteSourceFilterLabel(sources, selectedSourceIDs, t);
   const resourceLabel = selectedSourceIDs.length > 0 ? sourceLabel : availabilityLabel;
 
   return (
@@ -2203,6 +2250,7 @@ function FavoriteResourceIconControl({
   label: string;
   onChange: (selection: FavoriteResourceSelection) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const disabled = loading;
@@ -2214,8 +2262,8 @@ function FavoriteResourceIconControl({
         className={`h-8 w-8 ${availability !== "all" || selectedSourceIDs.length > 0 ? "border-primary/30 bg-primary/10 text-primary" : ""}`}
         disabled={disabled}
         onClick={() => setOpen((current) => !current)}
-        aria-label={`Resource: ${label}`}
-        title={`Resource: ${label}`}
+        aria-label={`${t("favorites.resource")}: ${label}`}
+        title={`${t("favorites.resource")}: ${label}`}
       >
         <Cloud className="h-4 w-4" />
       </Button>
@@ -2226,10 +2274,10 @@ function FavoriteResourceIconControl({
         align="end"
         className="w-[min(18rem,calc(100vw-1.5rem))] p-1 text-sm"
       >
-        <div role="menu" aria-label="Resource filters">
-          <div className="px-3 py-2 text-xs font-semibold text-foreground">Resource</div>
+        <div role="menu" aria-label={t("favorites.resourceFilters")}>
+          <div className="px-3 py-2 text-xs font-semibold text-foreground">{t("favorites.resource")}</div>
           <FavoriteResourceOption
-            label="Any available"
+            label={t("favorites.anyAvailable")}
             selected={availability === "all" && selectedSourceIDs.length === 0}
             onClick={() => {
               onChange({ availability: "all", sourceIDs: [] });
@@ -2237,7 +2285,7 @@ function FavoriteResourceIconControl({
             }}
           />
           <FavoriteResourceOption
-            label="Local"
+            label={t("detailActions.local")}
             selected={availability === "local" && selectedSourceIDs.length === 0}
             onClick={() => {
               onChange({ availability: "local", sourceIDs: [] });
@@ -2245,7 +2293,7 @@ function FavoriteResourceIconControl({
             }}
           />
           <FavoriteResourceOption
-            label="Cached"
+            label={t("favorites.cached")}
             selected={availability === "cache" && selectedSourceIDs.length === 0}
             onClick={() => {
               onChange({ availability: "cache", sourceIDs: [] });
@@ -2253,7 +2301,7 @@ function FavoriteResourceIconControl({
             }}
           />
           <FavoriteResourceOption
-            label="Any remote"
+            label={t("favorites.anyRemote")}
             selected={availability === "remote" && selectedSourceIDs.length === 0}
             onClick={() => {
               onChange({ availability: "remote", sourceIDs: [] });
@@ -2272,11 +2320,11 @@ function FavoriteResourceIconControl({
                 setOpen(false);
               }}
               icon={<Cloud className="h-3.5 w-3.5 shrink-0" />}
-              suffix={!source.enabled ? "Disabled" : undefined}
+              suffix={!source.enabled ? t("favorites.disabled") : undefined}
             />
           ))}
           <FavoriteResourceOption
-            label="Missing"
+            label={t("favorites.missing")}
             selected={availability === "missing" && selectedSourceIDs.length === 0}
             onClick={() => {
               onChange({ availability: "missing", sourceIDs: [] });
@@ -2290,19 +2338,20 @@ function FavoriteResourceIconControl({
 }
 
 function EmptyFavorites({ hasFilters, onClearFilters }: { hasFilters: boolean; onClearFilters: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="grid min-h-72 place-items-center rounded-lg border bg-card p-6 text-center">
       <div className="max-w-sm space-y-3">
         <Heart className="mx-auto h-8 w-8 text-primary" />
-        <h3 className="text-base font-semibold">{hasFilters ? "No matches" : "No favorite works yet"}</h3>
+        <h3 className="text-base font-semibold">
+          {hasFilters ? t("favorites.noMatches") : t("favorites.noFavoriteWorks")}
+        </h3>
         <p className="text-sm text-muted-foreground">
-          {hasFilters
-            ? "The current filters do not match any favorite works."
-            : "Add favorite works from Library or Work Detail to build your collection."}
+          {hasFilters ? t("favorites.filteredDescription") : t("favorites.emptyDescription")}
         </p>
         {hasFilters && (
           <Button variant="outline" size="sm" onClick={onClearFilters}>
-            Clear filters
+            {t("favorites.clearFilters")}
           </Button>
         )}
       </div>
@@ -2319,6 +2368,7 @@ function FavoriteListEditor({
   onClose: () => void;
   onSave: (payload: { name: string; description: string }) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const editorRef = useRef<HTMLDivElement | null>(null);
   const [name, setName] = useState(list?.name ?? "");
   const [description, setDescription] = useState(list?.description ?? "");
@@ -2336,7 +2386,7 @@ function FavoriteListEditor({
     try {
       await onSave({ name, description });
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Favorite list could not be saved.");
+      setError(nextError instanceof Error ? nextError.message : t("favorites.listSaveFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -2345,7 +2395,7 @@ function FavoriteListEditor({
   return (
     <div ref={editorRef} role="listitem">
       <form
-        aria-label={list ? `Rename ${list.name}` : "Add favorite list"}
+        aria-label={list ? `${t("favorites.renameList")}: ${list.name}` : t("favorites.addList")}
         className="rounded-md border bg-background p-3"
         onMouseDown={(event) => event.stopPropagation()}
         onSubmit={(event) => {
@@ -2353,10 +2403,10 @@ function FavoriteListEditor({
           if (!isSaving && name.trim()) void save();
         }}
       >
-        <h3 className="text-sm font-semibold">{list ? "Rename list" : "Add list"}</h3>
+        <h3 className="text-sm font-semibold">{list ? t("favorites.renameList") : t("favorites.addList")}</h3>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">
-            <span className="text-xs font-medium text-muted-foreground">Name</span>
+            <span className="text-xs font-medium text-muted-foreground">{t("favorites.name")}</span>
             <input
               className="h-9 rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring"
               value={name}
@@ -2365,7 +2415,7 @@ function FavoriteListEditor({
             />
           </label>
           <label className="grid gap-1 text-sm">
-            <span className="text-xs font-medium text-muted-foreground">Description</span>
+            <span className="text-xs font-medium text-muted-foreground">{t("favorites.description")}</span>
             <input
               className="h-9 rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring"
               value={description}
@@ -2380,10 +2430,10 @@ function FavoriteListEditor({
         )}
         <div className="mt-3 flex justify-end gap-2">
           <Button type="button" variant="outline" size="sm" onClick={onClose}>
-            Cancel
+            {t("content.cancel")}
           </Button>
           <Button size="sm" type="submit" disabled={isSaving || !name.trim()}>
-            {isSaving ? "Saving" : list ? "Save" : "Add list"}
+            {isSaving ? t("favorites.saving") : list ? t("content.save") : t("favorites.addList")}
           </Button>
         </div>
       </form>
@@ -2422,6 +2472,7 @@ function FavoriteListManager({
   onConfirmDelete: () => void;
   onMove: (listID: number, direction: -1 | 1) => void;
 }) {
+  const { t } = useTranslation();
   const actionsDisabled = editor !== null || deleteTarget !== null || deleting;
 
   return (
@@ -2436,16 +2487,16 @@ function FavoriteListManager({
         <div className="flex shrink-0 items-start justify-between gap-3">
           <div>
             <h2 id="favorite-list-manager-title" className="text-base font-semibold">
-              Edit favorite lists
+              {t("favorites.editLists")}
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">Sort, rename, create, or remove your lists.</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t("favorites.editListsDescription")}</p>
           </div>
           <Button
             variant="ghost"
             size="icon"
             onClick={onClose}
             disabled={deleting}
-            aria-label="Close favorite list editor"
+            aria-label={t("favorites.closeListEditor")}
           >
             <X className="h-4 w-4" />
           </Button>
@@ -2453,7 +2504,7 @@ function FavoriteListManager({
         <div
           className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain"
           role="list"
-          aria-label="Favorite lists"
+          aria-label={t("favorites.lists")}
         >
           {markedList && (
             <div
@@ -2462,14 +2513,16 @@ function FavoriteListManager({
             >
               <ListMusic className="h-4 w-4 shrink-0 text-muted-foreground" />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">Marked</div>
-                <div className="truncate text-xs text-muted-foreground">System list · follows listening status</div>
+                <div className="truncate text-sm font-medium">{t("favorites.marked")}</div>
+                <div className="truncate text-xs text-muted-foreground">{t("favorites.markedDescription")}</div>
               </div>
-              <span className="shrink-0 text-xs text-muted-foreground">Fixed</span>
+              <span className="shrink-0 text-xs text-muted-foreground">{t("favorites.fixed")}</span>
             </div>
           )}
           {lists.length === 0 && editor !== "new" ? (
-            <div className="rounded-md border px-3 py-4 text-sm text-muted-foreground">No custom lists yet.</div>
+            <div className="rounded-md border px-3 py-4 text-sm text-muted-foreground">
+              {t("favorites.noCustomLists")}
+            </div>
           ) : (
             lists.map((list, index) =>
               editor !== "new" && editor?.id === list.id ? (
@@ -2506,11 +2559,11 @@ function FavoriteListManager({
               disabled={deleteTarget !== null || deleting}
             >
               <Plus className="h-4 w-4" />
-              Add list
+              {t("favorites.addList")}
             </Button>
           )}
           <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={onClose} disabled={deleting}>
-            Done
+            {t("favorites.done")}
           </Button>
         </div>
       </div>
@@ -2543,6 +2596,7 @@ function FavoriteListManagerRow({
   onCancelDelete: () => void;
   onConfirmDelete: () => void;
 }) {
+  const { t } = useTranslation();
   const deleteButtonRef = useRef<HTMLButtonElement | null>(null);
   const deleteTitleID = `favorite-list-delete-${list.id}-title`;
   const deleteDescriptionID = `favorite-list-delete-${list.id}-description`;
@@ -2567,8 +2621,8 @@ function FavoriteListManagerRow({
           className="h-11 w-11 sm:h-8 sm:w-8"
           disabled={actionsDisabled || index === 0}
           onClick={() => onMove(list.id, -1)}
-          aria-label={`Move ${list.name} up`}
-          title="Move up"
+          aria-label={`${t("favorites.moveUp")}: ${list.name}`}
+          title={t("favorites.moveUp")}
         >
           <ArrowUp className="h-4 w-4" />
         </Button>
@@ -2578,8 +2632,8 @@ function FavoriteListManagerRow({
           className="h-11 w-11 sm:h-8 sm:w-8"
           disabled={actionsDisabled || index === total - 1}
           onClick={() => onMove(list.id, 1)}
-          aria-label={`Move ${list.name} down`}
-          title="Move down"
+          aria-label={`${t("favorites.moveDown")}: ${list.name}`}
+          title={t("favorites.moveDown")}
         >
           <ArrowDown className="h-4 w-4" />
         </Button>
@@ -2589,8 +2643,8 @@ function FavoriteListManagerRow({
           className="h-11 w-11 sm:h-8 sm:w-8"
           disabled={actionsDisabled}
           onClick={() => onEdit(list)}
-          aria-label={`Rename ${list.name}`}
-          title="Rename"
+          aria-label={`${t("favorites.rename")}: ${list.name}`}
+          title={t("favorites.rename")}
         >
           <Pencil className="h-4 w-4" />
         </Button>
@@ -2601,10 +2655,10 @@ function FavoriteListManagerRow({
           className="h-11 w-11 sm:h-8 sm:w-8"
           disabled={deleting || (actionsDisabled && !confirmingDelete)}
           onClick={() => onDelete(list)}
-          aria-label={`Delete ${list.name}`}
+          aria-label={`${t("favorites.delete")}: ${list.name}`}
           aria-haspopup="dialog"
           aria-expanded={confirmingDelete}
-          title="Delete"
+          title={t("favorites.delete")}
         >
           <Trash2 className="h-4 w-4" />
         </Button>
@@ -2620,10 +2674,10 @@ function FavoriteListManagerRow({
       >
         <div role="alertdialog" aria-labelledby={deleteTitleID} aria-describedby={deleteDescriptionID}>
           <h3 id={deleteTitleID} className="text-sm font-semibold">
-            Delete list?
+            {t("favorites.deleteListConfirm")}
           </h3>
           <p id={deleteDescriptionID} className="mt-2 text-sm text-muted-foreground">
-            Delete "{list.name}"? Works stay in the library, but this list membership is removed.
+            {t("favorites.deleteListDescription", { name: list.name })}
           </p>
           <div className="mt-3 flex justify-end gap-2">
             <Button
@@ -2634,10 +2688,10 @@ function FavoriteListManagerRow({
               disabled={deleting}
               autoFocus
             >
-              Cancel
+              {t("content.cancel")}
             </Button>
             <Button type="button" variant="destructive" size="sm" onClick={onConfirmDelete} disabled={deleting}>
-              {deleting ? "Deleting..." : "Delete"}
+              {deleting ? t("favorites.deleting") : t("favorites.delete")}
             </Button>
           </div>
         </div>
@@ -2665,6 +2719,7 @@ function ListMembershipPopover({
   onClose: () => void;
   onSave: (listIDs: number[]) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [selectedIDs, setSelectedIDs] = useState<Set<number>>(() => new Set(defaultSelectedListIDs ?? []));
   const [isLoading, setIsLoading] = useState(Boolean(work));
   const [error, setError] = useState("");
@@ -2683,8 +2738,7 @@ function ListMembershipPopover({
           );
       })
       .catch((nextError) => {
-        if (!cancelled)
-          setError(nextError instanceof Error ? nextError.message : "Favorite lists could not be loaded.");
+        if (!cancelled) setError(t("favorites.listLoadFailed"));
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -2725,7 +2779,7 @@ function ListMembershipPopover({
     try {
       await onSave(Array.from(selectedIDs));
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "List membership could not be saved.");
+      setError(t("favorites.membershipSaveFailed"));
     }
   };
 
@@ -2739,7 +2793,7 @@ function ListMembershipPopover({
       <div className="app-scroll mt-3 max-h-64 space-y-2 overflow-auto">
         {isLoading ? (
           <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
-            Loading lists...
+            {t("favorites.loadingLists")}
           </div>
         ) : favoriteLists.length > 0 ? (
           favoriteLists.map((list) => (
@@ -2752,14 +2806,18 @@ function ListMembershipPopover({
                 checked={selectedIDs.has(list.id)}
                 onCheckedChange={(checked) => toggleList(list.id, checked)}
                 onClick={(event) => event.stopPropagation()}
-                aria-label={`${selectedIDs.has(list.id) ? "Remove from" : "Add to"} ${list.name}`}
+                aria-label={
+                  selectedIDs.has(list.id)
+                    ? t("workCard.removeFromList", { name: list.name })
+                    : t("workCard.addToNamedList", { name: list.name })
+                }
               />
               <span className="min-w-0 flex-1 truncate">{list.name}</span>
             </div>
           ))
         ) : (
           <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
-            No favorite lists yet.
+            {t("favorites.noFavoriteLists")}
           </div>
         )}
         {error && (
@@ -2768,17 +2826,18 @@ function ListMembershipPopover({
       </div>
       <div className="mt-3 flex justify-end gap-2">
         <Button variant="outline" size="sm" onClick={onClose}>
-          Cancel
+          {t("content.cancel")}
         </Button>
         <Button size="sm" disabled={disabled || isLoading} onClick={() => void save()}>
-          Save
+          {t("content.save")}
         </Button>
       </div>
     </div>
   );
 }
 
-function listeningStatusLabel(status: ListeningStatus) {
+function listeningStatusLabel(status: ListeningStatus, t?: TFunction) {
+  if (t) return t(`library.status.${status}`);
   return listeningStatusOptions.find((option) => option.value === status)?.label ?? "Unmarked";
 }
 

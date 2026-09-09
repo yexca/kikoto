@@ -1,5 +1,6 @@
 import { cloneElement, useEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import {
   Activity,
@@ -626,11 +627,11 @@ export function HeaderActions({
                             <Download className="mt-0.5 h-4 w-4 shrink-0 text-error" />
                           )}
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate font-medium">{notification.message}</span>
+                            <span className="block truncate font-medium">{notificationTitle(notification, t)}</span>
                             <span className="block truncate text-xs text-muted-foreground">
                               {t("notifications.workflowStatus", {
                                 id: notification.workflowRunId,
-                                status: notification.status,
+                                status: notificationStatusLabel(notification.status, t),
                               })}
                             </span>
                           </span>
@@ -968,6 +969,34 @@ function workflowReviewCount(run: WorkflowRun) {
     run.skippedJobs +
     (run.status === "partial" || run.status === "skipped" ? 1 : 0)
   );
+}
+
+function notificationTitle(notification: WorkflowNotification, t: TFunction) {
+  if (notification.type === "availability_watch_ready") {
+    return t("notifications.availabilityReady", { workCode: notification.workCode });
+  }
+  if (notification.type === "remote_track") {
+    return notification.status === "failed"
+      ? t("notifications.remoteTrackFailed", { workCode: notification.workCode })
+      : t("notifications.remoteTrackSucceeded", { workCode: notification.workCode });
+  }
+  return t("notifications.generic", { workCode: notification.workCode });
+}
+
+function notificationStatusLabel(status: string, t: TFunction) {
+  const key =
+    status === "queued"
+      ? "notifications.statusQueued"
+      : status === "running"
+        ? "notifications.statusRunning"
+        : status === "succeeded"
+          ? "notifications.statusSucceeded"
+          : status === "failed"
+            ? "notifications.statusFailed"
+            : status === "cancelled"
+              ? "notifications.statusCancelled"
+              : "notifications.statusUnknown";
+  return t(key);
 }
 
 function userInitial(user: CurrentUser) {

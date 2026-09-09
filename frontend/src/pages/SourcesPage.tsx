@@ -1,5 +1,6 @@
 import { Database, Folder, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ const sources = [
 ];
 
 export function SourcesPage({ canManage }: { canManage: boolean }) {
+  const { t } = useTranslation();
   const [apiSources, setAPISources] = useState<FileSource[]>([]);
 
   useEffect(() => {
@@ -36,12 +38,12 @@ export function SourcesPage({ canManage }: { canManage: boolean }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">File sources</h2>
-          <p className="text-sm text-muted-foreground">Sources describe where playable or downloadable files live.</p>
+          <h2 className="text-lg font-semibold">{t("sources.title")}</h2>
+          <p className="text-sm text-muted-foreground">{t("sources.description")}</p>
         </div>
         <Button size="sm" disabled={!canManage}>
           <Plus className="h-4 w-4" />
-          Add source
+          {t("sources.add")}
         </Button>
       </div>
 
@@ -56,12 +58,16 @@ export function SourcesPage({ canManage }: { canManage: boolean }) {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex flex-wrap gap-2">
-                <Badge variant="secondary">{source.type}</Badge>
-                <Badge variant={source.status === "not configured" ? "warning" : "outline"}>{source.status}</Badge>
+                <Badge variant="secondary">
+                  {source.type === "local_folder" ? t("sources.localFolder") : t("sources.remote")}
+                </Badge>
+                <Badge variant={source.status === "not configured" ? "warning" : "outline"}>
+                  {source.status === "enabled" ? t("sources.enabled") : t("sources.disabled")}
+                </Badge>
               </div>
-              <div className="text-sm text-muted-foreground">Priority {source.priority}</div>
+              <div className="text-sm text-muted-foreground">{t("sources.priority", { value: source.priority })}</div>
               <Button variant="outline" size="sm" className="w-full" disabled={!canManage}>
-                Configure
+                {t("sources.configure")}
               </Button>
             </CardContent>
           </Card>

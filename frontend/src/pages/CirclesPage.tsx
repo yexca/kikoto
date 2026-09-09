@@ -16,6 +16,8 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 
 import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -174,6 +176,7 @@ export function openCircleSeriesRoute(externalId: string, seriesCode?: string | 
 }
 
 function CircleListPage({ active }: { active: boolean }) {
+  const { t } = useTranslation();
   const auth = useAuth();
   const toast = useToast();
   const storageScope = currentClientStorageScope(auth.user?.id ?? null);
@@ -199,6 +202,25 @@ function CircleListPage({ active }: { active: boolean }) {
   const [total, setTotal] = useState(0);
   const [reloadToken, setReloadToken] = useState(0);
   const loadedRequestKey = useRef("");
+  const localizedFilterOptions = circleFilterOptions.map((option) => ({
+    ...option,
+    label:
+      option.value === "all"
+        ? t("creatorBrowse.allCircles")
+        : option.value === "favorite"
+          ? t("creatorBrowse.favorite")
+          : option.value === "tagged"
+            ? t("creatorBrowse.tagged")
+            : option.value === "available"
+              ? t("content.available")
+              : option.value === "local"
+                ? t("detailActions.local")
+                : option.value === "remote"
+                  ? t("detailActions.remote")
+                  : option.value === "missing"
+                    ? t("detailActions.missing")
+                    : t("sync.attention"),
+  }));
 
   useEffect(() => {
     const timer = window.setTimeout(() => setRequestQuery(query), 250);
@@ -231,8 +253,8 @@ function CircleListPage({ active }: { active: boolean }) {
       })
       .catch((error) => {
         if (controller.signal.aborted) return;
-        setLoadError("Circles could not be loaded.");
-        toast.notify(toastFromError(error, "Circle API is unavailable."));
+        setLoadError(t("errors.unavailable"));
+        toast.notify(toastFromError(error, t("errors.unavailable")));
       })
       .finally(() => {
         if (!controller.signal.aborted) setIsLoading(false);
@@ -254,12 +276,12 @@ function CircleListPage({ active }: { active: boolean }) {
     pageSize,
     totalItems: total,
     totalPages,
-    itemLabel: "circles",
-    ariaLabel: "Circle pages",
+    itemLabel: t("creatorBrowse.circles"),
+    ariaLabel: t("creatorBrowse.circlePages"),
     compactMobile: true,
     compactTop: true,
     refreshing: isLoading && hasLoaded,
-    refreshingLabel: "Refreshing circles",
+    refreshingLabel: t("creatorBrowse.refreshingCircles"),
     onPageChange: setPage,
   };
 
@@ -275,7 +297,7 @@ function CircleListPage({ active }: { active: boolean }) {
         ...(await api.updateCircleUserState(circle.externalId, { favorite: !circle.favorite })),
       });
     } catch (error) {
-      toast.notify(toastFromError(error, "Circle favorite update failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.favoriteUpdateFailed")));
     }
   };
 
@@ -284,7 +306,7 @@ function CircleListPage({ active }: { active: boolean }) {
       const result = await api.setCircleUserTags(circle.externalId, tags);
       updateCircle({ ...circle, userTags: result.userTags });
     } catch (error) {
-      toast.notify(toastFromError(error, "Circle tags update failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.tagsUpdateFailed")));
     }
   };
 
@@ -292,12 +314,12 @@ function CircleListPage({ active }: { active: boolean }) {
     <div className="relative space-y-5">
       <section className="space-y-3">
         <CreatorListToolbar
-          label="Circles"
+          label={t("creatorBrowse.circles")}
           query={query}
-          placeholder="Search circles"
+          placeholder={t("creatorBrowse.searchCircles")}
           filter={filter}
           defaultFilter="all"
-          filterOptions={circleFilterOptions}
+          filterOptions={localizedFilterOptions}
           pageSize={pageSize}
           pageSizeOptions={circlePageSizeOptions}
           onQueryChange={setQuery}
@@ -307,7 +329,7 @@ function CircleListPage({ active }: { active: boolean }) {
         <CollectionPagination {...paginationProps} placement="top" />
 
         {isLoading && !hasLoaded ? (
-          <CreatorCollectionSkeleton label="Loading circles" />
+          <CreatorCollectionSkeleton label={t("creatorBrowse.loadingCircles")} />
         ) : !hasLoaded && loadError ? (
           <Card className={creatorCardMinHeightClassName} role="alert">
             <CardContent
@@ -315,12 +337,17 @@ function CircleListPage({ active }: { active: boolean }) {
             >
               <span>{loadError}</span>
               <Button size="sm" variant="outline" onClick={() => setReloadToken((value) => value + 1)}>
-                Retry
+                {t("creatorBrowse.retry")}
               </Button>
             </CardContent>
           </Card>
         ) : (
-          <div className={creatorCollectionClassName} role="region" aria-label="Circle results" aria-busy={isLoading}>
+          <div
+            className={creatorCollectionClassName}
+            role="region"
+            aria-label={t("creatorBrowse.circleResults")}
+            aria-busy={isLoading}
+          >
             {circles.length > 0 ? (
               circles.map((circle) => (
                 <CreatorCard
@@ -347,7 +374,7 @@ function CircleListPage({ active }: { active: boolean }) {
                 <CardContent
                   className={`grid ${creatorCardMinHeightClassName} place-items-center p-5 text-sm text-muted-foreground`}
                 >
-                  No circles match this view.
+                  {t("creatorBrowse.noCircles")}
                 </CardContent>
               </Card>
             )}
@@ -355,7 +382,7 @@ function CircleListPage({ active }: { active: boolean }) {
         )}
         <CollectionPagination {...paginationProps} placement="bottom" />
       </section>
-      <BrowseLoadingIndicator refreshing={isLoading && hasLoaded} label="Refreshing circles" />
+      <BrowseLoadingIndicator refreshing={isLoading && hasLoaded} label={t("creatorBrowse.refreshingCircles")} />
     </div>
   );
 }
@@ -368,6 +395,7 @@ function CircleDetailPage({
   seriesCode?: string | null;
   active: boolean;
 }) {
+  const { t } = useTranslation();
   const auth = useAuth();
   const toast = useToast();
   const requireDownloadsManage = usePermissionGate("downloads:manage");
@@ -415,7 +443,7 @@ function CircleDetailPage({
           setNotFound(true);
           return null;
         }
-        toast.notify(toastFromError(error, "Circle detail is unavailable."));
+        toast.notify(toastFromError(error, t("errors.unavailable")));
         return null;
       } finally {
         if (showLoading) {
@@ -423,7 +451,7 @@ function CircleDetailPage({
         }
       }
     },
-    [active, externalId],
+    [active, externalId, t],
   );
 
   useEffect(() => {
@@ -552,11 +580,11 @@ function CircleDetailPage({
     setRefreshingScope(scope);
     try {
       const result = await api.refreshCircle(externalId, { scope, mode, productMode: workProductMode(scope, mode) });
-      toast.success(refreshMessage(result));
+      toast.success(refreshMessage(result, t));
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
-      toast.notify(toastFromError(error, "Refresh workflow failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.refreshWorkflowFailed")));
     } finally {
       setRefreshingScope(null);
     }
@@ -572,7 +600,7 @@ function CircleDetailPage({
         current ? { ...current, ...next, works: current.works, series: current.series } : current,
       );
     } catch (error) {
-      toast.notify(toastFromError(error, "Circle favorite update failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.favoriteUpdateFailed")));
     }
   };
 
@@ -581,7 +609,7 @@ function CircleDetailPage({
       const result = await api.setCircleUserTags(externalId, tags);
       setDetail((current) => (current ? { ...current, userTags: result.userTags } : current));
     } catch (error) {
-      toast.notify(toastFromError(error, "Circle tags update failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.tagsUpdateFailed")));
     }
   };
 
@@ -591,14 +619,14 @@ function CircleDetailPage({
       const result = await api.deleteCircleCatalogWork(externalId, deleteTarget.primaryCode);
       toast.success(
         result.deleted > 0
-          ? `${deleteTarget.primaryCode} removed from this circle catalog.`
-          : `${deleteTarget.primaryCode} was already removed.`,
+          ? t("creatorBrowse.catalogWorkRemoved", { code: deleteTarget.primaryCode })
+          : t("creatorBrowse.catalogWorkAlreadyRemoved", { code: deleteTarget.primaryCode }),
       );
       const next = await api.getCircle(externalId);
       setDetail(next);
       setDeleteTarget(null);
     } catch (error) {
-      toast.notify(toastFromError(error, "Catalog work delete failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.deleteWorkFailed")));
     }
   };
 
@@ -620,7 +648,7 @@ function CircleDetailPage({
           : current,
       );
     } catch (error) {
-      toast.notify(toastFromError(error, "Mark update failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.markUpdateFailed")));
     }
   };
 
@@ -631,7 +659,7 @@ function CircleDetailPage({
     try {
       const syncResult = await api.syncRemoteSourceWork(target.sourceId, target.code, "circle_mark_interest");
       const markResult = await api.updateWorkUserState(syncResult.workId, { listeningStatus: status });
-      toast.success(`Saved and marked ${syncResult.primaryCode}.`);
+      toast.success(t("creatorBrowse.savedAndMarked", { code: syncResult.primaryCode }));
       const next = await api.getCircle(externalId);
       setDetail({
         ...next,
@@ -640,7 +668,7 @@ function CircleDetailPage({
         ),
       });
     } catch (error) {
-      toast.notify(toastFromError(error, "Mark update failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.markUpdateFailed")));
     } finally {
       setIsBulkSaving(false);
     }
@@ -662,7 +690,7 @@ function CircleDetailPage({
       setDetail(next);
       return workId;
     } catch (error) {
-      toast.notify(toastFromError(error, "Save for list failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.saveForListFailed")));
       return null;
     }
   };
@@ -701,13 +729,13 @@ function CircleDetailPage({
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
       const failed = results.reduce((total, result) => total + result.failed, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      const message = `Bulk workflow ${runIds}: queued ${fetched} Fetch jobs, failed ${failed}.`;
+      const message = t("creatorBrowse.bulkFetchSummary", { runIds, fetched, failed });
       if (failed > 0) toast.warning(message);
       else toast.success(message);
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
-      toast.notify(toastFromError(error, "Bulk fetch failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.bulkFetchFailed")));
     } finally {
       setIsBulkSaving(false);
       setSaveConfirm(null);
@@ -724,13 +752,13 @@ function CircleDetailPage({
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
       const failed = results.reduce((total, result) => total + result.failed, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      const message = `Bulk workflow ${runIds}: tracked ${synced}, queued ${fetched} Fetch jobs, failed ${failed}.`;
+      const message = t("creatorBrowse.bulkTrackFetchSummary", { runIds, synced, fetched, failed });
       if (failed > 0) toast.warning(message);
       else toast.success(message);
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
-      toast.notify(toastFromError(error, "Bulk track/fetch failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.bulkTrackFetchFailed")));
     } finally {
       setIsBulkSaving(false);
     }
@@ -767,11 +795,11 @@ function CircleDetailPage({
       toast.notify({
         kind: "info",
         message: result.deduplicated
-          ? `Track workflow #${result.runId} is already queued.`
-          : `Track workflow #${result.runId} queued.`,
+          ? t("creatorBrowse.trackAlreadyQueued", { id: result.runId })
+          : t("creatorBrowse.trackQueued", { id: result.runId }),
       });
     } catch (error) {
-      toast.notify(toastFromError(error, "Track failed."));
+      toast.notify(toastFromError(error, t("creatorBrowse.trackFailed")));
     } finally {
       setIsBulkSaving(false);
     }
@@ -780,8 +808,8 @@ function CircleDetailPage({
   if (notFound) {
     return (
       <NotFoundPage
-        title="Circle not found"
-        message={`${externalId} is not available in the current catalog.`}
+        title={t("creatorBrowse.circleNotFound")}
+        message={t("creatorBrowse.circleUnavailable", { id: externalId })}
         onBack={navigateToList}
         onOpenLibrary={() => {
           window.history.pushState({}, "", "/");
@@ -795,10 +823,10 @@ function CircleDetailPage({
     <div className="relative space-y-5">
       <Button variant="outline" size="sm" onClick={navigateToList}>
         <ChevronLeft className="h-4 w-4" />
-        {compactLayout ? "Back to circles" : circleReturnLabel()}
+        {compactLayout ? t("creatorBrowse.backToCircles") : circleReturnLabel()}
       </Button>
 
-      <section aria-label="Circle summary">
+      <section aria-label={t("detailActions.circleSummary")}>
         <Card>
           <CardContent className="space-y-4 p-5">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -813,76 +841,86 @@ function CircleDetailPage({
                       className:
                         "w-fit gap-1.5 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     })}
-                    aria-label={`Open DLsite for ${circle.externalId}`}
-                    title="Open DLsite"
+                    aria-label={t("detailActions.openDlsiteFor", { id: circle.externalId })}
+                    title={t("detailActions.openDlsite")}
                   >
                     <span>{circle.externalId}</span>
                     <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
                   </a>
                   <CatalogSyncBadge state={circle.syncState} />
-                  {circle.favorite && <Badge variant="secondary">Favorite</Badge>}
+                  {circle.favorite && <Badge variant="secondary">{t("detailActions.favorite")}</Badge>}
                 </div>
                 <div className="mt-3 flex min-w-0 items-center gap-1.5">
                   <h2 className="min-w-0 flex-1 truncate text-2xl font-semibold lg:text-3xl">{circle.displayName}</h2>
                 </div>
                 <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5">
-                  <Badge variant={availableWorkCount > 0 ? "success" : "warning"}>Available {availableWorkCount}</Badge>
+                  <Badge variant={availableWorkCount > 0 ? "success" : "warning"}>
+                    {t("detailActions.availableCount", { count: availableWorkCount })}
+                  </Badge>
                   <UserTagRow tags={circle.userTags} onSave={saveCircleTags} className="min-w-0 flex-1" />
                 </div>
               </div>
-              <div className="flex flex-wrap gap-1.5 lg:gap-2" role="group" aria-label="Circle actions">
+              <div
+                className="flex flex-wrap gap-1.5 lg:gap-2"
+                role="group"
+                aria-label={t("detailActions.circleActions")}
+              >
                 <Button
                   variant={circle.favorite ? "default" : "outline"}
                   size="icon"
                   className="lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-                  aria-label={circle.favorite ? "Remove favorite" : "Add favorite"}
+                  aria-label={circle.favorite ? t("creator.removeFavorite") : t("creator.addFavorite")}
                   aria-pressed={circle.favorite}
-                  title={circle.favorite ? "Remove favorite" : "Add favorite"}
+                  title={circle.favorite ? t("creator.removeFavorite") : t("creator.addFavorite")}
                   onClick={() => void toggleCircleFavorite()}
                 >
                   <Heart className={`h-4 w-4 ${circle.favorite ? "fill-current" : ""}`} />
-                  <span className="hidden lg:inline">Favorite</span>
+                  <span className="hidden lg:inline">{t("detailActions.favorite")}</span>
                 </Button>
                 {!firstPull && (
                   <Button
                     variant="outline"
                     size="sm"
                     className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
-                    aria-label="Retry circle metadata"
+                    aria-label={t("detailActions.retryMetadata")}
                     disabled={!canRefreshCatalog || isLoading || refreshingScope !== null}
                     onClick={() => void refresh("work", "full")}
                   >
                     <RefreshCw className="h-4 w-4" />
-                    <span className="lg:hidden">Metadata</span>
-                    <span className="hidden lg:inline">Retry metadata</span>
+                    <span className="lg:hidden">{t("detailActions.metadata")}</span>
+                    <span className="hidden lg:inline">{t("detailActions.retryMetadata")}</span>
                   </Button>
                 )}
                 <Button
                   variant={firstPull ? "default" : "outline"}
                   size="sm"
                   className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
-                  aria-label={firstPull ? "First pull circle catalog" : "Refresh circle"}
+                  aria-label={firstPull ? t("detailActions.firstPull") : t("detailActions.refreshCircle")}
                   disabled={!canRefreshCatalog || isLoading || refreshingScope !== null}
                   onClick={runPrimaryRefresh}
                 >
                   <RefreshCw className="h-4 w-4" />
-                  <span className="lg:hidden">{firstPull ? "First pull" : "Circle"}</span>
-                  <span className="hidden lg:inline">{firstPull ? "First pull" : "Refresh circle"}</span>
+                  <span className="lg:hidden">
+                    {firstPull ? t("detailActions.firstPull") : t("detailActions.refreshCircle")}
+                  </span>
+                  <span className="hidden lg:inline">
+                    {firstPull ? t("detailActions.firstPull") : t("detailActions.refreshCircle")}
+                  </span>
                 </Button>
                 <Button
                   variant="outline"
                   size="icon"
                   className="lg:h-9 lg:w-auto lg:gap-2 lg:px-3 lg:text-xs"
                   ref={advancedRefreshAnchorRef}
-                  aria-label="Open advanced refresh actions"
+                  aria-label={t("detailActions.openAdvancedRefreshActions")}
                   aria-haspopup="dialog"
                   aria-expanded={advancedRefreshOpen}
                   aria-controls={advancedRefreshOpen ? "circle-advanced-refresh" : undefined}
-                  title="Advanced refresh actions"
+                  title={t("detailActions.advancedRefresh")}
                   onClick={() => setAdvancedRefreshOpen((open) => !open)}
                 >
                   <MoreHorizontal className="h-4 w-4" />
-                  <span className="hidden lg:inline">Advanced</span>
+                  <span className="hidden lg:inline">{t("detailActions.advanced")}</span>
                 </Button>
               </div>
             </div>
@@ -897,13 +935,13 @@ function CircleDetailPage({
               className={`min-h-8 rounded px-3 ${!isSeriesView ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
               onClick={() => openCircleRoute(circle.externalId)}
             >
-              Works {circle.works.length}
+              {t("detailActions.works")} {circle.works.length}
             </button>
             <button
               className={`min-h-8 rounded px-3 ${isSeriesView ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
               onClick={() => openCircleSeriesRoute(circle.externalId)}
             >
-              Series {circle.series.length}
+              {t("detailActions.series")} {circle.series.length}
             </button>
           </div>
           <div
@@ -915,15 +953,15 @@ function CircleDetailPage({
               value={workQuery}
               onKeyDown={dismissKeyboardOnEnter}
               onChange={(event) => changeWorkQuery(event.target.value)}
-              placeholder="Search circle catalog works"
+              placeholder={t("detailActions.searchCatalogWorks")}
             />
             {isSeriesView && (
               <Button
                 variant="outline"
                 size="icon"
                 className="relative shrink-0 lg:hidden"
-                aria-label="Open catalog options"
-                title="Catalog options"
+                aria-label={t("detailActions.catalogOptions")}
+                title={t("detailActions.catalogOptions")}
                 onClick={() => setCatalogOptionsOpen(true)}
               >
                 <SlidersHorizontal className="h-4 w-4" />
@@ -944,13 +982,13 @@ function CircleDetailPage({
               className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={availabilityFilter}
               onChange={(event) => changeAvailabilityFilter(event.target.value as CircleAvailabilityFilter)}
-              aria-label="Catalog availability filter"
+              aria-label={t("detailActions.catalogAvailabilityFilter")}
             >
-              <option value="all">All works</option>
-              <option value="available">Available</option>
-              <option value="unavailable">Unavailable</option>
-              <option value="local">Local</option>
-              <option value="remote">Remote</option>
+              <option value="all">{t("detailActions.allWorks")}</option>
+              <option value="available">{t("content.available")}</option>
+              <option value="unavailable">{t("detailActions.unavailable")}</option>
+              <option value="local">{t("detailActions.local")}</option>
+              <option value="remote">{t("detailActions.remote")}</option>
             </select>
             {!isSeriesView && (
               <Button
@@ -963,7 +1001,7 @@ function CircleDetailPage({
                   });
                 }}
               >
-                Select
+                {t("detailActions.select")}
               </Button>
             )}
           </div>
@@ -979,14 +1017,14 @@ function CircleDetailPage({
               totalPages={totalWorkPages}
               compactMobile
               refreshing={isLoading}
-              refreshingLabel="Refreshing circle works"
+              refreshingLabel={t("creatorBrowse.refreshingCircles")}
               leadingControls={
                 <Button
                   variant="outline"
                   size="icon"
                   className="relative h-11 w-11"
-                  aria-label={`Open catalog options${workQuery.trim() || availabilityFilter !== "all" || selectionMode ? ", filters active" : ""}`}
-                  title="Catalog options"
+                  aria-label={t("detailActions.catalogOptions")}
+                  title={t("detailActions.catalogOptions")}
                   aria-haspopup="dialog"
                   aria-expanded={catalogOptionsOpen}
                   onClick={() => setCatalogOptionsOpen(true)}
@@ -1044,19 +1082,25 @@ function CircleDetailPage({
               <div className="hidden flex-col gap-2 rounded-lg border bg-card px-3 py-2 lg:flex lg:flex-row lg:items-center lg:justify-between">
                 <div className="min-w-0">
                   <h3 className="truncate text-base font-semibold">
-                    {selectedSeries ? selectedSeries.name : "All series"}
+                    {selectedSeries ? selectedSeries.name : t("detailActions.allSeries")}
                   </h3>
                   <p className="text-sm text-muted-foreground">
                     {selectedSeries
-                      ? `${selectedSeries.titleId} · ${selectedSeries.works} works`
-                      : `${circle.series.length} series · ${activeSeriesCount} listed works`}
+                      ? t("creatorBrowse.seriesWorksSummary", {
+                          id: selectedSeries.titleId,
+                          count: selectedSeries.works,
+                        })
+                      : t("creatorBrowse.seriesListSummary", {
+                          series: circle.series.length,
+                          works: activeSeriesCount,
+                        })}
                   </p>
                 </div>
                 {selectedSeries?.url && (
                   <Button variant="outline" size="sm" asChild>
                     <a href={selectedSeries.url} target="_blank" rel="noreferrer">
                       <ExternalLink className="h-4 w-4" />
-                      DLsite series
+                      {t("creatorBrowse.dlsiteSeries")}
                     </a>
                   </Button>
                 )}
@@ -1105,7 +1149,7 @@ function CircleDetailPage({
                   ) : (
                     <Card>
                       <CardContent className="p-5 text-sm text-muted-foreground">
-                        No works match this series view.
+                        {t("creatorBrowse.noSeriesWorks")}
                       </CardContent>
                     </Card>
                   )}
@@ -1119,7 +1163,7 @@ function CircleDetailPage({
                   ) : (
                     <Card>
                       <CardContent className="p-5 text-sm text-muted-foreground">
-                        No series found for this circle.
+                        {t("creatorBrowse.noSeriesForCircle")}
                       </CardContent>
                     </Card>
                   )}
@@ -1138,13 +1182,13 @@ function CircleDetailPage({
                       selectablePagedWorks.every((work) => selectedWorkCodes.has(work.primaryCode))
                     }
                     onCheckedChange={toggleVisibleSelection}
-                    aria-label="Select visible works"
+                    aria-label={t("detailActions.select")}
                   />
-                  {selectedWorks.length} selected
+                  {t("library.selectedCount", { count: selectedWorks.length })}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" size="sm" onClick={() => toggleVisibleSelection(true)}>
-                    Select all
+                    {t("library.selectAll")}
                   </Button>
                   <Button
                     variant="outline"
@@ -1154,7 +1198,7 @@ function CircleDetailPage({
                       setSelectionMode(false);
                     }}
                   >
-                    Cancel selection
+                    {t("library.cancelSelection")}
                   </Button>
                   <Button
                     variant="outline"
@@ -1163,7 +1207,8 @@ function CircleDetailPage({
                     onClick={() => void bulkSyncAndSaveSelected()}
                   >
                     <GitBranchPlus className="h-4 w-4" />
-                    Track + Fetch {selectedSyncableWorks.length}
+                    {t("library.trackCount", { count: selectedSyncableWorks.length })} +{" "}
+                    {t("library.fetchCount", { count: selectedSyncableWorks.length })}
                   </Button>
                   <Button
                     variant="outline"
@@ -1172,7 +1217,7 @@ function CircleDetailPage({
                     onClick={() => void bulkSaveSelected()}
                   >
                     <HardDriveDownload className="h-4 w-4" />
-                    Fetch {selectedWorks.length}
+                    {t("library.fetchCount", { count: selectedWorks.length })}
                   </Button>
                 </div>
               </div>
@@ -1221,7 +1266,7 @@ function CircleDetailPage({
               ) : (
                 <Card>
                   <CardContent className="p-5 text-sm text-muted-foreground">
-                    No catalog works match this view.
+                    {t("creatorBrowse.noCatalogWorks")}
                   </CardContent>
                 </Card>
               )}
@@ -1280,7 +1325,10 @@ function CircleDetailPage({
         onRun={(scope, mode) => void refresh(scope, mode)}
       />
       <RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
-      <BrowseLoadingIndicator refreshing={isLoading || refreshingScope !== null} label="Loading circle details" />
+      <BrowseLoadingIndicator
+        refreshing={isLoading || refreshingScope !== null}
+        label={t("creatorBrowse.loadingCircles")}
+      />
     </div>
   );
 }
@@ -1314,9 +1362,10 @@ function CatalogWorkCard({
   onEnsureWork: () => Promise<number | null>;
   onSeriesOpen?: () => void;
 }) {
+  const { t } = useTranslation();
   const directoryTarget = preferredDirectoryTarget(work);
   const isUnavailable = !work.local && !work.remote;
-  const view = catalogWorkCardView(work);
+  const view = catalogWorkCardView(work, t);
 
   const openTarget = () => {
     if (directoryTarget) openWorkDirectoryRoute(directoryTarget, work);
@@ -1340,7 +1389,7 @@ function CatalogWorkCard({
           right={
             <>
               <WorkCardActionButton
-                title="Track"
+                title={t("detailActions.track")}
                 disabled={busy || !circleWorkRemoteTarget(work)}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -1350,7 +1399,7 @@ function CatalogWorkCard({
                 <GitBranchPlus className="h-4 w-4" />
               </WorkCardActionButton>
               <WorkCardActionButton
-                title="Fetch"
+                title={t("detailActions.fetch")}
                 disabled={busy || !circleWorkRemoteTarget(work)}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -1373,7 +1422,7 @@ function CatalogWorkCard({
               />
               {!work.dlsiteAvailable && (
                 <WorkCardActionButton
-                  title="Delete missing catalog item"
+                  title={t("detailActions.deleteMissingCatalogItem")}
                   onClick={(event) => {
                     event.stopPropagation();
                     onDeleteMissing();
@@ -1399,22 +1448,23 @@ function SaveConfirmModal({
   onClose: () => void;
   onConfirm: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
       <div
         className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <h3 className="text-base font-semibold">Fetch remote directory</h3>
+        <h3 className="text-base font-semibold">{t("detailActions.fetchRemoteDirectory")}</h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          This will download the full remote directory for {count} selected work{count === 1 ? "" : "s"}.
+          {t("detailActions.fetchRemoteDirectoryDescription", { count })}
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>
-            Cancel
+            {t("content.cancel")}
           </Button>
           <Button size="sm" onClick={onConfirm}>
-            Fetch
+            {t("detailActions.fetch")}
           </Button>
         </div>
       </div>
@@ -1431,6 +1481,7 @@ function CatalogDeleteConfirmModal({
   onClose: () => void;
   onConfirm: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-background/70 p-4 backdrop-blur-sm"
@@ -1440,20 +1491,20 @@ function CatalogDeleteConfirmModal({
         className="w-full max-w-md rounded-lg border bg-card p-5 shadow-xl"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <h3 className="text-base font-semibold">Remove catalog work</h3>
+        <h3 className="text-base font-semibold">{t("detailActions.removeCatalogWork")}</h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          DLsite did not return {work.primaryCode} in the latest full scan. Remove it from this circle catalog?
+          {t("detailActions.removeCatalogWorkDescription", { code: work.primaryCode })}
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>
-            Cancel
+            {t("content.cancel")}
           </Button>
           <Button
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             size="sm"
             onClick={onConfirm}
           >
-            Delete
+            {t("admin.delete")}
           </Button>
         </div>
       </div>
@@ -1461,19 +1512,21 @@ function CatalogDeleteConfirmModal({
   );
 }
 
-function catalogWorkCardView(work: CircleCatalogWork): WorkCardViewModel {
+function catalogWorkCardView(work: CircleCatalogWork, t: TFunction): WorkCardViewModel {
   const sourceBadges = circleSourceBadges({ local: work.local, remote: work.remote, sourceTags: work.sourceTags });
   const statusBadges = [
     ...(work.catalogStatus !== "imported"
       ? [{ key: `catalog:${work.catalogStatus}`, label: work.catalogStatus, variant: "outline" as const }]
       : []),
-    ...(!work.dlsiteAvailable ? [{ key: "dlsite:missing", label: "DLsite missing", variant: "warning" as const }] : []),
+    ...(!work.dlsiteAvailable
+      ? [{ key: "dlsite:missing", label: t("workCard.dlsiteMissing"), variant: "warning" as const }]
+      : []),
     ...sourceBadges,
   ];
   return {
     code: work.primaryCode,
     title: work.title,
-    circle: work.circle || "Unknown circle",
+    circle: work.circle || t("workCard.unknownCircle"),
     circleExternalId: work.circleExternalId,
     ageRating: work.ageRating,
     voiceActors: work.voiceActors,
@@ -1500,6 +1553,7 @@ function seriesCodeForWork(series: CircleSeries[], workCode: string) {
 }
 
 function WorkProgressLine({ progress }: { progress: NonNullable<CircleCatalogWork["progress"]> }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-1">
       <div className="h-1.5 overflow-hidden rounded-full bg-muted">
@@ -1507,8 +1561,11 @@ function WorkProgressLine({ progress }: { progress: NonNullable<CircleCatalogWor
       </div>
       <div className="truncate text-xs text-muted-foreground">
         {progress.completed
-          ? "Finished"
-          : `Resume ${progress.title || "track"} at ${formatTime(progress.positionSeconds)}`}
+          ? t("library.status.finished")
+          : t("library.resumeAt", {
+              title: progress.title || t("player.track"),
+              time: formatTime(progress.positionSeconds),
+            })}
       </div>
     </div>
   );
@@ -1521,20 +1578,41 @@ function workProductMode(scope: CircleRefreshScope, mode: CircleRefreshMode): "a
   return "available";
 }
 
-function refreshMessage(result: {
-  runId: number;
-  scope: CircleRefreshScope;
-  pagesFetched: number;
-  catalogWorks: number;
-  productSynced: number;
-  productSkipped?: number;
-  productFailed?: number;
-  sourceSynced: number;
-}) {
-  const scopeLabel = result.scope === "all" ? "recommended" : result.scope === "metadata" ? "metadata" : result.scope;
-  const failed = result.productFailed ? `, ${result.productFailed} failed` : "";
-  const skipped = result.productSkipped ? `, ${result.productSkipped} skipped` : "";
-  return `Refresh workflow #${result.runId} (${scopeLabel}): ${result.pagesFetched} pages, ${result.catalogWorks} catalog works, ${result.productSynced} product JSON${skipped}${failed}, ${result.sourceSynced} source matches.`;
+function refreshMessage(
+  result: {
+    runId: number;
+    scope: CircleRefreshScope;
+    pagesFetched: number;
+    catalogWorks: number;
+    productSynced: number;
+    productSkipped?: number;
+    productFailed?: number;
+    sourceSynced: number;
+  },
+  t: TFunction,
+) {
+  const scopeLabel =
+    result.scope === "all"
+      ? t("creatorBrowse.scopeRecommended")
+      : result.scope === "metadata"
+        ? t("creatorBrowse.scopeMetadata")
+        : result.scope === "catalog"
+          ? t("creatorBrowse.scopeCatalog")
+          : result.scope === "work"
+            ? t("creatorBrowse.scopeWork")
+            : t("creatorBrowse.scopeSource");
+  const failed = result.productFailed ? t("creatorBrowse.failedSuffix", { count: result.productFailed }) : "";
+  const skipped = result.productSkipped ? t("creatorBrowse.skippedSuffix", { count: result.productSkipped }) : "";
+  return t("creatorBrowse.refreshWorkflowSummary", {
+    id: result.runId,
+    scope: scopeLabel,
+    pages: result.pagesFetched,
+    catalog: result.catalogWorks,
+    synced: result.productSynced,
+    skipped,
+    failed,
+    sources: result.sourceSynced,
+  });
 }
 
 function emptyCircleDetail(externalId: string): CircleDetail {
@@ -1599,8 +1677,9 @@ function MobileCircleSeriesHeader({
   selectedSeriesCode: string | null;
   allCount: number;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const selectedName = selectedSeries?.name ?? "All series";
+  const selectedName = selectedSeries?.name ?? t("detailActions.allSeries");
   const selectedCount = selectedSeries?.works ?? allCount;
   const selectSeries = (titleId?: string) => {
     setOpen(false);
@@ -1612,7 +1691,7 @@ function MobileCircleSeriesHeader({
         className="flex min-w-0 flex-1 items-center justify-between gap-3 self-stretch text-left text-sm"
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label="Choose circle series"
+        aria-label={t("detailActions.series")}
         onClick={() => setOpen(true)}
       >
         <span className="min-w-0 truncate font-semibold">{selectedName}</span>
@@ -1624,8 +1703,8 @@ function MobileCircleSeriesHeader({
             href={selectedSeries.url}
             target="_blank"
             rel="noreferrer"
-            aria-label="Open DLsite series"
-            title="Open DLsite series"
+            aria-label={t("detailActions.openDlsite")}
+            title={t("detailActions.openDlsite")}
           >
             <ExternalLink className="h-4 w-4" />
           </a>
@@ -1637,16 +1716,16 @@ function MobileCircleSeriesHeader({
         className="shrink-0"
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label="Expand circle series"
-        title="Expand circle series"
+        aria-label={t("detailActions.series")}
+        title={t("detailActions.series")}
         onClick={() => setOpen(true)}
       >
         <ChevronDown className="h-4 w-4" />
       </Button>
-      <MobileSheet open={open} onOpenChange={setOpen} ariaLabel="Circle series" className="p-4">
+      <MobileSheet open={open} onOpenChange={setOpen} ariaLabel={t("detailActions.series")} className="p-4">
         <div className="flex items-start justify-between gap-3">
-          <h2 className="text-base font-semibold">Series</h2>
-          <Button variant="ghost" size="icon" aria-label="Close circle series" onClick={() => setOpen(false)}>
+          <h2 className="text-base font-semibold">{t("detailActions.series")}</h2>
+          <Button variant="ghost" size="icon" aria-label={t("content.close")} onClick={() => setOpen(false)}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -1674,13 +1753,14 @@ function CircleSeriesOptions({
   allCount: number;
   onSelect: (titleId?: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       <button
         className={`flex min-h-12 w-full items-center justify-between gap-3 rounded-md px-3 text-left text-sm hover:bg-muted ${selectedSeriesCode === null ? "bg-primary text-primary-foreground hover:bg-primary" : ""}`}
         onClick={() => onSelect()}
       >
-        <span className="min-w-0 truncate font-medium">All series</span>
+        <span className="min-w-0 truncate font-medium">{t("detailActions.allSeries")}</span>
         <span className={selectedSeriesCode === null ? "text-primary-foreground/80" : "text-muted-foreground"}>
           {allCount}
         </span>
@@ -1712,7 +1792,7 @@ function CircleSeriesOptions({
             );
           })
         ) : (
-          <div className="px-3 py-2 text-sm text-muted-foreground">No series</div>
+          <div className="px-3 py-2 text-sm text-muted-foreground">{t("detailActions.noSeries")}</div>
         )}
       </div>
     </>
@@ -1720,6 +1800,7 @@ function CircleSeriesOptions({
 }
 
 function CircleSeriesSummaryCard({ externalId, series }: { externalId: string; series: CircleSeries }) {
+  const { t } = useTranslation();
   return (
     <Card className="h-full transition-colors hover:border-primary/50">
       <CardContent className="space-y-3 p-4">
@@ -1735,19 +1816,19 @@ function CircleSeriesSummaryCard({ externalId, series }: { externalId: string; s
         <div className="grid grid-cols-4 gap-2 text-center text-xs">
           <div className="rounded-md border bg-background p-2">
             <div className="text-sm font-semibold">{series.works}</div>
-            <div className="text-muted-foreground">Works</div>
+            <div className="text-muted-foreground">{t("detailActions.works")}</div>
           </div>
           <div className="rounded-md border bg-background p-2">
             <div className="text-sm font-semibold">{series.localWorks}</div>
-            <div className="text-muted-foreground">Local</div>
+            <div className="text-muted-foreground">{t("detailActions.local")}</div>
           </div>
           <div className="rounded-md border bg-background p-2">
             <div className="text-sm font-semibold">{series.remoteWorks}</div>
-            <div className="text-muted-foreground">Remote</div>
+            <div className="text-muted-foreground">{t("detailActions.remote")}</div>
           </div>
           <div className="rounded-md border bg-background p-2">
             <div className="text-sm font-semibold">{series.missingWorks}</div>
-            <div className="text-muted-foreground">Missing</div>
+            <div className="text-muted-foreground">{t("detailActions.missing")}</div>
           </div>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -1764,6 +1845,7 @@ function CircleSeriesSummaryCard({ externalId, series }: { externalId: string; s
 }
 
 function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (status: ListeningStatus) => void }) {
+  const { t } = useTranslation();
   return (
     <div className="absolute bottom-10 left-0 z-20 w-44 overflow-hidden rounded-md border bg-card p-1 shadow-lg">
       {listeningStatusOptions.map((option) => (
@@ -1780,7 +1862,7 @@ function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (stat
           <ListChecks
             className={value === option.value && value !== "none" ? "h-3.5 w-3.5 text-primary" : "h-3.5 w-3.5"}
           />
-          {option.label}
+          {t(`library.status.${option.value}`, { defaultValue: option.label })}
         </button>
       ))}
     </div>
@@ -1791,10 +1873,10 @@ function normalizeListeningStatus(status: string): ListeningStatus {
   return listeningStatusOptions.some((option) => option.value === status) ? (status as ListeningStatus) : "none";
 }
 
-function listeningStatusLabel(status: string) {
-  return (
-    listeningStatusOptions.find((option) => option.value === normalizeListeningStatus(status))?.label ?? "Unmarked"
-  );
+function listeningStatusLabel(status: string, t?: TFunction) {
+  return t
+    ? t(`library.status.${normalizeListeningStatus(status)}`)
+    : (listeningStatusOptions.find((option) => option.value === normalizeListeningStatus(status))?.label ?? "Unmarked");
 }
 
 function availableSourceTags(sources: CircleSourceStat[] | null | undefined) {
@@ -1950,6 +2032,7 @@ function CatalogWorkPagination({
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: CatalogWorkPageSize) => void;
 }) {
+  const { t } = useTranslation();
   const [jumpPage, setJumpPage] = useState(String(page));
 
   useEffect(() => {
@@ -1965,18 +2048,18 @@ function CatalogWorkPagination({
   return (
     <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
       <div className="text-xs text-muted-foreground">
-        Page {page} / {totalPages} · {totalItems} works
+        {t("collection.pageOf", { page, totalPages, totalItems, itemLabel: t("collection.works") })}
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <select
           className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
           value={pageSize}
           onChange={(event) => onPageSizeChange(Number(event.target.value) as CatalogWorkPageSize)}
-          aria-label="Catalog works per page"
+          aria-label={t("sheets.catalogWorkPageSize")}
         >
           {catalogWorkPageSizeOptions.map((value) => (
             <option key={value} value={value}>
-              {value} / page
+              {t("collection.perPageOption", { value })}
             </option>
           ))}
         </select>
@@ -1984,7 +2067,7 @@ function CatalogWorkPagination({
           className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground disabled:opacity-50"
           disabled={page <= 1}
           onClick={() => onPageChange(Math.max(1, page - 1))}
-          aria-label="Previous page"
+          aria-label={t("collection.previousPage")}
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
@@ -1992,7 +2075,7 @@ function CatalogWorkPagination({
           className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground disabled:opacity-50"
           disabled={page >= totalPages}
           onClick={() => onPageChange(Math.min(totalPages, page + 1))}
-          aria-label="Next page"
+          aria-label={t("collection.nextPage")}
         >
           <ChevronRight className="h-4 w-4" />
         </button>
@@ -2006,7 +2089,7 @@ function CatalogWorkPagination({
           onKeyDown={(event) => {
             if (event.key === "Enter") goToJumpPage();
           }}
-          aria-label="Jump to page"
+          aria-label={t("collection.page", { page })}
         />
         <Button variant="outline" size="sm" onClick={goToJumpPage}>
           Go

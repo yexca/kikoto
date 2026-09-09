@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -52,15 +53,18 @@ import {
   normalizeDlsiteMetadataLanguages,
   type DlsiteMetadataLanguage,
 } from "@/features/maintenance/metadataLanguageModel";
+import i18n from "@/i18n";
+
+const maintenanceCopy = (key: string, options?: Record<string, unknown>) => i18n.t(`maintenance.${key}`, options);
 
 const DATA_PREFIX = "/data";
 const DEFAULT_SAVE_SUFFIX = "/<source_code>/<code_prefix>_<code_group>/<work_code>";
 const remoteRequestLanguageOptions = [
-  { value: "ja-JP", label: "Japanese" },
-  { value: "en-US", label: "English" },
-  { value: "zh-CN", label: "Simplified Chinese" },
-  { value: "zh-TW", label: "Traditional Chinese" },
-  { value: "ko-KR", label: "Korean" },
+  { value: "ja-JP", labelKey: "metadata.japanese" },
+  { value: "en-US", labelKey: "metadata.english" },
+  { value: "zh-CN", labelKey: "metadata.simplifiedChinese" },
+  { value: "zh-TW", labelKey: "metadata.traditionalChinese" },
+  { value: "ko-KR", labelKey: "metadata.korean" },
 ] as const;
 const DEFAULT_CACHE_SUFFIX = "/media/<source_code>/<code_prefix>/<code_group>/<work_code>";
 const CACHE_GROUP_PAGE_SIZE = 50;
@@ -120,6 +124,7 @@ export function MaintenancePage({
   readOnly?: boolean;
   onAccessPolicyUpdated: () => Promise<void>;
 }) {
+  useTranslation();
   const toast = useToast();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [isSettingsLoading, setIsSettingsLoading] = useState(true);
@@ -187,7 +192,7 @@ export function MaintenancePage({
         setRecommendationThreshold(next.recommendationThreshold ?? 50);
         setRecommendationConfig(next.recommendationConfig);
       })
-      .catch((error) => toast.notify(toastFromError(error, "Settings API is unavailable.")))
+      .catch((error) => toast.notify(toastFromError(error, maintenanceCopy("settingsApiUnavailable"))))
       .finally(() => setIsSettingsLoading(false));
 
   useEffect(() => {
@@ -266,7 +271,7 @@ export function MaintenancePage({
       normalizeDlsiteMetadataLanguages(next.dlsiteMetadataLanguages ?? [next.dlsiteMetadataLanguage]),
     );
     setRecommendationConfig(next.recommendationConfig);
-    toast.success("Settings saved.");
+    toast.success(maintenanceCopy("settingsSaved"));
   };
 
   const saveAccessPolicy = async () => {
@@ -279,12 +284,12 @@ export function MaintenancePage({
       try {
         await onAccessPolicyUpdated();
       } catch {
-        toast.warning("Access policy saved, but runtime status could not be refreshed.");
+        toast.warning(maintenanceCopy("accessPolicyRefreshFailed"));
         return;
       }
-      toast.success("Access policy saved.");
+      toast.success(maintenanceCopy("accessPolicySaved"));
     } catch (error) {
-      toast.notify(toastFromError(error, "Access policy could not be saved."));
+      toast.notify(toastFromError(error, maintenanceCopy("accessPolicySaveFailed")));
     } finally {
       setIsAccessPolicySaving(false);
     }
@@ -332,7 +337,7 @@ export function MaintenancePage({
     }
     closeSourceModal();
     await reload();
-    toast.success("Source saved.");
+    toast.success(maintenanceCopy("sourceSaved"));
   };
 
   const updateSourceRequestLanguage = async (source: FileSource, requestLanguage: string) => {
@@ -368,7 +373,7 @@ export function MaintenancePage({
             }
           : current,
       );
-      toast.success(`Request language updated for ${source.displayName}.`);
+      toast.success(maintenanceCopy("requestLanguageUpdated", { name: source.displayName }));
     } catch (error) {
       setSettings((current) =>
         current
@@ -382,7 +387,7 @@ export function MaintenancePage({
             }
           : current,
       );
-      toast.notify(toastFromError(error, "Remote request language could not be saved."));
+      toast.notify(toastFromError(error, maintenanceCopy("requestLanguageSaveFailed")));
     } finally {
       setUpdatingSourceId(null);
     }
@@ -408,9 +413,9 @@ export function MaintenancePage({
           : current,
       );
       setSourcePendingDelete(null);
-      toast.success("Source deleted.");
+      toast.success(maintenanceCopy("sourceDeleted"));
     } catch (error) {
-      toast.notify(toastFromError(error, "Source could not be deleted."));
+      toast.notify(toastFromError(error, maintenanceCopy("sourceDeleteFailed")));
     } finally {
       setDeletingSourceId(null);
     }
@@ -437,10 +442,10 @@ export function MaintenancePage({
             }
           : current,
       );
-      if (result.healthy) toast.success("Source health check passed.");
-      else toast.warning("Source health check failed.");
+      if (result.healthy) toast.success(maintenanceCopy("sourceHealthPassed"));
+      else toast.warning(maintenanceCopy("sourceHealthFailed"));
     } catch (error) {
-      toast.notify(toastFromError(error, "Source health check could not run."));
+      toast.notify(toastFromError(error, maintenanceCopy("sourceHealthCheckFailed")));
     } finally {
       setCheckingSourceId(null);
     }
@@ -449,7 +454,7 @@ export function MaintenancePage({
   if (!canManageSources) {
     return (
       <section className="rounded-lg border bg-card p-5">
-        <p className="text-sm text-muted-foreground">Instance maintenance requires administrator access.</p>
+        <p className="text-sm text-muted-foreground">{maintenanceCopy("adminRequired")}</p>
       </section>
     );
   }
@@ -461,59 +466,59 @@ export function MaintenancePage({
           className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-muted-foreground"
           role="status"
         >
-          Demo mode is read-only. Settings and sources remain visible but cannot be changed.
+          {maintenanceCopy("demoReadOnly")}
         </div>
       )}
 
-      <div className="flex gap-2 overflow-x-auto rounded-lg border bg-card p-1">
+      <div className="app-scrollbar flex gap-2 overflow-x-auto rounded-lg border bg-card p-1">
         <SettingsTabButton
           active={activeTab === "overview"}
           onClick={() => selectTab("overview")}
           icon={<SlidersHorizontal className="h-4 w-4" />}
         >
-          Overview
+          {maintenanceCopy("tabs.overview")}
         </SettingsTabButton>
         <SettingsTabButton
           active={activeTab === "routing"}
           onClick={() => selectTab("routing")}
           icon={<PlayCircle className="h-4 w-4" />}
         >
-          Routing
+          {maintenanceCopy("tabs.routing")}
         </SettingsTabButton>
         <SettingsTabButton
           active={activeTab === "recommendation"}
           onClick={() => selectTab("recommendation")}
           icon={<Sparkles className="h-4 w-4" />}
         >
-          Recommendation
+          {maintenanceCopy("tabs.recommendation")}
         </SettingsTabButton>
         <SettingsTabButton
           active={activeTab === "library"}
           onClick={() => selectTab("library")}
           icon={<Folder className="h-4 w-4" />}
         >
-          Library
+          {maintenanceCopy("tabs.library")}
         </SettingsTabButton>
         <SettingsTabButton
           active={activeTab === "unlinked"}
           onClick={() => selectTab("unlinked")}
           icon={<Database className="h-4 w-4" />}
         >
-          Unlinked works
+          {maintenanceCopy("tabs.unlinked")}
         </SettingsTabButton>
         <SettingsTabButton
           active={activeTab === "cache"}
           onClick={() => selectTab("cache")}
           icon={<Download className="h-4 w-4" />}
         >
-          Cache & Fetch
+          {maintenanceCopy("tabs.cache")}
         </SettingsTabButton>
         <SettingsTabButton
           active={activeTab === "metadata"}
           onClick={() => selectTab("metadata")}
           icon={<RefreshCw className="h-4 w-4" />}
         >
-          Metadata
+          {maintenanceCopy("tabs.metadata")}
         </SettingsTabButton>
         {canManageUsers && (
           <SettingsTabButton
@@ -521,7 +526,7 @@ export function MaintenancePage({
             onClick={() => selectTab("users")}
             icon={<Shield className="h-4 w-4" />}
           >
-            Users
+            {maintenanceCopy("tabs.users")}
           </SettingsTabButton>
         )}
         {canManageAccessPolicy && (
@@ -530,7 +535,7 @@ export function MaintenancePage({
             onClick={() => selectTab("security")}
             icon={<LockKeyhole className="h-4 w-4" />}
           >
-            Access
+            {maintenanceCopy("tabs.access")}
           </SettingsTabButton>
         )}
         <SettingsTabButton
@@ -538,7 +543,7 @@ export function MaintenancePage({
           onClick={() => selectTab("paths")}
           icon={<Server className="h-4 w-4" />}
         >
-          Paths
+          {maintenanceCopy("tabs.paths")}
         </SettingsTabButton>
       </div>
 
@@ -704,77 +709,92 @@ function SettingsOverview({
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       <SettingsHomeCard
         icon={<PlayCircle className="h-5 w-5" />}
-        title="Directory routing"
-        description="Order directory preferences for playback and Fetch actions."
-        status="Configured"
-        chips={["Ordered", "Aliases", "Fallback"]}
+        title={maintenanceCopy("overview.directoryRouting")}
+        description={maintenanceCopy("overview.directoryRoutingDescription")}
+        status={maintenanceCopy("status.configured")}
+        chips={[maintenanceCopy("chip.ordered"), maintenanceCopy("chip.aliases"), maintenanceCopy("chip.fallback")]}
         onClick={() => onSelect("routing")}
       />
       <SettingsHomeCard
         icon={<Folder className="h-5 w-5" />}
-        title="Library"
-        description="Local source scan behavior and library root visibility."
-        status={localSource?.enabled ? "Active" : "Needs scan"}
-        chips={[localSource?.displayName ?? "Main local library", `${localScanDepth} scan levels`]}
+        title={maintenanceCopy("tabs.library")}
+        description={maintenanceCopy("overview.libraryDescription")}
+        status={localSource?.enabled ? maintenanceCopy("status.active") : maintenanceCopy("status.needsScan")}
+        chips={[
+          localSource?.displayName ?? maintenanceCopy("mainLocalLibrary"),
+          maintenanceCopy("scanLevels", { count: localScanDepth }),
+        ]}
         onClick={() => onSelect("library")}
       />
       <SettingsHomeCard
         icon={<Cloud className="h-5 w-5" />}
-        title="Remote sources"
-        description="Manage configured file sources, health, and priority."
-        status={`${enabledSources}/${remoteSources.length} enabled`}
-        chips={[warningSources > 0 ? `${warningSources} warnings` : "Healthy", "Priority", "Endpoints"]}
+        title={maintenanceCopy("overview.remoteSources")}
+        description={maintenanceCopy("overview.remoteSourcesDescription")}
+        status={maintenanceCopy("enabledCount", { enabled: enabledSources, total: remoteSources.length })}
+        chips={[
+          warningSources > 0
+            ? maintenanceCopy("warningsCount", { count: warningSources })
+            : maintenanceCopy("status.healthy"),
+          maintenanceCopy("chip.priority"),
+          maintenanceCopy("chip.endpoints"),
+        ]}
         onClick={() => onSelect("library")}
       />
       <SettingsHomeCard
         icon={<Database className="h-5 w-5" />}
-        title="Unlinked works"
-        description="Review database works without an available file source."
-        status="Maintenance"
-        chips={["Search", "Source checks", "Cleanup"]}
+        title={maintenanceCopy("tabs.unlinked")}
+        description={maintenanceCopy("overview.unlinkedDescription")}
+        status={maintenanceCopy("status.maintenance")}
+        chips={[maintenanceCopy("chip.search"), maintenanceCopy("chip.sourceChecks"), maintenanceCopy("chip.cleanup")]}
         onClick={() => onSelect("unlinked")}
       />
       <SettingsHomeCard
         icon={<Download className="h-5 w-5" />}
-        title="Cache & fetch"
-        description="Remote playback cache and request pacing."
-        status={cacheEnabled ? "Auto cache on" : "Auto cache off"}
-        chips={[`${cacheLimitGb} GB limit`, "Request pacing"]}
+        title={maintenanceCopy("overview.cacheFetch")}
+        description={maintenanceCopy("overview.cacheFetchDescription")}
+        status={cacheEnabled ? maintenanceCopy("status.autoCacheOn") : maintenanceCopy("status.autoCacheOff")}
+        chips={[maintenanceCopy("gbLimit", { count: cacheLimitGb }), maintenanceCopy("chip.requestPacing")]}
         onClick={() => onSelect("cache")}
       />
       <SettingsHomeCard
         icon={<RefreshCw className="h-5 w-5" />}
-        title="Metadata"
-        description="DLsite localization and creator catalog freshness."
-        status={`${catalogFreshnessDays} day freshness`}
-        chips={["DLsite", "Creator catalogs", "Language"]}
+        title={maintenanceCopy("tabs.metadata")}
+        description={maintenanceCopy("overview.metadataDescription")}
+        status={maintenanceCopy("freshnessDays", { count: catalogFreshnessDays })}
+        chips={["DLsite", maintenanceCopy("chip.creatorCatalogs"), maintenanceCopy("chip.language")]}
         onClick={() => onSelect("metadata")}
       />
       <SettingsHomeCard
         icon={<Server className="h-5 w-5" />}
-        title="Paths"
-        description="Read-only runtime roots and resolved storage templates."
-        status="Read only"
+        title={maintenanceCopy("tabs.paths")}
+        description={maintenanceCopy("overview.pathsDescription")}
+        status={maintenanceCopy("status.readOnly")}
         chips={["/data", "/cache", "Docker"]}
         onClick={() => onSelect("paths")}
       />
       {canManageUsers && (
         <SettingsHomeCard
           icon={<Shield className="h-5 w-5" />}
-          title="Users"
-          description="Create accounts and manage instance access."
-          status="Admin"
-          chips={["Accounts", "Roles", "Access"]}
+          title={maintenanceCopy("tabs.users")}
+          description={maintenanceCopy("overview.usersDescription")}
+          status={maintenanceCopy("status.admin")}
+          chips={[maintenanceCopy("chip.accounts"), maintenanceCopy("chip.roles"), maintenanceCopy("tabs.access")]}
           onClick={() => onSelect("users")}
         />
       )}
       {canManageAccessPolicy && (
         <SettingsHomeCard
           icon={<LockKeyhole className="h-5 w-5" />}
-          title="Access"
-          description="Control unauthenticated access to library and playback surfaces."
-          status={anonymousAccessEnabled ? "Anonymous access on" : "Sign-in required"}
-          chips={["Authentication", "Library", "Playback"]}
+          title={maintenanceCopy("tabs.access")}
+          description={maintenanceCopy("overview.accessDescription")}
+          status={
+            anonymousAccessEnabled ? maintenanceCopy("status.anonymousOn") : maintenanceCopy("status.signInRequired")
+          }
+          chips={[
+            maintenanceCopy("chip.authentication"),
+            maintenanceCopy("tabs.library"),
+            maintenanceCopy("chip.playback"),
+          ]}
           onClick={() => onSelect("security")}
         />
       )}
@@ -800,19 +820,19 @@ function AccessPolicySettings({
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <LockKeyhole className="h-4 w-4" />
-          Instance access
+          {maintenanceCopy("access.instance")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between gap-4 rounded-md border bg-background px-4 py-3">
           <div className="min-w-0">
-            <div className="text-sm font-medium">Anonymous access</div>
-            <div className="text-xs text-muted-foreground">Library browsing and playback without an account</div>
+            <div className="text-sm font-medium">{maintenanceCopy("access.anonymous")}</div>
+            <div className="text-xs text-muted-foreground">{maintenanceCopy("access.anonymousDescription")}</div>
           </div>
           <Switch
             checked={anonymousAccessEnabled}
             onCheckedChange={onAnonymousAccessEnabledChange}
-            aria-label="Anonymous access"
+            aria-label={maintenanceCopy("access.anonymous")}
           />
         </div>
         <Button
@@ -821,7 +841,7 @@ function AccessPolicySettings({
           onClick={() => void onSave()}
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Save access policy
+          {maintenanceCopy("access.save")}
         </Button>
       </CardContent>
     </Card>
@@ -936,11 +956,11 @@ function PlaybackSettings({
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
                 <PlayCircle className="h-4 w-4" />
               </span>
-              <span className="truncate">Playback</span>
+              <span className="truncate">{maintenanceCopy("routing.playback")}</span>
             </span>
             <Button variant="outline" size="sm" onClick={addRule}>
               <Plus className="h-4 w-4" />
-              Add rule
+              {maintenanceCopy("routing.addRule")}
             </Button>
           </CardTitle>
         </CardHeader>
@@ -1055,21 +1075,29 @@ function DirectoryRuleEditor({
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold">{rule.label}</div>
             <div className="mt-0.5 truncate text-xs text-muted-foreground">
-              {rule.aliases.length} match keyword{rule.aliases.length === 1 ? "" : "s"}
+              {maintenanceCopy("routing.matchKeywords", { count: rule.aliases.length })}
               {rule.negativeAliases.length > 0
-                ? ` · ${rule.negativeAliases.length} exclusion${rule.negativeAliases.length === 1 ? "" : "s"}`
+                ? ` · ${maintenanceCopy("routing.exclusions", { count: rule.negativeAliases.length })}`
                 : ""}
             </div>
           </div>
-          <span className="text-xs text-muted-foreground group-open:hidden">Edit</span>
-          <span className="hidden text-xs text-muted-foreground group-open:inline">Close</span>
+          <span className="text-xs text-muted-foreground group-open:hidden">{maintenanceCopy("routing.edit")}</span>
+          <span className="hidden text-xs text-muted-foreground group-open:inline">{maintenanceCopy("close")}</span>
         </summary>
         <div className="space-y-3 border-t p-3">
-          <TextInput label="Rule name" value={rule.label} onChange={(value) => onPatch({ label: value })} />
+          <TextInput
+            label={maintenanceCopy("routing.ruleName")}
+            value={rule.label}
+            onChange={(value) => onPatch({ label: value })}
+          />
           <div className="grid gap-3 md:grid-cols-2">
-            <TagListInput label="Aliases" value={rule.aliases} onChange={(aliases) => onPatch({ aliases })} />
             <TagListInput
-              label="Negative aliases"
+              label={maintenanceCopy("routing.aliases")}
+              value={rule.aliases}
+              onChange={(aliases) => onPatch({ aliases })}
+            />
+            <TagListInput
+              label={maintenanceCopy("routing.negativeAliases")}
               value={rule.negativeAliases}
               onChange={(negativeAliases) => onPatch({ negativeAliases })}
             />
@@ -1120,7 +1148,7 @@ function TagListInput({
         value={value.join(", ")}
         onChange={(event) => onChange(splitRuleTokens(event.target.value))}
       />
-      <span className="text-xs text-muted-foreground">Separate words with commas or new lines.</span>
+      <span className="text-xs text-muted-foreground">{maintenanceCopy("routing.tokenHint")}</span>
     </label>
   );
 }
@@ -1244,6 +1272,7 @@ function MetadataSettings({
   onRequestLanguageChange: (source: FileSource, language: string) => Promise<void>;
   onSave: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [draggedLanguage, setDraggedLanguage] = useState<DlsiteMetadataLanguage | null>(null);
   const draggedLanguageRef = useRef<DlsiteMetadataLanguage | null>(null);
   const finishDrag = () => {
@@ -1286,20 +1315,19 @@ function MetadataSettings({
           <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
             <RefreshCw className="h-4 w-4" />
           </span>
-          Metadata
+          {t("metadata.title")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <div>
-            <div className="font-medium">DLsite title and tag language priority</div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Stored DLsite editions are matched from left to right. Origin is always retained as the final fallback;
-              the request locale used during sync is independent from this display order.
-            </p>
+            <div className="font-medium">{t("metadata.priorityTitle")}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t("metadata.priorityDescription")}</p>
           </div>
           <fieldset className="grid gap-2 rounded-md border bg-background p-3">
-            <legend className="px-1 text-xs font-semibold text-muted-foreground">Preferred languages</legend>
+            <legend className="px-1 text-xs font-semibold text-muted-foreground">
+              {t("metadata.preferredLanguages")}
+            </legend>
             <div className="flex flex-wrap gap-x-4 gap-y-2">
               {dlsiteMetadataLanguageOptions
                 .filter((option) => option.value !== "origin")
@@ -1308,9 +1336,9 @@ function MetadataSettings({
                     <Checkbox
                       checked={languages.includes(option.value)}
                       onCheckedChange={(checked) => setLanguageIncluded(option.value, checked)}
-                      aria-label={`Prefer ${option.label} metadata`}
+                      aria-label={t("metadata.prefer", { language: t(option.labelKey) })}
                     />
-                    <span>{option.label}</span>
+                    <span>{t(option.labelKey)}</span>
                   </label>
                 ))}
             </div>
@@ -1318,7 +1346,7 @@ function MetadataSettings({
           <div
             className="app-scrollbar flex gap-2 overflow-x-auto pb-1"
             role="list"
-            aria-label="DLsite metadata language priority"
+            aria-label={maintenanceCopy("metadata.languagePriority")}
           >
             {languages.map((language, index) => {
               const option = dlsiteMetadataLanguageOptions.find((candidate) => candidate.value === language);
@@ -1336,7 +1364,7 @@ function MetadataSettings({
                     <button
                       type="button"
                       className="grid h-8 w-8 shrink-0 touch-none cursor-grab place-items-center rounded-md border bg-card text-muted-foreground active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
-                      aria-label={`Drag ${option.label}`}
+                      aria-label={t("metadata.drag", { language: t(option.labelKey) })}
                       disabled={language === "origin"}
                       onPointerDown={(event) => {
                         if (!event.isPrimary || event.button !== 0) return;
@@ -1370,22 +1398,24 @@ function MetadataSettings({
                       <GripVertical className="h-4 w-4" />
                     </button>
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold">{option.label}</div>
+                      <div className="truncate text-sm font-semibold">{t(option.labelKey)}</div>
                       <div className="mt-0.5 text-xs text-muted-foreground">
-                        {index === 0 ? "First choice" : `Fallback ${index + 1}`}
+                        {index === 0
+                          ? maintenanceCopy("metadata.firstChoice")
+                          : maintenanceCopy("metadata.fallbackChoice", { count: index + 1 })}
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center justify-between gap-2 border-t pt-2">
                     <span className="text-[11px] font-semibold uppercase text-muted-foreground">
-                      Priority {index + 1}
+                      {maintenanceCopy("metadata.priority", { count: index + 1 })}
                     </span>
                     <span className="flex gap-1">
                       <button
                         type="button"
                         className="grid h-7 w-7 place-items-center rounded-md border text-muted-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-40"
-                        aria-label={`Move ${option.label} earlier`}
-                        title={`Move ${option.label} earlier`}
+                        aria-label={t("metadata.moveEarlier", { language: t(option.labelKey) })}
+                        title={t("metadata.moveEarlier", { language: t(option.labelKey) })}
                         disabled={index === 0 || language === "origin"}
                         onClick={() => moveLanguage(index, -1)}
                       >
@@ -1394,8 +1424,8 @@ function MetadataSettings({
                       <button
                         type="button"
                         className="grid h-7 w-7 place-items-center rounded-md border text-muted-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-40"
-                        aria-label={`Move ${option.label} later`}
-                        title={`Move ${option.label} later`}
+                        aria-label={t("metadata.moveLater", { language: t(option.labelKey) })}
+                        title={t("metadata.moveLater", { language: t(option.labelKey) })}
                         disabled={index === languages.length - 1 || language === "origin"}
                         onClick={() => moveLanguage(index, 1)}
                       >
@@ -1411,10 +1441,9 @@ function MetadataSettings({
 
         <div className="space-y-2 border-t pt-4">
           <div>
-            <div className="font-medium">Remote source metadata requests</div>
+            <div className="font-medium">{maintenanceCopy("metadata.remoteRequests")}</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Sent as an Accept-Language request hint. A remote service may ignore it, fall back, or return
-              mixed-language metadata.
+              {maintenanceCopy("metadata.remoteRequestsDescription")}
             </p>
           </div>
           {remoteSources.length > 0 ? (
@@ -1441,7 +1470,7 @@ function MetadataSettings({
                       {!known && <option value={requestLanguage}>Custom ({requestLanguage})</option>}
                       {remoteRequestLanguageOptions.map((option) => (
                         <option key={option.value} value={option.value}>
-                          {option.label}
+                          {t(option.labelKey)}
                         </option>
                       ))}
                     </select>
@@ -1451,14 +1480,14 @@ function MetadataSettings({
             </div>
           ) : (
             <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
-              No remote sources configured.
+              {maintenanceCopy("metadata.noRemoteSources")}
             </div>
           )}
         </div>
 
         <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
           <label className="grid gap-1 text-sm">
-            <span className="font-medium">Catalog freshness days</span>
+            <span className="font-medium">{maintenanceCopy("metadata.catalogFreshnessDays")}</span>
             <input
               className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
               type="number"
@@ -1469,12 +1498,12 @@ function MetadataSettings({
             />
           </label>
           <div className="self-end rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
-            Circle and voice catalog status changes to Attention after {catalogFreshnessDays} days.
+            {maintenanceCopy("metadata.catalogFreshnessDescription", { count: catalogFreshnessDays })}
           </div>
         </div>
         <Button size="sm" onClick={() => void onSave()}>
           <Save className="h-4 w-4" />
-          Save metadata settings
+          {maintenanceCopy("metadata.save")}
         </Button>
       </CardContent>
     </Card>
@@ -1484,43 +1513,43 @@ function MetadataSettings({
 type RecommendationConfigKey = keyof RecommendationConfig;
 
 const recommendationLaneFields: Array<{ key: RecommendationConfigKey; label: string; min: number }> = [
-  { key: "unmarkedSlots", label: "Unmarked", min: 1 },
-  { key: "listeningSlots", label: "Listening", min: 0 },
-  { key: "wantSlots", label: "Want", min: 0 },
-  { key: "relistenSlots", label: "Relisten", min: 0 },
-  { key: "finishedSlots", label: "Finished", min: 0 },
-  { key: "shelvedSlots", label: "Shelved", min: 0 },
+  { key: "unmarkedSlots", label: "recommendation.unmarked", min: 1 },
+  { key: "listeningSlots", label: "recommendation.listening", min: 0 },
+  { key: "wantSlots", label: "recommendation.want", min: 0 },
+  { key: "relistenSlots", label: "recommendation.relisten", min: 0 },
+  { key: "finishedSlots", label: "recommendation.finished", min: 0 },
+  { key: "shelvedSlots", label: "recommendation.shelved", min: 0 },
 ];
 
 const recommendationPositiveFields: Array<{ key: RecommendationConfigKey; label: string; max: number }> = [
-  { key: "tagWeight", label: "Positive tag weight", max: 50 },
-  { key: "tagCap", label: "Positive tag cap", max: 100 },
-  { key: "voiceWeight", label: "Positive voice weight", max: 50 },
-  { key: "voiceCap", label: "Positive voice cap", max: 100 },
-  { key: "circleWeight", label: "Positive circle weight", max: 50 },
-  { key: "circleCap", label: "Positive circle cap", max: 100 },
-  { key: "favoriteBonus", label: "Favorite bonus", max: 50 },
+  { key: "tagWeight", label: "recommendation.positiveTagWeight", max: 50 },
+  { key: "tagCap", label: "recommendation.positiveTagCap", max: 100 },
+  { key: "voiceWeight", label: "recommendation.positiveVoiceWeight", max: 50 },
+  { key: "voiceCap", label: "recommendation.positiveVoiceCap", max: 100 },
+  { key: "circleWeight", label: "recommendation.positiveCircleWeight", max: 50 },
+  { key: "circleCap", label: "recommendation.positiveCircleCap", max: 100 },
+  { key: "favoriteBonus", label: "recommendation.favoriteBonus", max: 50 },
 ];
 
 const recommendationNegativeFields: Array<{ key: RecommendationConfigKey; label: string; min?: number; max: number }> =
   [
-    { key: "negativeMinEvidence", label: "Shelved evidence works", min: 1, max: 10 },
-    { key: "negativeTagWeight", label: "Shelved tag weight", max: 50 },
-    { key: "negativeTagCap", label: "Shelved tag cap", max: 100 },
-    { key: "negativeVoiceWeight", label: "Shelved voice weight", max: 50 },
-    { key: "negativeVoiceCap", label: "Shelved voice cap", max: 100 },
-    { key: "negativeCircleWeight", label: "Shelved circle weight", max: 50 },
-    { key: "negativeCircleCap", label: "Shelved circle cap", max: 100 },
-    { key: "negativeTotalCap", label: "Shelved total cap", max: 100 },
+    { key: "negativeMinEvidence", label: "recommendation.shelvedEvidenceWorks", min: 1, max: 10 },
+    { key: "negativeTagWeight", label: "recommendation.shelvedTagWeight", max: 50 },
+    { key: "negativeTagCap", label: "recommendation.shelvedTagCap", max: 100 },
+    { key: "negativeVoiceWeight", label: "recommendation.shelvedVoiceWeight", max: 50 },
+    { key: "negativeVoiceCap", label: "recommendation.shelvedVoiceCap", max: 100 },
+    { key: "negativeCircleWeight", label: "recommendation.shelvedCircleWeight", max: 50 },
+    { key: "negativeCircleCap", label: "recommendation.shelvedCircleCap", max: 100 },
+    { key: "negativeTotalCap", label: "recommendation.shelvedTotalCap", max: 100 },
   ];
 
 type RecommendationPreset = "balanced" | "familiar" | "exploratory" | "avoid_shelved";
 
 const recommendationPresetOptions: Array<{ key: RecommendationPreset; label: string; description: string }> = [
-  { key: "balanced", label: "Balanced", description: "Default affinity and variety" },
-  { key: "familiar", label: "Familiar", description: "Stronger tag, voice, and circle affinity" },
-  { key: "exploratory", label: "Exploratory", description: "More unmarked works and ordering variety" },
-  { key: "avoid_shelved", label: "Avoid shelved", description: "Stronger penalty for repeated shelved similarity" },
+  { key: "balanced", label: "recommendation.balanced", description: "recommendation.balancedDescription" },
+  { key: "familiar", label: "recommendation.familiar", description: "recommendation.familiarDescription" },
+  { key: "exploratory", label: "recommendation.exploratory", description: "recommendation.exploratoryDescription" },
+  { key: "avoid_shelved", label: "recommendation.avoidShelved", description: "recommendation.avoidShelvedDescription" },
 ];
 
 function RecommendationSettings({
@@ -1572,7 +1601,7 @@ function RecommendationSettings({
               <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
                 <Sparkles className="h-4 w-4" />
               </span>
-              Recommendation tuning
+              {maintenanceCopy("recommendation.tuning")}
             </span>
             <Button
               type="button"
@@ -1586,15 +1615,15 @@ function RecommendationSettings({
               }}
             >
               <RotateCcw className="h-4 w-4" />
-              Restore defaults
+              {maintenanceCopy("recommendation.restoreDefaults")}
             </Button>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           <section>
             <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold">Recommendation profile</h3>
-              {activePreset === "custom" && <Badge variant="outline">Custom</Badge>}
+              <h3 className="text-sm font-semibold">{maintenanceCopy("recommendation.profile")}</h3>
+              {activePreset === "custom" && <Badge variant="outline">{maintenanceCopy("recommendation.custom")}</Badge>}
             </div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {recommendationPresetOptions.map((preset) => (
@@ -1606,8 +1635,10 @@ function RecommendationSettings({
                   disabled={!defaults}
                   onClick={() => defaults && onConfigChange(recommendationPresetConfig(defaults, preset.key))}
                 >
-                  <span className="block text-sm font-semibold">{preset.label}</span>
-                  <span className="mt-0.5 block text-xs text-muted-foreground">{preset.description}</span>
+                  <span className="block text-sm font-semibold">{maintenanceCopy(preset.label)}</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    {maintenanceCopy(preset.description)}
+                  </span>
                 </button>
               ))}
             </div>
@@ -1615,21 +1646,21 @@ function RecommendationSettings({
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_220px]">
             <RecommendationRangeField
-              label="Badge threshold"
+              label={maintenanceCopy("recommendation.badgeThreshold")}
               value={threshold}
               min={1}
               max={100}
               onChange={onThresholdChange}
             />
             <RecommendationRangeField
-              label="Result variation"
+              label={maintenanceCopy("recommendation.resultVariation")}
               value={config.jitterAmplitude}
               min={0}
               max={10}
               onChange={(value) => updateField("jitterAmplitude", value)}
             />
             <RecommendationRangeField
-              label="Discovery boost"
+              label={maintenanceCopy("recommendation.discoveryBoost")}
               value={config.explorationAmplitude}
               min={0}
               max={40}
@@ -1637,23 +1668,27 @@ function RecommendationSettings({
             />
             <div className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2">
               <div>
-                <div className="text-xs text-muted-foreground">Example score</div>
+                <div className="text-xs text-muted-foreground">{maintenanceCopy("recommendation.exampleScore")}</div>
                 <div className="text-2xl font-semibold tabular-nums">{exampleScore}</div>
               </div>
               <Badge variant={exampleScore >= threshold ? "secondary" : "outline"}>
-                {exampleScore >= threshold ? "Badge shown" : "Below threshold"}
+                {exampleScore >= threshold
+                  ? maintenanceCopy("recommendation.badgeShown")
+                  : maintenanceCopy("recommendation.belowThreshold")}
               </Badge>
             </div>
           </div>
 
           <details className="rounded-md border bg-background">
-            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">Advanced scoring</summary>
+            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
+              {maintenanceCopy("recommendation.advancedScoring")}
+            </summary>
             <div className="space-y-5 border-t p-4">
-              <RecommendationFieldGroup title="Recommended mix slots">
+              <RecommendationFieldGroup title={maintenanceCopy("recommendation.mixSlots")}>
                 {recommendationLaneFields.map((field) => (
                   <RecommendationNumberField
                     key={field.key}
-                    label={field.label}
+                    label={maintenanceCopy(field.label)}
                     value={config[field.key]}
                     defaultValue={defaults?.[field.key]}
                     min={field.min}
@@ -1668,9 +1703,9 @@ function RecommendationSettings({
                 </p>
               </RecommendationFieldGroup>
 
-              <RecommendationFieldGroup title="Positive affinity per match and cap">
+              <RecommendationFieldGroup title={maintenanceCopy("recommendation.positiveAffinity")}>
                 <RecommendationNumberField
-                  label="Affinity baseline"
+                  label={maintenanceCopy("recommendation.affinityBaseline")}
                   value={config.affinityBase}
                   defaultValue={defaults?.affinityBase}
                   min={0}
@@ -1680,7 +1715,7 @@ function RecommendationSettings({
                 {recommendationPositiveFields.map((field) => (
                   <RecommendationNumberField
                     key={field.key}
-                    label={field.label}
+                    label={maintenanceCopy(field.label)}
                     value={config[field.key]}
                     defaultValue={defaults?.[field.key]}
                     min={0}
@@ -1690,11 +1725,11 @@ function RecommendationSettings({
                 ))}
               </RecommendationFieldGroup>
 
-              <RecommendationFieldGroup title="Shelved similarity penalty">
+              <RecommendationFieldGroup title={maintenanceCopy("recommendation.shelvedPenalty")}>
                 {recommendationNegativeFields.map((field) => (
                   <RecommendationNumberField
                     key={field.key}
-                    label={field.label}
+                    label={maintenanceCopy(field.label)}
                     value={config[field.key]}
                     defaultValue={defaults?.[field.key]}
                     min={field.min ?? 0}
@@ -1708,7 +1743,7 @@ function RecommendationSettings({
 
           <Button size="sm" onClick={() => void onSave()}>
             <Save className="h-4 w-4" />
-            Save recommendation settings
+            {maintenanceCopy("recommendation.save")}
           </Button>
         </CardContent>
       </Card>
@@ -1719,43 +1754,49 @@ function RecommendationSettings({
             <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
               <Gauge className="h-4 w-4" />
             </span>
-            Local telemetry
+            {maintenanceCopy("recommendation.localTelemetry")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            <StatusPanel icon={<Sparkles className="h-4 w-4" />} label="Impressions" value={String(impressions)} />
+            <StatusPanel
+              icon={<Sparkles className="h-4 w-4" />}
+              label={maintenanceCopy("recommendation.impressions")}
+              value={String(impressions)}
+            />
             <StatusPanel
               icon={<Folder className="h-4 w-4" />}
-              label="Opened"
+              label={maintenanceCopy("recommendation.opened")}
               value={String(telemetry?.eventCounts.open ?? 0)}
             />
             <StatusPanel
               icon={<PlayCircle className="h-4 w-4" />}
-              label="Played"
+              label={maintenanceCopy("recommendation.played")}
               value={String(telemetry?.eventCounts.play ?? 0)}
             />
             <StatusPanel
               icon={<ArrowUp className="h-4 w-4" />}
-              label="Positive marks"
+              label={maintenanceCopy("recommendation.positiveMarks")}
               value={String(telemetry?.eventCounts.positive_mark ?? 0)}
             />
             <StatusPanel
               icon={<ArrowDown className="h-4 w-4" />}
-              label="Shelved marks"
+              label={maintenanceCopy("recommendation.shelvedMarks")}
               value={String(telemetry?.eventCounts.paused_mark ?? 0)}
             />
             <StatusPanel
               icon={<RefreshCw className="h-4 w-4" />}
-              label="Reshuffles"
+              label={maintenanceCopy("recommendation.reshuffles")}
               value={String(telemetry?.eventCounts.reshuffle ?? 0)}
             />
           </div>
           <div>
             <div className="mb-3 flex items-center justify-between gap-3 text-sm">
-              <span className="font-medium">Impression affinity scores</span>
+              <span className="font-medium">{maintenanceCopy("recommendation.impressionScores")}</span>
               <span className="text-muted-foreground">
-                {telemetry ? `${telemetry.windowDays} days` : "Unavailable"}
+                {telemetry
+                  ? maintenanceCopy("days", { count: telemetry.windowDays })
+                  : maintenanceCopy("status.unavailable")}
               </span>
             </div>
             <div className="space-y-2">
@@ -1809,7 +1850,9 @@ function RecommendationNumberField({
       <span className="flex items-center justify-between gap-2 font-medium">
         <span>{label}</span>
         {defaultValue !== undefined && value !== defaultValue && (
-          <span className="text-[10px] font-normal text-muted-foreground">Default {defaultValue}</span>
+          <span className="text-[10px] font-normal text-muted-foreground">
+            {maintenanceCopy("recommendation.defaultValue", { value: defaultValue })}
+          </span>
         )}
       </span>
       <input
@@ -1928,13 +1971,13 @@ function LocalLibrarySettings({
             <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
               <Folder className="h-4 w-4" />
             </span>
-            Local library
+            {maintenanceCopy("library.local")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
             <label className="grid gap-1 text-sm">
-              <span className="font-medium">Scan depth</span>
+              <span className="font-medium">{maintenanceCopy("library.scanDepth")}</span>
               <input
                 className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
                 type="number"
@@ -1945,13 +1988,15 @@ function LocalLibrarySettings({
               />
             </label>
             <div className="flex flex-wrap items-end gap-2">
-              <Badge variant="secondary">{localSource?.displayName ?? "Main local library"}</Badge>
-              <Badge variant="outline">{localSource?.enabled ? "enabled" : "not scanned"}</Badge>
+              <Badge variant="secondary">{localSource?.displayName ?? maintenanceCopy("mainLocalLibrary")}</Badge>
+              <Badge variant="outline">
+                {localSource?.enabled ? maintenanceCopy("status.enabled") : maintenanceCopy("status.notScanned")}
+              </Badge>
             </div>
           </div>
           <Button size="sm" onClick={() => void onSave()}>
             <Save className="h-4 w-4" />
-            Save local settings
+            {maintenanceCopy("library.save")}
           </Button>
         </CardContent>
       </Card>
@@ -1987,27 +2032,28 @@ function RemoteSourcesSettings({
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
                 <Database className="h-4 w-4" />
               </span>
-              Remote sources
+              {maintenanceCopy("library.remoteSources")}
             </CardTitle>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Configure source endpoints without making them separate work libraries.
-            </p>
+            <p className="mt-2 text-sm text-muted-foreground">{maintenanceCopy("library.remoteSourcesDescription")}</p>
           </div>
           <Button variant="outline" size="sm" onClick={onCreateSource}>
             <Plus className="h-4 w-4" />
-            Add source
+            {maintenanceCopy("library.addSource")}
           </Button>
         </div>
         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-          <Badge variant="outline">{remoteSources.length} configured</Badge>
-          <Badge variant="outline">{enabledSources} enabled</Badge>
-          {attentionSources > 0 && <Badge variant="warning">{attentionSources} need attention</Badge>}
+          <Badge variant="outline">{maintenanceCopy("configuredCount", { count: remoteSources.length })}</Badge>
+          <Badge variant="outline">{maintenanceCopy("enabledCountShort", { count: enabledSources })}</Badge>
+          {attentionSources > 0 && (
+            <Badge variant="warning">{maintenanceCopy("needAttentionCount", { count: attentionSources })}</Badge>
+          )}
         </div>
       </CardHeader>
       <CardContent>
         <div className="grid gap-3 sm:grid-cols-[repeat(auto-fill,minmax(17rem,1fr))]">
           {remoteSources.map((source) => {
-            const endpoint = source.endpoint.baseUrl || source.endpoint.apiUrl || "No endpoint configured";
+            const endpoint =
+              source.endpoint.baseUrl || source.endpoint.apiUrl || maintenanceCopy("noEndpointConfigured");
             const health = source.enabled ? source.healthStatus || "unknown" : "disabled";
             const unhealthy = source.enabled && ["error", "unavailable"].includes(source.healthStatus);
             return (
@@ -2023,8 +2069,8 @@ function RemoteSourcesSettings({
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
-                      aria-label="Configure"
-                      title="Configure"
+                      aria-label={maintenanceCopy("library.configure")}
+                      title={maintenanceCopy("library.configure")}
                       onClick={() => onEditSource(source)}
                     >
                       <Settings2 className="h-4 w-4" />
@@ -2033,8 +2079,8 @@ function RemoteSourcesSettings({
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      aria-label="Delete source"
-                      title="Delete source"
+                      aria-label={maintenanceCopy("library.deleteSource")}
+                      title={maintenanceCopy("library.deleteSource")}
                       onClick={() => onDeleteSource(source)}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -2055,8 +2101,8 @@ function RemoteSourcesSettings({
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
-                      aria-label="Check health"
-                      title="Check health"
+                      aria-label={maintenanceCopy("library.checkHealth")}
+                      title={maintenanceCopy("library.checkHealth")}
                       onClick={() => void onCheckSource(source.id)}
                       disabled={!source.enabled || checkingSourceId !== null}
                     >
@@ -2067,13 +2113,17 @@ function RemoteSourcesSettings({
 
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
                   <div className="min-w-0">
-                    <div className="text-[11px] font-medium text-muted-foreground">Endpoint</div>
+                    <div className="text-[11px] font-medium text-muted-foreground">
+                      {maintenanceCopy("library.endpoint")}
+                    </div>
                     <div className="truncate text-xs" title={endpoint}>
                       {endpoint}
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-[11px] font-medium text-muted-foreground">Priority</div>
+                    <div className="text-[11px] font-medium text-muted-foreground">
+                      {maintenanceCopy("library.priority")}
+                    </div>
                     <div className="text-xs font-semibold">{source.priority}</div>
                   </div>
                 </div>
@@ -2187,7 +2237,7 @@ function CacheFetchSettings({
       setSelectedCleanupKeys(new Set());
       setConfirmCleanup(false);
     } catch (error) {
-      toast.notify(toastFromError(error, "Cache scan failed."));
+      toast.notify(toastFromError(error, maintenanceCopy("cache.scanFailed")));
     } finally {
       setIsScanning(false);
     }
@@ -2230,13 +2280,17 @@ function CacheFetchSettings({
       setSelectedCleanupKeys(new Set());
       setCleanupStatus(
         result.status === "succeeded"
-          ? "No eligible orphan files remain."
-          : `Cleanup queued in workflow run #${result.runId} (${result.queued} items).`,
+          ? maintenanceCopy("cache.noEligibleOrphans")
+          : maintenanceCopy("cache.cleanupQueued", { runId: result.runId, count: result.queued }),
       );
-      toast.success(result.status === "succeeded" ? "Cache is already clean." : "Cache cleanup queued.");
+      toast.success(
+        result.status === "succeeded"
+          ? maintenanceCopy("cache.alreadyClean")
+          : maintenanceCopy("cache.cleanupQueuedToast"),
+      );
       await scanCache();
     } catch (error) {
-      toast.notify(toastFromError(error, "Cache cleanup failed."));
+      toast.notify(toastFromError(error, maintenanceCopy("cache.cleanupFailed")));
     } finally {
       setIsCleaning(false);
     }
@@ -2253,13 +2307,18 @@ function CacheFetchSettings({
       setConfirmTranscodeCleanup(false);
       setTranscodeCleanupStatus(
         result.deletedFiles > 0
-          ? `Removed ${result.deletedFiles} segments and freed ${formatByteSize(result.freedBytes)}.`
-          : "The video transcode cache is already empty.",
+          ? maintenanceCopy("cache.transcodeRemoved", {
+              count: result.deletedFiles,
+              size: formatByteSize(result.freedBytes),
+            })
+          : maintenanceCopy("cache.transcodeEmpty"),
       );
-      toast.success(result.deletedFiles > 0 ? "Video transcode cache cleared." : "Video transcode cache is empty.");
+      toast.success(
+        result.deletedFiles > 0 ? maintenanceCopy("cache.transcodeCleared") : maintenanceCopy("cache.transcodeEmpty"),
+      );
       await scanCache();
     } catch (error) {
-      toast.notify(toastFromError(error, "Video transcode cache could not be cleared."));
+      toast.notify(toastFromError(error, maintenanceCopy("cache.transcodeClearFailed")));
     } finally {
       setIsClearingTranscodes(false);
     }
@@ -2273,26 +2332,29 @@ function CacheFetchSettings({
             <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
               <Settings2 className="h-4 w-4" />
             </span>
-            Configuration
+            {maintenanceCopy("cache.configuration")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="overflow-hidden rounded-md border">
-            <ConfigurationSectionLabel>Cache policy</ConfigurationSectionLabel>
+            <ConfigurationSectionLabel>{maintenanceCopy("cache.policy")}</ConfigurationSectionLabel>
             <ConfigurationRow
-              title="Cache remote playback"
-              description="Keep remotely played media on local storage for later playback."
+              title={maintenanceCopy("cache.remotePlayback")}
+              description={maintenanceCopy("cache.remotePlaybackDescription")}
             >
               <Switch
                 checked={cacheEnabled}
                 onCheckedChange={handleCacheEnabledChange}
-                aria-label="Cache remote playback"
+                aria-label={maintenanceCopy("cache.remotePlayback")}
               />
             </ConfigurationRow>
-            <ConfigurationRow title="Cache limit" description="Maximum total size of the managed playback cache.">
+            <ConfigurationRow
+              title={maintenanceCopy("cache.limit")}
+              description={maintenanceCopy("cache.limitDescription")}
+            >
               <div className="flex h-9 w-full overflow-hidden rounded-md border bg-card sm:w-44">
                 <input
-                  aria-label="Cache limit"
+                  aria-label={maintenanceCopy("cache.limit")}
                   className="min-w-0 flex-1 bg-transparent px-3 text-right outline-none focus:ring-2 focus:ring-ring"
                   type="number"
                   min={0}
@@ -2303,11 +2365,11 @@ function CacheFetchSettings({
               </div>
             </ConfigurationRow>
             <ConfigurationRow
-              title="Video transcode cache limit"
-              description="Maximum rebuildable HLS segment cache size. Old segments are removed least-recently-used."
+              title={maintenanceCopy("cache.transcodeLimit")}
+              description={maintenanceCopy("cache.transcodeLimitDescription")}
             >
               <ConfigurationNumberInput
-                label="Video transcode cache limit"
+                label={maintenanceCopy("cache.transcodeLimit")}
                 value={transcodeCacheLimitGb}
                 min={1}
                 max={4096}
@@ -2317,13 +2379,13 @@ function CacheFetchSettings({
               />
             </ConfigurationRow>
 
-            <ConfigurationSectionLabel>Transfer safety</ConfigurationSectionLabel>
+            <ConfigurationSectionLabel>{maintenanceCopy("cache.transferSafety")}</ConfigurationSectionLabel>
             <ConfigurationRow
-              title="Per-file download limit"
-              description="Hard limit applied while streaming Fetch, playback-cache, and other remote media files. Covers use a fixed 20 MiB limit."
+              title={maintenanceCopy("cache.downloadLimit")}
+              description={maintenanceCopy("cache.downloadLimitDescription")}
             >
               <ConfigurationNumberInput
-                label="Per-file download limit"
+                label={maintenanceCopy("cache.downloadLimit")}
                 value={remoteDownloadLimitGb}
                 min={1}
                 max={2048}
@@ -2333,11 +2395,11 @@ function CacheFetchSettings({
               />
             </ConfigurationRow>
             <ConfigurationRow
-              title="Failed staging retention"
-              description="Remove unpublished staging data after failed or cancelled Fetch runs reach this age."
+              title={maintenanceCopy("cache.stagingRetention")}
+              description={maintenanceCopy("cache.stagingRetentionDescription")}
             >
               <ConfigurationNumberInput
-                label="Failed staging retention"
+                label={maintenanceCopy("cache.stagingRetention")}
                 value={fetchStagingRetentionDays}
                 min={1}
                 max={365}
@@ -2347,13 +2409,13 @@ function CacheFetchSettings({
               />
             </ConfigurationRow>
 
-            <ConfigurationSectionLabel>Remote download pacing</ConfigurationSectionLabel>
+            <ConfigurationSectionLabel>{maintenanceCopy("cache.downloadPacing")}</ConfigurationSectionLabel>
             <ConfigurationRow
-              title="Base delay"
-              description="Minimum pause between remote media downloads. Work information and directory reads are not delayed."
+              title={maintenanceCopy("cache.baseDelay")}
+              description={maintenanceCopy("cache.baseDelayDescription")}
             >
               <ConfigurationNumberInput
-                label="Base delay"
+                label={maintenanceCopy("cache.baseDelay")}
                 value={remoteDelayBase}
                 min={0}
                 step={0.1}
@@ -2361,11 +2423,11 @@ function CacheFetchSettings({
               />
             </ConfigurationRow>
             <ConfigurationRow
-              title="Random delay"
-              description="Additional jitter used to avoid synchronized download bursts."
+              title={maintenanceCopy("cache.randomDelay")}
+              description={maintenanceCopy("cache.randomDelayDescription")}
             >
               <ConfigurationNumberInput
-                label="Random delay"
+                label={maintenanceCopy("cache.randomDelay")}
                 value={remoteDelayRandom}
                 min={0}
                 step={0.1}
@@ -2373,20 +2435,23 @@ function CacheFetchSettings({
               />
             </ConfigurationRow>
             <ConfigurationRow
-              title="Initial 429 backoff"
-              description="First retry delay after a remote rate-limit response."
+              title={maintenanceCopy("cache.initialBackoff")}
+              description={maintenanceCopy("cache.initialBackoffDescription")}
             >
               <ConfigurationNumberInput
-                label="Initial 429 backoff"
+                label={maintenanceCopy("cache.initialBackoff")}
                 value={remoteBackoff}
                 min={0}
                 step={1}
                 onChange={onRemoteBackoffChange}
               />
             </ConfigurationRow>
-            <ConfigurationRow title="Maximum backoff" description="Upper bound for repeated rate-limit retries.">
+            <ConfigurationRow
+              title={maintenanceCopy("cache.maximumBackoff")}
+              description={maintenanceCopy("cache.maximumBackoffDescription")}
+            >
               <ConfigurationNumberInput
-                label="Maximum backoff"
+                label={maintenanceCopy("cache.maximumBackoff")}
                 value={remoteMaxBackoff}
                 min={0}
                 step={1}
@@ -2397,36 +2462,40 @@ function CacheFetchSettings({
 
           <Button size="sm" onClick={() => void onSave()}>
             <Save className="h-4 w-4" />
-            Save configuration
+            {maintenanceCopy("cache.save")}
           </Button>
         </CardContent>
       </Card>
 
-      <Card role="region" aria-label="Video transcode cache">
+      <Card role="region" aria-label={maintenanceCopy("cache.transcodeCache")}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <PlayCircle className="h-4 w-4" />
-            Video transcode cache
+            {maintenanceCopy("cache.transcodeCache")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <CacheMetric
-              label="On disk"
+              label={maintenanceCopy("cache.onDisk")}
               value={overview ? formatByteSize(overview.transcode.bytes) : "--"}
-              detail={overview ? `${overview.transcode.files} segments` : "Scanning"}
+              detail={
+                overview
+                  ? maintenanceCopy("cache.segments", { count: overview.transcode.files })
+                  : maintenanceCopy("cache.scanning")
+              }
             />
             <CacheMetric
-              label="Limit"
+              label={maintenanceCopy("cache.limitShort")}
               value={overview ? formatByteSize(overview.transcode.limitBytes) : `${transcodeCacheLimitGb} GB`}
-              detail="Independent from media cache"
+              detail={maintenanceCopy("cache.independent")}
             />
             <CacheMetric
-              label="Available"
+              label={maintenanceCopy("cache.available")}
               value={
                 overview ? formatByteSize(Math.max(0, overview.transcode.limitBytes - overview.transcode.bytes)) : "--"
               }
-              detail="LRU-managed space"
+              detail={maintenanceCopy("cache.lruSpace")}
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -2438,14 +2507,14 @@ function CacheFetchSettings({
             >
               <Trash2 className="h-4 w-4" />
               {isClearingTranscodes
-                ? "Clearing..."
+                ? maintenanceCopy("cache.clearing")
                 : confirmTranscodeCleanup
-                  ? `Confirm clear (${overview?.transcode.files ?? 0} segments)`
-                  : "Clear video transcode cache"}
+                  ? maintenanceCopy("cache.confirmClear", { count: overview?.transcode.files ?? 0 })
+                  : maintenanceCopy("cache.clearTranscode")}
             </Button>
             {confirmTranscodeCleanup && (
               <Button variant="ghost" size="sm" onClick={() => setConfirmTranscodeCleanup(false)}>
-                Cancel
+                {maintenanceCopy("cancel")}
               </Button>
             )}
             {transcodeCleanupStatus && <span className="text-xs text-muted-foreground">{transcodeCleanupStatus}</span>}
@@ -2457,15 +2526,15 @@ function CacheFetchSettings({
         <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
           <CardTitle className="flex items-center gap-2 text-base">
             <HardDrive className="h-4 w-4" />
-            Managed media cache
+            {maintenanceCopy("cache.managedCache")}
           </CardTitle>
           <Button
             variant="outline"
             size="icon"
             onClick={() => void scanCache()}
             disabled={isScanning}
-            aria-label="Refresh cache overview"
-            title="Refresh cache overview"
+            aria-label={maintenanceCopy("cache.refreshOverview")}
+            title={maintenanceCopy("cache.refreshOverview")}
           >
             <RefreshCw className={`h-4 w-4 ${isScanning ? "animate-spin" : ""}`} />
           </Button>
@@ -2473,36 +2542,51 @@ function CacheFetchSettings({
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <CacheMetric
-              label="On disk"
+              label={maintenanceCopy("cache.onDisk")}
               value={overview ? formatByteSize(overview.mediaBytes) : "--"}
-              detail={overview ? `${overview.mediaFiles} files` : "Scanning"}
+              detail={
+                overview
+                  ? maintenanceCopy("cache.files", { count: overview.mediaFiles })
+                  : maintenanceCopy("cache.scanning")
+              }
             />
             <CacheMetric
-              label="Referenced"
+              label={maintenanceCopy("cache.referenced")}
               value={overview ? formatByteSize(overview.referencedBytes) : "--"}
-              detail={overview ? `${overview.referencedFiles} files` : "Scanning"}
+              detail={
+                overview
+                  ? maintenanceCopy("cache.files", { count: overview.referencedFiles })
+                  : maintenanceCopy("cache.scanning")
+              }
             />
             <CacheMetric
-              label="Eligible cleanup"
+              label={maintenanceCopy("cache.eligibleCleanup")}
               value={overview ? formatByteSize(overview.orphanBytes) : "--"}
-              detail={overview ? `${overview.orphanFiles} files` : "Scanning"}
+              detail={
+                overview
+                  ? maintenanceCopy("cache.files", { count: overview.orphanFiles })
+                  : maintenanceCopy("cache.scanning")
+              }
               tone={overview?.orphanFiles ? "warning" : "default"}
             />
             <CacheMetric
-              label="Protected"
+              label={maintenanceCopy("cache.protected")}
               value={overview ? String(overview.protectedFiles) : "--"}
-              detail="Files newer than 24 hours"
+              detail={maintenanceCopy("cache.protectedDescription")}
             />
           </div>
 
           {overview && (overview.missingReferences > 0 || overview.emptyDirectories > 0) && (
             <div className="flex flex-wrap gap-x-5 gap-y-1 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              <span>{overview.missingReferences} missing file references</span>
-              <span>{overview.emptyDirectories} empty directories</span>
+              <span>{maintenanceCopy("cache.missingReferences", { count: overview.missingReferences })}</span>
+              <span>{maintenanceCopy("cache.emptyDirectories", { count: overview.emptyDirectories })}</span>
             </div>
           )}
 
-          <div className="inline-flex rounded-md border bg-muted/40 p-1" aria-label="Cache cleanup mode">
+          <div
+            className="inline-flex rounded-md border bg-muted/40 p-1"
+            aria-label={maintenanceCopy("cache.cleanupMode")}
+          >
             <button
               className={`h-8 rounded px-3 text-sm font-medium ${cleanupMode === "orphans" ? "bg-background shadow-sm" : "text-muted-foreground"}`}
               aria-pressed={cleanupMode === "orphans"}
@@ -2514,7 +2598,7 @@ function CacheFetchSettings({
                 setConfirmCleanup(false);
               }}
             >
-              Orphan cache
+              {maintenanceCopy("cache.orphanCache")}
             </button>
             <button
               className={`h-8 rounded px-3 text-sm font-medium ${cleanupMode === "works" ? "bg-background shadow-sm" : "text-muted-foreground"}`}
@@ -2527,7 +2611,7 @@ function CacheFetchSettings({
                 setConfirmCleanup(false);
               }}
             >
-              Work cache
+              {maintenanceCopy("cache.workCache")}
             </button>
           </div>
 
@@ -2538,13 +2622,18 @@ function CacheFetchSettings({
                   checked={selectedCleanupKeys.size === cleanupRows.length}
                   indeterminate={selectedCleanupKeys.size > 0 && selectedCleanupKeys.size < cleanupRows.length}
                   onCheckedChange={(checked) => setCleanupRowsSelected(cleanupRows, checked)}
-                  aria-label={`Select all ${cleanupMode === "orphans" ? "orphan cache groups" : "work caches"}`}
+                  aria-label={maintenanceCopy("cache.selectAll", {
+                    target:
+                      cleanupMode === "orphans"
+                        ? maintenanceCopy("cache.orphanGroups")
+                        : maintenanceCopy("cache.workCaches"),
+                  })}
                 />
                 <span>
-                  {cleanupGroups.length} groups · {cleanupRows.length} works
+                  {maintenanceCopy("cache.groupSummary", { groups: cleanupGroups.length, works: cleanupRows.length })}
                 </span>
-                <span>Files</span>
-                <span>Size</span>
+                <span>{maintenanceCopy("cache.filesLabel")}</span>
+                <span>{maintenanceCopy("cache.size")}</span>
               </div>
               <div className="app-scroll max-h-[28rem] overflow-y-auto">
                 {cleanupGroups.map((group) => {
@@ -2559,13 +2648,15 @@ function CacheFetchSettings({
                           checked={selectedInGroup === group.rows.length}
                           indeterminate={selectedInGroup > 0 && selectedInGroup < group.rows.length}
                           onCheckedChange={(checked) => setCleanupRowsSelected(group.rows, checked)}
-                          aria-label={`Select all cache in ${group.label}`}
+                          aria-label={maintenanceCopy("cache.selectGroup", { group: group.label })}
                         />
                         <button
                           type="button"
                           className="flex min-w-0 items-center gap-2 text-left"
                           aria-expanded={expanded}
-                          aria-label={`${expanded ? "Collapse" : "Expand"} ${group.label} cache group`}
+                          aria-label={maintenanceCopy(expanded ? "cache.collapseGroup" : "cache.expandGroup", {
+                            group: group.label,
+                          })}
                           onClick={() => toggleCleanupGroup(group.key)}
                         >
                           <ChevronDown
@@ -2574,7 +2665,7 @@ function CacheFetchSettings({
                           <span className="min-w-0">
                             <span className="block truncate text-sm font-semibold">{group.label}</span>
                             <span className="block text-xs text-muted-foreground">
-                              {group.rows.length} {group.rows.length === 1 ? "work" : "works"}
+                              {maintenanceCopy("cache.workCount", { count: group.rows.length })}
                             </span>
                           </span>
                         </button>
@@ -2594,7 +2685,7 @@ function CacheFetchSettings({
                             <Checkbox
                               checked={selectedCleanupKeys.has(row.key)}
                               onCheckedChange={(checked) => setCleanupRowsSelected([row], checked)}
-                              aria-label={`Select cache for ${row.workCode}`}
+                              aria-label={maintenanceCopy("cache.selectWork", { code: row.workCode })}
                             />
                             <div className="min-w-0">
                               <div className="truncate font-medium">{row.workCode}</div>
@@ -2614,7 +2705,10 @@ function CacheFetchSettings({
                           className="w-full border-t bg-background px-3 py-2 text-xs font-medium text-primary hover:bg-muted/40"
                           onClick={() => showMoreCleanupRows(group.key)}
                         >
-                          Show {Math.min(CACHE_GROUP_PAGE_SIZE, remainingRows)} more in {group.label}
+                          {maintenanceCopy("cache.showMore", {
+                            count: Math.min(CACHE_GROUP_PAGE_SIZE, remainingRows),
+                            group: group.label,
+                          })}
                         </button>
                       )}
                     </section>
@@ -2627,8 +2721,8 @@ function CacheFetchSettings({
           {overview && cleanupRows.length === 0 && (
             <div className="rounded-md border bg-muted/30 px-3 py-4 text-sm text-muted-foreground">
               {cleanupMode === "orphans"
-                ? "No eligible orphan cache groups."
-                : "No referenced work cache is available."}
+                ? maintenanceCopy("cache.noEligibleGroups")
+                : maintenanceCopy("cache.noReferencedCache")}
             </div>
           )}
 
@@ -2641,14 +2735,19 @@ function CacheFetchSettings({
             >
               <Trash2 className="h-4 w-4" />
               {isCleaning
-                ? "Queueing cleanup..."
+                ? maintenanceCopy("cache.queueingCleanup")
                 : confirmCleanup
-                  ? `Confirm cleanup (${selectedCleanupRows.reduce((total, row) => total + row.files, 0)} files)`
-                  : `Clean selected ${cleanupMode === "orphans" ? "orphans" : "works"}`}
+                  ? maintenanceCopy("cache.confirmCleanup", {
+                      count: selectedCleanupRows.reduce((total, row) => total + row.files, 0),
+                    })
+                  : maintenanceCopy("cache.cleanSelected", {
+                      target:
+                        cleanupMode === "orphans" ? maintenanceCopy("cache.orphans") : maintenanceCopy("cache.works"),
+                    })}
             </Button>
             {confirmCleanup && (
               <Button variant="ghost" size="sm" onClick={() => setConfirmCleanup(false)}>
-                Cancel
+                {maintenanceCopy("cancel")}
               </Button>
             )}
             {cleanupStatus && <span className="text-xs text-muted-foreground">{cleanupStatus}</span>}
@@ -2671,16 +2770,14 @@ function CacheFetchSettings({
             aria-describedby="enable-cache-description"
           >
             <h3 id="enable-cache-title" className="text-base font-semibold">
-              Enable remote playback cache?
+              {maintenanceCopy("cache.enableTitle")}
             </h3>
             <p id="enable-cache-description" className="mt-2 text-sm text-muted-foreground">
-              Playback previews may perform a <code className="rounded bg-muted px-1">tracked</code> remote sync to
-              obtain remote media and directory information. This is not a Fetch and does not publish media into
-              <code className="ml-1 rounded bg-muted px-1">/data</code>.
+              {maintenanceCopy("cache.enableDescription")}
             </p>
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setConfirmEnableCache(false)}>
-                Cancel
+                {maintenanceCopy("cancel")}
               </Button>
               <Button
                 onClick={() => {
@@ -2689,7 +2786,7 @@ function CacheFetchSettings({
                 }}
               >
                 <Download className="h-4 w-4" />
-                Enable cache
+                {maintenanceCopy("cache.enable")}
               </Button>
             </div>
           </div>
@@ -2790,8 +2887,8 @@ function cacheCleanupRows(overview: CacheOverview | null, mode: "orphans" | "wor
         workId: row.workId,
         workCode: row.workCode,
         groupKey: `source:${row.sourceCode || row.sourceId || "unknown"}`,
-        groupLabel: row.sourceName.trim() || row.sourceCode.trim() || "Unknown source",
-        sourceLabel: row.sourceName.trim() || row.sourceCode.trim() || "Unknown source",
+        groupLabel: row.sourceName.trim() || row.sourceCode.trim() || maintenanceCopy("unknownSource"),
+        sourceLabel: row.sourceName.trim() || row.sourceCode.trim() || maintenanceCopy("unknownSource"),
         files: row.orphanFiles,
         bytes: row.orphanBytes,
       }));
@@ -2814,7 +2911,7 @@ function cacheCleanupRows(overview: CacheOverview | null, mode: "orphans" | "wor
     current.files += row.referencedFiles;
     current.bytes += row.referencedBytes;
     const sourceKey = row.sourceCode.trim() || String(row.sourceId || "unknown");
-    current.sources.set(sourceKey, row.sourceName.trim() || row.sourceCode.trim() || "Unknown source");
+    current.sources.set(sourceKey, row.sourceName.trim() || row.sourceCode.trim() || maintenanceCopy("unknownSource"));
     works.set(row.workId, current);
   }
   return Array.from(works.values())
@@ -2825,8 +2922,8 @@ function cacheCleanupRows(overview: CacheOverview | null, mode: "orphans" | "wor
       return {
         ...row,
         groupKey: singleSource ? `source:${singleSource[0]}` : "source:multiple",
-        groupLabel: singleSource?.[1] ?? "Multiple sources",
-        sourceLabel: singleSource?.[1] ?? `${sourceEntries.length} sources`,
+        groupLabel: singleSource?.[1] ?? maintenanceCopy("multipleSources"),
+        sourceLabel: singleSource?.[1] ?? maintenanceCopy("sourcesCount", { count: sourceEntries.length }),
       };
     });
 }
@@ -2917,7 +3014,7 @@ function SourceModal({
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm"
       role="dialog"
-      aria-label={editing ? "Edit remote source" : "Add remote source"}
+      aria-label={editing ? maintenanceCopy("library.editRemoteSource") : maintenanceCopy("library.addRemoteSource")}
       aria-modal="true"
       onMouseDown={onClose}
     >
@@ -2927,16 +3024,22 @@ function SourceModal({
       >
         <CardHeader>
           <CardTitle className="flex items-center justify-between gap-3">
-            <span>{editing ? "Edit remote source" : "Add remote source"}</span>
-            <Button variant="outline" size="icon" onClick={onClose} aria-label="Close source modal">
+            <span>
+              {editing ? maintenanceCopy("library.editRemoteSource") : maintenanceCopy("library.addRemoteSource")}
+            </span>
+            <Button variant="outline" size="icon" onClick={onClose} aria-label={maintenanceCopy("close")}>
               <X className="h-4 w-4" />
             </Button>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <TextInput label="Name" value={source.displayName} onChange={(value) => patch({ displayName: value })} />
+          <TextInput
+            label={maintenanceCopy("library.name")}
+            value={source.displayName}
+            onChange={(value) => patch({ displayName: value })}
+          />
           <label className="grid gap-1 text-sm">
-            <span className="font-medium">Source type</span>
+            <span className="font-medium">{maintenanceCopy("library.sourceType")}</span>
             <select
               className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
               value={source.sourceType}
@@ -2947,38 +3050,35 @@ function SourceModal({
               {legacyNumber178 && <option value={LEGACY_NUMBER178_SOURCE_TYPE}>{LEGACY_NUMBER178_SOURCE_TYPE}</option>}
             </select>
             {legacyNumber178 && (
-              <span className="text-xs text-muted-foreground">
-                Legacy adapter retained for this existing source. New number178 sources are disabled.
-              </span>
+              <span className="text-xs text-muted-foreground">{maintenanceCopy("library.legacyAdapter")}</span>
             )}
           </label>
           <TextInput
-            label="Public site URL"
+            label={maintenanceCopy("library.publicSiteUrl")}
             value={source.endpoint.baseUrl}
             onChange={(value) => patch({ endpoint: { ...source.endpoint, baseUrl: value } })}
           />
           <TextInput
-            label="API URL"
+            label={maintenanceCopy("library.apiUrl")}
             value={source.endpoint.apiUrl}
             onChange={(value) => patch({ endpoint: { ...source.endpoint, apiUrl: value } })}
           />
           <TextInput
-            label="Work URL template"
+            label={maintenanceCopy("library.workUrlTemplate")}
             value={source.endpoint.workUrlTemplate}
             onChange={(value) => patch({ endpoint: { ...source.endpoint, workUrlTemplate: value } })}
           />
           <TextInput
-            label="Fallback URL"
+            label={maintenanceCopy("library.fallbackUrl")}
             value={source.endpoint.fallbackUrl}
             onChange={(value) => patch({ endpoint: { ...source.endpoint, fallbackUrl: value } })}
           />
           <div className="grid gap-3 rounded-md border p-3 text-sm">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
-                <div className="font-medium">Restrict outbound hosts</div>
+                <div className="font-medium">{maintenanceCopy("library.restrictOutboundHosts")}</div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  When off, source-provided public HTTP(S) storage hosts are allowed after address and redirect
-                  validation.
+                  {maintenanceCopy("library.restrictOutboundDescription")}
                 </p>
               </div>
               <Switch
@@ -2986,13 +3086,13 @@ function SourceModal({
                 onCheckedChange={(restrictOutboundHosts) =>
                   patch({ endpoint: { ...source.endpoint, restrictOutboundHosts } })
                 }
-                aria-label="Restrict outbound hosts"
+                aria-label={maintenanceCopy("library.restrictOutboundHosts")}
               />
             </div>
             {source.endpoint.restrictOutboundHosts && (
               <div className="grid gap-3 border-t pt-3">
                 <div>
-                  <div className="text-xs font-medium">Always allowed configured origins</div>
+                  <div className="text-xs font-medium">{maintenanceCopy("library.allowedConfiguredOrigins")}</div>
                   {configuredOrigins.length > 0 ? (
                     <div className="mt-1 flex flex-wrap gap-1.5">
                       {configuredOrigins.map((origin) => (
@@ -3002,11 +3102,11 @@ function SourceModal({
                       ))}
                     </div>
                   ) : (
-                    <p className="mt-1 text-xs text-muted-foreground">Add a valid API, Public site, or Fallback URL.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{maintenanceCopy("library.addValidOrigin")}</p>
                   )}
                 </div>
                 <label className="grid gap-1.5">
-                  <span className="text-xs font-medium">Additional allowed hosts</span>
+                  <span className="text-xs font-medium">{maintenanceCopy("library.additionalAllowedHosts")}</span>
                   <textarea
                     className="min-h-28 resize-y rounded-md border bg-card px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring"
                     value={(source.endpoint.allowedHostPatterns ?? []).join("\n")}
@@ -3016,11 +3116,10 @@ function SourceModal({
                       })
                     }
                     placeholder={"cdn.example.invalid\n*.media.example.invalid"}
-                    aria-label="Additional allowed hosts"
+                    aria-label={maintenanceCopy("library.additionalAllowedHosts")}
                   />
                   <span className="text-xs text-muted-foreground">
-                    One hostname per line. A leading wildcard such as *.media.example.invalid allows subdomains, but not
-                    the parent hostname itself. Additional hosts must resolve only to public addresses.
+                    {maintenanceCopy("library.additionalAllowedDescription")}
                   </span>
                 </label>
               </div>
@@ -3028,7 +3127,7 @@ function SourceModal({
           </div>
           <div className="grid gap-3">
             <label className="grid gap-1 text-sm">
-              <span className="font-medium">Priority</span>
+              <span className="font-medium">{maintenanceCopy("library.priority")}</span>
               <input
                 className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
                 type="number"
@@ -3040,27 +3139,25 @@ function SourceModal({
           </div>
           <div className="grid gap-2 rounded-md border p-3 text-sm">
             <div className="flex items-center justify-between gap-3">
-              <span className="font-medium">Enabled</span>
+              <span className="font-medium">{maintenanceCopy("status.enabled")}</span>
               <Switch
                 checked={source.enabled}
                 onCheckedChange={(enabled) => patch({ enabled })}
-                aria-label="Enable source"
+                aria-label={maintenanceCopy("library.enableSource")}
               />
             </div>
           </div>
           <div className="rounded-md border bg-muted/20 p-3">
-            <ReadonlyField label="Save path preview" value={sourceSavePreview} />
-            <p className="mt-2 text-xs text-muted-foreground">
-              Example for RJ00000000. Resolved storage paths are managed in Paths.
-            </p>
+            <ReadonlyField label={maintenanceCopy("library.savePathPreview")} value={sourceSavePreview} />
+            <p className="mt-2 text-xs text-muted-foreground">{maintenanceCopy("library.savePathDescription")}</p>
           </div>
           <div className="flex gap-2">
             <Button size="sm" className="flex-1" disabled={!source.displayName.trim()} onClick={() => void onSave()}>
               <Save className="h-4 w-4" />
-              Save
+              {maintenanceCopy("save")}
             </Button>
             <Button variant="outline" size="sm" onClick={onClose}>
-              Cancel
+              {maintenanceCopy("cancel")}
             </Button>
           </div>
         </CardContent>
@@ -3092,7 +3189,7 @@ function SourceDeleteDialog({
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm"
       role="dialog"
-      aria-label="Delete remote source"
+      aria-label={maintenanceCopy("library.deleteRemoteSource")}
       aria-modal="true"
       onMouseDown={() => {
         if (!deleting) onClose();
@@ -3104,7 +3201,7 @@ function SourceDeleteDialog({
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-destructive/10 text-destructive">
               <Trash2 className="h-4 w-4" />
             </span>
-            Delete remote source
+            {maintenanceCopy("library.deleteRemoteSource")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -3112,17 +3209,15 @@ function SourceDeleteDialog({
             <div className="truncate text-sm font-semibold" title={source.displayName}>
               {source.displayName}
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              This removes the source configuration. Managed media cache is not cleaned automatically.
-            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{maintenanceCopy("library.deleteSourceDescription")}</p>
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="outline" size="sm" disabled={deleting} onClick={onClose}>
-              Cancel
+              {maintenanceCopy("cancel")}
             </Button>
             <Button variant="destructive" size="sm" disabled={deleting} onClick={() => void onConfirm()}>
               <Trash2 className="h-4 w-4" />
-              {deleting ? "Deleting..." : "Delete source"}
+              {deleting ? maintenanceCopy("library.deleting") : maintenanceCopy("library.deleteSource")}
             </Button>
           </div>
         </CardContent>
@@ -3139,28 +3234,26 @@ function PathsSettings({ settings, remoteSources }: { settings: AppSettings | nu
           <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
             <Server className="h-4 w-4" />
           </span>
-          Storage paths
+          {maintenanceCopy("paths.title")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          These resolved paths are read-only previews derived from runtime defaults and existing source configuration.
-        </p>
+        <p className="text-sm text-muted-foreground">{maintenanceCopy("paths.description")}</p>
         <div className="grid gap-3 md:grid-cols-2">
-          <ReadonlyField label="Local data root" value={settings?.dataRoot ?? ""} />
-          <ReadonlyField label="Cache root" value={settings?.cacheRoot ?? ""} />
+          <ReadonlyField label={maintenanceCopy("paths.localDataRoot")} value={settings?.dataRoot ?? ""} />
+          <ReadonlyField label={maintenanceCopy("paths.cacheRoot")} value={settings?.cacheRoot ?? ""} />
           <ReadonlyField
-            label="Remote cache path preview"
+            label={maintenanceCopy("paths.remoteCachePreview")}
             value={storagePathPreview(`${settings?.cacheRoot ?? ""}${DEFAULT_CACHE_SUFFIX}`, "source")}
           />
           <ReadonlyField
-            label="Remote save path preview"
+            label={maintenanceCopy("paths.remoteSavePreview")}
             value={storagePathPreview(settings?.remoteSaveTemplate ?? `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`, "source")}
           />
         </div>
         {remoteSources.length > 0 && (
           <section className="border-t pt-4">
-            <h3 className="mb-3 text-sm font-semibold">Source save path previews</h3>
+            <h3 className="mb-3 text-sm font-semibold">{maintenanceCopy("paths.sourceSavePreviews")}</h3>
             <div className="grid gap-3 md:grid-cols-2">
               {remoteSources.map((source) => (
                 <ReadonlyField
@@ -3190,7 +3283,7 @@ function StatusPanel({ icon, label, value }: { icon: ReactNode; label: string; v
       </div>
       <div className="min-w-0">
         <div className="text-xs text-muted-foreground">{label}</div>
-        <div className="truncate text-sm font-semibold">{value || "Unknown"}</div>
+        <div className="truncate text-sm font-semibold">{value || maintenanceCopy("unknown")}</div>
       </div>
     </div>
   );

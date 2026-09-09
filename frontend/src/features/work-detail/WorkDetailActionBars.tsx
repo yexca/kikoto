@@ -22,6 +22,7 @@ import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import type { RemoteSourceAvailability } from "@/features/work-detail/source/sourceContextModel";
 import type { ListeningStatus } from "@/lib/api";
+import { useTranslation } from "react-i18next";
 
 export type DetailActionMode = "local" | "tracked_unforked" | "tracked_forked" | "remote_source";
 
@@ -37,7 +38,7 @@ export function WorkIdentityActionBar({
   onSync,
   onEditMetadata,
   metadataSyncBusy = false,
-  syncLabel = "Refresh metadata",
+  syncLabel,
 }: {
   busy: boolean;
   listeningStatus: ListeningStatus;
@@ -52,6 +53,7 @@ export function WorkIdentityActionBar({
   metadataSyncBusy?: boolean;
   syncLabel?: string;
 }) {
+  const { t } = useTranslation();
   const [manageMenuOpen, setManageMenuOpen] = useState(false);
   const manageMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -63,10 +65,10 @@ export function WorkIdentityActionBar({
         className="h-8"
         disabled={busy || !onResume}
         onClick={onResume}
-        title={onResume ? "Resume saved playback" : "No unfinished playback"}
+        title={onResume ? t("detailActions.resumeSavedPlayback") : t("detailActions.noUnfinishedPlayback")}
       >
         <Clock3 className="h-4 w-4" />
-        Resume
+        {t("detailActions.resume")}
       </Button>
       <WorkCardQuickMarkButton value={listeningStatus} disabled={busy} showLabel responsiveLabel onChange={onMark} />
       <WorkCardListButton
@@ -84,13 +86,13 @@ export function WorkIdentityActionBar({
             variant="outline"
             size="sm"
             className="relative h-8 w-8 px-0 sm:w-auto sm:pl-3 sm:pr-7"
-            title="Manage metadata"
-            aria-label="Manage metadata"
+            title={t("detailActions.manageMetadata")}
+            aria-label={t("detailActions.manageMetadata")}
             disabled={busy}
             onClick={() => setManageMenuOpen((open) => !open)}
           >
             <Database className="h-4 w-4" />
-            <span className="hidden sm:inline">Metadata</span>
+            <span className="hidden sm:inline">{t("detailActions.metadata")}</span>
             <ChevronDown className="absolute right-2 hidden h-3 w-3 sm:block" />
           </Button>
           <AnchoredPopover
@@ -110,7 +112,11 @@ export function WorkIdentityActionBar({
                 }}
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${metadataSyncBusy ? "animate-spin" : ""}`} />
-                <span>{metadataSyncBusy ? "Metadata refresh running" : syncLabel}</span>
+                <span>
+                  {metadataSyncBusy
+                    ? t("detailActions.metadataRefreshRunning")
+                    : (syncLabel ?? t("detailActions.refreshMetadata"))}
+                </span>
               </button>
             )}
             {onEditMetadata && (
@@ -122,7 +128,7 @@ export function WorkIdentityActionBar({
                 }}
               >
                 <Edit3 className="h-3.5 w-3.5" />
-                <span>Edit metadata</span>
+                <span>{t("detailActions.editMetadata")}</span>
               </button>
             )}
           </AnchoredPopover>
@@ -177,6 +183,7 @@ export function MediaContextActionBar({
   onManageFiles?: () => void;
   onRefreshLocalFiles?: () => void;
 }) {
+  const { t } = useTranslation();
   const [optionsOpen, setOptionsOpen] = useState(false);
   const optionsAnchorRef = useRef<HTMLDivElement | null>(null);
   const optionsButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -196,7 +203,8 @@ export function MediaContextActionBar({
     sourceDetailsLoading,
   );
   const SourceIcon = mode === "local" ? HardDrive : mode === "remote_source" ? Cloud : GitFork;
-  const displaySourceLabel = sourceLabel || remoteSourceName || "Source";
+  const displaySourceLabel = sourceLabel || remoteSourceName || t("detailActions.source");
+  const sourceActionsLabel = t("detailActions.sourceActionsFor", { source: displaySourceLabel });
 
   useEffect(() => {
     setOptionsOpen(false);
@@ -258,15 +266,15 @@ export function MediaContextActionBar({
         size="sm"
         className="relative h-8 w-8 px-0 sm:w-auto sm:min-w-[6.5rem] sm:pl-3 sm:pr-7"
         disabled={busy || !hasOptions}
-        aria-label={`Source actions for ${displaySourceLabel}`}
+        aria-label={sourceActionsLabel}
         aria-haspopup="menu"
         aria-expanded={optionsOpen}
         aria-controls={optionsOpen ? optionsMenuId : undefined}
-        title={hasOptions ? `Source actions for ${displaySourceLabel}` : `No actions for ${displaySourceLabel}`}
+        title={hasOptions ? sourceActionsLabel : t("detailActions.noActionsFor", { source: displaySourceLabel })}
         onClick={() => setOptionsOpen((open) => !open)}
       >
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <SourceIcon className="h-4 w-4" />}
-        <span className="hidden sm:inline">Source</span>
+        <span className="hidden sm:inline">{t("detailActions.source")}</span>
         <ChevronDown className="absolute right-2 hidden h-3 w-3 sm:block" />
       </Button>
       <AnchoredPopover
@@ -281,7 +289,7 @@ export function MediaContextActionBar({
           id={optionsMenuId}
           ref={optionsMenuRef}
           role="menu"
-          aria-label="Selected source options"
+          aria-label={t("detailActions.selectedSourceOptions")}
           onKeyDown={handleMenuKeyDown}
         >
           <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
@@ -291,14 +299,14 @@ export function MediaContextActionBar({
           {sourceDetailsLoading && (
             <div className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground" role="status">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Loading source details
+              {t("detailActions.loadingSourceDetails")}
             </div>
           )}
           {mode === "remote_source" && onTrack && (
             <SourceOptionButton
               icon={<BookmarkPlus className="h-4 w-4" />}
-              label="Track"
-              detail={trackDisabled ? trackDisabledReason || "Already tracked" : undefined}
+              label={t("detailActions.track")}
+              detail={trackDisabled ? trackDisabledReason || t("detailActions.alreadyTracked") : undefined}
               disabled={trackDisabled}
               onClick={() => runOption(onTrack)}
             />
@@ -306,10 +314,12 @@ export function MediaContextActionBar({
           {hasForkOptions && (
             <div className="border-t px-1 pt-1 first:border-t-0">
               <div className="px-1 py-1 text-[11px] font-medium uppercase text-muted-foreground">
-                {mode === "tracked_forked" ? "Switch fork" : "Fork from"}
+                {mode === "tracked_forked" ? t("detailActions.switchFork") : t("detailActions.forkFrom")}
               </div>
               {forkSources.length === 0 ? (
-                <div className="px-2 py-2 text-xs text-muted-foreground">No fork source available</div>
+                <div className="px-2 py-2 text-xs text-muted-foreground">
+                  {t("detailActions.noForkSourceAvailable")}
+                </div>
               ) : (
                 forkSources.map((remote) => {
                   const active = currentForkSource?.source.id === remote.source.id;
@@ -332,8 +342,10 @@ export function MediaContextActionBar({
               <div className="my-1 border-t" />
               <SourceOptionButton
                 icon={<Unlink className="h-4 w-4" />}
-                label={untrackConfirming ? "Confirm untrack" : "Untrack"}
-                detail={untrackConfirming ? "Click again to confirm" : "Stop tracking this source"}
+                label={untrackConfirming ? t("detailActions.confirmUntrack") : t("detailActions.untrack")}
+                detail={
+                  untrackConfirming ? t("detailActions.clickAgainToConfirm") : t("detailActions.stopTrackingSource")
+                }
                 tone="danger"
                 disabled={untrackDisabled}
                 onClick={() => {
@@ -350,7 +362,7 @@ export function MediaContextActionBar({
           {onFetch && (
             <SourceOptionButton
               icon={<HardDriveDownload className="h-4 w-4" />}
-              label="Fetch"
+              label={t("detailActions.fetch")}
               onClick={() => runOption(onFetch)}
             />
           )}
@@ -362,26 +374,26 @@ export function MediaContextActionBar({
               href={remoteSourceWorkUrl}
               target="_blank"
               rel="noopener noreferrer"
-              title={`Open on ${remoteSourceName || "source"}`}
+              title={t("detailActions.openOriginOn", { source: remoteSourceName || t("detailActions.source") })}
               onClick={closeOptions}
             >
               <ExternalLink className="h-4 w-4" />
-              <span className="min-w-0 flex-1 truncate">Open origin</span>
+              <span className="min-w-0 flex-1 truncate">{t("detailActions.openOrigin")}</span>
             </a>
           )}
           {(onManageCache || onManageFiles || onRefreshLocalFiles) && <div className="my-1 border-t" />}
           {onRefreshLocalFiles && (
             <SourceOptionButton
               icon={<RefreshCw className="h-4 w-4" />}
-              label="Refresh local files"
+              label={t("detailActions.refreshLocalFiles")}
               onClick={() => runOption(onRefreshLocalFiles)}
             />
           )}
           {onManageCache && (
             <SourceOptionButton
               icon={<HardDrive className="h-4 w-4" />}
-              label="Manage cache"
-              detail={manageCacheDisabled ? "No cached files" : undefined}
+              label={t("detailActions.manageCache")}
+              detail={manageCacheDisabled ? t("detailActions.noCachedFiles") : undefined}
               disabled={manageCacheDisabled}
               onClick={() => runOption(onManageCache)}
             />
@@ -389,7 +401,7 @@ export function MediaContextActionBar({
           {onManageFiles && (
             <SourceOptionButton
               icon={<Trash2 className="h-4 w-4" />}
-              label="Manage files"
+              label={t("detailActions.manageFiles")}
               tone="danger"
               onClick={() => runOption(onManageFiles)}
             />

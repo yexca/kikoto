@@ -2,8 +2,10 @@ import { Gauge, ListMusic, Moon, SkipBack, SkipForward } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useTranslation } from "react-i18next";
 
 export function NowPlayingPage() {
+  const { t } = useTranslation();
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
       <Card>
@@ -11,17 +13,17 @@ export function NowPlayingPage() {
           <div className="grid aspect-square place-items-center rounded-lg bg-primary text-4xl font-bold text-primary-foreground">
             RJ
           </div>
-          <h2 className="mt-4 text-lg font-semibold">Current track title</h2>
-          <p className="text-sm text-muted-foreground">Sample work stub</p>
+          <h2 className="mt-4 text-lg font-semibold">{t("player.currentTrackTitle")}</h2>
+          <p className="text-sm text-muted-foreground">{t("player.sampleWork")}</p>
           <div className="mt-4 h-2 rounded-full bg-muted">
             <div className="h-2 w-1/3 rounded-full bg-primary" />
           </div>
           <div className="mt-4 flex justify-center gap-2">
-            <Button variant="outline" size="icon" aria-label="Previous">
+            <Button variant="outline" size="icon" aria-label={t("player.previous")}>
               <SkipBack className="h-4 w-4" />
             </Button>
-            <Button aria-label="Play">Play</Button>
-            <Button variant="outline" size="icon" aria-label="Next">
+            <Button aria-label={t("player.play")}>{t("player.play")}</Button>
+            <Button variant="outline" size="icon" aria-label={t("player.next")}>
               <SkipForward className="h-4 w-4" />
             </Button>
           </div>
@@ -30,9 +32,9 @@ export function NowPlayingPage() {
 
       <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-1">
         {[
-          { icon: Gauge, title: "Playback speed", value: "1.0x" },
-          { icon: Moon, title: "Sleep timer", value: "Off" },
-          { icon: ListMusic, title: "Queue", value: "3 pending tracks" },
+          { icon: Gauge, title: t("player.playbackSpeed"), value: "1.0x" },
+          { icon: Moon, title: t("player.sleepTimer"), value: t("player.off") },
+          { icon: ListMusic, title: t("player.queue"), value: t("player.queued", { count: 3 }) },
         ].map((item) => (
           <Card key={item.title}>
             <CardContent className="flex min-h-24 items-center gap-3 p-4">
