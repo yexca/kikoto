@@ -1071,7 +1071,9 @@ test("activity reports Fetch byte progress without guessing unknown totals", asy
   await expect(progressbar).toHaveAttribute("aria-valuetext", "64.0 MB of 128.0 MB");
 });
 
-test("blocked Fetch origins stay in Review with source recovery actions and bounded layout", async ({ page }) => {
+test("@desktop blocked Fetch origins stay in Review with source recovery actions and bounded layout", async ({
+  page,
+}) => {
   const blockedOrigin = "https://media.example.invalid:443";
   const longLegacyURL = `https://media.example.invalid/${"nested-path/".repeat(120)}track.mp3?token=synthetic`;
   const reviewRun = {
@@ -1408,7 +1410,7 @@ test("opening an appearance floating select keeps fixed mobile surfaces stable",
   expect(Math.abs(footerAfter!.width - footerBefore!.width)).toBeLessThan(0.5);
 });
 
-test("desktop header popovers render above page content", async ({ page }) => {
+test("@desktop header popovers render above page content", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockWorkflows(page);
   await page.goto("/workflows");
@@ -1427,7 +1429,7 @@ test("desktop header popovers render above page content", async ({ page }) => {
   await expect(page.locator("html")).toHaveClass(/dark/);
 });
 
-test("settings theme styles and colors change independently and persist", async ({ page }) => {
+test("@desktop settings theme styles and colors change independently and persist", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockWorkflows(page);
   await page.goto("/settings");

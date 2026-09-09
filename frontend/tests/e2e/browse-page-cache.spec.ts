@@ -287,7 +287,7 @@ async function mockBrowsePages(page: Page, requests: Record<string, number>, opt
   };
 }
 
-test("keeps visited browse workspaces mounted for the current user and server", async ({ page }) => {
+test("@desktop keeps visited browse workspaces mounted for the current user and server", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const requests: Record<string, number> = {};
   await mockBrowsePages(page, requests);
@@ -327,8 +327,11 @@ test("keeps only the two most recent browse workspaces mounted on mobile", async
 
   const tabs = page.locator("footer");
   await tabs.getByRole("button", { name: "Circles", exact: true }).click();
+  await expect.poll(() => (requests.circles ?? 0) > 0).toBe(true);
   await tabs.getByRole("button", { name: "Voice Actors", exact: true }).click();
+  await expect.poll(() => (requests.voices ?? 0) > 0).toBe(true);
   await tabs.getByRole("button", { name: "Favorites", exact: true }).click();
+  await expect.poll(() => (requests["favorite-works"] ?? 0) > 0).toBe(true);
 
   await expect(page.locator("[data-browse-page]")).toHaveCount(2);
   await expect(page.locator('[data-browse-page="voice-actors"]')).toHaveCount(1);

@@ -2563,7 +2563,7 @@ test("anonymous quick marks show an actionable toast above protected mobile cont
   await expect(page.getByRole("heading", { name: "Sign in to Kikoto" })).toBeVisible();
 });
 
-test("desktop toasts stay in the upper-right corner", async ({ page }) => {
+test("@desktop toasts stay in the upper-right corner", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockApplication(page);
   await page.goto("/");
@@ -3369,7 +3369,7 @@ test("inline lyrics adapt visible rows to height and keep the active line center
   await expect(lyricsSelect).toHaveText("translation.srt");
 });
 
-test("desktop player keeps speed and compatibility playback under More", async ({ page }) => {
+test("@desktop player keeps speed and compatibility playback under More", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockApplication(page);
   await seedPlayer(page);
@@ -3434,7 +3434,7 @@ test("desktop player keeps speed and compatibility playback under More", async (
   await expect(page.getByRole("button", { name: "Play", exact: true })).not.toHaveClass(/shadow-primary/);
 });
 
-test("player scrolls overflowing metadata and closes queue options outside the menu", async ({ page }) => {
+test("@desktop player scrolls overflowing metadata and closes queue options outside the menu", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockApplication(page);
   const longTitle = "A deliberately long track title that cannot fit inside the compact player or queue row";
@@ -3508,7 +3508,7 @@ test("player scrolls overflowing metadata and closes queue options outside the m
   expect(compactKeyframes[1].offset).toBeGreaterThan(0);
 });
 
-test("compact player supports relative drag seeking and global playback shortcuts", async ({ page }) => {
+test("@desktop compact player supports relative drag seeking and global playback shortcuts", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockApplication(page);
   await seedPlayer(page);
@@ -3563,7 +3563,7 @@ test("compact player supports relative drag seeking and global playback shortcut
   expect(await readScopedPlayerState(page, playerProgressStorageBaseKey)).toBeNull();
 });
 
-test("desktop mini player delays hiding hover actions", async ({ page }) => {
+test("@desktop mini player delays hiding hover actions", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockApplication(page);
   await seedPlayer(page);
@@ -3583,7 +3583,7 @@ test("desktop mini player delays hiding hover actions", async ({ page }) => {
   await expect.poll(() => compactAction.evaluate((element) => getComputedStyle(element).opacity)).toBe("0");
 });
 
-test("desktop player restores the user's compact dock preference", async ({ page }) => {
+test("@desktop player restores the user's compact dock preference", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockApplication(page);
   await seedPlayer(page);
@@ -3595,7 +3595,7 @@ test("desktop player restores the user's compact dock preference", async ({ page
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.playerMode)).toBe("compact");
 });
 
-test("desktop compact player reserves the final directory action area", async ({ page }) => {
+test("@desktop compact player reserves the final directory action area", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const mediaItems = Array.from({ length: 24 }, (_, index) =>
     mediaFixture(index + 1, `track-${index + 1}.mp3`, `RJ00000000/track-${index + 1}.mp3`, "audio"),

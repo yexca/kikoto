@@ -1,4 +1,4 @@
-import { devices, expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const nodeTypes = [
   nodeType(
@@ -168,15 +168,7 @@ test("custom workflow detail exposes its single input for repeated quick preview
   expect(runRequests[1]).toEqual({ mode: "preview", inputs: { circle: "RG076544" } });
 });
 
-test.describe("desktop workflow composition", () => {
-  test.use({
-    viewport: devices["Desktop Chrome"].viewport,
-    userAgent: devices["Desktop Chrome"].userAgent,
-    deviceScaleFactor: devices["Desktop Chrome"].deviceScaleFactor,
-    isMobile: devices["Desktop Chrome"].isMobile,
-    hasTouch: devices["Desktop Chrome"].hasTouch,
-  });
-
+test.describe("@desktop workflow composition", () => {
   test("composes a typed DAG and launches a slash command through preview", async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const runRequests: unknown[] = [];
@@ -303,7 +295,7 @@ test("mobile composer keeps node creation, canvas, inspector, and actions in bou
   await page.screenshot({ path: testInfo.outputPath("workflow-composer-mobile.png"), fullPage: true });
 });
 
-test("commits node positions after dragging and connects ports from either direction", async ({ page }) => {
+test("@desktop commits node positions after dragging and connects ports from either direction", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const savedDefinitions: Array<{ definitionJson: string }> = [];
   await mockComposer(page, [], { onDefinitionSaved: (payload) => savedDefinitions.push(payload) });

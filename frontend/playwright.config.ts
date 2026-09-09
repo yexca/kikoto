@@ -1,12 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const externalBaseURL = process.env.PLAYWRIGHT_BASE_URL;
+const desktopTest = /@desktop/;
 
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 30_000,
   expect: { timeout: 15_000 },
-  workers: process.env.CI ? 2 : undefined,
+  workers: process.env.CI ? 2 : process.platform === "win32" ? 4 : undefined,
   fullyParallel: false,
   reporter: [["list"]],
   use: {
@@ -26,6 +27,12 @@ export default defineConfig({
     {
       name: "mobile-chromium",
       use: { ...devices["Pixel 7"] },
+      grepInvert: desktopTest,
+    },
+    {
+      name: "desktop-chromium",
+      use: { ...devices["Desktop Chrome"] },
+      grep: desktopTest,
     },
   ],
 });
