@@ -48,6 +48,6 @@ DLsite 仍然是已知作品的元資料提供者。 Kikoto 不處理 DLsite
 
 ## 相關文檔
 
-- [庫](Library.md)
+- [庫](library.md)
 - [工作細節](work-detail.md)
 - [Data model](../../architecture/data-model.md)

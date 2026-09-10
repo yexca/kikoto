@@ -130,7 +130,7 @@ DLsite、元資料和來源折疊為圖示。
 
 ## 相關文檔
 
-- [庫](Library.md)
+- [庫](library.md)
 - [來源](sources.md)
 - [重播](playback.md)
 - [來源存在](../../architecture/source-presence.md)
