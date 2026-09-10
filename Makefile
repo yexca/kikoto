@@ -138,6 +138,7 @@ frontend-e2e: frontend-playwright-install
 
 ifeq ($(OS),Windows_NT)
 android-test: frontend-install
+	cd frontend && $(NPM) run cap:sync
 	cd frontend/android && gradlew.bat --dependency-verification strict testDebugUnitTest
 
 android-build: frontend-install
@@ -145,6 +146,7 @@ android-build: frontend-install
 	cd frontend/android && gradlew.bat --dependency-verification strict assembleDebug
 else
 android-test: frontend-install
+	cd frontend && $(NPM) run cap:sync
 	cd frontend/android && chmod +x ./gradlew && ./gradlew --dependency-verification strict testDebugUnitTest
 
 android-build: frontend-install
