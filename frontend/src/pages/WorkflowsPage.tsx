@@ -519,12 +519,16 @@ export function WorkflowsPage({
 
   useEffect(() => {
     if (isWorkflowMetaLoading) return;
-    const nextID = selectedDefinition?.id ?? null;
+    const linkedCode = new URLSearchParams(window.location.search).get("workflow")?.trim();
+    const linkedDefinition = linkedCode
+      ? visibleDefinitions.find((definition) => definition.code === linkedCode)
+      : undefined;
+    const nextID = linkedDefinition?.id ?? selectedDefinition?.id ?? null;
     if (selectedDefinitionId !== nextID) {
       setSelectedDefinitionID(nextID);
     }
     storePositiveInt(definitionSelectionKey, nextID);
-  }, [isWorkflowMetaLoading, selectedDefinition?.id, selectedDefinitionId]);
+  }, [definitionSelectionKey, isWorkflowMetaLoading, selectedDefinition?.id, selectedDefinitionId, visibleDefinitions]);
 
   const selectDefinition = (definition: WorkflowDefinition) => {
     setSelectedDefinitionID(definition.id);

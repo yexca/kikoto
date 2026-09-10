@@ -762,7 +762,7 @@ test("@desktop voice detail keeps full action labels and inline work controls", 
   await expect(advancedAction.locator("svg circle")).toHaveCount(0);
   await expect(advancedAction.locator("svg line")).toHaveCount(9);
   await expect(page.getByRole("button", { name: "Open voice work options" })).toBeHidden();
-  await expect(page.getByLabel("Work filter")).toBeVisible();
+  await expect(page.getByLabel("Voice work availability")).toBeVisible();
   await expect(page.getByRole("button", { name: /^Columns:/ })).toBeVisible();
 });
 
@@ -923,7 +923,7 @@ test("@desktop circle detail keeps a full-width compact summary and source-aware
   const actions = summary.getByRole("group", { name: "Circle actions" });
   await expect(actions.getByText("Favorite", { exact: true })).toBeVisible();
   await expect(actions.getByText("Retry metadata", { exact: true })).toBeVisible();
-  await expect(actions.getByText("Refresh circle", { exact: true })).toBeVisible();
+  await expect(actions.getByRole("button", { name: "Refresh circle", exact: true })).toBeVisible();
   await expect(actions.getByText("Advanced", { exact: true })).toBeVisible();
   await expect(actions.getByText("DLsite", { exact: true })).toHaveCount(0);
   const dlsiteLink = summary.getByRole("link", { name: "Open DLsite for RG09999" });

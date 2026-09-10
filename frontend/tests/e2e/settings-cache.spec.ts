@@ -623,7 +623,7 @@ test("remote source deep links open the requested source configuration", async (
   const sourceDialog = page.getByRole("dialog", { name: "Edit remote source" });
   await expect(sourceDialog).toBeVisible();
   await expect(sourceDialog.getByLabel("Name")).toHaveValue("Example Remote");
-  await sourceDialog.getByRole("button", { name: "Close source modal" }).click();
+  await sourceDialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(page).toHaveURL(/\/maintenance\?tab=library$/);
 });
 

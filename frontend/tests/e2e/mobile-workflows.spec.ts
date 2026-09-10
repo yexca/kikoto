@@ -822,6 +822,16 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await expect(page).toHaveURL(/\/activity\?view=completed&run=51/);
 });
 
+test("workflow deep links do not override a later definition tab selection", async ({ page }) => {
+  await mockWorkflows(page);
+  await page.goto("/workflows?workflow=availability_watch");
+
+  await expect(page.getByRole("heading", { name: "Availability Watch", exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: /Custom/ }).click();
+  await expect(page.getByRole("tab", { name: /Custom/ })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: "Custom draft", exact: true })).toBeVisible();
+});
+
 test("local scan folder watcher exposes incremental and full scan modes", async ({ page }) => {
   const triggerPayloads: Array<Record<string, unknown>> = [];
   await mockWorkflows(page);

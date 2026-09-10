@@ -250,7 +250,7 @@ test("@desktop favorites keeps type and search left with work controls on the ri
   await expect(page.getByRole("button", { name: "Sort: Marked or added" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Columns: Auto" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Items per page: 24" })).toBeVisible();
-  const desktopListTab = page.getByRole("button", { name: /All Favorites/ });
+  const desktopListTab = page.getByLabel("Favorite lists").getByRole("button", { name: /All Favorites/ });
   const desktopListTabBox = await desktopListTab.boundingBox();
   expect(desktopListTabBox).not.toBeNull();
   expect(desktopListTabBox!.height).toBe(32);
@@ -267,30 +267,30 @@ test("@desktop favorites keeps type and search left with work controls on the ri
 
   await page.getByRole("button", { name: "Favorite list options", exact: true }).click();
   await page.getByRole("menuitem", { name: "Edit lists", exact: true }).click();
-  const listManager = page.getByRole("dialog", { name: "Edit favorite lists" });
+  const listManager = page.getByRole("dialog", { name: "Edit lists" });
   await expect(listManager).toBeVisible();
-  await expect(listManager.getByRole("button", { name: "Rename Study" })).toBeVisible();
+  await expect(listManager.getByRole("button", { name: "Rename: Study" })).toBeVisible();
 
-  await listManager.getByRole("button", { name: "Rename Study" }).click();
-  const renameForm = listManager.getByRole("form", { name: "Rename Study" });
+  await listManager.getByRole("button", { name: "Rename: Study" }).click();
+  const renameForm = listManager.getByRole("form", { name: "Rename list: Study" });
   await expect(renameForm).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(1);
   await renameForm.getByLabel("Name").fill("Focus");
   await renameForm.getByLabel("Description").fill("Deep listening");
   await renameForm.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(listManager.getByRole("button", { name: "Rename Focus" })).toBeVisible();
+  await expect(listManager.getByRole("button", { name: "Rename: Focus" })).toBeVisible();
 
   await listManager.getByRole("button", { name: "Add list", exact: true }).click();
-  const addForm = listManager.getByRole("form", { name: "Add favorite list" });
+  const addForm = listManager.getByRole("form", { name: "Add list" });
   await expect(addForm).toBeVisible();
-  await expect(listManager.getByRole("listitem").last().getByRole("form", { name: "Add favorite list" })).toBeVisible();
+  await expect(listManager.getByRole("listitem").last().getByRole("form", { name: "Add list" })).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(1);
   await addForm.getByLabel("Name").fill("Example List");
   await addForm.getByLabel("Description").fill("Example description");
   await addForm.getByRole("button", { name: "Add list", exact: true }).click();
-  await expect(listManager.getByRole("button", { name: "Rename Example List" })).toBeVisible();
+  await expect(listManager.getByRole("button", { name: "Rename: Example List" })).toBeVisible();
 
-  const deleteListButton = listManager.getByRole("button", { name: "Delete Example List" });
+  const deleteListButton = listManager.getByRole("button", { name: "Delete: Example List" });
   await deleteListButton.click();
   const deleteConfirmation = page.getByRole("alertdialog", { name: "Delete list?" });
   await expect(deleteConfirmation).toBeVisible();
@@ -306,7 +306,7 @@ test("@desktop favorites keeps type and search left with work controls on the ri
     .getByRole("button", { name: "Delete", exact: true })
     .click();
   await expect(page.getByRole("alertdialog", { name: "Delete list?" })).toHaveCount(0);
-  await expect(listManager.getByRole("button", { name: "Rename Example List" })).toHaveCount(0);
+  await expect(listManager.getByRole("button", { name: "Rename: Example List" })).toHaveCount(0);
   await expect(listManager).toBeVisible();
 
   await page.getByRole("button", { name: "Close favorite list editor" }).click();
