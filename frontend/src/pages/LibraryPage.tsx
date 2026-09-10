@@ -11140,7 +11140,7 @@ function ConfirmMediaBatchDeleteModal({
                 ? forgetWork
                   ? i18n.t("libraryDetail.reviewDeletionForget")
                   : i18n.t("libraryDetail.reviewFileDeletion")
-                : i18n.t("libraryDetail.finalConfirmation")}
+                : i18n.t("workflowPage.finalConfirmation")}
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
               {step === 1

@@ -186,9 +186,9 @@ test.describe("@desktop workflow composition", () => {
       .evaluateAll((paths) => paths.map((path) => getComputedStyle(path).stroke));
     expect(previewEdgeColors).toContain("rgb(139, 92, 246)");
     await expect(previewCanvas.locator(".react-flow__controls-button")).toHaveCount(4);
-    await expect(previewCanvas.getByLabel("Workflow minimap")).toHaveCount(0);
-    await previewCanvas.getByRole("button", { name: "Show minimap" }).click();
-    await expect(previewCanvas.getByLabel("Workflow minimap")).toBeVisible();
+    await expect(previewCanvas.getByRole("img", { name: "Workflow minimap", exact: true })).toHaveCount(0);
+    await previewCanvas.getByRole("button", { name: "Workflow minimap", exact: true }).click();
+    await expect(previewCanvas.getByRole("img", { name: "Workflow minimap", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Edit workflow" }).click();
     const composer = page.getByRole("dialog", { name: "Edit workflow" });
     await expect(composer).toBeVisible();
@@ -217,8 +217,8 @@ test.describe("@desktop workflow composition", () => {
     await composer.getByRole("button", { name: "Open node library" }).click();
     const canvasBoundsWithBothPanels = await composerCanvas.boundingBox();
     expect(canvasBoundsWithBothPanels?.width).toBe(canvasBoundsBeforePanels?.width);
-    await viewportControls.getByRole("button", { name: "Show minimap" }).click();
-    const miniMap = composer.getByLabel("Workflow minimap");
+    await viewportControls.getByRole("button", { name: "Workflow minimap", exact: true }).click();
+    const miniMap = composer.getByRole("img", { name: "Workflow minimap", exact: true });
     await expect(miniMap).toBeVisible();
     const miniMapBounds = await miniMap.boundingBox();
     const controlsBoundsWithInspector = await viewportControls.boundingBox();

@@ -630,15 +630,21 @@ test("mobile notification center opens fetched works and dismisses individual re
   await page.goto("/workflows");
 
   await page.getByRole("button", { name: "Notifications", exact: true }).click();
-  await expect(page.getByText("Fetch completed for RJ00000002.", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Workflow update for RJ00000002. Workflow #71 · succeeded", exact: true }),
+  ).toBeVisible();
   const dismissRequest = page.waitForRequest(
     (request) => request.method() === "DELETE" && request.url().endsWith("/api/notifications/1"),
   );
   await page.getByRole("button", { name: "Dismiss notification for RJ00000002" }).click();
   await dismissRequest;
-  await expect(page.getByText("Fetch completed for RJ00000002.", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Workflow update for RJ00000002. Workflow #71 · succeeded", exact: true }),
+  ).toHaveCount(0);
 
-  await page.getByText("Fetch failed for RJ00000003.", { exact: true }).click();
+  await page
+    .getByRole("button", { name: "Workflow update for RJ00000003. Workflow #72 · failed", exact: true })
+    .click();
   await expect(page).toHaveURL(/\/RJ00000003\?view=local$/);
 });
 
@@ -710,21 +716,35 @@ test("notification center paginates and clears only succeeded remote notificatio
   const notificationButton = page.getByRole("button", { name: "Notifications", exact: true });
   await notificationButton.click();
   const dialog = page.getByRole("dialog", { name: "Notifications" });
-  await expect(dialog.getByText("Fetch completed for RJ00000002.", { exact: true })).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Workflow update for RJ00000002. Workflow #71 · succeeded", exact: true }),
+  ).toBeVisible();
   await expect(dialog.getByText("Page 1 of 2", { exact: true })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Clear succeeded", exact: true })).toBeEnabled();
 
   await dialog.getByRole("button", { name: "Next page", exact: true }).click();
   await expect(dialog.getByText("Page 2 of 2", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("Review action remains available.", { exact: true })).toBeVisible();
+  await expect(
+    dialog.getByRole("button", {
+      name: "Workflow update for RJ00000004. Workflow #73 · succeeded",
+      exact: true,
+    }),
+  ).toBeVisible();
 
   const clearRequest = page.waitForRequest(
     (request) => request.method() === "POST" && request.url().endsWith("/api/notifications/clear-succeeded"),
   );
   await dialog.getByRole("button", { name: "Clear succeeded", exact: true }).click();
   await clearRequest;
-  await expect(dialog.getByText("Review action remains available.", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("Fetch completed for RJ00000002.", { exact: true })).toHaveCount(0);
+  await expect(
+    dialog.getByRole("button", {
+      name: "Workflow update for RJ00000004. Workflow #73 · succeeded",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Workflow update for RJ00000002. Workflow #71 · succeeded", exact: true }),
+  ).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "Clear succeeded", exact: true })).toBeDisabled();
 });
 
@@ -780,7 +800,7 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await page.getByRole("button", { name: "Configure", exact: true }).click();
   configureDialog = page.getByRole("dialog", { name: "Configure DLsite popular collection" });
   dlsiteTagField = configureDialog.getByTestId("dlsite-popular-tag-template-field");
-  await configureDialog.getByRole("button", { name: "Year", exact: true }).click();
+  await configureDialog.getByRole("button", { name: "Annual", exact: true }).click();
   await expect(configureDialog.getByRole("switch", { name: "Only works released within 30 days" })).toHaveCount(0);
   await configureDialog.getByLabel("Ranking year").selectOption("2025");
   await expect(dlsiteTagField.getByLabel("Tag template", { exact: true })).toHaveValue("{date}_DL_year_{year}_popular");
@@ -907,8 +927,10 @@ test("legacy custom definitions remain read-only while showing their linear conn
   await expect(legacyCanvas.locator(".react-flow__edge")).toHaveCount(1);
   await expect(legacyCanvas.locator(".react-flow__handle")).toHaveCount(2);
   await expect(legacyCanvas.locator(".react-flow__controls-button")).toHaveCount(4);
-  await legacyCanvas.getByRole("button", { name: "Show minimap" }).click();
-  await expect(legacyCanvas.getByLabel("Workflow minimap")).toBeVisible();
+  const legacyMinimapToggle = legacyCanvas.getByRole("button", { name: "Workflow minimap", exact: true });
+  await expect(legacyMinimapToggle).toHaveAttribute("aria-pressed", "false");
+  await legacyMinimapToggle.click();
+  await expect(legacyCanvas.getByRole("img", { name: "Workflow minimap", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit workflow", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Preview / Run", exact: true })).toHaveCount(0);
 });
@@ -947,7 +969,7 @@ test("availability watch shares pools, schedules checks, and handles ready works
   expect(updates).toContainEqual({ action: "track", sourceId: 8, excludeExtensions: ["wav", "flac"] });
   expect(updates).toContainEqual({ run: true });
 
-  await pools.getByRole("button", { name: "Edit", exact: true }).click();
+  await pools.getByRole("button", { name: "Edit node", exact: true }).click();
   const monitoringDialog = page.getByRole("dialog", { name: "Edit monitoring pool" });
   const works = monitoringDialog.getByRole("textbox", { name: "Works" });
   await works.fill("RJ00000000\nRJ00000001\nRJ00000002");
@@ -994,7 +1016,12 @@ test("availability notifications open the shared ready pool", async ({ page }) =
   await page.goto("/workflows");
 
   await page.getByRole("button", { name: "Notifications", exact: true }).click();
-  await page.getByText("RJ00000001 is now available.", { exact: true }).click();
+  await page
+    .getByRole("button", {
+      name: "Availability watch is ready for RJ00000001. Workflow #91 · succeeded",
+      exact: true,
+    })
+    .click();
   await expect(page).toHaveURL(/\/workflows\?workflow=availability_watch&dialog=ready&run=91$/);
   await expect(page.getByRole("heading", { name: "Availability Watch", exact: true })).toBeVisible();
   const readyDialog = page.getByRole("dialog", { name: "Ready works (1)" });
@@ -1278,7 +1305,7 @@ test("remote popular collection requires an explicit source and queues configure
 
   const configureDialog = page.getByRole("dialog", { name: "Configure remote popular collection" });
   await expect(configureDialog.getByLabel("Remote source")).toHaveValue("8");
-  await configureDialog.getByRole("button", { name: "fetch", exact: true }).click();
+  await configureDialog.getByRole("button", { name: "Fetch", exact: true }).click();
   await configureDialog.getByLabel("Work limit").selectOption("50");
   const remoteTagField = configureDialog.getByTestId("remote-popular-tag-template-field");
   await expect(remoteTagField.getByRole("button", { name: /\{remote_name\}.*Remote_Test/ })).toBeVisible();

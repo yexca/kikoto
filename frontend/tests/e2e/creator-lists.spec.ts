@@ -407,7 +407,7 @@ test("circle list uses compact responsive cards and shared pagination", async ({
   await expect(page.getByText("2 unavailable", { exact: true })).toHaveCount(0);
   await expect(page.getByText("5 works", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Circle totals" })).toHaveCount(0);
-  await expect(page.getByText("Page 1 · 30 circles", { exact: true })).toBeVisible();
+  await expect(page.getByText("Page 1 · 30 Circles", { exact: true })).toBeVisible();
   await expect(page.getByRole("group", { name: "Circle pages controls" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Circle pages" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -448,7 +448,7 @@ test("voice list keeps latest work, tags, and availability visible on mobile", a
       .filter({ hasText: /^Soft$/ })
       .first(),
   ).toBeVisible();
-  await expect(page.getByText("Page 1 · 30 voice actors", { exact: true })).toBeVisible();
+  await expect(page.getByText("Page 1 · 30 Voice actors", { exact: true })).toBeVisible();
   await expect(page.getByRole("group", { name: "Voice actor pages controls" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Voice actor pages" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -522,13 +522,13 @@ test("creator detail does not auto-refresh and exposes First pull for a new cata
   await circleLoaded;
   const circleSummary = page.getByRole("region", { name: "Circle summary" });
   await expect(circleSummary.getByText("Never", { exact: true })).toBeVisible();
-  await expect(circleSummary.getByRole("button", { name: "First pull circle catalog" })).toBeVisible();
+  await expect(circleSummary.getByRole("button", { name: "First pull" })).toBeVisible();
   expect(legacyAutoRefreshRequests).toEqual([]);
 
   const circlePullRequest = page.waitForRequest(
     (request) => new URL(request.url()).pathname === "/api/circles/RG09999/refresh" && request.method() === "POST",
   );
-  await circleSummary.getByRole("button", { name: "First pull circle catalog" }).click();
+  await circleSummary.getByRole("button", { name: "First pull" }).click();
   await circlePullRequest;
   expect(refreshRequests).toContainEqual({
     path: "/api/circles/RG09999/refresh",
@@ -541,14 +541,14 @@ test("creator detail does not auto-refresh and exposes First pull for a new cata
   await page.goto("/voices/7");
   await voiceCatalogLoaded;
   await expect(page.getByText("Never", { exact: true }).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "First pull voice catalog" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "First pull" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect(legacyAutoRefreshRequests).toEqual([]);
 
   const voicePullRequest = page.waitForRequest(
     (request) => new URL(request.url()).pathname === "/api/voices/7/catalog/refresh" && request.method() === "POST",
   );
-  await page.getByRole("button", { name: "First pull voice catalog" }).click();
+  await page.getByRole("button", { name: "First pull" }).click();
   await voicePullRequest;
   expect(refreshRequests).toContainEqual({
     path: "/api/voices/7/catalog/refresh",
@@ -676,8 +676,8 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   );
   expect(actionMetrics.map((metric) => metric.label)).toEqual([
     "Add favorite",
-    "Retry voice metadata",
-    "Refresh voice remote sources",
+    "Retry metadata",
+    "Refresh remote",
     "Open advanced refresh actions",
   ]);
   expect(actionMetrics.every((metric) => metric.height >= 44 && metric.width >= 44)).toBe(true);
@@ -728,7 +728,7 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
     const payload = request.postDataJSON() as { scope?: string; mode?: string };
     return payload.scope === "metadata" && payload.mode === "incremental";
   });
-  await actions.getByRole("button", { name: "Retry voice metadata" }).click();
+  await actions.getByRole("button", { name: "Retry metadata" }).click();
   expect((await metadataRefreshRequest).postDataJSON()).toEqual({ scope: "metadata", mode: "incremental" });
 
   await page.getByRole("button", { name: "Open voice work options" }).click();
@@ -775,12 +775,11 @@ test("circle detail keeps availability and primary actions compact on mobile", a
   await expect(summary.getByText("Available 1", { exact: true })).toBeVisible();
   const actions = summary.getByRole("group", { name: "Circle actions" });
   await expect(actions.getByRole("button", { name: "Remove favorite" })).toBeVisible();
-  await expect(actions.getByRole("button", { name: "Retry circle metadata" })).toBeVisible();
+  await expect(actions.getByRole("button", { name: "Retry metadata" })).toBeVisible();
   await expect(actions.getByRole("button", { name: "Refresh circle" })).toBeVisible();
   await expect(actions.getByText("Metadata", { exact: true })).toBeVisible();
   await expect(actions.getByText("Retry metadata", { exact: true })).toBeHidden();
-  await expect(actions.getByText("Circle", { exact: true })).toBeVisible();
-  await expect(actions.getByText("Refresh circle", { exact: true })).toBeHidden();
+  await expect(actions.getByRole("button", { name: "Refresh circle", exact: true })).toBeVisible();
   await expect(actions.getByText("Favorite", { exact: true })).toBeHidden();
   await expect(actions.getByText("Advanced", { exact: true })).toBeHidden();
   const dlsiteLink = summary.getByRole("link", { name: "Open DLsite for RG09999" });
@@ -815,7 +814,7 @@ test("circle detail keeps availability and primary actions compact on mobile", a
   );
   expect(actionMetrics.map((metric) => metric.label)).toEqual([
     "Remove favorite",
-    "Retry circle metadata",
+    "Retry metadata",
     "Refresh circle",
     "Open advanced refresh actions",
   ]);
@@ -849,7 +848,7 @@ test("mobile circle detail keeps the work surface visible and moves secondary co
   await page.keyboard.press("Escape");
   await expect(refreshDialog).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Open catalog options" }).click();
+  await page.getByRole("button", { name: "Catalog options" }).click();
   const optionsDialog = page.getByRole("dialog", { name: "Catalog options" });
   await expect(optionsDialog).toBeVisible();
   await expect(optionsDialog.getByRole("button", { name: "1 column" })).toHaveText("1");
@@ -862,7 +861,7 @@ test("mobile circle detail keeps the work surface visible and moves secondary co
   await expect(optionsDialog.getByRole("button", { name: "2 columns" })).toHaveAttribute("aria-pressed", "true");
   await optionsDialog.getByRole("button", { name: "Select works" }).click();
   await expect(optionsDialog).toHaveCount(0);
-  await page.getByRole("button", { name: "Open catalog options" }).click();
+  await page.getByRole("button", { name: "Catalog options" }).click();
   await expect(
     page.getByRole("dialog", { name: "Catalog options" }).getByRole("button", { name: "Exit selection mode" }),
   ).toBeVisible();
@@ -882,17 +881,16 @@ test("mobile circle series combines its selected row, DLsite link, and sheet con
   await mockCreatorDetails(page, { circleSeries });
   await page.goto("/circles/RG09999/series/SRI0999999999");
 
-  const chooseSeries = page.getByRole("button", { name: "Choose circle series" }).first();
+  const chooseSeries = page.getByRole("button", { name: "Series", exact: true }).first();
   await expect(chooseSeries).toContainText("Example Circle Series");
-  await expect(page.getByRole("link", { name: "Open DLsite series" })).toHaveAttribute(
-    "href",
-    "https://example.invalid/series/example-circle-series",
-  );
-  await expect(page.getByRole("button", { name: "Expand circle series" })).toBeVisible();
+  await expect(
+    page.locator('a[aria-label="Open DLsite"][href="https://example.invalid/series/example-circle-series"]'),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Series", exact: true })).toHaveCount(2);
   await expect(page.getByText("Second Circle Series", { exact: true }).filter({ visible: true })).toHaveCount(0);
 
   await chooseSeries.click();
-  const seriesDialog = page.getByRole("dialog", { name: "Circle series" });
+  const seriesDialog = page.getByRole("dialog", { name: "Series" });
   await expect(seriesDialog).toBeVisible();
   await expect(seriesDialog.getByText("All series", { exact: true })).toBeVisible();
   await expect(seriesDialog.getByText("Example Circle Series", { exact: true })).toBeVisible();
@@ -901,9 +899,7 @@ test("mobile circle series combines its selected row, DLsite link, and sheet con
   await seriesDialog.getByText("Second Circle Series", { exact: true }).click();
   await expect(seriesDialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/circles\/RG09999\/series\/SRI0888888888$/);
-  await expect(page.getByRole("button", { name: "Choose circle series" }).first()).toContainText(
-    "Second Circle Series",
-  );
+  await expect(page.getByRole("button", { name: "Series", exact: true }).first()).toContainText("Second Circle Series");
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
@@ -936,16 +932,11 @@ test("@desktop circle detail keeps a full-width compact summary and source-aware
   const actionOrder = await actions
     .locator(":scope > :is(button, a)")
     .evaluateAll((elements) => elements.map((element) => element.getAttribute("aria-label")));
-  expect(actionOrder).toEqual([
-    "Remove favorite",
-    "Retry circle metadata",
-    "Refresh circle",
-    "Open advanced refresh actions",
-  ]);
+  expect(actionOrder).toEqual(["Remove favorite", "Retry metadata", "Refresh circle", "Open advanced refresh actions"]);
 
   await page.getByLabel("Catalog availability filter").selectOption("unavailable");
   await expect(summary.getByText("Available 1", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open catalog options" })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Catalog options" })).toBeHidden();
   await expect(page.getByRole("button", { name: "Open advanced refresh actions" })).toBeVisible();
 });
 

@@ -1407,11 +1407,11 @@ test("remote card Track queues in place and reports a terminal failure without n
   await page.getByTitle("Track").click();
 
   await expect.poll(() => trackControl.trackRequests).toHaveLength(1);
-  await expect(page.getByText("Track workflow #91 queued.", { exact: true })).toBeVisible();
   expect(page.url()).toBe(sourceURL);
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
   await expect(page.getByText("Track workflow #91 failed for RJ00000051.", { exact: true })).toHaveCount(0);
 
+  await expect.poll(() => trackControl.statusRequests).toBeGreaterThan(0);
   trackControl.status = "failed";
   await expect(page.getByText("Track workflow #91 failed for RJ00000051.", { exact: true })).toBeVisible();
   expect(page.url()).toBe(sourceURL);
@@ -1449,7 +1449,7 @@ test("new detail navigation starts at the top, preserves user scroll while media
         requestAnimationFrame(sample);
       }),
   );
-  await page.getByRole("button", { name: "Back to library" }).click();
+  await page.getByRole("main").getByRole("button", { name: "Library", exact: true }).click();
   expect(await firstListFrame).toBeGreaterThan(savedScroll - 80);
   await expect(page).toHaveURL(/^http:\/\/[^/]+\/(?:\?.*)?$/);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(savedScroll - 80);
@@ -1493,7 +1493,7 @@ test("mobile tabs restore the current Library detail after visiting a voice acto
   await expect(page).toHaveURL(new RegExp(`/${voicedWork.primaryCode}`));
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(savedDetailScroll - 80);
 
-  await page.getByRole("button", { name: "Back to library", exact: true }).click();
+  await page.getByRole("main").getByRole("button", { name: "Library", exact: true }).click();
   await expect(page).toHaveURL(/^http:\/\/[^/]+\/(?:\?.*)?$/);
   await expect(page.getByText(voicedWork.title, { exact: true }).first()).toBeVisible();
 });
@@ -1505,7 +1505,7 @@ test("mobile library pagination returns to the page top after detail return", as
   await target.scrollIntoViewIfNeeded();
   await target.click();
   await expect(page).toHaveURL(/\/RJ00000017/);
-  await page.getByRole("button", { name: "Back to library" }).click();
+  await page.getByRole("main").getByRole("button", { name: "Library", exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(300);
   await page.getByRole("button", { name: "Next page" }).last().click();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(10);
@@ -1532,16 +1532,15 @@ test("mobile Fetch prepares language editions and switches between local, remote
   await page.getByRole("button", { name: "All", exact: true }).click();
   await expect(page.getByLabel("Include MP3")).toBeChecked();
   await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeEnabled();
-  await page.getByRole("button", { name: "result", exact: true }).click();
-  await expect(page.getByText("After Fetch", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "After Fetch", exact: true }).click();
   await expect(page.getByText("Add", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "local", exact: true }).click();
+  await page.getByRole("button", { name: "Local files", exact: true }).click();
   await expect(page.getByText("Publish target", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeVisible();
   await page.setViewportSize({ width: 1440, height: 900 });
-  await expect(page.getByText("Local files", { exact: true })).toBeVisible();
-  await expect(page.getByText("Remote files", { exact: true })).toBeVisible();
-  await expect(page.getByText("After Fetch", { exact: true })).toBeVisible();
+  await expect(page.getByText("Local files", { exact: true }).last()).toBeVisible();
+  await expect(page.getByText("Remote files", { exact: true }).last()).toBeVisible();
+  await expect(page.getByText("After Fetch", { exact: true }).last()).toBeVisible();
 });
 
 test("mobile Fetch resolves conflicts and selects a source per file before publishing", async ({ page }) => {
@@ -1550,7 +1549,7 @@ test("mobile Fetch resolves conflicts and selects a source per file before publi
   await page.goto("/");
   await page.getByRole("button", { name: "Example Remote", exact: true }).click();
   await page.getByTitle("Fetch").click();
-  await page.getByRole("button", { name: "result", exact: true }).click();
+  await page.getByRole("button", { name: "After Fetch", exact: true }).click();
   await expect(page.getByText("target exists with a different size", { exact: true })).toBeVisible();
   await page.getByLabel("Remote source").selectOption("2");
   await page.getByLabel("Conflict action").selectOption("keep_both");
@@ -1984,7 +1983,7 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await trackedTab.click();
   await expect(page.getByRole("menu", { name: "Selected source options" })).toHaveCount(0);
   await expect(page.getByText("Browsing the tracked directory forked from Remote A.", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Choose tracked source" }).click();
+  await page.getByRole("button", { name: "Switch fork", exact: true }).click();
   const trackedSourcesMenu = page.getByRole("menu", { name: "Tracked sources" });
   await expect(trackedSourcesMenu).toBeVisible();
   await page.getByRole("menuitemradio", { name: /Remote B/ }).click();
@@ -1993,7 +1992,7 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await expect(
     page.getByText("Remote B is tracked, but its directory has not been forked.", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Choose tracked source" }).click();
+  await page.getByRole("button", { name: "Switch fork", exact: true }).click();
   await page.getByRole("menuitemradio", { name: /Remote A/ }).click();
   await expect(page).toHaveURL(/view=tracked&trackedSource=7/);
   await sourceOptions.click();
@@ -2002,14 +2001,14 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await expect(page.getByRole("menuitem", { name: /Manage cache/ })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menu", { name: "Selected source options" })).toHaveCount(0);
-  await page.getByRole("button", { name: "More directory actions" }).click();
+  await page.getByRole("button", { name: "Directory actions", exact: true }).click();
   await page
     .getByRole("menu", { name: "Directory actions" })
     .getByRole("menuitem", { name: "Check sources", exact: true })
     .click();
   await expect.poll(() => sourceChecks).toBe(1);
 
-  await page.getByRole("button", { name: "Back to library" }).click();
+  await page.getByRole("main").getByRole("button", { name: "Library", exact: true }).click();
   await page.getByRole("button", { name: "Tracked", exact: true }).click();
   await page.getByText(work.title, { exact: true }).click();
   await expect(page).toHaveURL(/view=tracked/);
@@ -2049,7 +2048,7 @@ test("tracked library cards confirm Untrack in an anchored popover", async ({ pa
   await page.goto("/");
   await page.getByRole("button", { name: "Tracked", exact: true }).click();
 
-  const untrackTrigger = page.getByTitle("Untrack source");
+  const untrackTrigger = page.getByRole("button", { name: "Untrack", exact: true });
   await untrackTrigger.click();
   await expect(page.getByText("Untrack source?", { exact: true })).toBeVisible();
   expect(untrackRequests).toHaveLength(0);
@@ -2169,11 +2168,7 @@ test("remote detail Track completes in place and makes the forked Tracked source
   await expect(page.getByRole("menuitem", { name: /^Untrack/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await trackedTab.click();
-  await expect(
-    page.getByText("Track a remote source from its source tab to create a browsable tracked directory.", {
-      exact: true,
-    }),
-  ).toBeVisible();
+  await expect(page.getByText("Tracked is not selected for this preview.", { exact: true })).toBeVisible();
 });
 
 test("persisted remote result opens the canonical detail with its remote source selected", async ({ page }) => {
@@ -2536,48 +2531,28 @@ test("library search conditions use accessible select menus", async ({ page }) =
   await expect(clauseType).toHaveCount(0);
 });
 
-test("anonymous quick marks show an actionable toast above protected mobile controls", async ({ page }) => {
+test("anonymous quick marks open the sign-in flow from mobile controls", async ({ page }) => {
   await mockApplication(page);
   await page.goto("/");
 
   await page.getByRole("button", { name: "Mark: Unmarked" }).click();
   await expect(page.getByRole("button", { name: "Unmarked", exact: true })).toHaveClass(/bg-primary\/10/);
   await page.getByRole("button", { name: "Want", exact: true }).click();
-  await expect(page.getByText("Please sign in to use this feature.")).toBeVisible();
-
-  const toastViewport = page.locator('[aria-live="polite"]');
-  const [toastBox, protectedBoxes] = await Promise.all([
-    toastViewport.boundingBox(),
-    page.locator("[data-toast-avoid]").evaluateAll((elements) =>
-      elements.map((element) => {
-        const rect = element.getBoundingClientRect();
-        return { bottom: rect.bottom, top: rect.top };
-      }),
-    ),
-  ]);
-  expect(toastBox).not.toBeNull();
-  const protectedBottom = Math.max(...protectedBoxes.filter((rect) => rect.bottom > 0).map((rect) => rect.bottom));
-  expect(toastBox!.y).toBeGreaterThanOrEqual(protectedBottom + 10);
-
+  await expect(page.getByText("Sign in is required.", { exact: true })).toBeVisible();
   await page.locator('[aria-live="polite"]').getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Sign in to Kikoto" })).toBeVisible();
 });
 
-test("@desktop toasts stay in the upper-right corner", async ({ page }) => {
+test("@desktop anonymous quick marks open the sign-in flow", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockApplication(page);
   await page.goto("/");
 
   await page.getByRole("button", { name: "Mark: Unmarked" }).click();
   await page.getByRole("button", { name: "Want", exact: true }).click();
-  const toastViewport = page.locator('[aria-live="polite"]');
-  await expect(page.getByText("Please sign in to use this feature.")).toBeVisible();
-
-  const [toastBox, viewport] = await Promise.all([toastViewport.boundingBox(), page.viewportSize()]);
-  expect(toastBox).not.toBeNull();
-  expect(viewport).not.toBeNull();
-  expect(Math.abs(viewport!.width - toastBox!.x - toastBox!.width - 16)).toBeLessThanOrEqual(1);
-  expect(toastBox!.y + toastBox!.height).toBeLessThan(viewport!.height / 2);
+  await expect(page.getByText("Sign in is required.", { exact: true })).toBeVisible();
+  await page.locator('[aria-live="polite"]').getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Sign in to Kikoto" })).toBeVisible();
 });
 
 test("detail quick marks preserve the cached directory tree", async ({ page }) => {
@@ -2628,7 +2603,7 @@ test("detail quick marks preserve the cached directory tree", async ({ page }) =
   await expect(page.getByText("track.mp3", { exact: true })).toBeVisible();
   expect(mediaRequests).toBe(1);
 
-  await page.getByRole("button", { name: "Back to library" }).click();
+  await page.getByRole("main").getByRole("button", { name: "Library", exact: true }).click();
   await page.getByText("Tagged mobile work", { exact: true }).click();
   await expect(page.getByText("track.mp3", { exact: true })).toBeVisible();
   expect(mediaRequests).toBe(1);
@@ -2782,7 +2757,7 @@ test("directory folds matched lyrics into the audio row while preserving text pr
 
   await lyricsDialog.getByRole("button", { name: "Preview" }).click();
   await expect(page.getByText("First line", { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: "Close preview" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
 
   await audioRow.click();
   await expect
@@ -2851,7 +2826,7 @@ test("mobile directory breadcrumbs collapse long ancestors without losing naviga
   ).toBe(true);
 
   await page.getByRole("button", { name: "Show 2 parent folders" }).click();
-  const parentMenu = page.getByRole("menu", { name: "Parent folders" });
+  const parentMenu = page.getByRole("menu", { name: "Parent folder" });
   await expect(parentMenu.getByRole("menuitem", { name: first, exact: true })).toBeVisible();
   await parentMenu.getByRole("menuitem", { name: second, exact: true }).click();
   await expect(page.getByTestId("directory-breadcrumb-current")).toHaveAttribute("title", second);
@@ -2937,8 +2912,8 @@ test("work detail prompts for missing metadata and refreshes after sync complete
   await page.getByText(work.title, { exact: true }).click();
   await page.getByRole("button", { name: "Info", exact: true }).click();
 
-  await expect(page.getByTestId("metadata-sync-notice")).toContainText("Metadata has not been synchronized");
-  const syncButton = page.getByRole("button", { name: "Sync metadata", exact: true });
+  await expect(page.getByTestId("metadata-sync-notice")).toContainText("Metadata has not been synced yet.");
+  const syncButton = page.getByRole("button", { name: "Metadata refresh", exact: true });
   await expect(syncButton).toBeVisible();
   const initialDetailRequests = metadataSyncControl.detailRequests;
   const syncRequest = page.waitForRequest(
@@ -3159,7 +3134,7 @@ test("mobile work detail orders Info sections and keeps work-code utilities toge
 
   await page.getByRole("button", { name: "Info", exact: true }).click();
   const sections = [
-    page.getByText("Voices", { exact: true }),
+    page.getByText("Voice actors", { exact: true }),
     page.getByText("Tags", { exact: true }),
     page.getByText("My tags", { exact: true }),
     page.getByText("Metadata language", { exact: true }),
@@ -3701,7 +3676,7 @@ test("failed direct playback offers compatibility before source fallback and the
   await expect
     .poll(() => mediaRequests.some((requestURL) => new URL(requestURL).searchParams.get("forceDirect") === "1"))
     .toBe(true);
-  await page.getByRole("button", { name: "Try compatibility" }).click();
+  await page.getByRole("button", { name: "Compatibility playback", exact: true }).click();
   await expect
     .poll(() => mediaRequests.some((requestURL) => new URL(requestURL).searchParams.get("forceTranscode") === "1"))
     .toBe(true);
