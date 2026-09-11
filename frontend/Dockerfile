@@ -1,9 +1,9 @@
 FROM node:24.19.0@sha256:934240a162082fd8b8a2f90cd5114446443f1eba1c5378f6687167ca405e6584 AS build
 
 WORKDIR /src/frontend
-COPY VERSION /src/VERSION
 COPY frontend/package*.json frontend/.npmrc ./
 RUN npm ci --strict-allow-scripts
+COPY VERSION /src/VERSION
 COPY frontend/ ./
 RUN npm run build
 

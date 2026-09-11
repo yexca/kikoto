@@ -110,6 +110,14 @@ detector, alongside formatting, lint, module verification, vulnerability checks,
 and vet. It omits a third plain test run because coverage already executes the
 full suite. `make backend-test` remains available for fast local feedback.
 
+CI runs `ci-backend-static`, `ci-backend-coverage`, and `ci-backend-race` as
+independent matrix jobs. The local `ci-backend` target composes the same checks.
+Module downloads are cached separately from compilation and lint results. The
+compilation key includes source, migrations, tool configuration, and the check
+variant; a restore prefix reuses compatible previous output when that key
+changes. Only the static job saves the shared module cache. Cache hits never
+skip a Make target; Go decides which compilation and test results remain valid.
+
 Backend tests are organized by boundary:
 
 - Package unit tests stay beside the production files as `*_test.go`. They may
@@ -159,6 +167,14 @@ and client request contracts without claiming to exercise a live backend. The
 suite uses mobile Chromium by default and runs tests tagged `@desktop` in
 Desktop Chrome.
 
+Browser fixtures belong to each test's page and context. Tests run with
+`fullyParallel` enabled; do not introduce shared mutable state, a shared page,
+or dependencies on another test's execution order. The player/library suite is
+split by workflow, with common fixtures in `tests/e2e/fixtures/player-library.ts`.
+CI runs two independent shards with separate failure artifacts. Run either shard
+locally with `make E2E_ARGS="--shard=1/2" frontend-e2e` (or `--shard=2/2`);
+`make frontend-e2e` still runs every test.
+
 Android JVM tests live under `frontend/android/app/src/test` and run through:
 
 ```sh
@@ -176,29 +192,47 @@ Capacitor once per Make invocation. Either target also works independently.
 CI runs the following dependency graph:
 
 ```text
-Style -> Backend, Frontend, Smoke, Full E2E, Android, Docker (parallel) -> Core
+Style + plan -> Backend (static / coverage / race), Frontend,
+                E2E (1/2 / 2/2), Android,
+                Smoke (production build + runtime), Development Compose -> Core
 ```
 
-`Style` checks formatting, lint, and documentation links. After it succeeds,
-independent jobs run backend checks, frontend checks, Docker smoke validation,
-the full browser regression suite, Android JVM tests and APK assembly, and the
-production Docker build. Full E2E uses deterministic API interception and does
-not consume the Smoke job's containers or artifacts. Failure artifacts and
-coverage reports remain attached to their respective jobs.
+`Style` always checks formatting, lint, documentation, and the CI selection and
+gate policy. It compares the PR base with the checked-out merge result, including
+both sides of renames and deleted paths. `scripts/ci-plan.mjs` owns the job plan;
+its tests guard against accidental validation skips.
 
-`Core` retains its existing check name for branch protection and aggregates all
-job results, including after a failure. It fails if any required job fails, is
-cancelled, or is skipped. Pull requests and pushes to `main` require every job,
-including Full E2E and both builds, for Core to pass. Reusable workflow calls may
-skip Android and Docker only when `run_builds` is false and the event/ref does
-not otherwise require them. Existing protection requiring Style, Core, and Smoke
-can keep those check names; Core now also gates browser regression and builds.
+| PR changes | Additional required jobs |
+| --- | --- |
+| Only public documentation | None beyond Style and Core |
+| Backend source or tests | All backend checks, E2E, production Smoke |
+| Frontend application or configuration | Frontend, E2E, Android, production Smoke |
+| Browser tests and their fixtures | E2E |
+| Android project only | Android |
+| Development Dockerfiles, Nginx, or Compose | Development Compose |
+| Shared dependencies, Makefile, scripts, workflows, VERSION, or unclassified paths | All jobs |
 
-The Android job runs tests and assembly in one Make invocation to share frontend
-installation, build, and Capacitor synchronization. Release still waits for the
-ordinary CI run for the exact tagged commit on `main` and starts Android and
-Docker release builds only after that run succeeds. Parallel validation reduces
-elapsed time but can spend more runner minutes when an independent job fails.
+Mixed changes use the union of required jobs. Missing or empty PR diffs select
+all jobs. Pushes to `main` always run the complete plan regardless of changed
+paths. Reusable calls outside `main` run the complete plan except Android and
+production Smoke unless `run_builds` is true; development Compose still runs.
+
+`Core` retains its required check name and evaluates the plan against every job
+result, even after failures. It rejects failed, cancelled, missing, or
+unexpectedly skipped results and missing/invalid plans. Only a job explicitly
+disabled by the plan may be skipped. Existing protection requiring Style, Core,
+and Smoke can retain those names; an intentional Smoke skip is evaluated by Core.
+Backend and E2E matrices use `fail-fast: false` to preserve diagnostics from all
+variants. Coverage and failure artifacts have one owner or unique shard names.
+
+The Android job shares frontend installation, build, and Capacitor sync between
+JVM tests and assembly. Production Smoke builds the image once through
+`make docker-build`, with Buildx layers cached between runs, then exercises that
+same local image through `make production-smoke`. Development Compose and the
+API-intercepted browser suite remain separate checks. Release still waits for
+successful full main CI for the exact tagged commit before publishing artifacts.
+Parallel validation reduces elapsed time but can spend more runner minutes when
+an independent job fails; source-based cache updates also consume cache storage.
 
 Current Vitest coverage is primarily pure state and model logic. User-visible
 React interaction belongs in Playwright until a real component-test environment
@@ -255,9 +289,26 @@ contract.
 
 ## Smoke Test
 
+Validate the development Compose stack and its browser app shell:
+
 ```sh
 make smoke
 ```
+
+Build and exercise the actual production image:
+
+```sh
+make DOCKER_IMAGE=kikoto:ci ci-production
+```
+
+Production Smoke checks compiled JavaScript, SPA routing, anonymous access
+denial, login/session/logout, local scanning, and authenticated audio Range
+responses against a real server. It uses an obviously synthetic work and a
+generated WAV, with follow-up metadata synchronization disabled. Each run owns
+a unique container, anonymous config/cache/data volumes, a loopback-only dynamic
+port, and temporary fixture files outside the repository. Success, failure, and
+handled cancellation remove those resources. It never mounts deployment data.
+HTTP bodies, request timeouts, polling, and Docker commands are bounded.
 
 ## Before Committing
 

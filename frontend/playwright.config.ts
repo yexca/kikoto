@@ -8,7 +8,8 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 15_000 },
   workers: process.env.CI ? 2 : process.platform === "win32" ? 4 : undefined,
-  fullyParallel: false,
+  // Fixtures belong to each page; test-level scheduling balances CI shards.
+  fullyParallel: true,
   reporter: [["list"]],
   use: {
     baseURL: externalBaseURL ?? "http://127.0.0.1:3100",

@@ -24,24 +24,44 @@ jobs:
   style:
     name: Style
     runs-on: ubuntu-24.04
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      backend: ${{ steps.plan.outputs.backend }}
+      frontend: ${{ steps.plan.outputs.frontend }}
+      e2e: ${{ steps.plan.outputs.e2e }}
+      android: ${{ steps.plan.outputs.android }}
+      production: ${{ steps.plan.outputs.production }}
+      dev_smoke: ${{ steps.plan.outputs.dev_smoke }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "24.19.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Run frontend style checks
+      - name: Run style and CI policy checks
         run: make ci-style
+      - name: Select required validation
+        id: plan
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CI_RUN_BUILDS: ${{ inputs.run_builds || false }}
+        run: make ci-plan
 
   backend:
-    name: Backend
+    name: Backend (${{ matrix.check }})
     needs: style
+    if: needs.style.outputs.backend == 'true'
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [static, coverage, race]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -52,11 +72,32 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: "1.26.6"
-          cache-dependency-path: backend/go.sum
-      - name: Run backend core checks
-        run: make ci-backend
+          cache: false
+      - name: Restore Go modules and tool dependencies
+        id: modules
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/go/pkg/mod
+          key: go-modules-${{ runner.os }}-${{ runner.arch }}-1.26.6-${{ hashFiles('backend/go.mod', 'backend/go.sum', 'Makefile') }}
+          restore-keys: go-modules-${{ runner.os }}-${{ runner.arch }}-1.26.6-
+      - name: Cache Go compilation and lint results
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+          key: go-build-${{ runner.os }}-${{ runner.arch }}-1.26.6-${{ matrix.check }}-${{ hashFiles('backend/**/*.go', 'backend/**/*.sql', 'backend/go.mod', 'backend/go.sum', 'scripts/*.go', 'scripts/golangci-lint.yml', 'Makefile') }}
+          restore-keys: go-build-${{ runner.os }}-${{ runner.arch }}-1.26.6-${{ matrix.check }}-
+      - name: Run backend checks
+        run: make ci-backend-${{ matrix.check }}
+      - name: Save Go modules from one matrix job
+        if: matrix.check == 'static' && steps.modules.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ steps.modules.outputs.cache-primary-key }}
       - name: Upload backend coverage
-        if: always()
+        if: always() && matrix.check == 'coverage'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: backend-coverage
@@ -66,6 +107,7 @@ jobs:
   frontend:
     name: Frontend
     needs: style
+    if: needs.style.outputs.frontend == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -88,9 +130,10 @@ jobs:
           path: frontend/coverage
           if-no-files-found: ignore
 
-  smoke:
-    name: Smoke
+  dev-smoke:
+    name: Development Compose
     needs: style
+    if: needs.style.outputs.dev_smoke == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -103,7 +146,7 @@ jobs:
           node-version: "24.19.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Run smoke validation
+      - name: Run development Compose smoke
         run: make smoke
       - name: Upload smoke artifacts
         if: failure()
@@ -114,9 +157,14 @@ jobs:
           if-no-files-found: ignore
 
   full-e2e:
-    name: Full E2E
+    name: Full E2E (${{ matrix.shard }}/2)
     needs: style
+    if: needs.style.outputs.e2e == 'true'
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -128,13 +176,13 @@ jobs:
           node-version: "24.19.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Run full browser regression tests
-        run: make frontend-e2e
+      - name: Run browser regression shard
+        run: make E2E_ARGS="--shard=${{ matrix.shard }}/2" frontend-e2e
       - name: Upload E2E artifacts
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: playwright-e2e-artifacts
+          name: playwright-e2e-artifacts-${{ matrix.shard }}
           path: |
             frontend/test-results
             frontend/playwright-report
@@ -143,7 +191,7 @@ jobs:
   android:
     name: Android build
     needs: style
-    if: inputs.run_builds || github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    if: needs.style.outputs.android == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -171,36 +219,57 @@ jobs:
       - name: Run Android JVM tests and build debug APK
         run: make android-test android-build
 
-  docker:
-    name: Docker build
+  smoke:
+    name: Smoke
     needs: style
-    if: inputs.run_builds || github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    if: needs.style.outputs.production == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.19.0"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - name: Cache production image layers
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ runner.temp }}/kikoto-buildx-cache
+          key: docker-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Dockerfile', '.dockerignore', 'VERSION', 'LICENSE', 'backend/**', 'frontend/**') }}
+          restore-keys: docker-${{ runner.os }}-${{ runner.arch }}-
       - name: Build production image
-        run: make DOCKER_IMAGE=kikoto:ci docker-build
+        run: >-
+          make DOCKER_IMAGE=kikoto:ci DOCKER_BUILD="docker buildx build"
+          DOCKER_BUILD_ARGS="--load --cache-from type=local,src=$RUNNER_TEMP/kikoto-buildx-cache --cache-to type=local,dest=$RUNNER_TEMP/kikoto-buildx-cache-next,mode=max"
+          docker-build
+      - name: Replace exported layer cache
+        run: |
+          rm -rf -- "$RUNNER_TEMP/kikoto-buildx-cache"
+          mv -- "$RUNNER_TEMP/kikoto-buildx-cache-next" "$RUNNER_TEMP/kikoto-buildx-cache"
+      - name: Exercise the production image
+        run: make DOCKER_IMAGE=kikoto:ci production-smoke
 
-  # Preserve the required check name while collecting every parallel result.
+  # Preserve the required check name; only the plan may authorize skipped jobs.
   core:
     name: Core
     if: always()
-    needs: [style, backend, frontend, smoke, full-e2e, android, docker]
+    needs: [style, backend, frontend, smoke, full-e2e, android, dev-smoke]
     runs-on: ubuntu-24.04
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.19.0"
       - name: Verify all required validation results
         env:
-          RESULTS: ${{ toJSON(needs) }}
-          RUN_BUILDS: ${{ inputs.run_builds || github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
-        run: |
-          echo "$RESULTS" | jq -e --argjson run_builds "$RUN_BUILDS" '
-            . as $jobs
-            | all(["style", "backend", "frontend", "smoke", "full-e2e"][];
-                $jobs[.].result == "success")
-              and all(["android", "docker"][];
-                $jobs[.].result == "success"
-                or ($run_builds == false and $jobs[.].result == "skipped"))
-          '
+          CI_PLAN: ${{ needs.style.outputs.plan }}
+          CI_RESULTS: ${{ toJSON(needs) }}
+        run: make ci-results

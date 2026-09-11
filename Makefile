@@ -1,6 +1,10 @@
 .PHONY: backend-format backend-lint backend-lint-full backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-i18n frontend-audit frontend-audit-signatures frontend-playwright-install frontend-e2e-smoke frontend-e2e android-sync android-test android-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
+.PHONY: ci-plan ci-plan-test ci-results ci-backend-static ci-backend-coverage ci-backend-race ci-production production-smoke
 
 GO ?= go
+DOCKER_BUILD ?= $(DOCKER) build
+DOCKER_BUILD_ARGS ?=
+E2E_ARGS ?=
 GOLANGCI_LINT_VERSION ?= v2.13.1
 GOLANGCI_LINT_TIMEOUT ?= 5m
 GOLANGCI_LINT_PACKAGE := github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
@@ -134,7 +138,7 @@ frontend-e2e-smoke: frontend-playwright-install
 	cd frontend && $(NPM) run test:e2e:smoke
 
 frontend-e2e: frontend-playwright-install
-	cd frontend && $(NPM) run test:e2e
+	cd frontend && $(NPM) run test:e2e -- $(E2E_ARGS)
 
 android-sync: frontend-build
 	cd frontend && $(NPX) cap sync android
@@ -154,7 +158,10 @@ android-build: android-sync
 endif
 
 docker-build:
-	$(DOCKER) build -t $(DOCKER_IMAGE) .
+	$(DOCKER_BUILD) $(DOCKER_BUILD_ARGS) -t $(DOCKER_IMAGE) .
+
+production-smoke:
+	$(NODE) scripts/production-smoke.mjs $(DOCKER_IMAGE)
 
 docker-up:
 	$(DOCKER_COMPOSE_DEV) up -d --build
@@ -194,15 +201,33 @@ sensitive-check-test:
 
 privacy-check: sensitive-check
 
-ci-style: frontend-format frontend-lint frontend-docs frontend-i18n sensitive-check-test
+ci-plan:
+	$(NODE) scripts/ci-plan.mjs plan
+
+ci-results:
+	$(NODE) scripts/ci-plan.mjs check
+
+ci-plan-test:
+	$(NODE) --test scripts/ci-plan.test.mjs
+
+ci-style: frontend-format frontend-lint frontend-docs frontend-i18n sensitive-check-test ci-plan-test
 
 # Coverage executes the full suite; retain the separate race-instrumented run.
-ci-backend: backend-format backend-lint backend-verify backend-vuln backend-coverage backend-vet backend-race
+ci-backend-static: backend-format backend-lint backend-verify backend-vuln backend-vet
+
+ci-backend-coverage: backend-coverage
+
+ci-backend-race: backend-race
+
+ci-backend: ci-backend-static ci-backend-coverage ci-backend-race
 
 ci-frontend: frontend-audit frontend-audit-signatures frontend-coverage frontend-build
 
+ci-production: docker-build
+	$(MAKE) DOCKER_IMAGE=$(DOCKER_IMAGE) production-smoke
+
 # ci-local follows every GitHub Actions validation phase available without an Android SDK.
 ci-local: DOCKER_IMAGE := kikoto:ci
-ci-local: ci-style ci-backend ci-frontend smoke frontend-e2e docker-build
+ci-local: ci-style ci-backend ci-frontend smoke frontend-e2e ci-production
 
 ci: ci-local android-test android-build

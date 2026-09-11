@@ -1,0 +1,229 @@
+import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
+import { promisify } from "node:util";
+import { setTimeout as delay } from "node:timers/promises";
+
+const execute = promisify(execFile);
+const docker = process.env.DOCKER || "docker";
+const image = process.argv[2];
+assert.ok(image, "Pass the locally built production image");
+const container = `kikoto-production-smoke-${randomUUID()}`;
+const temporaryRoot = resolve(tmpdir());
+const fixtureRoot = await mkdtemp(
+  join(temporaryRoot, "kikoto-production-smoke-"),
+);
+const controller = new AbortController();
+for (const signal of ["SIGINT", "SIGTERM"])
+  process.once(signal, () => controller.abort());
+let created = false;
+let baseURL;
+
+async function command(args, cleanup = false) {
+  const result = await execute(docker, args, {
+    timeout: 60_000,
+    maxBuffer: 2 * 1024 * 1024,
+    windowsHide: true,
+    signal: cleanup ? undefined : controller.signal,
+  });
+  return (result.stdout + (cleanup ? result.stderr : "")).trim();
+}
+
+async function request(
+  path,
+  { expected = 200, limit = 128 * 1024, ...options } = {},
+) {
+  assert.ok(path.startsWith("/") && !path.startsWith("//"));
+  const response = await fetch(baseURL + path, {
+    ...options,
+    redirect: "error",
+    signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5_000)]),
+  });
+  const reader = response.body?.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    assert.ok(
+      [expected].flat().includes(response.status),
+      `${path}: HTTP ${response.status}`,
+    );
+    while (reader) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      assert.ok(size <= limit, `${path}: response exceeds limit`);
+      chunks.push(value);
+    }
+  } finally {
+    await reader?.cancel();
+  }
+  return { response, body: Buffer.concat(chunks) };
+}
+
+async function waitFor(check, description) {
+  const deadline = Date.now() + 60_000;
+  let lastError;
+  do {
+    controller.signal.throwIfAborted();
+    try {
+      const value = await check();
+      if (value) return value;
+    } catch (error) {
+      lastError = error;
+    }
+    await delay(500, undefined, { signal: controller.signal });
+  } while (Date.now() < deadline);
+  throw new Error(`Timed out waiting for ${description}`, { cause: lastError });
+}
+
+try {
+  // One second of deterministic 8-bit PCM; no downloaded media or real work data.
+  const wav = Buffer.alloc(8044, 128);
+  wav.write("RIFF", 0);
+  wav.writeUInt32LE(8036, 4);
+  wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(8000, 24);
+  wav.writeUInt32LE(8000, 28);
+  wav.writeUInt16LE(1, 32);
+  wav.writeUInt16LE(8, 34);
+  wav.write("data", 36);
+  wav.writeUInt32LE(8000, 40);
+  await mkdir(join(fixtureRoot, "RJ00000000"));
+  await writeFile(join(fixtureRoot, "RJ00000000", "example.wav"), wav);
+
+  created = true;
+  await command([
+    "create",
+    "--pull=never",
+    "--name",
+    container,
+    "--publish",
+    "127.0.0.1::7659",
+    "--mount",
+    "type=volume,destination=/config",
+    "--mount",
+    "type=volume,destination=/cache",
+    "--mount",
+    "type=volume,destination=/data",
+    "--env",
+    "KIKOTO_MODE=production",
+    "--env",
+    "KIKOTO_ROOT_USERNAME=synthetic-user",
+    "--env",
+    "KIKOTO_ROOT_PASSWORD=synthetic-password",
+    "--env",
+    "KIKOTO_SESSION_COOKIE_SECURE=false",
+    "--env",
+    "KIKOTO_REMOTE_SOURCES_ENABLED=false",
+    image,
+  ]);
+  await command(["cp", `${fixtureRoot}/.`, `${container}:/data`]);
+  await command(["start", container]);
+  const port = await command(["port", container, "7659/tcp"]);
+  assert.match(port, /^127\.0\.0\.1:\d+$/);
+  const origin = new URL("http://127.0.0.1");
+  origin.port = port.split(":")[1];
+  baseURL = origin.origin;
+  await waitFor(() => request("/health"), "production readiness");
+
+  const { body: index } = await request("/");
+  assert.match(index.toString(), /<div id="root"/);
+  const bundle = index.toString().match(/src="(\/assets\/[^"\s]+\.js)"/)?.[1];
+  assert.ok(
+    bundle,
+    "Production HTML must reference a compiled JavaScript bundle",
+  );
+  const { response: bundleResponse } = await request(bundle, {
+    limit: 8 * 1024 * 1024,
+  });
+  assert.match(bundleResponse.headers.get("content-type"), /javascript/);
+  const { body: spa } = await request("/about");
+  assert.deepEqual(spa, index, "SPA navigation must serve the production app");
+  const { body: runtime } = await request("/api/runtime-settings");
+  assert.equal(JSON.parse(runtime).mode, "production");
+  assert.equal(JSON.parse(runtime).anonymousAccessEnabled, false);
+  await request("/api/works", { expected: 401 });
+  const { response: login } = await request("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: "synthetic-user",
+      password: "synthetic-password",
+    }),
+  });
+  const cookie = login.headers
+    .getSetCookie()
+    .map((value) => value.split(";")[0])
+    .join("; ");
+  assert.ok(cookie, "Login must establish a session");
+  const headers = { Cookie: cookie, "Content-Type": "application/json" };
+  const { body: currentUser } = await request("/api/auth/me", { headers });
+  assert.equal(JSON.parse(currentUser).authenticated, true);
+  await request("/api/workflow-runs/local-scan", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ followUpRun: false }),
+    expected: 202,
+  });
+  const work = await waitFor(async () => {
+    const { body } = await request("/api/works", { headers });
+    return JSON.parse(body).find((entry) => entry.primaryCode === "RJ00000000");
+  }, "the synthetic local work");
+  const { body: media } = await request(`/api/works/${work.id}/media`, {
+    headers,
+  });
+  const track = JSON.parse(media).mediaItems.find(
+    (item) => item.kind === "audio",
+  );
+  const location = track?.locations.find(
+    (entry) => entry.locationType === "local",
+  );
+  assert.ok(location, "Local scan must expose a playable audio location");
+  const stream = `/api/media/${location.id}/stream?forceDirect=1`;
+  await request(stream, { expected: 401 });
+  const { response: audio, body: range } = await request(stream, {
+    headers: { ...headers, Range: "bytes=0-43" },
+    expected: 206,
+  });
+  assert.equal(audio.headers.get("content-range"), `bytes 0-43/${wav.length}`);
+  assert.deepEqual(range, wav.subarray(0, 44));
+  await request("/api/auth/logout", {
+    method: "POST",
+    headers,
+    body: "{}",
+    expected: [200, 204],
+  });
+  await request("/api/works", { headers, expected: 401 });
+  console.log(
+    "Production smoke passed: static assets, SPA routing, authentication, local scan and audio Range playback.",
+  );
+} catch (error) {
+  if (created) {
+    try {
+      console.error(await command(["logs", "--tail", "100", container], true));
+    } catch {
+      // Keep the validation failure if Docker diagnostics also fail.
+    }
+  }
+  throw error;
+} finally {
+  try {
+    if (created) {
+      try {
+        await command(["rm", "--force", "--volumes", container], true);
+      } catch (error) {
+        if (!error.stderr?.includes("No such container")) throw error;
+      }
+    }
+  } finally {
+    assert.equal(dirname(fixtureRoot), temporaryRoot);
+    assert.ok(basename(fixtureRoot).startsWith("kikoto-production-smoke-"));
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+}
