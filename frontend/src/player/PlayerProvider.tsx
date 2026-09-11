@@ -25,38 +25,51 @@ import {
 } from "lucide-react";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { withQueueIdentity } from "./playbackIdentity";
+import {
+  discardObsoletePlayerState,
+  isPlaybackCompatibilityScope,
+  loadPersistedPlaybackCompatibility,
+  loadPersistedQueue,
+  OBSOLETE_PLAYER_PROGRESS_STORAGE_BASE_KEY,
+  persistDockMode,
+  PLAYBACK_COMPATIBILITY_STORAGE_BASE_KEY,
+  PLAYER_QUEUE_STORAGE_BASE_KEY,
+  restoreDockMode,
+} from "./playerPersistence";
+import type {
+  DockMode,
+  LyricsPreferenceTarget,
+  PlaybackCompatibilityScope,
+  PlayerTrack,
+  PlayMode,
+  SleepTimerState,
+} from "./playerTypes";
+export type {
+  DockMode,
+  LyricsPreferenceTarget,
+  PlaybackCompatibilityScope,
+  PlayerTrack,
+  PlayerTrackLocation,
+  PlayMode,
+  SleepTimerState,
+} from "./playerTypes";
 
+import { ANDROID_BACK_EVENT, PLAYBACK_CURSOR_UPDATED_EVENT } from "@/app/events";
+import { useAuth } from "@/auth/AuthProvider";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
-import { OverflowMarquee, OverflowMarqueeGroup } from "@/components/ui/overflow-marquee";
 import { FloatingSelect } from "@/components/ui/floating-select";
+import { OverflowMarquee, OverflowMarqueeGroup } from "@/components/ui/overflow-marquee";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
-import { ANDROID_BACK_EVENT, PLAYBACK_CURSOR_UPDATED_EVENT } from "@/app/events";
-import { api, ApiError, assetURL, type MediaProgress } from "@/lib/api";
-import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
+import { api, ApiError, assetURL } from "@/lib/api";
+import { historyStateWithReturn, NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { currentScopedStorageKey } from "@/lib/clientStorageScope";
-import { useAuth } from "@/auth/AuthProvider";
 import { addNativeMediaListeners, stopNativeMedia, supportsNativeMedia, updateNativeMedia } from "@/lib/nativeMedia";
-import { playbackKeyForLocation, remotePlaybackKey } from "@/player/playbackIdentity";
-import { playbackURL, remoteMediaPlaybackURL } from "@/player/mediaPlayback";
-import { isActivePlaybackRequest } from "@/player/playbackRequest";
 import { lyricsChoiceDisplayLabel, type LyricsChoice } from "@/player/lyricsMatching";
-import {
-  applyTrackLocation,
-  createTrackLocationFailureState,
-  orderedTrackLocations,
-  recordTrackLocationFailure,
-  resetTrackLocationFailures,
-} from "@/player/trackLocations";
-import {
-  NATIVE_MEDIA_POSITION_INTERVAL_MS,
-  shouldCommitPlayerTime,
-  shouldSaveRemoteProgress,
-  type ProgressSaveMarker,
-} from "@/player/playerProgress";
-import { revalidatePersistedQueue } from "@/player/playerQueueRestore";
-import { normalizePlaybackStartPosition, shouldCheckpointPause } from "@/player/playbackStart";
+import { playbackURL, remoteMediaPlaybackURL } from "@/player/mediaPlayback";
+import { playbackKeyForLocation, remotePlaybackKey } from "@/player/playbackIdentity";
 import {
   getStoredPlaybackSeekPreferences,
   playbackSeekPreferencesStorageKey,
@@ -64,9 +77,22 @@ import {
   type PlaybackSeekPreferences,
   type PlaybackSeekPreferencesChangeDetail,
 } from "@/player/playbackPreferences";
-
-export type PlayMode = "order" | "loop" | "single";
-type DockMode = "full" | "compact" | "mini";
+import { isActivePlaybackRequest } from "@/player/playbackRequest";
+import { normalizePlaybackStartPosition, shouldCheckpointPause } from "@/player/playbackStart";
+import {
+  NATIVE_MEDIA_POSITION_INTERVAL_MS,
+  shouldCommitPlayerTime,
+  shouldSaveRemoteProgress,
+  type ProgressSaveMarker,
+} from "@/player/playerProgress";
+import { revalidatePersistedQueue } from "@/player/playerQueueRestore";
+import {
+  applyTrackLocation,
+  createTrackLocationFailureState,
+  orderedTrackLocations,
+  recordTrackLocationFailure,
+  resetTrackLocationFailures,
+} from "@/player/trackLocations";
 type LyricsDisplayMode = "hidden" | "preview" | "full";
 type CompactScrubState = {
   pointerId: number;
@@ -87,65 +113,6 @@ type PendingPlaybackStart = {
   positionSeconds: number;
 };
 const LYRIC_PREVIEW_ROW_HEIGHT = 28;
-
-export type PlayerTrack = {
-  queueItemId?: string;
-  mediaItemId: number;
-  locationId: number;
-  title: string;
-  kind: "audio" | "video";
-  folderPath: string;
-  locationType: string;
-  streamUrl: string;
-  sizeBytes: number | null;
-  durationSeconds?: number | null;
-  availability: string;
-  workId: number;
-  workCode: string;
-  workTitle: string;
-  coverUrl: string;
-  circle: string;
-  progress: MediaProgress | null;
-  progressRecordable: boolean;
-  lyricsLocationId: number | null;
-  lyricsTitle: string;
-  lyricsChoices?: LyricsChoice[];
-  autoLyricsLocationId?: number | null;
-  preferredLyricsMediaItemId?: number | null;
-  remoteSourceId?: number;
-  remoteWorkCode?: string;
-  remotePath?: string;
-  playbackKey?: string;
-  locations?: PlayerTrackLocation[];
-};
-
-export type LyricsPreferenceTarget = {
-  mediaItemId: number;
-  playbackKey?: string;
-  lyricsChoices?: LyricsChoice[];
-  autoLyricsLocationId?: number | null;
-  preferredLyricsMediaItemId?: number | null;
-  lyricsPreferencePersistable?: boolean;
-  progressRecordable?: boolean;
-};
-
-export type PlayerTrackLocation = {
-  locationId: number;
-  locationType: string;
-  streamUrl: string;
-  sourceId: number;
-  sourceName: string;
-  availability: string;
-};
-
-export type PlaybackCompatibilityScope = "off" | "track" | "queue" | "always";
-
-type SleepTimerState = {
-  mode: "deadline";
-  deadline: number;
-  finishCurrentTrack: boolean;
-  waitingForTrackEnd: boolean;
-} | null;
 
 type PlayerContextValue = {
   queue: PlayerTrack[];
@@ -204,29 +171,7 @@ type LibraryPlayerContextValue = {
 };
 
 const LibraryPlayerContext = createContext<LibraryPlayerContextValue | null>(null);
-const PLAYER_QUEUE_STORAGE_BASE_KEY = "kikoto:player-queue:v2";
-const OBSOLETE_PLAYER_PROGRESS_STORAGE_BASE_KEY = "kikoto:player-progress:v2";
-const LEGACY_PLAYER_QUEUE_STORAGE_KEY = "kikoto:player-queue:v1";
-const LEGACY_PLAYER_PROGRESS_STORAGE_KEY = "kikoto:player-progress:v1";
 const MINI_POSITION_STORAGE_KEY = "kikoto:player-mini-position:v1";
-const DOCK_MODE_STORAGE_KEY = "kikoto:player-dock-mode:v1";
-const PLAYBACK_COMPATIBILITY_STORAGE_BASE_KEY = "kikoto:player-compatibility:v1";
-
-function isPlaybackCompatibilityScope(value: unknown): value is PlaybackCompatibilityScope {
-  return value === "off" || value === "track" || value === "queue" || value === "always";
-}
-
-function loadPersistedPlaybackCompatibility(storageKey: string): PlaybackCompatibilityScope {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(storageKey) ?? "null") as {
-      version?: number;
-      scope?: unknown;
-    } | null;
-    return isPlaybackCompatibilityScope(parsed?.scope) && parsed.scope === "always" ? "always" : "off";
-  } catch {
-    return "off";
-  }
-}
 
 function createPlaybackSessionID() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
@@ -236,113 +181,6 @@ function createPlaybackSessionID() {
 function isExpectedPlaybackInterruption(error: unknown) {
   if (!error || typeof error !== "object" || !("name" in error)) return false;
   return error.name === "AbortError" || error.name === "NotAllowedError";
-}
-
-function discardObsoletePlayerState(scopedProgressStorageKey: string) {
-  try {
-    localStorage.removeItem(LEGACY_PLAYER_QUEUE_STORAGE_KEY);
-    localStorage.removeItem(LEGACY_PLAYER_PROGRESS_STORAGE_KEY);
-    localStorage.removeItem(scopedProgressStorageKey);
-  } catch {
-    // Playback remains usable when browser storage is unavailable.
-  }
-}
-
-function isDockMode(value: unknown): value is DockMode {
-  return value === "full" || value === "compact" || value === "mini";
-}
-
-function defaultDockMode(isMobile: boolean): DockMode {
-  return isMobile ? "compact" : "full";
-}
-
-function restoreDockMode(isMobile: boolean): DockMode {
-  try {
-    const stored = JSON.parse(localStorage.getItem(DOCK_MODE_STORAGE_KEY) ?? "null") as {
-      desktop?: DockMode;
-      mobile?: DockMode;
-    } | null;
-    const mode = isMobile ? stored?.mobile : stored?.desktop;
-    return isDockMode(mode) ? mode : defaultDockMode(isMobile);
-  } catch {
-    return defaultDockMode(isMobile);
-  }
-}
-
-function persistDockMode(isMobile: boolean, mode: DockMode) {
-  const stored: { version: 1; desktop?: DockMode; mobile?: DockMode } = { version: 1 };
-  try {
-    const parsed = JSON.parse(localStorage.getItem(DOCK_MODE_STORAGE_KEY) ?? "null") as {
-      desktop?: DockMode;
-      mobile?: DockMode;
-    } | null;
-    if (isDockMode(parsed?.desktop)) stored.desktop = parsed.desktop;
-    if (isDockMode(parsed?.mobile)) stored.mobile = parsed.mobile;
-  } catch {
-    // Replace malformed local preferences with the next valid selection.
-  }
-  if (isMobile) stored.mobile = mode;
-  else stored.desktop = mode;
-  localStorage.setItem(DOCK_MODE_STORAGE_KEY, JSON.stringify(stored));
-}
-
-function loadPersistedQueue(queueStorageKey: string): {
-  queue: PlayerTrack[];
-  currentIndex: number;
-  mode: PlayMode;
-  playbackRate: number;
-  sleepTimer: SleepTimerState;
-} {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(queueStorageKey) ?? "null") as {
-      version?: number;
-      queue?: PlayerTrack[];
-      currentIndex?: number;
-      mode?: PlayMode;
-      playbackRate?: number;
-      sleepTimer?: SleepTimerState | { mode: "track_end" };
-    } | null;
-    const queue = Array.isArray(parsed?.queue)
-      ? parsed.queue
-          .filter((track) => track && track.mediaItemId > 0 && track.streamUrl)
-          .map((track) => ({
-            ...track,
-            kind: track.kind === "video" ? ("video" as const) : ("audio" as const),
-            progress: null,
-          }))
-          .map(withQueueIdentity)
-      : [];
-    const currentIndex = Math.max(0, Math.min(queue.length - 1, Number(parsed?.currentIndex) || 0));
-    const mode = parsed?.mode === "loop" || parsed?.mode === "single" ? parsed.mode : "order";
-    const playbackRate = [0.75, 1, 1.25, 1.5, 2].includes(Number(parsed?.playbackRate))
-      ? Number(parsed?.playbackRate)
-      : 1;
-    const rawSleepTimer = parsed?.sleepTimer;
-    const sleepTimer: SleepTimerState =
-      rawSleepTimer?.mode === "track_end"
-        ? { mode: "deadline", deadline: Date.now(), finishCurrentTrack: true, waitingForTrackEnd: true }
-        : rawSleepTimer?.mode === "deadline" &&
-            (rawSleepTimer.deadline > Date.now() || rawSleepTimer.waitingForTrackEnd)
-          ? {
-              mode: "deadline",
-              deadline: rawSleepTimer.deadline,
-              finishCurrentTrack: Boolean(rawSleepTimer.finishCurrentTrack),
-              waitingForTrackEnd: Boolean(rawSleepTimer.waitingForTrackEnd),
-            }
-          : null;
-    return { queue, currentIndex, mode, playbackRate, sleepTimer };
-  } catch {
-    return { queue: [], currentIndex: 0, mode: "order", playbackRate: 1, sleepTimer: null };
-  }
-}
-
-function withQueueIdentity(track: PlayerTrack): PlayerTrack {
-  if (track.queueItemId) return track;
-  const randomID =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  return { ...track, queueItemId: randomID };
 }
 
 export function lyricsPreferenceKey(target: LyricsPreferenceTarget) {

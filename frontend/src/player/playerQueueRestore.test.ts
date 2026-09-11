@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { MediaItem } from "../lib/api";
-import type { PlayerTrack } from "./PlayerProvider";
+import type { PlayerTrack } from "./playerTypes";
 import { revalidatePersistedQueue } from "./playerQueueRestore";
 
 const persistedTrack = {

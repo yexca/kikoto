@@ -134,6 +134,28 @@ try {
 
   const { body: index } = await request("/");
   assert.match(index.toString(), /<div id="root"/);
+  assert.match(index.toString(), /viewport-fit=cover/);
+  const { body: manifestBody } = await request("/manifest.webmanifest");
+  const manifest = JSON.parse(manifestBody);
+  assert.equal(manifest.display, "standalone");
+  for (const [size, purpose] of [
+    ["192x192", "any"],
+    ["512x512", "maskable"],
+  ]) {
+    const icon = manifest.icons.find(
+      (entry) =>
+        entry.sizes === size &&
+        (entry.purpose || "any").split(" ").includes(purpose),
+    );
+    assert.ok(icon, `PWA manifest must include ${size} ${purpose} icon`);
+    const { response, body } = await request(icon.src, {
+      limit: 2 * 1024 * 1024,
+    });
+    assert.match(response.headers.get("content-type"), /image\/png/);
+    assert.ok(body.length > 8, "PWA icon must not be empty");
+  }
+  const { response: serviceWorker } = await request("/sw.js");
+  assert.match(serviceWorker.headers.get("content-type"), /javascript/);
   const bundle = index.toString().match(/src="(\/assets\/[^"\s]+\.js)"/)?.[1];
   assert.ok(
     bundle,
@@ -200,6 +222,11 @@ try {
     expected: [200, 204],
   });
   await request("/api/works", { headers, expected: 401 });
+  if (process.argv.includes("--browser")) {
+    const { verifyProductionBrowser } =
+      await import("./production-browser-smoke.mjs");
+    await verifyProductionBrowser(baseURL, work.primaryCode, controller.signal);
+  }
   console.log(
     "Production smoke passed: static assets, SPA routing, authentication, local scan and audio Range playback.",
   );

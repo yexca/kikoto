@@ -1,4 +1,4 @@
-import type { PlayerTrack, PlayerTrackLocation } from "./PlayerProvider";
+import type { PlayerTrack, PlayerTrackLocation } from "./playerTypes";
 import { playbackKeyForLocation } from "./playbackIdentity";
 
 function locationPriority(locationType: string) {

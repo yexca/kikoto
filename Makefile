@@ -1,5 +1,5 @@
 .PHONY: backend-format backend-lint backend-lint-full backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-i18n frontend-audit frontend-audit-signatures frontend-playwright-install frontend-e2e-smoke frontend-e2e android-sync android-test android-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
-.PHONY: ci-plan ci-plan-test ci-results ci-backend-static ci-backend-coverage ci-backend-race ci-production production-smoke
+.PHONY: ci-plan ci-plan-test ci-results ci-backend-static ci-backend-coverage ci-backend-race ci-production production-smoke production-e2e
 
 GO ?= go
 DOCKER_BUILD ?= $(DOCKER) build
@@ -163,6 +163,9 @@ docker-build:
 production-smoke:
 	$(NODE) scripts/production-smoke.mjs $(DOCKER_IMAGE)
 
+production-e2e: frontend-playwright-install
+	$(NODE) scripts/production-smoke.mjs $(DOCKER_IMAGE) --browser
+
 docker-up:
 	$(DOCKER_COMPOSE_DEV) up -d --build
 
@@ -223,8 +226,8 @@ ci-backend: ci-backend-static ci-backend-coverage ci-backend-race
 
 ci-frontend: frontend-audit frontend-audit-signatures frontend-coverage frontend-build
 
-ci-production: docker-build
-	$(MAKE) DOCKER_IMAGE=$(DOCKER_IMAGE) production-smoke
+ci-production: docker-build frontend-playwright-install
+	$(NODE) scripts/production-smoke.mjs $(DOCKER_IMAGE) --browser
 
 # ci-local follows every GitHub Actions validation phase available without an Android SDK.
 ci-local: DOCKER_IMAGE := kikoto:ci

@@ -1,0 +1,1 @@
+export { WorkMetadataEditorModal } from "./WorkMetadataEditorModal";

@@ -131,6 +131,13 @@ Do not export production identifiers only to move a white-box test into the
 integration suite. Extract a domain service first, then test its public
 contract.
 
+HTTP handler tests build the real packaged schema once per test process, then
+copy its checkpointed database image into each test's private temporary file.
+Each copy uses the production connection pool, WAL, and foreign-key settings;
+no writable database or WAL is shared between tests. Storage migration tests
+continue to exercise fresh databases and the numbered upgrade chain directly.
+Do not replace this with a checked-in database or reuse a mutated test copy.
+
 ### Coverage
 
 Generate the backend profile with cross-package instrumentation so integration
@@ -174,6 +181,15 @@ split by workflow, with common fixtures in `tests/e2e/fixtures/player-library.ts
 CI runs two independent shards with separate failure artifacts. Run either shard
 locally with `make E2E_ARGS="--shard=1/2" frontend-e2e` (or `--shard=2/2`);
 `make frontend-e2e` still runs every test.
+
+Queue parsing, legacy-state migration, and timer normalization are unit tests
+of `playerPersistence`; Playwright retains real owner/server isolation and
+reload/playback workflows. Service-worker request exclusions execute the actual
+worker fetch handler in a unit harness, while production Smoke verifies the
+served manifest, icons, and worker asset. These tests do not claim to verify
+browser installation or offline lifecycle behavior. Layout assertions protect
+documented viewport, touch-target, or loading-stability contracts, not incidental
+pixel coordinates or internal spans.
 
 Android JVM tests live under `frontend/android/app/src/test` and run through:
 
@@ -228,7 +244,7 @@ variants. Coverage and failure artifacts have one owner or unique shard names.
 The Android job shares frontend installation, build, and Capacitor sync between
 JVM tests and assembly. Production Smoke builds the image once through
 `make docker-build`, with Buildx layers cached between runs, then exercises that
-same local image through `make production-smoke`. Development Compose and the
+same local image through `make production-e2e`. Development Compose and the
 API-intercepted browser suite remain separate checks. Release still waits for
 successful full main CI for the exact tagged commit before publishing artifacts.
 Parallel validation reduces elapsed time but can spend more runner minutes when
@@ -302,8 +318,12 @@ make DOCKER_IMAGE=kikoto:ci ci-production
 ```
 
 Production Smoke checks compiled JavaScript, SPA routing, anonymous access
-denial, login/session/logout, local scanning, and authenticated audio Range
-responses against a real server. It uses an obviously synthetic work and a
+denial, login/session/logout, local scanning, PWA assets, and authenticated audio
+Range responses against a real server. Its Chromium flow logs in through the
+production UI, opens the scanned work, and verifies actual audio playback without
+intercepting the API. `make production-e2e` runs both layers against an already
+built image; `make production-smoke` runs only the HTTP checks when browser
+integration is outside the change's scope. It uses an obviously synthetic work and a
 generated WAV, with follow-up metadata synchronization disabled. Each run owns
 a unique container, anonymous config/cache/data volumes, a loopback-only dynamic
 port, and temporary fixture files outside the repository. Success, failure, and

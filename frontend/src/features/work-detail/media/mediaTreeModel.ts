@@ -1,5 +1,5 @@
 import type { MediaItem, RemoteTrack, RemoteWorkDetail, WorkDetail, WorkProgressSummary } from "../../../lib/api";
-import type { PlayerTrack, PlayerTrackLocation } from "../../../player/PlayerProvider";
+import type { PlayerTrack, PlayerTrackLocation } from "../../../player/playerTypes";
 import {
   findLyricsMatches,
   findRemoteLyricsMatches,

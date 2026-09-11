@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -172,7 +173,7 @@ func TestUpdateMediaProgressReturnsNotFoundWithoutCreatingCursor(t *testing.T) {
 	}
 }
 
-func TestCanceledMediaProgressWriteDoesNotBlockTheNextWriter(t *testing.T) {
+func TestCanceledMediaProgressPersistenceDoesNotBlockTheNextWriter(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
 	userResult, err := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('cancel-progress-user', 'Cancel Progress User', 'user')")
@@ -210,15 +211,16 @@ func TestCanceledMediaProgressWriteDoesNotBlockTheNextWriter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() { _ = blocker.Rollback() }()
 	requestCtx, cancelRequest := context.WithCancel(context.Background())
-	request := httptest.NewRequest(http.MethodPatch, "/api/media-items/802/progress", strings.NewReader(`{"positionSeconds":10,"durationSeconds":100,"completed":false}`))
-	request.SetPathValue("id", "802")
-	request = request.WithContext(context.WithValue(requestCtx, currentUserKey, user))
-	response := httptest.NewRecorder()
-	done := make(chan struct{})
+	defer cancelRequest()
+	// Exercise the write boundary directly. Watching pool occupancy during the
+	// whole handler can cancel an earlier SELECT instead of the blocked write.
+	// The following request still verifies recovery through the public handler.
+	done := make(chan error, 1)
 	go func() {
-		server.updateMediaProgress(response, request)
-		close(done)
+		done <- server.persistMediaProgress(requestCtx, userID, 801, 802, nil, nil, "",
+			mediaProgressUpdateRequest{PositionSeconds: 10}, "2026-01-01 00:00:00")
 	}()
 
 	deadline := time.Now().Add(time.Second)
@@ -231,7 +233,10 @@ func TestCanceledMediaProgressWriteDoesNotBlockTheNextWriter(t *testing.T) {
 	}
 	cancelRequest()
 	select {
-	case <-done:
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("blocked progress write error = %v, want context.Canceled", err)
+		}
 	case <-time.After(2 * time.Second):
 		_ = blocker.Rollback()
 		t.Fatal("canceled progress request did not return")

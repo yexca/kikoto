@@ -1,5 +1,5 @@
 import type { RemoteWorkDetail } from "@/lib/api";
-import type { PlayerTrack } from "@/player/PlayerProvider";
+import type { PlayerTrack } from "@/player/playerTypes";
 import {
   remoteSourceTabKey,
   type SourceTabInfo,

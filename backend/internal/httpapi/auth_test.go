@@ -15,7 +15,6 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
-	"github.com/yexca/kikoto/backend/internal/storage"
 )
 
 func TestPasswordHashUsesArgon2idAndVerifies(t *testing.T) {
@@ -471,23 +470,4 @@ func insertTestLocalMediaLocation(t *testing.T, db *sql.DB, relPath string) int6
 		t.Fatalf("last insert location id: %v", err)
 	}
 	return locationID
-}
-
-func openMigratedTestDB(t *testing.T) *sql.DB {
-	t.Helper()
-	db, err := storage.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("storage.Open() error = %v", err)
-	}
-	if err := storage.Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
-		_ = db.Close()
-		t.Fatalf("storage.Migrate() error = %v", err)
-	}
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
-	if err := db.PingContext(context.Background()); err != nil {
-		t.Fatalf("db ping: %v", err)
-	}
-	return db
 }

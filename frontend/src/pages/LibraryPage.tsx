@@ -1,34 +1,34 @@
+import { WorkMetadataEditorModal } from "@/features/work-detail/metadata";
+import type { TFunction } from "i18next";
 import {
   ArrowDownAZ,
   ArrowDownZA,
   ArrowUpDown,
+  BookmarkPlus,
+  Captions,
+  Check,
+  CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Check,
-  CheckCircle2,
-  BookmarkPlus,
-  Captions,
   Circle,
   CircleUserRound,
   Clock3,
-  GitBranchPlus,
+  Cloud,
   CloudOff,
   Edit3,
-  Trash2,
+  ExternalLink,
   FileAudio,
-  FileVideo,
   FileText,
+  FileVideo,
   Filter,
   Folder,
   FolderTree,
+  GitBranchPlus,
   HardDrive,
   HardDriveDownload,
-  Heart,
   Headphones,
   ImageIcon,
-  ExternalLink,
-  Cloud,
   Languages,
   ListChecks,
   MoreHorizontal,
@@ -42,9 +42,10 @@ import {
   ShieldAlert,
   Sparkles,
   Tags,
+  Trash2,
   Unlink,
-  X,
   UserRound,
+  X,
 } from "lucide-react";
 import {
   useCallback,
@@ -57,96 +58,31 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
-import { Badge, badgeVariants } from "@/components/ui/badge";
-import { AnchoredPopover } from "@/components/ui/anchored-popover";
+import { NotFoundPage } from "@/app/NotFoundPage";
+import {
+  announceRemoteTrackCreated,
+  isMatchingRemoteTrack,
+  REMOTE_TRACK_TERMINAL_EVENT,
+  type RemoteTrackTerminalDetail,
+} from "@/app/remoteTrackWorkflows";
+import { openWorkDetail } from "@/app/workDetailNavigation";
+import { useAuth } from "@/auth/AuthProvider";
+import { usePermissionGate } from "@/auth/usePermissionGate";
+import { UserTagRow } from "@/components/UserTagRow";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
 import { PageSizePicker } from "@/components/collection/PageSizePicker";
+import { AnchoredPopover } from "@/components/ui/anchored-popover";
+import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
-import { isActiveWorkflowStatus, useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
-import { UserTagRow } from "@/components/UserTagRow";
-import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
-import { openVoiceRoute } from "@/pages/CreatorWorksPage";
-import { VideoPreview } from "@/features/work-detail/media/VideoPreview";
 import {
-  api,
-  ApiError,
-  assetURL,
-  mediaDownloadURL,
-  type LibrarySource,
-  type LibrarySort,
-  type SortDirection,
-  type CircleSuggestion,
-  type FavoriteList,
-  type DirectoryRoutingRule,
-  type ListeningStatus,
-  type MediaItem,
-  type ManualOverridePerson,
-  type ManualOverrideSeries,
-  type RemoteTrack,
-  type RemoteWorksResponse,
-  type RemoteWork,
-  type RemoteWorkDetail,
-  type RecommendationBreakdown,
-  type RecommendationEventInput,
-  type SourceAvailabilitySource,
-  type SourcePresenceItem,
-  type SeriesSuggestion,
-  type VoiceSuggestion,
-  type VoiceCredit,
-  type Work,
-  type WorkCoverCandidate,
-  type WorkDetail,
-  type WorkMetadataPresentation,
-  type WorkMetadataSyncStatus,
-} from "@/lib/api";
-import { ageRatingPresentation } from "@/lib/ageRating";
-import { currentClientStorageScope, type ClientPrincipalID } from "@/lib/clientStorageScope";
-import { NAVIGATION_EVENT, historyStateWithReturn, navigateToWorkspaceUp } from "@/lib/browserHistory";
-import { dismissKeyboardOnEnter } from "@/lib/keyboard";
-import { DLSITE_ENDPOINTS } from "@/lib/official-links";
-import { hasPlaybackHistory } from "@/lib/playbackHistory";
-import { readOrCreateRecommendationSession } from "@/lib/recommendationSession";
-import { WORK_CODE_PATH_PATTERN } from "@/lib/workCode";
-import {
-  defaultLibraryBrowseState,
-  libraryBrowseSearch,
-  libraryBrowseStateFromSearch,
-  libraryBrowseStateFromValue,
-  libraryLocation,
-  localPageSize,
-  localWorkPageSizeOptions,
-  normalizeLibraryBrowseLocation,
-  readLastLibraryLocation,
-  readLibraryBrowseState,
-  readLibrarySortPreference,
-  writeLastLibraryLocation,
-  withSharedLibraryQuery,
-  writeLibraryBrowseState,
-  writeLibrarySortPreference,
-  type LibraryBrowseState,
-  type LibraryColumnSetting,
-  type LocalWorkPageSize,
-} from "@/pages/libraryBrowseState";
-import {
-  compileLibrarySearchQuery,
-  editableSearchClauseKinds,
-  formatRemoteSearchQuery,
-  formatSearchClause,
-  normalizeSearchClauseDraft,
-  parseSearchClauses,
-  type SearchClause,
-  type SearchClauseDraft,
-  type SearchClauseKind,
-} from "@/pages/librarySearchClauses";
-import {
+  dlsiteTagBadges,
+  userTagBadges,
   WorkCardActionButton,
   WorkCardDLsiteAction,
   WorkCardFooter,
@@ -154,50 +90,22 @@ import {
   WorkCardQuickMarkButton,
   WorkCardSelection,
   WorkCardShell,
-  dlsiteTagBadges,
-  userTagBadges,
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
-import i18n from "@/i18n";
 import {
   WorkCollectionLayoutPicker as LayoutPicker,
+  useWorkCollectionLayout,
   workCollectionClassName,
   workCollectionStyle,
-  useWorkCollectionLayout,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
-import { preferredLyricsMediaItemID, useLibraryPlayer, usePlayer } from "@/player/PlayerProvider";
-import { lyricsChoiceDisplayLabel, type LyricsChoice } from "@/player/lyricsMatching";
-import { getCachedWorkMedia, invalidateCachedWorkMedia, setCachedWorkMedia } from "@/pages/workMediaCache";
 import {
-  availableForkSources,
-  buildSourceTabs,
-  remoteAvailabilityRouteCode,
-  remoteSourceCanBrowse,
-  remoteSourceTabKey,
-  remoteSourceTabStatus,
-  sourceTabStatusClass,
-  type DetailSourceIntent,
-  type ReforkTarget,
-  type RemoteSourceAvailability,
-  type SourceTabInfo,
-  type TrackedPresenceOption,
-} from "@/features/work-detail/source/sourceContextModel";
-import { useWorkSourceContext } from "@/features/work-detail/source/useWorkSourceContext";
-import { useMediaTree } from "@/features/work-detail/media/useMediaTree";
-import { useWorkPlaybackCursor } from "@/features/work-detail/media/useWorkPlaybackCursor";
-import {
-  groupWorkVersions,
-  mergeRemoteWorkVersions,
-  preferredWorkVersion,
-  workVersionAvailableForScope,
-  workVersionKindLabel,
-  workVersionMediaState,
-  type WorkVersionAvailabilityScope,
-  type WorkVersionGroup,
-} from "@/features/work-detail/workVersionModel";
-import { orderedMetadataVariants, resolveMetadataVariant } from "@/features/work-detail/metadataPresentationModel";
+  MediaContextActionBar,
+  WorkIdentityActionBar,
+  type DetailActionMode,
+} from "@/features/work-detail/WorkDetailActionBars";
+import { VideoPreview } from "@/features/work-detail/media/VideoPreview";
 import {
   buildRemoteTree,
   buildTree,
@@ -213,7 +121,6 @@ import {
   formatTrackDuration,
   formatTreeStats,
   playableFiles,
-  remoteSelectablePaths,
   sortedTreeChildren,
   sortedTreeFiles,
   toPlayerTrack,
@@ -231,29 +138,114 @@ import {
   playbackTrackMatchesRemoteWork,
   type PlaybackRouteSnapshot,
 } from "@/features/work-detail/media/playbackDirectoryRouting";
+import { useMediaTree } from "@/features/work-detail/media/useMediaTree";
+import { useWorkPlaybackCursor } from "@/features/work-detail/media/useWorkPlaybackCursor";
+import { orderedMetadataVariants, resolveMetadataVariant } from "@/features/work-detail/metadataPresentationModel";
+import {
+  availableForkSources,
+  buildSourceTabs,
+  remoteAvailabilityRouteCode,
+  remoteSourceCanBrowse,
+  remoteSourceTabKey,
+  remoteSourceTabStatus,
+  sourceTabStatusClass,
+  type DetailSourceIntent,
+  type ReforkTarget,
+  type RemoteSourceAvailability,
+  type SourceTabInfo,
+  type TrackedPresenceOption,
+} from "@/features/work-detail/source/sourceContextModel";
+import { useWorkSourceContext } from "@/features/work-detail/source/useWorkSourceContext";
+import {
+  groupWorkVersions,
+  mergeRemoteWorkVersions,
+  preferredWorkVersion,
+  workVersionAvailableForScope,
+  workVersionKindLabel,
+  workVersionMediaState,
+  type WorkVersionAvailabilityScope,
+  type WorkVersionGroup,
+} from "@/features/work-detail/workVersionModel";
+import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
 import {
   useMediaCleanupWorkflow,
   type MediaCleanupCompletion,
   type MediaCleanupMode,
   type MediaDeleteTarget,
 } from "@/features/work-detail/workflows/useMediaCleanupWorkflow";
-import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
-import { usePermissionGate } from "@/auth/usePermissionGate";
-import { useAuth } from "@/auth/AuthProvider";
-import { NotFoundPage } from "@/app/NotFoundPage";
-import { openWorkDetail } from "@/app/workDetailNavigation";
+import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
+import { isActiveWorkflowStatus, useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
+import i18n from "@/i18n";
+import { ageRatingPresentation } from "@/lib/ageRating";
 import {
-  announceRemoteTrackCreated,
-  isMatchingRemoteTrack,
-  REMOTE_TRACK_TERMINAL_EVENT,
-  type RemoteTrackTerminalDetail,
-} from "@/app/remoteTrackWorkflows";
+  api,
+  ApiError,
+  assetURL,
+  mediaDownloadURL,
+  type DirectoryRoutingRule,
+  type FavoriteList,
+  type LibrarySort,
+  type LibrarySource,
+  type ListeningStatus,
+  type MediaItem,
+  type RecommendationBreakdown,
+  type RecommendationEventInput,
+  type RemoteTrack,
+  type RemoteWork,
+  type RemoteWorkDetail,
+  type RemoteWorksResponse,
+  type SortDirection,
+  type SourcePresenceItem,
+  type VoiceCredit,
+  type Work,
+  type WorkDetail,
+  type WorkMetadataPresentation,
+  type WorkMetadataSyncStatus,
+} from "@/lib/api";
+import { historyStateWithReturn, navigateToWorkspaceUp, NAVIGATION_EVENT } from "@/lib/browserHistory";
+import { currentClientStorageScope, type ClientPrincipalID } from "@/lib/clientStorageScope";
+import { dismissKeyboardOnEnter } from "@/lib/keyboard";
+import { DLSITE_ENDPOINTS } from "@/lib/official-links";
+import { hasPlaybackHistory } from "@/lib/playbackHistory";
+import { readOrCreateRecommendationSession } from "@/lib/recommendationSession";
+import { WORK_CODE_PATH_PATTERN } from "@/lib/workCode";
+import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
+import { openVoiceRoute } from "@/pages/CreatorWorksPage";
 import {
-  MediaContextActionBar,
-  WorkIdentityActionBar,
-  type DetailActionMode,
-} from "@/features/work-detail/WorkDetailActionBars";
+  defaultLibraryBrowseState,
+  libraryBrowseSearch,
+  libraryBrowseStateFromSearch,
+  libraryBrowseStateFromValue,
+  libraryLocation,
+  localPageSize,
+  localWorkPageSizeOptions,
+  normalizeLibraryBrowseLocation,
+  readLastLibraryLocation,
+  readLibraryBrowseState,
+  readLibrarySortPreference,
+  withSharedLibraryQuery,
+  writeLastLibraryLocation,
+  writeLibraryBrowseState,
+  writeLibrarySortPreference,
+  type LibraryBrowseState,
+  type LibraryColumnSetting,
+  type LocalWorkPageSize,
+} from "@/pages/libraryBrowseState";
+import {
+  compileLibrarySearchQuery,
+  editableSearchClauseKinds,
+  formatRemoteSearchQuery,
+  formatSearchClause,
+  normalizeSearchClauseDraft,
+  parseSearchClauses,
+  type SearchClause,
+  type SearchClauseDraft,
+  type SearchClauseKind,
+} from "@/pages/librarySearchClauses";
+import { getCachedWorkMedia, invalidateCachedWorkMedia, setCachedWorkMedia } from "@/pages/workMediaCache";
+import { preferredLyricsMediaItemID, useLibraryPlayer, usePlayer } from "@/player/PlayerProvider";
+import { lyricsChoiceDisplayLabel, type LyricsChoice } from "@/player/lyricsMatching";
 
 type WorkPreview = Pick<
   Work,
@@ -8158,713 +8150,6 @@ function SourceDirectoryToolbar({
       {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
     </div>
   );
-}
-
-type SuggestionResult<T> = {
-  items: T[];
-  truncated: boolean;
-};
-
-type DebouncedSuggestionResult<T> = SuggestionResult<T> & {
-  clear: () => void;
-};
-
-function emptySuggestionResult<T>(): SuggestionResult<T> {
-  return { items: [], truncated: false };
-}
-
-function useDebouncedSuggestion<T>(
-  query: string,
-  requestKey: string,
-  request: () => Promise<SuggestionResult<T>>,
-): DebouncedSuggestionResult<T> {
-  const [state, setState] = useState<{ key: string; result: SuggestionResult<T> }>(() => ({
-    key: requestKey,
-    result: emptySuggestionResult<T>(),
-  }));
-
-  useEffect(() => {
-    if ([...query].length < 2) {
-      setState({ key: requestKey, result: emptySuggestionResult<T>() });
-      return;
-    }
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      request()
-        .then((next) => {
-          if (!cancelled) setState({ key: requestKey, result: next });
-        })
-        .catch(() => {
-          if (!cancelled) setState({ key: requestKey, result: emptySuggestionResult<T>() });
-        });
-    }, 250);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [query, requestKey]);
-
-  const result = state.key === requestKey ? state.result : emptySuggestionResult<T>();
-  return {
-    ...result,
-    clear: () => setState({ key: requestKey, result: emptySuggestionResult<T>() }),
-  };
-}
-
-function useWorkCoverCandidates(workId: number, toast: ReturnType<typeof useToast>) {
-  const [coverCandidates, setCoverCandidates] = useState<WorkCoverCandidate[]>([]);
-  const [selectedCoverId, setSelectedCoverId] = useState<number | null>(null);
-  const [loadingCovers, setLoadingCovers] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoadingCovers(true);
-    api
-      .listWorkCoverCandidates(workId)
-      .then((result) => {
-        if (cancelled) return;
-        setCoverCandidates(result.candidates);
-        setSelectedCoverId(result.candidates.find((candidate) => candidate.selected)?.locationId ?? null);
-      })
-      .catch((error) => {
-        if (!cancelled) toast.notify(toastFromError(error, i18n.t("libraryDetail.coverCandidatesLoadFailed")));
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingCovers(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [toast, workId]);
-
-  return { coverCandidates, selectedCoverId, setSelectedCoverId, loadingCovers };
-}
-
-function MetadataEditorCoverSection({
-  manualCover,
-  coverCandidates,
-  selectedCoverId,
-  loadingCovers,
-  saving,
-  onSelectCover,
-  onReset,
-}: {
-  manualCover?: WorkDetail["manualOverrides"]["cover"];
-  coverCandidates: WorkCoverCandidate[];
-  selectedCoverId: number | null;
-  loadingCovers: boolean;
-  saving: boolean;
-  onSelectCover: (locationId: number) => void;
-  onReset: () => void;
-}) {
-  return (
-    <>
-      {manualCover?.url && (
-        <div className="flex items-center gap-3 rounded-md border bg-background p-2">
-          <img src={assetURL(manualCover.url)} alt="" className="h-16 w-16 rounded object-contain" />
-          <div className="min-w-0 text-xs text-muted-foreground">
-            <div className="truncate text-foreground">{manualCover.assetPath}</div>
-            {manualCover.originalPath && <div className="truncate">{manualCover.originalPath}</div>}
-          </div>
-        </div>
-      )}
-      {loadingCovers ? (
-        <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
-          {i18n.t("libraryDetail.loadingCoverCandidates")}
-        </div>
-      ) : coverCandidates.length === 0 ? (
-        <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
-          {i18n.t("libraryDetail.noIndexedLocalImages")}
-        </div>
-      ) : (
-        <div className="grid gap-2 sm:grid-cols-2">
-          {coverCandidates.map((candidate) => (
-            <button
-              key={candidate.locationId}
-              className={`flex items-center gap-3 rounded-md border bg-background p-2 text-left hover:border-primary ${selectedCoverId === candidate.locationId ? "border-primary ring-1 ring-primary" : ""}`}
-              onClick={() => onSelectCover(candidate.locationId)}
-            >
-              <img
-                src={assetURL(candidate.previewUrl)}
-                alt=""
-                className="h-16 w-16 shrink-0 rounded object-contain"
-                loading="lazy"
-              />
-              <span className="min-w-0 flex-1 text-xs">
-                <span className="block truncate font-medium">{candidate.fileName}</span>
-                <span className="block truncate text-muted-foreground">{candidate.path}</span>
-                <span className="block text-muted-foreground">{formatBytes(candidate.sizeBytes)}</span>
-              </span>
-              {selectedCoverId === candidate.locationId && <Check className="h-4 w-4 text-primary" />}
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="flex justify-end">
-        <Button variant="outline" size="sm" disabled={saving || !manualCover} onClick={onReset}>
-          {i18n.t("libraryDetail.resetCover")}
-        </Button>
-      </div>
-    </>
-  );
-}
-
-function MetadataEditorCircleSection({
-  name,
-  externalId,
-  suggestions,
-  saving,
-  hasManualValue,
-  onNameChange,
-  onExternalIdChange,
-  onSuggestionSelect,
-  onReset,
-}: {
-  name: string;
-  externalId: string;
-  suggestions: DebouncedSuggestionResult<CircleSuggestion>;
-  saving: boolean;
-  hasManualValue: boolean;
-  onNameChange: (value: string) => void;
-  onExternalIdChange: (value: string) => void;
-  onSuggestionSelect: (item: CircleSuggestion) => void;
-  onReset: () => void;
-}) {
-  return (
-    <>
-      <div className="grid gap-3 sm:grid-cols-[1fr_180px]">
-        <LabeledInput label={i18n.t("libraryDetail.name")} value={name} onChange={onNameChange} />
-        <LabeledInput label={i18n.t("libraryDetail.externalId")} value={externalId} onChange={onExternalIdChange} />
-      </div>
-      <SuggestionList
-        truncated={suggestions.truncated}
-        emptyLabel={i18n.t("libraryDetail.typeToSearchCircles")}
-        items={suggestions.items.map((item) => ({
-          key: String(item.partyId),
-          label: item.name,
-          detail: item.externalId,
-          onSelect: () => onSuggestionSelect(item),
-        }))}
-      />
-      <div className="flex justify-end">
-        <Button variant="outline" size="sm" disabled={saving || !hasManualValue} onClick={onReset}>
-          {i18n.t("libraryDetail.resetCircle")}
-        </Button>
-      </div>
-    </>
-  );
-}
-
-function MetadataEditorSeriesSection({
-  name,
-  titleId,
-  circleExternalId,
-  suggestions,
-  saving,
-  hasManualValue,
-  onNameChange,
-  onTitleIdChange,
-  onCircleExternalIdChange,
-  onSuggestionSelect,
-  onReset,
-}: {
-  name: string;
-  titleId: string;
-  circleExternalId: string;
-  suggestions: DebouncedSuggestionResult<SeriesSuggestion>;
-  saving: boolean;
-  hasManualValue: boolean;
-  onNameChange: (value: string) => void;
-  onTitleIdChange: (value: string) => void;
-  onCircleExternalIdChange: (value: string) => void;
-  onSuggestionSelect: (item: SeriesSuggestion) => void;
-  onReset: () => void;
-}) {
-  return (
-    <>
-      <div className="grid gap-3 sm:grid-cols-[1fr_160px_180px]">
-        <LabeledInput label={i18n.t("libraryDetail.name")} value={name} onChange={onNameChange} />
-        <LabeledInput label={i18n.t("libraryDetail.titleId")} value={titleId} onChange={onTitleIdChange} />
-        <LabeledInput
-          label={i18n.t("libraryDetail.circle")}
-          value={circleExternalId}
-          onChange={onCircleExternalIdChange}
-        />
-      </div>
-      <SuggestionList
-        truncated={suggestions.truncated}
-        emptyLabel={i18n.t("libraryDetail.typeToSearchSeries")}
-        items={suggestions.items.map((item) => ({
-          key: String(item.seriesId),
-          label: item.name,
-          detail: [item.titleId, item.circleName, item.circleExternalId].filter(Boolean).join(" · "),
-          onSelect: () => onSuggestionSelect(item),
-        }))}
-      />
-      <div className="flex justify-end">
-        <Button variant="outline" size="sm" disabled={saving || !hasManualValue} onClick={onReset}>
-          {i18n.t("libraryDetail.resetSeries")}
-        </Button>
-      </div>
-    </>
-  );
-}
-
-function MetadataEditorVoiceActorsSection({
-  voiceActors,
-  suggestions,
-  focusedVoiceIndex,
-  saving,
-  hasManualValue,
-  onFocus,
-  onUpdate,
-  onRemove,
-  onAdd,
-  onSuggestionSelect,
-  onReset,
-}: {
-  voiceActors: ManualOverridePerson[];
-  suggestions: DebouncedSuggestionResult<VoiceSuggestion>;
-  focusedVoiceIndex: number;
-  saving: boolean;
-  hasManualValue: boolean;
-  onFocus: (index: number) => void;
-  onUpdate: (index: number, patch: Partial<ManualOverridePerson>) => void;
-  onRemove: (index: number) => void;
-  onAdd: () => void;
-  onSuggestionSelect: (item: VoiceSuggestion) => void;
-  onReset: () => void;
-}) {
-  return (
-    <>
-      <div className="space-y-2">
-        {voiceActors.map((actor, index) => (
-          <div key={`${index}:${actor.personId}`} className="grid gap-2 sm:grid-cols-[1fr_120px_auto]">
-            <LabeledInput
-              label={i18n.t("libraryDetail.name")}
-              value={actor.name}
-              onFocus={() => onFocus(index)}
-              onChange={(value) => onUpdate(index, { name: value, personId: 0 })}
-            />
-            <LabeledInput
-              label={i18n.t("libraryDetail.personId")}
-              value={actor.personId ? String(actor.personId) : ""}
-              onChange={(value) => onUpdate(index, { personId: Number(value) || 0 })}
-            />
-            <Button
-              variant="outline"
-              size="icon"
-              className="mt-5 h-9 w-9"
-              onClick={() => onRemove(index)}
-              aria-label={i18n.t("libraryDetail.removeVoiceActor")}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        ))}
-        {focusedVoiceIndex >= 0 && (
-          <SuggestionList
-            truncated={suggestions.truncated}
-            emptyLabel={i18n.t("libraryDetail.typeToSearchVoices")}
-            items={suggestions.items.map((item) => ({
-              key: String(item.personId),
-              label: item.name,
-              detail: i18n.t("libraryDetail.personNumber", { id: item.personId }),
-              onSelect: () => onSuggestionSelect(item),
-            }))}
-          />
-        )}
-      </div>
-      <div className="flex flex-wrap justify-between gap-2">
-        <Button variant="outline" size="sm" onClick={onAdd}>
-          <Plus className="h-4 w-4" />
-          {i18n.t("libraryDetail.addVoice")}
-        </Button>
-        <Button variant="outline" size="sm" disabled={saving || !hasManualValue} onClick={onReset}>
-          {i18n.t("libraryDetail.resetVoices")}
-        </Button>
-      </div>
-    </>
-  );
-}
-
-function workMetadataOverridePayload({
-  title,
-  circleName,
-  circleExternalId,
-  seriesName,
-  seriesTitleId,
-  seriesCircleExternalId,
-  voiceActors,
-}: {
-  title: string;
-  circleName: string;
-  circleExternalId: string;
-  seriesName: string;
-  seriesTitleId: string;
-  seriesCircleExternalId: string;
-  voiceActors: ManualOverridePerson[];
-}) {
-  return {
-    title: nullableTrimmed(title),
-    circle: nullableEntity(circleName, circleExternalId),
-    series: nullableSeries(seriesName, seriesTitleId, seriesCircleExternalId),
-    voiceActors: voiceActors
-      .map((actor) => ({ name: actor.name.trim(), personId: Number(actor.personId) || 0 }))
-      .filter((actor) => actor.name),
-  };
-}
-
-function metadataEditorInitialState(work: WorkDetail) {
-  const manual = work.manualOverrides ?? {};
-  return {
-    manual,
-    title: manual.title ?? work.title,
-    circleName: manual.circle?.name ?? work.circle,
-    circleExternalId: manual.circle?.externalId ?? work.circleExternalId,
-    seriesName: manual.series?.name ?? work.series,
-    seriesTitleId: manual.series?.titleId ?? work.seriesTitleId ?? "",
-    seriesCircleExternalId:
-      manual.series?.circleExternalId ?? work.seriesCircleExternalId ?? work.circleExternalId ?? "",
-    voiceActors: initialManualVoiceActors(work),
-  };
-}
-
-function useMetadataEditorActions({
-  work,
-  toast,
-  title,
-  circleName,
-  circleExternalId,
-  seriesName,
-  seriesTitleId,
-  seriesCircleExternalId,
-  voiceActors,
-  selectedCoverId,
-  onSaved,
-  onClose,
-}: {
-  work: WorkDetail;
-  toast: ReturnType<typeof useToast>;
-  title: string;
-  circleName: string;
-  circleExternalId: string;
-  seriesName: string;
-  seriesTitleId: string;
-  seriesCircleExternalId: string;
-  voiceActors: ManualOverridePerson[];
-  selectedCoverId: number | null;
-  onSaved: () => void;
-  onClose: () => void;
-}) {
-  const [saving, setSaving] = useState(false);
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      await api.updateWorkManualOverrides(
-        work.id,
-        workMetadataOverridePayload({
-          title,
-          circleName,
-          circleExternalId,
-          seriesName,
-          seriesTitleId,
-          seriesCircleExternalId,
-          voiceActors,
-        }),
-      );
-      if (selectedCoverId !== null) await api.setWorkCoverOverride(work.id, selectedCoverId);
-      toast.success(i18n.t("libraryDetail.metadataOverridesSaved"));
-      onSaved();
-      onClose();
-    } catch (error) {
-      toast.notify(toastFromError(error, i18n.t("libraryDetail.metadataOverridesSaveFailed")));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const resetField = async (field: string) => {
-    setSaving(true);
-    try {
-      await api.deleteWorkManualOverride(work.id, field);
-      toast.success(i18n.t("libraryDetail.overrideReset"));
-      onSaved();
-      onClose();
-    } catch (error) {
-      toast.notify(toastFromError(error, i18n.t("libraryDetail.overrideResetFailed")));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return { saving, save, resetField };
-}
-
-function WorkMetadataEditorModal({
-  work,
-  onClose,
-  onSaved,
-}: {
-  work: WorkDetail;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const toast = useToast();
-  const initialState = metadataEditorInitialState(work);
-  const manual = initialState.manual;
-  const [title, setTitle] = useState(initialState.title);
-  const [circleName, setCircleName] = useState(initialState.circleName);
-  const [circleExternalId, setCircleExternalId] = useState(initialState.circleExternalId);
-  const [seriesName, setSeriesName] = useState(initialState.seriesName);
-  const [seriesTitleId, setSeriesTitleId] = useState(initialState.seriesTitleId);
-  const [seriesCircleExternalId, setSeriesCircleExternalId] = useState(initialState.seriesCircleExternalId);
-  const [voiceActors, setVoiceActors] = useState<ManualOverridePerson[]>(() => initialState.voiceActors);
-  const [focusedVoiceIndex, setFocusedVoiceIndex] = useState(-1);
-  const coverState = useWorkCoverCandidates(work.id, toast);
-  const circleQuery = circleName.trim();
-  const circleSuggestions = useDebouncedSuggestion(circleQuery, circleName, () => api.suggestCircles(circleQuery));
-  const seriesQuery = seriesName.trim();
-  const seriesSuggestions = useDebouncedSuggestion(seriesQuery, `${seriesName}:${seriesCircleExternalId}`, () =>
-    api.suggestSeries(seriesQuery, seriesCircleExternalId),
-  );
-  const focusedVoice = focusedVoiceIndex >= 0 ? voiceActors[focusedVoiceIndex] : null;
-  const voiceQuery = focusedVoice?.name.trim() ?? "";
-  const voiceSuggestions = useDebouncedSuggestion(voiceQuery, `${focusedVoiceIndex}:${focusedVoice?.name ?? ""}`, () =>
-    api.suggestVoices(voiceQuery),
-  );
-  const { saving, save, resetField } = useMetadataEditorActions({
-    work,
-    toast,
-    title,
-    circleName,
-    circleExternalId,
-    seriesName,
-    seriesTitleId,
-    seriesCircleExternalId,
-    voiceActors,
-    selectedCoverId: coverState.selectedCoverId,
-    onSaved,
-    onClose,
-  });
-
-  const addVoiceActor = () => setVoiceActors((items) => [...items, { name: "", personId: 0 }]);
-  const updateVoiceActor = (index: number, patch: Partial<ManualOverridePerson>) => {
-    setVoiceActors((items) => items.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)));
-  };
-  const removeVoiceActor = (index: number) => {
-    setVoiceActors((items) => items.filter((_, itemIndex) => itemIndex !== index));
-  };
-
-  return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border bg-card shadow-lg">
-        <div className="flex items-start justify-between gap-3 border-b px-4 py-3">
-          <div>
-            <h3 className="text-base font-semibold">{i18n.t("libraryDetail.editMetadata")}</h3>
-            <p className="mt-1 text-xs text-muted-foreground">{work.primaryCode}</p>
-          </div>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-8 w-8"
-            onClick={onClose}
-            aria-label={i18n.t("content.close")}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="app-scroll min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
-          <EditorSection title={i18n.t("libraryDetail.work")}>
-            <LabeledInput label={i18n.t("libraryDetail.title")} value={title} onChange={setTitle} />
-            <div className="flex justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={saving || !manual.title}
-                onClick={() => void resetField("title")}
-              >
-                {i18n.t("libraryDetail.resetTitle")}
-              </Button>
-            </div>
-          </EditorSection>
-
-          <EditorSection title={i18n.t("libraryDetail.cover")}>
-            <MetadataEditorCoverSection
-              manualCover={manual.cover}
-              coverCandidates={coverState.coverCandidates}
-              selectedCoverId={coverState.selectedCoverId}
-              loadingCovers={coverState.loadingCovers}
-              saving={saving}
-              onSelectCover={coverState.setSelectedCoverId}
-              onReset={() => void resetField("cover")}
-            />
-          </EditorSection>
-
-          <EditorSection title={i18n.t("libraryDetail.circle")}>
-            <MetadataEditorCircleSection
-              name={circleName}
-              externalId={circleExternalId}
-              suggestions={circleSuggestions}
-              saving={saving}
-              hasManualValue={Boolean(manual.circle)}
-              onNameChange={setCircleName}
-              onExternalIdChange={setCircleExternalId}
-              onSuggestionSelect={(item) => {
-                setCircleName(item.name);
-                setCircleExternalId(item.externalId);
-                setSeriesCircleExternalId(item.externalId);
-                circleSuggestions.clear();
-              }}
-              onReset={() => void resetField("circle")}
-            />
-          </EditorSection>
-
-          <EditorSection title={i18n.t("libraryDetail.series")}>
-            <MetadataEditorSeriesSection
-              name={seriesName}
-              titleId={seriesTitleId}
-              circleExternalId={seriesCircleExternalId}
-              suggestions={seriesSuggestions}
-              saving={saving}
-              hasManualValue={Boolean(manual.series)}
-              onNameChange={setSeriesName}
-              onTitleIdChange={setSeriesTitleId}
-              onCircleExternalIdChange={setSeriesCircleExternalId}
-              onSuggestionSelect={(item) => {
-                setSeriesName(item.name);
-                setSeriesTitleId(item.titleId);
-                setSeriesCircleExternalId(item.circleExternalId);
-                seriesSuggestions.clear();
-              }}
-              onReset={() => void resetField("series")}
-            />
-          </EditorSection>
-
-          <EditorSection title={i18n.t("libraryDetail.voiceActors")}>
-            <MetadataEditorVoiceActorsSection
-              voiceActors={voiceActors}
-              suggestions={voiceSuggestions}
-              focusedVoiceIndex={focusedVoiceIndex}
-              saving={saving}
-              hasManualValue={Boolean(manual.voiceActors?.length)}
-              onFocus={setFocusedVoiceIndex}
-              onUpdate={updateVoiceActor}
-              onRemove={removeVoiceActor}
-              onAdd={addVoiceActor}
-              onSuggestionSelect={(item) => {
-                updateVoiceActor(focusedVoiceIndex, { name: item.name, personId: item.personId });
-                voiceSuggestions.clear();
-              }}
-              onReset={() => void resetField("voice_actors")}
-            />
-          </EditorSection>
-        </div>
-        <div className="flex justify-end gap-2 border-t px-4 py-3">
-          <Button variant="outline" size="sm" disabled={saving} onClick={onClose}>
-            {i18n.t("content.cancel")}
-          </Button>
-          <Button size="sm" disabled={saving} onClick={() => void save()}>
-            {saving ? i18n.t("common.saving") : i18n.t("content.save")}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function EditorSection({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="space-y-3">
-      <h4 className="text-sm font-semibold">{title}</h4>
-      {children}
-    </section>
-  );
-}
-
-function SuggestionList({
-  items,
-  truncated,
-  emptyLabel,
-}: {
-  items: { key: string; label: string; detail: string; onSelect: () => void }[];
-  truncated: boolean;
-  emptyLabel: string;
-}) {
-  if (items.length === 0 && !truncated) {
-    return <div className="text-xs text-muted-foreground">{emptyLabel}</div>;
-  }
-  return (
-    <div className="space-y-1 rounded-md border bg-background p-1">
-      {items.map((item) => (
-        <button
-          key={item.key}
-          className="flex min-h-8 w-full items-center justify-between gap-3 rounded px-2 text-left text-xs hover:bg-muted"
-          onClick={item.onSelect}
-        >
-          <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
-          {item.detail && <span className="shrink-0 truncate text-muted-foreground">{item.detail}</span>}
-        </button>
-      ))}
-      {truncated && (
-        <div className="px-2 py-1 text-xs text-muted-foreground">{i18n.t("libraryDetail.tooManyMatches")}</div>
-      )}
-    </div>
-  );
-}
-
-function LabeledInput({
-  label,
-  value,
-  onChange,
-  onFocus,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  onFocus?: () => void;
-}) {
-  return (
-    <label className="block min-w-0 text-xs font-medium text-muted-foreground">
-      {label}
-      <input
-        className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
-        value={value}
-        onFocus={onFocus}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </label>
-  );
-}
-
-function initialManualVoiceActors(work: WorkDetail): ManualOverridePerson[] {
-  const manual = work.manualOverrides?.voiceActors;
-  if (manual && manual.length > 0) return manual;
-  if (work.voiceCredits.length > 0) {
-    return work.voiceCredits.map((credit) => ({ name: credit.displayName, personId: credit.personId }));
-  }
-  return work.voiceActors.map((name) => ({ name, personId: 0 }));
-}
-
-function nullableTrimmed(value: string) {
-  const trimmed = value.trim();
-  return trimmed ? trimmed : null;
-}
-
-function nullableEntity(name: string, externalId: string) {
-  const nextName = name.trim();
-  const nextExternalId = externalId.trim();
-  return nextName || nextExternalId ? { name: nextName, externalId: nextExternalId } : null;
-}
-
-function nullableSeries(name: string, titleId: string, circleExternalId: string): ManualOverrideSeries | null {
-  const nextName = name.trim();
-  const nextTitleId = titleId.trim();
-  const nextCircleExternalId = circleExternalId.trim();
-  return nextName || nextTitleId || nextCircleExternalId
-    ? { name: nextName, titleId: nextTitleId, circleExternalId: nextCircleExternalId }
-    : null;
 }
 
 function DirectoryMessage({ message }: { message: string }) {

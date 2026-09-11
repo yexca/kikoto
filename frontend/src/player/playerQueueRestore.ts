@@ -1,5 +1,5 @@
 import type { MediaItem } from "../lib/api";
-import type { PlayerTrack, PlayerTrackLocation } from "./PlayerProvider";
+import type { PlayerTrack, PlayerTrackLocation } from "./playerTypes";
 import { applyTrackLocation, preferredTrackLocation } from "./trackLocations";
 
 type WorkMediaResult = { kind: "loaded"; mediaItems: MediaItem[] } | { kind: "missing" } | { kind: "unavailable" };

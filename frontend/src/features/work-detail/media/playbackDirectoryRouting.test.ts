@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { PlayerTrack } from "@/player/PlayerProvider";
+import type { PlayerTrack } from "@/player/playerTypes";
 import {
   captureInitialPlaybackTrack,
   playbackTrackMatchesPersistedWork,

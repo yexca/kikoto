@@ -591,57 +591,29 @@ test("failed direct playback offers compatibility before source fallback and the
   await restoredPage.close();
 });
 
-test("scoped legacy end-of-track sleep timers migrate without being discarded", async ({ page }) => {
-  await mockApplication(page);
-  persistedPlayerTracks.set(page, [persistedTrack]);
+test("player restores only the current server and authenticated owner's queue", async ({ page }) => {
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, { authenticated: true });
   await page.addInitScript(
     ({ track, baseKey }) => {
-      const key = `${baseKey}:${encodeURIComponent(window.location.origin)}:anonymous`;
-      localStorage.setItem(
-        key,
-        JSON.stringify({
-          version: 1,
-          queue: [track],
-          currentIndex: 0,
-          mode: "order",
-          playbackRate: 1,
-          sleepTimer: { mode: "track_end" },
-        }),
-      );
-    },
-    { track: persistedTrack, baseKey: playerQueueStorageBaseKey },
-  );
-  await page.goto("/");
-  await page.getByText("Test track", { exact: true }).click();
-
-  await expect(page.getByRole("button", { name: "Sleep timer" })).toContainText("Track");
-  await expect
-    .poll(async () => (await readScopedPlayerState(page, playerQueueStorageBaseKey))?.sleepTimer)
-    .toMatchObject({
-      mode: "deadline",
-      finishCurrentTrack: true,
-      waitingForTrackEnd: true,
-    });
-});
-
-test("unscoped player state is discarded because its owner is unknown", async ({ page }) => {
-  await mockApplication(page);
-  await page.addInitScript((track) => {
-    localStorage.setItem(
-      "kikoto:player-queue:v1",
-      JSON.stringify({
+      const state = JSON.stringify({
         version: 1,
         queue: [track],
         currentIndex: 0,
         mode: "order",
         playbackRate: 1,
         sleepTimer: null,
-      }),
-    );
-  }, persistedTrack);
-
+      });
+      const local = encodeURIComponent(window.location.origin);
+      localStorage.setItem(baseKey + ":" + local + ":anonymous", state);
+      localStorage.setItem(baseKey + ":" + local + ":user-2", state);
+      localStorage.setItem(baseKey + ":" + encodeURIComponent("https://other.example.invalid") + ":user-1", state);
+    },
+    { track: persistedTrack, baseKey: playerQueueStorageBaseKey },
+  );
   await page.goto("/");
-
+  await expect(page.getByRole("button", { name: "Account menu", exact: true })).toBeVisible();
   await expect(page.getByText("Test track", { exact: true })).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("kikoto:player-queue:v1"))).toBeNull();
+  await seedPlayer(page, persistedTrack, 1);
+  await page.reload();
+  await expect(page.getByText("Test track", { exact: true })).toBeVisible();
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { PlayerTrack, PlayerTrackLocation } from "./PlayerProvider";
+import type { PlayerTrack, PlayerTrackLocation } from "./playerTypes";
 import {
   applyTrackLocation,
   createTrackLocationFailureState,

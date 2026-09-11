@@ -66,6 +66,17 @@ move. A domain earns its own feature boundary after it owns a real page or flow
 and several mostly private components, models, or hooks. App composition or a
 small shared contract should resolve cross-domain needs.
 
+Work detail metadata editing exposes one entry from
+`features/work-detail/metadata`. Its modal owns interaction and save actions,
+suggestion hooks own asynchronous lookup, and a pure model maps editor state
+to metadata overrides. Library composes that entry instead of owning its internals.
+
+The global player keeps its public track and state types in `playerTypes` so
+media-tree and queue models do not depend on the React provider. `playerPersistence`
+owns browser preference access and queue parsing, including legacy migration.
+`PlayerProvider` composes these functions with playback effects and account-scoped
+storage keys; it remains mounted across navigation.
+
 ## Major Surfaces
 
 - Library.
