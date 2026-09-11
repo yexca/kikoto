@@ -152,7 +152,8 @@ export const koreanResource = {
           "Kikoto는 DLsite 스타일 작품, 통합 메타데이터, 호환 원격 소스와 브라우저 재생에 초점을 둔 로컬 우선 개인 오디오 라이브러리입니다.",
         builtWithCodex: "Codex로 개발",
         codexCredit: "이 소프트웨어는 yexca가 Codex의 도움을 받아 개발합니다.",
-        modelCredit: "v0.1.0은 GPT-5.5의 도움으로 개발되었습니다. v0.1.1부터는 GPT-5.6-sol의 개발 지원을 사용합니다.",
+        modelCredit:
+          "v0.1.0은 GPT-5.5의 도움으로 개발되었습니다. v0.1.1부터 v0.5.4까지는 GPT-5.6-sol을 사용했습니다. v0.5.5부터는 GPT-6-Astra의 개발 지원을 사용합니다.",
         softwareOverview: "소프트웨어 개요",
         overviewOne: "Kikoto는 로컬 폴더, DLsite 메타데이터와 Kikoeru 호환 원격 소스를 하나의 작품 모델로 통합합니다.",
         overviewTwo:

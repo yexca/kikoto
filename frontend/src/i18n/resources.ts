@@ -1324,7 +1324,7 @@ export const englishResource = {
         builtWithCodex: "Built with Codex",
         codexCredit: "This software is developed by yexca with assistance from Codex.",
         modelCredit:
-          "v0.1.0 was developed with GPT-5.5 assistance. From v0.1.1 onward, development assistance uses GPT-5.6-sol.",
+          "v0.1.0 was developed with GPT-5.5 assistance. v0.1.1 through v0.5.4 used GPT-5.6-sol. From v0.5.5 onward, development assistance uses GPT-6-Astra.",
         softwareOverview: "Software overview",
         overviewOne:
           "Kikoto combines local folders, DLsite metadata, and Kikoeru-compatible remote sources under one unified work model.",

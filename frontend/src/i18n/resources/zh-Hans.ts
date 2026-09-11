@@ -151,7 +151,8 @@ export const zhHansResource = {
         intro: "Kikoto 是一款本地优先的个人音频库，专注于 DLsite 风格作品、统一元数据、兼容的远程来源和浏览器播放。",
         builtWithCodex: "使用 Codex 构建",
         codexCredit: "本软件由 yexca 在 Codex 的协助下开发。",
-        modelCredit: "v0.1.0 在 GPT-5.5 的协助下开发。从 v0.1.1 起，开发协助使用 GPT-5.6-sol。",
+        modelCredit:
+          "v0.1.0 在 GPT-5.5 的协助下开发。v0.1.1 至 v0.5.4 使用 GPT-5.6-sol。从 v0.5.5 起，开发协助使用 GPT-6-Astra。",
         softwareOverview: "软件概览",
         overviewOne: "Kikoto 将本地文件夹、DLsite 元数据和 Kikoeru 兼容远程来源统一到一个作品模型中。",
         overviewTwo: "它包含媒体库浏览、收藏、社团、声优、工作流可见性、远程获取流程和基于浏览器的音频播放器。",
