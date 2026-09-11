@@ -3297,29 +3297,36 @@ test("inline lyrics adapt visible rows to height and keep the active line center
   });
   const activeIndex = 6;
   await expect(preview.locator(`[data-lyric-index="${activeIndex}"]`)).toHaveClass(/text-primary/);
-  await expect.poll(async () => Number(await preview.getAttribute("data-visible-rows"))).toBeGreaterThan(3);
-  const previewBox = await preview.boundingBox();
-  expect(previewBox).not.toBeNull();
-  const visibleRows = Number(await preview.getAttribute("data-visible-rows"));
-  expect(visibleRows).toBeGreaterThanOrEqual(3);
-  expect(visibleRows).toBeLessThanOrEqual(10);
-  expect(Math.round(previewBox!.height)).toBe(visibleRows * 28);
-  const lineCount = await preview.locator("[data-lyric-index]").count();
-  const firstVisibleIndex = Math.max(
-    0,
-    Math.min(activeIndex - Math.floor(visibleRows / 2), Math.max(0, lineCount - visibleRows)),
-  );
-  for (let index = 0; index < lineCount; index += 1) {
-    const line = preview.locator(`[data-lyric-index="${index}"]`);
-    if (index >= firstVisibleIndex && index < firstVisibleIndex + visibleRows)
-      await expect(line).not.toHaveClass(/opacity-0/);
-    else await expect(line).toHaveClass(/opacity-0/);
-  }
-  const expectedOffset = firstVisibleIndex === 0 ? "-?0" : `-${firstVisibleIndex * 28}`;
-  await expect(preview.locator(":scope > div")).toHaveAttribute(
-    "style",
-    new RegExp(`translateY\\(${expectedOffset}px\\)`),
-  );
+  // ResizeObserver can change the row count while the player settles. Read the
+  // entire layout together and retry it, rather than retaining an earlier count.
+  await expect(async () => {
+    const layout = await preview.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return {
+        visibleRows: Number(element.getAttribute("data-visible-rows")),
+        height: bounds.height,
+        lines: Array.from(element.querySelectorAll<HTMLElement>("[data-lyric-index]"), (line) => ({
+          top: line.getBoundingClientRect().top - bounds.top,
+          opacity: Number(getComputedStyle(line).opacity),
+        })),
+      };
+    });
+    const { visibleRows, lines } = layout;
+    expect(visibleRows).toBeGreaterThan(3);
+    expect(visibleRows).toBeLessThanOrEqual(10);
+    expect(Math.round(layout.height)).toBe(visibleRows * 28);
+    expect(lines.length).toBeGreaterThan(activeIndex);
+    const firstVisibleIndex = Math.max(
+      0,
+      Math.min(activeIndex - Math.floor(visibleRows / 2), Math.max(0, lines.length - visibleRows)),
+    );
+    for (const [index, line] of lines.entries()) {
+      if (index >= firstVisibleIndex && index < firstVisibleIndex + visibleRows)
+        expect(line.opacity).toBeGreaterThan(0);
+      else expect(line.opacity).toBe(0);
+      expect(Math.abs(line.top - (index - firstVisibleIndex) * 28)).toBeLessThan(1);
+    }
+  }).toPass({ timeout: 15_000 });
 
   await preview.click();
   const fullPlayer = page.locator("section.fixed.inset-0");

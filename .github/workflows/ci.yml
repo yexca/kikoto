@@ -8,7 +8,7 @@ on:
   workflow_call:
     inputs:
       run_builds:
-        description: Run Android and Docker build validation after Full E2E.
+        description: Require Android and Docker build validation for reusable calls.
         required: false
         default: false
         type: boolean
@@ -38,8 +38,8 @@ jobs:
       - name: Run frontend style checks
         run: make ci-style
 
-  core:
-    name: Core
+  backend:
+    name: Backend
     needs: style
     runs-on: ubuntu-24.04
     steps:
@@ -62,6 +62,16 @@ jobs:
           name: backend-coverage
           path: backend/coverage.out
           if-no-files-found: ignore
+
+  frontend:
+    name: Frontend
+    needs: style
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
@@ -80,7 +90,7 @@ jobs:
 
   smoke:
     name: Smoke
-    needs: core
+    needs: style
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -105,7 +115,7 @@ jobs:
 
   full-e2e:
     name: Full E2E
-    needs: smoke
+    needs: style
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -132,7 +142,7 @@ jobs:
 
   android:
     name: Android build
-    needs: full-e2e
+    needs: style
     if: inputs.run_builds || github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     steps:
@@ -158,14 +168,12 @@ jobs:
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
-      - name: Run Android JVM tests
-        run: make android-test
-      - name: Build debug APK
-        run: make android-build
+      - name: Run Android JVM tests and build debug APK
+        run: make android-test android-build
 
   docker:
     name: Docker build
-    needs: full-e2e
+    needs: style
     if: inputs.run_builds || github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     steps:
@@ -175,3 +183,24 @@ jobs:
           persist-credentials: false
       - name: Build production image
         run: make DOCKER_IMAGE=kikoto:ci docker-build
+
+  # Preserve the required check name while collecting every parallel result.
+  core:
+    name: Core
+    if: always()
+    needs: [style, backend, frontend, smoke, full-e2e, android, docker]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify all required validation results
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          RUN_BUILDS: ${{ inputs.run_builds || github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
+        run: |
+          echo "$RESULTS" | jq -e --argjson run_builds "$RUN_BUILDS" '
+            . as $jobs
+            | all(["style", "backend", "frontend", "smoke", "full-e2e"][];
+                $jobs[.].result == "success")
+              and all(["android", "docker"][];
+                $jobs[.].result == "success"
+                or ($run_builds == false and $jobs[.].result == "skipped"))
+          '

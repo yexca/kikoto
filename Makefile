@@ -1,4 +1,4 @@
-.PHONY: backend-format backend-lint backend-lint-full backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-i18n frontend-audit frontend-audit-signatures frontend-playwright-install frontend-e2e-smoke frontend-e2e android-test android-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
+.PHONY: backend-format backend-lint backend-lint-full backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-i18n frontend-audit frontend-audit-signatures frontend-playwright-install frontend-e2e-smoke frontend-e2e android-sync android-test android-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
 
 GO ?= go
 GOLANGCI_LINT_VERSION ?= v2.13.1
@@ -136,21 +136,20 @@ frontend-e2e-smoke: frontend-playwright-install
 frontend-e2e: frontend-playwright-install
 	cd frontend && $(NPM) run test:e2e
 
+android-sync: frontend-build
+	cd frontend && $(NPX) cap sync android
+
 ifeq ($(OS),Windows_NT)
-android-test: frontend-install
-	cd frontend && $(NPM) run cap:sync
+android-test: android-sync
 	cd frontend/android && gradlew.bat --dependency-verification strict testDebugUnitTest
 
-android-build: frontend-install
-	cd frontend && $(NPM) run cap:sync
+android-build: android-sync
 	cd frontend/android && gradlew.bat --dependency-verification strict assembleDebug
 else
-android-test: frontend-install
-	cd frontend && $(NPM) run cap:sync
+android-test: android-sync
 	cd frontend/android && chmod +x ./gradlew && ./gradlew --dependency-verification strict testDebugUnitTest
 
-android-build: frontend-install
-	cd frontend && $(NPM) run cap:sync
+android-build: android-sync
 	cd frontend/android && chmod +x ./gradlew && ./gradlew --dependency-verification strict assembleDebug
 endif
 
@@ -197,7 +196,8 @@ privacy-check: sensitive-check
 
 ci-style: frontend-format frontend-lint frontend-docs frontend-i18n sensitive-check-test
 
-ci-backend: backend-format backend-lint backend-verify backend-vuln backend-test backend-coverage backend-vet backend-race
+# Coverage executes the full suite; retain the separate race-instrumented run.
+ci-backend: backend-format backend-lint backend-verify backend-vuln backend-coverage backend-vet backend-race
 
 ci-frontend: frontend-audit frontend-audit-signatures frontend-coverage frontend-build
 

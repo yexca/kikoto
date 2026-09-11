@@ -105,6 +105,11 @@ after `GOLANGCI_LINT_BASE` (which defaults to `HEAD` locally and the first
 parent in CI), so existing lint debt does not block new work. Use
 `make backend-lint-full` for a complete audit of the current backend.
 
+`make ci-backend` runs the full test suite with coverage and then with the race
+detector, alongside formatting, lint, module verification, vulnerability checks,
+and vet. It omits a third plain test run because coverage already executes the
+full suite. `make backend-test` remains available for fast local feedback.
+
 Backend tests are organized by boundary:
 
 - Package unit tests stay beside the production files as `*_test.go`. They may
@@ -164,21 +169,36 @@ Android device tests belong under `frontend/android/app/src/androidTest` and nee
 an emulator-backed `connectedDebugAndroidTest` run. The repository currently has
 no device-test suite or emulator CI job. Build the debug APK separately with
 `make android-build`.
-CI runs staged validation in this order:
+To run JVM tests and build the APK together, use `make android-test android-build`.
+Both targets share `android-sync`, which builds the frontend and synchronizes
+Capacitor once per Make invocation. Either target also works independently.
+
+CI runs the following dependency graph:
 
 ```text
-Style -> Core -> Smoke -> Browser regression -> Android and Docker builds
+Style -> Backend, Frontend, Smoke, Full E2E, Android, Docker (parallel) -> Core
 ```
 
-`Style` checks formatting, lint, and documentation links. `Core` runs backend
-tests, vet, race detection, frontend unit tests, the dependency audit, and the
-production build. `Smoke` runs a small required Playwright suite for the app
-shell and critical routes. `Browser regression` runs the complete Playwright
-project with its deterministic API interception and uploads failure artifacts.
-Pull requests require Style, Core, and Smoke; Browser regression remains visible
-but is not a merge requirement. The Android job runs JVM tests before building
-the APK. Release waits for the ordinary CI run for the exact tagged commit on
-`main` and starts Android and Docker release builds only after that run succeeds.
+`Style` checks formatting, lint, and documentation links. After it succeeds,
+independent jobs run backend checks, frontend checks, Docker smoke validation,
+the full browser regression suite, Android JVM tests and APK assembly, and the
+production Docker build. Full E2E uses deterministic API interception and does
+not consume the Smoke job's containers or artifacts. Failure artifacts and
+coverage reports remain attached to their respective jobs.
+
+`Core` retains its existing check name for branch protection and aggregates all
+job results, including after a failure. It fails if any required job fails, is
+cancelled, or is skipped. Pull requests and pushes to `main` require every job,
+including Full E2E and both builds, for Core to pass. Reusable workflow calls may
+skip Android and Docker only when `run_builds` is false and the event/ref does
+not otherwise require them. Existing protection requiring Style, Core, and Smoke
+can keep those check names; Core now also gates browser regression and builds.
+
+The Android job runs tests and assembly in one Make invocation to share frontend
+installation, build, and Capacitor synchronization. Release still waits for the
+ordinary CI run for the exact tagged commit on `main` and starts Android and
+Docker release builds only after that run succeeds. Parallel validation reduces
+elapsed time but can spend more runner minutes when an independent job fails.
 
 Current Vitest coverage is primarily pure state and model logic. User-visible
 React interaction belongs in Playwright until a real component-test environment
