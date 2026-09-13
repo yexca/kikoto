@@ -214,7 +214,11 @@ func (s *Server) stageRemoteFetchItems(ctx context.Context, manifest remoteFetch
 			return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 		}
 		stagedPath := filepath.Join(paths.stageRoot, filepath.FromSlash(relativePath))
-		if !existingFileMatches(stagedPath, item.SizeBytes) {
+		reusable, err := s.verifiedRemoteFetchItemMatches(ctx, manifest.ID, item, stagedPath)
+		if err != nil {
+			return err
+		}
+		if !reusable {
 			if err := os.MkdirAll(filepath.Dir(stagedPath), 0o755); err != nil {
 				return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 			}
@@ -238,6 +242,27 @@ func (s *Server) stageRemoteFetchItems(ctx context.Context, manifest remoteFetch
 		return err
 	}
 	return s.updateRemoteFetchManifestState(ctx, manifest.ID, "staged", "")
+}
+
+// A file copied from the old target is not a completed staging operation.
+// Only a prior verified manifest entry can authorize reuse after interruption.
+func (s *Server) verifiedRemoteFetchItemMatches(ctx context.Context, manifestID int64, item remoteWorkSavePlanItem, stagedPath string) (bool, error) {
+	var expectedHash string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT content_hash FROM remote_fetch_manifest_item
+		WHERE manifest_id = ? AND target_path = ? AND state = 'verified'
+	`, manifestID, item.TargetPath).Scan(&expectedHash)
+	if errors.Is(err, sql.ErrNoRows) || expectedHash == "" && err == nil {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !existingFileMatches(stagedPath, item.SizeBytes) {
+		return false, nil
+	}
+	actualHash, _, err := hashFile(stagedPath)
+	return actualHash == expectedHash && err == nil, err
 }
 
 func (s *Server) initializeRemoteFetchStaging(ctx context.Context, manifest remoteFetchManifestRecord, paths remoteFetchPublishPaths) error {

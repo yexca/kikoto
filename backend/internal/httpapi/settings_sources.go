@@ -4862,7 +4862,8 @@ func (s *Server) findRemoteCacheFile(ctx context.Context, sourceID int64, source
 		WHERE file_source_id = ?
 			AND location_type = 'cache'
 			AND availability = 'available'
-	`, sourceID)
+			AND path = ?
+	`, sourceID, cacheRelPath)
 	if err != nil {
 		return "", false
 	}
@@ -4870,9 +4871,6 @@ func (s *Server) findRemoteCacheFile(ctx context.Context, sourceID int64, source
 	for rows.Next() {
 		var path string
 		if err := rows.Scan(&path); err != nil {
-			continue
-		}
-		if filepath.ToSlash(path) != cacheRelPath {
 			continue
 		}
 		cachePath, err := safeCachePath(s.cfg.CacheRoot, path)

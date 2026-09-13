@@ -42,7 +42,7 @@ describe("API client transport", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it("uses the selected server for health checks while browser requests retain cookies", async () => {
+  it("checks the selected server without credentials or redirects", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ status: "ok", version: "0.4.1" }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -50,10 +50,26 @@ describe("API client transport", () => {
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://server.example.invalid/kikoto/health");
-    expect(init.credentials).toBe("include");
+    expect(init.credentials).toBe("omit");
+    expect(init.redirect).toBe("error");
     expect(new Headers(init.headers).get("Authorization")).toBeNull();
     expect(assetURL("/assets/example-cover.jpg")).toBe("/assets/example-cover.jpg");
     expect(mediaDownloadURL(7)).toBe("/api/media/7/download");
+  });
+
+  it("does not send the old native session to a candidate server", async () => {
+    isNativeApp.mockReturnValue(true);
+    getStoredServerURL.mockReturnValue("https://old.example.invalid");
+    getStoredSessionToken.mockReturnValue("synthetic-token");
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ status: "ok" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.health("https://new.example.invalid");
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://new.example.invalid/health");
+    expect(new Headers(init.headers).get("Authorization")).toBeNull();
+    expect(init.credentials).toBe("omit");
   });
 
   it("uses native bearer authentication and preserves it while updating the session", async () => {

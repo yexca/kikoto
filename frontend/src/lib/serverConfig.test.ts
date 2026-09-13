@@ -67,6 +67,10 @@ describe("mobile server configuration", () => {
     expect(normalizeServerURL("source.example.invalid:7655")).toBe("http://source.example.invalid:7655");
     expect(() => normalizeServerURL(" ")).toThrow("Server address is required.");
     expect(() => normalizeServerURL("ftp://source.example.invalid")).toThrow("http or https");
+    const credentialURL = new URL("https://source.example.invalid");
+    credentialURL.username = "synthetic-user";
+    credentialURL.password = "synthetic-password";
+    expect(() => normalizeServerURL(credentialURL.href)).toThrow("must not contain credentials");
   });
 
   it("keeps browser storage normalized and clears the session with the server", async () => {
@@ -108,6 +112,30 @@ describe("mobile server configuration", () => {
     expect(getStoredSessionToken()).toBe("native-token");
     expect(preferenceGet).toHaveBeenCalledTimes(2);
     expect(configureNativeAssetTransport).toHaveBeenLastCalledWith("https://native.example.invalid", "native-token");
-    expect(clearNativeAssetTransport).toHaveBeenCalledOnce();
+    expect(clearNativeAssetTransport).toHaveBeenCalled();
+  });
+
+  it("retains a session for the same server and clears it before switching instances", async () => {
+    nativePlatform.mockReturnValue(true);
+    await setStoredServerURL("https://source.example.invalid/first");
+    await setStoredSessionToken("synthetic-token");
+    await setStoredServerURL("https://source.example.invalid/first/");
+    expect(getStoredSessionToken()).toBe("synthetic-token");
+
+    let releaseRemoval = () => {};
+    preferenceRemove.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        releaseRemoval = resolve;
+      }),
+    );
+    const change = setStoredServerURL("https://source.example.invalid/second");
+    expect(getStoredSessionToken()).toBe("");
+    expect(getStoredServerURL()).toBe("https://source.example.invalid/first");
+    releaseRemoval();
+    await change;
+
+    expect(getStoredServerURL()).toBe("https://source.example.invalid/second");
+    expect(configureNativeAssetTransport).toHaveBeenLastCalledWith("https://source.example.invalid/second", "");
+    expect(preferenceRemove).toHaveBeenCalledWith({ key: "kikoto:mobile-session-token" });
   });
 });

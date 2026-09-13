@@ -377,7 +377,7 @@ func isRetryableWorkflowError(runErr error) bool {
 	if errors.As(runErr, &downloadErr) {
 		return downloadErr.Retryable
 	}
-	if dlsite.IsRetryableHTTPError(runErr) || errors.Is(runErr, context.DeadlineExceeded) {
+	if dlsite.IsRetryableHTTPError(runErr) || errors.Is(runErr, context.DeadlineExceeded) || errors.Is(runErr, errSourceRequestQueueFull) {
 		return true
 	}
 	var networkErr net.Error

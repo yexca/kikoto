@@ -59,6 +59,7 @@ type Server struct {
 	voiceCatalogRefreshMu          sync.Mutex
 	fetchStagingCleanupMu          sync.Mutex
 	sourceGate                     *sourceRequestGate
+	sourceTransports               sourceTransportCache
 	localMediaIndexMu              sync.Mutex
 	localMediaIndexes              map[string]*localMediaIndexCall
 	localMediaWriteSlot            chan struct{}
@@ -388,7 +389,7 @@ func (s *Server) getCoverAsset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid cover file"})
 		return
 	}
-	serveRevalidatedFile(w, r, path, relPath)
+	serveCoverFile(w, r, path, relPath)
 }
 
 func (s *Server) getManualAsset(w http.ResponseWriter, r *http.Request) {
@@ -1535,11 +1536,15 @@ func (s *Server) serveMediaAsset(w http.ResponseWriter, r *http.Request) {
 
 func serveRevalidatedFile(w http.ResponseWriter, r *http.Request, filePath string, identity string) {
 	if info, err := os.Stat(filePath); err == nil {
-		revision := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%d\x00%d", filepath.ToSlash(identity), info.Size(), info.ModTime().UnixNano())))
-		w.Header().Set("Cache-Control", "private, no-cache")
-		w.Header().Set("ETag", fmt.Sprintf("\"%x\"", revision[:16]))
+		setAssetRevisionHeaders(w, info, identity)
 	}
 	http.ServeFile(w, r, filePath)
+}
+
+func setAssetRevisionHeaders(w http.ResponseWriter, info os.FileInfo, identity string) {
+	revision := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%d\x00%d", filepath.ToSlash(identity), info.Size(), info.ModTime().UnixNano())))
+	w.Header().Set("Cache-Control", "private, no-cache")
+	w.Header().Set("ETag", fmt.Sprintf("\"%x\"", revision[:16]))
 }
 
 func (s *Server) serveMediaText(w http.ResponseWriter, r *http.Request) {

@@ -110,6 +110,20 @@ the request class. See
 [Runtime security](../operations/security.md) before extending an outbound
 request path.
 
+Configured-source clients reuse a bounded pool of transports, keyed by source
+identity and its complete outbound policy. Policy changes replace the transport
+and close its idle connections; pooled requests retain URL checks and pinned
+connections. Each origin has separate interactive, crawl, download, and playback
+lanes. The first three serialize response bodies; playback permits four active
+streams. Each lane admits at most 32 waiting requests, and queued cancellation
+does not wait for the active response to finish.
+
+Remote covers accept JPEG, PNG, and WebP file signatures rather than trusting
+upstream MIME headers or filename extensions. Publication retains the bounded
+atomic download writer. Cover serving checks legacy cached content too and
+sets an explicit raster MIME type, `nosniff`, and a sandboxed content policy.
+It does not decompress or re-encode the image.
+
 ## Current Limits
 
 - Some operations remain synchronous even though the major Fetch, cache,

@@ -1868,24 +1868,26 @@ async function deleteJSON<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-function requestInit(init: RequestInit = {}): RequestInit {
+function requestInit(init: RequestInit = {}, authenticate = true): RequestInit {
   const headers = new Headers(init.headers);
   if (isNativeApp()) {
     headers.set("X-Kikoto-Mobile", "1");
-    const token = getStoredSessionToken();
-    if (token) headers.set("Authorization", `Bearer ${token}`);
+    if (authenticate) {
+      const token = getStoredSessionToken();
+      if (token) headers.set("Authorization", `Bearer ${token}`);
+    }
   }
   return {
     ...init,
-    credentials: isNativeApp() ? "omit" : "include",
+    credentials: !authenticate || isNativeApp() ? "omit" : "include",
     headers,
   };
 }
 
-async function fetchAPI(path: string, init: RequestInit = {}, baseURL?: string) {
+async function fetchAPI(path: string, init: RequestInit = {}, baseURL?: string, authenticate = true) {
   const url = apiURL(path, baseURL);
   try {
-    return await fetch(url, requestInit(init));
+    return await fetch(url, requestInit(init, authenticate));
   } catch (error) {
     recordApiError({
       method: init.method ?? "GET",
@@ -1915,7 +1917,7 @@ const DEFAULT_MANUAL_FETCH_MIN_FREE_BYTES = 2 * 1024 * 1024 * 1024;
 export const api = {
   appUpdate: () => getJSON<AppUpdate>("/api/app-update"),
   health: async (baseURL?: string) => {
-    const response = await fetchAPI("/health", {}, baseURL);
+    const response = await fetchAPI("/health", { redirect: "error" }, baseURL, false);
     if (!response.ok) {
       throw await responseError(response, `GET /health failed with ${response.status}`);
     }

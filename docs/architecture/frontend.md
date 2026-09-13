@@ -35,6 +35,11 @@ is disabled; when it is enabled, the same client enters the read-only-capable
 Library shell. Stored theme mode, style, and color are applied before React
 renders, including on the sign-in and Demo surfaces.
 
+Native server health checks omit both bearer credentials and cookies and reject
+redirects. Switching the normalized server URL, including its base path, clears
+the old credential in browser storage and native preferences before publishing
+the new server configuration. Re-selecting the same server retains its session.
+
 ## Stack
 
 - React.

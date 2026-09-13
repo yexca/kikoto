@@ -197,7 +197,7 @@ func (s *Server) defaultRemoteFetchAction(ctx context.Context, item *remoteWorkS
 	if err != nil {
 		return err
 	}
-	if existingFileMatches(targetPath, item.SizeBytes) {
+	if item.Resolution != "replace" && existingFileMatches(targetPath, item.SizeBytes) {
 		item.Action, item.Status = "skip", "local_exists"
 		return nil
 	}

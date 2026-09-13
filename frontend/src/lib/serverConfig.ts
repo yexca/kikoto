@@ -25,6 +25,9 @@ export function normalizeServerURL(value: string) {
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error("Server address must use http or https.");
   }
+  if (parsed.username || parsed.password) {
+    throw new Error("Server address must not contain credentials.");
+  }
   parsed.pathname = parsed.pathname.replace(/\/+$/, "");
   parsed.search = "";
   parsed.hash = "";
@@ -37,6 +40,9 @@ export function getStoredServerURL() {
 
 export async function setStoredServerURL(value: string) {
   const normalized = normalizeServerURL(value);
+  // Clear the old credential durably before publishing a different server.
+  // The base path is part of the identity: one origin may host multiple instances.
+  if (normalized !== getStoredServerURL()) await clearStoredSessionToken();
   localStorage.setItem(SERVER_URL_STORAGE_KEY, normalized);
   if (!isNativeApp()) return;
   await Promise.all([

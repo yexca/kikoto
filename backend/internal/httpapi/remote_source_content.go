@@ -146,18 +146,10 @@ func (s *Server) downloadRemoteCover(ctx context.Context, source remoteSourceFor
 	if coverURL == "" {
 		return nil
 	}
-	parsedURL, err := url.Parse(coverURL)
-	if err != nil {
-		return nil
-	}
-	extension := strings.ToLower(filepath.Ext(parsedURL.Path))
-	if extension == "" || len(extension) > 6 {
-		extension = ".jpg"
-	}
 	if err := os.MkdirAll(filepath.Join(s.cfg.CacheRoot, "cover"), 0o755); err != nil {
 		return err
 	}
-	targetPath := filepath.Join(s.cfg.CacheRoot, "cover", strings.ToUpper(workCode)+extension)
+	targetPath := filepath.Join(s.cfg.CacheRoot, "cover", strings.ToUpper(workCode))
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, coverURL, nil)
 	if err != nil {
 		return err
@@ -174,6 +166,5 @@ func (s *Server) downloadRemoteCover(ctx context.Context, source remoteSourceFor
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return fmt.Errorf("cover download returned HTTP %d", response.StatusCode)
 	}
-	_, err = download.WriteFile(response.Body, response.ContentLength, targetPath, download.Options{MaxBytes: download.CoverMaxBytes})
-	return err
+	return download.WriteImage(response.Body, response.ContentLength, targetPath)
 }

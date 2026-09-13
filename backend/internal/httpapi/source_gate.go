@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"io"
 	"math/rand"
 	"net/http"
@@ -22,7 +23,13 @@ type sourceRequestGate struct {
 type sourceRequestLane struct {
 	mu          sync.Mutex
 	lastStarted time.Time
+	slots       chan struct{}
+	waiters     chan struct{}
 }
+
+var errSourceRequestQueueFull = errors.New("remote request queue is full")
+
+const sourceRequestQueueSize = 32
 
 type sourceOriginState struct {
 	mu           sync.Mutex
@@ -35,6 +42,7 @@ const (
 	sourceRequestInteractive sourceRequestClass = iota
 	sourceRequestCrawl
 	sourceRequestDownload
+	sourceRequestPlayback
 )
 
 type sourceGateTransport struct {
@@ -73,7 +81,7 @@ func (body *sourceGateBody) releaseOnce() {
 func (body *sourceGateBody) releaseWhenCanceled(ctx context.Context) {
 	select {
 	case <-ctx.Done():
-		body.releaseOnce()
+		_ = body.Close()
 	case <-body.done:
 	}
 }
@@ -92,6 +100,8 @@ func (g *sourceRequestGate) lane(key string, class sourceRequestClass) *sourceRe
 		laneKey += ":crawl"
 	case sourceRequestDownload:
 		laneKey += ":download"
+	case sourceRequestPlayback:
+		laneKey += ":playback"
 	default:
 		laneKey += ":interactive"
 	}
@@ -100,9 +110,35 @@ func (g *sourceRequestGate) lane(key string, class sourceRequestClass) *sourceRe
 	if lane := g.lanes[laneKey]; lane != nil {
 		return lane
 	}
-	lane := &sourceRequestLane{}
+	concurrency := 1
+	if class == sourceRequestPlayback {
+		concurrency = 4
+	}
+	lane := &sourceRequestLane{slots: make(chan struct{}, concurrency), waiters: make(chan struct{}, sourceRequestQueueSize)}
 	g.lanes[laneKey] = lane
 	return lane
+}
+
+func (lane *sourceRequestLane) acquire(ctx context.Context) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	select {
+	case lane.waiters <- struct{}{}:
+	default:
+		return nil, errSourceRequestQueueFull
+	}
+	defer func() { <-lane.waiters }()
+	select {
+	case lane.slots <- struct{}{}:
+		if err := ctx.Err(); err != nil {
+			<-lane.slots
+			return nil, err
+		}
+		return func() { <-lane.slots }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func (g *sourceRequestGate) origin(key string) *sourceOriginState {
@@ -123,23 +159,29 @@ func (t *sourceGateTransport) RoundTrip(request *http.Request) (*http.Response, 
 	originKey := canonicalSourceOrigin(request.URL)
 	lane := t.server.sourceGate.lane(originKey, t.class)
 	origin := t.server.sourceGate.origin(originKey)
-	lane.mu.Lock()
-	release := lane.mu.Unlock
+	release, err := lane.acquire(request.Context())
+	if err != nil {
+		return nil, err
+	}
 	delay := time.Duration(0)
 	if t.class == sourceRequestCrawl || t.class == sourceRequestDownload {
 		delay = t.server.remoteRequestDelayDuration(request.Context())
 	}
 	waitUntil := origin.blockedUntilValue()
+	lane.mu.Lock()
 	if next := lane.lastStarted.Add(delay); next.After(waitUntil) {
 		waitUntil = next
 	}
+	lane.mu.Unlock()
 	if wait := time.Until(waitUntil); wait > 0 {
 		if err := sleepContext(request.Context(), wait); err != nil {
 			release()
 			return nil, err
 		}
 	}
+	lane.mu.Lock()
 	lane.lastStarted = time.Now()
+	lane.mu.Unlock()
 	response, err := t.base.RoundTrip(request)
 	if err != nil {
 		release()
@@ -180,12 +222,16 @@ func (s *Server) sourceDownloadHTTPClient(source remoteSourceForUse, timeout tim
 	return s.sourceClient(source, timeout, sourceRequestDownload)
 }
 
+func (s *Server) sourcePlaybackHTTPClient(source remoteSourceForUse, timeout time.Duration) *http.Client {
+	return s.sourceClient(source, timeout, sourceRequestPlayback)
+}
+
 func (s *Server) sourceClient(source remoteSourceForUse, timeout time.Duration, class sourceRequestClass) *http.Client {
-	policy, err := sourceOutboundPolicy(source)
+	policy, base, err := s.sourceTransports.load(source)
 	if err != nil {
 		return &http.Client{Transport: sourcePolicyErrorTransport{err: err}, Timeout: timeout}
 	}
-	transport := &sourceGateTransport{server: s, base: policy.Transport(), policy: policy, class: class}
+	transport := &sourceGateTransport{server: s, base: base, policy: policy, class: class}
 	return policy.Client(transport, timeout)
 }
 

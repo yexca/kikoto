@@ -178,6 +178,13 @@ workflow partial without making an otherwise complete catalog generation stale.
 
 ## Review Candidates
 
+Fetch honors an explicit Replace decision even when the target has the same
+size or the source does not declare a size. A file copied from the previous
+target into staging is not evidence that the selected replacement was staged.
+After an interruption, only a staged file matching a previously verified
+manifest hash may be reused; other selected files are copied from their chosen
+local or cache source again before verification and publication.
+
 Workflow candidates capture user-reviewable outcomes such as duplicate local
 folders, unavailable DLsite products, and old local locations left after remote
 fetches. A Fetch from a source with restricted outbound hosts also creates a
