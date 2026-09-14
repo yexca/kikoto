@@ -55,6 +55,10 @@ mounts that file at `/config/remote-sources.yml`; direct backend runs also check
 `../config/remote-sources.yml` and the legacy `.yaml` extension. Keep real
 source details in the mounted configuration file, not in the repository.
 
+Set `api_url` to the upstream service base URL, such as
+`https://example.invalid`. The client appends paths such as `/api/health` and
+`/api/works`, so including a trailing `/api` would produce `/api/api/...`.
+
 After first startup, Settings is the source of truth for configured sources.
 
 Demo mode does not bootstrap or expose the root identity, recover or dispatch
