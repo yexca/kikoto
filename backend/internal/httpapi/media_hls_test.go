@@ -205,10 +205,13 @@ func TestTranscodeCacheDefaultLimitAndLRUEviction(t *testing.T) {
 	}
 }
 
-func TestTranscodeCacheScanIncludesOnlyStalePartialSegments(t *testing.T) {
+func TestTranscodeCacheScanIncludesCompleteAudioAndOnlyStalePartialFiles(t *testing.T) {
 	cacheRoot := t.TempDir()
 	server := NewServer(openMigratedTestDB(t), config.Config{CacheRoot: cacheRoot})
 	readyPath := writeCacheTestFile(t, cacheRoot, "transcodes/hls/1/revision/segment-000000.ts", "ready", time.Hour)
+	audioPath := writeCacheTestFile(t, cacheRoot, "transcodes/audio/revision.mp3", "audio", time.Hour)
+	staleAudioPath := writeCacheTestFile(t, cacheRoot, "transcodes/audio/.audio-transcode-stale.part", "stale audio", transcodeCachePartialMaxAge+time.Minute)
+	writeCacheTestFile(t, cacheRoot, "transcodes/audio/.audio-transcode-active.part", "active audio", transcodeCachePartialMaxAge-time.Minute)
 	stalePartialPath := writeCacheTestFile(
 		t,
 		cacheRoot,
@@ -228,14 +231,14 @@ func TestTranscodeCacheScanIncludesOnlyStalePartialSegments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if overview.Files != 2 || overview.Bytes != int64(len("ready")+len("stale")) {
+	if overview.Files != 4 || overview.Bytes != int64(len("ready")+len("stale")+len("audio")+len("stale audio")) {
 		t.Fatalf("transcode cache overview = %+v, want ready and stale partial files", overview)
 	}
 	paths := map[string]bool{}
 	for _, entry := range entries {
 		paths[filepath.ToSlash(entry.relPath)] = true
 	}
-	for _, expected := range []string{readyPath, stalePartialPath} {
+	for _, expected := range []string{readyPath, stalePartialPath, audioPath, staleAudioPath} {
 		relPath, err := filepath.Rel(cacheRoot, expected)
 		if err != nil {
 			t.Fatal(err)

@@ -600,6 +600,11 @@ func (s *Server) serveAutomaticLocalPlayback(w http.ResponseWriter, r *http.Requ
 			}
 		}
 	}
+	w.Header().Set("X-Kikoto-Playback-Delivery", "transcoded")
+	if profile == playbackProfileAudio {
+		s.serveCompatibleAudio(w, r, path, info)
+		return
+	}
 	if r.Method == http.MethodHead {
 		s.setRealtimePlaybackHeaders(w, realtimeContentType(profile))
 		w.WriteHeader(http.StatusOK)
@@ -611,6 +616,9 @@ func (s *Server) serveAutomaticLocalPlayback(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) serveDirectPlaybackFile(w http.ResponseWriter, r *http.Request, path string, contentType string) {
+	if w.Header().Get("X-Kikoto-Playback-Delivery") == "" {
+		w.Header().Set("X-Kikoto-Playback-Delivery", "direct")
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		writeAPIError(w, http.StatusNotFound, "media_not_found", "media file was not found", false)

@@ -51,6 +51,7 @@ type Server struct {
 	remoteWorkTracksCacheCalls     map[string]*remoteWorkTracksCall
 	remoteTrackMu                  sync.Mutex
 	cachePathLocks                 cachePathLocker
+	audioTranscodeLocks            cachePathLocker
 	metadataSyncMu                 sync.Mutex
 	jobRunnerMu                    sync.Mutex
 	jobRunnerStarted               bool

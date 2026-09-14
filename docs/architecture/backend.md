@@ -30,6 +30,8 @@ The backend is a Go HTTP API with SQLite persistence.
 - Serve library and detail APIs.
 - Browse and sync remote sources.
 - Stream local media with range support.
+- Prepare incompatible local or cached audio as complete, quota-bounded MP3
+  cache files with duration and HTTP Range support, preserving original media.
 - Publish complete-duration HLS VOD manifests for incompatible local or cached
   video and generate independently seekable, quota-bounded segments under the
   disposable cache root.

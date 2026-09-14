@@ -73,6 +73,9 @@ func (s *Server) scanTranscodeCacheUnlocked(ctx context.Context) (transcodeCache
 	}
 	entries := []transcodeCacheEntry{}
 	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if errors.Is(walkErr, os.ErrNotExist) {
+			return nil
+		}
 		if walkErr != nil {
 			return walkErr
 		}
@@ -80,6 +83,9 @@ func (s *Server) scanTranscodeCacheUnlocked(ctx context.Context) (transcodeCache
 			return err
 		}
 		info, err := entry.Info()
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
 		if err != nil {
 			return err
 		}
@@ -92,11 +98,11 @@ func (s *Server) scanTranscodeCacheUnlocked(ctx context.Context) (transcodeCache
 		if entry.IsDir() || !info.Mode().IsRegular() {
 			return nil
 		}
-		isSegment := strings.EqualFold(filepath.Ext(entry.Name()), ".ts")
-		isStalePartial := strings.HasPrefix(entry.Name(), ".hls-segment-") &&
+		isComplete := strings.EqualFold(filepath.Ext(entry.Name()), ".ts") || strings.EqualFold(filepath.Ext(entry.Name()), ".mp3")
+		isStalePartial := (strings.HasPrefix(entry.Name(), ".hls-segment-") || strings.HasPrefix(entry.Name(), ".audio-transcode-")) &&
 			strings.EqualFold(filepath.Ext(entry.Name()), ".part") &&
 			scannedAt.Sub(info.ModTime()) >= transcodeCachePartialMaxAge
-		if !isSegment && !isStalePartial {
+		if !isComplete && !isStalePartial {
 			return nil
 		}
 		relPath, err := filepath.Rel(cacheRoot, path)

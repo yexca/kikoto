@@ -112,7 +112,7 @@ func TestRemotePlaybackContentTypeFallsBackToKnownMediaExtensions(t *testing.T) 
 	}
 }
 
-func TestServeAutomaticLocalPlaybackTranscodesToResponseWithoutCache(t *testing.T) {
+func TestServeAutomaticLocalPlaybackCachesCompleteCompatibleAudio(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg is not installed")
 	}
@@ -137,8 +137,11 @@ func TestServeAutomaticLocalPlaybackTranscodesToResponseWithoutCache(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 0 {
-		t.Fatalf("realtime playback created cache entries: %v", entries)
+	if len(entries) != 1 || entries[0].Name() != transcodeCacheRootRelative {
+		t.Fatalf("compatible playback did not create its reusable cache: %v", entries)
+	}
+	if response.Header().Get("Accept-Ranges") != "bytes" || response.Header().Get("X-Kikoto-Playback-Delivery") != "transcoded" {
+		t.Fatalf("compatible audio headers = %#v", response.Header())
 	}
 }
 
@@ -164,7 +167,7 @@ func TestServeAutomaticLocalPlaybackForceDirectTranscodesUnknownExtension(t *tes
 	if err := os.WriteFile(path, testWAVBytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	server := NewServer(nil, config.Config{})
+	server := NewServer(nil, config.Config{CacheRoot: t.TempDir()})
 	request := httptest.NewRequest(http.MethodGet, "/api/media/1/stream?profile=audio&forceDirect=1", nil)
 	response := httptest.NewRecorder()
 	server.serveAutomaticLocalPlayback(response, request, mediaStreamTarget{Kind: "audio", RelativePath: "track.unknown"}, path)

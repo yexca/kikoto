@@ -7,6 +7,7 @@ import {
   HardDrive,
   ListMusic,
   ListOrdered,
+  Loader2,
   Maximize2,
   MoreHorizontal,
   PanelBottom,
@@ -119,6 +120,7 @@ type PlayerContextValue = {
   currentIndex: number;
   currentTrack: PlayerTrack | null;
   isPlaying: boolean;
+  isBuffering: boolean;
   currentTime: number;
   duration: number;
   playbackRate: number;
@@ -257,6 +259,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const lyricsPreferenceOverridesRef = useRef(lyricsPreferenceOverrides);
   lyricsPreferenceOverridesRef.current = lyricsPreferenceOverrides;
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [playbackReloadToken, setPlaybackReloadToken] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [durationLocationId, setDurationLocationId] = useState<number | null>(null);
@@ -316,6 +320,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const updatePlayingState = useCallback((next: boolean | ((current: boolean) => boolean)) => {
     const resolved = typeof next === "function" ? next(isPlayingRef.current) : next;
+    if (resolved) {
+      playbackErrorAbortRef.current?.abort();
+      playbackErrorAbortRef.current = null;
+      playbackErrorSequenceRef.current += 1;
+    }
     isPlayingRef.current = resolved;
     setIsPlaying(resolved);
   }, []);
@@ -332,7 +341,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const currentPlaybackKey = trackPlaybackKey(currentTrack);
   const currentPlaybackInstanceKey =
     currentTrack && currentPlaybackKey
-      ? `${currentTrack.queueItemId ?? ""}:${currentPlaybackKey}:${currentTrack.locationId}:${currentTrack.streamUrl}`
+      ? `${currentTrack.queueItemId ?? ""}:${currentPlaybackKey}:${currentTrack.locationId}:${currentTrack.streamUrl}:${playbackReloadToken}`
       : null;
   queueRef.current = queue;
   currentIndexRef.current = currentIndex;
@@ -446,6 +455,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         )
           return;
         sourceLoadingRef.current = false;
+        setIsBuffering(false);
         updatePlayingState(false);
         if (!isExpectedPlaybackInterruption(error)) playbackErrorHandlerRef.current();
       };
@@ -901,6 +911,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const handleEnded = () => {
     const audio = audioRef.current;
+    setIsBuffering(false);
     completedPlaybackInstanceRef.current = currentPlaybackInstanceKey;
     saveProgress(true, true);
     if (sleepTimer?.waitingForTrackEnd) {
@@ -1065,7 +1076,28 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (result.kind === "terminal") {
         sourceLoadingRef.current = false;
         updatePlayingState(false);
-        toast.error(t("player.playbackFailed", { title: activeTrack.title }));
+        const failureSequence = playbackErrorSequenceRef.current;
+        toast.notify({
+          kind: "error",
+          message: t("player.playbackFailed", { title: activeTrack.title }),
+          actionLabel: t("common.retry"),
+          onAction: () => {
+            if (
+              currentPlaybackInstanceKeyRef.current !== instanceKey ||
+              playbackErrorSequenceRef.current !== failureSequence
+            )
+              return;
+            resetTrackLocationFailures(locationFailureStateRef.current);
+            if (activeTrack.queueItemId) {
+              pendingPlaybackStartRef.current = {
+                queueItemId: activeTrack.queueItemId,
+                positionSeconds: normalizePlaybackStartPosition(audioRef.current?.currentTime),
+              };
+            }
+            setPlaybackReloadToken((value) => value + 1);
+            updatePlayingState(true);
+          },
+        });
         return;
       }
       const nextLocation = result.location;
@@ -1115,10 +1147,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const sourceURL =
       audio.currentSrc || assetURL(playerTrackAudioURL(failedTrack, compatibilityPlaybackEnabledRef.current));
     sourceLoadingRef.current = false;
+    setIsBuffering(false);
     updatePlayingState(false);
 
     void (async () => {
       let status: number | null = null;
+      let alreadyTranscoded = false;
       try {
         if (typeof fetch === "function") {
           const response = await fetch(sourceURL, {
@@ -1129,6 +1163,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             signal: controller.signal,
           });
           status = response.status;
+          alreadyTranscoded = response.headers.get("X-Kikoto-Playback-Delivery") === "transcoded";
         }
       } catch {
         if (controller.signal.aborted && !timedOut) return;
@@ -1143,7 +1178,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       const canUseCompatibility = failedTrack.locationType === "local" || failedTrack.locationType === "cache";
-      if (canUseCompatibility && !compatibilityPlaybackEnabledRef.current) {
+      if (canUseCompatibility && !alreadyTranscoded && !compatibilityPlaybackEnabledRef.current) {
         toast.notify({
           kind: "error",
           message: t("player.trackFailed", { title: failedTrack.title }),
@@ -1373,6 +1408,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       currentIndex,
       currentTrack,
       isPlaying,
+      isBuffering,
       currentTime,
       duration,
       playbackRate,
@@ -1429,6 +1465,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       currentIndex,
       currentTrack,
       isPlaying,
+      isBuffering,
       currentTime,
       duration,
       playbackRate,
@@ -1478,6 +1515,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         <audio
           ref={audioRef}
           preload="metadata"
+          onLoadStart={() => setIsBuffering(true)}
+          onWaiting={() => setIsBuffering(true)}
+          onCanPlay={() => setIsBuffering(false)}
+          onPlaying={() => setIsBuffering(false)}
+          onEmptied={() => setIsBuffering(false)}
           onTimeUpdate={(event) => {
             const now = performance.now();
             const nextTime = event.currentTarget.currentTime;
@@ -2089,9 +2131,22 @@ export function PlayerDock() {
               player.togglePlay();
             }}
             aria-label={player.isPlaying ? t("player.pause") : t("player.play")}
-            title={player.isPlaying ? t("player.pause") : t("player.play")}
+            aria-busy={player.isPlaying && player.isBuffering}
+            title={
+              player.isPlaying && player.isBuffering
+                ? t("common.loading")
+                : player.isPlaying
+                  ? t("player.pause")
+                  : t("player.play")
+            }
           >
-            {player.isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            {player.isPlaying && player.isBuffering ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : player.isPlaying ? (
+              <Pause className="h-4 w-4" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
           </button>
           <Button
             data-mini-action
@@ -2216,8 +2271,16 @@ export function PlayerDock() {
               size="icon"
               onClick={player.togglePlay}
               aria-label={player.isPlaying ? t("player.pause") : t("player.play")}
+              aria-busy={player.isPlaying && player.isBuffering}
+              title={player.isPlaying && player.isBuffering ? t("common.loading") : undefined}
             >
-              {player.isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              {player.isPlaying && player.isBuffering ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : player.isPlaying ? (
+                <Pause className="h-4 w-4" />
+              ) : (
+                <Play className="h-4 w-4" />
+              )}
             </Button>
           </div>
         </div>
@@ -2500,8 +2563,16 @@ export function PlayerDock() {
               size="icon"
               onClick={player.togglePlay}
               aria-label={player.isPlaying ? t("player.pause") : t("player.play")}
+              aria-busy={player.isPlaying && player.isBuffering}
+              title={player.isPlaying && player.isBuffering ? t("common.loading") : undefined}
             >
-              {player.isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+              {player.isPlaying && player.isBuffering ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : player.isPlaying ? (
+                <Pause className="h-5 w-5" />
+              ) : (
+                <Play className="h-5 w-5" />
+              )}
             </Button>
             <Button
               className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"

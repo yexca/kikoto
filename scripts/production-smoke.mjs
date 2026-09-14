@@ -79,11 +79,11 @@ async function waitFor(check, description) {
   throw new Error(`Timed out waiting for ${description}`, { cause: lastError });
 }
 
-try {
-  // One second of deterministic 8-bit PCM; no downloaded media or real work data.
-  const wav = Buffer.alloc(8044, 128);
+function silentWav(seconds) {
+  const dataSize = 8000 * seconds;
+  const wav = Buffer.alloc(44 + dataSize, 128);
   wav.write("RIFF", 0);
-  wav.writeUInt32LE(8036, 4);
+  wav.writeUInt32LE(36 + dataSize, 4);
   wav.write("WAVEfmt ", 8);
   wav.writeUInt32LE(16, 16);
   wav.writeUInt16LE(1, 20);
@@ -93,9 +93,16 @@ try {
   wav.writeUInt16LE(1, 32);
   wav.writeUInt16LE(8, 34);
   wav.write("data", 36);
-  wav.writeUInt32LE(8000, 40);
+  wav.writeUInt32LE(dataSize, 40);
+  return wav;
+}
+
+try {
+  // Deterministic PCM and generated test signals; no downloaded or private media.
+  const wav = silentWav(1);
   await mkdir(join(fixtureRoot, "RJ00000000"));
   await writeFile(join(fixtureRoot, "RJ00000000", "example.wav"), wav);
+  await writeFile(join(fixtureRoot, "RJ00000000", "02-next.wav"), silentWav(5));
 
   created = true;
   await command([
@@ -125,6 +132,68 @@ try {
   ]);
   await command(["cp", `${fixtureRoot}/.`, `${container}:/data`]);
   await command(["start", container]);
+  // Use the shipped codecs and publish complete fixtures on the data filesystem.
+  const staging = "/data/.kikoto-staging/production-smoke";
+  await command(["exec", container, "mkdir", "-p", staging]);
+  await command([
+    "exec",
+    container,
+    "ffmpeg",
+    "-nostdin",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=440:sample_rate=48000",
+    "-t",
+    "40",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "96k",
+    "-f",
+    "adts",
+    `${staging}/01-example.aac`,
+  ]);
+  await command([
+    "exec",
+    container,
+    "ffmpeg",
+    "-nostdin",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=160x90:rate=10",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=660:sample_rate=48000",
+    "-t",
+    "14",
+    "-c:v",
+    "mpeg4",
+    "-q:v",
+    "8",
+    "-threads:v",
+    "2",
+    "-c:a",
+    "pcm_s16le",
+    `${staging}/example.avi`,
+  ]);
+  await command([
+    "exec",
+    container,
+    "mv",
+    "--",
+    `${staging}/01-example.aac`,
+    `${staging}/example.avi`,
+    "/data/RJ00000000/",
+  ]);
   const port = await command(["port", container, "7659/tcp"]);
   assert.match(port, /^127\.0\.0\.1:\d+$/);
   const origin = new URL("http://127.0.0.1");
@@ -197,15 +266,35 @@ try {
     const { body } = await request("/api/works", { headers });
     return JSON.parse(body).find((entry) => entry.primaryCode === "RJ00000000");
   }, "the synthetic local work");
-  const { body: media } = await request(`/api/works/${work.id}/media`, {
-    headers,
-  });
-  const track = JSON.parse(media).mediaItems.find(
-    (item) => item.kind === "audio",
-  );
-  const location = track?.locations.find(
-    (entry) => entry.locationType === "local",
-  );
+  const findLocalFile = (items, name) => {
+    for (const item of items) {
+      const location = item.locations.find(
+        (entry) =>
+          entry.locationType === "local" && basename(entry.path) === name,
+      );
+      if (location) return { item, location };
+    }
+    return null;
+  };
+  const mediaItems = await waitFor(async () => {
+    const { body } = await request(`/api/works/${work.id}/media`, { headers });
+    const items = JSON.parse(body).mediaItems;
+    return (
+      ["example.wav", "01-example.aac", "02-next.wav", "example.avi"].every(
+        (name) => findLocalFile(items, name),
+      ) && items
+    );
+  }, "all synthetic media fixtures to be indexed");
+  const localLocation = (name, kind) => {
+    const file = findLocalFile(mediaItems, name);
+    assert.ok(file, `${name} must expose a local playback location`);
+    assert.equal(file.item.kind, kind, `${name} must be recognized as ${kind}`);
+    return file.location;
+  };
+  const location = localLocation("example.wav", "audio");
+  const aac = localLocation("01-example.aac", "audio");
+  const next = localLocation("02-next.wav", "audio");
+  const video = localLocation("example.avi", "video");
   assert.ok(location, "Local scan must expose a playable audio location");
   const stream = `/api/media/${location.id}/stream?forceDirect=1`;
   await request(stream, { expected: 401 });
@@ -225,7 +314,16 @@ try {
   if (process.argv.includes("--browser")) {
     const { verifyProductionBrowser } =
       await import("./production-browser-smoke.mjs");
-    await verifyProductionBrowser(baseURL, work.primaryCode, controller.signal);
+    await verifyProductionBrowser(
+      baseURL,
+      {
+        workCode: work.primaryCode,
+        aacLocationId: aac.id,
+        nextLocationId: next.id,
+        videoLocationId: video.id,
+      },
+      controller.signal,
+    );
   }
   console.log(
     "Production smoke passed: static assets, SPA routing, authentication, local scan and audio Range playback.",

@@ -31,6 +31,9 @@ func TestCORSRequiresExplicitAllowedOrigin(t *testing.T) {
 	if allowed.Code != http.StatusNoContent || allowed.Header().Get("Access-Control-Allow-Origin") != "http://127.0.0.1:7655" {
 		t.Fatalf("allowed response = %d, origin %q", allowed.Code, allowed.Header().Get("Access-Control-Allow-Origin"))
 	}
+	if !strings.Contains(allowed.Header().Get("Access-Control-Allow-Methods"), "HEAD") || allowed.Header().Get("Access-Control-Expose-Headers") != "X-Kikoto-Playback-Delivery" {
+		t.Fatalf("allowed origin cannot inspect playback delivery: %#v", allowed.Header())
+	}
 }
 
 func TestCORSAllowsConfirmedSameOrigin(t *testing.T) {

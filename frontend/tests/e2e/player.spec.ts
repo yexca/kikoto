@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Route } from "@playwright/test";
 import {
   persistedTrack,
   persistedPlayerTracks,
@@ -10,6 +10,22 @@ import {
   readScopedPlayerState,
   mediaFixture,
 } from "./fixtures/player-library";
+
+function servePreparedAudio(route: Route, media: Buffer) {
+  const range = /^bytes=(\d+)-(\d*)$/.exec(route.request().headers().range ?? "");
+  const start = range ? Number(range[1]) : 0;
+  const end = range?.[2] ? Math.min(Number(range[2]), media.length - 1) : media.length - 1;
+  return route.fulfill({
+    status: range ? 206 : 200,
+    contentType: "audio/wav",
+    headers: {
+      "Accept-Ranges": "bytes",
+      "X-Kikoto-Playback-Delivery": "transcoded",
+      ...(range ? { "Content-Range": `bytes ${start}-${end}/${media.length}` } : {}),
+    },
+    body: media.subarray(start, end + 1),
+  });
+}
 
 test("full player collapses from the upper content area and double-tapping its cover opens work detail", async ({
   page,
@@ -500,6 +516,124 @@ test("mini player reveals actions on tap, persists its snapped edge, and compact
   const restored = await page.locator(".mini-player").boundingBox();
   expect(restored).not.toBeNull();
   expect(restored!.x).toBeLessThanOrEqual(10);
+});
+
+test("audio preparation shows a busy control and can be paused before it completes", async ({ page }) => {
+  await mockApplication(page);
+  await seedPlayer(page);
+  let releasePreparation!: () => void;
+  const prepared = new Promise<void>((resolve) => {
+    releasePreparation = resolve;
+  });
+  await page.route("**/api/media/1/stream?*", async (route) => {
+    await prepared;
+    await route.fulfill({ status: 200, contentType: "audio/wav", body: silentWav() });
+  });
+  try {
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.getByText("Test track", { exact: true }).click();
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    const pause = page.getByRole("button", { name: "Pause", exact: true });
+    await expect(pause).toHaveAttribute("aria-busy", "true");
+    await pause.click();
+    await expect(page.getByRole("button", { name: "Play", exact: true })).toHaveAttribute("aria-busy", "false");
+    releasePreparation();
+    await expect
+      .poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.readyState))
+      .toBeGreaterThanOrEqual(1);
+    await expect(page.locator("audio")).toHaveJSProperty("paused", true);
+  } finally {
+    releasePreparation();
+  }
+});
+
+test("failed prepared audio retries without repeated compatibility conversion or losing position", async ({ page }) => {
+  await mockApplication(page);
+  await seedPlayer(page);
+  let fail = true;
+  const media = silentWav(180);
+  const requests: string[] = [];
+  await page.route("**/api/media/1/stream?*", async (route) => {
+    requests.push(route.request().url());
+    if (!fail) {
+      await servePreparedAudio(route, media);
+      return;
+    }
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      headers: { "X-Kikoto-Playback-Delivery": "transcoded" },
+      body: '{"code":"media_transcode_unavailable"}',
+    });
+  });
+  await page.goto("/");
+  const retry = page.getByRole("button", { name: "Retry", exact: true });
+  await expect(retry).toBeVisible();
+  await expect(page.getByRole("button", { name: "Compatibility playback", exact: true })).toHaveCount(0);
+  expect(requests.every((url) => !new URL(url).searchParams.has("forceTranscode"))).toBe(true);
+  fail = false;
+  await retry.click();
+  await expect
+    .poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.currentTime))
+    .toBeGreaterThan(0);
+  await expect(page.locator("audio")).toHaveJSProperty("error", null);
+
+  await page.locator("audio").evaluate((audio: HTMLAudioElement) => {
+    audio.currentTime = 42;
+  });
+  await expect
+    .poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.currentTime))
+    .toBeGreaterThanOrEqual(42);
+  await page.locator("audio").evaluate((audio) => audio.dispatchEvent(new Event("error")));
+  await expect(retry).toBeVisible();
+  await retry.click();
+  await expect
+    .poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => !audio.paused && audio.currentTime >= 42))
+    .toBe(true);
+});
+
+test("replaying the same audio cancels stale failure diagnostics", async ({ page }) => {
+  await mockApplication(page);
+  await seedPlayer(page);
+  const media = silentWav(180);
+  let releaseHead!: () => void;
+  const headReleased = new Promise<void>((resolve) => {
+    releaseHead = resolve;
+  });
+  let markHeadStarted!: () => void;
+  const headStarted = new Promise<void>((resolve) => {
+    markHeadStarted = resolve;
+  });
+  let headAborted = false;
+  page.on("requestfailed", (request) => {
+    if (request.method() === "HEAD" && new URL(request.url()).pathname === "/api/media/1/stream") {
+      headAborted = true;
+    }
+  });
+  await page.route("**/api/media/1/stream?*", async (route) => {
+    if (route.request().method() === "HEAD") {
+      markHeadStarted();
+      await headReleased;
+    }
+    await servePreparedAudio(route, media);
+  });
+  try {
+    await page.goto("/");
+    await page.getByText("Test track", { exact: true }).click();
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await expect(page.locator("audio")).toHaveJSProperty("paused", false);
+    await page.locator("audio").evaluate((audio) => audio.dispatchEvent(new Event("error")));
+    await headStarted;
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await expect(page.locator("audio")).toHaveJSProperty("paused", false);
+    releaseHead();
+    await expect.poll(() => headAborted).toBe(true);
+    await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Compatibility playback", exact: true })).toHaveCount(0);
+  } finally {
+    releaseHead();
+  }
 });
 
 test("failed direct playback offers compatibility before source fallback and the sleep timer survives a reload", async ({

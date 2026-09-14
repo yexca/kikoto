@@ -11,20 +11,29 @@ Playback is handled by a global browser audio player.
 - When direct audio decoding fails and the file still exists, the player offers
   compatibility playback for only the current track, the current queue, or all
   future local and cached playback. Compatibility playback and audio with an
-  unsupported extension are converted by FFmpeg directly to an MP3 response
-  stream. A confirmed missing file continues through the normal source fallback
-  order instead of offering conversion.
+  unsupported extension are converted by FFmpeg to a complete MP3 cache file
+  with duration and seeking information. First playback waits for preparation;
+  later requests reuse the result and support HTTP Range, seeking, Resume, and
+  normal end-of-track queue advancement. A confirmed missing file continues
+  through the normal source fallback order instead of offering conversion.
 - Local and cached video is inspected before playback. Incompatible video first
   returns its probed total duration and a complete HLS VOD playlist. Six-second
   H.264/AAC segments are generated independently on
   demand, so the player can request a later segment without transcoding every
   preceding segment. Hls.js supplies MSE playback where needed; clients with
   native HLS support use the same playlist directly.
+- Temporary video preparation failures receive bounded retries. A remaining
+  failure keeps an inline Retry action; direct-to-HLS recovery and explicit
+  retries retain the playback position and whether the video was paused.
 - Generated video segments are rebuildable cache data under
-  `/cache/transcodes/hls`. They use a separate LRU quota, defaulting to 5 GiB,
-  and are invalidated by the source path, size, modification time, or transcode
-  profile changing. A segment is capped at 16 MiB and a generation attempt at
+  `/cache/transcodes/hls`. The shared audio/video transcode LRU quota defaults to
+  5 GiB. Segments are invalidated by the source path, size, modification time, or
+  transcode profile changing. A segment is capped at 16 MiB and a generation attempt at
   two minutes. Stale partial files left by an interrupted process are reclaimed.
+- Prepared audio is rebuildable data under `/cache/transcodes/audio` and shares
+  the transcode cache quota with video. Preparation is limited to four minutes
+  and 512 MiB per file; incomplete or failed output is never published. Source
+  changes invalidate the cached result. Originals remain unchanged.
 - Tracked remote and remote-preview media is fetched through the configured
   source policy and proxied unchanged through the backend by default. The
   proxy keeps the browser-facing response same-origin and forwards range and
@@ -34,8 +43,8 @@ Playback is handled by a global browser audio player.
   cache location before realtime conversion is available. Remote playback is
   streamed and is not written to `/cache`; the separate remote-source cache
   workflow remains independent.
-- Audio conversion responses are `no-store` and do not support random range
-  seeks. HLS video segments are immutable for their source revision and are
+- Prepared audio responses support random byte ranges and include their complete
+  length. HLS video segments are immutable for their source revision and are
   seekable through the complete VOD timeline. Video output is bounded to 720p,
   padded to even dimensions before `yuv420p` encoding, and produced with a
   conservative two-thread profile. FFmpeg and FFprobe each have a small fixed

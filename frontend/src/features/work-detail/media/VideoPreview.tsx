@@ -1,12 +1,17 @@
 import { Loader2, RefreshCw } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type Hls from "hls.js";
 import type { ErrorData } from "hls.js";
 
 import { Button } from "@/components/ui/button";
 import { api, assetURL, type VideoPlaybackInfo } from "@/lib/api";
 import { playbackCapabilities, playbackURL } from "@/player/mediaPlayback";
-import { CONSERVATIVE_HLS_CONFIG } from "@/features/work-detail/media/videoPlaybackModel";
+import {
+  CONSERVATIVE_HLS_CONFIG,
+  prepareVideoPlayback,
+  videoPlaybackFailureKey,
+} from "@/features/work-detail/media/videoPlaybackModel";
 
 type VideoPreviewProps = {
   locationId: number;
@@ -17,7 +22,11 @@ type VideoPreviewProps = {
   onPlay: () => void;
 };
 
-export function VideoPreview({
+export function VideoPreview(props: VideoPreviewProps) {
+  return <VideoPlayback key={`${props.locationId}:${props.fallbackUrl}`} {...props} />;
+}
+
+function VideoPlayback({
   locationId,
   fallbackUrl,
   durationSeconds,
@@ -25,17 +34,26 @@ export function VideoPreview({
   pauseRequested,
   onPlay,
 }: VideoPreviewProps) {
+  const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [playback, setPlayback] = useState<VideoPlaybackInfo | null>(null);
   const [forceTranscode, setForceTranscode] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
   const [error, setError] = useState("");
+  const wantsPlaybackRef = useRef(false);
+  const changingSourceRef = useRef(false);
+  const hlsManagedRef = useRef(false);
+  const sourceGenerationRef = useRef(0);
+  const recoveryRef = useRef<{ position: number; playing: boolean } | null>(null);
 
-  useEffect(() => {
-    setPlayback(null);
-    setForceTranscode(false);
-    setError("");
-  }, [fallbackUrl, locationId]);
+  const rememberPlayback = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || recoveryRef.current) return;
+    recoveryRef.current = {
+      position: Number.isFinite(video.currentTime) ? Math.max(0, video.currentTime) : 0,
+      playing: wantsPlaybackRef.current,
+    };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -50,18 +68,25 @@ export function VideoPreview({
       return () => controller.abort();
     }
     setPlayback(null);
-    void api
-      .getVideoPlaybackInfo(locationId, playbackCapabilities("video"), forceTranscode, controller.signal)
-      .then(setPlayback)
+    void prepareVideoPlayback(
+      () => api.getVideoPlaybackInfo(locationId, playbackCapabilities("video"), forceTranscode, controller.signal),
+      controller.signal,
+    )
+      .then((value) => {
+        if (!controller.signal.aborted) setPlayback(value);
+      })
       .catch((reason: unknown) => {
         if (controller.signal.aborted) return;
-        setError(reason instanceof Error ? reason.message : "This video could not be prepared.");
+        setError(videoPlaybackFailureKey(reason));
       });
     return () => controller.abort();
   }, [canTranscode, durationSeconds, fallbackUrl, forceTranscode, locationId, retryToken]);
 
   useEffect(() => {
-    if (pauseRequested) videoRef.current?.pause();
+    if (!pauseRequested) return;
+    wantsPlaybackRef.current = false;
+    if (recoveryRef.current) recoveryRef.current.playing = false;
+    videoRef.current?.pause();
   }, [pauseRequested]);
 
   useEffect(() => {
@@ -72,6 +97,9 @@ export function VideoPreview({
     const sourceURL = assetURL(playback.url);
 
     const clearSource = () => {
+      sourceGenerationRef.current++;
+      changingSourceRef.current = true;
+      hlsManagedRef.current = false;
       video.removeAttribute("src");
       video.load();
     };
@@ -87,15 +115,26 @@ export function VideoPreview({
         if (!active) return;
         if (HlsConstructor.isSupported()) {
           let mediaRecoveryAttempts = 0;
-          instance = new HlsConstructor(CONSERVATIVE_HLS_CONFIG);
+          hlsManagedRef.current = true;
+          instance = new HlsConstructor({
+            ...CONSERVATIVE_HLS_CONFIG,
+            startPosition: recoveryRef.current?.position ?? -1,
+          });
           instance.on(HlsConstructor.Events.ERROR, (_event: string, data: ErrorData) => {
             if (!data.fatal || !instance || !active) return;
+            rememberPlayback();
             if (data.type === HlsConstructor.ErrorTypes.MEDIA_ERROR && mediaRecoveryAttempts < 1) {
               mediaRecoveryAttempts++;
+              changingSourceRef.current = true;
               instance.recoverMediaError();
               return;
             }
-            setError("This video could not be played.");
+            instance.stopLoad();
+            setError(
+              data.response?.code === 503 || data.response?.code === 429
+                ? "videoPlayback.busy"
+                : "videoPlayback.playFailed",
+            );
           });
           instance.loadSource(sourceURL);
           instance.attachMedia(video);
@@ -106,10 +145,10 @@ export function VideoPreview({
           video.load();
           return;
         }
-        setError("HLS playback is not supported on this device.");
+        setError("videoPlayback.hlsUnsupported");
       })
       .catch(() => {
-        if (active) setError("The video player could not be loaded.");
+        if (active) setError("videoPlayback.playerLoadFailed");
       });
 
     return () => {
@@ -117,7 +156,7 @@ export function VideoPreview({
       instance?.destroy();
       clearSource();
     };
-  }, [playback]);
+  }, [playback, rememberPlayback]);
 
   const displayedDuration = playback?.durationSeconds || durationSeconds || 0;
   return (
@@ -129,38 +168,88 @@ export function VideoPreview({
         preload="metadata"
         className="max-h-[72vh] w-full bg-black object-contain"
         aria-label={
-          displayedDuration > 0 ? `Video preview, duration ${formatVideoDuration(displayedDuration)}` : "Video preview"
+          displayedDuration > 0
+            ? t("videoPlayback.previewDuration", { duration: formatVideoDuration(displayedDuration) })
+            : t("videoPlayback.preview")
         }
-        onPlay={onPlay}
-        onLoadedMetadata={() => setError("")}
+        onPlay={() => {
+          wantsPlaybackRef.current = true;
+          if (recoveryRef.current) recoveryRef.current.playing = true;
+          onPlay();
+        }}
+        onPause={(event) => {
+          if (changingSourceRef.current || event.currentTarget.error) return;
+          wantsPlaybackRef.current = false;
+          if (recoveryRef.current) recoveryRef.current.playing = false;
+        }}
+        onEnded={() => {
+          wantsPlaybackRef.current = false;
+        }}
+        onLoadedMetadata={(event) => {
+          changingSourceRef.current = false;
+          const recovery = recoveryRef.current;
+          if (!recovery) return;
+          const video = event.currentTarget;
+          if (recovery.position > 0) {
+            const end = Number.isFinite(video.duration) ? video.duration : recovery.position;
+            try {
+              video.currentTime = Math.min(recovery.position, end);
+            } catch {
+              setError("videoPlayback.restoreFailed");
+              return;
+            }
+          }
+          recoveryRef.current = null;
+          if (recovery.playing) {
+            const generation = sourceGenerationRef.current;
+            void video.play().catch((reason: unknown) => {
+              if (generation !== sourceGenerationRef.current) return;
+              if (
+                reason instanceof DOMException &&
+                (reason.name === "NotAllowedError" || reason.name === "AbortError")
+              ) {
+                return;
+              }
+              rememberPlayback();
+              setError("videoPlayback.playFailed");
+            });
+          }
+        }}
+        onPlaying={() => setError("")}
         onError={() => {
           if (!playback) return;
+          if (playback.delivery === "hls" && hlsManagedRef.current) return;
+          rememberPlayback();
           if (playback.delivery === "direct" && canTranscode && !forceTranscode) {
             setForceTranscode(true);
             return;
           }
-          if (playback.delivery === "direct") setError("This video could not be played.");
+          setError("videoPlayback.playFailed");
         }}
       />
       {!playback && !error && (
         <div className="flex min-h-11 items-center justify-center gap-2 text-sm text-muted-foreground" role="status">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Preparing video
+          {t("videoPlayback.preparing")}
         </div>
       )}
       {error && (
-        <div className="mt-3 flex min-h-11 items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-          <span>{error}</span>
+        <div
+          role="alert"
+          className="mt-3 flex min-h-11 items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground"
+        >
+          <span>{t(error)}</span>
           <Button
             variant="outline"
             size="sm"
             onClick={() => {
+              rememberPlayback();
               setError("");
               setRetryToken((value) => value + 1);
             }}
           >
             <RefreshCw className="h-4 w-4" />
-            Retry
+            {t("videoPlayback.retry")}
           </Button>
         </div>
       )}

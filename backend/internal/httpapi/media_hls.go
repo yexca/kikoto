@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/url"
@@ -131,6 +132,9 @@ func (s *Server) serveVideoHLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.serveHLSSegment(w, r, source, segmentIndex); err != nil {
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			slog.Warn("video playback segment preparation failed", "location_id", source.LocationID, "segment", segmentIndex, "error", err)
+		}
 		if errors.Is(err, errRealtimeResourceBusy) {
 			w.Header().Set("Retry-After", "1")
 			writeAPIError(w, http.StatusServiceUnavailable, "media_transcode_busy", "media playback is temporarily busy", true)
@@ -347,7 +351,8 @@ func (s *Server) generateHLSSegment(ctx context.Context, inputPath string, outpu
 		_ = os.Remove(temporaryPath)
 	}()
 	command := exec.CommandContext(transcodeContext, ffmpegPath, hlsSegmentFFmpegArgs(inputPath, start, duration)...)
-	command.Stderr = io.Discard
+	diagnostics := &transcodeDiagnosticOutput{}
+	command.Stderr = diagnostics
 	stdout, err := command.StdoutPipe()
 	if err != nil {
 		return err
@@ -373,7 +378,7 @@ func (s *Server) generateHLSSegment(ctx context.Context, inputPath string, outpu
 			}
 			return fmt.Errorf("%w: command timed out", errHLSTranscodeUnavailable)
 		}
-		return fmt.Errorf("%w: command failed", errHLSTranscodeUnavailable)
+		return fmt.Errorf("%w: command failed: %s", errHLSTranscodeUnavailable, diagnostics.String())
 	}
 	if written == 0 {
 		return fmt.Errorf("%w: command produced no output", errHLSTranscodeUnavailable)

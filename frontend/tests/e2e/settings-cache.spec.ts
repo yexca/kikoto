@@ -274,14 +274,12 @@ test("@desktop cache settings scan managed media and require cleanup confirmatio
   await expect(page.getByText("Managed media cache", { exact: true })).toBeVisible();
   await expect(page.getByTestId("maintenance-content")).toHaveCSS("max-width", "896px");
   await expect(page.getByTestId("cache-configuration-card")).toHaveCSS("max-width", "none");
-  const cacheSections = await page
-    .getByText(/^(Configuration|Video transcode cache|Managed media cache)$/)
-    .allTextContents();
-  expect(cacheSections).toEqual(["Configuration", "Video transcode cache", "Managed media cache"]);
+  const cacheSections = await page.getByText(/^(Configuration|Transcode cache|Managed media cache)$/).allTextContents();
+  expect(cacheSections).toEqual(["Configuration", "Transcode cache", "Managed media cache"]);
   await expect(page.getByText("Save path template", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Per-file download limit")).toHaveValue("100");
   await expect(page.getByLabel("Failed staging retention")).toHaveValue("7");
-  await expect(page.getByLabel("Video transcode cache limit")).toHaveValue("5");
+  await expect(page.getByLabel("Transcode cache limit")).toHaveValue("5");
   await page.getByRole("button", { name: "Save configuration" }).click();
   await expect.poll(() => settingsPayloads).toHaveLength(1);
   expect(settingsPayloads[0]).not.toHaveProperty("remoteSaveTemplate");
@@ -293,13 +291,13 @@ test("@desktop cache settings scan managed media and require cleanup confirmatio
     }),
   );
   await expect(page.getByText("24 MB", { exact: true })).toBeVisible();
-  const transcodeCache = page.getByRole("region", { name: "Video transcode cache" });
+  const transcodeCache = page.getByRole("region", { name: "Transcode cache" });
   await expect(transcodeCache.getByText("5.0 GB", { exact: true })).toHaveCount(2);
-  await page.getByRole("button", { name: "Clear video transcode cache", exact: true }).click();
+  await page.getByRole("button", { name: "Clear transcode cache", exact: true }).click();
   expect(mocks.transcodeClearRequests).toHaveLength(0);
-  await page.getByRole("button", { name: "Confirm clear (4 segments)", exact: true }).click();
+  await page.getByRole("button", { name: "Confirm clear (4 files)", exact: true }).click();
   await expect.poll(() => mocks.transcodeClearRequests).toEqual(["/api/cache/transcodes"]);
-  await expect(page.getByText("Removed 4 segments and freed 24 MB.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Removed 4 files and freed 24 MB.", { exact: true })).toBeVisible();
   await expect(page.getByText("150 MB", { exact: true })).toBeVisible();
   await expect(page.getByText("30 MB", { exact: true })).toBeVisible();
   await expect(page.getByText("1 groups · 1 works", { exact: true })).toBeVisible();
