@@ -49,23 +49,34 @@ test("remote source renders disabled and unavailable failures inside the works a
   await expect(page.getByText("Remote Japanese work", { exact: true })).toHaveCount(0);
 });
 
-test("remote source unavailable failure shows the backend URL and retry action", async ({ page }) => {
+test("remote source unavailable failure lets a reader retry without diagnostic details", async ({ page }) => {
   const requests: URL[] = [];
   await mockRemoteSource(page, (url) => requests.push(url), {
     remoteStatus: "unavailable",
-    remoteErrorURL: "https://remote.example/api",
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Example Remote", exact: true }).click();
 
   await expect(page.getByText("Remote source is unavailable", { exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "https://remote.example/api" })).toHaveAttribute(
-    "href",
-    "https://remote.example/api",
-  );
+  await expect(page.getByRole("main").getByRole("link", { name: /^https?:\/\// })).toHaveCount(0);
   const initialRequests = requests.length;
   await page.getByRole("button", { name: "Try again", exact: true }).click();
   await expect.poll(() => requests.length).toBeGreaterThan(initialRequests);
+});
+
+test("remote source administrators can open the sanitized diagnostic URL", async ({ page }) => {
+  await mockRemoteSource(page, () => undefined, {
+    permissions: ["library:read", "playback:use", "sources:write"],
+    remoteStatus: "unavailable",
+    remoteErrorURL: "https://source.example.invalid/api",
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+
+  await expect(page.getByRole("link", { name: "https://source.example.invalid/api", exact: true })).toHaveAttribute(
+    "href",
+    "https://source.example.invalid/api",
+  );
 });
 
 test("remote source keeps alias matches returned by the backend", async ({ page }) => {
@@ -155,9 +166,23 @@ test("mobile Fetch prepares language editions and switches between local, remote
   await expect(page.getByText("After Fetch", { exact: true }).last()).toBeVisible();
 });
 
-test("mobile Fetch resolves conflicts and selects a source per file before publishing", async ({ page }) => {
-  const planBodies: Record<string, unknown>[] = [];
-  await mockRemoteSource(page, () => undefined, { conflict: true, onFetchPlan: (body) => planBodies.push(body) });
+test("mobile Fetch preserves reviewed choices after an unconfirmed submission and retries the same request", async ({
+  page,
+}) => {
+  const submissions: Record<string, unknown>[] = [];
+  await mockRemoteSource(page, () => undefined, { conflict: true });
+  await page.route("**/api/remote-sources/1/works/RJ00000051/fetch", async (route) => {
+    expect(route.request().method()).toBe("POST");
+    submissions.push(route.request().postDataJSON());
+    if (submissions.length === 1) {
+      await route.fulfill({
+        status: 503,
+        json: { error: "Submission unavailable", code: "unavailable", retryable: true },
+      });
+      return;
+    }
+    await route.fulfill({ status: 202, json: { primaryCode: "RJ00000051", runId: 92, status: "queued" } });
+  });
   await page.goto("/");
   await page.getByRole("button", { name: "Example Remote", exact: true }).click();
   await page.getByTitle("Fetch").click();
@@ -165,16 +190,32 @@ test("mobile Fetch resolves conflicts and selects a source per file before publi
   await expect(page.getByText("target exists with a different size", { exact: true })).toBeVisible();
   await page.getByLabel("Remote source").selectOption("2");
   await page.getByLabel("Conflict action").selectOption("keep_both");
-  await expect
-    .poll(() =>
-      planBodies.some(
-        (body) =>
-          JSON.stringify(body).includes('"sourceId":2') && JSON.stringify(body).includes('"resolution":"keep_both"'),
-      ),
-    )
-    .toBe(true);
-  await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeEnabled();
   await expect(page.getByText("track (mirror).mp3", { exact: true })).toBeVisible();
+  const publish = page.getByRole("button", { name: "Publish Fetch" });
+  await publish.click();
+  await expect(
+    page.getByText(
+      "Fetch submission could not be confirmed. It may still be running; check Activity or retry this selection.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  expect(submissions).toHaveLength(1);
+  expect(submissions[0]).toMatchObject({
+    paths: ["track.mp3"],
+    localPaths: [],
+    targetRoot: "example_remote/RJ/000/RJ00000051",
+    decisions: [{ itemKey: "remote:track.mp3", sourceId: 2, resolution: "keep_both" }],
+  });
+  expect(submissions[0].requestId).toEqual(expect.any(String));
+  expect((submissions[0].requestId as string).trim()).not.toBe("");
+  await expect(page.getByLabel("Remote source")).toHaveValue("2");
+  await expect(page.getByLabel("Conflict action")).toHaveValue("keep_both");
+
+  await publish.click();
+  await expect(page.getByText("Fetch queued for RJ00000051 as workflow run #92.", { exact: true })).toBeVisible();
+  expect(submissions).toHaveLength(2);
+  expect(submissions[1]).toEqual(submissions[0]);
+  await expect(publish).toHaveCount(0);
 });
 
 test("mobile Fetch reviews an unclaimed destination folder before publishing", async ({ page }) => {

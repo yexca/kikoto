@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/account"
@@ -85,17 +86,32 @@ func TestFilesystemTriggerConfiguredFullOmitsChangedPathBatch(t *testing.T) {
 }
 
 func TestFilesystemTriggerSettleDelayRestartsAfterLaterChange(t *testing.T) {
-	db := openMigratedTestDB(t)
-	server := NewServer(db, config.Config{DataRoot: t.TempDir(), LocalScanDepth: 3})
-	watcher := newFakeFilesystemWatcher(2)
-	startFilesystemWatcherSession(t, server, watcher, 120*time.Millisecond, 20*time.Millisecond)
-
-	watcher.changes <- localfs.DirectoryChange{Path: filepath.Join(server.cfg.DataRoot, "RJ00000025", "first.flac")}
-	time.Sleep(80 * time.Millisecond)
-	watcher.changes <- localfs.DirectoryChange{Path: filepath.Join(server.cfg.DataRoot, "RJ00000025", "second.flac")}
-	time.Sleep(70 * time.Millisecond)
-	assertFilesystemRunCount(t, db, 0)
-	waitForFilesystemRunCount(t, db, 1)
+	// Exercise the real event-settling timer in virtual time. Database dispatch
+	// and native watcher integration are covered separately.
+	synctest.Test(t, func(t *testing.T) {
+		session := filesystemWatcherSession{enabled: true}
+		defer session.stopTimer()
+		first := filepath.Join("RJ00000025", "first.flac")
+		second := filepath.Join("RJ00000025", "second.flac")
+		session.scheduleEvent(localfs.DirectoryChange{Path: first}, filesystemTriggerSettleDelay)
+		time.Sleep(4 * time.Second)
+		session.scheduleEvent(localfs.DirectoryChange{Path: second}, filesystemTriggerSettleDelay)
+		time.Sleep(5*time.Second - time.Nanosecond)
+		select {
+		case <-session.timerC:
+			t.Fatal("scan became eligible before five quiet seconds after the last event")
+		default:
+		}
+		time.Sleep(time.Nanosecond)
+		select {
+		case <-session.timerC:
+		default:
+			t.Fatal("scan did not become eligible after five quiet seconds")
+		}
+		if !session.pending || len(session.changedPaths) != 2 {
+			t.Fatalf("settled batch lost an event: pending=%t paths=%v", session.pending, session.changedPaths)
+		}
+	})
 }
 
 func TestFilesystemTriggerCoalescesChangeDuringActiveRun(t *testing.T) {

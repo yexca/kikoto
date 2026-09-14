@@ -1,6 +1,46 @@
 import { expect, test } from "@playwright/test";
 import { work, MockWork, mockApplication, mediaFixture } from "./fixtures/player-library";
 
+test("column preferences change the rendered collection and remain independent across viewport sizes", async ({
+  page,
+}) => {
+  await mockApplication(page, undefined, false, 6);
+  await page.goto("/");
+  const cards = page.getByTestId("work-card");
+  await expect(cards).toHaveCount(6);
+  const expectColumns = async (columns: number) => {
+    // The user-selected column count must affect the actual card layout,
+    // without clipping the mobile viewport (DESIGN.md responsive contract).
+    await expect(async () => {
+      const boxes = await cards.evaluateAll((elements) =>
+        elements.map((element) => {
+          const { x, y, right, width } = element.getBoundingClientRect();
+          return { x, y, right, width };
+        }),
+      );
+      const firstRow = boxes.filter((box) => Math.abs(box.y - boxes[0].y) < 1);
+      expect(firstRow).toHaveLength(columns);
+      for (const [index, box] of firstRow.entries()) {
+        expect(box.width).toBeGreaterThan(0);
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.right).toBeLessThanOrEqual(page.viewportSize()!.width);
+        if (index > 0) expect(box.x).toBeGreaterThanOrEqual(firstRow[index - 1].right);
+      }
+    }).toPass();
+  };
+  await page.getByRole("button", { name: /^Columns:/ }).click();
+  await page.getByRole("button", { name: "2 columns", exact: true }).click();
+  await expectColumns(2);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole("button", { name: /^Columns:/ }).click();
+  await page.getByRole("button", { name: "3 columns", exact: true }).click();
+  await expectColumns(3);
+  await page.reload();
+  await expectColumns(3);
+  await page.setViewportSize({ width: 412, height: 915 });
+  await expectColumns(2);
+});
+
 test("new detail navigation starts at the top, preserves user scroll while media loads, and returning restores the library position", async ({
   page,
 }) => {

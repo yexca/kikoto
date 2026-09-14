@@ -632,9 +632,9 @@ export async function mockRemoteSource(
     fetchRootConflict?: boolean;
     persisted?: boolean;
     authenticated?: boolean;
+    permissions?: string[];
     remoteStatus?: "ok" | "disabled" | "unavailable";
     remoteErrorURL?: string;
-    onFetchPlan?: (body: Record<string, unknown>) => void;
     trackControl?: RemoteTrackControl;
   } = {},
 ) {
@@ -654,7 +654,7 @@ export async function mockRemoteSource(
                   username: "listener",
                   displayName: "Listener",
                   role: "user",
-                  permissions: ["library:read", "playback:use", "downloads:manage"],
+                  permissions: options.permissions ?? ["library:read", "playback:use", "downloads:manage"],
                   devMode: true,
                 },
               },
@@ -1143,7 +1143,6 @@ export async function mockRemoteSource(
       const requestBody = route.request().postDataJSON() as {
         decisions?: Array<{ sourceId?: number; resolution?: string; targetPath?: string }>;
       };
-      options.onFetchPlan?.(requestBody as Record<string, unknown>);
       const decision = requestBody.decisions?.[0];
       const unresolvedConflict = Boolean(options.conflict && (!decision?.resolution || decision.resolution === "auto"));
       const fetchRootConflict = Boolean(options.fetchRootConflict);
