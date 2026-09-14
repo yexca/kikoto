@@ -617,6 +617,12 @@ func recommendationLaneSuppressedExpression(config RecommendationConfig, statusE
 }
 
 func recommendationListSelectSQL(baseSelect string, direction string, randomSeed int64, config RecommendationConfig) string {
+	return recommendationOrderedSelectSQL(baseSelect, direction, randomSeed, config, `id, primary_code, title, age_rating, rating_average, sales_count, regular_price, current_price, price_currency, is_permanently_free,
+		created_at, track_count, available_locations, available_location_types, source_presence, snapshot_json, party_link,
+		listening_status, favorite, recommend_score`)
+}
+
+func recommendationOrderedSelectSQL(baseSelect string, direction string, randomSeed int64, config RecommendationConfig, projection string) string {
 	_, direction = normalizeSort("recommend", direction)
 	withinLane := recommendationExplorationOrderBy("id", direction, randomSeed, config.JitterAmplitude, config.ExplorationAmplitude)
 	position := recommendationLanePositionExpression(config, "recommendation_lane", "recommendation_lane_rank")
@@ -633,9 +639,7 @@ func recommendationListSelectSQL(baseSelect string, direction string, randomSeed
 			` + position + ` AS recommendation_position
 		FROM recommendation_ranked
 	)
-	SELECT id, primary_code, title, age_rating, rating_average, sales_count, regular_price, current_price, price_currency, is_permanently_free,
-		created_at, track_count, available_locations, available_location_types, source_presence, snapshot_json, party_link,
-		listening_status, favorite, recommend_score
+	SELECT ` + projection + `
 	FROM recommendation_positioned
 	ORDER BY recommendation_suppressed ASC, recommendation_position ASC, id ASC`
 }

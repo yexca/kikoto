@@ -1,4 +1,4 @@
-import { surfaceEnglish } from "./surfaces";
+import { surfaceEnglish } from "./surfaces/en";
 
 export const libraryEnglish = {
   workNotFound: "Work not found",

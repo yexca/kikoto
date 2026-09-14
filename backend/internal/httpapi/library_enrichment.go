@@ -25,7 +25,8 @@ func (s *Server) enrichLibraryWorkSummaries(ctx context.Context, userID int64, w
 	if err != nil {
 		return err
 	}
-	return s.applyLibrarySummaryEnrichment(ctx, userID, works, data)
+	s.applyLibrarySummaryEnrichment(works, data)
+	return nil
 }
 
 func librarySummaryEnrichmentKeys(works []libraryWorkSummary) ([]int64, []string, []string) {
@@ -55,7 +56,9 @@ func applyLibraryMediaSelections(works []libraryWorkSummary, mediaSelections map
 		if ok {
 			works[index].mediaWorkID = selection.WorkID
 		}
-		mediaWorkIDs = append(mediaWorkIDs, works[index].mediaWorkID)
+		if works[index].mediaWorkID != works[index].ID {
+			mediaWorkIDs = append(mediaWorkIDs, works[index].mediaWorkID)
+		}
 	}
 	return mediaWorkIDs
 }
@@ -66,6 +69,7 @@ type librarySummaryEnrichmentData struct {
 	overrides    map[int64][]library.ManualOverrideRow
 	progress     map[int64]library.Progress
 	nonOrigin    map[int64]bool
+	voiceCredits map[int64][]library.VoiceCredit
 }
 
 func (s *Server) loadLibrarySummaryEnrichment(ctx context.Context, userID int64, workIDs, mediaWorkIDs []int64, primaryCodes []string) (librarySummaryEnrichmentData, error) {
@@ -89,18 +93,22 @@ func (s *Server) loadLibrarySummaryEnrichment(ctx context.Context, userID int64,
 	if err != nil {
 		return librarySummaryEnrichmentData{}, err
 	}
+	voiceCredits, err := s.libraryStore.LoadVoiceCredits(ctx, workIDs)
+	if err != nil {
+		return librarySummaryEnrichmentData{}, err
+	}
 	return librarySummaryEnrichmentData{
 		availability: availability, series: series, overrides: overrides,
-		progress: progress, nonOrigin: nonOrigin,
+		progress: progress, nonOrigin: nonOrigin, voiceCredits: voiceCredits,
 	}, nil
 }
 
-func (s *Server) applyLibrarySummaryEnrichment(ctx context.Context, userID int64, works []libraryWorkSummary, data librarySummaryEnrichmentData) error {
+func (s *Server) applyLibrarySummaryEnrichment(works []libraryWorkSummary, data librarySummaryEnrichmentData) {
 	for index := range works {
 		works[index].HasNonOrigin = data.nonOrigin[works[index].ID]
-		credits, err := s.voiceCreditsForWork(ctx, works[index].ID)
-		if err != nil {
-			return err
+		credits := make([]voiceCredit, 0, len(data.voiceCredits[works[index].ID]))
+		for _, credit := range data.voiceCredits[works[index].ID] {
+			credits = append(credits, voiceCredit{PersonID: credit.PersonID, DisplayName: credit.DisplayName})
 		}
 		works[index].VoiceCredits = credits
 		if item, ok := data.availability[works[index].mediaWorkID]; ok && works[index].mediaWorkID != works[index].ID {
@@ -132,5 +140,4 @@ func (s *Server) applyLibrarySummaryEnrichment(ctx context.Context, userID int64
 			works[index].Availability = availabilityBadgesWithPresence(works[index].availableLocationTypes, works[index].SourcePresence)
 		}
 	}
-	return nil
 }

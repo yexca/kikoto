@@ -39,6 +39,13 @@ The backend is a Go HTTP API with SQLite persistence.
 - Coalesce concurrent local-media indexing for the same work, keep duration
   probes serialized per server, and expose slow index phase timings in logs.
 
+Local duration probing runs in one service-scoped worker. Indexing coalesces
+wakeups instead of retaining file lists in waiting goroutines. The worker reads
+at most 64 pending local locations at a time, skips complete duration metadata,
+and resumes missing metadata on startup. A pass has a fixed location-id frontier;
+indexing during a pass requests one follow-up. Existing FFprobe time, output,
+and concurrency limits still apply, and shutdown cancels active probing.
+
 ## Code Organization
 
 HTTP handlers own transport concerns: authentication context, request decoding,
@@ -60,6 +67,12 @@ the result and diagnostic trail.
 Work summary and media APIs remain separate. The media endpoint resolves the
 media-bearing edition and loads media items directly; it does not repeat the
 complete metadata, credit, tag, and manual-override detail projection.
+
+Library pagination selects normalized fields and ordering inputs before loading
+media aggregates, source presence, and metadata snapshots for the selected page.
+Both stages run in one SQL statement. Recommendation sessions retain their score
+and lane semantics, while voice credits are loaded in one batch per page and
+alternate-edition availability is loaded only when the media edition differs.
 
 Public errors use a stable code and retryability decision without returning raw
 database, upstream, endpoint, or filesystem details. Logs and workflow Activity

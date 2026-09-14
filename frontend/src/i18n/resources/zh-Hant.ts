@@ -1,5 +1,5 @@
 import { libraryHant, collectionHant, workCardHant } from "../resources";
-import { surfaceHant } from "../surfaces";
+import { surfaceHant } from "../surfaces/zh-Hant";
 
 export const zhHantResource = {
   "zh-Hant": {

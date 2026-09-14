@@ -1,5 +1,5 @@
 import { libraryJapanese, collectionJapanese, workCardJapanese } from "../resources";
-import { surfaceJapanese } from "../surfaces";
+import { surfaceJapanese } from "../surfaces/ja";
 
 export const japaneseResource = {
   ja: {

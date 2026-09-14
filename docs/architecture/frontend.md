@@ -49,6 +49,11 @@ the new server configuration. Re-selecting the same server retains its session.
 - Local shadcn-style primitives.
 - lucide-react icons.
 
+Non-English translation resources and their surface labels live in separate
+language modules loaded on demand. The English fallback must not synchronously
+import a module that also owns deferred languages, or those languages enter the
+initial bundle despite the dynamic resource entry points.
+
 ## Code Organization
 
 New and extracted frontend code follows a downward dependency direction:

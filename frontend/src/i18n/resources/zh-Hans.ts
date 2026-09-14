@@ -1,5 +1,5 @@
 import { libraryHans, collectionHans, workCardHans } from "../resources";
-import { surfaceHans } from "../surfaces";
+import { surfaceHans } from "../surfaces/zh-Hans";
 
 export const zhHansResource = {
   "zh-Hans": {

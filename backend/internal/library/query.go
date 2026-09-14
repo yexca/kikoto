@@ -110,9 +110,9 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 	queryArgs = append(queryArgs, options.UserID)
 	queryArgs = append(queryArgs, args...)
 	queryArgs = append(queryArgs, options.PageSize, (options.Page-1)*options.PageSize)
-	rows, err := s.db.QueryContext(ctx, listSelectSQLWithRecommendationGeneration(
+	rows, err := s.db.QueryContext(ctx, listPageSelectSQL(
 		where, options.Sort, options.Direction, options.RandomSeed, config, includeRecommendation, recommendationGenerationID,
-	)+" LIMIT ? OFFSET ?", queryArgs...)
+	), queryArgs...)
 	if err != nil {
 		return RawPage{}, err
 	}
@@ -797,6 +797,28 @@ func listBaseSelectSQLWithConfigAndExtraAndGeneration(
 	extraSelect string,
 	recommendationGenerationID int64,
 ) string {
+	recommendationSortColumn, recommendationSnapshotJoin := listRecommendationProjection(includeRecommendation, config, recommendationGenerationID)
+	return `SELECT ` + listSummaryColumnsSQL + `,
+		COALESCE(user_work_state.listening_status, 'none') AS listening_status,
+		COALESCE(user_work_state.favorite, 0) AS favorite` + recommendationSortColumn + extraSelect + `
+	FROM work
+	LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?` + recommendationSnapshotJoin + `
+	WHERE ` + where
+}
+
+const listWorkColumnsSQL = `work.id, work.primary_code, work.title, work.age_rating,
+		work.rating_average, work.sales_count, work.regular_price, work.current_price, work.price_currency, work.is_permanently_free,
+		work.created_at`
+
+const listSummaryColumnsSQL = listWorkColumnsSQL + `,
+		(SELECT COUNT(*) FROM media_item WHERE media_item.work_id = work.id AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1))) AS track_count,
+		(SELECT COUNT(*) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1)) AND media_file_location.availability = 'available') AS available_locations,
+		(SELECT GROUP_CONCAT(DISTINCT media_file_location.location_type) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND media_file_location.availability = 'available') AS available_location_types,
+		(SELECT GROUP_CONCAT(DISTINCT presence.presence_type || '|' || presence.availability || '|' || presence.file_source_id || '|' || COALESCE(source.code, '') || '|' || COALESCE(source.display_name, '') || '|' || COALESCE(presence.remote_id, '') || '|' || COALESCE(presence.source_url, '') || '|' || COALESCE(presence.remote_code, '') || '|' || COALESCE(presence.work_id, 0)) FROM work_source_presence AS presence LEFT JOIN file_source AS source ON source.id = presence.file_source_id WHERE presence.work_id = work.id OR presence.work_id IN (SELECT sibling.work_id FROM work_edition AS current_edition INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id WHERE current_edition.work_id = work.id)) AS source_presence,
+		(SELECT snapshot_json FROM metadata_snapshot INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id WHERE metadata_snapshot.work_id = work.id AND metadata_provider.code = 'dlsite' ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC LIMIT 1) AS snapshot_json,
+		(SELECT display_name || '|' || external_id FROM work_primary_circle WHERE work_id = work.id) AS party_link`
+
+func listRecommendationProjection(includeRecommendation bool, config RecommendationConfig, recommendationGenerationID int64) (string, string) {
 	recommendationSortColumn := ", 0 AS recommend_score"
 	recommendationSnapshotJoin := ""
 	if includeRecommendation {
@@ -811,19 +833,5 @@ func listBaseSelectSQLWithConfigAndExtraAndGeneration(
 			recommendationSortColumn = `, ` + recommendationScoreExpression(config) + ` AS recommend_score`
 		}
 	}
-	return `SELECT
-		work.id, work.primary_code, work.title, work.age_rating,
-		work.rating_average, work.sales_count, work.regular_price, work.current_price, work.price_currency, work.is_permanently_free,
-		work.created_at,
-		(SELECT COUNT(*) FROM media_item WHERE media_item.work_id = work.id AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1))) AS track_count,
-		(SELECT COUNT(*) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1)) AND media_file_location.availability = 'available') AS available_locations,
-		(SELECT GROUP_CONCAT(DISTINCT media_file_location.location_type) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND media_file_location.availability = 'available') AS available_location_types,
-		(SELECT GROUP_CONCAT(DISTINCT presence.presence_type || '|' || presence.availability || '|' || presence.file_source_id || '|' || COALESCE(source.code, '') || '|' || COALESCE(source.display_name, '') || '|' || COALESCE(presence.remote_id, '') || '|' || COALESCE(presence.source_url, '') || '|' || COALESCE(presence.remote_code, '') || '|' || COALESCE(presence.work_id, 0)) FROM work_source_presence AS presence LEFT JOIN file_source AS source ON source.id = presence.file_source_id WHERE presence.work_id = work.id OR presence.work_id IN (SELECT sibling.work_id FROM work_edition AS current_edition INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id WHERE current_edition.work_id = work.id)) AS source_presence,
-		(SELECT snapshot_json FROM metadata_snapshot INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id WHERE metadata_snapshot.work_id = work.id AND metadata_provider.code = 'dlsite' ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC LIMIT 1) AS snapshot_json,
-		(SELECT display_name || '|' || external_id FROM work_primary_circle WHERE work_id = work.id) AS party_link,
-		COALESCE(user_work_state.listening_status, 'none') AS listening_status,
-		COALESCE(user_work_state.favorite, 0) AS favorite` + recommendationSortColumn + extraSelect + `
-	FROM work
-	LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?` + recommendationSnapshotJoin + `
-	WHERE ` + where
+	return recommendationSortColumn, recommendationSnapshotJoin
 }

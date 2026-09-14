@@ -64,7 +64,7 @@ func (s *Server) executeIncrementalLocalScanJob(ctx context.Context, job workflo
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
-	result, runSummary, fileSourceID, err := s.persistIncrementalLocalScanResults(
+	result, runSummary, _, err := s.persistIncrementalLocalScanResults(
 		ctx, job, payload, workFolders, scanSummary, knownRoots, nodeIDs,
 	)
 	if err != nil {
@@ -78,16 +78,8 @@ func (s *Server) executeIncrementalLocalScanJob(ctx context.Context, job workflo
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
-	files := make([]localfs.LocalFile, 0, scanSummary.ScannedFiles)
-	for _, folder := range workFolders {
-		files = append(files, folder.Files...)
-	}
-	if len(files) > 0 {
-		go func() {
-			s.localDurationProbeMu.Lock()
-			defer s.localDurationProbeMu.Unlock()
-			s.probeLocalDurationsForFiles(context.Background(), fileSourceID, files)
-		}()
+	if scanSummary.ScannedFiles > 0 {
+		s.requestLocalMediaProbe()
 	}
 	return nil
 }

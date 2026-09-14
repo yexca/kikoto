@@ -19,6 +19,40 @@ type Availability struct {
 	LocationTypes      string
 }
 
+type VoiceCredit struct {
+	PersonID    int64
+	DisplayName string
+}
+
+func (s *Store) LoadVoiceCredits(ctx context.Context, workIDs []int64) (map[int64][]VoiceCredit, error) {
+	result := map[int64][]VoiceCredit{}
+	workIDs = uniqueInt64s(workIDs)
+	if len(workIDs) == 0 {
+		return result, nil
+	}
+	query, args := int64InQuery(`
+		SELECT credit.work_id, person.id, person.display_name
+		FROM work_credit AS credit
+		INNER JOIN person ON person.id = credit.person_id
+		WHERE credit.work_id IN (%s) AND credit.role = 'voice_actor'
+		ORDER BY credit.work_id, person.display_name ASC, person.id ASC
+	`, workIDs)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var workID int64
+		var credit VoiceCredit
+		if err := rows.Scan(&workID, &credit.PersonID, &credit.DisplayName); err != nil {
+			return nil, err
+		}
+		result[workID] = append(result[workID], credit)
+	}
+	return result, rows.Err()
+}
+
 type ManualOverrideRow struct {
 	FieldName string
 	ValueJSON string
@@ -107,6 +141,9 @@ func (s *Store) LoadFallbackMediaSelections(ctx context.Context, codes []string)
 
 func (s *Store) LoadAvailability(ctx context.Context, workIDs []int64) (map[int64]Availability, error) {
 	result := map[int64]Availability{}
+	if len(workIDs) == 0 {
+		return result, nil
+	}
 	query, args := int64InQuery(`
 		SELECT work.id,
 			(SELECT COUNT(*) FROM media_item WHERE media_item.work_id = work.id AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1))),

@@ -51,7 +51,11 @@ func (s *Server) StartJobRunner(ctx context.Context) {
 	}()
 
 	var workers sync.WaitGroup
-	workers.Add(2)
+	workers.Add(3)
+	go func() {
+		defer workers.Done()
+		s.runLocalMediaProbeWorker(ctx)
+	}()
 	go func() {
 		defer workers.Done()
 		s.runWorkflowCoordinator(ctx)

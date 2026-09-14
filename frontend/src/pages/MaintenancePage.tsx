@@ -1148,7 +1148,7 @@ function TagListInput({
         value={value.join(", ")}
         onChange={(event) => onChange(splitRuleTokens(event.target.value))}
       />
-      <span className="text-xs text-muted-foreground">{maintenanceCopy("routing.tokenHint")}</span>
+      <span className="text-xs text-muted-foreground">{maintenanceCopy("routing.keywordHint")}</span>
     </label>
   );
 }

@@ -116,7 +116,7 @@ provider work.
 
 ## Queue Ordering
 
-`workflow_job.priority` is persisted with each job. The single worker claims
+`workflow_job.priority` is persisted with each job. Two embedded workers claim
 higher priorities first, then preserves FIFO order by creation time and id.
 Playback-triggered cache fills use the highest tier, direct user work such as
 manual workflows and cleanup uses the middle tier, and scheduled/background

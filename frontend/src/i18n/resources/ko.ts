@@ -1,5 +1,5 @@
 import { libraryKorean, collectionKorean, workCardKorean } from "../resources";
-import { surfaceKorean } from "../surfaces";
+import { surfaceKorean } from "../surfaces/ko";
 
 export const koreanResource = {
   ko: {

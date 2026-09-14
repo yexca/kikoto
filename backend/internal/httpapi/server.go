@@ -63,7 +63,7 @@ type Server struct {
 	localMediaIndexMu              sync.Mutex
 	localMediaIndexes              map[string]*localMediaIndexCall
 	localMediaWriteSlot            chan struct{}
-	localDurationProbeMu           sync.Mutex
+	localMediaProbeWake            chan struct{}
 	mediaStreamCache               sync.Map
 	realtimeResourceMu             sync.Mutex
 	realtimeProbeSlots             chan struct{}
@@ -100,6 +100,7 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 		localMediaIndexes:              map[string]*localMediaIndexCall{},
 		realtimeProbeCache:             map[string]playbackProbeCacheEntry{},
 		localMediaWriteSlot:            make(chan struct{}, 1),
+		localMediaProbeWake:            make(chan struct{}, 1),
 		activeWorkflowCancels:          map[int64]map[int64]context.CancelFunc{},
 		sourceGate:                     newSourceRequestGate(),
 		filesystemTriggerConfigChanged: make(chan struct{}, 1),
@@ -3627,11 +3628,7 @@ func (s *Server) indexLocalMediaForWorkOnce(ctx context.Context, workID int64, f
 		)
 	}
 
-	go func() {
-		s.localDurationProbeMu.Lock()
-		defer s.localDurationProbeMu.Unlock()
-		s.probeLocalDurationsForFiles(context.Background(), fileSourceID, folder.Files)
-	}()
+	s.requestLocalMediaProbe()
 	return nil
 }
 
@@ -4841,27 +4838,6 @@ func localDuplicateFolderSummaries(folders []localfs.WorkFolder) []map[string]an
 		})
 	}
 	return summaries
-}
-
-func (s *Server) probeLocalDurationsForFiles(ctx context.Context, fileSourceID int64, files []localfs.LocalFile) {
-	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
-	defer cancel()
-	for _, file := range files {
-		kind := localFileKind(file.WorkRelPath)
-		if kind != "audio" && kind != "video" {
-			continue
-		}
-		duration, hasAudio, ok := s.probeMediaMetadataSeconds(probeCtx, file.AbsPath)
-		if !ok && kind == "video" {
-			continue
-		}
-		if kind == "audio" {
-			hasAudio = true
-		}
-		if err := s.updateLocalMediaMetadata(probeCtx, fileSourceID, file, duration, hasAudio); err != nil {
-			return
-		}
-	}
 }
 
 func (s *Server) probeMediaMetadataSeconds(ctx context.Context, path string) (int64, bool, bool) {
