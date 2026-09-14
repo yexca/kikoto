@@ -20,9 +20,11 @@ docker compose up -d --pull always
 
 The production service uses `restart: unless-stopped`, so Docker restarts it
 after process failures and host or daemon restarts unless it was explicitly
-stopped. Ordinary `docker compose up -d` runs reuse the installed image without
-contacting the registry. Run `docker compose up -d --pull always` explicitly to
-install or upgrade to the image currently published under the configured tag.
+stopped. These automatic restarts and `docker compose restart` reuse the current
+container image. The stack leaves `pull_policy` unset, so `docker compose up -d`
+uses Compose's default `missing` policy: it pulls images absent from the local
+cache, and the `latest` tag is always pulled.
+Run `docker compose up -d --pull always` to refresh a fixed tag as well.
 
 It defaults to `yexca/kikoto:latest`, which is updated by the public release
 workflow. The explicit install and upgrade command above therefore selects the
@@ -51,6 +53,55 @@ Default mounts:
 - `./cache:/cache`
 - `./data:/data`
 
+## Configure with `.env`
+
+Copy [`.env.example`](../../.env.example) to `.env` beside `docker-compose.yml`,
+or add only the settings you need to the password-only file above. Run Compose
+from that directory. Every variable in the production service's `environment`
+section supports substitution from `.env`; an exported shell variable takes
+precedence. Unset or empty optional values use the Compose defaults, while an
+unset or empty `KIKOTO_ROOT_PASSWORD` stops Compose with an error.
+
+For example:
+
+```dotenv
+KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password
+KIKOTO_ROOT_USERNAME=admin
+KIKOTO_LOCAL_SCAN_DEPTH=5
+KIKOTO_DB_PATH=/config/library.db
+```
+
+The [configuration reference](configuration.md#environment-variables) describes
+runtime settings. The production stack uses these deployment defaults:
+
+| Variable | Production Compose default |
+| --- | --- |
+| `KIKOTO_IMAGE` | `yexca/kikoto:latest` |
+| `KIKOTO_HTTP_ADDR` | `0.0.0.0:7659` |
+| `KIKOTO_DB_PATH` | `/config/kikoto.db` |
+| `KIKOTO_DATA_ROOT` | `/data` |
+| `KIKOTO_CACHE_ROOT` | `/cache` |
+| `KIKOTO_STATIC_DIR` | `/app/static` |
+
+Path variables refer to paths **inside the container** and do not change host
+bind mounts. Keep the database under `/config`, durable media and Fetch
+staging/backup/trash under `/data`, and disposable cache under `/cache`. Keep
+`KIKOTO_STATIC_DIR=/app/static` to use the bundled frontend; a custom directory
+must contain its replacement assets. If you change a container mount path or
+the HTTP listen port, update `volumes` or `ports` in Compose to match. Changing a
+path does not move existing data.
+
+After editing `.env`, validate and apply the configuration:
+
+```sh
+docker compose config --quiet
+docker compose up -d
+```
+
+`docker compose restart` does not apply changed environment variables. To apply
+configuration while reusing an already installed image, use
+`docker compose up -d --pull never`.
+
 ## Upgrade
 
 Back up `config/` and `data/` before upgrading. For a live SQLite database,
@@ -61,13 +112,11 @@ Then refresh the configured image and recreate the service:
 docker compose up -d --pull always
 ```
 
-Without the explicit `--pull always` option, Compose reuses the installed image
-and does not check the registry. A standalone `docker compose pull` also follows
-the service's `never` policy and skips the image. To pull and restart as separate
-steps, override that policy explicitly:
+For tags other than `latest`, an ordinary `up` reuses a cached image. To pull and
+recreate as separate steps:
 
 ```sh
-docker compose pull --policy always
+docker compose pull
 docker compose up -d
 ```
 

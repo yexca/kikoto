@@ -31,7 +31,9 @@ docker compose up -d --pull always
 
 開啟 <http://127.0.0.1:7655>。生产 Compose 会在宿主机 `7655` 同时提供 Web 应用和 API；`7659` 仅是容器内部后端端口，开发 Compose 才会单独发布它。
 
-普通重启会复用已安装镜像。升级时使用 `--pull always`；需要可复现部署时，請将 `KIKOTO_IMAGE` 固定为经过审核的版本标签或 digest。升级前备份 `config/` 和 `data/`；已有数据库会在啟動时迁移，不会从全新安装 baseline 重建。
+可參考 [`.env.example`](.env.example)，透過同目錄的 `.env` 調整映像、管理員帳號、掃描深度、Cookie 安全選項和容器內路徑。Shell 環境變數優先於 `.env`；修改後執行 `docker compose up -d` 使設定生效。路徑變數不會改變主機掛載目錄，詳見 [Compose 設定](docs/operations/docker.md#configure-with-env)。
+
+`docker compose restart` 會重用目前容器的映像，也不會套用新的環境變數。`docker compose up -d` 使用 Compose 預設拉取策略：缺少映像時拉取，`latest` 標籤則一律拉取。升級時可使用 `--pull always`；需要可重現部署時，請在 `.env` 中將 `KIKOTO_IMAGE` 固定為經過審核的版本標籤或 digest。升級前備份 `config/` 和 `data/`；既有資料庫會在啟動時遷移，不會從全新安裝 baseline 重建。
 
 ## 使用者文件
 

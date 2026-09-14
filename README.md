@@ -86,6 +86,12 @@ Place [`docker-compose.yml`](docker-compose.yml) in an empty directory. Create a
 KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password
 ```
 
+Use [`.env.example`](.env.example) for optional settings, including the image,
+root username, scan depth, cookie security, and container paths. Compose reads
+`.env` automatically; shell environment variables take precedence. See
+[Compose configuration](docs/operations/docker.md#configure-with-env) for defaults
+and how to apply changes.
+
 Create the three host directories used by the default Compose stack:
 
 ```sh
@@ -103,9 +109,10 @@ Place supported work folders under the host `data/` directory. See the
 docker compose up -d --pull always
 ```
 
-Normal restarts reuse the installed image. Run the same command with
-`--pull always` when upgrading so the default `latest` tag is refreshed before
-the service starts. For a reproducible deployment, set `KIKOTO_IMAGE` to a
+`docker compose restart` reuses the current container image.
+`docker compose up -d` uses Compose's default pull policy, which pulls missing
+images and always pulls the `latest` tag. Use `--pull always` when upgrading a fixed tag too.
+For a reproducible deployment, set `KIKOTO_IMAGE` in `.env` to a
 reviewed release tag or image digest and update it deliberately during an
 upgrade. Back up `config/` and `data/` before upgrading; existing databases are
 migrated on startup and are never rebuilt from the fresh-install baseline.

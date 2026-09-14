@@ -31,7 +31,9 @@ docker compose up -d --pull always
 
 <http://127.0.0.1:7655> を開きます。Production Compose はホストの `7655` で Web アプリと API を同時に提供します。`7659` はコンテナ内部の Backend ポートで、Development Compose のみ個別に公開します。
 
-通常の再起動ではインストール済みイメージを再利用します。アップグレード時は `--pull always` を使い、再現可能なデプロイでは `KIKOTO_IMAGE` をレビュー済みのタグまたは digest に固定してください。アップグレード前に `config/` と `data/` をバックアップします。既存データベースは起動時に Migration され、Fresh-install baseline から再構築されません。
+[`.env.example`](.env.example) を参考に、同じディレクトリの `.env` でイメージ、管理者アカウント、スキャン深度、Cookie のセキュリティ設定、コンテナ内パスを変更できます。シェルの環境変数が `.env` より優先されます。変更後は `docker compose up -d` を実行してください。パス変数はホストのマウント先を変更しません。詳しくは [Compose 設定](docs/operations/docker.md#configure-with-env) を参照してください。
+
+`docker compose restart` は現在のコンテナイメージを再利用し、環境変数の変更は適用しません。`docker compose up -d` は Compose の既定ポリシーに従い、未取得のイメージを取得し、`latest` タグは毎回取得します。アップグレード時は `--pull always` を使い、再現可能なデプロイでは `.env` の `KIKOTO_IMAGE` をレビュー済みのタグまたは digest に固定してください。アップグレード前に `config/` と `data/` をバックアップします。既存データベースは起動時に Migration され、Fresh-install baseline から再構築されません。
 
 ## ユーザー文書
 

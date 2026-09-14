@@ -24,9 +24,10 @@ docker compose up -d --pull always
 ```
 
 The default image is `yexca/kikoto:latest`, which the release workflow updates
-for each public release. Normal restarts reuse the installed image; run the
-command above with `--pull always` whenever you want to upgrade to the current
-release. For a reproducible deployment, override it with a reviewed version or
+for each public release. `docker compose up -d` pulls missing images and always
+pulls `latest`; `docker compose restart` reuses the current container image.
+Use `--pull always` when upgrading a fixed tag too. For a reproducible
+deployment, set `KIKOTO_IMAGE` in `.env` to a reviewed version or
 digest:
 
 ```sh

@@ -63,7 +63,9 @@ mkdir config cache data
 docker compose up -d --pull always
 ```
 
-일반 재시작은 설치된 이미지를 재사용합니다. 업그레이드할 때는 `--pull always`를 사용하세요. 재현 가능한 배포에는 검토한 릴리스 tag 또는 image digest로 `KIKOTO_IMAGE`를 지정합니다. 업그레이드 전에 `config/`와 `data/`를 백업하세요. 기존 데이터베이스는 시작 시 migration되며 fresh-install baseline으로 재구성되지 않습니다.
+[`.env.example`](.env.example)을 참고해 같은 디렉터리의 `.env`에서 이미지, 관리자 계정, 스캔 깊이, Cookie 보안 설정, 컨테이너 내부 경로를 변경할 수 있습니다. 셸 환경 변수가 `.env`보다 우선합니다. 변경 후 `docker compose up -d`를 실행하세요. 경로 변수는 호스트 마운트 경로를 변경하지 않습니다. 자세한 내용은 [Compose 설정](docs/operations/docker.md#configure-with-env)을 참고하세요.
+
+`docker compose restart`는 현재 컨테이너 이미지를 재사용하며 환경 변수 변경을 적용하지 않습니다. `docker compose up -d`는 Compose 기본 정책에 따라 로컬에 없는 이미지를 가져오고, `latest` 태그는 항상 가져옵니다. 업그레이드할 때는 `--pull always`를 사용하세요. 재현 가능한 배포에는 `.env`의 `KIKOTO_IMAGE`를 검토한 릴리스 tag 또는 image digest로 지정합니다. 업그레이드 전에 `config/`와 `data/`를 백업하세요. 기존 데이터베이스는 시작 시 migration되며 fresh-install baseline으로 재구성되지 않습니다.
 
 <http://127.0.0.1:7655>를 엽니다. 설정한 root 사용자와 `KIKOTO_ROOT_PASSWORD`로 로그인하세요. 운영 Compose는 웹 앱과 API를 호스트 7655 포트에서 함께 제공합니다. 7659는 개발 Compose에서만 별도로 공개됩니다.
 

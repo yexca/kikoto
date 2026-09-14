@@ -19,7 +19,7 @@ KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password
 docker compose up -d --pull always
 ```
 
-默认镜像为 `yexca/kikoto:latest`，发布流程会在每次公开发布时更新它。普通重启会复用已安装的镜像；需要升级到当前版本时，再使用上面的 `--pull always`。如需可复现部署，请固定经过审核的版本或 digest：
+默认镜像为 `yexca/kikoto:latest`，发布流程会在每次公开发布时更新它。`docker compose up -d` 会拉取缺少的镜像，并始终拉取 `latest`；`docker compose restart` 会复用当前容器的镜像。升级固定标签时也可使用 `--pull always`。如需可复现部署，请在 `.env` 中将 `KIKOTO_IMAGE` 固定为经过审核的版本或 digest：
 
 ```sh
 KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d --pull always

@@ -4,12 +4,21 @@ Kikoto is configured through environment variables and administrator settings.
 
 ## Environment Variables
 
+The defaults below apply to direct backend runs. The production Compose stack
+accepts these variables from a `.env` file beside `docker-compose.yml` and uses
+container-specific address and path defaults, including `/app/static` for the
+bundled frontend. See [Configure with `.env`](docker.md#configure-with-env) and
+[`.env.example`](../../.env.example). After changes, run `docker compose up -d`
+to recreate the service with the new values; `docker compose restart` alone
+does not update its environment.
+
 | Variable | Default | Description |
 | --- | --- | --- |
 | `KIKOTO_HTTP_ADDR` | `127.0.0.1:7659` | Backend listen address. |
 | `KIKOTO_DB_PATH` | `../config/kikoto.db` | SQLite database path. |
 | `KIKOTO_DATA_ROOT` | `../data` | Local media library root. |
 | `KIKOTO_CACHE_ROOT` | `../cache` | Runtime cache root. |
+| `KIKOTO_STATIC_DIR` | Empty | Frontend asset directory; empty disables static file serving. |
 | `KIKOTO_LOCAL_SCAN_DEPTH` | `3` | Maximum local scan folder depth. |
 | `KIKOTO_MODE` | `production` | Runtime mode: `development` authenticates as root, `production` uses normal authentication, and `demo` uses a restricted passwordless Demo identity with content filtering. |
 | `KIKOTO_SESSION_COOKIE_SECURE` | `false` | Add the Secure attribute to session cookies. |

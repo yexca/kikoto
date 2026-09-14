@@ -24,7 +24,7 @@ KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password
 docker compose up -d --pull always
 ```
 
-既定のイメージは `yexca/kikoto:latest` で、公開リリースごとにリリースワークフローが更新します。通常の再起動ではインストール済みのイメージを再利用します。現在のリリースへアップグレードするときは、上記のコマンドに `--pull always` を付けて実行してください。再現可能なデプロイでは、確認済みのバージョンまたはダイジェストで上書きします。
+既定のイメージは `yexca/kikoto:latest` で、公開リリースごとにリリースワークフローが更新します。`docker compose up -d` は未取得のイメージを取得し、`latest` は毎回取得します。`docker compose restart` は現在のコンテナイメージを再利用します。固定タグの更新にも `--pull always` を使用してください。再現可能なデプロイでは、`.env` の `KIKOTO_IMAGE` を確認済みのバージョンまたはダイジェストに固定します。
 
 ```sh
 KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d --pull always
