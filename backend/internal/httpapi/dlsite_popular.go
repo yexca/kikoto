@@ -228,6 +228,7 @@ func (s *Server) executeDLsitePopularCollectionJob(ctx context.Context, job work
 		requestDelay = 500 * time.Millisecond
 	}
 	syncer := metasync.NewDLsiteSyncer(s.db, client).
+		WithCoordinator(s.metadataCoordinator).
 		WithProductURLBuilder(s.dlsiteEndpoints.ProductURL).
 		WithCacheRoot(s.cfg.CacheRoot).
 		WithMetadataPriority(s.preferredMetadataLanguages(ctx)).

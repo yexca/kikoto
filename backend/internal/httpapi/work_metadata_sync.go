@@ -54,6 +54,10 @@ func (s *Server) createWorkMetadataSyncRun(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) enqueueWorkMetadataSync(ctx context.Context, workID int64) (workMetadataSyncRunResult, error) {
+	return s.enqueueWorkMetadataSyncWithOptions(ctx, workID, false)
+}
+
+func (s *Server) enqueueWorkMetadataSyncWithOptions(ctx context.Context, workID int64, recheckUnavailable bool) (workMetadataSyncRunResult, error) {
 	s.metadataSyncMu.Lock()
 	defer s.metadataSyncMu.Unlock()
 
@@ -80,7 +84,7 @@ func (s *Server) enqueueWorkMetadataSync(ctx context.Context, workID int64) (wor
 	}
 	payload.PrimaryCode = strings.ToUpper(strings.TrimSpace(payload.PrimaryCode))
 	payload.FamilyCode = strings.ToUpper(strings.TrimSpace(payload.FamilyCode))
-	if providerUnavailable {
+	if providerUnavailable && !recheckUnavailable {
 		return workMetadataSyncRunResult{
 			WorkID: payload.WorkID, PrimaryCode: payload.PrimaryCode, Status: "unavailable",
 		}, nil

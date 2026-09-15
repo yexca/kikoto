@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yexca/kikoto/backend/migrations"
+
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 	_ "modernc.org/sqlite"
@@ -537,6 +539,13 @@ func openTestDB(t *testing.T) *sql.DB {
 		if _, err := db.Exec(statement); err != nil {
 			t.Fatal(err)
 		}
+	}
+	issueSchema, err := migrations.Files.ReadFile("033_metadata_sync_issues.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(string(issueSchema)); err != nil {
+		t.Fatal(err)
 	}
 	return db
 }

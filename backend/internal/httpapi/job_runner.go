@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/metasync"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -138,6 +139,7 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) 
 }
 
 func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobRecord) error {
+	ctx = metasync.WithWorkflowRun(ctx, job.RunID)
 	executors := map[string]func(context.Context, workflowJobRecord) error{
 		"remote_source_track":        s.executeRemoteWorkTrackJob,
 		"remote_work_fetch":          s.executeRemoteWorkFetchJob,

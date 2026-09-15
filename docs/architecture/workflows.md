@@ -31,6 +31,42 @@ workflow_definition
 - Circle metadata refresh.
 - Voice catalog refresh.
 
+## Metadata Recovery
+
+Metadata synchronization remains a workflow. Maintenance's Work maintenance tab owns
+the current attention list; Activity run detail links to the unresolved
+issues encountered by that run. Selecting works queues recoverable family-sync
+jobs, reusing an already queued/running job for that family. Explicit recovery
+can recheck a provider's `not_found` observation without erasing it first.
+Normal bulk and work-detail refreshes retain their unavailable-product skip.
+
+The unified `/api/maintenance/works` read composes current metadata failures
+with the Library's live no-source predicate, then deduplicates and pages by
+family on the server. Edition/provider component details are attached only for
+the selected page. Multiple reasons share one family row; resolving metadata
+never removes a remaining no-source reason. Search reuses Library semantics.
+`reason=metadata` and `reason=no_source` narrow the union. A run filter always
+restricts it to unresolved metadata issues associated with that run.
+
+Metadata reasons and retries require `metadata:sync`. No-source reasons, source
+checks, and confirmed deletion require `sources:write`; the UI exposes deletion
+only in the no-source view and the server still revalidates family availability.
+Each permission grants only its corresponding maintenance actions, without
+exposing settings to metadata-only operators. The Metadata tab remains settings.
+Activity links use `/maintenance?tab=works&reason=metadata&metadataRun=<id>`;
+legacy `tab=unlinked` opens the no-source view. Filtering by a run additionally
+checks workflow permission and that run's ownership. Successful recovery changes shared work state, never
+`workflow_run_review` or the historical execution status.
+
+All production DLsite family syncers share an application-instance coordinator.
+Identical in-flight requests reuse their result; requests for different
+editions/settings of the same known family wait. Per-product gates cover
+overlapping discovery and cover writes. Unrelated families can proceed
+independently, subject to existing worker resource lanes and provider pacing.
+Database attempt ordering prevents late failures from replacing newer outcomes
+and late successes from replacing newer successful metadata. This is not a
+distributed request lock between separate application processes.
+
 ## Popular Collections
 
 Remote popular collection reads the configured compatible file source's own

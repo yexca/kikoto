@@ -35,7 +35,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { UnlinkedWorksMaintenance } from "@/features/maintenance/UnlinkedWorksMaintenance";
+import { WorkMaintenance } from "@/features/maintenance/WorkMaintenance";
 import { UsersPage } from "@/pages/UsersPage";
 import {
   api,
@@ -96,7 +96,7 @@ type MaintenanceTab =
   | "routing"
   | "recommendation"
   | "library"
-  | "unlinked"
+  | "works"
   | "cache"
   | "metadata"
   | "security"
@@ -104,10 +104,11 @@ type MaintenanceTab =
   | "paths";
 
 function maintenanceContentWidthClass(tab: MaintenanceTab) {
-  return tab === "overview" || tab === "users" || tab === "unlinked" ? "w-full" : "w-full max-w-4xl";
+  return tab === "overview" || tab === "users" || tab === "works" ? "w-full" : "w-full max-w-4xl";
 }
 
 export function MaintenancePage({
+  canSyncMetadata,
   canManageSources,
   canManageUsers,
   currentUserId,
@@ -116,6 +117,7 @@ export function MaintenancePage({
   readOnly = false,
   onAccessPolicyUpdated,
 }: {
+  canSyncMetadata: boolean;
   canManageSources: boolean;
   canManageUsers: boolean;
   currentUserId: number;
@@ -236,6 +238,10 @@ export function MaintenancePage({
     const url = new URL(window.location.href);
     url.pathname = "/maintenance";
     url.searchParams.delete("source");
+    if (tab !== activeTab) {
+      url.searchParams.delete("metadataRun");
+      url.searchParams.delete("reason");
+    }
     if (tab === "overview") url.searchParams.delete("tab");
     else url.searchParams.set("tab", tab);
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
@@ -452,6 +458,10 @@ export function MaintenancePage({
   };
 
   if (!canManageSources) {
+    if (canSyncMetadata)
+      return (
+        <WorkMaintenance canManageSources={canManageSources} canSyncMetadata={canSyncMetadata} readOnly={readOnly} />
+      );
     return (
       <section className="rounded-lg border bg-card p-5">
         <p className="text-sm text-muted-foreground">{maintenanceCopy("adminRequired")}</p>
@@ -500,8 +510,8 @@ export function MaintenancePage({
           {maintenanceCopy("tabs.library")}
         </SettingsTabButton>
         <SettingsTabButton
-          active={activeTab === "unlinked"}
-          onClick={() => selectTab("unlinked")}
+          active={activeTab === "works"}
+          onClick={() => selectTab("works")}
           icon={<Database className="h-4 w-4" />}
         >
           {maintenanceCopy("tabs.unlinked")}
@@ -552,7 +562,7 @@ export function MaintenancePage({
         disabled={readOnly}
         className={`min-w-0 border-0 p-0 ${maintenanceContentWidthClass(activeTab)}`}
       >
-        {isSettingsLoading && activeTab !== "unlinked" && activeTab !== "users" ? (
+        {isSettingsLoading && activeTab !== "works" && activeTab !== "users" ? (
           activeTab === "overview" ? (
             <SettingsOverviewSkeleton />
           ) : activeTab === "library" ? (
@@ -606,8 +616,8 @@ export function MaintenancePage({
             onThresholdChange={setRecommendationThreshold}
             onSave={saveRuntimeSettings}
           />
-        ) : activeTab === "unlinked" ? (
-          <UnlinkedWorksMaintenance />
+        ) : activeTab === "works" ? (
+          <WorkMaintenance canManageSources={canManageSources} canSyncMetadata={canSyncMetadata} readOnly={readOnly} />
         ) : activeTab === "cache" ? (
           <CacheFetchSettings
             cacheEnabled={cacheEnabled}
@@ -746,7 +756,7 @@ function SettingsOverview({
         description={maintenanceCopy("overview.unlinkedDescription")}
         status={maintenanceCopy("status.maintenance")}
         chips={[maintenanceCopy("chip.search"), maintenanceCopy("chip.sourceChecks"), maintenanceCopy("chip.cleanup")]}
-        onClick={() => onSelect("unlinked")}
+        onClick={() => onSelect("works")}
       />
       <SettingsHomeCard
         icon={<Download className="h-5 w-5" />}
@@ -3343,6 +3353,8 @@ function TextInput({ label, value, onChange }: { label: string; value: string; o
 function maintenanceTabFromLocation(canManageUsers: boolean, canManageAccessPolicy: boolean): MaintenanceTab {
   if (window.location.pathname === "/users" && canManageUsers) return "users";
   const value = new URLSearchParams(window.location.search).get("tab");
+  if (value === "unlinked") return "works";
+  if (value === "metadata" && new URLSearchParams(window.location.search).has("metadataRun")) return "works";
   if (value === "local" || value === "remote") return "library";
   if (value === "system") return "paths";
   const tabs: MaintenanceTab[] = [
@@ -3350,7 +3362,7 @@ function maintenanceTabFromLocation(canManageUsers: boolean, canManageAccessPoli
     "routing",
     "recommendation",
     "library",
-    "unlinked",
+    "works",
     "cache",
     "metadata",
     "security",

@@ -151,6 +151,7 @@ function canAccessNavigationItem(
 ) {
   if (item.audience === "authenticated" && state === "anonymous") return false;
   if (item.audience === "admin" && state === "anonymous") return false;
+  if (item.id === "maintenance") return hasPermission("sources:write") || hasPermission("metadata:sync");
   if (item.permission && !hasPermission(item.permission)) return false;
   return true;
 }

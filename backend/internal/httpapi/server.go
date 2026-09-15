@@ -53,6 +53,7 @@ type Server struct {
 	cachePathLocks                 cachePathLocker
 	audioTranscodeLocks            cachePathLocker
 	metadataSyncMu                 sync.Mutex
+	metadataCoordinator            *metasync.Coordinator
 	jobRunnerMu                    sync.Mutex
 	jobRunnerStarted               bool
 	activeWorkflowMu               sync.Mutex
@@ -94,6 +95,7 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 		db: db, accountStore: account.NewStore(db), accessPolicy: accesspolicy.NewStore(db), libraryStore: library.NewStore(db), workflowStore: workflow.NewStore(db), cfg: cfg,
 		dlsiteEndpoints:                dlsiteEndpoints,
 		dlsiteClient:                   dlsiteEndpoints.NewClient(nil),
+		metadataCoordinator:            metasync.NewCoordinator(),
 		remoteWorkCache:                map[string]remoteWorkSnapshot{},
 		remoteWorkCacheCalls:           map[string]*remoteWorkCall{},
 		remoteWorkTracksCache:          map[string]remoteWorkTracksSnapshot{},
@@ -232,6 +234,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/workflow-triggers/{id}", s.updateWorkflowTrigger)
 	mux.HandleFunc("DELETE /api/workflow-triggers/{id}", s.deleteWorkflowTrigger)
 	mux.HandleFunc("GET /api/workflow-runs", s.listWorkflowRuns)
+	mux.HandleFunc("GET /api/metadata/issues", s.listMetadataIssues)
+	mux.HandleFunc("GET /api/maintenance/works", s.listWorkMaintenance)
+	mux.HandleFunc("POST /api/metadata/issues/retry", s.retryMetadataIssues)
 	mux.HandleFunc("GET /api/workflow-runs/{id}", s.getWorkflowRun)
 	mux.HandleFunc("GET /api/workflow-runs/{id}/events", s.listWorkflowRunEvents)
 	mux.HandleFunc("GET /api/workflow-runs/{id}/events/stream", s.streamWorkflowRunEvents)
@@ -4707,6 +4712,7 @@ func (s *Server) createDLsiteSyncRun(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) newDLsiteMetadataSyncer(ctx context.Context) *metasync.DLsiteSyncer {
 	return metasync.NewDLsiteSyncer(s.db, s.dlsiteClient).
+		WithCoordinator(s.metadataCoordinator).
 		WithProductURLBuilder(s.dlsiteEndpoints.ProductURL).
 		WithCacheRoot(s.cfg.CacheRoot).
 		WithMetadataPriority(s.preferredMetadataLanguages(ctx)).

@@ -2985,6 +2985,7 @@ func (s *Server) syncCircleProductJSON(ctx context.Context, partyID int64, workC
 		return circleProductSyncResult{}, err
 	}
 	syncer := metasync.NewDLsiteSyncer(s.db, client).
+		WithCoordinator(s.metadataCoordinator).
 		WithProductURLBuilder(s.dlsiteEndpoints.ProductURL).
 		WithCacheRoot(s.cfg.CacheRoot).
 		WithMetadataPriority(s.preferredMetadataLanguages(ctx)).

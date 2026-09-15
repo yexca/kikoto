@@ -35,6 +35,7 @@ type DLsiteClientWithLocale interface {
 }
 
 type DLsiteSyncer struct {
+	coordinator      *Coordinator
 	db               *sql.DB
 	client           DLsiteClient
 	cacheRoot        string
@@ -66,6 +67,7 @@ type DLsiteSyncResult struct {
 // language family. A missing sibling is reported without discarding products
 // that were synchronized successfully.
 type DLsiteFamilySyncResult struct {
+	attempt              int64
 	RequestedCode        string   `json:"requestedCode"`
 	CanonicalCode        string   `json:"canonicalCode"`
 	Codes                []string `json:"codes"`
@@ -108,7 +110,8 @@ type syncTargetResult struct {
 
 func NewDLsiteSyncer(db *sql.DB, client DLsiteClient) *DLsiteSyncer {
 	return &DLsiteSyncer{
-		db: db, client: client, triggerType: "manual", triggerReason: "manual",
+		coordinator: NewCoordinator(),
+		db:          db, client: client, triggerType: "manual", triggerReason: "manual",
 		productURL: dlsite.DefaultEndpoints().ProductURL,
 	}
 }
@@ -187,6 +190,15 @@ func (s *DLsiteSyncer) FetchProduct(ctx context.Context, workno string) (dlsite.
 // does not fetch related editions or download a cover, which makes it suitable
 // for callers that have already applied their own admission policy.
 func (s *DLsiteSyncer) SyncProductOnly(ctx context.Context, product dlsite.Product) (int64, error) {
+	release, err := s.coordinator.acquireProduct(ctx, dlsiteProductCode(product))
+	if err != nil {
+		return 0, err
+	}
+	defer release()
+	ctx, err = s.beginAttempt(ctx)
+	if err != nil {
+		return 0, err
+	}
 	workID, err := s.ensureWorkForProduct(ctx, product)
 	if err != nil {
 		return 0, err
@@ -252,9 +264,6 @@ func (s *DLsiteSyncer) syncTarget(ctx context.Context, target workTarget) syncTa
 	family, err := s.SyncFamily(ctx, target.PrimaryCode)
 	if err != nil {
 		if family.RequestedUnavailable {
-			if stateErr := s.markDLsiteProviderState(ctx, target.ID, "not_found", err.Error()); stateErr != nil {
-				return syncTargetResult{failures: []string{fmt.Sprintf("%s: record provider status: %s", target.PrimaryCode, stateErr.Error())}}
-			}
 			return syncTargetResult{unavailable: true}
 		}
 		return syncTargetResult{failures: []string{fmt.Sprintf("%s: %s", target.PrimaryCode, err.Error())}}
@@ -387,7 +396,7 @@ func dlsiteProductCode(product dlsite.Product) string {
 // SyncFamily refreshes a requested product and every language edition that can
 // be reached from its DLsite relationship payload. Discovery is bounded and
 // de-duplicated so malformed provider relationships cannot loop forever.
-func (s *DLsiteSyncer) SyncFamily(ctx context.Context, requestedCode string) (DLsiteFamilySyncResult, error) {
+func (s *DLsiteSyncer) syncFamily(ctx context.Context, requestedCode string) (DLsiteFamilySyncResult, error) {
 	requestedCode = strings.ToUpper(strings.TrimSpace(requestedCode))
 	if !dlsiteWorkNoPattern.MatchString(requestedCode) {
 		return DLsiteFamilySyncResult{}, fmt.Errorf("invalid DLsite work code %q", requestedCode)
@@ -434,17 +443,9 @@ func (s *DLsiteSyncer) syncFamilyCode(
 	skipped map[string]bool,
 	products map[string]dlsite.Product,
 ) error {
-	product, err := s.fetchProductForEdition(ctx, code)
+	product, _, err := s.syncFetchedProduct(ctx, code, s.fetchProductForEdition)
 	if err != nil {
 		return s.recordFamilyFetchFailure(ctx, requestedCode, code, err, result, skipped)
-	}
-	workID, err := s.ensureWorkForProduct(ctx, product)
-	if err == nil {
-		err = s.applyProduct(ctx, workID, product)
-	}
-	if err != nil {
-		result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
-		return nil
 	}
 	products[code] = product
 	result.SyncedCodes = append(result.SyncedCodes, code)
@@ -471,15 +472,6 @@ func (s *DLsiteSyncer) recordFamilyFetchFailure(
 	if errors.Is(fetchErr, dlsite.ErrNoProduct) {
 		if strings.EqualFold(code, requestedCode) {
 			result.RequestedUnavailable = true
-			workID, found, err := s.workIDForCode(ctx, code)
-			if err != nil {
-				return err
-			}
-			if found {
-				if err := s.markDLsiteProviderState(ctx, workID, "not_found", fetchErr.Error()); err != nil {
-					return err
-				}
-			}
 		} else {
 			skipped[code] = true
 			result.SkippedCodes = append(result.SkippedCodes, code)
@@ -727,15 +719,8 @@ func (s *DLsiteSyncer) syncOriginProductForCode(ctx context.Context, code string
 	if !dlsiteWorkNoPattern.MatchString(code) {
 		return dlsite.Product{}, 0, false, fmt.Errorf("invalid origin work code %q", code)
 	}
-	product, err := s.fetchOriginProduct(ctx, code)
+	product, workID, err := s.syncFetchedProduct(ctx, code, s.fetchOriginProduct)
 	if err != nil {
-		return dlsite.Product{}, 0, false, err
-	}
-	workID, err := s.ensureWorkForProduct(ctx, product)
-	if err != nil {
-		return dlsite.Product{}, 0, false, err
-	}
-	if err := s.applyProduct(ctx, workID, product); err != nil {
 		return dlsite.Product{}, 0, false, err
 	}
 	return product, workID, true, nil
@@ -772,10 +757,33 @@ func containsCode(values []string, code string) bool {
 }
 
 func (s *DLsiteSyncer) downloadCover(ctx context.Context, product dlsite.Product) (string, error) {
+	release, err := s.coordinator.acquireProduct(ctx, dlsiteProductCode(product))
+	if err != nil {
+		return "", err
+	}
+	defer release()
+	ctx, err = s.beginAttempt(ctx)
+	if err != nil {
+		return "", err
+	}
+	var newer bool
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM work_metadata_sync_state AS state
+		JOIN work ON work.id = state.work_id JOIN metadata_provider AS provider ON provider.id = state.provider_id
+		WHERE work.primary_code = ? AND provider.code = 'dlsite' AND state.last_success_attempt_id > ?)`,
+		dlsiteProductCode(product), attemptID(ctx)).Scan(&newer); err != nil {
+		return "", err
+	}
+	if newer {
+		return "", nil
+	}
 	if err := s.waitRequestDelay(ctx); err != nil {
 		return "", err
 	}
-	return s.client.DownloadCover(ctx, product, s.cacheRoot)
+	path, coverErr := s.client.DownloadCover(ctx, product, s.cacheRoot)
+	if err := s.recordCodeOutcome(ctx, dlsiteProductCode(product), "cover", coverErr); err != nil {
+		return "", err
+	}
+	return path, coverErr
 }
 
 func (s *DLsiteSyncer) waitRequestDelay(ctx context.Context) error {
@@ -951,31 +959,11 @@ func (s *DLsiteSyncer) workIDForCode(ctx context.Context, code string) (int64, b
 	return workID, true, nil
 }
 
-func (s *DLsiteSyncer) markDLsiteProviderState(ctx context.Context, workID int64, status string, message string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	providerID, err := ensureMetadataProvider(ctx, tx, "dlsite", "DLsite")
-	if err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO work_metadata_provider_state (work_id, provider_id, status, message, checked_at, updated_at)
-		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		ON CONFLICT(work_id, provider_id) DO UPDATE SET
-			status = excluded.status,
-			message = excluded.message,
-			checked_at = CURRENT_TIMESTAMP,
-			updated_at = CURRENT_TIMESTAMP
-	`, workID, providerID, status, strings.TrimSpace(message)); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
 func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product dlsite.Product) error {
+	ctx, err := s.beginAttempt(ctx)
+	if err != nil {
+		return err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -988,6 +976,16 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 	if err != nil {
 		return err
 	}
+	newer, err := newerMetadataWasStored(ctx, tx, workID, providerID)
+	if err != nil {
+		return err
+	}
+	if newer {
+		if err := recordSyncOutcome(ctx, tx, workID, providerID, "metadata", "succeeded"); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
 
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO work_external_id (work_id, provider_id, id_type, external_id, url, is_primary)
@@ -997,17 +995,6 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 			url = excluded.url,
 			is_primary = excluded.is_primary
 	`, workID, providerID, product.WorkNo, s.productURL(product)); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO work_metadata_provider_state (work_id, provider_id, status, message, checked_at, updated_at)
-		VALUES (?, ?, 'available', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		ON CONFLICT(work_id, provider_id) DO UPDATE SET
-			status = 'available',
-			message = '',
-			checked_at = CURRENT_TIMESTAMP,
-			updated_at = CURRENT_TIMESTAMP
-	`, workID, providerID); err != nil {
 		return err
 	}
 	priceCurrency := ""
@@ -1071,6 +1058,9 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 		return err
 	}
 	if err := replaceDLsiteWorkTags(ctx, tx, workID, product.Genres, editionToken, requestLocale); err != nil {
+		return err
+	}
+	if err := recordSyncOutcome(ctx, tx, workID, providerID, "metadata", "succeeded"); err != nil {
 		return err
 	}
 

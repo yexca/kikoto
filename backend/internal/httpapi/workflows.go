@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/metasync"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -831,7 +832,18 @@ func (s *Server) getWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	detail.GraphJSON = graphJSON
-	writeJSON(w, http.StatusOK, detail)
+	var metadataIssues metasync.RunIssueSummary
+	if userHasPermission(actor, "metadata:sync") {
+		metadataIssues, err = metasync.NewIssueStore(s.db).ForRun(r.Context(), id)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, struct {
+		workflowRunDetailRecord
+		MetadataIssues metasync.RunIssueSummary `json:"metadataIssues"`
+	}{detail, metadataIssues})
 }
 
 func (s *Server) listWorkflowRunEvents(w http.ResponseWriter, r *http.Request) {

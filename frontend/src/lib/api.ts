@@ -917,9 +917,36 @@ export type WorkflowRunGraph = {
 };
 
 export type WorkflowRunDetail = WorkflowRun & {
+  metadataIssues?: { encountered: number; pending: number };
   nodeRuns: WorkflowNodeRun[];
   graphJson: string;
 };
+
+export type MetadataIssueWork = {
+  workId: number;
+  primaryCode: string;
+  title: string;
+  providerCode: string;
+  providerName: string;
+  retrying: boolean;
+  issues: {
+    component: "metadata" | "cover";
+    status: "failed" | "unavailable";
+    failureCount: number;
+    firstFailedAt: string;
+    checkedAt: string;
+  }[];
+};
+
+export type MetadataIssuePage = {
+  items: MetadataIssueWork[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+export type MaintenanceWork = Work & { noSource: boolean; metadataIssues: MetadataIssueWork[] };
+export type MaintenanceWorkPage = Omit<WorksPage, "works"> & { works: MaintenanceWork[] };
 
 export type WorkflowEvent = {
   id: number;
@@ -2446,6 +2473,25 @@ export const api = {
     }>("/api/workflow-runs/remote-bulk", payload),
   runDLsiteSync: () => postJSON<DLsiteSyncResult>("/api/workflow-runs/dlsite-sync"),
   syncWorkMetadata: (workId: number) => postJSON<WorkMetadataSyncRunResult>(`/api/works/${workId}/metadata-sync`),
+  listMetadataIssues: (page: number, query: string, status: string, runId: number | null, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ page: String(page), q: query, status });
+    if (runId) params.set("runId", String(runId));
+    return getJSON<MetadataIssuePage>(`/api/metadata/issues?${params}`, signal);
+  },
+  listMaintenanceWorks: (
+    page: number,
+    pageSize: number,
+    query: string,
+    reason: string,
+    runId: number | null,
+    signal?: AbortSignal,
+  ) => {
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), q: query, reason });
+    if (runId) params.set("runId", String(runId));
+    return getJSON<MaintenanceWorkPage>(`/api/maintenance/works?${params}`, signal);
+  },
+  retryMetadataIssues: (workIds: number[]) =>
+    postJSONBody<{ queued: number; skipped: number; failed: number }>("/api/metadata/issues/retry", { workIds }),
 };
 import {
   clearStoredSessionToken,

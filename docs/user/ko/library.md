@@ -23,7 +23,7 @@
 - Library 제어 위에 최근 재생 스트립을 표시하며 사용자별 최신 커서를 사용합니다. 스트립은 접을 수 있습니다.
 - Local, Tracked 및 원격 소스에 하나의 검색어를 사용합니다. 각 소스의 페이지, 정렬, 스크롤 상태는 별도로 유지합니다.
 - 현재 소스의 페이지 크기를 첫 행 도구 모음에 표시합니다.
-- 데이터베이스 정리는 Library에서 수행하지 않습니다. Maintenance -> Unlinked works에서 확인 후 삭제합니다.
+- 데이터베이스 정리는 Library에서 수행하지 않습니다. Maintenance -> Work maintenance -> No available source에서 확인 후 삭제합니다.
 - `KIKOTO_MODE=demo`에서는 all-ages이며 영구 무료인 작품만 응답에 포함됩니다.
 
 작품 카드는 모든 컬렉션 화면에서 동일한 요약 모델을 사용합니다. Favorites는 Quick 표시와 사용자 목록의 작품을 집계하며 재생 커서만으로 작품이 추가되지는 않습니다.

@@ -470,7 +470,7 @@ test("development super administrator can configure production anonymous access"
   await expect(page.getByText("Access policy saved.", { exact: true })).toBeVisible();
 });
 
-test("unlinked works mounts once and keeps its result region stable while settings load", async ({ page }) => {
+test("work maintenance mounts once and keeps its result region stable while settings load", async ({ page }) => {
   let releaseSettings = () => undefined;
   let releaseWorks = () => undefined;
   const settingsGate = new Promise<void>((resolve) => {
@@ -488,25 +488,20 @@ test("unlinked works mounts once and keeps its result region stable while settin
     await settingsGate;
     await route.fallback();
   });
-  await page.route("**/api/works?**", async (route) => {
-    const url = new URL(route.request().url());
-    if (url.searchParams.get("scope") !== "no_source") {
-      await route.fallback();
-      return;
-    }
+  await page.route("**/api/maintenance/works?**", async (route) => {
     await worksGate;
     await route.fulfill({ json: { works: [], page: 1, pageSize: 25, total: 0 } });
   });
 
   await page.goto("/maintenance?tab=unlinked");
-  const heading = page.getByRole("heading", { name: "Unlinked works", exact: true });
+  const heading = page.getByRole("heading", { name: "Work maintenance", exact: true });
   await expect(heading).toBeVisible();
-  await expect(page.getByRole("status", { name: "Loading unlinked works" })).toBeVisible();
-  const panel = heading.locator("xpath=ancestor::section");
+  await expect(page.getByRole("status", { name: "Loading work maintenance" })).toBeVisible();
+  const panel = page.getByRole("region", { name: "Work maintenance", exact: true });
   const loadingBox = await panel.boundingBox();
 
   releaseWorks();
-  await expect(page.getByText("No unlinked works", { exact: true })).toBeVisible();
+  await expect(page.getByText("No works need attention.", { exact: true })).toBeVisible();
   const emptyBox = await panel.boundingBox();
   expect(loadingBox).not.toBeNull();
   expect(emptyBox).not.toBeNull();

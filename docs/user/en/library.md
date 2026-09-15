@@ -70,10 +70,10 @@ The Library is the main browsing surface for works.
 - Keeps the active Local, Tracked, or remote-source page size in the first-row
   action toolbar and leaves the compact top pagination focused on result context
   and page navigation.
-- Keeps database cleanup out of Library. Maintenance -> Unlinked works provides
+- Keeps database cleanup out of Library. Maintenance -> Work maintenance -> No available source provides
   paged search, source checks, and confirmed local-information deletion for
   logical families with no available source or media location.
-- Legacy No source Library links redirect to the Unlinked works maintenance tab;
+- Legacy No source Library links redirect to the no-source view in Work maintenance;
   legacy aggregate Library links return to the normal Library.
 - When `KIKOTO_MODE=demo`, backend list, detail, and media responses admit
   only all-ages, permanently free works. Local works use normalized commercial

@@ -51,9 +51,9 @@ anonymous principal when anonymous access is enabled.
   switch applies to the production access boundary and creates an audit entry.
   Development still authenticates every request as root, so the setting remains
   visible and editable there without creating an anonymous development session.
-- Unlinked works is a dedicated paged maintenance tab for logical work families
-  with no available source or media location. It supports source rechecks and
-  confirmed deletion of local database information while retaining media files.
+- Work maintenance groups metadata issues and missing sources by work family.
+  It supports metadata retries, source rechecks, and confirmed deletion of local
+  database information from the no-source view while retaining media files.
 - Each enabled remote source has an explicit health-check action. The result is
   persisted through the same source health state used by automatic probes.
 - Remote sources default to compatible public storage hosts. Source
@@ -82,6 +82,14 @@ anonymous principal when anonymous access is enabled.
 - Paths is read-only and shows the resolved data root, cache root, default
   cache/save previews, and per-source save previews. Remote Source configuration
   shows the same resolved example instead of exposing a path-template editor.
+
+## Work maintenance
+
+Maintenance → **Work maintenance** (formerly Unlinked works) lists existing work families needing attention. Filter by **All needing attention**, **Metadata issues**, or **No available source**. Search, paging, covers, and selection are shared. Each family occupies one row, with multiple reason badges and expandable affected editions/provider details. Successful metadata updates remove only the corresponding issue; a work with no available source stays visible.
+
+Select families and choose **Retry metadata**; its count includes only eligible selections. You can also retry an affected edition from its details, including products previously reported unavailable. Failed retries preserve existing metadata and manual overrides. **Check sources** applies to selected families without a source. Confirmed deletion of local information is available only in the **No available source** view; the server rechecks availability and retains media files.
+
+Activity and Workflows remain in place. **Open metadata issues** opens Work maintenance filtered to that run's unresolved metadata issues; **Show all pending works** removes the run filter. Recovery never changes another user's Activity review. Metadata recovery requires `metadata:sync`, while source checks, deletion, and source/language settings require `sources:write`. The **Metadata** tab contains settings only.
 
 ## Related Docs
 

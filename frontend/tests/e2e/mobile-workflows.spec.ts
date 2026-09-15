@@ -1038,6 +1038,32 @@ test("availability notifications open the shared ready pool", async ({ page }) =
   await expect(readyDialog.getByText("RJ00000001", { exact: true })).toBeVisible();
 });
 
+test("activity links metadata failures to a run-filtered Maintenance list", async ({ page }) => {
+  await mockWorkflows(page);
+  await page.route("**/api/workflow-runs/51", async (route) => {
+    await route.fulfill({
+      json: {
+        ...sampleRun,
+        nodeRuns: sampleNodes,
+        graphJson: sampleRunGraph,
+        metadataIssues: { encountered: 1, pending: 1 },
+      },
+    });
+  });
+  const runFilters: string[] = [];
+  await page.route("**/api/maintenance/works?*", async (route) => {
+    runFilters.push(new URL(route.request().url()).searchParams.get("runId") ?? "");
+    await route.fulfill({ json: { works: [], page: 1, pageSize: 25, total: 0 } });
+  });
+  await page.goto("/activity?view=completed&run=51");
+  await page.getByRole("button", { name: "Open metadata issues", exact: true }).click();
+  await expect(page).toHaveURL(/\/maintenance\?tab=works&reason=metadata&metadataRun=51/);
+  await expect(page.getByRole("heading", { name: "Work maintenance" })).toBeVisible();
+  await expect.poll(() => runFilters.includes("51")).toBe(true);
+  await page.getByRole("button", { name: "Show all pending works", exact: true }).click();
+  await expect.poll(() => runFilters.includes("")).toBe(true);
+});
+
 test("activity presents overview, canvas, items, and node logs vertically", async ({ page }) => {
   await mockWorkflows(page);
   await page.goto("/activity?view=completed&run=51");

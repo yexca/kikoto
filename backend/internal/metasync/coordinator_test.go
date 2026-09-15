@@ -1,0 +1,126 @@
+package metasync
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/testfixture"
+)
+
+type blockingMetadataClient struct {
+	mu          sync.Mutex
+	calls       map[string]int
+	entered     chan string
+	release     chan struct{}
+	blockedCode string
+}
+
+func (c *blockingMetadataClient) FetchProduct(ctx context.Context, code string) (dlsite.Product, error) {
+	c.mu.Lock()
+	c.calls[code]++
+	c.mu.Unlock()
+	c.entered <- code
+	if code == c.blockedCode {
+		select {
+		case <-ctx.Done():
+			return dlsite.Product{}, ctx.Err()
+		case <-c.release:
+		}
+	}
+	return dlsite.Product{WorkNo: code, ProductName: "Synthetic metadata", Language: "ja-jp"}, nil
+}
+func (*blockingMetadataClient) DownloadCover(context.Context, dlsite.Product, string) (string, error) {
+	return "", nil
+}
+
+func TestSharedMetadataCoordinatorJoinsWorkAndAllowsOtherWorks(t *testing.T) {
+	db := openTestDB(t)
+	db.SetMaxOpenConns(1)
+	code := testfixture.WorkCode(testfixture.PrefixRJ, 4)
+	other := testfixture.WorkCode(testfixture.PrefixRJ, 5)
+	client := &blockingMetadataClient{calls: map[string]int{}, entered: make(chan string, 10), release: make(chan struct{}), blockedCode: code}
+	coordinator := NewCoordinator()
+	newSyncer := func() *DLsiteSyncer {
+		return NewDLsiteSyncer(db, client).WithCoordinator(coordinator).WithRequestPacing(0, 0, 0)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	results := make(chan DLsiteFamilySyncResult, 2)
+	errs := make(chan error, 2)
+	start := func() { result, err := newSyncer().SyncFamily(ctx, code); results <- result; errs <- err }
+	go start()
+	select {
+	case <-client.entered:
+	case <-ctx.Done():
+		t.Fatal("first fetch never started")
+	}
+	go start()
+	// A separate family must finish while the first provider request is blocked.
+	if _, err := newSyncer().SyncFamily(ctx, other); err != nil {
+		t.Fatal(err)
+	}
+	if !coordinator.IsRunning(code) {
+		t.Fatal("active family is not visible")
+	}
+	// Waiting cancellation must leave the leader alive and its result reusable.
+	waitCtx, stop := context.WithTimeout(ctx, 50*time.Millisecond)
+	_, err := newSyncer().SyncFamily(waitCtx, code)
+	stop()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("cancelled waiter error=%v", err)
+	}
+	close(client.release)
+	var attempts []int64
+	for range 2 {
+		select {
+		case result := <-results:
+			attempts = append(attempts, result.attempt)
+		case <-ctx.Done():
+			t.Fatal("sync did not finish")
+		}
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	client.mu.Lock()
+	calls := client.calls[code]
+	client.mu.Unlock()
+	if calls != 1 || attempts[0] != attempts[1] {
+		t.Fatalf("same work fetched %d times, attempts=%v", calls, attempts)
+	}
+	if coordinator.IsRunning(code) {
+		t.Fatal("completed family remains busy")
+	}
+}
+
+func TestProductGateCancellationDoesNotLeakOrBlockAnotherCode(t *testing.T) {
+	c := NewCoordinator()
+	code := testfixture.WorkCode(testfixture.PrefixRJ, 0)
+	release, err := c.acquireProduct(context.Background(), code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := c.acquireProduct(ctx, code); !errors.Is(err, context.Canceled) {
+		t.Fatalf("wait=%v", err)
+	}
+	otherRelease, err := c.acquireProduct(context.Background(), testfixture.WorkCode(testfixture.PrefixRJ, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherRelease()
+	release()
+	release, err = c.acquireProduct(context.Background(), code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	if len(c.products) != 0 {
+		t.Fatal("completed gates retained")
+	}
+}

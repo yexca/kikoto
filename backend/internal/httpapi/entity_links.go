@@ -143,6 +143,7 @@ func (s *Server) syncWorkEntityMetadata(ctx context.Context, code string) error 
 
 func (s *Server) syncWorkMetadataFamily(ctx context.Context, code string) (metasync.DLsiteFamilySyncResult, error) {
 	syncer := metasync.NewDLsiteSyncer(s.db, s.dlsiteClient).
+		WithCoordinator(s.metadataCoordinator).
 		WithProductURLBuilder(s.dlsiteEndpoints.ProductURL).
 		WithCacheRoot(s.cfg.CacheRoot).
 		WithMetadataPriority(s.preferredMetadataLanguages(ctx)).

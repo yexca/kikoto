@@ -3,6 +3,11 @@ import { describe, expect, it } from "vitest";
 import { canAccessPage, navigationDescription, navigationLabel, navItems, visibleNavigationItems } from "./navigation";
 
 describe("navigation access and labels", () => {
+  it("lets metadata operators reach Maintenance without source settings permission", () => {
+    expect(canAccessPage("maintenance", "authenticated", (permission) => permission === "metadata:sync")).toBe(true);
+    expect(canAccessPage("maintenance", "authenticated", () => false)).toBe(false);
+    expect(canAccessPage("maintenance", "anonymous", () => true)).toBe(false);
+  });
   it("uses translated labels and falls back to authored copy for missing translations", () => {
     const item = navItems[0];
     expect(navigationLabel(item, (key) => `translated:${key}`)).toBe("translated:nav.library");

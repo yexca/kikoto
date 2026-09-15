@@ -16,7 +16,7 @@ import (
 
 var numberedMigrationFilePattern = regexp.MustCompile(`^[0-9]{3}_[a-z0-9][a-z0-9_]*\.sql$`)
 
-const latestNumberedMigrationVersion = 32
+const latestNumberedMigrationVersion = 33
 
 func TestMigrationChecksumNormalizesLineEndings(t *testing.T) {
 	lf := []byte("CREATE TABLE probe (id INTEGER);\n-- stable\n")
@@ -28,7 +28,7 @@ func TestMigrationChecksumNormalizesLineEndings(t *testing.T) {
 
 func TestMigrateFreshDatabaseReusesBaselineAcrossAppReleases(t *testing.T) {
 	db := openMigrationManagerDB(t)
-	if err := MigrateFS(db, migrations.Files, "v0.5.1"); err != nil {
+	if err := MigrateFS(db, migrations.Files, "v0.5.6"); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
 
@@ -55,17 +55,14 @@ func TestMigrateFreshDatabaseReusesBaselineAcrossAppReleases(t *testing.T) {
 	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = ?", latestNumberedMigrationVersion).Scan(&filename); err != nil {
 		t.Fatal(err)
 	}
-	if filename != "baseline/032_v0.5.0.sql" {
+	if filename != "baseline/033_v0.5.5.sql" {
 		t.Fatalf("baseline history filename = %q", filename)
 	}
 }
 
 func TestMigrateUpgradesExistingDatabaseThroughNumberedChain(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	previousCatalog := copyNumberedMigrations(t, sourceDir)
-	if err := os.Remove(filepath.Join(previousCatalog, "032_shared_availability_watch.sql")); err != nil {
-		t.Fatal(err)
-	}
+	previousCatalog := copyNumberedMigrationsThrough(t, sourceDir, latestNumberedMigrationVersion-1)
 
 	db := openMigrationManagerDB(t)
 	if err := Migrate(db, previousCatalog); err != nil {
@@ -92,8 +89,8 @@ func TestMigrateUpgradesExistingDatabaseThroughNumberedChain(t *testing.T) {
 	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = ?", latestNumberedMigrationVersion).Scan(&filename); err != nil {
 		t.Fatal(err)
 	}
-	if filename != "032_shared_availability_watch.sql" {
-		t.Fatalf("applied migration = %q, want 032_shared_availability_watch.sql", filename)
+	if filename != "033_metadata_sync_issues.sql" {
+		t.Fatalf("applied migration = %q, want 033_metadata_sync_issues.sql", filename)
 	}
 }
 
@@ -109,22 +106,17 @@ func TestMigrateUpgradesRetiredBaselineLedger(t *testing.T) {
 			name:            "schema version 031 applies the remaining numbered migration",
 			baseline:        "baseline/031_current.sql",
 			previousVersion: 31,
-			wantHistory:     "baseline/031_current.sql,032_shared_availability_watch.sql",
+			wantHistory:     "baseline/031_current.sql,032_shared_availability_watch.sql,033_metadata_sync_issues.sql",
 		},
 		{
-			name:            "schema version 032 remains valid without replaying migrations",
+			name:            "schema version 032 upgrades without replaying old migrations",
 			baseline:        "baseline/032_current.sql",
 			previousVersion: 32,
-			wantHistory:     "baseline/032_current.sql",
+			wantHistory:     "baseline/032_current.sql,033_metadata_sync_issues.sql",
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			previousCatalog := copyNumberedMigrations(t, sourceDir)
-			if testCase.previousVersion < latestNumberedMigrationVersion {
-				if err := os.Remove(filepath.Join(previousCatalog, "032_shared_availability_watch.sql")); err != nil {
-					t.Fatal(err)
-				}
-			}
+			previousCatalog := copyNumberedMigrationsThrough(t, sourceDir, testCase.previousVersion)
 
 			db := openMigrationManagerDB(t)
 			if err := Migrate(db, previousCatalog); err != nil {
@@ -229,13 +221,7 @@ func TestMigrateBaselineMatchesCompleteIncrementalChain(t *testing.T) {
 }
 
 func TestMigrateLocalizedMetadataDeduplicatesLegacySnapshots(t *testing.T) {
-	migrationDir := copyNumberedMigrations(t, filepath.Join("..", "..", "migrations"))
-	if err := os.Remove(filepath.Join(migrationDir, "031_dlsite_localized_metadata.sql")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Remove(filepath.Join(migrationDir, "032_shared_availability_watch.sql")); err != nil {
-		t.Fatal(err)
-	}
+	migrationDir := copyNumberedMigrationsThrough(t, filepath.Join("..", "..", "migrations"), 30)
 	db := openMigrationManagerDB(t)
 	if err := Migrate(db, migrationDir); err != nil {
 		t.Fatalf("pre-localized migration error = %v", err)
@@ -290,10 +276,7 @@ func TestMigrateLocalizedMetadataDeduplicatesLegacySnapshots(t *testing.T) {
 }
 
 func TestMigrateSharedAvailabilityWatchMergesTargetsAndPausesConflictingSchedule(t *testing.T) {
-	migrationDir := copyNumberedMigrations(t, filepath.Join("..", "..", "migrations"))
-	if err := os.Remove(filepath.Join(migrationDir, "032_shared_availability_watch.sql")); err != nil {
-		t.Fatal(err)
-	}
+	migrationDir := copyNumberedMigrationsThrough(t, filepath.Join("..", "..", "migrations"), 31)
 	db := openMigrationManagerDB(t)
 	if err := Migrate(db, migrationDir); err != nil {
 		t.Fatalf("pre-shared Availability Watch migration error = %v", err)
@@ -528,13 +511,18 @@ func openMigrationManagerDB(t *testing.T) *sql.DB {
 
 func copyNumberedMigrations(t *testing.T, sourceDir string) string {
 	t.Helper()
+	return copyNumberedMigrationsThrough(t, sourceDir, latestNumberedMigrationVersion)
+}
+
+func copyNumberedMigrationsThrough(t *testing.T, sourceDir string, version int) string {
+	t.Helper()
 	destination := t.TempDir()
 	entries, err := os.ReadDir(sourceDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, entry := range entries {
-		if entry.IsDir() || !numberedMigrationFilePattern.MatchString(entry.Name()) {
+		if entry.IsDir() || !numberedMigrationFilePattern.MatchString(entry.Name()) || entry.Name()[:3] > fmt.Sprintf("%03d", version) {
 			continue
 		}
 		contents, err := os.ReadFile(filepath.Join(sourceDir, entry.Name()))

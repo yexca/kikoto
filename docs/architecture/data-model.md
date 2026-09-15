@@ -14,6 +14,10 @@ Important tables:
 - `metadata_provider`
 - `metadata_snapshot`
 - `dlsite_metadata_variant`
+- `work_metadata_sync_state`
+- `metadata_sync_attempt`
+- `metadata_sync_attempt_work`
+- `metadata_sync_attempt_run`
 - `tag`
 - `work_tag`
 - `party`
@@ -22,6 +26,24 @@ Important tables:
 
 DLsite metadata sync stores raw snapshots and updates normalized fields used by
 library and detail views.
+
+`work_metadata_sync_state` records the latest synchronization outcome for each
+work, metadata provider, and component (`metadata` or `cover`). Failed and
+unavailable components form the metadata reasons in Work maintenance. State
+remains per edition/provider/component; the maintenance read combines these
+with live missing-source reasons and pages one selectable row per work family.
+Repeated failures update the component state; a newer success clears only
+that component's pending state. Failed requests retain existing metadata,
+and provider updates do not change `work_manual_override`.
+
+Attempts receive a durable increasing id before family requests start. The
+latest successful attempt protects stored metadata against stale successful
+responses; current state also rejects stale failures. Attempt/work outcomes and
+attempt/run associations let Activity link to outstanding problems without
+changing run results or another user's reviews. Once an attempt's issue has
+been resolved, a later failure does not reopen its old Activity association.
+Shared issue responses contain fixed statuses rather than upstream error text.
+Failure tracking never creates a work solely from a discovered catalog code.
 
 For DLsite, `dlsite_metadata_variant` stores the title and tags for each
 provider-declared language edition in a logical work family. The `origin`

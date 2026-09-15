@@ -81,6 +81,7 @@ import {
   type WorkflowTrigger,
 } from "@/lib/api";
 import { currentScopedStorageKey } from "@/lib/clientStorageScope";
+import { openMetadataIssues } from "@/lib/metadataMaintenance";
 import i18n from "@/i18n";
 
 const workflowCopy = (key: string, options?: Record<string, unknown>) => i18n.t(`workflowPage.${key}`, options);
@@ -2722,6 +2723,21 @@ function RunDetail({
             {!readOnly && <RunActions run={run} onRunAction={onRunAction} />}
           </div>
         </div>
+        {"metadataIssues" in run && run.metadataIssues && run.metadataIssues.encountered > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/30 p-3 text-sm">
+            <p>
+              {i18n.t(
+                run.metadataIssues.pending > 0 ? "metadataIssues.pendingForRun" : "metadataIssues.resolvedForRun",
+                { count: run.metadataIssues.pending },
+              )}
+            </p>
+            {run.metadataIssues.pending > 0 && (
+              <Button variant="outline" onClick={() => openMetadataIssues(run.id)}>
+                {i18n.t("metadataIssues.openIssues")}
+              </Button>
+            )}
+          </div>
+        )}
         {loading ? <RunOverviewSkeleton /> : <RunOverview run={run} nodeRuns={nodeRuns} />}
         <section className="space-y-2">
           <div className="text-sm font-semibold">{workflowCopy("execution")}</div>

@@ -81,7 +81,13 @@ When a new baseline is needed, the generator reads the root `VERSION`, applies
 the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
-packages `migrations/baseline/032_v0.5.0.sql`. Timestamp defaults remain
+packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain includes
+`033_metadata_sync_issues.sql`, with a generated `033_v0.5.5.sql` baseline.
+Migration 033 preserves structured `not_found` observations as pending metadata
+issues. Historical free-text workflow errors are not reinterpreted or copied
+into the shared list. Existing installations apply 033 through the numbered
+chain; their works, metadata, workflow histories, and reviews are retained.
+Timestamp defaults remain
 defaults rather than being frozen to the generator's clock. The generated file
 is reviewed and checksummed like any other packaged asset. A later application
 release that does not add numbered SQL keeps using that file; do not create a

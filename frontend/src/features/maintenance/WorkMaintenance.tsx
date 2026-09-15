@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, ExternalLink, ImageOff, RefreshCw, Search, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type MouseEventHandler } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
@@ -8,8 +8,20 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { formatNumber } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
-import { api, assetURL, type Work, type WorksPage } from "@/lib/api";
+import { api, assetURL, type Work, type MaintenanceWorkPage } from "@/lib/api";
 import { currentPageSelection, pageAfterUnlinkedDelete, setCurrentPageSelected } from "./unlinkedWorksModel";
+
+import { NAVIGATION_EVENT } from "@/lib/browserHistory";
+import { metadataIssueRunFromLocation } from "@/lib/metadataMaintenance";
+import { MetadataIssueDetails } from "./MetadataIssueDetails";
+
+function reasonFromLocation() {
+  const params = new URLSearchParams(window.location.search);
+  if (metadataIssueRunFromLocation()) return "metadata";
+  const reason = params.get("reason");
+  if (reason === "metadata" || reason === "no_source") return reason;
+  return params.get("tab") === "unlinked" ? "no_source" : "all";
+}
 
 const PAGE_SIZES = [25, 50] as const;
 
@@ -18,7 +30,15 @@ type PendingDelete = {
   labels: string[];
 };
 
-export function UnlinkedWorksMaintenance() {
+export function WorkMaintenance({
+  canManageSources,
+  canSyncMetadata,
+  readOnly = false,
+}: {
+  canManageSources: boolean;
+  canSyncMetadata: boolean;
+  readOnly?: boolean;
+}) {
   const toast = useToast();
   const { t } = useTranslation();
   const { resolvedLocale } = useLocale();
@@ -26,7 +46,7 @@ export function UnlinkedWorksMaintenance() {
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(25);
   const [query, setQuery] = useState("");
   const [queryDraft, setQueryDraft] = useState("");
-  const [result, setResult] = useState<WorksPage>({ works: [], page: 1, pageSize: 25, total: 0 });
+  const [result, setResult] = useState<MaintenanceWorkPage>({ works: [], page: 1, pageSize: 25, total: 0 });
   const [loading, setLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -36,34 +56,120 @@ export function UnlinkedWorksMaintenance() {
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  const [reason, setReason] = useState(() =>
+    !canManageSources ? "metadata" : !canSyncMetadata ? "no_source" : reasonFromLocation(),
+  );
+  const [runId, setRunId] = useState(metadataIssueRunFromLocation);
+  const [retrying, setRetrying] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    const onLocation = () => {
+      setReason(!canManageSources ? "metadata" : !canSyncMetadata ? "no_source" : reasonFromLocation());
+      setRunId(metadataIssueRunFromLocation());
+      setPage(1);
+      setSelectedWorkIds(new Set());
+    };
+    window.addEventListener("popstate", onLocation);
+    window.addEventListener(NAVIGATION_EVENT, onLocation);
+    return () => {
+      window.removeEventListener("popstate", onLocation);
+      window.removeEventListener(NAVIGATION_EVENT, onLocation);
+    };
+  }, [canManageSources, canSyncMetadata]);
+
+  useEffect(() => {
+    setSelectedWorkIds(new Set());
+  }, [page, pageSize, query, reason, runId]);
+
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
-    setLoadError("");
-    api
-      .listWorksPage(page, pageSize, query, "no_source", "all", "recent", "desc", 1, false, controller.signal)
-      .then((next) => {
+    let fetching = false;
+    const load = async () => {
+      if (fetching || controller.signal.aborted) return;
+      fetching = true;
+      setLoading(true);
+      try {
+        const next = await api.listMaintenanceWorks(page, pageSize, query, reason, runId, controller.signal);
+        if (controller.signal.aborted) return;
+        if (next.works.length === 0 && page > 1 && next.total <= (page - 1) * pageSize) {
+          setPage(Math.max(1, Math.ceil(next.total / pageSize)));
+          return;
+        }
         setResult(next);
         setHasLoaded(true);
-        setSelectedWorkIds(new Set());
-      })
-      .catch((error) => {
-        if (controller.signal.aborted) return;
-        setLoadError(t("errors.unavailable"));
-        toast.notify(toastFromError(error, t("errors.unavailable")));
-      })
-      .finally(() => {
+        setLoadError("");
+        const present = new Set(
+          next.works
+            .filter((work) => canManageSources || work.metadataIssues.some((issue) => !issue.retrying))
+            .map((work) => work.id),
+        );
+        setSelectedWorkIds((current) => new Set([...current].filter((id) => present.has(id))));
+      } catch {
+        if (!controller.signal.aborted) setLoadError(t("errors.unavailable"));
+      } finally {
+        fetching = false;
         if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [page, pageSize, query, refreshKey]);
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void load();
+    }, 5000);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [page, pageSize, query, reason, runId, refreshKey, canManageSources, t]);
 
-  const pageWorkIds = useMemo(() => result.works.map((work) => work.id), [result.works]);
+  const pageWorkIds = useMemo(
+    () =>
+      result.works
+        .filter((work) => canManageSources || work.metadataIssues.some((issue) => !issue.retrying))
+        .map((work) => work.id),
+    [result.works, canManageSources],
+  );
   const selection = currentPageSelection(pageWorkIds, selectedWorkIds);
   const selectedWorks = useMemo(
     () => result.works.filter((work) => selectedWorkIds.has(work.id)),
     [result.works, selectedWorkIds],
   );
+  const sourceWorks = selectedWorks.filter((work) => work.noSource);
+  const retryIds = selectedWorks.flatMap((work) => {
+    const item = work.metadataIssues.find((issue) => issue.providerCode === "dlsite" && !issue.retrying);
+    return item ? [item.workId] : [];
+  });
+  const setFilter = (next: string, nextRun: number | null = null) => {
+    const params = new URLSearchParams({ tab: "works", reason: next });
+    if (nextRun) params.set("metadataRun", String(nextRun));
+    window.history.replaceState(window.history.state, "", `/maintenance?${params}`);
+    setPendingDelete(null);
+    setReason(next);
+    setRunId(nextRun);
+    setPage(1);
+    setSelectedWorkIds(new Set());
+  };
+  const retryMetadata = async (ids: number[]) => {
+    if (!canSyncMetadata || readOnly || retrying || loading || ids.length === 0) return;
+    setRetrying(true);
+    setNotice("");
+    try {
+      const response = await api.retryMetadataIssues(ids);
+      setNotice(t("metadataIssues.retryResult", response));
+      setSelectedWorkIds(new Set());
+      setRefreshKey((current) => current + 1);
+    } catch {
+      setNotice(t("metadataIssues.retryFailed"));
+    } finally {
+      setRetrying(false);
+    }
+  };
+  const navigateWork: MouseEventHandler<HTMLAnchorElement> = (event) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    window.history.pushState({}, "", event.currentTarget.getAttribute("href"));
+    window.dispatchEvent(new Event(NAVIGATION_EVENT));
+  };
   const totalPages = Math.max(1, Math.ceil(result.total / pageSize));
   const rangeStart = result.total === 0 ? 0 : (page - 1) * pageSize + 1;
   const rangeEnd = Math.min(result.total, page * pageSize);
@@ -92,7 +198,7 @@ export function UnlinkedWorksMaintenance() {
   };
 
   const checkSources = async (workIds: number[]) => {
-    if (workIds.length === 0 || checking || deleting) return;
+    if (workIds.length === 0 || !canManageSources || readOnly || !!loadError || loading || checking || deleting) return;
     setCheckingWorkIds(new Set(workIds));
     try {
       const response = await api.checkUnlinkedWorkSources(workIds);
@@ -117,7 +223,16 @@ export function UnlinkedWorksMaintenance() {
   };
 
   const requestDelete = (works: Work[]) => {
-    if (works.length === 0 || checking || deleting) return;
+    if (
+      works.length === 0 ||
+      !canManageSources ||
+      readOnly ||
+      loading ||
+      reason !== "no_source" ||
+      checking ||
+      deleting
+    )
+      return;
     setPendingDelete({
       workIds: works.map((work) => work.id),
       labels: works.map((work) => `${work.primaryCode} · ${work.title}`),
@@ -152,24 +267,25 @@ export function UnlinkedWorksMaintenance() {
   };
 
   return (
-    <section className="overflow-hidden rounded-lg border bg-card">
+    <section aria-label={t("workMaintenance.title")} className="overflow-hidden rounded-lg border bg-card">
       <div className="flex flex-col gap-3 border-b px-4 py-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-base font-semibold">{t("unlinked.title")}</h2>
+            <h2 className="text-base font-semibold">{t("workMaintenance.title")}</h2>
             <Badge variant="outline">{formatNumber(result.total, resolvedLocale)}</Badge>
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">{t("unlinked.description")}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t("workMaintenance.description")}</p>
         </div>
         <form className="flex min-w-0 gap-2 sm:w-[min(100%,28rem)]" onSubmit={submitSearch}>
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               type="search"
+              maxLength={256}
               value={queryDraft}
               onChange={(event) => setQueryDraft(event.target.value)}
               placeholder={t("unlinked.searchPlaceholder")}
-              aria-label={t("unlinked.searchLabel")}
+              aria-label={t("workMaintenance.search")}
               className="h-10 w-full rounded-md border bg-background pl-9 pr-9 text-sm outline-none focus:ring-2 focus:ring-ring"
             />
             {queryDraft && (
@@ -207,6 +323,28 @@ export function UnlinkedWorksMaintenance() {
         </form>
       </div>
 
+      <div className="flex flex-wrap items-end gap-3 border-b px-4 py-3">
+        <label className="space-y-1 text-sm">
+          <span className="block">{t("workMaintenance.reason")}</span>
+          <select
+            className="h-11 rounded-md border bg-background px-3"
+            value={reason}
+            onChange={(event) => setFilter(event.target.value)}
+          >
+            <option value="all">{t("workMaintenance.all")}</option>
+            {canSyncMetadata && <option value="metadata">{t("workMaintenance.metadata")}</option>}
+            {canManageSources && <option value="no_source">{t("workMaintenance.noSource")}</option>}
+          </select>
+        </label>
+        {runId && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span>{t("metadataIssues.runFilter", { id: runId })}</span>
+            <Button variant="ghost" onClick={() => setFilter("all")}>
+              {t("metadataIssues.showAll")}
+            </Button>
+          </div>
+        )}
+      </div>
       <div className="flex min-h-14 flex-wrap items-center gap-2 border-b bg-muted/20 px-4 py-2">
         <Checkbox
           checked={selection.checked}
@@ -214,7 +352,8 @@ export function UnlinkedWorksMaintenance() {
           onCheckedChange={(checked) =>
             setSelectedWorkIds((current) => setCurrentPageSelected(pageWorkIds, current, checked))
           }
-          disabled={pageWorkIds.length === 0 || checking || deleting}
+          className="h-11 w-11 sm:h-5 sm:w-5"
+          disabled={readOnly || !!loadError || loading || pageWorkIds.length === 0 || checking || deleting}
           aria-label={t("unlinked.selectPage")}
         />
         <span className="mr-auto text-sm text-muted-foreground">
@@ -226,26 +365,45 @@ export function UnlinkedWorksMaintenance() {
                 total: formatNumber(result.total, resolvedLocale),
               })}
         </span>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => void checkSources([...selectedWorkIds])}
-          disabled={selection.selectedCount === 0 || checking || deleting}
-        >
-          <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} />
-          {t("unlinked.checkSources")}
-        </Button>
-        <Button
-          size="sm"
-          variant="destructive"
-          onClick={() => requestDelete(selectedWorks)}
-          disabled={selection.selectedCount === 0 || checking || deleting}
-        >
-          <Trash2 className="h-4 w-4" />
-          {t("unlinked.deleteInfo")}
-        </Button>
+        {canSyncMetadata && (
+          <Button
+            size="sm"
+            onClick={() => void retryMetadata(retryIds)}
+            disabled={readOnly || !!loadError || loading || retrying || retryIds.length === 0}
+          >
+            <RefreshCw className={`h-4 w-4 ${retrying ? "animate-spin" : ""}`} />
+            {t("workMaintenance.retrySelected", { count: retryIds.length })}
+          </Button>
+        )}
+        {canManageSources && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void checkSources(sourceWorks.map((work) => work.id))}
+            disabled={sourceWorks.length === 0 || readOnly || !!loadError || loading || checking || deleting}
+          >
+            <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} />
+            {t("workMaintenance.checkSources", { count: sourceWorks.length })}
+          </Button>
+        )}
+        {canManageSources && reason === "no_source" && (
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => requestDelete(sourceWorks)}
+            disabled={sourceWorks.length === 0 || readOnly || !!loadError || loading || checking || deleting}
+          >
+            <Trash2 className="h-4 w-4" />
+            {t("unlinked.deleteInfo")}
+          </Button>
+        )}
       </div>
 
+      {notice && (
+        <p role="status" className="border-b px-4 py-3 text-sm">
+          {notice}
+        </p>
+      )}
       <div className="min-h-64">
         {loadError && hasLoaded && (
           <div
@@ -279,29 +437,40 @@ export function UnlinkedWorksMaintenance() {
         ) : result.works.length === 0 ? (
           <div className="grid min-h-64 place-items-center px-4 py-10 text-center">
             <div>
-              <p className="text-sm font-medium">{query ? t("unlinked.noMatching") : t("unlinked.noWorks")}</p>
+              <p className="text-sm font-medium">
+                {query ? t("workMaintenance.noMatching") : t("workMaintenance.empty")}
+              </p>
               {query && (
                 <Button className="mt-4" size="sm" variant="outline" onClick={clearSearch}>
-                  Clear search
+                  {t("unlinked.clearSearch")}
                 </Button>
               )}
             </div>
           </div>
         ) : (
           <div className="overflow-x-auto" aria-busy={loading}>
-            <table className="w-full min-w-[760px] table-fixed text-left text-sm">
+            <table className="w-full min-w-[680px] table-fixed text-left text-sm">
               <UnlinkedWorksTableHead />
               <tbody className="divide-y">
                 {result.works.map((work) => {
                   const rowChecking = checkingWorkIds.has(work.id);
+                  const rowRetrying = work.metadataIssues.some((issue) => issue.retrying);
                   return (
                     <tr key={work.id} className="transition-colors hover:bg-muted/25">
                       <td className="px-4 py-2 align-middle">
                         <Checkbox
+                          className="h-11 w-11 sm:h-5 sm:w-5"
                           checked={selectedWorkIds.has(work.id)}
                           onCheckedChange={(checked) => toggleWork(work.id, checked)}
-                          disabled={checking || deleting}
-                          aria-label={`Select ${work.primaryCode}`}
+                          disabled={
+                            readOnly ||
+                            !!loadError ||
+                            loading ||
+                            checking ||
+                            deleting ||
+                            (!canManageSources && work.metadataIssues.every((issue) => issue.retrying))
+                          }
+                          aria-label={t("metadataIssues.selectWork", { code: work.primaryCode })}
                         />
                       </td>
                       <td className="px-2 py-2 align-middle">
@@ -320,6 +489,7 @@ export function UnlinkedWorksMaintenance() {
                       </td>
                       <td className="px-2 py-2 align-middle">
                         <a
+                          onClick={navigateWork}
                           href={`/${encodeURIComponent(work.primaryCode)}`}
                           className="font-mono text-xs font-semibold hover:text-primary"
                         >
@@ -328,6 +498,7 @@ export function UnlinkedWorksMaintenance() {
                       </td>
                       <td className="min-w-0 px-2 py-2 align-middle">
                         <a
+                          onClick={navigateWork}
                           href={`/${encodeURIComponent(work.primaryCode)}`}
                           className="block truncate font-medium hover:text-primary"
                           title={work.title}
@@ -337,6 +508,24 @@ export function UnlinkedWorksMaintenance() {
                         <span className="mt-0.5 block truncate text-xs text-muted-foreground">
                           {work.circle || "Unknown circle"}
                         </span>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {work.noSource && <Badge variant="outline">{t("workMaintenance.noSource")}</Badge>}
+                          {work.metadataIssues.length > 0 && (
+                            <Badge variant="warning">{t("workMaintenance.metadata")}</Badge>
+                          )}
+                        </div>
+                        {rowRetrying && (
+                          <p role="status" className="mt-1 text-xs text-primary">
+                            {t("metadataIssues.retrying")}
+                          </p>
+                        )}
+                        {work.metadataIssues.length > 0 && (
+                          <MetadataIssueDetails
+                            items={work.metadataIssues}
+                            disabled={readOnly || !!loadError || loading || retrying}
+                            onRetry={(ids) => void retryMetadata(ids)}
+                          />
+                        )}
                       </td>
                       <td className="px-4 py-2 align-middle">
                         <div className="flex justify-end gap-1">
@@ -356,28 +545,32 @@ export function UnlinkedWorksMaintenance() {
                               <ExternalLink className="h-4 w-4" />
                             </a>
                           </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-9 w-9"
-                            onClick={() => void checkSources([work.id])}
-                            disabled={checking || deleting}
-                            aria-label={`Check sources for ${work.primaryCode}`}
-                            title={t("unlinked.checkSources")}
-                          >
-                            <RefreshCw className={`h-4 w-4 ${rowChecking ? "animate-spin" : ""}`} />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-9 w-9 text-destructive hover:text-destructive"
-                            onClick={() => requestDelete([work])}
-                            disabled={checking || deleting}
-                            aria-label={t("unlinked.deleteFor", { code: work.primaryCode })}
-                            title={t("unlinked.deleteInfo")}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {canManageSources && work.noSource && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-11 w-11 sm:h-9 sm:w-9"
+                              onClick={() => void checkSources([work.id])}
+                              disabled={readOnly || !!loadError || loading || checking || deleting}
+                              aria-label={`Check sources for ${work.primaryCode}`}
+                              title={t("unlinked.checkSources")}
+                            >
+                              <RefreshCw className={`h-4 w-4 ${rowChecking ? "animate-spin" : ""}`} />
+                            </Button>
+                          )}
+                          {canManageSources && reason === "no_source" && work.noSource && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-11 w-11 sm:h-9 sm:w-9 text-destructive hover:text-destructive"
+                              onClick={() => requestDelete([work])}
+                              disabled={readOnly || !!loadError || loading || checking || deleting}
+                              aria-label={t("unlinked.deleteFor", { code: work.primaryCode })}
+                              title={t("unlinked.deleteInfo")}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -391,7 +584,7 @@ export function UnlinkedWorksMaintenance() {
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
         <label className="flex items-center gap-2 text-muted-foreground">
-          Rows
+          {t("workMaintenance.rows")}
           <select
             value={pageSize}
             onChange={(event) => {
@@ -508,8 +701,8 @@ function UnlinkedWorkDeleteDialog({
 function UnlinkedWorksTableSkeleton() {
   const { t } = useTranslation();
   return (
-    <div className="overflow-x-auto" role="status" aria-label={t("unlinked.loading")} aria-busy="true">
-      <table className="w-full min-w-[760px] table-fixed text-left text-sm">
+    <div className="overflow-x-auto" role="status" aria-label={t("workMaintenance.loading")} aria-busy="true">
+      <table className="w-full min-w-[680px] table-fixed text-left text-sm">
         <UnlinkedWorksTableHead />
         <tbody className="divide-y" aria-hidden="true">
           {Array.from({ length: 3 }, (_, index) => (
@@ -542,13 +735,13 @@ function UnlinkedWorksTableHead() {
   return (
     <thead className="border-b bg-muted/35 text-xs text-muted-foreground">
       <tr>
-        <th className="w-12 px-4 py-2 font-medium">
+        <th className="w-20 px-4 py-2 font-medium">
           <span className="sr-only">{t("unlinked.select")}</span>
         </th>
         <th className="w-16 px-2 py-2 font-medium">
           <span className="sr-only">{t("unlinked.cover")}</span>
         </th>
-        <th className="w-40 px-2 py-2 font-medium">{t("unlinked.code")}</th>
+        <th className="w-32 px-2 py-2 font-medium">{t("unlinked.code")}</th>
         <th className="px-2 py-2 font-medium">{t("unlinked.titleColumn")}</th>
         <th className="w-40 px-4 py-2 text-right font-medium">{t("unlinked.actions")}</th>
       </tr>

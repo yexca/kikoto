@@ -449,6 +449,7 @@ function AuthenticatedApp() {
                 )}
                 {canAccessCurrentPage && page === "maintenance" && auth.user && (
                   <MaintenancePage
+                    canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")}
                     canManageSources={auth.demoMode || auth.hasPermission("sources:write")}
                     canManageUsers={auth.demoMode || auth.hasPermission("users:manage")}
                     currentUserId={auth.user.id}
