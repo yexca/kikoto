@@ -908,7 +908,10 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       randomSeed,
       recommendBadgesEnabled,
     ]);
-    if (loadedRemoteRequestKey.current === requestKey) return;
+    // Switching to a local tab clears the remote result. The request key can
+    // still match a previous successful load, so only reuse it while that
+    // result is still present for the active source.
+    if (loadedRemoteRequestKey.current === requestKey && remoteResult?.sourceId === activeTab.source.id) return;
     const requestSeq = ++remoteRequestSeq.current;
     setRemoteResult((current) => (current?.sourceId === activeTab.source.id ? current : null));
     setIsRemoteLoading(true);

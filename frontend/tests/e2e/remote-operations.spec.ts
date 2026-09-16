@@ -39,6 +39,23 @@ test("remote source reuses the library grid, source sorting, localized tags, and
   await expect.poll(() => requests.some((url) => url.searchParams.get("page") === "2")).toBe(true);
 });
 
+test("remote source reloads after switching through the local library", async ({ page }) => {
+  const requests: URL[] = [];
+  await mockRemoteSource(page, (url) => requests.push(url));
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
+  const initialRequestCount = requests.length;
+
+  await page.getByRole("button", { name: "Local", exact: true }).click();
+  await expect(page.getByText("Tagged mobile work", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
+  await expect.poll(() => requests.length).toBeGreaterThan(initialRequestCount);
+});
+
 test("remote source renders disabled and unavailable failures inside the works area", async ({ page }) => {
   await mockRemoteSource(page, () => undefined, { remoteStatus: "disabled" });
   await page.goto("/");
