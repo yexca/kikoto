@@ -131,7 +131,7 @@ export function MaintenancePage({
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [isSettingsLoading, setIsSettingsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<MaintenanceTab>(() =>
-    maintenanceTabFromLocation(canManageUsers, canManageAccessPolicy),
+    maintenanceTabFromLocation(canManageSources, canSyncMetadata, canManageUsers, canManageAccessPolicy),
   );
   const [anonymousAccessEnabled, setAnonymousAccessEnabled] = useState(false);
   const [isAccessPolicySaving, setIsAccessPolicySaving] = useState(false);
@@ -214,9 +214,12 @@ export function MaintenancePage({
   }, [activeTab, canManageSources]);
 
   useEffect(() => {
-    if (activeTab === "users" && !canManageUsers) setActiveTab("overview");
-    if (activeTab === "security" && !canManageAccessPolicy) setActiveTab("overview");
-  }, [activeTab, canManageAccessPolicy, canManageUsers]);
+    if (
+      maintenanceTabIsAvailable(activeTab, { canManageSources, canSyncMetadata, canManageUsers, canManageAccessPolicy })
+    )
+      return;
+    setActiveTab(maintenanceTabFromLocation(canManageSources, canSyncMetadata, canManageUsers, canManageAccessPolicy));
+  }, [activeTab, canManageAccessPolicy, canManageSources, canManageUsers, canSyncMetadata]);
 
   useEffect(() => {
     if (openedLinkedSource.current || readOnly || !settings) return;
@@ -457,11 +460,7 @@ export function MaintenancePage({
     }
   };
 
-  if (!canManageSources) {
-    if (canSyncMetadata)
-      return (
-        <WorkMaintenance canManageSources={canManageSources} canSyncMetadata={canSyncMetadata} readOnly={readOnly} />
-      );
+  if (!canManageSources && !canSyncMetadata && !canManageUsers && !canManageAccessPolicy) {
     return (
       <section className="rounded-lg border bg-card p-5">
         <p className="text-sm text-muted-foreground">{maintenanceCopy("adminRequired")}</p>
@@ -480,82 +479,94 @@ export function MaintenancePage({
         </div>
       )}
 
-      <div className="app-scrollbar flex gap-2 overflow-x-auto rounded-lg border bg-card p-1">
-        <SettingsTabButton
-          active={activeTab === "overview"}
-          onClick={() => selectTab("overview")}
-          icon={<SlidersHorizontal className="h-4 w-4" />}
-        >
-          {maintenanceCopy("tabs.overview")}
-        </SettingsTabButton>
-        <SettingsTabButton
-          active={activeTab === "routing"}
-          onClick={() => selectTab("routing")}
-          icon={<PlayCircle className="h-4 w-4" />}
-        >
-          {maintenanceCopy("tabs.routing")}
-        </SettingsTabButton>
-        <SettingsTabButton
-          active={activeTab === "recommendation"}
-          onClick={() => selectTab("recommendation")}
-          icon={<Sparkles className="h-4 w-4" />}
-        >
-          {maintenanceCopy("tabs.recommendation")}
-        </SettingsTabButton>
-        <SettingsTabButton
-          active={activeTab === "library"}
-          onClick={() => selectTab("library")}
-          icon={<Folder className="h-4 w-4" />}
-        >
-          {maintenanceCopy("tabs.library")}
-        </SettingsTabButton>
-        <SettingsTabButton
-          active={activeTab === "works"}
-          onClick={() => selectTab("works")}
-          icon={<Database className="h-4 w-4" />}
-        >
-          {maintenanceCopy("tabs.unlinked")}
-        </SettingsTabButton>
-        <SettingsTabButton
-          active={activeTab === "cache"}
-          onClick={() => selectTab("cache")}
-          icon={<Download className="h-4 w-4" />}
-        >
-          {maintenanceCopy("tabs.cache")}
-        </SettingsTabButton>
-        <SettingsTabButton
-          active={activeTab === "metadata"}
-          onClick={() => selectTab("metadata")}
-          icon={<RefreshCw className="h-4 w-4" />}
-        >
-          {maintenanceCopy("tabs.metadata")}
-        </SettingsTabButton>
-        {canManageUsers && (
-          <SettingsTabButton
-            active={activeTab === "users"}
-            onClick={() => selectTab("users")}
-            icon={<Shield className="h-4 w-4" />}
-          >
-            {maintenanceCopy("tabs.users")}
-          </SettingsTabButton>
+      <nav className="space-y-2 rounded-lg border bg-card p-2" aria-label={maintenanceCopy("navigation")}>
+        {canManageSources && (
+          <MaintenanceTabGroup label={maintenanceCopy("groups.configuration")}>
+            <SettingsTabButton
+              active={activeTab === "overview"}
+              onClick={() => selectTab("overview")}
+              icon={<SlidersHorizontal className="h-4 w-4" />}
+            >
+              {maintenanceCopy("tabs.overview")}
+            </SettingsTabButton>
+            <SettingsTabButton
+              active={activeTab === "library"}
+              onClick={() => selectTab("library")}
+              icon={<Folder className="h-4 w-4" />}
+            >
+              {maintenanceCopy("tabs.library")}
+            </SettingsTabButton>
+            <SettingsTabButton
+              active={activeTab === "routing"}
+              onClick={() => selectTab("routing")}
+              icon={<PlayCircle className="h-4 w-4" />}
+            >
+              {maintenanceCopy("tabs.routing")}
+            </SettingsTabButton>
+            <SettingsTabButton
+              active={activeTab === "cache"}
+              onClick={() => selectTab("cache")}
+              icon={<Download className="h-4 w-4" />}
+            >
+              {maintenanceCopy("tabs.cache")}
+            </SettingsTabButton>
+            <SettingsTabButton
+              active={activeTab === "metadata"}
+              onClick={() => selectTab("metadata")}
+              icon={<RefreshCw className="h-4 w-4" />}
+            >
+              {maintenanceCopy("tabs.metadata")}
+            </SettingsTabButton>
+            <SettingsTabButton
+              active={activeTab === "recommendation"}
+              onClick={() => selectTab("recommendation")}
+              icon={<Sparkles className="h-4 w-4" />}
+            >
+              {maintenanceCopy("tabs.recommendation")}
+            </SettingsTabButton>
+            <SettingsTabButton
+              active={activeTab === "paths"}
+              onClick={() => selectTab("paths")}
+              icon={<Server className="h-4 w-4" />}
+            >
+              {maintenanceCopy("tabs.paths")}
+            </SettingsTabButton>
+          </MaintenanceTabGroup>
         )}
-        {canManageAccessPolicy && (
-          <SettingsTabButton
-            active={activeTab === "security"}
-            onClick={() => selectTab("security")}
-            icon={<LockKeyhole className="h-4 w-4" />}
-          >
-            {maintenanceCopy("tabs.access")}
-          </SettingsTabButton>
+        {(canManageSources || canSyncMetadata) && (
+          <MaintenanceTabGroup label={maintenanceCopy("groups.operations")}>
+            <SettingsTabButton
+              active={activeTab === "works"}
+              onClick={() => selectTab("works")}
+              icon={<Database className="h-4 w-4" />}
+            >
+              {maintenanceCopy("tabs.unlinked")}
+            </SettingsTabButton>
+          </MaintenanceTabGroup>
         )}
-        <SettingsTabButton
-          active={activeTab === "paths"}
-          onClick={() => selectTab("paths")}
-          icon={<Server className="h-4 w-4" />}
-        >
-          {maintenanceCopy("tabs.paths")}
-        </SettingsTabButton>
-      </div>
+        {(canManageUsers || canManageAccessPolicy) && (
+          <MaintenanceTabGroup label={maintenanceCopy("groups.accounts")}>
+            {canManageUsers && (
+              <SettingsTabButton
+                active={activeTab === "users"}
+                onClick={() => selectTab("users")}
+                icon={<Shield className="h-4 w-4" />}
+              >
+                {maintenanceCopy("tabs.users")}
+              </SettingsTabButton>
+            )}
+            {canManageAccessPolicy && (
+              <SettingsTabButton
+                active={activeTab === "security"}
+                onClick={() => selectTab("security")}
+                icon={<LockKeyhole className="h-4 w-4" />}
+              >
+                {maintenanceCopy("tabs.access")}
+              </SettingsTabButton>
+            )}
+          </MaintenanceTabGroup>
+        )}
+      </nav>
 
       <fieldset
         data-testid="maintenance-content"
@@ -3324,6 +3335,15 @@ function SettingsTabButton({
   );
 }
 
+function MaintenanceTabGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <section className="space-y-1 px-1 py-1" aria-label={label}>
+      <h2 className="px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</h2>
+      <div className="flex flex-wrap gap-1">{children}</div>
+    </section>
+  );
+}
+
 function ReadonlyField({ label, value }: { label: string; value: string }) {
   return (
     <label className="grid gap-1 text-sm">
@@ -3350,13 +3370,37 @@ function TextInput({ label, value, onChange }: { label: string; value: string; o
   );
 }
 
-function maintenanceTabFromLocation(canManageUsers: boolean, canManageAccessPolicy: boolean): MaintenanceTab {
+type MaintenancePermissions = {
+  canManageSources: boolean;
+  canSyncMetadata: boolean;
+  canManageUsers: boolean;
+  canManageAccessPolicy: boolean;
+};
+
+function maintenanceTabIsAvailable(tab: MaintenanceTab, permissions: MaintenancePermissions) {
+  if (["overview", "routing", "library", "cache", "metadata", "recommendation", "paths"].includes(tab)) {
+    return permissions.canManageSources;
+  }
+  if (tab === "works") return permissions.canManageSources || permissions.canSyncMetadata;
+  if (tab === "users") return permissions.canManageUsers;
+  if (tab === "security") return permissions.canManageAccessPolicy;
+  return false;
+}
+
+function maintenanceTabFromLocation(
+  canManageSources: boolean,
+  canSyncMetadata: boolean,
+  canManageUsers: boolean,
+  canManageAccessPolicy: boolean,
+): MaintenanceTab {
   if (window.location.pathname === "/users" && canManageUsers) return "users";
   const value = new URLSearchParams(window.location.search).get("tab");
-  if (value === "unlinked") return "works";
-  if (value === "metadata" && new URLSearchParams(window.location.search).has("metadataRun")) return "works";
-  if (value === "local" || value === "remote") return "library";
-  if (value === "system") return "paths";
+  if (value === "unlinked" && (canManageSources || canSyncMetadata)) return "works";
+  if (value === "metadata" && new URLSearchParams(window.location.search).has("metadataRun")) {
+    if (canManageSources || canSyncMetadata) return "works";
+  }
+  if ((value === "local" || value === "remote") && canManageSources) return "library";
+  if (value === "system" && canManageSources) return "paths";
   const tabs: MaintenanceTab[] = [
     "overview",
     "routing",
@@ -3372,10 +3416,18 @@ function maintenanceTabFromLocation(canManageUsers: boolean, canManageAccessPoli
   if (
     value &&
     tabs.includes(value as MaintenanceTab) &&
-    (value !== "users" || canManageUsers) &&
-    (value !== "security" || canManageAccessPolicy)
+    maintenanceTabIsAvailable(value as MaintenanceTab, {
+      canManageSources,
+      canSyncMetadata,
+      canManageUsers,
+      canManageAccessPolicy,
+    })
   )
     return value as MaintenanceTab;
+  if (canManageSources) return "overview";
+  if (canSyncMetadata) return "works";
+  if (canManageUsers) return "users";
+  if (canManageAccessPolicy) return "security";
   return "overview";
 }
 

@@ -75,6 +75,12 @@ export const surfaceEnglish = {
     existingDataShown: "Existing workflow data is still shown.",
   },
   maintenance: {
+    navigation: "Maintenance sections",
+    groups: {
+      configuration: "Configuration",
+      operations: "Operations",
+      accounts: "Accounts",
+    },
     settingsApiUnavailable: "Settings API is unavailable.",
     settingsSaved: "Settings saved.",
     accessPolicyRefreshFailed: "Access policy saved, but runtime status could not be refreshed.",

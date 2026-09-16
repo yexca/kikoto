@@ -72,6 +72,12 @@ export const surfaceJapanese = {
   },
   maintenance: {
     ...surfaceEnglish.maintenance,
+    navigation: "メンテナンス項目",
+    groups: {
+      configuration: "設定",
+      operations: "操作",
+      accounts: "アカウント",
+    },
     adminRequired: "メンテナンスには管理者権限が必要です。",
     settingsApiUnavailable: "設定APIを利用できません。",
     settingsSaved: "設定を保存しました。",

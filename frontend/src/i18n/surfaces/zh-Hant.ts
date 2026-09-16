@@ -68,6 +68,12 @@ export const surfaceHant = {
   },
   maintenance: {
     ...surfaceEnglish.maintenance,
+    navigation: "維護分區",
+    groups: {
+      configuration: "設定",
+      operations: "操作",
+      accounts: "帳戶",
+    },
     adminRequired: "維護功能需要管理員權限。",
     settingsApiUnavailable: "設定介面無法使用。",
     settingsSaved: "設定已儲存。",

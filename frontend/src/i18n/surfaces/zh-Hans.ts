@@ -68,6 +68,12 @@ export const surfaceHans = {
   },
   maintenance: {
     ...surfaceEnglish.maintenance,
+    navigation: "维护分区",
+    groups: {
+      configuration: "配置",
+      operations: "操作",
+      accounts: "账户",
+    },
     adminRequired: "维护功能需要管理员权限。",
     settingsApiUnavailable: "设置接口不可用。",
     settingsSaved: "设置已保存。",

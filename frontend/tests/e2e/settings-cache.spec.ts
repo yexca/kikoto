@@ -274,7 +274,10 @@ test("@desktop cache settings scan managed media and require cleanup confirmatio
   await expect(page.getByText("Managed media cache", { exact: true })).toBeVisible();
   await expect(page.getByTestId("maintenance-content")).toHaveCSS("max-width", "896px");
   await expect(page.getByTestId("cache-configuration-card")).toHaveCSS("max-width", "none");
-  const cacheSections = await page.getByText(/^(Configuration|Transcode cache|Managed media cache)$/).allTextContents();
+  const cacheSections = await page
+    .getByTestId("maintenance-content")
+    .getByText(/^(Configuration|Transcode cache|Managed media cache)$/)
+    .allTextContents();
   expect(cacheSections).toEqual(["Configuration", "Transcode cache", "Managed media cache"]);
   await expect(page.getByText("Save path template", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Per-file download limit")).toHaveValue("100");
@@ -378,6 +381,7 @@ test("personal settings stay separate from administrator maintenance", async ({ 
   await expect(page.getByRole("heading", { name: "Settings", exact: true, level: 1 })).toBeVisible();
   await expect(page.getByText("Manage your account and appearance preferences", { exact: true })).toBeHidden();
   await expect(page.getByText("Account", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Appearance", exact: true }).click();
   await expect(page.getByLabel("Theme preference")).toBeVisible();
   await expect(page.getByRole("button", { name: "Cache & Fetch", exact: true })).toHaveCount(0);
 
@@ -390,6 +394,8 @@ test("personal settings stay separate from administrator maintenance", async ({ 
 test("personal playback seek intervals use the requested defaults and persist locally", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
   await page.goto("/settings");
+
+  await page.getByRole("tab", { name: "Playback", exact: true }).click();
 
   const forward = page.getByRole("spinbutton", { name: /Forward seek/ });
   const backward = page.getByRole("spinbutton", { name: /Backward seek/ });

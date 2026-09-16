@@ -1497,6 +1497,8 @@ test("@desktop settings theme styles and colors change independently and persist
   await mockWorkflows(page);
   await page.goto("/settings");
 
+  await page.getByRole("tab", { name: "Appearance", exact: true }).click();
+
   await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "anthropic");
   await expect(page.locator("html")).toHaveAttribute("data-theme-palette", "original");
   const anthropicTokens = await themeVisualTokens(page);
@@ -1573,6 +1575,7 @@ test("demo settings keeps account and workflows read-only while allowing appeara
 
   await page.goto("/settings");
   await expect(page.getByRole("status")).toHaveText("Demo mode keeps account settings read-only.");
+  await page.getByRole("tab", { name: "Appearance", exact: true }).click();
   for (const name of [
     "Light",
     "Dark",

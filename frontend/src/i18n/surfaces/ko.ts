@@ -69,6 +69,12 @@ export const surfaceKorean = {
   },
   maintenance: {
     ...surfaceEnglish.maintenance,
+    navigation: "유지 관리 섹션",
+    groups: {
+      configuration: "구성",
+      operations: "작업",
+      accounts: "계정",
+    },
     adminRequired: "유지 관리에는 관리자 권한이 필요합니다.",
     settingsApiUnavailable: "설정 API를 사용할 수 없습니다.",
     settingsSaved: "설정을 저장했습니다.",
