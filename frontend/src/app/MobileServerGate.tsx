@@ -1,5 +1,5 @@
 import { Server, WifiOff } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -13,13 +13,42 @@ import {
 } from "@/lib/serverConfig";
 
 type ConnectionState = "checking" | "ready" | "setup";
+type ServerProtocol = "http" | "https";
+
+function serverFormFromURL(value: string): { protocol: ServerProtocol; address: string; port: string } {
+  try {
+    const parsed = new URL(value);
+    const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
+    return {
+      protocol: parsed.protocol === "https:" ? "https" : "http",
+      address: `${hostname}${parsed.pathname !== "/" ? parsed.pathname : ""}`,
+      port: parsed.port || "7655",
+    };
+  } catch {
+    return { protocol: "http", address: value, port: "7655" };
+  }
+}
+
+function serverURLFromForm(protocol: ServerProtocol, address: string, port: string) {
+  const nextAddress = address.trim().replace(/^https?:\/\//i, "");
+  const separator = nextAddress.indexOf("/");
+  const host = separator >= 0 ? nextAddress.slice(0, separator) : nextAddress;
+  const path = separator >= 0 ? nextAddress.slice(separator) : "";
+  const bracketedHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+  return `${protocol}://${bracketedHost}:${port.trim()}${path}`;
+}
 
 export function MobileServerGate({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation();
   const [state, setState] = useState<ConnectionState>(() => (isNativeApp() ? "checking" : "ready"));
-  const [serverURL, setServerURL] = useState(() => getStoredServerURL());
+  const initialForm = serverFormFromURL(getStoredServerURL());
+  const [protocol, setProtocol] = useState<ServerProtocol>(initialForm.protocol);
+  const [address, setAddress] = useState(initialForm.address);
+  const [port, setPort] = useState(initialForm.port);
   const [error, setError] = useState("");
   const [version, setVersion] = useState("");
+  const [isConnecting, setIsConnecting] = useState(false);
+  const connectionController = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!isNativeApp()) return;
@@ -30,6 +59,10 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
           setState("setup");
           return;
         }
+        const form = serverFormFromURL(stored);
+        setProtocol(form.protocol);
+        setAddress(form.address);
+        setPort(form.port);
         return api
           .health(stored)
           .then((result) => {
@@ -37,7 +70,10 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
             setState("ready");
           })
           .catch(() => {
-            setServerURL(stored);
+            const form = serverFormFromURL(stored);
+            setProtocol(form.protocol);
+            setAddress(form.address);
+            setPort(form.port);
             setError(t("serverGate.unreachable"));
             setState("setup");
           });
@@ -46,6 +82,7 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
         setError(t("serverGate.settingsUnavailable"));
         setState("setup");
       });
+    return () => connectionController.current?.abort();
   }, []);
 
   if (state === "ready") return <>{children}</>;
@@ -59,16 +96,35 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (isConnecting) {
+      connectionController.current?.abort();
+      setIsConnecting(false);
+      return;
+    }
     setError("");
     setVersion("");
+    const numericPort = Number(port.trim());
+    if (!Number.isInteger(numericPort) || numericPort < 1 || numericPort > 65535) {
+      setError(t("serverGate.invalidPort"));
+      return;
+    }
+    const controller = new AbortController();
+    connectionController.current = controller;
+    setIsConnecting(true);
     try {
-      const normalized = normalizeServerURL(serverURL);
-      const result = await api.health(normalized);
+      const normalized = normalizeServerURL(serverURLFromForm(protocol, address, port));
+      const result = await api.health(normalized, controller.signal);
       await setStoredServerURL(normalized);
       setVersion(result.version);
       setState("ready");
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError(err instanceof Error ? err.message : "Unable to connect to Kikoto.");
+    } finally {
+      if (connectionController.current === controller) {
+        connectionController.current = null;
+        setIsConnecting(false);
+      }
     }
   };
 
@@ -84,21 +140,53 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
         </div>
 
         <form className="space-y-3" onSubmit={submit}>
-          <label className="grid gap-1.5 text-sm font-medium">
-            {t("serverGate.serverAddress")}
-            <input
-              className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-              value={serverURL}
-              onChange={(event) => setServerURL(event.target.value)}
-              placeholder="http://kikoto.local:7655"
-              inputMode="url"
-              autoCapitalize="none"
-              autoCorrect="off"
-            />
-          </label>
+          <div className="grid grid-cols-[auto_minmax(0,1fr)_5.5rem] gap-2">
+            <label className="grid gap-1.5 text-sm font-medium">
+              {t("serverGate.protocol")}
+              <select
+                className="h-10 rounded-md border bg-card px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                value={protocol}
+                onChange={(event) => setProtocol(event.target.value as ServerProtocol)}
+                disabled={isConnecting}
+              >
+                <option value="http">http</option>
+                <option value="https">https</option>
+              </select>
+            </label>
+            <label className="grid min-w-0 gap-1.5 text-sm font-medium">
+              {t("serverGate.serverAddress")}
+              <input
+                className="h-10 min-w-0 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                value={address}
+                onChange={(event) => setAddress(event.target.value)}
+                placeholder="192.0.2.1"
+                inputMode="url"
+                autoCapitalize="none"
+                autoCorrect="off"
+                disabled={isConnecting}
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              {t("serverGate.port")}
+              <input
+                className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                value={port}
+                onChange={(event) => setPort(event.target.value)}
+                placeholder="7655"
+                inputMode="numeric"
+                autoComplete="off"
+                disabled={isConnecting}
+              />
+            </label>
+          </div>
           {error && (
             <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {error}
+            </div>
+          )}
+          {isConnecting && (
+            <div className="rounded-md border bg-muted px-3 py-2 text-sm text-muted-foreground">
+              {t("serverGate.connectingAttempt")}
             </div>
           )}
           {version && (
@@ -106,7 +194,9 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
               {t("serverGate.serverVersion", { version })}
             </div>
           )}
-          <Button className="w-full">{t("serverGate.connect")}</Button>
+          <Button className="w-full" type="submit">
+            {isConnecting ? t("serverGate.cancel") : t("serverGate.connect")}
+          </Button>
         </form>
       </section>
     </main>

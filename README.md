@@ -44,9 +44,10 @@ as a self-hosted web application with a responsive player and an Android client.
 ## Known Issues
 
 > [!WARNING]
-> **Android 10 keyboard layout (APK).** APK builds using Capacitor 8.4.1 are
-> affected on Android 10. Kikoto now uses Capacitor 8.5.2, which includes the
-> upstream fix, but Android 10 device verification is still pending. On affected
+> **Android 10 keyboard layout (APK).** The Android 10 keyboard-layout issue has
+> been fixed by the Capacitor update to 8.5.2 and will be included in Kikoto's
+> next APK release. Until that version is pushed, current APK builds may still
+> be affected. On affected
 > devices, opening the software keyboard can leave an Android system-rendered
 > area between the app and the keyboard, reducing the usable app area to roughly
 > 6–20% of the screen. Opening Kikoto in a web browser is not affected.

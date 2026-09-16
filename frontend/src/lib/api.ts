@@ -1943,8 +1943,8 @@ const DEFAULT_MANUAL_FETCH_MIN_FREE_BYTES = 2 * 1024 * 1024 * 1024;
 
 export const api = {
   appUpdate: () => getJSON<AppUpdate>("/api/app-update"),
-  health: async (baseURL?: string) => {
-    const response = await fetchAPI("/health", { redirect: "error" }, baseURL, false);
+  health: async (baseURL?: string, signal?: AbortSignal) => {
+    const response = await fetchAPI("/health", { redirect: "error", signal }, baseURL, false);
     if (!response.ok) {
       throw await responseError(response, `GET /health failed with ${response.status}`);
     }
