@@ -57,6 +57,36 @@
         "frontend/src/pages/AboutPage.tsx"
       ],
       "reason": "Public AGENTS.md-configuration and application-versioning reference repository linked from the About page."
+    },
+    {
+      "url": "https://github.com/ionic-team/capacitor/issues/8525",
+      "files": ["README.md"],
+      "reason": "Public upstream Capacitor issue documenting the Android 10 keyboard-layout fix."
+    },
+    {
+      "url": "https://github.com/ionic-team/capacitor/issues/8466",
+      "files": ["README.md"],
+      "reason": "Public upstream Capacitor issue documenting the Android 10 inset-handling regression."
+    },
+    {
+      "url": "https://github.com/ionic-team/capacitor/pull/8535",
+      "files": ["README.md"],
+      "reason": "Public upstream Capacitor pull request containing the Android 10 keyboard-layout fix."
+    },
+    {
+      "url": "https://github.com/ionic-team/capacitor/releases/tag/8.5.2",
+      "files": ["README.md"],
+      "reason": "Public upstream Capacitor release page documenting the adopted fix."
+    },
+    {
+      "url": "https://github.com/sponsors/broofa",
+      "files": ["frontend/package-lock.json"],
+      "reason": "Package metadata funding URL retained in the npm lockfile."
+    },
+    {
+      "url": "https://github.com/sponsors/ctavan",
+      "files": ["frontend/package-lock.json"],
+      "reason": "Package metadata funding URL retained in the npm lockfile."
     }
   ]
 }

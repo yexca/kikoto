@@ -17,10 +17,10 @@
 
 <p align="center">
   <a href="README.md">English</a> ·
-  <a href="README.zh-Hans.md">简体中文</a> ·
-  <a href="README.zh-Hant.md">繁體中文</a> ·
-  <a href="README.ja.md">日本語</a> ·
-  <a href="README.ko.md">한국어</a>
+  <a href="docs/readme/README.zh-Hans.md">简体中文</a> ·
+  <a href="docs/readme/README.zh-Hant.md">繁體中文</a> ·
+  <a href="docs/readme/README.ja.md">日本語</a> ·
+  <a href="docs/readme/README.ko.md">한국어</a>
 </p>
 
 <p align="center">
@@ -44,18 +44,19 @@ as a self-hosted web application with a responsive player and an Android client.
 ## Known Issues
 
 > [!WARNING]
-> **Android 10 keyboard layout (APK).** Current APK builds are affected on
-> Android 10, and later APK releases should also be considered affected until
-> the upstream Capacitor fix is released and adopted by Kikoto. On affected
+> **Android 10 keyboard layout (APK).** APK builds using Capacitor 8.4.1 are
+> affected on Android 10. Kikoto now uses Capacitor 8.5.2, which includes the
+> upstream fix, but Android 10 device verification is still pending. On affected
 > devices, opening the software keyboard can leave an Android system-rendered
 > area between the app and the keyboard, reducing the usable app area to roughly
 > 6–20% of the screen. Opening Kikoto in a web browser is not affected.
 > Investigation points to Android 10 IME insets being applied twice by
 > Capacitor's SystemBars
-> handling ([#8525](https://github.com/ionic-team/capacitor/issues/8525),
-> [#8466](https://github.com/ionic-team/capacitor/issues/8466), and
-> [#8528](https://github.com/ionic-team/capacitor/pull/8528)). Use Kikoto in a
-> browser on affected Android 10 devices until that upstream fix is available.
+> handling ([#8525](https://github.com/ionic-team/capacitor/issues/8525) and
+> [#8466](https://github.com/ionic-team/capacitor/issues/8466)). The fix was merged
+> in [#8535](https://github.com/ionic-team/capacitor/pull/8535) and released in
+> [Capacitor 8.5.2](https://github.com/ionic-team/capacitor/releases/tag/8.5.2).
+> Use Kikoto in a browser if the issue persists on your Android 10 device.
 
 ## Key Features
 
@@ -160,7 +161,7 @@ database, reliability, and troubleshooting.
 | Understand user-visible behavior | [Product Specs](docs/user/en/index.md) |
 | Configure and operate an instance | [Operations](docs/operations/configuration.md) |
 | Understand data and system boundaries | [Architecture](docs/architecture/index.md) |
-| Review design and security contracts | [Design](DESIGN.md) · [Security](SECURITY.md) · [Privacy](PRIVACY.md) |
+| Review design and security contracts | [Design](docs/development/design.md) · [Security](SECURITY.md) · [Privacy](PRIVACY.md) |
 | Find every public document | [Documentation Index](docs/README.md) |
 
 ## Development and Contributing
