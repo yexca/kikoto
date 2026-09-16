@@ -122,21 +122,27 @@ docker compose up -d
 
 ## Development Stack
 
-Use `docker-compose.dev.yml` when working on local development behavior that
-needs local builds:
+Use `deploy/compose/dev.yml` when working on local development behavior that
+needs local builds. Run this command from the repository root, or use
+`make docker-up`:
 
 ```sh
-docker compose -f docker-compose.dev.yml up -d --build
+docker compose --project-directory . -f deploy/compose/dev.yml up -d --build
 ```
+
+Keep `--project-directory .` in direct Compose commands. It preserves the root
+`.env` lookup, build contexts, default project name, and relative host mounts
+even though the Compose file lives under `deploy/compose/`. The Makefile's
+development and smoke targets set the project directory automatically.
 
 ## Demo Stack
 
-Use `docker-compose.demo.yaml` for a public, read-only Demo deployment. It
-pulls `yexca/kikoto:latest` by default:
+Use `deploy/compose/demo.yml` for a public, read-only Demo deployment. It
+pulls `yexca/kikoto:latest` by default. Run these commands from the repository root:
 
 ```sh
-docker compose -f docker-compose.demo.yaml pull
-docker compose -f docker-compose.demo.yaml up -d
+docker compose --project-directory . -f deploy/compose/demo.yml pull
+docker compose --project-directory . -f deploy/compose/demo.yml up -d
 ```
 
 Set `KIKOTO_DEMO_IMAGE` to a reviewed version or digest when reproducibility is
@@ -182,7 +188,7 @@ never reach the backend.
 Stop it with:
 
 ```sh
-docker compose -f docker-compose.demo.yaml down
+docker compose --project-directory . -f deploy/compose/demo.yml down
 ```
 
 ## Runtime Data

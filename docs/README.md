@@ -47,7 +47,7 @@ Operators should read:
 Developers should read:
 
 - [Repository agent guide](../AGENTS.md)
-- [Design contract](../DESIGN.md)
+- [Design contract](development/design.md)
 - [Core boundaries](architecture/core-boundaries.md)
 - [Backend](architecture/backend.md)
 - [Frontend](architecture/frontend.md)

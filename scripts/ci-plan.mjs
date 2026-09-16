@@ -44,7 +44,8 @@ export function createPlan({
       path === "frontend/Dockerfile" ||
       path === "backend/Dockerfile" ||
       path === "frontend/nginx.conf" ||
-      path === "docker-compose.dev.yml"
+      path === "docker-compose.dev.yml" ||
+      path === "deploy/compose/dev.yml"
     ) {
       plan.dev_smoke = true;
     } else if (path.startsWith("frontend/tests/e2e/")) {

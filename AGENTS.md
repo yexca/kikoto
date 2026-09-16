@@ -9,7 +9,7 @@ Read these first:
 - `docs/architecture/workflows.md`
 - `docs/architecture/backend.md`
 - `docs/architecture/frontend.md`
-- `DESIGN.md`
+- `docs/development/design.md`
 - `SECURITY.md`
 - `docs/development/security.md`
 
@@ -95,7 +95,7 @@ app composition -> domain feature -> shared application code -> primitives
 
 ## UI and Test Contracts
 
-- Follow `DESIGN.md`. Preserve the global player across navigation and
+- Follow `docs/development/design.md`. Preserve the global player across navigation and
   contain page failures so one remote or media error does not discard known
   local state.
 - Use semantic design tokens. Status color communicates availability or intent,

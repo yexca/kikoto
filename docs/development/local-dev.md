@@ -17,9 +17,14 @@ npm run dev
 
 ## Docker
 
+Run from the repository root. `make docker-up` uses the same configuration:
+
 ```sh
-docker compose -f docker-compose.dev.yml up -d --build
+docker compose --project-directory . -f deploy/compose/dev.yml up -d --build
 ```
+
+The project directory keeps `.env`, build contexts, and `config/`, `cache/`,
+and `data/` mounts at their existing repository-root locations.
 
 ## Common Checks
 

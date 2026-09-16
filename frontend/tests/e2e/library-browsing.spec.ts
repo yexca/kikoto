@@ -10,7 +10,7 @@ test("column preferences change the rendered collection and remain independent a
   await expect(cards).toHaveCount(6);
   const expectColumns = async (columns: number) => {
     // The user-selected column count must affect the actual card layout,
-    // without clipping the mobile viewport (DESIGN.md responsive contract).
+    // without clipping the mobile viewport (docs/development/design.md responsive contract).
     await expect(async () => {
       const boxes = await cards.evaluateAll((elements) =>
         elements.map((element) => {

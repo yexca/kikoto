@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="README.md">English</a> ·
+  <a href="../../README.md">English</a> ·
   <a href="README.zh-Hans.md">简体中文</a> ·
   <a href="README.zh-Hant.md">繁體中文</a> ·
   <a href="README.ja.md">日本語</a> ·
@@ -11,11 +11,11 @@
 ローカル優先の個人オーディオライブラリ、ソースブラウザー、プレーヤーです。DLsite 形式のメタデータ、ローカルフォルダー、再構築可能な Cache、Kikoeru 互換のリモートファイルソースを一つの Work モデルにまとめます。セルフホスト型 Web アプリと Android クライアントを提供します。
 
 > [!IMPORTANT]
-> Kikoto は開発中です。アップグレード前に `config/` と `data/` をバックアップし、ネットワークへ公開する前に[セキュリティ文書](docs/security/index.md)を確認してください。
+> Kikoto は開発中です。アップグレード前に `config/` と `data/` をバックアップし、ネットワークへ公開する前に[セキュリティ文書](../security/index.md)を確認してください。
 
 ## クイックスタート
 
-1. 空のディレクトリに [`docker-compose.yml`](docker-compose.yml) を置きます。
+1. 空のディレクトリに [`docker-compose.yml`](../../docker-compose.yml) を置きます。
 2. 強力で一意な root パスワードを `.env` に設定します。
 
 ```dotenv
@@ -31,13 +31,13 @@ docker compose up -d --pull always
 
 <http://127.0.0.1:7655> を開きます。Production Compose はホストの `7655` で Web アプリと API を同時に提供します。`7659` はコンテナ内部の Backend ポートで、Development Compose のみ個別に公開します。
 
-[`.env.example`](.env.example) を参考に、同じディレクトリの `.env` でイメージ、管理者アカウント、スキャン深度、Cookie のセキュリティ設定、コンテナ内パスを変更できます。シェルの環境変数が `.env` より優先されます。変更後は `docker compose up -d` を実行してください。パス変数はホストのマウント先を変更しません。詳しくは [Compose 設定](docs/operations/docker.md#configure-with-env) を参照してください。
+[`.env.example`](../../.env.example) を参考に、同じディレクトリの `.env` でイメージ、管理者アカウント、スキャン深度、Cookie のセキュリティ設定、コンテナ内パスを変更できます。シェルの環境変数が `.env` より優先されます。変更後は `docker compose up -d` を実行してください。パス変数はホストのマウント先を変更しません。詳しくは [Compose 設定](../operations/docker.md#configure-with-env) を参照してください。
 
 `docker compose restart` は現在のコンテナイメージを再利用し、環境変数の変更は適用しません。`docker compose up -d` は Compose の既定ポリシーに従い、未取得のイメージを取得し、`latest` タグは毎回取得します。アップグレード時は `--pull always` を使い、再現可能なデプロイでは `.env` の `KIKOTO_IMAGE` をレビュー済みのタグまたは digest に固定してください。アップグレード前に `config/` と `data/` をバックアップします。既存データベースは起動時に Migration され、Fresh-install baseline から再構築されません。
 
 ## ユーザー文書
 
-[ユーザーガイド](docs/user/index.md) にインストール、スキャン規則、ライブラリ、リモートソース、再生、ワークフロー、設定をまとめています。[運用文書](docs/operations/configuration.md) では Docker、設定、データベース、信頼性、トラブルシューティング、デプロイ時のセキュリティを説明します。
+[ユーザーガイド](../user/index.md) にインストール、スキャン規則、ライブラリ、リモートソース、再生、ワークフロー、設定をまとめています。[運用文書](../operations/configuration.md) では Docker、設定、データベース、信頼性、トラブルシューティング、デプロイ時のセキュリティを説明します。
 
 ## ランタイムデータ
 
@@ -51,12 +51,12 @@ docker compose up -d --pull always
 
 ## セキュリティとプライバシー
 
-Production は既定でログインを要求します。スーパー管理者は読み取り専用の匿名 Library 閲覧と再生を意図的に有効化できますが、個人状態、設定、変更操作には認証が必要です。脆弱性は [SECURITY.md](SECURITY.md) の非公開手順で報告し、ログを共有する前に [PRIVACY.md](PRIVACY.md) を確認してください。
+Production は既定でログインを要求します。スーパー管理者は読み取り専用の匿名 Library 閲覧と再生を意図的に有効化できますが、個人状態、設定、変更操作には認証が必要です。脆弱性は [SECURITY.md](../../SECURITY.md) の非公開手順で報告し、ログを共有する前に [PRIVACY.md](../../PRIVACY.md) を確認してください。
 
 ## 開発とコントリビューション
 
-開発、テスト、Migration、リリース手順は[文書インデックス](docs/README.md)にあります。貢献する前に [CONTRIBUTING.md](CONTRIBUTING.md) と [AGENTS.md](AGENTS.md) を読んでください。
+開発、テスト、Migration、リリース手順は[文書インデックス](../README.md)にあります。貢献する前に [CONTRIBUTING.md](../../CONTRIBUTING.md) と [AGENTS.md](../../AGENTS.md) を読んでください。
 
 ## ライセンス
 
-Kikoto は [GNU Affero General Public License v3.0](LICENSE) の下で提供されます。
+Kikoto は [GNU Affero General Public License v3.0](../../LICENSE) の下で提供されます。

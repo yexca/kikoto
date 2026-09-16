@@ -27,7 +27,7 @@ KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bce
 
 브라우저에서 `http://127.0.0.1:7655`를 여세요. 운영 Compose는 웹 애플리케이션과 API를 호스트의 7655 포트 하나로 공개합니다. 7659는 컨테이너 내부 backend 포트이며 개발 Compose에서만 별도로 공개됩니다.
 
-기본 마운트는 `./config:/config`, `./cache:/cache`, `./data:/data`입니다. 공개 읽기 전용 인스턴스에는 `docker-compose.demo.yaml`을 사용하세요. 자세한 내용은 [Docker](../../operations/docker.md#demo-stack)를 참고하세요.
+기본 마운트는 `./config:/config`, `./cache:/cache`, `./data:/data`입니다. 공개 읽기 전용 인스턴스에는 `deploy/compose/demo.yml`을 사용하세요. 자세한 내용은 [Docker](../../operations/docker.md#demo-stack)를 참고하세요.
 
 ## Android 클라이언트
 

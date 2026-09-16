@@ -15,7 +15,8 @@ NODE ?= node
 DOCKER ?= docker
 DOCKER_IMAGE ?= kikoto:dev
 GO_IMAGE ?= golang:1.26.6@sha256:0d1d3a794be25f809dd2cb3160d8c73276c4056a9f8242a138e908ddeee7b6b6
-DOCKER_COMPOSE_DEV = $(DOCKER) compose -f docker-compose.dev.yml
+# Keep build contexts, .env lookup, mounts, and the project name rooted here.
+DOCKER_COMPOSE_DEV = $(DOCKER) compose --project-directory "$(CURDIR)" -f deploy/compose/dev.yml
 SMOKE_COMPOSE_PROJECT := kikoto-smoke
 SMOKE_CONFIG_DIR := ./.smoke/config
 SMOKE_CACHE_DIR := ./.smoke/cache
@@ -25,7 +26,7 @@ SMOKE_FRONTEND_PORT := 17655
 SMOKE_HEALTH_URL := http://127.0.0.1:$(SMOKE_BACKEND_PORT)/health
 SMOKE_BASE_URL := http://127.0.0.1:$(SMOKE_FRONTEND_PORT)
 SMOKE_TARGETS := smoke smoke-api smoke-up smoke-down smoke-status smoke-logs
-DOCKER_COMPOSE_SMOKE = $(DOCKER) compose -p $(SMOKE_COMPOSE_PROJECT) -f docker-compose.dev.yml
+DOCKER_COMPOSE_SMOKE = $(DOCKER) compose --project-directory "$(CURDIR)" -p $(SMOKE_COMPOSE_PROJECT) -f deploy/compose/dev.yml
 PLAYWRIGHT_INSTALL_ARGS ?= chromium
 
 # Smoke always runs against disposable mounts, non-development ports, and fixed runtime inputs.
@@ -120,6 +121,7 @@ frontend-lint: frontend-install
 	cd frontend && $(NPM) run lint
 
 frontend-docs: frontend-install
+	$(NODE) --test scripts/check-doc-links.test.mjs
 	cd frontend && $(NPM) run docs:check-links && $(NPM) run docs:check-locales
 
 frontend-i18n:

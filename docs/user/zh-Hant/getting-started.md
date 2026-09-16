@@ -35,7 +35,7 @@ KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bce
 - `./cache:/cache`
 - `./data:/data`
 
-如需公开只读实例，请使用 `docker-compose.demo.yaml`。它會拉取發布镜像並使用独立的 `./demo` 挂载目錄。將候选作品目錄放入 `./demo/data`；啟动流程只會验證並索引全年龄且永久免费的作品。参见 [Docker](../../operations/docker.md#demo-stack)。
+如需公开只读实例，请使用 `deploy/compose/demo.yml`。它會拉取發布镜像並使用独立的 `./demo` 挂载目錄。將候选作品目錄放入 `./demo/data`；啟动流程只會验證並索引全年龄且永久免费的作品。参见 [Docker](../../operations/docker.md#demo-stack)。
 
 ## Android 客户端
 

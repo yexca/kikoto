@@ -25,7 +25,11 @@ const resultsFor = (plan) => ({
 test("documentation-only PRs skip expensive jobs while unknown paths require full validation", () => {
   assert.ok(
     Object.values(
-      pr(["docs/development/testing.md", "README.zh-Hans.md"]),
+      pr([
+        "docs/development/testing.md",
+        "docs/readme/README.zh-Hans.md",
+        "docs/development/design.md",
+      ]),
     ).every((value) => value === false),
   );
   for (const paths of [
@@ -69,6 +73,14 @@ test("PR plans include cross-platform consumers and the union of renamed/deleted
     dev_smoke: false,
   });
   assert.equal(pr(["docker-compose.dev.yml"]).dev_smoke, true);
+  assert.deepEqual(pr(["deploy/compose/dev.yml"]), {
+    backend: false,
+    frontend: false,
+    e2e: false,
+    android: false,
+    production: false,
+    dev_smoke: true,
+  });
   assert.equal(pr(["frontend/tests/e2e/player.spec.ts"]).e2e, true);
   assert.equal(pr(["frontend/tests/future-unit.test.ts"]).frontend, true);
   const renamed = pr(["backend/internal/old.go", "docs/retired.md"]);

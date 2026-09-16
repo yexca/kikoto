@@ -42,7 +42,7 @@ KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bce
 - `./cache:/cache`
 - `./data:/data`
 
-公開読み取り専用インスタンスには `docker-compose.demo.yaml` を使用します。公開イメージを取得し、`./demo` 以下の分離されたマウントを使用します。候補作品のフォルダーを `./demo/data` 以下に置くと、専用の起動ワークフローが全年齢かつ恒久的に無料の作品だけを検証してインデックス化します。[Docker](../../operations/docker.md#demo-stack) を参照してください。
+公開読み取り専用インスタンスには `deploy/compose/demo.yml` を使用します。公開イメージを取得し、`./demo` 以下の分離されたマウントを使用します。候補作品のフォルダーを `./demo/data` 以下に置くと、専用の起動ワークフローが全年齢かつ恒久的に無料の作品だけを検証してインデックス化します。[Docker](../../operations/docker.md#demo-stack) を参照してください。
 
 ## Android クライアント
 

@@ -50,7 +50,7 @@ for (const locale of manifest.locales) {
 for (const locale of manifest.locales.filter(
   (value) => value !== manifest.sourceLocale,
 )) {
-  const readme = `README.${locale}.md`;
+  const readme = `docs/readme/README.${locale}.md`;
   if (!exists(readme)) failures.push(`missing translated README: ${readme}`);
 }
 
