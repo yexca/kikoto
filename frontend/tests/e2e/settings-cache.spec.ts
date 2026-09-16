@@ -380,7 +380,7 @@ test("personal settings stay separate from administrator maintenance", async ({ 
   await page.goto("/settings");
   await expect(page.getByRole("heading", { name: "Settings", exact: true, level: 1 })).toBeVisible();
   await expect(page.getByText("Manage your account and appearance preferences", { exact: true })).toBeHidden();
-  await expect(page.getByText("Account", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Account", exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Appearance", exact: true }).click();
   await expect(page.getByLabel("Theme preference")).toBeVisible();
   await expect(page.getByRole("button", { name: "Cache & Fetch", exact: true })).toHaveCount(0);

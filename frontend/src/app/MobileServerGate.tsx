@@ -14,6 +14,7 @@ import {
 
 type ConnectionState = "checking" | "ready" | "setup";
 type ServerProtocol = "http" | "https";
+const serverProtocols: ServerProtocol[] = ["http", "https"];
 
 function serverFormFromURL(value: string): { protocol: ServerProtocol; address: string; port: string } {
   try {
@@ -149,8 +150,11 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
                 onChange={(event) => setProtocol(event.target.value as ServerProtocol)}
                 disabled={isConnecting}
               >
-                <option value="http">http</option>
-                <option value="https">https</option>
+                {serverProtocols.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
               </select>
             </label>
             <label className="grid min-w-0 gap-1.5 text-sm font-medium">
