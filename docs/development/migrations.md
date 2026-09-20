@@ -82,7 +82,7 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain includes
-`034_user_preferences.sql`, with a generated `034_v0.5.5.sql` baseline.
+`034_user_preferences.sql`, with the `034_v0.6.0.sql` baseline.
 Migration 033 preserves structured `not_found` observations as pending metadata
 issues. Historical free-text workflow errors are not reinterpreted or copied
 into the shared list. Existing installations apply 033 through the numbered
@@ -142,10 +142,14 @@ adds account-owned playback-folder and recommendation preferences. Existing
 `app_setting` values remain the fallback for accounts without overrides and
 for anonymous browsing.
 
-Fresh installs use the already packaged `034_v0.5.5.sql` baseline, generated
-during development before the application version was advanced. Its suffix
-does not mean that the tagged v0.5.5 release included schema 034. The schema
-chain has not changed during release preparation, so v0.6.0 reuses this
-baseline without renaming it or creating a duplicate. Existing databases,
-including development databases already on schema 033 or 034, retain their
-ledger and apply only remaining numbered migrations.
+Fresh installs use `034_v0.6.0.sql`. The original `034_v0.5.5.sql` filename
+mistakenly used the development-time application version; tagged v0.5.5 did
+not include schema 034. This is a naming correction, not a new schema version:
+the SQL is unchanged apart from its release header, and the catalog retains
+the old filename and original checksum as a ledger-only compatibility entry.
+Existing databases keep their recorded baseline and checksum without rewriting
+history or replaying SQL. This explicit replacement path is an exception to
+the normal immutable-baseline rule, not a reason to rename snapshots on each
+release. The historical `033_v0.5.5.sql` development snapshot remains available
+for databases that used it. Databases on schema 032 or 033 continue through
+the remaining numbered migrations.

@@ -35,8 +35,8 @@ type migrationAsset struct {
 	baseline bool
 }
 
-// retiredBaselineLedgerAssets keeps existing development databases upgradeable
-// after their pre-release baseline SQL snapshots are removed. These entries
+// retiredBaselineLedgerAssets keeps existing databases upgradeable after a
+// pre-release snapshot is removed or a mislabeled baseline is replaced. These entries
 // validate a recorded ledger row only; fresh databases can use only a packaged
 // baseline file, which may have been produced by an earlier app release when
 // the numbered SQL chain has not changed.
@@ -51,6 +51,14 @@ var retiredBaselineLedgerAssets = []migrationAsset{
 		version:  32,
 		filename: "baseline/032_current.sql",
 		checksum: "6de662434d1520b2b78873d146252782ae32e59b6113f79007fa3dd4fee2b744",
+		baseline: true,
+	},
+	{
+		// Schema 034 shipped in v0.6.0 with a development-time v0.5.5 suffix.
+		// Retain its original checksum when correcting the fresh-install asset.
+		version:  34,
+		filename: "baseline/034_v0.5.5.sql",
+		checksum: "36d96d1c03566f8a0939254871647d2f323ecb5c668544741e9ab92b9915564d",
 		baseline: true,
 	},
 }

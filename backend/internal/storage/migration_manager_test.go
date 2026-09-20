@@ -28,7 +28,7 @@ func TestMigrationChecksumNormalizesLineEndings(t *testing.T) {
 
 func TestMigrateFreshDatabaseReusesBaselineAcrossAppReleases(t *testing.T) {
 	db := openMigrationManagerDB(t)
-	if err := MigrateFS(db, migrations.Files, "v0.5.6"); err != nil {
+	if err := MigrateFS(db, migrations.Files, "v0.6.1"); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
 
@@ -55,7 +55,7 @@ func TestMigrateFreshDatabaseReusesBaselineAcrossAppReleases(t *testing.T) {
 	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = ?", latestNumberedMigrationVersion).Scan(&filename); err != nil {
 		t.Fatal(err)
 	}
-	if filename != "baseline/034_v0.5.5.sql" {
+	if filename != "baseline/034_v0.6.0.sql" {
 		t.Fatalf("baseline history filename = %q", filename)
 	}
 }
@@ -91,6 +91,57 @@ func TestMigrateUpgradesExistingDatabaseThroughNumberedChain(t *testing.T) {
 	}
 	if filename != "034_user_preferences.sql" {
 		t.Fatalf("applied migration = %q, want 034_user_preferences.sql", filename)
+	}
+}
+
+func TestMigratePreservesMislabeledV060Baseline(t *testing.T) {
+	previousCatalog := copyNumberedMigrations(t, filepath.Join("..", "..", "migrations"))
+	contents, err := migrations.Files.ReadFile("baseline/034_v0.6.0.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Reconstruct the original released asset, including its incorrect header.
+	contents = bytes.Replace(contents, []byte("Kikoto v0.6.0"), []byte("Kikoto v0.5.5"), 1)
+	const originalChecksum = "36d96d1c03566f8a0939254871647d2f323ecb5c668544741e9ab92b9915564d"
+	if migrationChecksum(contents) != originalChecksum {
+		t.Fatal("historical baseline fixture no longer matches the released asset")
+	}
+	if err := os.Mkdir(filepath.Join(previousCatalog, "baseline"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeMigration(t, previousCatalog, "baseline/034_v0.5.5.sql", string(contents))
+	db := openMigrationManagerDB(t)
+	if err := MigrateFS(db, os.DirFS(previousCatalog), "v0.6.0"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('baseline_test', '"retained"')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := MigrateFS(db, migrations.Files, "v0.6.1"); err != nil {
+		t.Fatalf("restart with corrected baseline catalog: %v", err)
+	}
+	var filename, checksum, baselineChecksum, value string
+	var count int
+	if err := db.QueryRow(`SELECT filename, checksum FROM schema_migration`).Scan(&filename, &checksum); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migration`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT baseline_checksum FROM schema_state WHERE id = 1`).Scan(&baselineChecksum); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT value_json FROM app_setting WHERE key = 'baseline_test'`).Scan(&value); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 || filename != "baseline/034_v0.5.5.sql" || checksum != originalChecksum || baselineChecksum != originalChecksum || value != `"retained"` {
+		t.Fatalf("baseline correction changed history or user data: count=%d filename=%q checksum=%q baseline=%q value=%q", count, filename, checksum, baselineChecksum, value)
+	}
+	if _, err := db.Exec(`UPDATE schema_migration SET checksum = 'tampered'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := MigrateFS(db, migrations.Files, "v0.6.1"); err == nil || !strings.Contains(err.Error(), "checksum") {
+		t.Fatalf("tampered historical baseline must still fail checksum validation, got %v", err)
 	}
 }
 

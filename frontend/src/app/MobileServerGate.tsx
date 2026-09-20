@@ -108,7 +108,7 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
 
   return (
     <main className="grid min-h-screen place-items-center bg-background px-4 py-8">
-      <section className="w-full max-w-sm rounded-lg border bg-card p-6 shadow-sm">
+      <section className="min-w-0 w-full max-w-sm rounded-lg border bg-card p-6 shadow-sm">
         <div className="mb-5">
           <div className="mb-3 grid h-10 w-10 place-items-center rounded-lg bg-secondary text-secondary-foreground">
             {error ? <WifiOff className="h-5 w-5" /> : <Server className="h-5 w-5" />}
@@ -118,11 +118,24 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
         </div>
 
         <form className="space-y-3" onSubmit={submit}>
-          <div className="grid grid-cols-[auto_minmax(0,1fr)_5.5rem] gap-2">
-            <label className="grid gap-1.5 text-sm font-medium">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="col-span-2 grid min-w-0 gap-1.5 text-sm font-medium">
+              {t("serverGate.serverAddress")}
+              <input
+                className="h-11 min-w-0 w-full rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                value={address}
+                onChange={(event) => setAddress(event.target.value)}
+                placeholder="192.0.2.1"
+                inputMode="url"
+                autoCapitalize="none"
+                autoCorrect="off"
+                disabled={isConnecting}
+              />
+            </label>
+            <label className="grid min-w-0 gap-1.5 text-sm font-medium">
               {t("serverGate.protocol")}
               <select
-                className="h-10 rounded-md border bg-card px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                className="h-11 min-w-0 w-full rounded-md border bg-card px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
                 value={protocol}
                 onChange={(event) => setProtocol(event.target.value as ServerProtocol)}
                 disabled={isConnecting}
@@ -135,22 +148,9 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
               </select>
             </label>
             <label className="grid min-w-0 gap-1.5 text-sm font-medium">
-              {t("serverGate.serverAddress")}
-              <input
-                className="h-10 min-w-0 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                value={address}
-                onChange={(event) => setAddress(event.target.value)}
-                placeholder="192.0.2.1"
-                inputMode="url"
-                autoCapitalize="none"
-                autoCorrect="off"
-                disabled={isConnecting}
-              />
-            </label>
-            <label className="grid gap-1.5 text-sm font-medium">
               {t("serverGate.port")}
               <input
-                className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                className="h-11 min-w-0 w-full rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                 value={port}
                 onChange={(event) => setPort(event.target.value)}
                 placeholder="7655"
@@ -175,7 +175,7 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
               {t("serverGate.serverVersion", { version })}
             </div>
           )}
-          <Button className="w-full" type="submit">
+          <Button className="min-h-11 w-full" type="submit">
             {isConnecting ? t("serverGate.cancel") : t("serverGate.connect")}
           </Button>
         </form>
