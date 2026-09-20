@@ -752,19 +752,19 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await mockWorkflows(page);
   await page.goto("/workflows");
 
-  await expect(page.getByRole("tab", { name: /Built-in/ })).toHaveAttribute("aria-selected", "true");
-  await page.getByRole("tab", { name: /Custom/ }).click();
-  await expect(page.getByRole("tab", { name: /Custom/ })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tablist", { name: "Workflows", exact: true }).getByRole("tab")).toHaveCount(6);
+  await filterWorkflows(page, "Custom");
+  await expect(page.getByRole("tab", { name: "Custom draft", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("button", { name: "New workflow", exact: true })).toBeVisible();
-  await page.getByRole("tab", { name: /Built-in/ }).click();
-  const dlsiteDefinition = page.getByRole("button", { name: /Collect DLsite popular voice works/ });
+  await filterWorkflows(page, "Built-in");
+  const dlsiteDefinition = page.getByRole("tab", { name: /Collect DLsite popular voice works/ });
   await expect(dlsiteDefinition.getByText("Built-in", { exact: true })).toHaveCount(0);
-  await expect(dlsiteDefinition.getByText("manual", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "System", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Cache media/ })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: /Collect DLsite popular voice works/ }).click();
+  await expect(page.getByRole("button", { name: "System", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: /Cache media/ })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Scan local library", exact: true })).toBeVisible();
+
+  await page.getByRole("tab", { name: /Collect DLsite popular voice works/ }).click();
   await expect(page.getByRole("heading", { name: "Collect DLsite popular voice works", exact: true })).toBeVisible();
   await expect(page.getByText("Ranking period", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Configure", exact: true }).click();
@@ -827,8 +827,8 @@ test("workflow deep links do not override a later definition tab selection", asy
   await page.goto("/workflows?workflow=availability_watch");
 
   await expect(page.getByRole("heading", { name: "Availability Watch", exact: true })).toBeVisible();
-  await page.getByRole("tab", { name: /Custom/ }).click();
-  await expect(page.getByRole("tab", { name: /Custom/ })).toHaveAttribute("aria-selected", "true");
+  await filterWorkflows(page, "Custom");
+  await expect(page.getByRole("tab", { name: "Custom draft", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("heading", { name: "Custom draft", exact: true })).toBeVisible();
 });
 
@@ -842,7 +842,7 @@ test("local scan folder watcher exposes incremental and full scan modes", async 
   });
   await page.goto("/workflows");
 
-  await page.getByRole("button", { name: /Scan local library/ }).click();
+  await page.getByRole("tab", { name: /Scan local library/ }).click();
   await expect(page.getByRole("switch", { name: "Pause Watch data folders", exact: true })).toHaveAttribute(
     "aria-checked",
     "true",
@@ -898,7 +898,7 @@ test("local scan follow-up is explicit and defaults off for manual and automatic
   });
 
   await page.goto("/workflows");
-  await page.getByRole("button", { name: /Scan local library/ }).click();
+  await page.getByRole("tab", { name: /Scan local library/ }).click();
   await page.getByRole("button", { name: "Configure", exact: true }).click();
   const runDialog = page.getByRole("dialog", { name: "Configure local library scan" });
   const manualFollowUp = runDialog.getByRole("switch", { name: "Follow-up run" });
@@ -922,8 +922,8 @@ test("legacy custom definitions remain read-only while showing their linear conn
   await mockWorkflows(page);
   await page.goto("/workflows");
 
-  await page.getByRole("tab", { name: /Custom/ }).click();
-  await page.getByRole("button", { name: /Custom draft/ }).click();
+  await filterWorkflows(page, "Custom");
+  await page.getByRole("tab", { name: /Custom draft/ }).click();
   await expect(page.getByRole("heading", { name: "Custom draft", exact: true })).toBeVisible();
   await expect(
     page.getByText(
@@ -950,7 +950,7 @@ test("availability watch shares pools, schedules checks, and handles ready works
   await mockWorkflows(page, undefined, undefined, undefined, (payload) => updates.push(payload));
   await page.goto("/workflows");
 
-  await page.getByRole("button", { name: /Availability Watch/ }).click();
+  await page.getByRole("tab", { name: /Availability Watch/ }).click();
   await expect(page.getByRole("heading", { name: "Availability Watch", exact: true })).toBeVisible();
   const pools = page.getByLabel("Availability pools");
   await expect(pools).toContainText("Monitoring");
@@ -1336,7 +1336,7 @@ test("remote popular collection requires an explicit source and queues configure
   const payloads: unknown[] = [];
   await mockWorkflows(page, (payload) => payloads.push(payload));
   await page.goto("/workflows");
-  await page.getByRole("button", { name: /Collect popular remote works/ }).click();
+  await page.getByRole("tab", { name: /Collect popular remote works/ }).click();
   await page.getByRole("button", { name: "Configure", exact: true }).click();
 
   const configureDialog = page.getByRole("dialog", { name: "Configure remote popular collection" });
@@ -1605,7 +1605,7 @@ test("demo settings keeps account and workflows read-only while allowing appeara
       exact: true,
     }),
   ).toBeVisible();
-  await page.getByRole("tab", { name: /Custom/ }).click();
+  await filterWorkflows(page, "Custom");
   await expect(page.getByRole("button", { name: "New workflow", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "New workflow", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "New workflow" })).toBeVisible();
@@ -1613,4 +1613,36 @@ test("demo settings keeps account and workflows read-only while allowing appeara
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.getByRole("button", { name: "Run at startup", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Add schedule", exact: true })).toHaveCount(0);
+});
+
+async function filterWorkflows(page: Page, name: "All" | "Built-in" | "Custom") {
+  await page.getByRole("button", { name: "Filter workflows", exact: true }).click();
+  await page.getByRole("radio", { name, exact: true }).click();
+}
+
+test("workflow filters retain selection, stay reachable on mobile, and support keyboard navigation", async ({
+  page,
+}) => {
+  await mockWorkflows(page);
+  await page.goto("/workflows");
+  const tabs = page.getByRole("tablist", { name: "Workflows", exact: true });
+  await expect(tabs.getByRole("tab")).toHaveCount(6);
+  await tabs.getByRole("tab", { name: "Scan local library", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toBeVisible();
+  await filterWorkflows(page, "Built-in");
+  await expect(tabs.getByRole("tab")).toHaveCount(5);
+  await expect(tabs.getByRole("tab", { name: "Sync work metadata", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await filterWorkflows(page, "Custom");
+  await expect(tabs.getByRole("tab")).toHaveCount(1);
+  await page.reload();
+  await expect(tabs.getByRole("tab", { name: "Custom draft", exact: true })).toHaveAttribute("aria-selected", "true");
+  await filterWorkflows(page, "All");
+  await expect(tabs.getByRole("tab", { name: "Custom draft", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("button", { name: "Filter workflows", exact: true })).toBeInViewport();
+  await expect(page.getByRole("button", { name: "New workflow", exact: true })).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

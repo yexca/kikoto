@@ -48,11 +48,16 @@ import { toastFromError, useToast } from "@/components/ui/toast";
 import { useAuth } from "@/auth/AuthProvider";
 import { openWorkDetail } from "@/app/workDetailNavigation";
 import { WorkflowCanvas } from "@/features/workflows/WorkflowCanvas";
+import {
+  WorkflowNavigation,
+  builtInWorkflowOrder,
+  matchesWorkflowFilter,
+  type WorkflowFilter,
+} from "@/features/workflows/WorkflowNavigation";
 import { WorkflowComposer } from "@/features/workflows/WorkflowComposer";
 import {
   parseWorkflowDefinition,
   upgradeLegacyWorkflowDefinition,
-  workflowDefinitionNodeCount,
   type WorkflowInputDefinition,
 } from "@/features/workflows/definitionModel";
 import { WorkflowRunDialog } from "@/features/workflows/WorkflowRunDialog";
@@ -184,7 +189,12 @@ const activityViews: ActivityView[] = ["running", "review", "failed", "completed
 const emptyRunViewTotals = { running: 0, review: 0, failed: 0, completed: 0 };
 const workflowDefinitionStorageBaseKey = "kikoto.workflows.definition:v2";
 const workflowDefinitionTabStorageBaseKey = "kikoto.workflows.definition-tab:v1";
-type WorkflowDefinitionTab = "built-in" | "custom";
+type WorkflowDefinitionTab = WorkflowFilter;
+
+function storedWorkflowFilter(key: string): WorkflowFilter {
+  const value = window.localStorage.getItem(key);
+  return value === "built-in" || value === "custom" ? value : "all";
+}
 
 const workflowTemplates: WorkflowTemplate[] = [
   { id: "blank", label: "Blank", nodes: [{ id: "select", type: "select_works", displayName: "Select works" }] },
@@ -279,20 +289,6 @@ const manuallyRunnableSystemWorkflows: Record<string, SystemRunKind[]> = {
 
 const configurableSystemWorkflowCodes = new Set(Object.keys(manuallyRunnableSystemWorkflows));
 
-const sortDefinitionsForSidebar = (definitions: WorkflowDefinition[], systemMode: boolean) => {
-  if (!systemMode) {
-    return definitions;
-  }
-  return [...definitions].sort((left, right) => {
-    const leftManual = manuallyRunnableSystemWorkflows[left.code]?.length ? 0 : 1;
-    const rightManual = manuallyRunnableSystemWorkflows[right.code]?.length ? 0 : 1;
-    if (leftManual !== rightManual) {
-      return leftManual - rightManual;
-    }
-    return left.displayName.localeCompare(right.displayName);
-  });
-};
-
 export function WorkflowsPage({
   surface,
   canRun,
@@ -317,7 +313,7 @@ export function WorkflowsPage({
     auth.user?.id ?? null,
   );
   const [definitionTab, setDefinitionTab] = useState<WorkflowDefinitionTab>(() =>
-    window.localStorage.getItem(workflowDefinitionTabStorageKey) === "custom" ? "custom" : "built-in",
+    storedWorkflowFilter(workflowDefinitionTabStorageKey),
   );
   const definitionSelectionKey = `${workflowDefinitionStorageKey}:${definitionTab}`;
   const [activityView, setActivityView] = useState<ActivityView>(() => activityViewFromLocation());
@@ -336,9 +332,7 @@ export function WorkflowsPage({
   const [runPage, setRunPage] = useState(1);
   const [runQuery, setRunQuery] = useState("");
   const [selectedDefinitionId, setSelectedDefinitionID] = useState<number | null>(() =>
-    storedPositiveInt(
-      `${workflowDefinitionStorageKey}:${window.localStorage.getItem(workflowDefinitionTabStorageKey) === "custom" ? "custom" : "built-in"}`,
-    ),
+    storedPositiveInt(`${workflowDefinitionStorageKey}:${storedWorkflowFilter(workflowDefinitionTabStorageKey)}`),
   );
   const [selectedRunId, setSelectedRunID] = useState<number | null>(() => activityRunIDFromLocation());
   const [modalMode, setModalMode] = useState<ModalMode>(null);
@@ -440,15 +434,17 @@ export function WorkflowsPage({
   }, [surface]);
 
   const visibleDefinitions = useMemo(() => {
-    return definitions.filter(
-      (definition) => definition.scope === "user" || configurableSystemWorkflowCodes.has(definition.code),
-    );
+    return definitions
+      .filter((definition) => definition.scope === "user" || configurableSystemWorkflowCodes.has(definition.code))
+      .sort((left, right) => {
+        if (left.scope !== right.scope) return left.scope === "system" ? -1 : 1;
+        return left.scope === "system"
+          ? builtInWorkflowOrder.indexOf(left.code) - builtInWorkflowOrder.indexOf(right.code)
+          : left.id - right.id;
+      });
   }, [definitions]);
   const tabDefinitions = useMemo(
-    () =>
-      visibleDefinitions.filter((definition) =>
-        definitionTab === "built-in" ? definition.scope === "system" : definition.scope === "user",
-      ),
+    () => visibleDefinitions.filter((definition) => matchesWorkflowFilter(definition, definitionTab)),
     [definitionTab, visibleDefinitions],
   );
   const visibleRuns = surface === "activity" && runsView !== activityView ? [] : runs;
@@ -524,15 +520,26 @@ export function WorkflowsPage({
     const linkedDefinition = linkedCode
       ? visibleDefinitions.find((definition) => definition.code === linkedCode)
       : undefined;
-    const nextID = linkedDefinition?.id ?? selectedDefinition?.id ?? null;
+    const nextID =
+      (linkedDefinition && matchesWorkflowFilter(linkedDefinition, definitionTab) ? linkedDefinition.id : null) ??
+      selectedDefinition?.id ??
+      null;
     if (selectedDefinitionId !== nextID) {
       setSelectedDefinitionID(nextID);
     }
     storePositiveInt(definitionSelectionKey, nextID);
-  }, [definitionSelectionKey, isWorkflowMetaLoading, selectedDefinition?.id, selectedDefinitionId, visibleDefinitions]);
+  }, [
+    definitionTab,
+    definitionSelectionKey,
+    isWorkflowMetaLoading,
+    selectedDefinition?.id,
+    selectedDefinitionId,
+    visibleDefinitions,
+  ]);
 
-  const selectDefinition = (definition: WorkflowDefinition) => {
+  const selectDefinition = (definition: WorkflowDefinition, filter = definitionTab) => {
     setSelectedDefinitionID(definition.id);
+    storePositiveInt(`${workflowDefinitionStorageKey}:${filter}`, definition.id);
     storePositiveInt(
       `${workflowDefinitionStorageKey}:${definition.scope === "system" ? "built-in" : "custom"}`,
       definition.id,
@@ -549,7 +556,21 @@ export function WorkflowsPage({
   const selectDefinitionTab = (tab: WorkflowDefinitionTab) => {
     setDefinitionTab(tab);
     window.localStorage.setItem(workflowDefinitionTabStorageKey, tab);
-    setSelectedDefinitionID(storedPositiveInt(`${workflowDefinitionStorageKey}:${tab}`));
+    const rememberedID = storedPositiveInt(`${workflowDefinitionStorageKey}:${tab}`);
+    const next =
+      selectedDefinition && matchesWorkflowFilter(selectedDefinition, tab)
+        ? selectedDefinition
+        : (visibleDefinitions.find(
+            (definition) => definition.id === rememberedID && matchesWorkflowFilter(definition, tab),
+          ) ?? visibleDefinitions.find((definition) => matchesWorkflowFilter(definition, tab)));
+    if (next) selectDefinition(next, tab);
+    else {
+      setSelectedDefinitionID(null);
+      const search = new URLSearchParams(window.location.search);
+      search.delete("workflow");
+      search.delete("dialog");
+      window.history.replaceState(window.history.state, "", `/workflows${search.size ? `?${search}` : ""}`);
+    }
   };
 
   useEffect(() => {
@@ -741,25 +762,22 @@ export function WorkflowsPage({
       )}
 
       {surface === "workflows" ? (
-        <Workbench
-          left={
-            <DefinitionSidebar
-              definitions={visibleDefinitions}
-              triggers={triggers}
-              selectedId={selectedDefinition?.id ?? null}
-              canCreate
-              activeTab={definitionTab}
-              loading={isWorkflowMetaLoading && !hasWorkflowMetaSnapshot}
-              error={!hasWorkflowMetaSnapshot ? workflowMetaError : ""}
-              emptyText={definitionEmptyText}
-              onSelect={selectDefinition}
-              onTabChange={selectDefinitionTab}
-              onRetry={refresh}
-              onCreate={() => setModalMode("create-workflow")}
-            />
-          }
-          right={
-            !hasWorkflowMetaSnapshot && isWorkflowMetaLoading ? (
+        <div className="min-w-0 space-y-4">
+          <WorkflowNavigation
+            definitions={visibleDefinitions}
+            selectedId={selectedDefinition?.id ?? null}
+            filter={definitionTab}
+            onSelect={selectDefinition}
+            onFilterChange={selectDefinitionTab}
+            onCreate={() => setModalMode("create-workflow")}
+          />
+          <div
+            id="workflow-definition-panel"
+            role="tabpanel"
+            aria-labelledby={selectedDefinition ? `workflow-tab-${selectedDefinition.id}` : undefined}
+            tabIndex={0}
+          >
+            {!hasWorkflowMetaSnapshot && isWorkflowMetaLoading ? (
               <WorkflowMetadataLoadingState />
             ) : !hasWorkflowMetaSnapshot && workflowMetaError ? (
               <WorkflowMetadataErrorState message={workflowMetaError} onRetry={refresh} />
@@ -804,16 +822,16 @@ export function WorkflowsPage({
                 onCreateTrigger={createAutomationTrigger}
                 onEditTrigger={editAutomationTrigger}
                 onToggleTrigger={toggleAutomationTrigger}
-                emptyText={definitionEmptyText}
+                emptyText={definitionTab === "custom" ? workflowCopy("noCustomDefinitions") : definitionEmptyText}
                 onEditDefinition={() => setModalMode("edit-workflow")}
                 onEditNode={(index) => {
                   setEditingNodeIndex(index);
                   setModalMode("edit-node");
                 }}
               />
-            )
-          }
-        />
+            )}
+          </div>
+        </div>
       ) : (
         <>
           <SegmentedNav compact>
@@ -930,7 +948,12 @@ export function WorkflowsPage({
           readOnly={readOnly}
           onClose={() => setModalMode(null)}
           onSaved={(definition) => {
-            selectDefinition(definition);
+            setDefinitions((current) => [...current.filter((item) => item.id !== definition.id), definition]);
+            if (definitionTab === "built-in") {
+              setDefinitionTab("custom");
+              window.localStorage.setItem(workflowDefinitionTabStorageKey, "custom");
+            }
+            selectDefinition(definition, definitionTab === "built-in" ? "custom" : definitionTab);
             setModalMode(null);
             refresh();
           }}
@@ -1572,151 +1595,6 @@ function WorkflowMetadataErrorState({ message, onRetry }: { message: string; onR
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-function DefinitionSidebar({
-  definitions,
-  triggers,
-  selectedId,
-  canCreate,
-  activeTab,
-  loading,
-  error,
-  emptyText,
-  onSelect,
-  onTabChange,
-  onRetry,
-  onCreate,
-}: {
-  definitions: WorkflowDefinition[];
-  triggers: WorkflowTrigger[];
-  selectedId: number | null;
-  canCreate: boolean;
-  activeTab: WorkflowDefinitionTab;
-  loading?: boolean;
-  error?: string;
-  emptyText: string;
-  onSelect: (definition: WorkflowDefinition) => void;
-  onTabChange: (tab: WorkflowDefinitionTab) => void;
-  onRetry: () => void;
-  onCreate: () => void;
-}) {
-  const builtInDefinitions = sortDefinitionsForSidebar(
-    definitions.filter((definition) => definition.scope === "system"),
-    true,
-  );
-  const customDefinitions = definitions
-    .filter((definition) => definition.scope === "user")
-    .sort((left, right) => left.displayName.localeCompare(right.displayName));
-
-  return (
-    <Card>
-      <CardContent className="space-y-3 p-3">
-        <div
-          className="grid grid-cols-2 rounded-md border bg-muted/30 p-1"
-          role="tablist"
-          aria-label={workflowCopy("workflowDefinitionType")}
-        >
-          {(["built-in", "custom"] as const).map((tab) => {
-            const count = tab === "built-in" ? builtInDefinitions.length : customDefinitions.length;
-            return (
-              <button
-                key={tab}
-                role="tab"
-                aria-selected={activeTab === tab}
-                className={`rounded px-2 py-1.5 text-xs font-medium ${activeTab === tab ? "bg-background shadow-sm" : "text-muted-foreground"}`}
-                onClick={() => onTabChange(tab)}
-              >
-                {tab === "built-in" ? workflowCopy("builtIn") : workflowCopy("custom")}{" "}
-                <span className="ml-1 text-muted-foreground">{count}</span>
-              </button>
-            );
-          })}
-        </div>
-        <div className="space-y-2">
-          {loading ? (
-            <SidebarSkeletonRows count={1} />
-          ) : error ? (
-            <div
-              className="grid min-h-32 place-items-center rounded-md border border-destructive/30 bg-destructive/5 p-4 text-center"
-              role="alert"
-            >
-              <div>
-                <p className="text-sm text-destructive">{error}</p>
-                <Button className="mt-3" size="sm" variant="outline" onClick={onRetry}>
-                  Retry
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <>
-              {(activeTab === "built-in" ? builtInDefinitions : customDefinitions).map((definition) => (
-                <DefinitionListItem
-                  key={definition.id}
-                  definition={definition}
-                  triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === definition.id)}
-                  selected={selectedId === definition.id}
-                  onSelect={onSelect}
-                />
-              ))}
-            </>
-          )}
-          {!loading && !error && (activeTab === "built-in" ? builtInDefinitions : customDefinitions).length === 0 && (
-            <EmptyPanel text={activeTab === "custom" ? workflowCopy("noCustomDefinitions") : emptyText} />
-          )}
-          {!loading && !error && canCreate && activeTab === "custom" && (
-            <Button variant="outline" className="w-full" onClick={onCreate}>
-              <Plus className="h-4 w-4" />
-              {workflowCopy("newWorkflow")}
-            </Button>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function DefinitionListItem({
-  definition,
-  triggers,
-  selected,
-  onSelect,
-}: {
-  definition: WorkflowDefinition;
-  triggers: WorkflowTrigger[];
-  selected: boolean;
-  onSelect: (definition: WorkflowDefinition) => void;
-}) {
-  const automationModes = workflowDefinitionAutomationModes(triggers);
-  const displayDefinition = localizedWorkflowDefinition(definition);
-  return (
-    <button
-      className={`w-full rounded-md border p-3 text-left transition-colors ${selected ? "border-primary bg-secondary" : "bg-card hover:bg-muted"}`}
-      onClick={() => onSelect(definition)}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="line-clamp-2 text-sm font-semibold">{displayDefinition.displayName}</div>
-          <div className="truncate text-xs text-muted-foreground">{definition.code}</div>
-        </div>
-      </div>
-      <div className="mt-3 flex flex-wrap items-end justify-between gap-2">
-        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-          <span>{workflowDefinitionNodeCount(definition.definitionJson)} nodes</span>
-          <span>
-            {definition.triggerCount} trigger{definition.triggerCount === 1 ? "" : "s"}
-          </span>
-        </div>
-        <div className="ml-auto flex flex-wrap justify-end gap-1">
-          {automationModes.map((mode) => (
-            <Badge key={mode} variant={mode === "manual" ? "outline" : "secondary"} className="capitalize">
-              {mode}
-            </Badge>
-          ))}
-        </div>
-      </div>
-    </button>
   );
 }
 
@@ -3809,17 +3687,6 @@ function supportedAutomationTriggerTypes(definition: WorkflowDefinition): Automa
     return automationTriggerTypes;
   if (definition.scope !== "user" || !definition.editable) return [];
   return parseWorkflowDefinition(definition.definitionJson).kind === "v2" ? automationTriggerTypes : [];
-}
-
-function workflowDefinitionAutomationModes(
-  triggers: WorkflowTrigger[],
-): Array<"manual" | "startup" | "watching" | "schedule"> {
-  const enabledTriggers = triggers.filter((trigger) => trigger.enabled);
-  const modes: Array<"startup" | "watching" | "schedule"> = [];
-  if (enabledTriggers.some((trigger) => trigger.triggerType === "startup")) modes.push("startup");
-  if (enabledTriggers.some((trigger) => trigger.triggerType === "filesystem_event")) modes.push("watching");
-  if (enabledTriggers.some((trigger) => trigger.triggerType === "schedule")) modes.push("schedule");
-  return modes.length > 0 ? modes : ["manual"];
 }
 
 function workflowTriggerCondition(trigger: WorkflowTrigger) {

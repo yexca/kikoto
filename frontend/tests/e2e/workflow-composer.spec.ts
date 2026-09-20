@@ -176,7 +176,7 @@ test.describe("@desktop workflow composition", () => {
     await page.goto("/workflows");
 
     await expect(page.getByRole("heading", { name: "Circle fetch demo" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Foreign circle fetch/ })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /Foreign circle fetch/ })).toBeVisible();
     const previewCanvas = page.getByLabel("Workflow DAG canvas");
     await expect(previewCanvas).toBeVisible();
     await expect.poll(() => previewCanvas.locator(".workflow-data-edge").count()).toBeGreaterThan(0);
@@ -268,7 +268,7 @@ test("mobile composer keeps node creation, canvas, inspector, and actions in bou
   await page.setViewportSize({ width: 412, height: 915 });
   await mockComposer(page, []);
   await page.goto("/workflows");
-  await page.getByRole("button", { name: /Circle fetch demo/ }).click();
+  await page.getByRole("tab", { name: /Circle fetch demo/ }).click();
   await page.getByRole("button", { name: "Edit workflow" }).click();
 
   const composer = page.getByRole("dialog", { name: "Edit workflow" });
@@ -571,3 +571,33 @@ function nodeType(
 function edge(source: string, sourceHandle: string, target: string, targetHandle: string) {
   return { id: `${source}:${sourceHandle}->${target}:${targetHandle}`, source, sourceHandle, target, targetHandle };
 }
+
+test("@desktop creating from the built-in filter selects the new custom workflow", async ({ page }, testInfo) => {
+  await mockComposer(page, []);
+  let created: typeof definition | null = null;
+  await page.route("**/api/workflow-definitions", async (route) => {
+    if (route.request().method() === "POST") {
+      created = { ...definition, ...route.request().postDataJSON(), id: 44, displayName: "Example workflow" };
+      await route.fulfill({ json: created });
+      return;
+    }
+    await route.fulfill({ json: created ? [definition, foreignDefinition, created] : [definition, foreignDefinition] });
+  });
+  await page.goto("/workflows");
+  await page.getByRole("button", { name: "Filter workflows", exact: true }).click();
+  await page.getByRole("radio", { name: "Built-in", exact: true }).click();
+  await expect(page.getByRole("tablist", { name: "Workflows", exact: true }).getByRole("tab")).toHaveCount(0);
+  await page.getByRole("button", { name: "New workflow", exact: true }).click();
+  const composer = page.getByRole("dialog", { name: "New workflow", exact: true });
+  await composer.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(composer).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Example workflow", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByRole("heading", { name: "Example workflow", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Filter workflows", exact: true }).click();
+  await expect(page.getByRole("radio", { name: "Custom", exact: true })).toBeChecked();
+  await page.keyboard.press("Escape");
+  await page.screenshot({ path: testInfo.outputPath("workflow-tabs-desktop.png") });
+});
