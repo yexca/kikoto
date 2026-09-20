@@ -1,6 +1,24 @@
 import { surfaceEnglish } from "./en";
 
 export const surfaceKorean = {
+  metadataOnboarding: {
+    label: "메타데이터 설정",
+    title: "작품 정보 채우기",
+    description:
+      "메타데이터를 동기화하지 않은 로컬 작품이 {{count}}개 있습니다. 제목, 표지, 서클, 성우 정보를 가져오는 동안 계속 탐색하고 재생할 수 있습니다.",
+    start: "메타데이터 동기화",
+    later: "나중에",
+    running: "메타데이터 동기화 중",
+    background: "백그라운드에서 동기화 중입니다. 계속 탐색하고 재생할 수 있습니다.",
+    succeeded: "메타데이터 동기화 완료",
+    complete: "작품 정보가 업데이트되었습니다. 라이브러리를 새로고침하면 최신 정보가 표시됩니다.",
+    attention: "메타데이터 동기화 확인 필요",
+    partial:
+      "일부 정보를 동기화하지 못했습니다. 라이브러리를 새로고침하면 동기화된 정보가 표시됩니다. Activity에서 자세한 내용을 확인하세요. 기존 작품 정보는 유지됩니다.",
+    activity: "Activity 보기",
+    dismiss: "닫기",
+    error: "작업을 저장하지 못했습니다. 다시 시도해 주세요.",
+  },
   workMaintenance: {
     rows: "페이지당 행",
     title: "작품 유지 관리",

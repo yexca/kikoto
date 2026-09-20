@@ -31,6 +31,22 @@ workflow_definition
 - Circle metadata refresh.
 - Voice catalog refresh.
 
+## First Library Metadata Prompt
+
+After a local scan finishes, Library offers metadata synchronization when active
+local work folders lack DLsite snapshots and no bulk metadata run has occurred.
+Empty libraries and scans still in progress do not show the prompt. Only users
+with metadata-sync permission see it; Demo mode does not offer this action.
+
+The prompt starts the existing background metadata workflow. Repeated clicks
+reuse its recorded run, and an already active bulk sync shows its current state.
+Library retains browsing and playback while the prompt shows queued/running or
+terminal status. Activity is linked for users with workflow permission. The
+initiating user receives a notification when the run succeeds or needs attention.
+Choosing Later dismisses the prompt for the instance; existing manual metadata
+sync entry points remain available. The dismissal and selected run are stored
+in `app_setting`, so they survive browser changes and server restarts.
+
 ## Metadata Recovery
 
 Metadata synchronization remains a workflow. Maintenance's Work maintenance tab owns

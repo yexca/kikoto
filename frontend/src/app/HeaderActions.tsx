@@ -595,6 +595,10 @@ export function HeaderActions({
                           className="flex min-w-0 flex-1 items-start gap-3 p-2 text-left text-sm"
                           onClick={() => {
                             setReviewOpen(false);
+                            if (notification.type === "metadata_onboarding") {
+                              onOpenPath(canRunWorkflows ? `/activity?run=${notification.workflowRunId}` : "/");
+                              return;
+                            }
                             if (notification.type === "availability_watch_ready") {
                               onOpenPath(
                                 `/workflows?workflow=availability_watch&dialog=ready&run=${notification.workflowRunId}`,
@@ -628,6 +632,15 @@ export function HeaderActions({
                           )}
                           <span className="min-w-0 flex-1">
                             <span className="block truncate font-medium">{notificationTitle(notification, t)}</span>
+                            {notification.type === "metadata_onboarding" && (
+                              <span className="block text-xs text-muted-foreground">
+                                {t(
+                                  notification.status === "succeeded"
+                                    ? "metadataOnboarding.complete"
+                                    : "metadataOnboarding.partial",
+                                )}
+                              </span>
+                            )}
                             <span className="block truncate text-xs text-muted-foreground">
                               {t("notifications.workflowStatus", {
                                 id: notification.workflowRunId,
@@ -972,6 +985,9 @@ function workflowReviewCount(run: WorkflowRun) {
 }
 
 function notificationTitle(notification: WorkflowNotification, t: TFunction) {
+  if (notification.type === "metadata_onboarding") {
+    return t(notification.status === "succeeded" ? "metadataOnboarding.succeeded" : "metadataOnboarding.attention");
+  }
   if (notification.type === "availability_watch_ready") {
     return t("notifications.availabilityReady", { workCode: notification.workCode });
   }

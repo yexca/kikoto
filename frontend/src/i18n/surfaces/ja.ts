@@ -1,6 +1,24 @@
 import { surfaceEnglish } from "./en";
 
 export const surfaceJapanese = {
+  metadataOnboarding: {
+    label: "メタデータの設定",
+    title: "作品情報を補完する",
+    description:
+      "メタデータ未取得のローカル作品が {{count}} 件あります。タイトル、画像、サークル、声優を取得できます。同期中も閲覧と再生を続けられます。",
+    start: "メタデータを同期",
+    later: "後で",
+    running: "メタデータを同期中",
+    background: "バックグラウンドで同期しています。閲覧と再生を続けられます。",
+    succeeded: "メタデータの同期が完了しました",
+    complete: "作品情報を更新しました。ライブラリを再読み込みすると最新の情報が表示されます。",
+    attention: "メタデータの同期を確認してください",
+    partial:
+      "一部の情報を同期できませんでした。ライブラリを再読み込みすると取得済みの情報が表示されます。詳細は Activity で確認できます。既存の作品情報は保持されます。",
+    activity: "Activity を表示",
+    dismiss: "閉じる",
+    error: "操作を保存できませんでした。もう一度お試しください。",
+  },
   workMaintenance: {
     rows: "表示件数",
     title: "作品メンテナンス",

@@ -4,6 +4,24 @@
  * persisted user data never become translated at the domain boundary.
  */
 export const surfaceEnglish = {
+  metadataOnboarding: {
+    label: "Metadata setup",
+    title: "Complete your library information",
+    description:
+      "Local works awaiting metadata: {{count}}. Get titles, covers, circles, and voice actors while you keep browsing and listening.",
+    start: "Sync metadata",
+    later: "Later",
+    running: "Metadata sync in progress",
+    background: "Sync is running in the background. You can keep browsing and listening.",
+    succeeded: "Metadata sync completed",
+    complete: "Your library information is ready. Refresh the library to see the latest metadata.",
+    attention: "Metadata sync needs attention",
+    partial:
+      "Some information could not be synchronized. Refresh the library to see available updates and review the run in Activity. Existing library information is preserved.",
+    activity: "View Activity",
+    dismiss: "Dismiss",
+    error: "Could not save this action. Please try again.",
+  },
   workMaintenance: {
     rows: "Rows",
     title: "Work maintenance",

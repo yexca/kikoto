@@ -53,6 +53,7 @@ type Server struct {
 	cachePathLocks                 cachePathLocker
 	audioTranscodeLocks            cachePathLocker
 	metadataSyncMu                 sync.Mutex
+	metadataOnboardingMu           sync.Mutex
 	metadataCoordinator            *metasync.Coordinator
 	jobRunnerMu                    sync.Mutex
 	jobRunnerStarted               bool
@@ -132,6 +133,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/users/{id}", s.deleteUser)
 	mux.HandleFunc("GET /api/recently-played-works", s.listRecentlyPlayedWorks)
 	mux.HandleFunc("GET /api/works", s.listWorks)
+	mux.HandleFunc("GET /api/metadata/onboarding", s.getMetadataOnboarding)
+	mux.HandleFunc("POST /api/metadata/onboarding/start", s.startMetadataOnboarding)
+	mux.HandleFunc("POST /api/metadata/onboarding/dismiss", s.dismissMetadataOnboarding)
 	mux.HandleFunc("GET /api/works/{id}", s.getWork)
 	mux.HandleFunc("GET /api/works/{id}/recommendation", s.getWorkRecommendation)
 	mux.HandleFunc("GET /api/works/{id}/playback-cursor", s.getWorkPlaybackCursor)

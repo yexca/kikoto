@@ -1139,6 +1139,12 @@ export type CurrentUser = {
   passwordManagedBy: "environment" | "account";
 };
 
+export type MetadataOnboarding = {
+  status: string;
+  missingWorks: number;
+  runId: number;
+};
+
 export type WorkflowNotification = {
   id: number;
   workflowRunId: number;
@@ -2492,6 +2498,9 @@ export const api = {
   },
   retryMetadataIssues: (workIds: number[]) =>
     postJSONBody<{ queued: number; skipped: number; failed: number }>("/api/metadata/issues/retry", { workIds }),
+  getMetadataOnboarding: (signal?: AbortSignal) => getJSON<MetadataOnboarding>("/api/metadata/onboarding", signal),
+  startMetadataOnboarding: () => postJSONBody<MetadataOnboarding>("/api/metadata/onboarding/start", {}),
+  dismissMetadataOnboarding: () => postJSONBody<MetadataOnboarding>("/api/metadata/onboarding/dismiss", {}),
 };
 import {
   clearStoredSessionToken,

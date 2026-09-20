@@ -1,6 +1,23 @@
 import { surfaceEnglish } from "./en";
 
 export const surfaceHans = {
+  metadataOnboarding: {
+    label: "元数据设置",
+    title: "补全作品信息",
+    description:
+      "已发现 {{count}} 个尚未同步元数据的本地作品。同步可获取标题、封面、社团和声优，你可以继续浏览和播放。",
+    start: "同步元数据",
+    later: "稍后",
+    running: "正在同步元数据",
+    background: "同步正在后台运行，你可以继续浏览和播放。",
+    succeeded: "元数据同步完成",
+    complete: "作品信息已更新，刷新作品库即可查看最新元数据。",
+    attention: "元数据同步需要关注",
+    partial: "部分信息未能同步。刷新作品库可查看已同步的信息；失败详情可在 Activity 中查看，已有作品信息会保留。",
+    activity: "查看 Activity",
+    dismiss: "关闭提示",
+    error: "操作未能保存，请重试。",
+  },
   workMaintenance: {
     rows: "每页行数",
     title: "作品维护",

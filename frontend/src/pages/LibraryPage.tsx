@@ -71,6 +71,7 @@ import { openWorkDetail } from "@/app/workDetailNavigation";
 import { useAuth } from "@/auth/AuthProvider";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { UserTagRow } from "@/components/UserTagRow";
+import { MetadataOnboardingNotice } from "@/components/MetadataOnboardingNotice";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
 import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
@@ -1742,6 +1743,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     activeTab.kind === "source" ? t("library.refreshingRemoteWorks") : t("library.refreshingLibraryWorks");
   return (
     <div className="relative space-y-5">
+      <MetadataOnboardingNotice active={active} />
       <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between" data-toast-avoid>
         <div
           className={`order-2 min-h-10 w-full items-center gap-2 rounded-lg border bg-card px-3 text-sm lg:order-1 lg:flex lg:max-w-xl ${

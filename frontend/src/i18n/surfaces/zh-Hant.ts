@@ -1,6 +1,23 @@
 import { surfaceEnglish } from "./en";
 
 export const surfaceHant = {
+  metadataOnboarding: {
+    label: "中繼資料設定",
+    title: "補齊作品資訊",
+    description:
+      "已發現 {{count}} 個尚未同步中繼資料的本機作品。同步可取得標題、封面、社團和聲優，你可以繼續瀏覽和播放。",
+    start: "同步中繼資料",
+    later: "稍後",
+    running: "正在同步中繼資料",
+    background: "同步正在背景執行，你可以繼續瀏覽和播放。",
+    succeeded: "中繼資料同步完成",
+    complete: "作品資訊已更新，重新整理作品庫即可查看最新中繼資料。",
+    attention: "中繼資料同步需要關注",
+    partial: "部分資訊未能同步。重新整理作品庫可查看已同步的資訊；失敗詳情可在 Activity 中查看，既有作品資訊會保留。",
+    activity: "查看 Activity",
+    dismiss: "關閉提示",
+    error: "無法儲存此操作，請重試。",
+  },
   workMaintenance: {
     rows: "每頁列數",
     title: "作品維護",

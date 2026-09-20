@@ -584,6 +584,11 @@ func (s *Server) finishQueuedDLsiteMetadataSyncJob(ctx context.Context, job work
 	}); err != nil {
 		return err
 	}
+	if _, err := tx.ExecContext(ctx, `UPDATE workflow_notification
+		SET status = CASE WHEN ? = 'succeeded' THEN 'succeeded' ELSE 'failed' END
+		WHERE workflow_run_id = ? AND notification_type = 'metadata_onboarding'`, result.Status, job.RunID); err != nil {
+		return err
+	}
 	if err := updateTriggerForQueuedSystemRun(ctx, tx, job.RunID, result.Status, result.Failures); err != nil {
 		return err
 	}
