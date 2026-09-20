@@ -63,6 +63,15 @@ as a self-hosted web application with a responsive player and an Android client.
 
 ## Quick Start
 
+On Windows, beginners can place [`kikoto-helper.cmd`](kikoto-helper/kikoto-helper.cmd)
+in a deployment folder and run it. The first screen selects English or
+Simplified Chinese and downloads only the selected language helper beside the
+command file. It then checks Docker Desktop, downloads the versioned Compose
+files, creates the runtime directories, configures the administrator password,
+manages additional media-folder mappings, and provides start, stop, upgrade,
+status, logs, and configuration-backup actions. Existing `.env` and Compose
+files are kept; the helper does not overwrite them during re-runs.
+
 ### 1. Prepare the deployment directory
 
 Place [`docker-compose.yml`](docker-compose.yml) in an empty directory. Create a

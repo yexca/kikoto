@@ -2,6 +2,16 @@
   "version": 1,
   "endpoints": [
     {
+      "url": "https://raw.githubusercontent.com/yexca/kikoto/v0.6.0",
+      "files": ["kikoto-helper/kikoto-helper.core.ps1", "kikoto-helper/kikoto-helper.en.ps1", "kikoto-helper/kikoto-helper.zh-Hans.ps1"],
+      "reason": "Public release assets downloaded by the Windows installation helper."
+    },
+    {
+      "url": "https://docs.docker.com/desktop/setup/install/windows-install/",
+      "files": ["kikoto-helper/kikoto-helper.core.ps1", "kikoto-helper/kikoto-helper.en.ps1", "kikoto-helper/kikoto-helper.zh-Hans.ps1"],
+      "reason": "Official Docker Desktop installation instructions opened by the Windows helper."
+    },
+    {
       "url": "https://www.dlsite.com",
       "files": [
         "backend/internal/dlsite/endpoints.go",
