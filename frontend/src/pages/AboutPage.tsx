@@ -1,4 +1,4 @@
-import { BookOpen, Boxes, Download, FolderCode, Github, Scale, Sparkles } from "lucide-react";
+import { BookOpen, Boxes, FolderCode, Github, RefreshCw, Scale, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
@@ -85,7 +85,7 @@ export function AboutPage() {
                   title={t("about.updateAvailable", { version: update.latestVersion })}
                   className="rounded-sm text-info transition-colors hover:text-info/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <Download className="h-4 w-4" />
+                  <RefreshCw className="h-4 w-4" />
                 </a>
               )}
             </p>

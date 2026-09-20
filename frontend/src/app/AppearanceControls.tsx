@@ -34,8 +34,7 @@ export function AppearanceControls({
   const { t } = useTranslation();
   return (
     <>
-      <div className="border-b p-3" role="group" aria-label={t("appearance.language")}>
-        <AppearanceGroupLabel>{t("appearance.language")}</AppearanceGroupLabel>
+      <AppearanceGroup label={t("appearance.language")}>
         <FloatingSelect
           value={localePreference}
           disabled={localeBusy}
@@ -57,10 +56,9 @@ export function AppearanceControls({
               ),
           }))}
         />
-        {localeError && <p className="mt-2 px-2 text-xs text-destructive">{localeError}</p>}
-      </div>
-      <div className="p-2" role="group" aria-label={t("appearance.mode")}>
-        <AppearanceGroupLabel>{t("appearance.mode")}</AppearanceGroupLabel>
+        {localeError && <p className="mt-2 text-xs text-destructive">{localeError}</p>}
+      </AppearanceGroup>
+      <AppearanceGroup label={t("appearance.mode")}>
         <FloatingSelect
           value={mode}
           ariaLabel={t("appearance.mode")}
@@ -71,21 +69,22 @@ export function AppearanceControls({
             { value: "system", label: t("appearance.system") },
           ]}
         />
-      </div>
-      <div className="border-t p-3">
-        <div role="group" aria-label={t("appearance.style")}>
-          <AppearanceGroupLabel>{t("appearance.style")}</AppearanceGroupLabel>
-          <ThemePresetPicker value={preset} onChange={onPresetChange} compact />
-        </div>
-        <div className="mt-3 border-t pt-3" role="group" aria-label={t("appearance.color")}>
-          <AppearanceGroupLabel>{t("appearance.color")}</AppearanceGroupLabel>
-          <ThemePalettePicker preset={preset} value={palette} onChange={onPaletteChange} compact />
-        </div>
-      </div>
+      </AppearanceGroup>
+      <AppearanceGroup label={t("appearance.style")}>
+        <ThemePresetPicker value={preset} onChange={onPresetChange} compact />
+      </AppearanceGroup>
+      <AppearanceGroup label={t("appearance.color")}>
+        <ThemePalettePicker preset={preset} value={palette} onChange={onPaletteChange} compact />
+      </AppearanceGroup>
     </>
   );
 }
 
-function AppearanceGroupLabel({ children }: { children: ReactNode }) {
-  return <div className="mb-2 px-2 text-xs font-medium text-muted-foreground">{children}</div>;
+function AppearanceGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="border-b p-3 last:border-b-0" role="group" aria-label={label}>
+      <div className="mb-2 text-xs font-medium text-muted-foreground">{label}</div>
+      {children}
+    </div>
+  );
 }

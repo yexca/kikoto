@@ -94,8 +94,12 @@ export function UserPreferencePanels({
           config={preferences.recommendationConfig}
           defaults={preferences.recommendationDefaults}
           threshold={preferences.recommendationThreshold}
-          onConfigChange={(recommendationConfig) => setPreferences({ ...preferences, recommendationConfig })}
-          onThresholdChange={(recommendationThreshold) => setPreferences({ ...preferences, recommendationThreshold })}
+          onConfigChange={(recommendationConfig) =>
+            setPreferences((current) => (current ? { ...current, recommendationConfig } : current))
+          }
+          onThresholdChange={(recommendationThreshold) =>
+            setPreferences((current) => (current ? { ...current, recommendationThreshold } : current))
+          }
           onSave={save}
         />
       )}

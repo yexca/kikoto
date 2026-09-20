@@ -745,6 +745,36 @@ test("recommendation keeps common controls visible and advanced scoring collapse
   await expect(page.getByLabel("Discovery boost")).toHaveValue("30");
 });
 
+test("recommendation restores all default weights and threshold before saving", async ({ page }) => {
+  const settingsPayloads: Record<string, unknown>[] = [];
+  await mockCacheSettings(
+    page,
+    () => undefined,
+    (payload) => settingsPayloads.push(payload),
+  );
+  await page.goto("/settings?tab=recommendation");
+  await page.getByRole("button", { name: /Exploratory/ }).click();
+  await page.getByLabel("Badge threshold").focus();
+  await page.getByLabel("Badge threshold").press("End");
+  await expect(page.getByLabel("Badge threshold")).toHaveValue("100");
+  await page.getByRole("button", { name: "Save recommendation settings" }).click();
+  await expect.poll(() => settingsPayloads.length).toBe(1);
+  await page.reload();
+  await expect(page.getByLabel("Discovery boost")).toHaveValue("30");
+
+  await page.getByRole("button", { name: "Restore defaults", exact: true }).click();
+  await page.getByRole("button", { name: "Save recommendation settings" }).click();
+  await expect.poll(() => settingsPayloads.length).toBe(2);
+  expect(settingsPayloads[1]).toEqual({
+    recommendationConfig: recommendationDefaults,
+    recommendationThreshold: 50,
+  });
+  await page.reload();
+  await expect(page.getByLabel("Result variation")).toHaveValue("3");
+  await expect(page.getByLabel("Discovery boost")).toHaveValue("18");
+  await expect(page.getByLabel("Badge threshold")).toHaveValue("50");
+});
+
 test("@desktop work management owns metadata settings and links to the existing workflow", async ({
   page,
 }, testInfo) => {
