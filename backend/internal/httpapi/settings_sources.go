@@ -674,8 +674,13 @@ func (s *Server) getRuntimeSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response["cacheEnabled"] = s.settingBool(r, "remote_cache_enabled", false)
-	response["directoryRoutingRules"] = s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules())
-	response["recommendationThreshold"] = s.settingInt(r, "recommendation_threshold", 50)
+	preferences, err := s.loadUserPreferences(r, optionalUserID(r.Context()))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	response["directoryRoutingRules"] = preferences.DirectoryRoutingRules
+	response["recommendationThreshold"] = preferences.RecommendationThreshold
 	writeJSON(w, http.StatusOK, response)
 }
 

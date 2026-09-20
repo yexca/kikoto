@@ -65,7 +65,7 @@ func (s *Server) getWorkRecommendation(w http.ResponseWriter, r *http.Request) {
 		orderingConfig = snapshot.Config
 		breakdown, err = s.libraryStore.RecommendationSnapshotBreakdown(r.Context(), snapshot, workID)
 	} else {
-		orderingConfig = s.libraryStore.LoadRecommendationConfig(r.Context())
+		orderingConfig = s.libraryStore.LoadUserRecommendationConfig(r.Context(), userID)
 		breakdown, err = s.libraryStore.RecommendationBreakdownWithConfig(r.Context(), userID, workID, orderingConfig)
 	}
 	if err != nil {

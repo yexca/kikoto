@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { readOrCreateRecommendationSession, recommendationSeedForSessionID } from "./recommendationSession";
+import {
+  readOrCreateRecommendationSession,
+  recommendationSeedForSessionID,
+  renewRecommendationSession,
+  RECOMMENDATION_ALGORITHM_VERSION,
+} from "./recommendationSession";
 
 function memoryStorage() {
   const values = new Map<string, string>();
@@ -48,4 +53,27 @@ describe("recommendation client session", () => {
     expect(recommendationSeedForSessionID("session-a")).toBe(recommendationSeedForSessionID("session-a"));
     expect(recommendationSeedForSessionID("session-a")).not.toBe(recommendationSeedForSessionID("session-b"));
   });
+});
+
+it("saving preferences renews only the current account session", () => {
+  const scope = "preferences.example.invalid:user-1";
+  const storage = memoryStorage();
+  const before = readOrCreateRecommendationSession(
+    scope,
+    RECOMMENDATION_ALGORITHM_VERSION,
+    storage,
+    () => "old-session",
+  );
+  const other = readOrCreateRecommendationSession(
+    "preferences.example.invalid:user-2",
+    RECOMMENDATION_ALGORITHM_VERSION,
+    storage,
+    () => "other-session",
+  );
+  renewRecommendationSession(scope);
+  const after = readOrCreateRecommendationSession(scope, RECOMMENDATION_ALGORITHM_VERSION, storage);
+  expect(after.id).not.toBe(before.id);
+  expect(
+    readOrCreateRecommendationSession("preferences.example.invalid:user-2", RECOMMENDATION_ALGORITHM_VERSION, storage),
+  ).toEqual(other);
 });

@@ -1389,6 +1389,9 @@ test("mobile header orders actions and separates popovers from the quick-action 
   expect(modeBox!.x).toBeGreaterThanOrEqual(0);
   expect(modeBox!.x + modeBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 
+  await expect(
+    appearancePopover.getByText("Choose the language used by the Kikoto interface.", { exact: true }),
+  ).toHaveCount(0);
   await appearancePopover.getByRole("combobox", { name: "UI language" }).click();
   const languageListbox = page.getByRole("listbox");
   await expect(languageListbox.getByRole("option")).toHaveCount(6);
@@ -1476,7 +1479,8 @@ test("@desktop settings theme styles and colors change independently and persist
   await mockWorkflows(page);
   await page.goto("/settings");
 
-  await page.getByRole("tab", { name: "Appearance", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Appearance", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Open appearance settings", exact: true }).click();
 
   await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "anthropic");
   await expect(page.locator("html")).toHaveAttribute("data-theme-palette", "original");
@@ -1554,23 +1558,13 @@ test("demo settings keeps account and workflows read-only while allowing appeara
 
   await page.goto("/settings");
   await expect(page.getByRole("status")).toHaveText("Demo mode keeps account settings read-only.");
-  await page.getByRole("tab", { name: "Appearance", exact: true }).click();
-  for (const name of [
-    "Light",
-    "Dark",
-    "System",
-    "Anthropic",
-    "OpenAI",
-    "Apple",
-    "Google MD",
-    "Original",
-    "Graphite",
-    "Cobalt",
-    "Iris",
-  ]) {
+  await expect(page.getByRole("tab", { name: "Appearance", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Open appearance settings", exact: true }).click();
+  for (const name of ["Anthropic", "OpenAI", "Apple", "Google MD", "Original", "Graphite", "Cobalt", "Iris"]) {
     await expect(page.getByRole("button", { name, exact: true })).toBeEnabled();
   }
-  await page.getByRole("button", { name: "Dark", exact: true }).click();
+  await page.getByRole("group", { name: "Mode", exact: true }).getByRole("combobox").click();
+  await page.getByRole("option", { name: "Dark", exact: true }).click();
   await page.getByRole("button", { name: "Apple", exact: true }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
   await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");

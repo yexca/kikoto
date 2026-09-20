@@ -14,9 +14,14 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
     params.delete("metadataRun");
     return `/metadata?${params}`;
   }
+  if (path === "/settings" && new URLSearchParams(search).get("tab") === "appearance") return "/settings";
   if (path === "/maintenance") {
     const params = new URLSearchParams(search);
     const tab = params.get("tab");
+    if (tab === "routing" || tab === "recommendation") {
+      params.set("tab", tab === "routing" ? "playback" : "recommendation");
+      return `/settings?${params}`;
+    }
     if (tab && ["overview", "paths", "system", "local", "remote", "security"].includes(tab)) {
       params.set("tab", tab === "security" ? "users" : "library");
       return `/maintenance?${params}`;

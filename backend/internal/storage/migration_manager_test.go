@@ -16,7 +16,7 @@ import (
 
 var numberedMigrationFilePattern = regexp.MustCompile(`^[0-9]{3}_[a-z0-9][a-z0-9_]*\.sql$`)
 
-const latestNumberedMigrationVersion = 33
+const latestNumberedMigrationVersion = 34
 
 func TestMigrationChecksumNormalizesLineEndings(t *testing.T) {
 	lf := []byte("CREATE TABLE probe (id INTEGER);\n-- stable\n")
@@ -55,7 +55,7 @@ func TestMigrateFreshDatabaseReusesBaselineAcrossAppReleases(t *testing.T) {
 	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = ?", latestNumberedMigrationVersion).Scan(&filename); err != nil {
 		t.Fatal(err)
 	}
-	if filename != "baseline/033_v0.5.5.sql" {
+	if filename != "baseline/034_v0.5.5.sql" {
 		t.Fatalf("baseline history filename = %q", filename)
 	}
 }
@@ -89,8 +89,8 @@ func TestMigrateUpgradesExistingDatabaseThroughNumberedChain(t *testing.T) {
 	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = ?", latestNumberedMigrationVersion).Scan(&filename); err != nil {
 		t.Fatal(err)
 	}
-	if filename != "033_metadata_sync_issues.sql" {
-		t.Fatalf("applied migration = %q, want 033_metadata_sync_issues.sql", filename)
+	if filename != "034_user_preferences.sql" {
+		t.Fatalf("applied migration = %q, want 034_user_preferences.sql", filename)
 	}
 }
 
@@ -106,13 +106,13 @@ func TestMigrateUpgradesRetiredBaselineLedger(t *testing.T) {
 			name:            "schema version 031 applies the remaining numbered migration",
 			baseline:        "baseline/031_current.sql",
 			previousVersion: 31,
-			wantHistory:     "baseline/031_current.sql,032_shared_availability_watch.sql,033_metadata_sync_issues.sql",
+			wantHistory:     "baseline/031_current.sql,032_shared_availability_watch.sql,033_metadata_sync_issues.sql,034_user_preferences.sql",
 		},
 		{
 			name:            "schema version 032 upgrades without replaying old migrations",
 			baseline:        "baseline/032_current.sql",
 			previousVersion: 32,
-			wantHistory:     "baseline/032_current.sql,033_metadata_sync_issues.sql",
+			wantHistory:     "baseline/032_current.sql,033_metadata_sync_issues.sql,034_user_preferences.sql",
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {

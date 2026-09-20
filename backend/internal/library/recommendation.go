@@ -143,6 +143,23 @@ func (s *Store) LoadRecommendationConfig(ctx context.Context) RecommendationConf
 	return loadRecommendationConfig(ctx, s.db)
 }
 
+// LoadUserRecommendationConfig resolves account overrides over the instance defaults.
+func (s *Store) LoadUserRecommendationConfig(ctx context.Context, userID int64) RecommendationConfig {
+	return loadUserRecommendationConfig(ctx, s.db, userID)
+}
+
+func loadUserRecommendationConfig(ctx context.Context, queryer recommendationConfigQueryer, userID int64) RecommendationConfig {
+	var raw sql.NullString
+	if userID > 0 {
+		if err := queryer.QueryRowContext(ctx, "SELECT recommendation_config FROM user_preference WHERE user_id = ?", userID).Scan(&raw); err == nil && raw.Valid {
+			if config, err := decodeRecommendationConfig(raw.String); err == nil {
+				return config
+			}
+		}
+	}
+	return loadRecommendationConfig(ctx, queryer)
+}
+
 type recommendationConfigQueryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
@@ -321,7 +338,7 @@ func recommendationUserArgs(userID int64) []any {
 }
 
 func (s *Store) RecommendationBreakdown(ctx context.Context, userID, workID int64) (RecommendationBreakdown, error) {
-	config := s.LoadRecommendationConfig(ctx)
+	config := s.LoadUserRecommendationConfig(ctx, userID)
 	return s.RecommendationBreakdownWithConfig(ctx, userID, workID, config)
 }
 

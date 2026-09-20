@@ -140,7 +140,7 @@ func (s *Store) listPageRecommendationContext(ctx context.Context, options ListO
 	}
 	// Older clients without a recommendation session retain the dynamic path
 	// until they are upgraded.
-	return s.LoadRecommendationConfig(ctx), 0, nil
+	return s.LoadUserRecommendationConfig(ctx, options.UserID), 0, nil
 }
 
 // ListMatching materializes the common Library projection for a predicate

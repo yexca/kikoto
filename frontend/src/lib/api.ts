@@ -480,6 +480,13 @@ export type LibrarySource = {
   enabled: boolean;
 };
 
+export type UserPreferences = {
+  directoryRoutingRules: DirectoryRoutingRule[];
+  recommendationConfig: RecommendationConfig;
+  recommendationThreshold: number;
+  recommendationDefaults: RecommendationConfig;
+};
+
 export type RuntimeSettings = {
   anonymousAccessEnabled: boolean;
   cacheEnabled: boolean;
@@ -2050,6 +2057,9 @@ export const api = {
     getJSON<RecentlyPlayedWorksResponse>(`/api/recently-played-works?limit=${limit}`, signal),
   getWorkPlaybackCursor: (id: number, signal?: AbortSignal) =>
     getJSON<WorkPlaybackCursorResponse>(`/api/works/${id}/playback-cursor`, signal),
+  getUserPreferences: (signal?: AbortSignal) => getJSON<UserPreferences>("/api/auth/me/preferences", signal),
+  updateUserPreferences: (payload: Partial<Omit<UserPreferences, "recommendationDefaults">>) =>
+    patchJSONBody<UserPreferences>("/api/auth/me/preferences", payload),
   getRuntimeSettings: (signal?: AbortSignal) => getJSON<RuntimeSettings>("/api/runtime-settings", signal),
   listRemoteSourceWorks: (
     id: number,

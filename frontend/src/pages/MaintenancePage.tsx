@@ -7,14 +7,12 @@ import {
   Download,
   Folder,
   Gauge,
-  GripVertical,
   HardDrive,
   LockKeyhole,
   Loader2,
   PlayCircle,
   Plus,
   RefreshCw,
-  RotateCcw,
   Save,
   Server,
   Settings2,
@@ -38,9 +36,7 @@ import {
   api,
   type AppSettings,
   type CacheOverview,
-  type DirectoryRoutingRule,
   type FileSource,
-  type RecommendationConfig,
   type RecommendationTelemetrySummary,
 } from "@/lib/api";
 
@@ -75,7 +71,7 @@ const emptyRemoteSource = {
   lastCheckedAt: null,
 } satisfies FileSource;
 
-type MaintenanceTab = "routing" | "recommendation" | "library" | "cache" | "users";
+type MaintenanceTab = "library" | "cache" | "users";
 
 function maintenanceContentWidthClass(tab: MaintenanceTab) {
   return tab === "users" ? "w-full" : "w-full max-w-4xl";
@@ -117,9 +113,6 @@ export function MaintenancePage({
   const [remoteDelayRandom, setRemoteDelayRandom] = useState(1.5);
   const [remoteBackoff, setRemoteBackoff] = useState(30);
   const [remoteMaxBackoff, setRemoteMaxBackoff] = useState(300);
-  const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>([]);
-  const [recommendationThreshold, setRecommendationThreshold] = useState(50);
-  const [recommendationConfig, setRecommendationConfig] = useState<RecommendationConfig | null>(null);
   const [recommendationTelemetry, setRecommendationTelemetry] = useState<RecommendationTelemetrySummary | null>(null);
   const [draftSource, setDraftSource] = useState<FileSource>(emptyRemoteSource);
   const [editingSourceId, setEditingSourceId] = useState<number | null>(null);
@@ -151,11 +144,6 @@ export function MaintenancePage({
         setRemoteDelayRandom(next.remoteDelayRandomSeconds);
         setRemoteBackoff(next.remoteBackoffSeconds);
         setRemoteMaxBackoff(next.remoteMaxBackoffSeconds);
-        setDirectoryRoutingRules(
-          reweightDirectoryRoutingRules((next.directoryRoutingRules ?? []).filter((rule) => rule.enabled)),
-        );
-        setRecommendationThreshold(next.recommendationThreshold ?? 50);
-        setRecommendationConfig(next.recommendationConfig);
       })
       .catch((error) => toast.notify(toastFromError(error, maintenanceCopy("settingsApiUnavailable"))))
       .finally(() => setIsSettingsLoading(false));
@@ -169,7 +157,7 @@ export function MaintenancePage({
   }, [canManageSources, canManageAccessPolicy]);
 
   useEffect(() => {
-    if (activeTab !== "recommendation" || !canManageSources) return;
+    if (activeTab !== "library" || !canManageSources) return;
     void api
       .getRecommendationTelemetry()
       .then(setRecommendationTelemetry)
@@ -222,9 +210,6 @@ export function MaintenancePage({
       remoteDelayRandomSeconds: remoteDelayRandom,
       remoteBackoffSeconds: remoteBackoff,
       remoteMaxBackoffSeconds: remoteMaxBackoff,
-      directoryRoutingRules,
-      recommendationThreshold,
-      ...(recommendationConfig ? { recommendationConfig } : {}),
     });
     setSettings(next);
     setCacheEnabled(next.cacheEnabled);
@@ -232,7 +217,6 @@ export function MaintenancePage({
     setTranscodeCacheLimitGb(next.transcodeCacheLimitGb ?? 5);
     setRemoteDownloadLimitGb(next.remoteDownloadLimitGb);
     setFetchStagingRetentionDays(next.fetchStagingRetentionDays);
-    setRecommendationConfig(next.recommendationConfig);
     toast.success(maintenanceCopy("settingsSaved"));
   };
 
@@ -393,25 +377,11 @@ export function MaintenancePage({
               {maintenanceCopy("tabs.library")}
             </SettingsTabButton>
             <SettingsTabButton
-              active={activeTab === "routing"}
-              onClick={() => selectTab("routing")}
-              icon={<PlayCircle className="h-4 w-4" />}
-            >
-              {maintenanceCopy("tabs.routing")}
-            </SettingsTabButton>
-            <SettingsTabButton
               active={activeTab === "cache"}
               onClick={() => selectTab("cache")}
               icon={<Download className="h-4 w-4" />}
             >
               {maintenanceCopy("tabs.cache")}
-            </SettingsTabButton>
-            <SettingsTabButton
-              active={activeTab === "recommendation"}
-              onClick={() => selectTab("recommendation")}
-              icon={<Sparkles className="h-4 w-4" />}
-            >
-              {maintenanceCopy("tabs.recommendation")}
             </SettingsTabButton>
           </>
         )}
@@ -437,12 +407,6 @@ export function MaintenancePage({
           ) : (
             <SettingsPanelSkeleton />
           )
-        ) : activeTab === "routing" ? (
-          <PlaybackSettings
-            rules={directoryRoutingRules}
-            onRulesChange={setDirectoryRoutingRules}
-            onSave={saveRuntimeSettings}
-          />
         ) : activeTab === "library" ? (
           <div className="space-y-4">
             <LocalLibrarySettings
@@ -460,17 +424,13 @@ export function MaintenancePage({
               onCheckSource={checkSourceHealth}
             />
             <PathsSettings settings={settings} remoteSources={remoteSources} />
+            <details className="rounded-lg border bg-card">
+              <summary className="cursor-pointer p-4 text-sm font-medium">
+                {maintenanceCopy("recommendation.localTelemetry")}
+              </summary>
+              <RecommendationTelemetry telemetry={recommendationTelemetry} />
+            </details>
           </div>
-        ) : activeTab === "recommendation" ? (
-          <RecommendationSettings
-            config={recommendationConfig}
-            defaults={settings?.recommendationDefaults ?? null}
-            threshold={recommendationThreshold}
-            telemetry={recommendationTelemetry}
-            onConfigChange={setRecommendationConfig}
-            onThresholdChange={setRecommendationThreshold}
-            onSave={saveRuntimeSettings}
-          />
         ) : activeTab === "cache" ? (
           <CacheFetchSettings
             cacheEnabled={cacheEnabled}
@@ -585,270 +545,6 @@ function AccessPolicySettings({
   );
 }
 
-function PlaybackSettings({
-  rules,
-  onRulesChange,
-  onSave,
-}: {
-  rules: DirectoryRoutingRule[];
-  onRulesChange: (rules: DirectoryRoutingRule[]) => void;
-  onSave: () => Promise<void>;
-}) {
-  const [draggedRuleId, setDraggedRuleId] = useState<string | null>(null);
-  const draggedRuleIdRef = useRef<string | null>(null);
-  const applyRules = (next: DirectoryRoutingRule[]) => onRulesChange(reweightDirectoryRoutingRules(next));
-  const patchRule = (index: number, patch: Partial<DirectoryRoutingRule>) => {
-    onRulesChange(rules.map((rule, ruleIndex) => (ruleIndex === index ? { ...rule, ...patch, enabled: true } : rule)));
-  };
-  const moveRuleTo = (index: number, nextIndex: number) => {
-    if (nextIndex < 0 || nextIndex >= rules.length) return;
-    const next = [...rules];
-    const [rule] = next.splice(index, 1);
-    next.splice(nextIndex, 0, rule);
-    applyRules(next);
-  };
-  const moveRule = (index: number, direction: -1 | 1) => moveRuleTo(index, index + direction);
-  const addRule = () => {
-    applyRules([
-      ...rules,
-      {
-        id: `rule_${Date.now()}`,
-        label: "New rule",
-        weight: 20,
-        aliases: ["keyword"],
-        negativeAliases: [],
-        enabled: true,
-      },
-    ]);
-  };
-  const removeRule = (index: number) => applyRules(rules.filter((_, ruleIndex) => ruleIndex !== index));
-  const finishDrag = () => {
-    draggedRuleIdRef.current = null;
-    setDraggedRuleId(null);
-  };
-
-  useEffect(() => {
-    if (draggedRuleId === null) return;
-    const finish = () => {
-      draggedRuleIdRef.current = null;
-      setDraggedRuleId(null);
-    };
-    window.addEventListener("pointerup", finish);
-    window.addEventListener("pointercancel", finish);
-    window.addEventListener("blur", finish);
-    return () => {
-      window.removeEventListener("pointerup", finish);
-      window.removeEventListener("pointercancel", finish);
-      window.removeEventListener("blur", finish);
-    };
-  }, [draggedRuleId]);
-
-  return (
-    <div className="space-y-4">
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between gap-3">
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
-                <PlayCircle className="h-4 w-4" />
-              </span>
-              <span className="truncate">{maintenanceCopy("routing.playback")}</span>
-            </span>
-            <Button variant="outline" size="sm" onClick={addRule}>
-              <Plus className="h-4 w-4" />
-              {maintenanceCopy("routing.addRule")}
-            </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="relative space-y-2 before:absolute before:bottom-5 before:left-5 before:top-5 before:w-px before:bg-border">
-            {rules.map((rule, index) => (
-              <DirectoryRuleEditor
-                key={rule.id || index}
-                rule={rule}
-                index={index}
-                canMoveUp={index > 0}
-                canMoveDown={index < rules.length - 1}
-                onPatch={(patch) => patchRule(index, patch)}
-                onMove={moveRule}
-                onDragStart={() => {
-                  draggedRuleIdRef.current = rule.id;
-                  setDraggedRuleId(rule.id);
-                }}
-                onDragMove={(clientX, clientY) => {
-                  const sourceId = draggedRuleIdRef.current;
-                  const source = rules.findIndex((candidate) => candidate.id === sourceId);
-                  const target = Number(
-                    document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-routing-rule-index]")
-                      ?.dataset.routingRuleIndex,
-                  );
-                  if (source >= 0 && Number.isInteger(target) && source !== target) {
-                    moveRuleTo(source, target);
-                  }
-                }}
-                onDragEnd={finishDrag}
-                dragging={draggedRuleId === rule.id}
-                onRemove={() => removeRule(index)}
-              />
-            ))}
-            {rules.length === 0 && (
-              <div className="rounded-lg border bg-background p-4 text-sm text-muted-foreground">
-                Add at least one rule to prefer matching playable folders.
-              </div>
-            )}
-          </div>
-          <Button size="sm" onClick={() => void onSave()}>
-            <Save className="h-4 w-4" />
-            Save playback settings
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function DirectoryRuleEditor({
-  rule,
-  index,
-  canMoveUp,
-  canMoveDown,
-  onPatch,
-  onMove,
-  onDragStart,
-  onDragMove,
-  onDragEnd,
-  dragging,
-  onRemove,
-}: {
-  rule: DirectoryRoutingRule;
-  index: number;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
-  onPatch: (patch: Partial<DirectoryRoutingRule>) => void;
-  onMove: (index: number, direction: -1 | 1) => void;
-  onDragStart: () => void;
-  onDragMove: (clientX: number, clientY: number) => void;
-  onDragEnd: () => void;
-  dragging: boolean;
-  onRemove: () => void;
-}) {
-  return (
-    <div
-      data-routing-rule-index={index}
-      data-routing-rule-id={rule.id}
-      className={`relative flex min-w-0 gap-3 ${dragging ? "opacity-55" : ""}`}
-    >
-      <div className="relative z-[1] flex w-10 shrink-0 flex-col items-center gap-1.5">
-        <button
-          type="button"
-          className="grid h-8 w-8 touch-none cursor-grab place-items-center rounded-md border bg-card text-muted-foreground active:cursor-grabbing"
-          aria-label={`Drag ${rule.label}`}
-          onPointerDown={(event) => {
-            if (!event.isPrimary || event.button !== 0) return;
-            event.preventDefault();
-            event.currentTarget.setPointerCapture(event.pointerId);
-            onDragStart();
-          }}
-          onPointerMove={(event) => {
-            if (event.currentTarget.hasPointerCapture(event.pointerId)) onDragMove(event.clientX, event.clientY);
-          }}
-          onPointerUp={(event) => {
-            if (event.currentTarget.hasPointerCapture(event.pointerId))
-              event.currentTarget.releasePointerCapture(event.pointerId);
-            onDragEnd();
-          }}
-          onPointerCancel={onDragEnd}
-          onLostPointerCapture={onDragEnd}
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
-        <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
-          {index + 1}
-        </span>
-      </div>
-      <details className="group min-w-0 flex-1 rounded-md border bg-background">
-        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 marker:hidden">
-          <div className="min-w-0">
-            <div className="truncate text-sm font-semibold">{rule.label}</div>
-            <div className="mt-0.5 truncate text-xs text-muted-foreground">
-              {maintenanceCopy("routing.matchKeywords", { count: rule.aliases.length })}
-              {rule.negativeAliases.length > 0
-                ? ` · ${maintenanceCopy("routing.exclusions", { count: rule.negativeAliases.length })}`
-                : ""}
-            </div>
-          </div>
-          <span className="text-xs text-muted-foreground group-open:hidden">{maintenanceCopy("routing.edit")}</span>
-          <span className="hidden text-xs text-muted-foreground group-open:inline">{maintenanceCopy("close")}</span>
-        </summary>
-        <div className="space-y-3 border-t p-3">
-          <TextInput
-            label={maintenanceCopy("routing.ruleName")}
-            value={rule.label}
-            onChange={(value) => onPatch({ label: value })}
-          />
-          <div className="grid gap-3 md:grid-cols-2">
-            <TagListInput
-              label={maintenanceCopy("routing.aliases")}
-              value={rule.aliases}
-              onChange={(aliases) => onPatch({ aliases })}
-            />
-            <TagListInput
-              label={maintenanceCopy("routing.negativeAliases")}
-              value={rule.negativeAliases}
-              onChange={(negativeAliases) => onPatch({ negativeAliases })}
-            />
-          </div>
-          <div className="flex flex-wrap justify-between gap-2 border-t pt-3">
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={!canMoveUp} onClick={() => onMove(index, -1)}>
-                <ArrowUp className="h-4 w-4" />
-                Earlier
-              </Button>
-              <Button variant="outline" size="sm" disabled={!canMoveDown} onClick={() => onMove(index, 1)}>
-                <ArrowDown className="h-4 w-4" />
-                Later
-              </Button>
-            </div>
-            <Button variant="outline" size="sm" className="text-destructive" onClick={onRemove}>
-              <Trash2 className="h-4 w-4" />
-              Delete
-            </Button>
-          </div>
-        </div>
-      </details>
-    </div>
-  );
-}
-
-function reweightDirectoryRoutingRules(rules: DirectoryRoutingRule[]) {
-  if (rules.length === 0) return [];
-  const step = rules.length === 1 ? 0 : Math.min(10, Math.max(1, Math.floor(80 / (rules.length - 1))));
-  const firstWeight = rules.length === 1 ? 40 : 20 + step * (rules.length - 1);
-  return rules.map((rule, index) => ({ ...rule, weight: firstWeight - step * index, enabled: true }));
-}
-
-function TagListInput({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string[];
-  onChange: (value: string[]) => void;
-}) {
-  return (
-    <label className="grid gap-1 text-sm">
-      <span className="font-medium">{label}</span>
-      <textarea
-        className="min-h-20 rounded-md border bg-card px-3 py-2 outline-none focus:ring-2 focus:ring-ring"
-        value={value.join(", ")}
-        onChange={(event) => onChange(splitRuleTokens(event.target.value))}
-      />
-      <span className="text-xs text-muted-foreground">{maintenanceCopy("routing.keywordHint")}</span>
-    </label>
-  );
-}
-
 function SettingsSkeletonLine({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-muted ${className}`} />;
 }
@@ -919,448 +615,6 @@ function RemoteSourcesSettingsSkeleton() {
       </CardContent>
     </Card>
   );
-}
-
-type RecommendationConfigKey = keyof RecommendationConfig;
-
-const recommendationLaneFields: Array<{ key: RecommendationConfigKey; label: string; min: number }> = [
-  { key: "unmarkedSlots", label: "recommendation.unmarked", min: 1 },
-  { key: "listeningSlots", label: "recommendation.listening", min: 0 },
-  { key: "wantSlots", label: "recommendation.want", min: 0 },
-  { key: "relistenSlots", label: "recommendation.relisten", min: 0 },
-  { key: "finishedSlots", label: "recommendation.finished", min: 0 },
-  { key: "shelvedSlots", label: "recommendation.shelved", min: 0 },
-];
-
-const recommendationPositiveFields: Array<{ key: RecommendationConfigKey; label: string; max: number }> = [
-  { key: "tagWeight", label: "recommendation.positiveTagWeight", max: 50 },
-  { key: "tagCap", label: "recommendation.positiveTagCap", max: 100 },
-  { key: "voiceWeight", label: "recommendation.positiveVoiceWeight", max: 50 },
-  { key: "voiceCap", label: "recommendation.positiveVoiceCap", max: 100 },
-  { key: "circleWeight", label: "recommendation.positiveCircleWeight", max: 50 },
-  { key: "circleCap", label: "recommendation.positiveCircleCap", max: 100 },
-  { key: "favoriteBonus", label: "recommendation.favoriteBonus", max: 50 },
-];
-
-const recommendationNegativeFields: Array<{ key: RecommendationConfigKey; label: string; min?: number; max: number }> =
-  [
-    { key: "negativeMinEvidence", label: "recommendation.shelvedEvidenceWorks", min: 1, max: 10 },
-    { key: "negativeTagWeight", label: "recommendation.shelvedTagWeight", max: 50 },
-    { key: "negativeTagCap", label: "recommendation.shelvedTagCap", max: 100 },
-    { key: "negativeVoiceWeight", label: "recommendation.shelvedVoiceWeight", max: 50 },
-    { key: "negativeVoiceCap", label: "recommendation.shelvedVoiceCap", max: 100 },
-    { key: "negativeCircleWeight", label: "recommendation.shelvedCircleWeight", max: 50 },
-    { key: "negativeCircleCap", label: "recommendation.shelvedCircleCap", max: 100 },
-    { key: "negativeTotalCap", label: "recommendation.shelvedTotalCap", max: 100 },
-  ];
-
-type RecommendationPreset = "balanced" | "familiar" | "exploratory" | "avoid_shelved";
-
-const recommendationPresetOptions: Array<{ key: RecommendationPreset; label: string; description: string }> = [
-  { key: "balanced", label: "recommendation.balanced", description: "recommendation.balancedDescription" },
-  { key: "familiar", label: "recommendation.familiar", description: "recommendation.familiarDescription" },
-  { key: "exploratory", label: "recommendation.exploratory", description: "recommendation.exploratoryDescription" },
-  { key: "avoid_shelved", label: "recommendation.avoidShelved", description: "recommendation.avoidShelvedDescription" },
-];
-
-function RecommendationSettings({
-  config,
-  defaults,
-  threshold,
-  telemetry,
-  onConfigChange,
-  onThresholdChange,
-  onSave,
-}: {
-  config: RecommendationConfig | null;
-  defaults: RecommendationConfig | null;
-  threshold: number;
-  telemetry: RecommendationTelemetrySummary | null;
-  onConfigChange: (value: RecommendationConfig) => void;
-  onThresholdChange: (value: number) => void;
-  onSave: () => Promise<void>;
-}) {
-  if (!config) return <SettingsPanelSkeleton />;
-
-  const updateField = (key: RecommendationConfigKey, value: number) => {
-    onConfigChange({ ...config, [key]: value });
-  };
-  const impressions = telemetry?.eventCounts.impression ?? 0;
-  const scoreBuckets = ["0-19", "20-39", "40-59", "60-79", "80-100"];
-  const activePreset = defaults
-    ? (recommendationPresetOptions.find((preset) =>
-        recommendationConfigsEqual(config, recommendationPresetConfig(defaults, preset.key)),
-      )?.key ?? "custom")
-    : "custom";
-  const exampleScore = Math.max(
-    0,
-    Math.min(
-      100,
-      config.affinityBase +
-        Math.min(config.tagCap, config.tagWeight) +
-        Math.min(config.voiceCap, config.voiceWeight) +
-        Math.min(config.circleCap, config.circleWeight),
-    ),
-  );
-
-  return (
-    <div className="space-y-4">
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle className="flex flex-wrap items-center justify-between gap-3">
-            <span className="flex items-center gap-2">
-              <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
-                <Sparkles className="h-4 w-4" />
-              </span>
-              {maintenanceCopy("recommendation.tuning")}
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!defaults}
-              onClick={() => {
-                if (!defaults) return;
-                onConfigChange({ ...defaults });
-                onThresholdChange(50);
-              }}
-            >
-              <RotateCcw className="h-4 w-4" />
-              {maintenanceCopy("recommendation.restoreDefaults")}
-            </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <section>
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold">{maintenanceCopy("recommendation.profile")}</h3>
-              {activePreset === "custom" && <Badge variant="outline">{maintenanceCopy("recommendation.custom")}</Badge>}
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {recommendationPresetOptions.map((preset) => (
-                <button
-                  key={preset.key}
-                  type="button"
-                  className={`min-h-16 rounded-md border px-3 py-2 text-left transition-colors ${activePreset === preset.key ? "border-primary bg-primary/8" : "bg-background hover:bg-muted/40"}`}
-                  aria-pressed={activePreset === preset.key}
-                  disabled={!defaults}
-                  onClick={() => defaults && onConfigChange(recommendationPresetConfig(defaults, preset.key))}
-                >
-                  <span className="block text-sm font-semibold">{maintenanceCopy(preset.label)}</span>
-                  <span className="mt-0.5 block text-xs text-muted-foreground">
-                    {maintenanceCopy(preset.description)}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_220px]">
-            <RecommendationRangeField
-              label={maintenanceCopy("recommendation.badgeThreshold")}
-              value={threshold}
-              min={1}
-              max={100}
-              onChange={onThresholdChange}
-            />
-            <RecommendationRangeField
-              label={maintenanceCopy("recommendation.resultVariation")}
-              value={config.jitterAmplitude}
-              min={0}
-              max={10}
-              onChange={(value) => updateField("jitterAmplitude", value)}
-            />
-            <RecommendationRangeField
-              label={maintenanceCopy("recommendation.discoveryBoost")}
-              value={config.explorationAmplitude}
-              min={0}
-              max={40}
-              onChange={(value) => updateField("explorationAmplitude", value)}
-            />
-            <div className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2">
-              <div>
-                <div className="text-xs text-muted-foreground">{maintenanceCopy("recommendation.exampleScore")}</div>
-                <div className="text-2xl font-semibold tabular-nums">{exampleScore}</div>
-              </div>
-              <Badge variant={exampleScore >= threshold ? "secondary" : "outline"}>
-                {exampleScore >= threshold
-                  ? maintenanceCopy("recommendation.badgeShown")
-                  : maintenanceCopy("recommendation.belowThreshold")}
-              </Badge>
-            </div>
-          </div>
-
-          <details className="rounded-md border bg-background">
-            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
-              {maintenanceCopy("recommendation.advancedScoring")}
-            </summary>
-            <div className="space-y-5 border-t p-4">
-              <RecommendationFieldGroup title={maintenanceCopy("recommendation.mixSlots")}>
-                {recommendationLaneFields.map((field) => (
-                  <RecommendationNumberField
-                    key={field.key}
-                    label={maintenanceCopy(field.label)}
-                    value={config[field.key]}
-                    defaultValue={defaults?.[field.key]}
-                    min={field.min}
-                    max={100}
-                    onChange={(value) => updateField(field.key, value)}
-                  />
-                ))}
-                <p className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-4">
-                  Listening and Want receive the leading slots, Unmarked remains the discovery pool, and zero-slot
-                  states wait until scheduled states are exhausted. Explicit status filters still show every matching
-                  work.
-                </p>
-              </RecommendationFieldGroup>
-
-              <RecommendationFieldGroup title={maintenanceCopy("recommendation.positiveAffinity")}>
-                <RecommendationNumberField
-                  label={maintenanceCopy("recommendation.affinityBaseline")}
-                  value={config.affinityBase}
-                  defaultValue={defaults?.affinityBase}
-                  min={0}
-                  max={100}
-                  onChange={(value) => updateField("affinityBase", value)}
-                />
-                {recommendationPositiveFields.map((field) => (
-                  <RecommendationNumberField
-                    key={field.key}
-                    label={maintenanceCopy(field.label)}
-                    value={config[field.key]}
-                    defaultValue={defaults?.[field.key]}
-                    min={0}
-                    max={field.max}
-                    onChange={(value) => updateField(field.key, value)}
-                  />
-                ))}
-              </RecommendationFieldGroup>
-
-              <RecommendationFieldGroup title={maintenanceCopy("recommendation.shelvedPenalty")}>
-                {recommendationNegativeFields.map((field) => (
-                  <RecommendationNumberField
-                    key={field.key}
-                    label={maintenanceCopy(field.label)}
-                    value={config[field.key]}
-                    defaultValue={defaults?.[field.key]}
-                    min={field.min ?? 0}
-                    max={field.max}
-                    onChange={(value) => updateField(field.key, value)}
-                  />
-                ))}
-              </RecommendationFieldGroup>
-            </div>
-          </details>
-
-          <Button size="sm" onClick={() => void onSave()}>
-            <Save className="h-4 w-4" />
-            {maintenanceCopy("recommendation.save")}
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
-              <Gauge className="h-4 w-4" />
-            </span>
-            {maintenanceCopy("recommendation.localTelemetry")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            <StatusPanel
-              icon={<Sparkles className="h-4 w-4" />}
-              label={maintenanceCopy("recommendation.impressions")}
-              value={String(impressions)}
-            />
-            <StatusPanel
-              icon={<Folder className="h-4 w-4" />}
-              label={maintenanceCopy("recommendation.opened")}
-              value={String(telemetry?.eventCounts.open ?? 0)}
-            />
-            <StatusPanel
-              icon={<PlayCircle className="h-4 w-4" />}
-              label={maintenanceCopy("recommendation.played")}
-              value={String(telemetry?.eventCounts.play ?? 0)}
-            />
-            <StatusPanel
-              icon={<ArrowUp className="h-4 w-4" />}
-              label={maintenanceCopy("recommendation.positiveMarks")}
-              value={String(telemetry?.eventCounts.positive_mark ?? 0)}
-            />
-            <StatusPanel
-              icon={<ArrowDown className="h-4 w-4" />}
-              label={maintenanceCopy("recommendation.shelvedMarks")}
-              value={String(telemetry?.eventCounts.paused_mark ?? 0)}
-            />
-            <StatusPanel
-              icon={<RefreshCw className="h-4 w-4" />}
-              label={maintenanceCopy("recommendation.reshuffles")}
-              value={String(telemetry?.eventCounts.reshuffle ?? 0)}
-            />
-          </div>
-          <div>
-            <div className="mb-3 flex items-center justify-between gap-3 text-sm">
-              <span className="font-medium">{maintenanceCopy("recommendation.impressionScores")}</span>
-              <span className="text-muted-foreground">
-                {telemetry
-                  ? maintenanceCopy("days", { count: telemetry.windowDays })
-                  : maintenanceCopy("status.unavailable")}
-              </span>
-            </div>
-            <div className="space-y-2">
-              {scoreBuckets.map((bucket) => {
-                const count = telemetry?.scoreBuckets[bucket] ?? 0;
-                const width = impressions > 0 ? Math.max(2, Math.round((count / impressions) * 100)) : 0;
-                return (
-                  <div key={bucket} className="grid grid-cols-[52px_minmax(0,1fr)_40px] items-center gap-3 text-xs">
-                    <span className="text-muted-foreground">{bucket}</span>
-                    <div className="h-2 overflow-hidden rounded-sm bg-muted">
-                      <div className="h-full bg-primary" style={{ width: `${width}%` }} />
-                    </div>
-                    <span className="text-right tabular-nums">{count}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function RecommendationFieldGroup({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section>
-      <h3 className="mb-3 text-sm font-semibold">{title}</h3>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{children}</div>
-    </section>
-  );
-}
-
-function RecommendationNumberField({
-  label,
-  value,
-  defaultValue,
-  min,
-  max,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  defaultValue?: number;
-  min: number;
-  max: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <label className="grid gap-1 text-sm">
-      <span className="flex items-center justify-between gap-2 font-medium">
-        <span>{label}</span>
-        {defaultValue !== undefined && value !== defaultValue && (
-          <span className="text-[10px] font-normal text-muted-foreground">
-            {maintenanceCopy("recommendation.defaultValue", { value: defaultValue })}
-          </span>
-        )}
-      </span>
-      <input
-        className="h-9 min-w-0 rounded-md border bg-card px-3 tabular-nums outline-none focus:ring-2 focus:ring-ring"
-        type="number"
-        min={min}
-        max={max}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-    </label>
-  );
-}
-
-function RecommendationRangeField({
-  label,
-  value,
-  min,
-  max,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <label className="grid gap-2 rounded-md border bg-background px-3 py-2 text-sm">
-      <span className="flex items-center justify-between gap-3 font-medium">
-        <span>{label}</span>
-        <span className="tabular-nums text-muted-foreground">{value}</span>
-      </span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-    </label>
-  );
-}
-
-function recommendationPresetConfig(
-  defaults: RecommendationConfig,
-  preset: RecommendationPreset,
-): RecommendationConfig {
-  switch (preset) {
-    case "familiar":
-      return {
-        ...defaults,
-        tagWeight: 7,
-        tagCap: 35,
-        voiceWeight: 13,
-        voiceCap: 30,
-        circleWeight: 20,
-        circleCap: 25,
-        jitterAmplitude: 1,
-        explorationAmplitude: 4,
-      };
-    case "exploratory":
-      return {
-        ...defaults,
-        unmarkedSlots: 16,
-        listeningSlots: 3,
-        wantSlots: 3,
-        relistenSlots: 1,
-        finishedSlots: 1,
-        tagWeight: 3,
-        tagCap: 15,
-        voiceWeight: 6,
-        voiceCap: 15,
-        circleWeight: 8,
-        circleCap: 10,
-        jitterAmplitude: 8,
-        explorationAmplitude: 30,
-      };
-    case "avoid_shelved":
-      return {
-        ...defaults,
-        shelvedSlots: 0,
-        negativeTagWeight: 4,
-        negativeTagCap: 10,
-        negativeVoiceWeight: 5,
-        negativeVoiceCap: 10,
-        negativeCircleWeight: 8,
-        negativeCircleCap: 10,
-        negativeTotalCap: 25,
-      };
-    default:
-      return { ...defaults };
-  }
-}
-
-function recommendationConfigsEqual(left: RecommendationConfig, right: RecommendationConfig) {
-  return (Object.keys(left) as RecommendationConfigKey[]).every((key) => left[key] === right[key]);
 }
 
 function LocalLibrarySettings({
@@ -2769,7 +2023,7 @@ function maintenanceTabFromLocation(
 ): MaintenanceTab {
   if (window.location.pathname === "/users" && canManageUsers) return "users";
   const value = new URLSearchParams(window.location.search).get("tab");
-  const tabs: MaintenanceTab[] = ["routing", "recommendation", "library", "cache", "users"];
+  const tabs: MaintenanceTab[] = ["library", "cache", "users"];
   if (
     value &&
     tabs.includes(value as MaintenanceTab) &&
@@ -2814,17 +2068,6 @@ function configuredSourceOrigins(endpoint: FileSource["endpoint"]) {
   return [...origins];
 }
 
-function splitRuleTokens(value: string) {
-  return Array.from(
-    new Set(
-      value
-        .split(/[\n,]/)
-        .map((item) => item.trim())
-        .filter(Boolean),
-    ),
-  );
-}
-
 function languageName(value: string) {
   switch (value) {
     case "ja-jp":
@@ -2840,4 +2083,80 @@ function languageName(value: string) {
     default:
       return value || "Unknown";
   }
+}
+
+function RecommendationTelemetry({ telemetry }: { telemetry: RecommendationTelemetrySummary | null }) {
+  const impressions = telemetry?.eventCounts.impression ?? 0;
+  const scoreBuckets = ["0-19", "20-39", "40-59", "60-79", "80-100"];
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
+            <Gauge className="h-4 w-4" />
+          </span>
+          {maintenanceCopy("recommendation.localTelemetry")}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <StatusPanel
+            icon={<Sparkles className="h-4 w-4" />}
+            label={maintenanceCopy("recommendation.impressions")}
+            value={String(impressions)}
+          />
+          <StatusPanel
+            icon={<Folder className="h-4 w-4" />}
+            label={maintenanceCopy("recommendation.opened")}
+            value={String(telemetry?.eventCounts.open ?? 0)}
+          />
+          <StatusPanel
+            icon={<PlayCircle className="h-4 w-4" />}
+            label={maintenanceCopy("recommendation.played")}
+            value={String(telemetry?.eventCounts.play ?? 0)}
+          />
+          <StatusPanel
+            icon={<ArrowUp className="h-4 w-4" />}
+            label={maintenanceCopy("recommendation.positiveMarks")}
+            value={String(telemetry?.eventCounts.positive_mark ?? 0)}
+          />
+          <StatusPanel
+            icon={<ArrowDown className="h-4 w-4" />}
+            label={maintenanceCopy("recommendation.shelvedMarks")}
+            value={String(telemetry?.eventCounts.paused_mark ?? 0)}
+          />
+          <StatusPanel
+            icon={<RefreshCw className="h-4 w-4" />}
+            label={maintenanceCopy("recommendation.reshuffles")}
+            value={String(telemetry?.eventCounts.reshuffle ?? 0)}
+          />
+        </div>
+        <div>
+          <div className="mb-3 flex items-center justify-between gap-3 text-sm">
+            <span className="font-medium">{maintenanceCopy("recommendation.impressionScores")}</span>
+            <span className="text-muted-foreground">
+              {telemetry
+                ? maintenanceCopy("days", { count: telemetry.windowDays })
+                : maintenanceCopy("status.unavailable")}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {scoreBuckets.map((bucket) => {
+              const count = telemetry?.scoreBuckets[bucket] ?? 0;
+              const width = impressions > 0 ? Math.max(2, Math.round((count / impressions) * 100)) : 0;
+              return (
+                <div key={bucket} className="grid grid-cols-[52px_minmax(0,1fr)_40px] items-center gap-3 text-xs">
+                  <span className="text-muted-foreground">{bucket}</span>
+                  <div className="h-2 overflow-hidden rounded-sm bg-muted">
+                    <div className="h-full bg-primary" style={{ width: `${width}%` }} />
+                  </div>
+                  <span className="text-right tabular-nums">{count}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }

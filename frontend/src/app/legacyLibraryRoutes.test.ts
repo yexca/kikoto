@@ -38,6 +38,9 @@ describe("legacyLibraryRedirect", () => {
     }
     expect(legacyLibraryRedirect("/maintenance/", "?tab=security")).toBe("/maintenance?tab=users");
     expect(legacyLibraryRedirect("/maintenance", "?tab=users")).toBeNull();
+    expect(legacyLibraryRedirect("/maintenance", "?tab=routing")).toBe("/settings?tab=playback");
+    expect(legacyLibraryRedirect("/maintenance", "?tab=recommendation")).toBe("/settings?tab=recommendation");
+    expect(legacyLibraryRedirect("/settings", "?tab=appearance")).toBe("/settings");
   });
 
   it("leaves current routes unchanged", () => {

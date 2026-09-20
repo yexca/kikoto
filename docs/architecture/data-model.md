@@ -145,6 +145,7 @@ Important tables:
 
 - `user_account`
 - `user_session`
+- `user_preference`
 - `user_work_state`
 - `user_work_playback_cursor`
 - `user_media_progress` (legacy migration source)
@@ -209,3 +210,9 @@ generation binding and rebuilds it before the session is reused.
 - [Core boundaries](core-boundaries.md)
 - [Source presence](source-presence.md)
 - [Migrations](../development/migrations.md)
+
+`user_preference` stores optional account overrides for folder routing rules,
+recommendation configuration, and badge threshold. Missing overrides use existing
+`app_setting` defaults. Migration `034` adds this table without rewriting existing
+instance settings or recommendation sessions. New recommendation generations use
+the effective account configuration; existing session bindings remain immutable.

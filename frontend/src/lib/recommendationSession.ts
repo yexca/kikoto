@@ -1,3 +1,5 @@
+export const RECOMMENDATION_ALGORITHM_VERSION = "heuristic-v4";
+export const USER_PREFERENCES_CHANGED = "kikoto:user-preferences-changed";
 export type RecommendationClientSession = {
   id: string;
   seed: number;
@@ -17,7 +19,7 @@ export function readOrCreateRecommendationSession(
   createID: () => string = createRecommendationSessionID,
 ): RecommendationClientSession {
   const key = `${storagePrefix}${encodeURIComponent(algorithmVersion)}:${storageScope}`;
-  let sessionID = readStoredSessionID(storage, key) ?? memorySessions.get(key) ?? "";
+  let sessionID = memorySessions.get(key) ?? readStoredSessionID(storage, key) ?? "";
   if (!sessionIDPattern.test(sessionID)) {
     sessionID = createID();
     if (!sessionIDPattern.test(sessionID)) sessionID = createRecommendationSessionID();
@@ -29,6 +31,17 @@ export function readOrCreateRecommendationSession(
     }
   }
   return { id: sessionID, seed: recommendationSeedForSessionID(sessionID) };
+}
+
+export function renewRecommendationSession(storageScope: string) {
+  const key = `${storagePrefix}${encodeURIComponent(RECOMMENDATION_ALGORITHM_VERSION)}:${storageScope}`;
+  const id = createRecommendationSessionID();
+  memorySessions.set(key, id);
+  try {
+    browserSessionStorage()?.setItem(key, id);
+  } catch {
+    /* Keep the new session in memory. */
+  }
 }
 
 export function recommendationSeedForSessionID(sessionID: string) {

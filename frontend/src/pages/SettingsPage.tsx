@@ -1,26 +1,8 @@
-import { FastForward, KeyRound, LoaderCircle, Monitor, Moon, Rewind, Save, Sun, UserRound } from "lucide-react";
+import { UserPreferencePanels } from "@/features/preferences";
+import { FastForward, KeyRound, LoaderCircle, Rewind, Save, Sparkles, UserRound } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
-import {
-  applyThemeMode,
-  applyThemePalette,
-  applyThemePreset,
-  getStoredThemeMode,
-  getStoredThemePalette,
-  getStoredThemePreset,
-  storeThemeMode,
-  storeThemePalette,
-  storeThemePreset,
-  THEME_CHANGE_EVENT,
-  THEME_PALETTE_CHANGE_EVENT,
-  THEME_PRESET_CHANGE_EVENT,
-  type ThemeMode,
-  type ThemePalette,
-  type ThemePreset,
-} from "@/app/theme";
-import { ThemePalettePicker } from "@/app/ThemePalettePicker";
-import { ThemePresetPicker } from "@/app/ThemePresetPicker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toastFromError, useToast } from "@/components/ui/toast";
@@ -43,7 +25,7 @@ const emptyPasswordDraft: PasswordChangeDraft = {
   confirmPassword: "",
 };
 
-type SettingsTab = "account" | "appearance" | "playback";
+type SettingsTab = "account" | "playback" | "recommendation";
 
 export function SettingsPage({
   user,
@@ -56,9 +38,6 @@ export function SettingsPage({
 }) {
   const toast = useToast();
   const { t } = useTranslation();
-  const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredThemeMode());
-  const [themePreset, setThemePreset] = useState<ThemePreset>(() => getStoredThemePreset());
-  const [themePalette, setThemePalette] = useState<ThemePalette>(() => getStoredThemePalette());
   const [displayName, setDisplayName] = useState(user.displayName || user.username);
   const [passwordDraft, setPasswordDraft] = useState<PasswordChangeDraft>(emptyPasswordDraft);
   const [passwordError, setPasswordError] = useState<string | null>(null);
@@ -117,40 +96,6 @@ export function SettingsPage({
       window.removeEventListener("storage", syncStorage);
     };
   }, [user.id]);
-
-  useEffect(() => {
-    const syncMode = (event: Event) => setThemeMode((event as CustomEvent<ThemeMode>).detail ?? getStoredThemeMode());
-    const syncPreset = (event: Event) =>
-      setThemePreset((event as CustomEvent<ThemePreset>).detail ?? getStoredThemePreset());
-    const syncPalette = (event: Event) =>
-      setThemePalette((event as CustomEvent<ThemePalette>).detail ?? getStoredThemePalette());
-    window.addEventListener(THEME_CHANGE_EVENT, syncMode);
-    window.addEventListener(THEME_PRESET_CHANGE_EVENT, syncPreset);
-    window.addEventListener(THEME_PALETTE_CHANGE_EVENT, syncPalette);
-    return () => {
-      window.removeEventListener(THEME_CHANGE_EVENT, syncMode);
-      window.removeEventListener(THEME_PRESET_CHANGE_EVENT, syncPreset);
-      window.removeEventListener(THEME_PALETTE_CHANGE_EVENT, syncPalette);
-    };
-  }, []);
-
-  const updateTheme = (mode: ThemeMode) => {
-    setThemeMode(mode);
-    applyThemeMode(mode);
-    storeThemeMode(mode);
-  };
-
-  const updatePreset = (preset: ThemePreset) => {
-    setThemePreset(preset);
-    applyThemePreset(preset);
-    storeThemePreset(preset);
-  };
-
-  const updatePalette = (palette: ThemePalette) => {
-    setThemePalette(palette);
-    applyThemePalette(palette);
-    storeThemePalette(palette);
-  };
 
   const saveSeekPreferences = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -258,20 +203,20 @@ export function SettingsPage({
           {t("settings.account")}
         </SettingsTabButton>
         <SettingsTabButton
-          tab="appearance"
-          active={activeTab === "appearance"}
-          icon={<Monitor className="h-4 w-4" />}
-          onClick={() => selectTab("appearance")}
-        >
-          {t("appearance.title")}
-        </SettingsTabButton>
-        <SettingsTabButton
           tab="playback"
           active={activeTab === "playback"}
           icon={<FastForward className="h-4 w-4" />}
           onClick={() => selectTab("playback")}
         >
           {t("settings.playback")}
+        </SettingsTabButton>
+        <SettingsTabButton
+          tab="recommendation"
+          active={activeTab === "recommendation"}
+          icon={<Sparkles className="h-4 w-4" />}
+          onClick={() => selectTab("recommendation")}
+        >
+          {t("maintenance.tabs.recommendation")}
         </SettingsTabButton>
       </div>
 
@@ -389,149 +334,110 @@ export function SettingsPage({
         </div>
       )}
 
-      {activeTab === "appearance" && (
-        <Card
-          id="settings-panel-appearance"
-          className="w-full max-w-4xl"
-          role="tabpanel"
-          aria-labelledby="settings-tab-appearance"
-        >
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Monitor className="h-4 w-4" />
-              {t("appearance.title")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">{t("appearance.displayMode")}</legend>
-              <div
-                className="inline-flex max-w-full gap-1 overflow-x-auto rounded-md border bg-muted/40 p-1"
-                aria-label={t("appearance.themePreference")}
-              >
-                {(
-                  [
-                    { value: "light", label: t("appearance.light"), icon: <Sun className="h-4 w-4" /> },
-                    { value: "dark", label: t("appearance.dark"), icon: <Moon className="h-4 w-4" /> },
-                    { value: "system", label: t("appearance.system"), icon: <Monitor className="h-4 w-4" /> },
-                  ] as const
-                ).map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    className={`flex h-[var(--control-height)] items-center gap-2 rounded px-3 text-sm font-medium transition-[color,background-color,box-shadow,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[var(--press-scale)] motion-reduce:active:scale-100 ${themeMode === option.value ? "bg-background shadow-sm" : "text-muted-foreground hover:bg-background/60 hover:text-foreground"}`}
-                    aria-pressed={themeMode === option.value}
-                    onClick={() => updateTheme(option.value)}
-                  >
-                    {option.icon}
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-            <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">{t("appearance.themeStyle")}</legend>
-              <ThemePresetPicker value={themePreset} onChange={updatePreset} palette={themePalette} />
-            </fieldset>
-            <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">{t("appearance.color")}</legend>
-              <ThemePalettePicker preset={themePreset} value={themePalette} onChange={updatePalette} />
-            </fieldset>
-          </CardContent>
-        </Card>
-      )}
-
       {activeTab === "playback" && (
-        <Card
-          id="settings-panel-playback"
-          className="w-full max-w-4xl"
+        <div
+          className="w-full max-w-4xl space-y-4"
           role="tabpanel"
+          id="settings-panel-playback"
           aria-labelledby="settings-tab-playback"
         >
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <FastForward className="h-4 w-4" />
-              {t("settings.playback")}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">{t("settings.playbackDescription")}</p>
-          </CardHeader>
-          <CardContent>
-            <form className="space-y-4" onSubmit={saveSeekPreferences}>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block space-y-1 text-sm" htmlFor="seek-forward-seconds">
-                  <span className="flex items-center gap-2 font-medium">
-                    <FastForward className="h-4 w-4 text-muted-foreground" />
-                    {t("settings.seekForward")}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <input
-                      id="seek-forward-seconds"
-                      className="h-[var(--control-height)] w-full rounded-md border bg-background px-3 text-sm disabled:bg-muted"
-                      type="number"
-                      min={SEEK_SECONDS_MIN}
-                      max={SEEK_SECONDS_MAX}
-                      step={1}
-                      inputMode="numeric"
-                      value={seekDraft.forward}
-                      onChange={(event) => {
-                        setSeekDraft((current) => ({ ...current, forward: event.target.value }));
-                        setSeekError(null);
-                      }}
-                      aria-describedby="seek-preferences-error seek-preferences-range"
-                    />
-                    <span className="shrink-0 text-sm text-muted-foreground">{t("settings.seconds")}</span>
-                  </div>
-                </label>
-                <label className="block space-y-1 text-sm" htmlFor="seek-backward-seconds">
-                  <span className="flex items-center gap-2 font-medium">
-                    <Rewind className="h-4 w-4 text-muted-foreground" />
-                    {t("settings.seekBackward")}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <input
-                      id="seek-backward-seconds"
-                      className="h-[var(--control-height)] w-full rounded-md border bg-background px-3 text-sm disabled:bg-muted"
-                      type="number"
-                      min={SEEK_SECONDS_MIN}
-                      max={SEEK_SECONDS_MAX}
-                      step={1}
-                      inputMode="numeric"
-                      value={seekDraft.backward}
-                      onChange={(event) => {
-                        setSeekDraft((current) => ({ ...current, backward: event.target.value }));
-                        setSeekError(null);
-                      }}
-                      aria-describedby="seek-preferences-error seek-preferences-range"
-                    />
-                    <span className="shrink-0 text-sm text-muted-foreground">{t("settings.seconds")}</span>
-                  </div>
-                </label>
-              </div>
-              <p id="seek-preferences-range" className="text-xs text-muted-foreground">
-                {t("settings.seekRange", { min: SEEK_SECONDS_MIN, max: SEEK_SECONDS_MAX })}
-              </p>
-              <p
-                id="seek-preferences-error"
-                className="min-h-5 text-sm text-destructive"
-                role={seekError ? "alert" : undefined}
-              >
-                {seekError}
-              </p>
-              <div className="flex justify-end">
-                <Button
-                  type="submit"
-                  disabled={
-                    Number(seekDraft.forward) === seekPreferences.seekForwardSeconds &&
-                    Number(seekDraft.backward) === seekPreferences.seekBackwardSeconds
-                  }
+          <Card className="w-full max-w-4xl">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <FastForward className="h-4 w-4" />
+                {t("settings.playback")}
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">{t("settings.playbackDescription")}</p>
+            </CardHeader>
+            <CardContent>
+              <form className="space-y-4" onSubmit={saveSeekPreferences}>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block space-y-1 text-sm" htmlFor="seek-forward-seconds">
+                    <span className="flex items-center gap-2 font-medium">
+                      <FastForward className="h-4 w-4 text-muted-foreground" />
+                      {t("settings.seekForward")}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="seek-forward-seconds"
+                        className="h-[var(--control-height)] w-full rounded-md border bg-background px-3 text-sm disabled:bg-muted"
+                        type="number"
+                        min={SEEK_SECONDS_MIN}
+                        max={SEEK_SECONDS_MAX}
+                        step={1}
+                        inputMode="numeric"
+                        value={seekDraft.forward}
+                        onChange={(event) => {
+                          setSeekDraft((current) => ({ ...current, forward: event.target.value }));
+                          setSeekError(null);
+                        }}
+                        aria-describedby="seek-preferences-error seek-preferences-range"
+                      />
+                      <span className="shrink-0 text-sm text-muted-foreground">{t("settings.seconds")}</span>
+                    </div>
+                  </label>
+                  <label className="block space-y-1 text-sm" htmlFor="seek-backward-seconds">
+                    <span className="flex items-center gap-2 font-medium">
+                      <Rewind className="h-4 w-4 text-muted-foreground" />
+                      {t("settings.seekBackward")}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="seek-backward-seconds"
+                        className="h-[var(--control-height)] w-full rounded-md border bg-background px-3 text-sm disabled:bg-muted"
+                        type="number"
+                        min={SEEK_SECONDS_MIN}
+                        max={SEEK_SECONDS_MAX}
+                        step={1}
+                        inputMode="numeric"
+                        value={seekDraft.backward}
+                        onChange={(event) => {
+                          setSeekDraft((current) => ({ ...current, backward: event.target.value }));
+                          setSeekError(null);
+                        }}
+                        aria-describedby="seek-preferences-error seek-preferences-range"
+                      />
+                      <span className="shrink-0 text-sm text-muted-foreground">{t("settings.seconds")}</span>
+                    </div>
+                  </label>
+                </div>
+                <p id="seek-preferences-range" className="text-xs text-muted-foreground">
+                  {t("settings.seekRange", { min: SEEK_SECONDS_MIN, max: SEEK_SECONDS_MAX })}
+                </p>
+                <p
+                  id="seek-preferences-error"
+                  className="min-h-5 text-sm text-destructive"
+                  role={seekError ? "alert" : undefined}
                 >
-                  <Save className="h-4 w-4" />
-                  {t("settings.savePlayback")}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+                  {seekError}
+                </p>
+                <div className="flex justify-end">
+                  <Button
+                    type="submit"
+                    disabled={
+                      Number(seekDraft.forward) === seekPreferences.seekForwardSeconds &&
+                      Number(seekDraft.backward) === seekPreferences.seekBackwardSeconds
+                    }
+                  >
+                    <Save className="h-4 w-4" />
+                    {t("settings.savePlayback")}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+          <UserPreferencePanels userId={user.id} section="playback" readOnly={readOnly} />
+        </div>
+      )}
+      {activeTab === "recommendation" && (
+        <div
+          className="w-full max-w-4xl"
+          role="tabpanel"
+          id="settings-panel-recommendation"
+          aria-labelledby="settings-tab-recommendation"
+        >
+          <UserPreferencePanels userId={user.id} section="recommendation" readOnly={readOnly} />
+        </div>
       )}
     </div>
   );
@@ -570,7 +476,7 @@ function SettingsTabButton({
 
 function settingsTabFromLocation(): SettingsTab {
   const tab = new URLSearchParams(window.location.search).get("tab");
-  return tab === "appearance" || tab === "playback" ? tab : "account";
+  return tab === "recommendation" || tab === "playback" ? tab : "account";
 }
 
 function passwordErrorKey(message: string) {

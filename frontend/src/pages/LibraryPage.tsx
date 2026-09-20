@@ -210,7 +210,7 @@ import { currentClientStorageScope, type ClientPrincipalID } from "@/lib/clientS
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { DLSITE_ENDPOINTS } from "@/lib/official-links";
 import { hasPlaybackHistory } from "@/lib/playbackHistory";
-import { readOrCreateRecommendationSession } from "@/lib/recommendationSession";
+import { readOrCreateRecommendationSession, RECOMMENDATION_ALGORITHM_VERSION } from "@/lib/recommendationSession";
 import { WORK_CODE_PATH_PATTERN } from "@/lib/workCode";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { openVoiceRoute } from "@/pages/CreatorWorksPage";
@@ -314,8 +314,6 @@ const librarySortOptions: { value: LibrarySort; label: string }[] = [
   { value: "sales", label: "Sales" },
   { value: "title", label: "Title" },
 ];
-
-const RECOMMENDATION_ALGORITHM_VERSION = "heuristic-v4";
 
 function remoteLibrarySort(value: LibrarySort): LibrarySort {
   return value === "code" || value === "release" || value === "rating" || value === "sales" || value === "random"
@@ -860,7 +858,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       .getRuntimeSettings(controller.signal)
       .then((next) => {
         setSettings(next);
-        window.localStorage.setItem("kikoto:recommend-threshold", String(next.recommendationThreshold));
       })
       .catch(() => setSettings(null));
     return () => controller.abort();
@@ -2818,7 +2815,7 @@ function WorkCard({
   isFetchBusy?: boolean;
 }) {
   const { t } = useTranslation();
-  const view = libraryWorkCardView(work, onUserTagOpen, showRecommendationScore);
+  const view = libraryWorkCardView(work, onUserTagOpen, showRecommendationScore, useAuth().recommendationThreshold);
   const trackedSources = trackedSourcesForWork(work);
   const trackedSource = trackedSources[0] ?? null;
   const untrackAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -2950,7 +2947,7 @@ function RemoteWorkCard({
   onEnsureWork: () => Promise<number | null>;
   onListSaved: (workId: number, favorite: boolean) => void;
 }) {
-  const view = remoteWorkCardView(work, source);
+  const view = remoteWorkCardView(work, source, useAuth().recommendationThreshold);
 
   return (
     <WorkCardShell
@@ -3219,6 +3216,7 @@ function libraryWorkCardView(
   work: Work,
   onUserTagOpen?: (tag: string) => void,
   showRecommendationScore = false,
+  threshold = 50,
 ): WorkCardViewModel {
   return {
     code: work.primaryCode,
@@ -3241,7 +3239,7 @@ function libraryWorkCardView(
     dlsiteTags: dlsiteTagBadges(work.tags),
     userTags: userTagBadges(work.userTags ?? [], onUserTagOpen),
     sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),
-    recommended: showRecommendationScore || recommendationBadgeVisible(work.recommendScore),
+    recommended: showRecommendationScore || recommendationBadgeVisible(work.recommendScore, threshold),
     recommendationScore: work.recommendScore,
   };
 }
@@ -3264,7 +3262,7 @@ function trackedPresenceForRemoteSource(work: WorkDetail | null, sourceID: numbe
   );
 }
 
-function remoteWorkCardView(work: RemoteWork, source: LibrarySource): WorkCardViewModel {
+function remoteWorkCardView(work: RemoteWork, source: LibrarySource, threshold: number): WorkCardViewModel {
   const sourceLabel = source.displayName || source.code || i18n.t("workCard.remoteSource");
   return {
     code: work.primaryCode || work.remoteId,
@@ -3282,7 +3280,7 @@ function remoteWorkCardView(work: RemoteWork, source: LibrarySource): WorkCardVi
     hasAvailableNonOriginEdition: work.hasAvailableNonOriginEdition,
     dlsiteTags: dlsiteTagBadges(work.tags),
     userTags: [],
-    recommended: recommendationBadgeVisible(work.recommendScore),
+    recommended: recommendationBadgeVisible(work.recommendScore, threshold),
     recommendationScore: work.recommendScore,
     sourceBadges: work.remotePlayable
       ? [{ key: `source:remote:${source.id}`, label: sourceLabel, variant: "outline" }]
@@ -7517,9 +7515,8 @@ function detailHeroModel(code: string, work: WorkDetail | null, preview: WorkPre
   };
 }
 
-function recommendationBadgeVisible(score: number | undefined) {
+function recommendationBadgeVisible(score: number | undefined, threshold: number) {
   if (window.localStorage.getItem("kikoto:recommend-badges") !== "true") return false;
-  const threshold = Number(window.localStorage.getItem("kikoto:recommend-threshold") ?? "50");
   return Number.isFinite(score) && (score ?? 0) >= threshold;
 }
 

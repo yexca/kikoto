@@ -140,6 +140,15 @@ async function mockCacheSettings(
       });
       return;
     }
+    if (url.pathname === "/api/auth/me/preferences") {
+      if (route.request().method() === "PATCH") {
+        const payload = route.request().postDataJSON() as Record<string, unknown>;
+        onSettings(payload);
+        currentSettings = { ...currentSettings, ...payload };
+      }
+      await route.fulfill({ json: currentSettings });
+      return;
+    }
     if (url.pathname === "/api/settings" && route.request().method() === "PATCH") {
       const payload = route.request().postDataJSON() as Record<string, unknown>;
       onSettings(payload);
@@ -381,8 +390,8 @@ test("personal settings stay separate from administrator maintenance", async ({ 
   await expect(page.getByRole("heading", { name: "Settings", exact: true, level: 1 })).toBeVisible();
   await expect(page.getByText("Manage your account and appearance preferences", { exact: true })).toBeHidden();
   await expect(page.getByRole("heading", { name: "Account", exact: true })).toBeVisible();
-  await page.getByRole("tab", { name: "Appearance", exact: true }).click();
-  await expect(page.getByLabel("Theme preference")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Appearance", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Recommendation", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Cache & Fetch", exact: true })).toHaveCount(0);
 
   await page.goto("/users");
@@ -563,7 +572,7 @@ for (const layout of ["mobile", "@desktop"]) {
       "aria-pressed",
       "true",
     );
-    await expect(navigation.getByRole("button")).toHaveCount(5);
+    await expect(navigation.getByRole("button")).toHaveCount(3);
     await expect(navigation.getByRole("button", { name: /^(Overview|Paths|Access)$/ })).toHaveCount(0);
     const rows = await navigation
       .getByRole("button")
@@ -691,6 +700,7 @@ test("routing drag order becomes the saved internal priority", async ({ page }) 
     (payload) => settingsPayloads.push(payload),
   );
   await page.goto("/maintenance?tab=routing");
+  await expect(page).toHaveURL(/\/settings\?tab=playback$/);
 
   await expect(page.getByText("Weight", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Enabled", { exact: true })).toHaveCount(0);
@@ -713,6 +723,7 @@ test("recommendation keeps common controls visible and advanced scoring collapse
     (payload) => settingsPayloads.push(payload),
   );
   await page.goto("/maintenance?tab=recommendation");
+  await expect(page).toHaveURL(/\/settings\?tab=recommendation$/);
 
   await expect(page.getByRole("button", { name: /Balanced/ })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByLabel("Badge threshold")).toBeVisible();
@@ -729,6 +740,9 @@ test("recommendation keeps common controls visible and advanced scoring collapse
   await expect.poll(() => settingsPayloads.length).toBe(1);
   expect((settingsPayloads[0].recommendationConfig as { jitterAmplitude: number }).jitterAmplitude).toBe(8);
   expect((settingsPayloads[0].recommendationConfig as { explorationAmplitude: number }).explorationAmplitude).toBe(30);
+  expect(Object.keys(settingsPayloads[0]).sort()).toEqual(["recommendationConfig", "recommendationThreshold"]);
+  await page.reload();
+  await expect(page.getByLabel("Discovery boost")).toHaveValue("30");
 });
 
 test("@desktop work management owns metadata settings and links to the existing workflow", async ({
@@ -769,4 +783,38 @@ test("@desktop work management owns metadata settings and links to the existing 
     .click();
   await page.getByRole("button", { name: "Metadata sync", exact: true }).click();
   await expect(page).toHaveURL(/workflows\?workflow=metadata_sync/);
+});
+
+test("ordinary users save folder preferences without instance administration", async ({ page }) => {
+  const saves: Record<string, unknown>[] = [];
+  await mockCacheSettings(
+    page,
+    () => undefined,
+    (payload) => saves.push(payload),
+  );
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: {
+        authenticated: true,
+        user: {
+          id: 1,
+          username: "synthetic-user",
+          displayName: "Example User",
+          role: "user",
+          permissions: ["library:read"],
+        },
+      },
+    }),
+  );
+  let instanceRequests = 0;
+  await page.route("**/api/settings", (route) => {
+    instanceRequests++;
+    return route.fulfill({ status: 403, json: { error: "Forbidden" } });
+  });
+  await page.goto("/settings?tab=playback");
+  await expect(page.getByRole("heading", { name: /^Folder preference/ })).toBeVisible();
+  await page.getByRole("button", { name: "Save playback settings", exact: true }).click();
+  await expect.poll(() => saves.length).toBe(1);
+  expect(Object.keys(saves[0])).toEqual(["directoryRoutingRules"]);
+  expect(instanceRequests).toBe(0);
 });

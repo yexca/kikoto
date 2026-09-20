@@ -57,7 +57,7 @@ func (s *Store) prepareRecommendationSessionTx(ctx context.Context, tx *sql.Tx, 
 		return snapshot, nil
 	}
 
-	config := loadRecommendationConfig(ctx, tx)
+	config := loadUserRecommendationConfig(ctx, tx, userID)
 	inputRevision, userRevision, err := recommendationSessionRevisions(ctx, tx, userID)
 	if err != nil {
 		return RecommendationSessionSnapshot{}, err

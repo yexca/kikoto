@@ -1,3 +1,4 @@
+import { Globe } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -35,7 +36,6 @@ export function AppearanceControls({
     <>
       <div className="border-b p-3" role="group" aria-label={t("appearance.language")}>
         <AppearanceGroupLabel>{t("appearance.language")}</AppearanceGroupLabel>
-        <p className="mb-2 px-2 text-xs text-muted-foreground">{t("appearance.languageDescription")}</p>
         <FloatingSelect
           value={localePreference}
           disabled={localeBusy}
@@ -44,7 +44,18 @@ export function AppearanceControls({
           ariaLabel={t("appearance.language")}
           onValueChange={(value) => void onLocaleChange(value as UiLocale)}
           className="disabled:cursor-wait"
-          options={UI_LOCALE_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))}
+          options={UI_LOCALE_OPTIONS.map((option) => ({
+            value: option.value,
+            label:
+              option.value === "auto" ? (
+                <span title={t(option.labelKey)}>
+                  <Globe className="h-4 w-4" aria-hidden="true" />
+                  <span className="sr-only">{t(option.labelKey)}</span>
+                </span>
+              ) : (
+                t(option.labelKey)
+              ),
+          }))}
         />
         {localeError && <p className="mt-2 px-2 text-xs text-destructive">{localeError}</p>}
       </div>

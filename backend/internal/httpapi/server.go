@@ -205,6 +205,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/media/{id}/text", s.serveMediaText)
 	mux.HandleFunc("GET /api/media/{id}/download", s.downloadMedia)
 	mux.HandleFunc("PATCH /api/media-items/{id}/progress", s.updateMediaProgress)
+	mux.HandleFunc("GET /api/auth/me/preferences", s.getUserPreferences)
+	mux.HandleFunc("PATCH /api/auth/me/preferences", s.updateUserPreferences)
 	mux.HandleFunc("GET /api/settings", s.getSettings)
 	mux.HandleFunc("GET /api/runtime-settings", s.getRuntimeSettings)
 	mux.HandleFunc("PATCH /api/settings", s.updateSettings)

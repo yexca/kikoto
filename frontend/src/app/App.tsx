@@ -1,3 +1,4 @@
+import { USER_PREFERENCES_CHANGED } from "@/lib/recommendationSession";
 import { App as CapacitorApp } from "@capacitor/app";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -113,6 +114,14 @@ function AuthenticatedApp() {
   const exitBackDeadlineRef = useRef(0);
   const authState = auth.user ? "authenticated" : "anonymous";
   const clientStorageScope = currentClientStorageScope(auth.user?.id ?? null);
+  const [preferenceRevision, setPreferenceRevision] = useState(0);
+  useEffect(() => {
+    const refresh = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === clientStorageScope) setPreferenceRevision((value) => value + 1);
+    };
+    window.addEventListener(USER_PREFERENCES_CHANGED, refresh);
+    return () => window.removeEventListener(USER_PREFERENCES_CHANGED, refresh);
+  }, [clientStorageScope]);
 
   const openCommandPalette = useCallback(() => {
     setCommandPaletteRequested(true);
@@ -446,7 +455,10 @@ function AuthenticatedApp() {
                     onOpenLibrary={() => openPath("/")}
                   />
                 )}
-                <CachedBrowsePages key={clientStorageScope} activePage={canAccessCurrentPage ? page : null} />
+                <CachedBrowsePages
+                  key={`${clientStorageScope}:${preferenceRevision}`}
+                  activePage={canAccessCurrentPage ? page : null}
+                />
                 {canAccessCurrentPage && page === "settings" && auth.user && (
                   <SettingsPage user={auth.user} readOnly={auth.demoMode} onAccountUpdated={auth.refresh} />
                 )}

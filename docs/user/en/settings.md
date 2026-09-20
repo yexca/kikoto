@@ -1,8 +1,7 @@
 # Settings
 [English](../en/settings.md) · [简体中文](../zh-Hans/settings.md) · [繁體中文](../zh-Hant/settings.md) · [日本語](../ja/settings.md) · [한국어](../ko/settings.md)
 
-Settings exposes per-user account controls and browser-local appearance and
-playback preferences. Instance and user administration remain in Maintenance.
+Settings exposes account controls, playback preferences, and recommendation preferences. Appearance and UI language are available from the header appearance menu. Instance and user administration remain in Maintenance.
 
 ## Current Settings
 
@@ -10,9 +9,7 @@ playback preferences. Instance and user administration remain in Maintenance.
 - Change an account-managed user's password after verifying the current
   password and confirming the replacement.
 - Keep username and role visible but read-only.
-- Light, dark, and system appearance preferences.
-- Anthropic, OpenAI, Apple, and Google Material Design style preferences.
-- Original, Graphite, Cobalt, and Iris color preferences.
+- Account-backed folder preferences and recommendation tuning, shared across devices.
 - Backward and forward seek intervals. They default to 10 and 30 seconds,
   respectively, and accept whole-second values from 1 through 300.
 
@@ -35,6 +32,14 @@ are browser-local preferences and do not modify Demo server data. Playback
 preferences are isolated by server identity and authenticated user, or by the
 anonymous principal when anonymous access is enabled.
 
+## Personal Playback And Recommendations
+
+Settings uses Account, Playback, and Recommendation tabs. Playback contains local seek intervals and **Folder preference**: ordered folder matching and exclusion rules. Recommendation contains presets, badge threshold, variation, discovery boost, and advanced scoring. These two migrated preferences are stored per authenticated account on the server; changing them never changes another account. An account without overrides and anonymous browsing retain the existing instance defaults. Old Maintenance Routing and Recommendation links open the corresponding Settings tab.
+
+Saving recommendation settings creates a new recommendation session for the current tab. Other open tabs keep their existing snapshots until a new session is created. Saving folder preferences updates subsequent directory selection without stopping the player. Failed saves retain the draft and the previous persisted values. Demo mode keeps these server-backed preferences read-only.
+
+Appearance is available only from the header menu. The globe option follows the browser or device language; its tooltip and accessible name identify automatic selection.
+
 ## Maintenance Organization
 
 Maintenance uses one horizontal row of tabs, scrolling horizontally on narrow screens. Overview is removed; Library is the default for source administrators, and Users is the default for user-only administrators. Old Paths and Access links open Library and Users respectively.
@@ -55,11 +60,7 @@ Maintenance uses one horizontal row of tabs, scrolling horizontally on narrow sc
   configuration can enable **Restrict outbound hosts** to allow only the API,
   Public site, Fallback, and an editable list of exact or `*.example.invalid`
   public host patterns.
-- Routing rules are ordered preferences. Their timeline position determines
-  internal priority; disabled and numeric-weight controls are not exposed.
-- Recommendation starts with named common profiles, exposes result variation
-  and discovery boost, and keeps the state-mix slots, affinity baseline,
-  weights, and caps under Advanced scoring.
+- Maintenance contains Library, Cache & Fetch, and Users. Library includes a collapsed, administrator-only recommendation telemetry section.
 - Cache & Fetch presents editable policy first, followed by managed-media usage
   and cleanup controls. Its configuration is a vertical list; resolved save
   paths are read-only previews in Library.
