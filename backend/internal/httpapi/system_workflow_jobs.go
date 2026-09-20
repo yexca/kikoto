@@ -524,6 +524,9 @@ func (s *Server) executeDLsiteMetadataSyncJob(ctx context.Context, job workflowJ
 	if runErr == nil {
 		runErr = s.syncPartiesFromDLsiteSnapshots(ctx)
 	}
+	if runErr == nil {
+		runErr = s.syncVoiceCreditsFromSnapshots(ctx)
+	}
 	if result.Status == "" {
 		result.Status = "succeeded"
 	}
