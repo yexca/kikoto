@@ -500,10 +500,10 @@ test("work maintenance mounts once and keeps its result region stable while sett
   });
 
   await page.goto("/maintenance?tab=unlinked");
-  const heading = page.getByRole("heading", { name: "Work maintenance", exact: true });
+  const heading = page.getByRole("heading", { name: "Pending works", exact: true });
   await expect(heading).toBeVisible();
   await expect(page.getByRole("status", { name: "Loading work maintenance" })).toBeVisible();
-  const panel = page.getByRole("region", { name: "Work maintenance", exact: true });
+  const panel = page.getByRole("region", { name: "Metadata records", exact: true });
   const loadingBox = await panel.boundingBox();
 
   releaseWorks();
@@ -699,13 +699,17 @@ test("@desktop work management owns metadata settings and links to the existing 
   );
   await page.goto("/maintenance?tab=metadata");
   await expect(page).toHaveURL(/work-management\?tab=settings/);
-  await expect(page.getByRole("heading", { name: "Work management", exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Metadata settings", exact: true })).toBeVisible();
   await page.getByRole("spinbutton", { name: "Catalog freshness days", exact: true }).fill("14");
   await page.getByRole("button", { name: "Save metadata settings", exact: true }).click();
   await expect.poll(() => saves.length).toBe(1);
   expect(Object.keys(saves[0]).sort()).toEqual(["catalogFreshnessDays", "dlsiteMetadataLanguages"]);
   expect(saves[0].catalogFreshnessDays).toBe(14);
   await page.screenshot({ path: testInfo.outputPath("work-management-settings.png") });
-  await page.getByRole("button", { name: "Open metadata sync", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Metadata settings", exact: true })
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Metadata sync", exact: true }).click();
   await expect(page).toHaveURL(/workflows\?workflow=metadata_sync/);
 });

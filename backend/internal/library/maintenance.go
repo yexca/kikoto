@@ -28,18 +28,21 @@ func (s *Store) ListMaintenance(ctx context.Context, options MaintenanceOptions)
 		(SELECT MIN(sibling.work_id) FROM work_edition AS sibling WHERE sibling.logical_work_id = logical.id))
 		FROM work_edition AS edition JOIN logical_work AS logical ON logical.id = edition.logical_work_id
 		WHERE edition.work_id = work.id), work.id)`
-	reasons := []string{}
-	if options.IncludeNoSource && options.Reason != "metadata" {
-		reasons = append(reasons, "("+noSourceWhereClause()+")")
+	// Catalog lists persisted families, including those without pending issues.
+	if options.Reason != "catalog" {
+		reasons := []string{}
+		if options.IncludeNoSource && options.Reason != "metadata" {
+			reasons = append(reasons, "("+noSourceWhereClause()+")")
+		}
+		if options.MetadataWhere != "" && options.Reason != "no_source" {
+			reasons = append(reasons, "("+options.MetadataWhere+")")
+			args = append(args, options.MetadataArgs...)
+		}
+		if len(reasons) == 0 {
+			reasons = append(reasons, "0")
+		}
+		where += " AND (" + strings.Join(reasons, " OR ") + ")"
 	}
-	if options.MetadataWhere != "" && options.Reason != "no_source" {
-		reasons = append(reasons, "("+options.MetadataWhere+")")
-		args = append(args, options.MetadataArgs...)
-	}
-	if len(reasons) == 0 {
-		reasons = append(reasons, "0")
-	}
-	where += " AND (" + strings.Join(reasons, " OR ") + ")"
 	page := MaintenancePage{RawPage: RawPage{Page: options.Page, PageSize: options.PageSize}, NoSource: map[int64]bool{}}
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM work WHERE "+where, args...).Scan(&page.Total); err != nil {
 		return page, err

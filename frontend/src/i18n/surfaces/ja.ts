@@ -2,9 +2,14 @@ import { surfaceEnglish } from "./en";
 
 export const surfaceJapanese = {
   workManagement: {
+    all: "すべて",
+    allMetadata: "すべてのメタデータ",
+    catalogDescription: "保存済みの作品メタデータを作品ファミリーごとに表示します。",
+    catalogEmpty: "保存済みの作品メタデータはありません。",
+
     issues: "対応が必要な作品",
     settings: "メタデータ設定",
-    openSync: "メタデータ同期を開く",
+    openSync: "メタデータ同期",
     loading: "読み込み中…",
   },
   workflowActivity: {
@@ -56,11 +61,11 @@ export const surfaceJapanese = {
   },
   workMaintenance: {
     rows: "表示件数",
-    title: "作品メンテナンス",
+    title: "メタデータ一覧",
     description:
       "メタデータに問題がある作品や利用可能なファイルソースがない作品を、作品ファミリー単位で表示します。更新が成功すると該当する問題だけが解消されます。",
     reason: "確認が必要な理由",
-    all: "要確認のすべて",
+    all: "要対応",
     metadata: "メタデータの問題",
     noSource: "利用可能なソースなし",
     details: "対象の版とプロバイダー（{{count}}）",
@@ -68,7 +73,7 @@ export const surfaceJapanese = {
     retrySelected: "メタデータを再試行（{{count}}）",
     empty: "確認が必要な作品はありません。",
     noMatching: "一致する作品はありません",
-    search: "要確認の作品を検索",
+    search: "メタデータを検索",
     loading: "作品メンテナンスを読み込み中",
     checkSources: "ソースを確認（{{count}}）",
   },

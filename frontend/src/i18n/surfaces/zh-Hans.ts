@@ -2,9 +2,14 @@ import { surfaceEnglish } from "./en";
 
 export const surfaceHans = {
   workManagement: {
+    all: "全部",
+    allMetadata: "全部元数据",
+    catalogDescription: "按作品系列归并展示所有已保存的作品元数据。",
+    catalogEmpty: "暂无已保存的作品元数据。",
+
     issues: "待处理作品",
     settings: "元数据设置",
-    openSync: "打开元数据同步",
+    openSync: "元数据同步",
     loading: "正在加载…",
   },
   workflowActivity: {
@@ -55,10 +60,10 @@ export const surfaceHans = {
   },
   workMaintenance: {
     rows: "每页行数",
-    title: "作品维护",
+    title: "元数据记录",
     description: "按作品家族查看元数据问题或无可用文件来源的作品。元数据更新成功后，只清除对应问题。",
     reason: "关注原因",
-    all: "全部待关注",
+    all: "需要注意",
     metadata: "元数据问题",
     noSource: "无可用来源",
     details: "受影响的版本与提供方（{{count}}）",
@@ -66,7 +71,7 @@ export const surfaceHans = {
     retrySelected: "重试元数据（{{count}}）",
     empty: "没有需要关注的作品。",
     noMatching: "没有匹配的作品",
-    search: "搜索待关注作品",
+    search: "搜索元数据",
     loading: "正在加载作品维护",
     checkSources: "检查来源（{{count}}）",
   },

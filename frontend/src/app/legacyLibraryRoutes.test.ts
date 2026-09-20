@@ -26,6 +26,7 @@ describe("legacyLibraryRedirect", () => {
     expect(legacyLibraryRedirect("/maintenance", "?tab=works&reason=metadata&metadataRun=7")).toBe(
       "/work-management?reason=metadata&metadataRun=7",
     );
+    expect(legacyLibraryRedirect("/maintenance", "?tab=works")).toBe("/work-management?reason=all");
     expect(legacyLibraryRedirect("/maintenance", "?tab=metadata")).toBe("/work-management?tab=settings");
     expect(legacyLibraryRedirect("/maintenance", "?tab=unlinked")).toBe("/work-management?reason=no_source");
   });

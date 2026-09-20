@@ -13,6 +13,7 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
     const tab = params.get("tab");
     if (tab === "works" || tab === "unlinked" || tab === "metadata") {
       params.delete("tab");
+      if (tab === "works" && !params.has("reason")) params.set("reason", "all");
       if (tab === "unlinked") params.set("reason", "no_source");
       if (tab === "metadata" && !params.has("metadataRun")) params.set("tab", "settings");
       return `/work-management${params.size ? `?${params}` : ""}`;

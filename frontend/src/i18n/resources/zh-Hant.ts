@@ -24,7 +24,7 @@ export const zhHantResource = {
         loadingPage: "正在載入頁面",
       },
       nav: {
-        workManagement: "作品管理",
+        workManagement: "中繼資料",
         workManagementDescription: "處理作品問題並設定中繼資料",
         library: "媒體庫",
         favorites: "收藏",

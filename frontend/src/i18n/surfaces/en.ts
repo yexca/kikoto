@@ -5,9 +5,14 @@
  */
 export const surfaceEnglish = {
   workManagement: {
+    all: "All",
+    allMetadata: "All metadata",
+    catalogDescription: "All saved work metadata, grouped by work family.",
+    catalogEmpty: "No work metadata saved yet.",
+
     issues: "Pending works",
     settings: "Metadata settings",
-    openSync: "Open metadata sync",
+    openSync: "Metadata sync",
     loading: "Loading…",
   },
   workflowActivity: {
@@ -59,11 +64,11 @@ export const surfaceEnglish = {
   },
   workMaintenance: {
     rows: "Rows",
-    title: "Work maintenance",
+    title: "Metadata records",
     description:
       "Works with metadata issues or no available file source, grouped by family. Successful metadata updates clear only the corresponding issue.",
     reason: "Attention reason",
-    all: "All needing attention",
+    all: "Needs attention",
     metadata: "Metadata issues",
     noSource: "No available source",
     details: "Affected editions and providers ({{count}})",
@@ -71,7 +76,7 @@ export const surfaceEnglish = {
     retrySelected: "Retry metadata ({{count}})",
     empty: "No works need attention.",
     noMatching: "No matching works",
-    search: "Search works needing attention",
+    search: "Search metadata",
     loading: "Loading work maintenance",
     checkSources: "Check sources ({{count}})",
   },

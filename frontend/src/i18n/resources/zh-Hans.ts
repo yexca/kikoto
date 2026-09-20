@@ -24,7 +24,7 @@ export const zhHansResource = {
         loadingPage: "正在加载页面",
       },
       nav: {
-        workManagement: "作品管理",
+        workManagement: "元数据",
         workManagementDescription: "处理作品问题并配置元数据",
         library: "媒体库",
         favorites: "收藏",

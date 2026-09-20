@@ -1190,7 +1190,7 @@ export const englishResource = {
         loadingPage: "Loading page",
       },
       nav: {
-        workManagement: "Work management",
+        workManagement: "Metadata",
         workManagementDescription: "Resolve work issues and configure metadata",
         library: "Library",
         favorites: "Favorites",

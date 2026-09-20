@@ -46,7 +46,7 @@ test("metadata operators retry selected issues without source settings access", 
     await route.fulfill({ status: 202, json: { queued: workIds.length, skipped: 0, failed: 0 } });
   });
   await page.goto("/maintenance?tab=works&reason=metadata");
-  const list = page.getByRole("region", { name: "Work maintenance" });
+  const list = page.getByRole("region", { name: "Metadata records" });
   await expect(list).toBeVisible();
   await list.getByText("Affected editions and providers (1)").first().click();
   await expect(list.getByRole("listitem").filter({ hasText: syntheticWorkCode("RJ", 0) })).toContainText(
@@ -118,16 +118,14 @@ test("@desktop metadata page selection resets when searching or changing pages",
     });
   });
   await page.goto("/maintenance?tab=works&reason=metadata");
-  const list = page.getByRole("region", { name: "Work maintenance" });
+  const list = page.getByRole("region", { name: "Metadata records" });
   await list.getByRole("checkbox", { name: "Select current page", exact: true }).click();
   await expect(list.getByRole("button", { name: "Retry metadata (25)", exact: true })).toBeEnabled();
   await list.getByRole("button", { name: "Next page", exact: true }).click();
   await expect(list.getByRole("link", { name: /Synthetic work 25/ })).toBeVisible();
   await expect(list.getByRole("button", { name: "Retry metadata (0)", exact: true })).toBeDisabled();
   await list.getByRole("checkbox", { name: `Select ${syntheticWorkCode("RJ", 25)}`, exact: true }).click();
-  await list
-    .getByRole("searchbox", { name: "Search works needing attention", exact: true })
-    .fill(syntheticWorkCode("RJ", 0));
+  await list.getByRole("searchbox", { name: "Search metadata", exact: true }).fill(syntheticWorkCode("RJ", 0));
   await list.getByRole("button", { name: "Search", exact: true }).click();
   await expect(list.getByRole("checkbox", { name: /^Select RJ/ })).toHaveCount(1);
   await expect(list.getByRole("link", { name: /Synthetic work 0/ })).toBeVisible();
@@ -217,8 +215,11 @@ test("work maintenance keeps source actions scoped and metadata settings separat
     await route.fulfill({ json: { deletedFamilyCount: deleted.length, skipped: [] } });
   });
   await page.goto("/maintenance?tab=works");
-  const list = page.getByRole("region", { name: "Work maintenance", exact: true });
-  await expect(list.getByRole("combobox", { name: "Attention reason" })).toHaveValue("all");
+  const list = page.getByRole("region", { name: "Metadata records", exact: true });
+  await expect(page.getByRole("tab", { name: "Needs attention", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(list.getByRole("button", { name: /Delete local information/ })).toHaveCount(0);
   await list.getByRole("checkbox", { name: "Select current page", exact: true }).click();
   await expect(list.getByRole("button", { name: "Retry metadata (1)", exact: true })).toBeEnabled();
@@ -227,14 +228,14 @@ test("work maintenance keeps source actions scoped and metadata settings separat
   await list.getByRole("checkbox", { name: "Select current page", exact: true }).click();
   await list.getByRole("button", { name: "Check sources (2)", exact: true }).click();
   expect(checked).toEqual([1, 3]);
-  await list.getByRole("combobox", { name: "Attention reason" }).selectOption("metadata");
+  await page.getByRole("tab", { name: "Metadata issues", exact: true }).click();
   await expect(list.getByRole("button", { name: "Retry metadata (0)", exact: true })).toBeDisabled();
   const row = list.getByRole("row").filter({ hasText: "Example mixed work" });
   await expect(row.getByText("No available source", { exact: true })).toBeVisible();
   await expect(row.getByText("Metadata issues", { exact: true })).toBeVisible();
   await row.getByText("Affected editions and providers (1)").click();
   await expect(row.getByRole("button", { name: `Retry ${syntheticWorkCode("RJ", 1)}`, exact: true })).toBeEnabled();
-  await list.getByRole("combobox", { name: "Attention reason" }).selectOption("no_source");
+  await page.getByRole("tab", { name: "No available source", exact: true }).click();
   await list.getByRole("checkbox", { name: "Select current page", exact: true }).click();
   await list.getByRole("button", { name: "Delete local information", exact: true }).click();
   const dialog = page.getByRole("alertdialog", { name: "Delete local work information?" });
@@ -242,7 +243,100 @@ test("work maintenance keeps source actions scoped and metadata settings separat
   expect(deleted).toEqual([]);
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.keyboard.press("Control+Home");
-  await page.getByRole("tab", { name: "Metadata settings", exact: true }).click();
-  await expect(list).toHaveCount(0);
+  await page.getByRole("button", { name: "Metadata settings", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Metadata settings", exact: true })).toBeVisible();
   await expect(page).toHaveURL(/tab=settings/);
+  await page
+    .getByRole("dialog", { name: "Metadata settings", exact: true })
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
+  await expect(page.getByRole("tab", { name: "No available source", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(list).toBeVisible();
 });
+
+for (const viewport of ["mobile", "@desktop"]) {
+  test(`${viewport} Metadata catalog includes healthy works and preserves filters under settings`, async ({
+    page,
+  }, testInfo) => {
+    await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+      authenticated: true,
+      permissions: ["library:read", "sources:write", "metadata:sync", "workflows:run"],
+    });
+    const records = [
+      {
+        ...work,
+        id: 1,
+        primaryCode: syntheticWorkCode("RJ", 0),
+        title: "Example healthy work",
+        noSource: false,
+        metadataIssues: [],
+      },
+      {
+        ...work,
+        id: 2,
+        primaryCode: syntheticWorkCode("RJ", 1),
+        title: "Example missing-source work",
+        noSource: true,
+        metadataIssues: [],
+      },
+    ];
+    const requests: string[] = [];
+    await page.route("**/api/maintenance/works?*", async (route) => {
+      const params = new URL(route.request().url()).searchParams;
+      const reason = params.get("reason") ?? "all";
+      requests.push(reason);
+      const works = records.filter(
+        (record) =>
+          (reason === "catalog" || (reason !== "metadata" && record.noSource)) &&
+          record.title.includes(params.get("q") ?? ""),
+      );
+      await route.fulfill({ json: { works, page: 1, pageSize: 25, total: works.length } });
+    });
+    await page.route("**/api/settings", (route) =>
+      route.fulfill({ json: { fileSources: [], catalogFreshnessDays: 30, dlsiteMetadataLanguages: ["ja-jp"] } }),
+    );
+    await page.goto("/work-management");
+    await expect(page.getByRole("heading", { name: "Metadata", exact: true })).toBeVisible();
+    const tabs = page.getByRole("tablist", { name: "Attention reason" });
+    await expect(tabs.getByRole("tab")).toHaveText([
+      "All",
+      "Needs attention",
+      "Metadata issues",
+      "No available source",
+    ]);
+    await expect(tabs.getByRole("tab", { name: "All", exact: true })).toHaveAttribute("aria-selected", "true");
+    const list = page.getByRole("region", { name: "Metadata records", exact: true });
+    await expect(list.getByRole("link", { name: "Example healthy work", exact: true })).toBeVisible();
+    expect(requests).toContain("catalog");
+    await tabs.getByRole("tab", { name: "All", exact: true }).press("ArrowRight");
+    await expect(tabs.getByRole("tab", { name: "Needs attention", exact: true })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await expect(list.getByRole("link", { name: "Example healthy work", exact: true })).toHaveCount(0);
+    await expect(list.getByRole("link", { name: "Example missing-source work", exact: true })).toBeVisible();
+    await list.getByRole("searchbox", { name: "Search metadata", exact: true }).fill("Example");
+    await list.getByRole("searchbox", { name: "Search metadata", exact: true }).press("Enter");
+    await page.getByRole("button", { name: "Metadata settings", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Metadata settings", exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("spinbutton", { name: "Catalog freshness days", exact: true })).toHaveValue("30");
+    const bounds = (await dialog.boundingBox())!;
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible();
+    await expect(tabs.getByRole("tab", { name: "Needs attention", exact: true })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await expect(list.getByRole("searchbox", { name: "Search metadata", exact: true })).toHaveValue("Example");
+    await page.screenshot({ path: testInfo.outputPath("metadata-management.png") });
+    await page.getByRole("button", { name: "Metadata sync", exact: true }).click();
+    await expect(page).toHaveURL(/workflows\?workflow=metadata_sync/);
+  });
+}

@@ -2,9 +2,14 @@ import { surfaceEnglish } from "./en";
 
 export const surfaceHant = {
   workManagement: {
+    all: "全部",
+    allMetadata: "全部中繼資料",
+    catalogDescription: "依作品系列彙整顯示所有已儲存的作品中繼資料。",
+    catalogEmpty: "尚無已儲存的作品中繼資料。",
+
     issues: "待處理作品",
     settings: "中繼資料設定",
-    openSync: "開啟中繼資料同步",
+    openSync: "中繼資料同步",
     loading: "正在載入…",
   },
   workflowActivity: {
@@ -55,10 +60,10 @@ export const surfaceHant = {
   },
   workMaintenance: {
     rows: "每頁列數",
-    title: "作品維護",
+    title: "中繼資料記錄",
     description: "按作品家族查看中繼資料問題或無可用檔案來源的作品。中繼資料更新成功後，只清除對應問題。",
     reason: "關注原因",
-    all: "全部待關注",
+    all: "需要注意",
     metadata: "中繼資料問題",
     noSource: "無可用來源",
     details: "受影響的版本與提供方（{{count}}）",
@@ -66,7 +71,7 @@ export const surfaceHant = {
     retrySelected: "重試中繼資料（{{count}}）",
     empty: "沒有需要關注的作品。",
     noMatching: "沒有符合的作品",
-    search: "搜尋待關注作品",
+    search: "搜尋中繼資料",
     loading: "正在載入作品維護",
     checkSources: "檢查來源（{{count}}）",
   },

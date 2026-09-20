@@ -76,17 +76,19 @@ anonymous principal when anonymous access is enabled.
   cache/save previews, and per-source save previews. Remote Source configuration
   shows the same resolved example instead of exposing a path-template editor.
 
-## Work management
+## Metadata
 
-The **Work management** sidebar entry → **Pending works** lists existing work families needing attention. Filter by **All needing attention**, **Metadata issues**, or **No available source**. Search, paging, covers, and selection are shared. Each family occupies one row, with multiple reason badges and expandable affected editions/provider details. Successful metadata updates remove only the corresponding issue; a work with no available source stays visible.
+The **Metadata** sidebar entry sits directly below **Workflows**. Its horizontal categories are **All**, **Needs attention**, **Metadata issues**, and **No available source**. All includes every saved work family, including metadata without pending issues; the other categories show the applicable attention reasons. Search, pagination, covers, selection, and affected edition/provider details are shared.
+
+Use **Metadata settings** at the upper right to open settings in a dialog; closing it preserves the current list and filters. **Metadata sync** opens the existing sync workflow, where you choose the scope and start it.
 
 Select families and choose **Retry metadata**; its count includes only eligible selections. You can also retry an affected edition from its details, including products previously reported unavailable. Failed retries preserve existing metadata and manual overrides. **Check sources** applies to selected families without a source. Confirmed deletion of local information is available only in the **No available source** view; the server rechecks availability and retains media files.
 
-**Open metadata issues** in Activity opens Work management filtered to that run's unresolved metadata issues; **Show all pending works** removes the run filter. Recovery never changes another user's Activity review. Metadata recovery requires `metadata:sync`, while source checks, deletion, and source/language settings require `sources:write`. The **Metadata settings** tab contains settings only. **Open metadata sync** opens the existing workflow in Workflows; this page does not duplicate its configuration or run controls. Old Maintenance links redirect here.
+**Open metadata issues** in Activity opens Metadata filtered to that run's unresolved metadata issues; **Show all pending works** removes the run filter. Recovery never changes another user's Activity review. Metadata recovery requires `metadata:sync`, while source checks, deletion, and source/language settings require `sources:write`. The **Metadata settings** dialog contains settings only. **Metadata sync** opens the existing workflow in Workflows; this page does not duplicate its configuration or run controls. Old Maintenance links redirect here.
 
 Metadata settings let administrators choose and reorder the supported DLsite
   title/tag languages. `Origin` is always retained as the final fallback. Each
-  compatible remote source also has its request-language hint on this tab; the
+  compatible remote source also has its request-language hint in this dialog; the
   upstream may ignore it, fall back, or return mixed-language metadata.
 
 ## Related Docs

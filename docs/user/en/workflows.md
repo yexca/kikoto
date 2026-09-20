@@ -40,7 +40,7 @@ Workflows make backend actions inspectable.
   dedicated metadata-run notice. Other failures can be marked reviewed once
   outstanding issues are resolved. This acknowledgement is per user. History
   keeps the original outcome, including failed, partial, and cancelled runs.
-- Work management owns pending-work recovery and metadata settings. Its metadata
+- Metadata owns pending-work recovery and metadata settings. Its metadata
   sync shortcut selects the existing workflow here.
 - Built-in local scan, metadata sync, remote popular, and DLsite popular
   workflows support editable Startup and interval triggers. Local scan ships

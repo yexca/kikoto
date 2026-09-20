@@ -49,7 +49,7 @@ in `app_setting`, so they survive browser changes and server restarts.
 
 ## Metadata Recovery
 
-Metadata synchronization remains a workflow. Work management owns the current
+Metadata synchronization remains a workflow. Metadata management owns the current
 attention list and metadata settings, with a shortcut to the existing workflow.
 Activity run detail links to the unresolved
 issues encountered by that run. Selecting works queues recoverable family-sync
@@ -69,10 +69,10 @@ Metadata reasons and retries require `metadata:sync`. No-source reasons, source
 checks, and confirmed deletion require `sources:write`; the UI exposes deletion
 only in the no-source view and the server still revalidates family availability.
 Each permission grants only its corresponding maintenance actions, without
-exposing settings to metadata-only operators. Work management separates pending
-works from its Metadata settings tab.
+exposing settings to metadata-only operators. Metadata management presents All and attention categories horizontally.
+Metadata settings open in a dialog, with the current list retained underneath.
 Activity links use `/work-management?reason=metadata&metadataRun=<id>`;
-legacy Maintenance work and metadata links redirect to Work management. Filtering by a run additionally
+legacy Maintenance work and metadata links redirect to Metadata management. Filtering by a run additionally
 checks workflow permission and that run's ownership. Successful recovery changes shared work state, never
 `workflow_run_review` or the historical execution status.
 
@@ -270,3 +270,10 @@ boundary. The run and active node become partial, the recoverable job is not
 automatically retried, and Activity records only the normalized origin rather
 than the media path or query. After an administrator changes the source policy,
 a manual Retry resolves the old candidate and resumes the same run.
+
+The Metadata All category sends `reason=catalog` to the bounded maintenance read.
+It lists already persisted work families, including those without pending issues,
+using the same search, pagination, permission, and demo eligibility boundaries.
+It does not discover providers or materialize catalog results. The legacy `all`
+reason still means the attention union, and a run filter always narrows the read
+to that run's unresolved metadata issues.

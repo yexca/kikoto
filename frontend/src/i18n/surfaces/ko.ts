@@ -2,9 +2,14 @@ import { surfaceEnglish } from "./en";
 
 export const surfaceKorean = {
   workManagement: {
+    all: "전체",
+    allMetadata: "모든 메타데이터",
+    catalogDescription: "저장된 작품 메타데이터를 작품 계열별로 표시합니다.",
+    catalogEmpty: "저장된 작품 메타데이터가 없습니다.",
+
     issues: "처리가 필요한 작품",
     settings: "메타데이터 설정",
-    openSync: "메타데이터 동기화 열기",
+    openSync: "메타데이터 동기화",
     loading: "불러오는 중…",
   },
   workflowActivity: {
@@ -56,11 +61,11 @@ export const surfaceKorean = {
   },
   workMaintenance: {
     rows: "페이지당 행",
-    title: "작품 유지 관리",
+    title: "메타데이터 목록",
     description:
       "메타데이터 문제가 있거나 사용 가능한 파일 소스가 없는 작품을 작품 그룹별로 표시합니다. 업데이트가 성공하면 해당 문제만 해제됩니다.",
     reason: "확인 사유",
-    all: "확인이 필요한 전체 작품",
+    all: "주의 필요",
     metadata: "메타데이터 문제",
     noSource: "사용 가능한 소스 없음",
     details: "영향받은 버전 및 제공자 ({{count}})",
@@ -68,7 +73,7 @@ export const surfaceKorean = {
     retrySelected: "메타데이터 재시도 ({{count}})",
     empty: "확인이 필요한 작품이 없습니다.",
     noMatching: "일치하는 작품이 없습니다",
-    search: "확인이 필요한 작품 검색",
+    search: "메타데이터 검색",
     loading: "작품 유지 관리 불러오는 중",
     checkSources: "소스 확인 ({{count}})",
   },

@@ -73,6 +73,14 @@ func TestWorkMaintenanceGroupsFamiliesBeforePagination(t *testing.T) {
 	if page := read("q=" + testfixture.WorkCode(testfixture.PrefixRJ, 0)); page.Total != 0 {
 		t.Fatal("available family remains in attention union")
 	}
+	// Catalog includes the resolved family, keeps one row for its editions,
+	// and applies search and pagination to that same complete set.
+	if page := read("reason=catalog&q=" + testfixture.WorkCode(testfixture.PrefixRJ, 1)); page.Total != 1 || len(page.Works) != 1 || page.Works[0].NoSource || len(page.Works[0].MetadataIssues) != 0 {
+		t.Fatalf("resolved metadata missing from catalog: %+v", page)
+	}
+	if first, second := read("reason=catalog&page=1"), read("reason=catalog&page=2"); first.Total != 26 || len(first.Works) != 25 || len(second.Works) != 1 {
+		t.Fatalf("catalog pagination=%+v / %+v", first, second)
+	}
 	// Null canonical pointers still produce one deterministic family row.
 	if _, err := db.Exec(`DELETE FROM work_source_presence WHERE work_id=2; UPDATE logical_work SET canonical_work_id=NULL WHERE id=1; UPDATE work_edition SET is_canonical=0 WHERE logical_work_id=1`); err != nil {
 		t.Fatal(err)
@@ -108,6 +116,10 @@ func TestWorkMaintenancePermissionsAndRunScope(t *testing.T) {
 		{"runId=81", []string{"metadata:sync", "workflows:run"}, 403, 0, false},
 		{"runId=82", []string{"metadata:sync"}, 403, 0, false},
 		{"reason=all&runId=82", []string{"metadata:sync", "sources:write", "workflows:run"}, 200, 1, true},
+		{"reason=catalog", []string{"library:read"}, 403, 0, false},
+		{"reason=catalog", []string{"metadata:sync"}, 200, 2, true},
+		{"reason=catalog", []string{"sources:write"}, 200, 2, false},
+		{"reason=catalog&runId=82", []string{"metadata:sync", "sources:write", "workflows:run"}, 200, 1, true},
 		{"reason=bad", []string{"metadata:sync"}, 400, 0, false},
 		{"pageSize=101", []string{"metadata:sync"}, 400, 0, false},
 	} {
@@ -153,5 +165,23 @@ func TestWorkMaintenanceDemoShowsOnlyEligibleWorks(t *testing.T) {
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || response.Code != 200 || page.Total != 1 || len(page.Works) != 1 || page.Works[0].ID != 1 {
 		t.Fatalf("demo=%d %s %v", response.Code, response.Body, err)
+	}
+}
+
+func TestWorkMaintenanceCatalogDemoKeepsEligibilityWithoutPendingIssues(t *testing.T) {
+	db := openMigratedTestDB(t)
+	seedMetadataIssue(t, db, 0)
+	seedMetadataIssue(t, db, 1)
+	if _, err := db.Exec(`UPDATE work SET is_permanently_free=1,age_rating='general' WHERE id=1; UPDATE work_metadata_sync_state SET status='succeeded',last_success_attempt_id=1`); err != nil {
+		t.Fatal(err)
+	}
+	s := NewServer(db, config.Config{Mode: config.ModeDemo})
+	response := metadataRequest(s.listWorkMaintenance, http.MethodGet, "/api/maintenance/works?reason=catalog", "", "library:read", "playback:use")
+	var page struct {
+		Works []maintenanceWork `json:"works"`
+		Total int               `json:"total"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || response.Code != 200 || page.Total != 1 || len(page.Works) != 1 || page.Works[0].ID != 1 || len(page.Works[0].MetadataIssues) != 0 {
+		t.Fatalf("demo catalog=%d %s %v", response.Code, response.Body, err)
 	}
 }

@@ -24,7 +24,7 @@ export const japaneseResource = {
         loadingPage: "ページを読み込み中",
       },
       nav: {
-        workManagement: "作品管理",
+        workManagement: "メタデータ",
         workManagementDescription: "作品の問題とメタデータ設定を管理",
         library: "ライブラリ",
         favorites: "お気に入り",

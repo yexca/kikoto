@@ -24,7 +24,7 @@ export const koreanResource = {
         loadingPage: "페이지 로드 중",
       },
       nav: {
-        workManagement: "작품 관리",
+        workManagement: "메타데이터",
         workManagementDescription: "작품 문제와 메타데이터 설정 관리",
         library: "라이브러리",
         favorites: "즐겨찾기",

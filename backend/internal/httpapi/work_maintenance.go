@@ -41,7 +41,7 @@ func (s *Server) listWorkMaintenance(w http.ResponseWriter, r *http.Request) {
 			*target = number
 		}
 	}
-	if len(options.Query) > 256 || (options.Reason != "" && options.Reason != "all" && options.Reason != "metadata" && options.Reason != "no_source") {
+	if len(options.Query) > 256 || (options.Reason != "" && options.Reason != "all" && options.Reason != "catalog" && options.Reason != "metadata" && options.Reason != "no_source") {
 		writeAPIError(w, http.StatusBadRequest, "invalid_filter", "invalid maintenance filter", false)
 		return
 	}

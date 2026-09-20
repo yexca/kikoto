@@ -95,7 +95,7 @@ storage keys; it remains mounted across navigation.
 - Circles.
 - Voice actors.
 - Settings.
-- Work management: pending work issues and metadata settings, with a workflow shortcut.
+- Metadata: saved metadata and attention categories below Workflows, with a settings dialog and sync workflow shortcut.
 - Workflows: horizontal definition tabs and a right-side Activity summary.
 - Activity run details inside the Workflows panel, also reachable through notifications.
 - Users.
