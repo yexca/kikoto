@@ -827,6 +827,7 @@ export const surfaceJapanese = {
     unknown: "不明",
   },
   workflowCanvas: {
+    scrollZoomHint: "{{key}} キーを押しながらスクロールすると、キャンバスを拡大・縮小できます。",
     inputOutputRequired: "入力ポートと出力ポートを選択してください。",
     dagCanvas: "ワークフロー DAG キャンバス",
     composerCanvas: "ワークフロー編集キャンバス",

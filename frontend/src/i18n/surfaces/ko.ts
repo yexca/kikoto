@@ -823,6 +823,7 @@ export const surfaceKorean = {
     unknown: "알 수 없음",
   },
   workflowCanvas: {
+    scrollZoomHint: "{{key}} 키를 누른 채 스크롤하면 캔버스를 확대하거나 축소할 수 있습니다.",
     inputOutputRequired: "입력 및 출력 포트를 선택하세요.",
     dagCanvas: "워크플로 DAG 캔버스",
     composerCanvas: "워크플로 편집 캔버스",

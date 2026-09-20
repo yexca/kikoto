@@ -62,6 +62,7 @@ import {
 } from "@/features/workflows/definitionModel";
 import { WorkflowRunDialog } from "@/features/workflows/WorkflowRunDialog";
 import { parseWorkCodes, WorkCodesField } from "@/features/workflows/WorkCodesField";
+import { WorkflowCanvasScrollBoundary } from "@/features/workflows/WorkflowCanvasScrollBoundary";
 import { WorkflowViewportTools } from "@/features/workflows/WorkflowViewportTools";
 import {
   workflowDataTypeColor,
@@ -3172,7 +3173,7 @@ function WorkflowNodeCanvas({
   );
 
   return (
-    <div
+    <WorkflowCanvasScrollBoundary
       ref={canvasRef}
       className={`workflow-canvas overflow-hidden rounded-md border ${responsiveLayout ? "" : compact ? "h-48" : "h-64"}`}
       style={responsiveLayout ? { height: responsiveLayout.height } : undefined}
@@ -3197,7 +3198,7 @@ function WorkflowNodeCanvas({
         <Background gap={20} size={1} color="hsl(var(--workflow-grid))" />
         <WorkflowViewportTools compact={compact} />
       </ReactFlow>
-    </div>
+    </WorkflowCanvasScrollBoundary>
   );
 }
 

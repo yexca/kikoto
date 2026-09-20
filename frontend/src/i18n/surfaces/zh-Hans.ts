@@ -796,6 +796,7 @@ export const surfaceHans = {
     unknown: "未知",
   },
   workflowCanvas: {
+    scrollZoomHint: "按住 {{key}} 并滚动鼠标滚轮以缩放画布。",
     inputOutputRequired: "请选择输入和输出端口。",
     dagCanvas: "工作流有向无环图画布",
     composerCanvas: "工作流编辑画布",

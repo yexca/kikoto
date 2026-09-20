@@ -108,3 +108,5 @@ Workflows make backend actions inspectable.
 - [Architecture workflows](../../architecture/workflows.md)
 - [Reliability](../../operations/reliability.md)
 - [Testing](../../development/testing.md)
+
+Canvas navigation: ordinary wheel scrolling moves the page or Activity panel. Hold Ctrl (⌘ on Mac) while scrolling to zoom the canvas; a brief hint appears when scrolling without the modifier. Drag to pan, or use the zoom and fit buttons.

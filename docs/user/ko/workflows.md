@@ -31,3 +31,5 @@ Activity는 현재 선택한 워크플로의 실행과 개수만 표시합니다
 - [아키텍처 워크플로](../../architecture/workflows.md)
 - [신뢰성](../../operations/reliability.md)
 - [테스트](../../development/testing.md)
+
+캔버스에서 일반 스크롤은 페이지나 Activity 패널을 이동합니다. Ctrl(Mac에서는 ⌘) 키를 누른 채 스크롤하면 확대·축소되며, 키 없이 스크롤하면 안내가 잠시 표시됩니다. 드래그로 이동하거나 확대·축소 버튼을 사용할 수도 있습니다.

@@ -763,6 +763,7 @@ export const surfaceHant = {
     unknown: "未知",
   },
   workflowCanvas: {
+    scrollZoomHint: "按住 {{key}} 並滾動滑鼠滾輪以縮放畫布。",
     inputOutputRequired: "請選取輸入和輸出連接埠。",
     dagCanvas: "工作流程有向無環圖畫布",
     composerCanvas: "工作流程編輯畫布",

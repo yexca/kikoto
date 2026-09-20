@@ -929,6 +929,7 @@ export const surfaceEnglish = {
     unknown: "Unknown",
   },
   workflowCanvas: {
+    scrollZoomHint: "Hold {{key}} and scroll to zoom the canvas.",
     inputOutputRequired: "Select an input and output port.",
     dagCanvas: "Workflow DAG canvas",
     composerCanvas: "Workflow composer canvas",

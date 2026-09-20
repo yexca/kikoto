@@ -32,6 +32,7 @@ import {
   workflowNodePorts,
   wouldCreateWorkflowCycle,
 } from "@/features/workflows/definitionModel";
+import { WorkflowCanvasScrollBoundary } from "@/features/workflows/WorkflowCanvasScrollBoundary";
 import { WorkflowViewportTools } from "@/features/workflows/WorkflowViewportTools";
 import { workflowDataTypeColor, workflowEdgeClassName } from "@/features/workflows/workflowVisuals";
 import type { WorkflowNodeType } from "@/lib/api";
@@ -226,7 +227,7 @@ export function WorkflowCanvas({
   );
 
   return (
-    <div
+    <WorkflowCanvasScrollBoundary
       className={`workflow-canvas workflow-composer-canvas overflow-hidden ${compact ? "h-64 min-h-64 rounded-md border" : "h-full min-h-0 lg:min-h-[32rem]"}`}
       aria-label={readonly ? t("workflowCanvas.dagCanvas") : t("workflowCanvas.composerCanvas")}
     >
@@ -286,7 +287,7 @@ export function WorkflowCanvas({
         )}
         <WorkflowViewportTools compact={compact} rightInset={viewportRightInset} />
       </ReactFlow>
-    </div>
+    </WorkflowCanvasScrollBoundary>
   );
 }
 

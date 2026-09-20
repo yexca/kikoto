@@ -100,3 +100,5 @@ Activity 僅顯示目前工作流程的工作與計數，切換流程會更新�
 - [架構工作流程](../../architecture/workflows.md)
 - [可靠性](../../operations/reliability.md)
 - [測試](../../development/testing.md)
+
+畫布上的一般滾輪操作會捲動頁面或 Activity 面板。按住 Ctrl（Mac 為 ⌘）並滾動可縮放畫布；未按修飾鍵時會短暫顯示操作提示。也可以拖曳平移，或使用縮放和適應畫布按鈕。

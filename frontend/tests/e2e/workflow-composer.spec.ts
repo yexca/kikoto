@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { expectCooperativeCanvasScroll } from "./workflow-canvas-scroll";
 
 const nodeTypes = [
   nodeType(
@@ -600,4 +601,13 @@ test("@desktop creating from the built-in filter selects the new custom workflow
   await expect(page.getByRole("radio", { name: "Custom", exact: true })).toBeChecked();
   await page.keyboard.press("Escape");
   await page.screenshot({ path: testInfo.outputPath("workflow-tabs-desktop.png") });
+});
+
+test("@desktop custom workflow preview and editor require a modifier for wheel zoom", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await mockComposer(page, []);
+  await page.goto("/workflows");
+  await expectCooperativeCanvasScroll(page, page.getByLabel("Workflow DAG canvas"));
+  await page.getByRole("button", { name: "Edit workflow", exact: true }).click();
+  await expectCooperativeCanvasScroll(page, page.getByLabel("Workflow composer canvas"), false);
 });
