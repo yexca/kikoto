@@ -201,6 +201,10 @@ smoke-logs:
 sensitive-check:
 	$(NODE) scripts/check-sensitive.mjs
 
+.PHONY: helper-test
+helper-test:
+	powershell.exe -NoProfile -File scripts/test-kikoto-helper.ps1
+
 sensitive-check-test:
 	$(NODE) --test scripts/check-sensitive.test.mjs
 

@@ -72,6 +72,20 @@ manages additional media-folder mappings, and provides start, stop, upgrade,
 status, logs, and configuration-backup actions. Existing `.env` and Compose
 files are kept; the helper does not overwrite them during re-runs.
 
+The helper automatically prepares missing deployment files and requires an
+administrator password on first setup. Later password changes can recreate the
+service to apply the new configuration; restarting alone does not reload `.env`.
+Service management also offers explicit recreation, container removal, and the
+local image version. Removing containers keeps host-mounted files.
+
+Folder management requires Docker Compose 2.24.4 or newer. Single-folder mode
+mounts the selected directory at `/data`. Multiple-folder mode replaces the
+default data mount with only the selected directories mounted below `/data`;
+it creates no persistent volume. Files written outside those selected mounts,
+including Fetch staging or output under an unmounted `/data` path, are lost
+when the container is removed or recreated. Keep durable Fetch destinations and
+transaction state on the same persistent filesystem when using Fetch.
+
 ### 1. Prepare the deployment directory
 
 Place [`docker-compose.yml`](docker-compose.yml) in an empty directory. Create a

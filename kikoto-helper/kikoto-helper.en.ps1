@@ -1,5 +1,10 @@
-param([ValidateSet('en','zh')][string]$Language = 'en')
+﻿param([ValidateSet('en','zh')][string]$Language = 'en')
 $ErrorActionPreference = 'Stop'
+# Windows PowerShell's progress repaint can corrupt wide-character console output.
+$ProgressPreference = 'SilentlyContinue'
+$OutputEncoding = New-Object Text.UTF8Encoding($false)
+[Console]::InputEncoding = $OutputEncoding
+[Console]::OutputEncoding = $OutputEncoding
 $HelperDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = $HelperDir
 Set-Location $Root
@@ -10,7 +15,10 @@ $script:Lang = $Language
 
 function T([string]$en, [string]$zh) { if ($script:Lang -eq 'zh') { return $zh }; return $en }
 function Pause-Helper { Read-Host (T 'Press Enter to continue' '按 Enter 返回') | Out-Null }
-function Ask([string]$prompt) { return (Read-Host $prompt).Trim() }
+function Ask([string]$prompt) {
+  Write-Host $prompt
+  return ([string](Read-Host)).Trim()
+}
 function Select-Folder([string]$description) {
   try {
     Add-Type -AssemblyName System.Windows.Forms
@@ -27,7 +35,8 @@ function Confirm([string]$en, [string]$zh) {
 }
 function Write-Section([string]$text) { Write-Host "`n=== $text ===" -ForegroundColor Cyan }
 function Read-Secret([string]$prompt) {
-  $secure = Read-Host $prompt -AsSecureString
+  Write-Host $prompt
+  $secure = Read-Host -AsSecureString
   return (New-Object System.Net.NetworkCredential('', $secure)).Password
 }
 function Set-EnvValue([string]$name, [string]$value) {
@@ -78,98 +87,269 @@ function Download-File([string]$name, [string]$target) {
     return $false
   }
 }
-function Initialize-Project {
-  Write-Section (T 'Project initialization' '程序初始化')
-  $helperFiles = @('kikoto-helper.cmd','kikoto-helper.core.ps1','kikoto-helper.en.ps1','kikoto-helper.zh-Hans.ps1','kikoto-helper.select.ps1','kikoto-helper.ps1')
-  $items = @(Get-ChildItem -Force | Where-Object { $_.Name -notin $helperFiles })
-  if ($items.Count -gt 0) {
-    Write-Host (T 'This folder is not empty. Existing files may be overwritten.' '当前文件夹不是空文件夹，继续可能造成文件覆盖。') -ForegroundColor Yellow
-    if (-not (Confirm 'Continue anyway?' '仍然继续？')) { return }
+function Ensure-Project {
+  Write-Section (T 'Deployment environment' '部署环境检查')
+  foreach ($dir in @('config','data','cache')) {
+    $path = Join-Path $Root $dir
+    if ((Test-Path -LiteralPath $path) -and -not (Test-Path -LiteralPath $path -PathType Container)) {
+      Write-Host (T "Expected a folder: $dir" "此位置需要是文件夹：$dir") -ForegroundColor Red
+      return $false
+    }
+    if (-not (Test-Path -LiteralPath $path)) { New-Item -ItemType Directory -Path $path | Out-Null }
   }
-  foreach ($dir in @('config','data','cache')) { New-Item -ItemType Directory -Force -Path (Join-Path $Root $dir) | Out-Null }
-  if (-not (Test-Path (Join-Path $Root '.env'))) {
-    if (-not (Download-File '.env.example' (Join-Path $Root '.env'))) { Pause-Helper; return }
-  } else { Write-Host (T '.env already exists; keeping it.' '.env 已存在，将保留现有配置。') }
-  if (-not (Test-Path (Join-Path $Root 'docker-compose.yml'))) {
-    if (-not (Download-File 'docker-compose.yml' (Join-Path $Root 'docker-compose.yml'))) { Pause-Helper; return }
-  } else { Write-Host (T 'docker-compose.yml already exists; keeping it.' 'docker-compose.yml 已存在，将保留现有配置。') }
-  Write-Host (T 'Initialization completed.' '初始化完成。') -ForegroundColor Green
+  if (-not (Test-Path -LiteralPath (Join-Path $Root '.env'))) {
+    $example = Join-Path $Root '.env.example'
+    if (-not (Test-Path -LiteralPath $example)) {
+      if (-not (Download-File '.env.example' $example)) { return $false }
+    }
+    Copy-Item -LiteralPath $example -Destination (Join-Path $Root '.env')
+  }
+  if (-not (Test-Path -LiteralPath (Join-Path $Root 'docker-compose.yml'))) {
+    if (-not (Download-File 'docker-compose.yml' (Join-Path $Root 'docker-compose.yml'))) { return $false }
+  }
+  Write-Host (T 'Deployment files ready. Existing settings and data are preserved.' '部署文件已就绪，已有配置和数据均保留。') -ForegroundColor Green
+  return $true
+}
+function Show-FolderList($state) {
+  Write-Host (T 'Mapped folders (F = folder number)' '已映射目录（F 表示文件夹编号）') -ForegroundColor Cyan
+  $line = '+------------------------------------------------------------+'
+  Write-Host $line
+  if (@($state.folders).Count -eq 0) { Write-Host (T '| No additional folders' '| 尚未添加额外目录'); Write-Host $line }
+  for ($i = 0; $i -lt @($state.folders).Count; $i++) {
+    Write-Host ("| F{0}" -f ($i + 1)) -ForegroundColor Yellow
+    Write-Host ('|   ' + $state.folders[$i])
+    Write-Host $line
+  }
+  if ($state.mode -eq 'multi') {
+    Write-Host (T 'Writable /data root:' '可写的 /data 根目录：')
+    Write-Host ('  ' + (Join-Path $Root 'data'))
+  }
+  Write-Host ''
+  Write-Host (T 'Actions' '操作菜单') -ForegroundColor Cyan
+  Write-Host '--------------------------------------------------------------'
+}
+function Test-AdminConfigured {
+  $path = Join-Path $Root '.env'
+  if (-not (Test-Path -LiteralPath $path)) { return $false }
+  $value = ''
+  foreach ($line in Get-Content -LiteralPath $path -Encoding UTF8) {
+    if ($line -match '^\s*KIKOTO_ROOT_PASSWORD\s*=(.*)$') { $value = $Matches[1].Trim() }
+  }
+  # Handles the template and the helper's quoted output without displaying credentials.
+  $value = $value.Trim([char]39, [char]34).Trim()
+  return $value -notin @('', 'change-me', 'replace-with-a-long-random-password')
+}
+function Read-NewAdminPassword([switch]$InitialSetup) {
+  while ($true) {
+    $prompt = if ($InitialSetup) {
+      T 'Set administrator password' '设置管理员密码'
+    } else {
+      T 'New administrator password (blank cancels)' '新的管理员密码（留空取消）'
+    }
+    $p1 = Read-Secret $prompt
+    if ([string]::IsNullOrWhiteSpace($p1)) {
+      if (-not $InitialSetup) { return $null }
+      Write-Host (T 'Administrator password is required. Please enter a password.' '管理员密码不能为空，请输入密码。') -ForegroundColor Yellow
+      continue
+    }
+    $p2 = Read-Secret (T 'Repeat password' '再次输入密码')
+    if ($p1 -ne $p2) {
+      Write-Host (T 'Passwords do not match. Try again.' '两次密码不一致，请重新输入。') -ForegroundColor Yellow
+      continue
+    }
+    if ($p1 -ne $p1.Trim() -or $p1.Contains([char]10) -or $p1.Contains([char]13) -or $p1 -in @('change-me','replace-with-a-long-random-password')) {
+      Write-Host (T 'Use a non-template password without leading/trailing whitespace or line breaks.' '请使用非模板密码，且不要包含首尾空白或换行。') -ForegroundColor Yellow
+      continue
+    }
+    return $p1
+  }
+}
+function Ensure-Admin {
+  if (Test-AdminConfigured) { return $true }
+  Write-Section (T 'Initial administrator setup' '首次设置管理员账户')
+  # Existing database state must not cause creation of a different root identity.
+  $existingDatabase = @(Get-ChildItem -LiteralPath (Join-Path $Root 'config') -Filter '*.db' -File -ErrorAction SilentlyContinue).Count -gt 0
+  $username = $null
+  if (-not $existingDatabase) {
+    $username = Ask (T 'Administrator username (default: root)' '管理员用户名（默认：root）')
+    if (-not $username) { $username = 'root' }
+  } else {
+    Write-Host (T 'Existing database found. Keeping the configured username.' '检测到已有数据库，保留配置中的管理员用户名。')
+  }
+  $password = Read-NewAdminPassword -InitialSetup
+if ($null -ne $username) { Set-EnvValue 'KIKOTO_ROOT_USERNAME' $username }
+  Set-EnvValue 'KIKOTO_ROOT_PASSWORD' $password
+  Write-Host (T 'Administrator configured. Use Service > Start when ready.' '管理员账户已设置，可在准备完成后通过“服务管理 > 启动”启动服务。') -ForegroundColor Green
+  return $true
+}
+function Recreate-Service {
+  Write-Host (T 'Recreating containers to apply configuration. A restart does not reload .env. Service will briefly stop; mounted data is kept.' '正在重建容器以应用配置。重启不会重新加载 .env。服务会短暂中断，挂载的数据保留。')
+  docker compose config --quiet
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host (T 'Configuration validation failed; containers were not recreated.' '配置检查失败，未重建容器。') -ForegroundColor Red
+    return
+  }
+  docker compose up -d --force-recreate --pull never
+  if ($LASTEXITCODE -eq 0) {
+    Write-Host (T 'Containers recreated with the saved configuration.' '已按保存的配置重建容器。') -ForegroundColor Green
+  } else {
+    Write-Host (T 'Recreation failed. Configuration is saved; check the Docker error and retry from Service management.' '重建失败。配置已保存，请检查 Docker 错误后从服务管理重试。') -ForegroundColor Red
+  }
+}
+function Change-AdminPassword {
+  Write-Section (T 'Change administrator password' '修改管理员密码')
+  $password = Read-NewAdminPassword
+  if ($null -eq $password) { return }
+  Set-EnvValue 'KIKOTO_ROOT_PASSWORD' $password
+  Write-Host (T 'Password saved. Recreate the service to apply it; restarting is insufficient. Existing administrator sessions will expire after the new password is applied.' '密码已保存，必须重建服务才能生效，仅重启无效。新密码生效后，管理员的旧登录会话将失效。') -ForegroundColor Green
+  if (Confirm 'Recreate the service now (not restart)?' '现在重建服务（不是重启）？') {
+    Recreate-Service
+  } else {
+    Write-Host (T 'Not applied yet. Choose Service > Recreate later.' '尚未应用新密码，请稍后选择“服务管理 > 重建服务”。')
+  }
   Pause-Helper
 }
-function Configure-Admin {
-  Write-Section (T 'Administrator account' '管理员账户')
-  if (-not (Test-Path (Join-Path $Root '.env'))) { Write-Host (T 'Run initialization first.' '请先执行程序初始化。'); Pause-Helper; return }
-  $dbExists = Test-Path (Join-Path $Root 'config/kikoto.db')
-  if (-not $dbExists) {
-    $user = Ask (T 'Administrator username (default: root)' '管理员用户名（默认：root）')
-    if ($user) { Set-EnvValue 'KIKOTO_ROOT_USERNAME' $user }
-  } else { Write-Host (T 'The administrator username is locked after first startup.' '服务首次运行后管理员用户名不可修改。') -ForegroundColor Yellow }
-  $p1 = Read-Secret (T 'New administrator password' '新的管理员密码')
-  $p2 = Read-Secret (T 'Repeat password' '再次输入密码')
-  if ([string]::IsNullOrWhiteSpace($p1) -or $p1 -ne $p2) { Write-Host (T 'Passwords are empty or do not match.' '密码为空或两次输入不一致。') -ForegroundColor Red } else { Set-EnvValue 'KIKOTO_ROOT_PASSWORD' $p1; Write-Host (T 'Password saved. Restart/recreate the service to apply it.' '密码已保存，需重新创建服务后生效。') -ForegroundColor Green }
-  Pause-Helper
-}
-function Get-ExtraMappings {
+function Get-FolderState {
+  $default = [IO.Path]::GetFullPath((Join-Path $Root 'data'))
   $override = Join-Path $Root 'docker-compose.override.yml'
-  if (-not (Test-Path $override)) { return @() }
-  $result = @()
-  foreach ($line in Get-Content -LiteralPath $override) {
-    if ($line -match "-\s+'(.+):/data/external-\d+'") { $result += $Matches[1].Replace('/','\') }
+  if (-not (Test-Path -LiteralPath $override)) { return [pscustomobject]@{ mode = 'single'; folders = @($default) } }
+  $raw = Get-Content -LiteralPath $override -Raw
+  try {
+    $doc = ($raw -replace '("volumes"\s*:\s*)!override\s+', '$1') | ConvertFrom-Json
+    if ($doc.'x-kikoto-helper-mode' -notin @('single','multi')) { throw 'unmanaged' }
+    $mounts = @($doc.services.kikoto.volumes)
+    $folders = if ($doc.'x-kikoto-helper-mode' -eq 'single') {
+      @($mounts | Where-Object target -eq '/data' | ForEach-Object source)
+    } else { @($mounts | Where-Object { $_.target -like '/data/external-*' } | ForEach-Object source) }
+    return [pscustomobject]@{ mode = $doc.'x-kikoto-helper-mode'; folders = @($folders) }
+  } catch {
+    $folders = @()
+    foreach ($line in $raw -split '\r?\n') {
+      if ($line -match "^\s+- '(.+):/data/external-\d+'\s*$") { $folders += [IO.Path]::GetFullPath($Matches[1].Replace('/','\')) }
+      elseif ($line.Trim() -notin @('', 'services:', 'kikoto:', 'volumes:')) {
+        throw (T 'Custom Compose override detected; review it before using folder management.' '检测到自定义 Compose 覆盖配置，请检查后再使用文件夹管理。')
+      }
+    }
+    return [pscustomobject]@{ mode = 'multi'; folders = $folders }
   }
-  return $result
 }
-function Save-ExtraMappings([string[]]$paths) {
-  $override = Join-Path $Root 'docker-compose.override.yml'
-  if (-not $paths -or $paths.Count -eq 0) { Remove-Item $override -Force -ErrorAction SilentlyContinue; return }
-  $volumes = @(); $i = 0
-  foreach ($path in $paths) { $i++; $volumes += "      - '$($path.Replace('\','/')):/data/external-$i'" }
-  @("services:","  kikoto:","    volumes:") + $volumes | Set-Content -LiteralPath $override -Encoding UTF8
+function Save-FolderState($state) {
+  $folders = @($state.folders | Select-Object -Unique)
+  if ($state.mode -eq 'single' -and $folders.Count -ne 1) { throw 'Single mode requires one folder.' }
+  # Replace the base Compose mount list so ./data:/data cannot survive a merge.
+  # !override requires Docker Compose 2.24.4 or newer.
+  $mounts = @(
+    @{ type = 'bind'; source = './config'; target = '/config' },
+    @{ type = 'bind'; source = './cache'; target = '/cache' }
+  )
+  if ($state.mode -eq 'single') {
+    $mounts += @{ type = 'bind'; source = $folders[0]; target = '/data'; bind = @{ create_host_path = $false } }
+  }
+  if ($state.mode -eq 'multi') {
+    foreach ($folder in $folders) {
+      # Stable targets keep other libraries in place when one mapping is deleted.
+      $sha = [Security.Cryptography.SHA256]::Create()
+      try { $id = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($folder.ToLowerInvariant()))).Replace('-','').Substring(0,12).ToLowerInvariant() }
+      finally { $sha.Dispose() }
+      $mounts += @{ type = 'bind'; source = $folder; target = "/data/external-$id"; bind = @{ create_host_path = $false } }
+    }
+  }
+  # Use YAML flow syntax with !override; keep mode and mounts in one file.
+  $doc = @{ 'x-kikoto-helper-mode' = $state.mode; services = @{ kikoto = @{ volumes = $mounts } } }
+  $path = Join-Path $Root 'docker-compose.override.yml'
+  $yaml = ($doc | ConvertTo-Json -Depth 8) -replace '("volumes"\s*:\s*)', '$1!override '
+  [IO.File]::WriteAllText("$path.tmp", $yaml, (New-Object Text.UTF8Encoding($false)))
+  Move-Item -LiteralPath "$path.tmp" -Destination $path -Force
+}
+function Pick-Folders([bool]$multiple) {
+  $paths = @()
+  do {
+    $picked = Select-Folder (T 'Select an audio folder' '请选择音声文件夹')
+    if (-not $picked) { break }
+    if (-not (Test-Path -LiteralPath $picked -PathType Container)) { continue }
+    $full = [IO.Path]::GetFullPath($picked)
+    if ($paths -notcontains $full) { $paths += $full }
+  } while ($multiple -and (Confirm 'Add another folder?' '继续添加其他文件夹？'))
+  return $paths
 }
 function Update-Compose-Mappings {
-  $defaultData = [IO.Path]::GetFullPath((Join-Path $Root 'data'))
-  $extra = @(Get-ExtraMappings)
-  Write-Section (T 'Audio folders' '音声文件夹')
-  Write-Host (T 'Current mapped folders:' '当前已映射的文件夹：')
-  Write-Host ("  1. $defaultData " + (T '(default, cannot be removed here)' '（默认目录，不能在此删除）'))
-  for ($n = 0; $n -lt $extra.Count; $n++) { Write-Host ("  {0}. {1}" -f ($n + 2), $extra[$n]) }
-  Write-Host ''
-  Write-Host (T 'A. Add folder(s)   D. Delete folder   C. Cancel' 'A. 添加文件夹   D. 删除文件夹   C. 取消')
-  $action = (Ask (T 'Choose' '请选择')).ToUpperInvariant()
-  if ($action -eq 'C' -or $action -eq '') { return }
-  if ($action -eq 'A') {
-    $pathsToAdd = @()
-    $usePicker = Confirm 'Open a folder picker?' '打开文件夹选择窗口？'
-    if ($usePicker) {
-      while ($true) {
-        $picked = Select-Folder (T 'Select an audio folder' '请选择音声文件夹')
-        if (-not $picked) { break }
-        $pathsToAdd += $picked
-        if (-not (Confirm 'Add another folder?' '继续添加其他文件夹？')) { break }
-      }
+  while ($true) {
+    $state = Get-FolderState
+    Write-Section (T 'Audio folders' '音声文件夹')
+    Show-FolderList $state
+    if ($state.mode -eq 'single') {
+      Write-Host (T '1. Change mode (current: single folder)' '1. 更改模式（当前单文件夹模式）')
+      Write-Host (T '2. Change folder' '2. 更改文件夹')
     } else {
-      $inputPaths = Ask (T 'Enter folder paths separated by semicolons' '输入文件夹路径，用分号分隔')
-      $pathsToAdd = @($inputPaths -split ';')
+
+      Write-Host (T '1. Change mode (current: multiple folders)' '1. 更改模式（当前多文件夹模式）')
+      Write-Host (T '2. Add' '2. 增加')
+      Write-Host (T '3. Delete mapping (keeps files)' '3. 删除映射（保留文件）')
     }
-    foreach ($raw in $pathsToAdd) {
-      $p = ([string]$raw).Trim(' "')
-      if (-not $p) { continue }
-      if (-not (Test-Path -LiteralPath $p -PathType Container)) { Write-Host (T "Folder not found: $p" "文件夹不存在：$p") -ForegroundColor Yellow; continue }
-      $full = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $p).Path)
-      if ($full -ne $defaultData -and $extra -notcontains $full) { $extra += $full }
+    Write-Host (T '0. Cancel / return' '0. 取消 / 返回菜单')
+    $action = Ask (T 'Choose' '请选择')
+    if ($action -eq '0' -or -not $action) { return }
+    if ($action -eq '1') {
+      if ($state.mode -eq 'single') {
+        $state.mode = 'multi'
+
+        Write-Host (T 'Subfolders add a scan level. Review scan depth in Maintenance.' '子目录映射会增加一层目录，请检查网页维护设置中的扫描深度。')
+      } else {
+        Write-Host (T 'Select the one folder to mount; other files will not be deleted.' '请选择单文件夹模式使用的目录；其他文件不会被删除。')
+        $picked = @(Pick-Folders $false)
+        if ($picked.Count -eq 0) { continue }
+        $state.mode = 'single'; $state.folders = @($picked[0])
+      }
+    } elseif ($action -eq '2') {
+      $picked = @(Pick-Folders ($state.mode -eq 'multi'))
+      if ($picked.Count -eq 0) { continue }
+      if ($state.mode -eq 'single') { $state.folders = @($picked[0]) }
+      else { $state.folders = @(@($state.folders) + $picked | Select-Object -Unique) }
+    } elseif ($action -eq '3' -and $state.mode -eq 'multi') {
+      $n = 0
+      [int]::TryParse((Ask (T 'Folder number, e.g. F1 (0 cancels)' '文件夹编号，例如 F1（0 取消）')).TrimStart('F','f'), [ref]$n) | Out-Null
+      if ($n -lt 1 -or $n -gt @($state.folders).Count) { continue }
+      $remove = $state.folders[$n - 1]
+      $state.folders = @($state.folders | Where-Object { $_ -ne $remove })
+    } else { continue }
+    Save-FolderState $state
+    Write-Host (T 'Saved. Use Service > Start to apply the mappings.' '已保存。请通过“服务管理 > 启动”应用映射。') -ForegroundColor Green
+  }
+}
+function Get-ServiceVersionText {
+  $ErrorActionPreference = 'Continue'
+  try {
+    $images = @(docker compose config --images kikoto 2>$null)
+    if ($LASTEXITCODE -ne 0 -or $images.Count -ne 1 -or -not $images[0]) {
+      return (T 'Version unavailable: check Compose configuration.' '无法读取版本：请检查 Compose 配置。')
     }
-    Save-ExtraMappings $extra
-    Write-Host (T 'Folder mappings saved.' '文件夹映射已保存。') -ForegroundColor Green
-  } elseif ($action -eq 'D') {
-    if ($extra.Count -eq 0) { Write-Host (T 'There are no extra folders to delete.' '没有可删除的额外文件夹。'); Pause-Helper; return }
-    $number = 0; [int]::TryParse((Ask (T 'Enter the number to delete' '输入要删除的编号')), [ref]$number) | Out-Null
-    $index = $number - 2
-    if ($index -ge 0 -and $index -lt $extra.Count) { $extra = @($extra | Where-Object { $_ -ne $extra[$index] }); Save-ExtraMappings $extra; Write-Host (T 'Folder mapping deleted.' '文件夹映射已删除。') -ForegroundColor Green } else { Write-Host (T 'Invalid folder number.' '文件夹编号无效。') -ForegroundColor Yellow }
-  } else { Write-Host (T 'Unknown choice.' '无法识别的选项。') -ForegroundColor Yellow }
-  Pause-Helper
-}function Service-Menu {
+    $imageName = ([string]$images[0]).Trim()
+    $label = docker image inspect --format '{{json .Config.Labels}}' $imageName 2>$null
+    if ($LASTEXITCODE -ne 0) {
+      docker info --format '{{.ServerVersion}}' 2>$null | Out-Null
+      if ($LASTEXITCODE -ne 0) { return (T 'Version unavailable: Docker is not running or cannot be reached.' '无法读取版本：Docker 未运行或无法连接。') }
+      return (T 'No local image. Start the service once first.' '本地无镜像，请先启动一次')
+    }
+    $labels = $label | ConvertFrom-Json -ErrorAction Stop
+    $version = [string]$labels.'org.opencontainers.image.version'
+    if ([string]::IsNullOrWhiteSpace($version)) { return (T 'Local image has no version label.' '本地镜像未提供版本号。') }
+    if ($version -match '^\d+\.\d+\.\d+') { $version = 'v' + $version }
+    $version = $version -replace '[\x00-\x1f\x7f]', ''
+    return (T "Local image version: $version" "本地镜像版本：$version")
+  } catch {
+    return (T 'Version unavailable. Check Docker and Compose configuration.' '无法读取版本，请检查 Docker 和 Compose 配置。')
+  }
+}
+function Show-ServiceVersion {
+  Write-Host (Get-ServiceVersionText) -ForegroundColor Cyan
+  Write-Host ''
+}
+function Service-Menu {
   while ($true) {
     Write-Section (T 'Service management' '服务管理')
-    Write-Host (T '1. Start  2. Stop  3. Upgrade  4. Status  5. Logs  6. Open browser  0. Back' '1. 启动  2. 停止  3. 升级  4. 状态  5. 日志  6. 打开网页  0. 返回')
+    Show-ServiceVersion
+    Write-Host (T '1. Start  2. Stop  3. Upgrade  4. Status  5. Logs  6. Open browser' '1. 启动  2. 停止  3. 升级  4. 状态  5. 日志  6. 打开网页')
+    Write-Host (T '7. Remove containers (keep data)  8. Recreate service  0. Back' '7. 删除容器（保留数据）  8. 重建服务  0. 返回')
     $c = Ask (T 'Choose' '请选择')
     if ($c -eq '1') { docker compose config --quiet; if ($LASTEXITCODE -eq 0) { docker compose up -d }; Pause-Helper }
     elseif ($c -eq '2') { docker compose stop; Pause-Helper }
@@ -181,19 +361,27 @@ function Update-Compose-Mappings {
     } elseif ($c -eq '4') { docker compose ps; Pause-Helper }
     elseif ($c -eq '5') { docker compose logs --tail 100; Pause-Helper }
     elseif ($c -eq '6') { Start-Process 'http://127.0.0.1:7655' }
+    elseif ($c -eq '8') { Recreate-Service; Pause-Helper }
+    elseif ($c -eq '7') {
+      if (Confirm 'Remove this deployment''s containers and Compose network? Configuration and media files will be kept.' '删除本部署的容器和 Compose 网络？配置及音声文件会保留。') {
+        docker compose down
+        if ($LASTEXITCODE -eq 0) { Write-Host (T 'Containers removed. Use Start to recreate them.' '容器已删除，可通过“启动”重新创建。') -ForegroundColor Green }
+        else { Write-Host (T 'Container removal failed. Check the Docker error above.' '删除容器失败，请检查上方 Docker 错误。') -ForegroundColor Red }
+        Pause-Helper
+      }
+    }
     elseif ($c -eq '0') { return }
   }
 }
 function Main-Menu {
   while ($true) {
     Write-Section (T 'Kikoto Helper' 'Kikoto 助手')
-    Write-Host (T '1. Initialize  2. Administrator  3. Audio folders  4. Service  5. Backup  0. Exit' '1. 程序初始化  2. 管理员账户  3. 音声文件夹  4. 服务管理  5. 备份  0. 退出')
+    Write-Host (T '1. Change administrator password  2. Audio folders  3. Service  4. Backup  0. Exit' '1. 修改管理员密码  2. 音声文件夹  3. 服务管理  4. 备份  0. 退出')
     $c = Ask (T 'Choose' '请选择')
-    if ($c -eq '1') { Initialize-Project }
-    elseif ($c -eq '2') { Configure-Admin }
-    elseif ($c -eq '3') { Update-Compose-Mappings }
-    elseif ($c -eq '4') { if (Ensure-Docker) { Service-Menu } else { Pause-Helper } }
-    elseif ($c -eq '5') {
+    if ($c -eq '1') { Change-AdminPassword }
+    elseif ($c -eq '2') { Update-Compose-Mappings }
+    elseif ($c -eq '3') { if (Ensure-Docker) { Service-Menu } else { Pause-Helper } }
+    elseif ($c -eq '4') {
       $dest = Join-Path $Root ("backup-" + (Get-Date -Format 'yyyyMMdd-HHmmss')); New-Item -ItemType Directory -Force $dest | Out-Null
       foreach ($n in @('.env','docker-compose.yml','docker-compose.override.yml')) { if (Test-Path $n) { Copy-Item $n $dest -Force } }
       Write-Host (T "Configuration backup saved to $dest" "配置备份已保存到 $dest") -ForegroundColor Green; Pause-Helper
@@ -203,5 +391,6 @@ function Main-Menu {
 }
 
 if (-not (Ensure-Docker)) { Pause-Helper; exit 0 }
+if (-not (Ensure-Project)) { Pause-Helper; exit 1 }
+if (-not (Ensure-Admin)) { Pause-Helper; exit 1 }
 Main-Menu
-
