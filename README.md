@@ -41,24 +41,6 @@ as a self-hosted web application with a responsive player and an Android client.
 > [!IMPORTANT]
 > Kikoto is under active development. Back up `config/` and `data/` before an upgrade, and review the [security model](docs/operations/security.md) before exposing an instance to a network.
 
-## Known Issues
-
-> [!WARNING]
-> **Android 10 keyboard layout (APK).** The Android 10 keyboard-layout issue has
-> been fixed by the Capacitor update to 8.5.2 and will be included in Kikoto's
-> next APK release. Until that version is pushed, current APK builds may still
-> be affected. On affected
-> devices, opening the software keyboard can leave an Android system-rendered
-> area between the app and the keyboard, reducing the usable app area to roughly
-> 6–20% of the screen. Opening Kikoto in a web browser is not affected.
-> Investigation points to Android 10 IME insets being applied twice by
-> Capacitor's SystemBars
-> handling ([#8525](https://github.com/ionic-team/capacitor/issues/8525) and
-> [#8466](https://github.com/ionic-team/capacitor/issues/8466)). The fix was merged
-> in [#8535](https://github.com/ionic-team/capacitor/pull/8535) and released in
-> [Capacitor 8.5.2](https://github.com/ionic-team/capacitor/releases/tag/8.5.2).
-> Use Kikoto in a browser if the issue persists on your Android 10 device.
-
 ## Key Features
 
 - **One library, multiple locations.** Local, cached, tracked, and remote files
@@ -73,9 +55,11 @@ as a self-hosted web application with a responsive player and an Android client.
 - **Responsive and Android-ready.** Use the same library on desktop and mobile,
   with native Android media controls and audio-focus integration.
 - **Inspectable background work.** Follow scans, metadata sync, Fetch, cleanup,
-  retries, review candidates, and recovery in Workflows and Activity.
+  retries, and review candidates in Workflows and its Activity panel. Browse
+  saved metadata and resolve metadata or missing-source issues in Metadata.
 - **Personal and administrative state.** Keep favorites, tags, listening state,
-  playback progress, roles, source configuration, and cache policy in SQLite.
+  playback progress, account-backed folder and recommendation preferences,
+  roles, source configuration, and cache policy in SQLite.
 
 ## Quick Start
 

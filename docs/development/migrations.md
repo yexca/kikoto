@@ -133,11 +133,19 @@ not represented by a schema snapshot.
   converge on the same structure. For an app-only release, verify that the
   existing packaged baseline remains selected and its ledger is still accepted.
 
-## Pending Account Preferences Migration
+## v0.6.0 Upgrade
 
-`034_user_preferences.sql` adds account-owned playback-folder and recommendation
-preferences. Existing `app_setting` values remain the fallback for accounts
-without overrides and for anonymous browsing. The new `034_v0.5.5.sql` baseline covers fresh installs; released baselines
-remain unchanged,
-while existing databases follow the numbered chain. `VERSION` remains v0.5.5
-until the next release is prepared.
+Released v0.5.0 through v0.5.5 databases are on schema 032. v0.6.0 applies
+`033_metadata_sync_issues.sql` and `034_user_preferences.sql` through the
+numbered chain. Migration 033 records metadata recovery state; migration 034
+adds account-owned playback-folder and recommendation preferences. Existing
+`app_setting` values remain the fallback for accounts without overrides and
+for anonymous browsing.
+
+Fresh installs use the already packaged `034_v0.5.5.sql` baseline, generated
+during development before the application version was advanced. Its suffix
+does not mean that the tagged v0.5.5 release included schema 034. The schema
+chain has not changed during release preparation, so v0.6.0 reuses this
+baseline without renaming it or creating a duplicate. Existing databases,
+including development databases already on schema 033 or 034, retain their
+ledger and apply only remaining numbered migrations.
