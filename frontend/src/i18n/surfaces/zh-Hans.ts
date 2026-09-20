@@ -8,6 +8,7 @@ export const surfaceHans = {
     loading: "正在加载…",
   },
   workflowActivity: {
+    backToHistory: "返回运行记录",
     allWorkflows: "所有工作流",
     attention: "需要处理",
     history: "历史记录",

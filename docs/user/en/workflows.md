@@ -8,8 +8,11 @@ Workflows make backend actions inspectable.
 - Workflows: built-in and custom definitions with their triggers managed in the
   selected definition.
 - Activity at the right end of the workflow tabs opens a desktop panel or mobile
-  sheet. Active runs appear above **Needs attention** and **History**; rows open
-  the full Activity detail page. The full page retains its existing categories.
+  sheet for the selected workflow only. Active runs appear above **Needs attention**
+  and **History**. List rows and **Recent runs** open details inside the same
+  panel, with events, candidates, and run actions. **Back to runs** returns to the
+  list. Old Activity links automatically open Workflows and select the run
+  context; the separate full Activity page has been removed.
 
 ## Current Behavior
 
@@ -20,11 +23,11 @@ Workflows make backend actions inspectable.
 - For one unambiguous local work, a scan marks old local file locations missing
   when the folder disappears or its stored paths no longer belong to the
   detected folder. It does not delete files or change Fetch ownership. A moved
-  folder is indexed lazily when opened; duplicate-code folders remain in Review.
+  folder is indexed lazily when opened; duplicate-code folders remain in Needs attention.
 - Node runs expose step-level progress.
 - Candidates expose reviewable outcomes.
-- Review contains terminal runs with unresolved candidates that need a user
-  decision. Routine partial or skipped outcomes remain in Completed and keep
+- Needs attention contains terminal runs with unresolved candidates that need a user
+  decision. Routine partial or skipped outcomes remain in History and keep
   their warning status, summary, and events for inspection.
 - The header notification center combines Review items with completed or failed
   Fetch results. Fetch notifications open the local work detail and can be

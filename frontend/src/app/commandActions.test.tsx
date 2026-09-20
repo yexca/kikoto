@@ -57,6 +57,6 @@ describe("commandActions", () => {
     await actions[0].run();
 
     expect(api.runLocalScan).toHaveBeenCalledWith({ followUpRun: false });
-    expect(onOpenPath).toHaveBeenCalledWith("/activity");
+    expect(onOpenPath).toHaveBeenCalledWith("/workflows?activity=1&workflow=local_library_scan&run=1");
   });
 });

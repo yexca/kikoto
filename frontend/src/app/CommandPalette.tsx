@@ -210,7 +210,7 @@ export function CommandPalette({
           onQueued={(runId) => {
             setWorkflowLaunch(null);
             onOpenChange(false);
-            onOpenPath(`/activity?view=running&run=${runId}`);
+            onOpenPath(`/workflows?activity=1&view=running&run=${runId}`);
           }}
         />
       </Suspense>

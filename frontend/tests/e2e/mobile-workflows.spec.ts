@@ -819,7 +819,7 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await page.goto("/workflows");
   await expect(page.getByRole("heading", { name: "Collect DLsite popular voice works", exact: true })).toBeVisible();
   await page.getByRole("button", { name: /#51 day/ }).click();
-  await expect(page).toHaveURL(/\/activity\?view=completed&run=51/);
+  await expect(page).toHaveURL(/\/workflows\?.*run=51/);
 });
 
 test("workflow deep links do not override a later definition tab selection", async ({ page }) => {
@@ -1068,9 +1068,10 @@ test("activity presents overview, canvas, items, and node logs vertically", asyn
   await mockWorkflows(page);
   await page.goto("/activity?view=completed&run=51");
 
-  await expect(page.getByText("Summary", { exact: true })).toBeVisible();
-  await expect(page.getByText("Execution", { exact: true })).toBeVisible();
-  const executionCanvas = page.getByLabel("Workflow node canvas");
+  const activity = page.getByRole("dialog", { name: "Activity", exact: true });
+  await expect(activity.getByText("Summary", { exact: true })).toBeVisible();
+  await expect(activity.getByText("Execution", { exact: true })).toBeVisible();
+  const executionCanvas = activity.getByLabel("Workflow node canvas");
   await expect(executionCanvas).toBeVisible();
   await executionCanvas.scrollIntoViewIfNeeded();
   await expect(executionCanvas.locator(".react-flow__edge")).toHaveCount(1);
@@ -1078,14 +1079,14 @@ test("activity presents overview, canvas, items, and node logs vertically", asyn
   await expect(executionCanvas.locator(".react-flow__arrowhead")).toHaveCount(0);
   await expect(executionCanvas.locator('.react-flow__node[data-id="tag"] .workflow-run-node--running')).toBeVisible();
   await expect(executionCanvas.locator(".react-flow__edge-path")).toHaveCSS("stroke", "rgb(139, 92, 246)");
-  await expect(page.getByText("Node logs", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Add user tag.*1 events.*running/i })).toHaveAttribute(
+  await expect(activity.getByText("Node logs", { exact: true })).toBeVisible();
+  await expect(activity.getByRole("button", { name: /Add user tag.*1 events.*running/i })).toHaveAttribute(
     "aria-expanded",
     "true",
   );
-  await expect(page.getByText("Tagging works", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Overview", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Steps", exact: true })).toHaveCount(0);
+  await expect(activity.getByText("Tagging works", { exact: true })).toBeVisible();
+  await expect(activity.getByRole("button", { name: "Overview", exact: true })).toHaveCount(0);
+  await expect(activity.getByRole("button", { name: "Steps", exact: true })).toHaveCount(0);
 });
 
 test("activity reports Fetch byte progress without guessing unknown totals", async ({ page }) => {
@@ -1236,80 +1237,57 @@ test("activity deep links load a run outside the visible list page", async ({ pa
 
   await page.goto("/activity?run=99");
 
-  await expect(page).toHaveURL(/\/activity\?view=completed&run=99/);
+  await expect(page).toHaveURL(/\/workflows\?.*run=99/);
   await expect(page.getByText("Detached cleanup run", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Collect DLsite popular voice works/ })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Activity", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open full Activity", exact: true })).toHaveCount(0);
 });
 
-test("activity uses compact counted tabs and a single empty state", async ({ page }) => {
-  await page.addInitScript(() => {
-    const trackedWindow = window as typeof window & { __activityLoadingSeen?: boolean };
-    trackedWindow.__activityLoadingSeen = false;
-    const observer = new MutationObserver(() => {
-      if (document.querySelector('[aria-label="Loading runs"]')) trackedWindow.__activityLoadingSeen = true;
-    });
-    observer.observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-label"] });
-  });
+test("activity uses two scoped counted tabs and a single empty state", async ({ page }) => {
   await mockWorkflows(page, undefined, {
     runs: [],
     page: 1,
     pageSize: 10,
     total: 0,
-    viewTotals: { running: 0, review: 2, failed: 0, completed: 14 },
+    viewTotals: { running: 0, review: 0, failed: 0, completed: 14, attention: 0, history: 14 },
   });
-  await page.goto("/activity?view=running");
-
-  await expect(page.getByRole("button", { name: "Running 0", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByRole("button", { name: "Review 2", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Completed 14", exact: true })).toBeVisible();
-  await expect(page.getByText("No workflows are running.", { exact: true })).toBeVisible();
-  await expect(page.getByText("Page 1 / 1", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("Select a run to inspect execution by node.", { exact: true })).toHaveCount(0);
-  await expect
-    .poll(() =>
-      page.evaluate(() => (window as typeof window & { __activityLoadingSeen?: boolean }).__activityLoadingSeen),
-    )
-    .toBe(false);
-
-  const tabs = page.getByRole("button", { name: "Running 0", exact: true }).locator("..");
+  await page.goto("/activity");
+  const activity = page.getByRole("dialog", { name: "Activity", exact: true });
+  await expect(activity.getByRole("tab", { name: "Needs attention 0", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(activity.getByRole("tab", { name: "History 14", exact: true })).toBeVisible();
+  await expect(activity.getByText("No tasks need attention.", { exact: true })).toBeVisible();
+  await expect(activity.getByRole("button", { name: "Open full Activity", exact: true })).toHaveCount(0);
+  const tabs = activity.getByRole("tablist");
   await expect.poll(() => tabs.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 });
 
-test("activity only animates loading when the run request is perceptibly slow", async ({ page }) => {
+test("activity preserves its loading state until the scoped request completes", async ({ page }) => {
   let releaseRuns = () => undefined;
-  const runsGate = new Promise<void>((resolve) => {
+  const gate = new Promise<void>((resolve) => {
     releaseRuns = resolve;
   });
-  await mockWorkflows(page, undefined, {
-    runs: [],
-    page: 1,
-    pageSize: 10,
-    total: 0,
-    viewTotals: { running: 0, review: 0, failed: 0, completed: 0 },
-  });
+  await mockWorkflows(page);
   await page.route("**/api/workflow-runs?**", async (route) => {
-    const url = new URL(route.request().url());
-    if (url.searchParams.get("view") !== "running" || url.searchParams.has("workflowCode")) {
+    const params = new URL(route.request().url()).searchParams;
+    if (params.get("view") !== "attention") {
       await route.fallback();
       return;
     }
-    await runsGate;
+    expect(params.get("workflowCode")).toBeTruthy();
+    await gate;
     await route.fulfill({
-      json: {
-        runs: [],
-        page: 1,
-        pageSize: 10,
-        total: 0,
-        viewTotals: { running: 0, review: 0, failed: 0, completed: 0 },
-      },
+      json: { runs: [], page: 1, pageSize: 8, total: 0, viewTotals: { running: 0, attention: 0, history: 0 } },
     });
   });
-
-  await page.goto("/activity?view=running");
-  await expect(page.getByRole("status", { name: "Loading runs" })).toBeVisible();
+  await page.goto("/workflows?activity=1");
+  const activity = page.getByRole("dialog", { name: "Activity", exact: true });
+  await expect(activity.getByRole("status")).toBeVisible();
   releaseRuns();
-  await expect(page.getByText("No workflows are running.", { exact: true })).toBeVisible();
-  await expect(page.getByRole("status", { name: "Loading runs" })).toHaveCount(0);
+  await expect(activity.getByText("No tasks need attention.", { exact: true })).toBeVisible();
+  await expect(activity.getByRole("status")).toHaveCount(0);
 });
 
 test("workflow metadata loads as one snapshot without an interim empty panel", async ({ page }) => {
@@ -1451,7 +1429,7 @@ test("mobile header orders actions and separates popovers from the quick-action 
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Account menu" }).click();
   await page.getByRole("dialog", { name: "Account" }).getByRole("button", { name: "Activity", exact: true }).click();
-  await expect(page).toHaveURL(/\/activity$/);
+  await expect(page).toHaveURL(/\/workflows\?activity=1/);
 });
 
 test("opening an appearance floating select keeps fixed mobile surfaces stable", async ({ page }) => {
@@ -1654,12 +1632,18 @@ for (const viewport of ["mobile", "@desktop"]) {
     const failed = {
       ...sampleRun,
       id: 61,
-      workflowCode: "example_fetch",
+      workflowCode: "local_library_scan",
       displayName: "Example failed fetch",
       status: "failed",
       pendingMetadata: 0,
     };
-    const metadata = { ...sampleRun, id: 62, workflowCode: "metadata_sync", status: "partial", pendingMetadata: 2 };
+    const metadata = {
+      ...sampleRun,
+      id: 62,
+      workflowCode: "local_library_scan",
+      status: "partial",
+      pendingMetadata: 2,
+    };
     const running = { ...sampleRun, id: 63, workflowCode: "local_library_scan", status: "running", finishedAt: "" };
     await page.route("**/api/workflow-runs?*", async (route) => {
       const params = new URL(route.request().url()).searchParams;
@@ -1705,9 +1689,9 @@ for (const viewport of ["mobile", "@desktop"]) {
     );
     await activity.getByRole("button", { name: "Mark reviewed", exact: true }).click();
     await expect(activity.getByRole("tab", { name: "Needs attention 1", exact: true })).toBeVisible();
-    await expect(activity.getByText("Example failed fetch", { exact: true })).toHaveCount(0);
+    await expect(activity.getByText("#61", { exact: true })).toHaveCount(0);
     await activity.getByRole("tab", { name: "History 2", exact: true }).click();
-    await expect(activity.getByText("Example failed fetch", { exact: true })).toBeVisible();
+    await expect(activity.getByText("#61", { exact: true })).toBeVisible();
     await activity.getByRole("tab", { name: "Needs attention 1", exact: true }).click();
     await page.screenshot({ path: testInfo.outputPath("workflow-activity.png") });
     await activity.getByRole("button", { name: "Open metadata issues", exact: true }).click();
@@ -1715,3 +1699,79 @@ for (const viewport of ["mobile", "@desktop"]) {
     await expect(page.getByRole("heading", { name: "Work management", exact: true })).toBeVisible();
   });
 }
+
+for (const viewport of ["mobile", "@desktop"]) {
+  test(`${viewport} Activity follows the selected workflow and Recent runs opens its detail`, async ({
+    page,
+  }, testInfo) => {
+    await mockWorkflows(page);
+    const scopes: string[] = [];
+    const local = {
+      ...sampleRun,
+      id: 71,
+      definitionId: 2,
+      workflowCode: "local_library_scan",
+      displayName: "Example local run",
+    };
+    const metadata = {
+      ...sampleRun,
+      id: 72,
+      definitionId: 1,
+      workflowCode: "metadata_sync",
+      displayName: "Example metadata run",
+    };
+    await page.route("**/api/workflow-runs?*", async (route) => {
+      const params = new URL(route.request().url()).searchParams;
+      const code = params.get("workflowCode") ?? "";
+      if (params.get("view") !== "review") scopes.push(code);
+      const run = code === "local_library_scan" ? local : metadata;
+      const runs = ["attention", "running"].includes(params.get("view") ?? "") ? [] : [run];
+      await route.fulfill({
+        json: {
+          runs,
+          total: runs.length,
+          page: 1,
+          pageSize: Number(params.get("pageSize")),
+          viewTotals: { running: 0, attention: 0, history: 1 },
+        },
+      });
+    });
+    await page.route("**/api/workflow-runs/72", (route) => route.fulfill({ json: { ...metadata, nodeRuns: [] } }));
+    await page.route("**/api/workflow-runs/72/events*", (route) => route.fulfill({ json: [] }));
+    await page.goto("/workflows?workflow=local_library_scan");
+    await page.getByRole("button", { name: "Activity", exact: true }).click();
+    const panel = page.getByRole("dialog", { name: "Activity", exact: true });
+    await panel.getByRole("tab", { name: "History 1", exact: true }).click();
+    await expect(panel.getByText("#71", { exact: true })).toBeVisible();
+    if (viewport === "mobile") await panel.getByRole("button", { name: "Close Activity", exact: true }).click();
+    await page.getByRole("tab", { name: "Sync work metadata", exact: true }).click();
+    if (viewport === "mobile") await page.getByRole("button", { name: "Activity", exact: true }).click();
+    await panel.getByRole("tab", { name: "History 1", exact: true }).click();
+    await expect(panel.getByText("#72", { exact: true })).toBeVisible();
+    await expect(panel.getByText("#71", { exact: true })).toHaveCount(0);
+    expect(scopes.length).toBeGreaterThan(0);
+    expect(scopes.every((code) => ["local_library_scan", "metadata_sync"].includes(code))).toBe(true);
+    await panel.getByRole("button", { name: "Close Activity", exact: true }).click();
+    await page.getByRole("button", { name: /^#72 / }).click();
+    await expect(panel.getByRole("heading", { name: "Example metadata run", exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/\/workflows\?.*run=72/);
+    await expect(panel.getByRole("button", { name: "Open full Activity", exact: true })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("workflow-run-panel.png") });
+    await panel.getByRole("button", { name: "Back to runs", exact: true }).click();
+    await expect(panel.getByRole("tab", { name: "History 1", exact: true })).toBeVisible();
+    await expect(page).not.toHaveURL(/run=72/);
+  });
+}
+
+test("empty-custom filter clears the previous workflow Activity context", async ({ page }) => {
+  await mockWorkflows(page);
+  await page.route("**/api/workflow-definitions", (route) =>
+    route.fulfill({ json: systemDefinitions.filter((definition) => definition.scope === "system") }),
+  );
+  await page.goto("/workflows?workflow=metadata_sync");
+  await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toBeVisible();
+  await filterWorkflows(page, "Custom");
+  await expect(page.getByRole("tablist", { name: "Workflows", exact: true }).getByRole("tab")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Activity", exact: true })).toBeDisabled();
+});

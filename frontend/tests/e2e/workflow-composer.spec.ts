@@ -260,7 +260,7 @@ test.describe("@desktop workflow composition", () => {
       { mode: "preview", inputs: { circle: "RG01234" } },
       { mode: "confirm", inputs: { circle: "RG01234" }, previewToken: "synthetic_preview_42" },
     ]);
-    await expect(page).toHaveURL(/\/activity\?view=running&run=77/);
+    await expect(page).toHaveURL(/\/workflows\?.*run=77/);
   });
 });
 
@@ -393,7 +393,7 @@ test("keeps a direct Quick Action open while confirmation is in flight", async (
   await expect(page).toHaveURL(/\/workflows$/);
 
   releaseConfirmation();
-  await expect(page).toHaveURL(/\/activity\?view=running&run=77/);
+  await expect(page).toHaveURL(/\/workflows\?.*run=77/);
 });
 
 type MockComposerOptions = {

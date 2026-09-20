@@ -1,5 +1,10 @@
 export function legacyLibraryRedirect(pathname: string, search = "") {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  if (path === "/activity" || path === "/runs") {
+    const params = new URLSearchParams(search);
+    params.set("activity", "1");
+    return `/workflows?${params}`;
+  }
   if (path === "/no-source" || path === "/library/no-source") {
     return "/work-management?reason=no_source";
   }

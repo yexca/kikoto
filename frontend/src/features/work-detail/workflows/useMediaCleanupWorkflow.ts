@@ -133,6 +133,6 @@ function parseCleanupSummary(raw: string): Record<string, unknown> {
 }
 
 function openActivityRun(runId: number) {
-  window.history.pushState({}, "", `/activity?run=${runId}`);
+  window.history.pushState({}, "", `/workflows?activity=1&run=${runId}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
 }

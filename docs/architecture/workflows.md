@@ -89,9 +89,15 @@ distributed request lock between separate application processes.
 
 Workflows exposes Activity at the right end of its horizontal definition bar.
 The desktop popover and mobile sheet show active runs above two server-paged
-views: Needs attention and History. The summary spans every workflow visible to
-the viewer, independent of the selected definition. Existing Activity detail
-routes and the account-menu entry remain available.
+views: Needs attention and History. Queries and counts are scoped to the selected
+workflow code. Switching definitions resets paging and discards stale requests.
+Recent runs and list rows open full run details inside the same panel; returning
+to the list retains the workflow scope. There is no separate Activity page.
+Legacy `/activity` and `/runs` links redirect into Workflows; a linked run resolves
+its workflow before loading history, including a read-only context for workflows
+without a configurable definition. Account and notification entries open this
+same surface. Events, candidates, progress, retries, and cancellation remain
+available within the panel.
 
 Needs attention contains terminal runs with unresolved candidates, pending
 metadata issues, or unacknowledged failures. A dedicated metadata-sync failure

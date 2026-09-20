@@ -360,7 +360,7 @@ export function HeaderActions({
                         label={t("account.activity")}
                         onClick={() => {
                           setMobileAccountOpen(false);
-                          onOpenPath("/activity");
+                          onOpenPath("/workflows?activity=1");
                         }}
                       />
                       <ActionItem
@@ -368,7 +368,7 @@ export function HeaderActions({
                         label={reviewCount > 0 ? t("account.reviewCount", { count: reviewCount }) : t("account.review")}
                         onClick={() => {
                           setMobileAccountOpen(false);
-                          onOpenPath("/activity?view=review");
+                          onOpenPath("/workflows?activity=1&view=review");
                         }}
                       />
                     </>
@@ -596,7 +596,9 @@ export function HeaderActions({
                           onClick={() => {
                             setReviewOpen(false);
                             if (notification.type === "metadata_onboarding") {
-                              onOpenPath(canRunWorkflows ? `/activity?run=${notification.workflowRunId}` : "/");
+                              onOpenPath(
+                                canRunWorkflows ? `/workflows?activity=1&run=${notification.workflowRunId}` : "/",
+                              );
                               return;
                             }
                             if (notification.type === "availability_watch_ready") {
@@ -606,7 +608,8 @@ export function HeaderActions({
                               return;
                             }
                             if (notification.type === "remote_track" && notification.status === "failed") {
-                              if (canRunWorkflows) onOpenPath(`/activity?run=${notification.workflowRunId}`);
+                              if (canRunWorkflows)
+                                onOpenPath(`/workflows?activity=1&run=${notification.workflowRunId}`);
                               return;
                             }
                             const trackedSource = notification.fileSourceId
@@ -667,7 +670,7 @@ export function HeaderActions({
                         className="mb-1 flex w-full items-start gap-3 rounded-md p-2 text-left text-sm hover:bg-muted"
                         onClick={() => {
                           setReviewOpen(false);
-                          onOpenPath(`/activity?view=review&run=${run.id}`);
+                          onOpenPath(`/workflows?activity=1&view=review&run=${run.id}`);
                         }}
                       >
                         <Workflow className="mt-0.5 h-4 w-4 text-primary" />
@@ -730,7 +733,7 @@ export function HeaderActions({
                     size="sm"
                     onClick={() => {
                       setReviewOpen(false);
-                      onOpenPath("/activity");
+                      onOpenPath("/workflows?activity=1");
                     }}
                   >
                     <Activity className="h-4 w-4" />

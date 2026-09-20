@@ -19,6 +19,7 @@ export function AnchoredPopover({
   ariaLabel,
   floatingLayer = false,
   matchAnchorWidth = false,
+  dismissOnOutsidePointer = true,
   onOpenChange,
 }: {
   open: boolean;
@@ -33,6 +34,7 @@ export function AnchoredPopover({
   ariaLabel?: string;
   floatingLayer?: boolean;
   matchAnchorWidth?: boolean;
+  dismissOnOutsidePointer?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -101,6 +103,7 @@ export function AnchoredPopover({
   useLayoutEffect(() => {
     if (!open || !onOpenChange) return;
     const dismiss = (event: PointerEvent) => {
+      if (!dismissOnOutsidePointer) return;
       const target = event.target as Node | null;
       if (target && (anchorRef.current?.contains(target) || contentRef.current?.contains(target))) return;
       if (target instanceof Element && target.closest(openFloatingLayerSelector)) return;
@@ -117,7 +120,7 @@ export function AnchoredPopover({
       document.removeEventListener("pointerdown", dismiss, true);
       window.removeEventListener("keydown", dismissWithKeyboard, true);
     };
-  }, [anchorRef, floatingLayer, onOpenChange, open]);
+  }, [anchorRef, dismissOnOutsidePointer, floatingLayer, onOpenChange, open]);
 
   if (!open) return null;
   return createPortal(

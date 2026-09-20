@@ -8,6 +8,7 @@ export const surfaceHant = {
     loading: "正在載入…",
   },
   workflowActivity: {
+    backToHistory: "返回執行記錄",
     allWorkflows: "所有工作流程",
     attention: "需要處理",
     history: "歷史記錄",

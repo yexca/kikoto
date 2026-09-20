@@ -97,7 +97,7 @@ storage keys; it remains mounted across navigation.
 - Settings.
 - Work management: pending work issues and metadata settings, with a workflow shortcut.
 - Workflows: horizontal definition tabs and a right-side Activity summary.
-- Activity details, reachable from the summary and account menu.
+- Activity run details inside the Workflows panel, also reachable through notifications.
 - Users.
 - Global player dock.
 

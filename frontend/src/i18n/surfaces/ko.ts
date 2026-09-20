@@ -8,6 +8,7 @@ export const surfaceKorean = {
     loading: "불러오는 중…",
   },
   workflowActivity: {
+    backToHistory: "실행 기록으로 돌아가기",
     allWorkflows: "모든 워크플로",
     attention: "처리 필요",
     history: "기록",

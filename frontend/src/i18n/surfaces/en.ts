@@ -11,6 +11,7 @@ export const surfaceEnglish = {
     loading: "Loading…",
   },
   workflowActivity: {
+    backToHistory: "Back to runs",
     allWorkflows: "All workflows",
     attention: "Needs attention",
     history: "History",

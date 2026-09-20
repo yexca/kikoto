@@ -296,7 +296,7 @@ function notifyFetchQueued(toast: ReturnType<typeof useToast>, result: RemoteWor
       ? t("remoteFetch.alreadyQueued", { runId: result.runId })
       : t("remoteFetch.queued", { code: result.primaryCode, runId: result.runId }),
     actionLabel: t("remoteFetch.activity"),
-    onAction: () => openActivity(`/activity?run=${result.runId}`),
+    onAction: () => openActivity(`/workflows?activity=1&run=${result.runId}`),
   });
 }
 
@@ -305,7 +305,7 @@ function notifyFetchUnconfirmed(toast: ReturnType<typeof useToast>, t: TFunction
     kind: "warning",
     message: t("remoteFetch.unconfirmed"),
     actionLabel: t("remoteFetch.activity"),
-    onAction: () => openActivity("/activity"),
+    onAction: () => openActivity("/workflows?activity=1"),
   });
 }
 

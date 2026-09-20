@@ -2,7 +2,6 @@ import {
   Activity,
   AlertCircle,
   CalendarClock,
-  ChevronLeft,
   ChevronRight,
   Clock3,
   Database,
@@ -43,7 +42,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { activityViewForRun, type ActivityView } from "@/features/workflows/activityModel";
+import { useWorkflowActivityLocation } from "@/features/workflows/useWorkflowActivityLocation";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { useAuth } from "@/auth/AuthProvider";
 import { openWorkDetail } from "@/app/workDetailNavigation";
@@ -70,7 +69,6 @@ import {
   type WorkflowEdgeVisualState,
 } from "@/features/workflows/workflowVisuals";
 import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
-import { useDeferredBusy } from "@/hooks/useDeferredBusy";
 import {
   api,
   type LibrarySource,
@@ -83,7 +81,6 @@ import {
   type WorkflowRun,
   type WorkflowRunDetail,
   type WorkflowRunGraph,
-  type WorkflowRunsPage,
   type WorkflowTrigger,
 } from "@/lib/api";
 import { currentScopedStorageKey } from "@/lib/clientStorageScope";
@@ -102,7 +99,6 @@ function localizedWorkflowDefinition(definition: WorkflowDefinition) {
   };
 }
 
-type Surface = "workflows" | "activity";
 type ModalMode = "create-workflow" | "edit-workflow" | "edit-node" | "create-trigger" | "edit-trigger" | null;
 type AutomationTriggerType = "startup" | "filesystem_event" | "schedule";
 type CreatableAutomationTriggerType = Exclude<AutomationTriggerType, "filesystem_event">;
@@ -186,8 +182,6 @@ const fallbackNodeTypes: WorkflowNodeType[] = [
 const phaseOrder = ["target", "discover", "filter", "match", "plan", "execute", "verify", "commit"] as const;
 
 const automationTriggerTypes: CreatableAutomationTriggerType[] = ["startup", "schedule"];
-const activityViews: ActivityView[] = ["running", "review", "failed", "completed"];
-const emptyRunViewTotals = { running: 0, review: 0, failed: 0, completed: 0 };
 const workflowDefinitionStorageBaseKey = "kikoto.workflows.definition:v2";
 const workflowDefinitionTabStorageBaseKey = "kikoto.workflows.definition-tab:v1";
 type WorkflowDefinitionTab = WorkflowFilter;
@@ -291,14 +285,12 @@ const manuallyRunnableSystemWorkflows: Record<string, SystemRunKind[]> = {
 const configurableSystemWorkflowCodes = new Set(Object.keys(manuallyRunnableSystemWorkflows));
 
 export function WorkflowsPage({
-  surface,
   canRun,
   canSyncMetadata,
   canTagWorks,
   canManageDownloads,
   readOnly = false,
 }: {
-  surface: Surface;
   canRun: boolean;
   canSyncMetadata: boolean;
   canTagWorks: boolean;
@@ -317,25 +309,17 @@ export function WorkflowsPage({
     storedWorkflowFilter(workflowDefinitionTabStorageKey),
   );
   const definitionSelectionKey = `${workflowDefinitionStorageKey}:${definitionTab}`;
-  const [activityView, setActivityView] = useState<ActivityView>(() => activityViewFromLocation());
+  const activityLocation = useWorkflowActivityLocation();
+  const activityRun = useWorkflowRunWatcher(activityLocation.open ? activityLocation.runId : null);
+  const linkedRun = activityRun.run?.id === activityLocation.runId ? activityRun.run : null;
+  const linkedCode = linkedRun?.workflowCode || activityLocation.workflowCode || "";
+  const [activityRevision, setActivityRevision] = useState(0);
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [nodeTypes, setNodeTypes] = useState<WorkflowNodeType[]>(fallbackNodeTypes);
   const [triggers, setTriggers] = useState<WorkflowTrigger[]>([]);
-  const [runs, setRuns] = useState<WorkflowRun[]>([]);
-  const [runsPage, setRunsPage] = useState<WorkflowRunsPage>({
-    runs: [],
-    page: 1,
-    pageSize: 10,
-    total: 0,
-    viewTotals: emptyRunViewTotals,
-  });
-  const [runsView, setRunsView] = useState<ActivityView | null>(null);
-  const [runPage, setRunPage] = useState(1);
-  const [runQuery, setRunQuery] = useState("");
   const [selectedDefinitionId, setSelectedDefinitionID] = useState<number | null>(() =>
     storedPositiveInt(`${workflowDefinitionStorageKey}:${storedWorkflowFilter(workflowDefinitionTabStorageKey)}`),
   );
-  const [selectedRunId, setSelectedRunID] = useState<number | null>(() => activityRunIDFromLocation());
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [editingNodeIndex, setEditingNodeIndex] = useState<number | null>(null);
   const [editingTrigger, setEditingTrigger] = useState<WorkflowTrigger | null>(null);
@@ -346,8 +330,6 @@ export function WorkflowsPage({
   const [isWorkflowMetaLoading, setIsWorkflowMetaLoading] = useState(true);
   const [hasWorkflowMetaSnapshot, setHasWorkflowMetaSnapshot] = useState(false);
   const [workflowMetaError, setWorkflowMetaError] = useState("");
-  const [isRunsLoading, setIsRunsLoading] = useState(true);
-  const [runsError, setRunsError] = useState("");
   const [recentDefinitionRuns, setRecentDefinitionRuns] = useState<WorkflowRun[]>([]);
   const [workflowLaunch, setWorkflowLaunch] = useState<{
     definition: WorkflowDefinition;
@@ -355,8 +337,7 @@ export function WorkflowsPage({
     autoPreview: boolean;
   } | null>(null);
   const workflowMetaRequestSeq = useRef(0);
-  const runsRequestSeq = useRef(0);
-  const runsAbortController = useRef<AbortController | null>(null);
+  const recentRunsRequestSeq = useRef(0);
 
   const refresh = () => {
     const seq = ++workflowMetaRequestSeq.current;
@@ -378,138 +359,114 @@ export function WorkflowsPage({
       });
   };
 
-  const refreshRuns = (page: number, view: ActivityView, query: string) => {
-    const seq = ++runsRequestSeq.current;
-    runsAbortController.current?.abort();
-    const controller = new AbortController();
-    runsAbortController.current = controller;
-    setIsRunsLoading(true);
-    setRunsError("");
-    api
-      .listWorkflowRuns(page, 10, view, query, "", controller.signal)
-      .then((next) => {
-        if (seq !== runsRequestSeq.current) return;
-        setRunsPage(next);
-        setRuns(next.runs);
-        setRunsView(view);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted && seq === runsRequestSeq.current) {
-          setRunsError(workflowCopy("activityLoadFailed"));
-        }
-      })
-      .finally(() => {
-        if (seq === runsRequestSeq.current) setIsRunsLoading(false);
-      });
-  };
-
   useEffect(() => {
     refresh();
   }, []);
 
   useEffect(() => {
-    if (surface !== "activity") {
-      runsAbortController.current?.abort();
-      setIsRunsLoading(false);
-      return;
+    if (linkedRun && linkedRun.workflowCode !== activityLocation.workflowCode) {
+      activityLocation.resolveWorkflow(linkedRun.workflowCode);
     }
-    refreshRuns(runPage, activityView, runQuery);
-    return () => runsAbortController.current?.abort();
-  }, [activityView, runPage, surface]);
-
-  useEffect(() => {
-    if (surface !== "activity") return;
-    const syncView = () => {
-      const next = activityViewFromLocation();
-      setActivityView(next);
-      setRunPage(1);
-      setSelectedRunID(activityRunIDFromLocation());
-    };
-    syncView();
-    window.addEventListener("popstate", syncView);
-    window.addEventListener("kikoto:navigation", syncView);
-    return () => {
-      window.removeEventListener("popstate", syncView);
-      window.removeEventListener("kikoto:navigation", syncView);
-    };
-  }, [surface]);
+  }, [linkedRun?.id, linkedRun?.workflowCode, activityLocation.workflowCode]);
 
   const visibleDefinitions = useMemo(() => {
-    return definitions
-      .filter((definition) => definition.scope === "user" || configurableSystemWorkflowCodes.has(definition.code))
+    const choices = [...definitions];
+    if (linkedCode && !choices.some((definition) => definition.code === linkedCode)) {
+      choices.push({
+        id: -(linkedRun?.definitionId ?? linkedRun?.id ?? 1),
+        code: linkedCode,
+        displayName: linkedRun?.displayName ?? linkedCode,
+        description: "",
+        definitionJson: "{}",
+        scope: "system",
+        editable: false,
+        ownerUserId: null,
+        triggerCount: 0,
+        createdAt: linkedRun?.createdAt ?? "",
+        updatedAt: linkedRun?.createdAt ?? "",
+      });
+    }
+    return choices
+      .filter(
+        (definition) =>
+          definition.scope === "user" ||
+          configurableSystemWorkflowCodes.has(definition.code) ||
+          definition.code === linkedCode,
+      )
       .sort((left, right) => {
         if (left.scope !== right.scope) return left.scope === "system" ? -1 : 1;
         return left.scope === "system"
-          ? builtInWorkflowOrder.indexOf(left.code) - builtInWorkflowOrder.indexOf(right.code)
+          ? (builtInWorkflowOrder.includes(left.code) ? builtInWorkflowOrder.indexOf(left.code) : 99) -
+              (builtInWorkflowOrder.includes(right.code) ? builtInWorkflowOrder.indexOf(right.code) : 99)
           : left.id - right.id;
       });
-  }, [definitions]);
+  }, [definitions, linkedCode, linkedRun]);
   const tabDefinitions = useMemo(
     () => visibleDefinitions.filter((definition) => matchesWorkflowFilter(definition, definitionTab)),
     [definitionTab, visibleDefinitions],
   );
-  const visibleRuns = surface === "activity" && runsView !== activityView ? [] : runs;
-  const activityTotals = runsPage.viewTotals ?? emptyRunViewTotals;
   const selectedDefinition = useMemo(() => {
-    return tabDefinitions.find((definition) => definition.id === selectedDefinitionId) ?? tabDefinitions[0] ?? null;
-  }, [selectedDefinitionId, tabDefinitions]);
+    return (
+      visibleDefinitions.find((definition) => definition.code === linkedCode) ??
+      tabDefinitions.find((definition) => definition.id === selectedDefinitionId) ??
+      tabDefinitions[0] ??
+      null
+    );
+  }, [selectedDefinitionId, tabDefinitions, visibleDefinitions, linkedCode]);
 
   useEffect(() => {
-    if (surface !== "workflows" || visibleDefinitions.length === 0) return;
+    if (visibleDefinitions.length === 0) return;
     const syncLinkedWorkflow = () => {
-      const code = new URLSearchParams(window.location.search).get("workflow")?.trim();
+      const code = linkedCode;
       if (!code) return;
       const linked = visibleDefinitions.find((definition) => definition.code === code);
       if (!linked) return;
-      const tab = linked.scope === "system" ? "built-in" : "custom";
+      const tab = matchesWorkflowFilter(linked, definitionTab)
+        ? definitionTab
+        : linked.scope === "system"
+          ? "built-in"
+          : "custom";
       setDefinitionTab(tab);
       window.localStorage.setItem(workflowDefinitionTabStorageKey, tab);
       setSelectedDefinitionID(linked.id);
       storePositiveInt(`${workflowDefinitionStorageKey}:${tab}`, linked.id);
     };
     syncLinkedWorkflow();
-    window.addEventListener("popstate", syncLinkedWorkflow);
-    window.addEventListener("kikoto:navigation", syncLinkedWorkflow);
-    return () => {
-      window.removeEventListener("popstate", syncLinkedWorkflow);
-      window.removeEventListener("kikoto:navigation", syncLinkedWorkflow);
-    };
-  }, [surface, visibleDefinitions, workflowDefinitionStorageKey, workflowDefinitionTabStorageKey]);
+  }, [definitionTab, linkedCode, visibleDefinitions, workflowDefinitionStorageKey, workflowDefinitionTabStorageKey]);
 
   const refreshRecentRuns = (workflowCode: string) => {
-    if (surface !== "workflows" || !workflowCode) {
+    if (!workflowCode) {
       setRecentDefinitionRuns([]);
       return Promise.resolve();
     }
+    const seq = ++recentRunsRequestSeq.current;
     return api
       .listWorkflowRuns(1, 5, "", "", workflowCode)
-      .then((page) => setRecentDefinitionRuns(page.runs))
+      .then((page) => {
+        if (seq === recentRunsRequestSeq.current) setRecentDefinitionRuns(page.runs);
+      })
       .catch(() => undefined);
   };
 
   useEffect(() => {
-    if (surface !== "workflows" || !selectedDefinition) {
+    if (!selectedDefinition) {
       setRecentDefinitionRuns([]);
       return;
     }
+    setRecentDefinitionRuns([]);
     void refreshRecentRuns(selectedDefinition.code);
-  }, [selectedDefinition?.code, surface]);
+    return () => {
+      recentRunsRequestSeq.current += 1;
+    };
+  }, [selectedDefinition?.code]);
 
   const hasActiveRecentRun = recentDefinitionRuns.some((run) => run.status === "queued" || run.status === "running");
   useEffect(() => {
-    if (surface !== "workflows" || !selectedDefinition || !hasActiveRecentRun) return;
+    if (!selectedDefinition || !hasActiveRecentRun) return;
     const timer = window.setInterval(() => void refreshRecentRuns(selectedDefinition.code), 2000);
     return () => window.clearInterval(timer);
-  }, [hasActiveRecentRun, selectedDefinition?.code, surface]);
+  }, [hasActiveRecentRun, selectedDefinition?.code]);
 
-  const selectedRunSummary =
-    visibleRuns.find((run) => run.id === selectedRunId) ?? (selectedRunId === null ? (visibleRuns[0] ?? null) : null);
-  const selectedActivityRunID = selectedRunId ?? selectedRunSummary?.id ?? null;
-  const waitingForInitialRuns =
-    surface === "activity" && isRunsLoading && visibleRuns.length === 0 && selectedActivityRunID === null;
-  const showRunsLoading = useDeferredBusy(waitingForInitialRuns);
-  const activityRun = useWorkflowRunWatcher(surface === "activity" ? selectedActivityRunID : null);
-  const previousActivityRunView = useRef<ActivityView | null>(null);
   const selectedSystemRunKinds = selectedDefinition
     ? manuallyRunnableSystemWorkflows[selectedDefinition.code]
     : undefined;
@@ -545,13 +502,7 @@ export function WorkflowsPage({
       `${workflowDefinitionStorageKey}:${definition.scope === "system" ? "built-in" : "custom"}`,
       definition.id,
     );
-    const search = new URLSearchParams(window.location.search);
-    if (search.has("workflow")) {
-      search.delete("workflow");
-      search.delete("dialog");
-      search.delete("run");
-      window.history.replaceState(window.history.state, "", `/workflows${search.size > 0 ? `?${search}` : ""}`);
-    }
+    activityLocation.selectWorkflow(definition.code);
   };
 
   const selectDefinitionTab = (tab: WorkflowDefinitionTab) => {
@@ -567,48 +518,9 @@ export function WorkflowsPage({
     if (next) selectDefinition(next, tab);
     else {
       setSelectedDefinitionID(null);
-      const search = new URLSearchParams(window.location.search);
-      search.delete("workflow");
-      search.delete("dialog");
-      window.history.replaceState(window.history.state, "", `/workflows${search.size ? `?${search}` : ""}`);
+      activityLocation.clearWorkflow();
     }
   };
-
-  useEffect(() => {
-    if (!activityRun.run) return;
-    setRuns((items) => items.map((item) => (item.id === activityRun.run?.id ? { ...item, ...activityRun.run } : item)));
-  }, [activityRun.run]);
-
-  useEffect(() => {
-    if (surface !== "activity" || !activityRun.run) {
-      previousActivityRunView.current = null;
-      return;
-    }
-    const nextView = activityViewForRun(activityRun.run);
-    const previousView = previousActivityRunView.current;
-    previousActivityRunView.current = nextView;
-    if (!previousView || previousView === nextView) return;
-    setActivityView(nextView);
-    setRunPage(1);
-    const search = new URLSearchParams({ view: nextView, run: String(activityRun.run.id) });
-    window.history.replaceState(window.history.state, "", `/activity?${search}`);
-  }, [activityRun.run, runQuery, surface]);
-
-  useEffect(() => {
-    const linkedRunID = activityRunIDFromLocation();
-    if (
-      surface !== "activity" ||
-      !activityRun.run ||
-      linkedRunID !== activityRun.run.id ||
-      new URLSearchParams(window.location.search).has("view")
-    )
-      return;
-    const nextView = activityViewForRun(activityRun.run);
-    setActivityView(nextView);
-    setRunPage(1);
-    const search = new URLSearchParams({ view: nextView, run: String(activityRun.run.id) });
-    window.history.replaceState(window.history.state, "", `/activity?${search}`);
-  }, [activityRun.run, surface]);
 
   const runLocalScan = async (followUpRun = false) => {
     setIsRunningScan(true);
@@ -642,8 +554,7 @@ export function WorkflowsPage({
       const result = await api.runRemotePopularCollection(options);
       toast.success(workflowCopy("remotePopularQueued", { runId: result.runId, tag: result.tagName }));
       refresh();
-      setActivityView("running");
-      setRunPage(1);
+      activityLocation.openRun(result.runId, selectedDefinition?.code);
     } catch (error) {
       toast.notify(toastFromError(error, workflowCopy("remotePopularQueueFailed")));
     } finally {
@@ -657,8 +568,7 @@ export function WorkflowsPage({
       const result = await api.runDLsitePopularCollection(options);
       toast.success(workflowCopy("dlsitePopularQueued", { runId: result.runId, tag: result.tagName }));
       refresh();
-      setActivityView("running");
-      setRunPage(1);
+      activityLocation.openRun(result.runId, selectedDefinition?.code);
     } catch (error) {
       toast.notify(toastFromError(error, workflowCopy("dlsitePopularQueueFailed")));
     } finally {
@@ -723,20 +633,11 @@ export function WorkflowsPage({
   };
 
   const refreshSelectedRunReview = async () => {
-    if (!selectedActivityRunID) return;
     await activityRun.refresh(true);
-    refreshRuns(runPage, activityView, runQuery);
+    setActivityRevision((value) => value + 1);
+    if (selectedDefinition) await refreshRecentRuns(selectedDefinition.code);
   };
-
-  const recoverStaleRuns = async () => {
-    try {
-      const result = await api.recoverStaleWorkflowRuns();
-      toast.success(workflowCopy("staleRunsRecovered", { count: result.recovered ?? 0 }));
-      refreshRuns(runPage, activityView, runQuery);
-    } catch (error) {
-      toast.notify(toastFromError(error, workflowCopy("recoverStaleFailed")));
-    }
-  };
+  const openActivityRun = (run: WorkflowRun) => activityLocation.openRun(run.id, run.workflowCode);
 
   return (
     <div className="space-y-4">
@@ -748,7 +649,7 @@ export function WorkflowsPage({
           {t("workflow.demoReadOnly")}
         </div>
       )}
-      {surface === "workflows" && hasWorkflowMetaSnapshot && workflowMetaError && (
+      {hasWorkflowMetaSnapshot && workflowMetaError && (
         <div
           className="flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2"
           role="alert"
@@ -762,10 +663,49 @@ export function WorkflowsPage({
         </div>
       )}
 
-      {surface === "workflows" ? (
+      {
         <div className="min-w-0 space-y-4">
           <WorkflowNavigation
-            actions={<WorkflowActivity readOnly={readOnly} canSyncMetadata={canSyncMetadata} />}
+            actions={
+              <WorkflowActivity
+                key={selectedDefinition?.code ?? "pending"}
+                workflowCode={activityLocation.runId && !linkedRun ? "" : (selectedDefinition?.code ?? "")}
+                workflowName={selectedDefinition ? localizedWorkflowDefinition(selectedDefinition).displayName : ""}
+                open={activityLocation.open}
+                onOpenChange={activityLocation.setOpen}
+                selectedRunId={activityLocation.runId}
+                onSelectRun={openActivityRun}
+                onBack={activityLocation.backToList}
+                refreshKey={activityRevision}
+                readOnly={readOnly}
+                canSyncMetadata={canSyncMetadata}
+                detail={
+                  activityLocation.runId ? (
+                    <>
+                      {activityRun.error && (
+                        <div role="alert" className="rounded-md border p-3 text-sm">
+                          {workflowCopy("activityLoadFailed")}{" "}
+                          <Button variant="outline" onClick={() => void activityRun.refresh(true)}>
+                            {t("common.retry")}
+                          </Button>
+                        </div>
+                      )}
+                      <RunDetail
+                        key={activityLocation.runId}
+                        run={linkedRun}
+                        events={linkedRun ? activityRun.events : []}
+                        candidates={linkedRun ? activityRun.candidates : []}
+                        nodeTypes={nodeTypes}
+                        loading={!linkedRun && !activityRun.error}
+                        onCandidateUpdate={refreshSelectedRunReview}
+                        onRunAction={refreshSelectedRunReview}
+                        readOnly={readOnly}
+                      />
+                    </>
+                  ) : undefined
+                }
+              />
+            }
             definitions={visibleDefinitions}
             selectedId={selectedDefinition?.id ?? null}
             filter={definitionTab}
@@ -805,7 +745,7 @@ export function WorkflowsPage({
                 )}
                 nodeTypes={nodeTypes}
                 readonly={readOnly || !selectedDefinition?.editable}
-                canManageTriggers={!readOnly}
+                canManageTriggers={!readOnly && (selectedDefinition?.id ?? 0) > 0}
                 systemRunKinds={selectedSystemRunKinds}
                 isSystemActionRunning={systemActionBusy}
                 canRunSystemAction={systemActionAllowed}
@@ -834,114 +774,7 @@ export function WorkflowsPage({
             )}
           </div>
         </div>
-      ) : (
-        <>
-          <SegmentedNav compact>
-            <ViewButton
-              active={activityView === "running"}
-              count={activityTotals.running}
-              onClick={() => switchActivityView("running", surface, setActivityView, setRunPage, setSelectedRunID)}
-              icon={<Activity className="h-4 w-4" />}
-            >
-              {workflowCopy("activityRunning")}
-            </ViewButton>
-            <ViewButton
-              active={activityView === "review"}
-              count={activityTotals.review}
-              onClick={() => switchActivityView("review", surface, setActivityView, setRunPage, setSelectedRunID)}
-              icon={<FileJson className="h-4 w-4" />}
-            >
-              {workflowCopy("activityReview")}
-            </ViewButton>
-            <ViewButton
-              active={activityView === "failed"}
-              count={activityTotals.failed}
-              onClick={() => switchActivityView("failed", surface, setActivityView, setRunPage, setSelectedRunID)}
-              icon={<AlertCircle className="h-4 w-4" />}
-            >
-              {workflowCopy("activityFailed")}
-            </ViewButton>
-            <ViewButton
-              active={activityView === "completed"}
-              count={activityTotals.completed}
-              mobileLabel={workflowCopy("activityDone")}
-              onClick={() => switchActivityView("completed", surface, setActivityView, setRunPage, setSelectedRunID)}
-              icon={<ListChecks className="h-4 w-4" />}
-            >
-              {workflowCopy("activityCompleted")}
-            </ViewButton>
-          </SegmentedNav>
-          <ActivityToolbar
-            query={runQuery}
-            onQueryChange={setRunQuery}
-            onSearch={() => {
-              setSelectedRunID(null);
-              if (runPage === 1) refreshRuns(1, activityView, runQuery);
-              else setRunPage(1);
-            }}
-            onRecoverStale={recoverStaleRuns}
-            readOnly={readOnly}
-          />
-          {runsError && (visibleRuns.length > 0 || selectedActivityRunID !== null) && (
-            <div
-              className="flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2"
-              role="alert"
-            >
-              <span className="text-sm text-destructive">
-                {runsError} {t("workflow.existingDataShown")}
-              </span>
-              <Button size="sm" variant="outline" onClick={() => refreshRuns(runPage, activityView, runQuery)}>
-                {t("common.retry")}
-              </Button>
-            </div>
-          )}
-          {waitingForInitialRuns || showRunsLoading ? (
-            showRunsLoading ? (
-              <ActivityLoadingState />
-            ) : (
-              <ActivityPendingState />
-            )
-          ) : runsError && visibleRuns.length === 0 && selectedActivityRunID === null ? (
-            <ActivityErrorState message={runsError} onRetry={() => refreshRuns(runPage, activityView, runQuery)} />
-          ) : visibleRuns.length === 0 && selectedActivityRunID === null ? (
-            <ActivityEmptyState view={activityView} filtered={Boolean(runQuery.trim())} />
-          ) : (
-            <Workbench
-              left={
-                <RunSidebar
-                  runs={visibleRuns}
-                  selectedId={selectedActivityRunID}
-                  page={runsPage.page}
-                  pageSize={runsPage.pageSize}
-                  total={runsPage.total}
-                  loading={isRunsLoading}
-                  onSelect={(run) => selectActivityRun(run, activityView, setSelectedRunID)}
-                  onPrevious={() => {
-                    setSelectedRunID(null);
-                    setRunPage(Math.max(1, runPage - 1));
-                  }}
-                  onNext={() => {
-                    setSelectedRunID(null);
-                    setRunPage(runPage + 1);
-                  }}
-                />
-              }
-              right={
-                <RunDetail
-                  run={activityRun.run ?? selectedRunSummary}
-                  events={activityRun.events}
-                  candidates={activityRun.candidates}
-                  nodeTypes={nodeTypes}
-                  loading={activityRun.loading && !activityRun.run}
-                  onCandidateUpdate={refreshSelectedRunReview}
-                  onRunAction={refreshSelectedRunReview}
-                  readOnly={readOnly}
-                />
-              }
-            />
-          )}
-        </>
-      )}
+      }
 
       {modalMode === "create-workflow" && (
         <WorkflowComposer
@@ -1036,20 +869,10 @@ export function WorkflowsPage({
           onClose={() => setWorkflowLaunch(null)}
           onQueued={(runId) => {
             setWorkflowLaunch(null);
-            window.history.pushState({}, "", `/activity?view=running&run=${runId}`);
-            window.dispatchEvent(new Event("kikoto:navigation"));
+            activityLocation.openRun(runId, workflowLaunch.definition.code);
           }}
         />
       )}
-    </div>
-  );
-}
-
-function Workbench({ left, right }: { left: React.ReactNode; right: React.ReactNode }) {
-  return (
-    <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
-      <div className="min-w-0">{left}</div>
-      <div className="min-w-0">{right}</div>
     </div>
   );
 }
@@ -1565,7 +1388,7 @@ function AvailabilityWatchReadyDialog({
 }
 
 function openActivityRunID(runID: number) {
-  window.history.pushState({}, "", `/activity?run=${runID}`);
+  window.history.pushState({}, "", `/workflows?activity=1&run=${runID}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
 }
 
@@ -1597,249 +1420,6 @@ function WorkflowMetadataErrorState({ message, onRetry }: { message: string; onR
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-function ActivityToolbar({
-  query,
-  onQueryChange,
-  onSearch,
-  onRecoverStale,
-  readOnly,
-}: {
-  query: string;
-  onQueryChange: (value: string) => void;
-  onSearch: () => void;
-  onRecoverStale: () => Promise<void>;
-  readOnly: boolean;
-}) {
-  return (
-    <div className="flex flex-col gap-3 border-b pb-3 md:flex-row md:items-center md:justify-between">
-      <label className="flex h-9 min-w-0 items-center gap-2 rounded-md border bg-background px-3 text-sm md:w-80">
-        <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <input
-          className="min-w-0 flex-1 bg-transparent outline-none"
-          value={query}
-          placeholder={workflowCopy("searchRuns")}
-          onChange={(event) => onQueryChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") onSearch();
-          }}
-        />
-      </label>
-      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground md:justify-end">
-        <Button size="sm" variant="outline" onClick={() => void onRecoverStale()} disabled={readOnly}>
-          <RotateCcw className="h-3.5 w-3.5" />
-          {workflowCopy("recoverStale")}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function ActivityLoadingState() {
-  return (
-    <div
-      className="flex min-h-32 items-center rounded-lg border bg-card p-4"
-      role="status"
-      aria-label={workflowCopy("loadingRuns")}
-      aria-busy="true"
-    >
-      <div className="flex items-center gap-3">
-        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
-        <div className="min-w-0 flex-1 space-y-2">
-          <SkeletonLine className="h-4 w-3/4 max-w-48" />
-          <SkeletonLine className="h-3 w-72 max-w-full" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ActivityPendingState() {
-  return <div className="min-h-32" aria-busy="true" />;
-}
-
-function ActivityErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <div
-      className="grid min-h-32 place-items-center rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-6 text-center"
-      role="alert"
-    >
-      <div>
-        <p className="text-sm text-destructive">{message}</p>
-        <Button className="mt-3" size="sm" variant="outline" onClick={onRetry}>
-          Retry
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function ActivityEmptyState({ view, filtered }: { view: ActivityView; filtered: boolean }) {
-  const messages: Record<ActivityView, string> = {
-    running: workflowCopy("noWorkflowsRunning"),
-    review: workflowCopy("noRunsNeedReview"),
-    failed: workflowCopy("noFailedWorkflowRuns"),
-    completed: workflowCopy("noCompletedWorkflowRuns"),
-  };
-  return (
-    <div className="grid min-h-32 place-items-center rounded-lg border border-dashed bg-card/40 px-4 py-8 text-center text-sm text-muted-foreground">
-      {filtered ? workflowCopy("noRunsMatchSearch") : messages[view]}
-    </div>
-  );
-}
-
-function RunSidebar({
-  runs,
-  selectedId,
-  page,
-  pageSize,
-  total,
-  loading,
-  onSelect,
-  onPrevious,
-  onNext,
-}: {
-  runs: WorkflowRun[];
-  selectedId: number | null;
-  page: number;
-  pageSize: number;
-  total: number;
-  loading?: boolean;
-  onSelect: (run: WorkflowRun) => void;
-  onPrevious: () => void;
-  onNext: () => void;
-}) {
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const end = Math.min(total, (page - 1) * pageSize + runs.length);
-  return (
-    <Card>
-      <CardContent className="space-y-3 p-3">
-        <div className="flex items-center justify-between px-1 text-sm">
-          <div className="flex items-start gap-2">
-            {loading && (
-              <Loader2
-                className="mt-0.5 h-3.5 w-3.5 animate-spin text-primary"
-                aria-label={workflowCopy("refreshingRuns")}
-              />
-            )}
-            <div>
-              <div className="font-semibold">{workflowCopy("runs")}</div>
-              <div className="text-xs text-muted-foreground">
-                {start}-{end} of {total}
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              size="icon"
-              variant="outline"
-              className="h-8 w-8"
-              disabled={page <= 1}
-              onClick={onPrevious}
-              aria-label={workflowCopy("previousRunsPage")}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              size="icon"
-              variant="outline"
-              className="h-8 w-8"
-              disabled={page >= totalPages}
-              onClick={onNext}
-              aria-label={workflowCopy("nextRunsPage")}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-        <div className="divide-y rounded-md border">
-          {loading && runs.length === 0 ? (
-            <RunSidebarSkeletonRows />
-          ) : (
-            runs.map((run) => (
-              <button
-                key={run.id}
-                className={`w-full p-3 text-left transition-colors ${
-                  selectedId === run.id ? "bg-secondary" : "bg-card hover:bg-muted"
-                }`}
-                onClick={() => onSelect(run)}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold">{run.displayName}</div>
-                    <div className="truncate text-xs text-muted-foreground">{run.workflowCode}</div>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <StatusBadge status={run.status} />
-                    {run.reviewedAt && <Badge variant="secondary">{workflowCopy("reviewed")}</Badge>}
-                  </div>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <span>{formatRunTime(run)}</span>
-                  <span>
-                    {run.completedNodeRuns}/{run.nodeRunCount} nodes
-                  </span>
-                  {run.failedNodeRuns > 0 && <span className="text-error-foreground">{run.failedNodeRuns} failed</span>}
-                  {run.skippedNodeRuns > 0 && <span>{run.skippedNodeRuns} skipped</span>}
-                  {pendingReviewCount(run) > 0 && (
-                    <span className="text-primary">{pendingReviewCount(run)} review</span>
-                  )}
-                </div>
-              </button>
-            ))
-          )}
-        </div>
-        {!loading && runs.length === 0 && <EmptyPanel text={workflowCopy("noRunsInView")} />}
-        <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
-          <span>{workflowCopy("pageOf", { page, totalPages })}</span>
-          <span>{workflowCopy("perPage", { count: pageSize })}</span>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function SidebarSkeletonRows({ count }: { count: number }) {
-  return (
-    <>
-      {Array.from({ length: count }, (_, index) => (
-        <div key={index} className="rounded-md border bg-card p-3">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 flex-1 space-y-2">
-              <SkeletonLine className="h-4 w-3/4" />
-              <SkeletonLine className="h-3 w-1/2" />
-            </div>
-            <SkeletonLine className="h-5 w-16" />
-          </div>
-          <div className="mt-3 flex gap-2">
-            <SkeletonLine className="h-3 w-14" />
-            <SkeletonLine className="h-3 w-16" />
-          </div>
-        </div>
-      ))}
-    </>
-  );
-}
-
-function RunSidebarSkeletonRows() {
-  return (
-    <div className="p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1 space-y-2">
-          <SkeletonLine className="h-4 w-4/5" />
-          <SkeletonLine className="h-3 w-2/5" />
-        </div>
-        <SkeletonLine className="h-5 w-16" />
-      </div>
-      <div className="mt-3 flex gap-3">
-        <SkeletonLine className="h-3 w-16" />
-        <SkeletonLine className="h-3 w-20" />
-        <SkeletonLine className="h-3 w-12" />
-      </div>
-    </div>
   );
 }
 
@@ -5017,60 +4597,6 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
   );
 }
 
-function SegmentedNav({ children, compact = false }: { children: React.ReactNode; compact?: boolean }) {
-  return (
-    <div
-      className={
-        compact
-          ? "grid grid-cols-4 gap-1 rounded-lg border bg-card p-1 sm:flex sm:gap-2"
-          : "flex gap-2 overflow-x-auto rounded-lg border bg-card p-1"
-      }
-    >
-      {children}
-    </div>
-  );
-}
-
-function ViewButton({
-  active,
-  count,
-  mobileLabel,
-  icon,
-  children,
-  onClick,
-}: {
-  active: boolean;
-  count?: number;
-  mobileLabel?: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-  onClick: () => void;
-}) {
-  const accessibleLabel = typeof children === "string" && count !== undefined ? `${children} ${count}` : undefined;
-  return (
-    <button
-      className={`inline-flex h-9 min-w-0 shrink-0 items-center justify-center gap-1 rounded-md px-1 text-xs font-medium transition-[color,background-color,box-shadow,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97] motion-reduce:active:scale-100 sm:gap-2 sm:px-3 sm:text-sm ${
-        active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-      }`}
-      aria-label={accessibleLabel}
-      aria-pressed={active}
-      onClick={onClick}
-    >
-      <span className="hidden sm:inline-flex">{icon}</span>
-      {mobileLabel && <span className="truncate sm:hidden">{mobileLabel}</span>}
-      <span className={mobileLabel ? "hidden truncate sm:inline" : "truncate"}>{children}</span>
-      {count !== undefined && (
-        <span
-          className={`min-w-4 rounded px-1 text-[10px] leading-4 ${active ? "bg-primary-foreground/18 text-primary-foreground" : "bg-muted text-muted-foreground"}`}
-        >
-          <span className="sm:hidden">{count > 99 ? "99+" : count}</span>
-          <span className="hidden sm:inline">{count}</span>
-        </span>
-      )}
-    </button>
-  );
-}
-
 function RunMetrics({ run }: { run: WorkflowRun }) {
   return (
     <div className="grid gap-2 sm:grid-cols-3">
@@ -5402,27 +4928,6 @@ function storePositiveInt(key: string, value: number | null) {
   storeSessionValue(key, value && value > 0 ? String(value) : null);
 }
 
-function switchActivityView(
-  view: ActivityView,
-  surface: Surface,
-  setActivityView: (view: ActivityView) => void,
-  setRunPage: (page: number) => void,
-  setSelectedRunID: (id: number | null) => void,
-) {
-  if (surface === "activity") {
-    const path = view === "running" ? "/activity" : `/activity?view=${encodeURIComponent(view)}`;
-    window.history.pushState({}, "", path);
-  }
-  setActivityView(view);
-  setRunPage(1);
-  setSelectedRunID(null);
-}
-
-function activityViewFromLocation(): ActivityView {
-  const value = new URLSearchParams(window.location.search).get("view");
-  return activityViews.includes(value as ActivityView) ? (value as ActivityView) : "running";
-}
-
 function pendingReviewCount(run: WorkflowRun) {
   return run.pendingCandidates;
 }
@@ -5463,30 +4968,10 @@ function localCleanupLocations(payload: Record<string, unknown>): LocalCleanupLo
   });
 }
 
-function activityRunIDFromLocation() {
-  const value = Number(new URLSearchParams(window.location.search).get("run"));
-  return Number.isInteger(value) && value > 0 ? value : null;
-}
-
-function openActivityRun(run: WorkflowRun) {
-  const view = activityViewForRun(run);
-  const search = new URLSearchParams({ view, run: String(run.id) });
-  window.history.pushState({}, "", `/activity?${search}`);
-  window.dispatchEvent(new Event("kikoto:navigation"));
-}
-
 function openRemoteSourceConfiguration(sourceID: number) {
   const search = new URLSearchParams({ tab: "library", source: String(sourceID) });
   window.history.pushState({}, "", `/maintenance?${search}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
-}
-
-function selectActivityRun(run: WorkflowRun, view: ActivityView, setSelectedRunID: (id: number | null) => void) {
-  setSelectedRunID(run.id);
-  const search = new URLSearchParams(window.location.search);
-  search.set("view", view);
-  search.set("run", String(run.id));
-  window.history.replaceState(window.history.state, "", `/activity?${search}`);
 }
 
 function localArchivedRoots(payload: Record<string, unknown>): LocalArchivedRoot[] {

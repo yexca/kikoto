@@ -98,7 +98,7 @@ function MetadataNotice({ canViewActivity }: { canViewActivity: boolean }) {
               className="min-h-11"
               variant="outline"
               onClick={() => {
-                window.history.pushState({}, "", `/activity?run=${view.runId}`);
+                window.history.pushState({}, "", `/workflows?activity=1&run=${view.runId}`);
                 window.dispatchEvent(new PopStateEvent("popstate"));
               }}
             >

@@ -470,9 +470,8 @@ function AuthenticatedApp() {
                     onAccessPolicyUpdated={auth.refreshRuntime}
                   />
                 )}
-                {canAccessCurrentPage && (page === "workflows" || page === "activity") && (
+                {canAccessCurrentPage && page === "workflows" && (
                   <WorkflowsPage
-                    surface={page}
                     canRun={auth.demoMode || auth.hasPermission("workflows:run")}
                     canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")}
                     canTagWorks={auth.demoMode || auth.hasPermission("tags:write")}
@@ -490,7 +489,6 @@ function AuthenticatedApp() {
                   "maintenance",
                   "work-management",
                   "workflows",
-                  "activity",
                   "about",
                 ].includes(page) && (
                   <PlaceholderPage title={activeItem ? navigationLabel(activeItem, t) : t("app.pageReserved")} />
@@ -703,7 +701,7 @@ function parseRemoteTrackSummary(raw: string) {
 }
 
 function openWorkflowActivity(runId: number) {
-  window.history.pushState({}, "", `/activity?run=${runId}`);
+  window.history.pushState({}, "", `/workflows?activity=1&run=${runId}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
 }
 
@@ -821,9 +819,6 @@ function pageFromPath(rawPath: string): AppPage {
   const path = rawPath.length > 1 ? rawPath.replace(/\/+$/, "") : rawPath;
   if (path === "/" || isWorkCodePath(path)) {
     return "library";
-  }
-  if (path === "/runs") {
-    return "activity";
   }
   if (path === "/users") {
     return "maintenance";

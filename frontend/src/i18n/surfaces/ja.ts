@@ -8,6 +8,7 @@ export const surfaceJapanese = {
     loading: "読み込み中…",
   },
   workflowActivity: {
+    backToHistory: "実行履歴に戻る",
     allWorkflows: "すべてのワークフロー",
     attention: "要対応",
     history: "履歴",

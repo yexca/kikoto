@@ -41,8 +41,8 @@ export function commandActions({
             icon: <ScanLine className="h-4 w-4" />,
             closeOnRun: false,
             run: async () => {
-              await api.runLocalScan({ followUpRun: false });
-              onOpenPath("/activity");
+              const result = await api.runLocalScan({ followUpRun: false });
+              onOpenPath(`/workflows?activity=1&workflow=local_library_scan&run=${result.runId}`);
             },
           },
         ]
@@ -56,8 +56,8 @@ export function commandActions({
             icon: <Play className="h-4 w-4" />,
             closeOnRun: false,
             run: async () => {
-              await api.runDLsiteSync();
-              onOpenPath("/activity");
+              const result = await api.runDLsiteSync();
+              onOpenPath(`/workflows?activity=1&workflow=metadata_sync&run=${result.runId}`);
             },
           },
         ]
@@ -72,7 +72,7 @@ export function commandActions({
             closeOnRun: false,
             run: async () => {
               await api.recoverStaleWorkflowRuns();
-              onOpenPath("/activity");
+              onOpenPath("/workflows?activity=1");
             },
           },
         ]
@@ -86,21 +86,21 @@ export function commandActions({
           label: text("commands.runningRuns", "Running runs"),
           description: text("commands.runningRunsDescription", "Open current workflow activity"),
           icon: <Activity className="h-4 w-4" />,
-          run: () => onOpenPath("/activity"),
+          run: () => onOpenPath("/workflows?activity=1"),
         },
         {
           id: "activity:review",
           label: text("commands.reviewRuns", "Review runs"),
           description: text("commands.reviewRunsDescription", "Open workflow runs needing review"),
           icon: <ListChecks className="h-4 w-4" />,
-          run: () => onOpenPath("/activity?view=review"),
+          run: () => onOpenPath("/workflows?activity=1&view=review"),
         },
         {
           id: "activity:failed",
           label: text("commands.failedRuns", "Failed runs"),
           description: text("commands.failedRunsDescription", "Open failed workflow runs"),
           icon: <Clock3 className="h-4 w-4" />,
-          run: () => onOpenPath("/activity?view=failed"),
+          run: () => onOpenPath("/workflows?activity=1&view=failed"),
         },
       ]
     : [];

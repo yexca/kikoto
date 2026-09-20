@@ -1,15 +1,4 @@
-import {
-  Activity,
-  Database,
-  Heart,
-  Info,
-  Library,
-  MicVocal,
-  Settings,
-  ShieldCheck,
-  Users,
-  Workflow,
-} from "lucide-react";
+import { Database, Heart, Info, Library, MicVocal, Settings, ShieldCheck, Users, Workflow } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 type NavItem = {
@@ -92,17 +81,6 @@ export const navItems = [
     permission: "workflows:run",
   },
   {
-    id: "activity",
-    label: "Activity",
-    labelKey: "nav.activity",
-    description: "Inspect workflow runs, failures, and review items",
-    descriptionKey: "nav.activityDescription",
-    path: "/activity",
-    icon: Activity,
-    audience: "admin",
-    permission: "workflows:run",
-  },
-  {
     id: "settings",
     label: "Settings",
     labelKey: "nav.settings",
@@ -158,7 +136,7 @@ export function visibleNavigationItems({
   state: AuthViewState;
   hasPermission: (permission: string) => boolean;
 }) {
-  return navItems.filter((item) => item.id !== "activity" && canAccessNavigationItem(item, state, hasPermission));
+  return navItems.filter((item) => canAccessNavigationItem(item, state, hasPermission));
 }
 
 export function canAccessPage(page: PageID, state: AuthViewState, hasPermission: (permission: string) => boolean) {

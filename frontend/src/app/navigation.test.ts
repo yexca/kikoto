@@ -16,10 +16,10 @@ describe("navigation access and labels", () => {
     expect(navigationDescription(item, (key) => key)).toBe(item.description);
   });
 
-  it("keeps Activity routes accessible without a separate sidebar item", () => {
+  it("uses Workflows as the Activity destination", () => {
     const visible = visibleNavigationItems({ state: "authenticated", hasPermission: () => true });
     expect(visible.map((item) => item.id)).not.toContain("activity");
-    expect(canAccessPage("activity", "authenticated", () => true)).toBe(true);
+    expect(canAccessPage("workflows", "authenticated", () => true)).toBe(true);
   });
 
   it("hides authenticated and admin destinations from anonymous users", () => {
