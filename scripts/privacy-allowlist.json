@@ -2,7 +2,7 @@
   "version": 1,
   "endpoints": [
     {
-      "url": "https://raw.githubusercontent.com/yexca/kikoto/v0.6.0",
+      "url": "https://raw.githubusercontent.com/yexca/kikoto/main",
       "files": ["kikoto-helper/kikoto-helper.core.ps1", "kikoto-helper/kikoto-helper.en.ps1", "kikoto-helper/kikoto-helper.zh-Hans.ps1"],
       "reason": "Public release assets downloaded by the Windows installation helper."
     },
