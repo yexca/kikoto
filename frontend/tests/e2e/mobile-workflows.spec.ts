@@ -1058,7 +1058,7 @@ test("activity links metadata failures to a run-filtered Maintenance list", asyn
   });
   await page.goto("/activity?view=completed&run=51");
   await page.getByRole("button", { name: "Open metadata issues", exact: true }).click();
-  await expect(page).toHaveURL(/\/work-management\?reason=metadata&metadataRun=51/);
+  await expect(page).toHaveURL(/\/metadata\?reason=metadata&metadataRun=51/);
   await expect(page.getByRole("heading", { name: "Pending works" })).toBeVisible();
   await expect.poll(() => runFilters.includes("51")).toBe(true);
   await page.getByRole("button", { name: "Show all pending works", exact: true }).click();
@@ -1696,7 +1696,7 @@ for (const viewport of ["mobile", "@desktop"]) {
     await activity.getByRole("tab", { name: "Needs attention 1", exact: true }).click();
     await page.screenshot({ path: testInfo.outputPath("workflow-activity.png") });
     await activity.getByRole("button", { name: "Open metadata issues", exact: true }).click();
-    await expect(page).toHaveURL(/work-management\?reason=metadata&metadataRun=62/);
+    await expect(page).toHaveURL(/metadata\?reason=metadata&metadataRun=62/);
     await expect(page.getByRole("heading", { name: "Metadata", exact: true })).toBeVisible();
   });
 }

@@ -454,7 +454,9 @@ test("development super administrator can configure production anonymous access"
   });
 
   await page.goto("/maintenance?tab=security");
-  await expect(page.getByRole("button", { name: "Access", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page).toHaveURL(/\/maintenance\?tab=users$/);
+  await expect(page.getByRole("button", { name: "Users", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("User directory", { exact: true })).toBeVisible();
   const accessSwitch = page.getByRole("switch", { name: "Anonymous access", exact: true });
   const accessRow = page
     .getByText("Library browsing and playback without an account", { exact: true })
@@ -552,6 +554,61 @@ test("users mounts before settings and a one-user result does not collapse the p
   releaseSettings();
 });
 
+for (const layout of ["mobile", "@desktop"]) {
+  test(`${layout} maintenance sections stay in one scrollable row`, async ({ page }) => {
+    await mockCacheSettings(page, () => undefined);
+    await page.goto("/maintenance");
+    const navigation = page.getByRole("navigation", { name: "Maintenance sections", exact: true });
+    await expect(navigation.getByRole("button", { name: "Library", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(navigation.getByRole("button")).toHaveCount(5);
+    await expect(navigation.getByRole("button", { name: /^(Overview|Paths|Access)$/ })).toHaveCount(0);
+    const rows = await navigation
+      .getByRole("button")
+      .evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().top));
+    expect(Math.max(...rows) - Math.min(...rows)).toBeLessThanOrEqual(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await expect(page.getByText("Storage paths", { exact: true })).toBeVisible();
+    await navigation.getByRole("button", { name: "Users", exact: true }).click();
+    await expect(page.getByText("User directory", { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await expect(page.getByRole("switch", { name: "Anonymous access", exact: true })).toHaveCount(0);
+  });
+}
+
+test("user managers open Users without fetching source settings", async ({ page }) => {
+  await mockCacheSettings(page, () => undefined);
+  let settingsRequests = 0;
+  await page.route("**/api/settings", async (route) => {
+    settingsRequests += 1;
+    await route.fulfill({ status: 403, json: { error: "Forbidden" } });
+  });
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: {
+        authenticated: true,
+        user: {
+          id: 1,
+          username: "synthetic-user",
+          displayName: "Example User",
+          role: "user",
+          permissions: ["users:manage"],
+          devMode: false,
+        },
+      },
+    }),
+  );
+  await page.goto("/maintenance");
+  const navigation = page.getByRole("navigation", { name: "Maintenance sections", exact: true });
+  await expect(navigation.getByRole("button")).toHaveCount(1);
+  await expect(navigation.getByRole("button", { name: "Users", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("@admin", { exact: true }).first()).toBeVisible();
+  expect(settingsRequests).toBe(0);
+  await expect(page.getByRole("switch", { name: "Anonymous access", exact: true })).toHaveCount(0);
+});
+
 test("maintenance combines library sources and exposes read-only paths with health checks", async ({ page }) => {
   let healthChecks = 0;
   const sourceUpdates: Record<string, unknown>[] = [];
@@ -608,7 +665,7 @@ test("maintenance combines library sources and exposes read-only paths with heal
   await deleteDialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(deleteDialog).toBeHidden();
 
-  await page.getByRole("button", { name: "Paths", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Paths", exact: true })).toHaveCount(0);
   await expect(page.getByText("Storage paths", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Remote save path preview")).toHaveValue("/data/source/RJ_000/RJ00000000");
   await expect(page.getByLabel("Example Remote")).toHaveValue("/data/example-remote/RJ00000000");
@@ -698,7 +755,7 @@ test("@desktop work management owns metadata settings and links to the existing 
     }),
   );
   await page.goto("/maintenance?tab=metadata");
-  await expect(page).toHaveURL(/work-management\?tab=settings/);
+  await expect(page).toHaveURL(/metadata\?tab=settings/);
   await expect(page.getByRole("dialog", { name: "Metadata settings", exact: true })).toBeVisible();
   await page.getByRole("spinbutton", { name: "Catalog freshness days", exact: true }).fill("14");
   await page.getByRole("button", { name: "Save metadata settings", exact: true }).click();

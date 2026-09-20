@@ -37,12 +37,14 @@ anonymous principal when anonymous access is enabled.
 
 ## Maintenance Organization
 
+Maintenance uses one horizontal row of tabs, scrolling horizontally on narrow screens. Overview is removed; Library is the default for source administrators, and Users is the default for user-only administrators. Old Paths and Access links open Library and Users respectively.
+
 - Maintenance opens with a concise administration description instead of
   repeating editable configuration values as summary statistics. Detail tabs
   retain only operational metrics such as source health, recommendation
   telemetry, and managed-cache usage.
-- Library combines the local scan settings and configured remote sources.
-- Access is visible to super administrators in production and development.
+- Library combines local scan settings, configured remote sources, and read-only storage paths.
+- Instance access settings appear under Users for super administrators in production and development.
   Anonymous Library browsing and playback default to disabled; changing the
   switch applies to the production access boundary and creates an audit entry.
   Development still authenticates every request as root, so the setting remains
@@ -60,7 +62,7 @@ anonymous principal when anonymous access is enabled.
   weights, and caps under Advanced scoring.
 - Cache & Fetch presents editable policy first, followed by managed-media usage
   and cleanup controls. Its configuration is a vertical list; resolved save
-  paths are read-only previews owned by Paths.
+  paths are read-only previews in Library.
 - Cache & Fetch includes the per-file remote media limit and the retention age
   for unpublished staging from failed or cancelled Fetch runs. The defaults are
   100 GB per media file and seven days of staging retention.
@@ -72,7 +74,7 @@ anonymous principal when anonymous access is enabled.
 - Managed media cache cleanup is grouped by source scope. Groups can be
   collapsed and selected as a unit while the bounded list scrolls independently
   for large libraries. Cleanup remains a two-step destructive action.
-- Paths is read-only and shows the resolved data root, cache root, default
+- Storage paths in Library are read-only and show the resolved data root, cache root, default
   cache/save previews, and per-source save previews. Remote Source configuration
   shows the same resolved example instead of exposing a path-template editor.
 
@@ -96,3 +98,5 @@ Metadata settings let administrators choose and reorder the supported DLsite
 - [Configuration](../../operations/configuration.md)
 - [Security](../../operations/security.md)
 - [Sources](sources.md)
+
+Metadata uses `/metadata`. Old `/work-management` links still work and retain their filters or settings context. First-sync failures and pending metadata results open Metadata issues; operators without workflow permission see the unscoped issue list. Run diagnostics remain in Workflows Activity.

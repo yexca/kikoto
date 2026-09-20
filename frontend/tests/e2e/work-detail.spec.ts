@@ -612,3 +612,42 @@ test("mobile work detail orders Info sections and keeps work-code utilities toge
   );
   expect(positions.every((position, index) => index === 0 || positions[index - 1] < position)).toBe(true);
 });
+
+test("metadata refresh failures open the canonical run-scoped recovery list", async ({ page }) => {
+  const control = {
+    runId: 77,
+    status: "failed" as const,
+    detailReady: false,
+    postRequests: 0,
+    detailRequests: 0,
+    statusRequests: 0,
+  };
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    authenticated: true,
+    permissions: ["library:read", "metadata:sync", "workflows:run"],
+    detailMetadataSync: { status: "not_synced", checkedAt: "" },
+    metadataSyncControl: control,
+  });
+  await page.route("**/api/workflow-runs/77", (route) =>
+    route.fulfill({
+      json: {
+        id: 77,
+        workflowCode: "metadata_family_sync",
+        status: "failed",
+        summaryJson: "{}",
+        nodeRuns: [],
+        metadataIssues: { encountered: 1, pending: 1, resolved: 0 },
+      },
+    }),
+  );
+  await page.route("**/api/maintenance/works?*", (route) =>
+    route.fulfill({ json: { works: [], page: 1, pageSize: 25, total: 0 } }),
+  );
+  await page.goto("/");
+  await page.getByText(work.title, { exact: true }).click();
+  await page.getByRole("button", { name: "Info", exact: true }).click();
+  await page.getByRole("button", { name: "Metadata refresh", exact: true }).click();
+  await page.getByRole("button", { name: "Open metadata issues", exact: true }).click();
+  await expect(page).toHaveURL(/\/metadata\?reason=metadata&metadataRun=77$/);
+  await expect(page.getByRole("heading", { name: "Metadata", exact: true })).toBeVisible();
+});

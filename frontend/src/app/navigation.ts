@@ -70,12 +70,12 @@ export const navItems = [
     permission: "workflows:run",
   },
   {
-    id: "work-management",
+    id: "metadata",
     label: "Metadata",
     labelKey: "nav.workManagement",
     description: "Browse metadata, resolve work issues, and configure metadata settings",
     descriptionKey: "nav.workManagementDescription",
-    path: "/work-management",
+    path: "/metadata",
     icon: Database,
     audience: "admin",
     permission: "metadata:sync",
@@ -151,7 +151,7 @@ function canAccessNavigationItem(
 ) {
   if (item.audience === "authenticated" && state === "anonymous") return false;
   if (item.audience === "admin" && state === "anonymous") return false;
-  if (item.id === "work-management") return hasPermission("sources:write") || hasPermission("metadata:sync");
+  if (item.id === "metadata") return hasPermission("sources:write") || hasPermission("metadata:sync");
   if (item.id === "maintenance") return hasPermission("sources:write") || hasPermission("users:manage");
   if (item.permission && !hasPermission(item.permission)) return false;
   return true;

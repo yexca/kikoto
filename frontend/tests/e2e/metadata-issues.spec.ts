@@ -298,7 +298,8 @@ for (const viewport of ["mobile", "@desktop"]) {
     await page.route("**/api/settings", (route) =>
       route.fulfill({ json: { fileSources: [], catalogFreshnessDays: 30, dlsiteMetadataLanguages: ["ja-jp"] } }),
     );
-    await page.goto("/work-management");
+    await page.goto(viewport === "mobile" ? "/work-management" : "/metadata");
+    await expect(page).toHaveURL(/\/metadata$/);
     await expect(page.getByRole("heading", { name: "Metadata", exact: true })).toBeVisible();
     const tabs = page.getByRole("tablist", { name: "Attention reason" });
     await expect(tabs.getByRole("tab")).toHaveText([

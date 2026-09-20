@@ -5,14 +5,12 @@ import { canAccessPage, navigationDescription, navigationLabel, navItems, visibl
 describe("navigation access and labels", () => {
   it("places Metadata directly after Workflows", () => {
     const workflowIndex = navItems.findIndex((item) => item.id === "workflows");
-    expect(navItems[workflowIndex + 1]).toMatchObject({ id: "work-management", label: "Metadata" });
+    expect(navItems[workflowIndex + 1]).toMatchObject({ id: "metadata", label: "Metadata" });
   });
   it("lets metadata operators reach work management without source settings permission", () => {
-    expect(canAccessPage("work-management", "authenticated", (permission) => permission === "metadata:sync")).toBe(
-      true,
-    );
-    expect(canAccessPage("work-management", "authenticated", () => false)).toBe(false);
-    expect(canAccessPage("work-management", "anonymous", () => true)).toBe(false);
+    expect(canAccessPage("metadata", "authenticated", (permission) => permission === "metadata:sync")).toBe(true);
+    expect(canAccessPage("metadata", "authenticated", () => false)).toBe(false);
+    expect(canAccessPage("metadata", "anonymous", () => true)).toBe(false);
   });
   it("uses translated labels and falls back to authored copy for missing translations", () => {
     const item = navItems[0];

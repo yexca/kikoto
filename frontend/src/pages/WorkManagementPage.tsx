@@ -40,7 +40,7 @@ export function WorkManagementPage({
     const url = new URL(window.location.href);
     if (open) url.searchParams.set("tab", "settings");
     else url.searchParams.delete("tab");
-    window.history.replaceState(window.history.state, "", url.pathname + url.search);
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
     setSettingsOpen(open);
   };
   return (

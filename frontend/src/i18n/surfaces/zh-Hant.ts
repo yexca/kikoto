@@ -53,7 +53,8 @@ export const surfaceHant = {
     succeeded: "中繼資料同步完成",
     complete: "作品資訊已更新，重新整理作品庫即可查看最新中繼資料。",
     attention: "中繼資料同步需要關注",
-    partial: "部分資訊未能同步。重新整理作品庫可查看已同步的資訊；失敗詳情可在 Activity 中查看，既有作品資訊會保留。",
+    partial:
+      "部分資訊未能同步。重新整理作品庫可查看已同步的資訊，並在中繼資料頁面處理待解決的問題。既有作品資訊會保留。",
     activity: "查看 Activity",
     dismiss: "關閉提示",
     error: "無法儲存此操作，請重試。",

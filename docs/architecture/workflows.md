@@ -71,7 +71,7 @@ only in the no-source view and the server still revalidates family availability.
 Each permission grants only its corresponding maintenance actions, without
 exposing settings to metadata-only operators. Metadata management presents All and attention categories horizontally.
 Metadata settings open in a dialog, with the current list retained underneath.
-Activity links use `/work-management?reason=metadata&metadataRun=<id>`;
+Activity links use `/metadata?reason=metadata&metadataRun=<id>`;
 legacy Maintenance work and metadata links redirect to Metadata management. Filtering by a run additionally
 checks workflow permission and that run's ownership. Successful recovery changes shared work state, never
 `workflow_run_review` or the historical execution status.
@@ -277,3 +277,10 @@ using the same search, pagination, permission, and demo eligibility boundaries.
 It does not discover providers or materialize catalog results. The legacy `all`
 reason still means the attention union, and a run filter always narrows the read
 to that run's unresolved metadata issues.
+
+The canonical management URL is `/metadata`. Legacy `/work-management` URLs and
+Maintenance work/settings links redirect there while preserving their category,
+settings, and run context. Failed first-sync notifications and pending metadata
+results open recovery here; operators without workflow access use the unscoped
+issue list, since reading a run-scoped list requires workflow permission. Runs
+without recorded pending issues retain their Activity diagnostics.

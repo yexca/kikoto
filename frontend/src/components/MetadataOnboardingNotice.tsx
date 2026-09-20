@@ -1,3 +1,4 @@
+import { metadataSyncResultURL } from "@/lib/metadataMaintenance";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { RefreshCw } from "lucide-react";
@@ -68,6 +69,7 @@ function MetadataNotice({ canViewActivity }: { canViewActivity: boolean }) {
   const ready = view.status === "ready";
   const running = view.status === "queued" || view.status === "running";
   const succeeded = view.status === "succeeded";
+  const needsAttention = !ready && !running && !succeeded;
   const title = ready ? "title" : running ? "running" : succeeded ? "succeeded" : "attention";
   return (
     <section aria-label={t("metadataOnboarding.label")} className="rounded-lg border bg-card p-4">
@@ -93,16 +95,16 @@ function MetadataNotice({ canViewActivity }: { canViewActivity: boolean }) {
               {t("metadataOnboarding.start")}
             </Button>
           )}
-          {!ready && canViewActivity && view.runId > 0 && (
+          {!ready && (needsAttention || (canViewActivity && view.runId > 0)) && (
             <Button
               className="min-h-11"
               variant="outline"
               onClick={() => {
-                window.history.pushState({}, "", `/workflows?activity=1&run=${view.runId}`);
+                window.history.pushState({}, "", metadataSyncResultURL(view.runId, needsAttention, canViewActivity));
                 window.dispatchEvent(new PopStateEvent("popstate"));
               }}
             >
-              {t("metadataOnboarding.activity")}
+              {t(needsAttention ? "metadataIssues.openIssues" : "metadataOnboarding.activity")}
             </Button>
           )}
           <Button className="min-h-11" variant="ghost" disabled={busy} onClick={() => void act("dismiss")}>

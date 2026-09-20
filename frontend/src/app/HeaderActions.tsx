@@ -1,3 +1,4 @@
+import { metadataIssuesURL, metadataSyncResultURL } from "@/lib/metadataMaintenance";
 import { cloneElement, useEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { TFunction } from "i18next";
@@ -597,7 +598,15 @@ export function HeaderActions({
                             setReviewOpen(false);
                             if (notification.type === "metadata_onboarding") {
                               onOpenPath(
-                                canRunWorkflows ? `/workflows?activity=1&run=${notification.workflowRunId}` : "/",
+                                canSyncMetadata
+                                  ? metadataSyncResultURL(
+                                      notification.workflowRunId,
+                                      notification.status !== "succeeded",
+                                      canRunWorkflows,
+                                    )
+                                  : canRunWorkflows
+                                    ? `/workflows?activity=1&run=${notification.workflowRunId}`
+                                    : "/",
                               );
                               return;
                             }
@@ -670,7 +679,11 @@ export function HeaderActions({
                         className="mb-1 flex w-full items-start gap-3 rounded-md p-2 text-left text-sm hover:bg-muted"
                         onClick={() => {
                           setReviewOpen(false);
-                          onOpenPath(`/workflows?activity=1&view=review&run=${run.id}`);
+                          onOpenPath(
+                            canSyncMetadata && (run.pendingMetadata ?? 0) > 0
+                              ? metadataIssuesURL(run.id)
+                              : `/workflows?activity=1&view=review&run=${run.id}`,
+                          );
                         }}
                       >
                         <Workflow className="mt-0.5 h-4 w-4 text-primary" />

@@ -53,7 +53,7 @@ export const surfaceHans = {
     succeeded: "元数据同步完成",
     complete: "作品信息已更新，刷新作品库即可查看最新元数据。",
     attention: "元数据同步需要关注",
-    partial: "部分信息未能同步。刷新作品库可查看已同步的信息；失败详情可在 Activity 中查看，已有作品信息会保留。",
+    partial: "部分信息未能同步。刷新作品库可查看已同步的信息，在元数据页面处理待解决的问题。已有作品信息会保留。",
     activity: "查看 Activity",
     dismiss: "关闭提示",
     error: "操作未能保存，请重试。",

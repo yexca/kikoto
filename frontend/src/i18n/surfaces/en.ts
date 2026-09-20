@@ -57,7 +57,7 @@ export const surfaceEnglish = {
     complete: "Your library information is ready. Refresh the library to see the latest metadata.",
     attention: "Metadata sync needs attention",
     partial:
-      "Some information could not be synchronized. Refresh the library to see available updates and review the run in Activity. Existing library information is preserved.",
+      "Some information could not be synchronized. Refresh the library to see available updates and review pending issues in Metadata. Existing library information is preserved.",
     activity: "View Activity",
     dismiss: "Dismiss",
     error: "Could not save this action. Please try again.",

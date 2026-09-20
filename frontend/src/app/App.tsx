@@ -450,7 +450,7 @@ function AuthenticatedApp() {
                 {canAccessCurrentPage && page === "settings" && auth.user && (
                   <SettingsPage user={auth.user} readOnly={auth.demoMode} onAccountUpdated={auth.refresh} />
                 )}
-                {canAccessCurrentPage && page === "work-management" && auth.user && (
+                {canAccessCurrentPage && page === "metadata" && auth.user && (
                   <WorkManagementPage
                     canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")}
                     canManageSources={auth.demoMode || auth.hasPermission("sources:write")}
@@ -460,7 +460,6 @@ function AuthenticatedApp() {
                 )}
                 {canAccessCurrentPage && page === "maintenance" && auth.user && (
                   <MaintenancePage
-                    canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")}
                     canManageSources={auth.demoMode || auth.hasPermission("sources:write")}
                     canManageUsers={auth.demoMode || auth.hasPermission("users:manage")}
                     currentUserId={auth.user.id}
@@ -487,7 +486,7 @@ function AuthenticatedApp() {
                   "voice-actors",
                   "settings",
                   "maintenance",
-                  "work-management",
+                  "metadata",
                   "workflows",
                   "about",
                 ].includes(page) && (
@@ -900,7 +899,7 @@ function pageFromSnapshotLocation(location: string): AppPage {
 function resolveAppPageFromLocation() {
   const redirect = legacyLibraryRedirect(window.location.pathname, window.location.search);
   if (redirect) {
-    window.history.replaceState(window.history.state ?? {}, "", redirect);
+    window.history.replaceState(window.history.state ?? {}, "", redirect + window.location.hash);
   }
   return pageFromPath(window.location.pathname);
 }

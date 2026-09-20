@@ -19,7 +19,6 @@ import {
   Server,
   Settings2,
   Shield,
-  SlidersHorizontal,
   Sparkles,
   Trash2,
   X,
@@ -76,24 +75,13 @@ const emptyRemoteSource = {
   lastCheckedAt: null,
 } satisfies FileSource;
 
-type MaintenanceTab =
-  | "overview"
-  | "routing"
-  | "recommendation"
-  | "library"
-  | "works"
-  | "cache"
-  | "metadata"
-  | "security"
-  | "users"
-  | "paths";
+type MaintenanceTab = "routing" | "recommendation" | "library" | "cache" | "users";
 
 function maintenanceContentWidthClass(tab: MaintenanceTab) {
-  return tab === "overview" || tab === "users" || tab === "works" ? "w-full" : "w-full max-w-4xl";
+  return tab === "users" ? "w-full" : "w-full max-w-4xl";
 }
 
 export function MaintenancePage({
-  canSyncMetadata,
   canManageSources,
   canManageUsers,
   currentUserId,
@@ -102,7 +90,6 @@ export function MaintenancePage({
   readOnly = false,
   onAccessPolicyUpdated,
 }: {
-  canSyncMetadata: boolean;
   canManageSources: boolean;
   canManageUsers: boolean;
   currentUserId: number;
@@ -116,7 +103,7 @@ export function MaintenancePage({
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [isSettingsLoading, setIsSettingsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<MaintenanceTab>(() =>
-    maintenanceTabFromLocation(canManageSources, canSyncMetadata, canManageUsers, canManageAccessPolicy),
+    maintenanceTabFromLocation(canManageSources, canManageUsers, canManageAccessPolicy),
   );
   const [anonymousAccessEnabled, setAnonymousAccessEnabled] = useState(false);
   const [isAccessPolicySaving, setIsAccessPolicySaving] = useState(false);
@@ -130,7 +117,6 @@ export function MaintenancePage({
   const [remoteDelayRandom, setRemoteDelayRandom] = useState(1.5);
   const [remoteBackoff, setRemoteBackoff] = useState(30);
   const [remoteMaxBackoff, setRemoteMaxBackoff] = useState(300);
-  const [catalogFreshnessDays, setCatalogFreshnessDays] = useState(30);
   const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>([]);
   const [recommendationThreshold, setRecommendationThreshold] = useState(50);
   const [recommendationConfig, setRecommendationConfig] = useState<RecommendationConfig | null>(null);
@@ -165,7 +151,6 @@ export function MaintenancePage({
         setRemoteDelayRandom(next.remoteDelayRandomSeconds);
         setRemoteBackoff(next.remoteBackoffSeconds);
         setRemoteMaxBackoff(next.remoteMaxBackoffSeconds);
-        setCatalogFreshnessDays(next.catalogFreshnessDays);
         setDirectoryRoutingRules(
           reweightDirectoryRoutingRules((next.directoryRoutingRules ?? []).filter((rule) => rule.enabled)),
         );
@@ -176,12 +161,12 @@ export function MaintenancePage({
       .finally(() => setIsSettingsLoading(false));
 
   useEffect(() => {
-    if (!canManageSources) {
+    if (!canManageSources && !canManageAccessPolicy) {
       setIsSettingsLoading(false);
       return;
     }
     void reload();
-  }, [canManageSources]);
+  }, [canManageSources, canManageAccessPolicy]);
 
   useEffect(() => {
     if (activeTab !== "recommendation" || !canManageSources) return;
@@ -192,12 +177,9 @@ export function MaintenancePage({
   }, [activeTab, canManageSources]);
 
   useEffect(() => {
-    if (
-      maintenanceTabIsAvailable(activeTab, { canManageSources, canSyncMetadata, canManageUsers, canManageAccessPolicy })
-    )
-      return;
-    setActiveTab(maintenanceTabFromLocation(canManageSources, canSyncMetadata, canManageUsers, canManageAccessPolicy));
-  }, [activeTab, canManageAccessPolicy, canManageSources, canManageUsers, canSyncMetadata]);
+    if (maintenanceTabIsAvailable(activeTab, { canManageSources, canManageUsers, canManageAccessPolicy })) return;
+    setActiveTab(maintenanceTabFromLocation(canManageSources, canManageUsers, canManageAccessPolicy));
+  }, [activeTab, canManageAccessPolicy, canManageSources, canManageUsers]);
 
   useEffect(() => {
     if (openedLinkedSource.current || readOnly || !settings) return;
@@ -215,11 +197,6 @@ export function MaintenancePage({
   }, [readOnly, settings]);
 
   const selectTab = (tab: MaintenanceTab) => {
-    if (tab === "works" || tab === "metadata") {
-      window.history.pushState({}, "", `/work-management${tab === "metadata" ? "?tab=settings" : ""}`);
-      window.dispatchEvent(new Event("kikoto:navigation"));
-      return;
-    }
     setActiveTab(tab);
     const url = new URL(window.location.href);
     url.pathname = "/maintenance";
@@ -228,9 +205,8 @@ export function MaintenancePage({
       url.searchParams.delete("metadataRun");
       url.searchParams.delete("reason");
     }
-    if (tab === "overview") url.searchParams.delete("tab");
-    else url.searchParams.set("tab", tab);
-    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
+    url.searchParams.set("tab", tab);
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
   };
 
   const saveRuntimeSettings = async () => {
@@ -256,7 +232,6 @@ export function MaintenancePage({
     setTranscodeCacheLimitGb(next.transcodeCacheLimitGb ?? 5);
     setRemoteDownloadLimitGb(next.remoteDownloadLimitGb);
     setFetchStagingRetentionDays(next.fetchStagingRetentionDays);
-    setCatalogFreshnessDays(next.catalogFreshnessDays);
     setRecommendationConfig(next.recommendationConfig);
     toast.success(maintenanceCopy("settingsSaved"));
   };
@@ -385,7 +360,7 @@ export function MaintenancePage({
     }
   };
 
-  if (!canManageSources && !canSyncMetadata && !canManageUsers && !canManageAccessPolicy) {
+  if (!canManageSources && !canManageUsers && !canManageAccessPolicy) {
     return (
       <section className="rounded-lg border bg-card p-5">
         <p className="text-sm text-muted-foreground">{maintenanceCopy("adminRequired")}</p>
@@ -394,7 +369,7 @@ export function MaintenancePage({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5">
       {readOnly && (
         <div
           className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-muted-foreground"
@@ -404,16 +379,12 @@ export function MaintenancePage({
         </div>
       )}
 
-      <nav className="space-y-2 rounded-lg border bg-card p-2" aria-label={maintenanceCopy("navigation")}>
+      <nav
+        className="flex flex-nowrap gap-1 overflow-x-auto rounded-lg border bg-card p-2"
+        aria-label={maintenanceCopy("navigation")}
+      >
         {canManageSources && (
-          <MaintenanceTabGroup label={maintenanceCopy("groups.configuration")}>
-            <SettingsTabButton
-              active={activeTab === "overview"}
-              onClick={() => selectTab("overview")}
-              icon={<SlidersHorizontal className="h-4 w-4" />}
-            >
-              {maintenanceCopy("tabs.overview")}
-            </SettingsTabButton>
+          <>
             <SettingsTabButton
               active={activeTab === "library"}
               onClick={() => selectTab("library")}
@@ -442,36 +413,16 @@ export function MaintenancePage({
             >
               {maintenanceCopy("tabs.recommendation")}
             </SettingsTabButton>
-            <SettingsTabButton
-              active={activeTab === "paths"}
-              onClick={() => selectTab("paths")}
-              icon={<Server className="h-4 w-4" />}
-            >
-              {maintenanceCopy("tabs.paths")}
-            </SettingsTabButton>
-          </MaintenanceTabGroup>
+          </>
         )}
         {(canManageUsers || canManageAccessPolicy) && (
-          <MaintenanceTabGroup label={maintenanceCopy("groups.accounts")}>
-            {canManageUsers && (
-              <SettingsTabButton
-                active={activeTab === "users"}
-                onClick={() => selectTab("users")}
-                icon={<Shield className="h-4 w-4" />}
-              >
-                {maintenanceCopy("tabs.users")}
-              </SettingsTabButton>
-            )}
-            {canManageAccessPolicy && (
-              <SettingsTabButton
-                active={activeTab === "security"}
-                onClick={() => selectTab("security")}
-                icon={<LockKeyhole className="h-4 w-4" />}
-              >
-                {maintenanceCopy("tabs.access")}
-              </SettingsTabButton>
-            )}
-          </MaintenanceTabGroup>
+          <SettingsTabButton
+            active={activeTab === "users"}
+            onClick={() => selectTab("users")}
+            icon={<Shield className="h-4 w-4" />}
+          >
+            {maintenanceCopy("tabs.users")}
+          </SettingsTabButton>
         )}
       </nav>
 
@@ -480,27 +431,12 @@ export function MaintenancePage({
         disabled={readOnly}
         className={`min-w-0 border-0 p-0 ${maintenanceContentWidthClass(activeTab)}`}
       >
-        {isSettingsLoading && activeTab !== "works" && activeTab !== "users" ? (
-          activeTab === "overview" ? (
-            <SettingsOverviewSkeleton />
-          ) : activeTab === "library" ? (
+        {isSettingsLoading && activeTab !== "users" ? (
+          activeTab === "library" ? (
             <RemoteSourcesSettingsSkeleton />
           ) : (
             <SettingsPanelSkeleton />
           )
-        ) : activeTab === "overview" ? (
-          <SettingsOverview
-            remoteSources={remoteSources}
-            localSource={localSource}
-            cacheEnabled={cacheEnabled}
-            cacheLimitGb={cacheLimitGb}
-            localScanDepth={localScanDepth}
-            catalogFreshnessDays={catalogFreshnessDays}
-            onSelect={selectTab}
-            canManageUsers={canManageUsers}
-            canManageAccessPolicy={canManageAccessPolicy}
-            anonymousAccessEnabled={anonymousAccessEnabled}
-          />
         ) : activeTab === "routing" ? (
           <PlaybackSettings
             rules={directoryRoutingRules}
@@ -523,6 +459,7 @@ export function MaintenancePage({
               onDeleteSource={requestDeleteSource}
               onCheckSource={checkSourceHealth}
             />
+            <PathsSettings settings={settings} remoteSources={remoteSources} />
           </div>
         ) : activeTab === "recommendation" ? (
           <RecommendationSettings
@@ -556,18 +493,27 @@ export function MaintenancePage({
             onRemoteMaxBackoffChange={setRemoteMaxBackoff}
             onSave={saveRuntimeSettings}
           />
-        ) : activeTab === "security" ? (
-          <AccessPolicySettings
-            anonymousAccessEnabled={anonymousAccessEnabled}
-            savedAnonymousAccessEnabled={settings?.anonymousAccessEnabled ?? false}
-            saving={isAccessPolicySaving}
-            onAnonymousAccessEnabledChange={setAnonymousAccessEnabled}
-            onSave={saveAccessPolicy}
-          />
-        ) : activeTab === "users" ? (
-          <UsersPage currentUserId={currentUserId} isSuperAdmin={isSuperAdmin} readOnly={readOnly} embedded />
         ) : (
-          <PathsSettings settings={settings} remoteSources={remoteSources} />
+          <div className="space-y-4">
+            {canManageUsers && (
+              <UsersPage currentUserId={currentUserId} isSuperAdmin={isSuperAdmin} readOnly={readOnly} embedded />
+            )}
+            {canManageAccessPolicy && (
+              <div className="max-w-4xl">
+                {isSettingsLoading ? (
+                  <SettingsPanelSkeleton />
+                ) : (
+                  <AccessPolicySettings
+                    anonymousAccessEnabled={anonymousAccessEnabled}
+                    savedAnonymousAccessEnabled={settings?.anonymousAccessEnabled ?? false}
+                    saving={isAccessPolicySaving}
+                    onAnonymousAccessEnabledChange={setAnonymousAccessEnabled}
+                    onSave={saveAccessPolicy}
+                  />
+                )}
+              </div>
+            )}
+          </div>
         )}
       </fieldset>
 
@@ -587,130 +533,6 @@ export function MaintenancePage({
           deleting={deletingSourceId === sourcePendingDelete.id}
           onConfirm={deleteSource}
           onClose={() => setSourcePendingDelete(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-function SettingsOverview({
-  remoteSources,
-  localSource,
-  cacheEnabled,
-  cacheLimitGb,
-  localScanDepth,
-  catalogFreshnessDays,
-  onSelect,
-  canManageUsers,
-  canManageAccessPolicy,
-  anonymousAccessEnabled,
-}: {
-  remoteSources: FileSource[];
-  localSource: FileSource | null;
-  cacheEnabled: boolean;
-  cacheLimitGb: number;
-  localScanDepth: number;
-  catalogFreshnessDays: number;
-  onSelect: (tab: MaintenanceTab) => void;
-  canManageUsers: boolean;
-  canManageAccessPolicy: boolean;
-  anonymousAccessEnabled: boolean;
-}) {
-  const enabledSources = remoteSources.filter((source) => source.enabled).length;
-  const warningSources = remoteSources.filter((source) =>
-    ["error", "unavailable", "disabled"].includes(source.healthStatus),
-  ).length;
-  return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-      <SettingsHomeCard
-        icon={<PlayCircle className="h-5 w-5" />}
-        title={maintenanceCopy("overview.directoryRouting")}
-        description={maintenanceCopy("overview.directoryRoutingDescription")}
-        status={maintenanceCopy("status.configured")}
-        chips={[maintenanceCopy("chip.ordered"), maintenanceCopy("chip.aliases"), maintenanceCopy("chip.fallback")]}
-        onClick={() => onSelect("routing")}
-      />
-      <SettingsHomeCard
-        icon={<Folder className="h-5 w-5" />}
-        title={maintenanceCopy("tabs.library")}
-        description={maintenanceCopy("overview.libraryDescription")}
-        status={localSource?.enabled ? maintenanceCopy("status.active") : maintenanceCopy("status.needsScan")}
-        chips={[
-          localSource?.displayName ?? maintenanceCopy("mainLocalLibrary"),
-          maintenanceCopy("scanLevels", { count: localScanDepth }),
-        ]}
-        onClick={() => onSelect("library")}
-      />
-      <SettingsHomeCard
-        icon={<Cloud className="h-5 w-5" />}
-        title={maintenanceCopy("overview.remoteSources")}
-        description={maintenanceCopy("overview.remoteSourcesDescription")}
-        status={maintenanceCopy("enabledCount", { enabled: enabledSources, total: remoteSources.length })}
-        chips={[
-          warningSources > 0
-            ? maintenanceCopy("warningsCount", { count: warningSources })
-            : maintenanceCopy("status.healthy"),
-          maintenanceCopy("chip.priority"),
-          maintenanceCopy("chip.endpoints"),
-        ]}
-        onClick={() => onSelect("library")}
-      />
-      <SettingsHomeCard
-        icon={<Database className="h-5 w-5" />}
-        title={maintenanceCopy("tabs.unlinked")}
-        description={maintenanceCopy("overview.unlinkedDescription")}
-        status={maintenanceCopy("status.maintenance")}
-        chips={[maintenanceCopy("chip.search"), maintenanceCopy("chip.sourceChecks"), maintenanceCopy("chip.cleanup")]}
-        onClick={() => onSelect("works")}
-      />
-      <SettingsHomeCard
-        icon={<Download className="h-5 w-5" />}
-        title={maintenanceCopy("overview.cacheFetch")}
-        description={maintenanceCopy("overview.cacheFetchDescription")}
-        status={cacheEnabled ? maintenanceCopy("status.autoCacheOn") : maintenanceCopy("status.autoCacheOff")}
-        chips={[maintenanceCopy("gbLimit", { count: cacheLimitGb }), maintenanceCopy("chip.requestPacing")]}
-        onClick={() => onSelect("cache")}
-      />
-      <SettingsHomeCard
-        icon={<RefreshCw className="h-5 w-5" />}
-        title={maintenanceCopy("tabs.metadata")}
-        description={maintenanceCopy("overview.metadataDescription")}
-        status={maintenanceCopy("freshnessDays", { count: catalogFreshnessDays })}
-        chips={["DLsite", maintenanceCopy("chip.creatorCatalogs"), maintenanceCopy("chip.language")]}
-        onClick={() => onSelect("metadata")}
-      />
-      <SettingsHomeCard
-        icon={<Server className="h-5 w-5" />}
-        title={maintenanceCopy("tabs.paths")}
-        description={maintenanceCopy("overview.pathsDescription")}
-        status={maintenanceCopy("status.readOnly")}
-        chips={["/data", "/cache", "Docker"]}
-        onClick={() => onSelect("paths")}
-      />
-      {canManageUsers && (
-        <SettingsHomeCard
-          icon={<Shield className="h-5 w-5" />}
-          title={maintenanceCopy("tabs.users")}
-          description={maintenanceCopy("overview.usersDescription")}
-          status={maintenanceCopy("status.admin")}
-          chips={[maintenanceCopy("chip.accounts"), maintenanceCopy("chip.roles"), maintenanceCopy("tabs.access")]}
-          onClick={() => onSelect("users")}
-        />
-      )}
-      {canManageAccessPolicy && (
-        <SettingsHomeCard
-          icon={<LockKeyhole className="h-5 w-5" />}
-          title={maintenanceCopy("tabs.access")}
-          description={maintenanceCopy("overview.accessDescription")}
-          status={
-            anonymousAccessEnabled ? maintenanceCopy("status.anonymousOn") : maintenanceCopy("status.signInRequired")
-          }
-          chips={[
-            maintenanceCopy("chip.authentication"),
-            maintenanceCopy("tabs.library"),
-            maintenanceCopy("chip.playback"),
-          ]}
-          onClick={() => onSelect("security")}
         />
       )}
     </div>
@@ -760,47 +582,6 @@ function AccessPolicySettings({
         </Button>
       </CardContent>
     </Card>
-  );
-}
-
-function SettingsHomeCard({
-  icon,
-  title,
-  description,
-  status,
-  chips,
-  onClick,
-}: {
-  icon: ReactNode;
-  title: string;
-  description: string;
-  status: string;
-  chips: string[];
-  onClick: () => void;
-}) {
-  return (
-    <button
-      className="group flex min-h-[188px] flex-col justify-between rounded-lg border bg-card p-4 text-left shadow-sm transition-colors hover:border-primary/45 hover:bg-muted/35"
-      onClick={onClick}
-    >
-      <span className="flex items-start justify-between gap-3">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">{icon}</span>
-        <Badge variant="outline" className="max-w-[140px] truncate">
-          {status}
-        </Badge>
-      </span>
-      <span className="mt-5 block">
-        <span className="block text-base font-semibold">{title}</span>
-        <span className="mt-1 line-clamp-2 text-sm text-muted-foreground">{description}</span>
-      </span>
-      <span className="mt-4 flex flex-wrap gap-1.5">
-        {chips.slice(0, 3).map((chip) => (
-          <Badge key={chip} variant="secondary" className="max-w-full truncate">
-            {chip}
-          </Badge>
-        ))}
-      </span>
-    </button>
   );
 }
 
@@ -1070,34 +851,6 @@ function TagListInput({
 
 function SettingsSkeletonLine({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-muted ${className}`} />;
-}
-
-function SettingsOverviewSkeleton() {
-  return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-      {Array.from({ length: 8 }, (_, index) => (
-        <div
-          key={index}
-          className="flex min-h-[188px] flex-col justify-between rounded-lg border bg-card p-4 shadow-sm"
-        >
-          <div className="flex items-start justify-between gap-3">
-            <SettingsSkeletonLine className="h-10 w-10 rounded-md" />
-            <SettingsSkeletonLine className="h-5 w-24 rounded-full" />
-          </div>
-          <div className="mt-5 space-y-2">
-            <SettingsSkeletonLine className="h-5 w-36" />
-            <SettingsSkeletonLine className="h-3 w-full" />
-            <SettingsSkeletonLine className="h-3 w-4/5" />
-          </div>
-          <div className="mt-4 flex flex-wrap gap-1.5">
-            <SettingsSkeletonLine className="h-6 w-16 rounded-full" />
-            <SettingsSkeletonLine className="h-6 w-20 rounded-full" />
-            <SettingsSkeletonLine className="h-6 w-14 rounded-full" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 function SettingsPanelSkeleton() {
@@ -2960,7 +2713,7 @@ function SettingsTabButton({
 }) {
   return (
     <button
-      className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors ${
+      className={`inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 text-sm font-medium transition-colors ${
         active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
       }`}
       onClick={onClick}
@@ -2969,15 +2722,6 @@ function SettingsTabButton({
       {icon}
       {children}
     </button>
-  );
-}
-
-function MaintenanceTabGroup({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <section className="space-y-1 px-1 py-1" aria-label={label}>
-      <h2 className="px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</h2>
-      <div className="flex flex-wrap gap-1">{children}</div>
-    </section>
   );
 }
 
@@ -3009,63 +2753,34 @@ function TextInput({ label, value, onChange }: { label: string; value: string; o
 
 type MaintenancePermissions = {
   canManageSources: boolean;
-  canSyncMetadata: boolean;
   canManageUsers: boolean;
   canManageAccessPolicy: boolean;
 };
 
 function maintenanceTabIsAvailable(tab: MaintenanceTab, permissions: MaintenancePermissions) {
-  if (["overview", "routing", "library", "cache", "metadata", "recommendation", "paths"].includes(tab)) {
-    return permissions.canManageSources;
-  }
-  if (tab === "works") return permissions.canManageSources || permissions.canSyncMetadata;
-  if (tab === "users") return permissions.canManageUsers;
-  if (tab === "security") return permissions.canManageAccessPolicy;
-  return false;
+  if (tab === "users") return permissions.canManageUsers || permissions.canManageAccessPolicy;
+  return permissions.canManageSources;
 }
 
 function maintenanceTabFromLocation(
   canManageSources: boolean,
-  canSyncMetadata: boolean,
   canManageUsers: boolean,
   canManageAccessPolicy: boolean,
 ): MaintenanceTab {
   if (window.location.pathname === "/users" && canManageUsers) return "users";
   const value = new URLSearchParams(window.location.search).get("tab");
-  if (value === "unlinked" && (canManageSources || canSyncMetadata)) return "works";
-  if (value === "metadata" && new URLSearchParams(window.location.search).has("metadataRun")) {
-    if (canManageSources || canSyncMetadata) return "works";
-  }
-  if ((value === "local" || value === "remote") && canManageSources) return "library";
-  if (value === "system" && canManageSources) return "paths";
-  const tabs: MaintenanceTab[] = [
-    "overview",
-    "routing",
-    "recommendation",
-    "library",
-    "works",
-    "cache",
-    "metadata",
-    "security",
-    "users",
-    "paths",
-  ];
+  const tabs: MaintenanceTab[] = ["routing", "recommendation", "library", "cache", "users"];
   if (
     value &&
     tabs.includes(value as MaintenanceTab) &&
     maintenanceTabIsAvailable(value as MaintenanceTab, {
       canManageSources,
-      canSyncMetadata,
       canManageUsers,
       canManageAccessPolicy,
     })
   )
     return value as MaintenanceTab;
-  if (canManageSources) return "overview";
-  if (canSyncMetadata) return "works";
-  if (canManageUsers) return "users";
-  if (canManageAccessPolicy) return "security";
-  return "overview";
+  return canManageSources ? "library" : "users";
 }
 
 function storagePathPreview(template: string, sourceCode: string) {

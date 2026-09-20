@@ -1,3 +1,4 @@
+import { metadataSyncResultURL } from "@/lib/metadataMaintenance";
 import { WorkMetadataEditorModal } from "@/features/work-detail/metadata";
 import type { TFunction } from "i18next";
 import {
@@ -5703,6 +5704,7 @@ function PersistedWorkDetailController({
   onWorkReload: (workID: number, includeMedia?: boolean) => Promise<void>;
   onWorksChanged: () => Promise<void>;
 }) {
+  const canViewMetadataActivity = useAuth().hasPermission("workflows:run");
   const toast = useToast();
   const { t } = useTranslation();
   const sourceContext = useWorkSourceContext({
@@ -6118,8 +6120,11 @@ function PersistedWorkDetailController({
         message: result.deduplicated
           ? t("libraryDetail.metadataRefreshAlreadyQueued", { runId: result.runId })
           : t("libraryDetail.metadataRefreshQueued", { code: result.primaryCode, runId: result.runId }),
-        actionLabel: t("nav.activity"),
-        onAction: () => openActivityRun(result.runId),
+        actionLabel: t(canViewMetadataActivity ? "nav.activity" : "nav.workManagement"),
+        onAction: () => {
+          window.history.pushState({}, "", metadataSyncResultURL(result.runId, false, canViewMetadataActivity));
+          window.dispatchEvent(new Event(NAVIGATION_EVENT));
+        },
       });
     } catch (error) {
       toast.notify(toastFromError(error, t("libraryDetail.metadataRefreshFailed")));
@@ -6132,6 +6137,14 @@ function PersistedWorkDetailController({
     const run = metadataRun.run;
     if (!run || !activeMetadataRunId || isActiveWorkflowStatus(run.status)) return;
     setActiveMetadataRunId(null);
+    const needsAttention = (run.metadataIssues?.pending ?? 0) > 0;
+    const actionLabel = t(
+      needsAttention ? "metadataIssues.openIssues" : canViewMetadataActivity ? "nav.activity" : "nav.workManagement",
+    );
+    const onAction = () => {
+      window.history.pushState({}, "", metadataSyncResultURL(run.id, needsAttention, canViewMetadataActivity));
+      window.dispatchEvent(new Event(NAVIGATION_EVENT));
+    };
     if (run.status === "succeeded" || run.status === "partial") {
       void (async () => {
         try {
@@ -6140,8 +6153,8 @@ function PersistedWorkDetailController({
           toast.notify({
             kind: run.status === "succeeded" ? "success" : "warning",
             message: t("libraryDetail.metadataWorkflowStatus", { runId: run.id, status: run.status }),
-            actionLabel: t("nav.activity"),
-            onAction: () => openActivityRun(run.id),
+            actionLabel,
+            onAction,
           });
         } catch (error) {
           toast.notify(toastFromError(error, t("libraryDetail.metadataRefreshedReloadFailed")));
@@ -6152,10 +6165,10 @@ function PersistedWorkDetailController({
     toast.notify({
       kind: "error",
       message: t("libraryDetail.metadataWorkflowStatus", { runId: run.id, status: run.status }),
-      actionLabel: t("nav.activity"),
-      onAction: () => openActivityRun(run.id),
+      actionLabel,
+      onAction,
     });
-  }, [activeMetadataRunId, metadataRun.run, onWorkReload, onWorksChanged, toast, work]);
+  }, [activeMetadataRunId, metadataRun.run, canViewMetadataActivity, onWorkReload, onWorksChanged, toast, work]);
 
   useEffect(() => {
     const reconcileTrack = (event: Event) => {

@@ -148,7 +148,7 @@ export function WorkMaintenance({
   const setFilter = (next: string, nextRun: number | null = null) => {
     const params = new URLSearchParams({ reason: next });
     if (nextRun) params.set("metadataRun", String(nextRun));
-    window.history.replaceState(window.history.state, "", `/work-management?${params}`);
+    window.history.replaceState(window.history.state, "", `/metadata?${params}`);
     setPendingDelete(null);
     setReason(next);
     setRunId(nextRun);

@@ -188,8 +188,8 @@ export function UsersPage({
         </div>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <section className="space-y-4">
+      <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <section className="min-w-0 space-y-4">
           <Card className="overflow-hidden">
             <CardContent className="space-y-3 p-3">
               <div className="flex flex-wrap items-center justify-between gap-3">

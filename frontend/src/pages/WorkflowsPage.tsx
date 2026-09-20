@@ -700,6 +700,7 @@ export function WorkflowsPage({
                         loading={!linkedRun && !activityRun.error}
                         onCandidateUpdate={refreshSelectedRunReview}
                         onRunAction={refreshSelectedRunReview}
+                        canSyncMetadata={canSyncMetadata}
                         readOnly={readOnly}
                       />
                     </>
@@ -2122,6 +2123,7 @@ function RunDetail({
   onCandidateUpdate,
   onRunAction,
   readOnly,
+  canSyncMetadata,
 }: {
   run: WorkflowRunDetail | WorkflowRun | null;
   events: WorkflowEvent[];
@@ -2131,6 +2133,7 @@ function RunDetail({
   onCandidateUpdate: () => Promise<void>;
   onRunAction: () => Promise<void>;
   readOnly: boolean;
+  canSyncMetadata: boolean;
 }) {
   const recentlyStartedNodeRuns = useRecentWorkflowNodeStarts(run?.id ?? null, run?.status ?? "", events);
   if (!run) {
@@ -2192,7 +2195,7 @@ function RunDetail({
                 { count: run.metadataIssues.pending },
               )}
             </p>
-            {run.metadataIssues.pending > 0 && (
+            {canSyncMetadata && run.metadataIssues.pending > 0 && (
               <Button variant="outline" onClick={() => openMetadataIssues(run.id)}>
                 {i18n.t("metadataIssues.openIssues")}
               </Button>
