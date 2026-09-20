@@ -1,0 +1,2 @@
+# Raw downloads must retain Windows batch line endings, including UTF-8 prompts.
+kikoto-helper/*.cmd -text whitespace=cr-at-eol
