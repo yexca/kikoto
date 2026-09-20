@@ -1,6 +1,7 @@
 package workflow
 
 type RunRecord struct {
+	PendingMetadata           int64  `json:"pendingMetadata"`
 	ID                        int64  `json:"id"`
 	WorkflowCode              string `json:"workflowCode"`
 	DisplayName               string `json:"displayName"`
@@ -41,6 +42,8 @@ type RunsPage struct {
 }
 
 type RunViewTotals struct {
+	Attention int64 `json:"attention"`
+	History   int64 `json:"history"`
 	Running   int64 `json:"running"`
 	Review    int64 `json:"review"`
 	Failed    int64 `json:"failed"`

@@ -1,6 +1,40 @@
 import { surfaceEnglish } from "./en";
 
 export const surfaceHant = {
+  workManagement: {
+    issues: "待處理作品",
+    settings: "中繼資料設定",
+    openSync: "開啟中繼資料同步",
+    loading: "正在載入…",
+  },
+  workflowActivity: {
+    allWorkflows: "所有工作流程",
+    attention: "需要處理",
+    history: "歷史記錄",
+    running: "正在執行",
+    allRunning: "查看全部執行任務",
+    acknowledge: "標記已處理",
+    close: "關閉活動",
+    categories: "活動分類",
+    previous: "上一頁",
+    next: "下一頁",
+    fullActivity: "開啟完整活動記錄",
+    empty: {
+      attention: "暫無需要處理的任務。",
+      history: "暫無歷史記錄。",
+    },
+    metadataCount: "{{count}} 個作品有中繼資料問題",
+    progress: "任務 {{current}} / {{total}}",
+    status: {
+      queued: "排隊中",
+      running: "執行中",
+      succeeded: "成功",
+      failed: "失敗",
+      partial: "部分完成",
+      cancelled: "已取消",
+      skipped: "已略過",
+    },
+  },
   metadataOnboarding: {
     label: "中繼資料設定",
     title: "補齊作品資訊",

@@ -1,5 +1,5 @@
 import { Filter, Plus } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
@@ -27,6 +27,7 @@ export function WorkflowNavigation({
   onSelect,
   onFilterChange,
   onCreate,
+  actions,
 }: {
   definitions: WorkflowDefinition[];
   filter: WorkflowFilter;
@@ -34,6 +35,7 @@ export function WorkflowNavigation({
   onSelect: (definition: WorkflowDefinition) => void;
   onFilterChange: (filter: WorkflowFilter) => void;
   onCreate: () => void;
+  actions?: ReactNode;
 }) {
   const { t } = useTranslation();
   const [filterOpen, setFilterOpen] = useState(false);
@@ -132,6 +134,7 @@ export function WorkflowNavigation({
         <Filter className="h-4 w-4" />
         {filter !== "all" && <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-primary" />}
       </Button>
+      {actions}
       <AnchoredPopover
         open={filterOpen}
         anchorRef={filterRef}

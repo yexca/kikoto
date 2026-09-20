@@ -42,18 +42,11 @@ anonymous principal when anonymous access is enabled.
   retain only operational metrics such as source health, recommendation
   telemetry, and managed-cache usage.
 - Library combines the local scan settings and configured remote sources.
-- Metadata settings let administrators choose and reorder the supported DLsite
-  title/tag languages. `Origin` is always retained as the final fallback. Each
-  compatible remote source also has its request-language hint on this tab; the
-  upstream may ignore it, fall back, or return mixed-language metadata.
 - Access is visible to super administrators in production and development.
   Anonymous Library browsing and playback default to disabled; changing the
   switch applies to the production access boundary and creates an audit entry.
   Development still authenticates every request as root, so the setting remains
   visible and editable there without creating an anonymous development session.
-- Work maintenance groups metadata issues and missing sources by work family.
-  It supports metadata retries, source rechecks, and confirmed deletion of local
-  database information from the no-source view while retaining media files.
 - Each enabled remote source has an explicit health-check action. The result is
   persisted through the same source health state used by automatic probes.
 - Remote sources default to compatible public storage hosts. Source
@@ -83,13 +76,18 @@ anonymous principal when anonymous access is enabled.
   cache/save previews, and per-source save previews. Remote Source configuration
   shows the same resolved example instead of exposing a path-template editor.
 
-## Work maintenance
+## Work management
 
-Maintenance → **Work maintenance** (formerly Unlinked works) lists existing work families needing attention. Filter by **All needing attention**, **Metadata issues**, or **No available source**. Search, paging, covers, and selection are shared. Each family occupies one row, with multiple reason badges and expandable affected editions/provider details. Successful metadata updates remove only the corresponding issue; a work with no available source stays visible.
+The **Work management** sidebar entry → **Pending works** lists existing work families needing attention. Filter by **All needing attention**, **Metadata issues**, or **No available source**. Search, paging, covers, and selection are shared. Each family occupies one row, with multiple reason badges and expandable affected editions/provider details. Successful metadata updates remove only the corresponding issue; a work with no available source stays visible.
 
 Select families and choose **Retry metadata**; its count includes only eligible selections. You can also retry an affected edition from its details, including products previously reported unavailable. Failed retries preserve existing metadata and manual overrides. **Check sources** applies to selected families without a source. Confirmed deletion of local information is available only in the **No available source** view; the server rechecks availability and retains media files.
 
-Activity and Workflows remain in place. **Open metadata issues** opens Work maintenance filtered to that run's unresolved metadata issues; **Show all pending works** removes the run filter. Recovery never changes another user's Activity review. Metadata recovery requires `metadata:sync`, while source checks, deletion, and source/language settings require `sources:write`. The **Metadata** tab contains settings only.
+**Open metadata issues** in Activity opens Work management filtered to that run's unresolved metadata issues; **Show all pending works** removes the run filter. Recovery never changes another user's Activity review. Metadata recovery requires `metadata:sync`, while source checks, deletion, and source/language settings require `sources:write`. The **Metadata settings** tab contains settings only. **Open metadata sync** opens the existing workflow in Workflows; this page does not duplicate its configuration or run controls. Old Maintenance links redirect here.
+
+Metadata settings let administrators choose and reorder the supported DLsite
+  title/tag languages. `Origin` is always retained as the final fallback. Each
+  compatible remote source also has its request-language hint on this tab; the
+  upstream may ignore it, fall back, or return mixed-language metadata.
 
 ## Related Docs
 

@@ -242,7 +242,7 @@ test("work maintenance keeps source actions scoped and metadata settings separat
   expect(deleted).toEqual([]);
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.keyboard.press("Control+Home");
-  await page.getByRole("button", { name: "Metadata", exact: true }).click();
+  await page.getByRole("tab", { name: "Metadata settings", exact: true }).click();
   await expect(list).toHaveCount(0);
-  await expect(page).toHaveURL(/tab=metadata/);
+  await expect(page).toHaveURL(/tab=settings/);
 });

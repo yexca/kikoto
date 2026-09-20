@@ -1,4 +1,15 @@
-import { Activity, Heart, Info, Library, MicVocal, Settings, ShieldCheck, Users, Workflow } from "lucide-react";
+import {
+  Activity,
+  Database,
+  Heart,
+  Info,
+  Library,
+  MicVocal,
+  Settings,
+  ShieldCheck,
+  Users,
+  Workflow,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 type NavItem = {
@@ -59,6 +70,17 @@ export const navItems = [
     permission: undefined,
   },
   {
+    id: "work-management",
+    label: "Work management",
+    labelKey: "nav.workManagement",
+    description: "Resolve work issues and configure metadata",
+    descriptionKey: "nav.workManagementDescription",
+    path: "/work-management",
+    icon: Database,
+    audience: "admin",
+    permission: "metadata:sync",
+  },
+  {
     id: "workflows",
     label: "Workflows",
     labelKey: "nav.workflows",
@@ -95,7 +117,7 @@ export const navItems = [
     id: "maintenance",
     label: "Maintenance",
     labelKey: "nav.maintenance",
-    description: "Configure sources, routing, caching, metadata, and users",
+    description: "Configure sources, routing, caching, and users",
     descriptionKey: "nav.maintenanceDescription",
     path: "/maintenance",
     icon: ShieldCheck,
@@ -136,7 +158,7 @@ export function visibleNavigationItems({
   state: AuthViewState;
   hasPermission: (permission: string) => boolean;
 }) {
-  return navItems.filter((item) => canAccessNavigationItem(item, state, hasPermission));
+  return navItems.filter((item) => item.id !== "activity" && canAccessNavigationItem(item, state, hasPermission));
 }
 
 export function canAccessPage(page: PageID, state: AuthViewState, hasPermission: (permission: string) => boolean) {
@@ -151,7 +173,8 @@ function canAccessNavigationItem(
 ) {
   if (item.audience === "authenticated" && state === "anonymous") return false;
   if (item.audience === "admin" && state === "anonymous") return false;
-  if (item.id === "maintenance") return hasPermission("sources:write") || hasPermission("metadata:sync");
+  if (item.id === "work-management") return hasPermission("sources:write") || hasPermission("metadata:sync");
+  if (item.id === "maintenance") return hasPermission("sources:write") || hasPermission("users:manage");
   if (item.permission && !hasPermission(item.permission)) return false;
   return true;
 }

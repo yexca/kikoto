@@ -24,6 +24,8 @@ export const zhHantResource = {
         loadingPage: "正在載入頁面",
       },
       nav: {
+        workManagement: "作品管理",
+        workManagementDescription: "處理作品問題並設定中繼資料",
         library: "媒體庫",
         favorites: "收藏",
         circles: "社團",
@@ -40,7 +42,7 @@ export const zhHantResource = {
         workflowsDescription: "執行內建操作並管理自訂自動化",
         activityDescription: "查看工作流程執行、失敗和待審核項目",
         settingsDescription: "管理帳戶和外觀偏好",
-        maintenanceDescription: "設定來源、路由、快取、元資料和使用者",
+        maintenanceDescription: "設定來源、路由、快取和使用者",
         aboutDescription: "版本、授權和應用程式資訊",
       },
       library: libraryHant,

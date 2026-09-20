@@ -63,6 +63,9 @@ import {
 
 const LibraryPage = lazy(() => import("@/pages/LibraryPage").then((module) => ({ default: module.LibraryPage })));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
+const WorkManagementPage = lazy(() =>
+  import("@/pages/WorkManagementPage").then((module) => ({ default: module.WorkManagementPage })),
+);
 const MaintenancePage = lazy(() =>
   import("@/pages/MaintenancePage").then((module) => ({ default: module.MaintenancePage })),
 );
@@ -447,6 +450,14 @@ function AuthenticatedApp() {
                 {canAccessCurrentPage && page === "settings" && auth.user && (
                   <SettingsPage user={auth.user} readOnly={auth.demoMode} onAccountUpdated={auth.refresh} />
                 )}
+                {canAccessCurrentPage && page === "work-management" && auth.user && (
+                  <WorkManagementPage
+                    canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")}
+                    canManageSources={auth.demoMode || auth.hasPermission("sources:write")}
+                    canOpenWorkflows={auth.demoMode || auth.hasPermission("workflows:run")}
+                    readOnly={auth.demoMode}
+                  />
+                )}
                 {canAccessCurrentPage && page === "maintenance" && auth.user && (
                   <MaintenancePage
                     canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")}
@@ -477,6 +488,7 @@ function AuthenticatedApp() {
                   "voice-actors",
                   "settings",
                   "maintenance",
+                  "work-management",
                   "workflows",
                   "activity",
                   "about",

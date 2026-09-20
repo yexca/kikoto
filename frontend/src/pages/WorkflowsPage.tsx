@@ -47,6 +47,7 @@ import { activityViewForRun, type ActivityView } from "@/features/workflows/acti
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { useAuth } from "@/auth/AuthProvider";
 import { openWorkDetail } from "@/app/workDetailNavigation";
+import { WorkflowActivity } from "@/features/workflows/WorkflowActivity";
 import { WorkflowCanvas } from "@/features/workflows/WorkflowCanvas";
 import {
   WorkflowNavigation,
@@ -764,6 +765,7 @@ export function WorkflowsPage({
       {surface === "workflows" ? (
         <div className="min-w-0 space-y-4">
           <WorkflowNavigation
+            actions={<WorkflowActivity readOnly={readOnly} canSyncMetadata={canSyncMetadata} />}
             definitions={visibleDefinitions}
             selectedId={selectedDefinition?.id ?? null}
             filter={definitionTab}

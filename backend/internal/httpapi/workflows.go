@@ -1887,8 +1887,8 @@ func (s *Server) reviewWorkflowRun(w http.ResponseWriter, r *http.Request) {
 	if !s.requireWorkflowRunAccess(w, r, user, id) {
 		return
 	}
-	if run.PendingCandidates > 0 {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "resolve pending candidates before marking the run reviewed"})
+	if run.PendingCandidates > 0 || run.PendingMetadata > 0 || run.Status == "queued" || run.Status == "running" {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "resolve pending issues and wait for completion before marking the run reviewed"})
 		return
 	}
 	tx, err := s.db.BeginTx(r.Context(), nil)

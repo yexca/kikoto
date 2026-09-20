@@ -4,6 +4,40 @@
  * persisted user data never become translated at the domain boundary.
  */
 export const surfaceEnglish = {
+  workManagement: {
+    issues: "Pending works",
+    settings: "Metadata settings",
+    openSync: "Open metadata sync",
+    loading: "Loading…",
+  },
+  workflowActivity: {
+    allWorkflows: "All workflows",
+    attention: "Needs attention",
+    history: "History",
+    running: "Running",
+    allRunning: "View all running",
+    acknowledge: "Mark reviewed",
+    close: "Close Activity",
+    categories: "Activity categories",
+    previous: "Previous page",
+    next: "Next page",
+    fullActivity: "Open full Activity",
+    empty: {
+      attention: "No tasks need attention.",
+      history: "No history yet.",
+    },
+    metadataCount: "{{count}} works with metadata issues",
+    progress: "Jobs {{current}} / {{total}}",
+    status: {
+      queued: "Queued",
+      running: "Running",
+      succeeded: "Succeeded",
+      failed: "Failed",
+      partial: "Partial",
+      cancelled: "Cancelled",
+      skipped: "Skipped",
+    },
+  },
   metadataOnboarding: {
     label: "Metadata setup",
     title: "Complete your library information",

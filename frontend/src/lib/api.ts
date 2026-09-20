@@ -828,6 +828,7 @@ export type WorkSourceUntrackResult = {
 };
 
 export type WorkflowRun = {
+  pendingMetadata?: number;
   id: number;
   workflowCode: string;
   displayName: string;
@@ -865,6 +866,8 @@ export type WorkflowRunsPage = {
   pageSize: number;
   total: number;
   viewTotals: {
+    attention?: number;
+    history?: number;
     running: number;
     review: number;
     failed: number;

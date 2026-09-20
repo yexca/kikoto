@@ -1057,7 +1057,7 @@ test("activity links metadata failures to a run-filtered Maintenance list", asyn
   });
   await page.goto("/activity?view=completed&run=51");
   await page.getByRole("button", { name: "Open metadata issues", exact: true }).click();
-  await expect(page).toHaveURL(/\/maintenance\?tab=works&reason=metadata&metadataRun=51/);
+  await expect(page).toHaveURL(/\/work-management\?reason=metadata&metadataRun=51/);
   await expect(page.getByRole("heading", { name: "Work maintenance" })).toBeVisible();
   await expect.poll(() => runFilters.includes("51")).toBe(true);
   await page.getByRole("button", { name: "Show all pending works", exact: true }).click();
@@ -1646,3 +1646,72 @@ test("workflow filters retain selection, stay reachable on mobile, and support k
   await expect(page.getByRole("button", { name: "New workflow", exact: true })).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+for (const viewport of ["mobile", "@desktop"]) {
+  test(`${viewport} workflow Activity separates running, attention, and history`, async ({ page }, testInfo) => {
+    await mockWorkflows(page);
+    let reviewed = false;
+    const failed = {
+      ...sampleRun,
+      id: 61,
+      workflowCode: "example_fetch",
+      displayName: "Example failed fetch",
+      status: "failed",
+      pendingMetadata: 0,
+    };
+    const metadata = { ...sampleRun, id: 62, workflowCode: "metadata_sync", status: "partial", pendingMetadata: 2 };
+    const running = { ...sampleRun, id: 63, workflowCode: "local_library_scan", status: "running", finishedAt: "" };
+    await page.route("**/api/workflow-runs?*", async (route) => {
+      const params = new URL(route.request().url()).searchParams;
+      const view = params.get("view");
+      const runs =
+        view === "attention"
+          ? reviewed
+            ? [metadata]
+            : [failed, metadata]
+          : view === "running"
+            ? [running]
+            : view === "history"
+              ? [sampleRun, ...(reviewed ? [failed] : [])]
+              : [];
+      await route.fulfill({
+        json: {
+          runs,
+          page: 1,
+          pageSize: Number(params.get("pageSize")),
+          total: runs.length,
+          viewTotals: {
+            running: 1,
+            attention: reviewed ? 1 : 2,
+            history: reviewed ? 2 : 1,
+            review: 0,
+            failed: 1,
+            completed: 1,
+          },
+        },
+      });
+    });
+    await page.route("**/api/workflow-runs/61/review", async (route) => {
+      reviewed = true;
+      await route.fulfill({ json: { ...failed, reviewedAt: "2026-01-01 00:00:00" } });
+    });
+    await page.goto("/workflows");
+    await page.getByRole("button", { name: "Activity", exact: true }).click();
+    const activity = page.getByRole("dialog", { name: "Activity", exact: true });
+    await expect(activity.getByRole("region", { name: "Running", exact: true })).toBeVisible();
+    await expect(activity.getByRole("tab", { name: "Needs attention 2", exact: true })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await activity.getByRole("button", { name: "Mark reviewed", exact: true }).click();
+    await expect(activity.getByRole("tab", { name: "Needs attention 1", exact: true })).toBeVisible();
+    await expect(activity.getByText("Example failed fetch", { exact: true })).toHaveCount(0);
+    await activity.getByRole("tab", { name: "History 2", exact: true }).click();
+    await expect(activity.getByText("Example failed fetch", { exact: true })).toBeVisible();
+    await activity.getByRole("tab", { name: "Needs attention 1", exact: true }).click();
+    await page.screenshot({ path: testInfo.outputPath("workflow-activity.png") });
+    await activity.getByRole("button", { name: "Open metadata issues", exact: true }).click();
+    await expect(page).toHaveURL(/work-management\?reason=metadata&metadataRun=62/);
+    await expect(page.getByRole("heading", { name: "Work management", exact: true })).toBeVisible();
+  });
+}

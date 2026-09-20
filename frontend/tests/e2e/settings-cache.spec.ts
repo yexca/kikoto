@@ -673,3 +673,39 @@ test("recommendation keeps common controls visible and advanced scoring collapse
   expect((settingsPayloads[0].recommendationConfig as { jitterAmplitude: number }).jitterAmplitude).toBe(8);
   expect((settingsPayloads[0].recommendationConfig as { explorationAmplitude: number }).explorationAmplitude).toBe(30);
 });
+
+test("@desktop work management owns metadata settings and links to the existing workflow", async ({
+  page,
+}, testInfo) => {
+  const saves: Record<string, unknown>[] = [];
+  await mockCacheSettings(
+    page,
+    () => undefined,
+    (payload) => saves.push(payload),
+  );
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: {
+        authenticated: true,
+        user: {
+          id: 1,
+          username: "admin",
+          displayName: "Admin",
+          role: "admin",
+          permissions: ["library:read", "sources:write", "metadata:sync", "workflows:run"],
+        },
+      },
+    }),
+  );
+  await page.goto("/maintenance?tab=metadata");
+  await expect(page).toHaveURL(/work-management\?tab=settings/);
+  await expect(page.getByRole("heading", { name: "Work management", exact: true })).toBeVisible();
+  await page.getByRole("spinbutton", { name: "Catalog freshness days", exact: true }).fill("14");
+  await page.getByRole("button", { name: "Save metadata settings", exact: true }).click();
+  await expect.poll(() => saves.length).toBe(1);
+  expect(Object.keys(saves[0]).sort()).toEqual(["catalogFreshnessDays", "dlsiteMetadataLanguages"]);
+  expect(saves[0].catalogFreshnessDays).toBe(14);
+  await page.screenshot({ path: testInfo.outputPath("work-management-settings.png") });
+  await page.getByRole("button", { name: "Open metadata sync", exact: true }).click();
+  await expect(page).toHaveURL(/workflows\?workflow=metadata_sync/);
+});

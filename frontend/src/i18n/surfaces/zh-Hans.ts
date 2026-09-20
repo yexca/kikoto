@@ -1,6 +1,40 @@
 import { surfaceEnglish } from "./en";
 
 export const surfaceHans = {
+  workManagement: {
+    issues: "待处理作品",
+    settings: "元数据设置",
+    openSync: "打开元数据同步",
+    loading: "正在加载…",
+  },
+  workflowActivity: {
+    allWorkflows: "所有工作流",
+    attention: "需要处理",
+    history: "历史记录",
+    running: "正在运行",
+    allRunning: "查看全部运行任务",
+    acknowledge: "标记已处理",
+    close: "关闭活动",
+    categories: "活动分类",
+    previous: "上一页",
+    next: "下一页",
+    fullActivity: "打开完整活动记录",
+    empty: {
+      attention: "暂无需要处理的任务。",
+      history: "暂无历史记录。",
+    },
+    metadataCount: "{{count}} 个作品有元数据问题",
+    progress: "任务 {{current}} / {{total}}",
+    status: {
+      queued: "排队中",
+      running: "运行中",
+      succeeded: "成功",
+      failed: "失败",
+      partial: "部分完成",
+      cancelled: "已取消",
+      skipped: "已跳过",
+    },
+  },
   metadataOnboarding: {
     label: "元数据设置",
     title: "补全作品信息",

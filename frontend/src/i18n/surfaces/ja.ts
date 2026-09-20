@@ -1,6 +1,40 @@
 import { surfaceEnglish } from "./en";
 
 export const surfaceJapanese = {
+  workManagement: {
+    issues: "対応が必要な作品",
+    settings: "メタデータ設定",
+    openSync: "メタデータ同期を開く",
+    loading: "読み込み中…",
+  },
+  workflowActivity: {
+    allWorkflows: "すべてのワークフロー",
+    attention: "要対応",
+    history: "履歴",
+    running: "実行中",
+    allRunning: "実行中のタスクをすべて表示",
+    acknowledge: "確認済みにする",
+    close: "アクティビティを閉じる",
+    categories: "アクティビティの分類",
+    previous: "前のページ",
+    next: "次のページ",
+    fullActivity: "すべてのアクティビティを開く",
+    empty: {
+      attention: "対応が必要なタスクはありません。",
+      history: "履歴はありません。",
+    },
+    metadataCount: "{{count}} 件の作品にメタデータの問題",
+    progress: "ジョブ {{current}} / {{total}}",
+    status: {
+      queued: "待機中",
+      running: "実行中",
+      succeeded: "成功",
+      failed: "失敗",
+      partial: "一部完了",
+      cancelled: "キャンセル済み",
+      skipped: "スキップ済み",
+    },
+  },
   metadataOnboarding: {
     label: "メタデータの設定",
     title: "作品情報を補完する",

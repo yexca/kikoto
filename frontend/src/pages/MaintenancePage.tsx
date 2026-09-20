@@ -1,7 +1,5 @@
 import {
   ArrowDown,
-  ArrowLeft,
-  ArrowRight,
   ArrowUp,
   ChevronDown,
   Cloud,
@@ -35,7 +33,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { WorkMaintenance } from "@/features/maintenance/WorkMaintenance";
+
 import { UsersPage } from "@/pages/UsersPage";
 import {
   api,
@@ -46,26 +44,13 @@ import {
   type RecommendationConfig,
   type RecommendationTelemetrySummary,
 } from "@/lib/api";
-import {
-  dlsiteMetadataLanguageOptions,
-  moveDlsiteMetadataLanguage,
-  moveDlsiteMetadataLanguageTo,
-  normalizeDlsiteMetadataLanguages,
-  type DlsiteMetadataLanguage,
-} from "@/features/maintenance/metadataLanguageModel";
+
 import i18n from "@/i18n";
 
 const maintenanceCopy = (key: string, options?: Record<string, unknown>) => i18n.t(`maintenance.${key}`, options);
 
 const DATA_PREFIX = "/data";
 const DEFAULT_SAVE_SUFFIX = "/<source_code>/<code_prefix>_<code_group>/<work_code>";
-const remoteRequestLanguageOptions = [
-  { value: "ja-JP", labelKey: "metadata.japanese" },
-  { value: "en-US", labelKey: "metadata.english" },
-  { value: "zh-CN", labelKey: "metadata.simplifiedChinese" },
-  { value: "zh-TW", labelKey: "metadata.traditionalChinese" },
-  { value: "ko-KR", labelKey: "metadata.korean" },
-] as const;
 const DEFAULT_CACHE_SUFFIX = "/media/<source_code>/<code_prefix>/<code_group>/<work_code>";
 const CACHE_GROUP_PAGE_SIZE = 50;
 const LEGACY_NUMBER178_SOURCE_TYPE = "kikoeru_compatible_number178";
@@ -146,9 +131,6 @@ export function MaintenancePage({
   const [remoteBackoff, setRemoteBackoff] = useState(30);
   const [remoteMaxBackoff, setRemoteMaxBackoff] = useState(300);
   const [catalogFreshnessDays, setCatalogFreshnessDays] = useState(30);
-  const [dlsiteMetadataLanguages, setDlsiteMetadataLanguages] = useState<DlsiteMetadataLanguage[]>(() =>
-    normalizeDlsiteMetadataLanguages([]),
-  );
   const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>([]);
   const [recommendationThreshold, setRecommendationThreshold] = useState(50);
   const [recommendationConfig, setRecommendationConfig] = useState<RecommendationConfig | null>(null);
@@ -157,7 +139,6 @@ export function MaintenancePage({
   const [editingSourceId, setEditingSourceId] = useState<number | null>(null);
   const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
   const [checkingSourceId, setCheckingSourceId] = useState<number | null>(null);
-  const [updatingSourceId, setUpdatingSourceId] = useState<number | null>(null);
   const [sourcePendingDelete, setSourcePendingDelete] = useState<FileSource | null>(null);
   const [deletingSourceId, setDeletingSourceId] = useState<number | null>(null);
   const openedLinkedSource = useRef(false);
@@ -185,9 +166,6 @@ export function MaintenancePage({
         setRemoteBackoff(next.remoteBackoffSeconds);
         setRemoteMaxBackoff(next.remoteMaxBackoffSeconds);
         setCatalogFreshnessDays(next.catalogFreshnessDays);
-        setDlsiteMetadataLanguages(
-          normalizeDlsiteMetadataLanguages(next.dlsiteMetadataLanguages ?? [next.dlsiteMetadataLanguage]),
-        );
         setDirectoryRoutingRules(
           reweightDirectoryRoutingRules((next.directoryRoutingRules ?? []).filter((rule) => rule.enabled)),
         );
@@ -237,6 +215,11 @@ export function MaintenancePage({
   }, [readOnly, settings]);
 
   const selectTab = (tab: MaintenanceTab) => {
+    if (tab === "works" || tab === "metadata") {
+      window.history.pushState({}, "", `/work-management${tab === "metadata" ? "?tab=settings" : ""}`);
+      window.dispatchEvent(new Event("kikoto:navigation"));
+      return;
+    }
     setActiveTab(tab);
     const url = new URL(window.location.href);
     url.pathname = "/maintenance";
@@ -263,8 +246,6 @@ export function MaintenancePage({
       remoteDelayRandomSeconds: remoteDelayRandom,
       remoteBackoffSeconds: remoteBackoff,
       remoteMaxBackoffSeconds: remoteMaxBackoff,
-      catalogFreshnessDays,
-      dlsiteMetadataLanguages,
       directoryRoutingRules,
       recommendationThreshold,
       ...(recommendationConfig ? { recommendationConfig } : {}),
@@ -276,9 +257,6 @@ export function MaintenancePage({
     setRemoteDownloadLimitGb(next.remoteDownloadLimitGb);
     setFetchStagingRetentionDays(next.fetchStagingRetentionDays);
     setCatalogFreshnessDays(next.catalogFreshnessDays);
-    setDlsiteMetadataLanguages(
-      normalizeDlsiteMetadataLanguages(next.dlsiteMetadataLanguages ?? [next.dlsiteMetadataLanguage]),
-    );
     setRecommendationConfig(next.recommendationConfig);
     toast.success(maintenanceCopy("settingsSaved"));
   };
@@ -347,59 +325,6 @@ export function MaintenancePage({
     closeSourceModal();
     await reload();
     toast.success(maintenanceCopy("sourceSaved"));
-  };
-
-  const updateSourceRequestLanguage = async (source: FileSource, requestLanguage: string) => {
-    if (readOnly || updatingSourceId !== null) return;
-    const previousLanguage = source.config.requestLanguage ?? "ja-JP";
-    setUpdatingSourceId(source.id);
-    setSettings((current) =>
-      current
-        ? {
-            ...current,
-            fileSources: current.fileSources.map((candidate) =>
-              candidate.id === source.id
-                ? { ...candidate, config: { ...candidate.config, requestLanguage } }
-                : candidate,
-            ),
-          }
-        : current,
-    );
-    try {
-      const updated = await api.updateFileSource(source.id, {
-        displayName: source.displayName,
-        sourceType: source.sourceType,
-        priority: source.priority,
-        enabled: source.enabled,
-        config: { ...source.config, requestLanguage },
-        endpoint: source.endpoint,
-      });
-      setSettings((current) =>
-        current
-          ? {
-              ...current,
-              fileSources: current.fileSources.map((candidate) => (candidate.id === updated.id ? updated : candidate)),
-            }
-          : current,
-      );
-      toast.success(maintenanceCopy("requestLanguageUpdated", { name: source.displayName }));
-    } catch (error) {
-      setSettings((current) =>
-        current
-          ? {
-              ...current,
-              fileSources: current.fileSources.map((candidate) =>
-                candidate.id === source.id
-                  ? { ...candidate, config: { ...candidate.config, requestLanguage: previousLanguage } }
-                  : candidate,
-              ),
-            }
-          : current,
-      );
-      toast.notify(toastFromError(error, maintenanceCopy("requestLanguageSaveFailed")));
-    } finally {
-      setUpdatingSourceId(null);
-    }
   };
 
   const requestDeleteSource = (source: FileSource) => {
@@ -511,13 +436,6 @@ export function MaintenancePage({
               {maintenanceCopy("tabs.cache")}
             </SettingsTabButton>
             <SettingsTabButton
-              active={activeTab === "metadata"}
-              onClick={() => selectTab("metadata")}
-              icon={<RefreshCw className="h-4 w-4" />}
-            >
-              {maintenanceCopy("tabs.metadata")}
-            </SettingsTabButton>
-            <SettingsTabButton
               active={activeTab === "recommendation"}
               onClick={() => selectTab("recommendation")}
               icon={<Sparkles className="h-4 w-4" />}
@@ -530,17 +448,6 @@ export function MaintenancePage({
               icon={<Server className="h-4 w-4" />}
             >
               {maintenanceCopy("tabs.paths")}
-            </SettingsTabButton>
-          </MaintenanceTabGroup>
-        )}
-        {(canManageSources || canSyncMetadata) && (
-          <MaintenanceTabGroup label={maintenanceCopy("groups.operations")}>
-            <SettingsTabButton
-              active={activeTab === "works"}
-              onClick={() => selectTab("works")}
-              icon={<Database className="h-4 w-4" />}
-            >
-              {maintenanceCopy("tabs.unlinked")}
             </SettingsTabButton>
           </MaintenanceTabGroup>
         )}
@@ -627,8 +534,6 @@ export function MaintenancePage({
             onThresholdChange={setRecommendationThreshold}
             onSave={saveRuntimeSettings}
           />
-        ) : activeTab === "works" ? (
-          <WorkMaintenance canManageSources={canManageSources} canSyncMetadata={canSyncMetadata} readOnly={readOnly} />
         ) : activeTab === "cache" ? (
           <CacheFetchSettings
             cacheEnabled={cacheEnabled}
@@ -649,17 +554,6 @@ export function MaintenancePage({
             onRemoteDelayRandomChange={setRemoteDelayRandom}
             onRemoteBackoffChange={setRemoteBackoff}
             onRemoteMaxBackoffChange={setRemoteMaxBackoff}
-            onSave={saveRuntimeSettings}
-          />
-        ) : activeTab === "metadata" ? (
-          <MetadataSettings
-            catalogFreshnessDays={catalogFreshnessDays}
-            languages={dlsiteMetadataLanguages}
-            remoteSources={remoteSources}
-            updatingSourceId={updatingSourceId}
-            onCatalogFreshnessDaysChange={setCatalogFreshnessDays}
-            onLanguagesChange={setDlsiteMetadataLanguages}
-            onRequestLanguageChange={updateSourceRequestLanguage}
             onSave={saveRuntimeSettings}
           />
         ) : activeTab === "security" ? (
@@ -1269,263 +1163,6 @@ function RemoteSourcesSettingsSkeleton() {
             </div>
           ))}
         </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function MetadataSettings({
-  catalogFreshnessDays,
-  languages,
-  remoteSources,
-  updatingSourceId,
-  onCatalogFreshnessDaysChange,
-  onLanguagesChange,
-  onRequestLanguageChange,
-  onSave,
-}: {
-  catalogFreshnessDays: number;
-  languages: DlsiteMetadataLanguage[];
-  remoteSources: FileSource[];
-  updatingSourceId: number | null;
-  onCatalogFreshnessDaysChange: (value: number) => void;
-  onLanguagesChange: (value: DlsiteMetadataLanguage[]) => void;
-  onRequestLanguageChange: (source: FileSource, language: string) => Promise<void>;
-  onSave: () => Promise<void>;
-}) {
-  const { t } = useTranslation();
-  const [draggedLanguage, setDraggedLanguage] = useState<DlsiteMetadataLanguage | null>(null);
-  const draggedLanguageRef = useRef<DlsiteMetadataLanguage | null>(null);
-  const finishDrag = () => {
-    draggedLanguageRef.current = null;
-    setDraggedLanguage(null);
-  };
-
-  useEffect(() => {
-    if (draggedLanguage === null) return;
-    const finish = () => {
-      draggedLanguageRef.current = null;
-      setDraggedLanguage(null);
-    };
-    window.addEventListener("pointerup", finish);
-    window.addEventListener("pointercancel", finish);
-    window.addEventListener("blur", finish);
-    return () => {
-      window.removeEventListener("pointerup", finish);
-      window.removeEventListener("pointercancel", finish);
-      window.removeEventListener("blur", finish);
-    };
-  }, [draggedLanguage]);
-
-  const moveLanguage = (index: number, direction: -1 | 1) => {
-    onLanguagesChange(moveDlsiteMetadataLanguage(languages, index, direction));
-  };
-
-  const setLanguageIncluded = (language: DlsiteMetadataLanguage, included: boolean) => {
-    if (language === "origin") return;
-    const next = included
-      ? [...languages.filter((candidate) => candidate !== "origin"), language, "origin"]
-      : languages.filter((candidate) => candidate !== language);
-    onLanguagesChange(normalizeDlsiteMetadataLanguages(next));
-  };
-
-  return (
-    <Card className="overflow-hidden">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
-            <RefreshCw className="h-4 w-4" />
-          </span>
-          {t("metadata.title")}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <div>
-            <div className="font-medium">{t("metadata.priorityTitle")}</div>
-            <p className="mt-1 text-sm text-muted-foreground">{t("metadata.priorityDescription")}</p>
-          </div>
-          <fieldset className="grid gap-2 rounded-md border bg-background p-3">
-            <legend className="px-1 text-xs font-semibold text-muted-foreground">
-              {t("metadata.preferredLanguages")}
-            </legend>
-            <div className="flex flex-wrap gap-x-4 gap-y-2">
-              {dlsiteMetadataLanguageOptions
-                .filter((option) => option.value !== "origin")
-                .map((option) => (
-                  <label key={option.value} className="inline-flex min-h-8 items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={languages.includes(option.value)}
-                      onCheckedChange={(checked) => setLanguageIncluded(option.value, checked)}
-                      aria-label={t("metadata.prefer", { language: t(option.labelKey) })}
-                    />
-                    <span>{t(option.labelKey)}</span>
-                  </label>
-                ))}
-            </div>
-          </fieldset>
-          <div
-            className="app-scrollbar flex gap-2 overflow-x-auto pb-1"
-            role="list"
-            aria-label={maintenanceCopy("metadata.languagePriority")}
-          >
-            {languages.map((language, index) => {
-              const option = dlsiteMetadataLanguageOptions.find((candidate) => candidate.value === language);
-              if (!option) return null;
-              return (
-                <div
-                  key={language}
-                  data-metadata-language-index={index}
-                  role="listitem"
-                  className={`flex min-w-[12rem] shrink-0 flex-col justify-between gap-3 rounded-md border bg-background p-3 ${
-                    draggedLanguage === language ? "opacity-55" : ""
-                  }`}
-                >
-                  <div className="flex min-w-0 items-start gap-2">
-                    <button
-                      type="button"
-                      className="grid h-8 w-8 shrink-0 touch-none cursor-grab place-items-center rounded-md border bg-card text-muted-foreground active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
-                      aria-label={t("metadata.drag", { language: t(option.labelKey) })}
-                      disabled={language === "origin"}
-                      onPointerDown={(event) => {
-                        if (!event.isPrimary || event.button !== 0) return;
-                        event.preventDefault();
-                        event.currentTarget.setPointerCapture(event.pointerId);
-                        draggedLanguageRef.current = language;
-                        setDraggedLanguage(language);
-                      }}
-                      onPointerMove={(event) => {
-                        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-                        const sourceLanguage = draggedLanguageRef.current;
-                        const source = sourceLanguage ? languages.indexOf(sourceLanguage) : -1;
-                        const target = Number(
-                          document
-                            .elementFromPoint(event.clientX, event.clientY)
-                            ?.closest<HTMLElement>("[data-metadata-language-index]")?.dataset.metadataLanguageIndex,
-                        );
-                        if (source >= 0 && Number.isInteger(target) && source !== target) {
-                          onLanguagesChange(moveDlsiteMetadataLanguageTo(languages, source, target));
-                        }
-                      }}
-                      onPointerUp={(event) => {
-                        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                          event.currentTarget.releasePointerCapture(event.pointerId);
-                        }
-                        finishDrag();
-                      }}
-                      onPointerCancel={finishDrag}
-                      onLostPointerCapture={finishDrag}
-                    >
-                      <GripVertical className="h-4 w-4" />
-                    </button>
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold">{t(option.labelKey)}</div>
-                      <div className="mt-0.5 text-xs text-muted-foreground">
-                        {index === 0
-                          ? maintenanceCopy("metadata.firstChoice")
-                          : maintenanceCopy("metadata.fallbackChoice", { count: index + 1 })}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 border-t pt-2">
-                    <span className="text-[11px] font-semibold uppercase text-muted-foreground">
-                      {maintenanceCopy("metadata.priority", { count: index + 1 })}
-                    </span>
-                    <span className="flex gap-1">
-                      <button
-                        type="button"
-                        className="grid h-7 w-7 place-items-center rounded-md border text-muted-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-40"
-                        aria-label={t("metadata.moveEarlier", { language: t(option.labelKey) })}
-                        title={t("metadata.moveEarlier", { language: t(option.labelKey) })}
-                        disabled={index === 0 || language === "origin"}
-                        onClick={() => moveLanguage(index, -1)}
-                      >
-                        <ArrowLeft className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        className="grid h-7 w-7 place-items-center rounded-md border text-muted-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-40"
-                        aria-label={t("metadata.moveLater", { language: t(option.labelKey) })}
-                        title={t("metadata.moveLater", { language: t(option.labelKey) })}
-                        disabled={index === languages.length - 1 || language === "origin"}
-                        onClick={() => moveLanguage(index, 1)}
-                      >
-                        <ArrowRight className="h-3.5 w-3.5" />
-                      </button>
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="space-y-2 border-t pt-4">
-          <div>
-            <div className="font-medium">{maintenanceCopy("metadata.remoteRequests")}</div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {maintenanceCopy("metadata.remoteRequestsDescription")}
-            </p>
-          </div>
-          {remoteSources.length > 0 ? (
-            <div className="grid gap-2 sm:grid-cols-2">
-              {remoteSources.map((source) => {
-                const requestLanguage = source.config.requestLanguage ?? "ja-JP";
-                const known = remoteRequestLanguageOptions.some(
-                  (option) => option.value.toLowerCase() === requestLanguage.toLowerCase(),
-                );
-                const value =
-                  remoteRequestLanguageOptions.find(
-                    (option) => option.value.toLowerCase() === requestLanguage.toLowerCase(),
-                  )?.value ?? requestLanguage;
-                return (
-                  <label key={source.id} className="grid gap-1 rounded-md border bg-background p-3 text-sm">
-                    <span className="truncate font-medium">{source.displayName}</span>
-                    <select
-                      className="h-9 min-w-0 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
-                      value={value}
-                      disabled={updatingSourceId !== null}
-                      aria-label={`${source.displayName} metadata request language`}
-                      onChange={(event) => void onRequestLanguageChange(source, event.target.value)}
-                    >
-                      {!known && <option value={requestLanguage}>Custom ({requestLanguage})</option>}
-                      {remoteRequestLanguageOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {t(option.labelKey)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
-              {maintenanceCopy("metadata.noRemoteSources")}
-            </div>
-          )}
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
-          <label className="grid gap-1 text-sm">
-            <span className="font-medium">{maintenanceCopy("metadata.catalogFreshnessDays")}</span>
-            <input
-              className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
-              type="number"
-              min={1}
-              max={365}
-              value={catalogFreshnessDays}
-              onChange={(event) => onCatalogFreshnessDaysChange(Number(event.target.value))}
-            />
-          </label>
-          <div className="self-end rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
-            {maintenanceCopy("metadata.catalogFreshnessDescription", { count: catalogFreshnessDays })}
-          </div>
-        </div>
-        <Button size="sm" onClick={() => void onSave()}>
-          <Save className="h-4 w-4" />
-          {maintenanceCopy("metadata.save")}
-        </Button>
       </CardContent>
     </Card>
   );

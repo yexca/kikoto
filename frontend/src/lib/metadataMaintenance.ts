@@ -6,9 +6,9 @@ export function openMetadataIssues(runId: number) {
 }
 
 export function metadataIssuesURL(runId?: number) {
-  const params = new URLSearchParams({ tab: "works", reason: "metadata" });
+  const params = new URLSearchParams({ reason: "metadata" });
   if (runId && Number.isSafeInteger(runId) && runId > 0) params.set("metadataRun", String(runId));
-  return `/maintenance?${params}`;
+  return `/work-management?${params}`;
 }
 
 export function metadataIssueRunFromLocation() {

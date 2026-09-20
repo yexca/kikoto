@@ -1,6 +1,40 @@
 import { surfaceEnglish } from "./en";
 
 export const surfaceKorean = {
+  workManagement: {
+    issues: "처리가 필요한 작품",
+    settings: "메타데이터 설정",
+    openSync: "메타데이터 동기화 열기",
+    loading: "불러오는 중…",
+  },
+  workflowActivity: {
+    allWorkflows: "모든 워크플로",
+    attention: "처리 필요",
+    history: "기록",
+    running: "실행 중",
+    allRunning: "실행 중인 작업 모두 보기",
+    acknowledge: "확인 완료로 표시",
+    close: "활동 닫기",
+    categories: "활동 분류",
+    previous: "이전 페이지",
+    next: "다음 페이지",
+    fullActivity: "전체 활동 열기",
+    empty: {
+      attention: "처리할 작업이 없습니다.",
+      history: "아직 기록이 없습니다.",
+    },
+    metadataCount: "메타데이터 문제가 있는 작품 {{count}}개",
+    progress: "작업 {{current}} / {{total}}",
+    status: {
+      queued: "대기 중",
+      running: "실행 중",
+      succeeded: "성공",
+      failed: "실패",
+      partial: "부분 완료",
+      cancelled: "취소됨",
+      skipped: "건너뜀",
+    },
+  },
   metadataOnboarding: {
     label: "메타데이터 설정",
     title: "작품 정보 채우기",

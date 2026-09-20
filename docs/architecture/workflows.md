@@ -49,8 +49,9 @@ in `app_setting`, so they survive browser changes and server restarts.
 
 ## Metadata Recovery
 
-Metadata synchronization remains a workflow. Maintenance's Work maintenance tab owns
-the current attention list; Activity run detail links to the unresolved
+Metadata synchronization remains a workflow. Work management owns the current
+attention list and metadata settings, with a shortcut to the existing workflow.
+Activity run detail links to the unresolved
 issues encountered by that run. Selecting works queues recoverable family-sync
 jobs, reusing an already queued/running job for that family. Explicit recovery
 can recheck a provider's `not_found` observation without erasing it first.
@@ -68,9 +69,10 @@ Metadata reasons and retries require `metadata:sync`. No-source reasons, source
 checks, and confirmed deletion require `sources:write`; the UI exposes deletion
 only in the no-source view and the server still revalidates family availability.
 Each permission grants only its corresponding maintenance actions, without
-exposing settings to metadata-only operators. The Metadata tab remains settings.
-Activity links use `/maintenance?tab=works&reason=metadata&metadataRun=<id>`;
-legacy `tab=unlinked` opens the no-source view. Filtering by a run additionally
+exposing settings to metadata-only operators. Work management separates pending
+works from its Metadata settings tab.
+Activity links use `/work-management?reason=metadata&metadataRun=<id>`;
+legacy Maintenance work and metadata links redirect to Work management. Filtering by a run additionally
 checks workflow permission and that run's ownership. Successful recovery changes shared work state, never
 `workflow_run_review` or the historical execution status.
 
@@ -82,6 +84,23 @@ independently, subject to existing worker resource lanes and provider pacing.
 Database attempt ordering prevents late failures from replacing newer outcomes
 and late successes from replacing newer successful metadata. This is not a
 distributed request lock between separate application processes.
+
+## Activity Summary
+
+Workflows exposes Activity at the right end of its horizontal definition bar.
+The desktop popover and mobile sheet show active runs above two server-paged
+views: Needs attention and History. The summary spans every workflow visible to
+the viewer, independent of the selected definition. Existing Activity detail
+routes and the account-menu entry remain available.
+
+Needs attention contains terminal runs with unresolved candidates, pending
+metadata issues, or unacknowledged failures. A dedicated metadata-sync failure
+with recorded issue outcomes leaves attention when those issues are resolved.
+Unrecorded failures still require acknowledgement. The successful-attempt
+boundary prevents a later failure from reopening an older resolved association.
+History preserves the original status, including failed, partial, and cancelled.
+Acknowledgements belong to the viewer; they cannot dismiss an active run or
+unresolved candidate/metadata issue. Demo keeps these actions read-only.
 
 ## Popular Collections
 

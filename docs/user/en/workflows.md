@@ -7,7 +7,9 @@ Workflows make backend actions inspectable.
 
 - Workflows: built-in and custom definitions with their triggers managed in the
   selected definition.
-- Activity: mutually exclusive running, review, failed, and completed views.
+- Activity at the right end of the workflow tabs opens a desktop panel or mobile
+  sheet. Active runs appear above **Needs attention** and **History**; rows open
+  the full Activity detail page. The full page retains its existing categories.
 
 ## Current Behavior
 
@@ -27,9 +29,16 @@ Workflows make backend actions inspectable.
 - The header notification center combines Review items with completed or failed
   Fetch results. Fetch notifications open the local work detail and can be
   dismissed independently for the signed-in user.
-- Definitions groups Built-in workflows and Custom definitions. Each list item
-  shows compact badges for enabled Startup, Watching, and Schedule modes, with
-  Manual as the fallback when no automatic trigger is enabled.
+- The horizontal definition bar puts the five built-in workflows first, followed
+  by custom definitions and the add button. The filter offers All, Built-in, and
+  Custom.
+- Needs attention collects unresolved candidates, metadata issues, and
+  unacknowledged failures. Resolving recorded issues clears the corresponding
+  dedicated metadata-run notice. Other failures can be marked reviewed once
+  outstanding issues are resolved. This acknowledgement is per user. History
+  keeps the original outcome, including failed, partial, and cancelled runs.
+- Work management owns pending-work recovery and metadata settings. Its metadata
+  sync shortcut selects the existing workflow here.
 - Built-in local scan, metadata sync, remote popular, and DLsite popular
   workflows support editable Startup and interval triggers. Local scan ships
   with the default Startup trigger and does not check remote availability or

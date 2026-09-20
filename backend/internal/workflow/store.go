@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"database/sql"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -143,14 +144,17 @@ func (s *Store) ListRuns(ctx context.Context, options ListRunsOptions) (RunsPage
 			COALESCE(SUM(CASE WHEN `+runningRunCondition+` THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN `+reviewRunCondition+` THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN `+failedRunCondition+` THEN 1 ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN `+completedRunCondition+` THEN 1 ELSE 0 END), 0)
+			COALESCE(SUM(CASE WHEN `+completedRunCondition+` THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN `+attentionRunCondition(options.ViewerUserID)+` THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN `+historyRunCondition(options.ViewerUserID)+` THEN 1 ELSE 0 END), 0)
 		FROM workflow_run AS run
-		WHERE `+baseWhereSQL, args...).Scan(&viewTotals.Running, &viewTotals.Review, &viewTotals.Failed, &viewTotals.Completed); err != nil {
+		WHERE `+baseWhereSQL, args...).Scan(&viewTotals.Running, &viewTotals.Review, &viewTotals.Failed, &viewTotals.Completed, &viewTotals.Attention, &viewTotals.History); err != nil {
 		return RunsPage{}, err
 	}
 	queryArgs := append([]any{}, args...)
 	queryArgs = append(queryArgs, options.PageSize, (options.Page-1)*options.PageSize)
-	rows, err := s.db.QueryContext(ctx, runSelectSQL()+` FROM workflow_run AS run WHERE `+whereSQL+` ORDER BY run.created_at DESC, run.id DESC LIMIT ? OFFSET ?`, queryArgs...)
+	selectSQL := runSelectSQL(" AND review.user_id = " + strconv.FormatInt(options.ViewerUserID, 10))
+	rows, err := s.db.QueryContext(ctx, selectSQL+` FROM workflow_run AS run WHERE `+whereSQL+` ORDER BY run.created_at DESC, run.id DESC LIMIT ? OFFSET ?`, queryArgs...)
 	if err != nil {
 		return RunsPage{}, err
 	}
@@ -179,7 +183,7 @@ func buildRunListConditions(options ListRunsOptions) (string, string, []any) {
 	}
 	conditions, args = appendRunVisibility(conditions, args, options.ViewerUserID, options.CanViewAll)
 	baseWhereSQL := strings.Join(conditions, " AND ")
-	viewConditions := appendRunViewCondition(append([]string{}, conditions...), options.View)
+	viewConditions := appendRunViewCondition(append([]string{}, conditions...), options.View, options.ViewerUserID)
 	return baseWhereSQL, strings.Join(viewConditions, " AND "), args
 }
 
@@ -189,7 +193,7 @@ const reviewRunCondition = `(run.status NOT IN ('queued', 'running', 'failed') A
 	EXISTS (SELECT 1 FROM workflow_candidate WHERE workflow_candidate.workflow_run_id = run.id AND workflow_candidate.status NOT IN ('accepted', 'rejected', 'ignored', 'resolved')))`
 const completedRunCondition = `(run.status NOT IN ('queued', 'running', 'failed') AND NOT ` + reviewRunCondition + `)`
 
-func appendRunViewCondition(conditions []string, view string) []string {
+func appendRunViewCondition(conditions []string, view string, viewerUserID int64) []string {
 	switch view {
 	case "running":
 		return append(conditions, runningRunCondition)
@@ -197,7 +201,11 @@ func appendRunViewCondition(conditions []string, view string) []string {
 		return append(conditions, failedRunCondition)
 	case "review":
 		return append(conditions, reviewRunCondition)
-	case "completed", "history", "logs":
+	case "attention":
+		return append(conditions, attentionRunCondition(viewerUserID))
+	case "history":
+		return append(conditions, historyRunCondition(viewerUserID))
+	case "completed", "logs":
 		return append(conditions, completedRunCondition)
 	default:
 		return conditions
@@ -490,7 +498,7 @@ type runQuerier interface {
 }
 
 func loadRunFrom(ctx context.Context, db runQuerier, id int64) (RunRecord, error) {
-	return scanRun(db.QueryRowContext(ctx, runSelectSQL()+" FROM workflow_run AS run WHERE run.id = ?", id))
+	return scanRun(db.QueryRowContext(ctx, runSelectSQL("")+" FROM workflow_run AS run WHERE run.id = ?", id))
 }
 
 func scanRuns(rows *sql.Rows) ([]RunRecord, error) {
@@ -516,7 +524,7 @@ func scanRun(row rowScanner) (RunRecord, error) {
 		&item.JobCount, &item.CompletedJobs, &item.FailedJobs, &item.SkippedJobs,
 		&item.ProgressBytesCurrent, &item.ProgressBytesTotal, &item.ProgressBytesUnknownItems,
 		&item.CandidateCount, &item.PendingCandidates, &item.AcceptedCandidates, &item.RejectedCandidates,
-		&item.ReviewedAt, &reviewedByUserID, &definitionID, &triggerID,
+		&item.ReviewedAt, &reviewedByUserID, &definitionID, &triggerID, &item.PendingMetadata,
 	)
 	item.ReviewedByUserID, item.DefinitionID, item.TriggerID = nullableInt64(reviewedByUserID), nullableInt64(definitionID), nullableInt64(triggerID)
 	return item, err
@@ -546,7 +554,7 @@ func triggerSelectSQL() string {
 	return `SELECT trigger.id, trigger.workflow_definition_id, definition.code, trigger.display_name, trigger.trigger_type, trigger.enabled, trigger.schedule_json, trigger.config_json, trigger.next_run_at, trigger.last_run_at, trigger.last_success_at, trigger.last_error_message, trigger.created_at, trigger.updated_at FROM workflow_trigger AS trigger INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id`
 }
 
-func runSelectSQL() string {
+func runSelectSQL(reviewFilter string) string {
 	return `SELECT run.id, run.workflow_code, run.display_name, run.status, run.trigger_type, run.trigger_reason, run.created_at, COALESCE(run.started_at, ''), COALESCE(run.finished_at, ''), run.summary_json,
 		(SELECT COUNT(*) FROM workflow_node_run WHERE workflow_node_run.workflow_run_id = run.id),
 		(SELECT COUNT(*) FROM workflow_node_run WHERE workflow_node_run.workflow_run_id = run.id AND workflow_node_run.status = 'succeeded'),
@@ -563,9 +571,9 @@ func runSelectSQL() string {
 		(SELECT COUNT(*) FROM workflow_candidate WHERE workflow_candidate.workflow_run_id = run.id AND workflow_candidate.status NOT IN ('accepted', 'rejected', 'ignored', 'resolved')),
 		(SELECT COUNT(*) FROM workflow_candidate WHERE workflow_candidate.workflow_run_id = run.id AND workflow_candidate.status = 'accepted'),
 		(SELECT COUNT(*) FROM workflow_candidate WHERE workflow_candidate.workflow_run_id = run.id AND workflow_candidate.status = 'rejected'),
-		COALESCE((SELECT review.reviewed_at FROM workflow_run_review AS review WHERE review.workflow_run_id = run.id AND review.status = 'reviewed' ORDER BY review.reviewed_at DESC, review.id DESC LIMIT 1), ''),
-		(SELECT review.user_id FROM workflow_run_review AS review WHERE review.workflow_run_id = run.id AND review.status = 'reviewed' ORDER BY review.reviewed_at DESC, review.id DESC LIMIT 1),
-		run.workflow_definition_id, run.trigger_id`
+		COALESCE((SELECT review.reviewed_at FROM workflow_run_review AS review WHERE review.workflow_run_id = run.id AND review.status = 'reviewed'` + reviewFilter + ` ORDER BY review.reviewed_at DESC, review.id DESC LIMIT 1), ''),
+		(SELECT review.user_id FROM workflow_run_review AS review WHERE review.workflow_run_id = run.id AND review.status = 'reviewed'` + reviewFilter + ` ORDER BY review.reviewed_at DESC, review.id DESC LIMIT 1),
+		run.workflow_definition_id, run.trigger_id, ` + pendingMetadataSQL
 }
 
 func nullableInt64(value sql.NullInt64) *int64 {

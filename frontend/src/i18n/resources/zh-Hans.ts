@@ -24,6 +24,8 @@ export const zhHansResource = {
         loadingPage: "正在加载页面",
       },
       nav: {
+        workManagement: "作品管理",
+        workManagementDescription: "处理作品问题并配置元数据",
         library: "媒体库",
         favorites: "收藏",
         circles: "社团",
@@ -40,7 +42,7 @@ export const zhHansResource = {
         workflowsDescription: "运行内置操作并管理自定义自动化",
         activityDescription: "查看工作流运行、失败和待审核项目",
         settingsDescription: "管理账户和外观偏好",
-        maintenanceDescription: "配置来源、路由、缓存、元数据和用户",
+        maintenanceDescription: "配置来源、路由、缓存和用户",
         aboutDescription: "版本、许可和应用信息",
       },
       library: libraryHans,

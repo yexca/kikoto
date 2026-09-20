@@ -24,6 +24,8 @@ export const koreanResource = {
         loadingPage: "페이지 로드 중",
       },
       nav: {
+        workManagement: "작품 관리",
+        workManagementDescription: "작품 문제와 메타데이터 설정 관리",
         library: "라이브러리",
         favorites: "즐겨찾기",
         circles: "서클",
@@ -40,7 +42,7 @@ export const koreanResource = {
         workflowsDescription: "기본 작업을 실행하고 사용자 지정 자동화를 관리합니다",
         activityDescription: "워크플로 실행, 실패 및 검토 항목을 확인합니다",
         settingsDescription: "계정 및 외관 설정을 관리합니다",
-        maintenanceDescription: "소스, 라우팅, 캐시, 메타데이터와 사용자를 설정합니다",
+        maintenanceDescription: "소스, 라우팅, 캐시와 사용자를 설정합니다",
         aboutDescription: "버전, 라이선스 및 앱 정보",
       },
       library: libraryKorean,

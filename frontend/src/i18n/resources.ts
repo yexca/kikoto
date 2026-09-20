@@ -1190,6 +1190,8 @@ export const englishResource = {
         loadingPage: "Loading page",
       },
       nav: {
+        workManagement: "Work management",
+        workManagementDescription: "Resolve work issues and configure metadata",
         library: "Library",
         favorites: "Favorites",
         circles: "Circles",
@@ -1206,7 +1208,7 @@ export const englishResource = {
         workflowsDescription: "Run built-in operations and manage custom automations",
         activityDescription: "Inspect workflow runs, failures, and review items",
         settingsDescription: "Manage your account and appearance preferences",
-        maintenanceDescription: "Configure sources, routing, caching, metadata, and users",
+        maintenanceDescription: "Configure sources, routing, caching, and users",
         aboutDescription: "Version, licensing, and application information",
       },
       library: libraryEnglish,
