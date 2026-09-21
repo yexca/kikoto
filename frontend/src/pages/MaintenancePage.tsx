@@ -84,6 +84,8 @@ export function MaintenancePage({
   isSuperAdmin,
   canManageAccessPolicy,
   readOnly = false,
+  embedded = false,
+  activeTab: activeTabOverride,
   onAccessPolicyUpdated,
 }: {
   canManageSources: boolean;
@@ -92,6 +94,8 @@ export function MaintenancePage({
   isSuperAdmin: boolean;
   canManageAccessPolicy: boolean;
   readOnly?: boolean;
+  embedded?: boolean;
+  activeTab?: MaintenanceTab;
   onAccessPolicyUpdated: () => Promise<void>;
 }) {
   useTranslation();
@@ -121,6 +125,10 @@ export function MaintenancePage({
   const [sourcePendingDelete, setSourcePendingDelete] = useState<FileSource | null>(null);
   const [deletingSourceId, setDeletingSourceId] = useState<number | null>(null);
   const openedLinkedSource = useRef(false);
+
+  useEffect(() => {
+    if (activeTabOverride && activeTabOverride !== activeTab) setActiveTab(activeTabOverride);
+  }, [activeTab, activeTabOverride]);
 
   const remoteSources = useMemo(
     () => settings?.fileSources.filter((source) => REMOTE_SOURCE_TYPES.has(source.sourceType)) ?? [],
@@ -187,7 +195,7 @@ export function MaintenancePage({
   const selectTab = (tab: MaintenanceTab) => {
     setActiveTab(tab);
     const url = new URL(window.location.href);
-    url.pathname = "/maintenance";
+    url.pathname = embedded ? "/settings" : "/maintenance";
     url.searchParams.delete("source");
     if (tab !== activeTab) {
       url.searchParams.delete("metadataRun");
@@ -363,38 +371,40 @@ export function MaintenancePage({
         </div>
       )}
 
-      <nav
-        className="flex flex-nowrap gap-1 overflow-x-auto rounded-lg border bg-card p-2"
-        aria-label={maintenanceCopy("navigation")}
-      >
-        {canManageSources && (
-          <>
+      {!embedded && (
+        <nav
+          className="flex flex-nowrap gap-1 overflow-x-auto rounded-lg border bg-card p-2"
+          aria-label={maintenanceCopy("navigation")}
+        >
+          {canManageSources && (
+            <>
+              <SettingsTabButton
+                active={activeTab === "library"}
+                onClick={() => selectTab("library")}
+                icon={<Folder className="h-4 w-4" />}
+              >
+                {maintenanceCopy("tabs.library")}
+              </SettingsTabButton>
+              <SettingsTabButton
+                active={activeTab === "cache"}
+                onClick={() => selectTab("cache")}
+                icon={<Download className="h-4 w-4" />}
+              >
+                {maintenanceCopy("tabs.cache")}
+              </SettingsTabButton>
+            </>
+          )}
+          {(canManageUsers || canManageAccessPolicy) && (
             <SettingsTabButton
-              active={activeTab === "library"}
-              onClick={() => selectTab("library")}
-              icon={<Folder className="h-4 w-4" />}
+              active={activeTab === "users"}
+              onClick={() => selectTab("users")}
+              icon={<Shield className="h-4 w-4" />}
             >
-              {maintenanceCopy("tabs.library")}
+              {maintenanceCopy("tabs.users")}
             </SettingsTabButton>
-            <SettingsTabButton
-              active={activeTab === "cache"}
-              onClick={() => selectTab("cache")}
-              icon={<Download className="h-4 w-4" />}
-            >
-              {maintenanceCopy("tabs.cache")}
-            </SettingsTabButton>
-          </>
-        )}
-        {(canManageUsers || canManageAccessPolicy) && (
-          <SettingsTabButton
-            active={activeTab === "users"}
-            onClick={() => selectTab("users")}
-            icon={<Shield className="h-4 w-4" />}
-          >
-            {maintenanceCopy("tabs.users")}
-          </SettingsTabButton>
-        )}
-      </nav>
+          )}
+        </nav>
+      )}
 
       <fieldset
         data-testid="maintenance-content"

@@ -35,7 +35,7 @@ describe("navigation access and labels", () => {
       hasPermission: (permission) => permission !== "workflows:run",
     });
     expect(noWorkflows.map((item) => item.id)).not.toContain("workflows");
-    expect(noWorkflows.map((item) => item.id)).toContain("maintenance");
+    expect(noWorkflows.map((item) => item.id)).not.toContain("maintenance");
 
     expect(canAccessPage("settings", "anonymous", () => true)).toBe(false);
     expect(canAccessPage("workflows", "authenticated", () => false)).toBe(false);

@@ -388,7 +388,7 @@ export function HeaderActions({
                       label={t("account.users")}
                       onClick={() => {
                         setMobileAccountOpen(false);
-                        onOpenPath("/maintenance?tab=users");
+                        onOpenPath("/settings?tab=users");
                       }}
                     />
                   )}
@@ -846,7 +846,7 @@ export function HeaderActions({
                     label={t("account.users")}
                     onClick={() => {
                       setUserOpen(false);
-                      onOpenPath("/maintenance?tab=users");
+                      onOpenPath("/settings?tab=users");
                     }}
                   />
                 )}

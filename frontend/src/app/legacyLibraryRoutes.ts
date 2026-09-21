@@ -24,8 +24,9 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
     }
     if (tab && ["overview", "paths", "system", "local", "remote", "security"].includes(tab)) {
       params.set("tab", tab === "security" ? "users" : "library");
-      return `/maintenance?${params}`;
+      return `/settings?${params}`;
     }
+    if (tab === "library" || tab === "cache" || tab === "users") return `/settings?${params}`;
     if (tab === "works" || tab === "unlinked" || tab === "metadata") {
       params.delete("tab");
       if (tab === "works" && !params.has("reason")) params.set("reason", "all");

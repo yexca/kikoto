@@ -278,7 +278,7 @@ test("@desktop cache settings scan managed media and require cleanup confirmatio
       settingsPayloads.push(payload);
     },
   );
-  await page.goto("/maintenance?tab=cache");
+  await page.goto("/settings?tab=cache");
 
   await expect(page.getByText("Managed media cache", { exact: true })).toBeVisible();
   await expect(page.getByTestId("maintenance-content")).toHaveCSS("max-width", "896px");
@@ -341,7 +341,7 @@ test("enabling global playback cache explains tracked synchronization before cha
     undefined,
     false,
   );
-  await page.goto("/maintenance?tab=cache");
+  await page.goto("/settings?tab=cache");
 
   const cacheSwitch = page.getByRole("switch", { name: "Cache remote playback", exact: true });
   await expect(cacheSwitch).toHaveAttribute("aria-checked", "false");
@@ -375,7 +375,7 @@ test("cache settings can clear referenced cache for selected works", async ({ pa
   await mockCacheSettings(page, (payload) => {
     cleanupRequests.push(payload);
   });
-  await page.goto("/maintenance?tab=cache");
+  await page.goto("/settings?tab=cache");
   await page.getByRole("button", { name: "Work cache", exact: true }).click();
   await page.getByRole("checkbox", { name: "Select all cache in Example Remote" }).click();
   await page.getByRole("button", { name: "Clean selected works" }).click();
@@ -384,7 +384,7 @@ test("cache settings can clear referenced cache for selected works", async ({ pa
   expect(cleanupRequests[0]).toEqual({ mode: "works", workIds: [1] });
 });
 
-test("personal settings stay separate from administrator maintenance", async ({ page }) => {
+test("personal settings expose administrator tabs only to administrators", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
   await page.goto("/settings");
   await expect(page.getByRole("heading", { name: "Settings", exact: true, level: 1 })).toBeVisible();
@@ -394,10 +394,7 @@ test("personal settings stay separate from administrator maintenance", async ({ 
   await expect(page.getByRole("tab", { name: "Recommendation", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Cache & Fetch", exact: true })).toHaveCount(0);
 
-  await page.goto("/users");
-  await expect(page.getByRole("heading", { name: "Maintenance", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Users", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByText("User directory", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Users", exact: true })).toHaveCount(0);
 });
 
 test("personal playback seek intervals use the requested defaults and persist locally", async ({ page }) => {
@@ -462,8 +459,8 @@ test("development super administrator can configure production anonymous access"
     await route.fulfill({ json: payload });
   });
 
-  await page.goto("/maintenance?tab=security");
-  await expect(page).toHaveURL(/\/maintenance\?tab=users$/);
+  await page.goto("/settings?tab=users");
+  await expect(page).toHaveURL(/\/settings\?tab=users$/);
   await expect(page.getByRole("button", { name: "Users", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("User directory", { exact: true })).toBeVisible();
   const accessSwitch = page.getByRole("switch", { name: "Anonymous access", exact: true });
@@ -510,7 +507,7 @@ test("work maintenance mounts once and keeps its result region stable while sett
     await route.fulfill({ json: { works: [], page: 1, pageSize: 25, total: 0 } });
   });
 
-  await page.goto("/maintenance?tab=unlinked");
+  await page.goto("/metadata?reason=no_source");
   const heading = page.getByRole("heading", { name: "Pending works", exact: true });
   await expect(heading).toBeVisible();
   await expect(page.getByRole("status", { name: "Loading work maintenance" })).toBeVisible();
@@ -549,7 +546,7 @@ test("users mounts before settings and a one-user result does not collapse the p
     await route.fallback();
   });
 
-  await page.goto("/users");
+  await page.goto("/settings?tab=users");
   await expect(page.getByText("User directory", { exact: true })).toBeVisible();
   const content = page.getByTestId("maintenance-content");
   const loadingBox = await content.boundingBox();
@@ -564,30 +561,29 @@ test("users mounts before settings and a one-user result does not collapse the p
 });
 
 for (const layout of ["mobile", "@desktop"]) {
-  test(`${layout} maintenance sections stay in one scrollable row`, async ({ page }) => {
+  test(`${layout} Settings sections stay in one scrollable row`, async ({ page }) => {
     await mockCacheSettings(page, () => undefined);
-    await page.goto("/maintenance");
-    const navigation = page.getByRole("navigation", { name: "Maintenance sections", exact: true });
-    await expect(navigation.getByRole("button", { name: "Library", exact: true })).toHaveAttribute(
-      "aria-pressed",
+    await page.goto("/settings?tab=library");
+    const navigation = page.getByRole("tablist", { name: "Settings", exact: true });
+    await expect(navigation.getByRole("tab", { name: "Library", exact: true })).toHaveAttribute(
+      "aria-selected",
       "true",
     );
-    await expect(navigation.getByRole("button")).toHaveCount(3);
-    await expect(navigation.getByRole("button", { name: /^(Overview|Paths|Access)$/ })).toHaveCount(0);
+    await expect(navigation.getByRole("tab")).toHaveCount(6);
     const rows = await navigation
-      .getByRole("button")
+      .getByRole("tab")
       .evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().top));
     expect(Math.max(...rows) - Math.min(...rows)).toBeLessThanOrEqual(1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await expect(page.getByText("Storage paths", { exact: true })).toBeVisible();
-    await navigation.getByRole("button", { name: "Users", exact: true }).click();
+    await navigation.getByRole("tab", { name: "Users", exact: true }).click();
     await expect(page.getByText("User directory", { exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await expect(page.getByRole("switch", { name: "Anonymous access", exact: true })).toHaveCount(0);
   });
 }
 
-test("user managers open Users without fetching source settings", async ({ page }) => {
+test("non-admin users cannot open administrator Settings tabs", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
   let settingsRequests = 0;
   await page.route("**/api/settings", async (route) => {
@@ -609,11 +605,9 @@ test("user managers open Users without fetching source settings", async ({ page 
       },
     }),
   );
-  await page.goto("/maintenance");
-  const navigation = page.getByRole("navigation", { name: "Maintenance sections", exact: true });
-  await expect(navigation.getByRole("button")).toHaveCount(1);
-  await expect(navigation.getByRole("button", { name: "Users", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByText("@admin", { exact: true }).first()).toBeVisible();
+  await page.goto("/settings?tab=users");
+  await expect(page).toHaveURL(/\/settings$/);
+  await expect(page.getByRole("tab", { name: "Users", exact: true })).toHaveCount(0);
   expect(settingsRequests).toBe(0);
   await expect(page.getByRole("switch", { name: "Anonymous access", exact: true })).toHaveCount(0);
 });
@@ -630,15 +624,12 @@ test("maintenance combines library sources and exposes read-only paths with heal
     },
     (payload) => sourceUpdates.push(payload),
   );
-  await page.goto("/maintenance?tab=library");
+  await page.goto("/settings?tab=library");
 
   await expect(page.getByText("Local library", { exact: true })).toBeVisible();
   await expect(page.getByText("Remote sources", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sources", exact: true })).toHaveCount(0);
-  const maintenanceHeader = page.getByRole("heading", { name: "Maintenance", exact: true }).locator("..");
-  await expect(maintenanceHeader.getByText("Sources", { exact: true })).toHaveCount(0);
-  await expect(maintenanceHeader.getByText("Cache", { exact: true })).toHaveCount(0);
-  await expect(maintenanceHeader.getByText("Scan", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Cache & Fetch", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Check health", exact: true }).click();
   await expect.poll(() => healthChecks).toBe(1);
   await expect(page.getByText("healthy", { exact: true })).toBeVisible();
@@ -683,13 +674,13 @@ test("maintenance combines library sources and exposes read-only paths with heal
 
 test("remote source deep links open the requested source configuration", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
-  await page.goto("/maintenance?tab=library&source=8");
+  await page.goto("/settings?tab=library&source=8");
 
   const sourceDialog = page.getByRole("dialog", { name: "Edit remote source" });
   await expect(sourceDialog).toBeVisible();
   await expect(sourceDialog.getByLabel("Name")).toHaveValue("Example Remote");
   await sourceDialog.getByRole("button", { name: "Close", exact: true }).click();
-  await expect(page).toHaveURL(/\/maintenance\?tab=library$/);
+  await expect(page).toHaveURL(/\/settings\?tab=library$/);
 });
 
 test("routing drag order becomes the saved internal priority", async ({ page }) => {

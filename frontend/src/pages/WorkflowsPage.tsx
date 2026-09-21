@@ -694,9 +694,7 @@ export function WorkflowsPage({
                       <RunDetail
                         key={activityLocation.runId}
                         run={linkedRun}
-                        events={linkedRun ? activityRun.events : []}
                         candidates={linkedRun ? activityRun.candidates : []}
-                        nodeTypes={nodeTypes}
                         loading={!linkedRun && !activityRun.error}
                         onCandidateUpdate={refreshSelectedRunReview}
                         onRunAction={refreshSelectedRunReview}
@@ -2116,9 +2114,7 @@ function parseWorkflowRunGraph(value: string | undefined): WorkflowRunGraph | nu
 
 function RunDetail({
   run,
-  events,
   candidates,
-  nodeTypes,
   loading = false,
   onCandidateUpdate,
   onRunAction,
@@ -2126,52 +2122,20 @@ function RunDetail({
   canSyncMetadata,
 }: {
   run: WorkflowRunDetail | WorkflowRun | null;
-  events: WorkflowEvent[];
   candidates: WorkflowCandidate[];
-  nodeTypes: WorkflowNodeType[];
   loading?: boolean;
   onCandidateUpdate: () => Promise<void>;
   onRunAction: () => Promise<void>;
   readOnly: boolean;
   canSyncMetadata: boolean;
 }) {
-  const recentlyStartedNodeRuns = useRecentWorkflowNodeStarts(run?.id ?? null, run?.status ?? "", events);
   if (!run) {
     return loading ? <RunDetailSkeleton /> : <EmptyPanel text={workflowCopy("selectRunNodeDetail")} />;
   }
   const nodeRuns = "nodeRuns" in run ? run.nodeRuns : [];
-  const runGraph = "graphJson" in run ? parseWorkflowRunGraph(run.graphJson) : null;
-  const nodeRunByNodeID = new Map(nodeRuns.map((node) => [node.nodeId, node]));
-  const canvasNodes: WorkflowCanvasItem[] = runGraph
-    ? runGraph.nodes.map((node) => {
-        const nodeRun = nodeRunByNodeID.get(node.id);
-        return {
-          id: node.id,
-          title: node.displayName || nodeRun?.displayName || node.id,
-          subtitle: nodeSubtitle(node.type, nodeTypes),
-          status: nodeRun?.status ?? "queued",
-          detail: nodeRun?.errorMessage || summarizeJSON(nodeRun?.outputJson ?? "") || node.type,
-          position: node.position,
-          flowing: Boolean(nodeRun && recentlyStartedNodeRuns.has(nodeRun.id)),
-        };
-      })
-    : nodeRuns.map((node) => ({
-        id: String(node.id),
-        title: node.displayName || node.nodeId,
-        subtitle: nodeSubtitle(node.nodeType, nodeTypes),
-        status: node.status,
-        detail: node.errorMessage || summarizeJSON(node.outputJson) || node.nodeType,
-        flowing: recentlyStartedNodeRuns.has(node.id),
-      }));
-  const canvasConnections: WorkflowCanvasConnection[] | undefined = runGraph?.edges.map((edge) => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    dataType: edge.dataType,
-  }));
   return (
     <Card>
-      <CardContent className="space-y-5 p-5">
+      <CardContent className="space-y-4 p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -2202,34 +2166,10 @@ function RunDetail({
             )}
           </div>
         )}
-        {loading ? <RunOverviewSkeleton /> : <RunOverview run={run} nodeRuns={nodeRuns} />}
-        <section className="space-y-2">
-          <div className="text-sm font-semibold">{workflowCopy("execution")}</div>
-          {loading ? (
-            <RunNodePipelineSkeleton />
-          ) : nodeRuns.length > 0 ? (
-            <WorkflowNodeCanvas
-              compact
-              nodes={canvasNodes}
-              connections={canvasConnections}
-              onNodeClick={(nodeID) => {
-                const nodeRunID = runGraph ? nodeRunByNodeID.get(nodeID)?.id : Number(nodeID);
-                if (nodeRunID)
-                  document
-                    .getElementById(`workflow-node-${nodeRunID}`)
-                    ?.scrollIntoView({ behavior: "smooth", block: "start" });
-              }}
-            />
-          ) : (
-            <EmptyPanel text={workflowCopy("noNodeDetail")} />
-          )}
-        </section>
-        {loading ? (
-          <RunItemsSkeleton />
-        ) : (
+        {loading ? <CompactRunSummarySkeleton /> : <CompactRunSummary run={run} nodeRuns={nodeRuns} />}
+        {!loading && (
           <RunItems run={run} candidates={candidates} onCandidateUpdate={onCandidateUpdate} readOnly={readOnly} />
         )}
-        {loading ? <RunLogsSkeleton /> : <ActivityNodeSections run={run} nodes={nodeRuns} events={events} />}
       </CardContent>
     </Card>
   );
@@ -2238,7 +2178,7 @@ function RunDetail({
 function RunDetailSkeleton() {
   return (
     <Card>
-      <CardContent className="space-y-5 p-5">
+      <CardContent className="space-y-4 p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1 space-y-2">
             <div className="flex items-center gap-2">
@@ -2252,12 +2192,44 @@ function RunDetailSkeleton() {
             <SkeletonLine className="h-8 w-28" />
           </div>
         </div>
-        <RunOverviewSkeleton />
-        <RunNodePipelineSkeleton />
-        <RunItemsSkeleton />
-        <RunLogsSkeleton />
+        <CompactRunSummarySkeleton />
       </CardContent>
     </Card>
+  );
+}
+
+function CompactRunSummarySkeleton() {
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      {Array.from({ length: 4 }, (_, index) => (
+        <div key={index} className="rounded-md border p-3">
+          <SkeletonLine className="h-3 w-20" />
+          <SkeletonLine className="mt-2 h-4 w-32 max-w-full" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CompactRunSummary({ run, nodeRuns }: { run: WorkflowRunDetail | WorkflowRun; nodeRuns: WorkflowNodeRun[] }) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      <SummaryCell label={workflowCopy("started")} value={run.startedAt || workflowCopy("notRecorded")} />
+      <SummaryCell label={workflowCopy("finished")} value={run.finishedAt || workflowCopy("notFinished")} />
+      <SummaryCell
+        label={workflowCopy("trigger")}
+        value={`${run.triggerType}${run.triggerReason ? ` · ${run.triggerReason}` : ""}`}
+      />
+      <SummaryCell
+        label={workflowCopy("runSignals")}
+        value={`${pendingReviewCount(run)} ${workflowCopy("pendingReview")}, ${run.failedNodeRuns + run.failedJobs} ${workflowCopy("failedItems")}, ${run.skippedNodeRuns + run.skippedJobs} ${workflowCopy("skipped")}`}
+      />
+      {nodeRuns.some((node) => node.errorMessage) && (
+        <div className="sm:col-span-2">
+          <ErrorPanel error={nodeRuns.find((node) => node.errorMessage)?.errorMessage ?? ""} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -4974,7 +4946,7 @@ function localCleanupLocations(payload: Record<string, unknown>): LocalCleanupLo
 
 function openRemoteSourceConfiguration(sourceID: number) {
   const search = new URLSearchParams({ tab: "library", source: String(sourceID) });
-  window.history.pushState({}, "", `/maintenance?${search}`);
+  window.history.pushState({}, "", `/settings?${search}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
 }
 

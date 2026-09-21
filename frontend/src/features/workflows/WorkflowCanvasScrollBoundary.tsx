@@ -3,8 +3,10 @@ import { useTranslation } from "react-i18next";
 
 // Keep ordinary wheel events out of React Flow's native zoom listener without
 // cancelling their default action: the enclosing page or Activity panel scrolls.
-export const WorkflowCanvasScrollBoundary = forwardRef<HTMLDivElement, ComponentPropsWithoutRef<"div">>(
-  function WorkflowCanvasScrollBoundary({ children, className, ...props }, ref) {
+type WorkflowCanvasScrollBoundaryProps = ComponentPropsWithoutRef<"div"> & { requireModifier?: boolean };
+
+export const WorkflowCanvasScrollBoundary = forwardRef<HTMLDivElement, WorkflowCanvasScrollBoundaryProps>(
+  function WorkflowCanvasScrollBoundary({ children, className, requireModifier = true, ...props }, ref) {
     const { t } = useTranslation();
     const [showHint, setShowHint] = useState(false);
     const timer = useRef<ReturnType<typeof setTimeout>>();
@@ -19,7 +21,7 @@ export const WorkflowCanvasScrollBoundary = forwardRef<HTMLDivElement, Component
         className={`relative ${className ?? ""}`}
         onWheelCapture={(event) => {
           clearTimeout(timer.current);
-          if (event.ctrlKey || event.metaKey) {
+          if (!requireModifier || event.ctrlKey || event.metaKey) {
             setShowHint(false);
             return;
           }

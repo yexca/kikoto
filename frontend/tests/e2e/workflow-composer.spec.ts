@@ -603,11 +603,11 @@ test("@desktop creating from the built-in filter selects the new custom workflow
   await page.screenshot({ path: testInfo.outputPath("workflow-tabs-desktop.png") });
 });
 
-test("@desktop custom workflow preview and editor require a modifier for wheel zoom", async ({ page }) => {
+test("@desktop custom workflow preview requires a modifier while editor zooms directly", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 600 });
   await mockComposer(page, []);
   await page.goto("/workflows");
   await expectCooperativeCanvasScroll(page, page.getByLabel("Workflow DAG canvas"));
   await page.getByRole("button", { name: "Edit workflow", exact: true }).click();
-  await expectCooperativeCanvasScroll(page, page.getByLabel("Workflow composer canvas"), false);
+  await expectCooperativeCanvasScroll(page, page.getByLabel("Workflow composer canvas"), false, false);
 });

@@ -67,9 +67,6 @@ const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((module) => 
 const WorkManagementPage = lazy(() =>
   import("@/pages/WorkManagementPage").then((module) => ({ default: module.WorkManagementPage })),
 );
-const MaintenancePage = lazy(() =>
-  import("@/pages/MaintenancePage").then((module) => ({ default: module.MaintenancePage })),
-);
 const WorkflowsPage = lazy(() => import("@/pages/WorkflowsPage").then((module) => ({ default: module.WorkflowsPage })));
 const FavoritesPage = lazy(() => import("@/pages/FavoritesPage").then((module) => ({ default: module.FavoritesPage })));
 const CreatorWorksPage = lazy(() =>
@@ -470,17 +467,6 @@ function AuthenticatedApp() {
                     readOnly={auth.demoMode}
                   />
                 )}
-                {canAccessCurrentPage && page === "maintenance" && auth.user && (
-                  <MaintenancePage
-                    canManageSources={auth.demoMode || auth.hasPermission("sources:write")}
-                    canManageUsers={auth.demoMode || auth.hasPermission("users:manage")}
-                    currentUserId={auth.user.id}
-                    isSuperAdmin={auth.user.role === "super_admin"}
-                    canManageAccessPolicy={auth.user.role === "super_admin" && auth.runtimeMode !== "demo"}
-                    readOnly={auth.demoMode}
-                    onAccessPolicyUpdated={auth.refreshRuntime}
-                  />
-                )}
                 {canAccessCurrentPage && page === "workflows" && (
                   <WorkflowsPage
                     canRun={auth.demoMode || auth.hasPermission("workflows:run")}
@@ -497,7 +483,6 @@ function AuthenticatedApp() {
                   "circles",
                   "voice-actors",
                   "settings",
-                  "maintenance",
                   "metadata",
                   "workflows",
                   "about",
@@ -830,9 +815,6 @@ function pageFromPath(rawPath: string): AppPage {
   const path = rawPath.length > 1 ? rawPath.replace(/\/+$/, "") : rawPath;
   if (path === "/" || isWorkCodePath(path)) {
     return "library";
-  }
-  if (path === "/users") {
-    return "maintenance";
   }
   const item = navItems.find((navItem) => navItem.path === path);
   if (item) {

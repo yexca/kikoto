@@ -52,6 +52,7 @@ export function WorkflowCanvas({
   selectedNodeId,
   readonly = false,
   compact = false,
+  zoomRequiresModifier = true,
   viewportRightInset = 0,
   onChange,
   onSelectNode,
@@ -61,6 +62,7 @@ export function WorkflowCanvas({
   selectedNodeId: string;
   readonly?: boolean;
   compact?: boolean;
+  zoomRequiresModifier?: boolean;
   viewportRightInset?: number;
   onChange: (document: WorkflowDefinitionDocument) => void;
   onSelectNode: (nodeId: string) => void;
@@ -228,6 +230,7 @@ export function WorkflowCanvas({
 
   return (
     <WorkflowCanvasScrollBoundary
+      requireModifier={zoomRequiresModifier}
       className={`workflow-canvas workflow-composer-canvas overflow-hidden ${compact ? "h-64 min-h-64 rounded-md border" : "h-full min-h-0 lg:min-h-[32rem]"}`}
       aria-label={readonly ? t("workflowCanvas.dagCanvas") : t("workflowCanvas.composerCanvas")}
     >

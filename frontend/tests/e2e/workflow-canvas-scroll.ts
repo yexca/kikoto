@@ -1,6 +1,11 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
-export async function expectCooperativeCanvasScroll(page: Page, canvas: Locator, scrolls = true) {
+export async function expectCooperativeCanvasScroll(
+  page: Page,
+  canvas: Locator,
+  scrolls = true,
+  requiresModifier = true,
+) {
   await canvas.scrollIntoViewIfNeeded();
   const viewport = canvas.locator(".react-flow__viewport");
   await expect(viewport).toHaveAttribute("style", /transform:/);
@@ -18,9 +23,16 @@ export async function expectCooperativeCanvasScroll(page: Page, canvas: Locator,
   await moveToCanvas();
   const beforeScroll = await scrollPosition();
   await page.mouse.wheel(0, 80);
-  await expect(canvas.getByRole("status")).toContainText(/Hold (Ctrl|⌘) and scroll/);
-  if (scrolls) await expect.poll(scrollPosition).toBeGreaterThan(beforeScroll);
-  await expect(viewport).toHaveAttribute("style", transform!);
+  if (requiresModifier) {
+    await expect(canvas.getByRole("status")).toContainText(/Hold (Ctrl|⌘) and scroll/);
+    if (scrolls) await expect.poll(scrollPosition).toBeGreaterThan(beforeScroll);
+    await expect(viewport).toHaveAttribute("style", transform!);
+  } else {
+    await expect(viewport).not.toHaveAttribute("style", transform!);
+    expect(await scrollPosition()).toBe(beforeScroll);
+    await expect(canvas.getByRole("status")).toBeEmpty();
+    return;
+  }
 
   for (const modifier of ["Control", "Meta"]) {
     await canvas.scrollIntoViewIfNeeded();

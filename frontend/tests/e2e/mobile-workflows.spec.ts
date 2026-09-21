@@ -1065,27 +1065,17 @@ test("activity links metadata failures to a run-filtered Maintenance list", asyn
   await expect.poll(() => runFilters.includes("")).toBe(true);
 });
 
-test("activity presents overview, canvas, items, and node logs vertically", async ({ page }) => {
+test("activity presents a compact run summary without the execution canvas", async ({ page }) => {
   await mockWorkflows(page);
   await page.goto("/activity?view=completed&run=51");
 
   const activity = page.getByRole("dialog", { name: "Activity", exact: true });
-  await expect(activity.getByText("Summary", { exact: true })).toBeVisible();
-  await expect(activity.getByText("Execution", { exact: true })).toBeVisible();
-  const executionCanvas = activity.getByLabel("Workflow node canvas");
-  await expect(executionCanvas).toBeVisible();
-  await executionCanvas.scrollIntoViewIfNeeded();
-  await expect(executionCanvas.locator(".react-flow__edge")).toHaveCount(1);
-  await expect(executionCanvas.locator(".workflow-data-edge--active")).toHaveCount(1);
-  await expect(executionCanvas.locator(".react-flow__arrowhead")).toHaveCount(0);
-  await expect(executionCanvas.locator('.react-flow__node[data-id="tag"] .workflow-run-node--running')).toBeVisible();
-  await expect(executionCanvas.locator(".react-flow__edge-path")).toHaveCSS("stroke", "rgb(139, 92, 246)");
-  await expect(activity.getByText("Node logs", { exact: true })).toBeVisible();
-  await expect(activity.getByRole("button", { name: /Add user tag.*1 events.*running/i })).toHaveAttribute(
-    "aria-expanded",
-    "true",
-  );
-  await expect(activity.getByText("Tagging works", { exact: true })).toBeVisible();
+  await expect(activity.getByText("Started", { exact: true })).toBeVisible();
+  await expect(activity.getByText("Trigger", { exact: true })).toBeVisible();
+  await expect(activity.getByText("Run signals", { exact: true })).toBeVisible();
+  await expect(activity.getByLabel("Workflow node canvas")).toHaveCount(0);
+  await expect(activity.getByText("Node logs", { exact: true })).toHaveCount(0);
+  await expect(activity.getByText("Tagging works", { exact: true })).toHaveCount(0);
   await expect(activity.getByRole("button", { name: "Overview", exact: true })).toHaveCount(0);
   await expect(activity.getByRole("button", { name: "Steps", exact: true })).toHaveCount(0);
 });
@@ -1221,7 +1211,7 @@ test("@desktop blocked Fetch origins stay in Review with source recovery actions
   await page.getByRole("button", { name: "Retry Fetch", exact: true }).click();
   await expect.poll(() => retries).toBe(1);
   await page.getByRole("button", { name: "Configure source", exact: true }).click();
-  await expect(page).toHaveURL(/\/maintenance\?tab=library&source=8$/);
+  await expect(page).toHaveURL(/\/settings\?tab=library&source=8$/);
 });
 
 test("activity deep links load a run outside the visible list page", async ({ page }) => {

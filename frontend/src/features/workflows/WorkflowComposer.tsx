@@ -475,6 +475,7 @@ export function WorkflowComposer({
                 document={document}
                 nodeTypes={nodeTypes}
                 selectedNodeId={selectedNodeId}
+                zoomRequiresModifier={false}
                 viewportRightInset={wideLayout && inspectorVisible ? WORKFLOW_INSPECTOR_WIDTH : 0}
                 onChange={updateDocument}
                 onSelectNode={selectNode}

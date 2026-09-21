@@ -1,5 +1,16 @@
 import { UserPreferencePanels } from "@/features/preferences";
-import { FastForward, KeyRound, LoaderCircle, Rewind, Save, Sparkles, UserRound } from "lucide-react";
+import {
+  Download,
+  FastForward,
+  Folder,
+  KeyRound,
+  LoaderCircle,
+  Rewind,
+  Save,
+  Shield,
+  Sparkles,
+  UserRound,
+} from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
@@ -8,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, type CurrentUser } from "@/lib/api";
 import { validatePasswordChange, type PasswordChangeDraft } from "@/pages/accountSettings";
+import { MaintenancePage } from "@/pages/MaintenancePage";
 import {
   getStoredPlaybackSeekPreferences,
   normalizeSeekSeconds,
@@ -25,7 +37,7 @@ const emptyPasswordDraft: PasswordChangeDraft = {
   confirmPassword: "",
 };
 
-type SettingsTab = "account" | "playback" | "recommendation";
+type SettingsTab = "account" | "playback" | "recommendation" | "library" | "cache" | "users";
 
 export function SettingsPage({
   user,
@@ -52,6 +64,18 @@ export function SettingsPage({
     backward: String(seekPreferences.seekBackwardSeconds),
   }));
   const [seekError, setSeekError] = useState<string | null>(null);
+  const isAdmin = user.role === "admin" || user.role === "super_admin";
+  const canManageSources = isAdmin && (readOnly || user.permissions.includes("sources:write"));
+  const canManageUsers = isAdmin && (readOnly || user.permissions.includes("users:manage"));
+  const canManageAccessPolicy = user.role === "super_admin" && !readOnly;
+
+  useEffect(() => {
+    if (isAdmin || !["library", "cache", "users"].includes(activeTab)) return;
+    setActiveTab("account");
+    const url = new URL(window.location.href);
+    url.searchParams.delete("tab");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [activeTab, isAdmin]);
 
   useEffect(() => {
     setDisplayName(user.displayName || user.username);
@@ -218,6 +242,34 @@ export function SettingsPage({
         >
           {t("maintenance.tabs.recommendation")}
         </SettingsTabButton>
+        {isAdmin && (
+          <>
+            <SettingsTabButton
+              tab="library"
+              active={activeTab === "library"}
+              icon={<Folder className="h-4 w-4" />}
+              onClick={() => selectTab("library")}
+            >
+              {t("maintenance.tabs.library")}
+            </SettingsTabButton>
+            <SettingsTabButton
+              tab="cache"
+              active={activeTab === "cache"}
+              icon={<Download className="h-4 w-4" />}
+              onClick={() => selectTab("cache")}
+            >
+              {t("maintenance.tabs.cache")}
+            </SettingsTabButton>
+            <SettingsTabButton
+              tab="users"
+              active={activeTab === "users"}
+              icon={<Shield className="h-4 w-4" />}
+              onClick={() => selectTab("users")}
+            >
+              {t("maintenance.tabs.users")}
+            </SettingsTabButton>
+          </>
+        )}
       </div>
 
       {activeTab === "account" && (
@@ -439,6 +491,19 @@ export function SettingsPage({
           <UserPreferencePanels userId={user.id} section="recommendation" readOnly={readOnly} />
         </div>
       )}
+      {isAdmin && ["library", "cache", "users"].includes(activeTab) && (
+        <MaintenancePage
+          canManageSources={canManageSources}
+          canManageUsers={canManageUsers}
+          currentUserId={user.id}
+          isSuperAdmin={user.role === "super_admin"}
+          canManageAccessPolicy={canManageAccessPolicy}
+          readOnly={readOnly}
+          embedded
+          activeTab={activeTab as "library" | "cache" | "users"}
+          onAccessPolicyUpdated={onAccountUpdated}
+        />
+      )}
     </div>
   );
 }
@@ -476,7 +541,9 @@ function SettingsTabButton({
 
 function settingsTabFromLocation(): SettingsTab {
   const tab = new URLSearchParams(window.location.search).get("tab");
-  return tab === "recommendation" || tab === "playback" ? tab : "account";
+  return ["playback", "recommendation", "library", "cache", "users"].includes(tab ?? "")
+    ? (tab as SettingsTab)
+    : "account";
 }
 
 function passwordErrorKey(message: string) {

@@ -1,4 +1,4 @@
-import { Database, Heart, Info, Library, MicVocal, Settings, ShieldCheck, Users, Workflow } from "lucide-react";
+import { Database, Heart, Info, Library, MicVocal, Settings, Users, Workflow } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 type NavItem = {
@@ -92,17 +92,6 @@ export const navItems = [
     permission: undefined,
   },
   {
-    id: "maintenance",
-    label: "Maintenance",
-    labelKey: "nav.maintenance",
-    description: "Configure sources, caching, and users",
-    descriptionKey: "nav.maintenanceDescription",
-    path: "/maintenance",
-    icon: ShieldCheck,
-    audience: "admin",
-    permission: "sources:write",
-  },
-  {
     id: "about",
     label: "About",
     labelKey: "nav.about",
@@ -152,7 +141,6 @@ function canAccessNavigationItem(
   if (item.audience === "authenticated" && state === "anonymous") return false;
   if (item.audience === "admin" && state === "anonymous") return false;
   if (item.id === "metadata") return hasPermission("sources:write") || hasPermission("metadata:sync");
-  if (item.id === "maintenance") return hasPermission("sources:write") || hasPermission("users:manage");
   if (item.permission && !hasPermission(item.permission)) return false;
   return true;
 }

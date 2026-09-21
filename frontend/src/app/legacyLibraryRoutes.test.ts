@@ -32,12 +32,12 @@ describe("legacyLibraryRedirect", () => {
     expect(legacyLibraryRedirect("/library/remote", "?q=voice")).toBe("/?q=voice");
   });
 
-  it("routes removed Maintenance sections to their merged tabs", () => {
+  it("routes removed Maintenance sections to their Settings tabs", () => {
     for (const tab of ["overview", "paths", "system", "local", "remote"]) {
-      expect(legacyLibraryRedirect("/maintenance", `?tab=${tab}&source=8`)).toBe("/maintenance?tab=library&source=8");
+      expect(legacyLibraryRedirect("/maintenance", `?tab=${tab}&source=8`)).toBe("/settings?tab=library&source=8");
     }
-    expect(legacyLibraryRedirect("/maintenance/", "?tab=security")).toBe("/maintenance?tab=users");
-    expect(legacyLibraryRedirect("/maintenance", "?tab=users")).toBeNull();
+    expect(legacyLibraryRedirect("/maintenance/", "?tab=security")).toBe("/settings?tab=users");
+    expect(legacyLibraryRedirect("/maintenance", "?tab=users")).toBe("/settings?tab=users");
     expect(legacyLibraryRedirect("/maintenance", "?tab=routing")).toBe("/settings?tab=playback");
     expect(legacyLibraryRedirect("/maintenance", "?tab=recommendation")).toBe("/settings?tab=recommendation");
     expect(legacyLibraryRedirect("/settings", "?tab=appearance")).toBe("/settings");
@@ -45,7 +45,7 @@ describe("legacyLibraryRedirect", () => {
 
   it("leaves current routes unchanged", () => {
     expect(legacyLibraryRedirect("/library/source/example_remote")).toBeNull();
-    expect(legacyLibraryRedirect("/maintenance", "?tab=library")).toBeNull();
+    expect(legacyLibraryRedirect("/maintenance", "?tab=library")).toBe("/settings?tab=library");
   });
 
   it("preserves metadata run filters and maps legacy settings links", () => {
