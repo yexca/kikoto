@@ -79,12 +79,10 @@ Service management also offers explicit recreation, container removal, and the
 local image version. Removing containers keeps host-mounted files.
 
 Folder management requires Docker Compose 2.24.4 or newer. Single-folder mode
-mounts the selected directory at `/data`. Multiple-folder mode replaces the
-default data mount with only the selected directories mounted below `/data`;
-it creates no persistent volume. Files written outside those selected mounts,
-including Fetch staging or output under an unmounted `/data` path, are lost
-when the container is removed or recreated. Keep durable Fetch destinations and
-transaction state on the same persistent filesystem when using Fetch.
+mounts the selected directory at `/data`. Multiple-folder mode keeps the host
+`data/` mount at `/data` for downloads and mounts only the selected directories
+below it; it creates no persistent volume. The “Other → Multiple-folder repair”
+action restores that host mount for deployments created by older helper versions.
 
 ### 1. Prepare the deployment directory
 

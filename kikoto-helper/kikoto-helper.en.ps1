@@ -1,4 +1,4 @@
-﻿param([ValidateSet('en','zh')][string]$Language = 'en')
+﻿param([ValidateSet('en','zh')][string]$Language = 'en', [string]$LauncherVersion = 'v0.1.1')
 $ErrorActionPreference = 'Stop'
 # Windows PowerShell's progress repaint can corrupt wide-character console output.
 $ProgressPreference = 'SilentlyContinue'
@@ -11,6 +11,8 @@ Set-Location $Root
 $Repo = 'yexca/kikoto'
 $Version = 'v0.6.0'
 $Raw = ('https://' + 'raw.githubusercontent.com/' + $Repo + '/' + $Version)
+$HelperVersion = $LauncherVersion
+$HelperRaw = ('https://' + 'raw.githubusercontent.com/' + $Repo + '/main/kikoto-helper')
 $script:Lang = $Language
 
 function T([string]$en, [string]$zh) { if ($script:Lang -eq 'zh') { return $zh }; return $en }
@@ -209,8 +211,20 @@ function Change-AdminPassword {
   }
   Pause-Helper
 }
+function Resolve-FolderPath([string]$path) {
+  if ([string]::IsNullOrWhiteSpace($path)) { return $null }
+  try {
+    $candidate = if ([IO.Path]::IsPathRooted($path)) { $path } else { Join-Path $Root $path }
+    return [IO.Path]::GetFullPath($candidate)
+  } catch { return $path }
+}
+function Is-DefaultDataFolder([string]$path) {
+  $resolved = Resolve-FolderPath $path
+  $default = Resolve-FolderPath (Join-Path $Root 'data')
+  return $null -ne $resolved -and [StringComparer]::OrdinalIgnoreCase.Equals($resolved, $default)
+}
 function Get-FolderState {
-  $default = [IO.Path]::GetFullPath((Join-Path $Root 'data'))
+  $default = Resolve-FolderPath (Join-Path $Root 'data')
   $override = Join-Path $Root 'docker-compose.override.yml'
   if (-not (Test-Path -LiteralPath $override)) { return [pscustomobject]@{ mode = 'single'; folders = @($default) } }
   $raw = Get-Content -LiteralPath $override -Raw
@@ -219,13 +233,13 @@ function Get-FolderState {
     if ($doc.'x-kikoto-helper-mode' -notin @('single','multi')) { throw 'unmanaged' }
     $mounts = @($doc.services.kikoto.volumes)
     $folders = if ($doc.'x-kikoto-helper-mode' -eq 'single') {
-      @($mounts | Where-Object target -eq '/data' | ForEach-Object source)
-    } else { @($mounts | Where-Object { $_.target -like '/data/external-*' } | ForEach-Object source) }
+      @($mounts | Where-Object target -eq '/data' | ForEach-Object { Resolve-FolderPath ([string]$_.source) })
+    } else { @($mounts | Where-Object { $_.target -like '/data/external-*' } | ForEach-Object { Resolve-FolderPath ([string]$_.source) }) }
     return [pscustomobject]@{ mode = $doc.'x-kikoto-helper-mode'; folders = @($folders) }
   } catch {
     $folders = @()
     foreach ($line in $raw -split '\r?\n') {
-      if ($line -match "^\s+- '(.+):/data/external-\d+'\s*$") { $folders += [IO.Path]::GetFullPath($Matches[1].Replace('/','\')) }
+      if ($line -match "^\s+- '(.+):/data/external-[^']+'\s*$") { $folders += Resolve-FolderPath ($Matches[1].Replace('/','\')) }
       elseif ($line.Trim() -notin @('', 'services:', 'kikoto:', 'volumes:')) {
         throw (T 'Custom Compose override detected; review it before using folder management.' '检测到自定义 Compose 覆盖配置，请检查后再使用文件夹管理。')
       }
@@ -234,9 +248,12 @@ function Get-FolderState {
   }
 }
 function Save-FolderState($state) {
-  $folders = @($state.folders | Select-Object -Unique)
+  $folders = @($state.folders |
+    ForEach-Object { Resolve-FolderPath ([string]$_) } |
+    Where-Object { $_ -and ($state.mode -ne 'multi' -or -not (Is-DefaultDataFolder $_)) } |
+    Select-Object -Unique)
   if ($state.mode -eq 'single' -and $folders.Count -ne 1) { throw 'Single mode requires one folder.' }
-  # Replace the base Compose mount list so ./data:/data cannot survive a merge.
+  # Replace the base Compose mount list so stale mappings cannot survive a merge.
   # !override requires Docker Compose 2.24.4 or newer.
   $mounts = @(
     @{ type = 'bind'; source = './config'; target = '/config' },
@@ -244,6 +261,9 @@ function Save-FolderState($state) {
   )
   if ($state.mode -eq 'single') {
     $mounts += @{ type = 'bind'; source = $folders[0]; target = '/data'; bind = @{ create_host_path = $false } }
+  }
+  if ($state.mode -eq 'multi') {
+    $mounts += @{ type = 'bind'; source = './data'; target = '/data'; bind = @{ create_host_path = $false } }
   }
   if ($state.mode -eq 'multi') {
     foreach ($folder in $folders) {
@@ -268,6 +288,10 @@ function Pick-Folders([bool]$multiple) {
     if (-not $picked) { break }
     if (-not (Test-Path -LiteralPath $picked -PathType Container)) { continue }
     $full = [IO.Path]::GetFullPath($picked)
+    if ($multiple -and (Is-DefaultDataFolder $full)) {
+      Write-Host (T 'The deployment data folder is already used for downloads and cannot be added as an external folder.' '部署目录下的 data 文件夹已用于下载保存，不能重复添加为外部文件夹。') -ForegroundColor Yellow
+      continue
+    }
     if ($paths -notcontains $full) { $paths += $full }
   } while ($multiple -and (Confirm 'Add another folder?' '继续添加其他文件夹？'))
   return $paths
@@ -278,11 +302,11 @@ function Update-Compose-Mappings {
     Write-Section (T 'Audio folders' '音声文件夹')
     Show-FolderList $state
     if ($state.mode -eq 'single') {
-      Write-Host (T '1. Change mode (current: single folder)' '1. 更改模式（当前单文件夹模式）')
+      Write-Host (T '1. Change to multiple-folder mode' '1. 更改为多文件夹模式')
       Write-Host (T '2. Change folder' '2. 更改文件夹')
     } else {
 
-      Write-Host (T '1. Change mode (current: multiple folders)' '1. 更改模式（当前多文件夹模式）')
+      Write-Host (T '1. Change to single-folder mode' '1. 更改为单文件夹模式')
       Write-Host (T '2. Add' '2. 增加')
       Write-Host (T '3. Delete mapping (keeps files)' '3. 删除映射（保留文件）')
     }
@@ -314,6 +338,75 @@ function Update-Compose-Mappings {
     } else { continue }
     Save-FolderState $state
     Write-Host (T 'Saved. Use Service > Start to apply the mappings.' '已保存。请通过“服务管理 > 启动”应用映射。') -ForegroundColor Green
+  }
+}
+function Get-HelperVersionNumber([string]$value) {
+  $clean = ([string]$value).Trim() -replace '^[vV]', ''
+  try { return [version]$clean } catch { return [version]'0.0.0' }
+}
+function Get-RemoteHelperVersion {
+  try {
+    $response = Invoke-WebRequest -Uri "$HelperRaw/kikoto-helper.cmd" -UseBasicParsing -TimeoutSec 15
+    $match = [regex]::Match([string]$response.Content, '(?im)^set "HELPER_VERSION=(v\d+\.\d+\.\d+)"\s*$' )
+    if (-not $match.Success) { return $null }
+    return $match.Groups[1].Value
+  } catch { return $null }
+}
+function Update-HelperScript {
+  Write-Section (T 'Helper script update' '助手脚本升级')
+  Write-Host (T "Current helper version: $HelperVersion" "当前助手版本：$HelperVersion")
+  $remote = Get-RemoteHelperVersion
+  if ($null -eq $remote) { Write-Host (T 'Unable to check for helper updates.' '无法检查助手脚本更新。') -ForegroundColor Yellow; Pause-Helper; return }
+  if ((Get-HelperVersionNumber $remote) -le (Get-HelperVersionNumber $HelperVersion)) { Write-Host (T 'The helper script is up to date.' '助手脚本已是最新版本。') -ForegroundColor Green; Pause-Helper; return }
+  Write-Host (T "New helper version available: $remote" "发现新的助手版本：$remote") -ForegroundColor Yellow
+  if (-not (Confirm 'Download and install it now?' '现在下载并安装吗？')) { return }
+  $name = if ($Language -eq 'zh') { 'kikoto-helper.zh-Hans.ps1' } else { 'kikoto-helper.en.ps1' }
+  $target = Join-Path $Root $name
+  $entry = Join-Path $Root 'kikoto-helper.cmd'
+  $temporary = "$entry.upgrade"
+  $scriptBackup = "$target.upgrade-backup"
+  try {
+    Invoke-WebRequest -Uri "$HelperRaw/kikoto-helper.cmd" -OutFile $temporary -UseBasicParsing -TimeoutSec 30
+    if ((Get-Item -LiteralPath $temporary).Length -lt 100) { throw 'download too small' }
+    $entryText = Get-Content -LiteralPath $temporary -Raw
+    if ($entryText -notmatch ('(?im)^set "HELPER_VERSION=' + [regex]::Escape($remote) + '"\s*$')) { throw 'downloaded version mismatch' }
+    if (Test-Path -LiteralPath $target) { Copy-Item -LiteralPath $target -Destination $scriptBackup -Force }
+    Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
+    Move-Item -LiteralPath $temporary -Destination $entry -Force
+    Remove-Item -LiteralPath $scriptBackup -Force -ErrorAction SilentlyContinue
+    Write-Host (T 'Updated. The language script was removed; exit and run the new helper command file again.' '升级完成。语言脚本已删除，请退出后重新运行新的助手 cmd 文件。') -ForegroundColor Green
+  } catch {
+    Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $scriptBackup) { Move-Item -LiteralPath $scriptBackup -Destination $target -Force }
+    Write-Host (T 'Update failed; the current helper was kept.' '升级失败，当前助手文件已保留。') -ForegroundColor Red
+  }
+  Pause-Helper
+}
+function Repair-MultipleFolders {
+  $state = Get-FolderState
+  if ($state.mode -ne 'multi') {
+    Write-Host (T 'The current mode is single-folder; no repair is needed.' '当前是单文件夹模式，无需修复。')
+    return
+  }
+  Write-Host (T 'Before recreating containers, copy any downloads stored only inside the old container to the host. Adding the mount will hide the old /data contents.' '重建前，请先将旧容器内尚未保存到主机的下载文件复制出来。新增挂载会遮住旧 /data 内容。') -ForegroundColor Yellow
+  if (-not (Confirm 'Back up the Compose override and restore the host data mount? Containers will not be recreated automatically.' '备份 Compose 覆盖配置并恢复主机 data 映射？不会自动重建容器。')) { return }
+  $path = Join-Path $Root 'docker-compose.override.yml'
+  $backup = "$path.repair-" + [guid]::NewGuid().ToString('N') + '.bak'
+  if (Test-Path -LiteralPath $path) { Copy-Item -LiteralPath $path -Destination $backup }
+  New-Item -ItemType Directory -Force -Path (Join-Path $Root 'data') | Out-Null
+  Save-FolderState $state
+  Write-Host (T 'Mapping repaired. After rescuing any container-only files, use Service > Recreate to apply it.' '映射已修复。确认已取出仅存于旧容器的文件后，通过“服务管理 > 重建服务”应用。') -ForegroundColor Green
+}
+function Other-Menu {
+  while ($true) {
+    Write-Section (T 'Other' '其他')
+    Write-Host (T '1. Repair multiple-folder mapping  2. Update helper script  0. Back' '1. 多文件夹修复  2. 助手脚本升级  0. 返回')
+    $choice = Ask (T 'Choose' '请选择')
+    if ($choice -eq '1') {
+      Repair-MultipleFolders
+      Pause-Helper
+    } elseif ($choice -eq '2') { Update-HelperScript }
+    elseif ($choice -eq '0' -or -not $choice) { return }
   }
 }
 function Get-ServiceVersionText {
@@ -376,7 +469,7 @@ function Service-Menu {
 function Main-Menu {
   while ($true) {
     Write-Section (T 'Kikoto Helper' 'Kikoto 助手')
-    Write-Host (T '1. Change administrator password  2. Audio folders  3. Service  4. Backup  0. Exit' '1. 修改管理员密码  2. 音声文件夹  3. 服务管理  4. 备份  0. 退出')
+    Write-Host (T '1. Change administrator password  2. Audio folders  3. Service  4. Backup  5. Other  0. Exit' '1. 修改管理员密码  2. 音声文件夹  3. 服务管理  4. 备份  5. 其他  0. 退出')
     $c = Ask (T 'Choose' '请选择')
     if ($c -eq '1') { Change-AdminPassword }
     elseif ($c -eq '2') { Update-Compose-Mappings }
@@ -385,6 +478,8 @@ function Main-Menu {
       $dest = Join-Path $Root ("backup-" + (Get-Date -Format 'yyyyMMdd-HHmmss')); New-Item -ItemType Directory -Force $dest | Out-Null
       foreach ($n in @('.env','docker-compose.yml','docker-compose.override.yml')) { if (Test-Path $n) { Copy-Item $n $dest -Force } }
       Write-Host (T "Configuration backup saved to $dest" "配置备份已保存到 $dest") -ForegroundColor Green; Pause-Helper
+    }
+    elseif ($c -eq '5') { Other-Menu
     }
     elseif ($c -eq '0') { return }
   }

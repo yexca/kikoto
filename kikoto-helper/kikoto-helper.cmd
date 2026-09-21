@@ -1,5 +1,6 @@
 @echo off
 setlocal
+set "HELPER_VERSION=v0.1.1"
 chcp 65001 >nul
 cd /d "%~dp0"
 echo 1. English (will download if missing)
@@ -24,6 +25,6 @@ if errorlevel 1 (
   exit /b 1
 )
 :run
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%FILE%" -Language %LANG%
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%FILE%" -Language %LANG% -LauncherVersion %HELPER_VERSION%
 if errorlevel 1 pause
 endlocal

@@ -46,6 +46,11 @@ foreach ($language in @('en', 'zh-Hans', 'core')) {
   Assert ((Get-ServiceVersionText).Contains('check Compose')) 'Invalid configuration should be reported'
   Assert (-not (($script:versionCalls -join ' ') -match '\b(pull|up|run)\b')) 'Version lookup must be read-only'
   function Show-ServiceVersion {}
+  function Invoke-WebRequest {
+    param([string]$Uri)
+    return [pscustomobject]@{ Content = "@echo off`r`nset `"HELPER_VERSION=v0.2.0`"" }
+  }
+  Assert ((Get-RemoteHelperVersion) -eq 'v0.2.0') 'Helper version must be read from the remote cmd file'
   $script:downloads = @()
   function Download-File($name, $target) {
     $script:downloads += $name
@@ -161,12 +166,42 @@ foreach ($language in @('en', 'zh-Hans', 'core')) {
     Assert (@($mounts | Where-Object { $_.target -in @('/config','/cache') }).Count -eq 2) 'Config and cache mounts must survive'
     Assert ($config.services.kikoto.ports[0].published -eq '7655') 'Port mapping must survive'
     if ($scenario.mode -eq 'multi') {
-      Assert (@($mounts | Where-Object target -eq '/data').Count -eq 0) 'Multi mode must remove the inherited /data mount'
+      Assert (@($mounts | Where-Object target -eq '/data').Count -eq 1) 'Multi mode must keep the host data mount for downloads'
       Assert (@($mounts | Where-Object { $_.target -like '/data/external-*' }).Count -eq $scenario.folders.Count) 'Multi mode must mount only selected folders'
+      Assert (@($mounts | Where-Object { $_.source -eq (Join-Path $Root 'data') -or $_.source -eq (Join-Path $Root 'data').Replace('\','/') }).Count -eq 1) 'Multi mode must map the deployment data folder'
     } else {
       Assert (@($mounts | Where-Object target -eq '/data').Count -eq 1) 'Single mode needs one /data mount'
       Assert (@($mounts | Where-Object { $_.target -like '/data/*' }).Count -eq 0) 'Single mode must remove prior subfolder mounts'
     }
   }
+
+  # Regression: old multi-folder overrides could record the deployment data folder
+  # both as /data and as an external folder. Repair must keep only the root mount.
+  $defaultData = [IO.Path]::GetFullPath((Join-Path $Root 'data'))
+  New-Item -ItemType Directory -Force -Path $defaultData | Out-Null
+  $legacyMounts = @(
+    [ordered]@{ type='bind'; source='./config'; target='/config' },
+    [ordered]@{ type='bind'; source='./cache'; target='/cache' },
+    [ordered]@{ type='bind'; source='./data'; target='/data' },
+    [ordered]@{ type='bind'; source=$defaultData; target='/data/external-legacy' },
+    [ordered]@{ type='bind'; source=$libraryA; target='/data/external-library' }
+  )
+  $legacyDoc = [ordered]@{
+    'x-kikoto-helper-mode' = 'multi'
+    services = [ordered]@{ kikoto = [ordered]@{ volumes = $legacyMounts } }
+  }
+  $overridePath = Join-Path $Root 'docker-compose.override.yml'
+  $legacyDoc | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $overridePath -Encoding UTF8
+  $script:approved = $true
+  function Confirm { return $script:approved }
+  Repair-MultipleFolders
+  $repaired = Get-FolderState
+  Assert (@($repaired.folders).Count -eq 1 -and $repaired.folders[0] -eq $libraryA) 'Repair must remove the deployment data folder from external mappings'
+  $repairBackups = @(Get-ChildItem -Path (Join-Path $Root 'docker-compose.override.yml.repair-*.bak') -ErrorAction SilentlyContinue)
+  Assert ($repairBackups.Count -eq 1) 'Repair must create a Compose override backup'
+  $repairedDoc = ((Get-Content -LiteralPath $overridePath -Raw) -replace '("volumes"\s*:\s*)!override\s+', '$1') | ConvertFrom-Json
+  $repairedMounts = @($repairedDoc.services.kikoto.volumes)
+  Assert (@($repairedMounts | Where-Object target -eq '/data').Count -eq 1) 'Repaired multi mode must keep one host data mount'
+  Assert (@($repairedMounts | Where-Object { $_.target -like '/data/external-*' -and [IO.Path]::GetFullPath($_.source) -eq $defaultData }).Count -eq 0) 'Repaired multi mode must not remount host data as external'
   Write-Host "$language helper checks passed"
 }
