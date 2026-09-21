@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { NativeSelect } from "@/components/ui/input";
 import { formatNumber } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, assetURL, type Work, type MaintenanceWorkPage } from "@/lib/api";
@@ -461,10 +463,10 @@ export function WorkMaintenance({
         <div className="min-h-64">
           {loadError && hasLoaded && (
             <div
-              className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-destructive/30 bg-destructive/5 px-4 py-2"
+              className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-error-border bg-error-surface px-4 py-2"
               role="alert"
             >
-              <span className="text-sm text-destructive">
+              <span className="text-sm text-error-foreground">
                 {loadError} {t("unlinked.existingResultsShown")}
               </span>
               <Button size="sm" variant="outline" onClick={() => setRefreshKey((current) => current + 1)}>
@@ -643,20 +645,21 @@ export function WorkMaintenance({
         <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
           <label className="flex items-center gap-2 text-muted-foreground">
             {t("workMaintenance.rows")}
-            <select
+            <NativeSelect
+              fieldSize="sm"
               value={pageSize}
               onChange={(event) => {
                 setPageSize(Number(event.target.value) as (typeof PAGE_SIZES)[number]);
                 setPage(1);
               }}
-              className="h-9 rounded-md border bg-background px-2 text-foreground outline-none focus:ring-2 focus:ring-ring"
+              className="px-2"
             >
               {PAGE_SIZES.map((size) => (
                 <option key={size} value={size}>
                   {size}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground">
@@ -713,27 +716,10 @@ function UnlinkedWorkDeleteDialog({
 }) {
   const { t } = useTranslation();
   return (
-    <div
-      className="fixed inset-0 z-[70] grid place-items-center bg-black/45 p-4"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.currentTarget === event.target && !deleting) onClose();
-      }}
-    >
-      <div
-        className="w-full max-w-lg rounded-lg border bg-card p-5 shadow-xl"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="delete-unlinked-title"
-        aria-describedby="delete-unlinked-description"
-      >
-        <h3 id="delete-unlinked-title" className="text-base font-semibold">
-          {t("unlinked.confirmTitle")}
-        </h3>
-        <p id="delete-unlinked-description" className="mt-2 text-sm text-muted-foreground">
-          {t("unlinked.confirmDescription")}
-        </p>
-        <div className="mt-4 max-h-40 overflow-y-auto rounded-md border bg-muted/25 px-3 py-2 text-xs">
+    <Dialog onClose={onClose} layer="sheet" size="lg" role="alertdialog" dismissible={!deleting}>
+      <DialogHeader title={t("unlinked.confirmTitle")} description={t("unlinked.confirmDescription")} />
+      <DialogBody>
+        <div className="max-h-40 overflow-y-auto rounded-md border bg-muted/25 px-3 py-2 text-xs">
           {pending.labels.slice(0, 12).map((label) => (
             <div key={label} className="truncate py-1" title={label}>
               {label}
@@ -743,17 +729,17 @@ function UnlinkedWorkDeleteDialog({
             <div className="py-1 text-muted-foreground">+{pending.labels.length - 12} more</div>
           )}
         </div>
-        <div className="mt-5 flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={deleting}>
-            {t("common.cancel")}
-          </Button>
-          <Button variant="destructive" onClick={onConfirm} disabled={deleting}>
-            <Trash2 className="h-4 w-4" />
-            {deleting ? t("unlinked.deleting") : t("unlinked.deleteCount", { count: pending.workIds.length })}
-          </Button>
-        </div>
-      </div>
-    </div>
+      </DialogBody>
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose} disabled={deleting}>
+          {t("common.cancel")}
+        </Button>
+        <Button variant="destructive" onClick={onConfirm} disabled={deleting}>
+          <Trash2 className="h-4 w-4" />
+          {deleting ? t("unlinked.deleting") : t("unlinked.deleteCount", { count: pending.workIds.length })}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }
 

@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
+import { Input, NativeSelect } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { serverFormFromURL, serverURLFromForm, type ServerProtocol } from "./serverConnectionForm";
 import {
@@ -121,8 +122,9 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
           <div className="grid grid-cols-2 gap-3">
             <label className="col-span-2 grid min-w-0 gap-1.5 text-sm font-medium">
               {t("serverGate.serverAddress")}
-              <input
-                className="h-11 min-w-0 w-full rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              <Input
+                fieldSize="lg"
+                className="w-full min-w-0"
                 value={address}
                 onChange={(event) => setAddress(event.target.value)}
                 placeholder="192.0.2.1"
@@ -134,8 +136,9 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
             </label>
             <label className="grid min-w-0 gap-1.5 text-sm font-medium">
               {t("serverGate.protocol")}
-              <select
-                className="h-11 min-w-0 w-full rounded-md border bg-card px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              <NativeSelect
+                fieldSize="lg"
+                className="w-full min-w-0 px-2"
                 value={protocol}
                 onChange={(event) => setProtocol(event.target.value as ServerProtocol)}
                 disabled={isConnecting}
@@ -145,12 +148,13 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
                     {value}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
             <label className="grid min-w-0 gap-1.5 text-sm font-medium">
               {t("serverGate.port")}
-              <input
-                className="h-11 min-w-0 w-full rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              <Input
+                fieldSize="lg"
+                className="w-full min-w-0"
                 value={port}
                 onChange={(event) => setPort(event.target.value)}
                 placeholder="7655"
@@ -161,7 +165,7 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
             </label>
           </div>
           {error && (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <div className="rounded-md border border-error-border bg-error-surface px-3 py-2 text-sm text-error-foreground">
               {error}
             </div>
           )}

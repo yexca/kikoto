@@ -19,7 +19,6 @@ import {
   Shield,
   Sparkles,
   Trash2,
-  X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -30,6 +29,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Input, NativeSelect, Textarea } from "@/components/ui/input";
 
 import { UsersPage } from "@/pages/UsersPage";
 import {
@@ -661,8 +662,8 @@ function LocalLibrarySettings({
           <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
             <label className="grid gap-1 text-sm">
               <span className="font-medium">{maintenanceCopy("library.scanDepth")}</span>
-              <input
-                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
+              <Input
+                fieldSize="sm"
                 type="number"
                 min={1}
                 max={8}
@@ -775,7 +776,7 @@ function RemoteSourcesSettings({
                   <div className="flex min-w-0 items-center gap-1.5">
                     <Badge
                       variant={source.enabled ? "outline" : "warning"}
-                      className={`max-w-28 truncate ${unhealthy ? "border-destructive/30 bg-destructive/10 text-destructive" : ""}`}
+                      className={`max-w-28 truncate ${unhealthy ? "border-error-border bg-error-surface text-error-foreground" : ""}`}
                       title={health}
                     >
                       {health}
@@ -796,7 +797,7 @@ function RemoteSourcesSettings({
 
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
                   <div className="min-w-0">
-                    <div className="text-[11px] font-medium text-muted-foreground">
+                    <div className="text-2xs font-medium text-muted-foreground">
                       {maintenanceCopy("library.endpoint")}
                     </div>
                     <div className="truncate text-xs" title={endpoint}>
@@ -804,7 +805,7 @@ function RemoteSourcesSettings({
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-[11px] font-medium text-muted-foreground">
+                    <div className="text-2xs font-medium text-muted-foreground">
                       {maintenanceCopy("library.priority")}
                     </div>
                     <div className="text-xs font-semibold">{source.priority}</div>
@@ -929,15 +930,6 @@ function CacheFetchSettings({
   useEffect(() => {
     void scanCache();
   }, []);
-
-  useEffect(() => {
-    if (!confirmEnableCache) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setConfirmEnableCache(false);
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [confirmEnableCache]);
 
   const handleCacheEnabledChange = (enabled: boolean) => {
     if (enabled && !cacheEnabled) {
@@ -1438,42 +1430,26 @@ function CacheFetchSettings({
         </CardContent>
       </Card>
       {confirmEnableCache && (
-        <div
-          className="fixed inset-0 z-[70] grid place-items-center bg-black/45 p-4"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.currentTarget === event.target) setConfirmEnableCache(false);
-          }}
-        >
-          <div
-            className="w-full max-w-lg rounded-lg border bg-card p-5 shadow-xl"
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="enable-cache-title"
-            aria-describedby="enable-cache-description"
-          >
-            <h3 id="enable-cache-title" className="text-base font-semibold">
-              {maintenanceCopy("cache.enableTitle")}
-            </h3>
-            <p id="enable-cache-description" className="mt-2 text-sm text-muted-foreground">
-              {maintenanceCopy("cache.enableDescription")}
-            </p>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setConfirmEnableCache(false)}>
-                {maintenanceCopy("cancel")}
-              </Button>
-              <Button
-                onClick={() => {
-                  setConfirmEnableCache(false);
-                  onCacheEnabledChange(true);
-                }}
-              >
-                <Download className="h-4 w-4" />
-                {maintenanceCopy("cache.enable")}
-              </Button>
-            </div>
-          </div>
-        </div>
+        <Dialog onClose={() => setConfirmEnableCache(false)} layer="sheet" size="lg" role="alertdialog">
+          <DialogHeader
+            title={maintenanceCopy("cache.enableTitle")}
+            description={maintenanceCopy("cache.enableDescription")}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmEnableCache(false)}>
+              {maintenanceCopy("cancel")}
+            </Button>
+            <Button
+              onClick={() => {
+                setConfirmEnableCache(false);
+                onCacheEnabledChange(true);
+              }}
+            >
+              <Download className="h-4 w-4" />
+              {maintenanceCopy("cache.enable")}
+            </Button>
+          </DialogFooter>
+        </Dialog>
       )}
     </div>
   );
@@ -1685,167 +1661,143 @@ function SourceModal({
   const legacyNumber178 = source.sourceType === LEGACY_NUMBER178_SOURCE_TYPE;
   const configuredOrigins = configuredSourceOrigins(source.endpoint);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-
   return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm"
-      role="dialog"
-      aria-label={editing ? maintenanceCopy("library.editRemoteSource") : maintenanceCopy("library.addRemoteSource")}
-      aria-modal="true"
-      onMouseDown={onClose}
-    >
-      <Card
-        className="app-scroll max-h-[90vh] w-full max-w-2xl overflow-auto"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between gap-3">
-            <span>
-              {editing ? maintenanceCopy("library.editRemoteSource") : maintenanceCopy("library.addRemoteSource")}
-            </span>
-            <Button variant="outline" size="icon" onClick={onClose} aria-label={maintenanceCopy("close")}>
-              <X className="h-4 w-4" />
-            </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <TextInput
-            label={maintenanceCopy("library.name")}
-            value={source.displayName}
-            onChange={(value) => patch({ displayName: value })}
-          />
+    <Dialog onClose={onClose} size="xl">
+      <DialogHeader
+        title={editing ? maintenanceCopy("library.editRemoteSource") : maintenanceCopy("library.addRemoteSource")}
+        onClose={onClose}
+        closeLabel={maintenanceCopy("close")}
+      />
+      <DialogBody className="space-y-3">
+        <TextInput
+          label={maintenanceCopy("library.name")}
+          value={source.displayName}
+          onChange={(value) => patch({ displayName: value })}
+        />
+        <label className="grid gap-1 text-sm">
+          <span className="font-medium">{maintenanceCopy("library.sourceType")}</span>
+          <NativeSelect
+            fieldSize="sm"
+            value={source.sourceType}
+            disabled={legacyNumber178}
+            onChange={(event) => patch({ sourceType: event.target.value })}
+          >
+            <option value="kikoeru_compatible">kikoeru_compatible</option>
+            {legacyNumber178 && <option value={LEGACY_NUMBER178_SOURCE_TYPE}>{LEGACY_NUMBER178_SOURCE_TYPE}</option>}
+          </NativeSelect>
+          {legacyNumber178 && (
+            <span className="text-xs text-muted-foreground">{maintenanceCopy("library.legacyAdapter")}</span>
+          )}
+        </label>
+        <TextInput
+          label={maintenanceCopy("library.publicSiteUrl")}
+          value={source.endpoint.baseUrl}
+          onChange={(value) => patch({ endpoint: { ...source.endpoint, baseUrl: value } })}
+        />
+        <TextInput
+          label={maintenanceCopy("library.apiUrl")}
+          value={source.endpoint.apiUrl}
+          onChange={(value) => patch({ endpoint: { ...source.endpoint, apiUrl: value } })}
+        />
+        <TextInput
+          label={maintenanceCopy("library.workUrlTemplate")}
+          value={source.endpoint.workUrlTemplate}
+          onChange={(value) => patch({ endpoint: { ...source.endpoint, workUrlTemplate: value } })}
+        />
+        <TextInput
+          label={maintenanceCopy("library.fallbackUrl")}
+          value={source.endpoint.fallbackUrl}
+          onChange={(value) => patch({ endpoint: { ...source.endpoint, fallbackUrl: value } })}
+        />
+        <div className="grid gap-3 rounded-md border p-3 text-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="font-medium">{maintenanceCopy("library.restrictOutboundHosts")}</div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {maintenanceCopy("library.restrictOutboundDescription")}
+              </p>
+            </div>
+            <Switch
+              checked={source.endpoint.restrictOutboundHosts ?? false}
+              onCheckedChange={(restrictOutboundHosts) =>
+                patch({ endpoint: { ...source.endpoint, restrictOutboundHosts } })
+              }
+              aria-label={maintenanceCopy("library.restrictOutboundHosts")}
+            />
+          </div>
+          {source.endpoint.restrictOutboundHosts && (
+            <div className="grid gap-3 border-t pt-3">
+              <div>
+                <div className="text-xs font-medium">{maintenanceCopy("library.allowedConfiguredOrigins")}</div>
+                {configuredOrigins.length > 0 ? (
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {configuredOrigins.map((origin) => (
+                      <Badge key={origin} variant="outline" className="max-w-full break-all font-mono text-2xs">
+                        {origin}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-xs text-muted-foreground">{maintenanceCopy("library.addValidOrigin")}</p>
+                )}
+              </div>
+              <label className="grid gap-1.5">
+                <span className="text-xs font-medium">{maintenanceCopy("library.additionalAllowedHosts")}</span>
+                <Textarea
+                  className="min-h-28 resize-y font-mono text-xs"
+                  value={(source.endpoint.allowedHostPatterns ?? []).join("\n")}
+                  onChange={(event) =>
+                    patch({
+                      endpoint: { ...source.endpoint, allowedHostPatterns: event.target.value.split(/\r?\n/u) },
+                    })
+                  }
+                  placeholder={"cdn.example.invalid\n*.media.example.invalid"}
+                  aria-label={maintenanceCopy("library.additionalAllowedHosts")}
+                />
+                <span className="text-xs text-muted-foreground">
+                  {maintenanceCopy("library.additionalAllowedDescription")}
+                </span>
+              </label>
+            </div>
+          )}
+        </div>
+        <div className="grid gap-3">
           <label className="grid gap-1 text-sm">
-            <span className="font-medium">{maintenanceCopy("library.sourceType")}</span>
-            <select
-              className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
-              value={source.sourceType}
-              disabled={legacyNumber178}
-              onChange={(event) => patch({ sourceType: event.target.value })}
-            >
-              <option value="kikoeru_compatible">kikoeru_compatible</option>
-              {legacyNumber178 && <option value={LEGACY_NUMBER178_SOURCE_TYPE}>{LEGACY_NUMBER178_SOURCE_TYPE}</option>}
-            </select>
-            {legacyNumber178 && (
-              <span className="text-xs text-muted-foreground">{maintenanceCopy("library.legacyAdapter")}</span>
-            )}
+            <span className="font-medium">{maintenanceCopy("library.priority")}</span>
+            <Input
+              fieldSize="sm"
+              type="number"
+              min={1}
+              value={source.priority}
+              onChange={(event) => patch({ priority: Number(event.target.value) })}
+            />
           </label>
-          <TextInput
-            label={maintenanceCopy("library.publicSiteUrl")}
-            value={source.endpoint.baseUrl}
-            onChange={(value) => patch({ endpoint: { ...source.endpoint, baseUrl: value } })}
-          />
-          <TextInput
-            label={maintenanceCopy("library.apiUrl")}
-            value={source.endpoint.apiUrl}
-            onChange={(value) => patch({ endpoint: { ...source.endpoint, apiUrl: value } })}
-          />
-          <TextInput
-            label={maintenanceCopy("library.workUrlTemplate")}
-            value={source.endpoint.workUrlTemplate}
-            onChange={(value) => patch({ endpoint: { ...source.endpoint, workUrlTemplate: value } })}
-          />
-          <TextInput
-            label={maintenanceCopy("library.fallbackUrl")}
-            value={source.endpoint.fallbackUrl}
-            onChange={(value) => patch({ endpoint: { ...source.endpoint, fallbackUrl: value } })}
-          />
-          <div className="grid gap-3 rounded-md border p-3 text-sm">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="font-medium">{maintenanceCopy("library.restrictOutboundHosts")}</div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {maintenanceCopy("library.restrictOutboundDescription")}
-                </p>
-              </div>
-              <Switch
-                checked={source.endpoint.restrictOutboundHosts ?? false}
-                onCheckedChange={(restrictOutboundHosts) =>
-                  patch({ endpoint: { ...source.endpoint, restrictOutboundHosts } })
-                }
-                aria-label={maintenanceCopy("library.restrictOutboundHosts")}
-              />
-            </div>
-            {source.endpoint.restrictOutboundHosts && (
-              <div className="grid gap-3 border-t pt-3">
-                <div>
-                  <div className="text-xs font-medium">{maintenanceCopy("library.allowedConfiguredOrigins")}</div>
-                  {configuredOrigins.length > 0 ? (
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      {configuredOrigins.map((origin) => (
-                        <Badge key={origin} variant="outline" className="max-w-full break-all font-mono text-[11px]">
-                          {origin}
-                        </Badge>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="mt-1 text-xs text-muted-foreground">{maintenanceCopy("library.addValidOrigin")}</p>
-                  )}
-                </div>
-                <label className="grid gap-1.5">
-                  <span className="text-xs font-medium">{maintenanceCopy("library.additionalAllowedHosts")}</span>
-                  <textarea
-                    className="min-h-28 resize-y rounded-md border bg-card px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring"
-                    value={(source.endpoint.allowedHostPatterns ?? []).join("\n")}
-                    onChange={(event) =>
-                      patch({
-                        endpoint: { ...source.endpoint, allowedHostPatterns: event.target.value.split(/\r?\n/u) },
-                      })
-                    }
-                    placeholder={"cdn.example.invalid\n*.media.example.invalid"}
-                    aria-label={maintenanceCopy("library.additionalAllowedHosts")}
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    {maintenanceCopy("library.additionalAllowedDescription")}
-                  </span>
-                </label>
-              </div>
-            )}
+        </div>
+        <div className="grid gap-2 rounded-md border p-3 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-medium">{maintenanceCopy("status.enabled")}</span>
+            <Switch
+              checked={source.enabled}
+              onCheckedChange={(enabled) => patch({ enabled })}
+              aria-label={maintenanceCopy("library.enableSource")}
+            />
           </div>
-          <div className="grid gap-3">
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium">{maintenanceCopy("library.priority")}</span>
-              <input
-                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
-                type="number"
-                min={1}
-                value={source.priority}
-                onChange={(event) => patch({ priority: Number(event.target.value) })}
-              />
-            </label>
-          </div>
-          <div className="grid gap-2 rounded-md border p-3 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <span className="font-medium">{maintenanceCopy("status.enabled")}</span>
-              <Switch
-                checked={source.enabled}
-                onCheckedChange={(enabled) => patch({ enabled })}
-                aria-label={maintenanceCopy("library.enableSource")}
-              />
-            </div>
-          </div>
-          <div className="rounded-md border bg-muted/20 p-3">
-            <ReadonlyField label={maintenanceCopy("library.savePathPreview")} value={sourceSavePreview} />
-            <p className="mt-2 text-xs text-muted-foreground">{maintenanceCopy("library.savePathDescription")}</p>
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" className="flex-1" disabled={!source.displayName.trim()} onClick={() => void onSave()}>
-              <Save className="h-4 w-4" />
-              {maintenanceCopy("save")}
-            </Button>
-            <Button variant="outline" size="sm" onClick={onClose}>
-              {maintenanceCopy("cancel")}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+        <div className="rounded-md border bg-muted/20 p-3">
+          <ReadonlyField label={maintenanceCopy("library.savePathPreview")} value={sourceSavePreview} />
+          <p className="mt-2 text-xs text-muted-foreground">{maintenanceCopy("library.savePathDescription")}</p>
+        </div>
+      </DialogBody>
+      <DialogFooter>
+        <Button variant="outline" size="sm" onClick={onClose}>
+          {maintenanceCopy("cancel")}
+        </Button>
+        <Button size="sm" disabled={!source.displayName.trim()} onClick={() => void onSave()}>
+          <Save className="h-4 w-4" />
+          {maintenanceCopy("save")}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }
 
@@ -1860,52 +1812,27 @@ function SourceDeleteDialog({
   onConfirm: () => Promise<void>;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !deleting) onClose();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [deleting, onClose]);
-
   return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm"
-      role="dialog"
-      aria-label={maintenanceCopy("library.deleteRemoteSource")}
-      aria-modal="true"
-      onMouseDown={() => {
-        if (!deleting) onClose();
-      }}
-    >
-      <Card className="w-full max-w-md" onMouseDown={(event) => event.stopPropagation()}>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-destructive/10 text-destructive">
-              <Trash2 className="h-4 w-4" />
-            </span>
-            {maintenanceCopy("library.deleteRemoteSource")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="rounded-md border bg-muted/25 px-3 py-3">
-            <div className="truncate text-sm font-semibold" title={source.displayName}>
-              {source.displayName}
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">{maintenanceCopy("library.deleteSourceDescription")}</p>
+    <Dialog onClose={onClose} size="md" dismissible={!deleting}>
+      <DialogHeader title={maintenanceCopy("library.deleteRemoteSource")} icon={<Trash2 className="h-4 w-4" />} />
+      <DialogBody>
+        <div className="rounded-md border bg-muted/25 px-3 py-3">
+          <div className="truncate text-sm font-semibold" title={source.displayName}>
+            {source.displayName}
           </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" size="sm" disabled={deleting} onClick={onClose}>
-              {maintenanceCopy("cancel")}
-            </Button>
-            <Button variant="destructive" size="sm" disabled={deleting} onClick={() => void onConfirm()}>
-              <Trash2 className="h-4 w-4" />
-              {deleting ? maintenanceCopy("library.deleting") : maintenanceCopy("library.deleteSource")}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+          <p className="mt-1 text-xs text-muted-foreground">{maintenanceCopy("library.deleteSourceDescription")}</p>
+        </div>
+      </DialogBody>
+      <DialogFooter>
+        <Button variant="outline" size="sm" disabled={deleting} onClick={onClose}>
+          {maintenanceCopy("cancel")}
+        </Button>
+        <Button variant="destructive" size="sm" disabled={deleting} onClick={() => void onConfirm()}>
+          <Trash2 className="h-4 w-4" />
+          {deleting ? maintenanceCopy("library.deleting") : maintenanceCopy("library.deleteSource")}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }
 
@@ -2014,11 +1941,7 @@ function TextInput({ label, value, onChange }: { label: string; value: string; o
   return (
     <label className="grid gap-1 text-sm">
       <span className="font-medium">{label}</span>
-      <input
-        className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
+      <Input fieldSize="sm" value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }

@@ -17,6 +17,7 @@ import { Trans, useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { Input } from "@/components/ui/input";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { api, type CurrentUser } from "@/lib/api";
 import { validatePasswordChange, type PasswordChangeDraft } from "@/pages/accountSettings";
@@ -306,9 +307,9 @@ export function SettingsPage({
               <form className="space-y-4" onSubmit={saveProfile}>
                 <label className="block space-y-1 text-sm" htmlFor="account-display-name">
                   <span className="font-medium">{t("settings.displayName")}</span>
-                  <input
+                  <Input
                     id="account-display-name"
-                    className="h-[var(--control-height)] w-full rounded-md border bg-background px-3 text-sm disabled:bg-muted"
+                    className="w-full"
                     value={displayName}
                     autoComplete="name"
                     disabled={readOnly || isProfileSaving}
@@ -409,7 +410,7 @@ export function SettingsPage({
           id="settings-panel-playback"
           aria-labelledby="settings-tab-playback"
         >
-          <Card className="w-full max-w-4xl">
+          <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <FastForward className="h-4 w-4" />
@@ -426,9 +427,9 @@ export function SettingsPage({
                       {t("settings.seekForward")}
                     </span>
                     <div className="flex items-center gap-2">
-                      <input
+                      <Input
                         id="seek-forward-seconds"
-                        className="h-[var(--control-height)] w-full rounded-md border bg-background px-3 text-sm disabled:bg-muted"
+                        className="w-full"
                         type="number"
                         min={SEEK_SECONDS_MIN}
                         max={SEEK_SECONDS_MAX}
@@ -450,9 +451,9 @@ export function SettingsPage({
                       {t("settings.seekBackward")}
                     </span>
                     <div className="flex items-center gap-2">
-                      <input
+                      <Input
                         id="seek-backward-seconds"
-                        className="h-[var(--control-height)] w-full rounded-md border bg-background px-3 text-sm disabled:bg-muted"
+                        className="w-full"
                         type="number"
                         min={SEEK_SECONDS_MIN}
                         max={SEEK_SECONDS_MAX}
@@ -612,9 +613,9 @@ function PasswordField({
   return (
     <label className="block space-y-1 text-sm" htmlFor={id}>
       <span className="font-medium">{label}</span>
-      <input
+      <Input
         id={id}
-        className="h-[var(--control-height)] w-full rounded-md border bg-background px-3 text-sm disabled:bg-muted"
+        className="w-full"
         type="password"
         value={value}
         autoComplete={autoComplete}

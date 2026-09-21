@@ -11,6 +11,8 @@ type NavItem = {
   icon: LucideIcon;
   audience: "public" | "authenticated" | "admin";
   permission?: string;
+  /** Visual grouping in the sidebar: listening, administration, and app-level pages. */
+  group: "browse" | "manage" | "app";
 };
 
 export const navItems = [
@@ -24,6 +26,7 @@ export const navItems = [
     icon: Library,
     audience: "public",
     permission: undefined,
+    group: "browse",
   },
   {
     id: "favorites",
@@ -35,6 +38,7 @@ export const navItems = [
     icon: Heart,
     audience: "authenticated",
     permission: undefined,
+    group: "browse",
   },
   {
     id: "circles",
@@ -46,6 +50,7 @@ export const navItems = [
     icon: Users,
     audience: "public",
     permission: undefined,
+    group: "browse",
   },
   {
     id: "voice-actors",
@@ -57,6 +62,7 @@ export const navItems = [
     icon: MicVocal,
     audience: "public",
     permission: undefined,
+    group: "browse",
   },
   {
     id: "workflows",
@@ -68,6 +74,7 @@ export const navItems = [
     icon: Workflow,
     audience: "admin",
     permission: "workflows:run",
+    group: "manage",
   },
   {
     id: "metadata",
@@ -79,6 +86,7 @@ export const navItems = [
     icon: Database,
     audience: "admin",
     permission: "metadata:sync",
+    group: "manage",
   },
   {
     id: "settings",
@@ -90,6 +98,7 @@ export const navItems = [
     icon: Settings,
     audience: "authenticated",
     permission: undefined,
+    group: "app",
   },
   {
     id: "about",
@@ -101,6 +110,7 @@ export const navItems = [
     icon: Info,
     audience: "public",
     permission: undefined,
+    group: "app",
   },
 ] as const satisfies readonly NavItem[];
 

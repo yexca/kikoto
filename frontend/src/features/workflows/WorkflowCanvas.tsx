@@ -333,12 +333,12 @@ const WorkflowEditorNode = memo(function WorkflowEditorNode({ data, selected }: 
           <span className="block truncate text-sm font-semibold">
             {node.displayName || metadata?.displayName || node.id}
           </span>
-          <span className="block truncate text-[11px] text-muted-foreground">
+          <span className="block truncate text-2xs text-muted-foreground">
             {metadata?.composite ? "Composite" : metadata?.phase || "Input"} · {node.type}
           </span>
         </span>
       </div>
-      <div className="grid grid-cols-2 gap-x-3 px-2 py-2 text-[11px]">
+      <div className="grid grid-cols-2 gap-x-3 px-2 py-2 text-2xs">
         <div className="min-w-0 space-y-1">
           {data.inputs.map((port, index) => (
             <div

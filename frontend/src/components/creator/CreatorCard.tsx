@@ -90,7 +90,7 @@ export function CreatorCard({
           ) : (
             <span className="flex h-full flex-col items-center justify-center gap-1 bg-secondary px-2 text-secondary-foreground">
               <ImageOff className="h-5 w-5" />
-              <span className="text-[11px] font-medium">{t("creator.noCover")}</span>
+              <span className="text-2xs font-medium">{t("creator.noCover")}</span>
             </span>
           )}
         </button>

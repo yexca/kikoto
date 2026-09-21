@@ -1,5 +1,6 @@
 import { AlertCircle, CheckCircle2, Copy } from "lucide-react";
 
+import { Textarea } from "@/components/ui/input";
 import { isWorkCode } from "@/lib/workCode";
 
 export type WorkCodesParseResult = {
@@ -47,8 +48,8 @@ export function WorkCodesField({
   const parsed = parseWorkCodes(value);
   return (
     <div className={`space-y-2 ${className}`}>
-      <textarea
-        className="min-h-28 w-full resize-y rounded-md border bg-background px-3 py-2 font-mono text-sm outline-none focus:ring-2 focus:ring-ring"
+      <Textarea
+        className="min-h-28 w-full resize-y font-mono"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={"RJ00000000\nRJ00000001"}
@@ -74,7 +75,7 @@ export function WorkCodesField({
         <div className="break-words text-xs text-error-foreground">Invalid: {parsed.invalid.join(", ")}</div>
       )}
       {parsed.codes.length > 0 && (
-        <div className="max-h-20 overflow-y-auto rounded border bg-muted/30 px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
+        <div className="max-h-20 overflow-y-auto rounded border bg-muted/30 px-2 py-1.5 font-mono text-2xs text-muted-foreground">
           {parsed.codes.join("\n")}
         </div>
       )}

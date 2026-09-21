@@ -159,7 +159,10 @@ export function WorkCardShell({
   );
 
   return (
-    <Card className="group h-full transition-colors hover:border-primary/50" data-testid="work-card">
+    <Card
+      className="group h-full transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg focus-within:border-primary/40 motion-reduce:hover:translate-y-0"
+      data-testid="work-card"
+    >
       <CardContent className="flex h-full flex-col p-0">
         {onOpen ? (
           <div
@@ -215,13 +218,13 @@ export function WorkCardMedia({
   const { resolvedLocale } = useLocale();
   const codeText = code || t("workCard.source");
   return (
-    <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+    <div className="relative aspect-[4/3] overflow-hidden rounded-t-[calc(var(--radius)-1px)] bg-muted">
       {selection}
       {coverUrl ? (
         <img
           src={assetURL(coverUrl)}
           alt=""
-          className="h-full w-full object-contain transition-transform group-hover:scale-[1.03]"
+          className="h-full w-full object-contain transition-transform duration-300 ease-out group-hover:scale-[1.03] motion-reduce:group-hover:scale-100"
           loading="lazy"
         />
       ) : (
@@ -229,14 +232,14 @@ export function WorkCardMedia({
           {codeText.slice(0, 2)}
         </div>
       )}
-      <div className="absolute left-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">
+      <div className="absolute left-2.5 top-2.5 rounded-[var(--badge-radius)] bg-background/85 px-2 py-0.5 text-xs font-semibold tabular-nums shadow-sm ring-1 ring-foreground/5 backdrop-blur-sm">
         {codeText}
       </div>
       {recommended &&
         (onRecommendationOpen ? (
           <button
             type="button"
-            className="absolute right-3 top-3 inline-flex h-8 items-center gap-1 rounded-md bg-primary px-2 text-xs font-semibold text-primary-foreground shadow-sm"
+            className="absolute right-2.5 top-2.5 inline-flex h-7 items-center gap-1 rounded-[var(--badge-radius)] bg-primary px-2 text-xs font-semibold tabular-nums text-primary-foreground shadow-md"
             title={t("workCard.explainRecommendationScore")}
             aria-label={`${t("workCard.explainRecommendationScore")} ${recommendationScore ?? 0}`}
             onClick={(event) => {
@@ -244,22 +247,22 @@ export function WorkCardMedia({
               onRecommendationOpen();
             }}
           >
-            <Star className="h-4 w-4 fill-current" />
+            <Star className="h-3.5 w-3.5 fill-current" />
             {Number.isFinite(recommendationScore) && <span>{recommendationScore}</span>}
           </button>
         ) : (
           <div
-            className="absolute right-3 top-3 inline-flex h-8 items-center gap-1 rounded-md bg-primary px-2 text-xs font-semibold text-primary-foreground shadow-sm"
+            className="absolute right-2.5 top-2.5 inline-flex h-7 items-center gap-1 rounded-[var(--badge-radius)] bg-primary px-2 text-xs font-semibold tabular-nums text-primary-foreground shadow-md"
             title={t("workCard.recommendedForYou")}
             aria-label={t("workCard.recommendedForYou")}
           >
-            <Star className="h-4 w-4 fill-current" />
+            <Star className="h-3.5 w-3.5 fill-current" />
             {Number.isFinite(recommendationScore) && <span>{recommendationScore}</span>}
           </div>
         ))}
       {price !== null && (
         <div
-          className="absolute bottom-3 left-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold"
+          className="absolute bottom-2.5 left-2.5 rounded-[var(--badge-radius)] bg-background/85 px-2 py-0.5 text-xs font-semibold tabular-nums shadow-sm ring-1 ring-foreground/5 backdrop-blur-sm"
           title={
             regularPrice !== null && regularPrice > price
               ? t("workCard.regularPrice", {
@@ -335,7 +338,7 @@ function WorkCardBody({
           {ageRating.known && (
             <span
               className={cn(
-                "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none",
+                "shrink-0 rounded-full border px-2 py-0.5 text-3xs font-semibold leading-none",
                 ageRating.badgeClassName,
               )}
             >

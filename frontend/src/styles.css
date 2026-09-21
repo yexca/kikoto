@@ -44,6 +44,9 @@
 
 @layer base {
   :root {
+    color-scheme: light;
+    --scrim: 24 20% 10%;
+    --scrim-opacity: 0.38;
     --background: 36 38% 95%;
     --foreground: 24 12% 17%;
     --card: 40 33% 98%;
@@ -76,8 +79,8 @@
     --error-foreground: 2 67% 33%;
     --error-surface: 3 75% 96%;
     --error-border: 3 53% 74%;
-    --border: 32 22% 80%;
-    --input: 30 18% 75%;
+    --border: 32 22% 84%;
+    --input: 30 18% 77%;
     --ring: 15 62% 52%;
     --workflow-shell: 34 25% 92%;
     --workflow-canvas: 32 19% 87%;
@@ -131,6 +134,9 @@
   }
 
   .dark {
+    color-scheme: dark;
+    --scrim: 0 0% 0%;
+    --scrim-opacity: 0.58;
     --background: 24 11% 9%;
     --foreground: 35 19% 90%;
     --card: 24 10% 12%;
@@ -163,8 +169,8 @@
     --error-foreground: 3 85% 86%;
     --error-surface: 3 42% 16%;
     --error-border: 3 53% 42%;
-    --border: 24 7% 25%;
-    --input: 24 8% 29%;
+    --border: 24 7% 21%;
+    --input: 24 8% 28%;
     --ring: 19 76% 70%;
     --workflow-shell: 24 9% 13%;
     --workflow-canvas: 24 8% 18%;
@@ -544,6 +550,20 @@
   }
 }
 
+@layer components {
+  /* Wrapper for search bars that embed an unstyled input next to icons. */
+  .search-field {
+    transition:
+      border-color calc(150ms * var(--motion-scale)) ease,
+      box-shadow calc(150ms * var(--motion-scale)) ease;
+  }
+
+  .search-field:focus-within {
+    border-color: hsl(var(--ring) / 0.7);
+    box-shadow: 0 0 0 2px hsl(var(--ring) / 0.35);
+  }
+}
+
 @layer utilities {
   .mini-action {
     opacity: 0;
@@ -909,6 +929,11 @@
   backdrop-filter: blur(var(--surface-blur));
 }
 
+.dialog-scrim {
+  background-color: hsl(var(--scrim) / var(--scrim-opacity));
+  backdrop-filter: blur(3px);
+}
+
 .theme-shell-surface {
   background-color: hsl(var(--card) / var(--shell-opacity));
   backdrop-filter: blur(var(--surface-blur));
@@ -926,6 +951,7 @@ svg.lucide {
   .backdrop-blur,
   .backdrop-blur-sm,
   .backdrop-blur-2xl,
+  .dialog-scrim,
   .theme-floating-surface,
   .theme-shell-surface {
     -webkit-backdrop-filter: none;
@@ -936,6 +962,7 @@ svg.lucide {
 html[data-native-app="true"] .backdrop-blur,
 html[data-native-app="true"] .backdrop-blur-sm,
 html[data-native-app="true"] .backdrop-blur-2xl,
+html[data-native-app="true"] .dialog-scrim,
 html[data-native-app="true"] .theme-floating-surface,
 html[data-native-app="true"] .theme-shell-surface {
   -webkit-backdrop-filter: none;

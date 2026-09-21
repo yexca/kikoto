@@ -5,6 +5,8 @@ import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog } from "@/components/ui/dialog";
+import { NativeSelect } from "@/components/ui/input";
 import { remoteSelectablePaths, type TreeNode } from "@/features/work-detail/media/mediaTreeModel";
 import {
   canPublishRemoteFetchSelection,
@@ -104,6 +106,7 @@ function RemoteFetchSelectionPanel({
   targetRoot = "",
   onTargetRootChange,
 }: RemoteFetchSelectionPanelProps) {
+  const { t } = useTranslation();
   const [activePane, setActivePane] = useState<FetchPane>("remote");
   const stablePreparation = preparation ?? plan?.preparation;
   const currentEditionCode = remoteFetchCurrentEditionCode(plan, activeEditionCode);
@@ -135,7 +138,6 @@ function RemoteFetchSelectionPanel({
     selectedCount: selectedPaths.size + selectedLocalPaths.size,
     onSave,
   });
-  useEscapeDismiss(disabled, onClose);
   const canPublish = canPublishRemoteFetchSelection({
     readOnly,
     disabled,
@@ -147,66 +149,64 @@ function RemoteFetchSelectionPanel({
     selectedLocalCount: selectedLocalPaths.size,
   });
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4" onMouseDown={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="remote-fetch-workspace-title"
-        className="flex h-[calc(100dvh-2rem)] w-full max-w-7xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl md:h-[90dvh]"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <RemoteFetchDialogHeader readOnly={readOnly} disabled={disabled} onClose={onClose} />
-        <RemoteFetchLanguagePicker
-          preparation={stablePreparation}
-          plan={plan}
-          activeEditionCode={activeEditionCode}
-          selectedEditionCode={selectedEditionCode}
-          checkingEditionCode={checkingEditionCode}
-          sourceId={sourceId}
-          disabled={disabled}
-          onSelect={selectEdition}
-        />
-        <RemoteFetchSelectionToolbar
-          allPaths={allPaths}
-          selectedPaths={selectedPaths}
-          selectedLocalPaths={selectedLocalPaths}
-          plan={plan}
-          readOnly={readOnly}
-          disabled={disabled}
-          previewNeedsRefresh={previewNeedsRefresh}
-          refreshScheduled={refreshScheduled}
-          onChange={onChange}
-        />
-        <RemoteFetchRootConflictAlert plan={plan} />
-        <RemoteFetchPaneTabs activePane={activePane} hasLocalFiles={hasLocalFiles} onChange={setActivePane} />
-        <RemoteFetchComparisonPanes
-          root={root}
-          plan={plan}
-          preparation={stablePreparation}
-          planByPath={planByPath}
-          decisions={decisions}
-          activePane={activePane}
-          activeEditionCode={activeEditionCode}
-          selectedPaths={selectedPaths}
-          selectedLocalPaths={selectedLocalPaths}
-          targetRoot={targetRoot}
-          disabled={disabled}
-          onRemoteChange={onChange}
-          onLocalChange={onLocalChange}
-          onDecisionChange={onDecisionChange}
-          onTargetRootChange={onTargetRootChange}
-        />
-        <RemoteFetchStatus message={message} conflict={messageIsConflict} />
-        <RemoteFetchFooter
-          readOnly={readOnly}
-          disabled={disabled}
-          refreshScheduled={refreshScheduled}
-          canPublish={canPublish}
-          onClose={onClose}
-          onSave={onSave}
-        />
-      </div>
-    </div>
+    <Dialog
+      onClose={onClose}
+      size="full"
+      dismissible={!disabled}
+      ariaLabel={t("remoteFetch.title")}
+      className="h-[calc(100dvh-1.5rem)] max-w-7xl bg-background sm:h-[calc(100dvh-2rem)] md:h-[90dvh]"
+    >
+      <RemoteFetchDialogHeader readOnly={readOnly} disabled={disabled} onClose={onClose} />
+      <RemoteFetchLanguagePicker
+        preparation={stablePreparation}
+        plan={plan}
+        activeEditionCode={activeEditionCode}
+        selectedEditionCode={selectedEditionCode}
+        checkingEditionCode={checkingEditionCode}
+        sourceId={sourceId}
+        disabled={disabled}
+        onSelect={selectEdition}
+      />
+      <RemoteFetchSelectionToolbar
+        allPaths={allPaths}
+        selectedPaths={selectedPaths}
+        selectedLocalPaths={selectedLocalPaths}
+        plan={plan}
+        readOnly={readOnly}
+        disabled={disabled}
+        previewNeedsRefresh={previewNeedsRefresh}
+        refreshScheduled={refreshScheduled}
+        onChange={onChange}
+      />
+      <RemoteFetchRootConflictAlert plan={plan} />
+      <RemoteFetchPaneTabs activePane={activePane} hasLocalFiles={hasLocalFiles} onChange={setActivePane} />
+      <RemoteFetchComparisonPanes
+        root={root}
+        plan={plan}
+        preparation={stablePreparation}
+        planByPath={planByPath}
+        decisions={decisions}
+        activePane={activePane}
+        activeEditionCode={activeEditionCode}
+        selectedPaths={selectedPaths}
+        selectedLocalPaths={selectedLocalPaths}
+        targetRoot={targetRoot}
+        disabled={disabled}
+        onRemoteChange={onChange}
+        onLocalChange={onLocalChange}
+        onDecisionChange={onDecisionChange}
+        onTargetRootChange={onTargetRootChange}
+      />
+      <RemoteFetchStatus message={message} conflict={messageIsConflict} />
+      <RemoteFetchFooter
+        readOnly={readOnly}
+        disabled={disabled}
+        refreshScheduled={refreshScheduled}
+        canPublish={canPublish}
+        onClose={onClose}
+        onSave={onSave}
+      />
+    </Dialog>
   );
 }
 
@@ -279,16 +279,6 @@ function useRemoteFetchPreviewRefresh({
   return refreshScheduled;
 }
 
-function useEscapeDismiss(disabled: boolean, onClose: () => void) {
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !disabled) onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [disabled, onClose]);
-}
-
 function RemoteFetchDialogHeader({
   readOnly,
   disabled,
@@ -303,9 +293,7 @@ function RemoteFetchDialogHeader({
     <div className="flex min-h-12 items-center justify-between gap-3 border-b px-4">
       <div>
         <div className="flex items-center gap-2">
-          <h3 id="remote-fetch-workspace-title" className="text-base font-semibold">
-            {t("remoteFetch.title")}
-          </h3>
+          <h3 className="text-base font-semibold">{t("remoteFetch.title")}</h3>
           {readOnly && <Badge variant="outline">{t("remoteFetch.demoPreview")}</Badge>}
         </div>
         <p className="text-xs text-muted-foreground">{t("remoteFetch.description")}</p>
@@ -415,11 +403,11 @@ function RemoteFetchEditionOption({
           <span className="truncate font-semibold">
             {languageLabel(edition.metadataLanguage || edition.editionLabel, t)}
           </span>
-          <span className="shrink-0 text-[10px] text-muted-foreground">
+          <span className="shrink-0 text-3xs text-muted-foreground">
             {translationKindLabel(edition.translationKind, t)}
           </span>
         </span>
-        <span className="mt-1 flex items-center gap-1 whitespace-nowrap text-[10px] text-muted-foreground">
+        <span className="mt-1 flex items-center gap-1 whitespace-nowrap text-3xs text-muted-foreground">
           <span className="font-mono">{edition.primaryCode}</span>
           <span>·</span>
           <span>{t("remoteFetch.localCount", { count: edition.localRoots.length })}</span>
@@ -701,8 +689,9 @@ function RemoteFetchLocalPane({
       </div>
       <label className="mb-2 block space-y-1 px-1 text-xs text-muted-foreground">
         <span>{t("remoteFetch.publishTarget")}</span>
-        <select
-          className="h-8 w-full rounded-md border bg-background px-2 text-xs text-foreground"
+        <NativeSelect
+          fieldSize="sm"
+          className="h-8 w-full px-2 text-xs"
           value={targetRoot || plan.saveRoot}
           disabled={disabled || !onTargetRootChange}
           onChange={(event) => onTargetRootChange?.(event.target.value)}
@@ -718,7 +707,7 @@ function RemoteFetchLocalPane({
                 {candidate.rootPath}
               </option>
             ))}
-        </select>
+        </NativeSelect>
       </label>
       <RemoteFetchLocalTreeNode
         node={localTree}

@@ -125,7 +125,10 @@ test("remote source remembers sorting after transient browse state is cleared", 
     window.history.replaceState({}, "");
   });
   await page.reload();
-  await expect(page.getByRole("button", { name: "Example Remote", exact: true })).toHaveClass(/bg-primary/);
+  await expect(page.getByRole("button", { name: "Example Remote", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await expect(page.getByRole("button", { name: "Sort: Code" })).toBeVisible();
   await expect.poll(() => requests.some((url) => url.searchParams.get("sort") === "code")).toBe(true);
 });

@@ -3,6 +3,7 @@ import { type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import type { RecommendationConfig } from "@/lib/api";
 import i18n from "@/i18n";
 const maintenanceCopy = (key: string, options?: Record<string, unknown>) => i18n.t(`maintenance.${key}`, options);
@@ -271,13 +272,14 @@ function RecommendationNumberField({
       <span className="flex items-center justify-between gap-2 font-medium">
         <span>{label}</span>
         {defaultValue !== undefined && value !== defaultValue && (
-          <span className="text-[10px] font-normal text-muted-foreground">
+          <span className="text-3xs font-normal text-muted-foreground">
             {maintenanceCopy("recommendation.defaultValue", { value: defaultValue })}
           </span>
         )}
       </span>
-      <input
-        className="h-9 min-w-0 rounded-md border bg-card px-3 tabular-nums outline-none focus:ring-2 focus:ring-ring"
+      <Input
+        fieldSize="sm"
+        className="min-w-0 tabular-nums"
         type="number"
         min={min}
         max={max}

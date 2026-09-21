@@ -2668,7 +2668,7 @@ export function PlayerDock() {
             >
               <Timer className="h-4 w-4" />
               {player.sleepTimer && (
-                <span className="text-[10px]">
+                <span className="text-3xs">
                   {player.sleepTimer.waitingForTrackEnd
                     ? t("player.track")
                     : formatSleepRemaining(player.sleepRemainingSeconds)}

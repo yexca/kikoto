@@ -27,6 +27,8 @@ import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Input, NativeSelect, Textarea } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { WorkflowCanvas } from "@/features/workflows/WorkflowCanvas";
 import { createWorkflowDocumentHistory, workflowDocumentHistoryReducer } from "@/features/workflows/documentHistory";
@@ -547,39 +549,21 @@ export function WorkflowComposer({
         )}
       </div>
       {confirmingDelete && definition && (
-        <div
-          className="fixed inset-0 z-[60] grid place-items-center bg-background/75 p-4"
-          onMouseDown={() => !deleting && setConfirmingDelete(false)}
-        >
-          <div
-            className="w-full max-w-md rounded-md border bg-card p-5 shadow-xl"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="delete-workflow-title"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <h2 id="delete-workflow-title" className="text-base font-semibold">
-              {t("workflowComposer.deleteConfirmTitle")}
-            </h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {t("workflowComposer.deleteConfirmDescription", { name: definition.displayName })}
-            </p>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
-                {t("workflowComposer.cancel")}
-              </Button>
-              <Button
-                size="sm"
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                onClick={() => void removeDefinition()}
-                disabled={deleting}
-              >
-                <Trash2 className="h-4 w-4" />
-                {deleting ? t("workflowComposer.deleting") : t("workflowComposer.delete")}
-              </Button>
-            </div>
-          </div>
-        </div>
+        <Dialog onClose={() => setConfirmingDelete(false)} layer="overlay-nested" size="md" dismissible={!deleting}>
+          <DialogHeader
+            title={t("workflowComposer.deleteConfirmTitle")}
+            description={t("workflowComposer.deleteConfirmDescription", { name: definition.displayName })}
+          />
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
+              {t("workflowComposer.cancel")}
+            </Button>
+            <Button size="sm" variant="destructive" onClick={() => void removeDefinition()} disabled={deleting}>
+              <Trash2 className="h-4 w-4" />
+              {deleting ? t("workflowComposer.deleting") : t("workflowComposer.delete")}
+            </Button>
+          </DialogFooter>
+        </Dialog>
       )}
     </div>,
     window.document.body,
@@ -652,7 +636,7 @@ function NodePalette({
 function PaletteGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <section className="space-y-1.5">
-      <h3 className="text-[11px] font-semibold uppercase text-muted-foreground">{label}</h3>
+      <h3 className="text-2xs font-semibold uppercase text-muted-foreground">{label}</h3>
       {children}
     </section>
   );
@@ -679,7 +663,7 @@ function PaletteButton({
       <span className="mt-0.5 text-muted-foreground">{icon}</span>
       <span className="min-w-0">
         <span className="block truncate text-xs font-medium">{label}</span>
-        <span className="block truncate text-[10px] text-muted-foreground">{description}</span>
+        <span className="block truncate text-3xs text-muted-foreground">{description}</span>
       </span>
     </button>
   );
@@ -717,23 +701,25 @@ function WorkflowInspector({
       </div>
       <div className="space-y-3">
         <InspectorField label={t("workflowComposer.code")}>
-          <input
-            className={inputClass}
+          <Input
+            fieldSize="sm"
+            className="w-full"
             value={code}
             disabled={!editableCode}
             onChange={(event) => onCodeChange(event.target.value)}
           />
         </InspectorField>
         <InspectorField label={t("workflowComposer.name")}>
-          <input
-            className={inputClass}
+          <Input
+            fieldSize="sm"
+            className="w-full"
             value={displayName}
             onChange={(event) => onDisplayNameChange(event.target.value)}
           />
         </InspectorField>
         <InspectorField label={t("workflowComposer.description")}>
-          <textarea
-            className={`${inputClass} min-h-20 py-2`}
+          <Textarea
+            className="w-full"
             value={description}
             onChange={(event) => onDescriptionChange(event.target.value)}
           />
@@ -764,7 +750,7 @@ function WorkflowInspector({
               />
             </div>
             {document.command.alias && (
-              <span className="font-mono text-[11px] text-muted-foreground">
+              <span className="font-mono text-2xs text-muted-foreground">
                 {workflowCommandUsage(document.command.alias, document.inputs)}
               </span>
             )}
@@ -853,8 +839,9 @@ function NodeInspector({
         </Button>
       </div>
       <InspectorField label={t("workflowComposer.node")}>
-        <input
-          className={inputClass}
+        <Input
+          fieldSize="sm"
+          className="w-full"
           value={node.displayName ?? ""}
           onChange={(event) => onChange({ displayName: event.target.value })}
         />
@@ -889,7 +876,7 @@ function NodeInspector({
           <div key={`${port.direction}-${port.id}`} className="flex items-center gap-2 text-xs">
             <Badge variant="outline">{port.direction}</Badge>
             <span className="min-w-0 flex-1 truncate">{port.label}</span>
-            <span className="font-mono text-[10px] text-muted-foreground">{port.type}</span>
+            <span className="font-mono text-3xs text-muted-foreground">{port.type}</span>
           </div>
         ))}
       </section>
@@ -932,18 +919,25 @@ function InputInspector({
   return (
     <section className="space-y-3 border-t pt-4">
       <InspectorField label={t("workflowComposer.inputKey")}>
-        <input
-          className={inputClass}
+        <Input
+          fieldSize="sm"
+          className="w-full"
           value={input.key}
           onChange={(event) => update({ key: event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })}
         />
       </InspectorField>
       <InspectorField label={t("workflowComposer.label")}>
-        <input className={inputClass} value={input.label} onChange={(event) => update({ label: event.target.value })} />
+        <Input
+          fieldSize="sm"
+          className="w-full"
+          value={input.label}
+          onChange={(event) => update({ label: event.target.value })}
+        />
       </InspectorField>
       <InspectorField label={t("workflowComposer.type")}>
-        <select
-          className={inputClass}
+        <NativeSelect
+          fieldSize="sm"
+          className="w-full"
           value={input.type}
           onChange={(event) => update({ type: event.target.value as WorkflowInputType })}
         >
@@ -952,7 +946,7 @@ function InputInspector({
               {preset.type}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </InspectorField>
       <InspectorField label={t("workflowComposer.defaultValue")}>
         {input.type === "work_codes" ? (
@@ -961,8 +955,9 @@ function InputInspector({
             onChange={(value) => update({ defaultValue: value || undefined })}
           />
         ) : (
-          <input
-            className={inputClass}
+          <Input
+            fieldSize="sm"
+            className="w-full"
             value={input.defaultValue ?? ""}
             onChange={(event) => update({ defaultValue: event.target.value || undefined })}
           />
@@ -1033,8 +1028,8 @@ function ConfigInspector({
           <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
         </summary>
         <div className="border-t p-2">
-          <textarea
-            className="min-h-32 w-full resize-y rounded border bg-background p-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring"
+          <Textarea
+            className="min-h-32 w-full resize-y p-2 font-mono text-xs"
             value={jsonDraft}
             onChange={(event) => setJsonDraft(event.target.value)}
             onBlur={() => {
@@ -1078,8 +1073,9 @@ function ConfigField({
     const remoteSources = sources.filter((source) => source.enabled && source.sourceType !== "local");
     return (
       <InspectorField label={t("workflowComposer.remoteSource")}>
-        <select
-          className={inputClass}
+        <NativeSelect
+          fieldSize="sm"
+          className="w-full"
           value={String(value ?? "")}
           onChange={(event) => onChange(Number(event.target.value))}
           disabled={remoteSources.length === 0}
@@ -1094,15 +1090,16 @@ function ConfigField({
               {source.displayName}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </InspectorField>
     );
   }
   if (name === "definitionId") {
     return (
       <InspectorField label={label}>
-        <select
-          className={inputClass}
+        <NativeSelect
+          fieldSize="sm"
+          className="w-full"
           value={String(value ?? "")}
           onChange={(event) => onChange(Number(event.target.value))}
           disabled={workflowDefinitions.length === 0}
@@ -1117,20 +1114,25 @@ function ConfigField({
               {definition.displayName}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </InspectorField>
     );
   }
   if (enumValues.length > 0)
     return (
       <InspectorField label={label}>
-        <select className={inputClass} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)}>
+        <NativeSelect
+          fieldSize="sm"
+          className="w-full"
+          value={String(value ?? "")}
+          onChange={(event) => onChange(event.target.value)}
+        >
           {enumValues.map((option) => (
             <option key={option} value={option}>
               {option}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </InspectorField>
     );
   if (kind === "boolean")
@@ -1143,8 +1145,9 @@ function ConfigField({
   if (kind === "array")
     return (
       <InspectorField label={label}>
-        <input
-          className={inputClass}
+        <Input
+          fieldSize="sm"
+          className="w-full"
           value={Array.isArray(value) ? value.join(", ") : ""}
           onChange={(event) =>
             onChange(
@@ -1160,8 +1163,9 @@ function ConfigField({
     );
   return (
     <InspectorField label={label}>
-      <input
-        className={inputClass}
+      <Input
+        fieldSize="sm"
+        className="w-full"
         type={kind === "number" || kind === "integer" ? "number" : "text"}
         value={primitiveValue(value)}
         min={numberOrUndefined(schema.minimum)}
@@ -1182,9 +1186,6 @@ function InspectorField({ label, children }: { label: string; children: React.Re
     </label>
   );
 }
-
-const inputClass =
-  "h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60";
 
 function useIsWideLayout() {
   const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1024px)").matches);

@@ -25,6 +25,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { MobileSheet } from "@/components/ui/mobile-sheet";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { Dialog, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Input, NativeSelect } from "@/components/ui/input";
 import { UserTagRow } from "@/components/UserTagRow";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
 import { CollectionPagination } from "@/components/collection/CollectionPagination";
@@ -978,8 +980,9 @@ function CircleDetailPage({
               onMobileColumnsChange={setMobileColumns}
               onDesktopColumnsChange={setDesktopColumns}
             />
-            <select
-              className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            <NativeSelect
+              fieldSize="sm"
+              className="px-2"
               value={availabilityFilter}
               onChange={(event) => changeAvailabilityFilter(event.target.value as CircleAvailabilityFilter)}
               aria-label={t("detailActions.catalogAvailabilityFilter")}
@@ -989,7 +992,7 @@ function CircleDetailPage({
               <option value="unavailable">{t("detailActions.unavailable")}</option>
               <option value="local">{t("detailActions.local")}</option>
               <option value="remote">{t("detailActions.remote")}</option>
-            </select>
+            </NativeSelect>
             {!isSeriesView && (
               <Button
                 variant={selectionMode ? "default" : "outline"}
@@ -1450,25 +1453,20 @@ function SaveConfirmModal({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
-      <div
-        className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <h3 className="text-base font-semibold">{t("detailActions.fetchRemoteDirectory")}</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {t("detailActions.fetchRemoteDirectoryDescription", { count })}
-        </p>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>
-            {t("content.cancel")}
-          </Button>
-          <Button size="sm" onClick={onConfirm}>
-            {t("detailActions.fetch")}
-          </Button>
-        </div>
-      </div>
-    </div>
+    <Dialog onClose={onClose} size="sm">
+      <DialogHeader
+        title={t("detailActions.fetchRemoteDirectory")}
+        description={t("detailActions.fetchRemoteDirectoryDescription", { count })}
+      />
+      <DialogFooter>
+        <Button variant="outline" size="sm" onClick={onClose}>
+          {t("content.cancel")}
+        </Button>
+        <Button size="sm" onClick={onConfirm}>
+          {t("detailActions.fetch")}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }
 
@@ -1483,32 +1481,20 @@ function CatalogDeleteConfirmModal({
 }) {
   const { t } = useTranslation();
   return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-background/70 p-4 backdrop-blur-sm"
-      onMouseDown={onClose}
-    >
-      <div
-        className="w-full max-w-md rounded-lg border bg-card p-5 shadow-xl"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <h3 className="text-base font-semibold">{t("detailActions.removeCatalogWork")}</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {t("detailActions.removeCatalogWorkDescription", { code: work.primaryCode })}
-        </p>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>
-            {t("content.cancel")}
-          </Button>
-          <Button
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            size="sm"
-            onClick={onConfirm}
-          >
-            {t("admin.delete")}
-          </Button>
-        </div>
-      </div>
-    </div>
+    <Dialog onClose={onClose} size="md" role="alertdialog">
+      <DialogHeader
+        title={t("detailActions.removeCatalogWork")}
+        description={t("detailActions.removeCatalogWorkDescription", { code: work.primaryCode })}
+      />
+      <DialogFooter>
+        <Button variant="outline" size="sm" onClick={onClose}>
+          {t("content.cancel")}
+        </Button>
+        <Button variant="destructive" size="sm" onClick={onConfirm}>
+          {t("admin.delete")}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }
 
@@ -2051,8 +2037,9 @@ function CatalogWorkPagination({
         {t("collection.pageOf", { page, totalPages, totalItems, itemLabel: t("collection.works") })}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <select
-          className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+        <NativeSelect
+          fieldSize="sm"
+          className="h-8 px-2 text-xs"
           value={pageSize}
           onChange={(event) => onPageSizeChange(Number(event.target.value) as CatalogWorkPageSize)}
           aria-label={t("sheets.catalogWorkPageSize")}
@@ -2062,7 +2049,7 @@ function CatalogWorkPagination({
               {t("collection.perPageOption", { value })}
             </option>
           ))}
-        </select>
+        </NativeSelect>
         <button
           className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground disabled:opacity-50"
           disabled={page <= 1}
@@ -2079,8 +2066,9 @@ function CatalogWorkPagination({
         >
           <ChevronRight className="h-4 w-4" />
         </button>
-        <input
-          className="h-8 w-16 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+        <Input
+          fieldSize="sm"
+          className="h-8 w-16 px-2 text-xs"
           type="number"
           min={1}
           max={totalPages}

@@ -12,12 +12,13 @@ import {
   UserCog,
   UserRound,
   Users,
-  X,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Input, NativeSelect } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, type ManagedUser } from "@/lib/api";
@@ -175,10 +176,10 @@ export function UsersPage({
 
       {loadError && (
         <div
-          className="flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2"
+          className="flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-lg border border-error-border bg-error-surface px-3 py-2"
           role="alert"
         >
-          <span className="text-sm text-destructive">
+          <span className="text-sm text-error-foreground">
             {loadError}
             {hasLoaded ? ` ${t("admin.existingDataShown")}` : ""}
           </span>
@@ -462,8 +463,7 @@ function UserEditor({
 
           <label className="grid gap-1.5 text-sm font-medium">
             {t("admin.username")}
-            <input
-              className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+            <Input
               value={username}
               onChange={(event) => setUsername(event.target.value)}
               disabled={Boolean(user)}
@@ -473,18 +473,12 @@ function UserEditor({
 
           <label className="grid gap-1.5 text-sm font-medium">
             {t("admin.displayName")}
-            <input
-              className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-              disabled={readOnly}
-            />
+            <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} disabled={readOnly} />
           </label>
 
           <label className="grid gap-1.5 text-sm font-medium">
             {t("admin.role")}
-            <select
-              className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+            <NativeSelect
               value={role}
               onChange={(event) => setRole(event.target.value as ManagedUser["role"])}
               disabled={readOnly || !canEditRole}
@@ -494,13 +488,12 @@ function UserEditor({
                   {item}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
 
           <label className="grid gap-1.5 text-sm font-medium">
             {t("admin.credentialField")}
-            <input
-              className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            <Input
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -678,104 +671,72 @@ function UserCreateModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-    >
-      <Card className="app-scroll max-h-[90vh] w-full max-w-xl overflow-auto">
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between gap-3">
-            <span className="flex min-w-0 items-center gap-3">
-              <EmptyUserAvatar />
-              <span className="min-w-0">
-                <span className="block truncate">{t("admin.addUser")}</span>
-                <span className="block truncate text-xs font-normal text-muted-foreground">
-                  {t("admin.createAccount")}
-                </span>
-              </span>
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={onClose}
-              aria-label={t("admin.closeAddDialog")}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-3" onSubmit={submit}>
-            <label className="grid gap-1.5 text-sm font-medium">
-              {t("admin.username")}
-              <input
-                className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                autoComplete="username"
-                required
-              />
-            </label>
-
-            <label className="grid gap-1.5 text-sm font-medium">
-              {t("admin.displayName")}
-              <input
-                className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                value={displayName}
-                onChange={(event) => setDisplayName(event.target.value)}
-              />
-            </label>
-
-            <label className="grid gap-1.5 text-sm font-medium">
-              {t("admin.role")}
-              <select
-                className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                value={role}
-                onChange={(event) => setRole(event.target.value as ManagedUser["role"])}
-              >
-                {roles.map((item) => (
-                  <option key={item} value={item} disabled={item === "super_admin" && !isSuperAdmin}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="grid gap-1.5 text-sm font-medium">
-              {t("admin.credentialField")}
-              <input
-                className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder={t("admin.atLeastEight")}
-                autoComplete="new-password"
-                required
-              />
-            </label>
-
-            <SwitchField
-              label={t("admin.enabled")}
-              description={t("admin.allowImmediateSignIn")}
-              checked={enabled}
-              onChange={setEnabled}
+    <Dialog onClose={onClose} size="xl" dismissible={false}>
+      <DialogHeader
+        title={t("admin.addUser")}
+        description={t("admin.createAccount")}
+        icon={<Plus className="h-4 w-4" />}
+        onClose={onClose}
+        closeLabel={t("admin.closeAddDialog")}
+      />
+      <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
+        <DialogBody className="space-y-3">
+          <label className="grid gap-1.5 text-sm font-medium">
+            {t("admin.username")}
+            <Input
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              autoComplete="username"
+              required
             />
+          </label>
 
-            <div className="flex flex-wrap justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
-                {t("common.cancel")}
-              </Button>
-              <Button disabled={isSaving || username.trim() === "" || password.trim() === ""}>
-                <Save className="h-4 w-4" />
-                {isSaving ? t("admin.creating") : t("admin.createUser")}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+          <label className="grid gap-1.5 text-sm font-medium">
+            {t("admin.displayName")}
+            <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+          </label>
+
+          <label className="grid gap-1.5 text-sm font-medium">
+            {t("admin.role")}
+            <NativeSelect value={role} onChange={(event) => setRole(event.target.value as ManagedUser["role"])}>
+              {roles.map((item) => (
+                <option key={item} value={item} disabled={item === "super_admin" && !isSuperAdmin}>
+                  {item}
+                </option>
+              ))}
+            </NativeSelect>
+          </label>
+
+          <label className="grid gap-1.5 text-sm font-medium">
+            {t("admin.credentialField")}
+            <Input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder={t("admin.atLeastEight")}
+              autoComplete="new-password"
+              required
+            />
+          </label>
+
+          <SwitchField
+            label={t("admin.enabled")}
+            description={t("admin.allowImmediateSignIn")}
+            checked={enabled}
+            onChange={setEnabled}
+          />
+        </DialogBody>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
+            {t("common.cancel")}
+          </Button>
+          <Button disabled={isSaving || username.trim() === "" || password.trim() === ""}>
+            <Save className="h-4 w-4" />
+            {isSaving ? t("admin.creating") : t("admin.createUser")}
+          </Button>
+        </DialogFooter>
+      </form>
+    </Dialog>
   );
 }
 

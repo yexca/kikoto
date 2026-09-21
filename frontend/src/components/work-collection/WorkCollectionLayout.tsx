@@ -1,4 +1,5 @@
 import { Columns3 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { TFunction } from "i18next";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
@@ -85,15 +86,18 @@ export function WorkCollectionLayoutPicker({
 
   return (
     <div className="relative" ref={popoverRef}>
-      <button
-        className="relative inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+      <Button
+        variant="toolbar"
+        size="icon-sm"
+        aria-expanded={columnsOpen}
+        className="relative"
         title={t("collection.columns", { label: columnSettingLabel(currentValue, t) })}
         aria-label={t("collection.columns", { label: columnSettingLabel(currentValue, t) })}
         type="button"
         onClick={() => setColumnsOpen((current) => !current)}
       >
         <Columns3 className="h-4 w-4" />
-      </button>
+      </Button>
       <AnchoredPopover
         open={columnsOpen}
         anchorRef={popoverRef}

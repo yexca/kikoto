@@ -126,7 +126,7 @@ function ToastViewport({ items, onClose }: { items: ToastItem[]; onClose: (id: n
   if (items.length === 0) return null;
   return (
     <div
-      className="fixed inset-x-3 z-[80] flex flex-col gap-2 sm:left-auto sm:right-4 sm:w-[min(360px,calc(100vw-2rem))]"
+      className="fixed inset-x-3 z-toast flex flex-col gap-2 sm:left-auto sm:right-4 sm:w-[min(360px,calc(100vw-2rem))]"
       style={{ top }}
       aria-live="polite"
       aria-atomic="false"
@@ -142,7 +142,12 @@ function ToastNotice({ toast, onClose }: { toast: ToastItem; onClose: () => void
   const { t } = useTranslation();
   const Icon = toast.kind === "error" ? AlertCircle : toast.kind === "success" ? CheckCircle2 : Info;
   return (
-    <div className={cn("relative overflow-hidden rounded-lg border bg-card shadow-xl", toastTone(toast.kind))}>
+    <div
+      className={cn(
+        "relative overflow-hidden rounded-lg border bg-card shadow-xl duration-200 animate-in fade-in-0 slide-in-from-bottom-2",
+        toastTone(toast.kind),
+      )}
+    >
       <div className="flex items-start gap-3 p-3 pr-10 text-sm">
         <Icon className="mt-0.5 h-4 w-4 shrink-0" />
         <div className="min-w-0 flex-1">{toast.message}</div>

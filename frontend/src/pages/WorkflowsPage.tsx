@@ -20,7 +20,6 @@ import {
   Settings2,
   Tag,
   Trash2,
-  X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
@@ -41,6 +40,8 @@ import "@xyflow/react/dist/style.css";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Input, NativeSelect, Textarea } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useWorkflowActivityLocation } from "@/features/workflows/useWorkflowActivityLocation";
 import { toastFromError, useToast } from "@/components/ui/toast";
@@ -678,10 +679,10 @@ export function WorkflowsPage({
       )}
       {hasWorkflowMetaSnapshot && workflowMetaError && (
         <div
-          className="flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2"
+          className="flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-lg border border-error-border bg-error-surface px-3 py-2"
           role="alert"
         >
-          <span className="text-sm text-destructive">
+          <span className="text-sm text-error-foreground">
             {workflowMetaError} {t("workflow.existingDataShown")}
           </span>
           <Button size="sm" variant="outline" onClick={refresh}>
@@ -1181,8 +1182,7 @@ function AvailabilityWatchConfigureDialog({
     <Modal title={workflowCopy("configureAvailabilityWatch")} onClose={onClose}>
       <div className="grid gap-4">
         <Field label={workflowCopy("remoteSource")}>
-          <select
-            className="h-10 rounded-md border bg-card px-3 text-sm"
+          <NativeSelect
             value={sourceId}
             onChange={(event) => setSourceId(Number(event.target.value))}
             disabled={readOnly || busy !== null}
@@ -1193,11 +1193,10 @@ function AvailabilityWatchConfigureDialog({
                 {source.displayName}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </Field>
         <Field label={workflowCopy("whenAvailable")}>
-          <select
-            className="h-10 rounded-md border bg-card px-3 text-sm"
+          <NativeSelect
             value={action}
             onChange={(event) => setAction(event.target.value as AvailabilityWatch["action"])}
             disabled={readOnly || busy !== null}
@@ -1210,11 +1209,10 @@ function AvailabilityWatchConfigureDialog({
             <option value="track_fetch" disabled={!canManageDownloads}>
               {workflowCopy("trackFetch")}
             </option>
-          </select>
+          </NativeSelect>
         </Field>
         <Field label={workflowCopy("excludeExtensions")}>
-          <input
-            className="h-10 rounded-md border bg-card px-3 text-sm"
+          <Input
             value={excluded}
             onChange={(event) => setExcluded(event.target.value)}
             placeholder={workflowCopy("extensionsPlaceholder")}
@@ -1437,10 +1435,10 @@ function WorkflowMetadataLoadingState() {
 
 function WorkflowMetadataErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <Card className="min-h-72 border-destructive/30" role="alert">
+    <Card className="min-h-72 border-error-border" role="alert">
       <CardContent className="grid min-h-72 place-items-center p-6 text-center">
         <div>
-          <p className="text-sm text-destructive">{message}</p>
+          <p className="text-sm text-error-foreground">{message}</p>
           <Button className="mt-4" size="sm" variant="outline" onClick={onRetry}>
             {workflowCopy("retry")}
           </Button>
@@ -1772,8 +1770,9 @@ function CustomWorkflowQuickRun({
           {input.label}
           {input.required && <span className="text-error-foreground"> *</span>}
         </span>
-        <input
-          className="h-9 w-full rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring"
+        <Input
+          fieldSize="sm"
+          className="w-full"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={workflowInputPlaceholder(input)}
@@ -1895,8 +1894,8 @@ function RemotePopularRunPanel({
           )}
           <label className="grid gap-2 text-sm font-medium">
             {workflowCopy("remoteSource")}
-            <select
-              className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            <NativeSelect
+              fieldSize="sm"
               value={sourceId}
               disabled={loadingSources || compatibleSources.length === 0}
               onChange={(event) => setSourceId(Number(event.target.value))}
@@ -1911,7 +1910,7 @@ function RemotePopularRunPanel({
                   {source.displayName}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -1938,17 +1937,13 @@ function RemotePopularRunPanel({
             </div>
             <label className="grid content-start gap-2 text-sm font-medium">
               {workflowCopy("workLimit")}
-              <select
-                className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                value={limit}
-                onChange={(event) => setLimit(Number(event.target.value))}
-              >
+              <NativeSelect fieldSize="sm" value={limit} onChange={(event) => setLimit(Number(event.target.value))}>
                 {[10, 25, 50, 100].map((item) => (
                   <option key={item} value={item}>
                     {workflowCopy("worksCount", { count: item })}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
           </div>
         </div>
@@ -2039,18 +2034,14 @@ function DLsitePopularRunPanel({
           {period === "year" ? (
             <label className="grid max-w-56 gap-2 text-sm font-medium">
               {workflowCopy("rankingYear")}
-              <select
-                className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                value={year}
-                onChange={(event) => setYear(Number(event.target.value))}
-              >
+              <NativeSelect fieldSize="sm" value={year} onChange={(event) => setYear(Number(event.target.value))}>
                 {years.map((item) => (
                   <option key={item} value={item}>
                     {item}
                     {item === currentYear ? ` (${workflowCopy("current")})` : ""}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
           ) : (
             <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/30 px-3 py-2.5">
@@ -2826,26 +2817,22 @@ function CandidateReviewCard({
         </div>
       )}
       {confirmDeleteOldFiles && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3">
-          <div className="text-sm font-semibold text-destructive">{workflowCopy("deleteOldLocalFilesTitle")}</div>
+        <div className="rounded-md border border-error-border bg-error-surface p-3">
+          <div className="text-sm font-semibold text-error-foreground">{workflowCopy("deleteOldLocalFilesTitle")}</div>
           <div className="mt-1 text-sm text-muted-foreground">{workflowCopy("deleteOldLocalFilesDescription")}</div>
           <div className="mt-3 flex flex-wrap justify-end gap-2">
             <Button size="sm" variant="outline" onClick={() => setConfirmDeleteOldFiles(false)}>
               {workflowCopy("cancel")}
             </Button>
-            <Button
-              size="sm"
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => void cleanup("delete_files")}
-            >
+            <Button size="sm" variant="destructive" onClick={() => void cleanup("delete_files")}>
               {workflowCopy("deleteFiles")}
             </Button>
           </div>
         </div>
       )}
       {archiveDeleteStep > 0 && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3">
-          <div className="text-sm font-semibold text-destructive">
+        <div className="rounded-md border border-error-border bg-error-surface p-3">
+          <div className="text-sm font-semibold text-error-foreground">
             {archiveDeleteStep === 1 ? workflowCopy("reviewArchivedDirectories") : workflowCopy("finalConfirmation")}
           </div>
           <div className="mt-1 text-sm text-muted-foreground">
@@ -2867,11 +2854,7 @@ function CandidateReviewCard({
                 {workflowCopy("continue")}
               </Button>
             ) : (
-              <Button
-                size="sm"
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                onClick={() => void reviewArchive("delete_archived")}
-              >
+              <Button size="sm" variant="destructive" onClick={() => void reviewArchive("delete_archived")}>
                 {workflowCopy("permanentlyDelete")}
               </Button>
             )}
@@ -3534,25 +3517,21 @@ function WorkflowModal({
       <div className="grid gap-3">
         <div className="grid gap-3 md:grid-cols-2">
           <Field label={workflowCopy("code")}>
-            <input
-              className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+            <Input
+              fieldSize="sm"
               value={code}
               disabled={!!definition}
               onChange={(event) => setCode(event.target.value)}
             />
           </Field>
           <Field label={workflowCopy("name")}>
-            <input
-              className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-            />
+            <Input fieldSize="sm" value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
           </Field>
         </div>
         {!definition && (
           <Field label={workflowCopy("template")}>
-            <select
-              className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            <NativeSelect
+              fieldSize="sm"
               value={templateId}
               onChange={(event) => {
                 setTemplateID(event.target.value);
@@ -3567,22 +3546,18 @@ function WorkflowModal({
                   {template.label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </Field>
         )}
         <Field label={workflowCopy("description")}>
-          <textarea
-            className="min-h-20 rounded-md border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-          />
+          <Textarea value={description} onChange={(event) => setDescription(event.target.value)} />
         </Field>
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <div className="text-sm font-medium">{workflowCopy("nodes")}</div>
             <div className="flex items-center gap-2">
-              <select
-                className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              <NativeSelect
+                fieldSize="sm"
                 value={insertPhase}
                 onChange={(event) => setInsertPhase(event.target.value)}
                 aria-label={workflowCopy("nodePhaseToAdd")}
@@ -3592,7 +3567,7 @@ function WorkflowModal({
                     {phase}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
               <Button
                 size="sm"
                 variant="outline"
@@ -3831,8 +3806,8 @@ function TriggerModal({
           <div className="text-sm font-medium">{localizedWorkflowDefinition(definition).displayName}</div>
         </div>
         <Field label={workflowCopy("name")}>
-          <input
-            className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+          <Input
+            fieldSize="sm"
             value={displayName}
             disabled={triggerType === "filesystem_event"}
             onChange={(event) => setDisplayName(event.target.value)}
@@ -3841,8 +3816,8 @@ function TriggerModal({
         <div className="grid gap-3 md:grid-cols-2">
           {triggerType === "schedule" ? (
             <Field label={workflowCopy("intervalMinutes")}>
-              <input
-                className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              <Input
+                fieldSize="sm"
                 type="number"
                 min={5}
                 max={10080}
@@ -3876,8 +3851,8 @@ function TriggerModal({
                     onChange={(value) => setScheduledInputs((current) => ({ ...current, [input.key]: value }))}
                   />
                 ) : (
-                  <input
-                    className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  <Input
+                    fieldSize="sm"
                     value={scheduledInputs[input.key] ?? ""}
                     onChange={(event) =>
                       setScheduledInputs((current) => ({ ...current, [input.key]: event.target.value }))
@@ -4113,8 +4088,8 @@ function SystemWorkflowTriggerFields({
     return (
       <div className="grid gap-3 border-t pt-3 md:grid-cols-2">
         <Field label={workflowCopy("remoteSource")}>
-          <select
-            className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+          <NativeSelect
+            fieldSize="sm"
             value={value.sourceId}
             disabled={loadingSources || compatibleSources.length === 0}
             onChange={(event) => onChange({ ...value, sourceId: Number(event.target.value) })}
@@ -4129,11 +4104,11 @@ function SystemWorkflowTriggerFields({
                 {source.displayName}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </Field>
         <Field label={workflowCopy("action")}>
-          <select
-            className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+          <NativeSelect
+            fieldSize="sm"
             value={value.action}
             onChange={(event) => onChange({ ...value, action: event.target.value === "fetch" ? "fetch" : "track" })}
           >
@@ -4141,11 +4116,11 @@ function SystemWorkflowTriggerFields({
             <option value="fetch" disabled>
               {workflowCopy("fetchManualOnly")}
             </option>
-          </select>
+          </NativeSelect>
         </Field>
         <Field label={workflowCopy("workLimit")}>
-          <select
-            className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+          <NativeSelect
+            fieldSize="sm"
             value={value.limit}
             onChange={(event) => onChange({ ...value, limit: Number(event.target.value) })}
           >
@@ -4154,7 +4129,7 @@ function SystemWorkflowTriggerFields({
                 {workflowCopy("worksCount", { count: limit })}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </Field>
         <TagTemplateField
           id="remote-trigger-tag-template"
@@ -4180,8 +4155,8 @@ function SystemWorkflowTriggerFields({
     return (
       <div className="grid gap-3 border-t pt-3 md:grid-cols-2">
         <Field label={workflowCopy("rankingPeriod")}>
-          <select
-            className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+          <NativeSelect
+            fieldSize="sm"
             value={value.period}
             onChange={(event) => {
               const period = event.target.value as DLsitePopularPeriod;
@@ -4196,12 +4171,12 @@ function SystemWorkflowTriggerFields({
             <option value="week">{workflowCopy("period7Days")}</option>
             <option value="month">{workflowCopy("period30Days")}</option>
             <option value="year">{workflowCopy("periodAnnual")}</option>
-          </select>
+          </NativeSelect>
         </Field>
         {value.period === "year" ? (
           <Field label={workflowCopy("rankingYear")}>
-            <input
-              className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            <Input
+              fieldSize="sm"
               type="number"
               min={2000}
               max={new Date().getUTCFullYear()}
@@ -4211,14 +4186,14 @@ function SystemWorkflowTriggerFields({
           </Field>
         ) : (
           <Field label={workflowCopy("releaseWindow")}>
-            <select
-              className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            <NativeSelect
+              fieldSize="sm"
               value={value.releaseWindow}
               onChange={(event) => onChange({ ...value, releaseWindow: event.target.value === "30d" ? "30d" : "" })}
             >
               <option value="30d">{workflowCopy("releasedIn30Days")}</option>
               <option value="">{workflowCopy("allReleases")}</option>
-            </select>
+            </NativeSelect>
           </Field>
         )}
         <TagTemplateField
@@ -4290,10 +4265,11 @@ function TagTemplateField({
             <RotateCcw className="h-3.5 w-3.5" />
           </Button>
         </div>
-        <input
+        <Input
           ref={inputRef}
           id={id}
-          className="h-9 w-full rounded-md border bg-card px-3 font-mono text-sm outline-none focus:ring-2 focus:ring-ring"
+          fieldSize="sm"
+          className="w-full font-mono"
           value={value}
           maxLength={TAG_TEMPLATE_MAX_LENGTH}
           aria-invalid={Boolean(error)}
@@ -4453,13 +4429,9 @@ function NodeInlineEditor({
   return (
     <div className="grid gap-3 rounded-md border p-3">
       <div className="grid gap-2 md:grid-cols-[1fr_1.3fr_1fr_auto]">
-        <input
-          className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-          value={node.id}
-          onChange={(event) => onChange({ id: event.target.value })}
-        />
-        <select
-          className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+        <Input fieldSize="sm" value={node.id} onChange={(event) => onChange({ id: event.target.value })} />
+        <NativeSelect
+          fieldSize="sm"
           value={node.type}
           onChange={(event) => onChange({ type: event.target.value, config: {} })}
         >
@@ -4487,9 +4459,9 @@ function NodeInlineEditor({
                 ))}
             </optgroup>
           )}
-        </select>
-        <input
-          className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+        </NativeSelect>
+        <Input
+          fieldSize="sm"
           placeholder={workflowCopy("displayName")}
           value={node.displayName ?? ""}
           onChange={(event) => onChange({ displayName: event.target.value })}
@@ -4520,8 +4492,8 @@ function NodeInlineEditor({
               onChange={(config) => onChange({ config })}
             />
             <Field label={workflowCopy("configJson")}>
-              <textarea
-                className="min-h-24 rounded-md border bg-card px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring"
+              <Textarea
+                className="min-h-24 font-mono text-xs"
                 value={configDraft}
                 onBlur={commitConfigDraft}
                 onChange={(event) => setConfigDraft(event.target.value)}
@@ -4586,8 +4558,8 @@ function ConfigFields({
           }
           return (
             <Field key={field} label={field}>
-              <input
-                className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              <Input
+                fieldSize="sm"
                 type={kind === "number" ? "number" : "text"}
                 value={formatConfigInputValue(value)}
                 onChange={(event) => updateField(field, parseConfigInputValue(event.target.value, kind, field))}
@@ -4632,22 +4604,10 @@ function WorkflowHints({
 
 function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/20 p-4 backdrop-blur-sm">
-      <div
-        className="app-scroll max-h-[86vh] w-full max-w-3xl overflow-auto rounded-lg border bg-card shadow-xl"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-      >
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-card px-4 py-3">
-          <div className="font-semibold">{title}</div>
-          <Button size="icon" variant="ghost" aria-label={workflowCopy("close")} onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="p-4">{children}</div>
-      </div>
-    </div>
+    <Dialog onClose={onClose} size="xl" dismissible={false} className="max-w-3xl">
+      <DialogHeader title={title} onClose={onClose} closeLabel={workflowCopy("close")} />
+      <DialogBody>{children}</DialogBody>
+    </Dialog>
   );
 }
 
@@ -4737,42 +4697,26 @@ function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () =>
         )}
       </div>
       {confirmingCancel && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/20 p-4 backdrop-blur-sm">
-          <div
-            className="w-full max-w-md rounded-lg border bg-card p-4 shadow-xl"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={`cancel-run-${run.id}-title`}
+        <Dialog onClose={() => setConfirmingCancel(false)} size="md" dismissible={false}>
+          <DialogHeader
+            title={workflowCopy("cancelDeletionTitle")}
+            onClose={() => setConfirmingCancel(false)}
+            closeLabel={workflowCopy("close")}
           >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 id={`cancel-run-${run.id}-title`} className="font-semibold">
-                  {workflowCopy("cancelDeletionTitle")}
-                </h3>
-                <p className="mt-2 text-sm text-muted-foreground">{workflowCopy("cancelDeletionDescription")}</p>
-                {run.workflowCode === "media_cleanup_forget_work" && (
-                  <p className="mt-2 text-sm text-muted-foreground">{workflowCopy("forgetStepSkipped")}</p>
-                )}
-              </div>
-              <Button
-                size="icon"
-                variant="ghost"
-                aria-label={workflowCopy("close")}
-                onClick={() => setConfirmingCancel(false)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setConfirmingCancel(false)}>
-                {workflowCopy("keepRunning")}
-              </Button>
-              <Button variant="destructive" onClick={() => void cancel()}>
-                {workflowCopy("cancelWorkflow")}
-              </Button>
-            </div>
-          </div>
-        </div>
+            <p className="mt-2 text-sm text-muted-foreground">{workflowCopy("cancelDeletionDescription")}</p>
+            {run.workflowCode === "media_cleanup_forget_work" && (
+              <p className="mt-2 text-sm text-muted-foreground">{workflowCopy("forgetStepSkipped")}</p>
+            )}
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmingCancel(false)}>
+              {workflowCopy("keepRunning")}
+            </Button>
+            <Button variant="destructive" onClick={() => void cancel()}>
+              {workflowCopy("cancelWorkflow")}
+            </Button>
+          </DialogFooter>
+        </Dialog>
       )}
     </>
   );

@@ -37,6 +37,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { useAuth } from "@/auth/AuthProvider";
 import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
@@ -1013,7 +1015,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                   {tab.value === "all"
                     ? t("favorites.all")
                     : t(`library.status.${tab.value}`, { defaultValue: tab.label })}
-                  <span className="text-[11px] tabular-nums opacity-65">
+                  <span className="text-2xs tabular-nums opacity-65">
                     {tab.value === "all"
                       ? activeList === "all"
                         ? favoriteTotal
@@ -1516,7 +1518,7 @@ function FavoriteDesktopStatusFilters({
         >
           <tab.icon className="h-3 w-3" />
           {tab.value === "all" ? t("favorites.all") : t(`library.status.${tab.value}`, { defaultValue: tab.label })}
-          <span className="text-[11px] tabular-nums opacity-65">
+          <span className="text-2xs tabular-nums opacity-65">
             {tab.value === "all" ? favoriteTotal : (counts[tab.value] ?? 0)}
           </span>
         </button>
@@ -1644,7 +1646,7 @@ function FavoriteResourceOption({
       <Check className={`h-4 w-4 shrink-0 ${selected ? "opacity-100" : "opacity-0"}`} />
       {icon}
       <span className="min-w-0 flex-1 truncate text-foreground">{label}</span>
-      {suffix && <span className="text-[11px] text-muted-foreground">{suffix}</span>}
+      {suffix && <span className="text-2xs text-muted-foreground">{suffix}</span>}
     </button>
   );
 }
@@ -1920,10 +1922,10 @@ function FavoriteLoadError({
   const { t } = useTranslation();
   return (
     <div
-      className={`${compact ? "flex min-h-12 items-center justify-between gap-3 px-3 py-2" : "grid min-h-40 place-items-center px-4 py-8 text-center"} rounded-lg border border-destructive/30 bg-destructive/5`}
+      className={`${compact ? "flex min-h-12 items-center justify-between gap-3 px-3 py-2" : "grid min-h-40 place-items-center px-4 py-8 text-center"} rounded-lg border border-error-border bg-error-surface`}
       role="alert"
     >
-      <p className="text-sm text-destructive">{message}</p>
+      <p className="text-sm text-error-foreground">{message}</p>
       <Button size="sm" variant="outline" onClick={onRetry}>
         {t("common.retry")}
       </Button>
@@ -2407,20 +2409,11 @@ function FavoriteListEditor({
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">
             <span className="text-xs font-medium text-muted-foreground">{t("favorites.name")}</span>
-            <input
-              className="h-9 rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              autoFocus
-            />
+            <Input fieldSize="sm" value={name} onChange={(event) => setName(event.target.value)} autoFocus />
           </label>
           <label className="grid gap-1 text-sm">
             <span className="text-xs font-medium text-muted-foreground">{t("favorites.description")}</span>
-            <input
-              className="h-9 rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-            />
+            <Input fieldSize="sm" value={description} onChange={(event) => setDescription(event.target.value)} />
           </label>
         </div>
         {error && (
@@ -2476,98 +2469,83 @@ function FavoriteListManager({
   const actionsDisabled = editor !== null || deleteTarget !== null || deleting;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="favorite-list-manager-title"
-        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-lg border bg-card p-4 shadow-xl"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="flex shrink-0 items-start justify-between gap-3">
-          <div>
-            <h2 id="favorite-list-manager-title" className="text-base font-semibold">
-              {t("favorites.editLists")}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">{t("favorites.editListsDescription")}</p>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            disabled={deleting}
-            aria-label={t("favorites.closeListEditor")}
+    <Dialog
+      onClose={onClose}
+      size="lg"
+      dismissible={!deleting}
+      // Nested rename/delete surfaces own Escape while they are open.
+      closeOnEscape={editor === null && deleteTarget === null}
+    >
+      <DialogHeader
+        title={t("favorites.editLists")}
+        description={t("favorites.editListsDescription")}
+        onClose={() => {
+          if (!deleting) onClose();
+        }}
+        closeLabel={t("favorites.closeListEditor")}
+      />
+      <DialogBody className="space-y-2 overscroll-contain" role="list" aria-label={t("favorites.lists")}>
+        {markedList && (
+          <div
+            role="listitem"
+            className="flex items-center gap-2 rounded-md border border-dashed bg-muted/30 px-3 py-2"
           >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-        <div
-          className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain"
-          role="list"
-          aria-label={t("favorites.lists")}
-        >
-          {markedList && (
-            <div
-              role="listitem"
-              className="flex items-center gap-2 rounded-md border border-dashed bg-muted/30 px-3 py-2"
-            >
-              <ListMusic className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">{t("favorites.marked")}</div>
-                <div className="truncate text-xs text-muted-foreground">{t("favorites.markedDescription")}</div>
-              </div>
-              <span className="shrink-0 text-xs text-muted-foreground">{t("favorites.fixed")}</span>
+            <ListMusic className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium">{t("favorites.marked")}</div>
+              <div className="truncate text-xs text-muted-foreground">{t("favorites.markedDescription")}</div>
             </div>
-          )}
-          {lists.length === 0 && editor !== "new" ? (
-            <div className="rounded-md border px-3 py-4 text-sm text-muted-foreground">
-              {t("favorites.noCustomLists")}
-            </div>
-          ) : (
-            lists.map((list, index) =>
-              editor !== "new" && editor?.id === list.id ? (
-                <FavoriteListEditor key={`editor-${list.id}`} list={list} onClose={onCancelEdit} onSave={onSave} />
-              ) : (
-                <FavoriteListManagerRow
-                  key={list.id}
-                  list={list}
-                  index={index}
-                  total={lists.length}
-                  actionsDisabled={actionsDisabled}
-                  confirmingDelete={deleteTarget?.id === list.id}
-                  deleting={deleting && deleteTarget?.id === list.id}
-                  onMove={onMove}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
-                  onCancelDelete={onCancelDelete}
-                  onConfirmDelete={onConfirmDelete}
-                />
-              ),
-            )
-          )}
-          {editor === "new" && (
-            <FavoriteListEditor key="new-list-editor" list={null} onClose={onCancelEdit} onSave={onSave} />
-          )}
-        </div>
-        <div className="mt-4 flex shrink-0 gap-2">
-          {editor === null && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onNew}
-              disabled={deleteTarget !== null || deleting}
-            >
-              <Plus className="h-4 w-4" />
-              {t("favorites.addList")}
-            </Button>
-          )}
-          <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={onClose} disabled={deleting}>
-            {t("favorites.done")}
+            <span className="shrink-0 text-xs text-muted-foreground">{t("favorites.fixed")}</span>
+          </div>
+        )}
+        {lists.length === 0 && editor !== "new" ? (
+          <div className="rounded-md border px-3 py-4 text-sm text-muted-foreground">
+            {t("favorites.noCustomLists")}
+          </div>
+        ) : (
+          lists.map((list, index) =>
+            editor !== "new" && editor?.id === list.id ? (
+              <FavoriteListEditor key={`editor-${list.id}`} list={list} onClose={onCancelEdit} onSave={onSave} />
+            ) : (
+              <FavoriteListManagerRow
+                key={list.id}
+                list={list}
+                index={index}
+                total={lists.length}
+                actionsDisabled={actionsDisabled}
+                confirmingDelete={deleteTarget?.id === list.id}
+                deleting={deleting && deleteTarget?.id === list.id}
+                onMove={onMove}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                onCancelDelete={onCancelDelete}
+                onConfirmDelete={onConfirmDelete}
+              />
+            ),
+          )
+        )}
+        {editor === "new" && (
+          <FavoriteListEditor key="new-list-editor" list={null} onClose={onCancelEdit} onSave={onSave} />
+        )}
+      </DialogBody>
+      <DialogFooter className="justify-start">
+        {editor === null && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onNew}
+            disabled={deleteTarget !== null || deleting}
+          >
+            <Plus className="h-4 w-4" />
+            {t("favorites.addList")}
           </Button>
-        </div>
-      </div>
-    </div>
+        )}
+        <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={onClose} disabled={deleting}>
+          {t("favorites.done")}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }
 

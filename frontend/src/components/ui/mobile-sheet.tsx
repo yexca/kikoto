@@ -124,7 +124,7 @@ export function MobileSheet({
 
   return createPortal(
     <div
-      className="visual-viewport-layer z-[70] flex items-end bg-transparent p-2 sm:p-4"
+      className="visual-viewport-layer z-sheet flex items-end bg-transparent p-2 sm:p-4"
       onPointerDown={(event) => {
         if (open && event.target === event.currentTarget) onOpenChange(false);
       }}

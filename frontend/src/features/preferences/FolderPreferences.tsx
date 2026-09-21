@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input, Textarea } from "@/components/ui/input";
 import type { DirectoryRoutingRule } from "@/lib/api";
 import i18n from "@/i18n";
 const maintenanceCopy = (key: string, options?: Record<string, unknown>) => i18n.t(`maintenance.${key}`, options);
@@ -184,7 +185,7 @@ function DirectoryRuleEditor({
         >
           <GripVertical className="h-4 w-4" />
         </button>
-        <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+        <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-3xs font-semibold text-primary-foreground">
           {index + 1}
         </span>
       </div>
@@ -261,11 +262,7 @@ function TagListInput({
   return (
     <label className="grid gap-1 text-sm">
       <span className="font-medium">{label}</span>
-      <textarea
-        className="min-h-20 rounded-md border bg-card px-3 py-2 outline-none focus:ring-2 focus:ring-ring"
-        value={value.join(", ")}
-        onChange={(event) => onChange(splitRuleTokens(event.target.value))}
-      />
+      <Textarea value={value.join(", ")} onChange={(event) => onChange(splitRuleTokens(event.target.value))} />
       <span className="text-xs text-muted-foreground">{maintenanceCopy("routing.keywordHint")}</span>
     </label>
   );
@@ -275,11 +272,7 @@ function TextInput({ label, value, onChange }: { label: string; value: string; o
   return (
     <label className="grid gap-1 text-sm">
       <span className="font-medium">{label}</span>
-      <input
-        className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
+      <Input fieldSize="sm" value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }

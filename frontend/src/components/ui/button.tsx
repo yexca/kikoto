@@ -14,11 +14,14 @@ const buttonVariants = cva(
         destructive: "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
         ghost: "hover:bg-muted hover:text-foreground",
         outline: "border border-input bg-card hover:bg-muted",
+        toolbar:
+          "border bg-background text-muted-foreground hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
       },
       size: {
         default: "h-[var(--control-height)] px-[var(--control-padding-x)] py-2",
         sm: "h-[var(--control-height-sm)] px-[var(--control-padding-sm-x)] text-xs",
         icon: "h-[var(--control-icon-size)] w-[var(--control-icon-size)]",
+        "icon-sm": "h-8 w-8",
       },
     },
     defaultVariants: {

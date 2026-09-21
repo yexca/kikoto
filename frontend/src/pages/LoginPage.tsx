@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { useAuth } from "@/auth/AuthProvider";
 import { ApiError } from "@/lib/api";
 import { clearStoredServerURL, getStoredServerURL, isNativeApp } from "@/lib/serverConfig";
@@ -54,17 +55,11 @@ export function LoginPage({ embedded = false, onSuccess }: { embedded?: boolean;
         <form className="space-y-3" onSubmit={submit}>
           <label className="grid gap-1.5 text-sm font-medium">
             {t("login.username")}
-            <input
-              className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              autoComplete="username"
-            />
+            <Input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" />
           </label>
           <label className="grid gap-1.5 text-sm font-medium">
             {t("login.password")}
-            <input
-              className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            <Input
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -72,7 +67,7 @@ export function LoginPage({ embedded = false, onSuccess }: { embedded?: boolean;
             />
           </label>
           {error && (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <div className="rounded-md border border-error-border bg-error-surface px-3 py-2 text-sm text-error-foreground">
               {error}
             </div>
           )}

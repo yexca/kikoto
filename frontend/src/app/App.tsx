@@ -1,6 +1,6 @@
 import { USER_PREFERENCES_CHANGED } from "@/lib/recommendationSession";
 import { App as CapacitorApp } from "@capacitor/app";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
@@ -343,38 +343,57 @@ function AuthenticatedApp() {
               sidebarCollapsed ? "justify-center px-3" : "px-5",
             )}
           >
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary/10 ring-1 ring-primary/15">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-[var(--control-radius)] bg-primary/10 ring-1 ring-primary/15">
                 <img src="/kikoto-icon-512.png" alt="" className="h-7 w-7" />
               </span>
-              {!sidebarCollapsed && <div className="truncate text-xl font-bold">Kikoto</div>}
+              {!sidebarCollapsed && (
+                <div className="truncate font-[family-name:var(--font-heading)] text-xl font-semibold tracking-tight">
+                  Kikoto
+                </div>
+              )}
             </div>
           </div>
           <nav className={cx("app-scroll min-h-0 flex-1 overflow-y-auto", sidebarCollapsed ? "p-2" : "p-3")}>
-            {visibleNavItems.map((item) => (
-              <Button
-                key={item.id}
-                className={cx(
-                  "mb-1 w-full",
-                  sidebarCollapsed ? "justify-center px-0" : "justify-start",
-                  page === item.id && "bg-muted",
-                )}
-                variant="ghost"
-                size={sidebarCollapsed ? "icon" : "default"}
-                title={sidebarCollapsed ? navigationLabel(item, t) : undefined}
-                aria-label={sidebarCollapsed ? navigationLabel(item, t) : undefined}
-                onClick={() => openPage(item.id)}
-              >
-                <item.icon className="h-4 w-4" />
-                {!sidebarCollapsed && navigationLabel(item, t)}
-              </Button>
-            ))}
+            {visibleNavItems.map((item, index) => {
+              const active = page === item.id;
+              const startsGroup = index > 0 && visibleNavItems[index - 1].group !== item.group;
+              return (
+                <Fragment key={item.id}>
+                  {startsGroup && (
+                    <div aria-hidden="true" className={cx("my-2 border-t", sidebarCollapsed ? "mx-2" : "mx-3")} />
+                  )}
+                  <Button
+                    className={cx(
+                      "relative mb-0.5 w-full font-normal text-muted-foreground",
+                      sidebarCollapsed ? "justify-center px-0" : "justify-start gap-3",
+                      active && "bg-primary/10 font-medium text-foreground hover:bg-primary/15",
+                    )}
+                    variant="ghost"
+                    size={sidebarCollapsed ? "icon" : "default"}
+                    title={sidebarCollapsed ? navigationLabel(item, t) : undefined}
+                    aria-label={sidebarCollapsed ? navigationLabel(item, t) : undefined}
+                    aria-current={active ? "page" : undefined}
+                    onClick={() => openPage(item.id)}
+                  >
+                    {active && (
+                      <span aria-hidden="true" className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-primary" />
+                    )}
+                    <item.icon className={cx("h-4 w-4", active && "text-primary")} />
+                    {!sidebarCollapsed && navigationLabel(item, t)}
+                  </Button>
+                </Fragment>
+              );
+            })}
           </nav>
           <div className={cx("border-t", sidebarCollapsed ? "p-2" : "p-3")}>
             <Button
               variant="ghost"
               size={sidebarCollapsed ? "icon" : "default"}
-              className={cx("w-full", sidebarCollapsed ? "justify-center px-0" : "justify-start")}
+              className={cx(
+                "w-full font-normal text-muted-foreground",
+                sidebarCollapsed ? "justify-center px-0" : "justify-start gap-3",
+              )}
               aria-label={sidebarCollapsed ? t("app.expandSidebar") : t("app.collapseSidebar")}
               title={sidebarCollapsed ? t("app.expandSidebar") : undefined}
               onClick={toggleSidebar}
@@ -507,12 +526,20 @@ function AuthenticatedApp() {
                   <button
                     key={item.id}
                     className={cx(
-                      "flex h-[var(--mobile-navigation-height)] flex-col items-center justify-center gap-1 text-[11px] text-muted-foreground",
-                      page === item.id && "bg-muted text-foreground",
+                      "group flex h-[var(--mobile-navigation-height)] flex-col items-center justify-center gap-1 text-2xs text-muted-foreground transition-colors",
+                      page === item.id && "font-medium text-foreground",
                     )}
+                    aria-current={page === item.id ? "page" : undefined}
                     onClick={() => openMobilePage(item.id)}
                   >
-                    <item.icon className="h-4 w-4" />
+                    <span
+                      className={cx(
+                        "grid h-7 w-12 place-items-center rounded-full transition-colors",
+                        page === item.id ? "bg-primary/15 text-primary" : "group-active:bg-muted",
+                      )}
+                    >
+                      <item.icon className="h-[1.125rem] w-[1.125rem]" />
+                    </span>
                     <span>{navigationLabel(item, t)}</span>
                   </button>
                 );
@@ -767,7 +794,7 @@ function MobileConnectionBanner({
 function LoginOverlay({ onClose }: { onClose: () => void }) {
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm"
+      className="dialog-scrim fixed inset-0 z-overlay grid place-items-center p-4 duration-150 animate-in fade-in-0"
       role="dialog"
       aria-modal="true"
       onMouseDown={onClose}

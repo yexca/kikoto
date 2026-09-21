@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { parseWorkflowDefinition, type WorkflowInputDefinition } from "@/features/workflows/definitionModel";
 import { workflowRunInputPayload } from "@/features/workflows/workflowCommands";
 import { parseWorkCodes, WorkCodesField } from "@/features/workflows/WorkCodesField";
@@ -143,14 +145,16 @@ export function WorkflowRunDialog({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[60] grid place-items-center bg-background/70 p-3 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-label={t("workflowRun.run", { name: definition.displayName })}
+    <Dialog
+      onClose={onClose}
+      layer="overlay-nested"
+      size="xl"
+      dismissible={false}
+      ariaLabel={t("workflowRun.run", { name: definition.displayName })}
+      className="max-w-3xl"
     >
-      <div className="app-scroll max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-md border bg-card shadow-xl">
-        <header className="sticky top-0 z-10 flex min-h-14 items-center gap-3 border-b bg-card px-4">
+      <div className="app-scroll min-h-0 flex-1 overflow-y-auto">
+        <header className="sticky top-0 z-10 flex min-h-14 items-center gap-3 border-b bg-popover px-4">
           <ShieldCheck className="h-4 w-4 text-primary" />
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-sm font-semibold">
@@ -229,7 +233,7 @@ export function WorkflowRunDialog({
           </div>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }
 
@@ -242,7 +246,6 @@ function RunInput({
   value: unknown;
   onChange: (value: string) => void;
 }) {
-  const fieldClass = "rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring";
   return (
     <label className="grid gap-1.5 text-sm">
       <span className="font-medium">
@@ -252,8 +255,7 @@ function RunInput({
       {input.type === "work_codes" ? (
         <WorkCodesField value={typeof value === "string" ? value : ""} onChange={onChange} />
       ) : (
-        <input
-          className={`${fieldClass} h-10`}
+        <Input
           value={typeof value === "string" ? value : ""}
           onChange={(event) => onChange(event.target.value)}
           placeholder={input.type.replace(/_/g, " ")}
@@ -261,7 +263,7 @@ function RunInput({
           spellCheck={input.type === "text" || input.type === "voice_name"}
         />
       )}
-      <span className="font-mono text-[10px] text-muted-foreground">
+      <span className="font-mono text-3xs text-muted-foreground">
         {input.key} · {input.type}
       </span>
     </label>
@@ -312,7 +314,7 @@ function PreviewPlan({ preview, onEdit }: { preview: WorkflowDefinitionRunPrevie
             const item = actionRecord(action);
             return (
               <div key={`${item.nodeId}-${index}`} className="flex items-center gap-3 px-3 py-2.5">
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded border bg-muted text-[11px] font-medium">
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded border bg-muted text-2xs font-medium">
                   {index + 1}
                 </span>
                 <span className="min-w-0 flex-1">

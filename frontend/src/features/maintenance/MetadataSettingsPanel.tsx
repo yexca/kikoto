@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { api, type AppSettings, type FileSource } from "@/lib/api";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { Input, NativeSelect } from "@/components/ui/input";
 import {
   dlsiteMetadataLanguageOptions,
   moveDlsiteMetadataLanguage,
@@ -274,7 +275,7 @@ function MetadataSettings({
                     </div>
                   </div>
                   <div className="flex items-center justify-between gap-2 border-t pt-2">
-                    <span className="text-[11px] font-semibold uppercase text-muted-foreground">
+                    <span className="text-2xs font-semibold uppercase text-muted-foreground">
                       {maintenanceCopy("metadata.priority", { count: index + 1 })}
                     </span>
                     <span className="flex gap-1">
@@ -327,8 +328,9 @@ function MetadataSettings({
                 return (
                   <label key={source.id} className="grid gap-1 rounded-md border bg-background p-3 text-sm">
                     <span className="truncate font-medium">{source.displayName}</span>
-                    <select
-                      className="h-9 min-w-0 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+                    <NativeSelect
+                      fieldSize="sm"
+                      className="min-w-0"
                       value={value}
                       disabled={updatingSourceId !== null}
                       aria-label={`${source.displayName} metadata request language`}
@@ -340,7 +342,7 @@ function MetadataSettings({
                           {t(option.labelKey)}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   </label>
                 );
               })}
@@ -355,8 +357,8 @@ function MetadataSettings({
         <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
           <label className="grid gap-1 text-sm">
             <span className="font-medium">{maintenanceCopy("metadata.catalogFreshnessDays")}</span>
-            <input
-              className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
+            <Input
+              fieldSize="sm"
               type="number"
               min={1}
               max={365}

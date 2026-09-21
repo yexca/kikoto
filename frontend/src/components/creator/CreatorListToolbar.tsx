@@ -1,4 +1,5 @@
 import { Filter, Search, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
@@ -55,7 +56,7 @@ export function CreatorListToolbar<FilterValue extends string>({
   return (
     <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between" data-toast-avoid>
       <div
-        className={`order-2 min-h-10 flex-1 items-center gap-2 rounded-lg border bg-card px-3 text-sm lg:order-1 lg:flex lg:max-w-xl ${
+        className={`search-field order-2 min-h-10 flex-1 items-center gap-2 rounded-lg border bg-card px-3 text-sm lg:order-1 lg:flex lg:max-w-xl ${
           mobileSearchOpen ? "flex" : "hidden"
         }`}
       >
@@ -127,16 +128,18 @@ function CreatorListToolbarIconButton({
   onClick: () => void;
 }) {
   return (
-    <button
+    <Button
       type="button"
-      className="relative inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+      variant="toolbar"
+      size="icon-sm"
+      className="relative disabled:pointer-events-none disabled:opacity-50"
       title={title}
       aria-label={title}
       disabled={disabled}
       onClick={onClick}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 

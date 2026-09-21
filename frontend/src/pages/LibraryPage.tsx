@@ -19,9 +19,7 @@ import {
   CloudOff,
   Edit3,
   ExternalLink,
-  FileAudio,
   FileText,
-  FileVideo,
   Filter,
   Folder,
   FolderTree,
@@ -29,21 +27,17 @@ import {
   HardDrive,
   HardDriveDownload,
   Headphones,
-  ImageIcon,
   Languages,
   ListChecks,
   MoreHorizontal,
   Pause,
   PauseCircle,
-  Play,
   Plus,
   RefreshCw,
   Repeat2,
   Search,
-  ShieldAlert,
   Sparkles,
   Tags,
-  Trash2,
   Unlink,
   UserRound,
   X,
@@ -79,7 +73,7 @@ import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import {
@@ -102,12 +96,15 @@ import {
   workCollectionStyle,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
+import { DirectoryManagerDialog } from "@/features/work-detail/dialogs/DirectoryManagerDialog";
+import { FilePreviewDialog, type FilePreviewState } from "@/features/work-detail/dialogs/FilePreviewDialog";
+import { fileIcon, formatFolderStats } from "@/features/work-detail/dialogs/mediaFilePresentation";
+import { ReforkConfirmDialog } from "@/features/work-detail/dialogs/ReforkConfirmDialog";
 import {
   MediaContextActionBar,
   WorkIdentityActionBar,
   type DetailActionMode,
 } from "@/features/work-detail/WorkDetailActionBars";
-import { VideoPreview } from "@/features/work-detail/media/VideoPreview";
 import {
   buildRemoteTree,
   buildTree,
@@ -245,8 +242,10 @@ import {
   type SearchClauseDraft,
   type SearchClauseKind,
 } from "@/pages/librarySearchClauses";
+import { RecommendationExplanationDialog } from "@/pages/library/RecommendationExplanationDialog";
+import { SaveConfirmDialog } from "@/pages/library/SaveConfirmDialog";
 import { getCachedWorkMedia, invalidateCachedWorkMedia, setCachedWorkMedia } from "@/pages/workMediaCache";
-import { preferredLyricsMediaItemID, useLibraryPlayer, usePlayer } from "@/player/PlayerProvider";
+import { preferredLyricsMediaItemID, useLibraryPlayer } from "@/player/PlayerProvider";
 import { lyricsChoiceDisplayLabel, type LyricsChoice } from "@/player/lyricsMatching";
 
 type WorkPreview = Pick<
@@ -1744,7 +1743,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       <MetadataOnboardingNotice active={active} />
       <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between" data-toast-avoid>
         <div
-          className={`order-2 min-h-10 w-full items-center gap-2 rounded-lg border bg-card px-3 text-sm lg:order-1 lg:flex lg:max-w-xl ${
+          className={`search-field order-2 min-h-10 w-full items-center gap-2 rounded-lg border bg-card px-3 text-sm lg:order-1 lg:flex lg:max-w-xl ${
             mobileSearchOpen ? "flex" : "hidden"
           }`}
         >
@@ -2003,7 +2002,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         </div>
       )}
       {recommendationDialog && (
-        <RecommendationExplanationModal state={recommendationDialog} onClose={() => setRecommendationDialog(null)} />
+        <RecommendationExplanationDialog state={recommendationDialog} onClose={() => setRecommendationDialog(null)} />
       )}
       <RemoteFetchWorkspaceDialog workspace={trackedFetchWorkspace} />
       <BrowseLoadingIndicator refreshing={browseRefreshing} label={browseLoadingLabel} />
@@ -2029,7 +2028,7 @@ function LibraryPrimaryTabs({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex gap-2 overflow-x-auto rounded-lg border bg-card p-1">
+    <div className="app-scrollbar flex w-fit max-w-full gap-1 overflow-x-auto rounded-lg bg-muted p-1">
       <TabButton active={active === "local"} onClick={() => onChange("local")} icon={<HardDrive className="h-4 w-4" />}>
         {t("library.local")}
       </TabButton>
@@ -2069,9 +2068,12 @@ function TabButton({
 }) {
   return (
     <button
-      className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors ${
-        active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+      className={`inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium transition-[color,background-color,box-shadow] ${
+        active
+          ? "bg-card text-foreground shadow-sm ring-1 ring-foreground/5 [&>svg]:text-primary"
+          : "text-muted-foreground hover:bg-card/60 hover:text-foreground"
       } disabled:pointer-events-none disabled:opacity-50`}
+      aria-pressed={active}
       disabled={disabled}
       onClick={onClick}
     >
@@ -2624,7 +2626,7 @@ function RemoteSourcePanel({
       />
       {!model.remoteError && <WorkCollectionPagination {...remotePaginationProps} placement="bottom" />}
       {saveConfirm && (
-        <SaveConfirmModal
+        <SaveConfirmDialog
           count={saveConfirm.codes.length}
           onClose={clearSaveConfirm}
           onConfirm={() => void saveConfirm.run()}
@@ -2727,7 +2729,7 @@ function RecentlyPlayedStrip({ works, onOpen }: { works: Work[]; onOpen: (work: 
               onClick={() => onOpen(work)}
               aria-label={t("library.openWorkTitle", { title: work.title })}
             >
-              <span className="relative block aspect-[4/3] w-full shrink-0 overflow-hidden rounded-md border bg-muted transition-colors group-hover:border-primary/50">
+              <span className="relative block aspect-[4/3] w-full shrink-0 overflow-hidden rounded-[var(--radius)] border bg-muted shadow-sm transition-[border-color,box-shadow,transform] duration-200 group-hover:-translate-y-0.5 group-hover:border-primary/40 group-hover:shadow-md motion-reduce:group-hover:translate-y-0">
                 {work.coverUrl ? (
                   <img
                     src={assetURL(work.coverUrl)}
@@ -2740,14 +2742,14 @@ function RecentlyPlayedStrip({ works, onOpen }: { works: Work[]; onOpen: (work: 
                     {work.primaryCode.slice(0, 2)}
                   </span>
                 )}
-                <span className="absolute left-2 top-2 max-w-[calc(100%-1rem)] truncate rounded bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold">
+                <span className="absolute left-2 top-2 max-w-[calc(100%-1rem)] truncate rounded-[var(--badge-radius)] bg-background/85 px-1.5 py-0.5 text-3xs font-semibold tabular-nums shadow-sm ring-1 ring-foreground/5 backdrop-blur-sm">
                   {work.primaryCode}
                 </span>
               </span>
-              <span className="mt-2 block h-9 w-full line-clamp-2 text-xs font-semibold leading-snug">
+              <span className="mt-2 block h-9 w-full line-clamp-2 text-xs font-semibold leading-snug transition-colors group-hover:text-primary">
                 {work.title}
               </span>
-              <span className="mt-0.5 block h-4 w-full truncate text-[11px] text-muted-foreground">
+              <span className="mt-0.5 block h-4 w-full truncate text-2xs text-muted-foreground">
                 {work.circle || t("common.unknown")}
               </span>
               <span className="mt-auto block h-1 w-full shrink-0 overflow-hidden rounded-full bg-muted">
@@ -2757,7 +2759,7 @@ function RecentlyPlayedStrip({ works, onOpen }: { works: Work[]; onOpen: (work: 
                 />
               </span>
               <span
-                className="mt-1 block w-full shrink-0 truncate text-[10px] text-muted-foreground"
+                className="mt-1 block w-full shrink-0 truncate text-3xs text-muted-foreground"
                 title={recentProgressLabel(work.progress, t)}
               >
                 {recentProgressLabel(work.progress, t)}
@@ -3031,185 +3033,9 @@ function RemoteWorkGridSkeleton({
   );
 }
 
-function SaveConfirmModal({
-  count,
-  onClose,
-  onConfirm,
-}: {
-  count: number;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
-      <div
-        className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <h3 className="text-base font-semibold">{i18n.t("libraryDetail.fetchRemoteDirectory")}</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {i18n.t("libraryDetail.fetchRemoteDirectoryDescription", { count })}
-        </p>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>
-            {i18n.t("content.cancel")}
-          </Button>
-          <Button size="sm" onClick={onConfirm}>
-            {i18n.t("detailActions.fetch")}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function createRecommendationContextID() {
   const random = window.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
   return `library:${Date.now().toString(36)}:${random}`.slice(0, 64);
-}
-
-function RecommendationExplanationModal({
-  state,
-  onClose,
-}: {
-  state: { work: Work; breakdown: RecommendationBreakdown | null; loading: boolean; error: string };
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-  const components =
-    state.breakdown?.components.filter((component) => component.matchCount > 0 || component.contribution !== 0) ?? [];
-  return (
-    <div
-      className="fixed inset-0 z-[80] grid place-items-center bg-black/45 p-4"
-      role="dialog"
-      aria-modal="true"
-      onMouseDown={onClose}
-    >
-      <div
-        className="w-full max-w-md overflow-hidden rounded-lg border bg-background shadow-xl"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="flex min-h-12 items-center justify-between gap-3 border-b px-4">
-          <div className="min-w-0">
-            <div className="truncate text-sm font-semibold">{state.work.title}</div>
-            <div className="text-xs text-muted-foreground">{state.work.primaryCode}</div>
-          </div>
-          <IconButton title={i18n.t("content.close")} onClick={onClose}>
-            <X className="h-4 w-4" />
-          </IconButton>
-        </div>
-        <div className="space-y-4 p-4">
-          {state.loading ? (
-            <div className="flex min-h-36 items-center justify-center text-sm text-muted-foreground">
-              <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> {i18n.t("libraryDetail.loadingScore")}
-            </div>
-          ) : state.error ? (
-            <div className="text-sm text-destructive">{state.error}</div>
-          ) : state.breakdown ? (
-            <>
-              <div className="flex items-end justify-between gap-4 border-b pb-3">
-                <div>
-                  <div className="text-xs text-muted-foreground">{i18n.t("libraryDetail.affinityScore")}</div>
-                  <div className="text-3xl font-semibold">{state.breakdown.score}</div>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  <Badge variant="secondary">{recommendationLaneLabel(state.breakdown.lane)}</Badge>
-                  <Badge variant="outline">{state.breakdown.algorithmVersion}</Badge>
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">{i18n.t("libraryDetail.recommendationExplanation")}</p>
-              {state.breakdown.ordering && (
-                <div className="space-y-2 border-t pt-3 text-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">{i18n.t("libraryDetail.shuffleAdjustment")}</span>
-                    <span className="font-semibold tabular-nums">
-                      {formatRecommendationAdjustment(state.breakdown.ordering.totalAdjustment)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">{i18n.t("libraryDetail.discoveryBoost")}</span>
-                    <span className="font-medium tabular-nums">
-                      {formatRecommendationAdjustment(state.breakdown.ordering.explorationBoost)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">{i18n.t("libraryDetail.resultVariation")}</span>
-                    <span className="font-medium tabular-nums">
-                      {formatRecommendationAdjustment(state.breakdown.ordering.jitter)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 border-t pt-2">
-                    <span className="font-medium">{i18n.t("libraryDetail.rankingScore")}</span>
-                    <span className="font-semibold tabular-nums">
-                      {state.breakdown.ordering.rankingScore.toFixed(1)}
-                    </span>
-                  </div>
-                </div>
-              )}
-              <div className="space-y-2">
-                {components.map((component) => (
-                  <div key={component.key} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-sm">
-                    <div className="min-w-0">
-                      <div className="font-medium">{component.label}</div>
-                      {component.matchCount > 0 && component.key !== "state" && (
-                        <div className="text-xs text-muted-foreground">
-                          {i18n.t("libraryDetail.matchedSignals", { count: component.matchCount })}
-                        </div>
-                      )}
-                    </div>
-                    <span
-                      className={
-                        component.contribution < 0 ? "font-semibold text-destructive" : "font-semibold text-primary"
-                      }
-                    >
-                      {component.contribution > 0 ? "+" : ""}
-                      {component.contribution}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              {state.breakdown.rawScore !== state.breakdown.score && (
-                <div className="border-t pt-3 text-xs text-muted-foreground">
-                  {i18n.t("libraryDetail.rawScoreBounded", {
-                    raw: state.breakdown.rawScore,
-                    score: state.breakdown.score,
-                  })}
-                </div>
-              )}
-            </>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function formatRecommendationAdjustment(value: number) {
-  const rounded = Math.abs(value) < 0.05 ? 0 : value;
-  return `${rounded >= 0 ? "+" : ""}${rounded.toFixed(1)}`;
-}
-
-function recommendationLaneLabel(lane: RecommendationBreakdown["lane"]) {
-  switch (lane) {
-    case "listening":
-      return i18n.t("libraryDetail.listeningPriority");
-    case "want":
-      return i18n.t("libraryDetail.wantPriority");
-    case "relisten":
-      return i18n.t("libraryDetail.relistenMix");
-    case "finished":
-      return i18n.t("libraryDetail.finishedMix");
-    case "shelved":
-      return i18n.t("libraryDetail.shelvedFallback");
-    default:
-      return i18n.t("libraryDetail.unmarkedDiscovery");
-  }
 }
 
 function libraryWorkCardView(
@@ -3310,28 +3136,6 @@ function workHasNoSource(work: {
   if ((work.mediaItems ?? []).some((item) => item.locations.some((location) => location.availability === "available")))
     return false;
   return true;
-}
-
-function WorkProgress({ progress }: { progress: Work["progress"] }) {
-  const { t } = useTranslation();
-  if (!progress.mediaItemId || !progress.lastPlayedAt) {
-    return <div className="h-8 text-xs text-muted-foreground">{t("library.noPlaybackYet")}</div>;
-  }
-  return (
-    <div className="space-y-1">
-      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-        <div className="h-full rounded-full bg-primary" style={{ width: `${progressPercent(progress)}%` }} />
-      </div>
-      <div className="truncate text-xs text-muted-foreground">
-        {progress.completed
-          ? t("library.finished")
-          : t("library.resumeAt", {
-              title: progress.title || t("library.track"),
-              time: formatTime(progress.positionSeconds),
-            })}
-      </div>
-    </div>
-  );
 }
 
 function SortPicker({
@@ -3606,8 +3410,8 @@ function SearchClauseEditor({
             ]}
           />
         ) : (
-          <input
-            className="h-[var(--control-height)] min-w-0 w-full rounded-md border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring sm:flex-1"
+          <Input
+            className="w-full min-w-0 sm:flex-1"
             value={value}
             onChange={(event) => onChange({ ...editor.draft, value: event.target.value })}
             onKeyDown={(event) => {
@@ -3661,40 +3465,18 @@ function IconButton({
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
-    <button
-      className="relative inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+    <Button
+      type="button"
+      variant="toolbar"
+      size="icon-sm"
+      className="relative"
       title={title}
       aria-label={title}
       disabled={disabled}
       onClick={onClick}
     >
       {children}
-    </button>
-  );
-}
-
-function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (status: ListeningStatus) => void }) {
-  const { t } = useTranslation();
-  return (
-    <div className="absolute bottom-10 left-0 z-20 w-44 overflow-hidden rounded-md border bg-card p-1 shadow-lg">
-      {listeningStatusOptions.map((option) => (
-        <button
-          key={option.value}
-          className={`flex h-8 w-full items-center gap-2 rounded px-2 text-left text-xs hover:bg-muted ${
-            value === option.value ? "font-semibold text-primary" : "text-foreground"
-          }`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onChange(option.value);
-          }}
-        >
-          <ListChecks
-            className={value === option.value && value !== "none" ? "h-3.5 w-3.5 text-primary" : "h-3.5 w-3.5"}
-          />
-          {t(`library.status.${option.value}`, { defaultValue: option.label })}
-        </button>
-      ))}
-    </div>
+    </Button>
   );
 }
 
@@ -4221,9 +4003,13 @@ function RemoteOnlyDetailOverlays({
   return (
     <>
       {manageOpen && (
-        <DirectoryManagerModal root={tree} emptyLabel={i18n.t("libraryDetail.noRemoteFiles")} onClose={onManageClose} />
+        <DirectoryManagerDialog
+          root={tree}
+          emptyLabel={i18n.t("libraryDetail.noRemoteFiles")}
+          onClose={onManageClose}
+        />
       )}
-      {filePreview && <FilePreviewModal preview={filePreview} onClose={onPreviewClose} />}
+      {filePreview && <FilePreviewDialog preview={filePreview} onClose={onPreviewClose} />}
     </>
   );
 }
@@ -5508,7 +5294,7 @@ function PersistedFilePreviewOverlay({
         }
       }
     : undefined;
-  return <FilePreviewModal preview={preview} onClose={onClose} onSetCover={onSetCover} />;
+  return <FilePreviewDialog preview={preview} onClose={onClose} onSetCover={onSetCover} />;
 }
 
 function PersistedDirectoryManagerOverlay({
@@ -5549,7 +5335,7 @@ function PersistedDirectoryManagerOverlay({
         ? i18n.t("libraryDetail.noRemoteFiles")
         : i18n.t("libraryDetail.noLocalFiles");
   return (
-    <DirectoryManagerModal
+    <DirectoryManagerDialog
       root={root}
       title={title}
       description={description}
@@ -5595,7 +5381,7 @@ function PersistedReforkOverlay({
 }) {
   if (!target) return null;
   return (
-    <ReforkConfirmModal
+    <ReforkConfirmDialog
       currentName={target.current?.source.displayName ?? i18n.t("libraryDetail.currentFork")}
       nextName={target.next.source.displayName}
       busy={busy}
@@ -7896,7 +7682,7 @@ function SourceDirectoryPanel({
                             />
                             <span className="min-w-0 flex-1">
                               <span className="block truncate">{option.label}</span>
-                              <span className="block text-[11px] text-muted-foreground">
+                              <span className="block text-2xs text-muted-foreground">
                                 {option.forked ? i18n.t("libraryDetail.forked") : i18n.t("libraryDetail.unforked")}
                               </span>
                             </span>
@@ -7986,7 +7772,7 @@ function SourceDirectoryPanel({
                       </button>
                     )}
                     <div className="my-1 border-t" />
-                    <div className="px-2 py-1 text-[11px] font-semibold uppercase text-muted-foreground">
+                    <div className="px-2 py-1 text-2xs font-semibold uppercase text-muted-foreground">
                       {i18n.t("libraryDetail.view")}
                     </div>
                     {(["browse", "tree"] as DirectoryMode[]).map((mode) => (
@@ -8111,59 +7897,6 @@ function DirectoryRouteSummary({ summary, onSelect }: { summary: DirectoryRouteM
         )}
       </div>
     </>
-  );
-}
-
-function SourceDirectoryToolbar({
-  label,
-  description,
-  message,
-  busy,
-  onPlay,
-  onOpenLocal,
-  onSelectSaveFiles,
-  selectedCount,
-}: {
-  label: string;
-  description: string;
-  message?: string;
-  busy: boolean;
-  onPlay?: () => void;
-  onOpenLocal?: () => void;
-  onSelectSaveFiles?: () => void;
-  selectedCount?: number;
-}) {
-  return (
-    <div className="mb-4 space-y-3 rounded-md border bg-background p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="text-sm font-semibold">{label}</div>
-          <div className="text-xs text-muted-foreground">{description}</div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {onPlay && (
-            <Button size="sm" onClick={onPlay}>
-              <Play className="h-4 w-4" />
-              {i18n.t("player.play")}
-            </Button>
-          )}
-          {onOpenLocal && (
-            <Button size="sm" onClick={onOpenLocal}>
-              <MoreHorizontal className="h-4 w-4" />
-              {i18n.t("libraryDetail.openLocalDetail")}
-            </Button>
-          )}
-          {onSelectSaveFiles && (
-            <Button size="sm" disabled={busy} onClick={onSelectSaveFiles}>
-              <HardDriveDownload className="h-4 w-4" />
-              {i18n.t("detailActions.fetch")}
-              {selectedCount !== undefined ? ` (${selectedCount})` : ""}
-            </Button>
-          )}
-        </div>
-      </div>
-      {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
-    </div>
   );
 }
 
@@ -8479,7 +8212,7 @@ function DlsiteMetrics({
       <div className="space-y-2">
         <div
           data-testid="dlsite-primary-metrics"
-          className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[11px] leading-4"
+          className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-2xs leading-4"
         >
           <InlineDlsiteMetric label={normalizedRatingLabel} value={rateValue} />
           <InlineDlsiteMetric
@@ -8592,7 +8325,7 @@ function SourceInfoRow({
   detail: string;
 }) {
   return (
-    <div data-testid={testId} className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-[11px] leading-4">
+    <div data-testid={testId} className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-2xs leading-4">
       <span className="inline-flex shrink-0 items-baseline gap-1.5" data-source-primary-metrics>
         <InlineSourceMetric label={firstLabel} value={firstValue} />
         <span className="h-3 self-center border-l border-border" aria-hidden="true" />
@@ -8693,30 +8426,6 @@ function DetailChipRow({
     </div>
   );
 }
-
-function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return (
-    <div className="flex gap-2 text-sm">
-      <div className="mt-0.5 text-muted-foreground">{icon}</div>
-      <div className="min-w-0">
-        <div className="font-medium">{label}</div>
-        <div className="break-words text-muted-foreground">{value}</div>
-      </div>
-    </div>
-  );
-}
-
-type FilePreviewState =
-  | { kind: "image"; title: string; url: string; locationId: number; canSetCover: boolean }
-  | {
-      kind: "video";
-      title: string;
-      url: string;
-      locationId: number;
-      durationSeconds: number | null;
-      canTranscode: boolean;
-    }
-  | { kind: "text"; title: string; locationId: number; url?: string };
 
 function useDirectoryLyricsAttachmentVisibility(root: TreeNode) {
   const attachments = useMemo(() => directoryLyricsAttachments(root), [root]);
@@ -8913,119 +8622,6 @@ function openResolvedEntityRoute(route: string) {
   const returnTo = `${window.location.pathname}${window.location.search}`;
   window.history.pushState(historyStateWithReturn(returnTo, i18n.t("detailActions.back")), "", route);
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
-}
-
-function ConfirmMediaDeleteModal({
-  target,
-  deleting,
-  onCancel,
-  onConfirm,
-}: {
-  target: MediaDeleteTarget;
-  deleting: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  const isLocal = target.kind === "local";
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4" onMouseDown={onCancel}>
-      <div
-        className="w-full max-w-lg rounded-lg border bg-background shadow-xl"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-3 border-b p-4">
-          <div>
-            <h3 className="text-base font-semibold">
-              {isLocal ? i18n.t("libraryDetail.deleteLocalFile") : i18n.t("libraryDetail.deleteCachedFile")}
-            </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {isLocal
-                ? i18n.t("libraryDetail.localDeleteLocationNotice")
-                : i18n.t("libraryDetail.remoteSourceKeptNotice")}
-            </p>
-          </div>
-          <IconButton title={i18n.t("content.close")} onClick={onCancel}>
-            <X className="h-4 w-4" />
-          </IconButton>
-        </div>
-        <div className="space-y-3 p-4 text-sm">
-          <div>
-            <div className="font-medium">{target.title}</div>
-            <div className="mt-1 break-all rounded-md border bg-muted px-3 py-2 text-xs text-muted-foreground">
-              {target.path}
-            </div>
-          </div>
-          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive">
-            {isLocal ? i18n.t("libraryDetail.localDeleteWarning") : i18n.t("libraryDetail.cacheDeleteWarning")}
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 border-t p-4">
-          <Button variant="outline" onClick={onCancel} disabled={deleting}>
-            {i18n.t("content.cancel")}
-          </Button>
-          <Button
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            onClick={onConfirm}
-            disabled={deleting}
-          >
-            <Trash2 className="h-4 w-4" />
-            {deleting
-              ? i18n.t("libraryDetail.deleting")
-              : isLocal
-                ? i18n.t("libraryDetail.deleteLocal")
-                : i18n.t("libraryDetail.deleteCache")}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ReforkConfirmModal({
-  currentName,
-  nextName,
-  busy,
-  onClose,
-  onConfirm,
-}: {
-  currentName: string;
-  nextName: string;
-  busy: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4">
-      <div
-        className="w-full max-w-lg rounded-lg border bg-background shadow-xl"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-3 border-b p-4">
-          <div>
-            <h3 className="text-base font-semibold">{i18n.t("libraryDetail.switchForkSource")}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">{i18n.t("libraryDetail.chooseDifferentRemoteSource")}</p>
-          </div>
-          <IconButton title={i18n.t("content.close")} onClick={onClose}>
-            <X className="h-4 w-4" />
-          </IconButton>
-        </div>
-        <div className="space-y-3 p-4 text-sm">
-          <div className="rounded-md border bg-muted px-3 py-2 text-muted-foreground">
-            {i18n.t("libraryDetail.forkReplacementNotice", { current: currentName, next: nextName })}
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 border-t p-4">
-          <Button variant="outline" onClick={onClose} disabled={busy}>
-            {i18n.t("content.cancel")}
-          </Button>
-          <Button onClick={onConfirm} disabled={busy}>
-            <GitBranchPlus className="h-4 w-4" />
-            {i18n.t("libraryDetail.switchForkSource")}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function DirectoryBrowser({
@@ -9759,832 +9355,6 @@ function lyricsChoicePreview(choice: LyricsChoice): FilePreviewState {
   };
 }
 
-function directoryManagerRootTarget({
-  fileTargets,
-  allowLocalDelete,
-  localRoot,
-  workId,
-}: {
-  fileTargets: MediaDeleteTarget[];
-  allowLocalDelete?: boolean;
-  localRoot: { folderId: number; path: string } | null;
-  workId: number;
-}): MediaDeleteTarget | null {
-  const representative = fileTargets.find(
-    (target) => target.kind === "local" && localRoot && isMediaPathWithinRoot(localRoot.path, target.path),
-  );
-  if (!allowLocalDelete || !localRoot || !representative) return null;
-  return {
-    kind: "local_root",
-    locationId: representative.locationId,
-    folderId: localRoot.folderId,
-    expectedPath: localRoot.path,
-    title: i18n.t("libraryDetail.workRoot"),
-    path: localRoot.path,
-    sizeBytes: null,
-    workId,
-  };
-}
-
-function directoryManagerExtensionState(targets: MediaDeleteTarget[], selectedKeys: Set<string>, extension: string) {
-  const matching = targets.filter((target) => target.path.toLowerCase().endsWith(`.${extension}`));
-  const selected = matching.filter((target) => selectedKeys.has(mediaDeleteTargetKey(target))).length;
-  return {
-    count: matching.length,
-    checked: matching.length > 0 && selected === matching.length,
-    indeterminate: selected > 0 && selected < matching.length,
-  };
-}
-
-function directoryManagerSelectionModel({
-  targets,
-  fileTargets,
-  selectedKeys,
-  canForgetWork,
-}: {
-  targets: MediaDeleteTarget[];
-  fileTargets: MediaDeleteTarget[];
-  selectedKeys: Set<string>;
-  canForgetWork: boolean;
-}) {
-  const selectedTargets = targets.filter((target) => selectedKeys.has(mediaDeleteTargetKey(target)));
-  const selectedRootTarget = selectedTargets.find((target) => target.kind === "local_root") ?? null;
-  const allFileTargetsSelected =
-    fileTargets.length > 0 && fileTargets.every((target) => selectedKeys.has(mediaDeleteTargetKey(target)));
-  const selectedWorkIDs = new Set(selectedTargets.map((target) => target.workId).filter((id) => id > 0));
-  return {
-    selectedTargets,
-    selectedSignature: selectedTargets.map(mediaDeleteTargetKey).sort().join("|"),
-    allSelected: targets.length > 0 && selectedTargets.length === targets.length,
-    canReviewForget: Boolean(
-      canForgetWork &&
-      selectedRootTarget &&
-      allFileTargetsSelected &&
-      selectedWorkIDs.size === 1 &&
-      selectedRootTarget.workId > 0,
-    ),
-  };
-}
-
-function useDirectoryManagerPreview(selectedTargets: MediaDeleteTarget[], selectedSignature: string) {
-  const [previewTargets, setPreviewTargets] = useState<MediaDeleteTarget[]>([]);
-  const previewSignature = previewTargets.map(mediaDeleteTargetKey).sort().join("|");
-  const previewRefreshing = selectedTargets.length > 0 && selectedSignature !== previewSignature;
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setPreviewTargets(selectedTargets), selectedTargets.length === 0 ? 0 : 600);
-    return () => window.clearTimeout(timer);
-  }, [selectedSignature, selectedTargets]);
-
-  return { previewTargets, previewRefreshing };
-}
-
-function DirectoryManagerSelectionToolbar({
-  targets,
-  selectedKeys,
-  deleting,
-  showCachedFilter,
-  showOnlyDeletable,
-  onSelectAll,
-  onClear,
-  onSetExtensionIncluded,
-  onShowOnlyDeletableChange,
-}: {
-  targets: MediaDeleteTarget[];
-  selectedKeys: Set<string>;
-  deleting: boolean;
-  showCachedFilter: boolean;
-  showOnlyDeletable: boolean;
-  onSelectAll: () => void;
-  onClear: () => void;
-  onSetExtensionIncluded: (extension: string, included: boolean) => void;
-  onShowOnlyDeletableChange: (checked: boolean) => void;
-}) {
-  return (
-    <div className="mb-3 flex flex-wrap items-center gap-2">
-      <Button variant="outline" size="sm" disabled={targets.length === 0 || deleting} onClick={onSelectAll}>
-        {i18n.t("remoteFetch.all")}
-      </Button>
-      {(["mp3", "wav", "flac"] as const).map((extension) => {
-        const state = directoryManagerExtensionState(targets, selectedKeys, extension);
-        return (
-          <label
-            key={extension}
-            className="inline-flex h-8 items-center gap-2 rounded-md border bg-background px-2 text-xs"
-          >
-            <Checkbox
-              checked={state.checked}
-              indeterminate={state.indeterminate}
-              disabled={deleting || state.count === 0}
-              onCheckedChange={() => onSetExtensionIncluded(extension, !state.checked)}
-              aria-label={i18n.t("libraryDetail.includeExtension", { extension: extension.toUpperCase() })}
-            />
-            <span>{extension.toUpperCase()}</span>
-          </label>
-        );
-      })}
-      <Button variant="outline" size="sm" disabled={deleting} onClick={onClear}>
-        {i18n.t("libraryDetail.none")}
-      </Button>
-      {showCachedFilter && (
-        <label className="ml-auto inline-flex h-8 items-center gap-2 rounded-md border bg-background px-2 text-xs">
-          <Checkbox
-            checked={showOnlyDeletable}
-            onCheckedChange={onShowOnlyDeletableChange}
-            aria-label={i18n.t("libraryDetail.cachedOnly")}
-          />
-          <span>{i18n.t("libraryDetail.cachedOnly")}</span>
-        </label>
-      )}
-    </div>
-  );
-}
-
-function DirectoryManagerPreview({
-  previewTargets,
-  previewRefreshing,
-}: {
-  previewTargets: MediaDeleteTarget[];
-  previewRefreshing: boolean;
-}) {
-  return (
-    <div className="app-scroll min-h-0 overflow-auto p-3">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div>
-          <div className="text-sm font-medium">{i18n.t("libraryDetail.deletePreview")}</div>
-        </div>
-        <Badge variant={previewRefreshing ? "outline" : "secondary"}>
-          {previewRefreshing
-            ? i18n.t("sources.refreshing")
-            : i18n.t("libraryDetail.itemsCount", { count: previewTargets.length })}
-        </Badge>
-      </div>
-      {previewRefreshing && (
-        <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
-          <RefreshCw className="h-3.5 w-3.5 animate-spin" /> {i18n.t("libraryDetail.fileOperationInProgress")}
-        </div>
-      )}
-      {previewTargets.length === 0 ? (
-        <div className="text-sm text-muted-foreground">{i18n.t("libraryDetail.selectDeletableDescription")}</div>
-      ) : (
-        <div className="space-y-1">
-          {previewTargets.map((target) => (
-            <div
-              key={mediaDeleteTargetKey(target)}
-              className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 border-b py-2 text-xs last:border-b-0"
-            >
-              <Badge variant="outline" className="row-span-2 h-fit">
-                {target.kind}
-              </Badge>
-              <span className="truncate font-medium" title={target.path}>
-                {target.path}
-              </span>
-              <span className="text-muted-foreground">
-                {target.title}
-                {target.sizeBytes !== null ? ` · ${formatBytes(target.sizeBytes)}` : ""}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function DirectoryManagerFooter({
-  targets,
-  selectedCount,
-  allSelected,
-  canReviewForget,
-  previewRefreshing,
-  deleting,
-  onToggleAll,
-  onStartConfirmation,
-}: {
-  targets: MediaDeleteTarget[];
-  selectedCount: number;
-  allSelected: boolean;
-  canReviewForget: boolean;
-  previewRefreshing: boolean;
-  deleting: boolean;
-  onToggleAll: () => void;
-  onStartConfirmation: (mode: MediaCleanupMode) => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-t p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" size="sm" disabled={targets.length === 0 || deleting} onClick={onToggleAll}>
-          {allSelected ? i18n.t("libraryDetail.clearAll") : i18n.t("libraryDetail.selectAll")}
-        </Button>
-        <span className="text-xs text-muted-foreground">
-          {i18n.t("libraryDetail.selectedDeletableCount", { selected: selectedCount, total: targets.length })}
-        </span>
-      </div>
-      <div className="flex flex-wrap justify-end gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={selectedCount === 0 || previewRefreshing || deleting}
-          onClick={() => onStartConfirmation("files_only")}
-        >
-          <Trash2 className="h-4 w-4" />
-          {deleting
-            ? i18n.t("libraryDetail.deleting")
-            : previewRefreshing
-              ? i18n.t("libraryDetail.refreshingPreview")
-              : i18n.t("libraryDetail.reviewFileDeletion")}
-        </Button>
-        <Button
-          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-          size="sm"
-          disabled={!canReviewForget || previewRefreshing || deleting}
-          title={
-            canReviewForget
-              ? i18n.t("libraryDetail.deleteSelectedThenForget")
-              : i18n.t("libraryDetail.selectCompleteWorkRoot")
-          }
-          onClick={() => onStartConfirmation("files_and_forget_work")}
-        >
-          <ShieldAlert className="h-4 w-4" />
-          {deleting ? i18n.t("libraryDetail.deleting") : i18n.t("libraryDetail.reviewDeletionForget")}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function DirectoryManagerModal({
-  root,
-  title = i18n.t("libraryDetail.manageFiles"),
-  description = i18n.t("libraryDetail.reviewFileOperations"),
-  emptyLabel,
-  onClose,
-  deleting = false,
-  onDeleteTargets,
-  allowCacheDelete,
-  allowLocalDelete,
-  localRoot = null,
-  showCachedFilter = false,
-  workId = 0,
-  canForgetWork = false,
-}: {
-  root: TreeNode;
-  title?: string;
-  description?: string;
-  emptyLabel: string;
-  onClose: () => void;
-  deleting?: boolean;
-  onDeleteTargets?: (targets: MediaDeleteTarget[], mode: MediaCleanupMode) => void;
-  allowCacheDelete?: boolean;
-  allowLocalDelete?: boolean;
-  localRoot?: { folderId: number; path: string } | null;
-  showCachedFilter?: boolean;
-  workId?: number;
-  canForgetWork?: boolean;
-}) {
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  const [confirmStep, setConfirmStep] = useState<0 | 1 | 2>(0);
-  const [confirmMode, setConfirmMode] = useState<MediaCleanupMode | null>(null);
-  const [showOnlyDeletable, setShowOnlyDeletable] = useState(showCachedFilter);
-  const fileTargets = useMemo(
-    () => directoryManageTargets(root, { allowCacheDelete, allowLocalDelete }).map((target) => ({ ...target, workId })),
-    [root, allowCacheDelete, allowLocalDelete, workId],
-  );
-  const rootTarget = useMemo<MediaDeleteTarget | null>(() => {
-    return directoryManagerRootTarget({ fileTargets, allowLocalDelete, localRoot, workId });
-  }, [allowLocalDelete, fileTargets, localRoot, workId]);
-  const targets = useMemo(() => (rootTarget ? [...fileTargets, rootTarget] : fileTargets), [fileTargets, rootTarget]);
-  const selection = useMemo(
-    () => directoryManagerSelectionModel({ targets, fileTargets, selectedKeys, canForgetWork }),
-    [targets, fileTargets, selectedKeys, canForgetWork],
-  );
-  const { previewTargets, previewRefreshing } = useDirectoryManagerPreview(
-    selection.selectedTargets,
-    selection.selectedSignature,
-  );
-  const toggleAll = () =>
-    setSelectedKeys(selection.allSelected ? new Set() : new Set(targets.map(mediaDeleteTargetKey)));
-  const setExtensionIncluded = (extension: string, included: boolean) => {
-    setSelectedKeys((current) => {
-      const next = new Set(current);
-      for (const target of targets) {
-        if (!target.path.toLowerCase().endsWith(`.${extension}`)) continue;
-        const key = mediaDeleteTargetKey(target);
-        if (included) next.add(key);
-        else next.delete(key);
-      }
-      return next;
-    });
-  };
-  const toggleTarget = (target: MediaDeleteTarget, selected: boolean) => {
-    setSelectedKeys((current) => {
-      const next = new Set(current);
-      const key = mediaDeleteTargetKey(target);
-      if (selected) next.add(key);
-      else next.delete(key);
-      return next;
-    });
-  };
-  const startConfirmation = (mode: MediaCleanupMode) => {
-    setConfirmMode(mode);
-    setConfirmStep(1);
-  };
-  const confirmDelete = (mode: MediaCleanupMode) => {
-    onDeleteTargets?.(previewTargets, mode);
-    setConfirmStep(0);
-    setConfirmMode(null);
-    setSelectedKeys(new Set());
-  };
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4" onMouseDown={onClose}>
-      <div
-        className="flex max-h-[86vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="flex min-h-12 items-center justify-between gap-3 border-b px-4">
-          <div>
-            <h3 className="text-base font-semibold">{title}</h3>
-            <p className="text-xs text-muted-foreground">{description}</p>
-          </div>
-          <IconButton title={i18n.t("content.close")} onClick={onClose}>
-            <X className="h-4 w-4" />
-          </IconButton>
-        </div>
-        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden bg-card md:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
-          <div className="app-scroll min-h-0 overflow-auto border-b p-3 md:border-b-0 md:border-r">
-            <DirectoryManagerSelectionToolbar
-              targets={targets}
-              selectedKeys={selectedKeys}
-              deleting={deleting}
-              showCachedFilter={showCachedFilter}
-              showOnlyDeletable={showOnlyDeletable}
-              onSelectAll={() => setSelectedKeys(new Set(targets.map(mediaDeleteTargetKey)))}
-              onClear={() => setSelectedKeys(new Set())}
-              onSetExtensionIncluded={setExtensionIncluded}
-              onShowOnlyDeletableChange={(checked) => setShowOnlyDeletable(checked)}
-            />
-            <DirectoryManager
-              root={root}
-              emptyLabel={emptyLabel}
-              selectedKeys={selectedKeys}
-              allowCacheDelete={allowCacheDelete}
-              allowLocalDelete={allowLocalDelete}
-              showOnlyDeletable={showOnlyDeletable}
-              onToggleTarget={toggleTarget}
-              rootTarget={rootTarget}
-            />
-          </div>
-          <DirectoryManagerPreview previewTargets={previewTargets} previewRefreshing={previewRefreshing} />
-        </div>
-        <DirectoryManagerFooter
-          targets={targets}
-          selectedCount={selection.selectedTargets.length}
-          allSelected={selection.allSelected}
-          canReviewForget={selection.canReviewForget}
-          previewRefreshing={previewRefreshing}
-          deleting={deleting}
-          onToggleAll={toggleAll}
-          onStartConfirmation={startConfirmation}
-        />
-      </div>
-      {confirmStep > 0 && (
-        <ConfirmMediaBatchDeleteModal
-          targets={previewTargets}
-          mode={confirmMode ?? "files_only"}
-          step={confirmStep === 2 ? 2 : 1}
-          deleting={deleting}
-          onCancel={() => {
-            setConfirmStep(0);
-            setConfirmMode(null);
-          }}
-          onContinue={() => setConfirmStep(2)}
-          onConfirm={() => confirmDelete(confirmMode ?? "files_only")}
-        />
-      )}
-    </div>
-  );
-}
-
-function DirectoryManager({
-  root,
-  emptyLabel,
-  selectedKeys,
-  allowCacheDelete,
-  allowLocalDelete,
-  showOnlyDeletable,
-  onToggleTarget,
-  rootTarget,
-}: {
-  root: TreeNode;
-  emptyLabel: string;
-  selectedKeys: Set<string>;
-  allowCacheDelete?: boolean;
-  allowLocalDelete?: boolean;
-  showOnlyDeletable?: boolean;
-  onToggleTarget: (target: MediaDeleteTarget, selected: boolean) => void;
-  rootTarget?: MediaDeleteTarget | null;
-}) {
-  const hasFiles = useMemo(() => sortedFilesDeep(root).length > 0, [root]);
-  if (!hasFiles) {
-    return <div className="text-sm text-muted-foreground">{emptyLabel}</div>;
-  }
-  return (
-    <div className="space-y-1">
-      {rootTarget &&
-        (() => {
-          const rootTargets = [...directoryManageTargets(root, { allowCacheDelete, allowLocalDelete }), rootTarget];
-          const selectedCount = rootTargets.filter((target) => selectedKeys.has(mediaDeleteTargetKey(target))).length;
-          const checked = selectedCount === rootTargets.length;
-          const mixed = selectedCount > 0 && !checked;
-          return (
-            <div className="flex min-h-9 items-center gap-2 rounded-md px-2 text-sm font-medium hover:bg-muted">
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              <Checkbox
-                checked={checked}
-                indeterminate={mixed}
-                onCheckedChange={() => rootTargets.forEach((target) => onToggleTarget(target, !checked))}
-                aria-label={i18n.t("libraryDetail.selectWorkRoot", { path: rootTarget.path })}
-              />
-              <Folder className="h-4 w-4 shrink-0 text-primary" />
-              <span className="min-w-0 flex-1 truncate" title={rootTarget.path}>
-                {rootTarget.path}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {selectedCount}/{rootTargets.length}
-              </span>
-            </div>
-          );
-        })()}
-      <DirectoryManagerNode
-        node={root}
-        depth={0}
-        selectedKeys={selectedKeys}
-        allowCacheDelete={allowCacheDelete}
-        allowLocalDelete={allowLocalDelete}
-        showOnlyDeletable={showOnlyDeletable}
-        onToggleTarget={onToggleTarget}
-        isRoot
-      />
-    </div>
-  );
-}
-
-function DirectoryManagerNode({
-  node,
-  depth,
-  isRoot,
-  selectedKeys,
-  allowCacheDelete,
-  allowLocalDelete,
-  showOnlyDeletable,
-  onToggleTarget,
-}: {
-  node: TreeNode;
-  depth: number;
-  isRoot?: boolean;
-  selectedKeys: Set<string>;
-  allowCacheDelete?: boolean;
-  allowLocalDelete?: boolean;
-  showOnlyDeletable?: boolean;
-  onToggleTarget: (target: MediaDeleteTarget, selected: boolean) => void;
-}) {
-  const [open, setOpen] = useState(isRoot);
-  const options = { allowCacheDelete, allowLocalDelete };
-  const folders = sortedFolders(node).filter(
-    (folder) => !showOnlyDeletable || directoryManageTargets(folder, options).length > 0,
-  );
-  const files = sortedFiles(node).filter(
-    (file) => !showOnlyDeletable || mediaDeleteTargetsForFile(file, options).length > 0,
-  );
-  const stats = treeStats(node);
-  const hasChildren = folders.length > 0 || files.length > 0;
-  const nodeTargets = directoryManageTargets(node, options);
-  const selectedCount = nodeTargets.filter((target) => selectedKeys.has(mediaDeleteTargetKey(target))).length;
-  const checked = nodeTargets.length > 0 && selectedCount === nodeTargets.length;
-  const mixed = selectedCount > 0 && selectedCount < nodeTargets.length;
-  const toggleNode = () => {
-    for (const target of nodeTargets) onToggleTarget(target, !checked);
-  };
-  return (
-    <div className="space-y-1">
-      {!isRoot && (
-        <div
-          className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-medium hover:bg-muted"
-          style={{ paddingLeft: depth * 14 + 8 }}
-        >
-          <button
-            type="button"
-            className="rounded p-0.5 hover:bg-background"
-            onClick={() => setOpen((value) => !value)}
-            aria-label={
-              open
-                ? i18n.t("libraryDetail.collapseFolder", { name: node.name })
-                : i18n.t("libraryDetail.expandFolder", { name: node.name })
-            }
-          >
-            {open ? (
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
-            ) : (
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            )}
-          </button>
-          <Checkbox
-            checked={checked}
-            indeterminate={mixed}
-            disabled={nodeTargets.length === 0}
-            onCheckedChange={toggleNode}
-            aria-label={i18n.t("libraryDetail.selectFolder", { name: node.name })}
-          />
-          <Folder className="h-4 w-4 shrink-0 text-primary" />
-          <button
-            type="button"
-            className="min-w-0 flex-1 truncate text-left"
-            onClick={() => setOpen((value) => !value)}
-          >
-            {node.name}
-          </button>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            {selectedCount}/{nodeTargets.length} · {formatFolderStats(stats, playableFiles(node.files).length)}
-          </span>
-        </div>
-      )}
-      {(isRoot || open) && hasChildren && (
-        <>
-          {folders.map((folder) => (
-            <DirectoryManagerNode
-              key={folder.path || folder.name}
-              node={folder}
-              depth={isRoot ? 0 : depth + 1}
-              selectedKeys={selectedKeys}
-              allowCacheDelete={allowCacheDelete}
-              allowLocalDelete={allowLocalDelete}
-              showOnlyDeletable={showOnlyDeletable}
-              onToggleTarget={onToggleTarget}
-            />
-          ))}
-          {files.map((file) => (
-            <ManagedFileRow
-              key={`${file.locationType}:${file.locationId}:${file.sourcePath}`}
-              file={file}
-              depth={isRoot ? 0 : depth + 1}
-              selectedKeys={selectedKeys}
-              allowCacheDelete={allowCacheDelete}
-              allowLocalDelete={allowLocalDelete}
-              onToggleTarget={onToggleTarget}
-            />
-          ))}
-        </>
-      )}
-    </div>
-  );
-}
-
-function ManagedFileRow({
-  file,
-  depth,
-  selectedKeys,
-  allowCacheDelete,
-  allowLocalDelete,
-  onToggleTarget,
-}: {
-  file: TreeTrack;
-  depth: number;
-  selectedKeys: Set<string>;
-  allowCacheDelete?: boolean;
-  allowLocalDelete?: boolean;
-  onToggleTarget: (target: MediaDeleteTarget, selected: boolean) => void;
-}) {
-  const targets = mediaDeleteTargetsForFile(file, { allowCacheDelete, allowLocalDelete });
-  const selectedCount = targets.filter((target) => selectedKeys.has(mediaDeleteTargetKey(target))).length;
-  const checked = targets.length > 0 && selectedCount === targets.length;
-  const mixed = selectedCount > 0 && selectedCount < targets.length;
-  const toggleFile = () => {
-    for (const target of targets) onToggleTarget(target, !checked);
-  };
-  const fileMeta = [
-    file.kind === "audio" || file.kind === "video" ? formatDuration(file.durationSeconds) : "",
-    formatBytes(file.sizeBytes),
-    file.locationType,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  return (
-    <div
-      className="grid min-h-10 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm"
-      style={{ marginLeft: depth * 14, width: `calc(100% - ${depth * 14}px)` }}
-    >
-      <Checkbox
-        checked={checked}
-        indeterminate={mixed}
-        disabled={targets.length === 0}
-        onCheckedChange={toggleFile}
-        aria-label={i18n.t("libraryDetail.selectFile", { name: file.title })}
-      />
-      <div className="min-w-0">
-        <div className="flex min-w-0 items-center gap-2">
-          {fileIcon(file)}
-          <span className="truncate font-medium">{file.title}</span>
-        </div>
-        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <span className="max-w-full truncate">{file.sourcePath}</span>
-          <span>{fileMeta}</span>
-        </div>
-      </div>
-      <div className="flex flex-wrap justify-end gap-1">
-        {targets.map((target) => (
-          <Badge key={mediaDeleteTargetKey(target)} variant="outline">
-            {target.kind === "cache" ? i18n.t("libraryDetail.cache") : i18n.t("libraryDetail.local")}
-          </Badge>
-        ))}
-        {targets.length === 0 && (
-          <span className="inline-flex h-8 items-center text-xs text-muted-foreground">
-            {i18n.t("libraryDetail.noFileAction")}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ConfirmMediaBatchDeleteModal({
-  targets,
-  mode,
-  step,
-  deleting,
-  onCancel,
-  onContinue,
-  onConfirm,
-}: {
-  targets: MediaDeleteTarget[];
-  mode: MediaCleanupMode;
-  step: 1 | 2;
-  deleting: boolean;
-  onCancel: () => void;
-  onContinue: () => void;
-  onConfirm: () => void;
-}) {
-  const forgetWork = mode === "files_and_forget_work";
-  const localCount = targets.filter((target) => target.kind === "local").length;
-  const cacheCount = targets.filter((target) => target.kind === "cache").length;
-  const rootCount = targets.filter((target) => target.kind === "local_root").length;
-  return (
-    <div className="fixed inset-0 z-[60] grid place-items-center bg-black/55 p-4" onMouseDown={onCancel}>
-      <div
-        className="w-full max-w-lg rounded-lg border bg-background shadow-xl"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-3 border-b p-4">
-          <div>
-            <h3 className="text-base font-semibold">
-              {step === 1
-                ? forgetWork
-                  ? i18n.t("libraryDetail.reviewDeletionForget")
-                  : i18n.t("libraryDetail.reviewFileDeletion")
-                : i18n.t("workflowPage.finalConfirmation")}
-            </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {step === 1
-                ? forgetWork
-                  ? i18n.t("libraryDetail.reviewDeletionForgetDescription")
-                  : i18n.t("libraryDetail.reviewDeletionFilesOnlyDescription")
-                : forgetWork
-                  ? i18n.t("libraryDetail.actionCannotUndoReview")
-                  : i18n.t("libraryDetail.deletedFilesCannotRestore")}
-            </p>
-          </div>
-          <IconButton title={i18n.t("content.close")} onClick={onCancel}>
-            <X className="h-4 w-4" />
-          </IconButton>
-        </div>
-        <div className="space-y-3 p-4 text-sm">
-          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive">
-            {i18n.t("libraryDetail.deleteSelectedLocations", { count: targets.length })}
-            {localCount > 0 ? `, ${i18n.t("libraryDetail.includingLocal", { count: localCount })}` : ""}
-            {cacheCount > 0 ? ` ${i18n.t("libraryDetail.includingCache", { count: cacheCount })}` : ""}
-            {rootCount > 0 ? `, ${i18n.t("libraryDetail.includingWorkRoot")}` : ""}.
-          </div>
-          <div className="app-scroll max-h-44 overflow-auto rounded-md border bg-muted px-3 py-2 text-xs text-muted-foreground">
-            {targets.slice(0, 10).map((target) => (
-              <div key={mediaDeleteTargetKey(target)} className="flex gap-2 py-0.5">
-                <span className="w-12 shrink-0 font-medium">{target.kind}</span>
-                <span className="min-w-0 flex-1 truncate">{target.path}</span>
-              </div>
-            ))}
-            {targets.length > 10 && (
-              <div className="pt-1">{i18n.t("libraryDetail.moreCount", { count: targets.length - 10 })}</div>
-            )}
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <section className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
-              <h4 className="font-semibold text-destructive">{i18n.t("libraryDetail.willBeDeleted")}</h4>
-              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-                <li>{i18n.t("libraryDetail.selectedFilesLocations")}</li>
-                {forgetWork ? (
-                  <li>{i18n.t("libraryDetail.noSourceRemainsDeleted")}</li>
-                ) : (
-                  <li>{i18n.t("libraryDetail.noWorkLevelData")}</li>
-                )}
-              </ul>
-            </section>
-            <section className="rounded-md border bg-muted/30 p-3">
-              <h4 className="font-semibold">{i18n.t("libraryDetail.willBeKept")}</h4>
-              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-                {forgetWork ? (
-                  <>
-                    <li>{i18n.t("libraryDetail.otherSourcesKept")}</li>
-                    <li>{i18n.t("libraryDetail.sharedHistoryKept")}</li>
-                  </>
-                ) : (
-                  <>
-                    <li>{i18n.t("libraryDetail.playbackStateKept")}</li>
-                    <li>{i18n.t("libraryDetail.metadataKept")}</li>
-                  </>
-                )}
-              </ul>
-            </section>
-          </div>
-          {forgetWork && (
-            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
-              {i18n.t("libraryDetail.sourceStillAvailablePartial")}
-            </p>
-          )}
-        </div>
-        <div className="flex justify-end gap-2 border-t p-4">
-          <Button variant="outline" onClick={onCancel} disabled={deleting}>
-            {i18n.t("content.cancel")}
-          </Button>
-          {step === 1 ? (
-            <Button onClick={onContinue} disabled={targets.length === 0}>
-              {i18n.t("libraryDetail.continue")}
-            </Button>
-          ) : (
-            <Button
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={onConfirm}
-              disabled={deleting || targets.length === 0}
-            >
-              <Trash2 className="h-4 w-4" />
-              {deleting
-                ? i18n.t("sources.refreshing")
-                : forgetWork
-                  ? i18n.t("libraryDetail.deleteFilesForget")
-                  : i18n.t("libraryDetail.deleteFilesOnly")}
-            </Button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function directoryManageTargets(root: TreeNode, options: { allowCacheDelete?: boolean; allowLocalDelete?: boolean }) {
-  return sortedFilesDeep(root).flatMap((file) => mediaDeleteTargetsForFile(file, options));
-}
-
-function mediaDeleteTargetsForFile(
-  file: TreeTrack,
-  options: { allowCacheDelete?: boolean; allowLocalDelete?: boolean },
-) {
-  const targets: MediaDeleteTarget[] = [];
-  if (options.allowCacheDelete && file.cacheAvailable && file.cacheLocationId !== null) {
-    targets.push({
-      kind: "cache",
-      locationId: file.cacheLocationId,
-      workId: 0,
-      title: file.title,
-      path: file.cachePath,
-      sizeBytes: file.sizeBytes,
-    });
-  }
-  if (options.allowLocalDelete && file.localAvailable && file.localLocationId !== null) {
-    targets.push({
-      kind: "local",
-      locationId: file.localLocationId,
-      workId: 0,
-      title: file.title,
-      path: file.localPath,
-      sizeBytes: file.sizeBytes,
-    });
-  }
-  return targets;
-}
-
-function mediaDeleteTargetKey(target: MediaDeleteTarget) {
-  return `${target.kind}:${target.folderId ?? target.locationId}`;
-}
-
-function isMediaPathWithinRoot(root: string, candidate: string) {
-  const normalizedRoot = root
-    .replace(/\\/g, "/")
-    .replace(/^\/+|\/+$/g, "")
-    .toLowerCase();
-  const normalizedCandidate = candidate
-    .replace(/\\/g, "/")
-    .replace(/^\/+|\/+$/g, "")
-    .toLowerCase();
-  return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(`${normalizedRoot}/`);
-}
-
 function folderNameHasPriority(name: string) {
   const lower = name.toLowerCase();
   return ["本編", "honhen", "main", "mp3"].some((value) => lower.includes(value.toLowerCase()));
@@ -10739,16 +9509,6 @@ function sortedFiles(node: TreeNode) {
   return sortedTreeFiles(node);
 }
 
-function sortedFilesDeep(node: TreeNode) {
-  const files = [...node.files];
-  for (const child of node.children.values()) {
-    files.push(...sortedFilesDeep(child));
-  }
-  return files.sort((a, b) =>
-    (a.sourcePath || a.title).localeCompare(b.sourcePath || b.title, undefined, { numeric: true, sensitivity: "base" }),
-  );
-}
-
 type VisibleTreeRow =
   | { type: "folder"; node: TreeNode; depth: number }
   | { type: "file"; file: TreeTrack; parent: TreeNode; depth: number };
@@ -10818,27 +9578,6 @@ function folderSummary(node: TreeNode) {
   return formatFolderStats(stats, playableFiles(node.files).length);
 }
 
-function formatFolderStats(stats: TreeStats, directPlayableCount: number) {
-  const countLabel =
-    directPlayableCount > 0
-      ? i18n.t(stats.video > 0 ? "libraryDetail.playableCount" : "libraryDetail.audioCount", {
-          count: directPlayableCount,
-        })
-      : stats.files > 0
-        ? i18n.t("libraryDetail.filesCount", { count: stats.files })
-        : "";
-  const sizeLabel = stats.knownSizeFiles > 0 ? formatBytes(stats.sizeBytes) : "";
-  return [countLabel, sizeLabel].filter(Boolean).join(" · ");
-}
-
-function fileIcon(file: TreeTrack) {
-  if (file.kind === "audio") return <FileAudio className="h-4 w-4 text-muted-foreground" />;
-  if (file.kind === "video") return <FileVideo className="h-4 w-4 text-muted-foreground" />;
-  if (file.kind === "image") return <ImageIcon className="h-4 w-4 text-muted-foreground" />;
-  if (file.kind === "text") return <FileText className="h-4 w-4 text-muted-foreground" />;
-  return <FileText className="h-4 w-4 text-muted-foreground" />;
-}
-
 function fileKindLabel(kind: string) {
   if (kind === "audio") return i18n.t("libraryDetail.audio");
   if (kind === "video") return i18n.t("libraryDetail.video");
@@ -10876,129 +9615,6 @@ function previewForFile(file: TreeTrack): FilePreviewState | null {
     };
   }
   return null;
-}
-
-function FilePreviewModal({
-  preview,
-  onClose,
-  onSetCover,
-}: {
-  preview: FilePreviewState;
-  onClose: () => void;
-  onSetCover?: (locationId: number) => void | Promise<void>;
-}) {
-  const player = usePlayer();
-  const [text, setText] = useState<string | null>(null);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    setText(null);
-    setError("");
-    if (preview.kind !== "text") return;
-    const request = preview.url
-      ? fetch(assetURL(preview.url), { headers: { Accept: "text/plain,text/*" } }).then(async (response) => {
-          if (!response.ok) throw new Error(i18n.t("libraryDetail.textPreviewHttpError", { status: response.status }));
-          const length = Number(response.headers.get("content-length") ?? 0);
-          if (length > 512 * 1024) throw new Error(i18n.t("libraryDetail.textFileTooLarge"));
-          const content = await response.text();
-          if (content.length > 512 * 1024) throw new Error(i18n.t("libraryDetail.textFileTooLarge"));
-          return { content };
-        })
-      : api.getMediaText(preview.locationId);
-    request
-      .then((result) => setText(result.content))
-      .catch((err) => {
-        setError(err instanceof Error ? err.message : i18n.t("libraryDetail.textPreviewFailed"));
-      });
-  }, [preview]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      onMouseDown={onClose}
-    >
-      <div
-        className="flex max-h-[86vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border bg-card shadow-xl"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="flex min-h-11 items-center justify-between gap-3 border-b px-4">
-          <div className="min-w-0 truncate text-sm font-semibold">{preview.title}</div>
-          <div className="flex items-center gap-2">
-            {preview.kind === "image" && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!onSetCover || !preview.canSetCover}
-                onClick={() => void onSetCover?.(preview.locationId)}
-              >
-                <ImageIcon className="h-4 w-4" />
-                {i18n.t("libraryDetail.setCover")}
-              </Button>
-            )}
-            <IconButton title={i18n.t("content.close")} onClick={onClose}>
-              <X className="h-4 w-4" />
-            </IconButton>
-          </div>
-        </div>
-        <div className="app-scroll min-h-0 flex-1 overflow-auto bg-background p-4">
-          {preview.kind === "image" ? (
-            <img
-              src={assetURL(preview.url)}
-              alt=""
-              className="mx-auto max-h-[72vh] max-w-full rounded-md object-contain"
-            />
-          ) : preview.kind === "video" ? (
-            <div className="grid min-h-[240px] place-items-center">
-              <VideoPreview
-                locationId={preview.locationId}
-                fallbackUrl={preview.url}
-                durationSeconds={preview.durationSeconds}
-                canTranscode={preview.canTranscode}
-                pauseRequested={player.isPlaying}
-                onPlay={player.pause}
-              />
-            </div>
-          ) : error ? (
-            <div className="text-sm text-muted-foreground">{error}</div>
-          ) : text === null ? (
-            <TextPreviewSkeleton />
-          ) : (
-            <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">{text}</pre>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TextPreviewSkeleton() {
-  return (
-    <div className="space-y-3" aria-label={i18n.t("libraryDetail.loadingTextPreview")}>
-      <div className="h-4 w-40 animate-pulse rounded bg-muted" />
-      <div className="space-y-2">
-        <div className="h-4 w-full animate-pulse rounded bg-muted" />
-        <div className="h-4 w-11/12 animate-pulse rounded bg-muted" />
-        <div className="h-4 w-4/5 animate-pulse rounded bg-muted" />
-        <div className="h-4 w-10/12 animate-pulse rounded bg-muted" />
-        <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
-      </div>
-    </div>
-  );
-}
-
-function fileNameFromPath(path: string) {
-  const parts = path.split("/").filter(Boolean);
-  return parts[parts.length - 1] ?? path;
 }
 
 function formatDateTime(value: string) {
@@ -11443,13 +10059,6 @@ function searchClauseLabel(clause: SearchClause, t?: TFunction) {
     default:
       return translate("library.searchClauseLabels.text", `Text: ${clause.value}`);
   }
-}
-
-function searchQueryWithoutClause(clauses: SearchClause[], removeIndex: number) {
-  return clauses
-    .filter((_clause, index) => index !== removeIndex)
-    .map(formatSearchClause)
-    .join(" ");
 }
 
 function codeFromPath(path: string) {

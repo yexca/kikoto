@@ -1,4 +1,5 @@
 import { Rows3 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -20,15 +21,18 @@ export function PageSizePicker({
 
   return (
     <div className="relative" ref={anchorRef}>
-      <button
+      <Button
         type="button"
-        className="relative inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+        variant="toolbar"
+        size="icon-sm"
+        aria-expanded={open}
+        className="relative"
         title={t("collection.pageSize", { value })}
         aria-label={t("collection.pageSize", { value })}
         onClick={() => setOpen((current) => !current)}
       >
         <Rows3 className="h-4 w-4" />
-      </button>
+      </Button>
       <AnchoredPopover
         open={open}
         anchorRef={anchorRef}

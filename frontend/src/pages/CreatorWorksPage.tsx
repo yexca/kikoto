@@ -29,6 +29,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { Dialog, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { NativeSelect } from "@/components/ui/input";
 import { UserTagRow } from "@/components/UserTagRow";
 import { CollectionPagination } from "@/components/collection/CollectionPagination";
 import {
@@ -1180,8 +1182,9 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
               onMobileColumnsChange={setMobileColumns}
               onDesktopColumnsChange={setDesktopColumns}
             />
-            <select
-              className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            <NativeSelect
+              fieldSize="sm"
+              className="px-2"
               value={filter}
               onChange={(event) => changeWorkFilter(event.target.value as VoiceWorkFilter)}
               aria-label={t("sheets.voiceWorkAvailability")}
@@ -1191,7 +1194,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
               <option value="local">{t("detailActions.local")}</option>
               <option value="remote">{t("detailActions.remote")}</option>
               <option value="missing">{t("detailActions.missing")}</option>
-            </select>
+            </NativeSelect>
             <Button variant={selectionMode ? "default" : "outline"} size="sm" onClick={toggleSelectionMode}>
               {t("detailActions.select")}
             </Button>
@@ -1777,24 +1780,19 @@ function FloatingConfirm({
   onClose: () => void;
   onConfirm: () => void;
 }) {
+  // Opens from the aliases panel, which is a sheet on mobile, so it stacks above sheets.
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-background/40 p-4" onMouseDown={onClose}>
-      <div
-        className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <h3 className="text-base font-semibold">{title}</h3>
-        <p className="mt-2 text-sm text-muted-foreground">{description}</p>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button size="sm" onClick={onConfirm}>
-            {confirmLabel}
-          </Button>
-        </div>
-      </div>
-    </div>
+    <Dialog onClose={onClose} layer="overlay-top" size="sm">
+      <DialogHeader title={title} description={description} />
+      <DialogFooter>
+        <Button variant="outline" size="sm" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button size="sm" onClick={onConfirm}>
+          {confirmLabel}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }
 
@@ -1809,25 +1807,20 @@ function SaveConfirmModal({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
-      <div
-        className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <h3 className="text-base font-semibold">{t("detailActions.fetchRemoteDirectory")}</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {t("detailActions.fetchRemoteDirectoryDescription", { count })}
-        </p>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>
-            {t("content.cancel")}
-          </Button>
-          <Button size="sm" onClick={onConfirm}>
-            {t("detailActions.fetch")}
-          </Button>
-        </div>
-      </div>
-    </div>
+    <Dialog onClose={onClose} size="sm">
+      <DialogHeader
+        title={t("detailActions.fetchRemoteDirectory")}
+        description={t("detailActions.fetchRemoteDirectoryDescription", { count })}
+      />
+      <DialogFooter>
+        <Button variant="outline" size="sm" onClick={onClose}>
+          {t("content.cancel")}
+        </Button>
+        <Button size="sm" onClick={onConfirm}>
+          {t("detailActions.fetch")}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }
 
@@ -2035,8 +2028,9 @@ function CatalogPagination({
     <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
       <div>{t("collection.pageOf", { page, totalPages, totalItems, itemLabel: t("collection.works") })}</div>
       <div className="flex items-center gap-2">
-        <select
-          className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+        <NativeSelect
+          fieldSize="sm"
+          className="px-2"
           value={pageSize}
           onChange={(event) => onPageSizeChange(Number(event.target.value) as 24 | 48)}
           aria-label={t("sheets.voiceWorkPageSize")}
@@ -2046,7 +2040,7 @@ function CatalogPagination({
               {t("collection.perPageOption", { value })}
             </option>
           ))}
-        </select>
+        </NativeSelect>
         <Button
           variant="outline"
           size="icon"

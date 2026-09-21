@@ -112,12 +112,12 @@ export function CollectionPagination({
   return (
     <div
       className={cn(
-        "rounded-lg border bg-card text-sm",
+        "rounded-lg border bg-card text-sm lg:rounded-none lg:border-x-0 lg:border-t-0 lg:bg-transparent",
         compactMobile
           ? compactTop
-            ? "flex min-h-10 flex-nowrap items-center justify-between gap-2 px-2 py-1 lg:px-3"
-            : "flex min-h-[3.75rem] flex-nowrap items-center justify-between gap-2 px-2 py-2 lg:min-h-0 lg:px-3"
-          : "flex flex-col gap-2 px-3 py-2 lg:flex-row lg:items-center lg:justify-between",
+            ? "flex min-h-10 flex-nowrap items-center justify-between gap-2 px-2 py-1 lg:px-0.5 lg:pb-2"
+            : "flex min-h-[3.75rem] flex-nowrap items-center justify-between gap-2 px-2 py-2 lg:min-h-0 lg:px-0.5 lg:pb-2"
+          : "flex flex-col gap-2 px-3 py-2 lg:flex-row lg:items-center lg:justify-between lg:px-0.5 lg:pb-2",
       )}
     >
       <div

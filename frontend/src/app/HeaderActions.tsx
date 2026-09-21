@@ -562,7 +562,7 @@ export function HeaderActions({
               >
                 <Bell className="h-4 w-4" />
                 {totalNotificationCount > 0 && (
-                  <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-destructive px-1 text-[10px] font-semibold leading-5 text-destructive-foreground">
+                  <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-destructive px-1 text-3xs font-semibold leading-5 text-destructive-foreground">
                     {totalNotificationCount > 99 ? "99+" : totalNotificationCount}
                   </span>
                 )}
@@ -804,7 +804,7 @@ export function HeaderActions({
                   <span className="block max-w-32 truncate text-xs font-medium leading-4">
                     {user.displayName || user.username}
                   </span>
-                  <span className="block max-w-32 truncate text-[10px] leading-3 text-muted-foreground">
+                  <span className="block max-w-32 truncate text-3xs leading-3 text-muted-foreground">
                     {t(`account.roles.${user.role}`, { defaultValue: user.role })}
                     {user.devMode ? " · dev" : user.demoMode ? " · demo" : ""}
                   </span>

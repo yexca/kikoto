@@ -5,6 +5,8 @@ import { DebouncedSuggestionResult, useDebouncedSuggestion, useWorkCoverCandidat
 import { useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 import { toastFromError, useToast } from "@/components/ui/toast";
 
@@ -399,119 +401,108 @@ export function WorkMetadataEditorModal({
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border bg-card shadow-lg">
-        <div className="flex items-start justify-between gap-3 border-b px-4 py-3">
-          <div>
-            <h3 className="text-base font-semibold">{i18n.t("libraryDetail.editMetadata")}</h3>
-            <p className="mt-1 text-xs text-muted-foreground">{work.primaryCode}</p>
+    <Dialog onClose={onClose} size="xl" dismissible={false} className="max-w-3xl">
+      <DialogHeader
+        title={i18n.t("libraryDetail.editMetadata")}
+        description={work.primaryCode}
+        onClose={onClose}
+        closeLabel={i18n.t("content.close")}
+      />
+      <DialogBody className="space-y-5">
+        <EditorSection title={i18n.t("libraryDetail.work")}>
+          <LabeledInput label={i18n.t("libraryDetail.title")} value={title} onChange={setTitle} />
+          <div className="flex justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={saving || !manual.title}
+              onClick={() => void resetField("title")}
+            >
+              {i18n.t("libraryDetail.resetTitle")}
+            </Button>
           </div>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-8 w-8"
-            onClick={onClose}
-            aria-label={i18n.t("content.close")}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="app-scroll min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
-          <EditorSection title={i18n.t("libraryDetail.work")}>
-            <LabeledInput label={i18n.t("libraryDetail.title")} value={title} onChange={setTitle} />
-            <div className="flex justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={saving || !manual.title}
-                onClick={() => void resetField("title")}
-              >
-                {i18n.t("libraryDetail.resetTitle")}
-              </Button>
-            </div>
-          </EditorSection>
+        </EditorSection>
 
-          <EditorSection title={i18n.t("libraryDetail.cover")}>
-            <MetadataEditorCoverSection
-              manualCover={manual.cover}
-              coverCandidates={coverState.coverCandidates}
-              selectedCoverId={coverState.selectedCoverId}
-              loadingCovers={coverState.loadingCovers}
-              saving={saving}
-              onSelectCover={coverState.setSelectedCoverId}
-              onReset={() => void resetField("cover")}
-            />
-          </EditorSection>
+        <EditorSection title={i18n.t("libraryDetail.cover")}>
+          <MetadataEditorCoverSection
+            manualCover={manual.cover}
+            coverCandidates={coverState.coverCandidates}
+            selectedCoverId={coverState.selectedCoverId}
+            loadingCovers={coverState.loadingCovers}
+            saving={saving}
+            onSelectCover={coverState.setSelectedCoverId}
+            onReset={() => void resetField("cover")}
+          />
+        </EditorSection>
 
-          <EditorSection title={i18n.t("libraryDetail.circle")}>
-            <MetadataEditorCircleSection
-              name={circleName}
-              externalId={circleExternalId}
-              suggestions={circleSuggestions}
-              saving={saving}
-              hasManualValue={Boolean(manual.circle)}
-              onNameChange={setCircleName}
-              onExternalIdChange={setCircleExternalId}
-              onSuggestionSelect={(item) => {
-                setCircleName(item.name);
-                setCircleExternalId(item.externalId);
-                setSeriesCircleExternalId(item.externalId);
-                circleSuggestions.clear();
-              }}
-              onReset={() => void resetField("circle")}
-            />
-          </EditorSection>
+        <EditorSection title={i18n.t("libraryDetail.circle")}>
+          <MetadataEditorCircleSection
+            name={circleName}
+            externalId={circleExternalId}
+            suggestions={circleSuggestions}
+            saving={saving}
+            hasManualValue={Boolean(manual.circle)}
+            onNameChange={setCircleName}
+            onExternalIdChange={setCircleExternalId}
+            onSuggestionSelect={(item) => {
+              setCircleName(item.name);
+              setCircleExternalId(item.externalId);
+              setSeriesCircleExternalId(item.externalId);
+              circleSuggestions.clear();
+            }}
+            onReset={() => void resetField("circle")}
+          />
+        </EditorSection>
 
-          <EditorSection title={i18n.t("libraryDetail.series")}>
-            <MetadataEditorSeriesSection
-              name={seriesName}
-              titleId={seriesTitleId}
-              circleExternalId={seriesCircleExternalId}
-              suggestions={seriesSuggestions}
-              saving={saving}
-              hasManualValue={Boolean(manual.series)}
-              onNameChange={setSeriesName}
-              onTitleIdChange={setSeriesTitleId}
-              onCircleExternalIdChange={setSeriesCircleExternalId}
-              onSuggestionSelect={(item) => {
-                setSeriesName(item.name);
-                setSeriesTitleId(item.titleId);
-                setSeriesCircleExternalId(item.circleExternalId);
-                seriesSuggestions.clear();
-              }}
-              onReset={() => void resetField("series")}
-            />
-          </EditorSection>
+        <EditorSection title={i18n.t("libraryDetail.series")}>
+          <MetadataEditorSeriesSection
+            name={seriesName}
+            titleId={seriesTitleId}
+            circleExternalId={seriesCircleExternalId}
+            suggestions={seriesSuggestions}
+            saving={saving}
+            hasManualValue={Boolean(manual.series)}
+            onNameChange={setSeriesName}
+            onTitleIdChange={setSeriesTitleId}
+            onCircleExternalIdChange={setSeriesCircleExternalId}
+            onSuggestionSelect={(item) => {
+              setSeriesName(item.name);
+              setSeriesTitleId(item.titleId);
+              setSeriesCircleExternalId(item.circleExternalId);
+              seriesSuggestions.clear();
+            }}
+            onReset={() => void resetField("series")}
+          />
+        </EditorSection>
 
-          <EditorSection title={i18n.t("libraryDetail.voiceActors")}>
-            <MetadataEditorVoiceActorsSection
-              voiceActors={voiceActors}
-              suggestions={voiceSuggestions}
-              focusedVoiceIndex={focusedVoiceIndex}
-              saving={saving}
-              hasManualValue={Boolean(manual.voiceActors?.length)}
-              onFocus={setFocusedVoiceIndex}
-              onUpdate={updateVoiceActor}
-              onRemove={removeVoiceActor}
-              onAdd={addVoiceActor}
-              onSuggestionSelect={(item) => {
-                updateVoiceActor(focusedVoiceIndex, { name: item.name, personId: item.personId });
-                voiceSuggestions.clear();
-              }}
-              onReset={() => void resetField("voice_actors")}
-            />
-          </EditorSection>
-        </div>
-        <div className="flex justify-end gap-2 border-t px-4 py-3">
-          <Button variant="outline" size="sm" disabled={saving} onClick={onClose}>
-            {i18n.t("content.cancel")}
-          </Button>
-          <Button size="sm" disabled={saving} onClick={() => void save()}>
-            {saving ? i18n.t("common.saving") : i18n.t("content.save")}
-          </Button>
-        </div>
-      </div>
-    </div>
+        <EditorSection title={i18n.t("libraryDetail.voiceActors")}>
+          <MetadataEditorVoiceActorsSection
+            voiceActors={voiceActors}
+            suggestions={voiceSuggestions}
+            focusedVoiceIndex={focusedVoiceIndex}
+            saving={saving}
+            hasManualValue={Boolean(manual.voiceActors?.length)}
+            onFocus={setFocusedVoiceIndex}
+            onUpdate={updateVoiceActor}
+            onRemove={removeVoiceActor}
+            onAdd={addVoiceActor}
+            onSuggestionSelect={(item) => {
+              updateVoiceActor(focusedVoiceIndex, { name: item.name, personId: item.personId });
+              voiceSuggestions.clear();
+            }}
+            onReset={() => void resetField("voice_actors")}
+          />
+        </EditorSection>
+      </DialogBody>
+      <DialogFooter>
+        <Button variant="outline" size="sm" disabled={saving} onClick={onClose}>
+          {i18n.t("content.cancel")}
+        </Button>
+        <Button size="sm" disabled={saving} onClick={() => void save()}>
+          {saving ? i18n.t("common.saving") : i18n.t("content.save")}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }
 
@@ -569,8 +560,9 @@ function LabeledInput({
   return (
     <label className="block min-w-0 text-xs font-medium text-muted-foreground">
       {label}
-      <input
-        className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+      <Input
+        fieldSize="sm"
+        className="mt-1 w-full"
         value={value}
         onFocus={onFocus}
         onChange={(event) => onChange(event.target.value)}

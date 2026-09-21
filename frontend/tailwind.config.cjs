@@ -87,6 +87,20 @@ module.exports = {
         300: "calc(300ms * var(--motion-scale))",
         500: "calc(500ms * var(--motion-scale))",
       },
+      fontSize: {
+        "2xs": "0.6875rem",
+        "3xs": "0.625rem",
+      },
+      // Shared stacking scale. Values match the historical page-local layers so
+      // existing stacking order is preserved while call sites use names.
+      zIndex: {
+        overlay: "50",
+        "overlay-nested": "60",
+        sheet: "70",
+        "overlay-top": "80",
+        toast: "80",
+        system: "90",
+      },
       opacity: {
         15: "0.15",
         35: "0.35",
