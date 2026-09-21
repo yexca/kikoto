@@ -192,6 +192,14 @@ export function MaintenancePage({
     setIsSourceModalOpen(true);
   }, [readOnly, settings]);
 
+  useEffect(() => {
+    if (activeTab !== "library" || window.location.hash !== "#remote-sources") return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById("remote-sources")?.scrollIntoView({ block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTab, isSettingsLoading, settings]);
+
   const selectTab = (tab: MaintenanceTab) => {
     setActiveTab(tab);
     const url = new URL(window.location.href);

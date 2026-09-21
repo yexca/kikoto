@@ -331,6 +331,9 @@ export function WorkflowsPage({
   const [isWorkflowMetaLoading, setIsWorkflowMetaLoading] = useState(true);
   const [hasWorkflowMetaSnapshot, setHasWorkflowMetaSnapshot] = useState(false);
   const [workflowMetaError, setWorkflowMetaError] = useState("");
+  const [remoteSourceAvailability, setRemoteSourceAvailability] = useState<"loading" | "available" | "unavailable">(
+    "loading",
+  );
   const [recentDefinitionRuns, setRecentDefinitionRuns] = useState<WorkflowRun[]>([]);
   const [workflowLaunch, setWorkflowLaunch] = useState<{
     definition: WorkflowDefinition;
@@ -362,6 +365,29 @@ export function WorkflowsPage({
 
   useEffect(() => {
     refresh();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .listLibrarySources()
+      .then((sources) => {
+        if (!active) return;
+        setRemoteSourceAvailability(
+          sources.some(
+            (source) =>
+              source.enabled && ["kikoeru_compatible", "kikoeru_compatible_number178"].includes(source.sourceType),
+          )
+            ? "available"
+            : "unavailable",
+        );
+      })
+      .catch(() => {
+        if (active) setRemoteSourceAvailability("unavailable");
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -413,7 +439,7 @@ export function WorkflowsPage({
       tabDefinitions[0] ??
       null
     );
-  }, [selectedDefinitionId, tabDefinitions, visibleDefinitions, linkedCode]);
+  }, [linkedCode, selectedDefinitionId, tabDefinitions, visibleDefinitions]);
 
   useEffect(() => {
     if (visibleDefinitions.length === 0) return;
@@ -594,7 +620,7 @@ export function WorkflowsPage({
     if (readOnly) return false;
     if (kind === "local_scan" || kind === "metadata_sync") return canRun && canSyncMetadata;
     if (kind === "dlsite_popular") return canRun && canSyncMetadata && canTagWorks;
-    if (kind === "remote_popular") return canRun && canTagWorks;
+    if (kind === "remote_popular") return canRun && canTagWorks && remoteSourceAvailability !== "unavailable";
     return canRun;
   };
 
@@ -663,7 +689,6 @@ export function WorkflowsPage({
           </Button>
         </div>
       )}
-
       {
         <div className="min-w-0 space-y-4">
           <WorkflowNavigation
@@ -752,6 +777,8 @@ export function WorkflowsPage({
                 onRunSystemAction={runSystemAction}
                 onRunRemotePopular={runPopularCollection}
                 canFetchRemotePopular={canManageDownloads}
+                remoteSourceUnavailable={remoteSourceAvailability === "unavailable"}
+                onOpenRemoteSourceSettings={openRemoteSourcesSettings}
                 onRunDLsitePopular={runDLsitePopularCollection}
                 recentRuns={recentDefinitionRuns}
                 onOpenRun={openActivityRun}
@@ -1434,7 +1461,9 @@ function WorkflowDetail({
   canRunSystemAction,
   onRunSystemAction,
   onRunRemotePopular,
+  onOpenRemoteSourceSettings,
   canFetchRemotePopular = false,
+  remoteSourceUnavailable = false,
   onRunDLsitePopular,
   recentRuns = [],
   onOpenRun,
@@ -1456,7 +1485,9 @@ function WorkflowDetail({
   canRunSystemAction?: (kind: SystemRunKind) => boolean;
   onRunSystemAction?: (kind: SystemRunKind, options?: SystemRunOptions) => Promise<void>;
   onRunRemotePopular?: (options: RemotePopularRunOptions) => Promise<void>;
+  onOpenRemoteSourceSettings?: () => void;
   canFetchRemotePopular?: boolean;
+  remoteSourceUnavailable?: boolean;
   onRunDLsitePopular?: (options: DLsitePopularRunOptions) => Promise<void>;
   recentRuns?: WorkflowRun[];
   onOpenRun?: (run: WorkflowRun) => void;
@@ -1500,7 +1531,7 @@ function WorkflowDetail({
   const composerEditable = parsedDefinition.kind === "v2";
   const displayDefinition = localizedWorkflowDefinition(definition);
   return (
-    <Card className="min-w-0">
+    <Card className="relative min-w-0 overflow-hidden">
       <CardContent className="min-w-0 space-y-5 p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
@@ -1630,6 +1661,26 @@ function WorkflowDetail({
         {onOpenRun && <RecentWorkflowRuns runs={recentRuns} onOpen={onOpenRun} />}
         {parsedDefinition.kind === "legacy" && <WorkflowHints nodes={nodes} nodeTypes={nodeTypes} compact />}
       </CardContent>
+      {definition.code === "remote_popular_collection" && remoteSourceUnavailable && (
+        <div
+          className="absolute inset-0 z-10 grid place-items-center bg-background/80 p-6 text-center backdrop-blur-sm"
+          role="status"
+        >
+          <div className="max-w-sm space-y-3 rounded-lg border bg-card/95 p-6 shadow-lg">
+            <AlertCircle className="mx-auto h-8 w-8 text-warning-foreground" />
+            <div>
+              <h4 className="font-semibold">{workflowCopy("remotePopularRequiresSource")}</h4>
+              <p className="mt-1 text-sm text-muted-foreground">{workflowCopy("remotePopularSourceHint")}</p>
+            </div>
+            {onOpenRemoteSourceSettings && (
+              <Button variant="outline" onClick={onOpenRemoteSourceSettings}>
+                <Settings2 className="h-4 w-4" />
+                {workflowCopy("configureRemoteSource")}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
       {configuredSystemRun === "local_scan" && onRunSystemAction && (
         <Modal title={workflowCopy("configureLocalScan")} onClose={() => setConfiguredSystemRun(null)}>
           <LocalScanRunPanel
@@ -1654,6 +1705,7 @@ function WorkflowDetail({
             running={isSystemActionRunning?.("remote_popular") ?? false}
             allowed={canRunSystemAction?.("remote_popular") ?? false}
             canFetch={canFetchRemotePopular}
+            onOpenRemoteSourceSettings={onOpenRemoteSourceSettings}
             onRun={onRunRemotePopular}
           />
         </Modal>
@@ -1769,11 +1821,13 @@ function RemotePopularRunPanel({
   running,
   allowed,
   canFetch,
+  onOpenRemoteSourceSettings,
   onRun,
 }: {
   running: boolean;
   allowed: boolean;
   canFetch: boolean;
+  onOpenRemoteSourceSettings?: () => void;
   onRun: (options: RemotePopularRunOptions) => Promise<void>;
 }) {
   const [sources, setSources] = useState<LibrarySource[]>([]);
@@ -1828,6 +1882,17 @@ function RemotePopularRunPanel({
     <section>
       <div className="grid gap-4">
         <div className="space-y-4">
+          {!loadingSources && compatibleSources.length === 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-warning-border bg-warning-surface px-3 py-2">
+              <p className="text-sm text-warning-foreground">{workflowCopy("remotePopularRequiresSource")}</p>
+              {onOpenRemoteSourceSettings && (
+                <Button size="sm" variant="outline" onClick={onOpenRemoteSourceSettings}>
+                  <Settings2 className="h-4 w-4" />
+                  {workflowCopy("configureRemoteSource")}
+                </Button>
+              )}
+            </div>
+          )}
           <label className="grid gap-2 text-sm font-medium">
             {workflowCopy("remoteSource")}
             <select
@@ -4960,6 +5025,11 @@ function localCleanupLocations(payload: Record<string, unknown>): LocalCleanupLo
 function openRemoteSourceConfiguration(sourceID: number) {
   const search = new URLSearchParams({ tab: "library", source: String(sourceID) });
   window.history.pushState({}, "", `/settings?${search}`);
+  window.dispatchEvent(new Event("kikoto:navigation"));
+}
+
+function openRemoteSourcesSettings() {
+  window.history.pushState({}, "", "/settings?tab=library#remote-sources");
   window.dispatchEvent(new Event("kikoto:navigation"));
 }
 

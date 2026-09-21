@@ -1330,6 +1330,19 @@ test("remote popular collection requires an explicit source and queues configure
   await expect(page.getByText(/run #41 queued/)).toBeVisible();
 });
 
+test("remote popular shows an unavailable overlay without a compatible source", async ({ page }) => {
+  await mockWorkflows(page);
+  await page.route("**/api/library-sources", (route) => route.fulfill({ json: [] }));
+  await page.goto("/workflows");
+
+  const remoteTab = page.getByRole("tab", { name: /Collect popular remote works/ });
+  await expect(remoteTab).toBeEnabled();
+  await remoteTab.click();
+  await expect(page.getByRole("status").filter({ hasText: "Configure a compatible remote source" })).toBeVisible();
+  await page.getByRole("button", { name: "Configure remote source" }).click();
+  await expect(page).toHaveURL(/\/settings\?tab=library#remote-sources$/);
+});
+
 test("mobile header orders actions and separates popovers from the quick-action sheet", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockWorkflows(page);
