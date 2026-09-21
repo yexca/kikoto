@@ -457,7 +457,12 @@ function AuthenticatedApp() {
                   activePage={canAccessCurrentPage ? page : null}
                 />
                 {canAccessCurrentPage && page === "settings" && auth.user && (
-                  <SettingsPage user={auth.user} readOnly={auth.demoMode} onAccountUpdated={auth.refresh} />
+                  <SettingsPage
+                    user={auth.user}
+                    readOnly={auth.demoMode}
+                    onAccountUpdated={auth.refresh}
+                    onAccessPolicyUpdated={auth.refreshRuntime}
+                  />
                 )}
                 {canAccessCurrentPage && page === "metadata" && auth.user && (
                   <WorkManagementPage

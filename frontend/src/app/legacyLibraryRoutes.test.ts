@@ -48,6 +48,11 @@ describe("legacyLibraryRedirect", () => {
     expect(legacyLibraryRedirect("/maintenance", "?tab=library")).toBe("/settings?tab=library");
   });
 
+  it("redirects bare legacy administration routes", () => {
+    expect(legacyLibraryRedirect("/maintenance")).toBe("/settings?tab=library");
+    expect(legacyLibraryRedirect("/users")).toBe("/settings?tab=users");
+  });
+
   it("preserves metadata run filters and maps legacy settings links", () => {
     expect(legacyLibraryRedirect("/maintenance", "?tab=works&reason=metadata&metadataRun=7")).toBe(
       "/metadata?reason=metadata&metadataRun=7",

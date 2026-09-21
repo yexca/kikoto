@@ -2214,6 +2214,11 @@ function CompactRunSummarySkeleton() {
 function CompactRunSummary({ run, nodeRuns }: { run: WorkflowRunDetail | WorkflowRun; nodeRuns: WorkflowNodeRun[] }) {
   return (
     <div className="grid gap-2 sm:grid-cols-2">
+      {hasFetchTransferProgress(run) && (
+        <div className="sm:col-span-2">
+          <FetchTransferProgress run={run} />
+        </div>
+      )}
       <SummaryCell label={workflowCopy("started")} value={run.startedAt || workflowCopy("notRecorded")} />
       <SummaryCell label={workflowCopy("finished")} value={run.finishedAt || workflowCopy("notFinished")} />
       <SummaryCell
@@ -2343,7 +2348,7 @@ function RunOverview({ run, nodeRuns }: { run: WorkflowRunDetail | WorkflowRun; 
 }
 
 function FetchTransferProgress({ run }: { run: WorkflowRunDetail | WorkflowRun }) {
-  if (run.workflowCode !== "remote_work_fetch") return null;
+  if (!hasFetchTransferProgress(run)) return null;
   const current = Math.max(0, run.progressBytesCurrent ?? 0);
   const total = Math.max(0, run.progressBytesTotal ?? 0);
   const unknownItems = Math.max(0, run.progressBytesUnknownItems ?? 0);
@@ -2385,6 +2390,14 @@ function FetchTransferProgress({ run }: { run: WorkflowRunDetail | WorkflowRun }
       )}
     </div>
   );
+}
+
+function hasFetchTransferProgress(run: WorkflowRunDetail | WorkflowRun) {
+  if (run.workflowCode !== "remote_work_fetch") return false;
+  const current = Math.max(0, run.progressBytesCurrent ?? 0);
+  const total = Math.max(0, run.progressBytesTotal ?? 0);
+  const unknownItems = Math.max(0, run.progressBytesUnknownItems ?? 0);
+  return current > 0 || total > 0 || unknownItems > 0 || ["queued", "running"].includes(run.status);
 }
 
 function RunItems({

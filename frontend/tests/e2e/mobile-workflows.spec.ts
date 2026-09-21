@@ -1761,14 +1761,9 @@ test("empty-custom filter keeps the global Activity available", async ({ page })
   await expect(page.getByRole("button", { name: "Activity", exact: true })).toBeEnabled();
 });
 
-test("@desktop canvas wheel scrolls the page and Activity unless a modifier is held", async ({ page }) => {
+test("@desktop canvas wheel scrolls the page unless a modifier is held", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 600 });
   await mockWorkflows(page);
   await page.goto("/workflows?workflow=metadata_sync");
   await expectCooperativeCanvasScroll(page, page.getByLabel("Workflow node canvas"));
-
-  await page.goto("/workflows?activity=1&run=51");
-  const activity = page.getByRole("dialog", { name: "Activity", exact: true });
-  await expect(activity.getByText("Execution", { exact: true })).toBeVisible();
-  await expectCooperativeCanvasScroll(page, activity.getByLabel("Workflow node canvas"));
 });

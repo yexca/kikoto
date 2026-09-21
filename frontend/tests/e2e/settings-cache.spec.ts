@@ -461,7 +461,7 @@ test("development super administrator can configure production anonymous access"
 
   await page.goto("/settings?tab=users");
   await expect(page).toHaveURL(/\/settings\?tab=users$/);
-  await expect(page.getByRole("button", { name: "Users", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("tab", { name: "Users", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByText("User directory", { exact: true })).toBeVisible();
   const accessSwitch = page.getByRole("switch", { name: "Anonymous access", exact: true });
   const accessRow = page

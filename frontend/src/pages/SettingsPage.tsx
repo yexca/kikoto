@@ -17,6 +17,7 @@ import { Trans, useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { api, type CurrentUser } from "@/lib/api";
 import { validatePasswordChange, type PasswordChangeDraft } from "@/pages/accountSettings";
 import { MaintenancePage } from "@/pages/MaintenancePage";
@@ -43,10 +44,12 @@ export function SettingsPage({
   user,
   readOnly = false,
   onAccountUpdated,
+  onAccessPolicyUpdated,
 }: {
   user: CurrentUser;
   readOnly?: boolean;
   onAccountUpdated: () => Promise<void>;
+  onAccessPolicyUpdated: () => Promise<void>;
 }) {
   const toast = useToast();
   const { t } = useTranslation();
@@ -65,9 +68,22 @@ export function SettingsPage({
   }));
   const [seekError, setSeekError] = useState<string | null>(null);
   const isAdmin = user.role === "admin" || user.role === "super_admin";
-  const canManageSources = isAdmin && (readOnly || user.permissions.includes("sources:write"));
-  const canManageUsers = isAdmin && (readOnly || user.permissions.includes("users:manage"));
+  const isSystemAdmin = user.permissions.includes("system:admin");
+  const canManageSources = isAdmin && (readOnly || isSystemAdmin || user.permissions.includes("sources:write"));
+  const canManageUsers = isAdmin && (readOnly || isSystemAdmin || user.permissions.includes("users:manage"));
   const canManageAccessPolicy = user.role === "super_admin" && !readOnly;
+
+  useEffect(() => {
+    const syncTabFromLocation = () => {
+      if (window.location.pathname === "/settings") setActiveTab(settingsTabFromLocation());
+    };
+    window.addEventListener(NAVIGATION_EVENT, syncTabFromLocation);
+    window.addEventListener("popstate", syncTabFromLocation);
+    return () => {
+      window.removeEventListener(NAVIGATION_EVENT, syncTabFromLocation);
+      window.removeEventListener("popstate", syncTabFromLocation);
+    };
+  }, []);
 
   useEffect(() => {
     if (isAdmin || !["library", "cache", "users"].includes(activeTab)) return;
@@ -501,7 +517,7 @@ export function SettingsPage({
           readOnly={readOnly}
           embedded
           activeTab={activeTab as "library" | "cache" | "users"}
-          onAccessPolicyUpdated={onAccountUpdated}
+          onAccessPolicyUpdated={onAccessPolicyUpdated}
         />
       )}
     </div>
