@@ -28,7 +28,7 @@ func attentionRunCondition(viewerUserID int64) string {
 	// issue outcomes. Other failures require their own recovery or acknowledgement.
 	resolvedMetadata := `(run.workflow_code IN ('metadata_sync', 'metadata_family_sync') AND ` + encounteredMetadataSQL + ` AND ` + pendingMetadataSQL + ` = 0)`
 	return `(NOT (` + runningRunCondition + `) AND (` + pendingCandidateSQL + ` OR ` + pendingMetadataSQL + ` > 0
-   OR (run.status = 'failed' AND NOT ` + reviewed + ` AND NOT ` + resolvedMetadata + `)))`
+	   OR (run.status IN ('failed', 'partial') AND NOT ` + reviewed + ` AND NOT ` + resolvedMetadata + `)))`
 }
 
 func historyRunCondition(viewerUserID int64) string {

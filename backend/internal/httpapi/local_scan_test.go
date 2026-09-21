@@ -360,7 +360,7 @@ func TestRetryLocalScanPreservesFollowUpChoice(t *testing.T) {
 	}
 }
 
-func TestDLsiteMetadataSyncQueuesIndependentRuns(t *testing.T) {
+func TestDLsiteMetadataSyncCoalescesQueuedRuns(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
 
@@ -372,7 +372,7 @@ func TestDLsiteMetadataSyncQueuesIndependentRuns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Status != "queued" || second.Status != "queued" || first.RunID == second.RunID {
+	if first.Status != "queued" || second.Status != "queued" || first.RunID != second.RunID || !second.Deduplicated {
 		t.Fatalf("queued metadata results = %#v / %#v", first, second)
 	}
 	var queuedRuns, queuedJobs int
@@ -382,7 +382,7 @@ func TestDLsiteMetadataSyncQueuesIndependentRuns(t *testing.T) {
 	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_job WHERE worker_type = 'metadata_sync' AND status = 'queued'").Scan(&queuedJobs); err != nil {
 		t.Fatal(err)
 	}
-	if queuedRuns != 2 || queuedJobs != 2 {
+	if queuedRuns != 1 || queuedJobs != 1 {
 		t.Fatalf("queued metadata runs/jobs = %d/%d", queuedRuns, queuedJobs)
 	}
 }

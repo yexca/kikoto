@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,9 +18,16 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/download"
+	"github.com/yexca/kikoto/backend/internal/outbound"
 )
 
 var ErrNoProduct = errors.New("dlsite product not found")
+
+// IsTimeout distinguishes an exhausted request deadline from user cancellation.
+func IsTimeout(err error) bool {
+	var networkErr net.Error
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, outbound.ErrResponseReadTimeout) || (errors.As(err, &networkErr) && networkErr.Timeout())
+}
 
 const maxDLsiteJSONBytes int64 = 8 << 20
 
@@ -374,6 +382,9 @@ func (c *Client) FetchProductWithOptions(ctx context.Context, workno string, opt
 				return product, nil
 			}
 			lastErr = err
+			if ctx.Err() != nil || IsTimeout(err) {
+				return Product{}, err
+			}
 		}
 	}
 
@@ -588,6 +599,8 @@ func (c *Client) fetchProductFromSite(ctx context.Context, site string, workno s
 	}
 	if dynamicRaw, dynamic, err := c.fetchDynamic(ctx, product); err == nil {
 		applyDynamicProductFields(&product, dynamicRaw, dynamic)
+	} else if IsTimeout(err) || ctx.Err() != nil {
+		return Product{}, err
 	}
 	return product, nil
 }

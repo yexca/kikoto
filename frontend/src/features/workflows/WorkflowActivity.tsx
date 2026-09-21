@@ -175,7 +175,7 @@ export function WorkflowActivity({
       )}
       {!running &&
         view === "attention" &&
-        run.status === "failed" &&
+        (run.status === "failed" || run.status === "partial") &&
         run.pendingCandidates === 0 &&
         !(run.pendingMetadata ?? 0) &&
         !readOnly && (
@@ -192,7 +192,7 @@ export function WorkflowActivity({
       <div className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b px-4">
         <div>
           <h2 className="font-semibold">{t("nav.activity")}</h2>
-          <p className="text-xs text-muted-foreground">{workflowName}</p>
+          {workflowName && <p className="text-xs text-muted-foreground">{workflowName}</p>}
         </div>
         {
           <Button

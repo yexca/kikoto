@@ -2103,7 +2103,7 @@ func (s *Server) runCacheLimitCleanup(ctx context.Context, sourceID int64, keepL
 		return result, err
 	}
 	input := map[string]any{"source_id": sourceID, "keep_location_id": keepLocationID, "total_limit_gb": totalLimitGB, "source_limit_gb": sourceLimitGB}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "media_cache_cleanup", "Clean media cache", "running", "cache_limit", "enforce_cache_limit", input, map[string]any{"source_id": sourceID})
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "media_cache_cleanup", "Clean media cache", "queued", "cache_limit", "enforce_cache_limit", input, map[string]any{"source_id": sourceID})
 	if err != nil {
 		return result, err
 	}
@@ -2114,14 +2114,14 @@ func (s *Server) runCacheLimitCleanup(ctx context.Context, sourceID int64, keepL
 		return result, err
 	}
 	cleanupNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "cleanup", NodeType: "cleanup_cache", DisplayName: "Enforce cache limit", Position: 2, Status: "running",
+		NodeID: "cleanup", NodeType: "cleanup_cache", DisplayName: "Enforce cache limit", Position: 2, Status: "queued",
 		Input: input, Output: nil,
 	})
 	if err != nil {
 		return result, err
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: cleanupNodeID, WorkerType: "media_cache_limit_cleanup", Status: "running", ResourceKey: "media:cleanup", Payload: input,
+		NodeRunID: cleanupNodeID, WorkerType: "media_cache_limit_cleanup", Status: "queued", ResourceKey: "media:cleanup", Payload: input,
 		Checkpoint: map[string]any{"phase": "pending"}, Recoverable: true, MaxRetries: 3, ProgressCurrent: 0, ProgressTotal: 1,
 	})
 	if err != nil {
@@ -2131,6 +2131,9 @@ func (s *Server) runCacheLimitCleanup(ctx context.Context, sourceID int64, keepL
 		return result, err
 	}
 	jobCtx, stopHeartbeat, err := s.leaseInlineWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID, NodeRunID: cleanupNodeID})
+	if errors.Is(err, errWorkflowJobQueued) {
+		return result, nil
+	}
 	if err != nil {
 		return result, err
 	}
@@ -2464,7 +2467,7 @@ func (s *Server) runMediaCacheCleanup(ctx context.Context, cacheLocationID int64
 		return mediaCacheDeleteResult{}, err
 	}
 	input := map[string]any{"cache_location_id": cacheLocationID, "media_item_id": mediaItemID, "source_id": sourceID, "cache_path": cachePath}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "media_cache_cleanup", "Clean media cache", "running", "manual", "delete_cache", input, map[string]any{"cache_path": cachePath})
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "media_cache_cleanup", "Clean media cache", "queued", "manual", "delete_cache", input, map[string]any{"cache_path": cachePath})
 	if err != nil {
 		return mediaCacheDeleteResult{}, err
 	}
@@ -2475,14 +2478,14 @@ func (s *Server) runMediaCacheCleanup(ctx context.Context, cacheLocationID int64
 		return mediaCacheDeleteResult{}, err
 	}
 	cleanupNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "cleanup", NodeType: "cleanup_cache", DisplayName: "Delete cache file", Position: 2, Status: "running",
+		NodeID: "cleanup", NodeType: "cleanup_cache", DisplayName: "Delete cache file", Position: 2, Status: "queued",
 		Input: input, Output: nil,
 	})
 	if err != nil {
 		return mediaCacheDeleteResult{}, err
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: cleanupNodeID, WorkerType: "media_cache_cleanup", Status: "running", ResourceKey: "media:cleanup", Payload: input,
+		NodeRunID: cleanupNodeID, WorkerType: "media_cache_cleanup", Status: "queued", ResourceKey: "media:cleanup", Payload: input,
 		Checkpoint: map[string]any{"phase": "pending"}, Recoverable: true, MaxRetries: 3, ProgressCurrent: 0, ProgressTotal: 1,
 	})
 	if err != nil {
@@ -2492,6 +2495,9 @@ func (s *Server) runMediaCacheCleanup(ctx context.Context, cacheLocationID int64
 		return mediaCacheDeleteResult{}, err
 	}
 	jobCtx, stopHeartbeat, err := s.leaseInlineWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID, NodeRunID: cleanupNodeID})
+	if errors.Is(err, errWorkflowJobQueued) {
+		return mediaCacheDeleteResult{RunID: runID, LocationID: cacheLocationID, Status: "queued"}, nil
+	}
 	if err != nil {
 		return mediaCacheDeleteResult{}, err
 	}
@@ -2610,7 +2616,7 @@ func (s *Server) createLocalMediaDeleteWorkflow(ctx context.Context, target loca
 		return 0, 0, 0, err
 	}
 	input := map[string]any{"local_location_id": target.LocationID, "media_item_id": target.MediaItemID, "work_id": target.WorkID, "source_id": target.SourceID, "path": target.RelPath}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "local_media_delete", "Delete local media", "running", "manual", "delete_local", input, map[string]any{"path": target.RelPath})
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "local_media_delete", "Delete local media", "queued", "manual", "delete_local", input, map[string]any{"path": target.RelPath})
 	if err != nil {
 		return 0, 0, 0, err
 	}
@@ -2621,14 +2627,14 @@ func (s *Server) createLocalMediaDeleteWorkflow(ctx context.Context, target loca
 		return 0, 0, 0, err
 	}
 	deleteNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "delete", NodeType: "delete_local_media", DisplayName: "Delete local file", Position: 2, Status: "running",
+		NodeID: "delete", NodeType: "delete_local_media", DisplayName: "Delete local file", Position: 2, Status: "queued",
 		Input: input, Output: nil,
 	})
 	if err != nil {
 		return 0, 0, 0, err
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: deleteNodeID, WorkerType: "local_media_delete", Status: "running", ResourceKey: "media:cleanup", Payload: input,
+		NodeRunID: deleteNodeID, WorkerType: "local_media_delete", Status: "queued", ResourceKey: "media:cleanup", Payload: input,
 		Checkpoint: map[string]any{"phase": "pending"}, Recoverable: true, MaxRetries: 3, ProgressCurrent: 0, ProgressTotal: 1,
 	})
 	if err != nil {
@@ -2642,6 +2648,9 @@ func (s *Server) createLocalMediaDeleteWorkflow(ctx context.Context, target loca
 
 func (s *Server) performLocalMediaDelete(ctx context.Context, target localMediaDeleteTarget, runID, deleteNodeID, jobID int64) (mediaLocalDeleteResult, error) {
 	jobCtx, stopHeartbeat, err := s.leaseInlineWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID, NodeRunID: deleteNodeID})
+	if errors.Is(err, errWorkflowJobQueued) {
+		return mediaLocalDeleteResult{RunID: runID, LocationID: target.LocationID, WorkID: target.WorkID, Status: "queued"}, nil
+	}
 	if err != nil {
 		return mediaLocalDeleteResult{}, err
 	}
@@ -4396,9 +4405,7 @@ func (s *Server) createRemoteBulkRun(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "sourceId and codes are required"})
 		return
 	}
-	operationCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 15*time.Minute)
-	defer cancel()
-	result, err := s.runRemoteBulkWorkflow(operationCtx, actor.ID, payload.SourceID, payload.Action, codes)
+	result, err := s.enqueueRemoteBulkWorkflow(r.Context(), actor.ID, payload.SourceID, payload.Action, codes)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -4439,6 +4446,7 @@ func (s *Server) createRemotePopularCollectionRun(w http.ResponseWriter, r *http
 
 type remoteBulkWorkflowResult struct {
 	RunID     int64    `json:"runId"`
+	JobID     int64    `json:"jobId"`
 	SourceID  int64    `json:"sourceId"`
 	Action    string   `json:"action"`
 	Codes     []string `json:"codes"`
@@ -4448,6 +4456,13 @@ type remoteBulkWorkflowResult struct {
 	Failed    int      `json:"failed"`
 	Failures  []string `json:"failures"`
 	ChildRuns []int64  `json:"childRuns"`
+}
+
+type remoteBulkActionJobPayload struct {
+	UserID   int64    `json:"user_id"`
+	SourceID int64    `json:"source_id"`
+	Action   string   `json:"action"`
+	Codes    []string `json:"codes"`
 }
 
 func normalizeRemoteBulkAction(action string) string {
@@ -4463,30 +4478,37 @@ func normalizeRemoteBulkAction(action string) string {
 	}
 }
 
-func (s *Server) runRemoteBulkWorkflow(ctx context.Context, userID int64, sourceID int64, action string, codes []string) (remoteBulkWorkflowResult, error) {
+func (s *Server) enqueueRemoteBulkWorkflow(ctx context.Context, userID int64, sourceID int64, action string, codes []string) (remoteBulkWorkflowResult, error) {
 	action = normalizeRemoteBulkAction(action)
 	if action == "" {
 		return remoteBulkWorkflowResult{}, fmt.Errorf("invalid remote bulk action")
 	}
-	runID, dispatchNodeID, err := s.startRemoteBulkWorkflow(ctx, sourceID, action, codes)
+	payload := remoteBulkActionJobPayload{UserID: userID, SourceID: sourceID, Action: action, Codes: codes}
+	runID, jobID, err := s.startRemoteBulkWorkflow(ctx, payload)
 	if err != nil {
 		return remoteBulkWorkflowResult{}, err
 	}
-	result := remoteBulkWorkflowResult{RunID: runID, SourceID: sourceID, Action: action, Codes: codes, Status: "succeeded", Failures: []string{}}
-	for _, code := range codes {
-		s.processRemoteBulkCode(ctx, userID, sourceID, action, code, &result)
+	return remoteBulkWorkflowResult{RunID: runID, JobID: jobID, SourceID: sourceID, Action: action, Codes: codes, Status: "queued", Failures: []string{}}, nil
+}
+
+func (s *Server) executeRemoteBulkActionJob(ctx context.Context, job workflowJobRecord) error {
+	var payload remoteBulkActionJobPayload
+	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
+		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		return err
+	}
+	result := remoteBulkWorkflowResult{RunID: job.RunID, SourceID: payload.SourceID, Action: payload.Action, Codes: payload.Codes, Status: "succeeded", Failures: []string{}}
+	for _, code := range payload.Codes {
+		s.processRemoteBulkCode(ctx, payload.UserID, payload.SourceID, payload.Action, code, &result)
 	}
 	status := "succeeded"
 	if result.Failed > 0 {
 		status = "partial"
 	}
-	if err := s.finishRemoteBulkWorkflow(ctx, runID, dispatchNodeID, status, result, nil); err != nil {
-		return remoteBulkWorkflowResult{}, err
-	}
-	return result, nil
+	return s.finishRemoteBulkWorkflowJob(ctx, job, status, result, nil)
 }
 
-func (s *Server) startRemoteBulkWorkflow(ctx context.Context, sourceID int64, action string, codes []string) (int64, int64, error) {
+func (s *Server) startRemoteBulkWorkflow(ctx context.Context, payload remoteBulkActionJobPayload) (int64, int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, 0, err
@@ -4501,21 +4523,29 @@ func (s *Server) startRemoteBulkWorkflow(ctx context.Context, sourceID int64, ac
 	if err != nil {
 		return 0, 0, err
 	}
-	input := map[string]any{"source_id": sourceID, "action": action, "codes": codes}
-	summary := map[string]any{"source_id": sourceID, "action": action, "works": len(codes)}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_bulk_action", "Run remote bulk action", "running", "manual", action, input, summary)
+	input := map[string]any{"source_id": payload.SourceID, "action": payload.Action, "codes": payload.Codes}
+	summary := map[string]any{"source_id": payload.SourceID, "action": payload.Action, "works": len(payload.Codes)}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_bulk_action", "Run remote bulk action", "queued", "manual", payload.Action, input, summary)
 	if err != nil {
 		return 0, 0, err
 	}
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
 		NodeID: "select", NodeType: "select_remote_works", DisplayName: "Select remote works", Position: 1, Status: "succeeded",
-		Input: input, Output: map[string]any{"works": len(codes)},
+		Input: input, Output: map[string]any{"works": len(payload.Codes)},
 	}); err != nil {
 		return 0, 0, err
 	}
 	dispatchNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "dispatch", NodeType: "dispatch_child_workflows", DisplayName: "Dispatch per-work workflows", Position: 2, Status: "running",
-		Input: map[string]any{"action": action}, Output: map[string]any{"expected_child_runs": len(codes)},
+		NodeID: "dispatch", NodeType: "dispatch_child_workflows", DisplayName: "Dispatch per-work workflows", Position: 2, Status: "queued",
+		Input: map[string]any{"action": payload.Action}, Output: map[string]any{"expected_child_runs": len(payload.Codes)},
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
+		NodeRunID: dispatchNodeID, WorkerType: "remote_bulk_action", Status: "queued",
+		Priority: workflow.JobPriorityUserInitiated, ResourceKey: "remote:bulk", Payload: payload,
+		Checkpoint: map[string]any{"phase": "queued"}, Recoverable: true, MaxRetries: 2,
 	})
 	if err != nil {
 		return 0, 0, err
@@ -4523,7 +4553,7 @@ func (s *Server) startRemoteBulkWorkflow(ctx context.Context, sourceID int64, ac
 	if err := tx.Commit(); err != nil {
 		return 0, 0, err
 	}
-	return runID, dispatchNodeID, nil
+	return runID, jobID, nil
 }
 
 func (s *Server) processRemoteBulkCode(ctx context.Context, userID, sourceID int64, action, code string, result *remoteBulkWorkflowResult) {
@@ -4577,6 +4607,18 @@ func (s *Server) finishRemoteBulkWorkflow(ctx context.Context, runID int64, disp
 		return err
 	}
 	return nil
+}
+
+func (s *Server) finishRemoteBulkWorkflowJob(ctx context.Context, job workflowJobRecord, status string, result remoteBulkWorkflowResult, runErr error) error {
+	if err := s.finishRemoteBulkWorkflow(ctx, job.RunID, job.NodeRunID, status, result, runErr); err != nil {
+		return err
+	}
+	message := strings.Join(result.Failures, "\n")
+	_, err := s.db.ExecContext(ctx, `UPDATE workflow_job
+		SET status = ?, progress_current = progress_total, error_message = ?,
+			locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?`, status, message, job.ID)
+	return err
 }
 
 func (s *Server) runSourceChangeAvailabilityChecks(ctx context.Context, sourceID int64, reason string) {

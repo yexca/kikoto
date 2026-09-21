@@ -10,11 +10,21 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yexca/kikoto/backend/internal/outbound"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
 func newTestClient(server *httptest.Server) *Client {
 	return Endpoints{webBaseURL: server.URL, imageBaseURL: server.URL}.NewClient(server.Client())
+}
+
+func TestIsTimeoutRecognizesConfiguredResponseTimeouts(t *testing.T) {
+	if !IsTimeout(context.DeadlineExceeded) || !IsTimeout(outbound.ErrResponseReadTimeout) {
+		t.Fatal("configured request and response timeouts must be classified as timeout errors")
+	}
+	if IsTimeout(context.Canceled) {
+		t.Fatal("caller cancellation must remain distinct from a timeout")
+	}
 }
 
 func TestTranslationStatusesAcceptsProviderEmptyArray(t *testing.T) {

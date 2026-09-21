@@ -1696,7 +1696,7 @@ for (const viewport of ["mobile", "@desktop"]) {
 }
 
 for (const viewport of ["mobile", "@desktop"]) {
-  test(`${viewport} Activity follows the selected workflow and Recent runs opens its detail`, async ({
+  test(`${viewport} Activity is global across workflows and Recent runs opens its detail`, async ({
     page,
   }, testInfo) => {
     await mockWorkflows(page);
@@ -1719,15 +1719,14 @@ for (const viewport of ["mobile", "@desktop"]) {
       const params = new URL(route.request().url()).searchParams;
       const code = params.get("workflowCode") ?? "";
       if (params.get("view") !== "review") scopes.push(code);
-      const run = code === "local_library_scan" ? local : metadata;
-      const runs = ["attention", "running"].includes(params.get("view") ?? "") ? [] : [run];
+      const runs = ["attention", "running"].includes(params.get("view") ?? "") ? [] : [local, metadata];
       await route.fulfill({
         json: {
           runs,
           total: runs.length,
           page: 1,
           pageSize: Number(params.get("pageSize")),
-          viewTotals: { running: 0, attention: 0, history: 1 },
+          viewTotals: { running: 0, attention: 0, history: 2 },
         },
       });
     });
@@ -1736,16 +1735,17 @@ for (const viewport of ["mobile", "@desktop"]) {
     await page.goto("/workflows?workflow=local_library_scan");
     await page.getByRole("button", { name: "Activity", exact: true }).click();
     const panel = page.getByRole("dialog", { name: "Activity", exact: true });
-    await panel.getByRole("tab", { name: "History 1", exact: true }).click();
+    await panel.getByRole("tab", { name: "History 2", exact: true }).click();
     await expect(panel.getByText("#71", { exact: true })).toBeVisible();
+    await expect(panel.getByText("#72", { exact: true })).toBeVisible();
     if (viewport === "mobile") await panel.getByRole("button", { name: "Close Activity", exact: true }).click();
     await page.getByRole("tab", { name: "Sync work metadata", exact: true }).click();
     if (viewport === "mobile") await page.getByRole("button", { name: "Activity", exact: true }).click();
-    await panel.getByRole("tab", { name: "History 1", exact: true }).click();
+    await panel.getByRole("tab", { name: "History 2", exact: true }).click();
     await expect(panel.getByText("#72", { exact: true })).toBeVisible();
-    await expect(panel.getByText("#71", { exact: true })).toHaveCount(0);
+    await expect(panel.getByText("#71", { exact: true })).toBeVisible();
     expect(scopes.length).toBeGreaterThan(0);
-    expect(scopes.every((code) => ["local_library_scan", "metadata_sync"].includes(code))).toBe(true);
+    expect(scopes).toContain("all");
     await panel.getByRole("button", { name: "Close Activity", exact: true }).click();
     await page.getByRole("button", { name: /^#72 / }).click();
     await expect(panel.getByRole("heading", { name: "Example metadata run", exact: true })).toBeVisible();
@@ -1753,12 +1753,12 @@ for (const viewport of ["mobile", "@desktop"]) {
     await expect(panel.getByRole("button", { name: "Open full Activity", exact: true })).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath("workflow-run-panel.png") });
     await panel.getByRole("button", { name: "Back to runs", exact: true }).click();
-    await expect(panel.getByRole("tab", { name: "History 1", exact: true })).toBeVisible();
+    await expect(panel.getByRole("tab", { name: "History 2", exact: true })).toBeVisible();
     await expect(page).not.toHaveURL(/run=72/);
   });
 }
 
-test("empty-custom filter clears the previous workflow Activity context", async ({ page }) => {
+test("empty-custom filter keeps the global Activity available", async ({ page }) => {
   await mockWorkflows(page);
   await page.route("**/api/workflow-definitions", (route) =>
     route.fulfill({ json: systemDefinitions.filter((definition) => definition.scope === "system") }),
@@ -1768,7 +1768,7 @@ test("empty-custom filter clears the previous workflow Activity context", async 
   await filterWorkflows(page, "Custom");
   await expect(page.getByRole("tablist", { name: "Workflows", exact: true }).getByRole("tab")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Activity", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Activity", exact: true })).toBeEnabled();
 });
 
 test("@desktop canvas wheel scrolls the page and Activity unless a modifier is held", async ({ page }) => {

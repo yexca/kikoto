@@ -36,8 +36,8 @@ The backend is a Go HTTP API with SQLite persistence.
   video and generate independently seekable, quota-bounded segments under the
   disposable cache root.
 - Record workflow runs and activity state.
-- Claim durable workflow jobs by priority and serialize jobs that share a
-  resource lane.
+- Claim durable workflow jobs by priority through one global executor, so only
+  one workflow job runs at a time.
 - Coalesce concurrent local-media indexing for the same work, keep duration
   probes serialized per server, and expose slow index phase timings in logs.
 

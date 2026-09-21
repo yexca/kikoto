@@ -53,6 +53,7 @@ type DLsiteSyncer struct {
 type DLsiteSyncResult struct {
 	RunID            int64                   `json:"runId"`
 	JobID            int64                   `json:"jobId"`
+	Deduplicated     bool                    `json:"deduplicated,omitempty"`
 	Status           string                  `json:"status"`
 	TargetWorks      int                     `json:"targetWorks"`
 	SyncedWorks      int                     `json:"syncedWorks"`
@@ -103,6 +104,7 @@ type workTarget struct {
 }
 
 type syncTargetResult struct {
+	err         error
 	synced      bool
 	unavailable bool
 	failures    []string
@@ -244,6 +246,9 @@ func (s *DLsiteSyncer) SyncAllWithoutWorkflow(ctx context.Context) (DLsiteSyncRe
 	}
 
 	for _, target := range targets {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
 		targetResult := s.syncTarget(ctx, target)
 		if targetResult.synced {
 			result.SyncedWorks++
@@ -252,6 +257,11 @@ func (s *DLsiteSyncer) SyncAllWithoutWorkflow(ctx context.Context) (DLsiteSyncRe
 			result.UnavailableWorks++
 		}
 		result.Failures = append(result.Failures, targetResult.failures...)
+		if targetResult.err != nil {
+			result.Status = "failed"
+			result.FailedWorks = len(result.Failures)
+			return result, targetResult.err
+		}
 	}
 
 	result.FailedWorks = len(result.Failures)
@@ -263,6 +273,9 @@ func (s *DLsiteSyncer) SyncAllWithoutWorkflow(ctx context.Context) (DLsiteSyncRe
 func (s *DLsiteSyncer) syncTarget(ctx context.Context, target workTarget) syncTargetResult {
 	family, err := s.SyncFamily(ctx, target.PrimaryCode)
 	if err != nil {
+		if dlsite.IsTimeout(err) || ctx.Err() != nil {
+			return syncTargetResult{err: err, failures: []string{fmt.Sprintf("%s: %s", target.PrimaryCode, err.Error())}}
+		}
 		if family.RequestedUnavailable {
 			return syncTargetResult{unavailable: true}
 		}
@@ -454,6 +467,9 @@ func (s *DLsiteSyncer) syncFamilyCode(
 	// separate storage and display contract.
 	if s.cacheRoot != "" && isCanonicalProduct(product) {
 		if _, err := s.downloadCover(ctx, product); err != nil {
+			if dlsite.IsTimeout(err) || ctx.Err() != nil {
+				return err
+			}
 			result.Failures = append(result.Failures, fmt.Sprintf("%s cover: %s", code, err.Error()))
 		}
 	}
@@ -469,6 +485,9 @@ func (s *DLsiteSyncer) recordFamilyFetchFailure(
 	result *DLsiteFamilySyncResult,
 	skipped map[string]bool,
 ) error {
+	if dlsite.IsTimeout(fetchErr) || ctx.Err() != nil {
+		return fetchErr
+	}
 	if errors.Is(fetchErr, dlsite.ErrNoProduct) {
 		if strings.EqualFold(code, requestedCode) {
 			result.RequestedUnavailable = true
@@ -518,12 +537,18 @@ func (s *DLsiteSyncer) syncFamilyCanonical(ctx context.Context, result *DLsiteFa
 	}
 	originProduct, _, originFetched, err := s.syncOriginProductForCode(ctx, result.CanonicalCode)
 	if err != nil {
+		if dlsite.IsTimeout(err) || ctx.Err() != nil {
+			return err
+		}
 		result.Failures = append(result.Failures, fmt.Sprintf("%s origin metadata: %s", result.CanonicalCode, err.Error()))
 		return nil
 	}
 	products[result.CanonicalCode] = originProduct
 	if originFetched && s.cacheRoot != "" {
 		if _, err := s.downloadCover(ctx, originProduct); err != nil {
+			if dlsite.IsTimeout(err) || ctx.Err() != nil {
+				return err
+			}
 			result.Failures = append(result.Failures, fmt.Sprintf("%s origin cover: %s", result.CanonicalCode, err.Error()))
 		}
 	}
@@ -642,7 +667,7 @@ func (s *DLsiteSyncer) fetchProductWithExactLocale(ctx context.Context, workno s
 			return product, nil
 		}
 		lastErr = err
-		if errors.Is(err, dlsite.ErrNoProduct) || !dlsite.IsRetryableHTTPError(err) || attempt >= 2 {
+		if ctx.Err() != nil || errors.Is(err, dlsite.ErrNoProduct) || (!dlsite.IsRetryableHTTPError(err) && !dlsite.IsTimeout(err)) || attempt >= 2 {
 			return dlsite.Product{}, err
 		}
 		if err := sleepWithContext(ctx, s.retryBackoff(err, attempt)); err != nil {
@@ -669,7 +694,7 @@ func (s *DLsiteSyncer) fetchProductWithLanguages(ctx context.Context, workno str
 			return product, nil
 		}
 		lastErr = err
-		if errors.Is(err, dlsite.ErrNoProduct) || !dlsite.IsRetryableHTTPError(err) || attempt >= 2 {
+		if ctx.Err() != nil || errors.Is(err, dlsite.ErrNoProduct) || (!dlsite.IsRetryableHTTPError(err) && !dlsite.IsTimeout(err)) || attempt >= 2 {
 			return dlsite.Product{}, err
 		}
 		if err := sleepWithContext(ctx, s.retryBackoff(err, attempt)); err != nil {
@@ -779,7 +804,17 @@ func (s *DLsiteSyncer) downloadCover(ctx context.Context, product dlsite.Product
 	if err := s.waitRequestDelay(ctx); err != nil {
 		return "", err
 	}
-	path, coverErr := s.client.DownloadCover(ctx, product, s.cacheRoot)
+	var path string
+	var coverErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		path, coverErr = s.client.DownloadCover(ctx, product, s.cacheRoot)
+		if ctx.Err() != nil || !dlsite.IsTimeout(coverErr) || attempt == 2 {
+			break
+		}
+		if err := sleepWithContext(ctx, s.retryBackoff(coverErr, attempt)); err != nil {
+			return "", err
+		}
+	}
 	if err := s.recordCodeOutcome(ctx, dlsiteProductCode(product), "cover", coverErr); err != nil {
 		return "", err
 	}

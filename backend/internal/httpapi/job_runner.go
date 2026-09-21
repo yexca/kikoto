@@ -65,7 +65,7 @@ func (s *Server) StartJobRunner(ctx context.Context) {
 		defer workers.Done()
 		s.runFilesystemTriggerCoordinator(ctx)
 	}()
-	for index := 0; index < 2; index++ {
+	for index := 0; index < 1; index++ {
 		workers.Add(1)
 		go func(workerIndex int) {
 			defer workers.Done()
@@ -142,6 +142,7 @@ func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobR
 	ctx = metasync.WithWorkflowRun(ctx, job.RunID)
 	executors := map[string]func(context.Context, workflowJobRecord) error{
 		"remote_source_track":        s.executeRemoteWorkTrackJob,
+		"remote_bulk_action":         s.executeRemoteBulkActionJob,
 		"remote_work_fetch":          s.executeRemoteWorkFetchJob,
 		"remote_media_cache":         s.executeRemoteMediaCacheJob,
 		"remote_popular_collection":  s.executeRemotePopularCollectionJob,
@@ -216,24 +217,32 @@ func (s *Server) notifyWorkflowJobCompletion(ctx context.Context, job workflowJo
 	}
 }
 
+var errWorkflowJobQueued = errors.New("workflow job is queued")
+
+// Short synchronous API operations may execute only if they are at the head
+// of the same durable queue. Otherwise the background worker owns execution.
 func (s *Server) leaseInlineWorkflowJob(ctx context.Context, job workflowJobRecord) (context.Context, context.CancelFunc, error) {
 	runnerID := workflowJobRunnerID()
-	result, err := s.db.ExecContext(ctx, `
-		UPDATE workflow_job
-		SET locked_by = ?, locked_at = CURRENT_TIMESTAMP, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ? AND status = 'running'
-	`, runnerID, job.ID)
+	var headID int64
+	err := s.db.QueryRowContext(ctx, `SELECT job.id FROM workflow_job AS job
+		INNER JOIN workflow_run AS run ON run.id = job.workflow_run_id
+		WHERE job.status = 'queued' AND run.status = 'queued'
+			AND (job.available_at IS NULL OR job.available_at <= CURRENT_TIMESTAMP)
+		ORDER BY job.priority DESC, job.created_at ASC, job.id ASC LIMIT 1`).Scan(&headID)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && headID != job.ID) {
+		return ctx, func() {}, errWorkflowJobQueued
+	}
 	if err != nil {
 		return ctx, func() {}, err
 	}
-	rows, err := result.RowsAffected()
+	claimed, ok, err := s.claimQueuedWorkflowJob(ctx, runnerID, job.ID)
 	if err != nil {
 		return ctx, func() {}, err
 	}
-	if rows == 0 {
-		return ctx, func() {}, errors.New("workflow job is no longer running")
+	if !ok {
+		return ctx, func() {}, errWorkflowJobQueued
 	}
-	job.LockedBy = runnerID
+	job = claimed
 	jobCtx, stop := s.startWorkflowJobHeartbeat(ctx, job)
 	s.registerActiveWorkflowJob(job.RunID, job.ID, stop)
 	return jobCtx, func() {
@@ -293,10 +302,10 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string
 		WHERE job.status = 'queued'
 			AND run.status = 'queued'
 			AND (job.available_at IS NULL OR job.available_at <= CURRENT_TIMESTAMP)
-			AND (job.resource_key = '' OR NOT EXISTS (
+			AND NOT EXISTS (
 				SELECT 1 FROM workflow_job AS active
-				WHERE active.status = 'running' AND active.resource_key = job.resource_key
-			))
+				WHERE active.status = 'running'
+			)
 		ORDER BY job.priority DESC, job.created_at ASC, job.id ASC
 		LIMIT 1
 	`).Scan(&candidateID)
@@ -306,6 +315,10 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string
 	if err != nil {
 		return workflowJobRecord{}, false, err
 	}
+	return s.claimQueuedWorkflowJob(ctx, runnerID, candidateID)
+}
+
+func (s *Server) claimQueuedWorkflowJob(ctx context.Context, runnerID string, candidateID int64) (workflowJobRecord, bool, error) {
 	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
 		return workflowJobRecord{}, false, err
@@ -322,10 +335,10 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string
 			AND run.status = 'queued'
 			AND job.id = ?
 			AND (job.available_at IS NULL OR job.available_at <= CURRENT_TIMESTAMP)
-			AND (job.resource_key = '' OR NOT EXISTS (
+			AND NOT EXISTS (
 				SELECT 1 FROM workflow_job AS active
-				WHERE active.status = 'running' AND active.resource_key = job.resource_key
-			))
+				WHERE active.status = 'running'
+			)
 		`, candidateID).Scan(&job.ID, &job.RunID, &job.NodeRunID, &job.WorkerType, &job.PayloadJSON, &job.CheckpointJSON, &job.ResumeCount, &job.RetryCount, &job.MaxRetries, &job.Priority, &job.ResourceKey)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

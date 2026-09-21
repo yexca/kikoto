@@ -79,8 +79,8 @@ checks workflow permission and that run's ownership. Successful recovery changes
 All production DLsite family syncers share an application-instance coordinator.
 Identical in-flight requests reuse their result; requests for different
 editions/settings of the same known family wait. Per-product gates cover
-overlapping discovery and cover writes. Unrelated families can proceed
-independently, subject to existing worker resource lanes and provider pacing.
+overlapping discovery and cover writes. Unrelated families can proceed within
+the active metadata job, subject to provider pacing.
 Database attempt ordering prevents late failures from replacing newer outcomes
 and late successes from replacing newer successful metadata. This is not a
 distributed request lock between separate application processes.
@@ -89,24 +89,27 @@ distributed request lock between separate application processes.
 
 Workflows exposes Activity at the right end of its horizontal definition bar.
 The desktop popover and mobile sheet show active runs above two server-paged
-views: Needs attention and History. Queries and counts are scoped to the selected
-workflow code. Switching definitions resets paging and discards stale requests.
+views: Needs attention and History. The active list and both views are global
+across workflow definitions, so a job
+submitted from one workflow remains visible while another definition is open.
 Recent runs and list rows open full run details inside the same panel; returning
-to the list retains the workflow scope. There is no separate Activity page.
+to the list retains the global scope. There is no separate Activity page.
 Legacy `/activity` and `/runs` links redirect into Workflows; a linked run resolves
 its workflow before loading history, including a read-only context for workflows
 without a configurable definition. Account and notification entries open this
 same surface. Events, candidates, progress, retries, and cancellation remain
 available within the panel.
 
-Needs attention contains terminal runs with unresolved candidates, pending
-metadata issues, or unacknowledged failures. A dedicated metadata-sync failure
-with recorded issue outcomes leaves attention when those issues are resolved.
-Unrecorded failures still require acknowledgement. The successful-attempt
-boundary prevents a later failure from reopening an older resolved association.
-History preserves the original status, including failed, partial, and cancelled.
-Acknowledgements belong to the viewer; they cannot dismiss an active run or
-unresolved candidate/metadata issue. Demo keeps these actions read-only.
+The active list contains running and queued jobs; Needs attention contains
+terminal runs with unresolved candidates, pending metadata issues, or
+unacknowledged failures. A dedicated metadata-sync failure with recorded issue outcomes leaves attention
+when those issues are resolved. Unrecorded failures still require
+acknowledgement. The successful-attempt boundary prevents a later failure from
+reopening an older resolved association. History contains successful runs and
+runs that were cancelled or manually acknowledged, while unresolved failures
+remain in Needs attention. Acknowledgements belong to the viewer; they cannot
+dismiss an active run or unresolved candidate/metadata issue. Demo keeps these
+actions read-only.
 
 ## Popular Collections
 
@@ -182,7 +185,7 @@ lazy-index repair behavior. Duplicate-code groups skip automatic invalidation,
 fall back to full discovery, and remain review candidates. Neither mode rewrites
 `managed_fetch` ownership records.
 
-Local scan and metadata sync have separate definitions, jobs, resource lanes,
+Local scan and metadata sync have separate definitions, jobs, resource labels,
 statuses, failures, review candidates, and retry histories. A local scan never
 calls a metadata provider as part of its own run. Manual, Startup, and interval
 scan configuration exposes `Follow-up run`; it defaults off and, when enabled,
@@ -193,12 +196,15 @@ provider work.
 
 ## Queue Ordering
 
-`workflow_job.priority` is persisted with each job. Two embedded workers claim
-higher priorities first, then preserves FIFO order by creation time and id.
-Playback-triggered cache fills use the highest tier, direct user work such as
-manual workflows and cleanup uses the middle tier, and scheduled/background
-work uses the default tier. Priority does not preempt a job that is already
-running.
+`workflow_job.priority` is persisted with each job. One embedded executor claims
+the highest-priority queued job, preserving FIFO order by creation time and id
+within a priority, and runs only one workflow job at a time. A submission is
+persisted as `queued` before it is claimed as `running`; later submissions wait
+in the same durable queue, including jobs from different workflow definitions
+and resource keys. Playback-triggered cache fills use the highest tier, direct
+user work such as manual workflows and cleanup uses the middle tier, and
+scheduled/background work uses the default tier. Priority does not preempt a
+job that is already running.
 
 ## Source Availability
 

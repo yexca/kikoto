@@ -466,6 +466,24 @@ func (s *Server) enqueueDLsiteMetadataSyncWithInput(ctx context.Context, trigger
 		return metasync.DLsiteSyncResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	// Bulk metadata sync is a singleton queue item. Repeated clicks subscribe
+	// the caller to the existing run instead of creating another full scan.
+	var existingRunID, existingJobID int64
+	var existingStatus string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT run.id, job.id, run.status
+		FROM workflow_run AS run
+		INNER JOIN workflow_job AS job ON job.workflow_run_id = run.id
+		WHERE run.workflow_code = 'metadata_sync'
+		  AND run.status IN ('queued', 'running')
+		  AND job.worker_type = 'metadata_sync'
+		  AND job.status IN ('queued', 'running')
+		ORDER BY run.id ASC LIMIT 1
+	`).Scan(&existingRunID, &existingJobID, &existingStatus); err == nil {
+		return metasync.DLsiteSyncResult{RunID: existingRunID, JobID: existingJobID, Status: existingStatus, Deduplicated: true, ReviewCandidates: []metasync.DLsiteReviewCandidate{}, Failures: []string{}}, nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return metasync.DLsiteSyncResult{}, err
+	}
 	definitionID, err := workflow.EnsureDefinition(ctx, tx, "metadata_sync", "Sync work metadata", "Select works and sync normalized metadata snapshots.", map[string]any{
 		"nodes": []map[string]string{
 			{"id": "select", "type": "select_works", "displayName": "Select works"},
@@ -498,7 +516,9 @@ func (s *Server) enqueueDLsiteMetadataSyncWithInput(ctx context.Context, trigger
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
 		NodeRunID: selectNodeID, WorkerType: "metadata_sync", Status: "queued",
 		Priority: workflowJobPriorityForTrigger(triggerType), ResourceKey: "metadata:provider",
-		Payload: input, Checkpoint: map[string]any{"phase": "queued"}, Recoverable: true, MaxRetries: 3,
+		// MaxRetries counts requeues after the first attempt: timeout/failure
+		// therefore gets at most two retries, for three total attempts.
+		Payload: input, Checkpoint: map[string]any{"phase": "queued"}, Recoverable: true, MaxRetries: 2,
 	})
 	if err != nil {
 		return metasync.DLsiteSyncResult{}, err

@@ -55,7 +55,7 @@ func TestClaimNextQueuedWorkflowJobUsesPersistentPriorityBeforeAge(t *testing.T)
 	}
 }
 
-func TestClaimNextQueuedWorkflowJobSkipsBusyResourceLane(t *testing.T) {
+func TestClaimNextQueuedWorkflowJobBlocksWhenAnyJobRunning(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
 	statements := []string{
@@ -72,8 +72,8 @@ func TestClaimNextQueuedWorkflowJobSkipsBusyResourceLane(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ok || job.ID != 3 || job.ResourceKey != "local:io" {
-		t.Fatalf("claimed job = %+v, ok=%t", job, ok)
+	if ok {
+		t.Fatalf("claimed job = %+v, want the global queue to remain blocked", job)
 	}
 }
 

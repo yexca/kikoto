@@ -29,8 +29,8 @@ Kikoto currently includes:
 - User authentication, roles, a default-on sign-in boundary with optional
   read-only anonymous access, favorite/listening state, and playback progress.
 - A persistent browser player plus Android media-session integration.
-- SQLite-backed priority jobs with resource lanes, retry state, notifications,
-  and restart recovery for the supported workflow families.
+- SQLite-backed priority jobs with a single durable executor, retry state,
+  notifications, and restart recovery for the supported workflow families.
 - Fetch Activity with byte-level remote-transfer progress that distinguishes
   known totals from files whose size is not declared.
 - Bounded remote media and cover downloads plus retention cleanup for

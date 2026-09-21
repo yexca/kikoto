@@ -669,9 +669,9 @@ export function WorkflowsPage({
           <WorkflowNavigation
             actions={
               <WorkflowActivity
-                key={selectedDefinition?.code ?? "pending"}
-                workflowCode={activityLocation.runId && !linkedRun ? "" : (selectedDefinition?.code ?? "")}
-                workflowName={selectedDefinition ? localizedWorkflowDefinition(selectedDefinition).displayName : ""}
+                key="global-activity"
+                workflowCode="all"
+                workflowName=""
                 open={activityLocation.open}
                 onOpenChange={activityLocation.setOpen}
                 selectedRunId={activityLocation.runId}
