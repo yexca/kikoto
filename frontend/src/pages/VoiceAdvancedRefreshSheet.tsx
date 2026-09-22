@@ -1,5 +1,5 @@
-import { Loader2, RefreshCw, X } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode, type RefObject } from "react";
+import { ArrowUpRight, Loader2, RefreshCw, X } from "lucide-react";
+import { useEffect, useMemo, useState, type RefObject } from "react";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +21,7 @@ export function VoiceAdvancedRefreshSheet({
   activeScope,
   error,
   canRefresh,
-  aliasesPanel,
+  onManageAliases,
   onClose,
   onRefreshCatalog,
   onRefreshMetadata,
@@ -35,7 +35,8 @@ export function VoiceAdvancedRefreshSheet({
   activeScope?: VoiceCatalogRefreshState["scope"] | null;
   error: string;
   canRefresh: boolean;
-  aliasesPanel?: ReactNode;
+  /** Present when the viewer may review aliases; opens the Metadata voice alias view. */
+  onManageAliases?: () => void;
   onClose: () => void;
   onRefreshCatalog: (mode: VoiceCatalogRefreshMode, sourceIds: number[]) => void;
   onRefreshMetadata: (mode: VoiceCatalogRefreshMode) => void;
@@ -101,11 +102,17 @@ export function VoiceAdvancedRefreshSheet({
         onRun={onRefreshMetadata}
       />
 
-      {mobile && aliasesPanel && (
-        <details className="rounded-md border bg-background px-3 py-2">
-          <summary className="min-h-8 cursor-pointer py-1 text-sm font-medium">{t("detailActions.aliases")}</summary>
-          <div className="mt-2 border-t pt-3">{aliasesPanel}</div>
-        </details>
+      {onManageAliases && (
+        <div className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-medium">{t("detailActions.aliases")}</div>
+            <div className="truncate text-xs text-muted-foreground">{t("sheets.manageAliasesDescription")}</div>
+          </div>
+          <Button className="h-8 shrink-0" variant="outline" size="sm" onClick={onManageAliases}>
+            <ArrowUpRight className="h-4 w-4" />
+            {t("sheets.openMetadata")}
+          </Button>
+        </div>
       )}
 
       <fieldset className="space-y-2">

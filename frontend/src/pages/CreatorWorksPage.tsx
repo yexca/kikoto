@@ -42,6 +42,7 @@ import {
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
 import { CreatorDetailHeader } from "@/components/creator/CreatorDetailHeader";
 import { CreatorListToolbar } from "@/components/creator/CreatorListToolbar";
+import { CatalogWorkToolbar } from "@/components/creator/CatalogWorkToolbar";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { VoiceWorkOptionsSheet, type VoiceWorkFilter } from "@/pages/VoiceWorkOptionsSheet";
@@ -136,8 +137,15 @@ const voiceFilterOptions: readonly { value: VoiceFilter; label: string }[] = [
 ];
 const voiceFilters: readonly VoiceFilter[] = voiceFilterOptions.map((option) => option.value);
 const workPageSizeOptions = [24, 48] as const;
-const aliasSuggestMinChars = 2;
-const aliasSuggestMaxResults = 12;
+function voiceWorkFilterOptions(t: TFunction): readonly { value: VoiceWorkFilter; label: string }[] {
+  return [
+    { value: "all", label: t("detailActions.allWorks") },
+    { value: "available", label: t("content.available") },
+    { value: "local", label: t("detailActions.local") },
+    { value: "remote", label: t("detailActions.remote") },
+    { value: "missing", label: t("detailActions.missing") },
+  ];
+}
 const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "none", label: "Unmarked" },
   { value: "want_to_listen", label: "Want" },
@@ -431,10 +439,8 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
-  const [detailPanel, setDetailPanel] = useState<"aliases" | "advanced" | null>(null);
-  const aliasActionRef = useRef<HTMLButtonElement | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const advancedActionRef = useRef<HTMLButtonElement | null>(null);
-  const aliasPanelID = useId();
   const advancedPanelID = useId();
   const loadedPersonID = useRef<number | null>(null);
   const loadedCatalogPersonID = useRef<number | null>(null);
@@ -443,7 +449,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
     if (!active || loadedPersonID.current === personId) return;
     const controller = new AbortController();
     setIsLoading(true);
-    setDetailPanel(null);
+    setAdvancedOpen(false);
     setWorkOptionsOpen(false);
     setRemoteMatches([]);
     setCatalogRefresh(null);
@@ -622,13 +628,6 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
     void refreshVoiceCatalog({ scope: "all", mode: "full" }, t("creatorBrowse.firstVoiceCatalogQueued"));
 
   const knownWorks = detail?.works ?? [];
-  const alternateAliasCount = useMemo(
-    () =>
-      (detail?.aliasRecords ?? []).filter(
-        (alias) => alias.alias.trim() !== "" && alias.alias.trim() !== detail?.displayName.trim(),
-      ).length,
-    [detail?.aliasRecords, detail?.displayName],
-  );
   const remoteSourceWarning = Boolean(remoteError) || remoteMatches.some(remoteSourceFailed);
   const mergedWorks = useMemo(() => mergeVoiceWorks(knownWorks, remoteMatches), [knownWorks, remoteMatches]);
   const filteredWorks = useMemo(() => {
@@ -989,22 +988,6 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
               <Heart className={`h-4 w-4 ${detail.favorite ? "fill-current" : ""}`} />
               <span className="hidden lg:inline">{t("detailActions.favorite")}</span>
             </Button>
-            {!mobileNavigationLayout && (
-              <Button
-                ref={aliasActionRef}
-                variant={detailPanel === "aliases" ? "secondary" : "outline"}
-                size="sm"
-                className="h-[var(--control-height-sm)] gap-2 px-[var(--control-padding-sm-x)]"
-                aria-haspopup="dialog"
-                aria-expanded={detailPanel === "aliases"}
-                aria-controls={detailPanel === "aliases" ? aliasPanelID : undefined}
-                onClick={() => setDetailPanel((current) => (current === "aliases" ? null : "aliases"))}
-              >
-                <Tags className="h-4 w-4" />
-                {t("detailActions.aliases")}
-                {alternateAliasCount > 0 && <span className="tabular-nums">{alternateAliasCount}</span>}
-              </Button>
-            )}
             {firstPull ? (
               <Button
                 variant="default"
@@ -1061,19 +1044,19 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
             )}
             <Button
               ref={advancedActionRef}
-              variant={detailPanel === "advanced" ? "secondary" : "outline"}
+              variant={advancedOpen ? "secondary" : "outline"}
               size="icon"
               className="relative h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
               aria-haspopup="dialog"
-              aria-expanded={detailPanel === "advanced"}
-              aria-controls={detailPanel === "advanced" ? advancedPanelID : undefined}
+              aria-expanded={advancedOpen}
+              aria-controls={advancedOpen ? advancedPanelID : undefined}
               aria-label={
                 remoteSourceWarning
                   ? t("detailActions.openAdvancedRefreshActionsAttention")
                   : t("detailActions.openAdvancedRefreshActions")
               }
               title={t("detailActions.advancedRefresh")}
-              onClick={() => setDetailPanel((current) => (current === "advanced" ? null : "advanced"))}
+              onClick={() => setAdvancedOpen((open) => !open)}
             >
               {mobileNavigationLayout ? (
                 <MoreHorizontal className="h-4 w-4" />
@@ -1086,43 +1069,8 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
           </div>
         }
       >
-        {!mobileNavigationLayout && (
-          <AnchoredPopover
-            open={detailPanel === "aliases"}
-            anchorRef={aliasActionRef}
-            onOpenChange={(open) => setDetailPanel(open ? "aliases" : null)}
-            className="w-[min(34rem,calc(100vw-1.5rem))] p-4"
-            bottomCollisionPadding={96}
-            zIndex={70}
-          >
-            <div id={aliasPanelID} role="dialog" aria-label={t("creatorBrowse.aliasesTitle")}>
-              <AliasReviewPanel
-                personId={detail.personId}
-                aliases={detail.aliasRecords ?? []}
-                canManage={auth.hasPermission("metadata:sync")}
-                onAliasesChange={(aliases) =>
-                  setDetail((current) =>
-                    current
-                      ? {
-                          ...current,
-                          aliasRecords: aliases,
-                          aliases: aliases.map((alias) => alias.alias),
-                          ...(current.syncState === "never"
-                            ? {}
-                            : { syncState: "attention", syncReason: "aliases_changed" }),
-                        }
-                      : current,
-                  )
-                }
-                onMerged={() => void refreshDetail()}
-                onMessage={setMessage}
-              />
-            </div>
-          </AnchoredPopover>
-        )}
-
         <VoiceAdvancedRefreshSheet
-          open={detailPanel === "advanced"}
+          open={advancedOpen}
           mobile={mobileNavigationLayout}
           anchorRef={advancedActionRef}
           sources={remoteMatches}
@@ -1131,30 +1079,10 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
           activeScope={catalogRefreshActive ? catalogRefresh?.scope : null}
           error={remoteError}
           canRefresh={canForceRefreshCatalog}
-          aliasesPanel={
-            <AliasReviewPanel
-              personId={detail.personId}
-              aliases={detail.aliasRecords ?? []}
-              canManage={auth.hasPermission("metadata:sync")}
-              onAliasesChange={(aliases) =>
-                setDetail((current) =>
-                  current
-                    ? {
-                        ...current,
-                        aliasRecords: aliases,
-                        aliases: aliases.map((alias) => alias.alias),
-                        ...(current.syncState === "never"
-                          ? {}
-                          : { syncState: "attention", syncReason: "aliases_changed" }),
-                      }
-                    : current,
-                )
-              }
-              onMerged={() => void refreshDetail()}
-              onMessage={setMessage}
-            />
+          onManageAliases={
+            auth.hasPermission("metadata:sync") ? () => openVoiceAliasMaintenance(detail.personId) : undefined
           }
-          onClose={() => setDetailPanel(null)}
+          onClose={() => setAdvancedOpen(false)}
           onRefreshCatalog={(mode, sourceIds) =>
             void refreshVoiceCatalog({ scope: "remote", mode, sourceIds }, t("creatorBrowse.voiceRemoteRefreshQueued"))
           }
@@ -1163,43 +1091,29 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
       </CreatorDetailHeader>
 
       <section className="space-y-3">
-        <div className="hidden flex-col gap-2 lg:flex lg:flex-row lg:items-center">
-          <div className="flex min-h-10 flex-1 items-center gap-2 rounded-md border bg-card px-3 text-sm text-muted-foreground transition-colors focus-within:border-ring">
-            <Search className="h-4 w-4" />
-            <input
-              className="min-w-0 flex-1 bg-transparent outline-none"
-              value={query}
-              onKeyDown={dismissKeyboardOnEnter}
-              onChange={(event) => changeWorkQuery(event.target.value)}
-              placeholder={t("sheets.searchVoiceWorks")}
-            />
-          </div>
-          <div className="hidden shrink-0 gap-2 lg:flex">
-            <WorkCollectionLayoutPicker
-              mobileColumns={mobileColumns}
-              desktopColumns={desktopColumns}
-              onMobileColumnsChange={setMobileColumns}
-              onDesktopColumnsChange={setDesktopColumns}
-            />
-            <NativeSelect
-              fieldSize="sm"
-              className="px-2"
-              value={filter}
-              onChange={(event) => changeWorkFilter(event.target.value as VoiceWorkFilter)}
-              aria-label={t("sheets.voiceWorkAvailability")}
-            >
-              <option value="all">{t("detailActions.allWorks")}</option>
-              <option value="available">{t("content.available")}</option>
-              <option value="local">{t("detailActions.local")}</option>
-              <option value="remote">{t("detailActions.remote")}</option>
-              <option value="missing">{t("detailActions.missing")}</option>
-            </NativeSelect>
-            <Button variant={selectionMode ? "default" : "outline"} size="sm" onClick={toggleSelectionMode}>
-              {t("detailActions.select")}
-            </Button>
-          </div>
-        </div>
-        <div className="lg:hidden">
+        <CatalogWorkToolbar
+          query={query}
+          searchLabel={t("sheets.searchVoiceWorks")}
+          onQueryChange={changeWorkQuery}
+          filterLabel={t("sheets.voiceWorkAvailability")}
+          filter={filter}
+          defaultFilter="all"
+          filterOptions={voiceWorkFilterOptions(t)}
+          onFilterChange={changeWorkFilter}
+          pageSize={pageSize}
+          pageSizeOptions={workPageSizeOptions}
+          onPageSizeChange={changeWorkPageSize}
+          mobileColumns={mobileColumns}
+          desktopColumns={desktopColumns}
+          onMobileColumnsChange={setMobileColumns}
+          onDesktopColumnsChange={setDesktopColumns}
+          selectionMode={selectionMode}
+          onSelectionModeChange={(value) => {
+            setSelectionMode(value);
+            if (!value) setSelectedWorkKeys(new Set());
+          }}
+        />
+        <div>
           <WorkCollectionPagination
             placement="top"
             page={currentPage}
@@ -1213,7 +1127,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
               <Button
                 variant="outline"
                 size="icon"
-                className="relative h-11 w-11"
+                className="relative h-11 w-11 lg:hidden"
                 aria-label={t("creatorBrowse.openVoiceWorkOptions")}
                 title={t("sheets.voiceWorkOptions")}
                 aria-haspopup="dialog"
@@ -1343,30 +1257,14 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
             </CardContent>
           </Card>
         )}
-        {totalPages > 1 && (
-          <div className="lg:hidden">
-            <WorkCollectionPagination
-              placement="bottom"
-              page={currentPage}
-              pageSize={pageSize}
-              totalItems={filteredWorks.length}
-              totalPages={totalPages}
-              onPageChange={setPage}
-            />
-          </div>
-        )}
-        {totalPages > 1 && (
-          <div className="hidden lg:block">
-            <CatalogPagination
-              page={currentPage}
-              pageSize={pageSize}
-              totalItems={filteredWorks.length}
-              totalPages={totalPages}
-              onPageChange={setPage}
-              onPageSizeChange={changeWorkPageSize}
-            />
-          </div>
-        )}
+        <WorkCollectionPagination
+          placement="bottom"
+          page={currentPage}
+          pageSize={pageSize}
+          totalItems={filteredWorks.length}
+          totalPages={totalPages}
+          onPageChange={setPage}
+        />
       </section>
       {saveConfirm && (
         <SaveConfirmModal
@@ -1477,321 +1375,6 @@ function VoiceWorkCard({
         />
       }
     />
-  );
-}
-
-function AliasReviewPanel({
-  personId,
-  aliases,
-  canManage,
-  onAliasesChange,
-  onMerged,
-  onMessage,
-}: {
-  personId: number;
-  aliases: VoiceAlias[];
-  canManage: boolean;
-  onAliasesChange: (aliases: VoiceAlias[]) => void;
-  onMerged: () => void;
-  onMessage: (message: string) => void;
-}) {
-  const { t } = useTranslation();
-  const [aliasDraft, setAliasDraft] = useState("");
-  const [candidates, setCandidates] = useState<VoiceAliasCandidate[]>([]);
-  const [mergeReviews, setMergeReviews] = useState<VoiceMergeReview[]>([]);
-  const [mergeTarget, setMergeTarget] = useState<VoiceAliasCandidate | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSuggestOpen, setIsSuggestOpen] = useState(false);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const suggestRef = useRef<HTMLDivElement | null>(null);
-  const shouldShowSuggestions = isSuggestOpen && candidates.length > 0 && candidates.length <= aliasSuggestMaxResults;
-
-  const loadCandidates = async () => {
-    if (!canManage) return;
-    if (aliasDraft.trim().length < aliasSuggestMinChars) {
-      setCandidates([]);
-      return;
-    }
-    setIsLoading(true);
-    try {
-      setCandidates(await api.listVoiceAliasCandidates(personId, aliasDraft));
-    } catch (error) {
-      onMessage(t("creatorBrowse.aliasCandidateSearchFailed"));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadMergeReviews = async () => {
-    if (!canManage) {
-      setMergeReviews([]);
-      return;
-    }
-    try {
-      setMergeReviews(await api.listVoiceMergeReviews(personId));
-    } catch (error) {
-      onMessage(t("creatorBrowse.mergeHistoryFailed"));
-    }
-  };
-
-  useEffect(() => {
-    void loadMergeReviews();
-  }, [canManage, personId]);
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      void loadCandidates();
-    }, 180);
-    return () => window.clearTimeout(timeout);
-  }, [aliasDraft, canManage, personId]);
-
-  useEffect(() => {
-    if (!isSuggestOpen) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (suggestRef.current?.contains(target)) return;
-      setIsSuggestOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIsSuggestOpen(false);
-    };
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isSuggestOpen]);
-
-  const addAlias = async () => {
-    if (!aliasDraft.trim()) return;
-    try {
-      const next = await api.createVoiceAlias(personId, aliasDraft);
-      onAliasesChange(next);
-      setAliasDraft("");
-      onMessage(t("creatorBrowse.aliasSaved"));
-    } catch (error) {
-      onMessage(t("creatorBrowse.aliasSaveFailed"));
-    }
-  };
-
-  const deleteAlias = async (alias: VoiceAlias) => {
-    try {
-      const result = await api.deleteVoiceAlias(personId, alias.id);
-      onAliasesChange(result.aliases);
-      onMessage(result.deleted > 0 ? t("creatorBrowse.aliasDeleted") : t("creatorBrowse.primaryAliasKept"));
-    } catch (error) {
-      onMessage(t("creatorBrowse.aliasDeleteFailed"));
-    }
-  };
-
-  const mergeCandidate = async (candidate: VoiceAliasCandidate) => {
-    try {
-      const result = await api.mergeVoiceAliasCandidate(personId, candidate.personId);
-      onMessage(t("creatorBrowse.aliasMerged", { merged: result.mergedName, target: result.targetName }));
-      onMerged();
-      setCandidates((items) => items.filter((item) => item.personId !== candidate.personId));
-      setMergeTarget(null);
-      void loadMergeReviews();
-    } catch (error) {
-      onMessage(t("creatorBrowse.aliasMergeFailed"));
-    }
-  };
-
-  const undoMerge = async (review: VoiceMergeReview) => {
-    try {
-      const result = await api.undoVoiceMerge(personId, review.id);
-      onMessage(t("creatorBrowse.mergeRestored", { name: result.restoredName }));
-      onMerged();
-      void loadMergeReviews();
-    } catch (error) {
-      onMessage(t("creatorBrowse.mergeUndoFailed"));
-    }
-  };
-
-  return (
-    <div className="space-y-3">
-      <div>
-        <h3 className="font-semibold">{t("creatorBrowse.aliasesTitle")}</h3>
-        <p className="text-sm text-muted-foreground">{t("creatorBrowse.aliasesDescription")}</p>
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {aliases.length > 0 ? (
-          aliases.map((alias) => (
-            <Badge key={alias.id} variant={alias.source === "primary_name" ? "secondary" : "outline"} className="gap-1">
-              {alias.alias}
-              {canManage && alias.source !== "primary_name" && (
-                <button
-                  className="rounded-sm hover:text-destructive"
-                  aria-label={t("creatorBrowse.deleteAlias", { name: alias.alias })}
-                  onClick={() => void deleteAlias(alias)}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
-              )}
-            </Badge>
-          ))
-        ) : (
-          <Badge variant="warning">{t("creatorBrowse.noAliases")}</Badge>
-        )}
-      </div>
-      {canManage && (
-        <>
-          <div className="relative" ref={suggestRef}>
-            <div className="flex gap-2">
-              <div className="flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-3">
-                <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <input
-                  ref={inputRef}
-                  className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                  value={aliasDraft}
-                  onKeyDown={dismissKeyboardOnEnter}
-                  onChange={(event) => {
-                    setAliasDraft(event.target.value);
-                    setIsSuggestOpen(true);
-                  }}
-                  placeholder={t("creatorBrowse.aliasPlaceholder")}
-                />
-              </div>
-              <Button variant="outline" size="sm" onClick={() => void addAlias()}>
-                <Plus className="h-4 w-4" /> {t("creatorBrowse.add")}
-              </Button>
-            </div>
-            {shouldShowSuggestions && (
-              <div className="app-scroll absolute left-0 right-0 top-11 z-30 max-h-72 overflow-auto rounded-md border bg-popover p-1 shadow-lg">
-                {candidates.slice(0, aliasSuggestMaxResults).map((candidate) => (
-                  <button
-                    key={candidate.personId}
-                    className="flex w-full items-center justify-between gap-3 rounded-sm px-3 py-2 text-left text-sm hover:bg-muted"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => {
-                      setAliasDraft(candidate.displayName);
-                      setIsSuggestOpen(false);
-                      inputRef.current?.focus();
-                    }}
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium">{candidate.displayName}</span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {t("creatorBrowse.worksCount", { count: candidate.knownWorks })} ·{" "}
-                        {[
-                          ...new Set(
-                            candidate.aliases
-                              .map((alias) => alias.alias)
-                              .filter((alias) => alias !== candidate.displayName),
-                          ),
-                        ].join(", ") || t("creatorBrowse.noExtraAliases")}
-                      </span>
-                    </span>
-                    <GitMerge className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          {aliasDraft.trim().length >= aliasSuggestMinChars && candidates.length > aliasSuggestMaxResults && (
-            <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">
-              {t("creatorBrowse.tooManyMatches")}
-            </div>
-          )}
-          {candidates.length > 0 && candidates.length <= aliasSuggestMaxResults && (
-            <div className="space-y-2">
-              {candidates.slice(0, 4).map((candidate) => (
-                <div
-                  key={candidate.personId}
-                  className="flex items-center justify-between gap-3 rounded-md border bg-background p-3 text-sm"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate font-medium">{candidate.displayName}</div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      {t("creatorBrowse.worksCount", { count: candidate.knownWorks })} ·{" "}
-                      {[
-                        ...new Set(
-                          candidate.aliases
-                            .map((alias) => alias.alias)
-                            .filter((alias) => alias !== candidate.displayName),
-                        ),
-                      ].join(", ") || t("creatorBrowse.noExtraAliases")}
-                    </div>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={() => setMergeTarget(candidate)}>
-                    <GitMerge className="h-4 w-4" />
-                    {t("creatorBrowse.merge")}
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
-      {mergeReviews.length > 0 && (
-        <div className="space-y-2 border-t pt-3">
-          <div className="text-sm font-medium">{t("creatorBrowse.mergeHistory")}</div>
-          {mergeReviews.slice(0, 4).map((review) => (
-            <div
-              key={review.id}
-              className="flex items-center justify-between gap-3 rounded-md border bg-background p-3 text-sm"
-            >
-              <div className="min-w-0">
-                <div className="truncate font-medium">{review.sourceName}</div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {review.status === "undone" ? t("creatorBrowse.undone") : t("creatorBrowse.merged")} ·{" "}
-                  {review.createdAt}
-                </div>
-              </div>
-              {canManage && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={review.status !== "merged"}
-                  onClick={() => void undoMerge(review)}
-                >
-                  {t("creatorBrowse.undo")}
-                </Button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-      {mergeTarget && (
-        <FloatingConfirm
-          title={t("creatorBrowse.mergeVoiceActor")}
-          description={t("creatorBrowse.mergeVoiceActorDescription", { name: mergeTarget.displayName })}
-          confirmLabel={t("creatorBrowse.merge")}
-          onClose={() => setMergeTarget(null)}
-          onConfirm={() => void mergeCandidate(mergeTarget)}
-        />
-      )}
-    </div>
-  );
-}
-
-function FloatingConfirm({
-  title,
-  description,
-  confirmLabel,
-  onClose,
-  onConfirm,
-}: {
-  title: string;
-  description: string;
-  confirmLabel: string;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  // Opens from the aliases panel, which is a sheet on mobile, so it stacks above sheets.
-  return (
-    <Dialog onClose={onClose} layer="overlay-top" size="sm">
-      <DialogHeader title={title} description={description} />
-      <DialogFooter>
-        <Button variant="outline" size="sm" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button size="sm" onClick={onConfirm}>
-          {confirmLabel}
-        </Button>
-      </DialogFooter>
-    </Dialog>
   );
 }
 
@@ -2005,62 +1588,6 @@ function voiceSourceStatusLabel(status: string, t: TFunction) {
   }
 }
 
-function CatalogPagination({
-  page,
-  pageSize,
-  totalItems,
-  totalPages,
-  onPageChange,
-  onPageSizeChange,
-}: {
-  page: number;
-  pageSize: 24 | 48;
-  totalItems: number;
-  totalPages: number;
-  onPageChange: (page: number) => void;
-  onPageSizeChange: (pageSize: 24 | 48) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-      <div>{t("collection.pageOf", { page, totalPages, totalItems, itemLabel: t("collection.works") })}</div>
-      <div className="flex items-center gap-2">
-        <NativeSelect
-          fieldSize="sm"
-          className="px-2"
-          value={pageSize}
-          onChange={(event) => onPageSizeChange(Number(event.target.value) as 24 | 48)}
-          aria-label={t("sheets.voiceWorkPageSize")}
-        >
-          {workPageSizeOptions.map((value) => (
-            <option key={value} value={value}>
-              {t("collection.perPageOption", { value })}
-            </option>
-          ))}
-        </NativeSelect>
-        <Button
-          variant="outline"
-          size="icon"
-          aria-label={t("collection.previousPage")}
-          disabled={page <= 1}
-          onClick={() => onPageChange(Math.max(1, page - 1))}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          aria-label={t("collection.nextPage")}
-          disabled={page >= totalPages}
-          onClick={() => onPageChange(Math.min(totalPages, page + 1))}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 function voicePersonIdFromPath(path: string) {
   const match = path.match(/^\/voices\/([^/]+)\/?$/i);
   if (!match) return 0;
@@ -2089,6 +1616,11 @@ function formatTime(seconds: number) {
 function workProgressPercent(progress: NonNullable<VoiceKnownWork["progress"]>) {
   if (!progress.durationSeconds || progress.durationSeconds <= 0) return 0;
   return Math.min(100, Math.max(0, (progress.positionSeconds / progress.durationSeconds) * 100));
+}
+
+function openVoiceAliasMaintenance(personId: number) {
+  window.history.pushState({}, "", `/metadata?view=aliases&voice=${personId}`);
+  window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 
 export function openVoiceRoute(personId: number) {

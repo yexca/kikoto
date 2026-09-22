@@ -16,7 +16,9 @@ Voice pages present persisted person and credit data.
   remain visible and searchable, but the list does not expose a tag filter for
   now.
 - Shows favorite, rating, note, and user tag state.
-- Supports alias review, duplicate merge, and merge undo.
+- Shows confirmed aliases under the detail title. Alias review, duplicate
+  merge, and merge undo live in the Metadata page's **Voice aliases** view;
+  the detail Advanced popover links there for users with `metadata:sync`.
 - Groups works with no provider voice credits under an `unknown` bucket.
 - Shows Local and Remote availability badges followed by user tags on voice
   detail. Cache remains available to playback and filtering data, but is not
@@ -26,11 +28,12 @@ Voice pages present persisted person and credit data.
 - Loads person detail, known works, and remote matches independently. Remote
   source searches use bounded concurrency, while voice counts and user tags are
   aggregated in batches.
-- Places Alias review and Sources actions beside the icon-only mobile Favorite
-  control on voice detail. Each action opens an anchored popover on mobile and
-  desktop; alias management remains permission-gated while alias viewing stays
-  available. Mobile work search keeps one row and opens filter, column, and
-  selection controls from a separate options sheet.
+- Keeps Favorite, the two common refresh actions, and Advanced in the detail
+  summary. The works toolbar mirrors the Library: a bounded search on the
+  left with columns, page size, availability filter, and selection as quiet
+  icon actions on the right, and the shared collection pagination above and
+  below the grid. Mobile work search keeps one row and opens filter, column,
+  and selection controls from a separate options sheet.
 - Treats the mobile detail back control as Up to the last
   server-and-user-scoped Voice Actors list location, including when the detail
   was opened from Library or Favorites. Wide layouts keep the source-aware

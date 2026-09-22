@@ -1,17 +1,14 @@
-import { Filter, Search, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { AnchoredPopover } from "@/components/ui/anchored-popover";
+import { CollectionFilterPicker, type CollectionFilterOption } from "@/components/collection/CollectionFilterPicker";
 import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { useTranslation } from "react-i18next";
 
-export type CreatorListToolbarFilterOption<Value extends string> = {
-  value: Value;
-  label: string;
-};
+export type CreatorListToolbarFilterOption<Value extends string> = CollectionFilterOption<Value>;
 
 export function CreatorListToolbar<FilterValue extends string>({
   label,
@@ -104,8 +101,8 @@ export function CreatorListToolbar<FilterValue extends string>({
           </CreatorListToolbarIconButton>
         )}
         <PageSizePicker value={pageSize} options={pageSizeOptions} onChange={onPageSizeChange} />
-        <CreatorListFilterPicker
-          label={label}
+        <CollectionFilterPicker
+          label={t("collection.filters", { label })}
           value={filter}
           defaultValue={defaultFilter}
           options={filterOptions}
@@ -140,65 +137,5 @@ function CreatorListToolbarIconButton({
     >
       {children}
     </Button>
-  );
-}
-
-function CreatorListFilterPicker<FilterValue extends string>({
-  label,
-  value,
-  defaultValue,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: FilterValue;
-  defaultValue: FilterValue;
-  options: readonly CreatorListToolbarFilterOption<FilterValue>[];
-  onChange: (value: FilterValue) => void;
-}) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const anchorRef = useRef<HTMLDivElement | null>(null);
-  const selectedLabel = options.find((option) => option.value === value)?.label ?? t("collection.filter");
-  const active = value !== defaultValue;
-
-  return (
-    <div className="relative" ref={anchorRef}>
-      <CreatorListToolbarIconButton
-        title={active ? `${label} filter: ${selectedLabel}` : selectedLabel}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <Filter className="h-4 w-4" />
-        {active && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" aria-hidden="true" />}
-      </CreatorListToolbarIconButton>
-      <AnchoredPopover
-        open={open}
-        anchorRef={anchorRef}
-        onOpenChange={setOpen}
-        className="w-[min(13rem,calc(100vw-1.5rem))] p-1 text-sm"
-      >
-        <div role="menu" aria-label={t("collection.filters", { label })}>
-          <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground">
-            <Filter className="h-4 w-4" />
-            <span>{t("collection.filter")}</span>
-          </div>
-          {options.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="menuitemradio"
-              aria-checked={value === option.value}
-              className={`flex min-h-10 w-full items-center rounded-md px-3 py-2 text-left hover:bg-muted ${value === option.value ? "bg-primary/10 font-medium text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
-              onClick={() => {
-                onChange(option.value);
-                setOpen(false);
-              }}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      </AnchoredPopover>
-    </div>
   );
 }

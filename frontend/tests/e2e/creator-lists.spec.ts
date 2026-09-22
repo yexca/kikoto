@@ -684,15 +684,14 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   expect(
     Math.max(...actionMetrics.map((metric) => metric.top)) - Math.min(...actionMetrics.map((metric) => metric.top)),
   ).toBeLessThanOrEqual(1);
-  await expect(page.getByRole("dialog", { name: "Aliases" })).toHaveCount(0);
   await expect(page.getByRole("dialog", { name: "Advanced refresh" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Open advanced refresh actions" }).click();
   const advancedDialog = page.getByRole("dialog", { name: "Advanced refresh" });
   await expect(advancedDialog).toBeVisible();
   await expect(advancedDialog.getByRole("button", { name: "Close advanced refresh actions" })).toHaveCount(0);
-  await advancedDialog.locator("summary").click();
-  await expect(advancedDialog.getByPlaceholder("Add alias or search duplicate voice actor")).toBeVisible();
+  await expect(advancedDialog.getByRole("button", { name: "Open Metadata", exact: true })).toBeVisible();
+  await expect(advancedDialog.getByPlaceholder("Add alias or search duplicate voice actor")).toHaveCount(0);
   await expect(advancedDialog.getByRole("checkbox", { name: "Refresh Example Remote" })).toBeChecked();
   const catalogRefresh = advancedDialog.getByRole("group", { name: "Catalog refresh" });
   const metadataRefresh = advancedDialog.getByRole("group", { name: "Metadata refresh" });
@@ -934,7 +933,8 @@ test("@desktop circle detail keeps a full-width compact summary and source-aware
     .evaluateAll((elements) => elements.map((element) => element.getAttribute("aria-label")));
   expect(actionOrder).toEqual(["Remove favorite", "Retry metadata", "Refresh circle", "Open advanced refresh actions"]);
 
-  await page.getByLabel("Catalog availability filter").selectOption("unavailable");
+  await page.getByRole("button", { name: "Catalog availability filter" }).click();
+  await page.getByRole("menuitemradio", { name: "Unavailable", exact: true }).click();
   await expect(summary.getByText("Available 1", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Catalog options" })).toBeHidden();
   await expect(page.getByRole("button", { name: "Open advanced refresh actions" })).toBeVisible();

@@ -30,6 +30,10 @@ Circles represent makers, circles, and related party catalog state.
   popover.
 - Shortens the common detail actions on mobile, keeps icon-only Favorite,
   Advanced, and DLsite controls accessible by name, and places DLsite last.
+- Uses the Library-style works toolbar on wide layouts: the Works/Series switch
+  and a bounded search on the left, with columns, page size, availability
+  filter, and selection as quiet icon actions on the right. The shared
+  collection pagination sits above and below the grid.
 - Keeps mobile work controls to the Works/Series switch, search, and one Catalog
   options action. Availability, mobile columns, and selection mode live in that
   sheet; wide layouts retain inline controls.

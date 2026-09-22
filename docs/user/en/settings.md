@@ -108,7 +108,7 @@ sections need `sources:write`.
 
 ## Metadata
 
-The **Metadata** sidebar entry sits directly below **Workflows**. Its horizontal categories are **All**, **Needs attention**, **Metadata issues**, and **No available source**. All includes every saved work family, including metadata without pending issues; the other categories show the applicable attention reasons. Search, pagination, covers, selection, and affected edition/provider details are shared.
+The **Metadata** sidebar entry sits directly below **Workflows**. Its horizontal categories are **All**, **Needs attention**, **Metadata issues**, and **No available source**. All includes every saved work family, including metadata without pending issues; the other categories show the applicable attention reasons. Search, pagination, covers, selection, and affected edition/provider details are shared. A separate **Voice aliases** view (requires `metadata:sync`) lists voice actors with their confirmed aliases; **Manage aliases** opens a dialog to add or remove aliases, merge duplicate people, and undo merges. The voice detail Advanced popover links to this view, and `/metadata?view=aliases&voice=<id>` opens one person directly.
 
 Use **Metadata settings** at the upper right to open settings in a dialog; closing it preserves the current list and filters. **Metadata sync** opens the existing sync workflow, where you choose the scope and start it.
 

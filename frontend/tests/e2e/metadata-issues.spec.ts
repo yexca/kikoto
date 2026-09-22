@@ -301,12 +301,13 @@ for (const viewport of ["mobile", "@desktop"]) {
     await page.goto(viewport === "mobile" ? "/work-management" : "/metadata");
     await expect(page).toHaveURL(/\/metadata$/);
     await expect(page.getByRole("heading", { name: "Metadata", exact: true })).toBeVisible();
-    const tabs = page.getByRole("tablist", { name: "Attention reason" });
+    const tabs = page.getByRole("tablist", { name: "Metadata views" });
     await expect(tabs.getByRole("tab")).toHaveText([
       "All",
       "Needs attention",
       "Metadata issues",
       "No available source",
+      "Voice aliases",
     ]);
     await expect(tabs.getByRole("tab", { name: "All", exact: true })).toHaveAttribute("aria-selected", "true");
     const list = page.getByRole("region", { name: "Metadata records", exact: true });
@@ -341,3 +342,70 @@ for (const viewport of ["mobile", "@desktop"]) {
     await expect(page).toHaveURL(/workflows\?workflow=metadata_sync/);
   });
 }
+
+test("@desktop Metadata voice aliases view lists people and opens alias review", async ({ page }) => {
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    authenticated: true,
+    permissions: ["library:read", "metadata:sync"],
+  });
+  const voice = {
+    personId: 7,
+    displayName: "Example Voice",
+    aliases: ["Example Voice", "Voice alias"],
+    knownWorks: 3,
+    localWorks: 1,
+    remoteWorks: 1,
+    cachedWorks: 0,
+    playableWorks: 1,
+    lastSeenAt: null,
+    lastSyncedAt: null,
+    syncState: "synced",
+    syncReason: "",
+    rating: null,
+    note: "",
+    favorite: false,
+    userTags: [],
+    sourceSummaries: [],
+    latestWork: null,
+  };
+  await page.route("**/api/voices?*", (route) =>
+    route.fulfill({ json: { voices: [voice], page: 1, pageSize: 25, total: 1, tagOptions: [] } }),
+  );
+  await page.route("**/api/voices/7?*", (route) =>
+    route.fulfill({
+      json: {
+        ...voice,
+        aliasRecords: [
+          { id: 1, alias: "Example Voice", source: "primary_name", createdAt: "2026-07-01T00:00:00Z" },
+          { id: 2, alias: "Voice alias", source: "manual", createdAt: "2026-07-01T00:00:00Z" },
+        ],
+        works: [],
+        remoteMatches: [],
+      },
+    }),
+  );
+  await page.route("**/api/voices/7/merges", (route) => route.fulfill({ json: [] }));
+
+  await page.goto("/metadata?view=aliases");
+  const tabs = page.getByRole("tablist", { name: "Metadata views" });
+  await expect(tabs.getByRole("tab", { name: "Voice aliases", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  const region = page.getByRole("region", { name: "Voice actor aliases", exact: true });
+  await expect(region.getByRole("link", { name: "Example Voice", exact: true })).toBeVisible();
+  await expect(region.getByText("Voice alias", { exact: true })).toBeVisible();
+
+  await region.getByRole("button", { name: "Manage aliases for Example Voice" }).click();
+  const dialog = page.getByRole("dialog", { name: "Example Voice" });
+  await expect(dialog.getByPlaceholder("Add alias or search duplicate voice actor")).toBeVisible();
+  await expect(dialog.getByText("Voice alias", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/view=aliases&voice=7$/);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL(/\/metadata\?view=aliases$/);
+
+  await tabs.getByRole("tab", { name: "All", exact: true }).click();
+  await expect(page).toHaveURL(/\/metadata\?reason=catalog$/);
+  await expect(page.getByRole("region", { name: "Metadata records", exact: true })).toBeVisible();
+});

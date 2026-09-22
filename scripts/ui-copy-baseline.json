@@ -21,6 +21,9 @@
     "text: Clear search",
     "text: Rows"
   ],
+  "frontend/src/features/maintenance/VoiceAliasPanel.tsx": [
+    "text: aliasSuggestMaxResults && ("
+  ],
   "frontend/src/features/work-detail/media/VideoPreview.tsx": [
     "text: Preparing video",
     "text: Retry"

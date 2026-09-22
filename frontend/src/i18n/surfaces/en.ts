@@ -13,6 +13,15 @@ export const surfaceEnglish = {
     issues: "Pending works",
     settings: "Metadata settings",
     openSync: "Metadata sync",
+    voiceAliases: "Voice aliases",
+    voiceAliasesTitle: "Voice actor aliases",
+    voiceAliasesDescription:
+      "Review alternate names for each voice actor and merge duplicate people. Searches match names and aliases.",
+    searchVoices: "Search voice actors",
+    searchVoicesPlaceholder: "Name or alias",
+    noMatchingVoices: "No matching voice actors",
+    manageAliases: "Manage aliases",
+    manageAliasesFor: "Manage aliases for {{name}}",
     loading: "Loading…",
   },
   workflowActivity: {
@@ -101,7 +110,7 @@ export const surfaceEnglish = {
     title: "Metadata records",
     description:
       "Works with metadata issues or no available file source, grouped by family. Successful metadata updates clear only the corresponding issue.",
-    reason: "Attention reason",
+    reason: "Metadata views",
     all: "Needs attention",
     metadata: "Metadata issues",
     noSource: "No available source",
@@ -1690,6 +1699,8 @@ export const surfaceEnglish = {
     full: "Full",
     voiceWorkOptions: "Voice work options",
     searchVoiceWorks: "Search voice works",
+    manageAliasesDescription: "Review alternate names and merge duplicates in Metadata.",
+    openMetadata: "Open Metadata",
     clearVoiceWorkSearch: "Clear voice work search",
     voiceWorkAvailability: "Voice work availability",
     mobileVoiceWorkColumns: "Mobile voice work columns",

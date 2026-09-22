@@ -40,6 +40,7 @@ import {
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
 import { CreatorDetailHeader } from "@/components/creator/CreatorDetailHeader";
 import { CreatorListToolbar } from "@/components/creator/CreatorListToolbar";
+import { CatalogWorkToolbar } from "@/components/creator/CatalogWorkToolbar";
 import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
@@ -114,6 +115,15 @@ const PLACEHOLDER_CIRCLE_ID = "RG012345";
 const circlePageSizeOptions = [24, 48, 96] as const;
 const catalogWorkPageSizeOptions = [24, 48] as const;
 type CatalogWorkPageSize = (typeof catalogWorkPageSizeOptions)[number];
+function circleAvailabilityOptions(t: TFunction): readonly { value: CircleAvailabilityFilter; label: string }[] {
+  return [
+    { value: "all", label: t("detailActions.allWorks") },
+    { value: "available", label: t("content.available") },
+    { value: "unavailable", label: t("detailActions.unavailable") },
+    { value: "local", label: t("detailActions.local") },
+    { value: "remote", label: t("detailActions.remote") },
+  ];
+}
 const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "none", label: "Unmarked" },
   { value: "want_to_listen", label: "Want" },
@@ -924,41 +934,38 @@ function CircleDetailPage({
       />
 
       <section className="space-y-3">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-          <div className={segmentedListClassName("shrink-0")} role="group">
-            <button
-              className={segmentedItemClassName(!isSeriesView)}
-              aria-pressed={!isSeriesView}
-              onClick={() => openCircleRoute(circle.externalId)}
-            >
-              {t("detailActions.works")} {circle.works.length}
-            </button>
-            <button
-              className={segmentedItemClassName(isSeriesView)}
-              aria-pressed={isSeriesView}
-              onClick={() => openCircleSeriesRoute(circle.externalId)}
-            >
-              {t("detailActions.series")} {circle.series.length}
-            </button>
-          </div>
-          <div
-            className={`flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md border bg-card px-3 text-sm text-muted-foreground transition-colors focus-within:border-ring ${isSeriesView ? "" : "hidden lg:flex"}`}
-          >
-            <Search className="h-4 w-4" />
-            <input
-              className="min-w-0 flex-1 bg-transparent outline-none"
-              value={workQuery}
-              onKeyDown={dismissKeyboardOnEnter}
-              onChange={(event) => changeWorkQuery(event.target.value)}
-              placeholder={t("detailActions.searchCatalogWorks")}
-            />
-            {isSeriesView && (
+        <CatalogWorkToolbar
+          leading={
+            <div className={segmentedListClassName("shrink-0")} role="group">
+              <button
+                className={segmentedItemClassName(!isSeriesView)}
+                aria-pressed={!isSeriesView}
+                onClick={() => openCircleRoute(circle.externalId)}
+              >
+                {t("detailActions.works")} {circle.works.length}
+              </button>
+              <button
+                className={segmentedItemClassName(isSeriesView)}
+                aria-pressed={isSeriesView}
+                onClick={() => openCircleSeriesRoute(circle.externalId)}
+              >
+                {t("detailActions.series")} {circle.series.length}
+              </button>
+            </div>
+          }
+          query={workQuery}
+          searchLabel={t("detailActions.searchCatalogWorks")}
+          mobileSearch={isSeriesView}
+          mobileSearchAction={
+            isSeriesView ? (
               <Button
-                variant="outline"
-                size="icon"
-                className="relative shrink-0 lg:hidden"
+                variant="ghost"
+                size="icon-sm"
+                className="relative"
                 aria-label={t("detailActions.catalogOptions")}
                 title={t("detailActions.catalogOptions")}
+                aria-haspopup="dialog"
+                aria-expanded={catalogOptionsOpen}
                 onClick={() => setCatalogOptionsOpen(true)}
               >
                 <SlidersHorizontal className="h-4 w-4" />
@@ -966,47 +973,34 @@ function CircleDetailPage({
                   <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
                 )}
               </Button>
-            )}
-          </div>
-          <div className="hidden shrink-0 gap-2 lg:flex">
-            <WorkCollectionLayoutPicker
-              mobileColumns={mobileColumns}
-              desktopColumns={desktopColumns}
-              onMobileColumnsChange={setMobileColumns}
-              onDesktopColumnsChange={setDesktopColumns}
-            />
-            <NativeSelect
-              fieldSize="sm"
-              className="px-2"
-              value={availabilityFilter}
-              onChange={(event) => changeAvailabilityFilter(event.target.value as CircleAvailabilityFilter)}
-              aria-label={t("detailActions.catalogAvailabilityFilter")}
-            >
-              <option value="all">{t("detailActions.allWorks")}</option>
-              <option value="available">{t("content.available")}</option>
-              <option value="unavailable">{t("detailActions.unavailable")}</option>
-              <option value="local">{t("detailActions.local")}</option>
-              <option value="remote">{t("detailActions.remote")}</option>
-            </NativeSelect>
-            {!isSeriesView && (
-              <Button
-                variant={selectionMode ? "default" : "outline"}
-                size="sm"
-                onClick={() => {
-                  setSelectionMode((value) => {
-                    if (value) setSelectedWorkCodes(new Set());
-                    return !value;
-                  });
-                }}
-              >
-                {t("detailActions.select")}
-              </Button>
-            )}
-          </div>
-        </div>
+            ) : undefined
+          }
+          onQueryChange={changeWorkQuery}
+          filterLabel={t("detailActions.catalogAvailabilityFilter")}
+          filter={availabilityFilter}
+          defaultFilter="all"
+          filterOptions={circleAvailabilityOptions(t)}
+          onFilterChange={changeAvailabilityFilter}
+          pageSize={isSeriesView ? undefined : workPageSize}
+          pageSizeOptions={catalogWorkPageSizeOptions}
+          onPageSizeChange={isSeriesView ? undefined : changeWorkPageSize}
+          mobileColumns={mobileColumns}
+          desktopColumns={desktopColumns}
+          onMobileColumnsChange={setMobileColumns}
+          onDesktopColumnsChange={setDesktopColumns}
+          selectionMode={isSeriesView ? undefined : selectionMode}
+          onSelectionModeChange={
+            isSeriesView
+              ? undefined
+              : (value) => {
+                  setSelectionMode(value);
+                  if (!value) setSelectedWorkCodes(new Set());
+                }
+          }
+        />
 
         {!isSeriesView && (
-          <div className="lg:hidden">
+          <div>
             <WorkCollectionPagination
               placement="top"
               page={currentWorkPage}
@@ -1020,7 +1014,7 @@ function CircleDetailPage({
                 <Button
                   variant="outline"
                   size="icon"
-                  className="relative h-11 w-11"
+                  className="relative h-11 w-11 lg:hidden"
                   aria-label={t("detailActions.catalogOptions")}
                   title={t("detailActions.catalogOptions")}
                   aria-haspopup="dialog"
@@ -1269,30 +1263,14 @@ function CircleDetailPage({
                 </Card>
               )}
             </div>
-            {totalWorkPages > 1 && (
-              <div className="lg:hidden">
-                <WorkCollectionPagination
-                  placement="bottom"
-                  page={currentWorkPage}
-                  pageSize={workPageSize}
-                  totalItems={filteredWorks.length}
-                  totalPages={totalWorkPages}
-                  onPageChange={setWorkPage}
-                />
-              </div>
-            )}
-            {totalWorkPages > 1 && (
-              <div className="hidden lg:block">
-                <CatalogWorkPagination
-                  page={currentWorkPage}
-                  pageSize={workPageSize}
-                  totalItems={filteredWorks.length}
-                  totalPages={totalWorkPages}
-                  onPageChange={setWorkPage}
-                  onPageSizeChange={changeWorkPageSize}
-                />
-              </div>
-            )}
+            <WorkCollectionPagination
+              placement="bottom"
+              page={currentWorkPage}
+              pageSize={workPageSize}
+              totalItems={filteredWorks.length}
+              totalPages={totalWorkPages}
+              onPageChange={setWorkPage}
+            />
           </>
         )}
       </section>
@@ -2008,88 +1986,4 @@ function safeDecodePathSegment(value: string) {
   } catch {
     return value;
   }
-}
-
-function CatalogWorkPagination({
-  page,
-  pageSize,
-  totalItems,
-  totalPages,
-  onPageChange,
-  onPageSizeChange,
-}: {
-  page: number;
-  pageSize: CatalogWorkPageSize;
-  totalItems: number;
-  totalPages: number;
-  onPageChange: (page: number) => void;
-  onPageSizeChange: (pageSize: CatalogWorkPageSize) => void;
-}) {
-  const { t } = useTranslation();
-  const [jumpPage, setJumpPage] = useState(String(page));
-
-  useEffect(() => {
-    setJumpPage(String(page));
-  }, [page]);
-
-  const goToJumpPage = () => {
-    const next = Math.min(totalPages, Math.max(1, Number(jumpPage) || page));
-    onPageChange(next);
-    setJumpPage(String(next));
-  };
-
-  return (
-    <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
-      <div className="text-xs text-muted-foreground">
-        {t("collection.pageOf", { page, totalPages, totalItems, itemLabel: t("collection.works") })}
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <NativeSelect
-          fieldSize="sm"
-          className="h-8 px-2 text-xs"
-          value={pageSize}
-          onChange={(event) => onPageSizeChange(Number(event.target.value) as CatalogWorkPageSize)}
-          aria-label={t("sheets.catalogWorkPageSize")}
-        >
-          {catalogWorkPageSizeOptions.map((value) => (
-            <option key={value} value={value}>
-              {t("collection.perPageOption", { value })}
-            </option>
-          ))}
-        </NativeSelect>
-        <button
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground disabled:opacity-50"
-          disabled={page <= 1}
-          onClick={() => onPageChange(Math.max(1, page - 1))}
-          aria-label={t("collection.previousPage")}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-        <button
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground disabled:opacity-50"
-          disabled={page >= totalPages}
-          onClick={() => onPageChange(Math.min(totalPages, page + 1))}
-          aria-label={t("collection.nextPage")}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
-        <Input
-          fieldSize="sm"
-          className="h-8 w-16 px-2 text-xs"
-          type="number"
-          min={1}
-          max={totalPages}
-          value={jumpPage}
-          onChange={(event) => setJumpPage(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") goToJumpPage();
-          }}
-          aria-label={t("collection.page", { page })}
-        />
-        <Button variant="outline" size="sm" onClick={goToJumpPage}>
-          Go
-        </Button>
-      </div>
-    </div>
-  );
 }
