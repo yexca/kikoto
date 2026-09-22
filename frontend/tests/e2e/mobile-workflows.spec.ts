@@ -343,6 +343,10 @@ async function mockWorkflows(
       await route.fulfill({ json: systemDefinitions });
       return;
     }
+    if (url.pathname === "/api/workflow-presets") {
+      await route.fulfill({ json: [] });
+      return;
+    }
     if (url.pathname === "/api/availability-watch") {
       if (route.request().method() === "PUT") {
         const payload = route.request().postDataJSON() as {
@@ -1724,7 +1728,8 @@ for (const viewport of ["mobile", "@desktop"]) {
 }
 
 test("@desktop canvas wheel scrolls the page unless a modifier is held", async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 600 });
+  // Short enough that the workflow panel overflows and the page has room to scroll.
+  await page.setViewportSize({ width: 1280, height: 400 });
   await mockWorkflows(page);
   await page.goto("/workflows?workflow=metadata_sync");
   await expectCooperativeCanvasScroll(page, page.getByLabel("Workflow node canvas"));
