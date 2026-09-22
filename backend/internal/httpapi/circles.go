@@ -16,6 +16,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -311,8 +312,8 @@ func (s *Server) loadCircleSummaries(ctx context.Context, userID int64) ([]circl
 		}
 		item.Rating = nullableIntPointer(rating)
 		item.Favorite = favorite != 0
-		item.LastSyncedAt = nullableString(lastSynced)
-		item.lastAttemptAt = nullableString(lastAttempt)
+		item.LastSyncedAt = sqlutil.String(lastSynced)
+		item.lastAttemptAt = sqlutil.String(lastAttempt)
 		item.Aliases = []string{}
 		item.UserTags = []voiceUserTag{}
 		item.SourceSummaries = []circleSourceStat{}
@@ -1254,8 +1255,8 @@ func (s *Server) loadCircleSummary(ctx context.Context, userID int64, partyID in
 	}
 	item.Rating = nullableIntPointer(rating)
 	item.Favorite = favorite != 0
-	item.LastSyncedAt = nullableString(lastSynced)
-	item.lastAttemptAt = nullableString(lastAttempt)
+	item.LastSyncedAt = sqlutil.String(lastSynced)
+	item.lastAttemptAt = sqlutil.String(lastAttempt)
 	item.Aliases = []string{}
 	tags, err := s.loadCircleUserTags(ctx, userID, item.ID)
 	if err != nil {
@@ -1608,7 +1609,7 @@ func (s *Server) loadCircleLatestWorks(ctx context.Context, partyIDs []int64) (m
 		if err := rows.Scan(&partyID, &item.PrimaryCode, &item.Title, &releaseDate); err != nil {
 			return nil, err
 		}
-		item.ReleaseDate = nullableString(releaseDate)
+		item.ReleaseDate = sqlutil.String(releaseDate)
 		result[partyID] = &item
 	}
 	return result, rows.Err()
@@ -2114,14 +2115,14 @@ func (s *Server) readCircleCatalogWork(ctx context.Context, rows *sql.Rows) (cir
 		&snapshot, &item.ListeningMark, &favorite, &seriesLink); err != nil {
 		return item, dlsiteSnapshotMetadata{}, err
 	}
-	item.Rating = nullableFloat64(rating)
-	item.Sales = nullableInt64(sales)
-	item.RegularPrice = nullableInt64(regularPrice)
-	item.Price = nullableInt64(currentPrice)
+	item.Rating = sqlutil.Float64(rating)
+	item.Sales = sqlutil.Int64(sales)
+	item.RegularPrice = sqlutil.Int64(regularPrice)
+	item.Price = sqlutil.Int64(currentPrice)
 	if permanentlyFree.Valid {
 		item.PermanentlyFree = &permanentlyFree.Bool
 	}
-	item.ReleaseDate = nullableString(release)
+	item.ReleaseDate = sqlutil.String(release)
 	if item.ReleaseDate != nil {
 		item.UpdatedAt = *item.ReleaseDate
 	}
@@ -2151,7 +2152,7 @@ func (s *Server) readCircleCatalogWork(ctx context.Context, rows *sql.Rows) (cir
 		item.Series = metadata.Series
 	}
 	if item.WorkID == nil {
-		item.WorkID = nullableInt64(workID)
+		item.WorkID = sqlutil.Int64(workID)
 	}
 	if item.WorkID != nil {
 		if title, tags, projected, err := s.loadProjectedDLsiteMetadata(ctx, *item.WorkID); err != nil {
@@ -2213,10 +2214,10 @@ func (s *Server) projectCircleCatalogWorkToCanonical(ctx context.Context, item *
 	if ageRating != "" {
 		item.AgeRating = ageRating
 	}
-	item.Rating = nullableFloat64(rating)
-	item.Sales = nullableInt64(sales)
-	item.RegularPrice = nullableInt64(regularPrice)
-	item.Price = nullableInt64(currentPrice)
+	item.Rating = sqlutil.Float64(rating)
+	item.Sales = sqlutil.Int64(sales)
+	item.RegularPrice = sqlutil.Int64(regularPrice)
+	item.Price = sqlutil.Int64(currentPrice)
 	if currency.Valid {
 		item.PriceCurrency = currency.String
 	}
@@ -2937,7 +2938,7 @@ func upsertMakerSeries(ctx context.Context, tx *sql.Tx, partyID, providerID int6
 		`, partyID, providerID, titleID, name, strings.TrimSpace(series.URL), series.WorkCount, string(rawSeries)); err != nil {
 			return err
 		}
-		seriesID, err := selectID(ctx, tx, "SELECT id FROM party_series WHERE party_id = ? AND provider_id = ? AND title_id = ?", partyID, providerID, titleID)
+		seriesID, err := sqlutil.SelectID(ctx, tx, "SELECT id FROM party_series WHERE party_id = ? AND provider_id = ? AND title_id = ?", partyID, providerID, titleID)
 		if err != nil {
 			return err
 		}
@@ -3622,7 +3623,7 @@ func (s *Server) replaceCircleUserTags(ctx context.Context, userID int64, partyI
 		`, userID, name); err != nil {
 			return nil, err
 		}
-		tagID, err := selectID(ctx, tx, "SELECT id FROM user_party_tag WHERE user_id = ? AND name = ?", userID, name)
+		tagID, err := sqlutil.SelectID(ctx, tx, "SELECT id FROM user_party_tag WHERE user_id = ? AND name = ?", userID, name)
 		if err != nil {
 			return nil, err
 		}

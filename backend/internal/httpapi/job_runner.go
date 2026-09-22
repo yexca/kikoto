@@ -590,7 +590,7 @@ func (s *Server) startWorkflowJobHeartbeat(ctx context.Context, job workflowJobR
 			case <-jobCtx.Done():
 				return
 			case <-ticker.C:
-				_, _ = s.db.ExecContext(context.Background(), `
+				s.execBestEffort(context.Background(), "workflow job heartbeat", `
 					UPDATE workflow_job
 					SET heartbeat_at = CURRENT_TIMESTAMP,
 						updated_at = CURRENT_TIMESTAMP

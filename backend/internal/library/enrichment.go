@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 type MediaSelection struct {
@@ -265,11 +267,11 @@ func (s *Store) LoadProgress(ctx context.Context, userID int64, workIDs []int64)
 			return nil, err
 		}
 		result[requestedWorkID] = Progress{
-			WorkID: nullableInt64(workID), MediaWorkID: nullableInt64(mediaWorkID), MediaItemID: nullableInt64(mediaItemID),
-			FileSourceID: nullableInt64(fileSourceID), LocationID: nullableInt64(locationID),
+			WorkID: sqlutil.Int64(workID), MediaWorkID: sqlutil.Int64(mediaWorkID), MediaItemID: sqlutil.Int64(mediaItemID),
+			FileSourceID: sqlutil.Int64(fileSourceID), LocationID: sqlutil.Int64(locationID),
 			LocationType: locationType.String, Title: title.String,
-			PositionSeconds: position.Float64, DurationSeconds: nullableFloat64(duration),
-			LastPlayedAt: nullableString(lastPlayedAt), Completed: completed.Valid && completed.Bool,
+			PositionSeconds: position.Float64, DurationSeconds: sqlutil.Float64(duration),
+			LastPlayedAt: sqlutil.String(lastPlayedAt), Completed: completed.Valid && completed.Bool,
 		}
 	}
 	return result, rows.Err()
@@ -324,25 +326,4 @@ func uniqueUpperStrings(values []string) []string {
 		result = append(result, value)
 	}
 	return result
-}
-
-func nullableInt64(value sql.NullInt64) *int64 {
-	if !value.Valid {
-		return nil
-	}
-	return &value.Int64
-}
-
-func nullableFloat64(value sql.NullFloat64) *float64 {
-	if !value.Valid {
-		return nil
-	}
-	return &value.Float64
-}
-
-func nullableString(value sql.NullString) *string {
-	if !value.Valid {
-		return nil
-	}
-	return &value.String
 }

@@ -18,6 +18,7 @@ The backend is a Go HTTP API with SQLite persistence.
 - `backend/internal/kikoeru`: Kikoeru-compatible client.
 - `backend/internal/metasync`: metadata sync.
 - `backend/internal/storage`: database opening and migrations.
+- `backend/internal/sqlutil`: shared `database/sql` helpers with no application imports.
 - `backend/internal/workflow`: workflow persistence helpers.
 
 ## Runtime Responsibilities

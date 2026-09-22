@@ -16,6 +16,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -986,7 +987,7 @@ func scanVoiceSummaryRow(scanner voiceSummaryScanner) (voiceSummary, error) {
 		return voiceSummary{}, err
 	}
 	item.Aliases = splitAliases(aliasesRaw)
-	item.LastSeenAt = nullableString(lastSeen)
+	item.LastSeenAt = sqlutil.String(lastSeen)
 	if rating.Valid {
 		value := int(rating.Int64)
 		item.Rating = &value
@@ -1135,7 +1136,7 @@ func (s *Server) loadVoiceLatestWorks(ctx context.Context, personIDs []int64) (m
 		if err := rows.Scan(&personID, &item.PrimaryCode, &item.Title, &releaseDate, &item.CoverURL); err != nil {
 			return nil, err
 		}
-		item.ReleaseDate = nullableString(releaseDate)
+		item.ReleaseDate = sqlutil.String(releaseDate)
 		result[personID] = &item
 	}
 	return result, rows.Err()
@@ -1347,7 +1348,7 @@ func (s *Server) newVoiceKnownWork(
 			metadata.Circle, metadata.CircleExternalID = name, externalID
 		}
 	}
-	releaseDate := nullableString(row.ReleaseDate)
+	releaseDate := sqlutil.String(row.ReleaseDate)
 	updatedAt := ""
 	if releaseDate != nil {
 		updatedAt = *releaseDate
@@ -2622,7 +2623,7 @@ func (s *Server) replaceVoiceUserTags(ctx context.Context, userID int64, personI
 		`, userID, name); err != nil {
 			return nil, err
 		}
-		tagID, err := selectID(ctx, tx, "SELECT id FROM user_person_tag WHERE user_id = ? AND name = ?", userID, name)
+		tagID, err := sqlutil.SelectID(ctx, tx, "SELECT id FROM user_person_tag WHERE user_id = ? AND name = ?", userID, name)
 		if err != nil {
 			return nil, err
 		}
@@ -2912,10 +2913,10 @@ func scanVoiceWorkRow(rows *sql.Rows) (voiceWorkRow, error) {
 	err := rows.Scan(&item.ID, &item.PrimaryCode, &item.Title, &item.ReleaseDate, &item.AgeRating,
 		&rating, &sales, &regularPrice, &currentPrice, &item.PriceCurrency, &permanentlyFree,
 		&item.Snapshot, &item.CircleLink, &item.ListeningStatus, &favorite, &hasLocal, &hasRemote, &hasCache, &item.SeriesTitleID)
-	item.Rating = nullableFloat64(rating)
-	item.Sales = nullableInt64(sales)
-	item.RegularPrice = nullableInt64(regularPrice)
-	item.Price = nullableInt64(currentPrice)
+	item.Rating = sqlutil.Float64(rating)
+	item.Sales = sqlutil.Int64(sales)
+	item.RegularPrice = sqlutil.Int64(regularPrice)
+	item.Price = sqlutil.Int64(currentPrice)
 	if permanentlyFree.Valid {
 		item.PermanentlyFree = &permanentlyFree.Bool
 	}

@@ -349,7 +349,7 @@ func (s *Server) dispatchFilesystemTriggeredLocalScan(ctx context.Context, watch
 	})
 	if err != nil {
 		message := filesystemTriggerErrorPrefix + "could not queue local scan"
-		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", message, trigger.ID)
+		s.execBestEffort(ctx, "record filesystem trigger failure", "UPDATE workflow_trigger SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", message, trigger.ID)
 		return false, false, err
 	}
 	_, triggerErr := s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_run_at = ?, last_error_message = '', updated_at = CURRENT_TIMESTAMP WHERE id = ?", formatWorkflowTimestamp(observedAt), trigger.ID)

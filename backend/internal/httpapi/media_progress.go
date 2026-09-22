@@ -8,6 +8,8 @@ import (
 	"math"
 	"net/http"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 type mediaProgressDetail struct {
@@ -215,7 +217,7 @@ func (s *Server) progressTarget(ctx context.Context, mediaItemID int64, requeste
 	`, requestedLocationID, mediaItemID).Scan(&workID, &fileSourceID, &locationID, &locationType); err != nil {
 		return 0, nil, nil, "", err
 	}
-	return workID, nullableInt64(fileSourceID), nullableInt64(locationID), locationType.String, nil
+	return workID, sqlutil.Int64(fileSourceID), sqlutil.Int64(locationID), locationType.String, nil
 }
 
 func (s *Server) canonicalWorkID(ctx context.Context, workID int64) (int64, error) {
@@ -257,8 +259,8 @@ func (s *Server) loadMediaProgress(ctx context.Context, userID int64, mediaItemI
 	); err != nil {
 		return mediaProgressDetail{}, err
 	}
-	progress.DurationSeconds = nullableFloat64(durationSeconds)
-	progress.LastPlayedAt = nullableString(lastPlayedAt)
+	progress.DurationSeconds = sqlutil.Float64(durationSeconds)
+	progress.LastPlayedAt = sqlutil.String(lastPlayedAt)
 	return progress, nil
 }
 
@@ -298,16 +300,16 @@ func (s *Server) loadWorkPlaybackCursor(ctx context.Context, userID int64, workI
 		}
 		return nil, err
 	}
-	cursor.WorkID = nullableInt64(cursorWorkID)
-	cursor.MediaWorkID = nullableInt64(mediaWorkID)
-	cursor.MediaItemID = nullableInt64(mediaItemID)
-	cursor.FileSourceID = nullableInt64(fileSourceID)
-	cursor.LocationID = nullableInt64(locationID)
+	cursor.WorkID = sqlutil.Int64(cursorWorkID)
+	cursor.MediaWorkID = sqlutil.Int64(mediaWorkID)
+	cursor.MediaItemID = sqlutil.Int64(mediaItemID)
+	cursor.FileSourceID = sqlutil.Int64(fileSourceID)
+	cursor.LocationID = sqlutil.Int64(locationID)
 	cursor.LocationType = locationType.String
 	cursor.Title = title.String
 	cursor.PositionSeconds = position.Float64
-	cursor.DurationSeconds = nullableFloat64(duration)
-	cursor.LastPlayedAt = nullableString(lastPlayedAt)
+	cursor.DurationSeconds = sqlutil.Float64(duration)
+	cursor.LastPlayedAt = sqlutil.String(lastPlayedAt)
 	cursor.Completed = completed.Valid && completed.Bool
 	return &cursor, nil
 }
@@ -329,15 +331,8 @@ func nullableMediaProgress(position sql.NullFloat64, duration sql.NullFloat64, c
 	}
 	return &mediaProgressDetail{
 		PositionSeconds: position.Float64,
-		DurationSeconds: nullableFloat64(duration),
+		DurationSeconds: sqlutil.Float64(duration),
 		Completed:       completed.Valid && completed.Bool,
-		LastPlayedAt:    nullableString(lastPlayedAt),
+		LastPlayedAt:    sqlutil.String(lastPlayedAt),
 	}
-}
-
-func nullableFloat64(value sql.NullFloat64) *float64 {
-	if !value.Valid {
-		return nil
-	}
-	return &value.Float64
 }

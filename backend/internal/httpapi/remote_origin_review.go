@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -72,7 +73,7 @@ func (s *Server) pauseRemoteFetchForOriginReview(
 		LIMIT 1
 	`, runID, remoteOriginBlockedCandidateType, origin).Scan(&candidateID)
 	if errors.Is(err, sql.ErrNoRows) {
-		candidateID, err = insertAndID(ctx, tx, `
+		candidateID, err = sqlutil.InsertID(ctx, tx, `
 			INSERT INTO workflow_candidate (
 				workflow_run_id, workflow_node_run_id, candidate_type,
 				external_key, status, payload_json

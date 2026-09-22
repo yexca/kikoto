@@ -472,7 +472,7 @@ func (s *Server) dispatchDueSystemWorkflowTrigger(ctx context.Context, definitio
 func (s *Server) executeSystemWorkflowTrigger(ctx context.Context, definition workflowDefinitionRecord, trigger workflowTriggerRecord, triggerType, triggerReason string) error {
 	status, failures, runErr := s.dispatchSystemWorkflowTrigger(ctx, definition, trigger, triggerType, triggerReason)
 	if runErr != nil {
-		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", runErr.Error(), trigger.ID)
+		s.execBestEffort(ctx, "record workflow trigger failure", "UPDATE workflow_trigger SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", runErr.Error(), trigger.ID)
 		return runErr
 	}
 	if systemWorkflowTriggerIsAsync(definition.Code) {
