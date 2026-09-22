@@ -388,10 +388,7 @@ test("@desktop Metadata voice aliases view lists people and opens alias review",
 
   await page.goto("/metadata?view=aliases");
   const tabs = page.getByRole("tablist", { name: "Metadata views" });
-  await expect(tabs.getByRole("tab", { name: "Voice aliases", exact: true })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
+  await expect(tabs.getByRole("tab", { name: "Voice aliases", exact: true })).toHaveAttribute("aria-selected", "true");
   const region = page.getByRole("region", { name: "Voice actor aliases", exact: true });
   await expect(region.getByRole("link", { name: "Example Voice", exact: true })).toBeVisible();
   await expect(region.getByText("Voice alias", { exact: true })).toBeVisible();
