@@ -420,7 +420,7 @@ export const zhHantResource = {
         favoritesDescription: "瀏覽收藏的作品、社團、聲優和清單",
         circlesDescription: "瀏覽社團及其已知目錄",
         voiceActorsDescription: "瀏覽聲優及其參與的作品",
-        workflowsDescription: "執行內建操作並管理自訂自動化",
+        workflowsDescription: "執行內建操作和預製工作流程",
         activityDescription: "查看工作流程執行、失敗和待審核項目",
         settingsDescription: "管理帳戶、播放和推薦偏好",
         maintenanceDescription: "設定來源、快取和使用者",

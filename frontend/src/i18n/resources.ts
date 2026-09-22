@@ -266,7 +266,7 @@ export const englishResource = {
         favoritesDescription: "Browse your favorite works, circles, voices, and lists",
         circlesDescription: "Browse circles and their known catalogs",
         voiceActorsDescription: "Browse voices and their credited works",
-        workflowsDescription: "Run built-in operations and manage custom automations",
+        workflowsDescription: "Run built-in operations and preset workflows",
         activityDescription: "Inspect workflow runs, failures, and review items",
         settingsDescription: "Manage your account, playback, and recommendation preferences",
         maintenanceDescription: "Configure sources, caching, and users",

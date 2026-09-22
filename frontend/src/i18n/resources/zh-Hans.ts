@@ -418,7 +418,7 @@ export const zhHansResource = {
         favoritesDescription: "浏览收藏的作品、社团、声优和列表",
         circlesDescription: "浏览社团及其已知目录",
         voiceActorsDescription: "浏览声优及其参与的作品",
-        workflowsDescription: "运行内置操作并管理自定义自动化",
+        workflowsDescription: "运行内置操作和预制工作流",
         activityDescription: "查看工作流运行、失败和待审核项目",
         settingsDescription: "管理账户、播放和推荐偏好",
         maintenanceDescription: "配置来源、缓存和用户",

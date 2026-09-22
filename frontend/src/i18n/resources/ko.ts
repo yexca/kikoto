@@ -422,7 +422,7 @@ export const koreanResource = {
         favoritesDescription: "즐겨찾기 작품, 서클, 성우와 목록을 탐색합니다",
         circlesDescription: "서클과 알려진 카탈로그를 탐색합니다",
         voiceActorsDescription: "성우와 참여 작품을 탐색합니다",
-        workflowsDescription: "기본 작업을 실행하고 사용자 지정 자동화를 관리합니다",
+        workflowsDescription: "기본 작업과 프리셋 워크플로를 실행합니다",
         activityDescription: "워크플로 실행, 실패 및 검토 항목을 확인합니다",
         settingsDescription: "계정, 재생 및 추천 환경설정을 관리합니다",
         maintenanceDescription: "소스, 캐시와 사용자를 설정합니다",

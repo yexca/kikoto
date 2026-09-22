@@ -425,7 +425,7 @@ export const japaneseResource = {
         favoritesDescription: "お気に入りの作品、サークル、声優、リストを閲覧",
         circlesDescription: "サークルと既知のカタログを閲覧",
         voiceActorsDescription: "声優と参加作品を閲覧",
-        workflowsDescription: "組み込み操作を実行し、カスタム自動化を管理",
+        workflowsDescription: "組み込み操作とプリセットワークフローを実行",
         activityDescription: "ワークフローの実行、失敗、レビュー項目を確認",
         settingsDescription: "アカウント、再生、推薦の設定を管理",
         maintenanceDescription: "ソース、キャッシュ、ユーザーを設定",
