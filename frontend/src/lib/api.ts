@@ -114,6 +114,47 @@ export type RecommendationTelemetrySummary = {
   generatedAt: string;
 };
 
+export type FileSourceDetectResult = {
+  detected: boolean;
+  sourceType: string;
+  displayName: string;
+  baseUrl: string;
+  apiUrl: string;
+  tried: string[];
+};
+
+export type DatabaseCleanupTaskKey =
+  | "missing_folders"
+  | "missing_files"
+  | "empty_media_items"
+  | "missing_presence"
+  | "orphan_snapshots"
+  | "unused_tags"
+  | "expired_sessions"
+  | "dismissed_notifications"
+  | "old_runs"
+  | "old_recommendation_events"
+  | "stale_recommendation_generations";
+
+export type DatabaseMaintenanceOverview = {
+  scannedAt: string;
+  databaseBytes: number;
+  freeBytes: number;
+  walBytes: number;
+  dataRootAvailable: boolean;
+  tasks: Array<{ key: DatabaseCleanupTaskKey; count: number; available: boolean }>;
+};
+
+export type DatabaseCleanupResult = {
+  removed: number;
+  results: Array<{ key: DatabaseCleanupTaskKey; removed: number; skipped: boolean }>;
+};
+
+export type DatabaseOptimizeResult = {
+  beforeBytes: number;
+  afterBytes: number;
+};
+
 export type SourcePresenceItem = {
   type: string;
   availability: string;
@@ -2372,6 +2413,12 @@ export const api = {
   ) => patchJSONBody<FileSource>(`/api/file-sources/${id}`, payload),
   deleteFileSource: (id: number) => deleteJSON<{ ok: boolean }>(`/api/file-sources/${id}`),
   checkFileSourceHealth: (id: number) => postJSON<FileSourceHealthCheckResult>(`/api/file-sources/${id}/health-check`),
+  detectFileSource: (url: string, signal?: AbortSignal) =>
+    postJSONBody<FileSourceDetectResult>("/api/file-sources/detect", { url }, signal),
+  getDatabaseMaintenance: () => getJSON<DatabaseMaintenanceOverview>("/api/maintenance/database"),
+  cleanupDatabase: (tasks: DatabaseCleanupTaskKey[]) =>
+    postJSONBody<DatabaseCleanupResult>("/api/maintenance/database/cleanup", { tasks }),
+  optimizeDatabase: () => postJSONBody<DatabaseOptimizeResult>("/api/maintenance/database/optimize", {}),
   listWorkflowDefinitions: () => getJSON<WorkflowDefinition[]>("/api/workflow-definitions"),
   getAvailabilityWatch: () => getJSON<AvailabilityWatch>("/api/availability-watch"),
   updateAvailabilityWatch: (payload: {

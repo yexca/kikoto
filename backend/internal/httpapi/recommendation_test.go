@@ -319,6 +319,15 @@ func TestRecommendationTelemetryRejectsArbitraryFieldsAndAggregates(t *testing.T
 		t.Fatalf("invalid event status = %d, body = %s", invalidResponse.Code, invalidResponse.Body.String())
 	}
 
+	otherResult, err := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('telemetry-other', 'Other User', 'user')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherID, _ := otherResult.LastInsertId()
+	if _, err := db.Exec("INSERT INTO recommendation_event (user_id, work_id, event_type, score) VALUES (?, ?, 'impression', 90), (?, ?, 'play', 0)", otherID, workID, otherID, workID); err != nil {
+		t.Fatal(err)
+	}
+
 	telemetryRequest := httptest.NewRequest(http.MethodGet, "/api/recommendation-telemetry", nil)
 	telemetryRequest = telemetryRequest.WithContext(context.WithValue(telemetryRequest.Context(), currentUserKey, user))
 	telemetryResponse := httptest.NewRecorder()

@@ -1,4 +1,5 @@
 import { libraryHant, collectionHant, workCardHant } from "../resources";
+import { adminToolsHant } from "../surfaces/adminTools";
 import { surfaceHant } from "../surfaces/zh-Hant";
 
 export const zhHantResource = {
@@ -49,6 +50,7 @@ export const zhHantResource = {
       collection: collectionHant,
       workCard: workCardHant,
       ...surfaceHant,
+      ...adminToolsHant,
       appearance: {
         title: "外觀",
         subtitle: "介面語言、模式、樣式和色彩",

@@ -1,4 +1,5 @@
 import { libraryHans, collectionHans, workCardHans } from "../resources";
+import { adminToolsHans } from "../surfaces/adminTools";
 import { surfaceHans } from "../surfaces/zh-Hans";
 
 export const zhHansResource = {
@@ -49,6 +50,7 @@ export const zhHansResource = {
       collection: collectionHans,
       workCard: workCardHans,
       ...surfaceHans,
+      ...adminToolsHans,
       appearance: {
         title: "外观",
         subtitle: "界面语言、模式、样式和颜色",

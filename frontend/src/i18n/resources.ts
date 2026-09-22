@@ -1,4 +1,5 @@
 import { surfaceEnglish } from "./surfaces/en";
+import { adminToolsEnglish } from "./surfaces/adminTools";
 
 export const libraryEnglish = {
   workNotFound: "Work not found",
@@ -1205,6 +1206,7 @@ export const englishResource = {
       collection: collectionEnglish,
       workCard: workCardEnglish,
       ...surfaceEnglish,
+      ...adminToolsEnglish,
       appearance: {
         title: "Appearance",
         subtitle: "UI language, mode, style, and color",

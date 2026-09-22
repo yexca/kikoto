@@ -1,4 +1,5 @@
 import { libraryJapanese, collectionJapanese, workCardJapanese } from "../resources";
+import { adminToolsJapanese } from "../surfaces/adminTools";
 import { surfaceJapanese } from "../surfaces/ja";
 
 export const japaneseResource = {
@@ -49,6 +50,7 @@ export const japaneseResource = {
       collection: collectionJapanese,
       workCard: workCardJapanese,
       ...surfaceJapanese,
+      ...adminToolsJapanese,
       appearance: {
         title: "外観",
         subtitle: "UI 言語、モード、スタイル、カラー",

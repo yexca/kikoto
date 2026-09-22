@@ -36,6 +36,7 @@ async function mockCacheSettings(
   initialCacheEnabled = true,
 ) {
   const transcodeClearRequests: string[] = [];
+  const databaseCleanupRequests: unknown[] = [];
   let currentSettings = {
     anonymousAccessEnabled: false,
     localScanDepth: 3,
@@ -192,6 +193,27 @@ async function mockCacheSettings(
       await route.fulfill({ json: source });
       return;
     }
+    if (url.pathname === "/api/file-sources/detect" && route.request().method() === "POST") {
+      const { url: address } = route.request().postDataJSON() as { url: string };
+      const detected = address.includes("compatible");
+      await route.fulfill({
+        json: {
+          detected,
+          sourceType: "kikoeru_compatible",
+          displayName: "compatible.example.invalid",
+          baseUrl: "https://compatible.example.invalid",
+          apiUrl: detected ? "https://api.compatible.example.invalid" : "",
+          tried: ["https://compatible.example.invalid"],
+        },
+      });
+      return;
+    }
+    if (url.pathname === "/api/file-sources" && route.request().method() === "POST") {
+      const payload = route.request().postDataJSON() as Record<string, unknown>;
+      onSourceUpdate(payload);
+      await route.fulfill({ status: 201, json: { ...currentSettings.fileSources[1], ...payload, id: 9 } });
+      return;
+    }
     if (url.pathname === "/api/users") {
       await route.fulfill({
         json: [
@@ -260,58 +282,100 @@ async function mockCacheSettings(
       await route.fulfill({ json: { deletedFiles: 4, freedBytes: 25165824 } });
       return;
     }
+    if (url.pathname === "/api/maintenance/database" && route.request().method() === "GET") {
+      await route.fulfill({
+        json: {
+          scannedAt: "2026-07-14T00:00:00Z",
+          databaseBytes: 5767168,
+          freeBytes: 102400,
+          walBytes: 0,
+          dataRootAvailable: true,
+          tasks: [
+            { key: "missing_folders", count: 2, available: true },
+            { key: "missing_files", count: 12, available: true },
+            { key: "empty_media_items", count: 0, available: true },
+            { key: "missing_presence", count: 0, available: true },
+            { key: "orphan_snapshots", count: 0, available: true },
+            { key: "unused_tags", count: 0, available: true },
+            { key: "expired_sessions", count: 3, available: true },
+            { key: "dismissed_notifications", count: 0, available: true },
+            { key: "old_runs", count: 0, available: true },
+            { key: "old_recommendation_events", count: 0, available: true },
+            { key: "stale_recommendation_generations", count: 0, available: true },
+          ],
+        },
+      });
+      return;
+    }
+    if (url.pathname === "/api/maintenance/database/cleanup" && route.request().method() === "POST") {
+      databaseCleanupRequests.push(route.request().postDataJSON());
+      await route.fulfill({ json: { removed: 17, results: [] } });
+      return;
+    }
+    if (url.pathname === "/api/maintenance/works") {
+      await route.fulfill({ json: { works: [], page: 1, pageSize: 25, total: 4 } });
+      return;
+    }
     await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } });
   });
-  return { transcodeClearRequests };
+  return { transcodeClearRequests, databaseCleanupRequests };
 }
 
-test("@desktop cache settings scan managed media and require cleanup confirmation", async ({ page }) => {
+test("@desktop cache settings save transfer limits and link to the Cleanup page", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  const cleanupRequests: unknown[] = [];
   const settingsPayloads: Record<string, unknown>[] = [];
-  const mocks = await mockCacheSettings(
+  await mockCacheSettings(
     page,
-    (payload) => {
-      cleanupRequests.push(payload);
-    },
+    () => undefined,
     (payload) => {
       settingsPayloads.push(payload);
     },
   );
   await page.goto("/settings?tab=cache");
 
-  await expect(page.getByText("Managed media cache", { exact: true })).toBeVisible();
-  await expect(page.getByTestId("maintenance-content")).toHaveCSS("max-width", "896px");
-  await expect(page.getByTestId("cache-configuration-card")).toHaveCSS("max-width", "none");
-  const cacheSections = await page
-    .getByTestId("maintenance-content")
-    .getByText(/^(Configuration|Transcode cache|Managed media cache)$/)
-    .allTextContents();
-  expect(cacheSections).toEqual(["Configuration", "Transcode cache", "Managed media cache"]);
+  await expect(page.getByText("Managed media cache", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Save path template", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Per-file download limit")).toHaveValue("100");
   await expect(page.getByLabel("Failed staging retention")).toHaveValue("7");
   await expect(page.getByLabel("Transcode cache limit")).toHaveValue("5");
-  await page.getByRole("button", { name: "Save configuration" }).click();
+  const save = page.getByRole("button", { name: "Save configuration" });
+  await expect(save).toBeDisabled();
+  await page.getByLabel("Transcode cache limit").fill("6");
+  await save.click();
   await expect.poll(() => settingsPayloads).toHaveLength(1);
   expect(settingsPayloads[0]).not.toHaveProperty("remoteSaveTemplate");
   expect(settingsPayloads[0]).toEqual(
     expect.objectContaining({
-      transcodeCacheLimitGb: 5,
+      transcodeCacheLimitGb: 6,
       remoteDownloadLimitGb: 100,
       fetchStagingRetentionDays: 7,
     }),
   );
-  await expect(page.getByText("24 MB", { exact: true })).toBeVisible();
+  await page.getByTestId("cache-configuration-card").getByRole("button", { name: "Cleanup", exact: true }).click();
+  await expect(page).toHaveURL(/\/settings\?tab=cleanup$/);
+  await expect(page.getByRole("tab", { name: "Cleanup", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("region", { name: "Transcode cache" })).toBeVisible();
+});
+
+test("@desktop cleanup page scans managed media and requires cleanup confirmation", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const cleanupRequests: unknown[] = [];
+  const mocks = await mockCacheSettings(page, (payload) => {
+    cleanupRequests.push(payload);
+  });
+  await page.goto("/settings?tab=cleanup");
+
   const transcodeCache = page.getByRole("region", { name: "Transcode cache" });
-  await expect(transcodeCache.getByText("5.0 GB", { exact: true })).toHaveCount(2);
+  await expect(transcodeCache.getByText("24 MB", { exact: true })).toBeVisible();
+  await expect(transcodeCache.getByText("of 5.0 GB", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Clear transcode cache", exact: true }).click();
   expect(mocks.transcodeClearRequests).toHaveLength(0);
   await page.getByRole("button", { name: "Confirm clear (4 files)", exact: true }).click();
   await expect.poll(() => mocks.transcodeClearRequests).toEqual(["/api/cache/transcodes"]);
   await expect(page.getByText("Removed 4 files and freed 24 MB.", { exact: true })).toBeVisible();
-  await expect(page.getByText("150 MB", { exact: true })).toBeVisible();
-  await expect(page.getByText("30 MB", { exact: true })).toBeVisible();
+  const managedCache = page.getByRole("region", { name: "Managed media cache" });
+  await expect(managedCache.getByText("150 MB", { exact: true })).toBeVisible();
+  await expect(managedCache.getByText("30 MB", { exact: true })).toBeVisible();
   await expect(page.getByText("1 groups · 1 works", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Expand Example Remote cache group" })).toBeVisible();
   await expect(page.getByText("RJ00000001", { exact: true })).toBeHidden();
@@ -329,6 +393,23 @@ test("@desktop cache settings scan managed media and require cleanup confirmatio
   await expect.poll(() => cleanupRequests).toHaveLength(1);
   expect(cleanupRequests[0]).toEqual({ mode: "orphans", groupKeys: ["1:remote-a:RJ00000001"] });
   await expect(page.getByText("Cleanup queued in workflow run #52 (4 items).", { exact: true })).toBeVisible();
+});
+
+test("cleanup page removes only the selected database records after confirmation", async ({ page }) => {
+  const mocks = await mockCacheSettings(page, () => undefined);
+  await page.goto("/settings?tab=cleanup");
+
+  const database = page.getByRole("region", { name: "Database records" });
+  await expect(database.getByRole("checkbox", { name: "Unused tags", exact: true })).toBeDisabled();
+  await database.getByRole("checkbox", { name: "Missing work folders", exact: true }).click();
+  await database.getByRole("checkbox", { name: "Expired sign-in sessions", exact: true }).click();
+  await expect(database.getByText("2 selected · 5 records", { exact: true })).toBeVisible();
+  await database.getByRole("button", { name: "Clean selected", exact: true }).click();
+  const dialog = page.getByRole("alertdialog", { name: "Clean database records?" });
+  expect(mocks.databaseCleanupRequests).toHaveLength(0);
+  await dialog.getByRole("button", { name: "Remove 5 records", exact: true }).click();
+  await expect.poll(() => mocks.databaseCleanupRequests).toEqual([{ tasks: ["missing_folders", "expired_sessions"] }]);
+  await expect(page.getByText("Removed 17 records.", { exact: true })).toBeVisible();
 });
 
 test("enabling global playback cache explains tracked synchronization before changing settings", async ({ page }) => {
@@ -370,12 +451,12 @@ test("enabling global playback cache explains tracked synchronization before cha
   expect(settingsPayloads[0]).toEqual(expect.objectContaining({ cacheEnabled: true }));
 });
 
-test("cache settings can clear referenced cache for selected works", async ({ page }) => {
+test("cleanup page can clear referenced cache for selected works", async ({ page }) => {
   const cleanupRequests: unknown[] = [];
   await mockCacheSettings(page, (payload) => {
     cleanupRequests.push(payload);
   });
-  await page.goto("/settings?tab=cache");
+  await page.goto("/settings?tab=cleanup");
   await page.getByRole("button", { name: "Work cache", exact: true }).click();
   await page.getByRole("checkbox", { name: "Select all cache in Example Remote" }).click();
   await page.getByRole("button", { name: "Clean selected works" }).click();
@@ -464,15 +545,12 @@ test("development super administrator can configure production anonymous access"
   await expect(page.getByRole("tab", { name: "Users", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("searchbox", { name: "Search users" })).toBeVisible();
   const accessSwitch = page.getByRole("switch", { name: "Anonymous access", exact: true });
-  const accessRow = page
-    .getByText("Library browsing and playback without an account", { exact: true })
-    .locator("xpath=../..");
-  const saveAccessPolicy = page.getByRole("button", { name: "Save access policy", exact: true });
-  const accessRowBox = await accessRow.boundingBox();
-  const saveAccessPolicyBox = await saveAccessPolicy.boundingBox();
-  expect(accessRowBox).not.toBeNull();
-  expect(saveAccessPolicyBox).not.toBeNull();
-  expect(Math.abs(saveAccessPolicyBox!.x - accessRowBox!.x)).toBeLessThanOrEqual(1);
+  const accessSection = page.getByRole("region", { name: "Instance access" });
+  await expect(
+    accessSection.getByText("Library browsing and playback without an account", { exact: true }),
+  ).toBeVisible();
+  const saveAccessPolicy = accessSection.getByRole("button", { name: "Save access policy", exact: true });
+  await expect(saveAccessPolicy).toBeDisabled();
   await expect(accessSwitch).toHaveAttribute("aria-checked", "false");
   await accessSwitch.click();
   await saveAccessPolicy.click();
@@ -569,7 +647,7 @@ for (const layout of ["mobile", "@desktop"]) {
       "aria-selected",
       "true",
     );
-    await expect(navigation.getByRole("tab")).toHaveCount(6);
+    await expect(navigation.getByRole("tab")).toHaveCount(7);
     const rows = await navigation
       .getByRole("tab")
       .evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().top));
@@ -632,7 +710,7 @@ test("maintenance combines library sources and exposes read-only paths with heal
   await expect(page.getByRole("tab", { name: "Cache & Fetch", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Check health", exact: true }).click();
   await expect.poll(() => healthChecks).toBe(1);
-  await expect(page.getByText("healthy", { exact: true })).toBeVisible();
+  await expect(page.getByText("Healthy", { exact: true })).toBeVisible();
   await expect(page.getByRole("switch", { name: "Cache Example Remote", exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Configure", exact: true }).click();
@@ -641,13 +719,15 @@ test("maintenance combines library sources and exposes read-only paths with heal
   await expect(sourceDialog.getByText("Cache GB", { exact: true })).toHaveCount(0);
   await expect(sourceDialog.getByRole("switch", { name: "Cache this source", exact: true })).toHaveCount(0);
   await expect(sourceDialog.getByText("Save path template", { exact: true })).toHaveCount(0);
+  await expect(sourceDialog.getByRole("switch", { name: "Restrict outbound hosts" })).toBeHidden();
+  await sourceDialog.getByText("Network and storage", { exact: true }).click();
   await expect(sourceDialog.getByRole("switch", { name: "Restrict outbound hosts" })).toHaveAttribute(
     "aria-checked",
     "false",
   );
   await expect(sourceDialog.getByLabel("Additional allowed hosts")).toHaveCount(0);
   await sourceDialog.getByRole("switch", { name: "Restrict outbound hosts" }).click();
-  await expect(sourceDialog.getByText("https://api.remote.example", { exact: true })).toBeVisible();
+  await expect(sourceDialog.getByText("https://api.remote.example", { exact: true }).last()).toBeVisible();
   await expect(sourceDialog.getByText("https://remote.example", { exact: true })).toBeVisible();
   await sourceDialog.getByLabel("Additional allowed hosts").fill("cdn.example.invalid\n*.media.example.invalid");
   await sourceDialog.getByRole("button", { name: "Save", exact: true }).click();
@@ -666,10 +746,53 @@ test("maintenance combines library sources and exposes read-only paths with heal
   await expect(deleteDialog).toBeHidden();
 
   await expect(page.getByRole("button", { name: "Paths", exact: true })).toHaveCount(0);
-  await expect(page.getByText("Storage paths", { exact: true })).toBeVisible();
+  await page.getByText("Storage paths", { exact: true }).click();
   await expect(page.getByLabel("Remote save path preview")).toHaveValue("/data/source/RJ_000/RJ00000000");
-  await expect(page.getByLabel("Example Remote")).toHaveValue("/data/example-remote/RJ00000000");
+  await expect(page.getByLabel("Example Remote", { exact: true })).toHaveValue("/data/example-remote/RJ00000000");
   await expect(page.getByRole("button", { name: /Save.*path/i })).toHaveCount(0);
+});
+
+test("remote sources toggle in place and new sources start from address detection", async ({ page }) => {
+  const sourceWrites: Record<string, unknown>[] = [];
+  await mockCacheSettings(
+    page,
+    () => undefined,
+    () => undefined,
+    () => undefined,
+    (payload) => sourceWrites.push(payload),
+  );
+  await page.goto("/settings?tab=library");
+
+  const toggle = page.getByRole("switch", { name: "Enable Example Remote", exact: true });
+  const wasEnabled = (await toggle.getAttribute("aria-checked")) === "true";
+  await toggle.click();
+  await expect.poll(() => sourceWrites.length).toBe(1);
+  expect(sourceWrites[0]).toEqual(expect.objectContaining({ displayName: "Example Remote", enabled: !wasEnabled }));
+
+  await page.getByRole("button", { name: "Add source", exact: true }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Add remote source" });
+  await expect(dialog.getByLabel("Name")).toHaveCount(0);
+  await dialog.getByLabel("Address").fill("unknown.example.invalid");
+  await dialog.getByRole("button", { name: "Detect", exact: true }).click();
+  await expect(dialog.getByText("No API was detected automatically", { exact: true })).toBeVisible();
+  await expect(dialog.getByLabel("API URL")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Add source", exact: true })).toBeDisabled();
+
+  await dialog.getByLabel("Address").fill("compatible.example.invalid");
+  await dialog.getByRole("button", { name: "Detect", exact: true }).click();
+  await expect(dialog.getByText("Compatible API found", { exact: true })).toBeVisible();
+  await expect(dialog.getByLabel("Name")).toHaveValue("compatible.example.invalid");
+  await dialog.getByRole("button", { name: "Add source", exact: true }).click();
+  await expect.poll(() => sourceWrites.length).toBe(2);
+  expect(sourceWrites[1]).toEqual(
+    expect.objectContaining({
+      displayName: "compatible.example.invalid",
+      endpoint: expect.objectContaining({
+        apiUrl: "https://api.compatible.example.invalid",
+        baseUrl: "https://compatible.example.invalid",
+      }),
+    }),
+  );
 });
 
 test("remote source deep links open the requested source configuration", async ({ page }) => {

@@ -185,17 +185,21 @@ func insertRecommendationEvents(ctx context.Context, tx *sql.Tx, userID int64, e
 	return nil
 }
 
+// getRecommendationTelemetry summarizes only the signed-in user's own
+// recommendation events, matching the per-user recommendation model.
 func (s *Server) getRecommendationTelemetry(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "login required"})
 		return
 	}
 	const windowDays = 30
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT event_type, COUNT(*)
 		FROM recommendation_event
-		WHERE created_at >= datetime('now', '-30 days')
+		WHERE user_id = ? AND created_at >= datetime('now', '-30 days')
 		GROUP BY event_type
-	`)
+	`, user.ID)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -220,9 +224,9 @@ func (s *Server) getRecommendationTelemetry(w http.ResponseWriter, r *http.Reque
 	bucketRows, err := s.db.QueryContext(r.Context(), `
 		SELECT CASE WHEN score < 20 THEN '0-19' WHEN score < 40 THEN '20-39' WHEN score < 60 THEN '40-59' WHEN score < 80 THEN '60-79' ELSE '80-100' END, COUNT(*)
 		FROM recommendation_event
-		WHERE event_type = 'impression' AND created_at >= datetime('now', '-30 days')
+		WHERE user_id = ? AND event_type = 'impression' AND created_at >= datetime('now', '-30 days')
 		GROUP BY 1 ORDER BY 1
-	`)
+	`, user.ID)
 	if err != nil {
 		writeError(w, err)
 		return

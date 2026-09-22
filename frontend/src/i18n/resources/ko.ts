@@ -1,4 +1,5 @@
 import { libraryKorean, collectionKorean, workCardKorean } from "../resources";
+import { adminToolsKorean } from "../surfaces/adminTools";
 import { surfaceKorean } from "../surfaces/ko";
 
 export const koreanResource = {
@@ -49,6 +50,7 @@ export const koreanResource = {
       collection: collectionKorean,
       workCard: workCardKorean,
       ...surfaceKorean,
+      ...adminToolsKorean,
       appearance: {
         title: "외관",
         subtitle: "UI 언어, 모드, 스타일 및 색상",

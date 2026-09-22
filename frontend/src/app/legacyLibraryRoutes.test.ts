@@ -51,6 +51,7 @@ describe("legacyLibraryRedirect", () => {
   it("redirects bare legacy administration routes", () => {
     expect(legacyLibraryRedirect("/maintenance")).toBe("/settings?tab=library");
     expect(legacyLibraryRedirect("/users")).toBe("/settings?tab=users");
+    expect(legacyLibraryRedirect("/cleanup")).toBe("/settings?tab=cleanup");
   });
 
   it("preserves metadata run filters and maps legacy settings links", () => {

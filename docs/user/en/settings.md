@@ -34,7 +34,7 @@ anonymous principal when anonymous access is enabled.
 
 ## Personal Playback And Recommendations
 
-Settings uses Account, Playback, and Recommendation tabs. Playback contains local seek intervals and **Folder preference**: ordered folder matching and exclusion rules. Recommendation contains presets, badge threshold, variation, discovery boost, and advanced scoring. These two migrated preferences are stored per authenticated account on the server; changing them never changes another account. An account without overrides and anonymous browsing retain the existing instance defaults. Old Maintenance Routing and Recommendation links open the corresponding Settings tab.
+Settings uses Account, Playback, and Recommendation tabs. Playback contains local seek intervals and **Folder preference**: ordered folder matching and exclusion rules. Recommendation contains presets, badge threshold, variation, discovery boost, and advanced scoring, plus a collapsed **Your recommendation activity** summary of the signed-in user's own impressions, opens, plays, marks, and score distribution over the last 30 days. These two migrated preferences are stored per authenticated account on the server; changing them never changes another account. An account without overrides and anonymous browsing retain the existing instance defaults. Old Maintenance Routing and Recommendation links open the corresponding Settings tab.
 
 Saving recommendation settings creates a new recommendation session for the current tab. Other open tabs keep their existing snapshots until a new session is created. Saving folder preferences updates subsequent directory selection without stopping the player. Failed saves retain the draft and the previous persisted values. Demo mode keeps these server-backed preferences read-only.
 
@@ -47,37 +47,64 @@ Maintenance uses one horizontal row of tabs, scrolling horizontally on narrow sc
 - Maintenance opens with a concise administration description instead of
   repeating editable configuration values as summary statistics. Detail tabs
   retain only operational metrics such as source health, recommendation
-  telemetry, and managed-cache usage.
+  and quick enable state.
 - Library combines local scan settings, configured remote sources, and read-only storage paths.
 - Instance access settings appear under Users for super administrators in production and development.
   Anonymous Library browsing and playback default to disabled; changing the
   switch applies to the production access boundary and creates an audit entry.
   Development still authenticates every request as root, so the setting remains
   visible and editable there without creating an anonymous development session.
-- Each enabled remote source has an explicit health-check action. The result is
-  persisted through the same source health state used by automatic probes.
+- Remote sources are a compact list: health, host, a health-check action, and an
+  enable switch that saves immediately. Health-check results are persisted
+  through the same source health state used by automatic probes.
+- **Add source** starts from one address. Kikoto probes the address as entered,
+  its origin, and the conventional `api.` sibling for a Kikoeru-compatible works
+  API, then fills the API URL, public site, and name. When nothing is detected,
+  **Connection details** opens for manual entry. Endpoint fields, priority, and
+  network/storage options stay in collapsed groups.
 - Remote sources default to compatible public storage hosts. Source
   configuration can enable **Restrict outbound hosts** to allow only the API,
   Public site, Fallback, and an editable list of exact or `*.example.invalid`
   public host patterns.
-- Maintenance contains Library, Cache & Fetch, and Users. Library includes a collapsed, administrator-only recommendation telemetry section.
-- Cache & Fetch presents editable policy first, followed by managed-media usage
-  and cleanup controls. Its configuration is a vertical list; resolved save
-  paths are read-only previews in Library.
+- Maintenance contains Library, Cache & Fetch, Cleanup, and Users.
+- Cache & Fetch contains configuration only: playback cache policy, transfer
+  safety, and collapsed download pacing, with one save action that is enabled
+  after a change. Cache contents are managed in the Cleanup tab.
 - Cache & Fetch includes the per-file remote media limit and the retention age
   for unpublished staging from failed or cancelled Fetch runs. The defaults are
   100 GB per media file and seven days of staging retention.
 - Cache & Fetch exposes an independent transcode cache limit from 1 to
-  4096 GB. It defaults to 5 GB, reports prepared audio and HLS segment usage and
-  available quota, and provides a confirmed clear action. This rebuildable cache lives
-  under `/cache/transcodes` and does not change the managed remote-media cache
-  limit.
-- Managed media cache cleanup is grouped by source scope. Groups can be
-  collapsed and selected as a unit while the bounded list scrolls independently
-  for large libraries. Cleanup remains a two-step destructive action.
-- Storage paths in Library are read-only and show the resolved data root, cache root, default
+  4096 GB. It defaults to 5 GB. This rebuildable cache lives under
+  `/cache/transcodes` and does not change the managed remote-media cache limit.
+- Storage paths in Library are collapsed by default, read-only, and show the resolved data root, cache root, default
   cache/save previews, and per-source save previews. Remote Source configuration
   shows the same resolved example instead of exposing a path-template editor.
+
+## Cleanup
+
+**Cleanup** is an administrator tab in Settings, after Cache & Fetch
+(`/settings?tab=cleanup`). Cache sections need `downloads:manage` and database
+sections need `sources:write`.
+
+- **Transcode cache** shows usage against its limit and offers a confirmed clear
+  action.
+- **Managed media cache** reports on-disk, referenced, eligible, and protected
+  files, and cleans orphan or per-work cache grouped by source. Cleanup remains a
+  two-step destructive action queued as a workflow run.
+- **Database records** lists record types that can be removed, each with a
+  current count: missing work folders and local files confirmed absent on disk
+  (with the empty track entries and local availability they leave behind),
+  orphaned metadata snapshots, unused source tags, expired sessions, dismissed
+  notifications, finished workflow runs older than 90 days, recommendation
+  signals older than 90 days, and unused recommendation snapshots. Personal
+  tags, runs with reviews, Fetch records, or metadata issues, and the latest run
+  of each workflow are kept. Selected tasks are removed after confirmation and
+  recorded in the audit log; media files are never deleted.
+- Path checks pause when the data folder is missing or empty, so an unmounted
+  library is never treated as deleted.
+- **Works without any source** links to Metadata's **No available source** view
+  for review and deletion.
+- **Compact database** rewrites the SQLite file to return free pages to disk.
 
 ## Metadata
 

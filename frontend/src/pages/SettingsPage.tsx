@@ -1,7 +1,10 @@
-import { UserPreferencePanels } from "@/features/preferences";
+import { RecommendationActivity, UserPreferencePanels } from "@/features/preferences";
+import { SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
+import { Badge } from "@/components/ui/badge";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import {
   Download,
+  Eraser,
   FastForward,
   Folder,
   KeyRound,
@@ -16,12 +19,12 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { Input } from "@/components/ui/input";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { api, type CurrentUser } from "@/lib/api";
 import { validatePasswordChange, type PasswordChangeDraft } from "@/pages/accountSettings";
+import { CleanupPage } from "@/pages/CleanupPage";
 import { MaintenancePage } from "@/pages/MaintenancePage";
 import {
   getStoredPlaybackSeekPreferences,
@@ -40,7 +43,19 @@ const emptyPasswordDraft: PasswordChangeDraft = {
   confirmPassword: "",
 };
 
-type SettingsTab = "account" | "playback" | "recommendation" | "library" | "cache" | "users";
+type SettingsTab = "account" | "playback" | "recommendation" | "library" | "cache" | "cleanup" | "users";
+
+const adminSettingsTabs: SettingsTab[] = ["library", "cache", "cleanup", "users"];
+
+const settingsTabs: Array<{ id: SettingsTab; labelKey: string; icon: ReactNode }> = [
+  { id: "account", labelKey: "settings.account", icon: <UserRound className="h-4 w-4" /> },
+  { id: "playback", labelKey: "settings.playback", icon: <FastForward className="h-4 w-4" /> },
+  { id: "recommendation", labelKey: "maintenance.tabs.recommendation", icon: <Sparkles className="h-4 w-4" /> },
+  { id: "library", labelKey: "maintenance.tabs.library", icon: <Folder className="h-4 w-4" /> },
+  { id: "cache", labelKey: "maintenance.tabs.cache", icon: <Download className="h-4 w-4" /> },
+  { id: "cleanup", labelKey: "cleanup.tab", icon: <Eraser className="h-4 w-4" /> },
+  { id: "users", labelKey: "maintenance.tabs.users", icon: <Shield className="h-4 w-4" /> },
+];
 
 export function SettingsPage({
   user,
@@ -74,6 +89,8 @@ export function SettingsPage({
   const canManageSources = isAdmin && (readOnly || isSystemAdmin || user.permissions.includes("sources:write"));
   const canManageUsers = isAdmin && (readOnly || isSystemAdmin || user.permissions.includes("users:manage"));
   const canManageAccessPolicy = user.role === "super_admin" && !readOnly;
+  const canManageCleanup =
+    isAdmin && (readOnly || isSystemAdmin || user.permissions.includes("downloads:manage") || canManageSources);
 
   useEffect(() => {
     const syncTabFromLocation = () => {
@@ -88,7 +105,7 @@ export function SettingsPage({
   }, []);
 
   useEffect(() => {
-    if (isAdmin || !["library", "cache", "users"].includes(activeTab)) return;
+    if (isAdmin || !adminSettingsTabs.includes(activeTab)) return;
     setActiveTab("account");
     const url = new URL(window.location.href);
     url.searchParams.delete("tab");
@@ -222,7 +239,7 @@ export function SettingsPage({
   const passwordManagedByEnvironment = user.passwordManagedBy === "environment";
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {readOnly && (
         <div
           className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-muted-foreground"
@@ -232,159 +249,99 @@ export function SettingsPage({
         </div>
       )}
       <div className={segmentedListClassName()} role="tablist" aria-label={t("nav.settings")}>
-        <SettingsTabButton
-          tab="account"
-          active={activeTab === "account"}
-          icon={<UserRound className="h-4 w-4" />}
-          onClick={() => selectTab("account")}
-        >
-          {t("settings.account")}
-        </SettingsTabButton>
-        <SettingsTabButton
-          tab="playback"
-          active={activeTab === "playback"}
-          icon={<FastForward className="h-4 w-4" />}
-          onClick={() => selectTab("playback")}
-        >
-          {t("settings.playback")}
-        </SettingsTabButton>
-        <SettingsTabButton
-          tab="recommendation"
-          active={activeTab === "recommendation"}
-          icon={<Sparkles className="h-4 w-4" />}
-          onClick={() => selectTab("recommendation")}
-        >
-          {t("maintenance.tabs.recommendation")}
-        </SettingsTabButton>
-        {isAdmin && (
-          <>
+        {settingsTabs
+          .filter((tab) => isAdmin || !adminSettingsTabs.includes(tab.id))
+          .map((tab) => (
             <SettingsTabButton
-              tab="library"
-              active={activeTab === "library"}
-              icon={<Folder className="h-4 w-4" />}
-              onClick={() => selectTab("library")}
+              key={tab.id}
+              tab={tab.id}
+              active={activeTab === tab.id}
+              icon={tab.icon}
+              onClick={() => selectTab(tab.id)}
             >
-              {t("maintenance.tabs.library")}
+              {t(tab.labelKey)}
             </SettingsTabButton>
-            <SettingsTabButton
-              tab="cache"
-              active={activeTab === "cache"}
-              icon={<Download className="h-4 w-4" />}
-              onClick={() => selectTab("cache")}
-            >
-              {t("maintenance.tabs.cache")}
-            </SettingsTabButton>
-            <SettingsTabButton
-              tab="users"
-              active={activeTab === "users"}
-              icon={<Shield className="h-4 w-4" />}
-              onClick={() => selectTab("users")}
-            >
-              {t("maintenance.tabs.users")}
-            </SettingsTabButton>
-          </>
-        )}
+          ))}
       </div>
 
       {activeTab === "account" && (
         <div
           id="settings-panel-account"
-          className="grid w-full max-w-4xl gap-4 lg:grid-cols-2"
+          className="w-full max-w-3xl space-y-6"
           role="tabpanel"
           aria-labelledby="settings-tab-account"
         >
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <UserRound className="h-4 w-4" />
-                {t("settings.account")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form className="space-y-4" onSubmit={saveProfile}>
-                <label className="block space-y-1 text-sm" htmlFor="account-display-name">
-                  <span className="font-medium">{t("settings.displayName")}</span>
-                  <Input
-                    id="account-display-name"
-                    className="w-full"
-                    value={displayName}
-                    autoComplete="name"
-                    disabled={readOnly || isProfileSaving}
-                    onChange={(event) => setDisplayName(event.target.value)}
-                  />
-                </label>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                  <ReadonlyField label={t("settings.username")} value={user.username} />
-                  <ReadonlyField
-                    label={t("settings.role")}
-                    value={t(`account.roles.${user.role}`, { defaultValue: user.role.replace("_", " ") })}
-                  />
-                </div>
-                <div className="flex justify-end">
-                  <Button
-                    type="submit"
-                    disabled={readOnly || isProfileSaving || normalizedDisplayName === savedDisplayName}
-                  >
-                    {isProfileSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    {t("settings.saveProfile")}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <KeyRound className="h-4 w-4" />
-                {t("settings.password")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {passwordManagedByEnvironment ? (
-                <div className="rounded-md border bg-muted/35 px-3 py-3 text-sm text-muted-foreground" role="status">
-                  <Trans
-                    i18nKey="settings.rootPasswordManaged"
-                    components={{
-                      env: <code className="font-mono text-foreground" />,
-                      file: <code className="font-mono text-foreground" />,
-                    }}
-                  />
-                </div>
-              ) : (
-                <form className="space-y-3" onSubmit={changePassword}>
-                  <PasswordField
-                    id="current-password"
-                    label={t("settings.currentPassword")}
-                    value={passwordDraft.currentPassword}
-                    autoComplete="current-password"
-                    disabled={readOnly || isPasswordSaving}
-                    onChange={(value) => updatePassword("currentPassword", value)}
-                  />
-                  <PasswordField
-                    id="new-password"
-                    label={t("settings.newPassword")}
-                    value={passwordDraft.newPassword}
-                    autoComplete="new-password"
-                    disabled={readOnly || isPasswordSaving}
-                    onChange={(value) => updatePassword("newPassword", value)}
-                  />
-                  <PasswordField
-                    id="confirm-password"
-                    label={t("settings.confirmNewPassword")}
-                    value={passwordDraft.confirmPassword}
-                    autoComplete="new-password"
-                    disabled={readOnly || isPasswordSaving}
-                    onChange={(value) => updatePassword("confirmPassword", value)}
-                  />
-                  <div
-                    className="min-h-5 text-sm text-destructive"
-                    id="password-error"
-                    role={passwordError ? "alert" : undefined}
-                  >
-                    {passwordError}
-                  </div>
-                  <div className="flex justify-end">
-                    <Button type="submit" disabled={readOnly || isPasswordSaving}>
+          <div className="flex items-center gap-4 px-1">
+            <span
+              className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-primary/15 text-xl font-semibold text-primary"
+              aria-hidden="true"
+            >
+              {avatarInitial(savedDisplayName)}
+            </span>
+            <div className="min-w-0">
+              <div className="truncate text-lg font-semibold">{savedDisplayName}</div>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                <span className="truncate">@{user.username}</span>
+                <Badge variant="outline">
+                  {t(`account.roles.${user.role}`, { defaultValue: user.role.replace("_", " ") })}
+                </Badge>
+              </div>
+            </div>
+          </div>
+          <form onSubmit={saveProfile}>
+            <SettingsSection
+              title={t("settings.account")}
+              icon={<UserRound />}
+              footer={
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={readOnly || isProfileSaving || normalizedDisplayName === savedDisplayName}
+                >
+                  {isProfileSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {t("settings.saveProfile")}
+                </Button>
+              }
+            >
+              <SettingsRow title={t("settings.displayName")} htmlFor="account-display-name">
+                <Input
+                  id="account-display-name"
+                  className="w-full sm:w-64"
+                  value={displayName}
+                  autoComplete="name"
+                  disabled={readOnly || isProfileSaving}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                />
+              </SettingsRow>
+            </SettingsSection>
+          </form>
+          {passwordManagedByEnvironment ? (
+            <SettingsSection title={t("settings.password")} icon={<KeyRound />}>
+              <div className="px-4 py-3 text-sm text-muted-foreground" role="status">
+                <Trans
+                  i18nKey="settings.rootPasswordManaged"
+                  components={{
+                    env: <code className="font-mono text-foreground" />,
+                    file: <code className="font-mono text-foreground" />,
+                  }}
+                />
+              </div>
+            </SettingsSection>
+          ) : (
+            <form onSubmit={changePassword}>
+              <SettingsSection
+                title={t("settings.password")}
+                icon={<KeyRound />}
+                footer={
+                  <>
+                    <span
+                      className="mr-auto min-h-5 text-sm text-destructive"
+                      id="password-error"
+                      role={passwordError ? "alert" : undefined}
+                    >
+                      {passwordError}
+                    </span>
+                    <Button type="submit" size="sm" disabled={readOnly || isPasswordSaving}>
                       {isPasswordSaving ? (
                         <LoaderCircle className="h-4 w-4 animate-spin" />
                       ) : (
@@ -392,94 +349,63 @@ export function SettingsPage({
                       )}
                       {t("settings.changePassword")}
                     </Button>
-                  </div>
-                </form>
-              )}
-            </CardContent>
-          </Card>
+                  </>
+                }
+              >
+                <PasswordField
+                  id="current-password"
+                  label={t("settings.currentPassword")}
+                  value={passwordDraft.currentPassword}
+                  autoComplete="current-password"
+                  disabled={readOnly || isPasswordSaving}
+                  onChange={(value) => updatePassword("currentPassword", value)}
+                />
+                <PasswordField
+                  id="new-password"
+                  label={t("settings.newPassword")}
+                  value={passwordDraft.newPassword}
+                  autoComplete="new-password"
+                  disabled={readOnly || isPasswordSaving}
+                  onChange={(value) => updatePassword("newPassword", value)}
+                />
+                <PasswordField
+                  id="confirm-password"
+                  label={t("settings.confirmNewPassword")}
+                  value={passwordDraft.confirmPassword}
+                  autoComplete="new-password"
+                  disabled={readOnly || isPasswordSaving}
+                  onChange={(value) => updatePassword("confirmPassword", value)}
+                />
+              </SettingsSection>
+            </form>
+          )}
         </div>
       )}
 
       {activeTab === "playback" && (
         <div
-          className="w-full max-w-4xl space-y-4"
+          className="w-full max-w-3xl space-y-6"
           role="tabpanel"
           id="settings-panel-playback"
           aria-labelledby="settings-tab-playback"
         >
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <FastForward className="h-4 w-4" />
-                {t("settings.playback")}
-              </CardTitle>
-              <p className="text-sm text-muted-foreground">{t("settings.playbackDescription")}</p>
-            </CardHeader>
-            <CardContent>
-              <form className="space-y-4" onSubmit={saveSeekPreferences}>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block space-y-1 text-sm" htmlFor="seek-forward-seconds">
-                    <span className="flex items-center gap-2 font-medium">
-                      <FastForward className="h-4 w-4 text-muted-foreground" />
-                      {t("settings.seekForward")}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="seek-forward-seconds"
-                        className="w-full"
-                        type="number"
-                        min={SEEK_SECONDS_MIN}
-                        max={SEEK_SECONDS_MAX}
-                        step={1}
-                        inputMode="numeric"
-                        value={seekDraft.forward}
-                        onChange={(event) => {
-                          setSeekDraft((current) => ({ ...current, forward: event.target.value }));
-                          setSeekError(null);
-                        }}
-                        aria-describedby="seek-preferences-error seek-preferences-range"
-                      />
-                      <span className="shrink-0 text-sm text-muted-foreground">{t("settings.seconds")}</span>
-                    </div>
-                  </label>
-                  <label className="block space-y-1 text-sm" htmlFor="seek-backward-seconds">
-                    <span className="flex items-center gap-2 font-medium">
-                      <Rewind className="h-4 w-4 text-muted-foreground" />
-                      {t("settings.seekBackward")}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="seek-backward-seconds"
-                        className="w-full"
-                        type="number"
-                        min={SEEK_SECONDS_MIN}
-                        max={SEEK_SECONDS_MAX}
-                        step={1}
-                        inputMode="numeric"
-                        value={seekDraft.backward}
-                        onChange={(event) => {
-                          setSeekDraft((current) => ({ ...current, backward: event.target.value }));
-                          setSeekError(null);
-                        }}
-                        aria-describedby="seek-preferences-error seek-preferences-range"
-                      />
-                      <span className="shrink-0 text-sm text-muted-foreground">{t("settings.seconds")}</span>
-                    </div>
-                  </label>
-                </div>
-                <p id="seek-preferences-range" className="text-xs text-muted-foreground">
-                  {t("settings.seekRange", { min: SEEK_SECONDS_MIN, max: SEEK_SECONDS_MAX })}
-                </p>
-                <p
-                  id="seek-preferences-error"
-                  className="min-h-5 text-sm text-destructive"
-                  role={seekError ? "alert" : undefined}
-                >
-                  {seekError}
-                </p>
-                <div className="flex justify-end">
+          <form onSubmit={saveSeekPreferences}>
+            <SettingsSection
+              title={t("settings.playback")}
+              description={t("settings.playbackDescription")}
+              icon={<FastForward />}
+              footer={
+                <>
+                  <span
+                    id="seek-preferences-error"
+                    className="mr-auto min-h-5 text-sm text-destructive"
+                    role={seekError ? "alert" : undefined}
+                  >
+                    {seekError}
+                  </span>
                   <Button
                     type="submit"
+                    size="sm"
                     disabled={
                       Number(seekDraft.forward) === seekPreferences.seekForwardSeconds &&
                       Number(seekDraft.backward) === seekPreferences.seekBackwardSeconds
@@ -488,35 +414,72 @@ export function SettingsPage({
                     <Save className="h-4 w-4" />
                     {t("settings.savePlayback")}
                   </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
+                </>
+              }
+            >
+              <SeekRow
+                id="seek-forward-seconds"
+                icon={<FastForward className="h-4 w-4 text-muted-foreground" />}
+                label={t("settings.seekForward")}
+                description={t("settings.seekRange", { min: SEEK_SECONDS_MIN, max: SEEK_SECONDS_MAX })}
+                unit={t("settings.seconds")}
+                value={seekDraft.forward}
+                onChange={(forward) => {
+                  setSeekDraft((current) => ({ ...current, forward }));
+                  setSeekError(null);
+                }}
+              />
+              <SeekRow
+                id="seek-backward-seconds"
+                icon={<Rewind className="h-4 w-4 text-muted-foreground" />}
+                label={t("settings.seekBackward")}
+                description={t("settings.seekRange", { min: SEEK_SECONDS_MIN, max: SEEK_SECONDS_MAX })}
+                unit={t("settings.seconds")}
+                value={seekDraft.backward}
+                onChange={(backward) => {
+                  setSeekDraft((current) => ({ ...current, backward }));
+                  setSeekError(null);
+                }}
+              />
+            </SettingsSection>
+          </form>
           <UserPreferencePanels userId={user.id} section="playback" readOnly={readOnly} />
         </div>
       )}
       {activeTab === "recommendation" && (
         <div
-          className="w-full max-w-4xl"
+          className="w-full max-w-4xl space-y-6"
           role="tabpanel"
           id="settings-panel-recommendation"
           aria-labelledby="settings-tab-recommendation"
         >
           <UserPreferencePanels userId={user.id} section="recommendation" readOnly={readOnly} />
+          <RecommendationActivity userId={user.id} />
         </div>
       )}
-      {isAdmin && ["library", "cache", "users"].includes(activeTab) && (
-        <MaintenancePage
-          canManageSources={canManageSources}
-          canManageUsers={canManageUsers}
-          currentUserId={user.id}
-          isSuperAdmin={user.role === "super_admin"}
-          canManageAccessPolicy={canManageAccessPolicy}
-          readOnly={readOnly}
-          embedded
-          activeTab={activeTab as "library" | "cache" | "users"}
-          onAccessPolicyUpdated={onAccessPolicyUpdated}
-        />
+      {isAdmin && activeTab === "cleanup" && (
+        <div role="tabpanel" id="settings-panel-cleanup" aria-labelledby="settings-tab-cleanup">
+          <CleanupPage
+            canManageCache={isAdmin && (readOnly || isSystemAdmin || user.permissions.includes("downloads:manage"))}
+            canManageDatabase={canManageSources}
+            readOnly={readOnly}
+          />
+        </div>
+      )}
+      {isAdmin && adminSettingsTabs.includes(activeTab) && activeTab !== "cleanup" && (
+        <div role="tabpanel" id={`settings-panel-${activeTab}`} aria-labelledby={`settings-tab-${activeTab}`}>
+          <MaintenancePage
+            canManageSources={canManageSources}
+            canManageUsers={canManageUsers}
+            canManageCleanup={canManageCleanup}
+            currentUserId={user.id}
+            isSuperAdmin={user.role === "super_admin"}
+            canManageAccessPolicy={canManageAccessPolicy}
+            readOnly={readOnly}
+            activeTab={activeTab as "library" | "cache" | "users"}
+            onAccessPolicyUpdated={onAccessPolicyUpdated}
+          />
+        </div>
       )}
     </div>
   );
@@ -553,7 +516,7 @@ function SettingsTabButton({
 
 function settingsTabFromLocation(): SettingsTab {
   const tab = new URLSearchParams(window.location.search).get("tab");
-  return ["playback", "recommendation", "library", "cache", "users"].includes(tab ?? "")
+  return ["playback", "recommendation", "library", "cache", "cleanup", "users"].includes(tab ?? "")
     ? (tab as SettingsTab)
     : "account";
 }
@@ -577,16 +540,54 @@ function passwordErrorKey(message: string) {
   }
 }
 
-function ReadonlyField({ label, value }: { label: string; value: string }) {
+function avatarInitial(name: string) {
+  return Array.from(name.trim())[0]?.toUpperCase() ?? "?";
+}
+
+function SeekRow({
+  id,
+  icon,
+  label,
+  description,
+  unit,
+  value,
+  onChange,
+}: {
+  id: string;
+  icon: ReactNode;
+  label: string;
+  description: string;
+  unit: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
   return (
-    <label className="space-y-1 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <input
-        className="h-[var(--control-height)] w-full rounded-md border bg-muted px-3 text-sm"
-        value={value}
-        readOnly
-      />
-    </label>
+    <SettingsRow
+      htmlFor={id}
+      title={
+        <span className="flex items-center gap-2">
+          {icon}
+          {label}
+        </span>
+      }
+      description={description}
+    >
+      <div className="flex w-full items-center gap-2 sm:w-40">
+        <Input
+          id={id}
+          className="w-full text-right tabular-nums"
+          type="number"
+          min={SEEK_SECONDS_MIN}
+          max={SEEK_SECONDS_MAX}
+          step={1}
+          inputMode="numeric"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          aria-describedby="seek-preferences-error"
+        />
+        <span className="shrink-0 text-sm text-muted-foreground">{unit}</span>
+      </div>
+    </SettingsRow>
   );
 }
 
@@ -606,11 +607,10 @@ function PasswordField({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block space-y-1 text-sm" htmlFor={id}>
-      <span className="font-medium">{label}</span>
+    <SettingsRow title={label} htmlFor={id}>
       <Input
         id={id}
-        className="w-full"
+        className="w-full sm:w-64"
         type="password"
         value={value}
         autoComplete={autoComplete}
@@ -618,6 +618,6 @@ function PasswordField({
         aria-describedby="password-error"
         onChange={(event) => onChange(event.target.value)}
       />
-    </label>
+    </SettingsRow>
   );
 }

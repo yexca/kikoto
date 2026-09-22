@@ -16,6 +16,7 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
   }
   if (path === "/settings" && new URLSearchParams(search).get("tab") === "appearance") return "/settings";
   if (path === "/users") return "/settings?tab=users";
+  if (path === "/cleanup") return "/settings?tab=cleanup";
   if (path === "/maintenance") {
     const params = new URLSearchParams(search);
     const tab = params.get("tab");
