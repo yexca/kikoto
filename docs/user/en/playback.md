@@ -143,9 +143,10 @@ Playback is handled by a global browser audio player.
   Browsers with Document Picture-in-Picture open a small always-on-top window
   that stays visible while the browser is minimized; other browsers with video
   Picture-in-Picture show a rendered lyrics video instead. The Android app shows
-  a draggable floating overlay above other apps while Kikoto is in the
-  background. It requires the "Display over other apps" permission and advances
-  lines from the playback clock even when the WebView is throttled.
+  a floating overlay above other apps while Kikoto is in the background. The
+  overlay opens centered on screen and can be dragged vertically. It requires
+  the "Display over other apps" permission and advances lines from the playback
+  clock even when the WebView is throttled.
 - Every player mode reserves the same bottom page space, so switching between
   mini, compact, and full modes does not change the page height.
 

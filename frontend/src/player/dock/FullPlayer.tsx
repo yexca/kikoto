@@ -190,7 +190,7 @@ export function FullPlayer({
     <section
       data-player-surface="full"
       aria-label={t("player.nowPlaying")}
-      className="fixed inset-0 z-50 h-[100dvh] animate-player-enter overflow-hidden bg-background text-foreground transition-[transform,opacity] duration-200 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:h-[min(760px,calc(100dvh-3rem))] lg:w-[400px] lg:rounded-[var(--player-radius-panel)] lg:bg-card/85 lg:shadow-2xl lg:ring-1 lg:ring-foreground/[0.08] lg:backdrop-blur-2xl dark:lg:bg-card/80"
+      className="fixed inset-0 z-50 h-[100dvh] animate-player-enter overflow-hidden bg-background text-foreground transition-[transform,opacity] duration-200 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:h-[min(640px,calc(100dvh-3rem))] lg:w-[400px] lg:rounded-[var(--player-radius-panel)] lg:bg-card/85 lg:shadow-2xl lg:ring-1 lg:ring-foreground/[0.08] lg:backdrop-blur-2xl dark:lg:bg-card/80"
       style={
         isMobile && dragOffset > 0
           ? { transform: `translateY(${dragOffset}px)`, opacity: Math.max(0.55, 1 - dragOffset / 500) }

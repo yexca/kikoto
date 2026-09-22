@@ -174,8 +174,9 @@ final class KikotoLyricsOverlay {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         );
-        params.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-        params.y = dp(96);
+        // Open centered on screen; dragging moves the overlay vertically from there.
+        params.gravity = Gravity.CENTER;
+        params.y = 0;
 
         root.setOnTouchListener(new View.OnTouchListener() {
             private float startRawY;
@@ -190,7 +191,12 @@ final class KikotoLyricsOverlay {
                         startY = params.y;
                         return true;
                     case MotionEvent.ACTION_MOVE:
-                        params.y = Math.max(0, startY + Math.round(event.getRawY() - startRawY));
+                        int limit = Math.max(
+                            0,
+                            (context.getResources().getDisplayMetrics().heightPixels - view.getHeight()) / 2
+                        );
+                        int nextY = startY + Math.round(event.getRawY() - startRawY);
+                        params.y = Math.max(-limit, Math.min(limit, nextY));
                         try {
                             windowManager.updateViewLayout(root, params);
                         } catch (IllegalArgumentException ignored) {
