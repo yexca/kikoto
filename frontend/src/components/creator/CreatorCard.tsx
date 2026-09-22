@@ -3,14 +3,13 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { UserTagRow, type UserTag } from "@/components/UserTagRow";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
 import { assetURL } from "@/lib/api";
 import type { CatalogSyncState } from "@/lib/catalogSyncState";
 
-export const creatorCardMinHeightClassName = "min-h-44";
+export const creatorCardMinHeightClassName = "min-h-32";
 
 export type CreatorLatestWork = {
   primaryCode: string;
@@ -70,11 +69,11 @@ export function CreatorCard({
   const showUnavailableCount = unavailableCount > 0 && availableSources.length > 0;
 
   return (
-    <Card className="h-full overflow-hidden transition-colors hover:border-primary/50">
-      <CardContent className={`flex h-full ${creatorCardMinHeightClassName} gap-4 p-4`}>
+    <Card className="h-full overflow-hidden transition-colors hover:border-primary/40">
+      <CardContent className={`flex h-full ${creatorCardMinHeightClassName} gap-3.5 p-3.5`}>
         <button
           type="button"
-          className="group relative aspect-[4/3] w-28 shrink-0 self-start overflow-hidden rounded-md border bg-muted sm:w-[7.5rem]"
+          className="group relative aspect-[4/3] w-28 shrink-0 self-start overflow-hidden rounded-md bg-muted ring-1 ring-border/60 sm:w-32"
           onClick={onOpen}
           aria-label={t("creator.open", { name })}
           title={t("creator.open", { name })}
@@ -83,7 +82,7 @@ export function CreatorCard({
             <img
               src={assetURL(latestWork.coverUrl)}
               alt=""
-              className="h-full w-full object-contain transition-transform group-hover:scale-[1.03]"
+              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04] motion-reduce:transition-none"
               loading="lazy"
               onError={() => setImageFailed(true)}
             />
@@ -96,27 +95,31 @@ export function CreatorCard({
         </button>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex min-w-0 items-start justify-between gap-2">
-            <button type="button" className="min-w-0 flex-1 text-left" onClick={onOpen}>
-              <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                {identityLabel && <Badge variant="outline">{identityLabel}</Badge>}
-                {latestWork && (
-                  <span className="truncate">{t("creator.latest", { code: latestWork.primaryCode })}</span>
-                )}
-              </div>
-              <h3 className="mt-1 line-clamp-2 text-base font-semibold leading-5">{name}</h3>
+          <div className="flex min-w-0 items-start gap-1">
+            <button type="button" className="min-w-0 flex-1 rounded-sm text-left" onClick={onOpen}>
+              <h3 className="line-clamp-2 text-[0.95rem] font-semibold leading-snug">{name}</h3>
               {visibleAliases.length > 0 && (
                 <p className="mt-0.5 truncate text-xs text-muted-foreground" title={visibleAliases.join(", ")}>
                   {visibleAliases.join(", ")}
                 </p>
               )}
+              {(identityLabel || latestWork) && (
+                <p className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                  {identityLabel && <span className="shrink-0 font-mono tracking-tight">{identityLabel}</span>}
+                  {identityLabel && latestWork && <span aria-hidden="true">·</span>}
+                  {latestWork && (
+                    <span className="whitespace-nowrap">{t("creator.latest", { code: latestWork.primaryCode })}</span>
+                  )}
+                </p>
+              )}
             </button>
             <Button
               type="button"
-              variant={favorite ? "default" : "outline"}
+              variant="ghost"
               size="icon"
-              className="h-8 w-8 shrink-0"
+              className={`-mr-1 -mt-1 h-8 w-8 shrink-0 ${favorite ? "text-primary hover:text-primary" : "text-muted-foreground"}`}
               aria-label={favorite ? t("creator.removeFavorite") : t("creator.addFavorite")}
+              aria-pressed={favorite}
               title={favorite ? t("creator.removeFavorite") : t("creator.addFavorite")}
               onClick={onFavoriteToggle}
             >
@@ -126,35 +129,39 @@ export function CreatorCard({
 
           <UserTagRow tags={userTags} onSave={onTagsSave} className="mt-2" />
 
-          <div className="mt-auto flex flex-wrap items-center gap-1 border-t pt-2 text-xs text-muted-foreground">
-            <CatalogSyncBadge state={syncState} />
+          <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-2 text-xs text-muted-foreground">
+            <CatalogSyncBadge state={syncState} appearance="dot" />
             {availabilitySummary ? (
-              <Badge variant={availabilitySummary.available > 0 ? "success" : "warning"} className="tabular-nums">
+              <span
+                className={`tabular-nums ${availabilitySummary.available > 0 ? "text-success-foreground" : "text-warning-foreground"}`}
+              >
                 {t("creator.available", availabilitySummary)}
-              </Badge>
+              </span>
             ) : availabilityCounts ? (
               <>
-                <Badge variant={availabilityCounts.local > 0 ? "secondary" : "outline"} className="tabular-nums">
+                <span className={`tabular-nums ${availabilityCounts.local > 0 ? "text-foreground" : ""}`}>
                   {t("creator.local", { count: availabilityCounts.local })}
-                </Badge>
-                <Badge variant="outline" className="tabular-nums">
+                </span>
+                <span className={`tabular-nums ${availabilityCounts.remote > 0 ? "text-foreground" : ""}`}>
                   {t("creator.remote", { count: availabilityCounts.remote })}
-                </Badge>
+                </span>
               </>
             ) : (
               <>
                 {availableSources.length > 0 ? (
                   availableSources.map((source) => (
-                    <Badge key={source.key} variant={source.key === "local" ? "secondary" : "outline"}>
+                    <span key={source.key} className={source.key === "local" ? "text-foreground" : ""}>
                       {source.displayName}
                       {source.count > 0 ? ` ${source.count}` : ""}
-                    </Badge>
+                    </span>
                   ))
                 ) : (
-                  <Badge variant="warning">{t("creator.unavailable")}</Badge>
+                  <span className="text-warning-foreground">{t("creator.unavailable")}</span>
                 )}
                 {showUnavailableCount && (
-                  <Badge variant="warning">{t("creator.unavailableCount", { count: unavailableCount })}</Badge>
+                  <span className="text-warning-foreground">
+                    {t("creator.unavailableCount", { count: unavailableCount })}
+                  </span>
                 )}
                 <span className="ml-auto whitespace-nowrap tabular-nums">
                   {t("creator.works", { count: workCount })}
@@ -171,13 +178,12 @@ export function CreatorCard({
 export function CreatorCardSkeleton() {
   return (
     <Card className="h-full">
-      <CardContent className={`flex h-full ${creatorCardMinHeightClassName} gap-4 p-4`}>
-        <div className="aspect-[4/3] w-28 shrink-0 animate-pulse rounded-md bg-muted sm:w-[7.5rem]" />
+      <CardContent className={`flex h-full ${creatorCardMinHeightClassName} gap-3.5 p-3.5`}>
+        <div className="aspect-[4/3] w-28 shrink-0 animate-pulse rounded-md bg-muted sm:w-32" />
         <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <div className="h-5 w-24 animate-pulse rounded-full bg-muted" />
           <div className="h-5 w-3/4 animate-pulse rounded bg-muted" />
-          <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
-          <div className="mt-auto h-7 w-full animate-pulse rounded bg-muted" />
+          <div className="h-3.5 w-1/2 animate-pulse rounded bg-muted" />
+          <div className="mt-auto h-4 w-2/3 animate-pulse rounded bg-muted" />
         </div>
       </CardContent>
     </Card>
@@ -197,7 +203,7 @@ export function CreatorCollectionSkeleton({ label }: { label?: string }) {
   );
 }
 
-export const creatorCollectionClassName = `grid ${creatorCardMinHeightClassName} gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr))]`;
+export const creatorCollectionClassName = `grid ${creatorCardMinHeightClassName} gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,21rem),1fr))]`;
 
 function creatorSourceTags(sources: CreatorSourceSummary[]) {
   const available = sources.filter((source) => source.status === "available" || source.count > 0);

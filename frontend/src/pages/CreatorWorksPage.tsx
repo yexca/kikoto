@@ -40,6 +40,7 @@ import {
   creatorCollectionClassName,
 } from "@/components/creator/CreatorCard";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
+import { CreatorDetailHeader } from "@/components/creator/CreatorDetailHeader";
 import { CreatorListToolbar } from "@/components/creator/CreatorListToolbar";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
@@ -940,153 +941,152 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
 
   return (
     <div className="relative space-y-5">
-      <Button variant="outline" size="sm" onClick={navigateToList}>
+      <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground" onClick={navigateToList}>
         <ChevronLeft className="h-4 w-4" />
         {voiceReturnLabel(mobileNavigationLayout)}
       </Button>
 
       {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
 
-      <section>
-        <Card>
-          <CardContent className="space-y-4 p-5">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">#{detail.personId}</Badge>
-                  <CatalogSyncBadge state={detail.syncState} />
-                  {detail.favorite && <Badge variant="secondary">{t("detailActions.favorite")}</Badge>}
-                </div>
-                <h2 className="mt-3 truncate text-2xl font-semibold lg:text-3xl">{detail.displayName}</h2>
-                <div
-                  className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5"
-                  aria-label={t("detailActions.voiceActorStatistics")}
-                >
-                  <Badge variant={detail.localWorks > 0 ? "secondary" : "outline"} className="tabular-nums">
-                    {t("detailActions.localCount", { count: detail.localWorks })}
-                  </Badge>
-                  <Badge variant="outline" className="tabular-nums">
-                    {t("detailActions.remoteCount", { count: detail.remoteWorks })}
-                  </Badge>
-                  <UserTagRow tags={detail.userTags} onSave={saveVoiceTags} className="min-w-0 flex-1" />
-                </div>
-              </div>
-              <div
-                className="flex flex-nowrap shrink-0 gap-1.5 lg:gap-2"
-                role="group"
-                aria-label={t("detailActions.voiceActorActions")}
+      <CreatorDetailHeader
+        name={detail.displayName}
+        coverUrl={detail.latestWork?.coverUrl}
+        aliases={detail.aliases}
+        eyebrow={
+          <>
+            <span className="font-mono tracking-tight">#{detail.personId}</span>
+            <CatalogSyncBadge state={detail.syncState} appearance="dot" />
+          </>
+        }
+        meta={
+          <div
+            className="mt-2.5 flex min-w-0 flex-wrap items-center gap-1.5"
+            aria-label={t("detailActions.voiceActorStatistics")}
+          >
+            <Badge variant={detail.localWorks > 0 ? "success" : "outline"} className="tabular-nums">
+              {t("detailActions.localCount", { count: detail.localWorks })}
+            </Badge>
+            <Badge variant="outline" className="tabular-nums">
+              {t("detailActions.remoteCount", { count: detail.remoteWorks })}
+            </Badge>
+            <UserTagRow tags={detail.userTags} onSave={saveVoiceTags} className="min-w-0 flex-1" />
+          </div>
+        }
+        actions={
+          <div
+            className="flex flex-nowrap shrink-0 gap-1.5 lg:gap-2"
+            role="group"
+            aria-label={t("detailActions.voiceActorActions")}
+          >
+            <Button
+              variant={detail.favorite ? "default" : "outline"}
+              size="icon"
+              className="h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+              aria-label={detail.favorite ? t("creator.removeFavorite") : t("creator.addFavorite")}
+              aria-pressed={detail.favorite}
+              title={detail.favorite ? t("creator.removeFavorite") : t("creator.addFavorite")}
+              onClick={() => void toggleFavorite()}
+            >
+              <Heart className={`h-4 w-4 ${detail.favorite ? "fill-current" : ""}`} />
+              <span className="hidden lg:inline">{t("detailActions.favorite")}</span>
+            </Button>
+            {!mobileNavigationLayout && (
+              <Button
+                ref={aliasActionRef}
+                variant={detailPanel === "aliases" ? "secondary" : "outline"}
+                size="sm"
+                className="h-[var(--control-height-sm)] gap-2 px-[var(--control-padding-sm-x)]"
+                aria-haspopup="dialog"
+                aria-expanded={detailPanel === "aliases"}
+                aria-controls={detailPanel === "aliases" ? aliasPanelID : undefined}
+                onClick={() => setDetailPanel((current) => (current === "aliases" ? null : "aliases"))}
               >
-                <Button
-                  variant={detail.favorite ? "default" : "outline"}
-                  size="icon"
-                  className="h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-                  aria-label={detail.favorite ? t("creator.removeFavorite") : t("creator.addFavorite")}
-                  aria-pressed={detail.favorite}
-                  title={detail.favorite ? t("creator.removeFavorite") : t("creator.addFavorite")}
-                  onClick={() => void toggleFavorite()}
-                >
-                  <Heart className={`h-4 w-4 ${detail.favorite ? "fill-current" : ""}`} />
-                  <span className="hidden lg:inline">{t("detailActions.favorite")}</span>
-                </Button>
-                {!mobileNavigationLayout && (
-                  <Button
-                    ref={aliasActionRef}
-                    variant={detailPanel === "aliases" ? "secondary" : "outline"}
-                    size="sm"
-                    className="h-[var(--control-height-sm)] gap-2 px-[var(--control-padding-sm-x)]"
-                    aria-haspopup="dialog"
-                    aria-expanded={detailPanel === "aliases"}
-                    aria-controls={detailPanel === "aliases" ? aliasPanelID : undefined}
-                    onClick={() => setDetailPanel((current) => (current === "aliases" ? null : "aliases"))}
-                  >
-                    <Tags className="h-4 w-4" />
-                    {t("detailActions.aliases")}
-                    {alternateAliasCount > 0 && <span className="tabular-nums">{alternateAliasCount}</span>}
-                  </Button>
-                )}
-                {firstPull ? (
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
-                    aria-label={t("detailActions.firstPull")}
-                    disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
-                    onClick={firstPullVoiceCatalog}
-                  >
-                    {isRemoteLoading || catalogRefreshActive ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4" />
-                    )}
-                    <span>{t("detailActions.firstPull")}</span>
-                  </Button>
+                <Tags className="h-4 w-4" />
+                {t("detailActions.aliases")}
+                {alternateAliasCount > 0 && <span className="tabular-nums">{alternateAliasCount}</span>}
+              </Button>
+            )}
+            {firstPull ? (
+              <Button
+                variant="default"
+                size="sm"
+                className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
+                aria-label={t("detailActions.firstPull")}
+                disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
+                onClick={firstPullVoiceCatalog}
+              >
+                {isRemoteLoading || catalogRefreshActive ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-                      aria-label={t("detailActions.retryMetadata")}
-                      title={t("detailActions.retryMetadata")}
-                      disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
-                      onClick={retryVoiceMetadata}
-                    >
-                      {isRemoteLoading || catalogRefreshActive ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-4 w-4" />
-                      )}
-                      <span className="lg:hidden">{t("detailActions.metadata")}</span>
-                      <span className="hidden lg:inline">{t("detailActions.retryMetadata")}</span>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-                      aria-label={t("detailActions.refreshRemote")}
-                      title={t("detailActions.refreshRemote")}
-                      disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
-                      onClick={refreshAllRemoteSources}
-                    >
-                      {isRemoteLoading || catalogRefreshActive ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Cloud className="h-4 w-4" />
-                      )}
-                      <span className="lg:hidden">{t("detailActions.remote")}</span>
-                      <span className="hidden lg:inline">{t("detailActions.refreshRemote")}</span>
-                    </Button>
-                  </>
+                  <RefreshCw className="h-4 w-4" />
                 )}
+                <span>{t("detailActions.firstPull")}</span>
+              </Button>
+            ) : (
+              <>
                 <Button
-                  ref={advancedActionRef}
-                  variant={detailPanel === "advanced" ? "secondary" : "outline"}
-                  size="icon"
-                  className="relative h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-                  aria-haspopup="dialog"
-                  aria-expanded={detailPanel === "advanced"}
-                  aria-controls={detailPanel === "advanced" ? advancedPanelID : undefined}
-                  aria-label={
-                    remoteSourceWarning
-                      ? t("detailActions.openAdvancedRefreshActionsAttention")
-                      : t("detailActions.openAdvancedRefreshActions")
-                  }
-                  title={t("detailActions.advancedRefresh")}
-                  onClick={() => setDetailPanel((current) => (current === "advanced" ? null : "advanced"))}
+                  variant="outline"
+                  size="sm"
+                  className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+                  aria-label={t("detailActions.retryMetadata")}
+                  title={t("detailActions.retryMetadata")}
+                  disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
+                  onClick={retryVoiceMetadata}
                 >
-                  {mobileNavigationLayout ? (
-                    <MoreHorizontal className="h-4 w-4" />
+                  {isRemoteLoading || catalogRefreshActive ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <SlidersHorizontal className="h-4 w-4" />
+                    <RefreshCw className="h-4 w-4" />
                   )}
-                  <span className="hidden lg:inline">{t("detailActions.advanced")}</span>
-                  {remoteSourceWarning && <span className="text-warning-foreground">!</span>}
+                  <span className="lg:hidden">{t("detailActions.metadata")}</span>
+                  <span className="hidden lg:inline">{t("detailActions.retryMetadata")}</span>
                 </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+                  aria-label={t("detailActions.refreshRemote")}
+                  title={t("detailActions.refreshRemote")}
+                  disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
+                  onClick={refreshAllRemoteSources}
+                >
+                  {isRemoteLoading || catalogRefreshActive ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Cloud className="h-4 w-4" />
+                  )}
+                  <span className="lg:hidden">{t("detailActions.remote")}</span>
+                  <span className="hidden lg:inline">{t("detailActions.refreshRemote")}</span>
+                </Button>
+              </>
+            )}
+            <Button
+              ref={advancedActionRef}
+              variant={detailPanel === "advanced" ? "secondary" : "outline"}
+              size="icon"
+              className="relative h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+              aria-haspopup="dialog"
+              aria-expanded={detailPanel === "advanced"}
+              aria-controls={detailPanel === "advanced" ? advancedPanelID : undefined}
+              aria-label={
+                remoteSourceWarning
+                  ? t("detailActions.openAdvancedRefreshActionsAttention")
+                  : t("detailActions.openAdvancedRefreshActions")
+              }
+              title={t("detailActions.advancedRefresh")}
+              onClick={() => setDetailPanel((current) => (current === "advanced" ? null : "advanced"))}
+            >
+              {mobileNavigationLayout ? (
+                <MoreHorizontal className="h-4 w-4" />
+              ) : (
+                <SlidersHorizontal className="h-4 w-4" />
+              )}
+              <span className="hidden lg:inline">{t("detailActions.advanced")}</span>
+              {remoteSourceWarning && <span className="text-warning-foreground">!</span>}
+            </Button>
+          </div>
+        }
+      >
         {!mobileNavigationLayout && (
           <AnchoredPopover
             open={detailPanel === "aliases"}
@@ -1161,11 +1161,11 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
           }
           onRefreshMetadata={refreshVoiceMetadata}
         />
-      </section>
+      </CreatorDetailHeader>
 
       <section className="space-y-3">
-        <div className="hidden flex-col gap-2 rounded-lg border bg-card p-3 lg:flex lg:flex-row lg:items-center">
-          <div className="flex min-h-10 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground">
+        <div className="hidden flex-col gap-2 lg:flex lg:flex-row lg:items-center">
+          <div className="flex min-h-10 flex-1 items-center gap-2 rounded-md border bg-card px-3 text-sm text-muted-foreground transition-colors focus-within:border-ring">
             <Search className="h-4 w-4" />
             <input
               className="min-w-0 flex-1 bg-transparent outline-none"
@@ -1899,20 +1899,18 @@ function VoiceDetailSkeleton() {
   const { t } = useTranslation();
   return (
     <div className="space-y-5">
-      <EntitySkeletonLine className="h-9 w-32" />
-      <section>
-        <Card>
-          <CardContent className="space-y-4 p-5">
-            <EntitySkeletonLine className="h-5 w-24" />
-            <EntitySkeletonLine className="h-9 w-64" />
-            <EntitySkeletonLine className="h-5 w-80" />
-            <div className="flex flex-wrap gap-x-3 gap-y-1">
-              {Array.from({ length: 4 }, (_, index) => (
-                <EntitySkeletonLine key={index} className="h-4 w-20" />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      <EntitySkeletonLine className="h-8 w-32" />
+      <section className="flex items-start gap-4 border-b pb-5">
+        <EntitySkeletonLine className="h-16 w-16 shrink-0 rounded-xl lg:h-[5.5rem] lg:w-[5.5rem]" />
+        <div className="min-w-0 flex-1 space-y-2">
+          <EntitySkeletonLine className="h-4 w-24" />
+          <EntitySkeletonLine className="h-8 w-64 max-w-full" />
+          <div className="flex flex-wrap gap-1.5">
+            {Array.from({ length: 3 }, (_, index) => (
+              <EntitySkeletonLine key={index} className="h-5 w-16" />
+            ))}
+          </div>
+        </div>
       </section>
       <WorkCollectionLoadingState label={t("creatorBrowse.loadingVoiceWorks")} />
     </div>

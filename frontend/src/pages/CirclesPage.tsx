@@ -20,7 +20,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
-import { Badge, badgeVariants } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -38,6 +38,7 @@ import {
   creatorCollectionClassName,
 } from "@/components/creator/CreatorCard";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
+import { CreatorDetailHeader } from "@/components/creator/CreatorDetailHeader";
 import { CreatorListToolbar } from "@/components/creator/CreatorListToolbar";
 import {
   WorkCardActionButton,
@@ -824,115 +825,104 @@ function CircleDetailPage({
 
   return (
     <div className="relative space-y-5">
-      <Button variant="outline" size="sm" onClick={navigateToList}>
+      <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground" onClick={navigateToList}>
         <ChevronLeft className="h-4 w-4" />
         {compactLayout ? t("creatorBrowse.backToCircles") : circleReturnLabel()}
       </Button>
 
-      <section aria-label={t("detailActions.circleSummary")}>
-        <Card>
-          <CardContent className="space-y-4 p-5">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <a
-                    href={dlsiteMakerURL(circle.externalId)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={badgeVariants({
-                      variant: "outline",
-                      className:
-                        "w-fit gap-1.5 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    })}
-                    aria-label={t("detailActions.openDlsiteFor", { id: circle.externalId })}
-                    title={t("detailActions.openDlsite")}
-                  >
-                    <span>{circle.externalId}</span>
-                    <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
-                  </a>
-                  <CatalogSyncBadge state={circle.syncState} />
-                  {circle.favorite && <Badge variant="secondary">{t("detailActions.favorite")}</Badge>}
-                </div>
-                <div className="mt-3 flex min-w-0 items-center gap-1.5">
-                  <h2 className="min-w-0 flex-1 truncate text-2xl font-semibold lg:text-3xl">{circle.displayName}</h2>
-                </div>
-                <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5">
-                  <Badge variant={availableWorkCount > 0 ? "success" : "warning"}>
-                    {t("detailActions.availableCount", { count: availableWorkCount })}
-                  </Badge>
-                  <UserTagRow tags={circle.userTags} onSave={saveCircleTags} className="min-w-0 flex-1" />
-                </div>
-              </div>
-              <div
-                className="flex flex-wrap gap-1.5 lg:gap-2"
-                role="group"
-                aria-label={t("detailActions.circleActions")}
+      <CreatorDetailHeader
+        label={t("detailActions.circleSummary")}
+        name={circle.displayName}
+        coverUrl={circle.latestWork?.coverUrl}
+        aliases={circle.aliases}
+        eyebrow={
+          <>
+            <a
+              href={dlsiteMakerURL(circle.externalId)}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 rounded-sm font-mono tracking-tight transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={t("detailActions.openDlsiteFor", { id: circle.externalId })}
+              title={t("detailActions.openDlsite")}
+            >
+              <span>{circle.externalId}</span>
+              <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
+            </a>
+            <CatalogSyncBadge state={circle.syncState} appearance="dot" />
+          </>
+        }
+        meta={
+          <div className="mt-2.5 flex min-w-0 flex-wrap items-center gap-1.5">
+            <Badge variant={availableWorkCount > 0 ? "success" : "warning"} className="tabular-nums">
+              {t("detailActions.availableCount", { count: availableWorkCount })}
+            </Badge>
+            <UserTagRow tags={circle.userTags} onSave={saveCircleTags} className="min-w-0 flex-1" />
+          </div>
+        }
+        actions={
+          <div
+            className="flex shrink-0 flex-wrap gap-1.5 lg:gap-2"
+            role="group"
+            aria-label={t("detailActions.circleActions")}
+          >
+            <Button
+              variant={circle.favorite ? "default" : "outline"}
+              size="icon"
+              className="lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+              aria-label={circle.favorite ? t("creator.removeFavorite") : t("creator.addFavorite")}
+              aria-pressed={circle.favorite}
+              title={circle.favorite ? t("creator.removeFavorite") : t("creator.addFavorite")}
+              onClick={() => void toggleCircleFavorite()}
+            >
+              <Heart className={`h-4 w-4 ${circle.favorite ? "fill-current" : ""}`} />
+              <span className="hidden lg:inline">{t("detailActions.favorite")}</span>
+            </Button>
+            {!firstPull && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
+                aria-label={t("detailActions.retryMetadata")}
+                disabled={!canRefreshCatalog || isLoading || refreshingScope !== null}
+                onClick={() => void refresh("work", "full")}
               >
-                <Button
-                  variant={circle.favorite ? "default" : "outline"}
-                  size="icon"
-                  className="lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-                  aria-label={circle.favorite ? t("creator.removeFavorite") : t("creator.addFavorite")}
-                  aria-pressed={circle.favorite}
-                  title={circle.favorite ? t("creator.removeFavorite") : t("creator.addFavorite")}
-                  onClick={() => void toggleCircleFavorite()}
-                >
-                  <Heart className={`h-4 w-4 ${circle.favorite ? "fill-current" : ""}`} />
-                  <span className="hidden lg:inline">{t("detailActions.favorite")}</span>
-                </Button>
-                {!firstPull && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
-                    aria-label={t("detailActions.retryMetadata")}
-                    disabled={!canRefreshCatalog || isLoading || refreshingScope !== null}
-                    onClick={() => void refresh("work", "full")}
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    <span className="lg:hidden">{t("detailActions.metadata")}</span>
-                    <span className="hidden lg:inline">{t("detailActions.retryMetadata")}</span>
-                  </Button>
-                )}
-                <Button
-                  variant={firstPull ? "default" : "outline"}
-                  size="sm"
-                  className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
-                  aria-label={firstPull ? t("detailActions.firstPull") : t("detailActions.refreshCircle")}
-                  disabled={!canRefreshCatalog || isLoading || refreshingScope !== null}
-                  onClick={runPrimaryRefresh}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  <span className="lg:hidden">
-                    {firstPull ? t("detailActions.firstPull") : t("detailActions.refreshCircle")}
-                  </span>
-                  <span className="hidden lg:inline">
-                    {firstPull ? t("detailActions.firstPull") : t("detailActions.refreshCircle")}
-                  </span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="lg:h-9 lg:w-auto lg:gap-2 lg:px-3 lg:text-xs"
-                  ref={advancedRefreshAnchorRef}
-                  aria-label={t("detailActions.openAdvancedRefreshActions")}
-                  aria-haspopup="dialog"
-                  aria-expanded={advancedRefreshOpen}
-                  aria-controls={advancedRefreshOpen ? "circle-advanced-refresh" : undefined}
-                  title={t("detailActions.advancedRefresh")}
-                  onClick={() => setAdvancedRefreshOpen((open) => !open)}
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                  <span className="hidden lg:inline">{t("detailActions.advanced")}</span>
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
+                <RefreshCw className="h-4 w-4" />
+                <span className="lg:hidden">{t("detailActions.metadata")}</span>
+                <span className="hidden lg:inline">{t("detailActions.retryMetadata")}</span>
+              </Button>
+            )}
+            <Button
+              variant={firstPull ? "default" : "outline"}
+              size="sm"
+              className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
+              aria-label={firstPull ? t("detailActions.firstPull") : t("detailActions.refreshCircle")}
+              disabled={!canRefreshCatalog || isLoading || refreshingScope !== null}
+              onClick={runPrimaryRefresh}
+            >
+              <RefreshCw className="h-4 w-4" />
+              <span>{firstPull ? t("detailActions.firstPull") : t("detailActions.refreshCircle")}</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="lg:h-[var(--control-height-sm)] lg:w-auto lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+              ref={advancedRefreshAnchorRef}
+              aria-label={t("detailActions.openAdvancedRefreshActions")}
+              aria-haspopup="dialog"
+              aria-expanded={advancedRefreshOpen}
+              aria-controls={advancedRefreshOpen ? "circle-advanced-refresh" : undefined}
+              title={t("detailActions.advancedRefresh")}
+              onClick={() => setAdvancedRefreshOpen((open) => !open)}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+              <span className="hidden lg:inline">{t("detailActions.advanced")}</span>
+            </Button>
+          </div>
+        }
+      />
 
       <section className="space-y-3">
-        <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 lg:flex-row lg:items-center">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
           <div className={segmentedListClassName("shrink-0")} role="group">
             <button
               className={segmentedItemClassName(!isSeriesView)}
@@ -950,7 +940,7 @@ function CircleDetailPage({
             </button>
           </div>
           <div
-            className={`flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground ${isSeriesView ? "" : "hidden lg:flex"}`}
+            className={`flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md border bg-card px-3 text-sm text-muted-foreground transition-colors focus-within:border-ring ${isSeriesView ? "" : "hidden lg:flex"}`}
           >
             <Search className="h-4 w-4" />
             <input
@@ -1085,9 +1075,9 @@ function CircleDetailPage({
                 selectedSeriesCode={selectedSeries?.titleId ?? null}
                 allCount={activeSeriesCount}
               />
-              <div className="hidden flex-col gap-2 rounded-lg border bg-card px-3 py-2 lg:flex lg:flex-row lg:items-center lg:justify-between">
+              <div className="hidden flex-col gap-2 px-1 py-1 lg:flex lg:flex-row lg:items-center lg:justify-between">
                 <div className="min-w-0">
-                  <h3 className="truncate text-base font-semibold">
+                  <h3 className="truncate text-lg font-semibold">
                     {selectedSeries ? selectedSeries.name : t("detailActions.allSeries")}
                   </h3>
                   <p className="text-sm text-muted-foreground">
@@ -1642,7 +1632,7 @@ function CircleSeriesSidebar({
   allCount: number;
 }) {
   return (
-    <aside className="hidden rounded-lg border bg-card p-2 lg:block">
+    <aside className="hidden self-start rounded-lg border bg-card p-1.5 lg:sticky lg:top-4 lg:block">
       <CircleSeriesOptions
         series={series}
         selectedSeriesCode={selectedSeriesCode}
@@ -1746,11 +1736,11 @@ function CircleSeriesOptions({
   return (
     <>
       <button
-        className={`flex min-h-12 w-full items-center justify-between gap-3 rounded-md px-3 text-left text-sm hover:bg-muted ${selectedSeriesCode === null ? "bg-primary text-primary-foreground hover:bg-primary" : ""}`}
+        className={`flex min-h-12 w-full items-center justify-between gap-3 rounded-md px-3 text-left text-sm transition-colors hover:bg-muted ${selectedSeriesCode === null ? "bg-primary/10 text-primary hover:bg-primary/15" : ""}`}
         onClick={() => onSelect()}
       >
         <span className="min-w-0 truncate font-medium">{t("detailActions.allSeries")}</span>
-        <span className={selectedSeriesCode === null ? "text-primary-foreground/80" : "text-muted-foreground"}>
+        <span className={`tabular-nums ${selectedSeriesCode === null ? "text-primary/80" : "text-muted-foreground"}`}>
           {allCount}
         </span>
       </button>
@@ -1761,7 +1751,7 @@ function CircleSeriesOptions({
             return (
               <button
                 key={item.titleId}
-                className={`grid min-h-14 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md px-3 text-left text-sm hover:bg-muted ${selected ? "bg-primary text-primary-foreground hover:bg-primary" : ""}`}
+                className={`grid min-h-14 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md px-3 text-left text-sm transition-colors hover:bg-muted ${selected ? "bg-primary/10 text-primary hover:bg-primary/15" : ""}`}
                 onClick={() => onSelect(item.titleId)}
               >
                 <span className="min-w-0">
@@ -1769,14 +1759,16 @@ function CircleSeriesOptions({
                   <span
                     className={
                       selected
-                        ? "block truncate text-xs text-primary-foreground/75"
-                        : "block truncate text-xs text-muted-foreground"
+                        ? "block truncate font-mono text-xs text-primary/75"
+                        : "block truncate font-mono text-xs text-muted-foreground"
                     }
                   >
                     {item.titleId}
                   </span>
                 </span>
-                <span className={selected ? "text-primary-foreground/80" : "text-muted-foreground"}>{item.works}</span>
+                <span className={`tabular-nums ${selected ? "text-primary/80" : "text-muted-foreground"}`}>
+                  {item.works}
+                </span>
               </button>
             );
           })
@@ -1790,43 +1782,53 @@ function CircleSeriesOptions({
 
 function CircleSeriesSummaryCard({ externalId, series }: { externalId: string; series: CircleSeries }) {
   const { t } = useTranslation();
+  const stats = [
+    { key: "works", value: series.works, label: t("detailActions.works"), className: "text-foreground" },
+    { key: "local", value: series.localWorks, label: t("detailActions.local"), className: "" },
+    { key: "remote", value: series.remoteWorks, label: t("detailActions.remote"), className: "" },
+    {
+      key: "missing",
+      value: series.missingWorks,
+      label: t("detailActions.missing"),
+      className: series.missingWorks > 0 ? "text-warning-foreground" : "",
+    },
+  ];
   return (
-    <Card className="h-full transition-colors hover:border-primary/50">
-      <CardContent className="space-y-3 p-4">
-        <button className="block w-full text-left" onClick={() => openCircleSeriesRoute(externalId, series.titleId)}>
+    <Card className="h-full transition-colors hover:border-primary/40">
+      <CardContent className="flex h-full flex-col gap-3 p-4">
+        <button
+          className="group block w-full rounded-sm text-left"
+          onClick={() => openCircleSeriesRoute(externalId, series.titleId)}
+        >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h3 className="truncate text-base font-semibold">{series.name}</h3>
-              <div className="mt-1 text-xs text-muted-foreground">{series.titleId}</div>
+              <h3 className="line-clamp-2 text-[0.95rem] font-semibold leading-snug">{series.name}</h3>
+              <div className="mt-1 font-mono text-xs tracking-tight text-muted-foreground">{series.titleId}</div>
             </div>
-            <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+            <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" />
           </div>
         </button>
-        <div className="grid grid-cols-4 gap-2 text-center text-xs">
-          <div className="rounded-md border bg-background p-2">
-            <div className="text-sm font-semibold">{series.works}</div>
-            <div className="text-muted-foreground">{t("detailActions.works")}</div>
-          </div>
-          <div className="rounded-md border bg-background p-2">
-            <div className="text-sm font-semibold">{series.localWorks}</div>
-            <div className="text-muted-foreground">{t("detailActions.local")}</div>
-          </div>
-          <div className="rounded-md border bg-background p-2">
-            <div className="text-sm font-semibold">{series.remoteWorks}</div>
-            <div className="text-muted-foreground">{t("detailActions.remote")}</div>
-          </div>
-          <div className="rounded-md border bg-background p-2">
-            <div className="text-sm font-semibold">{series.missingWorks}</div>
-            <div className="text-muted-foreground">{t("detailActions.missing")}</div>
-          </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          {stats.map((stat) => (
+            <span key={stat.key} className="flex items-baseline gap-1">
+              <span className={`text-sm font-semibold tabular-nums ${stat.className || "text-foreground"}`}>
+                {stat.value}
+              </span>
+              <span className={stat.className}>{stat.label}</span>
+            </span>
+          ))}
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {series.workCodes.slice(0, 12).map((code) => (
-            <Badge key={code} variant="outline">
+        <div className="mt-auto flex flex-wrap gap-1">
+          {series.workCodes.slice(0, 8).map((code) => (
+            <Badge key={code} variant="outline" className="font-mono text-2xs font-normal text-muted-foreground">
               {code}
             </Badge>
           ))}
-          {series.workCodes.length > 12 && <Badge variant="secondary">+{series.workCodes.length - 12}</Badge>}
+          {series.workCodes.length > 8 && (
+            <Badge variant="secondary" className="text-2xs">
+              +{series.workCodes.length - 8}
+            </Badge>
+          )}
         </div>
       </CardContent>
     </Card>

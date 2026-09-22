@@ -85,7 +85,7 @@ export function UserTagRow({ tags, onSave, className = "", compact = false }: Us
         type="button"
         variant={tags.length > 0 ? "ghost" : "outline"}
         size="icon"
-        className="h-7 w-7"
+        className={`h-7 w-7 ${tags.length > 0 ? "text-muted-foreground" : "border-dashed text-muted-foreground"}`}
         aria-label={t("tags.add")}
         title={t("tags.add")}
         onClick={(event) => {
