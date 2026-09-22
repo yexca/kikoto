@@ -154,5 +154,10 @@ func seedPaginationLibrary(t testing.TB, count, tracks, snapshotBytes int) (*Sto
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	return NewStore(db), userID
+	store := NewStore(db)
+	// Match a started server, whose warm-up leaves no queued search documents.
+	if err := store.RefreshSearchIndex(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	return store, userID
 }

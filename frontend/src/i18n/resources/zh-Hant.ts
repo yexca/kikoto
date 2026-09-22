@@ -16,7 +16,7 @@ const libraryHant = {
   bulkTrackFailed: "批次追蹤失敗。",
   savedAndMarked: "已儲存並將 {{code}} 標記。",
   savedForList: "已儲存 {{code}}，可加入清單。",
-  searchPlaceholder: "搜尋標題、代碼、社團、標籤或創作者",
+  searchPlaceholder: "搜尋標題、代碼、社團、標籤或創作者（例：tag: 癒し）",
   clearSearch: "清除搜尋",
   addSearchCondition: "新增搜尋條件",
   removeSearchClause: "移除 {{clause}}",

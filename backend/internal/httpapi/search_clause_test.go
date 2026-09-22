@@ -1,8 +1,11 @@
 package httpapi
 
 import (
+	"context"
 	"reflect"
 	"testing"
+
+	"github.com/yexca/kikoto/backend/internal/library"
 )
 
 func TestParseListSearchClauses(t *testing.T) {
@@ -84,6 +87,9 @@ func TestLibrarySearchWhereMatchesNormalizedUnicodeTag(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec("INSERT INTO work_tag (work_id, tag_id, source) VALUES (?, ?, 'dlsite')", workID, tagID); err != nil {
+		t.Fatal(err)
+	}
+	if err := library.NewStore(db).RefreshSearchIndex(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 

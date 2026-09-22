@@ -82,9 +82,15 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain includes
-`035_remove_custom_workflow_definitions.sql`, with the `035_v0.6.1.sql`
-baseline generated from the `v0.6.1` `VERSION` file; regenerate it after the
-next release bump so the snapshot carries the release that ships schema 035.
+`036_work_search_index.sql`, with the `036_v0.6.1.sql` baseline generated from
+the `v0.6.1` `VERSION` file; regenerate it after the next release bump so the
+snapshot carries the release that ships schema 036. Migration 036 creates the
+`work_search` FTS5 trigram index and the `work_search_dirty` queue, queues
+every existing work, and adds triggers that queue works whose searchable text
+changes. Its documents are written by the application, so an upgraded server
+builds the index in the background after startup. The baseline generator omits
+FTS5 shadow tables and virtual-table rows because `CREATE VIRTUAL TABLE`
+recreates them.
 Migration 035 deletes user-authored workflow definitions and their triggers
 because custom workflow editing was removed; runs keep their code and name
 snapshots.

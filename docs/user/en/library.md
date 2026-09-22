@@ -11,6 +11,10 @@ The Library is the main browsing surface for works.
   and voice credits before hydrating the current page. Provider-declared edition
   codes remain searchable without creating extra works or scanning raw metadata
   snapshots during a Library request.
+- Matches search text literally and ignores width, letter case, and kana
+  script: `100%` and `a_b` are not wildcards, full-width `ＡＢＣ` finds `abc`, and
+  katakana finds the same word written in hiragana. Prefix a term with a
+  clause such as `tag: 癒し`, `circle:`, `va:`, or `mytag:` to search one field.
 - Shows cover, title, code, Circle / Series on one ellipsized line, voice
   metadata, local availability, source tags, and quick listening marks when
   available.

@@ -15,7 +15,7 @@ const libraryJapanese = {
   bulkTrackFailed: "一括追跡に失敗しました。",
   savedAndMarked: "{{code}} を保存してマークしました。",
   savedForList: "リスト選択用に {{code}} を保存しました。",
-  searchPlaceholder: "タイトル、コード、サークル、タグ、制作者を検索",
+  searchPlaceholder: "タイトル、コード、サークル、タグ、制作者を検索（例: tag: 癒し）",
   clearSearch: "検索をクリア",
   addSearchCondition: "検索条件を追加",
   removeSearchClause: "{{clause}}を削除",

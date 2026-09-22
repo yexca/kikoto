@@ -204,6 +204,10 @@ func dumpDatabase(db *sql.DB, version int, release string) (string, error) {
 }
 
 func readSchemaObjects(db *sql.DB) ([]schemaObject, error) {
+	shadowTables, err := readShadowTableNames(db)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := db.Query(`
 		SELECT type, name, sql
 		FROM sqlite_schema
@@ -221,9 +225,35 @@ func readSchemaObjects(db *sql.DB) ([]schemaObject, error) {
 		if err := rows.Scan(&object.kind, &object.name, &object.sql); err != nil {
 			return nil, err
 		}
+		// A virtual table recreates its own shadow tables, so dumping them
+		// separately would make the baseline's CREATE VIRTUAL TABLE fail.
+		if shadowTables[object.name] {
+			continue
+		}
 		objects = append(objects, object)
 	}
 	return objects, rows.Err()
+}
+
+func readShadowTableNames(db *sql.DB) (map[string]bool, error) {
+	rows, err := db.Query(`SELECT name FROM pragma_table_list WHERE schema = 'main' AND type = 'shadow'`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	names := map[string]bool{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names[name] = true
+	}
+	return names, rows.Err()
+}
+
+func isVirtualTable(object schemaObject) bool {
+	return strings.HasPrefix(strings.ToUpper(strings.TrimSpace(object.sql)), "CREATE VIRTUAL TABLE")
 }
 
 func dumpSeedData(db *sql.DB, tables []schemaObject) ([]string, error) {
@@ -232,6 +262,10 @@ func dumpSeedData(db *sql.DB, tables []schemaObject) ([]string, error) {
 	// migration-provided seeds without maintaining a second hand-written list.
 	var data []seedTableData
 	for _, table := range tables {
+		// Virtual table contents are derived state, never seed data.
+		if isVirtualTable(table) {
+			continue
+		}
 		columns, err := tableColumns(db, table.name)
 		if err != nil {
 			return nil, err

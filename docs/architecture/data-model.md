@@ -202,6 +202,13 @@ generation binding and rebuilds it before the session is reused.
   metadata root.
 - Interactive code and text search reads normalized metadata and aliases rather
   than scanning raw provider snapshot JSON.
+- `work_search` is a derived FTS5 trigram index with one row per work
+  (`rowid = work.id`) holding folded code/alias, title, circle, voice actor,
+  and tag text, including relevant manual overrides. Folding applies NFKC,
+  Unicode lowercase, and katakana-to-hiragana mapping. Triggers queue changed
+  works in `work_search_dirty`; the Library drains that queue before a search
+  and at startup. Edition-family matching is applied at query time, so the
+  index never duplicates a sibling's text or creates another work identity.
 - User state should survive metadata refresh and source replacement.
 - Playback is a work cursor, not a set of independent per-track bookmarks.
 

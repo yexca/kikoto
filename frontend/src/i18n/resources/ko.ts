@@ -15,7 +15,7 @@ const libraryKorean = {
   bulkTrackFailed: "대량 추적에 실패했습니다.",
   savedAndMarked: "{{code}}을(를) 저장하고 표시했습니다.",
   savedForList: "목록 선택을 위해 {{code}}을(를) 저장했습니다.",
-  searchPlaceholder: "제목, 코드, 서클, 태그 또는 제작자 검색",
+  searchPlaceholder: "제목, 코드, 서클, 태그 또는 제작자 검색 (예: tag: 癒し)",
   clearSearch: "검색 지우기",
   addSearchCondition: "검색 조건 추가",
   removeSearchClause: "{{clause}} 제거",
