@@ -14,6 +14,9 @@ export const builtInWorkflowOrder = [
   "remote_popular_collection",
   "dlsite_popular_collection",
   "availability_watch",
+  "circle_follow",
+  "series_follow",
+  "voice_follow",
 ];
 
 export function matchesWorkflowFilter(definition: WorkflowDefinition, filter: WorkflowFilter) {

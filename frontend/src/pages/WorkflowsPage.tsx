@@ -70,6 +70,17 @@ import {
   type WorkflowInputDefinition,
 } from "@/features/workflows/definitionModel";
 import { WorkflowRunDialog } from "@/features/workflows/WorkflowRunDialog";
+import {
+  presetAction,
+  presetBlockers,
+  presetDefaultValues,
+  presetInputsPayload,
+  presetTargetValue,
+  presetValuesFromInputs,
+  presetVisibleParameters,
+  type PresetBlocker,
+  type PresetFormValues,
+} from "@/features/workflows/presetWorkflowModel";
 import { parseWorkCodes, WorkCodesField } from "@/features/workflows/WorkCodesField";
 import { WorkflowCanvasScrollBoundary } from "@/features/workflows/WorkflowCanvasScrollBoundary";
 import { WorkflowViewportTools } from "@/features/workflows/WorkflowViewportTools";
@@ -88,6 +99,8 @@ import {
   type WorkflowDefinition,
   type WorkflowNodeType,
   type WorkflowNodeRun,
+  type WorkflowPreset,
+  type WorkflowPresetParameter,
   type WorkflowRun,
   type WorkflowRunDetail,
   type WorkflowRunGraph,
@@ -233,7 +246,7 @@ const workflowTemplates: WorkflowTemplate[] = [
   },
 ];
 
-type SystemRunKind = "local_scan" | "metadata_sync" | "remote_popular" | "dlsite_popular";
+type SystemRunKind = "local_scan" | "metadata_sync" | "remote_popular" | "dlsite_popular" | "preset";
 
 type SystemRunOptions = {
   followUpRun?: boolean;
@@ -327,6 +340,7 @@ export function WorkflowsPage({
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [nodeTypes, setNodeTypes] = useState<WorkflowNodeType[]>(fallbackNodeTypes);
   const [triggers, setTriggers] = useState<WorkflowTrigger[]>([]);
+  const [presets, setPresets] = useState<WorkflowPreset[]>([]);
   const [selectedDefinitionId, setSelectedDefinitionID] = useState<number | null>(() =>
     storedPositiveInt(`${workflowDefinitionStorageKey}:${storedWorkflowFilter(workflowDefinitionTabStorageKey)}`),
   );
@@ -356,12 +370,18 @@ export function WorkflowsPage({
     const seq = ++workflowMetaRequestSeq.current;
     setIsWorkflowMetaLoading(true);
     setWorkflowMetaError("");
-    Promise.all([api.listWorkflowDefinitions(), api.listWorkflowNodeTypes(), api.listWorkflowTriggers()])
-      .then(([nextDefinitions, nextNodeTypes, nextTriggers]) => {
+    Promise.all([
+      api.listWorkflowDefinitions(),
+      api.listWorkflowNodeTypes(),
+      api.listWorkflowTriggers(),
+      api.listWorkflowPresets(),
+    ])
+      .then(([nextDefinitions, nextNodeTypes, nextTriggers, nextPresets]) => {
         if (seq !== workflowMetaRequestSeq.current) return;
         setDefinitions(nextDefinitions);
         setNodeTypes(nextNodeTypes);
         setTriggers(nextTriggers);
+        setPresets(nextPresets);
         setHasWorkflowMetaSnapshot(true);
       })
       .catch(() => {
@@ -405,6 +425,7 @@ export function WorkflowsPage({
     }
   }, [linkedRun?.id, linkedRun?.workflowCode, activityLocation.workflowCode]);
 
+  const presetByCode = useMemo(() => new Map(presets.map((preset) => [preset.code, preset])), [presets]);
   const visibleDefinitions = useMemo(() => {
     const choices = [...definitions];
     if (linkedCode && !choices.some((definition) => definition.code === linkedCode)) {
@@ -427,6 +448,7 @@ export function WorkflowsPage({
         (definition) =>
           definition.scope === "user" ||
           configurableSystemWorkflowCodes.has(definition.code) ||
+          presetByCode.has(definition.code) ||
           definition.code === linkedCode,
       )
       .sort((left, right) => {
@@ -436,7 +458,7 @@ export function WorkflowsPage({
               (builtInWorkflowOrder.includes(right.code) ? builtInWorkflowOrder.indexOf(right.code) : 99)
           : left.id - right.id;
       });
-  }, [definitions, linkedCode, linkedRun]);
+  }, [definitions, linkedCode, linkedRun, presetByCode]);
   const tabDefinitions = useMemo(
     () => visibleDefinitions.filter((definition) => matchesWorkflowFilter(definition, definitionTab)),
     [definitionTab, visibleDefinitions],
@@ -503,8 +525,11 @@ export function WorkflowsPage({
     return () => window.clearInterval(timer);
   }, [hasActiveRecentRun, selectedDefinition?.code]);
 
+  const selectedPreset = selectedDefinition ? (presetByCode.get(selectedDefinition.code) ?? null) : null;
   const selectedSystemRunKinds = selectedDefinition
-    ? manuallyRunnableSystemWorkflows[selectedDefinition.code]
+    ? selectedPreset
+      ? (["preset"] as SystemRunKind[])
+      : manuallyRunnableSystemWorkflows[selectedDefinition.code]
     : undefined;
   const definitionEmptyText = workflowCopy("definitionEmpty");
 
@@ -612,6 +637,28 @@ export function WorkflowsPage({
     }
   };
 
+  const runPreset = async (inputs: Record<string, unknown>) => {
+    if (!selectedPreset || !selectedDefinition) return false;
+    setRunningSystemAction("preset");
+    try {
+      const result = await api.runWorkflowPreset(selectedPreset.code, inputs);
+      toast.success(
+        workflowCopy("presetQueued", {
+          name: localizedWorkflowDefinition(selectedDefinition).displayName,
+          runId: result.runId,
+        }),
+      );
+      void refreshRecentRuns(selectedDefinition.code);
+      activityLocation.openRun(result.runId, selectedDefinition.code);
+      return true;
+    } catch (error) {
+      toast.notify(toastFromError(error, workflowCopy("presetQueueFailed")));
+      return false;
+    } finally {
+      setRunningSystemAction(null);
+    }
+  };
+
   const runSystemAction = async (kind: SystemRunKind, options: SystemRunOptions = {}) => {
     if (kind === "local_scan") return runLocalScan(options.followUpRun ?? false);
     if (kind === "metadata_sync") return runMetadataSync();
@@ -630,6 +677,7 @@ export function WorkflowsPage({
     if (kind === "local_scan" || kind === "metadata_sync") return canRun && canSyncMetadata;
     if (kind === "dlsite_popular") return canRun && canSyncMetadata && canTagWorks;
     if (kind === "remote_popular") return canRun && canTagWorks && remoteSourceAvailability !== "unavailable";
+    if (kind === "preset") return canRun && canTagWorks;
     return canRun;
   };
 
@@ -790,6 +838,8 @@ export function WorkflowsPage({
                 remoteSourceUnavailable={remoteSourceAvailability === "unavailable"}
                 onOpenRemoteSourceSettings={openRemoteSourcesSettings}
                 onRunDLsitePopular={runDLsitePopularCollection}
+                preset={selectedPreset}
+                onRunPreset={runPreset}
                 recentRuns={recentDefinitionRuns}
                 onOpenRun={openActivityRun}
                 onRunDefinition={
@@ -871,6 +921,8 @@ export function WorkflowsPage({
       {modalMode === "create-trigger" && selectedDefinition && (
         <TriggerModal
           definition={selectedDefinition}
+          preset={selectedPreset}
+          canFetch={canManageDownloads}
           trigger={null}
           initialTriggerType={creatingTriggerType}
           onClose={() => setModalMode(null)}
@@ -884,6 +936,8 @@ export function WorkflowsPage({
       {modalMode === "edit-trigger" && selectedDefinition && editingTrigger && (
         <TriggerModal
           definition={selectedDefinition}
+          preset={selectedPreset}
+          canFetch={canManageDownloads}
           trigger={editingTrigger}
           initialTriggerType={editingTrigger.triggerType === "startup" ? "startup" : "schedule"}
           onClose={() => setModalMode(null)}
@@ -1466,6 +1520,8 @@ function WorkflowDetail({
   canFetchRemotePopular = false,
   remoteSourceUnavailable = false,
   onRunDLsitePopular,
+  preset = null,
+  onRunPreset,
   recentRuns = [],
   onOpenRun,
   onRunDefinition,
@@ -1490,6 +1546,8 @@ function WorkflowDetail({
   canFetchRemotePopular?: boolean;
   remoteSourceUnavailable?: boolean;
   onRunDLsitePopular?: (options: DLsitePopularRunOptions) => Promise<void>;
+  preset?: WorkflowPreset | null;
+  onRunPreset?: (inputs: Record<string, unknown>) => Promise<boolean>;
   recentRuns?: WorkflowRun[];
   onOpenRun?: (run: WorkflowRun) => void;
   onRunDefinition?: (inputs?: Record<string, unknown>, autoPreview?: boolean) => void;
@@ -1501,7 +1559,7 @@ function WorkflowDetail({
   onEditNode: (index: number) => void;
 }) {
   const [configuredSystemRun, setConfiguredSystemRun] = useState<
-    "local_scan" | "dlsite_popular" | "remote_popular" | null
+    "local_scan" | "dlsite_popular" | "remote_popular" | "preset" | null
   >(null);
   const [quickRunValues, setQuickRunValues] = useState<Record<string, string>>({});
   const definitionID = definition?.id ?? null;
@@ -1569,8 +1627,8 @@ function WorkflowDetail({
       {definition.scope === "system" &&
         systemRunKinds
           ?.filter(
-            (kind): kind is "local_scan" | "dlsite_popular" | "remote_popular" =>
-              kind === "local_scan" || kind === "dlsite_popular" || kind === "remote_popular",
+            (kind): kind is "local_scan" | "dlsite_popular" | "remote_popular" | "preset" =>
+              kind === "local_scan" || kind === "dlsite_popular" || kind === "remote_popular" || kind === "preset",
           )
           .map((kind) => {
             const running = isSystemActionRunning?.(kind) ?? false;
@@ -1628,6 +1686,7 @@ function WorkflowDetail({
         <div className="grid min-w-0 gap-x-10 gap-y-5 lg:grid-cols-2">
           <WorkflowAutomationPanel
             definition={definition}
+            isPreset={Boolean(preset)}
             triggers={definitionTriggers}
             canManage={canManageTriggers}
             onCreate={onCreateTrigger}
@@ -1636,7 +1695,7 @@ function WorkflowDetail({
           />
           {onOpenRun && <RecentWorkflowRuns runs={recentRuns} onOpen={onOpenRun} />}
         </div>
-        {parsedDefinition.kind === "legacy" && <WorkflowHints nodes={nodes} nodeTypes={nodeTypes} compact />}
+        {parsedDefinition.kind === "legacy" && !preset && <WorkflowHints nodes={nodes} nodeTypes={nodeTypes} compact />}
       </CardContent>
       {definition.code === "remote_popular_collection" && remoteSourceUnavailable && (
         <div
@@ -1673,6 +1732,22 @@ function WorkflowDetail({
             running={isSystemActionRunning?.("dlsite_popular") ?? false}
             allowed={canRunSystemAction?.("dlsite_popular") ?? false}
             onRun={onRunDLsitePopular}
+          />
+        </Modal>
+      )}
+      {configuredSystemRun === "preset" && preset && onRunPreset && (
+        <Modal
+          title={workflowCopy("configurePreset", { name: displayDefinition.displayName })}
+          onClose={() => setConfiguredSystemRun(null)}
+        >
+          <PresetRunPanel
+            preset={preset}
+            running={isSystemActionRunning?.("preset") ?? false}
+            allowed={canRunSystemAction?.("preset") ?? false}
+            canFetch={canFetchRemotePopular}
+            onRun={async (inputs) => {
+              if (await onRunPreset(inputs)) setConfiguredSystemRun(null);
+            }}
           />
         </Modal>
       )}
@@ -1948,6 +2023,295 @@ function RemotePopularRunPanel({
           </Button>
         </div>
       </div>
+    </section>
+  );
+}
+
+function presetParameterLabel(key: string) {
+  return workflowCopy(`presetParams.${key}`);
+}
+
+function presetOptionLabel(value: string) {
+  return i18n.exists(`workflowPage.presetOptions.${value}`) ? workflowCopy(`presetOptions.${value}`) : value;
+}
+
+function presetBlockerText(blocker: PresetBlocker) {
+  switch (blocker.kind) {
+    case "required":
+      return workflowCopy("presetBlockers.required", { label: presetParameterLabel(blocker.key) });
+    case "range":
+      return workflowCopy("presetBlockers.range", {
+        label: presetParameterLabel(blocker.key),
+        min: blocker.minimum,
+        max: blocker.maximum,
+      });
+    case "source_required":
+      return workflowCopy("selectRemoteSource");
+    case "fetch_permission":
+      return workflowCopy("fetchPermissionRequired");
+    case "full_refresh_automated":
+      return workflowCopy("presetBlockers.fullRefreshAutomated");
+    case "invalid_date":
+      return workflowCopy("presetBlockers.invalidDate", { label: presetParameterLabel(blocker.key) });
+  }
+}
+
+function presetTagTemplateTokens(
+  preset: WorkflowPreset,
+  values: PresetFormValues,
+  now: Date,
+): WorkflowTagTemplateToken[] {
+  return [
+    { name: "date", description: workflowCopy("presetTokens.date"), value: utcShortDate(now) },
+    {
+      name: "target",
+      description: workflowCopy("presetTokens.target"),
+      value: workflowTagFragmentPreview(presetTargetValue(preset, values) || preset.target),
+    },
+    { name: "action", description: workflowCopy("presetTokens.action"), value: presetAction(values) },
+  ];
+}
+
+function useCompatibleRemoteSources() {
+  const [sources, setSources] = useState<LibrarySource[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let active = true;
+    api
+      .listLibrarySources()
+      .then((items) => {
+        if (active) setSources(items);
+      })
+      .catch(() => {
+        if (active) setSources([]);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  const compatible = useMemo(
+    () =>
+      sources.filter(
+        (source) =>
+          source.enabled && ["kikoeru_compatible", "kikoeru_compatible_number178"].includes(source.sourceType),
+      ),
+    [sources],
+  );
+  return { sources: compatible, loading };
+}
+
+function PresetParameterFields({
+  idPrefix,
+  preset,
+  values,
+  canFetch,
+  onChange,
+}: {
+  idPrefix: string;
+  preset: WorkflowPreset;
+  values: PresetFormValues;
+  canFetch: boolean;
+  onChange: (values: PresetFormValues) => void;
+}) {
+  const { sources, loading: loadingSources } = useCompatibleRemoteSources();
+  const visible = presetVisibleParameters(preset, values);
+  const update = (key: string, value: string) => onChange({ ...values, [key]: value });
+  const tagTokens = presetTagTemplateTokens(preset, values, new Date());
+  const tagPreview = workflowTagTemplatePreview(
+    values.tagNameTemplate ?? "",
+    workflowTagTemplateTokenValues(tagTokens),
+  );
+  const tagError = (values.tagNameTemplate ?? "").trim()
+    ? workflowTagTemplateBlockers(
+        values.tagNameTemplate ?? "",
+        tagTokens.map((token) => token.name),
+      )[0]
+    : undefined;
+
+  useEffect(() => {
+    if (loadingSources || sources.length === 0 || (values.sourceId ?? "").trim() !== "") return;
+    if (!visible.some((parameter) => parameter.kind === "source_id")) return;
+    onChange({ ...values, sourceId: String(sources[0].id) });
+  }, [loadingSources, sources, visible.length]);
+
+  const renderField = (parameter: WorkflowPresetParameter) => {
+    const id = `${idPrefix}-${parameter.key}`;
+    const label = `${presetParameterLabel(parameter.key)}${parameter.required ? " *" : ""}`;
+    const value = values[parameter.key] ?? "";
+    switch (parameter.kind) {
+      case "source_id":
+        return (
+          <Field key={parameter.key} label={label}>
+            <NativeSelect
+              fieldSize="sm"
+              value={value}
+              disabled={loadingSources || sources.length === 0}
+              onChange={(event) => update(parameter.key, event.target.value)}
+            >
+              {sources.length === 0 && (
+                <option value="">
+                  {loadingSources ? workflowCopy("loadingSources") : workflowCopy("noCompatibleSource")}
+                </option>
+              )}
+              {sources.map((source) => (
+                <option key={source.id} value={String(source.id)}>
+                  {source.displayName}
+                </option>
+              ))}
+            </NativeSelect>
+          </Field>
+        );
+      case "select":
+        return (
+          <Field key={parameter.key} label={label}>
+            <NativeSelect fieldSize="sm" value={value} onChange={(event) => update(parameter.key, event.target.value)}>
+              {(parameter.options ?? []).map((option) => (
+                <option
+                  key={option}
+                  value={option}
+                  disabled={parameter.key === "action" && option === "fetch" && !canFetch}
+                >
+                  {presetOptionLabel(option)}
+                  {parameter.key === "action" && option === "fetch" && !canFetch
+                    ? ` (${workflowCopy("presetFetchUnavailable")})`
+                    : ""}
+                </option>
+              ))}
+            </NativeSelect>
+          </Field>
+        );
+      case "integer":
+        return (
+          <Field key={parameter.key} label={label}>
+            <Input
+              fieldSize="sm"
+              type="number"
+              inputMode="numeric"
+              min={parameter.minimum}
+              max={parameter.maximum}
+              value={value}
+              onChange={(event) => update(parameter.key, event.target.value)}
+            />
+          </Field>
+        );
+      case "date":
+        return (
+          <Field key={parameter.key} label={label}>
+            <Input
+              fieldSize="sm"
+              type="date"
+              value={value}
+              onChange={(event) => update(parameter.key, event.target.value)}
+            />
+          </Field>
+        );
+      case "extensions":
+        return (
+          <Field key={parameter.key} label={label}>
+            <Input
+              fieldSize="sm"
+              value={value}
+              placeholder={workflowCopy("extensionsPlaceholder")}
+              onChange={(event) => update(parameter.key, event.target.value)}
+            />
+          </Field>
+        );
+      case "text_template":
+        return (
+          <div key={parameter.key} className="grid gap-1 md:col-span-2">
+            <TagTemplateField
+              id={id}
+              value={value}
+              defaultValue={preset.defaultTagTemplate}
+              tokens={tagTokens}
+              preview={tagPreview}
+              error={tagError}
+              onChange={(next) => update(parameter.key, next)}
+            />
+            <p className="text-xs text-muted-foreground">{workflowCopy("presetTagOptional")}</p>
+          </div>
+        );
+      default:
+        return (
+          <Field key={parameter.key} label={label}>
+            <Input
+              fieldSize="sm"
+              value={value}
+              placeholder={parameter.kind === "circle_id" ? "RG12345" : undefined}
+              onChange={(event) => update(parameter.key, event.target.value)}
+            />
+          </Field>
+        );
+    }
+  };
+
+  const groups = ["target", "filter", "action", "fetch", "tag"] as const;
+  return (
+    <div className="grid gap-4">
+      {groups.map((group) => {
+        const parameters = visible.filter((parameter) => parameter.group === group);
+        if (parameters.length === 0) return null;
+        return (
+          <section key={group} className="grid gap-2">
+            <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {workflowCopy(`presetGroups.${group}`)}
+            </h4>
+            <div className="grid gap-3 md:grid-cols-2">{parameters.map(renderField)}</div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function PresetRunPanel({
+  preset,
+  running,
+  allowed,
+  canFetch,
+  onRun,
+}: {
+  preset: WorkflowPreset;
+  running: boolean;
+  allowed: boolean;
+  canFetch: boolean;
+  onRun: (inputs: Record<string, unknown>) => Promise<void>;
+}) {
+  const [values, setValues] = useState<PresetFormValues>(() => presetDefaultValues(preset));
+  const blockers = presetBlockers(preset, values, { canFetch, automated: false });
+  const tagTemplate = (values.tagNameTemplate ?? "").trim();
+  const tagInvalid =
+    tagTemplate !== "" &&
+    workflowTagTemplateBlockers(
+      tagTemplate,
+      presetTagTemplateTokens(preset, values, new Date()).map((token) => token.name),
+    ).length > 0;
+  const canSubmit = allowed && blockers.length === 0 && !tagInvalid;
+  return (
+    <section className="grid gap-4">
+      <PresetParameterFields
+        idPrefix="preset-run"
+        preset={preset}
+        values={values}
+        canFetch={canFetch}
+        onChange={setValues}
+      />
+      {blockers.length > 0 && (
+        <div className="text-xs text-muted-foreground" role="status">
+          {presetBlockerText(blockers[0])}
+        </div>
+      )}
+      <Button
+        className="w-full"
+        disabled={running || !canSubmit}
+        onClick={() => void onRun(presetInputsPayload(preset, values))}
+      >
+        <Play className="h-4 w-4" />
+        {running ? workflowCopy("queueing") : workflowCopy("presetRun")}
+      </Button>
     </section>
   );
 }
@@ -3156,7 +3520,8 @@ function RecentWorkflowRuns({ runs, onOpen }: { runs: WorkflowRun[]; onOpen: (ru
   );
 }
 
-function supportedAutomationTriggerTypes(definition: WorkflowDefinition): AutomationTriggerType[] {
+function supportedAutomationTriggerTypes(definition: WorkflowDefinition, isPreset = false): AutomationTriggerType[] {
+  if (definition.scope === "system" && isPreset) return automationTriggerTypes;
   if (definition.scope === "system" && definition.code === "availability_watch") return ["schedule"];
   if (definition.scope === "system" && definition.code === "local_library_scan")
     return ["startup", "filesystem_event", "schedule"];
@@ -3186,6 +3551,7 @@ function workflowTriggerNextRun(trigger: WorkflowTrigger) {
 
 function WorkflowAutomationPanel({
   definition,
+  isPreset = false,
   triggers,
   canManage,
   onCreate,
@@ -3193,13 +3559,14 @@ function WorkflowAutomationPanel({
   onToggle,
 }: {
   definition: WorkflowDefinition;
+  isPreset?: boolean;
   triggers: WorkflowTrigger[];
   canManage: boolean;
   onCreate: (triggerType: CreatableAutomationTriggerType) => void;
   onEdit: (trigger: WorkflowTrigger) => void;
   onToggle: (trigger: WorkflowTrigger, enabled: boolean) => Promise<void>;
 }) {
-  const supportedTypes = supportedAutomationTriggerTypes(definition);
+  const supportedTypes = supportedAutomationTriggerTypes(definition, isPreset);
   const hasStartup = triggers.some((trigger) => trigger.triggerType === "startup");
   const hasSchedule = triggers.some((trigger) => trigger.triggerType === "schedule");
   const orderedTriggers = [...triggers].sort((left, right) => {
@@ -3531,6 +3898,8 @@ function NodeModal({
 
 function TriggerModal({
   definition,
+  preset = null,
+  canFetch = false,
   trigger,
   initialTriggerType,
   onClose,
@@ -3538,6 +3907,8 @@ function TriggerModal({
   onDeleted,
 }: {
   definition: WorkflowDefinition;
+  preset?: WorkflowPreset | null;
+  canFetch?: boolean;
   trigger: WorkflowTrigger | null;
   initialTriggerType: CreatableAutomationTriggerType;
   onClose: () => void;
@@ -3580,8 +3951,14 @@ function TriggerModal({
       ]),
     );
   });
+  const [presetValues, setPresetValues] = useState<PresetFormValues>(() =>
+    preset ? presetValuesFromInputs(preset, parseJSONRecord(trigger?.configJson ?? "").inputs) : {},
+  );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const presetTriggerBlockers = preset
+    ? presetBlockers(preset, presetValues, { canFetch, automated: true }).map((blocker) => presetBlockerText(blocker))
+    : [];
   const missingScheduledInputs =
     dagDocument?.inputs.filter((input) => input.required && !scheduledInputs[input.key]?.trim()) ?? [];
   const invalidScheduledInputs =
@@ -3601,6 +3978,7 @@ function TriggerModal({
       ? [workflowCopy("invalidWorkCodes", { inputs: invalidScheduledInputs.map((input) => input.label).join(", ") })]
       : []),
     ...systemConfigBlockers,
+    ...presetTriggerBlockers,
   ];
 
   const save = async () => {
@@ -3625,9 +4003,11 @@ function TriggerModal({
           triggerType === "schedule"
             ? JSON.stringify({ intervalMinutes })
             : (trigger?.scheduleJson ?? JSON.stringify({ type: "startup" })),
-        configJson: dagDocument
-          ? JSON.stringify({ inputs: resolvedInputs })
-          : JSON.stringify(workflowSystemTriggerConfigPayload(definition.code, triggerType, systemConfig)),
+        configJson: preset
+          ? JSON.stringify({ inputs: presetInputsPayload(preset, presetValues) })
+          : dagDocument
+            ? JSON.stringify({ inputs: resolvedInputs })
+            : JSON.stringify(workflowSystemTriggerConfigPayload(definition.code, triggerType, systemConfig)),
         nextRunAt: null,
       };
       const saved = trigger
@@ -3728,12 +4108,22 @@ function TriggerModal({
             ))}
           </div>
         )}
-        <SystemWorkflowTriggerFields
-          definitionCode={definition.code}
-          triggerType={triggerType}
-          value={systemConfig}
-          onChange={setSystemConfig}
-        />
+        {preset ? (
+          <PresetParameterFields
+            idPrefix="preset-trigger"
+            preset={preset}
+            values={presetValues}
+            canFetch={canFetch}
+            onChange={setPresetValues}
+          />
+        ) : (
+          <SystemWorkflowTriggerFields
+            definitionCode={definition.code}
+            triggerType={triggerType}
+            value={systemConfig}
+            onChange={setSystemConfig}
+          />
+        )}
         {automationBlockers.length > 0 && (
           <div className="rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-sm text-warning-foreground">
             {automationBlockers.map((blocker) => (

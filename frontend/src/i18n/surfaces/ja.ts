@@ -492,6 +492,21 @@ export const surfaceJapanese = {
   workflowPage: {
     ...surfaceEnglish.workflowPage,
     builtInDefinitions: {
+      circle_follow: {
+        name: "サークルをフォロー",
+        description:
+          "サークルカタログを読み取り、新着作品を絞り込んでからメタデータ同期・Track・Fetch を行い、ユーザータグを追加します。",
+      },
+      series_follow: {
+        name: "シリーズをフォロー",
+        description:
+          "保存済みのシリーズ作品を読み取り、新着作品を絞り込んでからメタデータ同期・Track・Fetch を行い、ユーザータグを追加します。",
+      },
+      voice_follow: {
+        name: "声優をフォロー",
+        description:
+          "互換リモートソースで声優を検索し、新着作品を絞り込んでからメタデータ同期・Track・Fetch を行い、ユーザータグを追加します。",
+      },
       availability_watch: {
         name: "可用性ウォッチ",
         description: "作品コードを監視し、リモートソースが利用可能になったら設定済みの操作を実行します。",
@@ -639,12 +654,65 @@ export const surfaceJapanese = {
     allDefinitions: "すべて",
     filterDefinitions: "ワークフローを絞り込む",
     workflowTabs: "ワークフロー",
+    configurePreset: "{{name}}を設定",
+    presetQueued: "{{name}}の実行 #{{runId}} をキューに追加しました。",
+    presetQueueFailed: "プリセットワークフローをキューに追加できませんでした。",
+    presetRun: "ワークフローを実行",
+    presetTagOptional: "テンプレートを空にするとタグを追加しません。",
+    presetFetchUnavailable: "ダウンロード権限が必要",
+    presetGroups: {
+      target: "対象",
+      filter: "絞り込み",
+      action: "アクション",
+      fetch: "Fetch 上限",
+      tag: "タグ",
+    },
+    presetParams: {
+      circleId: "サークル ID",
+      seriesId: "シリーズ ID",
+      voiceName: "声優",
+      sourceId: "リモートソース",
+      catalogRefresh: "カタログ更新",
+      existing: "対象の作品",
+      releaseFrom: "発売日がこの日以降",
+      maxWorks: "作品数上限",
+      action: "アクション",
+      excludeExtensions: "除外する拡張子",
+      maxFiles: "最大ファイル数",
+      maxGiB: "最大サイズ（GiB）",
+      minFreeGiB: "最小空き容量（GiB）",
+      tagNameTemplate: "タグテンプレート",
+    },
+    presetOptions: {
+      metadata: "メタデータ同期のみ",
+      track: "Track",
+      fetch: "Fetch",
+      unknown: "新着作品のみ",
+      any: "すべての作品",
+      stored: "保存済みカタログを使用",
+      incremental: "増分更新",
+      full: "完全更新",
+    },
+    presetTokens: {
+      date: "UTC 日付（YYMMDD）",
+      target: "サークル・シリーズ・声優",
+      action: "選択したアクション",
+    },
+    presetBlockers: {
+      required: "{{label}}は必須です。",
+      range: "{{label}}は {{min}} から {{max}} の範囲で指定してください。",
+      fullRefreshAutomated: "自動実行では保存済みまたは増分のカタログ更新のみ使用できます。",
+      invalidDate: "{{label}}は YYYY-MM-DD 形式で入力してください。",
+    },
     shortNames: {
       local_library_scan: "ローカルスキャン",
       metadata_sync: "メタデータ同期",
       remote_popular_collection: "リモート人気",
       dlsite_popular_collection: "DLsite 人気",
       availability_watch: "配信状況の監視",
+      circle_follow: "サークルフォロー",
+      series_follow: "シリーズフォロー",
+      voice_follow: "声優フォロー",
     },
     workflowDefinitionType: "ワークフロー定義の種類",
     builtIn: "組み込み",

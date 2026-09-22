@@ -1060,6 +1060,44 @@ export type WorkflowDefinition = {
   updatedAt: string;
 };
 
+export type WorkflowPresetParameter = {
+  key: string;
+  kind:
+    | "circle_id"
+    | "series_id"
+    | "voice_name"
+    | "source_id"
+    | "select"
+    | "integer"
+    | "date"
+    | "text_template"
+    | "extensions";
+  group: "target" | "filter" | "action" | "fetch" | "tag";
+  required: boolean;
+  default?: string | number | boolean;
+  options?: string[];
+  minimum?: number;
+  maximum?: number;
+  tokens?: string[];
+};
+
+export type WorkflowPreset = {
+  code: string;
+  displayName: string;
+  description: string;
+  target: "circle" | "series" | "voice";
+  defaultTagTemplate: string;
+  parameters: WorkflowPresetParameter[];
+};
+
+export type WorkflowPresetRunResult = {
+  runId: number;
+  status: string;
+  workflowCode: string;
+  tagName: string;
+  inputs: Record<string, unknown>;
+};
+
 export type WorkflowNodeTypePort = {
   id: string;
   dataType?: string;
@@ -2516,6 +2554,9 @@ export const api = {
     limit: number;
     tagNameTemplate: string;
   }) => postJSONBody<RemoteCollectionRunResult>("/api/workflow-runs/remote-popular", payload),
+  listWorkflowPresets: () => getJSON<WorkflowPreset[]>("/api/workflow-presets"),
+  runWorkflowPreset: (code: string, inputs: Record<string, unknown>) =>
+    postJSONBody<WorkflowPresetRunResult>(`/api/workflow-presets/${encodeURIComponent(code)}/runs`, { inputs }),
   runDLsitePopularCollection: (payload: {
     period: "day" | "week" | "month" | "year";
     releaseWindow: "30d" | "";

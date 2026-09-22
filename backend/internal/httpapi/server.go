@@ -239,6 +239,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/workflow-definitions/{id}", s.updateWorkflowDefinition)
 	mux.HandleFunc("DELETE /api/workflow-definitions/{id}", s.deleteWorkflowDefinition)
 	mux.HandleFunc("POST /api/workflow-definitions/{id}/runs", s.runCustomWorkflowDefinition)
+	mux.HandleFunc("GET /api/workflow-presets", s.listWorkflowPresets)
+	mux.HandleFunc("POST /api/workflow-presets/{code}/runs", s.runWorkflowPreset)
 	mux.HandleFunc("GET /api/workflow-triggers", s.listWorkflowTriggers)
 	mux.HandleFunc("POST /api/workflow-triggers", s.createWorkflowTrigger)
 	mux.HandleFunc("PATCH /api/workflow-triggers/{id}", s.updateWorkflowTrigger)

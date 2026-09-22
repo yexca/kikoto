@@ -490,6 +490,21 @@ export const surfaceKorean = {
   workflowPage: {
     ...surfaceEnglish.workflowPage,
     builtInDefinitions: {
+      circle_follow: {
+        name: "서클 팔로우",
+        description:
+          "서클 카탈로그를 읽고 새 작품을 필터링한 뒤 메타데이터 동기화, Track 또는 Fetch를 수행하고 사용자 태그를 추가합니다.",
+      },
+      series_follow: {
+        name: "시리즈 팔로우",
+        description:
+          "저장된 시리즈 작품을 읽고 새 작품을 필터링한 뒤 메타데이터 동기화, Track 또는 Fetch를 수행하고 사용자 태그를 추가합니다.",
+      },
+      voice_follow: {
+        name: "성우 팔로우",
+        description:
+          "호환 원격 소스에서 성우를 검색하고 새 작품을 필터링한 뒤 메타데이터 동기화, Track 또는 Fetch를 수행하고 사용자 태그를 추가합니다.",
+      },
       availability_watch: {
         name: "가용성 감시",
         description: "작품 코드를 감시하고 원격 소스를 사용할 수 있게 되면 구성된 작업을 실행합니다.",
@@ -634,12 +649,65 @@ export const surfaceKorean = {
     allDefinitions: "전체",
     filterDefinitions: "워크플로 필터",
     workflowTabs: "워크플로",
+    configurePreset: "{{name}} 구성",
+    presetQueued: "{{name}} 실행 #{{runId}}이(가) 대기열에 추가되었습니다.",
+    presetQueueFailed: "프리셋 워크플로를 대기열에 추가할 수 없습니다.",
+    presetRun: "워크플로 실행",
+    presetTagOptional: "템플릿을 비워 두면 태그를 추가하지 않습니다.",
+    presetFetchUnavailable: "다운로드 권한 필요",
+    presetGroups: {
+      target: "대상",
+      filter: "필터",
+      action: "동작",
+      fetch: "Fetch 한도",
+      tag: "태그",
+    },
+    presetParams: {
+      circleId: "서클 ID",
+      seriesId: "시리즈 ID",
+      voiceName: "성우",
+      sourceId: "원격 소스",
+      catalogRefresh: "카탈로그 새로 고침",
+      existing: "포함할 작품",
+      releaseFrom: "발매일 기준 이후",
+      maxWorks: "작품 한도",
+      action: "동작",
+      excludeExtensions: "제외할 확장자",
+      maxFiles: "최대 파일 수",
+      maxGiB: "최대 크기(GiB)",
+      minFreeGiB: "최소 여유 공간(GiB)",
+      tagNameTemplate: "태그 템플릿",
+    },
+    presetOptions: {
+      metadata: "메타데이터만 동기화",
+      track: "Track",
+      fetch: "Fetch",
+      unknown: "새 작품만",
+      any: "모든 작품",
+      stored: "저장된 카탈로그 사용",
+      incremental: "증분 새로 고침",
+      full: "전체 새로 고침",
+    },
+    presetTokens: {
+      date: "UTC 날짜(YYMMDD)",
+      target: "서클, 시리즈 또는 성우",
+      action: "선택한 동작",
+    },
+    presetBlockers: {
+      required: "{{label}}은(는) 필수입니다.",
+      range: "{{label}}은(는) {{min}}에서 {{max}} 사이여야 합니다.",
+      fullRefreshAutomated: "자동 실행은 저장된 카탈로그 또는 증분 새로 고침만 지원합니다.",
+      invalidDate: "{{label}}은(는) YYYY-MM-DD 형식이어야 합니다.",
+    },
     shortNames: {
       local_library_scan: "로컬 스캔",
       metadata_sync: "메타데이터 동기화",
       remote_popular_collection: "원격 인기",
       dlsite_popular_collection: "DLsite 인기",
       availability_watch: "가용성 모니터링",
+      circle_follow: "서클 팔로우",
+      series_follow: "시리즈 팔로우",
+      voice_follow: "성우 팔로우",
     },
     workflowDefinitionType: "워크플로 정의 유형",
     builtIn: "기본 제공",

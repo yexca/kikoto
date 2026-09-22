@@ -30,6 +30,8 @@ workflow_definition
 - Local location cleanup.
 - Circle metadata refresh.
 - Voice catalog refresh.
+- Preset follow workflows: Follow a circle, Follow a series, Follow a voice
+  actor.
 
 ## First Library Metadata Prompt
 
@@ -129,6 +131,39 @@ create remote file-source presence or fetch media.
 Configurable built-in triggers retain the configuring user for user-owned tag
 effects and revalidate that user's permissions when dispatching. Triggered runs
 store both their trigger reference and the final resolved input.
+
+## Preset Workflows
+
+Preset workflows are system definitions whose graph is composed by the server
+from a small validated parameter set instead of authored by a user. `circle_follow`,
+`series_follow`, and `voice_follow` share one shape:
+
+```text
+discover (circle_catalog | series_catalog | voice_source_works)
+  -> filter_works (existing, releaseFrom, limit)
+  -> metadata_sync | track_works | fetch_works
+  -> tag_works (optional, rendered from a tag template)
+```
+
+`GET /api/workflow-presets` publishes each preset's parameter schema; the
+Workflows page renders it as a Configure dialog and as the startup or interval
+trigger form. `POST /api/workflow-presets/{code}/runs` validates the inputs,
+checks that a selected source is an enabled compatible remote source, renders
+the tag template for this dispatch (`{date}`, `{target}`, `{action}`), builds
+the graph, validates it with the typed custom-workflow validator, and enqueues
+one recoverable `custom_workflow` job. The job payload carries the built graph,
+so Activity shows the real nodes while the definition record only stores a
+display pipeline. Required permissions are derived from the composed node
+capabilities: Fetch needs `downloads:manage`, tagging needs `tags:write`.
+
+Every bound is explicit in the composed graph: `maxWorks` (at most 100), and for
+Fetch `maxFiles`, `maxBytes`, `minFreeBytes`, `allowUnknownSizes=false`, and
+excluded extensions. Preset triggers store the configuring user and the
+normalized inputs in `config_json`; dispatch revalidates that user's current
+permissions, re-renders the tag template, and rebuilds the graph. Automated
+runs accept stored or incremental circle catalog refresh only; a full refresh
+remains a manual action. Preset runs are system-scope runs and follow the
+existing visibility, cancel, retry, and Activity behavior of built-in runs.
 
 ## Local Folder Trigger
 

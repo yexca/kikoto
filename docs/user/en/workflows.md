@@ -76,6 +76,15 @@ Workflows make backend actions inspectable.
   viewport width. Local scan uses the same compact configuration surface for
   its follow-up option. Built-in workflows without run parameters continue to
   expose a direct run action.
+- Follow a circle, Follow a series, and Follow a voice actor are preset
+  workflows. `Configure` in the selected workflow header opens the target,
+  filter, action, Fetch limits, and tag template in one dialog; the same fields
+  configure Startup and interval triggers. Sync metadata only needs no source;
+  Track and Fetch need an enabled compatible remote source, and Fetch requires
+  download management permission plus explicit file, size, and free-space
+  limits. New works only skips works already in the library. Leaving the tag
+  template empty skips tagging. Automated runs use stored or incremental circle
+  catalog refresh; a full refresh is manual only.
 - Editable version-2 custom workflows with one simple declared input show that
   input directly in the selected definition for repeated Quick Run previews.
   Multi-input and work-code-list definitions still use Configure. The shortcut

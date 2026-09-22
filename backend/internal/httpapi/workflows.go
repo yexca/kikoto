@@ -154,7 +154,7 @@ func (s *Server) ensureSystemWorkflowDefinitions(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	for _, spec := range systemWorkflowSpecs {
+	for _, spec := range append(append([]systemWorkflowSpec{}, systemWorkflowSpecs...), presetSystemWorkflowSpecs()...) {
 		definitionJSON, err := json.Marshal(map[string]any{"nodes": spec.Nodes})
 		if err != nil {
 			return err

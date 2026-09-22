@@ -186,6 +186,17 @@ func (s *Server) normalizeSystemWorkflowTriggerConfig(
 		}
 		requiredPermissions = append(requiredPermissions, "metadata:sync", "tags:write")
 		prepared.ConfigJSON = mustJSON(config)
+	default:
+		spec, found := presetWorkflowSpecByCode(definition.Code)
+		if !found {
+			break
+		}
+		config, permissions, err := s.normalizePresetWorkflowTriggerConfig(ctx, actor, spec, payload.ConfigJSON, existing, now)
+		if err != nil {
+			return preparedWorkflowTrigger{}, nil, err
+		}
+		requiredPermissions = append(requiredPermissions, permissions...)
+		prepared.ConfigJSON = mustJSON(config)
 	}
 	return prepared, requiredPermissions, nil
 }
@@ -213,8 +224,25 @@ func systemWorkflowSupportsConfigurableTriggers(code string) bool {
 	case "availability_watch", "local_library_scan", "metadata_sync", "remote_popular_collection", "dlsite_popular_collection":
 		return true
 	default:
-		return false
+		return isPresetWorkflowCode(code)
 	}
+}
+
+// scheduledSystemWorkflowCodes lists the system definitions whose interval
+// triggers the coordinator dispatches.
+func scheduledSystemWorkflowCodes() []string {
+	return append([]string{
+		"availability_watch", "local_library_scan", "metadata_sync",
+		"remote_popular_collection", "dlsite_popular_collection",
+	}, presetWorkflowCodes()...)
+}
+
+func stringArgs(values []string) []any {
+	args := make([]any, 0, len(values))
+	for _, value := range values {
+		args = append(args, value)
+	}
+	return args
 }
 
 func (s *Server) ensureAvailabilityWatchSchedule(ctx context.Context, definition workflowDefinitionRecord, excludeID int64, triggerType string) error {
@@ -479,6 +507,7 @@ func (s *Server) dispatchDueCustomWorkflowTrigger(ctx context.Context) error {
 		return nil
 	}
 	var triggerID int64
+	scheduledCodes := scheduledSystemWorkflowCodes()
 	err := s.db.QueryRowContext(ctx, `
 		SELECT trigger.id
 		FROM workflow_trigger AS trigger
@@ -489,14 +518,11 @@ func (s *Server) dispatchDueCustomWorkflowTrigger(ctx context.Context) error {
 			AND trigger.next_run_at <= CURRENT_TIMESTAMP
 			AND (
 				(definition.scope = 'user' AND json_extract(definition.definition_json, '$.schemaVersion') = ?)
-				OR (definition.scope = 'system' AND definition.code IN (
-					'availability_watch', 'local_library_scan', 'metadata_sync',
-					'remote_popular_collection', 'dlsite_popular_collection'
-				))
+				OR (definition.scope = 'system' AND definition.code IN (`+sqlPlaceholders(len(scheduledCodes))+`))
 			)
 		ORDER BY trigger.next_run_at ASC, trigger.id ASC
 		LIMIT 1
-	`, customWorkflowSchemaVersion).Scan(&triggerID)
+	`, append([]any{customWorkflowSchemaVersion}, stringArgs(scheduledCodes)...)...).Scan(&triggerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -636,6 +662,9 @@ func (s *Server) dispatchSystemWorkflowTrigger(ctx context.Context, definition w
 	case "dlsite_popular_collection":
 		return s.executeDLsitePopularSystemTrigger(ctx, trigger, triggerType, triggerReason)
 	default:
+		if isPresetWorkflowCode(definition.Code) {
+			return s.executePresetSystemTrigger(ctx, definition, trigger, triggerType, triggerReason)
+		}
 		return "", nil, fmt.Errorf("system workflow trigger is not supported")
 	}
 }
@@ -711,7 +740,7 @@ func systemWorkflowTriggerIsAsync(code string) bool {
 	case "availability_watch", "local_library_scan", "metadata_sync", "remote_popular_collection", "dlsite_popular_collection":
 		return true
 	default:
-		return false
+		return isPresetWorkflowCode(code)
 	}
 }
 
@@ -788,6 +817,9 @@ func (s *Server) dispatchStartupSystemWorkflowTriggers(ctx context.Context) erro
 }
 
 func (s *Server) startupSystemWorkflowTriggerIDs(ctx context.Context) ([]int64, error) {
+	startupCodes := append([]string{
+		"local_library_scan", "metadata_sync", "remote_popular_collection", "dlsite_popular_collection",
+	}, presetWorkflowCodes()...)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT trigger.id
 		FROM workflow_trigger AS trigger
@@ -795,12 +827,9 @@ func (s *Server) startupSystemWorkflowTriggerIDs(ctx context.Context) ([]int64, 
 		WHERE trigger.enabled = 1
 			AND trigger.trigger_type = 'startup'
 			AND definition.scope = 'system'
-			AND definition.code IN (
-				'local_library_scan', 'metadata_sync',
-				'remote_popular_collection', 'dlsite_popular_collection'
-			)
+			AND definition.code IN (`+sqlPlaceholders(len(startupCodes))+`)
 		ORDER BY trigger.id
-	`)
+	`, stringArgs(startupCodes)...)
 	if err != nil {
 		return nil, err
 	}

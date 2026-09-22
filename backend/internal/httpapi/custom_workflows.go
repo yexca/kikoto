@@ -1622,6 +1622,10 @@ type customWorkflowEnqueueOptions struct {
 	TriggerType     string
 	TriggerReason   string
 	DefinitionStack []int64
+	// DefinitionJSON overrides the stored definition snapshot. Preset workflows
+	// build their graph per dispatch while the system definition record only
+	// carries a display pipeline.
+	DefinitionJSON string
 }
 
 func (s *Server) enqueueCustomWorkflow(ctx context.Context, definition workflowDefinitionRecord, graph customWorkflowGraph, userID int64, permissions []string, inputs map[string]any, previewToken string, options customWorkflowEnqueueOptions) (int64, error) {
@@ -1670,7 +1674,11 @@ func (s *Server) enqueueCustomWorkflow(ctx context.Context, definition workflowD
 			firstNodeRunID = nodeRunID
 		}
 	}
-	payload := customWorkflowJobPayload{DefinitionJSON: definition.DefinitionJSON, Inputs: inputs, UserID: userID, Permissions: append([]string{}, permissions...), PreviewToken: previewToken, StartedAt: time.Now().UTC().Format(time.RFC3339Nano), OwnerUserID: ownerUserID, DefinitionStack: stack}
+	definitionJSON := definition.DefinitionJSON
+	if strings.TrimSpace(options.DefinitionJSON) != "" {
+		definitionJSON = options.DefinitionJSON
+	}
+	payload := customWorkflowJobPayload{DefinitionJSON: definitionJSON, Inputs: inputs, UserID: userID, Permissions: append([]string{}, permissions...), PreviewToken: previewToken, StartedAt: time.Now().UTC().Format(time.RFC3339Nano), OwnerUserID: ownerUserID, DefinitionStack: stack}
 	jobPriority := workflowJobPriorityForTrigger(triggerType)
 	checkpoint := customWorkflowCheckpoint{CompletedNodeIDs: []string{}, Outputs: map[string]map[string]customPortValue{}, ChildRunIDs: []int64{}, BasePriority: jobPriority}
 	if _, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
