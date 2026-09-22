@@ -329,7 +329,6 @@ function MetadataSettings({
                   <label key={source.id} className="grid gap-1 rounded-md border bg-background p-3 text-sm">
                     <span className="truncate font-medium">{source.displayName}</span>
                     <NativeSelect
-                      fieldSize="sm"
                       className="min-w-0"
                       value={value}
                       disabled={updatingSourceId !== null}
@@ -358,7 +357,6 @@ function MetadataSettings({
           <label className="grid gap-1 text-sm">
             <span className="font-medium">{maintenanceCopy("metadata.catalogFreshnessDays")}</span>
             <Input
-              fieldSize="sm"
               type="number"
               min={1}
               max={365}

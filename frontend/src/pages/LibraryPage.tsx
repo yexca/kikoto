@@ -1,4 +1,5 @@
 import { metadataSyncResultURL } from "@/lib/metadataMaintenance";
+import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { WorkMetadataEditorModal } from "@/features/work-detail/metadata";
 import type { TFunction } from "i18next";
 import {
@@ -2028,7 +2029,7 @@ function LibraryPrimaryTabs({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="app-scrollbar flex w-fit max-w-full gap-1 overflow-x-auto rounded-lg bg-muted p-1">
+    <div className={segmentedListClassName()}>
       <TabButton active={active === "local"} onClick={() => onChange("local")} icon={<HardDrive className="h-4 w-4" />}>
         {t("library.local")}
       </TabButton>
@@ -2067,16 +2068,7 @@ function TabButton({
   onClick: () => void;
 }) {
   return (
-    <button
-      className={`inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium transition-[color,background-color,box-shadow] ${
-        active
-          ? "bg-card text-foreground shadow-sm ring-1 ring-foreground/5 [&>svg]:text-primary"
-          : "text-muted-foreground hover:bg-card/60 hover:text-foreground"
-      } disabled:pointer-events-none disabled:opacity-50`}
-      aria-pressed={active}
-      disabled={disabled}
-      onClick={onClick}
-    >
+    <button className={segmentedItemClassName(active)} aria-pressed={active} disabled={disabled} onClick={onClick}>
       {icon}
       <span className="max-w-40 truncate">{children}</span>
     </button>
@@ -7825,11 +7817,10 @@ function SourceDirectoryPanel({
 
 function DirectoryModeSwitch({ mode, onChange }: { mode: DirectoryMode; onChange: (mode: DirectoryMode) => void }) {
   return (
-    <div className="flex rounded-md border bg-card p-0.5">
+    <div className={segmentedListClassName("gap-0.5 p-0.5")} role="group">
       <button
-        className={`inline-flex h-7 items-center gap-1 rounded px-2 text-xs font-medium ${
-          mode === "browse" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-        }`}
+        className={segmentedItemClassName(mode === "browse", "h-7 gap-1 px-2 text-xs")}
+        aria-pressed={mode === "browse"}
         title={i18n.t("libraryDetail.browse")}
         onClick={() => onChange("browse")}
       >
@@ -7837,9 +7828,8 @@ function DirectoryModeSwitch({ mode, onChange }: { mode: DirectoryMode; onChange
         {i18n.t("libraryDetail.browse")}
       </button>
       <button
-        className={`inline-flex h-7 items-center gap-1 rounded px-2 text-xs font-medium ${
-          mode === "tree" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-        }`}
+        className={segmentedItemClassName(mode === "tree", "h-7 gap-1 px-2 text-xs")}
+        aria-pressed={mode === "tree"}
         title={i18n.t("libraryDetail.tree")}
         onClick={() => onChange("tree")}
       >

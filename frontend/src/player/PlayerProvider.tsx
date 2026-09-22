@@ -2123,7 +2123,7 @@ export function PlayerDock() {
           </div>
           <button
             data-mini-action
-            className="mini-action absolute left-1/2 top-1/2 z-20 grid h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/50 bg-background/72 text-foreground shadow-lg backdrop-blur transition-all duration-200 hover:border-primary/40 hover:bg-background/90 hover:text-primary hover:shadow-xl active:scale-95 dark:border-white/10 dark:bg-background/62"
+            className="mini-action absolute left-1/2 top-1/2 z-20 grid h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-glass-border-strong bg-background/72 text-foreground shadow-lg backdrop-blur transition-all duration-200 hover:border-primary/40 hover:bg-background/90 hover:text-primary hover:shadow-xl active:scale-95 dark:bg-background/62"
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => event.stopPropagation()}
             onClick={(event) => {
@@ -2216,7 +2216,7 @@ export function PlayerDock() {
           </div>
         )}
         <div
-          className="relative touch-pan-y select-none animate-player-enter overflow-hidden rounded-[var(--player-radius-dock)] border border-white/35 bg-card/75 shadow-2xl shadow-primary/15 backdrop-blur-2xl transition-all duration-300 ease-out dark:border-white/10 dark:bg-card/70"
+          className="relative touch-pan-y select-none animate-player-enter overflow-hidden rounded-[var(--player-radius-dock)] border border-glass-border bg-card/75 shadow-2xl shadow-primary/15 backdrop-blur-2xl transition-all duration-300 ease-out dark:bg-card/70"
           onPointerDown={beginCompactScrub}
           onPointerMove={moveCompactScrub}
           onPointerUp={(event) => finishCompactScrub(event, true)}
@@ -2237,7 +2237,7 @@ export function PlayerDock() {
           )}
           <div className="relative z-10 flex min-h-[72px] items-center gap-3 px-3">
             <button
-              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 text-left transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-white/30 dark:hover:bg-white/5 dark:active:bg-white/10"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 text-left transition-colors hover:bg-glass-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-glass-active"
               onClick={() => {
                 if (suppressCompactClickRef.current) {
                   suppressCompactClickRef.current = false;
@@ -2290,7 +2290,7 @@ export function PlayerDock() {
 
   return (
     <section
-      className={`fixed inset-0 z-50 h-[100dvh] animate-player-enter overflow-hidden border-0 bg-background/95 text-foreground shadow-xl backdrop-blur-2xl transition-[transform,opacity,height] duration-200 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px] lg:rounded-[var(--player-radius-panel)] lg:border lg:border-white/35 lg:bg-card/82 dark:lg:border-white/10 dark:lg:bg-card/78 ${compactFullLayout ? "lg:text-[0.9rem]" : ""}`}
+      className={`fixed inset-0 z-50 h-[100dvh] animate-player-enter overflow-hidden border-0 bg-background/95 text-foreground shadow-xl backdrop-blur-2xl transition-[transform,opacity,height] duration-200 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px] lg:rounded-[var(--player-radius-panel)] lg:border lg:border-glass-border lg:bg-card/82 dark:lg:bg-card/78 ${compactFullLayout ? "lg:text-[0.9rem]" : ""}`}
       style={{
         ...(!isMobile ? { height: desktopFullHeight } : {}),
         ...(isMobile && fullDragOffset > 0
@@ -2345,7 +2345,7 @@ export function PlayerDock() {
       >
         <button
           data-player-handle
-          className="flex h-10 shrink-0 touch-none items-center justify-center hover:bg-white/20 lg:h-8"
+          className="flex h-10 shrink-0 touch-none items-center justify-center hover:bg-glass-hover lg:h-8"
           onClick={() => {
             if (suppressCollapseClickRef.current) {
               suppressCollapseClickRef.current = false;
@@ -2366,7 +2366,7 @@ export function PlayerDock() {
             <div className="animate-player-panel-enter flex h-full min-h-0 flex-col gap-3">
               <div
                 data-player-drag-zone
-                className="flex min-h-[76px] touch-none items-center gap-3 rounded-2xl border border-white/30 bg-white/25 p-2.5 shadow-inner dark:border-white/10 dark:bg-white/5"
+                className="flex min-h-[76px] touch-none items-center gap-3 rounded-2xl border border-glass-border bg-glass-fill p-2.5 shadow-inner"
               >
                 <CoverImage track={track} className="h-14 w-[74px] rounded-xl shadow-sm" />
                 <div className="min-w-0">
@@ -2377,7 +2377,7 @@ export function PlayerDock() {
                   <div className="truncate text-xs text-muted-foreground">{track.workCode}</div>
                 </div>
               </div>
-              <div className="app-scroll min-h-0 flex-1 overflow-auto rounded-2xl border border-white/30 bg-background/55 p-2 shadow-inner dark:border-white/10 dark:bg-background/40">
+              <div className="app-scroll min-h-0 flex-1 overflow-auto rounded-2xl border border-glass-border bg-background/55 p-2 shadow-inner dark:bg-background/40">
                 {lyricsDisplayMode === "full" ? (
                   activeLyricsLocationId ? (
                     lyricsError ? (
@@ -2431,7 +2431,7 @@ export function PlayerDock() {
               <button
                 data-player-cover-shell
                 data-player-measure
-                className={`mx-auto w-full touch-manipulation rounded-[var(--player-radius-panel)] bg-white/25 p-2 shadow-inner transition-[max-width,transform] duration-200 hover:scale-[1.015] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white/5 ${compactFullLayout ? "max-w-[min(68vw,210px)]" : lyricsDisplayMode === "hidden" ? "max-w-[min(92vw,390px)] lg:max-w-[340px]" : "max-w-[min(86vw,340px)] lg:max-w-[282px]"}`}
+                className={`mx-auto w-full touch-manipulation rounded-[var(--player-radius-panel)] bg-glass-fill p-2 shadow-inner transition-[max-width,transform] duration-200 hover:scale-[1.015] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${compactFullLayout ? "max-w-[min(68vw,210px)]" : lyricsDisplayMode === "hidden" ? "max-w-[min(92vw,390px)] lg:max-w-[340px]" : "max-w-[min(86vw,340px)] lg:max-w-[282px]"}`}
                 onClick={handleCoverClick}
                 onDoubleClick={isMobile ? undefined : openWorkDetail}
                 title={t("player.openWorkTitle")}
@@ -2471,7 +2471,7 @@ export function PlayerDock() {
           )}
         </div>
 
-        <div className="shrink-0 space-y-4 border-t border-white/30 bg-background/55 px-4 pb-[calc(1.5rem+var(--safe-area-bottom))] pt-4 dark:border-white/10 lg:bg-white/25 lg:p-4 dark:lg:bg-white/5">
+        <div className="shrink-0 space-y-4 border-t border-glass-border bg-background/55 px-4 pb-[calc(1.5rem+var(--safe-area-bottom))] pt-4 lg:bg-glass-fill lg:p-4">
           <div className="relative flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span className="truncate">
               {player.currentIndex + 1} / {player.queue.length}
@@ -2541,7 +2541,7 @@ export function PlayerDock() {
 
           <div className="flex items-center justify-center gap-2">
             <Button
-              className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"
+              className="h-11 w-11 rounded-full border-glass-border bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:bg-card/45 lg:h-10 lg:w-10"
               variant="outline"
               size="icon"
               onClick={player.previous}
@@ -2550,7 +2550,7 @@ export function PlayerDock() {
               <SkipBack className="h-4 w-4" />
             </Button>
             <Button
-              className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"
+              className="h-11 w-11 rounded-full border-glass-border bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:bg-card/45 lg:h-10 lg:w-10"
               variant="outline"
               size="icon"
               onClick={player.seekBackward}
@@ -2575,7 +2575,7 @@ export function PlayerDock() {
               )}
             </Button>
             <Button
-              className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"
+              className="h-11 w-11 rounded-full border-glass-border bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:bg-card/45 lg:h-10 lg:w-10"
               variant="outline"
               size="icon"
               onClick={player.seekForward}
@@ -2584,7 +2584,7 @@ export function PlayerDock() {
               <SeekIcon direction="forward" seconds={player.seekForwardSeconds} />
             </Button>
             <Button
-              className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"
+              className="h-11 w-11 rounded-full border-glass-border bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:bg-card/45 lg:h-10 lg:w-10"
               variant="outline"
               size="icon"
               onClick={player.next}
@@ -3063,7 +3063,7 @@ function SeekBar({
 
   return (
     <div className="relative h-5">
-      <div className="absolute left-0 right-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-white/45 shadow-inner dark:bg-white/10">
+      <div className="absolute left-0 right-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-glass-fill-strong shadow-inner">
         <div
           className="h-full origin-left rounded-full bg-primary shadow-[0_0_14px_hsl(var(--primary)/0.32)] transition-transform duration-200"
           style={{ transform: `scaleX(${displayedProgress / 100})` }}

@@ -272,7 +272,7 @@ function TextInput({ label, value, onChange }: { label: string; value: string; o
   return (
     <label className="grid gap-1 text-sm">
       <span className="font-medium">{label}</span>
-      <Input fieldSize="sm" value={value} onChange={(event) => onChange(event.target.value)} />
+      <Input value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }

@@ -47,6 +47,12 @@
     color-scheme: light;
     --scrim: 24 20% 10%;
     --scrim-opacity: 0.38;
+    --glass-border: hsl(0 0% 100% / 0.35);
+    --glass-border-strong: hsl(0 0% 100% / 0.5);
+    --glass-fill: hsl(0 0% 100% / 0.25);
+    --glass-fill-strong: hsl(0 0% 100% / 0.45);
+    --glass-hover: hsl(0 0% 100% / 0.2);
+    --glass-active: hsl(0 0% 100% / 0.3);
     --background: 36 38% 95%;
     --foreground: 24 12% 17%;
     --card: 40 33% 98%;
@@ -137,6 +143,12 @@
     color-scheme: dark;
     --scrim: 0 0% 0%;
     --scrim-opacity: 0.58;
+    --glass-border: hsl(0 0% 100% / 0.1);
+    --glass-border-strong: hsl(0 0% 100% / 0.14);
+    --glass-fill: hsl(0 0% 100% / 0.05);
+    --glass-fill-strong: hsl(0 0% 100% / 0.1);
+    --glass-hover: hsl(0 0% 100% / 0.05);
+    --glass-active: hsl(0 0% 100% / 0.1);
     --background: 24 11% 9%;
     --foreground: 35 19% 90%;
     --card: 24 10% 12%;

@@ -20,6 +20,7 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
+import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -381,10 +382,7 @@ export function MaintenancePage({
       )}
 
       {!embedded && (
-        <nav
-          className="flex flex-nowrap gap-1 overflow-x-auto rounded-lg border bg-card p-2"
-          aria-label={maintenanceCopy("navigation")}
-        >
+        <nav className={segmentedListClassName()} aria-label={maintenanceCopy("navigation")}>
           {canManageSources && (
             <>
               <SettingsTabButton
@@ -663,7 +661,6 @@ function LocalLibrarySettings({
             <label className="grid gap-1 text-sm">
               <span className="font-medium">{maintenanceCopy("library.scanDepth")}</span>
               <Input
-                fieldSize="sm"
                 type="number"
                 min={1}
                 max={8}
@@ -1027,7 +1024,7 @@ function CacheFetchSettings({
               title={maintenanceCopy("cache.limit")}
               description={maintenanceCopy("cache.limitDescription")}
             >
-              <div className="flex h-9 w-full overflow-hidden rounded-md border bg-card sm:w-44">
+              <div className="flex h-[var(--control-height)] w-full overflow-hidden rounded-[var(--control-radius)] border border-input bg-card sm:w-44">
                 <input
                   aria-label={maintenanceCopy("cache.limit")}
                   className="min-w-0 flex-1 bg-transparent px-3 text-right outline-none focus:ring-2 focus:ring-ring"
@@ -1501,7 +1498,7 @@ function ConfigurationNumberInput({
   onChange: (value: number) => void;
 }) {
   return (
-    <div className="flex h-9 w-full overflow-hidden rounded-md border bg-card sm:w-44">
+    <div className="flex h-[var(--control-height)] w-full overflow-hidden rounded-[var(--control-radius)] border border-input bg-card sm:w-44">
       <input
         aria-label={label}
         className="min-w-0 flex-1 bg-transparent px-3 text-right outline-none focus:ring-2 focus:ring-ring"
@@ -1677,7 +1674,6 @@ function SourceModal({
         <label className="grid gap-1 text-sm">
           <span className="font-medium">{maintenanceCopy("library.sourceType")}</span>
           <NativeSelect
-            fieldSize="sm"
             value={source.sourceType}
             disabled={legacyNumber178}
             onChange={(event) => patch({ sourceType: event.target.value })}
@@ -1765,7 +1761,6 @@ function SourceModal({
           <label className="grid gap-1 text-sm">
             <span className="font-medium">{maintenanceCopy("library.priority")}</span>
             <Input
-              fieldSize="sm"
               type="number"
               min={1}
               value={source.priority}
@@ -1911,13 +1906,7 @@ function SettingsTabButton({
   onClick: () => void;
 }) {
   return (
-    <button
-      className={`inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 text-sm font-medium transition-colors ${
-        active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-      }`}
-      onClick={onClick}
-      aria-pressed={active}
-    >
+    <button type="button" className={segmentedItemClassName(active)} onClick={onClick} aria-pressed={active}>
       {icon}
       {children}
     </button>
@@ -1929,7 +1918,7 @@ function ReadonlyField({ label, value }: { label: string; value: string }) {
     <label className="grid gap-1 text-sm">
       <span className="font-medium">{label}</span>
       <input
-        className="h-9 rounded-md border bg-muted px-3 text-muted-foreground outline-none"
+        className="h-[var(--control-height)] rounded-[var(--control-radius)] border bg-muted px-3 text-muted-foreground outline-none"
         value={value}
         readOnly
       />
@@ -1941,7 +1930,7 @@ function TextInput({ label, value, onChange }: { label: string; value: string; o
   return (
     <label className="grid gap-1 text-sm">
       <span className="font-medium">{label}</span>
-      <Input fieldSize="sm" value={value} onChange={(event) => onChange(event.target.value)} />
+      <Input value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }

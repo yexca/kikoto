@@ -278,7 +278,6 @@ function RecommendationNumberField({
         )}
       </span>
       <Input
-        fieldSize="sm"
         className="min-w-0 tabular-nums"
         type="number"
         min={min}

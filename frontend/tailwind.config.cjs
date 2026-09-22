@@ -61,6 +61,13 @@ module.exports = {
           DEFAULT: "hsl(var(--card) / <alpha-value>)",
           foreground: "hsl(var(--card-foreground) / <alpha-value>)",
         },
+        // Translucent highlights for the frosted player surfaces.
+        "glass-border": "var(--glass-border)",
+        "glass-border-strong": "var(--glass-border-strong)",
+        "glass-fill": "var(--glass-fill)",
+        "glass-fill-strong": "var(--glass-fill-strong)",
+        "glass-hover": "var(--glass-hover)",
+        "glass-active": "var(--glass-active)",
         popover: {
           DEFAULT: "hsl(var(--popover) / <alpha-value>)",
           foreground: "hsl(var(--popover-foreground) / <alpha-value>)",

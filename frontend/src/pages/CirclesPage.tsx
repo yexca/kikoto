@@ -15,6 +15,7 @@ import {
   SlidersHorizontal,
   X,
 } from "lucide-react";
+import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -932,15 +933,17 @@ function CircleDetailPage({
 
       <section className="space-y-3">
         <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 lg:flex-row lg:items-center">
-          <div className="flex h-10 shrink-0 rounded-md border bg-background p-1 text-sm">
+          <div className={segmentedListClassName("shrink-0")} role="group">
             <button
-              className={`min-h-8 rounded px-3 ${!isSeriesView ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+              className={segmentedItemClassName(!isSeriesView)}
+              aria-pressed={!isSeriesView}
               onClick={() => openCircleRoute(circle.externalId)}
             >
               {t("detailActions.works")} {circle.works.length}
             </button>
             <button
-              className={`min-h-8 rounded px-3 ${isSeriesView ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+              className={segmentedItemClassName(isSeriesView)}
+              aria-pressed={isSeriesView}
               onClick={() => openCircleSeriesRoute(circle.externalId)}
             >
               {t("detailActions.series")} {circle.series.length}

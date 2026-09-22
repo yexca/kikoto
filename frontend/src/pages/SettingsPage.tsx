@@ -1,4 +1,5 @@
 import { UserPreferencePanels } from "@/features/preferences";
+import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import {
   Download,
   FastForward,
@@ -230,11 +231,7 @@ export function SettingsPage({
           {t("account.demoReadOnly")}
         </div>
       )}
-      <div
-        className="app-scrollbar flex gap-2 overflow-x-auto rounded-lg border bg-card p-1"
-        role="tablist"
-        aria-label={t("nav.settings")}
-      >
+      <div className={segmentedListClassName()} role="tablist" aria-label={t("nav.settings")}>
         <SettingsTabButton
           tab="account"
           active={activeTab === "account"}
@@ -541,9 +538,7 @@ function SettingsTabButton({
   return (
     <button
       id={`settings-tab-${tab}`}
-      className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-        active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-      }`}
+      className={segmentedItemClassName(active)}
       type="button"
       role="tab"
       aria-selected={active}
