@@ -81,15 +81,25 @@ func (s *Server) currentUserFromRequest(ctx context.Context, r *http.Request) (c
 }
 
 func (s *Server) withPasswordManagement(user currentUser) currentUser {
-	user.PasswordManagedBy = "account"
+	user.PasswordManagedBy = s.credentialManager(user.Username)
+	return user
+}
+
+func (s *Server) credentialManager(username string) string {
+	if s.isEnvironmentManagedUsername(username) {
+		return "environment"
+	}
+	return "account"
+}
+
+// isEnvironmentManagedUsername reports whether username is the bootstrap root
+// account configured through KIKOTO_ROOT_USERNAME and KIKOTO_ROOT_PASSWORD.
+func (s *Server) isEnvironmentManagedUsername(username string) bool {
 	rootUsername := strings.TrimSpace(s.cfg.RootUsername)
 	if rootUsername == "" {
 		rootUsername = "root"
 	}
-	if user.Username == rootUsername {
-		user.PasswordManagedBy = "environment"
-	}
-	return user
+	return username == rootUsername
 }
 
 func bearerSessionID(r *http.Request) string {

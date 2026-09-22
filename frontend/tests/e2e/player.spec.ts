@@ -664,7 +664,7 @@ test("failed direct playback offers compatibility before source fallback and the
     .toBe(75);
 
   await page.getByRole("button", { name: "Sleep timer" }).click();
-  await page.getByText("Test track", { exact: true }).click();
+  await page.getByRole("button", { name: "Open work detail" }).click();
   await expect(page.getByRole("button", { name: "30 min" })).toBeHidden();
 
   await page.getByRole("button", { name: "Sleep timer" }).click();

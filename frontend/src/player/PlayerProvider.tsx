@@ -72,7 +72,6 @@ import { addNativeMediaListeners, stopNativeMedia, supportsNativeMedia, updateNa
 import { lyricsChoiceDisplayLabel, type LyricsChoice } from "@/player/lyricsMatching";
 import { playbackURL, remoteMediaPlaybackURL } from "@/player/mediaPlayback";
 import { useScreenLyrics } from "@/player/screenLyrics";
-import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { playbackKeyForLocation, remotePlaybackKey } from "@/player/playbackIdentity";
 import {
   getStoredPlaybackSeekPreferences,
@@ -1937,7 +1936,6 @@ export function PlayerDock() {
   const currentLocation =
     availableLocations.find((location) => location.locationId === track.locationId) ?? availableLocations[0];
   const sidePanelOpen = sidePanel !== null;
-  const splitSidePanel = sidePanelOpen && !isMobile;
   const currentLyricLine =
     parsedLyrics.timed && activeLyricIndex >= 0 ? (parsedLyrics.lines[activeLyricIndex]?.text ?? "") : "";
   const openWorkDetail = () => {
@@ -2268,7 +2266,6 @@ export function PlayerDock() {
         choices={track.lyricsChoices ?? []}
         activeLocationId={activeLyricsLocationId}
         automatic={usingAutomaticLyrics}
-        large={!isMobile}
         onChoiceChange={(locationId) => void changeLyricsChoice(locationId)}
         onSeek={player.seekTo}
       />
@@ -2302,8 +2299,7 @@ export function PlayerDock() {
 
   return (
     <section
-      data-player-side-panel={splitSidePanel ? "open" : "closed"}
-      className={`fixed inset-0 z-50 h-[100dvh] animate-player-enter overflow-hidden border-0 bg-background text-foreground shadow-xl backdrop-blur-2xl transition-[transform,opacity,width] duration-200 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:h-[min(760px,calc(100dvh-3rem))] lg:rounded-[var(--player-radius-panel)] lg:border lg:border-glass-border lg:bg-card/82 dark:lg:bg-card/78 ${splitSidePanel ? "lg:w-[min(900px,calc(100vw-3rem))]" : "lg:w-[400px]"}`}
+      className={`fixed inset-0 z-50 h-[100dvh] animate-player-enter overflow-hidden border-0 bg-background text-foreground shadow-xl backdrop-blur-2xl transition-[transform,opacity] duration-200 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:h-[min(760px,calc(100dvh-3rem))] lg:rounded-[var(--player-radius-panel)] lg:border lg:border-glass-border lg:bg-card/82 dark:lg:bg-card/78 lg:w-[400px]`}
       style={
         isMobile && fullDragOffset > 0
           ? { transform: `translateY(${fullDragOffset}px)`, opacity: Math.max(0.55, 1 - fullDragOffset / 500) }
@@ -2374,7 +2370,7 @@ export function PlayerDock() {
         <div className="flex min-h-0 flex-1">
           <div className="player-primary flex min-h-0 min-w-0 flex-1 flex-col lg:w-[400px] lg:flex-none">
             <div className="player-main flex min-h-0 flex-1 flex-col px-4 pb-3">
-              {sidePanelOpen && !splitSidePanel ? (
+              {sidePanelOpen ? (
                 <div className="animate-player-panel-enter flex h-full min-h-0 flex-col gap-3">
                   <div
                     data-player-drag-zone
@@ -2797,44 +2793,6 @@ export function PlayerDock() {
               </div>
             </div>
           </div>
-          {splitSidePanel && (
-            <aside className="animate-player-panel-enter flex min-h-0 min-w-0 flex-1 flex-col border-l border-glass-border">
-              <div className="flex h-12 shrink-0 items-center gap-2 px-3">
-                <div className={segmentedListClassName("min-w-0")}>
-                  <button
-                    type="button"
-                    className={segmentedItemClassName(sidePanel === "lyrics", "h-7 text-xs")}
-                    aria-pressed={sidePanel === "lyrics"}
-                    disabled={!activeLyricsLocationId}
-                    onClick={() => setSidePanel("lyrics")}
-                  >
-                    <Captions className="h-3.5 w-3.5" />
-                    {t("player.lyrics")}
-                  </button>
-                  <button
-                    type="button"
-                    className={segmentedItemClassName(sidePanel === "queue", "h-7 text-xs")}
-                    aria-pressed={sidePanel === "queue"}
-                    onClick={() => setSidePanel("queue")}
-                  >
-                    <ListMusic className="h-3.5 w-3.5" />
-                    {t("player.queue")}
-                  </button>
-                </div>
-                <Button
-                  className="ml-auto h-8 w-8 rounded-full"
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => setSidePanel(null)}
-                  aria-label={t("player.closePanel")}
-                  title={t("player.closePanel")}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="min-h-0 flex-1 overflow-hidden">{sidePanelContent}</div>
-            </aside>
-          )}
         </div>
       </div>
     </section>

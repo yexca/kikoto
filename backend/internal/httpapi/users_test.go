@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
@@ -164,8 +165,8 @@ func TestUserHandlersManageLifecycleAndProtectSuperAdministrators(t *testing.T) 
 	lastSuperRequest := userHandlerRequest(http.MethodPatch, "/api/users/"+strconv.FormatInt(fixture.root.ID, 10), `{"enabled":false}`, fixture.root)
 	lastSuperRequest.SetPathValue("id", strconv.FormatInt(fixture.root.ID, 10))
 	fixture.server.updateUser(lastSuperResponse, lastSuperRequest)
-	if lastSuperResponse.Code != http.StatusBadRequest {
-		t.Fatalf("last super administrator update status = %d, body = %s", lastSuperResponse.Code, lastSuperResponse.Body.String())
+	if lastSuperResponse.Code != http.StatusForbidden {
+		t.Fatalf("environment-managed root disable status = %d, body = %s", lastSuperResponse.Code, lastSuperResponse.Body.String())
 	}
 
 	adminActor := account.User{ID: created.ID, Role: "admin", Permissions: []string{"users:manage"}}
@@ -194,5 +195,81 @@ func TestUserHandlersManageLifecycleAndProtectSuperAdministrators(t *testing.T) 
 	}
 	if _, err := fixture.server.accountStore.LoadManagedUser(context.Background(), created.ID); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("deleted user lookup error = %v, want sql.ErrNoRows", err)
+	}
+}
+
+func TestEnvironmentManagedRootKeepsRolePasswordAndEnabledState(t *testing.T) {
+	fixture := newUserHandlerFixture(t)
+	rootID := strconv.FormatInt(fixture.root.ID, 10)
+	patchRoot := func(body string) *httptest.ResponseRecorder {
+		t.Helper()
+		response := httptest.NewRecorder()
+		request := userHandlerRequest(http.MethodPatch, "/api/users/"+rootID, body, fixture.root)
+		request.SetPathValue("id", rootID)
+		fixture.server.updateUser(response, request)
+		return response
+	}
+
+	for _, body := range []string{
+		`{"password":"synthetic-password-2"}`,
+		`{"role":"admin"}`,
+		`{"enabled":false}`,
+	} {
+		if response := patchRoot(body); response.Code != http.StatusForbidden {
+			t.Fatalf("root update %s status = %d, want 403, body = %s", body, response.Code, response.Body.String())
+		}
+	}
+
+	response := patchRoot(`{"displayName":"Synthetic Root","role":"super_admin","enabled":true,"password":""}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("root display name update status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var updated account.ManagedUser
+	if err := json.NewDecoder(response.Body).Decode(&updated); err != nil {
+		t.Fatal(err)
+	}
+	if updated.DisplayName != "Synthetic Root" || updated.Role != "super_admin" || !updated.Enabled || !updated.EnvironmentManaged {
+		t.Fatalf("updated root = %#v", updated)
+	}
+	if _, err := fixture.server.accountStore.Authenticate(context.Background(), "root", "synthetic-password", time.Now()); err != nil {
+		t.Fatalf("root password changed: %v", err)
+	}
+
+	createResponse := httptest.NewRecorder()
+	fixture.server.createUser(createResponse, userHandlerRequest(
+		http.MethodPost,
+		"/api/users",
+		`{"username":"synthetic-super","role":"super_admin","password":"synthetic-password"}`,
+		fixture.root,
+	))
+	if createResponse.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body = %s", createResponse.Code, createResponse.Body.String())
+	}
+	var otherSuper account.ManagedUser
+	if err := json.NewDecoder(createResponse.Body).Decode(&otherSuper); err != nil {
+		t.Fatal(err)
+	}
+	if otherSuper.EnvironmentManaged {
+		t.Fatalf("created user marked environment-managed: %#v", otherSuper)
+	}
+	superActor := account.User{ID: otherSuper.ID, Username: otherSuper.Username, Role: "super_admin", Permissions: []string{"users:manage"}}
+	deleteResponse := httptest.NewRecorder()
+	deleteRequest := userHandlerRequest(http.MethodDelete, "/api/users/"+rootID, "", superActor)
+	deleteRequest.SetPathValue("id", rootID)
+	fixture.server.deleteUser(deleteResponse, deleteRequest)
+	if deleteResponse.Code != http.StatusForbidden {
+		t.Fatalf("root delete status = %d, want 403, body = %s", deleteResponse.Code, deleteResponse.Body.String())
+	}
+
+	listResponse := httptest.NewRecorder()
+	fixture.server.listUsers(listResponse, userHandlerRequest(http.MethodGet, "/api/users", "", fixture.root))
+	var users []account.ManagedUser
+	if err := json.NewDecoder(listResponse.Body).Decode(&users); err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range users {
+		if user.EnvironmentManaged != (user.Username == "root") {
+			t.Fatalf("listed user environmentManaged mismatch: %#v", user)
+		}
 	}
 }

@@ -16,6 +16,9 @@ type ManagedUser struct {
 	Enabled     bool   `json:"enabled"`
 	CreatedAt   string `json:"createdAt"`
 	UpdatedAt   string `json:"updatedAt"`
+	// EnvironmentManaged marks the bootstrap root account, whose password comes
+	// from KIKOTO_ROOT_PASSWORD and whose role and enabled state are fixed.
+	EnvironmentManaged bool `json:"environmentManaged"`
 }
 
 type CreateUserInput struct {

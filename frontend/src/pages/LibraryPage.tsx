@@ -456,12 +456,7 @@ function libraryBrowseSurfaceState({
     activeFilterCount: statusFilter === "all" ? 0 : 1,
     activePageSize: remoteSelected ? remoteSourceState.pageSize : workPageSize,
     activePageSizeOptions: remoteSelected ? ([12, 24, 48, 96] as const) : localWorkPageSizeOptions,
-    showRecentlyPlayed:
-      !remoteSelected &&
-      recentWorks.length > 0 &&
-      searchQuery.trim() === "" &&
-      statusFilter === "all" &&
-      searchClauses.length === 0,
+    showRecentlyPlayed: recentWorks.length > 0,
   };
 }
 
@@ -549,6 +544,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const loadedLibraryRequestKey = useRef("");
   const loadedRemoteRequestKey = useRef("");
   const recentlyPlayedLoaded = useRef(false);
+  const [recentView, setRecentView] = useState(false);
   const recommendationContextRef = useRef<{ id: string; seed: number } | null>(null);
   const skipNextLibraryEffect = useRef(false);
   const skipNextRemoteEffect = useRef(false);
@@ -872,7 +868,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     const controller = new AbortController();
     let cancelled = false;
     api
-      .listRecentlyPlayedWorks(10, controller.signal)
+      .listRecentlyPlayedWorks(24, controller.signal)
       .then((result) => {
         if (!cancelled) {
           recentlyPlayedLoaded.current = true;
@@ -1746,18 +1742,25 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   return (
     <div className="relative space-y-5">
       <MetadataOnboardingNotice active={active} />
-      {showRecentlyPlayed && (
-        <RecentlyPlayedStrip works={recentWorks} onOpen={(work) => openWork(work, recentWorkSourceIntent(work))} />
-      )}
-
       <section className="flex flex-wrap items-center gap-2" data-toast-avoid>
         <div className="order-1 min-w-0 max-w-full">
           <LibraryPrimaryTabs
-            active={activePrimaryTab}
-            activeSourceId={activeTab.kind === "source" ? activeTab.source.id : null}
+            active={recentView ? "recent" : activePrimaryTab}
+            activeSourceId={!recentView && activeTab.kind === "source" ? activeTab.source.id : null}
             sources={sources}
-            onChange={changePrimaryTab}
-            onSourceChange={(source) => changeTab({ kind: "source", source })}
+            showRecent={showRecentlyPlayed}
+            onRecent={() => {
+              queueResultsScroll();
+              setRecentView(true);
+            }}
+            onChange={(tab) => {
+              setRecentView(false);
+              changePrimaryTab(tab);
+            }}
+            onSourceChange={(source) => {
+              setRecentView(false);
+              changeTab({ kind: "source", source });
+            }}
           />
         </div>
         <div
@@ -1773,6 +1776,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             onKeyDown={dismissKeyboardOnEnter}
             onChange={(event) => {
               setOptimisticLibrarySearchClauses(null);
+              setRecentView(false);
               setSearchQuery(event.target.value);
             }}
             placeholder={t("library.searchPlaceholder")}
@@ -1797,7 +1801,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             <Plus className="h-4 w-4" />
           </button>
         </div>
-        <div className="order-2 ml-auto flex flex-wrap justify-end gap-2 lg:order-3">
+        <div className={`order-2 ml-auto flex-wrap justify-end gap-2 lg:order-3 ${recentView ? "hidden" : "flex"}`}>
           {mobileNavigationLayout && (
             <IconButton
               title={mobileSearchOpen ? t("library.hideSearch") : t("library.searchLibrary")}
@@ -1916,7 +1920,9 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       )}
       <div ref={resultsAnchorRef} className="scroll-mt-24" />
 
-      {activeTab.kind === "source" ? (
+      {recentView ? (
+        <RecentlyPlayedGrid works={recentWorks} onOpen={(work) => openWork(work, recentWorkSourceIntent(work))} />
+      ) : activeTab.kind === "source" ? (
         <div className="space-y-3">
           <RemoteSourcePanel
             source={activeTab.source}
@@ -2024,18 +2030,27 @@ function LibraryPrimaryTabs({
   active,
   activeSourceId,
   sources,
+  showRecent,
+  onRecent,
   onChange,
   onSourceChange,
 }: {
-  active: "local" | "tracked" | null;
+  active: "recent" | "local" | "tracked" | null;
   activeSourceId: number | null;
   sources: LibrarySource[];
+  showRecent: boolean;
+  onRecent: () => void;
   onChange: (tab: "local" | "tracked") => void;
   onSourceChange: (source: LibrarySource) => void;
 }) {
   const { t } = useTranslation();
   return (
     <div className={segmentedListClassName()}>
+      {showRecent && (
+        <TabButton active={active === "recent"} onClick={onRecent} icon={<Clock3 className="h-4 w-4" />}>
+          {t("library.recentlyPlayed")}
+        </TabButton>
+      )}
       <TabButton active={active === "local"} onClick={() => onChange("local")} icon={<HardDrive className="h-4 w-4" />}>
         {t("library.local")}
       </TabButton>
@@ -2684,84 +2699,52 @@ function RemoteSourceErrorCard({
   );
 }
 
-function RecentlyPlayedStrip({ works, onOpen }: { works: Work[]; onOpen: (work: Work) => void }) {
+function RecentlyPlayedGrid({ works, onOpen }: { works: Work[]; onOpen: (work: Work) => void }) {
   const { t } = useTranslation();
-  const [collapsed, setCollapsed] = useState(
-    () => window.localStorage.getItem("kikoto:recently-played-collapsed") === "true",
-  );
-  const toggleCollapsed = () => {
-    setCollapsed((current) => {
-      const next = !current;
-      window.localStorage.setItem("kikoto:recently-played-collapsed", String(next));
-      return next;
-    });
-  };
-
   return (
-    <section className={collapsed ? "" : "space-y-2"} aria-labelledby="recently-played-heading">
-      <h2 id="recently-played-heading" className="flex">
+    <section
+      aria-label={t("library.recentlyPlayed")}
+      className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+    >
+      {works.map((work) => (
         <button
-          type="button"
-          className="-ml-1 inline-flex min-h-8 items-center gap-2 rounded-md px-1.5 text-sm font-semibold transition-colors hover:bg-muted"
-          onClick={toggleCollapsed}
-          aria-label={collapsed ? t("library.expandRecentlyPlayed") : t("library.collapseRecentlyPlayed")}
-          aria-expanded={!collapsed}
-          aria-controls="recently-played-list"
-          title={collapsed ? t("library.expandRecentlyPlayed") : t("library.collapseRecentlyPlayed")}
+          key={work.id}
+          className="group flex h-[5.5rem] min-w-0 items-center gap-3 rounded-[var(--radius)] border bg-card p-2 text-left transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-muted"
+          onClick={() => onOpen(work)}
+          aria-label={t("library.openWorkTitle", { title: work.title })}
+          title={`${work.primaryCode} · ${work.title}`}
         >
-          <Clock3 className="h-4 w-4 text-primary" />
-          {t("library.recentlyPlayed")}
-          <span className="text-xs font-normal tabular-nums text-muted-foreground">{works.length}</span>
-          <ChevronDown
-            className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${collapsed ? "-rotate-90" : ""}`}
-          />
+          <span className="relative block aspect-[4/3] h-full shrink-0 overflow-hidden rounded-[calc(var(--radius)-2px)] bg-muted">
+            {work.coverUrl ? (
+              <img
+                src={assetURL(work.coverUrl)}
+                alt=""
+                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.05] motion-reduce:group-hover:scale-100"
+                loading="lazy"
+              />
+            ) : (
+              <span className="grid h-full place-items-center text-sm font-bold text-muted-foreground">
+                {work.primaryCode.slice(0, 2)}
+              </span>
+            )}
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col justify-center gap-1">
+            <span className="line-clamp-1 text-sm font-semibold leading-snug transition-colors group-hover:text-primary">
+              {work.title}
+            </span>
+            <span className="truncate text-xs text-muted-foreground">{work.circle || t("common.unknown")}</span>
+            <span className="truncate text-2xs text-muted-foreground" title={recentProgressLabel(work.progress, t)}>
+              {recentProgressLabel(work.progress, t)}
+            </span>
+            <span className="block h-1 w-full shrink-0 overflow-hidden rounded-full bg-muted">
+              <span
+                className="block h-full rounded-full bg-primary"
+                style={{ width: `${progressPercent(work.progress)}%` }}
+              />
+            </span>
+          </span>
         </button>
-      </h2>
-      {!collapsed && (
-        <div id="recently-played-list" className="app-scroll -mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-2">
-          {works.map((work) => (
-            <button
-              key={work.id}
-              className="group flex h-[4.75rem] w-[16.5rem] shrink-0 snap-start items-center gap-3 rounded-[var(--radius)] border bg-card p-2 text-left transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-muted sm:w-[18rem]"
-              onClick={() => onOpen(work)}
-              aria-label={t("library.openWorkTitle", { title: work.title })}
-              title={`${work.primaryCode} · ${work.title}`}
-            >
-              <span className="relative block aspect-[4/3] h-full shrink-0 overflow-hidden rounded-[calc(var(--radius)-2px)] bg-muted">
-                {work.coverUrl ? (
-                  <img
-                    src={assetURL(work.coverUrl)}
-                    alt=""
-                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.05] motion-reduce:group-hover:scale-100"
-                    loading="lazy"
-                  />
-                ) : (
-                  <span className="grid h-full place-items-center text-sm font-bold text-muted-foreground">
-                    {work.primaryCode.slice(0, 2)}
-                  </span>
-                )}
-              </span>
-              <span className="flex min-w-0 flex-1 flex-col justify-center gap-1">
-                <span className="block truncate text-xs font-semibold leading-snug transition-colors group-hover:text-primary">
-                  {work.title}
-                </span>
-                <span
-                  className="block truncate text-2xs text-muted-foreground"
-                  title={recentProgressLabel(work.progress, t)}
-                >
-                  {recentProgressLabel(work.progress, t)}
-                </span>
-                <span className="block h-1 w-full shrink-0 overflow-hidden rounded-full bg-muted">
-                  <span
-                    className="block h-full rounded-full bg-primary"
-                    style={{ width: `${progressPercent(work.progress)}%` }}
-                  />
-                </span>
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+      ))}
     </section>
   );
 }

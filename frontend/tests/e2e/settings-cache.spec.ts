@@ -462,7 +462,7 @@ test("development super administrator can configure production anonymous access"
   await page.goto("/settings?tab=users");
   await expect(page).toHaveURL(/\/settings\?tab=users$/);
   await expect(page.getByRole("tab", { name: "Users", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByText("User directory", { exact: true })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Search users" })).toBeVisible();
   const accessSwitch = page.getByRole("switch", { name: "Anonymous access", exact: true });
   const accessRow = page
     .getByText("Library browsing and playback without an account", { exact: true })
@@ -547,7 +547,7 @@ test("users mounts before settings and a one-user result does not collapse the p
   });
 
   await page.goto("/settings?tab=users");
-  await expect(page.getByText("User directory", { exact: true })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Search users" })).toBeVisible();
   const content = page.getByTestId("maintenance-content");
   const loadingBox = await content.boundingBox();
 
@@ -577,7 +577,7 @@ for (const layout of ["mobile", "@desktop"]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await expect(page.getByText("Storage paths", { exact: true })).toBeVisible();
     await navigation.getByRole("tab", { name: "Users", exact: true }).click();
-    await expect(page.getByText("User directory", { exact: true })).toBeVisible();
+    await expect(page.getByRole("searchbox", { name: "Search users" })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await expect(page.getByRole("switch", { name: "Anonymous access", exact: true })).toHaveCount(0);
   });

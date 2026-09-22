@@ -21,7 +21,30 @@ func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	for index := range users {
+		users[index] = s.withEnvironmentManagement(users[index])
+	}
 	writeJSON(w, http.StatusOK, users)
+}
+
+const environmentManagedUserError = "the initial administrator is managed by KIKOTO_ROOT_USERNAME and KIKOTO_ROOT_PASSWORD; its role, password, and enabled state cannot be changed"
+
+func (s *Server) withEnvironmentManagement(user account.ManagedUser) account.ManagedUser {
+	user.EnvironmentManaged = s.isEnvironmentManagedUsername(user.Username)
+	return user
+}
+
+// changesEnvironmentManagedFields reports whether an update touches a field the
+// bootstrap root account keeps under environment control. Repeating the current
+// role or enabled state is allowed so full-form saves stay idempotent.
+func changesEnvironmentManagedFields(current account.ManagedUser, payload updateUserPayload) bool {
+	if payload.Password != nil && *payload.Password != "" {
+		return true
+	}
+	if payload.Role != nil && strings.TrimSpace(*payload.Role) != current.Role {
+		return true
+	}
+	return payload.Enabled != nil && *payload.Enabled != current.Enabled
 }
 
 func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
@@ -70,7 +93,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, user)
+	writeJSON(w, http.StatusCreated, s.withEnvironmentManagement(user))
 }
 
 func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
@@ -101,6 +124,10 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	if s.isEnvironmentManagedUsername(current.Username) && changesEnvironmentManagedFields(current, payload) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": environmentManagedUserError})
+		return
+	}
 	update, err := normalizeUpdateUserInput(current, payload)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -124,7 +151,7 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, updated)
+	writeJSON(w, http.StatusOK, s.withEnvironmentManagement(updated))
 }
 
 type updateUserPayload struct {
@@ -190,6 +217,10 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		writeError(w, err)
+		return
+	}
+	if s.isEnvironmentManagedUsername(target.Username) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "the initial administrator cannot be deleted"})
 		return
 	}
 	if target.Role == "super_admin" {

@@ -308,7 +308,7 @@ test("cards keep two complete tag rows and readable Sales and Rate metrics at co
   await expect(page.getByRole("button", { name: "Personal tag 10", exact: true })).toBeVisible();
 });
 
-test("recently played cards stay aligned and remember their collapsed state", async ({ page }) => {
+test("recently played is a library tab with aligned cards", async ({ page }) => {
   const recentWorks = [
     {
       ...work,
@@ -341,6 +341,15 @@ test("recently played cards stay aligned and remember their collapsed state", as
   await mockApplication(page, undefined, false, 1, 0, [], undefined, { recentWorks });
 
   await page.goto("/library");
+  const recentTab = page.getByRole("button", { name: "Recently played", exact: true });
+  const localTab = page.getByRole("button", { name: "Local", exact: true });
+  await expect(recentTab).toBeVisible();
+  const [recentBox, localBox] = await Promise.all([recentTab.boundingBox(), localTab.boundingBox()]);
+  expect(recentBox!.x).toBeLessThan(localBox!.x);
+  await expect(page.getByRole("button", { name: "Open Short title" })).toHaveCount(0);
+
+  await recentTab.click();
+  await expect(recentTab).toHaveAttribute("aria-pressed", "true");
   const shortCard = page.getByRole("button", { name: "Open Short title" });
   const longCard = page.getByRole("button", {
     name: "Open A deliberately long title that occupies both reserved title lines",
@@ -349,13 +358,9 @@ test("recently played cards stay aligned and remember their collapsed state", as
   await expect(longCard).toBeVisible();
   expect((await shortCard.boundingBox())?.height).toBe((await longCard.boundingBox())?.height);
 
-  await page.getByRole("button", { name: "Collapse recently played" }).click();
+  await localTab.click();
   await expect(shortCard).toBeHidden();
-  await page.reload();
-  await expect(page.getByRole("button", { name: "Expand recently played" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open Short title" })).toBeHidden();
-  await page.getByRole("button", { name: "Expand recently played" }).click();
-  await expect(page.getByRole("button", { name: "Open Short title" })).toBeVisible();
+  await expect(localTab).toHaveAttribute("aria-pressed", "true");
 });
 
 test("favorite list popovers use measured mobile placement and stay inside the usable viewport", async ({ page }) => {

@@ -471,12 +471,12 @@ export function MaintenancePage({
             onSave={saveRuntimeSettings}
           />
         ) : (
-          <div className="space-y-4">
+          <div className="max-w-4xl space-y-4">
             {canManageUsers && (
               <UsersPage currentUserId={currentUserId} isSuperAdmin={isSuperAdmin} readOnly={readOnly} embedded />
             )}
             {canManageAccessPolicy && (
-              <div className="max-w-4xl">
+              <div>
                 {isSettingsLoading ? (
                   <SettingsPanelSkeleton />
                 ) : (

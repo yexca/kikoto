@@ -1197,6 +1197,8 @@ export type ManagedUser = {
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
+  /** The bootstrap root account configured through the environment. */
+  environmentManaged?: boolean;
 };
 
 export type AuthState = { authenticated: false } | { authenticated: true; user: CurrentUser; sessionToken?: string };
