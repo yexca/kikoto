@@ -44,6 +44,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -67,6 +68,7 @@ import {
 import { openWorkDetail } from "@/app/workDetailNavigation";
 import { useAuth } from "@/auth/AuthProvider";
 import { usePermissionGate } from "@/auth/usePermissionGate";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { UserTagRow } from "@/components/UserTagRow";
 import { MetadataOnboardingNotice } from "@/components/MetadataOnboardingNotice";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
@@ -1568,6 +1570,23 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     setClauseEditor(null);
   };
 
+  // Stable card handlers let unchanged cards skip rendering when the page
+  // re-renders, such as when a tab switch toggles `active`.
+  const openCardWork = useStableCallback((work: Work) => openWork(work));
+  const openCardRecommendation = useStableCallback(openRecommendationExplanation);
+  const changeCardStatus = useStableCallback(updateWorkStatus);
+  const saveCardFavorite = useStableCallback((work: Work, favorite: boolean) => {
+    setWorks((items) => items.map((item) => (item.id === work.id ? { ...item, favorite } : item)));
+    setSelectedWork((item) => (item?.id === work.id ? { ...item, favorite } : item));
+    if (favorite) recordWorkRecommendationEvent(work, "positive_mark");
+  });
+  const openCardTag = useStableCallback(addTagSearchClause);
+  const openCardUserTag = useStableCallback(addUserTagSearchClause);
+  const untrackCardSource = useStableCallback(untrackWorkSource);
+  const fetchCardSource = useStableCallback((work: Work, source: SourcePresenceItem) => {
+    void openTrackedFetchSelection(work, source);
+  });
+
   // A hidden retained workspace sees another destination's location; keep its
   // last rendered list instead of replacing it with a route-not-found view.
   if (active && sourceRoutesReady && !knownLibraryRoute(window.location.pathname, window.location.search, sources)) {
@@ -1964,21 +1983,15 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
                   key={work.id}
                   work={work}
                   showRecommendationScore={librarySort === "recommend"}
-                  onRecommendationOpen={() => openRecommendationExplanation(work)}
-                  onOpen={() => openWork(work)}
-                  onStatusChange={updateWorkStatus}
-                  onFavoriteSaved={(workID, favorite) => {
-                    setWorks((items) => items.map((item) => (item.id === workID ? { ...item, favorite } : item)));
-                    setSelectedWork((item) => (item?.id === workID ? { ...item, favorite } : item));
-                    if (favorite) recordWorkRecommendationEvent(work, "positive_mark");
-                  }}
-                  onTagOpen={addTagSearchClause}
-                  onUserTagOpen={addUserTagSearchClause}
-                  onUntrack={localScope === "tracked" ? (source) => untrackWorkSource(work, source) : undefined}
+                  onRecommendationOpen={openCardRecommendation}
+                  onOpen={openCardWork}
+                  onStatusChange={changeCardStatus}
+                  onFavoriteSaved={saveCardFavorite}
+                  onTagOpen={openCardTag}
+                  onUserTagOpen={openCardUserTag}
+                  onUntrack={localScope === "tracked" ? untrackCardSource : undefined}
                   isUntracking={isUntracking}
-                  onFetch={
-                    localScope === "tracked" ? (source) => void openTrackedFetchSelection(work, source) : undefined
-                  }
+                  onFetch={localScope === "tracked" ? fetchCardSource : undefined}
                   isFetchBusy={trackedFetchWorkspace.isBusy}
                 />
               ))}
@@ -2673,7 +2686,7 @@ function recentWorkSourceIntent(work: Work): DetailSourceIntent {
   return hasLocal || !hasTracked ? "local" : "tracked";
 }
 
-function WorkCard({
+const WorkCard = memo(function WorkCard({
   work,
   showRecommendationScore,
   onRecommendationOpen,
@@ -2689,15 +2702,15 @@ function WorkCard({
 }: {
   work: Work;
   showRecommendationScore: boolean;
-  onRecommendationOpen: () => void;
-  onOpen: () => void;
+  onRecommendationOpen: (work: Work) => void;
+  onOpen: (work: Work) => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
-  onFavoriteSaved: (workID: number, favorite: boolean) => void;
+  onFavoriteSaved: (work: Work, favorite: boolean) => void;
   onTagOpen: (tag: string) => void;
   onUserTagOpen: (tag: string) => void;
-  onUntrack?: (source: SourcePresenceItem) => Promise<void>;
+  onUntrack?: (work: Work, source: SourcePresenceItem) => Promise<void>;
   isUntracking?: boolean;
-  onFetch?: (source: SourcePresenceItem) => void;
+  onFetch?: (work: Work, source: SourcePresenceItem) => void;
   isFetchBusy?: boolean;
 }) {
   const { t } = useTranslation();
@@ -2710,8 +2723,8 @@ function WorkCard({
   return (
     <WorkCardShell
       work={view}
-      onOpen={onOpen}
-      onRecommendationOpen={onRecommendationOpen}
+      onOpen={() => onOpen(work)}
+      onRecommendationOpen={() => onRecommendationOpen(work)}
       onCircleOpen={(externalId) => openCircleRoute(externalId)}
       onSeriesOpen={
         work.seriesTitleId && work.circleExternalId
@@ -2758,7 +2771,7 @@ function WorkCard({
                               disabled={isUntracking}
                               onClick={(event) => {
                                 event.stopPropagation();
-                                void onUntrack(source).finally(() => setUntrackOpen(false));
+                                void onUntrack(work, source).finally(() => setUntrackOpen(false));
                               }}
                             >
                               <Unlink className="h-4 w-4 shrink-0" />
@@ -2779,7 +2792,7 @@ function WorkCard({
                   disabled={!trackedSource || isFetchBusy}
                   onClick={(event) => {
                     event.stopPropagation();
-                    if (trackedSource) onFetch?.(trackedSource);
+                    if (trackedSource) onFetch?.(work, trackedSource);
                   }}
                 >
                   <HardDriveDownload className="h-4 w-4" />
@@ -2788,7 +2801,7 @@ function WorkCard({
               <WorkCardListButton
                 workId={work.id}
                 active={work.favorite}
-                onSaved={(favorite) => onFavoriteSaved(work.id, favorite)}
+                onSaved={(favorite) => onFavoriteSaved(work, favorite)}
               />
               <WorkCardQuickMarkButton
                 value={work.listeningStatus}
@@ -2800,7 +2813,7 @@ function WorkCard({
       }
     />
   );
-}
+});
 
 function RemoteWorkCard({
   work,

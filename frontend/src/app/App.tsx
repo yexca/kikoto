@@ -1,6 +1,18 @@
 import { USER_PREFERENCES_CHANGED } from "@/lib/recommendationSession";
 import { App as CapacitorApp } from "@capacitor/app";
-import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  lazy,
+  memo,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+} from "react";
 import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
@@ -69,15 +81,29 @@ const loadLibraryPage = () => import("@/pages/LibraryPage");
 const loadFavoritesPage = () => import("@/pages/FavoritesPage");
 const loadCirclesPage = () => import("@/pages/CirclesPage");
 const loadCreatorWorksPage = () => import("@/pages/CreatorWorksPage");
-const LibraryPage = lazy(() => loadLibraryPage().then((module) => ({ default: module.LibraryPage })));
+// A workspace that stays hidden skips renders driven by the shell; the active
+// workspace, and one being shown or hidden, render as before. Context updates
+// still reach hidden workspaces.
+function renderOnlyWhileActive<Props extends { active?: boolean }>(Page: ComponentType<Props>) {
+  return memo(Page, (previous, next) => previous.active === false && next.active === false);
+}
+const LibraryPage = lazy(() =>
+  loadLibraryPage().then((module) => ({ default: renderOnlyWhileActive(module.LibraryPage) })),
+);
 const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
 const WorkManagementPage = lazy(() =>
   import("@/pages/WorkManagementPage").then((module) => ({ default: module.WorkManagementPage })),
 );
 const WorkflowsPage = lazy(() => import("@/pages/WorkflowsPage").then((module) => ({ default: module.WorkflowsPage })));
-const FavoritesPage = lazy(() => loadFavoritesPage().then((module) => ({ default: module.FavoritesPage })));
-const CreatorWorksPage = lazy(() => loadCreatorWorksPage().then((module) => ({ default: module.CreatorWorksPage })));
-const CirclesPage = lazy(() => loadCirclesPage().then((module) => ({ default: module.CirclesPage })));
+const FavoritesPage = lazy(() =>
+  loadFavoritesPage().then((module) => ({ default: renderOnlyWhileActive(module.FavoritesPage) })),
+);
+const CreatorWorksPage = lazy(() =>
+  loadCreatorWorksPage().then((module) => ({ default: renderOnlyWhileActive(module.CreatorWorksPage) })),
+);
+const CirclesPage = lazy(() =>
+  loadCirclesPage().then((module) => ({ default: renderOnlyWhileActive(module.CirclesPage) })),
+);
 const AboutPage = lazy(() => import("@/pages/AboutPage").then((module) => ({ default: module.AboutPage })));
 const CommandPalette = lazy(() =>
   import("@/app/CommandPalette").then((module) => ({ default: module.CommandPalette })),

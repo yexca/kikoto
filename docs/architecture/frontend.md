@@ -129,6 +129,10 @@ storage keys; it remains mounted across navigation.
   its rendered list. Each workspace has its own loading boundary, and the four
   page chunks are preloaded when the shell is idle. An inactive workspace is
   hidden, cancels unfinished detail/list work, and pauses polling.
+- Keep destination switches proportional to the workspaces that change. A
+  workspace that stays hidden skips shell-driven renders, and browse list items
+  are memoized with stable item handlers (`useStableCallback`) so a page render
+  does not re-render unchanged cards.
 - Browse workspaces share the window scroll position. When a retained workspace
   becomes active, the shell applies that history entry's scroll offset before the
   first paint; a resumed workspace does not replay its own stored list offset.

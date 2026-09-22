@@ -25,7 +25,7 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -102,6 +102,7 @@ import {
 import { defaultLibraryBrowseState, libraryLocation } from "@/pages/libraryBrowseState";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
+import { useStableCallback } from "@/hooks/useStableCallback";
 
 const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "none", label: "Unmarked" },
@@ -504,14 +505,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
 
   useEffect(() => setListActionsOpen(false), [activeList]);
 
-  if (!auth.user) {
-    return (
-      <Card>
-        <CardContent className="p-6 text-sm text-muted-foreground">{t("favorites.signInDescription")}</CardContent>
-      </Card>
-    );
-  }
-
   const openWork = (work: Work) => {
     const browseState = {
       entity: favoriteEntity,
@@ -757,6 +750,31 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     }
   };
 
+  // Stable card handlers let unchanged cards skip rendering when the page
+  // re-renders, such as when a tab switch toggles `active`.
+  const openCardWork = useStableCallback(openWork);
+  const openCardUserTag = useStableCallback(openShelfUserTag);
+  const changeCardStatus = useStableCallback(updateWorkStatus);
+  const changeCardSelection = useStableCallback(toggleWorkSelection);
+  const refreshCardLists = useStableCallback(async (work: Work) => {
+    await reloadFavoriteLists();
+    toast.success(t("favorites.workMembershipUpdated", { code: work.primaryCode }));
+  });
+  const changeCircle = useStableCallback((next: CircleSummary) =>
+    setCircles((items) => items.map((item) => (item.externalId === next.externalId ? { ...item, ...next } : item))),
+  );
+  const changeVoice = useStableCallback((next: VoiceSummary) =>
+    setVoices((items) => items.map((item) => (item.personId === next.personId ? { ...item, ...next } : item))),
+  );
+
+  if (!auth.user) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-sm text-muted-foreground">{t("favorites.signInDescription")}</CardContent>
+      </Card>
+    );
+  }
+
   return (
     <section className="relative space-y-5">
       <div
@@ -898,14 +916,8 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
           circles={favoriteCircles}
           voices={favoriteVoices}
           onRetry={() => setEntityReloadToken((value) => value + 1)}
-          onCircleChange={(next) =>
-            setCircles((items) =>
-              items.map((item) => (item.externalId === next.externalId ? { ...item, ...next } : item)),
-            )
-          }
-          onVoiceChange={(next) =>
-            setVoices((items) => items.map((item) => (item.personId === next.personId ? { ...item, ...next } : item)))
-          }
+          onCircleChange={changeCircle}
+          onVoiceChange={changeVoice}
         />
       )}
 
@@ -1128,16 +1140,12 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                       work={work}
                       selected={selectedWorkIDs.has(work.id)}
                       selectionActive={selectionMode}
-                      onSelectedChange={(selected) => toggleWorkSelection(work.id, selected)}
-                      favoriteLists={userFavoriteLists}
+                      onSelectedChange={changeCardSelection}
                       isListSaving={isBulkUpdating}
-                      onListsChanged={async () => {
-                        await reloadFavoriteLists();
-                        toast.success(t("favorites.workMembershipUpdated", { code: work.primaryCode }));
-                      }}
-                      onOpen={() => openWork(work)}
-                      onUserTagOpen={openShelfUserTag}
-                      onStatusChange={updateWorkStatus}
+                      onListsChanged={refreshCardLists}
+                      onOpen={openCardWork}
+                      onUserTagOpen={openCardUserTag}
+                      onStatusChange={changeCardStatus}
                     />
                   </div>
                 ))}
@@ -1758,7 +1766,7 @@ function FavoriteEntitySection({
   );
 }
 
-function FavoriteCircleCard({
+const FavoriteCircleCard = memo(function FavoriteCircleCard({
   circle,
   onChange,
 }: {
@@ -1802,9 +1810,15 @@ function FavoriteCircleCard({
       onTagsSave={saveTags}
     />
   );
-}
+});
 
-function FavoriteVoiceCard({ voice, onChange }: { voice: VoiceSummary; onChange: (voice: VoiceSummary) => void }) {
+const FavoriteVoiceCard = memo(function FavoriteVoiceCard({
+  voice,
+  onChange,
+}: {
+  voice: VoiceSummary;
+  onChange: (voice: VoiceSummary) => void;
+}) {
   const { t } = useTranslation();
   const toast = useToast();
   const saveTags = async (tags: string[]) => {
@@ -1841,7 +1855,7 @@ function FavoriteVoiceCard({ voice, onChange }: { voice: VoiceSummary; onChange:
       onTagsSave={saveTags}
     />
   );
-}
+});
 
 function FavoriteSkeletonLine({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-muted ${className}`} />;
@@ -1939,12 +1953,11 @@ function FavoriteLoadError({
   );
 }
 
-function FavoriteWorkCard({
+const FavoriteWorkCard = memo(function FavoriteWorkCard({
   work,
   selected,
   selectionActive,
   onSelectedChange,
-  favoriteLists,
   isListSaving,
   onListsChanged,
   onOpen,
@@ -1954,11 +1967,10 @@ function FavoriteWorkCard({
   work: Work;
   selected: boolean;
   selectionActive: boolean;
-  onSelectedChange: (selected: boolean) => void;
-  favoriteLists: FavoriteList[];
+  onSelectedChange: (workID: number, selected: boolean) => void;
   isListSaving: boolean;
-  onListsChanged: () => Promise<void>;
-  onOpen: () => void;
+  onListsChanged: (work: Work) => Promise<void>;
+  onOpen: (work: Work) => void;
   onUserTagOpen: (tag: string) => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
 }) {
@@ -1968,8 +1980,12 @@ function FavoriteWorkCard({
   return (
     <WorkCardShell
       work={view}
-      selection={selectionActive ? <WorkCardSelection checked={selected} onChange={onSelectedChange} /> : undefined}
-      onOpen={onOpen}
+      selection={
+        selectionActive ? (
+          <WorkCardSelection checked={selected} onChange={(checked) => onSelectedChange(work.id, checked)} />
+        ) : undefined
+      }
+      onOpen={() => onOpen(work)}
       onSeriesOpen={
         work.seriesTitleId && work.circleExternalId
           ? () => openCircleSeriesRoute(work.circleExternalId, work.seriesTitleId)
@@ -1984,7 +2000,7 @@ function FavoriteWorkCard({
                 workId={work.id}
                 active={work.favorite}
                 disabled={isListSaving}
-                onSaved={() => void onListsChanged()}
+                onSaved={() => void onListsChanged(work)}
               />
               <WorkCardQuickMarkButton
                 value={work.listeningStatus}
@@ -1996,7 +2012,7 @@ function FavoriteWorkCard({
       }
     />
   );
-}
+});
 
 function WorkProgress({ progress }: { progress: Work["progress"] }) {
   const { t } = useTranslation();

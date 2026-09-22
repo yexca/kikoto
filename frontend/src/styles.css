@@ -609,6 +609,17 @@
     border-color: hsl(var(--ring) / 0.7);
     box-shadow: 0 0 0 2px hsl(var(--ring) / 0.35);
   }
+
+  /* Extends a compact control's hit area to the 44px touch floor without
+     changing its visible size; larger controls keep their own bounds. */
+  @media (pointer: coarse) {
+    .touch-target::after {
+      content: "";
+      position: absolute;
+      inset-block: min(0px, calc(50% - 22px));
+      inset-inline: min(0px, calc(50% - 22px));
+    }
+  }
 }
 
 @layer utilities {

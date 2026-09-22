@@ -18,7 +18,7 @@ import {
   Tags,
   Trash2,
 } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -53,6 +53,7 @@ import { NotFoundPage } from "@/app/NotFoundPage";
 import { usePageHeaderBack } from "@/app/pageHeader";
 import { openWorkDetail } from "@/app/workDetailNavigation";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import {
   announceRemoteTrackCreated,
   isMatchingRemoteTrack,
@@ -188,6 +189,36 @@ function VoiceCreatorWorksPage({ active }: { active: boolean }) {
   return <VoiceListPage active={active} />;
 }
 
+const VoiceCard = memo(function VoiceCard({
+  voice,
+  onFavoriteToggle,
+  onTagsSave,
+}: {
+  voice: VoiceSummary;
+  onFavoriteToggle: (voice: VoiceSummary) => Promise<void>;
+  onTagsSave: (voice: VoiceSummary, tags: string[]) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  return (
+    <CreatorCard
+      name={voice.displayName}
+      identityLabel={voice.latestWork ? undefined : t("creatorBrowse.voiceActor")}
+      aliases={voice.aliases}
+      latestWork={voice.latestWork}
+      favorite={voice.favorite}
+      userTags={voice.userTags}
+      syncState={voice.syncState}
+      workCount={voice.knownWorks}
+      availabilityCounts={{ local: voice.localWorks, remote: voice.remoteWorks }}
+      unavailableCount={Math.max(0, voice.knownWorks - voice.playableWorks)}
+      sources={voice.sourceSummaries}
+      onOpen={() => openVoiceRoute(voice.personId)}
+      onFavoriteToggle={() => void onFavoriteToggle(voice)}
+      onTagsSave={(tags) => onTagsSave(voice, tags)}
+    />
+  );
+});
+
 function VoiceListPage({ active }: { active: boolean }) {
   const { t } = useTranslation();
   const auth = useAuth();
@@ -321,6 +352,8 @@ function VoiceListPage({ active }: { active: boolean }) {
       toast.notify(toastFromError(error, t("creatorBrowse.tagsUpdateFailed")));
     }
   };
+  const toggleCardFavorite = useStableCallback(toggleFavorite);
+  const saveCardTags = useStableCallback(saveTags);
 
   return (
     <div className="relative space-y-5">
@@ -365,22 +398,11 @@ function VoiceListPage({ active }: { active: boolean }) {
           >
             {voices.length > 0 ? (
               voices.map((voice) => (
-                <CreatorCard
+                <VoiceCard
                   key={voice.personId}
-                  name={voice.displayName}
-                  identityLabel={voice.latestWork ? undefined : t("creatorBrowse.voiceActor")}
-                  aliases={voice.aliases}
-                  latestWork={voice.latestWork}
-                  favorite={voice.favorite}
-                  userTags={voice.userTags}
-                  syncState={voice.syncState}
-                  workCount={voice.knownWorks}
-                  availabilityCounts={{ local: voice.localWorks, remote: voice.remoteWorks }}
-                  unavailableCount={Math.max(0, voice.knownWorks - voice.playableWorks)}
-                  sources={voice.sourceSummaries}
-                  onOpen={() => openVoiceRoute(voice.personId)}
-                  onFavoriteToggle={() => void toggleFavorite(voice)}
-                  onTagsSave={(tags) => saveTags(voice, tags)}
+                  voice={voice}
+                  onFavoriteToggle={toggleCardFavorite}
+                  onTagsSave={saveCardTags}
                 />
               ))
             ) : (
