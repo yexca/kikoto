@@ -27,6 +27,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/library"
 	"github.com/yexca/kikoto/backend/internal/localfs"
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/textdecode"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
@@ -1474,7 +1475,7 @@ func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	if !s.cfg.IsDemo() && target.LocationType == "cache" && !cached {
 		if _, statErr := os.Stat(path); statErr == nil {
-			_, _ = s.db.ExecContext(r.Context(), `UPDATE media_file_location SET last_checked_at = CURRENT_TIMESTAMP WHERE id = ? AND (last_checked_at IS NULL OR last_checked_at < datetime('now', '-10 minutes'))`, id)
+			s.execBestEffort(r.Context(), "touch cache location check time", `UPDATE media_file_location SET last_checked_at = CURRENT_TIMESTAMP WHERE id = ? AND (last_checked_at IS NULL OR last_checked_at < datetime('now', '-10 minutes'))`, id)
 		}
 	}
 	target.Kind = effectiveMediaKind(target.Kind, target.RelativePath)
@@ -1754,7 +1755,7 @@ func (s *Server) enqueueRemoteMediaCache(ctx context.Context, remoteLocationID i
 	if err != nil {
 		return mediaCacheResult{}, err
 	}
-	if cacheID, ok, err := s.findAvailableCacheLocation(ctx, target.MediaItemID, target.SourceID, target.CachePath, nullableInt64(target.SizeBytes)); err != nil {
+	if cacheID, ok, err := s.findAvailableCacheLocation(ctx, target.MediaItemID, target.SourceID, target.CachePath, sqlutil.Int64(target.SizeBytes)); err != nil {
 		return mediaCacheResult{}, err
 	} else if ok {
 		_, _ = s.runCacheLimitCleanup(ctx, target.SourceID, cacheID)
@@ -1830,7 +1831,7 @@ func (s *Server) executeRemoteMediaCacheJob(ctx context.Context, job workflowJob
 		return err
 	}
 	defer releaseCacheLock()
-	if cacheID, ok, err := s.findAvailableCacheLocation(ctx, target.MediaItemID, target.SourceID, target.CachePath, nullableInt64(target.SizeBytes)); err != nil {
+	if cacheID, ok, err := s.findAvailableCacheLocation(ctx, target.MediaItemID, target.SourceID, target.CachePath, sqlutil.Int64(target.SizeBytes)); err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	} else if ok {
@@ -1850,8 +1851,8 @@ func (s *Server) executeRemoteMediaCacheJob(ctx context.Context, job workflowJob
 		_ = s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0)
 		return err
 	}
-	if info, statErr := os.Stat(targetPath); statErr == nil && existingFileMatches(targetPath, nullableInt64(target.SizeBytes)) {
-		cacheLocationID, upsertErr := s.upsertCacheLocation(ctx, target.MediaItemID, target.SourceID, target.CachePath, target.RemoteHash, nullableInt64(target.SizeBytes), nullableInt64(target.DurationSeconds), info.Size())
+	if info, statErr := os.Stat(targetPath); statErr == nil && existingFileMatches(targetPath, sqlutil.Int64(target.SizeBytes)) {
+		cacheLocationID, upsertErr := s.upsertCacheLocation(ctx, target.MediaItemID, target.SourceID, target.CachePath, target.RemoteHash, sqlutil.Int64(target.SizeBytes), sqlutil.Int64(target.DurationSeconds), info.Size())
 		if upsertErr != nil {
 			_ = s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, upsertErr.Error(), 0)
 			return upsertErr
@@ -1876,7 +1877,7 @@ func (s *Server) executeRemoteMediaCacheJob(ctx context.Context, job workflowJob
 		_ = s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0)
 		return err
 	}
-	cacheLocationID, err := s.upsertCacheLocation(ctx, target.MediaItemID, target.SourceID, target.CachePath, target.RemoteHash, nullableInt64(target.SizeBytes), nullableInt64(target.DurationSeconds), written)
+	cacheLocationID, err := s.upsertCacheLocation(ctx, target.MediaItemID, target.SourceID, target.CachePath, target.RemoteHash, sqlutil.Int64(target.SizeBytes), sqlutil.Int64(target.DurationSeconds), written)
 	if err != nil {
 		_ = s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0)
 		return err
@@ -1887,7 +1888,7 @@ func (s *Server) executeRemoteMediaCacheJob(ctx context.Context, job workflowJob
 	}
 	releaseCacheLock()
 	if cleanup, err := s.runCacheLimitCleanup(ctx, target.SourceID, cacheLocationID); err == nil && cleanup.Removed > 0 {
-		_, _ = s.db.ExecContext(ctx, `
+		s.execBestEffort(ctx, "record media cache cleanup summary", `
 			UPDATE workflow_run
 			SET summary_json = ?
 			WHERE id = ?
@@ -1940,7 +1941,7 @@ func (s *Server) findAvailableCacheLocation(ctx context.Context, mediaItemID int
 	if !existingFileMatches(cachePath, expectedSize) {
 		return 0, false, nil
 	}
-	_, _ = s.db.ExecContext(ctx, `
+	s.execBestEffort(ctx, "touch cache location check time", `
 		UPDATE media_file_location
 		SET last_checked_at = CURRENT_TIMESTAMP
 		WHERE id = ?
@@ -2810,7 +2811,7 @@ func (s *Server) createSymlinkMediaReview(ctx context.Context, localLocationID i
 			"reason":      "symlink_delete_blocked",
 		}},
 	}
-	candidateID, err := insertAndID(ctx, tx, `
+	candidateID, err := sqlutil.InsertID(ctx, tx, `
 		INSERT INTO workflow_candidate (workflow_run_id, workflow_node_run_id, candidate_type, external_key, status, payload_json)
 		VALUES (?, ?, 'local_symlink_media_location', ?, 'pending', ?)
 	`, runID, detectNodeID, externalKey, mustJSON(candidatePayload))
@@ -3102,12 +3103,12 @@ func (s *Server) loadWorkDetailBase(ctx context.Context, userID int64, id int64)
 		return workDetail{}, err
 	}
 	work.Favorite = favorite != 0
-	work.ReleaseDate = nullableString(releaseDate)
-	work.DurationSeconds = nullableInt64(durationSeconds)
-	work.Rating = nullableFloat64(rating)
-	work.Sales = nullableInt64(sales)
-	work.RegularPrice = nullableInt64(regularPrice)
-	work.Price = nullableInt64(currentPrice)
+	work.ReleaseDate = sqlutil.String(releaseDate)
+	work.DurationSeconds = sqlutil.Int64(durationSeconds)
+	work.Rating = sqlutil.Float64(rating)
+	work.Sales = sqlutil.Int64(sales)
+	work.RegularPrice = sqlutil.Int64(regularPrice)
+	work.Price = sqlutil.Int64(currentPrice)
 	if permanentlyFree.Valid {
 		work.PermanentlyFree = &permanentlyFree.Bool
 	}
@@ -3375,14 +3376,14 @@ func (s *Server) loadMediaItemRows(ctx context.Context, userID int64, mediaWorkI
 			_ = rows.Close()
 			return nil, nil, err
 		}
-		item.ParentID = nullableInt64(parentID)
-		item.DiscNo = nullableInt64(discNo)
-		item.TrackNo = nullableInt64(trackNo)
-		item.DurationSeconds = nullableInt64(itemDurationSeconds)
-		item.HasAudio = nullableBool(hasAudio)
-		item.SizeBytes = nullableInt64(sizeBytes)
+		item.ParentID = sqlutil.Int64(parentID)
+		item.DiscNo = sqlutil.Int64(discNo)
+		item.TrackNo = sqlutil.Int64(trackNo)
+		item.DurationSeconds = sqlutil.Int64(itemDurationSeconds)
+		item.HasAudio = sqlutil.Bool(hasAudio)
+		item.SizeBytes = sqlutil.Int64(sizeBytes)
 		item.Progress = nullableMediaProgress(progressPositionSeconds, progressDurationSeconds, progressCompleted, progressLastPlayedAt)
-		item.PreferredLyricsMediaItemID = nullableInt64(preferredLyricsMediaItemID)
+		item.PreferredLyricsMediaItemID = sqlutil.Int64(preferredLyricsMediaItemID)
 		item.Locations = []fileLocationDetail{}
 		itemIndexes[item.ID] = len(mediaItems)
 		mediaItems = append(mediaItems, item)
@@ -3450,9 +3451,9 @@ func (s *Server) loadMediaLocationRows(ctx context.Context, mediaWorkID int64, m
 			_ = locationRows.Close()
 			return err
 		}
-		location.SizeBytes = nullableInt64(sizeBytes)
-		location.DurationSeconds = nullableInt64(locationDurationSeconds)
-		location.LastCheckedAt = nullableString(lastCheckedAt)
+		location.SizeBytes = sqlutil.Int64(sizeBytes)
+		location.DurationSeconds = sqlutil.Int64(locationDurationSeconds)
+		location.LastCheckedAt = sqlutil.String(lastCheckedAt)
 		if (location.LocationType == "local" || location.LocationType == "cache") && location.Availability == "available" && location.StreamURL == "" {
 			location.StreamURL = fmt.Sprintf("/api/media/%d/stream", location.ID)
 		}
@@ -3853,11 +3854,11 @@ func (s *Server) resolveWorkCodeDetail(ctx context.Context, code string) (workRe
 		CoverURL:         s.coverURL(resolvedCode),
 		Circle:           metadata.Circle,
 		CircleExternalID: metadata.CircleExternalID,
-		ReleaseDate:      nullableString(releaseDate),
-		Rating:           nullableFloat64(rating),
-		Sales:            nullableInt64(sales),
-		RegularPrice:     nullableInt64(regularPrice),
-		Price:            nullableInt64(currentPrice),
+		ReleaseDate:      sqlutil.String(releaseDate),
+		Rating:           sqlutil.Float64(rating),
+		Sales:            sqlutil.Int64(sales),
+		RegularPrice:     sqlutil.Int64(regularPrice),
+		Price:            sqlutil.Int64(currentPrice),
 		PriceCurrency:    priceCurrency,
 		PermanentlyFree:  permanentlyFreeValue,
 		Tags:             projectedTags,
@@ -4873,7 +4874,7 @@ func (s *Server) upsertLocalFileSource(ctx context.Context, tx *sql.Tx, scanDept
 		return 0, err
 	}
 
-	return selectID(ctx, tx, "SELECT id FROM file_source WHERE code = ?", "main_local_library")
+	return sqlutil.SelectID(ctx, tx, "SELECT id FROM file_source WHERE code = ?", "main_local_library")
 }
 
 func localDuplicateGroupSummaries(groups []localfs.DuplicateGroup) []map[string]any {
@@ -4975,7 +4976,7 @@ func upsertDetectedWork(ctx context.Context, tx *sql.Tx, folder localfs.WorkFold
 		return 0, err
 	}
 
-	return selectID(ctx, tx, "SELECT id FROM work WHERE primary_code = ?", folder.Code)
+	return sqlutil.SelectID(ctx, tx, "SELECT id FROM work WHERE primary_code = ?", folder.Code)
 }
 
 func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, folder localfs.WorkFolder, file localfs.LocalFile, kind string, trackNo int) (int64, error) {
@@ -5022,7 +5023,7 @@ func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, fold
 	`, kind, file.Title, trackNoValue, durationValue, hasAudioValue, file.SizeBytes, fingerprint); err != nil {
 		return 0, err
 	}
-	return selectID(ctx, tx, "SELECT id FROM media_item WHERE fingerprint = ? ORDER BY id ASC LIMIT 1", fingerprint)
+	return sqlutil.SelectID(ctx, tx, "SELECT id FROM media_item WHERE fingerprint = ? ORDER BY id ASC LIMIT 1", fingerprint)
 }
 
 func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, fileSourceID int64, file localfs.LocalFile) (int64, error) {
@@ -5069,7 +5070,7 @@ func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, 
 	`, file.SizeBytes, durationValue, mediaItemID, fileSourceID, file.RelPath); err != nil {
 		return 0, err
 	}
-	return selectID(ctx, tx, `
+	return sqlutil.SelectID(ctx, tx, `
 		SELECT id
 		FROM media_file_location
 		WHERE media_item_id = ? AND file_source_id = ? AND location_type = 'local' AND path = ?
@@ -5383,32 +5384,6 @@ func isTextFile(path string) bool {
 	return localFileKind(path) == "text"
 }
 
-func insertAndID(ctx context.Context, tx *sql.Tx, query string, args ...any) (int64, error) {
-	result, err := tx.ExecContext(ctx, query, args...)
-	if err != nil {
-		return 0, err
-	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return 0, err
-	}
-
-	return id, nil
-}
-
-func selectID(ctx context.Context, tx *sql.Tx, query string, args ...any) (int64, error) {
-	var id int64
-	if err := tx.QueryRowContext(ctx, query, args...).Scan(&id); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return 0, sql.ErrNoRows
-		}
-		return 0, err
-	}
-
-	return id, nil
-}
-
 func parseInt64PathValue(r *http.Request, name string) (int64, error) {
 	value := r.PathValue(name)
 	id, err := strconv.ParseInt(value, 10, 64)
@@ -5416,27 +5391,6 @@ func parseInt64PathValue(r *http.Request, name string) (int64, error) {
 		return 0, fmt.Errorf("invalid path value %s", name)
 	}
 	return id, nil
-}
-
-func nullableString(value sql.NullString) *string {
-	if !value.Valid {
-		return nil
-	}
-	return &value.String
-}
-
-func nullableInt64(value sql.NullInt64) *int64 {
-	if !value.Valid {
-		return nil
-	}
-	return &value.Int64
-}
-
-func nullableBool(value sql.NullBool) *bool {
-	if !value.Valid {
-		return nil
-	}
-	return &value.Bool
 }
 
 type dlsiteSnapshotMetadata struct {

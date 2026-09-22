@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 type workManualOverrides struct {
@@ -486,7 +488,7 @@ func (s *Server) workCoverCandidates(ctx context.Context, workID int64) ([]workC
 		candidate.FileName = filepath.Base(candidate.Path)
 		revision := sha1.Sum([]byte(fmt.Sprintf("%s:%d", candidate.Path, size.Int64)))
 		candidate.PreviewURL = fmt.Sprintf("/api/media/%d/asset?v=%s", candidate.LocationID, hex.EncodeToString(revision[:])[:12])
-		candidate.SizeBytes = nullableInt64(size)
+		candidate.SizeBytes = sqlutil.Int64(size)
 		candidate.Selected = selectedPath != "" && strings.EqualFold(selectedPath, candidate.Path)
 		candidates = append(candidates, candidate)
 	}

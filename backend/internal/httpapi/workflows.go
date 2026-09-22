@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -287,7 +288,7 @@ func (s *Server) createWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 	if payload.Enabled != nil {
 		enabled = *payload.Enabled
 	}
-	id, err := insertAndIDNoTx(r.Context(), s.db, `
+	id, err := sqlutil.InsertID(r.Context(), s.db, `
 		INSERT INTO workflow_trigger (
 			workflow_definition_id,
 			trigger_type,
@@ -1056,7 +1057,7 @@ func (s *Server) loadWorkflowCandidateForCleanup(ctx context.Context, candidateI
 		}
 		return workflowCandidateRecord{}, err
 	}
-	item.NodeRunID = nullableInt64(nodeRunID)
+	item.NodeRunID = sqlutil.Int64(nodeRunID)
 	if item.Status == "resolved" || item.Status == "ignored" || item.Status == "rejected" {
 		return workflowCandidateRecord{}, fmt.Errorf("workflow candidate is already %s", item.Status)
 	}
@@ -1737,14 +1738,6 @@ func (s *Server) loadWorkflowDefinition(ctx context.Context, id int64) (workflow
 
 func (s *Server) loadWorkflowTrigger(ctx context.Context, id int64) (workflowTriggerRecord, error) {
 	return s.workflowStore.LoadTrigger(ctx, id)
-}
-
-func insertAndIDNoTx(ctx context.Context, db *sql.DB, query string, args ...any) (int64, error) {
-	result, err := db.ExecContext(ctx, query, args...)
-	if err != nil {
-		return 0, err
-	}
-	return result.LastInsertId()
 }
 
 func normalizeOptionalString(value *string) any {

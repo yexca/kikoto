@@ -216,7 +216,9 @@ func (s *Store) UserForSession(ctx context.Context, sessionID string, now time.T
 		parsed, err = time.Parse(time.RFC3339, expiresAt)
 	}
 	if err == nil && now.After(parsed) {
-		_, _ = s.db.ExecContext(ctx, "DELETE FROM user_session WHERE id = ?", sessionID)
+		if _, err := s.db.ExecContext(ctx, "DELETE FROM user_session WHERE id = ?", sessionID); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn("expired session cleanup failed", "user_id", userID, "error", err)
+		}
 		return User{}, sql.ErrNoRows
 	}
 	return s.LoadByID(ctx, userID)

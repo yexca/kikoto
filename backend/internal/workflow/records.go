@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 type NodeRunSpec struct {
@@ -68,7 +69,7 @@ func EnsureDefinition(ctx context.Context, tx *sql.Tx, code string, displayName 
 	`, code, displayName, description, definitionJSON); err != nil {
 		return 0, err
 	}
-	return selectID(ctx, tx, "SELECT id FROM workflow_definition WHERE code = ?", code)
+	return sqlutil.SelectID(ctx, tx, "SELECT id FROM workflow_definition WHERE code = ?", code)
 }
 
 func InsertRun(ctx context.Context, tx *sql.Tx, definitionID int64, code string, displayName string, status string, triggerType string, triggerReason string, input any, summary any) (int64, error) {
@@ -80,7 +81,7 @@ func InsertRun(ctx context.Context, tx *sql.Tx, definitionID int64, code string,
 	if err != nil {
 		return 0, err
 	}
-	runID, err := insertAndID(ctx, tx, `
+	runID, err := sqlutil.InsertID(ctx, tx, `
 		INSERT INTO workflow_run (
 			workflow_definition_id,
 			workflow_code,
@@ -118,7 +119,7 @@ func InsertNodeRun(ctx context.Context, tx *sql.Tx, runID int64, spec NodeRunSpe
 	if err != nil {
 		return 0, err
 	}
-	nodeRunID, err := insertAndID(ctx, tx, `
+	nodeRunID, err := sqlutil.InsertID(ctx, tx, `
 		INSERT INTO workflow_node_run (
 			workflow_run_id,
 			node_id,
@@ -166,7 +167,7 @@ func InsertJob(ctx context.Context, tx *sql.Tx, runID int64, spec JobSpec) (int6
 	if maxRetries <= 0 {
 		maxRetries = 3
 	}
-	jobID, err := insertAndID(ctx, tx, `
+	jobID, err := sqlutil.InsertID(ctx, tx, `
 		INSERT INTO workflow_job (
 			workflow_run_id,
 			workflow_node_run_id,
@@ -275,23 +276,4 @@ func nullableID(id int64) any {
 		return nil
 	}
 	return id
-}
-
-func insertAndID(ctx context.Context, tx *sql.Tx, query string, args ...any) (int64, error) {
-	result, err := tx.ExecContext(ctx, query, args...)
-	if err != nil {
-		return 0, err
-	}
-	return result.LastInsertId()
-}
-
-func selectID(ctx context.Context, tx *sql.Tx, query string, args ...any) (int64, error) {
-	var id int64
-	if err := tx.QueryRowContext(ctx, query, args...).Scan(&id); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return 0, sql.ErrNoRows
-		}
-		return 0, err
-	}
-	return id, nil
 }

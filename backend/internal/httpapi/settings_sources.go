@@ -26,6 +26,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/library"
 	"github.com/yexca/kikoto/backend/internal/metasync"
 	"github.com/yexca/kikoto/backend/internal/outbound"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -146,7 +147,7 @@ func normalizeRemoteSourceSeed(seed config.RemoteSourceSeed) (*normalizedRemoteS
 }
 
 func insertRemoteSourceSeed(ctx context.Context, tx *sql.Tx, seed normalizedRemoteSourceSeed) error {
-	sourceID, err := insertAndID(ctx, tx, `
+	sourceID, err := sqlutil.InsertID(ctx, tx, `
 		INSERT INTO file_source (code, display_name, source_type, priority, enabled, config_json)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, seed.Code, seed.DisplayName, seed.SourceType, seed.Priority, seed.Enabled, mustJSON(fileSourceConfig{RequestLanguage: seed.RequestLanguage}))
@@ -956,7 +957,7 @@ func (s *Server) createFileSource(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	sourceID, err := insertAndID(r.Context(), tx, `
+	sourceID, err := sqlutil.InsertID(r.Context(), tx, `
 		INSERT INTO file_source (code, display_name, source_type, priority, enabled, config_json)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, code, payload.DisplayName, payload.SourceType, payload.Priority, payload.Enabled, mustJSON(payload.Config))
@@ -3524,14 +3525,18 @@ func (s *Server) executeRemotePopularCollectionJob(ctx context.Context, job work
 	result.TagName = payload.TagName
 	result.ExpectedMaximum = payload.Limit
 	result.Status = "running"
-	_, _ = s.db.ExecContext(ctx, "UPDATE workflow_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", job.RunID)
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", job.RunID); err != nil {
+		return err
+	}
 
 	result, checkpoint, err = s.discoverRemotePopularCandidates(ctx, job, payload, source, nodeIDs, result, checkpoint)
 	if err != nil {
 		return err
 	}
 
-	_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id IN (?, ?)", nodeIDs["dispatch"], nodeIDs["tag"])
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id IN (?, ?)", nodeIDs["dispatch"], nodeIDs["tag"]); err != nil {
+		return err
+	}
 	result, checkpoint, err = s.dispatchRemotePopularCandidates(ctx, job, payload, source, result, checkpoint)
 	if err != nil {
 		return err
@@ -3560,11 +3565,17 @@ func (s *Server) loadRemotePopularJobState(ctx context.Context, job workflowJobR
 func (s *Server) discoverRemotePopularCandidates(ctx context.Context, job workflowJobRecord, payload remoteCollectionJobPayload, source remoteSourceForUse, nodeIDs map[string]int64, result remoteCollectionRunResult, checkpoint remoteCollectionJobCheckpoint) (remoteCollectionRunResult, remoteCollectionJobCheckpoint, error) {
 	if checkpoint.Candidates != nil {
 		result.Accepted = len(checkpoint.Candidates)
-		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = COALESCE(finished_at, CURRENT_TIMESTAMP) WHERE id = ?", mustJSON(map[string]any{"returned": result.ReturnedCount, "resumed": true}), nodeIDs["discover"])
-		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = COALESCE(finished_at, CURRENT_TIMESTAMP) WHERE id = ?", mustJSON(map[string]any{"accepted": result.Accepted, "skipped": result.Skipped, "resumed": true}), nodeIDs["filter"])
+		if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = COALESCE(finished_at, CURRENT_TIMESTAMP) WHERE id = ?", mustJSON(map[string]any{"returned": result.ReturnedCount, "resumed": true}), nodeIDs["discover"]); err != nil {
+			return result, checkpoint, err
+		}
+		if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = COALESCE(finished_at, CURRENT_TIMESTAMP) WHERE id = ?", mustJSON(map[string]any{"accepted": result.Accepted, "skipped": result.Skipped, "resumed": true}), nodeIDs["filter"]); err != nil {
+			return result, checkpoint, err
+		}
 		return result, checkpoint, nil
 	}
-	_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", nodeIDs["discover"])
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", nodeIDs["discover"]); err != nil {
+		return result, checkpoint, err
+	}
 	page, err := s.kikoeruCrawlClientForSource(source).PopularWorks(ctx, 1, payload.Limit)
 	if err != nil {
 		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
@@ -3655,7 +3666,7 @@ func (s *Server) dispatchRemotePopularCandidate(ctx context.Context, job workflo
 			return outcome
 		}
 		outcome.workID, outcome.childRunID, outcome.fetched = fetchResult.WorkID, fetchResult.RunID, true
-		_, _ = s.db.ExecContext(ctx, `
+		s.execBestEffort(ctx, "record popular collection candidate", `
 			INSERT INTO workflow_candidate (workflow_run_id, candidate_type, external_key, status, payload_json)
 			VALUES (?, 'remote_work', ?, 'accepted', ?)
 		`, job.RunID, code, mustJSON(map[string]any{"collection_kind": "popular", "remote_work_id": work.ID, "child_run_id": fetchResult.RunID}))
@@ -5988,7 +5999,7 @@ func upsertRemoteWorkBase(ctx context.Context, tx *sql.Tx, code, title string, r
 		policy.UpdateNormalizedMetadata, policy.UpdateNormalizedMetadata); err != nil {
 		return 0, err
 	}
-	return selectID(ctx, tx, "SELECT id FROM work WHERE primary_code = ?", code)
+	return sqlutil.SelectID(ctx, tx, "SELECT id FROM work WHERE primary_code = ?", code)
 }
 
 func upsertRemoteWorkMetadata(ctx context.Context, tx *sql.Tx, source remoteSourceForUse, workID int64, code string, remoteWork kikoeru.Work, rawWork json.RawMessage) (int64, error) {
@@ -6000,7 +6011,7 @@ func upsertRemoteWorkMetadata(ctx context.Context, tx *sql.Tx, source remoteSour
 	`, providerCode, source.DisplayName); err != nil {
 		return 0, err
 	}
-	providerID, err := selectID(ctx, tx, "SELECT id FROM metadata_provider WHERE code = ?", providerCode)
+	providerID, err := sqlutil.SelectID(ctx, tx, "SELECT id FROM metadata_provider WHERE code = ?", providerCode)
 	if err != nil {
 		return 0, err
 	}
@@ -6155,7 +6166,7 @@ func syncRemoteTrackNode(ctx context.Context, tx *sql.Tx, fileSourceID, workID i
 	if err := upsertRemoteMediaItem(ctx, tx, workID, parent, kind, title, index, duration, hasAudio, size, fingerprint); err != nil {
 		return err
 	}
-	itemID, err := selectID(ctx, tx, "SELECT id FROM media_item WHERE fingerprint = ?", fingerprint)
+	itemID, err := sqlutil.SelectID(ctx, tx, "SELECT id FROM media_item WHERE fingerprint = ?", fingerprint)
 	if err != nil {
 		return err
 	}
@@ -6646,7 +6657,7 @@ func scanFileSource(scanner fileSourceScanner) (fileSourceSummary, error) {
 	); err != nil {
 		return fileSourceSummary{}, err
 	}
-	source.LastCheckedAt = nullableString(lastCheckedAt)
+	source.LastCheckedAt = sqlutil.String(lastCheckedAt)
 	if strings.TrimSpace(configJSON) != "" {
 		_ = json.Unmarshal([]byte(configJSON), &source.Config)
 	}

@@ -723,7 +723,7 @@ func (s *Server) dispatchReadyAvailabilityWatchTarget(
 	if err != nil {
 		execution.dispatchFailures++
 		execution.result.Failures = append(execution.result.Failures, code+": configured action could not be queued")
-		_, _ = s.db.ExecContext(ctx, `UPDATE availability_watch_target SET state = 'ready', last_error = 'Action failed', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND active = 1`, targetID)
+		s.execBestEffort(ctx, "record availability watch dispatch failure", `UPDATE availability_watch_target SET state = 'ready', last_error = 'Action failed', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND active = 1`, targetID)
 		return nil
 	}
 	execution.result.Dispatched++

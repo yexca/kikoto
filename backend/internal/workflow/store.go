@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 type Store struct {
@@ -288,7 +290,7 @@ func (s *Store) ListEventsAfter(ctx context.Context, runID int64, afterID int64)
 		if err := rows.Scan(&item.ID, &item.RunID, &nodeRunID, &jobID, &item.Level, &item.EventType, &item.Message, &item.DetailJSON, &item.CreatedAt); err != nil {
 			return nil, err
 		}
-		item.NodeRunID, item.JobID = nullableInt64(nodeRunID), nullableInt64(jobID)
+		item.NodeRunID, item.JobID = sqlutil.Int64(nodeRunID), sqlutil.Int64(jobID)
 		events = append(events, item)
 	}
 	return events, rows.Err()
@@ -310,7 +312,7 @@ func (s *Store) ListCandidates(ctx context.Context, runID int64) ([]CandidateRec
 		if err := rows.Scan(&item.ID, &item.RunID, &nodeRunID, &item.Type, &item.ExternalKey, &item.Status, &item.PayloadJSON, &item.DecisionJSON, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, err
 		}
-		item.NodeRunID = nullableInt64(nodeRunID)
+		item.NodeRunID = sqlutil.Int64(nodeRunID)
 		candidates = append(candidates, item)
 	}
 	return candidates, rows.Err()
@@ -526,7 +528,7 @@ func scanRun(row rowScanner) (RunRecord, error) {
 		&item.CandidateCount, &item.PendingCandidates, &item.AcceptedCandidates, &item.RejectedCandidates,
 		&item.ReviewedAt, &reviewedByUserID, &definitionID, &triggerID, &item.PendingMetadata,
 	)
-	item.ReviewedByUserID, item.DefinitionID, item.TriggerID = nullableInt64(reviewedByUserID), nullableInt64(definitionID), nullableInt64(triggerID)
+	item.ReviewedByUserID, item.DefinitionID, item.TriggerID = sqlutil.Int64(reviewedByUserID), sqlutil.Int64(definitionID), sqlutil.Int64(triggerID)
 	return item, err
 }
 
@@ -534,7 +536,7 @@ func scanDefinition(row rowScanner) (DefinitionRecord, error) {
 	var item DefinitionRecord
 	var ownerUserID sql.NullInt64
 	err := row.Scan(&item.ID, &item.Code, &item.DisplayName, &item.Description, &item.DefinitionJSON, &item.Scope, &item.Editable, &ownerUserID, &item.TriggerCount, &item.CreatedAt, &item.UpdatedAt)
-	item.OwnerUserID = nullableInt64(ownerUserID)
+	item.OwnerUserID = sqlutil.Int64(ownerUserID)
 	return item, err
 }
 
@@ -542,7 +544,7 @@ func scanTrigger(row rowScanner) (TriggerRecord, error) {
 	var item TriggerRecord
 	var nextRunAt, lastRunAt, lastSuccessAt sql.NullString
 	err := row.Scan(&item.ID, &item.WorkflowDefinitionID, &item.WorkflowCode, &item.DisplayName, &item.TriggerType, &item.Enabled, &item.ScheduleJSON, &item.ConfigJSON, &nextRunAt, &lastRunAt, &lastSuccessAt, &item.LastErrorMessage, &item.CreatedAt, &item.UpdatedAt)
-	item.NextRunAt, item.LastRunAt, item.LastSuccessAt = nullableString(nextRunAt), nullableString(lastRunAt), nullableString(lastSuccessAt)
+	item.NextRunAt, item.LastRunAt, item.LastSuccessAt = sqlutil.String(nextRunAt), sqlutil.String(lastRunAt), sqlutil.String(lastSuccessAt)
 	return item, err
 }
 
@@ -574,18 +576,4 @@ func runSelectSQL(reviewFilter string) string {
 		COALESCE((SELECT review.reviewed_at FROM workflow_run_review AS review WHERE review.workflow_run_id = run.id AND review.status = 'reviewed'` + reviewFilter + ` ORDER BY review.reviewed_at DESC, review.id DESC LIMIT 1), ''),
 		(SELECT review.user_id FROM workflow_run_review AS review WHERE review.workflow_run_id = run.id AND review.status = 'reviewed'` + reviewFilter + ` ORDER BY review.reviewed_at DESC, review.id DESC LIMIT 1),
 		run.workflow_definition_id, run.trigger_id, ` + pendingMetadataSQL
-}
-
-func nullableInt64(value sql.NullInt64) *int64 {
-	if !value.Valid {
-		return nil
-	}
-	return &value.Int64
-}
-
-func nullableString(value sql.NullString) *string {
-	if !value.Valid {
-		return nil
-	}
-	return &value.String
 }

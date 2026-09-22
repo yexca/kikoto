@@ -436,7 +436,7 @@ func (s *Server) updateRemoteFetchPhaseNode(ctx context.Context, runID int64, no
 }
 
 func (s *Server) recordRemoteFetchManifestError(ctx context.Context, manifestID int64, runErr error) error {
-	_, _ = s.db.ExecContext(ctx, `
+	s.execBestEffort(ctx, "record remote fetch manifest error", `
 		UPDATE remote_fetch_manifest SET error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
 	`, runErr.Error(), manifestID)
 	return runErr

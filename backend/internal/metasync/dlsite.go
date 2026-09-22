@@ -14,6 +14,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -1322,7 +1323,7 @@ func (s *DLsiteSyncer) ensureWorkForProduct(ctx context.Context, product dlsite.
 	`, code, chooseTitle(product), product.WorkNameKana, chooseDescription(product), nullableText(product.RegistDate), product.AgeCategoryString); err != nil {
 		return 0, err
 	}
-	workID, err := selectID(ctx, tx, "SELECT id FROM work WHERE primary_code = ?", code)
+	workID, err := sqlutil.SelectID(ctx, tx, "SELECT id FROM work WHERE primary_code = ?", code)
 	if err != nil {
 		return 0, err
 	}
@@ -1462,25 +1463,6 @@ func ensureMetadataProvider(ctx context.Context, tx *sql.Tx, code string, displa
 	return id, nil
 }
 
-func insertAndID(ctx context.Context, tx *sql.Tx, query string, args ...any) (int64, error) {
-	result, err := tx.ExecContext(ctx, query, args...)
-	if err != nil {
-		return 0, err
-	}
-	return result.LastInsertId()
-}
-
-func selectID(ctx context.Context, tx *sql.Tx, query string, args ...any) (int64, error) {
-	var id int64
-	if err := tx.QueryRowContext(ctx, query, args...).Scan(&id); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return 0, sql.ErrNoRows
-		}
-		return 0, err
-	}
-	return id, nil
-}
-
 func mustJSON(value any) string {
 	data, err := json.Marshal(value)
 	if err != nil {
@@ -1584,7 +1566,7 @@ func upsertDLsiteWorkEdition(ctx context.Context, tx *sql.Tx, providerID int64, 
 	if baseCode != "" {
 		canonicalCode = baseCode
 	}
-	canonicalWorkID, _ := selectID(ctx, tx, "SELECT id FROM work WHERE UPPER(primary_code) = UPPER(?)", canonicalCode)
+	canonicalWorkID, _ := sqlutil.SelectID(ctx, tx, "SELECT id FROM work WHERE UPPER(primary_code) = UPPER(?)", canonicalCode)
 	var canonical any
 	if canonicalWorkID > 0 {
 		canonical = canonicalWorkID
@@ -1598,7 +1580,7 @@ func upsertDLsiteWorkEdition(ctx context.Context, tx *sql.Tx, providerID int64, 
 	`, canonical, canonicalCode); err != nil {
 		return err
 	}
-	logicalWorkID, err := selectID(ctx, tx, "SELECT id FROM logical_work WHERE canonical_code = ?", canonicalCode)
+	logicalWorkID, err := sqlutil.SelectID(ctx, tx, "SELECT id FROM logical_work WHERE canonical_code = ?", canonicalCode)
 	if err != nil {
 		return err
 	}
@@ -1649,7 +1631,7 @@ func syncKnownProductLanguageEditions(ctx context.Context, tx *sql.Tx, providerI
 		if err := upsertWorkCodeAlias(ctx, tx, logicalWorkID, providerID, code, language, label, nil, "provider_declared"); err != nil {
 			return err
 		}
-		editionWorkID, err := selectID(ctx, tx, "SELECT id FROM work WHERE UPPER(primary_code) = UPPER(?)", code)
+		editionWorkID, err := sqlutil.SelectID(ctx, tx, "SELECT id FROM work WHERE UPPER(primary_code) = UPPER(?)", code)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				continue
