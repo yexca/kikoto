@@ -9,6 +9,8 @@ import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { api, type WorkflowRun, type WorkflowRunsPage } from "@/lib/api";
 import { openMetadataIssues } from "@/lib/metadataMaintenance";
 
+import { ActivityRunSummary } from "./ActivityRunSummary";
+
 export function WorkflowActivity({
   workflowCode,
   workflowName,
@@ -120,72 +122,60 @@ export function WorkflowActivity({
       setBusy(null);
     }
   };
-  const runRow = (run: WorkflowRun, running = false) => (
-    <div key={run.id} className="space-y-2 rounded-lg border bg-card px-3 py-2.5">
-      <button
-        className="w-full rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={() => onSelectRun(run)}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <span className="min-w-0 break-words text-sm font-medium">
-            {t(`workflowPage.builtInDefinitions.${run.workflowCode}.name`, { defaultValue: run.displayName })}
-          </span>
-          <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        </div>
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-          <Badge
-            variant={
-              running ? "info" : run.status === "failed" ? "error" : run.status === "succeeded" ? "success" : "outline"
-            }
-          >
-            {t(`workflowActivity.status.${run.status}`, { defaultValue: run.status })}
-          </Badge>
-          <span>#{run.id}</span>
-          <span className="tabular-nums">{run.finishedAt || run.startedAt || run.createdAt}</span>
-        </div>
-        {running && (
-          <div className="mt-1.5 text-xs text-muted-foreground">
-            {t("workflowActivity.progress", { current: run.completedJobs, total: run.jobCount })}
-            {run.progressBytesTotal > 0 && (
-              <progress
-                className="mt-1.5 h-1.5 w-full accent-primary"
-                max={run.progressBytesTotal}
-                value={run.progressBytesCurrent}
-              />
+  const runRow = (run: WorkflowRun, running = false) => {
+    const needsAcknowledge =
+      !running &&
+      view === "attention" &&
+      (run.status === "failed" || run.status === "partial") &&
+      run.pendingCandidates === 0 &&
+      !(run.pendingMetadata ?? 0) &&
+      !readOnly;
+    const openMetadata = (run.pendingMetadata ?? 0) > 0 && canSyncMetadata;
+    return (
+      <li key={run.id} className="group/run relative">
+        <button
+          className="w-full rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-muted/70"
+          onClick={() => onSelectRun(run)}
+        >
+          <ActivityRunSummary run={run} />
+        </button>
+        {((run.pendingMetadata ?? 0) > 0 || needsAcknowledge) && (
+          <div className="flex flex-wrap items-center gap-2 px-3 pb-2.5 pl-8">
+            {(run.pendingMetadata ?? 0) > 0 && (
+              <span className="text-xs text-warning-foreground">
+                {t("workflowActivity.metadataCount", { count: run.pendingMetadata })}
+              </span>
+            )}
+            {openMetadata && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8"
+                onClick={() => {
+                  onOpenChange(false);
+                  openMetadataIssues(run.id);
+                }}
+              >
+                {t("metadataIssues.openIssues")}
+              </Button>
+            )}
+            {needsAcknowledge && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="-ml-2 h-8"
+                disabled={busy !== null}
+                onClick={() => void acknowledge(run)}
+              >
+                {busy === run.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                {t("workflowActivity.acknowledge")}
+              </Button>
             )}
           </div>
         )}
-      </button>
-      {(run.pendingMetadata ?? 0) > 0 && (
-        <div className="text-xs text-warning-foreground">
-          {t("workflowActivity.metadataCount", { count: run.pendingMetadata })}
-        </div>
-      )}
-      {(run.pendingMetadata ?? 0) > 0 && canSyncMetadata && (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            onOpenChange(false);
-            openMetadataIssues(run.id);
-          }}
-        >
-          {t("metadataIssues.openIssues")}
-        </Button>
-      )}
-      {!running &&
-        view === "attention" &&
-        (run.status === "failed" || run.status === "partial") &&
-        run.pendingCandidates === 0 &&
-        !(run.pendingMetadata ?? 0) &&
-        !readOnly && (
-          <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void acknowledge(run)}>
-            {busy === run.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-            {t("workflowActivity.acknowledge")}
-          </Button>
-        )}
-    </div>
-  );
+      </li>
+    );
+  };
   const displayed = snapshot?.view === view && snapshot.page === page ? snapshot.result : null;
   const content = (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -240,7 +230,9 @@ export function WorkflowActivity({
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   {t("workflowActivity.running")} · {totals.running}
                 </div>
-                {active?.runs.map((run) => runRow(run, true))}
+                <ol className="-mx-1 divide-y rounded-lg border bg-card">
+                  {active?.runs.map((run) => runRow(run, true))}
+                </ol>
                 {totals.running > 5 && (
                   <div className="flex items-center justify-between">
                     <Button
@@ -296,7 +288,7 @@ export function WorkflowActivity({
             ) : displayed?.runs.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">{t(`workflowActivity.empty.${view}`)}</p>
             ) : (
-              <div className="space-y-2">{displayed?.runs.map((run) => runRow(run))}</div>
+              <ol className="-mx-1 divide-y">{displayed?.runs.map((run) => runRow(run))}</ol>
             )}
             {displayed && displayed.total > 8 && (
               <div className="flex items-center justify-between">

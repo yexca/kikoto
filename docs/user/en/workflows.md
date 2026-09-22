@@ -9,8 +9,10 @@ Workflows make backend actions inspectable.
   selected definition.
 - Activity at the right end of the workflow tabs opens a desktop panel or mobile
   sheet for the selected workflow only. Active runs appear above **Needs attention**
-  and **History**. List rows and **Recent runs** open details inside the same
-  panel, with events, candidates, and run actions. **Back to runs** returns to the
+  and **History**. Each row shows the status, run number, trigger, and elapsed
+  time. List rows and **Recent runs** open details inside the same panel: start
+  and finish times, duration, trigger, steps, candidates, run actions, and a
+  collapsed **Diagnostic log** of run events. **Back to runs** returns to the
   list. Old Activity links automatically open Workflows and select the run
   context; the separate full Activity page has been removed.
 
@@ -87,9 +89,10 @@ Workflows make backend actions inspectable.
 - A queued or running Fetch is unique per canonical work. Repeated Fetch
   requests reuse that run instead of downloading the same work twice, and every
   requesting user receives the shared run's terminal notification.
-- Fetch Activity reports byte-level remote-transfer progress. Unknown-size
-  files stay explicit and suppress percentage presentation until their actual
-  size is known.
+- Fetch Activity reports byte-level remote-transfer progress, the observed
+  transfer rate, and the estimated time remaining. Unknown-size files stay
+  explicit and suppress percentage and remaining-time presentation until their
+  actual size is known.
 
 ## Current Limits
 

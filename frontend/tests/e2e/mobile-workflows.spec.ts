@@ -819,7 +819,7 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await page.goto("/about");
   await page.goto("/workflows");
   await expect(page.getByRole("heading", { name: "Collect DLsite popular voice works", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: /#51 day/ }).click();
+  await page.getByRole("button", { name: /^#51 Manual · day / }).click();
   await expect(page).toHaveURL(/\/workflows\?.*run=51/);
 });
 
@@ -1075,9 +1075,16 @@ test("activity presents a compact run summary without the execution canvas", asy
   await expect(activity.getByText("Run signals", { exact: true })).toHaveCount(0);
   await expect(activity.getByLabel("Workflow node canvas")).toHaveCount(0);
   await expect(activity.getByText("Node logs", { exact: true })).toHaveCount(0);
-  await expect(activity.getByText("Tagging works", { exact: true })).toHaveCount(0);
   await expect(activity.getByRole("button", { name: "Overview", exact: true })).toHaveCount(0);
   await expect(activity.getByRole("button", { name: "Steps", exact: true })).toHaveCount(0);
+  await expect(activity.getByText("Started", { exact: true })).toBeVisible();
+  await expect(activity.getByText("Duration", { exact: true })).toBeVisible();
+  await expect(activity.getByText("1m", { exact: true })).toBeVisible();
+
+  // Raw events stay behind the collapsed diagnostic log until requested.
+  await expect(activity.getByText("Tagging works", { exact: true })).toBeHidden();
+  await activity.getByText("Diagnostic log", { exact: true }).click();
+  await expect(activity.getByText("Tagging works", { exact: true })).toBeVisible();
 });
 
 test("activity reports Fetch byte progress without guessing unknown totals", async ({ page }) => {
