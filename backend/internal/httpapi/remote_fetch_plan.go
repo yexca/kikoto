@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
@@ -282,4 +283,193 @@ func applyLocalFetchTargetState(root string, item *remoteWorkSavePlanItem, local
 	}
 	applyRemoteFetchTargetState(item, seenTargets, "multiple selected files resolve to the same target path: ")
 	return nil
+}
+
+type remoteFetchFileDecision struct {
+	ItemKey    string `json:"itemKey"`
+	SourceID   int64  `json:"sourceId"`
+	Resolution string `json:"resolution"`
+	TargetPath string `json:"targetPath"`
+}
+
+type remoteFetchSourceOption struct {
+	SourceID   int64  `json:"sourceId"`
+	SourceCode string `json:"sourceCode"`
+	SourceName string `json:"sourceName"`
+	Path       string `json:"path"`
+	SizeBytes  *int64 `json:"sizeBytes"`
+	SourcePath string `json:"-"`
+	Kind       string `json:"-"`
+	Hash       string `json:"-"`
+}
+
+type remoteWorkSavePlan struct {
+	SourceID    int64                     `json:"sourceId"`
+	PrimaryCode string                    `json:"primaryCode"`
+	SaveRoot    string                    `json:"saveRoot"`
+	FetchRoot   remoteFetchRootReview     `json:"fetchRoot"`
+	LocalFiles  []remoteWorkSaveLocalFile `json:"localFiles"`
+	Items       []remoteWorkSavePlanItem  `json:"items"`
+	Summary     remoteWorkSaveSummary     `json:"summary"`
+	Preparation remoteFetchPreparation    `json:"preparation"`
+}
+
+type remoteWorkSaveLocalFile struct {
+	MediaItemID int64  `json:"mediaItemId"`
+	Path        string `json:"path"`
+	SizeBytes   *int64 `json:"sizeBytes"`
+	Available   bool   `json:"available"`
+}
+
+type remoteWorkSavePlanItem struct {
+	ItemKey              string                    `json:"itemKey"`
+	Path                 string                    `json:"path"`
+	Kind                 string                    `json:"kind"`
+	SizeBytes            *int64                    `json:"sizeBytes"`
+	SourceKind           string                    `json:"sourceKind"`
+	Action               string                    `json:"action"`
+	Status               string                    `json:"status"`
+	SourcePath           string                    `json:"sourcePath"`
+	LocalSourcePath      string                    `json:"localSourcePath"`
+	CachePath            string                    `json:"cachePath"`
+	TargetPath           string                    `json:"targetPath"`
+	MediaItemID          int64                     `json:"mediaItemId"`
+	LocalPaths           []string                  `json:"localPaths"`
+	TargetExists         bool                      `json:"targetExists"`
+	TargetConflict       bool                      `json:"targetConflict"`
+	TargetConflictReason string                    `json:"targetConflictReason"`
+	TargetSizeBytes      *int64                    `json:"targetSizeBytes"`
+	OriginalTargetPath   string                    `json:"originalTargetPath"`
+	Resolution           string                    `json:"resolution"`
+	RemoteSourceID       int64                     `json:"remoteSourceId"`
+	RemoteSourceCode     string                    `json:"remoteSourceCode"`
+	RemoteSourceName     string                    `json:"remoteSourceName"`
+	RemotePath           string                    `json:"remotePath"`
+	SourceOptions        []remoteFetchSourceOption `json:"sourceOptions"`
+}
+
+type remoteWorkSaveSummary struct {
+	Total         int `json:"total"`
+	SkipExisting  int `json:"skipExisting"`
+	CacheHit      int `json:"cacheHit"`
+	CacheDownload int `json:"cacheDownload"`
+	Promote       int `json:"promote"`
+	Conflict      int `json:"conflict"`
+}
+
+type remoteWorkSaveResult struct {
+	RunID         int64                 `json:"runId"`
+	JobID         int64                 `json:"jobId"`
+	WorkID        int64                 `json:"workId"`
+	PrimaryCode   string                `json:"primaryCode"`
+	Status        string                `json:"status"`
+	SaveRoot      string                `json:"saveRoot"`
+	SavedFiles    int                   `json:"savedFiles"`
+	SkippedFiles  int                   `json:"skippedFiles"`
+	CachedFiles   int                   `json:"cachedFiles"`
+	PromotedFiles int                   `json:"promotedFiles"`
+	Plan          remoteWorkSaveSummary `json:"plan"`
+	RequestID     string                `json:"requestId"`
+	Deduplicated  bool                  `json:"deduplicated"`
+}
+
+type remoteWorkSaveConflictError struct {
+	Summary remoteWorkSaveSummary
+}
+
+func (err remoteWorkSaveConflictError) Error() string {
+	if err.Summary.Conflict == 1 {
+		return "fetch plan has 1 target conflict; review the selected files before fetching"
+	}
+	return fmt.Sprintf("fetch plan has %d target conflicts; review the selected files before fetching", err.Summary.Conflict)
+}
+
+func (s *Server) buildRemoteWorkSavePlan(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, requestedTargetRoot string, decisions []remoteFetchFileDecision) (remoteWorkSavePlan, error) {
+	source, remoteWork, tracks, err := s.loadRemoteWorkTracksCached(ctx, sourceID, code)
+	if err != nil {
+		return remoteWorkSavePlan{}, err
+	}
+	return s.buildRemoteWorkSavePlanFromSnapshot(ctx, source, remoteWork, tracks, code, selectedPaths, selectedLocalPaths, requestedTargetRoot, decisions)
+}
+
+func (s *Server) buildRemoteWorkSavePlanFromSnapshot(ctx context.Context, source remoteSourceForUse, remoteWork kikoeru.Work, tracks []kikoeru.Track, code string, selectedPaths []string, selectedLocalPaths []string, requestedTargetRoot string, decisions []remoteFetchFileDecision) (remoteWorkSavePlan, error) {
+	inputs, err := s.prepareRemoteFetchPlanInputs(ctx, source, remoteWork, tracks, code, selectedPaths, selectedLocalPaths, requestedTargetRoot, decisions)
+	if err != nil {
+		return remoteWorkSavePlan{}, err
+	}
+	seenTargets := map[string]string{}
+	remoteItems, err := s.buildRemoteFetchPlanItems(ctx, source, inputs, seenTargets)
+	if err != nil {
+		return remoteWorkSavePlan{}, err
+	}
+	localItems, err := s.buildLocalFetchPlanItems(inputs, seenTargets)
+	if err != nil {
+		return remoteWorkSavePlan{}, err
+	}
+	items := append(remoteItems, localItems...)
+	plan := remoteWorkSavePlan{
+		SourceID: source.ID, PrimaryCode: inputs.workCode, SaveRoot: inputs.saveRoot,
+		LocalFiles: inputs.localFiles, Items: items,
+	}
+	validateResolvedFetchTargets(plan.Items)
+	plan.Summary = summarizeRemoteSavePlan(plan.Items)
+	if err := s.attachRemoteFetchRootReview(ctx, source, &plan); err != nil {
+		return remoteWorkSavePlan{}, err
+	}
+	return plan, nil
+}
+
+func (s *Server) remoteSaveRoot(source remoteSourceForUse, workCode string) string {
+	template := strings.TrimSpace(source.Config.SaveRootTemplate)
+	if template == "" {
+		template = s.settingStringContext(context.Background(), "remote_save_root_template", defaultRemoteSaveRootTemplate)
+	}
+	if template == "" {
+		template = defaultRemoteSaveRootTemplate
+	}
+	prefix, group := workCodeShard(workCode)
+	value := replaceRemoteFetchSourceTokens(template, source.Code)
+	value = strings.ReplaceAll(value, "<work_code>", strings.ToUpper(strings.TrimSpace(workCode)))
+	value = strings.ReplaceAll(value, "<code_prefix>", prefix)
+	value = strings.ReplaceAll(value, "<code_group>", group)
+	value = strings.TrimPrefix(filepath.ToSlash(value), "/data/")
+	value = strings.TrimPrefix(value, "data/")
+	return strings.Trim(value, "/")
+}
+
+func summarizeRemoteSavePlan(items []remoteWorkSavePlanItem) remoteWorkSaveSummary {
+	summary := remoteWorkSaveSummary{Total: len(items)}
+	for _, item := range items {
+		switch item.Action {
+		case "skip":
+			summary.SkipExisting++
+		case "cache_hit":
+			summary.CacheHit++
+			summary.Promote++
+		case "cache_download":
+			summary.CacheDownload++
+			summary.Promote++
+		case "copy_local":
+			summary.Promote++
+		case "conflict":
+			summary.Conflict++
+		}
+	}
+	return summary
+}
+
+func remoteWorkSaveLocalFiles(states remoteTrackLocationStates) []remoteWorkSaveLocalFile {
+	files := make([]remoteWorkSaveLocalFile, 0, len(states.Local))
+	for _, state := range states.Local {
+		files = append(files, remoteWorkSaveLocalFile{
+			MediaItemID: state.MediaItemID,
+			Path:        state.Path,
+			SizeBytes:   state.SizeBytes,
+			Available:   state.Available,
+		})
+	}
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Path < files[j].Path
+	})
+	return files
 }

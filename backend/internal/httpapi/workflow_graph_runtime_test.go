@@ -16,7 +16,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
-const customWorkflowAPIDefinitionJSON = `{
+const workflowGraphAPIDefinitionJSON = `{
   "schemaVersion": 2,
   "nodes": [
     {
@@ -51,9 +51,9 @@ const customWorkflowAPIDefinitionJSON = `{
   "policy": {"requirePreview": true}
 }`
 
-func TestCustomWorkflowExecutionRecordsNodeLifecycleEvents(t *testing.T) {
+func TestWorkflowGraphExecutionRecordsNodeLifecycleEvents(t *testing.T) {
 	db := openMigratedTestDB(t)
-	ownerID := insertCustomWorkflowAPIUser(t, db, "workflow-lifecycle-owner")
+	ownerID := insertWorkflowGraphAPIUser(t, db, "workflow-lifecycle-owner")
 	definitionJSON := `{
 		"schemaVersion":2,
 		"nodes":[
@@ -68,14 +68,14 @@ func TestCustomWorkflowExecutionRecordsNodeLifecycleEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	definitionID, _ := result.LastInsertId()
-	graph, err := validateCustomWorkflowDefinition(definitionJSON)
+	graph, err := validateWorkflowGraphDefinition(definitionJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
 	server := NewServer(db, config.Config{})
-	runID, err := server.enqueueCustomWorkflow(context.Background(), workflowDefinitionRecord{
+	runID, err := server.enqueueWorkflowGraph(context.Background(), workflowDefinitionRecord{
 		ID: definitionID, Code: "lifecycle_test", DisplayName: "Lifecycle test", DefinitionJSON: definitionJSON, Scope: "system",
-	}, graph, ownerID, []string{"workflows:run"}, map[string]any{}, customWorkflowEnqueueOptions{})
+	}, graph, ownerID, []string{"workflows:run"}, map[string]any{}, workflowGraphEnqueueOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestCustomWorkflowExecutionRecordsNodeLifecycleEvents(t *testing.T) {
 		Scan(&job.ID, &job.RunID, &job.NodeRunID, &job.WorkerType, &job.PayloadJSON, &job.CheckpointJSON); err != nil {
 		t.Fatal(err)
 	}
-	if err := server.executeCustomWorkflowJob(context.Background(), job); err != nil {
+	if err := server.executeWorkflowGraphJob(context.Background(), job); err != nil {
 		t.Fatal(err)
 	}
 	var started, completed int
@@ -108,7 +108,7 @@ func TestCustomWorkflowExecutionRecordsNodeLifecycleEvents(t *testing.T) {
 
 func TestLocalLibraryScanAcceptsStartupAndScheduleTriggers(t *testing.T) {
 	db := openMigratedTestDB(t)
-	ownerID := insertCustomWorkflowAPIUser(t, db, "system-schedule-owner")
+	ownerID := insertWorkflowGraphAPIUser(t, db, "system-schedule-owner")
 	server := NewServer(db, config.Config{})
 	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
 		t.Fatal(err)
@@ -198,7 +198,7 @@ func TestRunStartupWorkflowsDoesNotRecreateDeletedBuiltInTrigger(t *testing.T) {
 
 func TestRemotePopularSchedulePersistsTemplateAndResolvesItPerRun(t *testing.T) {
 	db := openMigratedTestDB(t)
-	ownerID := insertCustomWorkflowAPIUser(t, db, "remote-popular-schedule-owner")
+	ownerID := insertWorkflowGraphAPIUser(t, db, "remote-popular-schedule-owner")
 	if _, err := db.Exec(`INSERT INTO file_source (id, code, display_name, source_type, enabled) VALUES (91, 'example_remote', 'Example Remote', 'kikoeru_compatible', 1)`); err != nil {
 		t.Fatal(err)
 	}
@@ -280,10 +280,10 @@ func TestWorkflowTagNameTemplateRejectsUnknownTokensAndChangesByDate(t *testing.
 	}
 }
 
-func TestCustomWorkflowFailureDistinguishesFailedAndPendingNodes(t *testing.T) {
+func TestWorkflowGraphFailureDistinguishesFailedAndPendingNodes(t *testing.T) {
 	db := openMigratedTestDB(t)
-	ownerID := insertCustomWorkflowAPIUser(t, db, "workflow-failure-owner")
-	definitionID := insertCustomWorkflowAPIDefinition(t, db, ownerID)
+	ownerID := insertWorkflowGraphAPIUser(t, db, "workflow-failure-owner")
+	definitionID := insertWorkflowGraphAPIDefinition(t, db, ownerID)
 	runResult, err := db.Exec(`
 		INSERT INTO workflow_run (workflow_definition_id, workflow_code, display_name, status, trigger_type)
 		VALUES (?, 'custom_fetch_test', 'Custom fetch test', 'running', 'manual')
@@ -316,7 +316,7 @@ func TestCustomWorkflowFailureDistinguishesFailedAndPendingNodes(t *testing.T) {
 	jobID, _ := jobResult.LastInsertId()
 	server := NewServer(db, config.Config{})
 	job := workflowJobRecord{ID: jobID, RunID: runID, NodeRunID: failedNodeID, WorkerType: "custom_workflow"}
-	if err := server.failCustomWorkflowJob(context.Background(), job, failedNodeID, "synthetic failure"); err != nil {
+	if err := server.failWorkflowGraphJob(context.Background(), job, failedNodeID, "synthetic failure"); err != nil {
 		t.Fatal(err)
 	}
 	var failedStatus, pendingStatus string
@@ -341,10 +341,10 @@ func TestCustomWorkflowFailureDistinguishesFailedAndPendingNodes(t *testing.T) {
 	}
 }
 
-func TestCustomWorkflowFailureDoesNotOverwriteCancellation(t *testing.T) {
+func TestWorkflowGraphFailureDoesNotOverwriteCancellation(t *testing.T) {
 	db := openMigratedTestDB(t)
-	ownerID := insertCustomWorkflowAPIUser(t, db, "workflow-cancel-owner")
-	definitionID := insertCustomWorkflowAPIDefinition(t, db, ownerID)
+	ownerID := insertWorkflowGraphAPIUser(t, db, "workflow-cancel-owner")
+	definitionID := insertWorkflowGraphAPIDefinition(t, db, ownerID)
 	runResult, err := db.Exec(`
 		INSERT INTO workflow_run (workflow_definition_id, workflow_code, display_name, status, trigger_type, summary_json, finished_at)
 		VALUES (?, 'custom_fetch_test', 'Custom fetch test', 'cancelled', 'manual', '{"cancelled":true}', CURRENT_TIMESTAMP)
@@ -371,7 +371,7 @@ func TestCustomWorkflowFailureDoesNotOverwriteCancellation(t *testing.T) {
 	jobID, _ := jobResult.LastInsertId()
 	server := NewServer(db, config.Config{})
 	job := workflowJobRecord{ID: jobID, RunID: runID, NodeRunID: nodeID, WorkerType: "custom_workflow"}
-	if err := server.failCustomWorkflowJob(context.Background(), job, nodeID, "late failure"); err != nil {
+	if err := server.failWorkflowGraphJob(context.Background(), job, nodeID, "late failure"); err != nil {
 		t.Fatal(err)
 	}
 	var runStatus, runSummary, nodeStatus, nodeError, jobStatus, jobError string
@@ -389,10 +389,10 @@ func TestCustomWorkflowFailureDoesNotOverwriteCancellation(t *testing.T) {
 	}
 }
 
-func TestCustomWorkflowRetryRequiresCurrentPermissions(t *testing.T) {
+func TestWorkflowGraphRetryRequiresCurrentPermissions(t *testing.T) {
 	db := openMigratedTestDB(t)
-	ownerID := insertCustomWorkflowAPIUser(t, db, "workflow-retry-owner")
-	definitionID := insertCustomWorkflowAPIDefinition(t, db, ownerID)
+	ownerID := insertWorkflowGraphAPIUser(t, db, "workflow-retry-owner")
+	definitionID := insertWorkflowGraphAPIDefinition(t, db, ownerID)
 	runResult, err := db.Exec(`
 		INSERT INTO workflow_run (
 			workflow_definition_id, workflow_code, display_name, status, trigger_type, trigger_reason, input_json
@@ -410,8 +410,8 @@ func TestCustomWorkflowRetryRequiresCurrentPermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	nodeID, _ := nodeResult.LastInsertId()
-	payload := customWorkflowJobPayload{
-		DefinitionJSON: customWorkflowAPIDefinitionJSON,
+	payload := workflowGraphJobPayload{
+		DefinitionJSON: workflowGraphAPIDefinitionJSON,
 		Inputs:         map[string]any{},
 		UserID:         ownerID,
 		Permissions:    []string{"workflows:run", "downloads:manage"},
@@ -445,10 +445,10 @@ func TestCustomWorkflowRetryRequiresCurrentPermissions(t *testing.T) {
 	}
 }
 
-func TestCustomTrackReusesCompletedChildRunAfterCheckpointGap(t *testing.T) {
+func TestGraphTrackReusesCompletedChildRunAfterCheckpointGap(t *testing.T) {
 	db := openMigratedTestDB(t)
-	ownerID := insertCustomWorkflowAPIUser(t, db, "workflow-track-owner")
-	definitionID := insertCustomWorkflowAPIDefinition(t, db, ownerID)
+	ownerID := insertWorkflowGraphAPIUser(t, db, "workflow-track-owner")
+	definitionID := insertWorkflowGraphAPIDefinition(t, db, ownerID)
 	parentResult, err := db.Exec(`
 		INSERT INTO workflow_run (workflow_definition_id, workflow_code, display_name, status, trigger_type)
 		VALUES (?, 'custom_fetch_test', 'Custom track parent', 'running', 'manual')
@@ -460,7 +460,7 @@ func TestCustomTrackReusesCompletedChildRunAfterCheckpointGap(t *testing.T) {
 	if _, err := db.Exec(`INSERT OR IGNORE INTO workflow_definition (code, display_name) VALUES ('remote_source_sync', 'Track remote source')`); err != nil {
 		t.Fatal(err)
 	}
-	requestID := customTrackRequestID(parentRunID, "track", 77, "RJ00000001")
+	requestID := graphTrackRequestID(parentRunID, "track", 77, "RJ00000001")
 	childResult, err := db.Exec(`
 		INSERT INTO workflow_run (
 			workflow_definition_id, workflow_code, display_name, status, trigger_type, trigger_reason, input_json
@@ -488,10 +488,10 @@ func TestCustomTrackReusesCompletedChildRunAfterCheckpointGap(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := NewServer(db, config.Config{})
-	node := customWorkflowNode{ID: "track", Type: "track_works", Config: map[string]any{"maxWorks": 1}}
-	inputs := map[string]customPortValue{"works": {Type: "work_candidates", Candidates: []customWorkCandidate{{Code: "RJ00000001", SourceID: 77}}}}
+	node := workflowGraphNode{ID: "track", Type: "track_works", Config: map[string]any{"maxWorks": 1}}
+	inputs := map[string]graphPortValue{"works": {Type: "work_candidates", Candidates: []graphWorkCandidate{{Code: "RJ00000001", SourceID: 77}}}}
 	for attempt := 0; attempt < 2; attempt++ {
-		execution, err := server.executeCustomTrackWorks(context.Background(), parentRunID, node, inputs)
+		execution, err := server.executeGraphTrackWorks(context.Background(), parentRunID, node, inputs)
 		if err != nil {
 			t.Fatalf("attempt %d: %v", attempt+1, err)
 		}
@@ -509,10 +509,10 @@ func TestCustomTrackReusesCompletedChildRunAfterCheckpointGap(t *testing.T) {
 	}
 }
 
-func TestCustomFetchReusesRequestBeforeRemotePreflight(t *testing.T) {
+func TestGraphFetchReusesRequestBeforeRemotePreflight(t *testing.T) {
 	db := openMigratedTestDB(t)
-	ownerID := insertCustomWorkflowAPIUser(t, db, "workflow-fetch-owner")
-	definitionID := insertCustomWorkflowAPIDefinition(t, db, ownerID)
+	ownerID := insertWorkflowGraphAPIUser(t, db, "workflow-fetch-owner")
+	definitionID := insertWorkflowGraphAPIDefinition(t, db, ownerID)
 	if _, err := db.Exec(`
 		INSERT INTO file_source (id, code, display_name, source_type) VALUES
 			(88, 'unreachable', 'Unavailable source', 'kikoeru'),
@@ -542,7 +542,7 @@ func TestCustomFetchReusesRequestBeforeRemotePreflight(t *testing.T) {
 		t.Fatal(err)
 	}
 	childRunID, _ := childResult.LastInsertId()
-	requestID := customFetchRequestID(parentRunID, "fetch", "RJ00000001")
+	requestID := graphFetchRequestID(parentRunID, "fetch", "RJ00000001")
 	manifestResult, err := db.Exec(`
 		INSERT INTO remote_fetch_manifest (
 			workflow_run_id, request_id, work_id, remote_source_id, local_source_id,
@@ -570,17 +570,17 @@ func TestCustomFetchReusesRequestBeforeRemotePreflight(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := NewServer(db, config.Config{})
-	usage, err := server.customFetchPersistedUsage(context.Background(), childRunID)
+	usage, err := server.graphFetchPersistedUsage(context.Background(), childRunID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if usage.Files != 2 || usage.Bytes != 768 || usage.Unknown != 0 {
 		t.Fatalf("persisted fetch usage = %+v", usage)
 	}
-	node := customWorkflowNode{ID: "fetch", Type: "fetch_works", Config: map[string]any{"maxWorks": 1, "maxFiles": 10, "maxBytes": 1024}}
-	inputs := map[string]customPortValue{"works": {Type: "work_candidates", Candidates: []customWorkCandidate{{Code: "RJ00000001", SourceID: 88}}}}
+	node := workflowGraphNode{ID: "fetch", Type: "fetch_works", Config: map[string]any{"maxWorks": 1, "maxFiles": 10, "maxBytes": 1024}}
+	inputs := map[string]graphPortValue{"works": {Type: "work_candidates", Candidates: []graphWorkCandidate{{Code: "RJ00000001", SourceID: 88}}}}
 	for attempt := 0; attempt < 2; attempt++ {
-		execution, err := server.executeCustomFetchWorks(context.Background(), parentRunID, 0, workflow.JobPriorityUserInitiated, node, inputs)
+		execution, err := server.executeGraphFetchWorks(context.Background(), parentRunID, 0, workflow.JobPriorityUserInitiated, node, inputs)
 		if err != nil {
 			t.Fatalf("attempt %d: %v", attempt+1, err)
 		}
@@ -591,11 +591,11 @@ func TestCustomFetchReusesRequestBeforeRemotePreflight(t *testing.T) {
 	if _, err := db.Exec("UPDATE workflow_run SET status = 'succeeded' WHERE id = ?", childRunID); err != nil {
 		t.Fatal(err)
 	}
-	execution, waiting, err := server.resumeCustomPendingExecution(context.Background(), customPendingExecution{
-		NodeID: "fetch", Kind: "fetch", Children: []customPendingChild{{
+	execution, waiting, err := server.resumeGraphPendingExecution(context.Background(), graphPendingExecution{
+		NodeID: "fetch", Kind: "fetch", Children: []graphPendingChild{{
 			RunID:     childRunID,
-			Candidate: customWorkCandidate{Code: "RJ00000001", SourceID: 88},
-			WorkRef:   customWorkRef{Code: "RJ00000001", WorkID: 92, SourceID: 88, ChildRunID: childRunID},
+			Candidate: graphWorkCandidate{Code: "RJ00000001", SourceID: 88},
+			WorkRef:   graphWorkRef{Code: "RJ00000001", WorkID: 92, SourceID: 88, ChildRunID: childRunID},
 		}},
 	})
 	if err != nil || waiting {
@@ -607,9 +607,9 @@ func TestCustomFetchReusesRequestBeforeRemotePreflight(t *testing.T) {
 	}
 }
 
-func TestCustomFilterWorksUsesNormalizedMetadataAndUserTags(t *testing.T) {
+func TestGraphFilterWorksUsesNormalizedMetadataAndUserTags(t *testing.T) {
 	db := openMigratedTestDB(t)
-	userID := insertCustomWorkflowAPIUser(t, db, "workflow-filter-owner")
+	userID := insertWorkflowGraphAPIUser(t, db, "workflow-filter-owner")
 	workResult, err := db.Exec(`INSERT INTO work (primary_code, title, release_date) VALUES ('RJ00000001', 'Synthetic work', '2026-04-03')`)
 	if err != nil {
 		t.Fatal(err)
@@ -640,12 +640,12 @@ func TestCustomFilterWorksUsesNormalizedMetadataAndUserTags(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := NewServer(db, config.Config{})
-	node := customWorkflowNode{Type: "filter_works", Config: map[string]any{
+	node := workflowGraphNode{Type: "filter_works", Config: map[string]any{
 		"releaseFrom": "2026-01-01", "releaseTo": "2026-12-31",
 		"voiceNames": []string{"example voice"}, "metadataTags": []string{"healing"}, "userTags": []string{"listen later"},
 	}}
-	inputs := map[string]customPortValue{"works": {Type: "work_candidates", Candidates: []customWorkCandidate{{Code: "RJ00000001"}}}}
-	execution, err := server.executeCustomFilterWorks(context.Background(), userID, node, inputs)
+	inputs := map[string]graphPortValue{"works": {Type: "work_candidates", Candidates: []graphWorkCandidate{{Code: "RJ00000001"}}}}
+	execution, err := server.executeGraphFilterWorks(context.Background(), userID, node, inputs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -653,7 +653,7 @@ func TestCustomFilterWorksUsesNormalizedMetadataAndUserTags(t *testing.T) {
 		t.Fatalf("filter result = %+v", execution.Outputs)
 	}
 	node.Config["metadataTags"] = []string{"missing"}
-	execution, err = server.executeCustomFilterWorks(context.Background(), userID, node, inputs)
+	execution, err = server.executeGraphFilterWorks(context.Background(), userID, node, inputs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -682,7 +682,7 @@ func requestWorkflowResource(t *testing.T, handler http.HandlerFunc, method stri
 	return response
 }
 
-func insertCustomWorkflowAPIUser(t *testing.T, db *sql.DB, username string) int64 {
+func insertWorkflowGraphAPIUser(t *testing.T, db *sql.DB, username string) int64 {
 	t.Helper()
 	result, err := db.Exec(`INSERT INTO user_account (username, display_name, role) VALUES (?, ?, 'admin')`, username, username)
 	if err != nil {
@@ -695,13 +695,13 @@ func insertCustomWorkflowAPIUser(t *testing.T, db *sql.DB, username string) int6
 	return id
 }
 
-func insertCustomWorkflowAPIDefinition(t *testing.T, db *sql.DB, ownerID int64) int64 {
+func insertWorkflowGraphAPIDefinition(t *testing.T, db *sql.DB, ownerID int64) int64 {
 	t.Helper()
 	result, err := db.Exec(`
 		INSERT INTO workflow_definition (
 			code, display_name, description, definition_json, scope, editable, created_by_user_id
 		) VALUES ('custom_fetch_test', 'Custom fetch test', 'Synthetic preset-shaped workflow', ?, 'system', 0, ?)
-	`, customWorkflowAPIDefinitionJSON, ownerID)
+	`, workflowGraphAPIDefinitionJSON, ownerID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -712,7 +712,7 @@ func insertCustomWorkflowAPIDefinition(t *testing.T, db *sql.DB, ownerID int64) 
 	return id
 }
 
-func assertCustomWorkflowAPICount(t *testing.T, db *sql.DB, table string, want int) {
+func assertWorkflowGraphAPICount(t *testing.T, db *sql.DB, table string, want int) {
 	t.Helper()
 	if table != "workflow_run" && table != "work" {
 		t.Fatalf("unsupported count table: %s", table)

@@ -1,4 +1,4 @@
-import { listeningStatusOptions, type RemoteWorkPreview } from "@/pages/library/libraryDetailShared";
+import { listeningStatusOptions, type RemoteWorkPreview } from "@/features/work-detail/workDetailShared";
 import type { SourceTabInfo } from "@/features/work-detail/source/sourceContextModel";
 import type { TreeStats } from "@/features/work-detail/media/mediaTreeModel";
 import type { ListeningStatus, MediaItem, RemoteWorkDetail, SourcePresenceItem, WorkDetail } from "@/lib/api";

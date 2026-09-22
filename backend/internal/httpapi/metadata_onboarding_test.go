@@ -103,7 +103,7 @@ func TestMetadataOnboardingStartsOneRunAndNotifies(t *testing.T) {
 		t.Run(map[bool]string{false: "success", true: "failure"}[failure], func(t *testing.T) {
 			s := NewServer(openMigratedTestDB(t), config.Config{})
 			seedOnboardingLibrary(t, s)
-			insertCustomWorkflowAPIUser(t, s.db, "synthetic-metadata-user")
+			insertWorkflowGraphAPIUser(t, s.db, "synthetic-metadata-user")
 			client := &recoveryMetadataClient{}
 			if failure {
 				client.failure = dlsite.HTTPStatusError{StatusCode: 403, Status: "403 Forbidden"}

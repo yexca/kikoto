@@ -121,7 +121,7 @@ func TestDemoReadOnlyMiddlewareRejectsMutations(t *testing.T) {
 func TestDemoModeDoesNotDispatchOrRunQueuedJobs(t *testing.T) {
 	server := NewServer(nil, config.Config{Mode: config.ModeDemo})
 	ctx := context.Background()
-	if err := server.dispatchDueCustomWorkflowTrigger(ctx); err != nil {
+	if err := server.dispatchDueScheduledWorkflowTrigger(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if err := server.runNextQueuedWorkflowJob(ctx, "demo-runner"); err != nil {

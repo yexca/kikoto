@@ -94,7 +94,7 @@ type systemWorkflowSpec struct {
 var systemWorkflowSpecs = []systemWorkflowSpec{
 	{
 		Code:        "availability_watch",
-		Name:        "Availability Watch",
+		Name:        availabilityWatchDisplayName,
 		Description: "Monitor a shared pool of work codes and dispatch configured actions when a remote source becomes available.",
 		Nodes: []map[string]string{
 			{"id": "targets", "type": "select_works", "displayName": "Monitoring pool"},
@@ -530,7 +530,7 @@ func (s *Server) getWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	graphJSON, err := s.customWorkflowRunGraphJSON(r.Context(), id)
+	graphJSON, err := s.workflowRunGraphJSON(r.Context(), id)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -1419,7 +1419,7 @@ func (s *Server) dispatchWorkflowRetry(ctx context.Context, actor currentUser, r
 		result, err := s.enqueueDLsiteMetadataSync(ctx, "manual", "retry_run")
 		return workflowRetryDispatchResult{NewRunID: result.RunID}, err
 	default:
-		return s.retryCustomWorkflow(ctx, actor, runID)
+		return s.retryWorkflowGraph(ctx, actor, runID)
 	}
 }
 
@@ -1436,8 +1436,8 @@ func (s *Server) retryLocalLibraryScan(ctx context.Context, runID int64) (int64,
 	return result.RunID, err
 }
 
-func (s *Server) retryCustomWorkflow(ctx context.Context, actor currentUser, runID int64) (workflowRetryDispatchResult, error) {
-	allowed, err := s.canRetryCustomWorkflowRun(ctx, actor, runID)
+func (s *Server) retryWorkflowGraph(ctx context.Context, actor currentUser, runID int64) (workflowRetryDispatchResult, error) {
+	allowed, err := s.canRetryWorkflowGraphRun(ctx, actor, runID)
 	if err != nil {
 		return workflowRetryDispatchResult{}, err
 	}
@@ -1458,7 +1458,7 @@ type workflowRunOwnershipQuerier interface {
 }
 
 func canViewAllWorkflowRuns(actor currentUser) bool {
-	return missingCustomWorkflowPermission(actor.Permissions, []string{"system:admin"}) == ""
+	return missingWorkflowGraphPermission(actor.Permissions, []string{"system:admin"}) == ""
 }
 
 func (s *Server) requireWorkflowRunAccess(w http.ResponseWriter, r *http.Request, actor currentUser, runID int64) bool {
@@ -1518,8 +1518,8 @@ func canManageWorkflowRun(ctx context.Context, db workflowRunOwnershipQuerier, a
 	return ownerUserID == actor.ID || requestedByUserID == actor.ID, nil
 }
 
-func (s *Server) canRetryCustomWorkflowRun(ctx context.Context, actor currentUser, runID int64) (bool, error) {
-	if missingCustomWorkflowPermission(actor.Permissions, []string{"system:admin"}) == "" {
+func (s *Server) canRetryWorkflowGraphRun(ctx context.Context, actor currentUser, runID int64) (bool, error) {
+	if missingWorkflowGraphPermission(actor.Permissions, []string{"system:admin"}) == "" {
 		return true, nil
 	}
 	var payloadJSON string
@@ -1536,18 +1536,18 @@ func (s *Server) canRetryCustomWorkflowRun(ctx context.Context, actor currentUse
 	if err != nil {
 		return false, err
 	}
-	var payload customWorkflowJobPayload
+	var payload workflowGraphJobPayload
 	if err := decodeWorkflowJobPayload(payloadJSON, &payload); err != nil {
 		return false, err
 	}
 	if payload.UserID != actor.ID {
 		return false, nil
 	}
-	graph, err := validateCustomWorkflowDefinition(payload.DefinitionJSON)
+	graph, err := validateWorkflowGraphDefinition(payload.DefinitionJSON)
 	if err != nil {
 		return false, err
 	}
-	return missingCustomWorkflowPermission(actor.Permissions, customWorkflowRequiredPermissions(graph)) == "", nil
+	return missingWorkflowGraphPermission(actor.Permissions, workflowGraphRequiredPermissions(graph)) == "", nil
 }
 
 func (s *Server) retryFailedWorkflowJob(ctx context.Context, runID int64) error {

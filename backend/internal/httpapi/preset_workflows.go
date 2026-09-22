@@ -99,9 +99,9 @@ type presetWorkflowPlan struct {
 	Spec           presetWorkflowSpec
 	Inputs         presetWorkflowInputs
 	TagName        string
-	Definition     customWorkflowDefinition
+	Definition     workflowGraphDefinition
 	DefinitionJSON string
-	Graph          customWorkflowGraph
+	Graph          workflowGraph
 	Permissions    []string
 }
 
@@ -256,7 +256,7 @@ func (s *Server) runWorkflowPreset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if missing := missingCustomWorkflowPermission(actor.Permissions, plan.Permissions); missing != "" {
+	if missing := missingWorkflowGraphPermission(actor.Permissions, plan.Permissions); missing != "" {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied", "permission": missing})
 		return
 	}
@@ -265,7 +265,7 @@ func (s *Server) runWorkflowPreset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	runID, err := s.enqueueCustomWorkflow(r.Context(), definition, plan.Graph, actor.ID, actor.Permissions, plan.Inputs.public(), customWorkflowEnqueueOptions{
+	runID, err := s.enqueueWorkflowGraph(r.Context(), definition, plan.Graph, actor.ID, actor.Permissions, plan.Inputs.public(), workflowGraphEnqueueOptions{
 		TriggerType: "manual", TriggerReason: "workflow_preset", DefinitionJSON: plan.DefinitionJSON,
 	})
 	if err != nil {
@@ -312,11 +312,11 @@ func (s *Server) planPresetWorkflow(ctx context.Context, spec presetWorkflowSpec
 	if err != nil {
 		return presetWorkflowPlan{}, err
 	}
-	graph, err := validateCustomWorkflowDefinition(string(encoded))
+	graph, err := validateWorkflowGraphDefinition(string(encoded))
 	if err != nil {
 		return presetWorkflowPlan{}, fmt.Errorf("preset workflow graph is invalid: %w", err)
 	}
-	permissions := append([]string{"workflows:run"}, customWorkflowRequiredPermissions(graph)...)
+	permissions := append([]string{"workflows:run"}, workflowGraphRequiredPermissions(graph)...)
 	return presetWorkflowPlan{Spec: spec, Inputs: inputs, TagName: tagName, Definition: definition, DefinitionJSON: string(encoded), Graph: graph, Permissions: uniqueStrings(permissions)}, nil
 }
 
@@ -453,7 +453,7 @@ func applyPresetWorkflowInput(inputs *presetWorkflowInputs, parameter presetWork
 		if !supplied || value == nil {
 			return nil
 		}
-		number, ok := customConfigInteger(value)
+		number, ok := graphConfigInteger(value)
 		if !ok || number < 0 {
 			return fmt.Errorf("sourceId must be a source id")
 		}
@@ -462,7 +462,7 @@ func applyPresetWorkflowInput(inputs *presetWorkflowInputs, parameter presetWork
 		if !supplied || value == nil {
 			return nil
 		}
-		number, ok := customConfigInteger(value)
+		number, ok := graphConfigInteger(value)
 		if !ok || number < parameter.Minimum || number > parameter.Maximum {
 			return fmt.Errorf("%s must be between %d and %d", parameter.Key, parameter.Minimum, parameter.Maximum)
 		}
@@ -480,7 +480,7 @@ func applyPresetWorkflowInput(inputs *presetWorkflowInputs, parameter presetWork
 		if !supplied || value == nil {
 			return nil
 		}
-		values, err := customStringValues(value)
+		values, err := graphStringValues(value)
 		if err != nil {
 			return fmt.Errorf("excludeExtensions must be a list of file extensions")
 		}
@@ -558,17 +558,17 @@ func (inputs presetWorkflowInputs) public() map[string]any {
 // buildPresetWorkflowDefinition composes the fixed discover -> filter -> action
 // -> tag graph. Every bound is explicit so the graph is valid for both manual
 // and automated dispatch; the policy flag only keeps catalog refresh available.
-func buildPresetWorkflowDefinition(spec presetWorkflowSpec, inputs presetWorkflowInputs, tagName string) customWorkflowDefinition {
+func buildPresetWorkflowDefinition(spec presetWorkflowSpec, inputs presetWorkflowInputs, tagName string) workflowGraphDefinition {
 	requirePreview := true
-	definition := customWorkflowDefinition{SchemaVersion: customWorkflowSchemaVersion, Nodes: []customWorkflowNode{}, Edges: []customWorkflowEdge{}, Policy: customWorkflowPolicy{RequirePreview: &requirePreview}}
+	definition := workflowGraphDefinition{SchemaVersion: workflowGraphSchemaVersion, Nodes: []workflowGraphNode{}, Edges: []workflowGraphEdge{}, Policy: workflowGraphPolicy{RequirePreview: &requirePreview}}
 	addNode := func(id, nodeType, displayName string, config map[string]any) {
-		definition.Nodes = append(definition.Nodes, customWorkflowNode{
+		definition.Nodes = append(definition.Nodes, workflowGraphNode{
 			ID: id, Type: nodeType, DisplayName: displayName, Config: config,
-			Position: customWorkflowPosition{X: float64(len(definition.Nodes)) * 280, Y: 40},
+			Position: workflowGraphPosition{X: float64(len(definition.Nodes)) * 280, Y: 40},
 		})
 	}
 	addEdge := func(source, sourceHandle, target, targetHandle string) {
-		definition.Edges = append(definition.Edges, customWorkflowEdge{
+		definition.Edges = append(definition.Edges, workflowGraphEdge{
 			ID: source + "_" + sourceHandle + "_" + target, Source: source, SourceHandle: sourceHandle, Target: target, TargetHandle: targetHandle,
 		})
 	}
@@ -642,7 +642,7 @@ func (s *Server) executePresetSystemTrigger(ctx context.Context, definition work
 	if err != nil {
 		return "", nil, err
 	}
-	_, err = s.enqueueCustomWorkflow(ctx, definition, plan.Graph, owner.ID, owner.Permissions, plan.Inputs.public(), customWorkflowEnqueueOptions{
+	_, err = s.enqueueWorkflowGraph(ctx, definition, plan.Graph, owner.ID, owner.Permissions, plan.Inputs.public(), workflowGraphEnqueueOptions{
 		TriggerID: trigger.ID, TriggerType: triggerType, TriggerReason: triggerReason, DefinitionJSON: plan.DefinitionJSON,
 	})
 	return "succeeded", nil, err

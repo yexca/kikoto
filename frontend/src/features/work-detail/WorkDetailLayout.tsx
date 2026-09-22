@@ -13,7 +13,7 @@ import {
   formatDateTime,
   isInternalReturnPath,
   languageLabel,
-} from "@/pages/library/detail/workDetailHelpers";
+} from "@/features/work-detail/workDetailHelpers";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { usePageHeaderBack } from "@/app/pageHeader";
 import i18n from "@/i18n";
@@ -46,7 +46,7 @@ import {
   workVersionKindLabel,
   workVersionMediaState,
 } from "@/features/work-detail/workVersionModel";
-import { openWorkCodeRoute, type WorkPreview } from "@/pages/library/libraryDetailShared";
+import { openWorkCodeRoute, type WorkPreview } from "@/features/work-detail/workDetailShared";
 import { orderedMetadataVariants, resolveMetadataVariant } from "@/features/work-detail/metadataPresentationModel";
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";

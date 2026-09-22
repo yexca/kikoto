@@ -345,7 +345,7 @@ func TestFilesystemWatcherSessionRequestsReconfigureAfterFetchRootClaim(t *testi
 
 func TestFixedFilesystemTriggerCanBeToggledAndChangeScanMode(t *testing.T) {
 	db := openMigratedTestDB(t)
-	ownerID := insertCustomWorkflowAPIUser(t, db, "filesystem-trigger-owner")
+	ownerID := insertWorkflowGraphAPIUser(t, db, "filesystem-trigger-owner")
 	server := NewServer(db, config.Config{})
 	actor := account.User{ID: ownerID, Permissions: []string{"workflows:run", "metadata:sync"}}
 	var triggerID, definitionID int64

@@ -27,7 +27,7 @@ import {
   safeExternalHTTPURL,
   sourcePresenceActionCode,
   type WorkPreview,
-} from "@/pages/library/libraryDetailShared";
+} from "@/features/work-detail/workDetailShared";
 import { useWorkPlaybackCursor } from "@/features/work-detail/media/useWorkPlaybackCursor";
 import {
   buildRemoteTree,
@@ -52,7 +52,7 @@ import {
   remoteDetailActionCode,
   trackedPresenceForRemoteSource,
   workHasNoSource,
-} from "@/pages/library/detail/workDetailHelpers";
+} from "@/features/work-detail/workDetailHelpers";
 import {
   type DetailActionMode,
   MediaContextActionBar,
@@ -65,7 +65,7 @@ import {
   UnifiedWorkDetailPage,
   type UnifiedWorkDetailPresentation,
   useCompactDetailLayout,
-} from "@/pages/library/detail/WorkDetailLayout";
+} from "@/features/work-detail/WorkDetailLayout";
 import { useTranslation } from "react-i18next";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { FilePreviewDialog, type FilePreviewState } from "@/features/work-detail/dialogs/FilePreviewDialog";
@@ -79,7 +79,7 @@ import {
   RemoteSourceStatePanel,
   SourceDirectoryPanel,
   TrackedUnforkedPanel,
-} from "@/pages/library/detail/directory/SourceDirectoryPanels";
+} from "@/features/work-detail/directory/SourceDirectoryPanels";
 import { Tags } from "lucide-react";
 import { UserTagRow } from "@/components/UserTagRow";
 import { mergeRemoteWorkVersions, workVersionAvailableForScope } from "@/features/work-detail/workVersionModel";
@@ -108,7 +108,7 @@ import {
   playbackTrackMatchesPersistedWork,
 } from "@/features/work-detail/media/playbackDirectoryRouting";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
-import { invalidateCachedWorkMedia, setCachedWorkMedia } from "@/pages/workMediaCache";
+import { invalidateCachedWorkMedia, setCachedWorkMedia } from "@/features/work-detail/media/workMediaCache";
 import { metadataSyncResultURL } from "@/lib/metadataMaintenance";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import {
@@ -120,7 +120,7 @@ import {
 import { PageHeaderBackAction } from "@/app/pageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
-import { defaultDirectoryRoutingRules } from "@/pages/library/detail/directory/directoryModel";
+import { defaultDirectoryRoutingRules } from "@/features/work-detail/directory/directoryModel";
 
 function persistedFetchTarget(
   selectedRemoteSource: RemoteSourceAvailability | null | undefined,

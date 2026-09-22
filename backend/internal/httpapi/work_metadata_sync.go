@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metasync"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
@@ -271,4 +273,47 @@ func (s *Server) finishWorkMetadataSyncJob(ctx context.Context, job workflowJobR
 		return err
 	}
 	return tx.Commit()
+}
+
+func (s *Server) createDLsiteSyncRun(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
+		return
+	}
+	result, err := s.enqueueDLsiteMetadataSync(r.Context(), "manual", "manual")
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, result)
+}
+
+func (s *Server) newDLsiteMetadataSyncer(ctx context.Context) *metasync.DLsiteSyncer {
+	return metasync.NewDLsiteSyncer(s.db, s.dlsiteClient).
+		WithCoordinator(s.metadataCoordinator).
+		WithProductURLBuilder(s.dlsiteEndpoints.ProductURL).
+		WithCacheRoot(s.cfg.CacheRoot).
+		WithMetadataPriority(s.preferredMetadataLanguages(ctx)).
+		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.preferredMetadataLanguages(ctx))).
+		WithRequestPacing(
+			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5)),
+			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_rate_limit_backoff_seconds", 30)),
+			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_max_backoff_seconds", 300)),
+		)
+}
+
+func durationFromSettingSeconds(value float64) time.Duration {
+	if value <= 0 {
+		return 0
+	}
+	return time.Duration(value * float64(time.Second))
+}
+
+func dlsiteLanguageFallbacksForLanguages(_ []string) []string {
+	// Discovery is transport policy, not display policy. Always probe the
+	// supported DLsite locales in a stable order so changing the UI priority
+	// cannot change which response becomes the family-discovery seed.
+	result := append([]string(nil), dlsite.SupportedMetadataLanguages...)
+	result = append(result, "")
+	return result
 }

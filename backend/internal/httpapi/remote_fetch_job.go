@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -466,4 +467,86 @@ func (s *Server) finishRemoteWorkFetch(
 func (s *Server) failRemoteWorkFetchPhase(ctx context.Context, runID, nodeID, jobID int64, current, total int, summary remoteWorkSaveSummary, err error) error {
 	_ = finishWorkflowRunSimple(ctx, s.db, runID, nodeID, jobID, "failed", err.Error(), current, total, summary)
 	return err
+}
+
+func (s *Server) executeRemoteWorkFetchJob(ctx context.Context, job workflowJobRecord) error {
+	var payload remoteWorkFetchJobPayload
+	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
+		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		return err
+	}
+	result, err := s.runRemoteWorkFetchJob(ctx, job.RunID, job.ID, payload)
+	if err != nil {
+		var reviewErr remoteOriginReviewError
+		if errors.As(err, &reviewErr) {
+			slog.Info("remote work fetch paused for source policy review", "run_id", job.RunID, "job_id", job.ID, "origin", reviewErr.Origin)
+			return err
+		}
+		slog.Error("remote work fetch job failed", "run_id", job.RunID, "job_id", job.ID, "error", err)
+		return err
+	}
+	slog.Info("remote work fetch job completed", "run_id", result.RunID, "job_id", result.JobID, "work_code", result.PrimaryCode)
+	return nil
+}
+
+func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID int64, payload remoteWorkFetchJobPayload) (remoteWorkSaveResult, error) {
+	execution, err := s.prepareRemoteWorkFetchExecution(ctx, runID, jobID, payload)
+	if err != nil {
+		_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
+		return remoteWorkSaveResult{}, err
+	}
+	counts, err := s.materializeRemoteWorkFetch(ctx, runID, jobID, execution)
+	if err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	// Materialization can downgrade a stale cache hit to a download after the
+	// durable plan was created. Recompute the summary before publication and
+	// the terminal workflow result reflects the action that actually ran.
+	execution.plan.Summary = summarizeRemoteSavePlan(execution.plan.Items)
+	return s.finalizeRemoteWorkFetch(ctx, runID, jobID, execution, counts)
+}
+
+func (s *Server) updateRemoteFetchCacheProgress(ctx context.Context, nodeRunID int64, current int, total int, item remoteWorkSavePlanItem, written int64) error {
+	output := map[string]any{
+		"current": current, "total": total, "item_key": item.ItemKey,
+		"action": item.Action, "cache_path": item.CachePath, "target_path": item.TargetPath,
+	}
+	var bytesCurrent, bytesTotal int64
+	var unknownItems int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT progress_bytes_current, progress_bytes_total, progress_bytes_unknown_items
+		FROM workflow_job
+		WHERE workflow_node_run_id = ? AND worker_type = 'remote_work_fetch'
+		ORDER BY id DESC LIMIT 1
+	`, nodeRunID).Scan(&bytesCurrent, &bytesTotal, &unknownItems); err == nil {
+		output["bytes_current"] = bytesCurrent
+		output["bytes_total"] = bytesTotal
+		output["bytes_unknown_items"] = unknownItems
+	}
+	if written > 0 {
+		output["bytes"] = written
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE workflow_node_run
+		SET status = 'running', output_json = ?, started_at = COALESCE(started_at, CURRENT_TIMESTAMP)
+		WHERE id = ?
+	`, mustJSON(output), nodeRunID)
+	return err
+}
+
+func (s *Server) preparePersistedRemoteWorkFetchJob(ctx context.Context, runID int64, manifest remoteFetchManifestRecord) (int64, int64, int64, int64, int64, int64, error) {
+	if manifest.WorkID <= 0 || manifest.LocalSourceID <= 0 {
+		return 0, 0, 0, 0, 0, 0, fmt.Errorf("remote fetch manifest is missing persisted work locations")
+	}
+	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, runID)
+	if err != nil {
+		return 0, 0, 0, 0, 0, 0, err
+	}
+	cacheNodeID := nodeIDs["cache"]
+	promoteNodeID := nodeIDs["promote"]
+	syncNodeID := nodeIDs["sync"]
+	if cacheNodeID == 0 || promoteNodeID == 0 || syncNodeID == 0 {
+		return 0, 0, 0, 0, 0, 0, fmt.Errorf("remote fetch workflow nodes are incomplete")
+	}
+	return manifest.WorkID, manifest.LocalSourceID, cacheNodeID, promoteNodeID, syncNodeID, nodeIDs["cleanup"], nil
 }

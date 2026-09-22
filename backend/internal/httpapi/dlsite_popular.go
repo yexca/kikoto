@@ -387,10 +387,10 @@ func (s *Server) finishDLsitePopularCollection(ctx context.Context, job workflow
 		return err
 	}
 	if result.Status == "succeeded" {
-		if err := updateCustomWorkflowTriggerSuccess(ctx, tx, job.RunID); err != nil {
+		if err := updateWorkflowTriggerSuccess(ctx, tx, job.RunID); err != nil {
 			return err
 		}
-	} else if err := updateCustomWorkflowTriggerFailure(ctx, tx, job.RunID, strings.Join(result.Failures, "; ")); err != nil {
+	} else if err := updateWorkflowTriggerFailure(ctx, tx, job.RunID, strings.Join(result.Failures, "; ")); err != nil {
 		return err
 	}
 	return tx.Commit()

@@ -78,11 +78,16 @@ move. A domain earns its own feature boundary after it owns a real page or flow
 and several mostly private components, models, or hooks. App composition or a
 small shared contract should resolve cross-domain needs.
 
-Library work detail lives in `pages/library/detail` and loads as its own chunk
-from the Library list. An idle Library preloads it and a detail location starts
-it with the page, so opening a work normally renders without suspending. Circle
-and voice route helpers live in their navigation-state modules so one page does
-not import another page's module.
+Library work detail lives in `features/work-detail` and loads as its own chunk
+through the feature's single lazy entry, `lazyWorkDetail`. The app shell
+recognizes a direct work link with `workDetailCodeFromLocation` from
+`app/workDetailNavigation` and starts the detail chunk beside the Library chunk
+instead of after it; an idle Library also preloads it, so opening a work
+normally renders without suspending. The Library list loads the remote Fetch
+workspace dialog on demand through `LazyRemoteFetchWorkspaceDialog`, which
+mounts it only while a draft is open and closes the draft with a toast if its
+chunk fails to load. Circle and voice route helpers live in their
+navigation-state modules so one page does not import another page's module.
 
 Work detail metadata editing exposes one entry from
 `features/work-detail/metadata`. Its modal owns interaction and save actions,

@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
 	"github.com/yexca/kikoto/backend/internal/download"
@@ -106,3 +108,64 @@ func (e remoteDownloadError) Error() string {
 }
 
 func (e remoteDownloadError) Unwrap() error { return e.Err }
+
+func (s *Server) waitRemoteDownloadDelay(ctx context.Context) error {
+	return nil
+}
+
+func (s *Server) remoteBackoffDuration(ctx context.Context, response *http.Response, attempt int) time.Duration {
+	fallback := s.settingFloatContext(ctx, "remote_rate_limit_backoff_seconds", 30)
+	maximum := s.settingFloatContext(ctx, "remote_max_backoff_seconds", 300)
+	if fallback < 0 {
+		fallback = 0
+	}
+	if maximum <= 0 {
+		maximum = 300
+	}
+	delay := time.Duration(fallback*float64(time.Second)) * time.Duration(attempt+1)
+	if response != nil {
+		if retryAfter := retryAfterDuration(response.Header.Get("Retry-After")); retryAfter > 0 {
+			delay = retryAfter
+		}
+	}
+	maxDelay := time.Duration(maximum * float64(time.Second))
+	if delay > maxDelay {
+		delay = maxDelay
+	}
+	return delay
+}
+
+func retryAfterDuration(value string) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if seconds, err := strconv.ParseFloat(value, 64); err == nil && seconds > 0 {
+		return time.Duration(seconds * float64(time.Second))
+	}
+	if at, err := http.ParseTime(value); err == nil {
+		delay := time.Until(at)
+		if delay > 0 {
+			return delay
+		}
+	}
+	return 0
+}
+
+func isRetryableRemoteStatus(status int) bool {
+	return status == http.StatusTooManyRequests || status == http.StatusBadGateway || status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout
+}
+
+func sleepContext(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}

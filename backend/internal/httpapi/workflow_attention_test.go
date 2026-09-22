@@ -13,7 +13,7 @@ import (
 func TestWorkflowAcknowledgementRequiresResolvedTerminalRun(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
-	userID := insertCustomWorkflowAPIUser(t, db, "example_reviewer")
+	userID := insertWorkflowGraphAPIUser(t, db, "example_reviewer")
 	workID := seedMetadataIssue(t, db, 0)
 	for _, statement := range []string{
 		`INSERT INTO workflow_run(id,workflow_code,display_name,status,trigger_type) VALUES

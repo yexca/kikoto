@@ -1,4 +1,4 @@
-// Work previews, routes, and link helpers shared by the Library list and its work detail.
+// Work previews, routes, and link helpers owned by work detail and shared with the Library list.
 
 import { ApiError, type ListeningStatus, type RemoteWork, type SourcePresenceItem, type Work } from "@/lib/api";
 import { DLSITE_ENDPOINTS } from "@/lib/official-links";
