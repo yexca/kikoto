@@ -766,6 +766,23 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       >
         <div className="flex items-center gap-3">
           <FavoriteEntityPicker value={favoriteEntity} onChange={changeFavoriteEntity} />
+          {favoriteEntity === "works" && (
+            <FavoriteDesktopListPicker
+              markedList={markedList}
+              userFavoriteLists={userFavoriteLists}
+              activeList={activeList}
+              favoriteTotal={favoriteTotal}
+              listCounts={listCounts}
+              loading={areFavoriteListsLoading}
+              selectionMode={selectionMode}
+              onListChange={(list) => {
+                setActiveList(list);
+                setPage(1);
+              }}
+              onToggleSelection={toggleSelectionMode}
+              onEditLists={openFavoriteListManager}
+            />
+          )}
           <FavoriteSearchInput
             value={query}
             placeholder={
@@ -810,22 +827,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
           )}
         </div>
         {favoriteEntity === "works" && (
-          <>
-            <FavoriteDesktopListRow
-              markedList={markedList}
-              userFavoriteLists={userFavoriteLists}
-              activeList={activeList}
-              favoriteTotal={favoriteTotal}
-              listCounts={listCounts}
-              loading={areFavoriteListsLoading}
-              selectionMode={selectionMode}
-              onListChange={(list) => {
-                setActiveList(list);
-                setPage(1);
-              }}
-              onToggleSelection={toggleSelectionMode}
-              onEditLists={openFavoriteListManager}
-            />
+          <div className="flex min-h-10 items-center gap-4 border-b">
             <FavoriteDesktopStatusFilters
               value={statusFilter}
               counts={statusCounts}
@@ -835,19 +837,22 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                 setPage(1);
               }}
             />
-            <WorkCollectionPagination
-              placement="top"
-              page={currentPage}
-              pageSize={pageSize}
-              totalItems={totalWorks}
-              totalPages={totalPages}
-              compactMobile
-              compactTop
-              refreshing={isLoading && hasWorksSnapshot}
-              refreshingLabel={t("favorites.refreshing")}
-              onPageChange={setPage}
-            />
-          </>
+            {/* The shared top pagination draws its own divider; the row owns it here so it can sit inline. */}
+            <div className="ml-auto shrink-0 [&>div]:min-h-0 [&>div]:border-0 [&>div]:py-0">
+              <WorkCollectionPagination
+                placement="top"
+                page={currentPage}
+                pageSize={pageSize}
+                totalItems={totalWorks}
+                totalPages={totalPages}
+                compactMobile
+                compactTop
+                refreshing={isLoading && hasWorksSnapshot}
+                refreshingLabel={t("favorites.refreshing")}
+                onPageChange={setPage}
+              />
+            </div>
+          </div>
         )}
       </div>
 
@@ -1368,7 +1373,7 @@ function FavoriteSearchInput({
   );
 }
 
-function FavoriteDesktopListRow({
+function FavoriteDesktopListPicker({
   markedList,
   userFavoriteLists,
   activeList,
@@ -1392,82 +1397,80 @@ function FavoriteDesktopListRow({
   onEditLists: () => void;
 }) {
   const { t } = useTranslation();
-  return (
-    <div className="flex items-center gap-2" aria-label={t("favorites.lists")}>
-      <div className="min-w-0 flex-1 overflow-x-auto">
-        <div className="flex w-max min-w-full gap-2">
-          {loading ? (
-            <FavoriteListTabSkeletons />
-          ) : (
-            <FavoriteListTab
-              active={activeList === "all"}
-              label={t("favorites.all")}
-              count={favoriteTotal}
-              onClick={() => onListChange("all")}
-            />
-          )}
-          {markedList && (
-            <FavoriteListTab
-              active={activeList === markedList.id}
-              label={t("favorites.marked")}
-              count={listCounts[String(markedList.id)] ?? 0}
-              onClick={() => onListChange(markedList.id)}
-            />
-          )}
-          {userFavoriteLists.map((list) => (
-            <FavoriteListTab
-              key={list.id}
-              active={activeList === list.id}
-              label={list.name}
-              count={listCounts[String(list.id)] ?? 0}
-              title={list.description || list.name}
-              onClick={() => onListChange(list.id)}
-            />
-          ))}
-        </div>
-      </div>
-      <FavoriteDesktopListActions
-        selectionMode={selectionMode}
-        onToggleSelection={onToggleSelection}
-        onEditLists={onEditLists}
-      />
-    </div>
-  );
-}
-
-function FavoriteDesktopListActions({
-  selectionMode,
-  onToggleSelection,
-  onEditLists,
-}: {
-  selectionMode: boolean;
-  onToggleSelection: () => void;
-  onEditLists: () => void;
-}) {
-  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
+  const options: { value: "all" | number; label: string; count: number; title: string }[] = [
+    { value: "all", label: t("favorites.all"), count: favoriteTotal, title: t("favorites.all") },
+    ...(markedList
+      ? [
+          {
+            value: markedList.id,
+            label: t("favorites.marked"),
+            count: listCounts[String(markedList.id)] ?? 0,
+            title: t("favorites.quickMarkWorks"),
+          },
+        ]
+      : []),
+    ...userFavoriteLists.map((list) => ({
+      value: list.id,
+      label: list.name,
+      count: listCounts[String(list.id)] ?? 0,
+      title: list.description || list.name,
+    })),
+  ];
+  const selected = options.find((option) => option.value === activeList) ?? options[0];
   const close = () => setOpen(false);
+
+  if (loading) return <FavoriteSkeletonLine className="h-9 w-40 shrink-0" />;
+
   return (
-    <div className="relative shrink-0" ref={anchorRef}>
+    <div className="relative min-w-0 shrink-0" ref={anchorRef}>
       <Button
         variant="outline"
-        size="icon"
-        className="h-8 w-8"
+        size="sm"
+        className={`h-9 max-w-64 justify-between gap-2 ${selectionMode ? "border-primary/30" : ""}`}
         onClick={() => setOpen((current) => !current)}
-        aria-label={t("favorites.listOptions")}
-        title={t("favorites.listOptions")}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`${t("favorites.lists")}: ${selected.label} (${selected.count})`}
+        title={selected.title}
       >
-        <MoreHorizontal className="h-4 w-4" />
+        <span className="flex min-w-0 items-center gap-2">
+          <ListMusic className="h-4 w-4 shrink-0" />
+          <span className="min-w-0 truncate">{selected.label}</span>
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{selected.count}</span>
+        </span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
       </Button>
       <AnchoredPopover
         open={open}
         anchorRef={anchorRef}
         onOpenChange={setOpen}
-        align="end"
-        className="w-52 p-1 text-sm"
+        align="start"
+        className="w-64 p-1 text-sm"
       >
-        <div role="menu" aria-label={t("favorites.listOptions")}>
+        <div role="menu" aria-label={t("favorites.lists")}>
+          <div className="max-h-[min(22rem,55vh)] overflow-y-auto">
+            {options.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                role="menuitemradio"
+                aria-checked={option.value === activeList}
+                title={option.title}
+                className={`flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-muted ${option.value === activeList ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground"}`}
+                onClick={() => {
+                  close();
+                  onListChange(option.value);
+                }}
+              >
+                <ListMusic className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                <span className="shrink-0 text-xs tabular-nums opacity-80">{option.count}</span>
+              </button>
+            ))}
+          </div>
+          <div role="separator" className="my-1 h-px bg-border" />
           <FavoriteListAction
             icon={<Check className="h-4 w-4" />}
             label={selectionMode ? t("favorites.exitSelection") : t("favorites.selectWorks")}
@@ -1503,7 +1506,10 @@ function FavoriteDesktopStatusFilters({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex items-center gap-1 overflow-x-auto pb-1" aria-label={t("favorites.statusFilters")}>
+    <div
+      className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1"
+      aria-label={t("favorites.statusFilters")}
+    >
       <span className="mr-1 inline-flex h-7 shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground">
         <Filter className="h-3 w-3" />
         {t("favorites.status")}

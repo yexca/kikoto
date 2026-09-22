@@ -27,10 +27,27 @@ type KikotoMediaPlugin = {
   stop(): Promise<void>;
   requestAudioFocus(): Promise<{ granted: boolean }>;
   abandonAudioFocus(): Promise<void>;
+  lyricsOverlayStatus(): Promise<{ supported: boolean; permitted: boolean }>;
+  requestLyricsOverlayPermission(): Promise<void>;
+  showLyricsOverlay(state: NativeLyricsOverlayState): Promise<void>;
+  updateLyricsOverlay(playback: NativeLyricsOverlayPlayback): Promise<void>;
+  hideLyricsOverlay(): Promise<void>;
   addListener(
     eventName: "mediaControl",
     listenerFunc: (event: NativeMediaControl) => void,
   ): Promise<PluginListenerHandle>;
+  addListener(eventName: "lyricsOverlayClosed", listenerFunc: () => void): Promise<PluginListenerHandle>;
+};
+
+type NativeLyricsOverlayPlayback = {
+  positionMs: number;
+  playing: boolean;
+  playbackRate: number;
+};
+
+type NativeLyricsOverlayState = NativeLyricsOverlayPlayback & {
+  title: string;
+  lines: { timeMs: number; text: string }[];
 };
 
 const KikotoMedia = registerPlugin<KikotoMediaPlugin>("KikotoMedia");
@@ -80,5 +97,38 @@ export async function addNativeMediaListeners({ onControl }: { onControl: (event
   const control = await KikotoMedia.addListener("mediaControl", onControl);
   return () => {
     void control.remove();
+  };
+}
+
+export async function nativeLyricsOverlayStatus() {
+  if (!supportsNativeMedia()) return { supported: false, permitted: false };
+  return await KikotoMedia.lyricsOverlayStatus().catch(() => ({ supported: false, permitted: false }));
+}
+
+export async function requestNativeLyricsOverlayPermission() {
+  if (!supportsNativeMedia()) return;
+  await KikotoMedia.requestLyricsOverlayPermission().catch(() => {});
+}
+
+export async function showNativeLyricsOverlay(state: NativeLyricsOverlayState) {
+  if (!supportsNativeMedia()) return;
+  await KikotoMedia.showLyricsOverlay(state).catch(() => {});
+}
+
+export async function updateNativeLyricsOverlayPlayback(playback: NativeLyricsOverlayPlayback) {
+  if (!supportsNativeMedia()) return;
+  await KikotoMedia.updateLyricsOverlay(playback).catch(() => {});
+}
+
+export async function hideNativeLyricsOverlay() {
+  if (!supportsNativeMedia()) return;
+  await KikotoMedia.hideLyricsOverlay().catch(() => {});
+}
+
+export async function addNativeLyricsOverlayListener(onClosed: () => void) {
+  if (!supportsNativeMedia()) return () => {};
+  const handle = await KikotoMedia.addListener("lyricsOverlayClosed", onClosed);
+  return () => {
+    void handle.remove();
   };
 }

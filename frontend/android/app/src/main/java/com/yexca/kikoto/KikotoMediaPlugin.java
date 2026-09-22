@@ -7,8 +7,11 @@ import android.content.IntentFilter;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
+import android.net.Uri;
 import android.os.Build;
+import android.provider.Settings;
 
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -17,16 +20,20 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 import androidx.core.content.ContextCompat;
 
+import org.json.JSONObject;
+
 @CapacitorPlugin(name = "KikotoMedia")
 public class KikotoMediaPlugin extends Plugin {
     private BroadcastReceiver controlReceiver;
     private AudioManager audioManager;
     private AudioFocusRequest audioFocusRequest;
     private boolean hasAudioFocus = false;
+    private KikotoLyricsOverlay lyricsOverlay;
 
     @Override
     public void load() {
         audioManager = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+        lyricsOverlay = new KikotoLyricsOverlay(getContext(), () -> notifyListeners("lyricsOverlayClosed", new JSObject()));
         controlReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
@@ -51,7 +58,84 @@ public class KikotoMediaPlugin extends Plugin {
             controlReceiver = null;
         }
         abandonAudioFocusInternal();
+        if (lyricsOverlay != null) lyricsOverlay.hide();
         super.handleOnDestroy();
+    }
+
+    @Override
+    protected void handleOnResume() {
+        super.handleOnResume();
+        if (lyricsOverlay != null) lyricsOverlay.setAppForeground(true);
+    }
+
+    @Override
+    protected void handleOnPause() {
+        super.handleOnPause();
+        if (lyricsOverlay != null) lyricsOverlay.setAppForeground(false);
+    }
+
+    @PluginMethod
+    public void lyricsOverlayStatus(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("supported", lyricsOverlay != null && lyricsOverlay.isSupported());
+        result.put("permitted", lyricsOverlay != null && lyricsOverlay.hasPermission());
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void requestLyricsOverlayPermission(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(getContext())) {
+            Intent intent = new Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:" + getContext().getPackageName())
+            );
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                getContext().startActivity(intent);
+            } catch (RuntimeException ignored) {
+            }
+        }
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void showLyricsOverlay(PluginCall call) {
+        JSArray lines = call.getArray("lines", new JSArray());
+        int count = lines.length();
+        long[] times = new long[count];
+        String[] texts = new String[count];
+        for (int index = 0; index < count; index++) {
+            JSONObject line = lines.optJSONObject(index);
+            times[index] = line == null ? 0L : line.optLong("timeMs", 0L);
+            texts[index] = line == null ? "" : line.optString("text", "");
+        }
+        Double rate = call.getDouble("playbackRate", 1.0);
+        lyricsOverlay.show(
+            call.getString("title", ""),
+            times,
+            texts,
+            call.getLong("positionMs", 0L),
+            Boolean.TRUE.equals(call.getBoolean("playing", false)),
+            rate == null ? 1.0F : rate.floatValue()
+        );
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void updateLyricsOverlay(PluginCall call) {
+        Double rate = call.getDouble("playbackRate", 1.0);
+        lyricsOverlay.updatePlayback(
+            call.getLong("positionMs", 0L),
+            Boolean.TRUE.equals(call.getBoolean("playing", false)),
+            rate == null ? 1.0F : rate.floatValue()
+        );
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void hideLyricsOverlay(PluginCall call) {
+        lyricsOverlay.hide();
+        call.resolve();
     }
 
     @PluginMethod

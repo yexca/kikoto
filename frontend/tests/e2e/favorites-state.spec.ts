@@ -261,7 +261,11 @@ test("@desktop favorites keeps type and search left with work controls on the ri
   await expect.poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState?.availability)).toBe("remote");
   await expect.poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState?.sourceIDs)).toEqual([11]);
 
-  await page.getByRole("button", { name: "Favorite list options", exact: true }).click();
+  const listPicker = page.getByRole("button", { name: /^Favorite lists: All Favorites/ });
+  await expect(listPicker).toBeVisible();
+  await listPicker.click();
+  await expect(page.getByRole("menuitemradio", { name: /All Favorites/ })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("menuitemradio", { name: /Marked/ })).toBeVisible();
   await page.getByRole("menuitem", { name: "Edit lists", exact: true }).click();
   const listManager = page.getByRole("dialog", { name: "Edit lists" });
   await expect(listManager).toBeVisible();

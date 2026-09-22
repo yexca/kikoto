@@ -3,14 +3,11 @@ import {
   AlertCircle,
   CalendarClock,
   ChevronRight,
-  Clock3,
-  Database,
   Edit3,
   Eye,
   ExternalLink,
   FileJson,
   GitBranchPlus,
-  ListChecks,
   Loader2,
   Play,
   Plus,
@@ -22,6 +19,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
   Background,
@@ -2186,111 +2184,108 @@ function RunDetail({
   canSyncMetadata: boolean;
 }) {
   if (!run) {
-    return loading ? <RunDetailSkeleton /> : <EmptyPanel text={workflowCopy("selectRunNodeDetail")} />;
+    return loading ? (
+      <RunDetailSkeleton />
+    ) : (
+      <p className="py-6 text-center text-sm text-muted-foreground">{workflowCopy("selectRunNodeDetail")}</p>
+    );
   }
   const nodeRuns = "nodeRuns" in run ? run.nodeRuns : [];
+  const nodeError = nodeRuns.find((node) => node.errorMessage)?.errorMessage ?? "";
+  const trigger = `${run.triggerType}${run.triggerReason ? ` · ${run.triggerReason}` : ""}`;
   return (
-    <Card>
-      <CardContent className="space-y-4 p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-lg font-semibold">{run.displayName}</h3>
+    <div className="min-w-0 space-y-4">
+      <header className="space-y-2.5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <h3 className="min-w-0 break-words text-base font-semibold leading-6">{run.displayName}</h3>
               <StatusBadge status={run.status} />
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {run.triggerType} {run.triggerReason ? `· ${run.triggerReason}` : ""} · {run.createdAt}
+            <p className="mt-0.5 break-words text-xs text-muted-foreground [overflow-wrap:anywhere]">
+              #{run.id} · {trigger}
+            </p>
+            <p className="break-words text-xs tabular-nums text-muted-foreground">
+              {workflowCopy("started")} {run.startedAt || workflowCopy("notRecorded")} · {workflowCopy("finished")}{" "}
+              {run.finishedAt || workflowCopy("notFinished")}
             </p>
           </div>
-          <div className="space-y-2">
-            <RunMetrics run={run} />
-            {!readOnly && <RunActions run={run} onRunAction={onRunAction} />}
-          </div>
+          {!readOnly && <RunActions run={run} onRunAction={onRunAction} />}
         </div>
-        {"metadataIssues" in run && run.metadataIssues && run.metadataIssues.encountered > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/30 p-3 text-sm">
-            <p>
-              {i18n.t(
-                run.metadataIssues.pending > 0 ? "metadataIssues.pendingForRun" : "metadataIssues.resolvedForRun",
-                { count: run.metadataIssues.pending },
-              )}
-            </p>
-            {canSyncMetadata && run.metadataIssues.pending > 0 && (
-              <Button variant="outline" onClick={() => openMetadataIssues(run.id)}>
-                {i18n.t("metadataIssues.openIssues")}
-              </Button>
-            )}
-          </div>
-        )}
-        {loading ? <CompactRunSummarySkeleton /> : <CompactRunSummary run={run} nodeRuns={nodeRuns} />}
-        {!loading && (
-          <RunItems run={run} candidates={candidates} onCandidateUpdate={onCandidateUpdate} readOnly={readOnly} />
-        )}
-      </CardContent>
-    </Card>
+        <RunStats run={run} />
+      </header>
+      {"metadataIssues" in run && run.metadataIssues && run.metadataIssues.encountered > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/40 px-3 py-2 text-sm">
+          <p className="min-w-0">
+            {i18n.t(run.metadataIssues.pending > 0 ? "metadataIssues.pendingForRun" : "metadataIssues.resolvedForRun", {
+              count: run.metadataIssues.pending,
+            })}
+          </p>
+          {canSyncMetadata && run.metadataIssues.pending > 0 && (
+            <Button size="sm" variant="outline" onClick={() => openMetadataIssues(run.id)}>
+              {i18n.t("metadataIssues.openIssues")}
+            </Button>
+          )}
+        </div>
+      )}
+      {!loading && <FetchTransferProgress run={run} />}
+      {!loading && nodeError && <ErrorPanel error={nodeError} />}
+      {!loading && <RunItems candidates={candidates} onCandidateUpdate={onCandidateUpdate} readOnly={readOnly} />}
+    </div>
   );
 }
 
 function RunDetailSkeleton() {
   return (
-    <Card>
-      <CardContent className="space-y-4 p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0 flex-1 space-y-2">
-            <div className="flex items-center gap-2">
-              <SkeletonLine className="h-6 w-56" />
-              <SkeletonLine className="h-5 w-20" />
-            </div>
-            <SkeletonLine className="h-4 w-80 max-w-full" />
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <SkeletonLine className="h-8 w-28" />
-            <SkeletonLine className="h-8 w-28" />
-          </div>
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <SkeletonLine className="h-5 w-48 max-w-full" />
+          <SkeletonLine className="h-5 w-16" />
         </div>
-        <CompactRunSummarySkeleton />
-      </CardContent>
-    </Card>
+        <SkeletonLine className="h-3 w-64 max-w-full" />
+        <SkeletonLine className="h-3 w-56 max-w-full" />
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {Array.from({ length: 4 }, (_, index) => (
+          <SkeletonLine key={index} className="h-6 w-20" />
+        ))}
+      </div>
+      <SkeletonLine className="h-16 w-full" />
+    </div>
   );
 }
 
-function CompactRunSummarySkeleton() {
+function RunStats({ run }: { run: WorkflowRun }) {
+  const review = pendingReviewCount(run);
+  const failed = run.failedNodeRuns + run.failedJobs;
+  const skipped = run.skippedNodeRuns + run.skippedJobs;
+  const stats: Array<{ key: string; value: string; label: string; tone?: "warning" | "error" }> = [
+    { key: "nodes", value: `${run.completedNodeRuns}/${run.nodeRunCount}`, label: workflowCopy("nodes") },
+    { key: "jobs", value: `${run.completedJobs}/${run.jobCount}`, label: workflowCopy("jobs") },
+  ];
+  if (review > 0)
+    stats.push({ key: "review", value: `${review}`, label: workflowCopy("pendingReview"), tone: "warning" });
+  if (failed > 0) stats.push({ key: "failed", value: `${failed}`, label: workflowCopy("failedItems"), tone: "error" });
+  if (skipped > 0) stats.push({ key: "skipped", value: `${skipped}`, label: workflowCopy("skipped") });
   return (
-    <div className="grid gap-2 sm:grid-cols-2">
-      {Array.from({ length: 4 }, (_, index) => (
-        <div key={index} className="rounded-md border p-3">
-          <SkeletonLine className="h-3 w-20" />
-          <SkeletonLine className="mt-2 h-4 w-32 max-w-full" />
+    <dl className="flex flex-wrap gap-1.5 text-xs">
+      {stats.map((stat) => (
+        <div
+          key={stat.key}
+          className={`inline-flex items-baseline gap-1 rounded-md px-2 py-1 ${
+            stat.tone === "error"
+              ? "bg-error-surface text-error-foreground"
+              : stat.tone === "warning"
+                ? "bg-warning-surface text-warning-foreground"
+                : "bg-muted/50"
+          }`}
+        >
+          <dt className={`order-2 ${stat.tone ? "" : "text-muted-foreground"}`}>{stat.label}</dt>
+          <dd className="order-1 font-semibold tabular-nums">{stat.value}</dd>
         </div>
       ))}
-    </div>
-  );
-}
-
-function CompactRunSummary({ run, nodeRuns }: { run: WorkflowRunDetail | WorkflowRun; nodeRuns: WorkflowNodeRun[] }) {
-  return (
-    <div className="grid gap-2 sm:grid-cols-2">
-      {hasFetchTransferProgress(run) && (
-        <div className="sm:col-span-2">
-          <FetchTransferProgress run={run} />
-        </div>
-      )}
-      <SummaryCell label={workflowCopy("started")} value={run.startedAt || workflowCopy("notRecorded")} />
-      <SummaryCell label={workflowCopy("finished")} value={run.finishedAt || workflowCopy("notFinished")} />
-      <SummaryCell
-        label={workflowCopy("trigger")}
-        value={`${run.triggerType}${run.triggerReason ? ` · ${run.triggerReason}` : ""}`}
-      />
-      <SummaryCell
-        label={workflowCopy("runSignals")}
-        value={`${pendingReviewCount(run)} ${workflowCopy("pendingReview")}, ${run.failedNodeRuns + run.failedJobs} ${workflowCopy("failedItems")}, ${run.skippedNodeRuns + run.skippedJobs} ${workflowCopy("skipped")}`}
-      />
-      {nodeRuns.some((node) => node.errorMessage) && (
-        <div className="sm:col-span-2">
-          <ErrorPanel error={nodeRuns.find((node) => node.errorMessage)?.errorMessage ?? ""} />
-        </div>
-      )}
-    </div>
+    </dl>
   );
 }
 
@@ -2419,13 +2414,13 @@ function FetchTransferProgress({ run }: { run: WorkflowRunDetail | WorkflowRun }
         : `${formatBytes(current)} ${workflowCopy("transferred")}`;
   return (
     <div
-      className="space-y-2 rounded-md border bg-muted/30 p-3 lg:col-span-2"
+      className="min-w-0 space-y-2 rounded-md bg-muted/40 px-3 py-2.5"
       role="status"
       aria-label={workflowCopy("fetchTransferProgress")}
     >
-      <div className="flex items-center justify-between gap-3 text-sm">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm">
         <span className="font-semibold">{workflowCopy("transfer")}</span>
-        <span className="tabular-nums text-muted-foreground">{label}</span>
+        <span className="min-w-0 break-words text-xs tabular-nums text-muted-foreground">{label}</span>
       </div>
       {determinate ? (
         <div
@@ -2457,55 +2452,33 @@ function hasFetchTransferProgress(run: WorkflowRunDetail | WorkflowRun) {
 }
 
 function RunItems({
-  run,
   candidates,
   onCandidateUpdate,
   readOnly,
 }: {
-  run: WorkflowRunDetail | WorkflowRun;
   candidates: WorkflowCandidate[];
   onCandidateUpdate: () => Promise<void>;
   readOnly: boolean;
 }) {
+  if (candidates.length === 0) {
+    return <p className="text-sm text-muted-foreground">{workflowCopy("noReviewableItems")}</p>;
+  }
   return (
-    <div className="space-y-3">
-      <div className="text-sm font-semibold">{workflowCopy("items")}</div>
-      <div className="grid gap-2 sm:grid-cols-3">
-        <Metric
-          icon={<FileJson className="h-3.5 w-3.5" />}
-          label={workflowCopy("pendingReview")}
-          value={`${pendingReviewCount(run)}`}
-        />
-        <Metric
-          icon={<AlertCircle className="h-3.5 w-3.5" />}
-          label={workflowCopy("failedItems")}
-          value={`${run.failedNodeRuns + run.failedJobs}`}
-        />
-        <Metric
-          icon={<Clock3 className="h-3.5 w-3.5" />}
-          label={workflowCopy("skippedItems")}
-          value={`${run.skippedNodeRuns + run.skippedJobs}`}
-        />
+    <section className="min-w-0 space-y-2">
+      <h4 className="text-xs font-semibold text-muted-foreground">
+        {workflowCopy("candidates")} · {candidates.length}
+      </h4>
+      <div className="min-w-0 divide-y rounded-md border">
+        {candidates.map((candidate) => (
+          <CandidateReviewCard
+            key={candidate.id}
+            candidate={candidate}
+            onCandidateUpdate={onCandidateUpdate}
+            readOnly={readOnly}
+          />
+        ))}
       </div>
-      {candidates.length > 0 && (
-        <div className="space-y-2">
-          <div className="text-sm font-semibold">{workflowCopy("candidates")}</div>
-          <div className="divide-y rounded-md border">
-            {candidates.map((candidate) => (
-              <CandidateReviewCard
-                key={candidate.id}
-                candidate={candidate}
-                onCandidateUpdate={onCandidateUpdate}
-                readOnly={readOnly}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-      {candidates.length === 0 && (
-        <div className="rounded-md border p-3 text-sm text-muted-foreground">{workflowCopy("noReviewableItems")}</div>
-      )}
-    </div>
+    </section>
   );
 }
 
@@ -2650,11 +2623,13 @@ function CandidateReviewCard({
     await onCandidateUpdate();
   };
   return (
-    <div className="grid gap-2 p-3">
+    <div className="grid min-w-0 gap-2 p-3">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{candidate.externalKey || candidate.type}</div>
-          <div className="text-xs text-muted-foreground">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold" title={candidate.externalKey || candidate.type}>
+            {candidate.externalKey || candidate.type}
+          </div>
+          <div className="break-all text-xs text-muted-foreground">
             {candidate.type} · updated {candidate.updatedAt}
           </div>
         </div>
@@ -2662,13 +2637,13 @@ function CandidateReviewCard({
       </div>
 
       {candidate.type === "local_fetch_merge_cleanup" && (
-        <div className="rounded-md border bg-muted/40 p-2 text-xs">
+        <div className="min-w-0 rounded-md border bg-muted/40 p-2 text-xs">
           <div className="mb-1 font-medium">
             {archivedRoots.length > 0 ? workflowCopy("archivedLocalRoots") : workflowCopy("oldLocalLocations")}
           </div>
           {archivedRoots.map((root) => (
             <div key={root.folderId} className="space-y-1 border-b py-2 last:border-b-0">
-              <div className="font-medium">{root.originalPath}</div>
+              <div className="break-all font-medium">{root.originalPath}</div>
               <div className="truncate text-muted-foreground" title={root.archivePath}>
                 {root.archivePath}
               </div>
@@ -2677,7 +2652,9 @@ function CandidateReviewCard({
               </div>
               {root.files.slice(0, 12).map((file) => (
                 <div key={file.path} className="flex gap-2 pl-2">
-                  <span className="min-w-0 flex-1 truncate">{file.path}</span>
+                  <span className="min-w-0 flex-1 truncate" title={file.path}>
+                    {file.path}
+                  </span>
                   <span className="shrink-0 text-muted-foreground">{formatBytes(file.sizeBytes)}</span>
                 </div>
               ))}
@@ -2690,7 +2667,9 @@ function CandidateReviewCard({
             ? cleanupLocations.slice(0, 8).map((location) => (
                 <div key={location.locationId} className="flex gap-2 py-0.5">
                   <span className="w-12 shrink-0 text-muted-foreground">#{location.locationId}</span>
-                  <span className="min-w-0 flex-1 truncate">{location.path}</span>
+                  <span className="min-w-0 flex-1 truncate" title={location.path}>
+                    {location.path}
+                  </span>
                   {location.sizeBytes !== null && (
                     <span className="shrink-0 text-muted-foreground">{formatBytes(location.sizeBytes)}</span>
                   )}
@@ -2706,11 +2685,13 @@ function CandidateReviewCard({
       )}
 
       {candidate.type === "local_duplicate_work_folder" && (
-        <div className="rounded-md border bg-muted/40 p-2 text-xs">
+        <div className="min-w-0 rounded-md border bg-muted/40 p-2 text-xs">
           <div className="mb-1 font-medium">{workflowCopy("duplicateLocalFolders")}</div>
           {duplicateFolders.map((folder) => (
             <div key={folder.relPath} className="grid gap-0.5 py-1">
-              <div className="truncate">{folder.relPath}</div>
+              <div className="truncate" title={folder.relPath}>
+                {folder.relPath}
+              </div>
               <div className="text-muted-foreground">
                 {folder.files} files · {folder.audioFiles} audio · {formatBytes(folder.sizeBytes)}
               </div>
@@ -4611,28 +4592,6 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
   );
 }
 
-function RunMetrics({ run }: { run: WorkflowRun }) {
-  return (
-    <div className="grid gap-2 sm:grid-cols-3">
-      <Metric
-        icon={<ListChecks className="h-3.5 w-3.5" />}
-        label={workflowCopy("nodes")}
-        value={`${run.completedNodeRuns}/${run.nodeRunCount}`}
-      />
-      <Metric
-        icon={<Database className="h-3.5 w-3.5" />}
-        label={workflowCopy("jobs")}
-        value={`${run.completedJobs}/${run.jobCount}`}
-      />
-      <Metric
-        icon={<Activity className="h-3.5 w-3.5" />}
-        label={workflowCopy("review")}
-        value={`${pendingReviewCount(run)}`}
-      />
-    </div>
-  );
-}
-
 function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () => Promise<void> }) {
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const cancellable = ["queued", "running"].includes(run.status);
@@ -4670,7 +4629,7 @@ function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () =>
   };
   return (
     <>
-      <div className="flex justify-end gap-2">
+      <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
         {cancellable && (
           <Button
             size="sm"
@@ -4696,39 +4655,32 @@ function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () =>
           </Button>
         )}
       </div>
-      {confirmingCancel && (
-        <Dialog onClose={() => setConfirmingCancel(false)} size="md" dismissible={false}>
-          <DialogHeader
-            title={workflowCopy("cancelDeletionTitle")}
-            onClose={() => setConfirmingCancel(false)}
-            closeLabel={workflowCopy("close")}
-          >
-            <p className="mt-2 text-sm text-muted-foreground">{workflowCopy("cancelDeletionDescription")}</p>
-            {run.workflowCode === "media_cleanup_forget_work" && (
-              <p className="mt-2 text-sm text-muted-foreground">{workflowCopy("forgetStepSkipped")}</p>
-            )}
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmingCancel(false)}>
-              {workflowCopy("keepRunning")}
-            </Button>
-            <Button variant="destructive" onClick={() => void cancel()}>
-              {workflowCopy("cancelWorkflow")}
-            </Button>
-          </DialogFooter>
-        </Dialog>
-      )}
+      {confirmingCancel &&
+        // Portaled: the Activity popover's backdrop-filter would otherwise contain this fixed overlay.
+        createPortal(
+          <Dialog onClose={() => setConfirmingCancel(false)} size="md" dismissible={false}>
+            <DialogHeader
+              title={workflowCopy("cancelDeletionTitle")}
+              onClose={() => setConfirmingCancel(false)}
+              closeLabel={workflowCopy("close")}
+            >
+              <p className="mt-2 text-sm text-muted-foreground">{workflowCopy("cancelDeletionDescription")}</p>
+              {run.workflowCode === "media_cleanup_forget_work" && (
+                <p className="mt-2 text-sm text-muted-foreground">{workflowCopy("forgetStepSkipped")}</p>
+              )}
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setConfirmingCancel(false)}>
+                {workflowCopy("keepRunning")}
+              </Button>
+              <Button variant="destructive" onClick={() => void cancel()}>
+                {workflowCopy("cancelWorkflow")}
+              </Button>
+            </DialogFooter>
+          </Dialog>,
+          document.body,
+        )}
     </>
-  );
-}
-
-function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="font-medium">{value}</span>
-      <span className="text-muted-foreground">{label}</span>
-    </div>
   );
 }
 

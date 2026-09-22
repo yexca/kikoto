@@ -3,6 +3,7 @@ import {
   ArrowUp,
   Captions,
   CircleDot,
+  PictureInPicture2,
   Gauge,
   HardDrive,
   ListMusic,
@@ -70,6 +71,8 @@ import { currentScopedStorageKey } from "@/lib/clientStorageScope";
 import { addNativeMediaListeners, stopNativeMedia, supportsNativeMedia, updateNativeMedia } from "@/lib/nativeMedia";
 import { lyricsChoiceDisplayLabel, type LyricsChoice } from "@/player/lyricsMatching";
 import { playbackURL, remoteMediaPlaybackURL } from "@/player/mediaPlayback";
+import { useScreenLyrics } from "@/player/screenLyrics";
+import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { playbackKeyForLocation, remotePlaybackKey } from "@/player/playbackIdentity";
 import {
   getStoredPlaybackSeekPreferences,
@@ -94,7 +97,7 @@ import {
   recordTrackLocationFailure,
   resetTrackLocationFailures,
 } from "@/player/trackLocations";
-type LyricsDisplayMode = "hidden" | "preview" | "full";
+type PlayerSidePanel = "lyrics" | "queue";
 type CompactScrubState = {
   pointerId: number;
   startX: number;
@@ -113,7 +116,6 @@ type PendingPlaybackStart = {
   queueItemId: string;
   positionSeconds: number;
 };
-const LYRIC_PREVIEW_ROW_HEIGHT = 28;
 
 type PlayerContextValue = {
   queue: PlayerTrack[];
@@ -1642,11 +1644,9 @@ export function PlayerDock() {
   const isMobile = useIsMobilePlayer();
   const sleepButtonRef = useRef<HTMLButtonElement | null>(null);
   const sleepPopoverRef = useRef<HTMLDivElement | null>(null);
-  const fullMainRef = useRef<HTMLDivElement | null>(null);
   const [dockMode, setDockMode] = useState<DockMode>(() => restoreDockMode(isMobile));
   const dockLayoutRef = useRef(isMobile);
-  const [panel, setPanel] = useState<"queue" | null>(null);
-  const [lyricsDisplayMode, setLyricsDisplayMode] = useState<LyricsDisplayMode>("hidden");
+  const [sidePanel, setSidePanel] = useState<PlayerSidePanel | null>(null);
   const [lyricsText, setLyricsText] = useState<string | null>(null);
   const [lyricsError, setLyricsError] = useState("");
   const [activeLyricsLocationId, setActiveLyricsLocationId] = useState<number | null>(null);
@@ -1665,11 +1665,8 @@ export function PlayerDock() {
   const miniActionsTimerRef = useRef<number | null>(null);
   const coverTapRef = useRef<{ at: number; x: number; y: number } | null>(null);
   const [fullDragOffset, setFullDragOffset] = useState(0);
-  const [lyricsPreviewRows, setLyricsPreviewRows] = useState(3);
   const fullDragRef = useRef<{ pointerId: number; startY: number; startedAt: number; moved: boolean } | null>(null);
   const suppressCollapseClickRef = useRef(false);
-  const desktopFullHeight = useDesktopFullPlayerHeight(isMobile);
-  const compactFullLayout = !isMobile && desktopFullHeight < 540;
   const track = player.currentTrack;
   const moreButtonRef = useRef<HTMLButtonElement | null>(null);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
@@ -1693,10 +1690,32 @@ export function PlayerDock() {
     setDockMode(restoreDockMode(isMobile));
   }, [isMobile]);
 
-  const cycleLyricsDisplayMode = () => {
-    if (!activeLyricsLocationId) return;
-    setPanel(null);
-    setLyricsDisplayMode((mode) => (mode === "hidden" ? "preview" : mode === "preview" ? "full" : "hidden"));
+  const toggleSidePanel = (value: PlayerSidePanel) => {
+    if (value === "lyrics" && !activeLyricsLocationId) return;
+    setSidePanel((current) => (current === value ? null : value));
+  };
+  const screenLyrics = useScreenLyrics(
+    {
+      trackKey: `${track?.queueItemId ?? track?.locationId ?? ""}:${activeLyricsLocationId ?? ""}`,
+      title: track?.title ?? "",
+      subtitle: track?.circle || track?.workTitle || "",
+      lines: parsedLyrics.lines,
+      activeIndex: activeLyricIndex,
+      currentTime: player.currentTime,
+      playing: player.isPlaying,
+      playbackRate: player.playbackRate,
+    },
+    { onTogglePlay: player.togglePlay, onPrevious: player.previous, onNext: player.next },
+  );
+  const toggleScreenLyrics = async () => {
+    if (screenLyrics.open) {
+      screenLyrics.stop();
+      return;
+    }
+    const result = await screenLyrics.start();
+    if (result === "permission-required") toast.info(t("player.screenLyricsPermission"));
+    else if (result === "unsupported") toast.info(t("player.screenLyricsUnsupported"));
+    else if (result === "failed") toast.error(t("player.screenLyricsFailed"));
   };
 
   useEffect(() => {
@@ -1743,12 +1762,6 @@ export function PlayerDock() {
       .then((result) => setLyricsText(result.content))
       .catch((error) => setLyricsError(error instanceof Error ? error.message : "Lyrics preview failed."));
   }, [activeLyricsChoice?.url, activeLyricsLocationId]);
-
-  useEffect(() => {
-    if (lyricsDisplayMode === "preview" && (lyricsError || (lyricsText !== null && !parsedLyrics.timed))) {
-      setLyricsDisplayMode("full");
-    }
-  }, [lyricsDisplayMode, lyricsError, lyricsText, parsedLyrics.timed]);
 
   useEffect(() => {
     if (!isSleepOpen) return;
@@ -1887,13 +1900,8 @@ export function PlayerDock() {
         event.preventDefault();
         return;
       }
-      if (lyricsDisplayMode === "full") {
-        setLyricsDisplayMode("hidden");
-        event.preventDefault();
-        return;
-      }
-      if (panel) {
-        setPanel(null);
+      if (sidePanel) {
+        setSidePanel(null);
         event.preventDefault();
         return;
       }
@@ -1916,55 +1924,10 @@ export function PlayerDock() {
     isSleepOpen,
     isSourceOpen,
     isMoreOpen,
-    lyricsDisplayMode,
     miniActionsOpen,
-    panel,
+    sidePanel,
     setPreferredDockMode,
   ]);
-
-  useEffect(() => {
-    if (dockMode !== "full" || panel || lyricsDisplayMode !== "preview") return;
-    setLyricsPreviewRows((rows) => Math.max(rows, 3));
-    const container = fullMainRef.current;
-    if (!container) return;
-    let frame = 0;
-    let settleFrame = 0;
-    const measure = () => {
-      const cover = container.querySelector<HTMLElement>("[data-player-cover-shell]");
-      const title = container.querySelector<HTMLElement>("[data-player-title-block]");
-      const containerHeight = container.getBoundingClientRect().height;
-      const coverHeight = cover?.getBoundingClientRect().height ?? 0;
-      const titleHeight = title?.getBoundingClientRect().height ?? 0;
-      if (containerHeight < 180 || coverHeight < 80 || titleHeight < 20) {
-        setLyricsPreviewRows(0);
-        return;
-      }
-      // Account for the main panel padding, artwork-stack padding, and both flex gaps.
-      const reservedGap = 44;
-      const available = containerHeight - coverHeight - titleHeight - reservedGap;
-      const nextRows =
-        available < LYRIC_PREVIEW_ROW_HEIGHT ? 0 : Math.min(10, Math.floor(available / LYRIC_PREVIEW_ROW_HEIGHT));
-      setLyricsPreviewRows((rows) => (rows === nextRows ? rows : nextRows));
-    };
-    const scheduleMeasure = () => {
-      cancelAnimationFrame(frame);
-      cancelAnimationFrame(settleFrame);
-      frame = requestAnimationFrame(() => {
-        settleFrame = requestAnimationFrame(measure);
-      });
-    };
-    scheduleMeasure();
-    const observer = new ResizeObserver(scheduleMeasure);
-    observer.observe(container);
-    container.querySelectorAll<HTMLElement>("[data-player-measure]").forEach((element) => observer.observe(element));
-    window.addEventListener("resize", scheduleMeasure);
-    return () => {
-      cancelAnimationFrame(frame);
-      cancelAnimationFrame(settleFrame);
-      observer.disconnect();
-      window.removeEventListener("resize", scheduleMeasure);
-    };
-  }, [desktopFullHeight, dockMode, lyricsDisplayMode, panel, track?.locationId, track?.title, track?.workTitle]);
 
   if (!track) return null;
 
@@ -1973,7 +1936,10 @@ export function PlayerDock() {
   const availableLocations = orderedTrackLocations(track);
   const currentLocation =
     availableLocations.find((location) => location.locationId === track.locationId) ?? availableLocations[0];
-  const hasPanel = panel !== null || lyricsDisplayMode === "full";
+  const sidePanelOpen = sidePanel !== null;
+  const splitSidePanel = sidePanelOpen && !isMobile;
+  const currentLyricLine =
+    parsedLyrics.timed && activeLyricIndex >= 0 ? (parsedLyrics.lines[activeLyricIndex]?.text ?? "") : "";
   const openWorkDetail = () => {
     if (!track.workCode) return;
     if (isMobile) setDockMode("compact");
@@ -2288,26 +2254,73 @@ export function PlayerDock() {
     );
   }
 
+  const lyricsContent = activeLyricsLocationId ? (
+    lyricsError ? (
+      <div className="p-3 text-sm text-muted-foreground">{lyricsError}</div>
+    ) : lyricsText === null ? (
+      <LyricsLoadingSkeleton />
+    ) : (
+      <LyricsPanel
+        title={activeLyricsChoice?.title ?? track.lyricsTitle}
+        text={lyricsText}
+        parsed={parsedLyrics}
+        activeIndex={activeLyricIndex}
+        choices={track.lyricsChoices ?? []}
+        activeLocationId={activeLyricsLocationId}
+        automatic={usingAutomaticLyrics}
+        large={!isMobile}
+        onChoiceChange={(locationId) => void changeLyricsChoice(locationId)}
+        onSeek={player.seekTo}
+      />
+    )
+  ) : (
+    <div className="p-3 text-sm text-muted-foreground">{t("player.noLyrics")}</div>
+  );
+  const queueContent = (
+    <div className="app-scroll h-full space-y-1 overflow-auto p-2">
+      <div className="flex items-center justify-between px-2 py-1 text-xs text-muted-foreground">
+        <span>{t("player.queued", { count: player.queue.length })}</span>
+        <button className="rounded px-2 py-1 hover:bg-muted hover:text-foreground" onClick={player.clearQueue}>
+          {t("player.clearQueue")}
+        </button>
+      </div>
+      {player.queue.map((item, index) => (
+        <PlayerQueueRow
+          key={item.queueItemId ?? `${item.locationId}:${index}`}
+          item={item}
+          index={index}
+          currentIndex={player.currentIndex}
+          queueLength={player.queue.length}
+          onSelect={player.selectTrack}
+          onMove={player.moveQueueItem}
+          onRemove={player.removeQueueItem}
+        />
+      ))}
+    </div>
+  );
+  const sidePanelContent = sidePanel === "lyrics" ? lyricsContent : queueContent;
+
   return (
     <section
-      className={`fixed inset-0 z-50 h-[100dvh] animate-player-enter overflow-hidden border-0 bg-background/95 text-foreground shadow-xl backdrop-blur-2xl transition-[transform,opacity,height] duration-200 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px] lg:rounded-[var(--player-radius-panel)] lg:border lg:border-glass-border lg:bg-card/82 dark:lg:bg-card/78 ${compactFullLayout ? "lg:text-[0.9rem]" : ""}`}
-      style={{
-        ...(!isMobile ? { height: desktopFullHeight } : {}),
-        ...(isMobile && fullDragOffset > 0
+      data-player-side-panel={splitSidePanel ? "open" : "closed"}
+      className={`fixed inset-0 z-50 h-[100dvh] animate-player-enter overflow-hidden border-0 bg-background text-foreground shadow-xl backdrop-blur-2xl transition-[transform,opacity,width] duration-200 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:h-[min(760px,calc(100dvh-3rem))] lg:rounded-[var(--player-radius-panel)] lg:border lg:border-glass-border lg:bg-card/82 dark:lg:bg-card/78 ${splitSidePanel ? "lg:w-[min(900px,calc(100vw-3rem))]" : "lg:w-[400px]"}`}
+      style={
+        isMobile && fullDragOffset > 0
           ? { transform: `translateY(${fullDragOffset}px)`, opacity: Math.max(0.55, 1 - fullDragOffset / 500) }
-          : {}),
-      }}
+          : undefined
+      }
     >
-      <div className="pointer-events-none absolute inset-0 bg-background/82" aria-hidden="true" />
+      {screenLyrics.portal}
+      <div className="pointer-events-none absolute inset-0 hidden bg-background/82 lg:block" aria-hidden="true" />
       <div
         className="relative z-10 flex h-full flex-col pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] pt-[var(--safe-area-top)] lg:px-0 lg:pt-0"
-        style={{ touchAction: panel ? undefined : "pan-x" }}
+        style={{ touchAction: sidePanelOpen ? undefined : "pan-x" }}
         onPointerDown={(event) => {
           if (!isMobile) return;
           const target = event.target as HTMLElement;
           const isHandle = Boolean(target.closest("[data-player-handle]"));
           const isPanelDragZone = Boolean(target.closest("[data-player-drag-zone]"));
-          if (panel && !isHandle && !isPanelDragZone) return;
+          if (sidePanelOpen && !isHandle && !isPanelDragZone) return;
           const rect = event.currentTarget.getBoundingClientRect();
           if (!isHandle && event.clientY > rect.top + rect.height * 0.6) return;
           if (target.closest("input, [data-player-no-drag]")) return;
@@ -2358,477 +2371,470 @@ export function PlayerDock() {
           <span className="h-1.5 w-12 rounded-full bg-muted-foreground/25" />
         </button>
 
-        <div
-          ref={fullMainRef}
-          className={`min-h-0 flex-1 overflow-hidden px-4 pb-4 ${compactFullLayout ? "space-y-2" : "space-y-4"}`}
-        >
-          {hasPanel ? (
-            <div className="animate-player-panel-enter flex h-full min-h-0 flex-col gap-3">
-              <div
-                data-player-drag-zone
-                className="flex min-h-[76px] touch-none items-center gap-3 rounded-2xl border border-glass-border bg-glass-fill p-2.5 shadow-inner"
-              >
-                <CoverImage track={track} className="h-14 w-[74px] rounded-xl shadow-sm" />
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold">{track.title}</div>
-                  <div className="truncate text-xs text-muted-foreground" title={track.circle || track.workTitle}>
-                    {track.circle || track.workTitle}
-                  </div>
-                  <div className="truncate text-xs text-muted-foreground">{track.workCode}</div>
-                </div>
-              </div>
-              <div className="app-scroll min-h-0 flex-1 overflow-auto rounded-2xl border border-glass-border bg-background/55 p-2 shadow-inner dark:bg-background/40">
-                {lyricsDisplayMode === "full" ? (
-                  activeLyricsLocationId ? (
-                    lyricsError ? (
-                      <div className="p-3 text-sm text-muted-foreground">{lyricsError}</div>
-                    ) : lyricsText === null ? (
-                      <LyricsLoadingSkeleton />
-                    ) : (
-                      <LyricsPanel
-                        title={activeLyricsChoice?.title ?? track.lyricsTitle}
-                        text={lyricsText}
-                        parsed={parsedLyrics}
-                        activeIndex={activeLyricIndex}
-                        choices={track.lyricsChoices ?? []}
-                        activeLocationId={activeLyricsLocationId}
-                        automatic={usingAutomaticLyrics}
-                        onChoiceChange={(locationId) => void changeLyricsChoice(locationId)}
-                      />
-                    )
-                  ) : (
-                    <div className="p-3 text-sm text-muted-foreground">{t("player.noLyrics")}</div>
-                  )
-                ) : (
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between px-2 py-1 text-xs text-muted-foreground">
-                      <span>{t("player.queued", { count: player.queue.length })}</span>
-                      <button
-                        className="rounded px-2 py-1 hover:bg-muted hover:text-foreground"
-                        onClick={player.clearQueue}
-                      >
-                        {t("player.clearQueue")}
-                      </button>
+        <div className="flex min-h-0 flex-1">
+          <div className="player-primary flex min-h-0 min-w-0 flex-1 flex-col lg:w-[400px] lg:flex-none">
+            <div className="player-main flex min-h-0 flex-1 flex-col px-4 pb-3">
+              {sidePanelOpen && !splitSidePanel ? (
+                <div className="animate-player-panel-enter flex h-full min-h-0 flex-col gap-3">
+                  <div
+                    data-player-drag-zone
+                    className="flex min-h-[64px] touch-none items-center gap-3 rounded-2xl border border-glass-border bg-glass-fill p-2 shadow-inner"
+                  >
+                    <CoverImage track={track} className="h-12 w-16 rounded-xl shadow-sm" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold">{track.title}</div>
+                      <div className="truncate text-xs text-muted-foreground" title={track.circle || track.workTitle}>
+                        {track.circle || track.workTitle}
+                      </div>
                     </div>
-                    {player.queue.map((item, index) => (
-                      <PlayerQueueRow
-                        key={item.queueItemId ?? `${item.locationId}:${index}`}
-                        item={item}
-                        index={index}
-                        currentIndex={player.currentIndex}
-                        queueLength={player.queue.length}
-                        onSelect={player.selectTrack}
-                        onMove={player.moveQueueItem}
-                        onRemove={player.removeQueueItem}
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-glass-border bg-background/55 shadow-inner dark:bg-background/40">
+                    {sidePanelContent}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex h-full min-h-0 flex-col items-center gap-3 pt-1">
+                  <div className="player-art-stage grid min-h-0 w-full flex-1 place-items-center">
+                    <button
+                      data-player-cover-shell
+                      className="player-art touch-manipulation rounded-[var(--player-radius-panel)] bg-glass-fill p-1.5 shadow-inner transition-transform duration-200 hover:scale-[1.015] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:hover:scale-100"
+                      onClick={handleCoverClick}
+                      onDoubleClick={isMobile ? undefined : openWorkDetail}
+                      title={t("player.openWorkTitle")}
+                      aria-label={t("player.openWork")}
+                    >
+                      <CoverImage
+                        track={track}
+                        className="h-full w-full rounded-[var(--player-radius-cover)] shadow-lg"
                       />
+                    </button>
+                  </div>
+                  <div data-player-title-block className="w-full min-w-0 shrink-0 space-y-0.5 text-center">
+                    <div className="truncate text-base font-semibold" title={track.title}>
+                      {track.title}
+                    </div>
+                    <div className="truncate text-sm text-muted-foreground" title={track.circle || track.workTitle}>
+                      {track.circle || track.workTitle}
+                    </div>
+                  </div>
+                  {parsedLyrics.timed && parsedLyrics.lines.length > 0 && (
+                    <button
+                      type="button"
+                      className="flex min-h-10 w-full shrink-0 items-center justify-center rounded-xl px-3 text-center text-sm font-medium text-primary transition-colors hover:bg-glass-hover"
+                      onClick={() => setSidePanel("lyrics")}
+                      data-player-no-drag
+                      aria-label={t("player.openLyrics")}
+                    >
+                      <span key={activeLyricIndex} className="animate-lyric-line line-clamp-2 leading-snug">
+                        {currentLyricLine || " "}
+                      </span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="player-controls shrink-0 space-y-3 border-t border-glass-border bg-background/55 px-4 pb-[calc(1.25rem+var(--safe-area-bottom))] pt-3 lg:bg-glass-fill lg:p-4">
+              <div className="relative flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span className="truncate">
+                  {player.currentIndex + 1} / {player.queue.length}
+                </span>
+                <button
+                  className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-primary/15 bg-card/55 px-2.5 py-1 hover:bg-muted"
+                  onClick={() => setIsSourceOpen((value) => !value)}
+                  data-player-no-drag
+                  aria-label={t("player.chooseSource")}
+                >
+                  <HardDrive className="h-3.5 w-3.5 shrink-0" />
+                  <span className="max-w-36 truncate">
+                    {currentLocation?.sourceName ||
+                      (currentLocation?.locationType
+                        ? t(`player.locationTypes.${currentLocation.locationType}`, {
+                            defaultValue: currentLocation.locationType,
+                          })
+                        : t("player.playbackSource"))}
+                  </span>
+                </button>
+                {isSourceOpen && (
+                  <div className="absolute bottom-8 right-0 z-20 w-60 rounded-lg border bg-card p-1.5 text-card-foreground shadow-xl">
+                    {availableLocations.map((location) => (
+                      <button
+                        key={`${location.locationId}:${location.locationType}`}
+                        className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-md px-2.5 text-left text-sm hover:bg-muted ${location.locationId === track.locationId ? "bg-secondary" : ""}`}
+                        onClick={() => {
+                          player.selectLocation(location.locationId);
+                          setIsSourceOpen(false);
+                        }}
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">
+                            {location.sourceName ||
+                              t(`player.locationTypes.${location.locationType}`, {
+                                defaultValue: location.locationType,
+                              })}
+                          </span>
+                          <span className="block text-xs text-muted-foreground">
+                            {t(`player.locationTypes.${location.locationType}`, {
+                              defaultValue: location.locationType,
+                            })}
+                          </span>
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {t(`player.availability.${location.availability}`, {
+                            defaultValue: location.availability,
+                          })}
+                        </span>
+                      </button>
                     ))}
                   </div>
                 )}
               </div>
-            </div>
-          ) : (
-            <div className={`flex h-full flex-col justify-center py-2 ${compactFullLayout ? "gap-1" : "gap-3"}`}>
-              <button
-                data-player-cover-shell
-                data-player-measure
-                className={`mx-auto w-full touch-manipulation rounded-[var(--player-radius-panel)] bg-glass-fill p-2 shadow-inner transition-[max-width,transform] duration-200 hover:scale-[1.015] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${compactFullLayout ? "max-w-[min(68vw,210px)]" : lyricsDisplayMode === "hidden" ? "max-w-[min(92vw,390px)] lg:max-w-[340px]" : "max-w-[min(86vw,340px)] lg:max-w-[282px]"}`}
-                onClick={handleCoverClick}
-                onDoubleClick={isMobile ? undefined : openWorkDetail}
-                title={t("player.openWorkTitle")}
-                aria-label={t("player.openWork")}
-              >
-                <CoverImage
-                  track={track}
-                  className="mx-auto aspect-[4/3] w-full rounded-[var(--player-radius-cover)] shadow-lg"
+              <div className="space-y-1">
+                <SeekBar
+                  currentTime={player.currentTime}
+                  duration={player.duration}
+                  progress={progress}
+                  onSeek={player.seekTo}
                 />
-              </button>
-              <div data-player-title-block data-player-measure className="min-w-0 max-w-full space-y-0.5 text-center">
-                <div
-                  className={`truncate font-semibold ${compactFullLayout ? "text-sm" : "text-base"}`}
-                  title={track.title}
-                >
-                  {track.title}
-                </div>
-                <div
-                  className={`truncate text-muted-foreground ${compactFullLayout ? "text-xs" : "text-sm"}`}
-                  title={track.circle || track.workTitle}
-                >
-                  {track.circle || track.workTitle}
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>{formatTime(player.currentTime)}</span>
+                  <span>{formatTime(player.duration)}</span>
                 </div>
               </div>
-              {lyricsDisplayMode === "preview" &&
-                lyricsPreviewRows > 0 &&
-                parsedLyrics.timed &&
-                parsedLyrics.lines.length > 0 && (
-                  <InlineLyricsPreview
-                    parsed={parsedLyrics}
-                    activeIndex={Math.max(0, activeLyricIndex)}
-                    rows={lyricsPreviewRows}
-                    onOpen={() => setLyricsDisplayMode("full")}
-                  />
-                )}
-            </div>
-          )}
-        </div>
 
-        <div className="shrink-0 space-y-4 border-t border-glass-border bg-background/55 px-4 pb-[calc(1.5rem+var(--safe-area-bottom))] pt-4 lg:bg-glass-fill lg:p-4">
-          <div className="relative flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span className="truncate">
-              {player.currentIndex + 1} / {player.queue.length}
-            </span>
-            <button
-              className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-primary/15 bg-card/55 px-2.5 py-1 hover:bg-muted"
-              onClick={() => setIsSourceOpen((value) => !value)}
-              data-player-no-drag
-              aria-label={t("player.chooseSource")}
-            >
-              <HardDrive className="h-3.5 w-3.5 shrink-0" />
-              <span className="max-w-36 truncate">
-                {currentLocation?.sourceName ||
-                  (currentLocation?.locationType
-                    ? t(`player.locationTypes.${currentLocation.locationType}`, {
-                        defaultValue: currentLocation.locationType,
-                      })
-                    : t("player.playbackSource"))}
-              </span>
-            </button>
-            {isSourceOpen && (
-              <div className="absolute bottom-8 right-0 z-20 w-60 rounded-lg border bg-card p-1.5 text-card-foreground shadow-xl">
-                {availableLocations.map((location) => (
-                  <button
-                    key={`${location.locationId}:${location.locationType}`}
-                    className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-md px-2.5 text-left text-sm hover:bg-muted ${location.locationId === track.locationId ? "bg-secondary" : ""}`}
-                    onClick={() => {
-                      player.selectLocation(location.locationId);
-                      setIsSourceOpen(false);
-                    }}
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium">
-                        {location.sourceName ||
-                          t(`player.locationTypes.${location.locationType}`, {
-                            defaultValue: location.locationType,
-                          })}
-                      </span>
-                      <span className="block text-xs text-muted-foreground">
-                        {t(`player.locationTypes.${location.locationType}`, {
-                          defaultValue: location.locationType,
-                        })}
-                      </span>
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {t(`player.availability.${location.availability}`, {
-                        defaultValue: location.availability,
-                      })}
-                    </span>
-                  </button>
-                ))}
+              <div className="flex items-center justify-center gap-2">
+                <Button
+                  className="h-11 w-11 rounded-full border-glass-border bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:bg-card/45 lg:h-10 lg:w-10"
+                  variant="outline"
+                  size="icon"
+                  onClick={player.previous}
+                  aria-label={t("player.previous")}
+                >
+                  <SkipBack className="h-4 w-4" />
+                </Button>
+                <Button
+                  className="h-11 w-11 rounded-full border-glass-border bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:bg-card/45 lg:h-10 lg:w-10"
+                  variant="outline"
+                  size="icon"
+                  onClick={player.seekBackward}
+                  aria-label={t("player.backward", { seconds: player.seekBackwardSeconds })}
+                >
+                  <SeekIcon direction="back" seconds={player.seekBackwardSeconds} />
+                </Button>
+                <Button
+                  className="h-14 w-14 rounded-full shadow-sm transition-[transform,box-shadow] hover:scale-[1.04] hover:shadow-lg active:scale-95 motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
+                  size="icon"
+                  onClick={player.togglePlay}
+                  aria-label={player.isPlaying ? t("player.pause") : t("player.play")}
+                  aria-busy={player.isPlaying && player.isBuffering}
+                  title={player.isPlaying && player.isBuffering ? t("common.loading") : undefined}
+                >
+                  {player.isPlaying && player.isBuffering ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : player.isPlaying ? (
+                    <Pause className="h-5 w-5" />
+                  ) : (
+                    <Play className="h-5 w-5" />
+                  )}
+                </Button>
+                <Button
+                  className="h-11 w-11 rounded-full border-glass-border bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:bg-card/45 lg:h-10 lg:w-10"
+                  variant="outline"
+                  size="icon"
+                  onClick={player.seekForward}
+                  aria-label={t("player.forward", { seconds: player.seekForwardSeconds })}
+                >
+                  <SeekIcon direction="forward" seconds={player.seekForwardSeconds} />
+                </Button>
+                <Button
+                  className="h-11 w-11 rounded-full border-glass-border bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:bg-card/45 lg:h-10 lg:w-10"
+                  variant="outline"
+                  size="icon"
+                  onClick={player.next}
+                  aria-label={t("player.next")}
+                >
+                  <SkipForward className="h-4 w-4" />
+                </Button>
               </div>
-            )}
-          </div>
-          <div className="space-y-1">
-            <SeekBar
-              currentTime={player.currentTime}
-              duration={player.duration}
-              progress={progress}
-              onSeek={player.seekTo}
-            />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>{formatTime(player.currentTime)}</span>
-              <span>{formatTime(player.duration)}</span>
-            </div>
-          </div>
 
-          <div className="flex items-center justify-center gap-2">
-            <Button
-              className="h-11 w-11 rounded-full border-glass-border bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:bg-card/45 lg:h-10 lg:w-10"
-              variant="outline"
-              size="icon"
-              onClick={player.previous}
-              aria-label={t("player.previous")}
-            >
-              <SkipBack className="h-4 w-4" />
-            </Button>
-            <Button
-              className="h-11 w-11 rounded-full border-glass-border bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:bg-card/45 lg:h-10 lg:w-10"
-              variant="outline"
-              size="icon"
-              onClick={player.seekBackward}
-              aria-label={t("player.backward", { seconds: player.seekBackwardSeconds })}
-            >
-              <SeekIcon direction="back" seconds={player.seekBackwardSeconds} />
-            </Button>
-            <Button
-              className="h-14 w-14 rounded-full shadow-sm transition-[transform,box-shadow] hover:scale-[1.04] hover:shadow-lg active:scale-95 motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
-              size="icon"
-              onClick={player.togglePlay}
-              aria-label={player.isPlaying ? t("player.pause") : t("player.play")}
-              aria-busy={player.isPlaying && player.isBuffering}
-              title={player.isPlaying && player.isBuffering ? t("common.loading") : undefined}
-            >
-              {player.isPlaying && player.isBuffering ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : player.isPlaying ? (
-                <Pause className="h-5 w-5" />
-              ) : (
-                <Play className="h-5 w-5" />
-              )}
-            </Button>
-            <Button
-              className="h-11 w-11 rounded-full border-glass-border bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:bg-card/45 lg:h-10 lg:w-10"
-              variant="outline"
-              size="icon"
-              onClick={player.seekForward}
-              aria-label={t("player.forward", { seconds: player.seekForwardSeconds })}
-            >
-              <SeekIcon direction="forward" seconds={player.seekForwardSeconds} />
-            </Button>
-            <Button
-              className="h-11 w-11 rounded-full border-glass-border bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:bg-card/45 lg:h-10 lg:w-10"
-              variant="outline"
-              size="icon"
-              onClick={player.next}
-              aria-label={t("player.next")}
-            >
-              <SkipForward className="h-4 w-4" />
-            </Button>
-          </div>
+              <div className="relative grid grid-cols-6 gap-1.5 lg:gap-2">
+                <Button
+                  className="h-11 rounded-full border-primary/15 lg:h-8"
+                  variant={player.mode === "order" ? "outline" : "secondary"}
+                  size="sm"
+                  onClick={player.cycleMode}
+                  aria-label={t("player.changeMode", { mode: modeLabel })}
+                  title={modeLabel}
+                >
+                  {player.mode === "order" ? (
+                    <ListOrdered className="h-4 w-4" />
+                  ) : player.mode === "loop" ? (
+                    <Repeat className="h-4 w-4" />
+                  ) : (
+                    <Repeat1 className="h-4 w-4" />
+                  )}
+                </Button>
 
-          <div className="relative grid grid-cols-5 gap-2">
-            <Button
-              className="h-11 rounded-full border-primary/15 lg:h-8"
-              variant={player.mode === "order" ? "outline" : "secondary"}
-              size="sm"
-              onClick={player.cycleMode}
-              aria-label={t("player.changeMode", { mode: modeLabel })}
-              title={modeLabel}
-            >
-              {player.mode === "order" ? (
-                <ListOrdered className="h-4 w-4" />
-              ) : player.mode === "loop" ? (
-                <Repeat className="h-4 w-4" />
-              ) : (
-                <Repeat1 className="h-4 w-4" />
-              )}
-            </Button>
-
-            <Button
-              className="h-11 rounded-full border-primary/15 lg:h-8"
-              variant={panel === "queue" ? "secondary" : "outline"}
-              size="sm"
-              onClick={() => {
-                setLyricsDisplayMode("hidden");
-                setPanel((value) => (value === "queue" ? null : "queue"));
-              }}
-              aria-label={t("player.queue")}
-              title={t("player.queue")}
-            >
-              <ListMusic className="h-4 w-4" />
-            </Button>
-            <Button
-              data-compact-control
-              className="h-11 rounded-full border-primary/15 lg:h-8"
-              variant={lyricsDisplayMode === "hidden" ? "outline" : "secondary"}
-              size="sm"
-              onClick={cycleLyricsDisplayMode}
-              disabled={!activeLyricsLocationId}
-              aria-label={
-                lyricsDisplayMode === "hidden"
-                  ? t("player.lyricsHiddenShowPreview")
-                  : lyricsDisplayMode === "preview"
-                    ? t("player.lyricsPreviewView")
-                    : t("player.lyricsViewingHide")
-              }
-              title={
-                !activeLyricsLocationId
-                  ? t("player.noMatchedLyrics")
-                  : lyricsDisplayMode === "hidden"
-                    ? t("player.showLyricsPreview")
-                    : lyricsDisplayMode === "preview"
-                      ? t("player.viewLyrics")
-                      : t("player.hideLyrics")
-              }
-            >
-              {lyricsDisplayMode === "hidden" ? (
-                <Captions className="h-4 w-4" />
-              ) : lyricsDisplayMode === "preview" ? (
-                <PanelBottom className="h-4 w-4" />
-              ) : (
-                <Maximize2 className="h-4 w-4" />
-              )}
-            </Button>
-            <Button
-              ref={sleepButtonRef}
-              className="h-11 rounded-full border-primary/15 lg:h-8"
-              variant={player.sleepTimer ? "secondary" : "outline"}
-              size="sm"
-              onClick={() => setIsSleepOpen((value) => !value)}
-              aria-label={t("player.sleepTimer")}
-              title={t("player.sleepTimer")}
-            >
-              <Timer className="h-4 w-4" />
-              {player.sleepTimer && (
-                <span className="text-3xs">
-                  {player.sleepTimer.waitingForTrackEnd
-                    ? t("player.track")
-                    : formatSleepRemaining(player.sleepRemainingSeconds)}
-                </span>
-              )}
-            </Button>
-
-            <AnchoredPopover
-              open={isSleepOpen}
-              anchorRef={sleepButtonRef}
-              className="w-[min(14rem,calc(100vw-1.5rem))] rounded-lg border bg-card p-0 text-card-foreground shadow-xl"
-            >
-              <div ref={sleepPopoverRef} className="p-2">
-                <div className="flex items-center justify-between px-2 pb-2 text-xs font-semibold text-muted-foreground">
-                  <span>{t("player.sleepTimer")}</span>
+                <Button
+                  className="h-11 rounded-full border-primary/15 lg:h-8"
+                  variant={sidePanel === "queue" ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => toggleSidePanel("queue")}
+                  aria-pressed={sidePanel === "queue"}
+                  aria-label={t("player.queue")}
+                  title={t("player.queue")}
+                >
+                  <ListMusic className="h-4 w-4" />
+                </Button>
+                <Button
+                  className="h-11 rounded-full border-primary/15 lg:h-8"
+                  variant={sidePanel === "lyrics" ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => toggleSidePanel("lyrics")}
+                  disabled={!activeLyricsLocationId}
+                  aria-pressed={sidePanel === "lyrics"}
+                  aria-label={sidePanel === "lyrics" ? t("player.hideLyrics") : t("player.viewLyrics")}
+                  title={
+                    !activeLyricsLocationId
+                      ? t("player.noMatchedLyrics")
+                      : sidePanel === "lyrics"
+                        ? t("player.hideLyrics")
+                        : t("player.viewLyrics")
+                  }
+                >
+                  <Captions className="h-4 w-4" />
+                </Button>
+                <Button
+                  className="h-11 rounded-full border-primary/15 lg:h-8"
+                  variant={screenLyrics.open ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => void toggleScreenLyrics()}
+                  disabled={!screenLyrics.open && (!screenLyrics.supported || !parsedLyrics.timed)}
+                  aria-pressed={screenLyrics.open}
+                  aria-label={screenLyrics.open ? t("player.closeScreenLyrics") : t("player.screenLyrics")}
+                  title={
+                    !screenLyrics.supported
+                      ? t("player.screenLyricsUnsupported")
+                      : !parsedLyrics.timed && !screenLyrics.open
+                        ? t("player.noMatchedLyrics")
+                        : screenLyrics.open
+                          ? t("player.closeScreenLyrics")
+                          : t("player.screenLyrics")
+                  }
+                >
+                  <PictureInPicture2 className="h-4 w-4" />
+                </Button>
+                <Button
+                  ref={sleepButtonRef}
+                  className="h-11 rounded-full border-primary/15 lg:h-8"
+                  variant={player.sleepTimer ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => setIsSleepOpen((value) => !value)}
+                  aria-label={t("player.sleepTimer")}
+                  title={t("player.sleepTimer")}
+                >
+                  <Timer className="h-4 w-4" />
                   {player.sleepTimer && (
-                    <span>
+                    <span className="text-3xs">
                       {player.sleepTimer.waitingForTrackEnd
-                        ? t("player.finishingTrack")
+                        ? t("player.track")
                         : formatSleepRemaining(player.sleepRemainingSeconds)}
                     </span>
                   )}
-                </div>
-                <label className="mb-1 flex min-h-10 cursor-pointer items-center justify-between gap-3 rounded-md px-2 text-sm hover:bg-muted">
-                  <span>
-                    <span className="block font-medium">{t("player.finishTrack")}</span>
-                    <span className="block text-xs text-muted-foreground">{t("player.afterTimerExpires")}</span>
-                  </span>
-                  <Switch
-                    checked={finishCurrentTrack}
-                    onCheckedChange={(enabled) => {
-                      setFinishCurrentTrack(enabled);
-                      if (player.sleepTimer) player.setSleepFinishCurrentTrack(enabled);
-                    }}
-                    aria-label={t("player.finishTrack")}
-                  />
-                </label>
-                {[30, 60].map((minutes) => (
-                  <button
-                    key={minutes}
-                    className="flex h-9 w-full items-center rounded-md px-2 text-sm hover:bg-muted"
-                    onClick={() => {
-                      player.setSleepTimerMinutes(minutes, finishCurrentTrack);
-                      setIsSleepOpen(false);
-                    }}
-                  >
-                    {t("player.minutesCount", { count: minutes })}
-                  </button>
-                ))}
-                <button
-                  className="flex h-9 w-full items-center rounded-md px-2 text-sm hover:bg-muted"
-                  onClick={() => setIsCustomSleepOpen((value) => !value)}
-                  aria-expanded={isCustomSleepOpen}
+                </Button>
+
+                <AnchoredPopover
+                  open={isSleepOpen}
+                  anchorRef={sleepButtonRef}
+                  className="w-[min(14rem,calc(100vw-1.5rem))] rounded-lg border bg-card p-0 text-card-foreground shadow-xl"
                 >
-                  {t("player.custom")}
-                </button>
-                {isCustomSleepOpen && (
-                  <div className="flex items-center gap-2 px-2 py-2">
-                    <label className="min-w-0 flex-1 text-xs text-muted-foreground">
-                      {t("player.minutes")}
-                      <input
-                        className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
-                        type="number"
-                        min={1}
-                        max={1440}
-                        step={1}
-                        inputMode="numeric"
-                        value={customSleepMinutes}
-                        onChange={(event) => setCustomSleepMinutes(event.currentTarget.value)}
-                        aria-label={t("player.customSleepMinutes")}
+                  <div ref={sleepPopoverRef} className="p-2">
+                    <div className="flex items-center justify-between px-2 pb-2 text-xs font-semibold text-muted-foreground">
+                      <span>{t("player.sleepTimer")}</span>
+                      {player.sleepTimer && (
+                        <span>
+                          {player.sleepTimer.waitingForTrackEnd
+                            ? t("player.finishingTrack")
+                            : formatSleepRemaining(player.sleepRemainingSeconds)}
+                        </span>
+                      )}
+                    </div>
+                    <label className="mb-1 flex min-h-10 cursor-pointer items-center justify-between gap-3 rounded-md px-2 text-sm hover:bg-muted">
+                      <span>
+                        <span className="block font-medium">{t("player.finishTrack")}</span>
+                        <span className="block text-xs text-muted-foreground">{t("player.afterTimerExpires")}</span>
+                      </span>
+                      <Switch
+                        checked={finishCurrentTrack}
+                        onCheckedChange={(enabled) => {
+                          setFinishCurrentTrack(enabled);
+                          if (player.sleepTimer) player.setSleepFinishCurrentTrack(enabled);
+                        }}
+                        aria-label={t("player.finishTrack")}
                       />
                     </label>
-                    <Button
-                      className="mt-5"
-                      size="sm"
-                      disabled={!validSleepMinutes(customSleepMinutes)}
-                      onClick={() => {
-                        player.setSleepTimerMinutes(Number(customSleepMinutes), finishCurrentTrack);
-                        setIsSleepOpen(false);
-                      }}
+                    {[30, 60].map((minutes) => (
+                      <button
+                        key={minutes}
+                        className="flex h-9 w-full items-center rounded-md px-2 text-sm hover:bg-muted"
+                        onClick={() => {
+                          player.setSleepTimerMinutes(minutes, finishCurrentTrack);
+                          setIsSleepOpen(false);
+                        }}
+                      >
+                        {t("player.minutesCount", { count: minutes })}
+                      </button>
+                    ))}
+                    <button
+                      className="flex h-9 w-full items-center rounded-md px-2 text-sm hover:bg-muted"
+                      onClick={() => setIsCustomSleepOpen((value) => !value)}
+                      aria-expanded={isCustomSleepOpen}
                     >
-                      {t("player.setTimer")}
-                    </Button>
+                      {t("player.custom")}
+                    </button>
+                    {isCustomSleepOpen && (
+                      <div className="flex items-center gap-2 px-2 py-2">
+                        <label className="min-w-0 flex-1 text-xs text-muted-foreground">
+                          {t("player.minutes")}
+                          <input
+                            className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+                            type="number"
+                            min={1}
+                            max={1440}
+                            step={1}
+                            inputMode="numeric"
+                            value={customSleepMinutes}
+                            onChange={(event) => setCustomSleepMinutes(event.currentTarget.value)}
+                            aria-label={t("player.customSleepMinutes")}
+                          />
+                        </label>
+                        <Button
+                          className="mt-5"
+                          size="sm"
+                          disabled={!validSleepMinutes(customSleepMinutes)}
+                          onClick={() => {
+                            player.setSleepTimerMinutes(Number(customSleepMinutes), finishCurrentTrack);
+                            setIsSleepOpen(false);
+                          }}
+                        >
+                          {t("player.setTimer")}
+                        </Button>
+                      </div>
+                    )}
+                    {player.sleepTimer && (
+                      <button
+                        className="mt-1 flex h-9 w-full items-center rounded-md px-2 text-sm text-destructive hover:bg-muted"
+                        onClick={() => {
+                          player.clearSleepTimer();
+                          setIsSleepOpen(false);
+                        }}
+                      >
+                        <X className="mr-2 h-4 w-4" /> {t("player.cancelTimer")}
+                      </button>
+                    )}
                   </div>
-                )}
-                {player.sleepTimer && (
-                  <button
-                    className="mt-1 flex h-9 w-full items-center rounded-md px-2 text-sm text-destructive hover:bg-muted"
-                    onClick={() => {
-                      player.clearSleepTimer();
-                      setIsSleepOpen(false);
-                    }}
-                  >
-                    <X className="mr-2 h-4 w-4" /> {t("player.cancelTimer")}
-                  </button>
-                )}
+                </AnchoredPopover>
+
+                <Button
+                  ref={moreButtonRef}
+                  className="h-11 rounded-full border-primary/15 lg:h-8"
+                  variant={player.playbackRate !== 1 || player.compatibilityPlaybackEnabled ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => setIsMoreOpen((value) => !value)}
+                  aria-label={t("player.moreOptions")}
+                  aria-expanded={isMoreOpen}
+                  aria-haspopup="dialog"
+                  title={t("player.moreOptions")}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+
+                <AnchoredPopover
+                  open={isMoreOpen}
+                  anchorRef={moreButtonRef}
+                  onOpenChange={setIsMoreOpen}
+                  floatingLayer
+                  ariaLabel={t("player.moreOptions")}
+                  className="w-[min(19rem,calc(100vw-1.5rem))] rounded-lg border bg-card p-3 text-card-foreground shadow-xl"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 px-1 text-xs font-semibold text-muted-foreground">
+                      <Gauge className="h-4 w-4" />
+                      <span>{t("player.playbackSpeed")}</span>
+                    </div>
+                    <FloatingSelect
+                      value={String(player.playbackRate)}
+                      options={[0.75, 1, 1.25, 1.5, 2].map((rate) => ({
+                        value: String(rate),
+                        label: `${rate}×`,
+                      }))}
+                      onValueChange={(value) => player.setPlaybackRate(Number(value))}
+                      ariaLabel={t("player.playbackSpeed")}
+                      className="h-10"
+                    />
+
+                    <div className="flex items-center gap-2 px-1 text-xs font-semibold text-muted-foreground">
+                      <RefreshCw className="h-4 w-4" />
+                      <span>{t("player.compatibility")}</span>
+                    </div>
+                    <FloatingSelect
+                      value={player.playbackCompatibilityScope}
+                      options={[
+                        { value: "off", label: t("player.directPlayback") },
+                        { value: "track", label: t("player.onlyCurrentTrack") },
+                        { value: "queue", label: t("player.currentQueue") },
+                        { value: "always", label: t("player.alwaysEnabled") },
+                      ]}
+                      onValueChange={(value) => {
+                        if (isPlaybackCompatibilityScope(value)) player.setPlaybackCompatibility(value);
+                      }}
+                      ariaLabel={t("player.compatibilityScope")}
+                      disabled={!track || (track.locationType !== "local" && track.locationType !== "cache")}
+                      className="h-10"
+                    />
+                  </div>
+                </AnchoredPopover>
               </div>
-            </AnchoredPopover>
-
-            <Button
-              ref={moreButtonRef}
-              data-compact-control
-              className="h-11 rounded-full border-primary/15 lg:h-8"
-              variant={player.playbackRate !== 1 || player.compatibilityPlaybackEnabled ? "secondary" : "outline"}
-              size="sm"
-              onClick={() => setIsMoreOpen((value) => !value)}
-              aria-label={t("player.moreOptions")}
-              aria-expanded={isMoreOpen}
-              aria-haspopup="dialog"
-              title={t("player.moreOptions")}
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-
-            <AnchoredPopover
-              open={isMoreOpen}
-              anchorRef={moreButtonRef}
-              onOpenChange={setIsMoreOpen}
-              floatingLayer
-              ariaLabel={t("player.moreOptions")}
-              className="w-[min(19rem,calc(100vw-1.5rem))] rounded-lg border bg-card p-3 text-card-foreground shadow-xl"
-            >
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 px-1 text-xs font-semibold text-muted-foreground">
-                  <Gauge className="h-4 w-4" />
-                  <span>{t("player.playbackSpeed")}</span>
-                </div>
-                <FloatingSelect
-                  value={String(player.playbackRate)}
-                  options={[0.75, 1, 1.25, 1.5, 2].map((rate) => ({
-                    value: String(rate),
-                    label: `${rate}×`,
-                  }))}
-                  onValueChange={(value) => player.setPlaybackRate(Number(value))}
-                  ariaLabel={t("player.playbackSpeed")}
-                  className="h-10"
-                />
-
-                <div className="flex items-center gap-2 px-1 text-xs font-semibold text-muted-foreground">
-                  <RefreshCw className="h-4 w-4" />
-                  <span>{t("player.compatibility")}</span>
-                </div>
-                <FloatingSelect
-                  value={player.playbackCompatibilityScope}
-                  options={[
-                    { value: "off", label: t("player.directPlayback") },
-                    { value: "track", label: t("player.onlyCurrentTrack") },
-                    { value: "queue", label: t("player.currentQueue") },
-                    { value: "always", label: t("player.alwaysEnabled") },
-                  ]}
-                  onValueChange={(value) => {
-                    if (isPlaybackCompatibilityScope(value)) player.setPlaybackCompatibility(value);
-                  }}
-                  ariaLabel={t("player.compatibilityScope")}
-                  disabled={!track || (track.locationType !== "local" && track.locationType !== "cache")}
-                  className="h-10"
-                />
-              </div>
-            </AnchoredPopover>
+            </div>
           </div>
+          {splitSidePanel && (
+            <aside className="animate-player-panel-enter flex min-h-0 min-w-0 flex-1 flex-col border-l border-glass-border">
+              <div className="flex h-12 shrink-0 items-center gap-2 px-3">
+                <div className={segmentedListClassName("min-w-0")}>
+                  <button
+                    type="button"
+                    className={segmentedItemClassName(sidePanel === "lyrics", "h-7 text-xs")}
+                    aria-pressed={sidePanel === "lyrics"}
+                    disabled={!activeLyricsLocationId}
+                    onClick={() => setSidePanel("lyrics")}
+                  >
+                    <Captions className="h-3.5 w-3.5" />
+                    {t("player.lyrics")}
+                  </button>
+                  <button
+                    type="button"
+                    className={segmentedItemClassName(sidePanel === "queue", "h-7 text-xs")}
+                    aria-pressed={sidePanel === "queue"}
+                    onClick={() => setSidePanel("queue")}
+                  >
+                    <ListMusic className="h-3.5 w-3.5" />
+                    {t("player.queue")}
+                  </button>
+                </div>
+                <Button
+                  className="ml-auto h-8 w-8 rounded-full"
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setSidePanel(null)}
+                  aria-label={t("player.closePanel")}
+                  title={t("player.closePanel")}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-hidden">{sidePanelContent}</div>
+            </aside>
+          )}
         </div>
       </div>
     </section>
@@ -2946,24 +2952,6 @@ function useIsMobilePlayer() {
   }, []);
 
   return isMobile;
-}
-
-function useDesktopFullPlayerHeight(isMobile: boolean) {
-  const [height, setHeight] = useState(() => desktopFullPlayerHeight());
-
-  useEffect(() => {
-    const update = () => setHeight(desktopFullPlayerHeight());
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, [isMobile]);
-
-  return height;
-}
-
-function desktopFullPlayerHeight() {
-  const viewportHeight = window.innerHeight;
-  return Math.round(Math.min(720, Math.max(440, viewportHeight * 0.64)));
 }
 
 function safeAreaBottom() {
@@ -3148,60 +3136,6 @@ type ParsedLyrics = {
   lines: TimedLyricLine[];
 };
 
-function InlineLyricsPreview({
-  parsed,
-  activeIndex,
-  rows,
-  onOpen,
-}: {
-  parsed: ParsedLyrics;
-  activeIndex: number;
-  rows: number;
-  onOpen: () => void;
-}) {
-  const { t } = useTranslation();
-  const visibleRows = Math.max(1, rows);
-  const activeOffset = Math.floor(visibleRows / 2);
-  const firstVisibleIndex = Math.max(
-    0,
-    Math.min(activeIndex - activeOffset, Math.max(0, parsed.lines.length - visibleRows)),
-  );
-  return (
-    <button
-      className="mx-auto w-full max-w-[min(86vw,340px)] shrink-0 overflow-hidden rounded-xl bg-background/45 px-4 text-center shadow-inner lg:max-w-[282px]"
-      style={{ height: visibleRows * LYRIC_PREVIEW_ROW_HEIGHT }}
-      onClick={onOpen}
-      data-player-no-drag
-      data-visible-rows={visibleRows}
-      aria-label={t("player.openLyrics")}
-    >
-      <div
-        className="will-change-transform transition-transform duration-500 ease-out"
-        style={{ transform: `translateY(${-firstVisibleIndex * LYRIC_PREVIEW_ROW_HEIGHT}px)` }}
-      >
-        {parsed.lines.map((line, index) => {
-          const visible = index >= firstVisibleIndex && index < firstVisibleIndex + visibleRows;
-          return (
-            <div
-              key={`${line.time}:${index}`}
-              data-lyric-index={index}
-              className={`lyric-preview-line flex h-7 items-center justify-center truncate transition-[color,opacity,font-size] duration-300 ${
-                index === activeIndex
-                  ? "text-sm font-semibold text-primary opacity-100"
-                  : visible
-                    ? "text-xs text-muted-foreground opacity-70"
-                    : "text-xs text-muted-foreground opacity-0"
-              }`}
-            >
-              {line.text || " "}
-            </div>
-          );
-        })}
-      </div>
-    </button>
-  );
-}
-
 function LyricsPanel({
   title,
   text,
@@ -3210,7 +3144,9 @@ function LyricsPanel({
   choices,
   activeLocationId,
   automatic,
+  large = false,
   onChoiceChange,
+  onSeek,
 }: {
   title: string;
   text: string;
@@ -3219,54 +3155,110 @@ function LyricsPanel({
   choices: LyricsChoice[];
   activeLocationId: number;
   automatic: boolean;
+  large?: boolean;
   onChoiceChange: (locationId: number | null) => void;
+  onSeek: (seconds: number) => void;
 }) {
-  const activeRef = useRef<HTMLDivElement | null>(null);
+  const { t } = useTranslation();
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const activeRef = useRef<HTMLButtonElement | null>(null);
+  const manualScrollUntilRef = useRef(0);
+  const [following, setFollowing] = useState(true);
+
+  const centerActiveLine = useCallback((behavior: ScrollBehavior) => {
+    const scroller = scrollerRef.current;
+    const line = activeRef.current;
+    if (!scroller || !line) return;
+    const top = line.offsetTop - scroller.clientHeight / 2 + line.clientHeight / 2;
+    scroller.scrollTo({ top: Math.max(0, top), behavior });
+  }, []);
 
   useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [activeIndex]);
+    if (!following) return;
+    centerActiveLine("smooth");
+  }, [activeIndex, centerActiveLine, following]);
+
+  useEffect(() => {
+    centerActiveLine("auto");
+  }, [centerActiveLine, text]);
+
+  useEffect(() => {
+    if (following) return;
+    const timer = window.setInterval(() => {
+      if (Date.now() >= manualScrollUntilRef.current) setFollowing(true);
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [following]);
+
+  const noteManualScroll = () => {
+    manualScrollUntilRef.current = Date.now() + 4000;
+    setFollowing(false);
+  };
+
+  const selector = (
+    <LyricsSourceSelector
+      title={title}
+      choices={choices}
+      activeLocationId={activeLocationId}
+      automatic={automatic}
+      onChoiceChange={onChoiceChange}
+    />
+  );
 
   if (!parsed.timed) {
     return (
-      <div className="space-y-3 p-3">
-        <LyricsSourceSelector
-          title={title}
-          choices={choices}
-          activeLocationId={activeLocationId}
-          automatic={automatic}
-          onChoiceChange={onChoiceChange}
-        />
-        <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">{text}</pre>
+      <div className="app-scroll h-full space-y-3 overflow-auto p-3">
+        {selector}
+        <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed">{text}</pre>
       </div>
     );
   }
 
   return (
-    <div className="space-y-3 p-3">
-      <LyricsSourceSelector
-        title={title}
-        choices={choices}
-        activeLocationId={activeLocationId}
-        automatic={automatic}
-        onChoiceChange={onChoiceChange}
-      />
-      <div className="space-y-1 py-12 text-center">
-        {parsed.lines.map((line, index) => {
-          const active = index === activeIndex;
-          return (
-            <div
-              key={`${line.time}:${index}`}
-              ref={active ? activeRef : undefined}
-              className={`rounded-md px-2 py-1.5 text-sm leading-relaxed transition-all duration-300 ${
-                active ? "bg-primary/10 text-base font-semibold text-primary" : "text-muted-foreground"
-              }`}
-            >
-              {line.text || " "}
-            </div>
-          );
-        })}
+    <div className="relative flex h-full min-h-0 flex-col">
+      <div className="shrink-0 px-3 pt-2">{selector}</div>
+      <div
+        ref={scrollerRef}
+        className="lyrics-scroller app-scroll relative min-h-0 flex-1 overflow-auto px-3"
+        onWheel={noteManualScroll}
+        onTouchMove={noteManualScroll}
+      >
+        <div className="py-[40%] text-center">
+          {parsed.lines.map((line, index) => {
+            const active = index === activeIndex;
+            return (
+              <button
+                key={`${line.time}:${index}`}
+                ref={active ? activeRef : undefined}
+                type="button"
+                data-lyric-index={index}
+                aria-current={active ? "true" : undefined}
+                className={`block w-full rounded-lg px-3 text-center leading-relaxed transition-[color,opacity,transform] duration-300 hover:bg-glass-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none ${
+                  large ? "py-2 text-lg" : "py-1.5 text-base"
+                } ${active ? "font-semibold text-primary" : "text-muted-foreground opacity-70 hover:opacity-100"}`}
+                onClick={() => {
+                  onSeek(line.time);
+                  setFollowing(true);
+                }}
+                title={t("player.seekToLine")}
+              >
+                {line.text || "\u00a0"}
+              </button>
+            );
+          })}
+        </div>
       </div>
+      {!following && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+          <button
+            type="button"
+            className="pointer-events-auto rounded-full border border-glass-border bg-card/90 px-3 py-1 text-xs font-medium shadow-md backdrop-blur hover:text-primary"
+            onClick={() => setFollowing(true)}
+          >
+            {t("player.followLyrics")}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,30 +1,40 @@
 import { FormEvent, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Crown,
-  Plus,
-  RefreshCw,
-  Save,
-  Shield,
-  Trash2,
-  UserCog,
-  UserRound,
-  Users,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw, Save, Search, Trash2, UserRound } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Input, NativeSelect } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { formatDateTime } from "@/i18n/format";
+import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type ManagedUser } from "@/lib/api";
 
 const roles: ManagedUser["role"][] = ["user", "admin", "super_admin"];
-const USER_PAGE_SIZE = 8;
+const USER_PAGE_SIZE = 12;
+const WIDE_LAYOUT_QUERY = "(min-width: 1280px)";
+
+type UserFormPayload = {
+  username: string;
+  displayName: string;
+  role: ManagedUser["role"];
+  password: string;
+  enabled: boolean;
+};
+
+function useWideLayout() {
+  const [wide, setWide] = useState(() => window.matchMedia(WIDE_LAYOUT_QUERY).matches);
+  useEffect(() => {
+    const media = window.matchMedia(WIDE_LAYOUT_QUERY);
+    const update = () => setWide(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  return wide;
+}
 
 export function UsersPage({
   currentUserId,
@@ -39,7 +49,9 @@ export function UsersPage({
 }) {
   const toast = useToast();
   const { t } = useTranslation();
+  const isWide = useWideLayout();
   const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [query, setQuery] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [userPage, setUserPage] = useState(1);
@@ -50,13 +62,24 @@ export function UsersPage({
   const requestSeq = useRef(0);
 
   const selectedUser = useMemo(() => users.find((user) => user.id === selectedUserId) ?? null, [selectedUserId, users]);
-  const enabledCount = users.filter((user) => user.enabled).length;
+  const filteredUsers = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return users;
+    return users.filter(
+      (user) => user.username.toLowerCase().includes(needle) || user.displayName.toLowerCase().includes(needle),
+    );
+  }, [query, users]);
   const adminCount = users.filter((user) => user.role === "admin" || user.role === "super_admin").length;
-  const superAdminCount = users.filter((user) => user.role === "super_admin").length;
-  const totalPages = Math.max(1, Math.ceil(users.length / USER_PAGE_SIZE));
+  const disabledCount = users.filter((user) => !user.enabled).length;
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / USER_PAGE_SIZE));
   const currentPage = Math.min(userPage, totalPages);
-  const visibleUsers = users.slice((currentPage - 1) * USER_PAGE_SIZE, currentPage * USER_PAGE_SIZE);
+  const visibleUsers = filteredUsers.slice((currentPage - 1) * USER_PAGE_SIZE, currentPage * USER_PAGE_SIZE);
   const initialLoading = isLoading && !hasLoaded;
+  const summary = [
+    t("admin.summaryAccounts", { count: users.length }),
+    t("admin.summaryAdmins", { count: adminCount }),
+    ...(disabledCount > 0 ? [t("admin.summaryDisabled", { count: disabledCount })] : []),
+  ].join(" · ");
 
   const refresh = async () => {
     const seq = ++requestSeq.current;
@@ -67,9 +90,9 @@ export function UsersPage({
       if (seq !== requestSeq.current) return;
       setUsers(nextUsers);
       setHasLoaded(true);
-      if (selectedUserId !== null && !nextUsers.some((user) => user.id === selectedUserId)) {
-        setSelectedUserId(null);
-      }
+      setSelectedUserId((current) =>
+        current !== null && !nextUsers.some((user) => user.id === current) ? null : current,
+      );
     } catch (err) {
       if (seq !== requestSeq.current) return;
       setLoadError(t("admin.loadFailed"));
@@ -102,7 +125,7 @@ export function UsersPage({
   };
 
   const updateUser = async (payload: UserFormPayload) => {
-    if (!selectedUser) return;
+    if (!selectedUser) return false;
     setIsSaving(true);
     try {
       const updatePayload: Parameters<typeof api.updateUser>[1] = {
@@ -116,8 +139,10 @@ export function UsersPage({
       const updated = await api.updateUser(selectedUser.id, updatePayload);
       setUsers((items) => items.map((item) => (item.id === updated.id ? updated : item)));
       toast.success(t("admin.updatedToast"));
+      return true;
     } catch (err) {
       toast.notify(toastFromError(err, t("admin.saveFailed")));
+      return false;
     } finally {
       setIsSaving(false);
     }
@@ -137,41 +162,32 @@ export function UsersPage({
     }
   };
 
+  const editor = (layout: "panel" | "dialog") => {
+    if (!selectedUser) return null;
+    return (
+      <UserEditor
+        key={`${selectedUser.id}:${selectedUser.updatedAt}`}
+        layout={layout}
+        user={selectedUser}
+        currentUserId={currentUserId}
+        isSuperAdmin={isSuperAdmin}
+        readOnly={readOnly}
+        isSaving={isSaving}
+        onSave={updateUser}
+        onDelete={deleteUser}
+        onClose={() => setSelectedUserId(null)}
+      />
+    );
+  };
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {!embedded && (
-        <section className="rounded-lg border bg-card p-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">{t("admin.heading")}</p>
-              <h2 className="mt-1 text-2xl font-semibold">{t("admin.users")}</h2>
-              <p className="mt-2 text-sm text-muted-foreground">{t("admin.subtitle")}</p>
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-sm sm:flex">
-              {initialLoading ? (
-                <UserMetricSkeletons count={3} />
-              ) : (
-                <>
-                  <UserMetric
-                    icon={<Users className="h-4 w-4" />}
-                    label={t("admin.users")}
-                    value={String(users.length)}
-                  />
-                  <UserMetric
-                    icon={<Shield className="h-4 w-4" />}
-                    label={t("admin.enabled")}
-                    value={String(enabledCount)}
-                  />
-                  <UserMetric
-                    icon={<Crown className="h-4 w-4" />}
-                    label={t("admin.admins")}
-                    value={String(adminCount)}
-                  />
-                </>
-              )}
-            </div>
-          </div>
-        </section>
+        <header>
+          <p className="text-sm font-medium text-muted-foreground">{t("admin.heading")}</p>
+          <h2 className="mt-1 text-2xl font-semibold">{t("admin.users")}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t("admin.subtitle")}</p>
+        </header>
       )}
 
       {loadError && (
@@ -190,189 +206,110 @@ export function UsersPage({
       )}
 
       <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <section className="min-w-0 space-y-4">
-          <Card className="overflow-hidden">
-            <CardContent className="space-y-3 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold">{t("admin.userDirectory")}</h2>
-                  <p className="text-sm text-muted-foreground">
-                    {t("admin.pageOf", { page: currentPage, total: totalPages, count: users.length })}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={isLoading}>
-                    <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-                    {t("admin.refresh")}
-                  </Button>
-                  <Button size="sm" onClick={() => setIsCreateModalOpen(true)} disabled={readOnly}>
-                    <Plus className="h-4 w-4" />
-                    {t("admin.addUser")}
-                  </Button>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setUserPage((page) => Math.max(1, page - 1))}
-                  disabled={currentPage <= 1}
-                  aria-label={t("admin.previousUsers")}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1">
-                  {initialLoading ? (
-                    <UserBarSkeleton />
-                  ) : (
-                    visibleUsers.map((user) => (
-                      <Button
-                        key={user.id}
-                        type="button"
-                        variant="outline"
-                        className={`h-14 min-w-[160px] justify-start px-2 text-left ${
-                          selectedUserId === user.id
-                            ? "border-primary bg-primary/10 hover:bg-primary/10"
-                            : "bg-background"
-                        }`}
-                        onClick={() => setSelectedUserId(user.id)}
-                      >
-                        <UserAvatar user={user} />
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-semibold">
-                            {user.displayName || user.username}
-                          </span>
-                          <span className="block truncate text-xs text-muted-foreground">@{user.username}</span>
-                        </span>
-                      </Button>
-                    ))
-                  )}
-                  {!initialLoading && visibleUsers.length === 0 && (
-                    <div className="grid min-h-14 flex-1 place-items-center rounded-md border border-dashed text-sm text-muted-foreground">
-                      {t("admin.noUsersPage")}
-                    </div>
-                  )}
-                </div>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setUserPage((page) => Math.min(totalPages, page + 1))}
-                  disabled={currentPage >= totalPages}
-                  aria-label={t("admin.nextUsers")}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold">{t("admin.userManagement")}</h2>
-              <p className="text-sm text-muted-foreground">{t("admin.superAdminGrant", { count: superAdminCount })}</p>
+        <section className="min-w-0 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex h-10 min-w-0 flex-[1_1_14rem] items-center gap-2 rounded-[var(--control-radius)] border border-input bg-card px-3 text-sm focus-within:border-ring/70 focus-within:ring-2 focus-within:ring-ring/35 max-sm:h-11">
+              <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <input
+                type="search"
+                className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground/80"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setUserPage(1);
+                }}
+                placeholder={t("admin.searchPlaceholder")}
+                aria-label={t("admin.searchPlaceholder")}
+              />
+            </label>
+            <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-none">
+              <span className="mr-auto truncate text-sm text-muted-foreground sm:mr-1" aria-live="polite">
+                {initialLoading ? "" : summary}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0 max-sm:h-11 max-sm:w-11"
+                onClick={() => void refresh()}
+                disabled={isLoading}
+                aria-label={t("admin.refresh")}
+                title={t("admin.refresh")}
+              >
+                <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+              </Button>
+              <Button className="shrink-0" onClick={() => setIsCreateModalOpen(true)} disabled={readOnly}>
+                <Plus className="h-4 w-4" />
+                {t("admin.addUser")}
+              </Button>
             </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="overflow-hidden rounded-lg border bg-card" aria-busy={isLoading}>
             {initialLoading ? (
-              <RoleSummarySkeletons />
+              <UserRowSkeletons />
+            ) : visibleUsers.length === 0 ? (
+              <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+                {query.trim() ? t("admin.noMatches", { query: query.trim() }) : t("admin.noUsersFound")}
+              </p>
             ) : (
-              <>
-                <RoleSummaryCard
-                  icon={<UserRound className="h-4 w-4" />}
-                  label={t("admin.standardUsers")}
-                  value={String(users.filter((user) => user.role === "user").length)}
-                />
-                <RoleSummaryCard
-                  icon={<Shield className="h-4 w-4" />}
-                  label={t("admin.administrators")}
-                  value={String(users.filter((user) => user.role === "admin").length)}
-                />
-                <RoleSummaryCard
-                  icon={<Crown className="h-4 w-4" />}
-                  label={t("admin.superAdmins")}
-                  value={String(superAdminCount)}
-                />
-              </>
+              <ul className="divide-y">
+                {visibleUsers.map((user) => (
+                  <li key={user.id}>
+                    <UserRow
+                      user={user}
+                      isSelf={user.id === currentUserId}
+                      selected={user.id === selectedUserId}
+                      onSelect={() => setSelectedUserId(user.id)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between gap-2 border-t px-3 py-1.5 text-xs text-muted-foreground">
+                <span>{t("admin.pageStatus", { page: currentPage, total: totalPages })}</span>
+                <div className="flex gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="max-sm:h-11 max-sm:w-11"
+                    onClick={() => setUserPage(Math.max(1, currentPage - 1))}
+                    disabled={currentPage <= 1}
+                    aria-label={t("admin.previousUsers")}
+                    title={t("admin.previousUsers")}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="max-sm:h-11 max-sm:w-11"
+                    onClick={() => setUserPage(Math.min(totalPages, currentPage + 1))}
+                    disabled={currentPage >= totalPages}
+                    aria-label={t("admin.nextUsers")}
+                    title={t("admin.nextUsers")}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
-
-          <Card className="overflow-hidden">
-            <CardContent className="p-0">
-              <div className="min-h-72 overflow-x-auto" aria-busy={isLoading}>
-                <table className="w-full min-w-[680px] border-collapse text-sm">
-                  <thead className="border-b bg-muted/60 text-left text-xs uppercase text-muted-foreground">
-                    <tr>
-                      <th className="px-4 py-3 font-semibold">{t("admin.user")}</th>
-                      <th className="px-4 py-3 font-semibold">{t("admin.role")}</th>
-                      <th className="px-4 py-3 font-semibold">{t("admin.status")}</th>
-                      <th className="px-4 py-3 font-semibold">{t("admin.updated")}</th>
-                      <th className="px-4 py-3 text-right font-semibold">{t("admin.action")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleUsers.map((user) => (
-                      <tr
-                        key={user.id}
-                        className={`border-b last:border-0 ${selectedUserId === user.id ? "bg-primary/5" : "hover:bg-muted/40"}`}
-                      >
-                        <td className="px-4 py-3">
-                          <div className="flex min-w-0 items-center gap-3">
-                            <UserAvatar user={user} />
-                            <div className="min-w-0">
-                              <div className="truncate font-medium">{user.displayName || user.username}</div>
-                              <div className="truncate text-xs text-muted-foreground">@{user.username}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <RoleBadge role={user.role} />
-                        </td>
-                        <td className="px-4 py-3">
-                          <Badge variant={user.enabled ? "secondary" : "warning"}>
-                            {user.enabled ? t("admin.enabledStatus") : t("admin.disabledStatus")}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">{user.updatedAt}</td>
-                        <td className="px-4 py-3 text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setSelectedUserId(user.id)}
-                            disabled={readOnly}
-                          >
-                            <UserCog className="h-4 w-4" />
-                            {t("admin.edit")}
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                    {!initialLoading && users.length === 0 && (
-                      <tr>
-                        <td className="px-4 py-8 text-center text-muted-foreground" colSpan={5}>
-                          {t("admin.noUsersFound")}
-                        </td>
-                      </tr>
-                    )}
-                    {initialLoading && <UserTableSkeletonRows />}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
         </section>
 
-        <UserEditor
-          key={selectedUser ? selectedUser.id : "empty"}
-          user={selectedUser}
-          currentUserId={currentUserId}
-          isSuperAdmin={isSuperAdmin}
-          readOnly={readOnly}
-          isSaving={isSaving}
-          onSave={updateUser}
-          onDelete={deleteUser}
-        />
+        {isWide && (
+          <aside className="self-start overflow-hidden rounded-lg border bg-card xl:sticky xl:top-4">
+            {editor("panel") ?? <EmptyUserEditor />}
+          </aside>
+        )}
       </div>
+
+      {!isWide && selectedUser && (
+        <Dialog onClose={() => setSelectedUserId(null)} size="md" dismissible={!isSaving}>
+          {editor("dialog")}
+        </Dialog>
+      )}
+
       {isCreateModalOpen && (
         <UserCreateModal
           isSuperAdmin={isSuperAdmin}
@@ -385,15 +322,52 @@ export function UsersPage({
   );
 }
 
-type UserFormPayload = {
-  username: string;
-  displayName: string;
-  role: ManagedUser["role"];
-  password: string;
-  enabled: boolean;
-};
+function UserRow({
+  user,
+  isSelf,
+  selected,
+  onSelect,
+}: {
+  user: ManagedUser;
+  isSelf: boolean;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const { t } = useTranslation();
+  const { resolvedLocale } = useLocale();
+  const updated = formatDateTime(user.updatedAt, resolvedLocale) || user.updatedAt;
+  return (
+    <button
+      type="button"
+      aria-current={selected ? "true" : undefined}
+      onClick={onSelect}
+      className={`flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
+        selected ? "bg-primary/10 shadow-[inset_3px_0_0_hsl(var(--primary))]" : "hover:bg-muted/50 active:bg-muted"
+      }`}
+    >
+      <UserAvatar user={user} />
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-medium">{user.displayName || user.username}</span>
+          {isSelf && (
+            <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[11px]">
+              {t("admin.you")}
+            </Badge>
+          )}
+        </span>
+        <span className="block truncate text-xs text-muted-foreground">@{user.username}</span>
+      </span>
+      <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+        {!user.enabled && <Badge variant="warning">{t("admin.disabledStatus")}</Badge>}
+        <RoleBadge role={user.role} />
+      </span>
+      <span className="hidden w-36 shrink-0 truncate text-right text-xs text-muted-foreground md:block">{updated}</span>
+    </button>
+  );
+}
 
 function UserEditor({
+  layout,
   user,
   currentUserId,
   isSuperAdmin,
@@ -401,250 +375,230 @@ function UserEditor({
   isSaving,
   onSave,
   onDelete,
+  onClose,
 }: {
-  user: ManagedUser | null;
+  layout: "panel" | "dialog";
+  user: ManagedUser;
   currentUserId: number;
   isSuperAdmin: boolean;
   readOnly: boolean;
   isSaving: boolean;
-  onSave: (payload: UserFormPayload) => Promise<void>;
+  onSave: (payload: UserFormPayload) => Promise<boolean>;
   onDelete: (user: ManagedUser) => Promise<void>;
+  onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const [username, setUsername] = useState(user?.username ?? "");
-  const [displayName, setDisplayName] = useState(user?.displayName ?? "");
-  const [role, setRole] = useState<ManagedUser["role"]>(user?.role ?? "user");
-  const [enabled, setEnabled] = useState(user?.enabled ?? true);
+  const { resolvedLocale } = useLocale();
+  const [displayName, setDisplayName] = useState(user.displayName);
+  const [role, setRole] = useState<ManagedUser["role"]>(user.role);
+  const [enabled, setEnabled] = useState(user.enabled);
   const [password, setPassword] = useState("");
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
-  if (!user) {
-    return <EmptyUserEditor />;
-  }
-
-  const isEditingSelf = user?.id === currentUserId;
-  const canEditRole = isSuperAdmin || role !== "super_admin";
-  const canDelete = Boolean(user && !isEditingSelf && (isSuperAdmin || user.role !== "super_admin"));
+  const isEditingSelf = user.id === currentUserId;
+  const canEditRole = isSuperAdmin || user.role !== "super_admin";
+  const canDelete = !isEditingSelf && (isSuperAdmin || user.role !== "super_admin");
+  const isDirty =
+    displayName !== user.displayName || role !== user.role || enabled !== user.enabled || password.trim() !== "";
+  const protectionNotice = isEditingSelf
+    ? t("admin.cannotDeleteSelf")
+    : !canEditRole
+      ? t("admin.protectedRole")
+      : !canDelete
+        ? t("admin.protectedDelete")
+        : "";
+  const displayLabel = user.displayName || user.username;
+  const updated = formatDateTime(user.updatedAt, resolvedLocale) || user.updatedAt;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    await onSave({ username, displayName, role, password, enabled });
-    if (!user) {
-      setPassword("");
-    }
+    if (!isDirty) return;
+    const saved = await onSave({ username: user.username, displayName, role, password, enabled });
+    if (saved && layout === "dialog") onClose();
   };
 
-  return (
-    <Card className="self-start overflow-hidden">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-3">
-          {user ? <UserAvatar user={user} size="lg" /> : <EmptyUserAvatar />}
-          <span className="min-w-0">
-            <span className="block truncate">{user ? t("admin.editUser") : t("admin.newUser")}</span>
-            <span className="block truncate text-xs font-normal text-muted-foreground">
-              {user ? `@${user.username}` : t("admin.createAccount")}
-            </span>
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form className="space-y-3" onSubmit={submit}>
-          <div className="grid gap-2 rounded-lg border bg-background p-3 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">{t("admin.role")}</span>
-              <RoleBadge role={role} />
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">{t("admin.status")}</span>
-              <Badge variant={enabled ? "secondary" : "warning"}>
-                {enabled ? t("admin.enabledStatus") : t("admin.disabledStatus")}
-              </Badge>
-            </div>
-          </div>
+  const statusBadges = (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      <RoleBadge role={user.role} />
+      {!user.enabled && <Badge variant="warning">{t("admin.disabledStatus")}</Badge>}
+      {isEditingSelf && <Badge variant="outline">{t("admin.you")}</Badge>}
+    </div>
+  );
 
-          <label className="grid gap-1.5 text-sm font-medium">
-            {t("admin.username")}
-            <Input
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              disabled={Boolean(user)}
-              autoComplete="username"
-            />
-          </label>
+  const fields = (
+    <div className="space-y-4">
+      <label className="grid gap-1.5 text-sm font-medium">
+        {t("admin.displayName")}
+        <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} disabled={readOnly} />
+      </label>
 
-          <label className="grid gap-1.5 text-sm font-medium">
-            {t("admin.displayName")}
-            <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} disabled={readOnly} />
-          </label>
+      <label className="grid gap-1.5 text-sm font-medium">
+        {t("admin.role")}
+        <NativeSelect
+          value={role}
+          onChange={(event) => setRole(event.target.value as ManagedUser["role"])}
+          disabled={readOnly || !canEditRole}
+        >
+          <RoleOptions isSuperAdmin={isSuperAdmin} />
+        </NativeSelect>
+      </label>
 
-          <label className="grid gap-1.5 text-sm font-medium">
-            {t("admin.role")}
-            <NativeSelect
-              value={role}
-              onChange={(event) => setRole(event.target.value as ManagedUser["role"])}
-              disabled={readOnly || !canEditRole}
-            >
-              {roles.map((item) => (
-                <option key={item} value={item} disabled={item === "super_admin" && !isSuperAdmin}>
-                  {item}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
+      <label className="grid gap-1.5 text-sm font-medium">
+        {t("admin.credentialField")}
+        <Input
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          disabled={readOnly}
+          placeholder={t("admin.keepCurrentCredential")}
+          autoComplete="new-password"
+        />
+      </label>
 
-          <label className="grid gap-1.5 text-sm font-medium">
-            {t("admin.credentialField")}
-            <Input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              disabled={readOnly}
-              placeholder={user ? t("admin.keepCurrentCredential") : t("admin.atLeastEight")}
-              autoComplete={user ? "new-password" : "current-password"}
-            />
-          </label>
+      <SwitchField
+        label={t("admin.enabled")}
+        description={t("admin.allowAssignedPermissions")}
+        checked={enabled}
+        onChange={setEnabled}
+        disabled={readOnly}
+      />
 
-          <SwitchField
-            label={t("admin.enabled")}
-            description={t("admin.allowAssignedPermissions")}
-            checked={enabled}
-            onChange={setEnabled}
-            disabled={readOnly}
-          />
+      {protectionNotice && (
+        <p className="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">{protectionNotice}</p>
+      )}
+    </div>
+  );
 
-          {(isEditingSelf || !canEditRole || (user && !canDelete)) && (
-            <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-              {isEditingSelf
-                ? t("admin.cannotDeleteSelf")
-                : !canEditRole
-                  ? t("admin.protectedRole")
-                  : t("admin.protectedDelete")}
-            </div>
-          )}
+  const actions = (
+    <>
+      {canDelete && !readOnly ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="mr-auto text-muted-foreground hover:text-error-foreground"
+          disabled={isSaving}
+          onClick={() => setIsConfirmingDelete(true)}
+        >
+          <Trash2 className="h-4 w-4" />
+          {t("admin.deleteUser")}
+        </Button>
+      ) : (
+        <span className="mr-auto" />
+      )}
+      <Button type="submit" size="sm" disabled={readOnly || isSaving || !isDirty}>
+        <Save className="h-4 w-4" />
+        {isSaving ? t("admin.saving") : t("admin.save")}
+      </Button>
+    </>
+  );
 
-          <div className="flex flex-wrap gap-2 pt-1">
-            <Button disabled={readOnly || isSaving}>
-              <Save className="h-4 w-4" />
-              {isSaving ? t("admin.saving") : t("admin.save")}
-            </Button>
-            {user && (
-              <Button
-                type="button"
-                variant="outline"
-                disabled={readOnly || isSaving || !canDelete}
-                onClick={() => void onDelete(user)}
-              >
-                <Trash2 className="h-4 w-4" />
-                {t("admin.delete")}
-              </Button>
-            )}
-          </div>
+  const confirmDialog = isConfirmingDelete && (
+    <Dialog
+      onClose={() => setIsConfirmingDelete(false)}
+      size="sm"
+      role="alertdialog"
+      layer="overlay-nested"
+      dismissible={!isSaving}
+    >
+      <DialogHeader
+        title={t("admin.deleteConfirmTitle", { name: displayLabel })}
+        description={t("admin.deleteConfirmDescription", { username: user.username })}
+      />
+      <DialogFooter>
+        <Button variant="outline" size="sm" onClick={() => setIsConfirmingDelete(false)} disabled={isSaving}>
+          {t("common.cancel")}
+        </Button>
+        <Button
+          variant="destructive"
+          size="sm"
+          disabled={isSaving}
+          onClick={async () => {
+            await onDelete(user);
+            setIsConfirmingDelete(false);
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+          {isSaving ? t("admin.deleting") : t("admin.delete")}
+        </Button>
+      </DialogFooter>
+    </Dialog>
+  );
+
+  if (layout === "dialog") {
+    return (
+      <>
+        <DialogHeader
+          title={displayLabel}
+          description={`@${user.username}`}
+          onClose={onClose}
+          closeLabel={t("admin.closeEditor")}
+        >
+          {statusBadges}
+        </DialogHeader>
+        <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
+          <DialogBody>{fields}</DialogBody>
+          <DialogFooter>{actions}</DialogFooter>
         </form>
-      </CardContent>
-    </Card>
+        {confirmDialog}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="flex items-start gap-3 border-b px-4 py-4">
+        <UserAvatar user={user} size="lg" />
+        <div className="min-w-0">
+          <h3 className="truncate text-base font-semibold leading-6">{displayLabel}</h3>
+          <p className="truncate text-sm text-muted-foreground">@{user.username}</p>
+          {statusBadges}
+        </div>
+      </div>
+      <form onSubmit={submit}>
+        <div className="px-4 py-4">
+          {fields}
+          <p className="mt-4 text-xs text-muted-foreground">{t("admin.updatedAt", { time: updated })}</p>
+        </div>
+        <div className="flex items-center gap-2 border-t px-4 py-3">{actions}</div>
+      </form>
+      {confirmDialog}
+    </>
   );
 }
 
 function EmptyUserEditor() {
   const { t } = useTranslation();
   return (
-    <Card className="self-start overflow-hidden">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-3">
-          <EmptyUserAvatar />
-          <span>
-            <span className="block">{t("admin.selectUser")}</span>
-            <span className="block text-xs font-normal text-muted-foreground">{t("admin.selectUserHint")}</span>
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="rounded-lg border border-dashed bg-background p-4 text-sm text-muted-foreground">
-          {t("admin.addUsersHint")}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function UserSkeletonLine({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded bg-muted ${className}`} />;
-}
-
-function UserMetricSkeletons({ count }: { count: number }) {
-  return (
-    <>
-      {Array.from({ length: count }, (_, index) => (
-        <div key={index} className="rounded-md border bg-background px-3 py-2">
-          <UserSkeletonLine className="h-3 w-14" />
-          <UserSkeletonLine className="mt-2 h-5 w-10" />
-        </div>
-      ))}
-    </>
-  );
-}
-
-function UserBarSkeleton() {
-  return (
-    <div className="flex h-14 min-w-[160px] items-center gap-2 rounded-md border bg-background px-2">
-      <UserSkeletonLine className="h-8 w-8 rounded-full" />
-      <div className="min-w-0 flex-1 space-y-2">
-        <UserSkeletonLine className="h-4 w-24" />
-        <UserSkeletonLine className="h-3 w-20" />
+    <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
+      <div className="grid h-10 w-10 place-items-center rounded-full bg-muted text-muted-foreground">
+        <UserRound className="h-5 w-5" />
       </div>
+      <p className="text-sm font-medium">{t("admin.selectUser")}</p>
+      <p className="text-xs text-muted-foreground">{t("admin.selectUserHint")}</p>
     </div>
   );
 }
 
-function RoleSummarySkeletons() {
+function UserRowSkeletons() {
   return (
-    <>
-      {Array.from({ length: 3 }, (_, index) => (
-        <Card key={index}>
-          <CardContent className="flex items-center gap-3 p-3">
-            <UserSkeletonLine className="h-9 w-9 rounded-md" />
-            <div className="min-w-0 flex-1 space-y-2">
-              <UserSkeletonLine className="h-3 w-24" />
-              <UserSkeletonLine className="h-5 w-10" />
-            </div>
-          </CardContent>
-        </Card>
+    <div className="divide-y">
+      {Array.from({ length: 4 }, (_, index) => (
+        <div key={index} className="flex min-h-14 items-center gap-3 px-3 py-2">
+          <SkeletonLine className="h-9 w-9 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <SkeletonLine className="h-4 w-32" />
+            <SkeletonLine className="h-3 w-20" />
+          </div>
+          <SkeletonLine className="h-5 w-16 rounded-full" />
+        </div>
       ))}
-    </>
+    </div>
   );
 }
 
-function UserTableSkeletonRows() {
-  return (
-    <>
-      {Array.from({ length: 3 }, (_, index) => (
-        <tr key={index} className="border-b last:border-0">
-          <td className="px-4 py-3">
-            <div className="flex items-center gap-3">
-              <UserSkeletonLine className="h-9 w-9 rounded-full" />
-              <div className="space-y-2">
-                <UserSkeletonLine className="h-4 w-28" />
-                <UserSkeletonLine className="h-3 w-20" />
-              </div>
-            </div>
-          </td>
-          <td className="px-4 py-3">
-            <UserSkeletonLine className="h-5 w-20 rounded-full" />
-          </td>
-          <td className="px-4 py-3">
-            <UserSkeletonLine className="h-5 w-16 rounded-full" />
-          </td>
-          <td className="px-4 py-3">
-            <UserSkeletonLine className="h-4 w-36" />
-          </td>
-          <td className="px-4 py-3">
-            <div className="flex justify-end">
-              <UserSkeletonLine className="h-8 w-20 rounded-md" />
-            </div>
-          </td>
-        </tr>
-      ))}
-    </>
-  );
+function SkeletonLine({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse rounded bg-muted ${className}`} />;
 }
 
 function UserCreateModal({
@@ -671,16 +625,15 @@ function UserCreateModal({
   };
 
   return (
-    <Dialog onClose={onClose} size="xl" dismissible={false}>
+    <Dialog onClose={onClose} size="md" dismissible={false}>
       <DialogHeader
         title={t("admin.addUser")}
         description={t("admin.createAccount")}
-        icon={<Plus className="h-4 w-4" />}
         onClose={onClose}
         closeLabel={t("admin.closeAddDialog")}
       />
       <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
-        <DialogBody className="space-y-3">
+        <DialogBody className="space-y-4">
           <label className="grid gap-1.5 text-sm font-medium">
             {t("admin.username")}
             <Input
@@ -699,11 +652,7 @@ function UserCreateModal({
           <label className="grid gap-1.5 text-sm font-medium">
             {t("admin.role")}
             <NativeSelect value={role} onChange={(event) => setRole(event.target.value as ManagedUser["role"])}>
-              {roles.map((item) => (
-                <option key={item} value={item} disabled={item === "super_admin" && !isSuperAdmin}>
-                  {item}
-                </option>
-              ))}
+              <RoleOptions isSuperAdmin={isSuperAdmin} />
             </NativeSelect>
           </label>
 
@@ -727,16 +676,29 @@ function UserCreateModal({
           />
         </DialogBody>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
+          <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={isSaving}>
             {t("common.cancel")}
           </Button>
-          <Button disabled={isSaving || username.trim() === "" || password.trim() === ""}>
+          <Button size="sm" disabled={isSaving || username.trim() === "" || password.trim() === ""}>
             <Save className="h-4 w-4" />
             {isSaving ? t("admin.creating") : t("admin.createUser")}
           </Button>
         </DialogFooter>
       </form>
     </Dialog>
+  );
+}
+
+function RoleOptions({ isSuperAdmin }: { isSuperAdmin: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {roles.map((item) => (
+        <option key={item} value={item} disabled={item === "super_admin" && !isSuperAdmin}>
+          {t(`admin.roles.${item}`)}
+        </option>
+      ))}
+    </>
   );
 }
 
@@ -755,13 +717,13 @@ function SwitchField({
   disabled = false,
 }: {
   label: string;
-  description: string;
+  description: ReactNode;
   checked: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
 }) {
   return (
-    <div className="flex min-h-14 items-center justify-between gap-4 rounded-md border bg-card px-3 py-2">
+    <div className="flex min-h-11 items-center justify-between gap-4">
       <div className="min-w-0">
         <div className="text-sm font-medium">{label}</div>
         <div className="mt-0.5 text-xs text-muted-foreground">{description}</div>
@@ -771,46 +733,14 @@ function SwitchField({
   );
 }
 
-function UserMetric({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return (
-    <div className="rounded-md border bg-background px-3 py-2">
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        {icon}
-        {label}
-      </div>
-      <div className="mt-0.5 text-lg font-semibold leading-6">{value}</div>
-    </div>
-  );
-}
-
-function RoleSummaryCard({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return (
-    <div className="flex items-center gap-3 rounded-lg border bg-card p-3">
-      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">{icon}</div>
-      <div className="min-w-0">
-        <div className="text-xs text-muted-foreground">{label}</div>
-        <div className="text-base font-semibold">{value}</div>
-      </div>
-    </div>
-  );
-}
-
 function UserAvatar({ user, size = "md" }: { user: ManagedUser; size?: "md" | "lg" }) {
-  const initials = userInitials(user);
   const sizeClass = size === "lg" ? "h-12 w-12 text-base" : "h-9 w-9 text-sm";
   return (
     <div
-      className={`grid ${sizeClass} shrink-0 place-items-center rounded-md bg-primary text-primary-foreground font-semibold`}
+      className={`grid ${sizeClass} shrink-0 place-items-center rounded-full bg-primary/10 font-semibold text-primary`}
+      aria-hidden="true"
     >
-      {initials}
-    </div>
-  );
-}
-
-function EmptyUserAvatar() {
-  return (
-    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
-      <Plus className="h-5 w-5" />
+      {userInitials(user)}
     </div>
   );
 }

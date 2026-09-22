@@ -121,7 +121,7 @@ export function WorkflowActivity({
     }
   };
   const runRow = (run: WorkflowRun, running = false) => (
-    <div key={run.id} className="space-y-2 rounded-lg border bg-card p-3">
+    <div key={run.id} className="space-y-2 rounded-lg border bg-card px-3 py-2.5">
       <button
         className="w-full rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => onSelectRun(run)}
@@ -132,8 +132,7 @@ export function WorkflowActivity({
           </span>
           <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span>#{run.id}</span>
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
           <Badge
             variant={
               running ? "info" : run.status === "failed" ? "error" : run.status === "succeeded" ? "success" : "outline"
@@ -141,14 +140,15 @@ export function WorkflowActivity({
           >
             {t(`workflowActivity.status.${run.status}`, { defaultValue: run.status })}
           </Badge>
+          <span>#{run.id}</span>
+          <span className="tabular-nums">{run.finishedAt || run.startedAt || run.createdAt}</span>
         </div>
-        <div className="mt-2 text-xs text-muted-foreground">{run.finishedAt || run.startedAt || run.createdAt}</div>
         {running && (
-          <div className="mt-2 text-xs text-muted-foreground">
+          <div className="mt-1.5 text-xs text-muted-foreground">
             {t("workflowActivity.progress", { current: run.completedJobs, total: run.jobCount })}
             {run.progressBytesTotal > 0 && (
               <progress
-                className="mt-2 h-1.5 w-full accent-primary"
+                className="mt-1.5 h-1.5 w-full accent-primary"
                 max={run.progressBytesTotal}
                 value={run.progressBytesCurrent}
               />
@@ -189,33 +189,33 @@ export function WorkflowActivity({
   const displayed = snapshot?.view === view && snapshot.page === page ? snapshot.result : null;
   const content = (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b px-4">
-        <div>
-          <h2 className="font-semibold">{t("nav.activity")}</h2>
-          {workflowName && <p className="text-xs text-muted-foreground">{workflowName}</p>}
-        </div>
-        {
-          <Button
-            size="icon"
-            variant="ghost"
-            aria-label={t("workflowActivity.close")}
-            onClick={() => changeOpen(false)}
-          >
-            <X className="h-4 w-4" />
+      <div className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b py-1.5 pl-4 pr-2">
+        {selectedRunId ? (
+          <Button variant="ghost" size="sm" className="-ml-2 min-w-0 px-2" onClick={onBack}>
+            <ArrowLeft className="h-4 w-4 shrink-0" />
+            <span className="truncate">{t("workflowActivity.backToHistory")}</span>
           </Button>
-        }
+        ) : (
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-semibold">{t("nav.activity")}</h2>
+            {workflowName && <p className="truncate text-xs text-muted-foreground">{workflowName}</p>}
+          </div>
+        )}
+        <Button
+          size="icon"
+          variant="ghost"
+          className="shrink-0"
+          aria-label={t("workflowActivity.close")}
+          onClick={() => changeOpen(false)}
+        >
+          <X className="h-4 w-4" />
+        </Button>
       </div>
       {selectedRunId ? (
-        <div className="app-scrollbar min-h-0 flex-1 overflow-y-auto p-3">
-          <Button variant="ghost" size="sm" className="mb-3" onClick={onBack}>
-            <ArrowLeft className="h-4 w-4" />
-            {t("workflowActivity.backToHistory")}
-          </Button>
-          {detail}
-        </div>
+        <div className="app-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3">{detail}</div>
       ) : (
         <>
-          <div className="app-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
+          <div className="app-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
             {(error || actionError) && (
               <div
                 role="alert"
@@ -358,10 +358,10 @@ export function WorkflowActivity({
         <AnchoredPopover
           open={open}
           anchorRef={anchorRef}
-          dismissOnOutsidePointer={false}
+          preserveOnNestedLayers
           onOpenChange={changeOpen}
           ariaLabel={t("nav.activity")}
-          className={`flex h-[min(780px,calc(100dvh-8rem))] flex-col overflow-hidden ${selectedRunId ? "w-[min(760px,calc(100vw-2rem))]" : "w-[380px]"}`}
+          className="flex h-[min(780px,calc(100dvh-8rem))] w-[min(440px,calc(100vw-2rem))] flex-col overflow-hidden"
         >
           {content}
         </AnchoredPopover>

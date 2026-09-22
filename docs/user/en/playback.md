@@ -116,11 +116,26 @@ Playback is handled by a global browser audio player.
   without requiring playback first. Selecting a persisted work updates any
   matching queued track immediately; remote-only preview choices remain
   temporary. Duplicate file names include their relative directory path.
-- The expanded-player lyrics control cycles through hidden, timed-line preview,
-  and full lyrics modes. Hidden is the default and gives the cover more room.
-  Tracks without matched lyrics keep the control disabled and do not render an
-  empty lyrics placeholder. The preview derives its visible row count from the
-  available height and keeps the active timed line centered when possible.
+- The expanded player sizes its artwork against both the available width and
+  height, so portrait phones, short landscape phones, and small desktop windows
+  keep the cover, title, and transport controls fully visible. Short landscape
+  phones place the transport controls beside the artwork.
+- When the current track has timed lyrics, the active line appears under the
+  title; selecting it opens the lyrics view. The lyrics control opens the same
+  view: it replaces the artwork on phones and opens a side column next to the
+  now-playing column on desktop, where it shares tabs with the queue. The active
+  line stays centered, manual scrolling pauses following for a few seconds, and
+  selecting a line seeks to it. Tracks without matched lyrics keep the control
+  disabled.
+- Screen lyrics keep the current and next line visible outside the page.
+  Browsers with Document Picture-in-Picture open a small always-on-top window
+  that stays visible while the browser is minimized; other browsers with video
+  Picture-in-Picture show a rendered lyrics video instead. The Android app shows
+  a draggable floating overlay above other apps while Kikoto is in the
+  background. It requires the "Display over other apps" permission and advances
+  lines from the playback clock even when the WebView is throttled.
+- Every player mode reserves the same bottom page space, so switching between
+  mini, compact, and full modes does not change the page height.
 
 An authenticated user's explicit lyrics selection is stored per audio media
 item. The preference targets the lyrics media item rather than a concrete file

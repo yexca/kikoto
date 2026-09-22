@@ -457,7 +457,11 @@ function libraryBrowseSurfaceState({
     activePageSize: remoteSelected ? remoteSourceState.pageSize : workPageSize,
     activePageSizeOptions: remoteSelected ? ([12, 24, 48, 96] as const) : localWorkPageSizeOptions,
     showRecentlyPlayed:
-      recentWorks.length > 0 && searchQuery.trim() === "" && statusFilter === "all" && searchClauses.length === 0,
+      !remoteSelected &&
+      recentWorks.length > 0 &&
+      searchQuery.trim() === "" &&
+      statusFilter === "all" &&
+      searchClauses.length === 0,
   };
 }
 
@@ -1742,9 +1746,22 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   return (
     <div className="relative space-y-5">
       <MetadataOnboardingNotice active={active} />
-      <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between" data-toast-avoid>
+      {showRecentlyPlayed && (
+        <RecentlyPlayedStrip works={recentWorks} onOpen={(work) => openWork(work, recentWorkSourceIntent(work))} />
+      )}
+
+      <section className="flex flex-wrap items-center gap-2" data-toast-avoid>
+        <div className="order-1 min-w-0 max-w-full">
+          <LibraryPrimaryTabs
+            active={activePrimaryTab}
+            activeSourceId={activeTab.kind === "source" ? activeTab.source.id : null}
+            sources={sources}
+            onChange={changePrimaryTab}
+            onSourceChange={(source) => changeTab({ kind: "source", source })}
+          />
+        </div>
         <div
-          className={`search-field order-2 min-h-10 w-full items-center gap-2 rounded-lg border bg-card px-3 text-sm lg:order-1 lg:flex lg:max-w-xl ${
+          className={`search-field order-3 min-h-10 w-full items-center gap-2 rounded-lg border bg-card px-3 text-sm lg:order-2 lg:flex lg:w-auto lg:min-w-[14rem] lg:max-w-2xl lg:flex-1 ${
             mobileSearchOpen ? "flex" : "hidden"
           }`}
         >
@@ -1780,7 +1797,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             <Plus className="h-4 w-4" />
           </button>
         </div>
-        <div className="order-1 flex w-full flex-wrap justify-end gap-2 lg:order-2 lg:w-auto">
+        <div className="order-2 ml-auto flex flex-wrap justify-end gap-2 lg:order-3">
           {mobileNavigationLayout && (
             <IconButton
               title={mobileSearchOpen ? t("library.hideSearch") : t("library.searchLibrary")}
@@ -1897,17 +1914,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
           onSave={saveClauseEditor}
         />
       )}
-      {showRecentlyPlayed && (
-        <RecentlyPlayedStrip works={recentWorks} onOpen={(work) => openWork(work, recentWorkSourceIntent(work))} />
-      )}
-
-      <LibraryPrimaryTabs
-        active={activePrimaryTab}
-        activeSourceId={activeTab.kind === "source" ? activeTab.source.id : null}
-        sources={sources}
-        onChange={changePrimaryTab}
-        onSourceChange={(source) => changeTab({ kind: "source", source })}
-      />
       <div ref={resultsAnchorRef} className="scroll-mt-24" />
 
       {activeTab.kind === "source" ? (
@@ -2693,68 +2699,64 @@ function RecentlyPlayedStrip({ works, onOpen }: { works: Work[]; onOpen: (work: 
 
   return (
     <section className={collapsed ? "" : "space-y-2"} aria-labelledby="recently-played-heading">
-      <h2 id="recently-played-heading">
+      <h2 id="recently-played-heading" className="flex">
         <button
           type="button"
-          className="flex min-h-8 w-full items-center justify-between gap-2 rounded-md px-1 text-sm font-semibold transition-colors hover:bg-muted"
+          className="-ml-1 inline-flex min-h-8 items-center gap-2 rounded-md px-1.5 text-sm font-semibold transition-colors hover:bg-muted"
           onClick={toggleCollapsed}
           aria-label={collapsed ? t("library.expandRecentlyPlayed") : t("library.collapseRecentlyPlayed")}
           aria-expanded={!collapsed}
           aria-controls="recently-played-list"
           title={collapsed ? t("library.expandRecentlyPlayed") : t("library.collapseRecentlyPlayed")}
         >
-          <span className="flex items-center gap-2">
-            <Clock3 className="h-4 w-4 text-primary" />
-            {t("library.recentlyPlayed")}
-          </span>
+          <Clock3 className="h-4 w-4 text-primary" />
+          {t("library.recentlyPlayed")}
+          <span className="text-xs font-normal tabular-nums text-muted-foreground">{works.length}</span>
           <ChevronDown
             className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${collapsed ? "-rotate-90" : ""}`}
           />
         </button>
       </h2>
       {!collapsed && (
-        <div id="recently-played-list" className="app-scroll flex snap-x gap-3 overflow-x-auto pb-2">
+        <div id="recently-played-list" className="app-scroll -mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-2">
           {works.map((work) => (
             <button
               key={work.id}
-              className="group flex h-[194px] w-[138px] shrink-0 snap-start flex-col text-left sm:h-[208px] sm:w-[154px] lg:h-[222px] lg:w-[168px]"
+              className="group flex h-[4.75rem] w-[16.5rem] shrink-0 snap-start items-center gap-3 rounded-[var(--radius)] border bg-card p-2 text-left transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-muted sm:w-[18rem]"
               onClick={() => onOpen(work)}
               aria-label={t("library.openWorkTitle", { title: work.title })}
+              title={`${work.primaryCode} · ${work.title}`}
             >
-              <span className="relative block aspect-[4/3] w-full shrink-0 overflow-hidden rounded-[var(--radius)] border bg-muted shadow-sm transition-[border-color,box-shadow,transform] duration-200 group-hover:-translate-y-0.5 group-hover:border-primary/40 group-hover:shadow-md motion-reduce:group-hover:translate-y-0">
+              <span className="relative block aspect-[4/3] h-full shrink-0 overflow-hidden rounded-[calc(var(--radius)-2px)] bg-muted">
                 {work.coverUrl ? (
                   <img
                     src={assetURL(work.coverUrl)}
                     alt=""
-                    className="h-full w-full object-contain transition-transform group-hover:scale-[1.03]"
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.05] motion-reduce:group-hover:scale-100"
                     loading="lazy"
                   />
                 ) : (
-                  <span className="grid h-full place-items-center text-xl font-bold text-muted-foreground">
+                  <span className="grid h-full place-items-center text-sm font-bold text-muted-foreground">
                     {work.primaryCode.slice(0, 2)}
                   </span>
                 )}
-                <span className="absolute left-2 top-2 max-w-[calc(100%-1rem)] truncate rounded-[var(--badge-radius)] bg-background/85 px-1.5 py-0.5 text-3xs font-semibold tabular-nums shadow-sm ring-1 ring-foreground/5 backdrop-blur-sm">
-                  {work.primaryCode}
+              </span>
+              <span className="flex min-w-0 flex-1 flex-col justify-center gap-1">
+                <span className="block truncate text-xs font-semibold leading-snug transition-colors group-hover:text-primary">
+                  {work.title}
                 </span>
-              </span>
-              <span className="mt-2 block h-9 w-full line-clamp-2 text-xs font-semibold leading-snug transition-colors group-hover:text-primary">
-                {work.title}
-              </span>
-              <span className="mt-0.5 block h-4 w-full truncate text-2xs text-muted-foreground">
-                {work.circle || t("common.unknown")}
-              </span>
-              <span className="mt-auto block h-1 w-full shrink-0 overflow-hidden rounded-full bg-muted">
                 <span
-                  className="block h-full rounded-full bg-primary"
-                  style={{ width: `${progressPercent(work.progress)}%` }}
-                />
-              </span>
-              <span
-                className="mt-1 block w-full shrink-0 truncate text-3xs text-muted-foreground"
-                title={recentProgressLabel(work.progress, t)}
-              >
-                {recentProgressLabel(work.progress, t)}
+                  className="block truncate text-2xs text-muted-foreground"
+                  title={recentProgressLabel(work.progress, t)}
+                >
+                  {recentProgressLabel(work.progress, t)}
+                </span>
+                <span className="block h-1 w-full shrink-0 overflow-hidden rounded-full bg-muted">
+                  <span
+                    className="block h-full rounded-full bg-primary"
+                    style={{ width: `${progressPercent(work.progress)}%` }}
+                  />
+                </span>
               </span>
             </button>
           ))}

@@ -128,6 +128,7 @@ function ToastViewport({ items, onClose }: { items: ToastItem[]; onClose: (id: n
     <div
       className="fixed inset-x-3 z-toast flex flex-col gap-2 sm:left-auto sm:right-4 sm:w-[min(360px,calc(100vw-2rem))]"
       style={{ top }}
+      data-app-toast-region
       aria-live="polite"
       aria-atomic="false"
     >

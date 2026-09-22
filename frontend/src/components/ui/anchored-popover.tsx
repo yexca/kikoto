@@ -5,6 +5,18 @@ import { cn } from "@/lib/tailwindClassNames";
 
 type PopoverPosition = { left: number; top: number; maxHeight: number; anchorWidth: number; visible: boolean };
 const openFloatingLayerSelector = "[data-app-floating-layer][data-state='open']";
+// Layers that are spawned from inside a popover but portaled elsewhere: modal dialogs
+// (panel and scrim), mobile sheets and the toast region.
+const nestedLayerSelector = ".dialog-scrim, [aria-modal='true'], [data-mobile-sheet], [data-app-toast-region]";
+
+function isInsideNestedLayer(target: EventTarget | null, content: HTMLElement | null) {
+  if (target instanceof Element) {
+    const layer = target.closest(nestedLayerSelector);
+    if (layer && !layer.contains(content)) return true;
+  }
+  // While any modal dialog is open it owns outside pointer input, including its backdrop.
+  return Array.from(document.querySelectorAll("[aria-modal='true']")).some((modal) => !modal.contains(content));
+}
 
 export function AnchoredPopover({
   open,
@@ -20,6 +32,7 @@ export function AnchoredPopover({
   floatingLayer = false,
   matchAnchorWidth = false,
   dismissOnOutsidePointer = true,
+  preserveOnNestedLayers = false,
   onOpenChange,
 }: {
   open: boolean;
@@ -35,6 +48,8 @@ export function AnchoredPopover({
   floatingLayer?: boolean;
   matchAnchorWidth?: boolean;
   dismissOnOutsidePointer?: boolean;
+  /** Keep the popover open for pointer input inside dialogs, sheets or toasts opened on top of it. */
+  preserveOnNestedLayers?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -107,11 +122,13 @@ export function AnchoredPopover({
       const target = event.target as Node | null;
       if (target && (anchorRef.current?.contains(target) || contentRef.current?.contains(target))) return;
       if (target instanceof Element && target.closest(openFloatingLayerSelector)) return;
+      if (preserveOnNestedLayers && isInsideNestedLayer(target, contentRef.current)) return;
       onOpenChange(false);
     };
     const dismissWithKeyboard = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (!floatingLayer && document.querySelector(openFloatingLayerSelector)) return;
+      if (preserveOnNestedLayers && isInsideNestedLayer(null, contentRef.current)) return;
       onOpenChange(false);
     };
     document.addEventListener("pointerdown", dismiss, true);
@@ -120,7 +137,7 @@ export function AnchoredPopover({
       document.removeEventListener("pointerdown", dismiss, true);
       window.removeEventListener("keydown", dismissWithKeyboard, true);
     };
-  }, [anchorRef, dismissOnOutsidePointer, floatingLayer, onOpenChange, open]);
+  }, [anchorRef, dismissOnOutsidePointer, floatingLayer, onOpenChange, open, preserveOnNestedLayers]);
 
   if (!open) return null;
   return createPortal(

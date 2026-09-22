@@ -1070,9 +1070,9 @@ test("activity presents a compact run summary without the execution canvas", asy
   await page.goto("/activity?view=completed&run=51");
 
   const activity = page.getByRole("dialog", { name: "Activity", exact: true });
-  await expect(activity.getByText("Started", { exact: true })).toBeVisible();
-  await expect(activity.getByText("Trigger", { exact: true })).toBeVisible();
-  await expect(activity.getByText("Run signals", { exact: true })).toBeVisible();
+  await expect(activity.getByText("Nodes", { exact: true })).toBeVisible();
+  await expect(activity.getByText("jobs", { exact: true })).toBeVisible();
+  await expect(activity.getByText("Run signals", { exact: true })).toHaveCount(0);
   await expect(activity.getByLabel("Workflow node canvas")).toHaveCount(0);
   await expect(activity.getByText("Node logs", { exact: true })).toHaveCount(0);
   await expect(activity.getByText("Tagging works", { exact: true })).toHaveCount(0);
@@ -1743,7 +1743,9 @@ for (const viewport of ["mobile", "@desktop"]) {
     await expect(panel.getByText("#72", { exact: true })).toBeVisible();
     if (viewport === "mobile") await panel.getByRole("button", { name: "Close Activity", exact: true }).click();
     await page.getByRole("tab", { name: "Sync work metadata", exact: true }).click();
-    if (viewport === "mobile") await page.getByRole("button", { name: "Activity", exact: true }).click();
+    // Desktop dismisses the popover on outside pointer input, so reopen it on both layouts.
+    await expect(panel).toHaveCount(0);
+    await page.getByRole("button", { name: "Activity", exact: true }).click();
     await panel.getByRole("tab", { name: "History 2", exact: true }).click();
     await expect(panel.getByText("#72", { exact: true })).toBeVisible();
     await expect(panel.getByText("#71", { exact: true })).toBeVisible();
