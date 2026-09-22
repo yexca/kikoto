@@ -126,9 +126,12 @@ storage keys; it remains mounted across navigation.
   dialogs, pending mutations, and other transient overlays are not resumed.
 - Retain every visited primary browse workspace (Library, Favorites, Circles,
   and Voice Actors) on both layouts so returning to a destination never reloads
-  its rendered list. Each workspace has its own loading boundary, and the four
-  page chunks are preloaded when the shell is idle. An inactive workspace is
-  hidden, cancels unfinished detail/list work, and pauses polling.
+  its rendered list. Each workspace has its own loading boundary. The current
+  location's page chunk starts loading with the app, the other three and the
+  command palette when the shell is idle, and a loaded chunk renders without
+  suspending: React holds a shown Suspense fallback for at least 300ms, which
+  would otherwise delay the page and the requests its effects start. An inactive
+  workspace is hidden, cancels unfinished detail/list work, and pauses polling.
 - Keep destination switches proportional to the workspaces that change. A
   workspace that stays hidden skips shell-driven renders, and browse list items
   are memoized with stable item handlers (`useStableCallback`) so a page render

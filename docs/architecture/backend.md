@@ -137,7 +137,10 @@ Remote covers accept JPEG, PNG, and WebP file signatures rather than trusting
 upstream MIME headers or filename extensions. Publication retains the bounded
 atomic download writer. Cover serving checks legacy cached content too and
 sets an explicit raster MIME type, `nosniff`, and a sandboxed content policy.
-It does not decompress or re-encode the image.
+It does not decompress or re-encode the image. Cover URLs carry a revision token
+derived from the cached file; a request whose token matches the current file is
+privately cacheable as immutable, while an unversioned or stale request is
+revalidated.
 
 ## Current Limits
 

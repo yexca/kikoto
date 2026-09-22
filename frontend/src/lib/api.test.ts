@@ -171,6 +171,28 @@ describe("API client transport", () => {
     ]);
   });
 
+  it("shares one in-flight runtime settings request without sharing an abort", async () => {
+    let respond: (response: Response) => void = () => {};
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => (respond = resolve)));
+    vi.stubGlobal("fetch", fetchMock);
+    const aborted = new AbortController();
+
+    const first = api.getRuntimeSettings();
+    const detached = api.getRuntimeSettings(aborted.signal);
+    const second = api.getRuntimeSettings(new AbortController().signal);
+    aborted.abort();
+    respond(jsonResponse({ mode: "production", cacheEnabled: true }));
+
+    await expect(detached).rejects.toMatchObject({ name: "AbortError" });
+    await expect(first).resolves.toMatchObject({ cacheEnabled: true });
+    await expect(second).resolves.toMatchObject({ cacheEnabled: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fetchMock.mockImplementationOnce(() => Promise.resolve(jsonResponse({ mode: "production", cacheEnabled: false })));
+    await expect(api.getRuntimeSettings()).resolves.toMatchObject({ cacheEnabled: false });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("sends the manual Fetch disk reserve by default", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}));
     vi.stubGlobal("fetch", fetchMock);

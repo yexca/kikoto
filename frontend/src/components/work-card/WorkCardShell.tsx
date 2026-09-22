@@ -227,6 +227,7 @@ export function WorkCardMedia({
           alt=""
           className="h-full w-full object-contain transition-transform duration-300 ease-out group-hover:scale-[1.03] motion-reduce:group-hover:scale-100"
           loading="lazy"
+          decoding="async"
         />
       ) : (
         <div className="grid h-full place-items-center bg-secondary text-2xl font-bold text-secondary-foreground">

@@ -84,6 +84,7 @@ export function CreatorCard({
               alt=""
               className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04] motion-reduce:transition-none"
               loading="lazy"
+              decoding="async"
               onError={() => setImageFailed(true)}
             />
           ) : (

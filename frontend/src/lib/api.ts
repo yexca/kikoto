@@ -1786,6 +1786,29 @@ async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+const inFlightGets = new Map<string, Promise<unknown>>();
+
+// Concurrent callers of the same idempotent GET share one request. A caller's
+// abort only detaches that caller; a settled request is never reused.
+function sharedGetJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
+  let shared = inFlightGets.get(path) as Promise<T> | undefined;
+  if (!shared) {
+    const request = getJSON<T>(path).finally(() => {
+      if (inFlightGets.get(path) === request) inFlightGets.delete(path);
+    });
+    inFlightGets.set(path, request);
+    shared = request;
+  }
+  if (!signal) return shared;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  const pending = shared;
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    void pending.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
+}
+
 async function streamWorkflowRunEvents(
   id: number,
   afterId: number,
@@ -2075,7 +2098,8 @@ export const api = {
   getUserPreferences: (signal?: AbortSignal) => getJSON<UserPreferences>("/api/auth/me/preferences", signal),
   updateUserPreferences: (payload: Partial<Omit<UserPreferences, "recommendationDefaults">>) =>
     patchJSONBody<UserPreferences>("/api/auth/me/preferences", payload),
-  getRuntimeSettings: (signal?: AbortSignal) => getJSON<RuntimeSettings>("/api/runtime-settings", signal),
+  getRuntimeSettings: (signal?: AbortSignal): Promise<RuntimeSettings> =>
+    sharedGetJSON("/api/runtime-settings", signal),
   listRemoteSourceWorks: (
     id: number,
     page = 1,

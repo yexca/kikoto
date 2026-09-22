@@ -68,6 +68,7 @@ import { isCircleListLocation, readLastCircleListLocation } from "@/pages/circle
 import { isVoiceListLocation, readLastVoiceListLocation } from "@/pages/voiceNavigationState";
 import { legacyLibraryRedirect } from "@/app/legacyLibraryRoutes";
 import { readMobileTabSnapshot, writeMobileTabSnapshot } from "@/app/mobileTabState";
+import { preloadableComponent } from "@/app/preloadableComponent";
 import {
   REMOTE_TRACK_CREATED_EVENT,
   REMOTE_TRACK_TERMINAL_EVENT,
@@ -75,39 +76,42 @@ import {
   type RemoteTrackTerminalDetail,
 } from "@/app/remoteTrackWorkflows";
 
-// Browse workspaces share the bottom navigation, so their chunks are preloaded
-// once the shell is idle instead of suspending on the first tap.
-const loadLibraryPage = () => import("@/pages/LibraryPage");
-const loadFavoritesPage = () => import("@/pages/FavoritesPage");
-const loadCirclesPage = () => import("@/pages/CirclesPage");
-const loadCreatorWorksPage = () => import("@/pages/CreatorWorksPage");
 // A workspace that stays hidden skips renders driven by the shell; the active
 // workspace, and one being shown or hidden, render as before. Context updates
 // still reach hidden workspaces.
 function renderOnlyWhileActive<Props extends { active?: boolean }>(Page: ComponentType<Props>) {
   return memo(Page, (previous, next) => previous.active === false && next.active === false);
 }
-const LibraryPage = lazy(() =>
-  loadLibraryPage().then((module) => ({ default: renderOnlyWhileActive(module.LibraryPage) })),
+// Browse workspaces share the bottom navigation, so their chunks are preloaded
+// once the shell is idle, and the current location's workspace as soon as the
+// app loads, instead of suspending on the first render or tap.
+const libraryPage = preloadableComponent(() =>
+  import("@/pages/LibraryPage").then((module) => renderOnlyWhileActive(module.LibraryPage)),
 );
+const favoritesPage = preloadableComponent(() =>
+  import("@/pages/FavoritesPage").then((module) => renderOnlyWhileActive(module.FavoritesPage)),
+);
+const circlesPage = preloadableComponent(() =>
+  import("@/pages/CirclesPage").then((module) => renderOnlyWhileActive(module.CirclesPage)),
+);
+const creatorWorksPage = preloadableComponent(() =>
+  import("@/pages/CreatorWorksPage").then((module) => renderOnlyWhileActive(module.CreatorWorksPage)),
+);
+const LibraryPage = libraryPage.Component;
+const FavoritesPage = favoritesPage.Component;
+const CirclesPage = circlesPage.Component;
+const CreatorWorksPage = creatorWorksPage.Component;
 const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
 const WorkManagementPage = lazy(() =>
   import("@/pages/WorkManagementPage").then((module) => ({ default: module.WorkManagementPage })),
 );
 const WorkflowsPage = lazy(() => import("@/pages/WorkflowsPage").then((module) => ({ default: module.WorkflowsPage })));
-const FavoritesPage = lazy(() =>
-  loadFavoritesPage().then((module) => ({ default: renderOnlyWhileActive(module.FavoritesPage) })),
-);
-const CreatorWorksPage = lazy(() =>
-  loadCreatorWorksPage().then((module) => ({ default: renderOnlyWhileActive(module.CreatorWorksPage) })),
-);
-const CirclesPage = lazy(() =>
-  loadCirclesPage().then((module) => ({ default: renderOnlyWhileActive(module.CirclesPage) })),
-);
 const AboutPage = lazy(() => import("@/pages/AboutPage").then((module) => ({ default: module.AboutPage })));
-const CommandPalette = lazy(() =>
-  import("@/app/CommandPalette").then((module) => ({ default: module.CommandPalette })),
+// Preloaded with the browse workspaces so the first Quick actions tap opens at once.
+const commandPalette = preloadableComponent(() =>
+  import("@/app/CommandPalette").then((module) => module.CommandPalette),
 );
+const CommandPalette = commandPalette.Component;
 
 const preferredMobileTabs: PageID[] = ["library", "favorites", "circles", "voice-actors"];
 const SIDEBAR_COLLAPSED_KEY = "kikoto:sidebar-collapsed";
@@ -652,6 +656,16 @@ function AppHeaderTitle({
 
 const cachedBrowsePages = ["library", "favorites", "circles", "voice-actors"] as const;
 type CachedBrowsePage = (typeof cachedBrowsePages)[number];
+const browsePages: Record<CachedBrowsePage, { preload: () => Promise<unknown> }> = {
+  library: libraryPage,
+  favorites: favoritesPage,
+  circles: circlesPage,
+  "voice-actors": creatorWorksPage,
+};
+// Fetch the current location's workspace chunk alongside the session request
+// rather than after the shell mounts.
+const initialPage = pageFromPath(window.location.pathname);
+if (isCachedBrowsePage(initialPage)) void browsePages[initialPage].preload().catch(() => {});
 
 function CachedBrowsePages({ activePage }: { activePage: AppPage | null }) {
   const [visitedPages, setVisitedPages] = useState<readonly CachedBrowsePage[]>(() =>
@@ -678,10 +692,7 @@ function CachedBrowsePages({ activePage }: { activePage: AppPage | null }) {
 
   useEffect(() => {
     const preload = () => {
-      void loadLibraryPage().catch(() => {});
-      void loadFavoritesPage().catch(() => {});
-      void loadCirclesPage().catch(() => {});
-      void loadCreatorWorksPage().catch(() => {});
+      for (const component of [...Object.values(browsePages), commandPalette]) void component.preload().catch(() => {});
     };
     if (typeof window.requestIdleCallback === "function") {
       const handle = window.requestIdleCallback(preload, { timeout: 4000 });
