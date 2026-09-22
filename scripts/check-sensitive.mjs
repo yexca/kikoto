@@ -18,8 +18,10 @@ const knownTokenPatterns = [
   /\bAKIA[0-9A-Z]{16}\b/gu,
   /-----BEGIN(?: [A-Z]+)? PRIVATE KEY-----/gu,
 ];
+// "token" excludes tokenizer options such as SQLite FTS5 `tokenize = 'trigram'`,
+// which name a text-splitting algorithm rather than a credential.
 const sensitiveAssignmentPattern =
-  /(?:^|[\s,{[])(?<key>(?=[A-Za-z_])[A-Za-z0-9_.-]*(?:password|passwd|token|secret|api[-_]?key|access[-_]?key|private[-_]?key)[A-Za-z0-9_.-]*)\s*(?::=|=|:)\s*(?<value>[^,\s}#]+)/iu;
+  /(?:^|[\s,{[])(?<key>(?=[A-Za-z_])[A-Za-z0-9_.-]*(?:password|passwd|token(?!iz)|secret|api[-_]?key|access[-_]?key|private[-_]?key)[A-Za-z0-9_.-]*)\s*(?::=|=|:)\s*(?<value>[^,\s}#]+)/iu;
 const sensitiveQueryParameter =
   /(?:password|passwd|token|secret|api[-_]?key|access[-_]?key|private[-_]?key)/iu;
 
