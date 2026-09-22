@@ -93,7 +93,12 @@ The global player keeps its public track and state types in `playerTypes` so
 media-tree and queue models do not depend on the React provider. `playerPersistence`
 owns browser preference access and queue parsing, including legacy migration.
 `PlayerProvider` composes these functions with playback effects and account-scoped
-storage keys; it remains mounted across navigation.
+storage keys; it remains mounted across navigation. It also warms the next
+auto-advance track in one detached audio element (`useNextTrackPreload`) so the
+player element can reuse the buffered bytes for the identical URL. The dock UI
+lives in `player/dock`: `PlayerDock` owns the Mini, Compact, and full surfaces,
+while queue reordering math, lyrics parsing, and formatting stay in pure
+modules.
 
 ## Major Surfaces
 

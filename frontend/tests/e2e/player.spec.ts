@@ -9,6 +9,8 @@ import {
   seedPlayer,
   readScopedPlayerState,
   mediaFixture,
+  queuedTrackFixture,
+  seedPlayerQueue,
 } from "./fixtures/player-library";
 
 function servePreparedAudio(route: Route, media: Buffer) {
@@ -718,4 +720,70 @@ test("player restores only the current server and authenticated owner's queue", 
   await seedPlayer(page, persistedTrack, 1);
   await page.reload();
   await expect(page.getByText("Test track", { exact: true })).toBeVisible();
+});
+
+test("@desktop queue rows reorder by dragging the handle or with the arrow keys", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockApplication(page);
+  await seedPlayerQueue(page, [
+    queuedTrackFixture(0, "Test track"),
+    queuedTrackFixture(1, "Second queued track"),
+    queuedTrackFixture(2, "Third queued track"),
+  ]);
+  const queuedIds = async () =>
+    ((await readScopedPlayerState(page, playerQueueStorageBaseKey))?.queue ?? []).map(
+      (track: { queueItemId: string }) => track.queueItemId,
+    );
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Playback queue" }).click();
+  const queue = page.getByRole("list", { name: "Playback queue" });
+  const rows = queue.getByRole("listitem");
+  await expect(rows).toHaveCount(3);
+  const handle = queue.getByRole("button", { name: "Reorder Test track" });
+  const [handleBox, rowBox] = await Promise.all([handle.boundingBox(), rows.first().boundingBox()]);
+  expect(handleBox).not.toBeNull();
+  expect(rowBox).not.toBeNull();
+  const startX = handleBox!.x + handleBox!.width / 2;
+  const startY = handleBox!.y + handleBox!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX, startY + rowBox!.height, { steps: 8 });
+  await page.mouse.up();
+
+  await expect(rows.nth(1)).toContainText("Test track");
+  await expect.poll(queuedIds).toEqual(["e2e-track-2", "e2e-track-1", "e2e-track-3"]);
+  await expect.poll(async () => (await readScopedPlayerState(page, playerQueueStorageBaseKey))?.currentIndex).toBe(1);
+
+  const thirdHandle = queue.getByRole("button", { name: "Reorder Third queued track" });
+  await thirdHandle.focus();
+  await page.keyboard.press("ArrowUp");
+  await expect.poll(queuedIds).toEqual(["e2e-track-2", "e2e-track-3", "e2e-track-1"]);
+  await expect(thirdHandle).toBeFocused();
+  await expect(page.getByRole("button", { name: "Pause", exact: true })).toHaveCount(0);
+});
+
+test("the next queued track is preloaded while the current track plays", async ({ page }) => {
+  await mockApplication(page);
+  await seedPlayerQueue(page, [queuedTrackFixture(0, "Test track"), queuedTrackFixture(1, "Second queued track")]);
+  await page.route(/\/api\/media\/1\/stream(?:\?.*)?$/, (route) =>
+    route.fulfill({ status: 200, contentType: "audio/wav", body: silentWav(30) }),
+  );
+  const nextTrackRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/media/2/stream") nextTrackRequests.push(request.url());
+  });
+  await page.goto("/");
+
+  const audio = page.locator("audio");
+  await expect.poll(() => audio.evaluate((element: HTMLAudioElement) => element.duration)).toBeGreaterThan(29);
+  expect(nextTrackRequests).toHaveLength(0);
+
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect.poll(() => nextTrackRequests.length).toBeGreaterThan(0);
+  expect(new URL(nextTrackRequests[0]).searchParams.get("forceDirect")).toBe("1");
+  await expect(page.getByText("Test track", { exact: true })).toBeVisible();
+  expect(await audio.evaluate((element: HTMLAudioElement) => new URL(element.src).pathname)).toBe(
+    "/api/media/1/stream",
+  );
 });

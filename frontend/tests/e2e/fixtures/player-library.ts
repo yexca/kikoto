@@ -592,16 +592,24 @@ export async function mockApplication(
 }
 
 export async function seedPlayer(page: Page, track = persistedTrack, principalID: number | null = null) {
-  persistedPlayerTracks.set(page, [track]);
+  await seedPlayerQueue(page, [track], principalID);
+}
+
+export async function seedPlayerQueue(
+  page: Page,
+  tracks: (typeof persistedTrack)[],
+  principalID: number | null = null,
+) {
+  persistedPlayerTracks.set(page, tracks);
   await page.addInitScript(
-    ({ track, principalID, baseKey }) => {
+    ({ tracks, principalID, baseKey }) => {
       const principal = principalID === null ? "anonymous" : `user-${principalID}`;
       const key = `${baseKey}:${encodeURIComponent(window.location.origin)}:${principal}`;
       localStorage.setItem(
         key,
         JSON.stringify({
           version: 1,
-          queue: [track],
+          queue: tracks,
           currentIndex: 0,
           mode: "order",
           playbackRate: 1,
@@ -609,8 +617,22 @@ export async function seedPlayer(page: Page, track = persistedTrack, principalID
         }),
       );
     },
-    { track, principalID, baseKey: playerQueueStorageBaseKey },
+    { tracks, principalID, baseKey: playerQueueStorageBaseKey },
   );
+}
+
+export function queuedTrackFixture(index: number, title: string) {
+  const locationId = index + 1;
+  const streamUrl = `/api/media/${locationId}/stream`;
+  return {
+    ...persistedTrack,
+    queueItemId: `e2e-track-${locationId}`,
+    mediaItemId: locationId,
+    locationId,
+    title,
+    streamUrl,
+    locations: [{ ...persistedTrack.locations[0], locationId, streamUrl }],
+  };
 }
 
 export async function readScopedPlayerState(page: Page, baseKey: string, principalID: number | null = null) {
