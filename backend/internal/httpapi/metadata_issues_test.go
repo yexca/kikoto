@@ -86,7 +86,7 @@ func TestMetadataRecoveryRechecksUnavailableAndKeepsReviews(t *testing.T) {
 	db := openMigratedTestDB(t)
 	s := NewServer(db, config.Config{CacheRoot: t.TempDir()})
 	workID := seedMetadataIssue(t, db, 0)
-	userID := insertCustomWorkflowAPIUser(t, db, "metadata-reviewer")
+	userID := insertWorkflowGraphAPIUser(t, db, "metadata-reviewer")
 	if _, err := db.Exec(`INSERT INTO work_manual_override(work_id,field_name,value_json,updated_by_user_id) VALUES (?,'title','"Manual title"',?)`, workID, userID); err != nil {
 		t.Fatal(err)
 	}

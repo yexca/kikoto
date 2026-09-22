@@ -14,7 +14,10 @@ import (
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
-const availabilityWatchID int64 = 1
+const (
+	availabilityWatchID          int64 = 1
+	availabilityWatchDisplayName       = "Availability Watch"
+)
 
 var errAvailabilityWatchRunActive = errors.New("an Availability Watch run is already active")
 
@@ -153,7 +156,7 @@ func (s *Server) updateAvailabilityWatchTargets(w http.ResponseWriter, r *http.R
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 		return
 	}
-	codes, err := normalizeCustomWorkCodes(payload.TargetCodes, 1000)
+	codes, err := normalizeGraphWorkCodes(payload.TargetCodes, 1000)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -517,12 +520,12 @@ func (s *Server) enqueueAvailabilityWatch(ctx context.Context, userID int64, tri
 	if sourceID.Valid {
 		payload.SourceID = sourceID.Int64
 	}
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, "availability_watch", "Availability Watch", "Monitor a shared pool of work codes and dispatch configured actions when a remote source becomes available.", availabilityWatchDefinition())
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "availability_watch", availabilityWatchDisplayName, "Monitor a shared pool of work codes and dispatch configured actions when a remote source becomes available.", availabilityWatchDefinition())
 	if err != nil {
 		return availabilityWatchRunResult{}, err
 	}
 	result := availabilityWatchRunResult{Status: "queued", TargetCount: len(targets), NewlyAvailableCodes: []string{}, ReadyCodes: []string{}, Failures: []string{}}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "availability_watch", "Availability Watch", "queued", trigger.Type, trigger.Reason, map[string]any{
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "availability_watch", availabilityWatchDisplayName, "queued", trigger.Type, trigger.Reason, map[string]any{
 		"source_id": payload.SourceID, "action": payload.Action, "target_count": len(targets),
 	}, result)
 	if err != nil {
@@ -863,10 +866,10 @@ func (s *Server) finishAvailabilityWatchJob(ctx context.Context, job workflowJob
 		return err
 	}
 	if result.Status == "succeeded" {
-		if err := updateCustomWorkflowTriggerSuccess(ctx, tx, job.RunID); err != nil {
+		if err := updateWorkflowTriggerSuccess(ctx, tx, job.RunID); err != nil {
 			return err
 		}
-	} else if err := updateCustomWorkflowTriggerFailure(ctx, tx, job.RunID, "Availability Watch completed with some failures"); err != nil {
+	} else if err := updateWorkflowTriggerFailure(ctx, tx, job.RunID, "Availability Watch completed with some failures"); err != nil {
 		return err
 	}
 	if len(result.NewlyAvailableCodes) > 0 {

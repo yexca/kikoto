@@ -4,7 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/workflow"
@@ -211,4 +216,237 @@ func (s *Server) persistPreparedRemoteFetchTx(ctx context.Context, tx *sql.Tx, p
 		}
 	}
 	return result, nil
+}
+
+type remoteWorkSaveRequest struct {
+	Paths        []string                  `json:"paths"`
+	LocalPaths   []string                  `json:"localPaths"`
+	TargetRoot   string                    `json:"targetRoot"`
+	RequestID    string                    `json:"requestId"`
+	Decisions    []remoteFetchFileDecision `json:"decisions"`
+	MinFreeBytes int64                     `json:"minFreeBytes"`
+}
+
+type remoteWorkFetchJobPayload struct {
+	RequestedByUserID int64                     `json:"requested_by_user_id,omitempty"`
+	SourceID          int64                     `json:"source_id"`
+	WorkCode          string                    `json:"work_code"`
+	Paths             []string                  `json:"paths"`
+	LocalPaths        []string                  `json:"local_paths"`
+	TargetRoot        string                    `json:"target_root"`
+	RequestID         string                    `json:"request_id"`
+	Decisions         []remoteFetchFileDecision `json:"decisions"`
+	MinFreeBytes      int64                     `json:"min_free_bytes"`
+}
+
+var remoteFetchRequestIDPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{8,128}$`)
+
+func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "downloads:manage"); !ok {
+		return
+	}
+	sourceID, code, payload, ok := parseRemoteWorkSaveRequest(w, r)
+	if !ok {
+		return
+	}
+	metadataErr := s.ensureRemoteFetchMetadata(r.Context(), code)
+	preparation := s.prepareRemoteFetch(r.Context(), code)
+	if metadataErr != nil {
+		preparation.MetadataStatus = "degraded"
+		preparation.Warnings = append(preparation.Warnings, "metadata refresh: "+metadataErr.Error())
+	}
+	plan, err := s.buildRemoteWorkSavePlan(r.Context(), sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.Decisions)
+	if err != nil {
+		writeUpstreamError(w, err)
+		return
+	}
+	if err := s.ensureRemoteWorkSaveDiskReserve(plan, payload.MinFreeBytes); err != nil {
+		writeError(w, err)
+		return
+	}
+	attachRemoteFetchPreparation(&plan, preparation)
+	writeJSON(w, http.StatusOK, plan)
+}
+
+func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
+	actor, ok := s.requirePermission(w, r, "downloads:manage")
+	if !ok {
+		return
+	}
+	sourceID, code, payload, ok := parseRemoteWorkSaveRequest(w, r)
+	if !ok {
+		return
+	}
+	payload.RequestID = strings.TrimSpace(payload.RequestID)
+	if payload.RequestID != "" && !validRemoteFetchRequestID(payload.RequestID) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid fetch request id"})
+		return
+	}
+	if payload.RequestID != "" {
+		if existing, found, err := s.remoteFetchRequestResult(r.Context(), payload.RequestID, sourceID, code); err != nil {
+			writeError(w, err)
+			return
+		} else if found {
+			writeJSON(w, http.StatusAccepted, existing)
+			return
+		}
+	}
+	operationCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Minute)
+	defer cancel()
+	result, err := s.enqueueRemoteWorkSave(operationCtx, sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.RequestID, payload.Decisions, payload.MinFreeBytes, actor.ID, workflow.JobPriorityUserInitiated)
+	if err != nil {
+		if payload.RequestID != "" {
+			if existing, found, lookupErr := s.remoteFetchRequestResult(r.Context(), payload.RequestID, sourceID, code); lookupErr == nil && found {
+				writeJSON(w, http.StatusAccepted, existing)
+				return
+			}
+		}
+		var conflict remoteWorkSaveConflictError
+		if errors.As(err, &conflict) {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "summary": conflict.Summary})
+			return
+		}
+		writeUpstreamError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, result)
+}
+
+func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, targetRoot string, requestID string, decisions []remoteFetchFileDecision, minFreeBytes int64, requestedByUserID int64, jobPriority int) (remoteWorkSaveResult, error) {
+	requestedCode := strings.ToUpper(strings.TrimSpace(code))
+	if existing, found, err := activeRemoteFetchResult(ctx, s.db, requestedCode); err != nil {
+		return remoteWorkSaveResult{}, err
+	} else if found {
+		if err := subscribeRemoteFetchNotification(ctx, s.db, requestedByUserID, existing.RunID, existing.WorkID, existing.PrimaryCode); err != nil {
+			return remoteWorkSaveResult{}, err
+		}
+		return existing, nil
+	}
+	if s.db != nil {
+		// Background Fetch runs may not have a preceding plan request.
+		_ = s.ensureRemoteFetchMetadata(ctx, requestedCode)
+	}
+	prep, err := s.prepareRemoteWorkSaveEnqueue(ctx, sourceID, code, selectedPaths, selectedLocalPaths, targetRoot, requestID, decisions, minFreeBytes, requestedByUserID, jobPriority)
+	if err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	return s.enqueuePreparedRemoteWorkSave(ctx, prep)
+}
+
+type rowQueryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func activeRemoteFetchResult(ctx context.Context, queryer rowQueryer, workCode string) (remoteWorkSaveResult, bool, error) {
+	workCode = strings.ToUpper(strings.TrimSpace(workCode))
+	if workCode == "" {
+		return remoteWorkSaveResult{}, false, nil
+	}
+	var result remoteWorkSaveResult
+	var planJSON string
+	err := queryer.QueryRowContext(ctx, `
+		SELECT run.id,
+			job.id,
+			COALESCE(manifest.work_id, 0),
+			COALESCE(CAST(json_extract(run.input_json, '$.work_code') AS TEXT), ''),
+			run.status,
+			COALESCE(manifest.target_root, ''),
+			COALESCE(manifest.plan_json, '{}'),
+			COALESCE(CAST(json_extract(run.input_json, '$.request_id') AS TEXT), '')
+		FROM workflow_run AS run
+		INNER JOIN workflow_job AS job
+			ON job.workflow_run_id = run.id AND job.worker_type = 'remote_work_fetch'
+		LEFT JOIN remote_fetch_manifest AS manifest ON manifest.workflow_run_id = run.id
+		WHERE run.workflow_code = 'remote_work_fetch'
+			AND (
+				run.status IN ('queued', 'running')
+				OR (
+					run.status = 'partial'
+					AND EXISTS (
+						SELECT 1
+						FROM workflow_candidate AS candidate
+						WHERE candidate.workflow_run_id = run.id
+							AND candidate.candidate_type = 'remote_origin_blocked'
+							AND candidate.status = 'pending'
+					)
+				)
+			)
+			AND UPPER(COALESCE(CAST(json_extract(run.input_json, '$.work_code') AS TEXT), '')) = ?
+		ORDER BY run.id ASC
+		LIMIT 1
+	`, workCode).Scan(&result.RunID, &result.JobID, &result.WorkID, &result.PrimaryCode, &result.Status, &result.SaveRoot, &planJSON, &result.RequestID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return remoteWorkSaveResult{}, false, nil
+	}
+	if err != nil {
+		return remoteWorkSaveResult{}, false, err
+	}
+	var plan remoteWorkSavePlan
+	if json.Unmarshal([]byte(planJSON), &plan) == nil {
+		result.Plan = plan.Summary
+	}
+	result.Deduplicated = true
+	return result, true, nil
+}
+
+func remoteWorkFetchDefinition() map[string]any {
+	return map[string]any{
+		"nodes": []map[string]string{
+			{"id": "select", "type": "select_remote_source"},
+			{"id": "tree", "type": "fetch_remote_tree"},
+			{"id": "plan", "type": "plan_save"},
+			{"id": "cache", "type": "materialize_cache"},
+			{"id": "stage", "type": "stage_fetch_result"},
+			{"id": "verify", "type": "verify_files"},
+			{"id": "promote", "type": "publish_staged_fetch"},
+			{"id": "sync", "type": "sync_file_locations"},
+			{"id": "cleanup", "type": "cleanup_cache"},
+		},
+	}
+}
+
+func parseRemoteWorkSaveRequest(w http.ResponseWriter, r *http.Request) (int64, string, remoteWorkSaveRequest, bool) {
+	id, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
+		return 0, "", remoteWorkSaveRequest{}, false
+	}
+	code := remoteWorkCodeFromPath(r)
+	if code == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
+		return 0, "", remoteWorkSaveRequest{}, false
+	}
+	var payload remoteWorkSaveRequest
+	_ = json.NewDecoder(r.Body).Decode(&payload)
+	return id, code, payload, true
+}
+
+func validRemoteFetchRequestID(value string) bool {
+	return remoteFetchRequestIDPattern.MatchString(strings.TrimSpace(value))
+}
+
+func (s *Server) remoteFetchRequestResult(ctx context.Context, requestID string, sourceID int64, code string) (remoteWorkSaveResult, bool, error) {
+	var storedSourceID int64
+	var storedCode string
+	var raw string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT source_id, work_code, result_json
+		FROM remote_fetch_request
+		WHERE request_id = ?
+	`, requestID).Scan(&storedSourceID, &storedCode, &raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return remoteWorkSaveResult{}, false, nil
+	}
+	if err != nil {
+		return remoteWorkSaveResult{}, false, err
+	}
+	if storedSourceID != sourceID || !strings.EqualFold(strings.TrimSpace(storedCode), strings.TrimSpace(code)) {
+		return remoteWorkSaveResult{}, false, fmt.Errorf("fetch request id was already used for another work")
+	}
+	var result remoteWorkSaveResult
+	if err := json.Unmarshal([]byte(raw), &result); err != nil {
+		return remoteWorkSaveResult{}, false, err
+	}
+	result.Deduplicated = true
+	return result, true, nil
 }

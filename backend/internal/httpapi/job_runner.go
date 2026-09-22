@@ -81,7 +81,7 @@ func (s *Server) runWorkflowCoordinator(ctx context.Context) {
 	stagingCleanupTicker := time.NewTicker(remoteFetchStagingCleanupPeriod)
 	defer stagingCleanupTicker.Stop()
 	for {
-		if err := s.dispatchDueCustomWorkflowTrigger(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		if err := s.dispatchDueScheduledWorkflowTrigger(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("dispatch scheduled custom workflow", "error", err)
 		}
 		if _, err := workflow.NewStore(s.db).RequeueExpiredJobs(ctx, 30*time.Second); err != nil && !errors.Is(err, context.Canceled) {
@@ -158,7 +158,7 @@ func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobR
 		"media_location_cleanup":     s.executeMediaLocationCleanupJob,
 		"cache_orphan_cleanup":       s.executeCacheOrphanCleanupJob,
 		"unlinked_work_source_check": s.executeUnlinkedWorkSourceCheckJob,
-		"custom_workflow":            s.executeCustomWorkflowJob,
+		"custom_workflow":            s.executeWorkflowGraphJob,
 		"availability_watch":         s.executeAvailabilityWatchJob,
 	}
 	executor := executors[job.WorkerType]
@@ -574,7 +574,7 @@ func (s *Server) failClaimedWorkflowJob(ctx context.Context, job workflowJobReco
 	`, mustJSON(map[string]any{"error": message}), job.RunID); err != nil {
 		return err
 	}
-	if err := updateCustomWorkflowTriggerFailure(ctx, tx, job.RunID, message); err != nil {
+	if err := updateWorkflowTriggerFailure(ctx, tx, job.RunID, message); err != nil {
 		return err
 	}
 	return tx.Commit()

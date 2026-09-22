@@ -245,3 +245,79 @@ func (s *Server) updateCurrentUser(w http.ResponseWriter, r *http.Request) {
 	updated = s.withPasswordManagement(updated)
 	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "user": updated})
 }
+
+func (s *Server) getCurrentUser(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusOK, map[string]any{"authenticated": false})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "user": user})
+}
+
+func (s *Server) login(w http.ResponseWriter, r *http.Request) {
+	username, password, err := parseLoginRequest(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	attempt, retryAfter, allowed := s.loginThrottle.Begin(loginThrottleKeys(s.loginClientKey(r), username))
+	if !allowed {
+		writeLoginRateLimited(w, retryAfter)
+		return
+	}
+	session, err := s.accountStore.Authenticate(r.Context(), username, password, time.Now())
+	if errors.Is(err, sql.ErrNoRows) {
+		attempt.Fail()
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid username or password"})
+		return
+	}
+	if err != nil {
+		attempt.Cancel()
+		if errors.Is(err, account.ErrPasswordVerificationBusy) {
+			writeLoginBusy(w)
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	attempt.Succeed()
+
+	s.setSessionCookie(r, w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    session.ID,
+		Path:     "/",
+		Expires:  session.ExpiresAt,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+	payload := map[string]any{"authenticated": true, "user": s.withPasswordManagement(session.User)}
+	if isMobileAuthRequest(r) {
+		payload["sessionToken"] = session.ID
+	}
+	writeJSON(w, http.StatusOK, payload)
+}
+
+func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	if sessionID := bearerSessionID(r); sessionID != "" {
+		_ = s.accountStore.DeleteSession(r.Context(), sessionID)
+	}
+	if cookie, err := r.Cookie(sessionCookieName); err == nil {
+		_ = s.accountStore.DeleteSession(r.Context(), cookie.Value)
+	}
+	s.setSessionCookie(r, w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *Server) setSessionCookie(r *http.Request, w http.ResponseWriter, cookie *http.Cookie) {
+	cookie.Secure = s.cfg.SessionCookieSecure || r.TLS != nil
+	http.SetCookie(w, cookie)
+}

@@ -35,7 +35,7 @@ func TestPresetWorkflowBuildsValidGraphForEveryAction(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			graph, err := validateCustomWorkflowDefinition(string(encoded))
+			graph, err := validateWorkflowGraphDefinition(string(encoded))
 			if err != nil {
 				t.Fatalf("%s/%s graph: %v", spec.Code, action, err)
 			}
@@ -46,11 +46,11 @@ func TestPresetWorkflowBuildsValidGraphForEveryAction(t *testing.T) {
 			if graph.NodesByID["action"].Type != wantType {
 				t.Fatalf("%s/%s action node = %s", spec.Code, action, graph.NodesByID["action"].Type)
 			}
-			permissions := customWorkflowRequiredPermissions(graph)
-			if action == "fetch" && missingCustomWorkflowPermission(permissions, []string{"downloads:manage"}) != "" {
+			permissions := workflowGraphRequiredPermissions(graph)
+			if action == "fetch" && missingWorkflowGraphPermission(permissions, []string{"downloads:manage"}) != "" {
 				t.Fatalf("%s fetch permissions = %v", spec.Code, permissions)
 			}
-			if missingCustomWorkflowPermission(permissions, []string{"tags:write"}) != "" {
+			if missingWorkflowGraphPermission(permissions, []string{"tags:write"}) != "" {
 				t.Fatalf("%s tag permissions = %v", spec.Code, permissions)
 			}
 		}
@@ -110,7 +110,7 @@ func insertPresetWorkflowSource(t *testing.T, db *sql.DB) {
 
 func TestRunWorkflowPresetQueuesSystemRunWithRenderedTag(t *testing.T) {
 	db := openMigratedTestDB(t)
-	userID := insertCustomWorkflowAPIUser(t, db, "preset-runner")
+	userID := insertWorkflowGraphAPIUser(t, db, "preset-runner")
 	insertPresetWorkflowSource(t, db)
 	server := NewServer(db, config.Config{})
 	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
@@ -147,11 +147,11 @@ func TestRunWorkflowPresetQueuesSystemRunWithRenderedTag(t *testing.T) {
 	if err := db.QueryRow("SELECT worker_type, payload_json FROM workflow_job WHERE workflow_run_id = ?", result.RunID).Scan(&workerType, &payloadJSON); err != nil {
 		t.Fatal(err)
 	}
-	var payload customWorkflowJobPayload
+	var payload workflowGraphJobPayload
 	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
 		t.Fatal(err)
 	}
-	graph, err := validateCustomWorkflowDefinition(payload.DefinitionJSON)
+	graph, err := validateWorkflowGraphDefinition(payload.DefinitionJSON)
 	if err != nil {
 		t.Fatalf("queued preset graph: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestRunWorkflowPresetQueuesSystemRunWithRenderedTag(t *testing.T) {
 
 func TestRunWorkflowPresetRequiresCapabilityPermissions(t *testing.T) {
 	db := openMigratedTestDB(t)
-	userID := insertCustomWorkflowAPIUser(t, db, "preset-limited")
+	userID := insertWorkflowGraphAPIUser(t, db, "preset-limited")
 	insertPresetWorkflowSource(t, db)
 	server := NewServer(db, config.Config{})
 	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
@@ -195,12 +195,12 @@ func TestRunWorkflowPresetRequiresCapabilityPermissions(t *testing.T) {
 	if _, err := db.Exec("SELECT 1"); err != nil {
 		t.Fatal(err)
 	}
-	assertCustomWorkflowAPICount(t, db, "workflow_run", 0)
+	assertWorkflowGraphAPICount(t, db, "workflow_run", 0)
 }
 
 func TestPresetWorkflowScheduleStoresOwnerAndDispatchesWithCurrentPermissions(t *testing.T) {
 	db := openMigratedTestDB(t)
-	ownerID := insertCustomWorkflowAPIUser(t, db, "preset-schedule-owner")
+	ownerID := insertWorkflowGraphAPIUser(t, db, "preset-schedule-owner")
 	insertPresetWorkflowSource(t, db)
 	server := NewServer(db, config.Config{})
 	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
@@ -276,7 +276,7 @@ func TestPresetWorkflowScheduleStoresOwnerAndDispatchesWithCurrentPermissions(t 
 
 func TestPresetWorkflowAutomationRejectsFullCatalogRefresh(t *testing.T) {
 	db := openMigratedTestDB(t)
-	ownerID := insertCustomWorkflowAPIUser(t, db, "preset-startup-owner")
+	ownerID := insertWorkflowGraphAPIUser(t, db, "preset-startup-owner")
 	server := NewServer(db, config.Config{})
 	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
 		t.Fatal(err)

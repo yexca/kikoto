@@ -14,16 +14,12 @@ import (
 )
 
 const (
-	minimumCustomWorkflowIntervalMinutes = 5
-	maximumCustomWorkflowIntervalMinutes = 7 * 24 * 60
+	minimumWorkflowIntervalMinutes = 5
+	maximumWorkflowIntervalMinutes = 7 * 24 * 60
 )
 
-type customWorkflowSchedule struct {
+type workflowIntervalSchedule struct {
 	IntervalMinutes int `json:"intervalMinutes"`
-}
-
-type customWorkflowScheduleConfig struct {
-	Inputs map[string]any `json:"inputs"`
 }
 
 type preparedWorkflowTrigger struct {
@@ -67,7 +63,7 @@ func (s *Server) prepareWorkflowTrigger(ctx context.Context, actor currentUser, 
 	if err != nil {
 		return preparedWorkflowTrigger{}, err
 	}
-	if missing := missingCustomWorkflowPermission(actor.Permissions, requiredPermissions); missing != "" {
+	if missing := missingWorkflowGraphPermission(actor.Permissions, requiredPermissions); missing != "" {
 		return preparedWorkflowTrigger{}, fmt.Errorf("automated workflow requires permission %s", missing)
 	}
 	return prepared, nil
@@ -76,7 +72,7 @@ func (s *Server) prepareWorkflowTrigger(ctx context.Context, actor currentUser, 
 func prepareSystemWorkflowTriggerTiming(definition workflowDefinitionRecord, payload workflowTriggerPayload, now time.Time, existing *workflowTriggerRecord) (preparedWorkflowTrigger, error) {
 	prepared := preparedWorkflowTrigger{ConfigJSON: "{}"}
 	if definition.Code == "availability_watch" && payload.TriggerType != "schedule" {
-		return preparedWorkflowTrigger{}, fmt.Errorf("Availability Watch supports one interval schedule only")
+		return preparedWorkflowTrigger{}, fmt.Errorf("%s supports one interval schedule only", availabilityWatchDisplayName)
 	}
 	switch payload.TriggerType {
 	case "startup":
@@ -212,7 +208,7 @@ func (s *Server) ensureAvailabilityWatchSchedule(ctx context.Context, definition
 		return nil
 	}
 	if triggerType != "schedule" {
-		return fmt.Errorf("Availability Watch supports one interval schedule only")
+		return fmt.Errorf("%s supports one interval schedule only", availabilityWatchDisplayName)
 	}
 	var count int
 	if err := s.db.QueryRowContext(ctx, `
@@ -223,7 +219,7 @@ func (s *Server) ensureAvailabilityWatchSchedule(ctx context.Context, definition
 		return err
 	}
 	if count > 0 {
-		return fmt.Errorf("Availability Watch already has a schedule")
+		return fmt.Errorf("%s already has a schedule", availabilityWatchDisplayName)
 	}
 	return nil
 }
@@ -375,13 +371,13 @@ func workflowTagFragment(value string) string {
 	return strings.Trim(builder.String(), "_- ")
 }
 
-func validateWorkflowIntervalSchedule(scheduleJSON string) (customWorkflowSchedule, error) {
-	var schedule customWorkflowSchedule
+func validateWorkflowIntervalSchedule(scheduleJSON string) (workflowIntervalSchedule, error) {
+	var schedule workflowIntervalSchedule
 	if err := decodeStrictJSON(scheduleJSON, &schedule); err != nil {
-		return customWorkflowSchedule{}, fmt.Errorf("schedule JSON must contain intervalMinutes")
+		return workflowIntervalSchedule{}, fmt.Errorf("schedule JSON must contain intervalMinutes")
 	}
-	if schedule.IntervalMinutes < minimumCustomWorkflowIntervalMinutes || schedule.IntervalMinutes > maximumCustomWorkflowIntervalMinutes {
-		return customWorkflowSchedule{}, fmt.Errorf("intervalMinutes must be between %d and %d", minimumCustomWorkflowIntervalMinutes, maximumCustomWorkflowIntervalMinutes)
+	if schedule.IntervalMinutes < minimumWorkflowIntervalMinutes || schedule.IntervalMinutes > maximumWorkflowIntervalMinutes {
+		return workflowIntervalSchedule{}, fmt.Errorf("intervalMinutes must be between %d and %d", minimumWorkflowIntervalMinutes, maximumWorkflowIntervalMinutes)
 	}
 	return schedule, nil
 }
@@ -398,7 +394,7 @@ func decodeStrictJSON(raw string, target any) error {
 	return nil
 }
 
-func (s *Server) dispatchDueCustomWorkflowTrigger(ctx context.Context) error {
+func (s *Server) dispatchDueScheduledWorkflowTrigger(ctx context.Context) error {
 	if s.cfg.IsDemo() {
 		return nil
 	}
@@ -436,11 +432,11 @@ func (s *Server) dispatchDueCustomWorkflowTrigger(ctx context.Context) error {
 
 func (s *Server) dispatchDueSystemWorkflowTrigger(ctx context.Context, definition workflowDefinitionRecord, trigger workflowTriggerRecord) error {
 	if !systemWorkflowSupportsConfigurableTriggers(definition.Code) {
-		return s.disableInvalidCustomWorkflowTrigger(ctx, trigger.ID, "system workflow schedule is not supported")
+		return s.disableInvalidWorkflowTrigger(ctx, trigger.ID, "system workflow schedule is not supported")
 	}
 	schedule, err := validateWorkflowIntervalSchedule(trigger.ScheduleJSON)
 	if err != nil {
-		return s.disableInvalidCustomWorkflowTrigger(ctx, trigger.ID, err.Error())
+		return s.disableInvalidWorkflowTrigger(ctx, trigger.ID, err.Error())
 	}
 	now := time.Now().UTC()
 	nextRunAt := formatWorkflowTimestamp(now.Add(time.Duration(schedule.IntervalMinutes) * time.Minute))
@@ -588,7 +584,7 @@ func systemWorkflowTriggerIsAsync(code string) bool {
 func (s *Server) loadAvailabilityWatchTriggerExecution(ctx context.Context, trigger workflowTriggerRecord) (systemWorkflowTriggerConfig, currentUser, error) {
 	var config systemWorkflowTriggerConfig
 	if err := decodeStrictJSON(trigger.ConfigJSON, &config); err != nil {
-		return config, currentUser{}, fmt.Errorf("Availability Watch trigger config is invalid")
+		return config, currentUser{}, fmt.Errorf("%s trigger config is invalid", availabilityWatchDisplayName)
 	}
 	action, err := s.availabilityWatchConfiguredAction(ctx)
 	if err != nil {
@@ -637,7 +633,7 @@ func (s *Server) loadSystemWorkflowTriggerOwner(ctx context.Context, userID int6
 	if err != nil {
 		return currentUser{}, err
 	}
-	if missing := missingCustomWorkflowPermission(owner.Permissions, permissions); missing != "" {
+	if missing := missingWorkflowGraphPermission(owner.Permissions, permissions); missing != "" {
 		return currentUser{}, fmt.Errorf("trigger owner no longer has required permission %s", missing)
 	}
 	return owner, nil
@@ -674,7 +670,7 @@ func (s *Server) startupSystemWorkflowTriggerIDs(ctx context.Context) ([]int64, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var triggerIDs []int64
 	for rows.Next() {
 		var triggerID int64
@@ -714,7 +710,7 @@ func (s *Server) dispatchStartupSystemWorkflowTrigger(ctx context.Context, trigg
 	return s.executeSystemWorkflowTrigger(ctx, definition, trigger, "startup", "application_startup")
 }
 
-func (s *Server) disableInvalidCustomWorkflowTrigger(ctx context.Context, triggerID int64, message string) error {
+func (s *Server) disableInvalidWorkflowTrigger(ctx context.Context, triggerID int64, message string) error {
 	message = strings.TrimSpace(message)
 	if message == "" {
 		message = "scheduled workflow configuration is invalid"
@@ -729,7 +725,7 @@ func formatWorkflowTimestamp(value time.Time) string {
 	return value.UTC().Format("2006-01-02 15:04:05")
 }
 
-func updateCustomWorkflowTriggerSuccess(ctx context.Context, tx *sql.Tx, runID int64) error {
+func updateWorkflowTriggerSuccess(ctx context.Context, tx *sql.Tx, runID int64) error {
 	_, err := tx.ExecContext(ctx, `
 		UPDATE workflow_trigger
 		SET last_success_at = CURRENT_TIMESTAMP, last_error_message = '', updated_at = CURRENT_TIMESTAMP
@@ -738,7 +734,7 @@ func updateCustomWorkflowTriggerSuccess(ctx context.Context, tx *sql.Tx, runID i
 	return err
 }
 
-func updateCustomWorkflowTriggerFailure(ctx context.Context, tx *sql.Tx, runID int64, message string) error {
+func updateWorkflowTriggerFailure(ctx context.Context, tx *sql.Tx, runID int64, message string) error {
 	_, err := tx.ExecContext(ctx, `
 		UPDATE workflow_trigger
 		SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP

@@ -140,7 +140,8 @@ custom workflow editor: `workflow_definition` rows are system-scope only, the
 definition CRUD, preview, node-type, slash-command, subworkflow, and workflow
 input surfaces are gone, and migration 035 deletes any remaining user
 definitions with their triggers while runs keep their code and name snapshots.
-The typed DAG runtime (`custom_workflow` jobs, checkpoints, retry) stays and
+The typed workflow graph runtime (`workflow_graph*.go`; persisted as
+`custom_workflow` jobs with checkpoints and retry) stays and
 executes only the node kinds the presets compose: `circle_catalog`,
 `series_catalog`, `voice_source_works`, `filter_works`, `metadata_sync`,
 `track_works`, `fetch_works`, and `tag_works`. `circle_follow`,
@@ -158,7 +159,7 @@ Workflows page renders it as a Configure dialog and as the startup or interval
 trigger form. `POST /api/workflow-presets/{code}/runs` validates the inputs,
 checks that a selected source is an enabled compatible remote source, renders
 the tag template for this dispatch (`{date}`, `{target}`, `{action}`), builds
-the graph, validates it with the typed custom-workflow validator, and enqueues
+the graph, validates it with the typed workflow graph validator, and enqueues
 one recoverable `custom_workflow` job. The job payload carries the built graph,
 so Activity shows the real nodes while the definition record only stores a
 display pipeline. Required permissions are derived from the composed node
