@@ -57,6 +57,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { NotFoundPage } from "@/app/NotFoundPage";
+import { PageHeaderBackAction, usePageHeaderBack } from "@/app/pageHeader";
 import {
   announceRemoteTrackCreated,
   isMatchingRemoteTrack,
@@ -71,6 +72,7 @@ import { MetadataOnboardingNotice } from "@/components/MetadataOnboardingNotice"
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
 import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
+import { RecentlyPlayedPicker } from "@/pages/library/RecentlyPlayedPicker";
 import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -428,7 +430,6 @@ function libraryBrowseSurfaceState({
   statusFilter,
   activeTab,
   remoteSourceState,
-  recentWorks,
   searchQuery,
   searchClauses,
 }: {
@@ -440,7 +441,6 @@ function libraryBrowseSurfaceState({
   statusFilter: ListeningStatus | "all";
   activeTab: LibraryTab;
   remoteSourceState: RemoteSourceViewState;
-  recentWorks: Work[];
   searchQuery: string;
   searchClauses: SearchClause[];
 }) {
@@ -456,7 +456,6 @@ function libraryBrowseSurfaceState({
     activeFilterCount: statusFilter === "all" ? 0 : 1,
     activePageSize: remoteSelected ? remoteSourceState.pageSize : workPageSize,
     activePageSizeOptions: remoteSelected ? ([12, 24, 48, 96] as const) : localWorkPageSizeOptions,
-    showRecentlyPlayed: recentWorks.length > 0,
   };
 }
 
@@ -480,7 +479,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const [works, setWorks] = useState<Work[]>([]);
   const worksRef = useRef<Work[]>([]);
   worksRef.current = works;
-  const [recentWorks, setRecentWorks] = useState<Work[]>([]);
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [sourceRoutesReady, setSourceRoutesReady] = useState(false);
   const [browseHydrated, setBrowseHydrated] = useState(false);
@@ -543,8 +541,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const remoteRequestSeq = useRef(0);
   const loadedLibraryRequestKey = useRef("");
   const loadedRemoteRequestKey = useRef("");
-  const recentlyPlayedLoaded = useRef(false);
-  const [recentView, setRecentView] = useState(false);
   const recommendationContextRef = useRef<{ id: string; seed: number } | null>(null);
   const skipNextLibraryEffect = useRef(false);
   const skipNextRemoteEffect = useRef(false);
@@ -862,27 +858,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       .catch(() => setSettings(null));
     return () => controller.abort();
   }, [active, settings]);
-
-  useEffect(() => {
-    if (!active || selectedCode !== null || recentlyPlayedLoaded.current) return;
-    const controller = new AbortController();
-    let cancelled = false;
-    api
-      .listRecentlyPlayedWorks(24, controller.signal)
-      .then((result) => {
-        if (!cancelled) {
-          recentlyPlayedLoaded.current = true;
-          setRecentWorks(result.works);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setRecentWorks([]);
-      });
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [active, selectedCode]);
 
   useEffect(() => {
     if (!active || !browseHydrated) return;
@@ -1659,7 +1634,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     activeFilterCount,
     activePageSize,
     activePageSizeOptions,
-    showRecentlyPlayed,
   } = libraryBrowseSurfaceState({
     works,
     optimisticSearchClauses: optimisticLibrarySearchClauses,
@@ -1669,7 +1643,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     statusFilter,
     activeTab,
     remoteSourceState: activeRemoteSourceState,
-    recentWorks,
     searchQuery,
     searchClauses,
   });
@@ -1745,22 +1718,11 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       <section className="flex flex-wrap items-center gap-2" data-toast-avoid>
         <div className="order-1 min-w-0 max-w-full">
           <LibraryPrimaryTabs
-            active={recentView ? "recent" : activePrimaryTab}
-            activeSourceId={!recentView && activeTab.kind === "source" ? activeTab.source.id : null}
+            active={activePrimaryTab}
+            activeSourceId={activeTab.kind === "source" ? activeTab.source.id : null}
             sources={sources}
-            showRecent={showRecentlyPlayed}
-            onRecent={() => {
-              queueResultsScroll();
-              setRecentView(true);
-            }}
-            onChange={(tab) => {
-              setRecentView(false);
-              changePrimaryTab(tab);
-            }}
-            onSourceChange={(source) => {
-              setRecentView(false);
-              changeTab({ kind: "source", source });
-            }}
+            onChange={changePrimaryTab}
+            onSourceChange={(source) => changeTab({ kind: "source", source })}
           />
         </div>
         <div
@@ -1776,7 +1738,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             onKeyDown={dismissKeyboardOnEnter}
             onChange={(event) => {
               setOptimisticLibrarySearchClauses(null);
-              setRecentView(false);
               setSearchQuery(event.target.value);
             }}
             placeholder={t("library.searchPlaceholder")}
@@ -1801,7 +1762,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             <Plus className="h-4 w-4" />
           </button>
         </div>
-        <div className={`order-2 ml-auto flex-wrap justify-end gap-2 lg:order-3 ${recentView ? "hidden" : "flex"}`}>
+        <div className="order-2 ml-auto flex flex-wrap justify-end gap-2 lg:order-3">
           {mobileNavigationLayout && (
             <IconButton
               title={mobileSearchOpen ? t("library.hideSearch") : t("library.searchLibrary")}
@@ -1816,6 +1777,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
               <Search className="h-4 w-4" />
             </IconButton>
           )}
+          <RecentlyPlayedPicker onOpen={(work) => openWork(work, recentWorkSourceIntent(work))} />
           <LayoutPicker
             mobileColumns={mobileColumns}
             desktopColumns={desktopColumns}
@@ -1920,9 +1882,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       )}
       <div ref={resultsAnchorRef} className="scroll-mt-24" />
 
-      {recentView ? (
-        <RecentlyPlayedGrid works={recentWorks} onOpen={(work) => openWork(work, recentWorkSourceIntent(work))} />
-      ) : activeTab.kind === "source" ? (
+      {activeTab.kind === "source" ? (
         <div className="space-y-3">
           <RemoteSourcePanel
             source={activeTab.source}
@@ -2030,27 +1990,18 @@ function LibraryPrimaryTabs({
   active,
   activeSourceId,
   sources,
-  showRecent,
-  onRecent,
   onChange,
   onSourceChange,
 }: {
-  active: "recent" | "local" | "tracked" | null;
+  active: "local" | "tracked" | null;
   activeSourceId: number | null;
   sources: LibrarySource[];
-  showRecent: boolean;
-  onRecent: () => void;
   onChange: (tab: "local" | "tracked") => void;
   onSourceChange: (source: LibrarySource) => void;
 }) {
   const { t } = useTranslation();
   return (
     <div className={segmentedListClassName()}>
-      {showRecent && (
-        <TabButton active={active === "recent"} onClick={onRecent} icon={<Clock3 className="h-4 w-4" />}>
-          {t("library.recentlyPlayed")}
-        </TabButton>
-      )}
       <TabButton active={active === "local"} onClick={() => onChange("local")} icon={<HardDrive className="h-4 w-4" />}>
         {t("library.local")}
       </TabButton>
@@ -2697,63 +2648,6 @@ function RemoteSourceErrorCard({
       </CardContent>
     </Card>
   );
-}
-
-function RecentlyPlayedGrid({ works, onOpen }: { works: Work[]; onOpen: (work: Work) => void }) {
-  const { t } = useTranslation();
-  return (
-    <section
-      aria-label={t("library.recentlyPlayed")}
-      className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
-    >
-      {works.map((work) => (
-        <button
-          key={work.id}
-          className="group flex h-[5.5rem] min-w-0 items-center gap-3 rounded-[var(--radius)] border bg-card p-2 text-left transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-muted"
-          onClick={() => onOpen(work)}
-          aria-label={t("library.openWorkTitle", { title: work.title })}
-          title={`${work.primaryCode} · ${work.title}`}
-        >
-          <span className="relative block aspect-[4/3] h-full shrink-0 overflow-hidden rounded-[calc(var(--radius)-2px)] bg-muted">
-            {work.coverUrl ? (
-              <img
-                src={assetURL(work.coverUrl)}
-                alt=""
-                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.05] motion-reduce:group-hover:scale-100"
-                loading="lazy"
-              />
-            ) : (
-              <span className="grid h-full place-items-center text-sm font-bold text-muted-foreground">
-                {work.primaryCode.slice(0, 2)}
-              </span>
-            )}
-          </span>
-          <span className="flex min-w-0 flex-1 flex-col justify-center gap-1">
-            <span className="line-clamp-1 text-sm font-semibold leading-snug transition-colors group-hover:text-primary">
-              {work.title}
-            </span>
-            <span className="truncate text-xs text-muted-foreground">{work.circle || t("common.unknown")}</span>
-            <span className="truncate text-2xs text-muted-foreground" title={recentProgressLabel(work.progress, t)}>
-              {recentProgressLabel(work.progress, t)}
-            </span>
-            <span className="block h-1 w-full shrink-0 overflow-hidden rounded-full bg-muted">
-              <span
-                className="block h-full rounded-full bg-primary"
-                style={{ width: `${progressPercent(work.progress)}%` }}
-              />
-            </span>
-          </span>
-        </button>
-      ))}
-    </section>
-  );
-}
-
-function recentProgressLabel(progress: Work["progress"], t: TFunction) {
-  if (progress.completed) return `${t("library.finished")} · ${progress.title || t("library.track")}`;
-  const duration =
-    progress.durationSeconds && progress.durationSeconds > 0 ? ` / ${formatTime(progress.durationSeconds)}` : "";
-  return `${progress.title || t("library.track")} · ${formatTime(progress.positionSeconds)}${duration}`;
 }
 
 function recentWorkSourceIntent(work: Work): DetailSourceIntent {
@@ -3416,18 +3310,6 @@ function SearchClauseEditor({
 function dlsiteWorkURL(code: string) {
   const site = code.toUpperCase().startsWith("RJ") ? "maniax" : "home";
   return DLSITE_ENDPOINTS.workURL(site, code);
-}
-
-function formatTime(seconds: number) {
-  const safeSeconds = Math.max(0, Math.floor(seconds));
-  const minutes = Math.floor(safeSeconds / 60);
-  const remainingSeconds = safeSeconds % 60;
-  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
-}
-
-function progressPercent(progress: Work["progress"]) {
-  if (!progress.durationSeconds || progress.durationSeconds <= 0) return 0;
-  return Math.min(100, Math.max(0, (progress.positionSeconds / progress.durationSeconds) * 100));
 }
 
 function IconButton({
@@ -6159,10 +6041,7 @@ function PersistedWorkDetailController({
   if (!work && !workPreview) {
     return (
       <div className="space-y-4">
-        <Button variant="outline" size="sm" onClick={onBack}>
-          <ChevronLeft className="h-4 w-4" />
-          {t("detailActions.back")}
-        </Button>
+        <PageHeaderBackAction label={t("detailActions.back")} onBack={onBack} />
         <Card>
           <CardContent className="p-6 text-sm text-muted-foreground">
             {t("libraryDetail.remoteDirectoryLoading", { code })}
@@ -6414,14 +6293,14 @@ function UnifiedWorkDetailPage({
   children?: ReactNode;
 }) {
   const mobileNavigationLayout = useMobileNavigationLayout();
+  usePageHeaderBack({
+    label: mobileNavigationLayout ? i18n.t("nav.library") : detailReturnTarget("library").label,
+    title: presentation.title,
+    onBack,
+  });
 
   return (
     <div className="space-y-5">
-      <Button variant="outline" size="sm" onClick={onBack}>
-        <ChevronLeft className="h-4 w-4" />
-        {mobileNavigationLayout ? i18n.t("nav.library") : detailReturnTarget("library").label}
-      </Button>
-
       {compact ? (
         <MobileWorkDetailLayout
           {...presentation}

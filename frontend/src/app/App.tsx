@@ -4,6 +4,7 @@ import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useS
 import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
+  ChevronLeft,
   Download,
   ExternalLink,
   Lock,
@@ -31,6 +32,7 @@ import { PlayerDock, PlayerProvider } from "@/player/PlayerProvider";
 import { HeaderActions } from "@/app/HeaderActions";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { RouteErrorBoundary } from "@/app/RouteErrorBoundary";
+import { PageActiveProvider, PageHeaderProvider, usePageHeaderBackState } from "@/app/pageHeader";
 import { useScrollRestoration } from "@/app/scrollRestoration";
 import { MobileRuntimeProvider, useMobileRuntime } from "@/app/MobileRuntime";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
@@ -86,7 +88,9 @@ export function App() {
   return (
     <MobileRuntimeProvider>
       <AuthProvider>
-        <AuthenticatedApp />
+        <PageHeaderProvider>
+          <AuthenticatedApp />
+        </PageHeaderProvider>
       </AuthProvider>
     </MobileRuntimeProvider>
   );
@@ -410,28 +414,23 @@ function AuthenticatedApp() {
             data-toast-avoid
           >
             <div className="flex h-[var(--header-height)] min-w-0 items-center justify-between gap-2 pl-[max(0.75rem,var(--safe-area-left))] pr-[max(0.75rem,var(--safe-area-right))] lg:h-auto lg:min-h-[var(--header-height)] lg:gap-3 lg:px-6 lg:py-2">
-              <div className="flex min-w-0 items-center lg:flex-row lg:items-baseline lg:gap-3">
-                {!showMobilePageTitle && <img src="/kikoto-icon-512.png" alt="Kikoto" className="h-8 w-8 lg:hidden" />}
-                <h1
-                  className={cx(
-                    "truncate text-base font-semibold lg:text-2xl",
-                    !showMobilePageTitle && "hidden lg:block",
-                  )}
-                >
-                  {page === "not-found"
+              <AppHeaderTitle
+                title={
+                  page === "not-found"
                     ? t("app.notFound")
                     : activeItem
                       ? navigationLabel(activeItem, t)
-                      : t("nav.library")}
-                </h1>
-                <p className="hidden text-xs text-muted-foreground lg:line-clamp-1 lg:block lg:text-sm">
-                  {page === "not-found"
+                      : t("nav.library")
+                }
+                description={
+                  page === "not-found"
                     ? t("app.notFoundDescription")
                     : activeItem
                       ? navigationDescription(activeItem, t)
-                      : t("app.libraryFallback")}
-                </p>
-              </div>
+                      : t("app.libraryFallback")
+                }
+                showMobileTitle={showMobilePageTitle}
+              />
               <HeaderActions
                 user={auth.user}
                 hasPermission={effectiveHasPermission}
@@ -568,6 +567,54 @@ function AuthenticatedApp() {
   );
 }
 
+function AppHeaderTitle({
+  title,
+  description,
+  showMobileTitle,
+}: {
+  title: string;
+  description: string;
+  showMobileTitle: boolean;
+}) {
+  const back = usePageHeaderBackState();
+  if (back) {
+    return (
+      <div className="flex min-w-0 items-center gap-1 lg:gap-2">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="-ml-2 h-9 w-9 shrink-0"
+          aria-label={back.label}
+          title={back.label}
+          onClick={back.onBack}
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </Button>
+        <div className="flex min-w-0 items-baseline gap-3">
+          <h1 className="shrink-0 text-base font-semibold lg:text-2xl">{title}</h1>
+          {back.title && (
+            <p className="hidden min-w-0 truncate text-sm text-muted-foreground lg:block" title={back.title}>
+              <span aria-hidden="true" className="mr-3 text-border">
+                /
+              </span>
+              {back.title}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex min-w-0 items-center lg:flex-row lg:items-baseline lg:gap-3">
+      {!showMobileTitle && <img src="/kikoto-icon-512.png" alt="Kikoto" className="h-8 w-8 lg:hidden" />}
+      <h1 className={cx("truncate text-base font-semibold lg:text-2xl", !showMobileTitle && "hidden lg:block")}>
+        {title}
+      </h1>
+      <p className="hidden text-xs text-muted-foreground lg:line-clamp-1 lg:block lg:text-sm">{description}</p>
+    </div>
+  );
+}
+
 const cachedBrowsePages = ["library", "favorites", "circles", "voice-actors"] as const;
 type CachedBrowsePage = (typeof cachedBrowsePages)[number];
 
@@ -594,22 +641,30 @@ function CachedBrowsePages({ activePage }: { activePage: AppPage | null }) {
     <>
       {mountedPages.has("library") && (
         <div data-browse-page="library" hidden={activePage !== "library"}>
-          <LibraryPage active={activePage === "library"} />
+          <PageActiveProvider value={activePage === "library"}>
+            <LibraryPage active={activePage === "library"} />
+          </PageActiveProvider>
         </div>
       )}
       {mountedPages.has("favorites") && (
         <div data-browse-page="favorites" hidden={activePage !== "favorites"}>
-          <FavoritesPage active={activePage === "favorites"} />
+          <PageActiveProvider value={activePage === "favorites"}>
+            <FavoritesPage active={activePage === "favorites"} />
+          </PageActiveProvider>
         </div>
       )}
       {mountedPages.has("circles") && (
         <div data-browse-page="circles" hidden={activePage !== "circles"}>
-          <CirclesPage active={activePage === "circles"} />
+          <PageActiveProvider value={activePage === "circles"}>
+            <CirclesPage active={activePage === "circles"} />
+          </PageActiveProvider>
         </div>
       )}
       {mountedPages.has("voice-actors") && (
         <div data-browse-page="voice-actors" hidden={activePage !== "voice-actors"}>
-          <CreatorWorksPage kind="voice" active={activePage === "voice-actors"} />
+          <PageActiveProvider value={activePage === "voice-actors"}>
+            <CreatorWorksPage kind="voice" active={activePage === "voice-actors"} />
+          </PageActiveProvider>
         </div>
       )}
     </>

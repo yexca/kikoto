@@ -49,6 +49,7 @@ import { VoiceAdvancedRefreshSheet, isVoiceCatalogSourceSelectable } from "@/pag
 import { useAuth } from "@/auth/AuthProvider";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
+import { usePageHeaderBack } from "@/app/pageHeader";
 import { openWorkDetail } from "@/app/workDetailNavigation";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import {
@@ -413,6 +414,12 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
   const [catalogRefresh, setCatalogRefresh] = useState<VoiceCatalogRefreshState | null>(null);
   const [isRemoteLoading, setIsRemoteLoading] = useState(false);
   const [remoteError, setRemoteError] = useState("");
+  usePageHeaderBack({
+    label: voiceReturnLabel(mobileNavigationLayout),
+    title: detail?.displayName,
+    onBack: navigateToList,
+    enabled: !notFound,
+  });
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<VoiceWorkFilter>("all");
@@ -931,9 +938,6 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
   if (!detail) {
     return (
       <div className="space-y-3">
-        <Button variant="outline" size="sm" onClick={navigateToList}>
-          <ChevronLeft className="h-4 w-4" /> {voiceReturnLabel(mobileNavigationLayout)}
-        </Button>
         <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>
       </div>
     );
@@ -941,11 +945,6 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
 
   return (
     <div className="relative space-y-5">
-      <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground" onClick={navigateToList}>
-        <ChevronLeft className="h-4 w-4" />
-        {voiceReturnLabel(mobileNavigationLayout)}
-      </Button>
-
       {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
 
       <CreatorDetailHeader

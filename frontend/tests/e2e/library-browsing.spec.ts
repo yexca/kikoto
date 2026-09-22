@@ -308,7 +308,7 @@ test("cards keep two complete tag rows and readable Sales and Rate metrics at co
   await expect(page.getByRole("button", { name: "Personal tag 10", exact: true })).toBeVisible();
 });
 
-test("recently played is a library tab with aligned cards", async ({ page }) => {
+test("recently played opens from a toolbar popover and returns to the work", async ({ page }) => {
   const recentWorks = [
     {
       ...work,
@@ -341,26 +341,28 @@ test("recently played is a library tab with aligned cards", async ({ page }) => 
   await mockApplication(page, undefined, false, 1, 0, [], undefined, { recentWorks });
 
   await page.goto("/library");
-  const recentTab = page.getByRole("button", { name: "Recently played", exact: true });
-  const localTab = page.getByRole("button", { name: "Local", exact: true });
-  await expect(recentTab).toBeVisible();
-  const [recentBox, localBox] = await Promise.all([recentTab.boundingBox(), localTab.boundingBox()]);
-  expect(recentBox!.x).toBeLessThan(localBox!.x);
+  await expect(page.getByRole("button", { name: "Recently played", exact: true })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
   await expect(page.getByRole("button", { name: "Open Short title" })).toHaveCount(0);
 
-  await recentTab.click();
-  await expect(recentTab).toHaveAttribute("aria-pressed", "true");
-  const shortCard = page.getByRole("button", { name: "Open Short title" });
-  const longCard = page.getByRole("button", {
-    name: "Open A deliberately long title that occupies both reserved title lines",
-  });
-  await expect(shortCard).toBeVisible();
-  await expect(longCard).toBeVisible();
-  expect((await shortCard.boundingBox())?.height).toBe((await longCard.boundingBox())?.height);
+  await page.getByRole("button", { name: "Recently played", exact: true }).click();
+  const popover = page.getByRole("dialog", { name: "Recently played" });
+  await expect(popover).toBeVisible();
+  await expect(popover.getByRole("button", { name: "Open Short title" })).toBeVisible();
+  await expect(
+    popover.getByRole("button", { name: "Open A deliberately long title that occupies both reserved title lines" }),
+  ).toBeVisible();
+  await expect(popover.getByText("Track one · 0:42 / 2:00", { exact: true })).toBeVisible();
 
-  await localTab.click();
-  await expect(shortCard).toBeHidden();
-  await expect(localTab).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Escape");
+  await expect(popover).toBeHidden();
+
+  await page.getByRole("button", { name: "Recently played", exact: true }).click();
+  await popover.getByRole("button", { name: "Open Short title" }).click();
+  await expect(popover).toBeHidden();
+  await expect(page).toHaveURL(/\/RJ00000060(?:\?|$)/);
 });
 
 test("favorite list popovers use measured mobile placement and stay inside the usable viewport", async ({ page }) => {

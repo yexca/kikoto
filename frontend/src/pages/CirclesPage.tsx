@@ -88,6 +88,7 @@ import { hasPlaybackHistory } from "@/lib/playbackHistory";
 import { useAuth } from "@/auth/AuthProvider";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
+import { usePageHeaderBack } from "@/app/pageHeader";
 import { openWorkDetail, type WorkDetailIntent } from "@/app/workDetailNavigation";
 import {
   announceRemoteTrackCreated,
@@ -518,6 +519,12 @@ function CircleDetailPage({
   const selectedSyncableWorks = selectedWorks.filter((work) => work.workId === null);
   const circleListStorageScope = currentClientStorageScope(auth.user?.id ?? null);
   const navigateToList = () => navigateToCirclesList(circleListStorageScope, compactLayout);
+  usePageHeaderBack({
+    label: compactLayout ? t("creatorBrowse.backToCircles") : circleReturnLabel(),
+    title: detail?.displayName,
+    onBack: navigateToList,
+    enabled: !notFound,
+  });
 
   const changeAvailabilityFilter = (value: CircleAvailabilityFilter) => {
     setAvailabilityFilter(value);
@@ -825,11 +832,6 @@ function CircleDetailPage({
 
   return (
     <div className="relative space-y-5">
-      <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground" onClick={navigateToList}>
-        <ChevronLeft className="h-4 w-4" />
-        {compactLayout ? t("creatorBrowse.backToCircles") : circleReturnLabel()}
-      </Button>
-
       <CreatorDetailHeader
         label={t("detailActions.circleSummary")}
         name={circle.displayName}
