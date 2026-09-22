@@ -68,7 +68,7 @@ import { isCircleListLocation, readLastCircleListLocation } from "@/pages/circle
 import { isVoiceListLocation, readLastVoiceListLocation } from "@/pages/voiceNavigationState";
 import { legacyLibraryRedirect } from "@/app/legacyLibraryRoutes";
 import { readMobileTabSnapshot, writeMobileTabSnapshot } from "@/app/mobileTabState";
-import { preloadableComponent } from "@/app/preloadableComponent";
+import { preloadableComponent } from "@/lib/preloadableComponent";
 import {
   REMOTE_TRACK_CREATED_EVENT,
   REMOTE_TRACK_TERMINAL_EVENT,

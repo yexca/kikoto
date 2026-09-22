@@ -108,11 +108,14 @@ import {
 } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { hasPlaybackHistory } from "@/lib/playbackHistory";
-import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
+import { openCircleRoute, openCircleSeriesRoute } from "@/pages/circleNavigationState";
 import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
 import {
+  currentVoiceReturnPath,
   isVoiceListLocation,
+  openVoiceRoute,
   readLastVoiceListLocation,
+  voiceReturnLabelForLocation,
   writeLastVoiceListLocation,
 } from "@/pages/voiceNavigationState";
 import {
@@ -1645,16 +1648,6 @@ function openVoiceAliasMaintenance(personId: number) {
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 
-export function openVoiceRoute(personId: number) {
-  const returnTo = currentVoiceReturnPath();
-  window.history.pushState(
-    historyStateWithReturn(returnTo, voiceReturnLabelForLocation(returnTo)),
-    "",
-    `/voices/${personId}`,
-  );
-  window.dispatchEvent(new Event(NAVIGATION_EVENT));
-}
-
 function navigateToVoicesList(storageScope: string, mobile: boolean) {
   navigateToWorkspaceUp({
     mobile,
@@ -1682,27 +1675,8 @@ function openWorkRoute(work: VoiceWorkView) {
   }
 }
 
-function currentVoiceReturnPath() {
-  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
-}
-
 function voiceReturnLabel(mobile: boolean) {
   if (mobile) return "Back to voices";
   const state = window.history.state as { returnTo?: unknown } | null;
   return typeof state?.returnTo === "string" ? voiceReturnLabelForLocation(state.returnTo) : "Back to voices";
-}
-
-function voiceReturnLabelForLocation(location: string) {
-  try {
-    const pathname = new URL(location, window.location.origin).pathname;
-    if (pathname === "/" || pathname === "") return "Back to library";
-    if (/^\/favorites\/?$/i.test(pathname)) return "Back to favorites";
-    if (/^\/circles(?:\/|$)/i.test(pathname)) return "Back to circles";
-    if (/^\/voices\/?$/i.test(pathname)) return "Back to voices";
-    if (/^\/settings\/?$/i.test(pathname)) return "Back to settings";
-    if (/^\/(?:RJ|BJ|VJ|CC)/i.test(pathname)) return "Back to work";
-  } catch {
-    // Fall through to the generic label for malformed history state.
-  }
-  return "Back";
 }

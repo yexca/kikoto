@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import i18n, {
@@ -52,6 +54,19 @@ describe("translation resources", () => {
     const expected = ["Auto", "English", "简体中文", "正體中文", "日本語", "한국어"];
     for (const resource of Object.values(resources)) {
       expect(Object.values(resource.translation.languageOptions)).toEqual(expected);
+    }
+  });
+
+  it("keeps other languages' copy out of the English fallback modules", () => {
+    // The English fallback ships in the initial bundle, so a module it imports
+    // must not also define deferred locales. Only the picker's native labels remain.
+    const nativeLabels = /简体中文|正體中文|日本語|한국어/gu;
+    for (const module of ["./resources.ts", "./surfaces/en.ts", "./surfaces/adminTools.ts"]) {
+      const source = readFileSync(new URL(module, import.meta.url), "utf8").replace(nativeLabels, "");
+      expect(
+        source.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu),
+        module,
+      ).toBeNull();
     }
   });
 

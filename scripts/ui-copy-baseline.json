@@ -824,5 +824,8 @@
     "title: More player options",
     "title: Playback queue",
     "title: Sleep timer"
+  ],
+  "frontend/src/pages/library/detail/WorkDetailLayout.tsx": [
+    "text: item.onClick ? ("
   ]
 }

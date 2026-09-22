@@ -52,7 +52,9 @@ the new server configuration. Re-selecting the same server retains its session.
 Non-English translation resources and their surface labels live in separate
 language modules loaded on demand. The English fallback must not synchronously
 import a module that also owns deferred languages, or those languages enter the
-initial bundle despite the dynamic resource entry points.
+initial bundle despite the dynamic resource entry points. Each deferred locale
+module owns its own copy, and a unit test keeps other scripts out of the English
+modules apart from the language picker's native labels.
 
 ## Code Organization
 
@@ -75,6 +77,12 @@ This is an incremental extraction direction, not a request for a repository-wide
 move. A domain earns its own feature boundary after it owns a real page or flow
 and several mostly private components, models, or hooks. App composition or a
 small shared contract should resolve cross-domain needs.
+
+Library work detail lives in `pages/library/detail` and loads as its own chunk
+from the Library list. An idle Library preloads it and a detail location starts
+it with the page, so opening a work normally renders without suspending. Circle
+and voice route helpers live in their navigation-state modules so one page does
+not import another page's module.
 
 Work detail metadata editing exposes one entry from
 `features/work-detail/metadata`. Its modal owns interaction and save actions,

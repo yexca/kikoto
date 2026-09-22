@@ -99,6 +99,10 @@ import {
   type RemoteTrackTerminalDetail,
 } from "@/app/remoteTrackWorkflows";
 import {
+  circleReturnLabelForLocation,
+  currentCircleReturnPath,
+  openCircleRoute,
+  openCircleSeriesRoute,
   isCircleListLocation,
   readLastCircleListLocation,
   writeLastCircleListLocation,
@@ -112,7 +116,6 @@ import {
 } from "@/pages/CircleDetailSheets";
 import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
 
-const PLACEHOLDER_CIRCLE_ID = "RG012345";
 const circlePageSizeOptions = [24, 48, 96] as const;
 const catalogWorkPageSizeOptions = [24, 48] as const;
 type CatalogWorkPageSize = (typeof catalogWorkPageSizeOptions)[number];
@@ -168,27 +171,6 @@ export function CirclesPage({ active = true }: { active?: boolean }) {
     return <CircleDetailPage externalId={route.externalId} seriesCode={route.seriesCode} active={active} />;
   }
   return <CircleListPage active={active} />;
-}
-
-export function openCircleRoute(externalId = PLACEHOLDER_CIRCLE_ID) {
-  const returnTo = currentCircleReturnPath();
-  window.history.pushState(
-    historyStateWithReturn(returnTo, circleReturnLabelForLocation(returnTo)),
-    "",
-    `/circles/${encodeURIComponent(externalId)}`,
-  );
-  window.dispatchEvent(new Event(NAVIGATION_EVENT));
-}
-
-export function openCircleSeriesRoute(externalId: string, seriesCode?: string | null) {
-  const suffix = seriesCode ? `/series/${encodeURIComponent(seriesCode)}` : "/series";
-  const returnTo = currentCircleReturnPath();
-  window.history.pushState(
-    historyStateWithReturn(returnTo, circleReturnLabelForLocation(returnTo)),
-    "",
-    `/circles/${encodeURIComponent(externalId)}${suffix}`,
-  );
-  window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 
 const CircleCard = memo(function CircleCard({
@@ -1926,29 +1908,10 @@ function openWorkDirectoryRoute(target: WorkDetailIntent, work: CircleCatalogWor
   openWorkDetail(target, { returnTo: currentCircleReturnPath(), returnLabel: "Back to circle", workPreview: work });
 }
 
-function currentCircleReturnPath() {
-  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
-}
-
 function circleReturnLabel() {
   const state = window.history.state as { returnTo?: unknown; returnLabel?: unknown } | null;
   if (typeof state?.returnTo === "string") return circleReturnLabelForLocation(state.returnTo);
   return "Back to circles";
-}
-
-function circleReturnLabelForLocation(location: string) {
-  try {
-    const pathname = new URL(location, window.location.origin).pathname;
-    if (pathname === "/" || pathname === "") return "Back to library";
-    if (/^\/favorites\/?$/i.test(pathname)) return "Back to favorites";
-    if (/^\/circles\/?$/i.test(pathname)) return "Back to circles";
-    if (/^\/voices(?:\/|$)/i.test(pathname)) return "Back to voice actors";
-    if (/^\/settings\/?$/i.test(pathname)) return "Back to settings";
-    if (/^\/RJ|^\/BJ|^\/VJ|^\/CC/i.test(pathname)) return "Back to work";
-  } catch {
-    // Fall through to the generic label for malformed history state.
-  }
-  return "Back";
 }
 
 function dlsiteMakerURL(externalId: string) {

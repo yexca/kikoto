@@ -83,9 +83,8 @@ import {
   type VoiceSummary,
   type Work,
 } from "@/lib/api";
-import { openCircleSeriesRoute } from "@/pages/CirclesPage";
-import { openCircleRoute } from "@/pages/CirclesPage";
-import { openVoiceRoute } from "@/pages/CreatorWorksPage";
+import { openCircleRoute, openCircleSeriesRoute } from "@/pages/circleNavigationState";
+import { openVoiceRoute } from "@/pages/voiceNavigationState";
 import {
   defaultFavoritesBrowseState,
   favoritesBrowseSearch,
