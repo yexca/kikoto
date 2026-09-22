@@ -93,6 +93,11 @@ func main() {
 		slog.Info("demo mode enabled; requests authenticate as the restricted demo user")
 	}
 	slog.Info("kikoto api listening", "addr", cfg.HTTPAddr)
+	go func() {
+		if err := server.WarmSearchIndex(ctx); err != nil && ctx.Err() == nil {
+			slog.Warn("warm search index", "error", err)
+		}
+	}()
 	if !cfg.IsDemo() {
 		go func() {
 			if err := server.RunStartupWorkflows(ctx); err != nil && ctx.Err() == nil {

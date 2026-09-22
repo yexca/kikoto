@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
+	"github.com/yexca/kikoto/backend/internal/searchtext"
 )
 
 type Store struct {
@@ -92,6 +94,7 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 	if options.PageSize < 1 || options.PageSize > 100 {
 		options.PageSize = 24
 	}
+	s.PrepareSearch(ctx, options.Query)
 	where, args := listWhere(options.Scope, options.Status, options.Query, options.UserID, options.DemoOnly)
 	countArgs := append([]any{options.UserID}, args...)
 	var total int
@@ -454,6 +457,9 @@ func SearchWhere(queryText string) (string, []any) {
 	return SearchWhereForUser(queryText, 0)
 }
 
+// SearchWhereForUser returns a predicate over the work table. Text, circle,
+// voice, and tag clauses read the work_search index, so callers run
+// Store.PrepareSearch with the same query first.
 func SearchWhereForUser(queryText string, userID int64) (string, []any) {
 	clauses := []string{}
 	args := []any{}
@@ -476,45 +482,38 @@ func searchWhereClause(clause SearchClause, userID int64) (string, []any) {
 	if needle == "" {
 		return "", nil
 	}
-	like := "%" + strings.ToLower(needle) + "%"
 	switch clause.Kind {
 	case "code":
 		exactCode := strings.ToUpper(needle)
 		return familyCodeClause(), []any{exactCode, exactCode, exactCode, exactCode}
-	case "circle", "voice_actor":
-		return searchPartyClause(clause.Kind, like)
-	case "tag", "exclude_tag", "user_tag", "exclude_user_tag":
-		return searchTagClause(clause.Kind, userID, like)
 	case "rating_min", "sales_min", "duration_min", "duration_max":
 		return searchNumericClause(clause.Kind, needle)
-	case "age":
-		return familyWorkColumnLikeClause("age_rating"), []any{like, like}
-	case "language":
-		return familyEditionLanguageLikeClause(), []any{like, like, like, like}
 	case "shelf":
 		return userShelfClause(strings.EqualFold(needle, "false")), []any{userID}
-	default:
-		return searchTextClause(like, userID)
 	}
-}
-
-func searchPartyClause(kind, like string) (string, []any) {
-	if kind == "circle" {
-		return `(` + familyCircleLikeClause() + ` OR ` + manualOverrideFieldLikeClause("circle") + `)`, []any{like, like, like}
+	// Every text comparison below is a literal substring test on folded text:
+	// the needle is never interpreted as a LIKE or FTS pattern.
+	folded := searchtext.Fold(needle)
+	if folded == "" {
+		return "", nil
 	}
-	return `(` + familyVoiceActorLikeClause() + ` OR ` + manualOverrideFieldLikeClause("voice_actors") + `)`, []any{like, like}
-}
-
-func searchTagClause(kind string, userID int64, like string) (string, []any) {
-	switch kind {
+	switch clause.Kind {
+	case "circle", "voice_actor":
+		return familySearchIndexClause(clause.Kind, folded, false)
 	case "tag":
-		return normalizedTagLikeClause(false), []any{like}
+		return familySearchIndexClause("tag", folded, false)
 	case "exclude_tag":
-		return normalizedTagLikeClause(true), []any{like}
+		return familySearchIndexClause("tag", folded, true)
 	case "user_tag":
-		return userTagLikeClause(false), []any{userID, like}
+		return userTagContainsClause(false), []any{userID, folded}
+	case "exclude_user_tag":
+		return userTagContainsClause(true), []any{userID, folded}
+	case "age":
+		return familyAgeRatingContainsClause(), []any{folded, folded}
+	case "language":
+		return familyEditionLanguageContainsClause(), []any{folded, folded, folded, folded}
 	default:
-		return userTagLikeClause(true), []any{userID, like}
+		return searchTextClause(folded, userID)
 	}
 }
 
@@ -532,14 +531,13 @@ func searchNumericClause(kind, needle string) (string, []any) {
 	}
 }
 
-func searchTextClause(like string, userID int64) (string, []any) {
-	personalTag := ""
-	args := []any{like, like, like, like, like, like, like, like, like, like}
+func searchTextClause(folded string, userID int64) (string, []any) {
+	where, args := familySearchIndexClause("", folded, false)
 	if userID > 0 {
-		personalTag = " OR " + userTagLikeClause(false)
-		args = append(args, userID, like)
+		where = `(` + where + ` OR ` + userTagContainsClause(false) + `)`
+		args = append(args, userID, folded)
 	}
-	return `(` + familyWorkTextLikeClause() + ` OR ` + familyCircleLikeClause() + ` OR ` + familyVoiceActorLikeClause() + ` OR ` + normalizedTagLikeClause(false) + ` OR ` + manualOverrideAnyLikeClause("title", "circle", "series", "voice_actors") + personalTag + `)`, args
+	return where, args
 }
 
 func familyCodeClause() string {
@@ -562,87 +560,77 @@ func familyCodeClause() string {
 	))`
 }
 
-func familyWorkTextLikeClause() string {
-	return `(LOWER(work.primary_code) LIKE ? OR LOWER(work.title) LIKE ? OR EXISTS (
-		SELECT 1
-		FROM work_edition AS search_current_edition
-		INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
-		INNER JOIN work AS search_sibling_work ON search_sibling_work.id = search_sibling_edition.work_id
-		WHERE search_current_edition.work_id = work.id
-			AND (LOWER(search_sibling_work.primary_code) LIKE ? OR LOWER(search_sibling_work.title) LIKE ?)
-	) OR EXISTS (
-		SELECT 1
-		FROM work_edition AS search_current_edition
-		INNER JOIN work_code_alias AS search_alias ON search_alias.logical_work_id = search_current_edition.logical_work_id
-		WHERE search_current_edition.work_id = work.id
-			AND LOWER(search_alias.primary_code) LIKE ?
-	))`
-}
-
-func familyCircleLikeClause() string {
-	return `EXISTS (
-		SELECT 1
-		FROM work_party AS search_relation
-		INNER JOIN party AS search_party ON search_party.id = search_relation.party_id
-		LEFT JOIN party_external_id AS search_external ON search_external.party_id = search_party.id
-		WHERE search_relation.role = 'circle'
-			AND (
-				search_relation.work_id = work.id
-				OR search_relation.work_id IN (
-					SELECT search_sibling_edition.work_id
-					FROM work_edition AS search_current_edition
-					INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
-					WHERE search_current_edition.work_id = work.id
-				)
-			)
-			AND (LOWER(search_party.display_name) LIKE ? OR LOWER(COALESCE(search_external.external_id, '')) LIKE ?)
-	)`
-}
-
-func familyVoiceActorLikeClause() string {
-	return `EXISTS (
-		SELECT 1
-		FROM work_credit AS search_credit
-		INNER JOIN person AS search_person ON search_person.id = search_credit.person_id
-		WHERE search_credit.role = 'voice_actor'
-			AND (
-				search_credit.work_id = work.id
-				OR search_credit.work_id IN (
-					SELECT search_sibling_edition.work_id
-					FROM work_edition AS search_current_edition
-					INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
-					WHERE search_current_edition.work_id = work.id
-				)
-			)
-			AND LOWER(search_person.display_name) LIKE ?
-	)`
-}
-
-func familyWorkColumnLikeClause(column string) string {
-	if column != "age_rating" {
-		column = "title"
+// familySearchIndexClause matches works whose own work_search document, or a
+// sibling edition's document, contains folded. An empty column searches every
+// indexed column. Needles of at least three characters use the trigram index
+// through a quoted FTS5 phrase; shorter needles cannot form a trigram and scan
+// the compact index table with instr instead.
+func familySearchIndexClause(column string, folded string, negated bool) (string, []any) {
+	var hits string
+	var args []any
+	if utf8.RuneCountInString(folded) >= 3 {
+		phrase := `"` + strings.ReplaceAll(folded, `"`, `""`) + `"`
+		if column != "" {
+			phrase = searchIndexColumn(column) + ` : ` + phrase
+		}
+		hits = `SELECT rowid FROM work_search WHERE work_search MATCH ?`
+		args = []any{phrase}
+	} else {
+		target := `work_search.code || char(10) || work_search.title || char(10) || work_search.circle || char(10) || work_search.voice_actor || char(10) || work_search.tag`
+		if column != "" {
+			target = `work_search.` + searchIndexColumn(column)
+		}
+		hits = `SELECT rowid FROM work_search WHERE instr(` + target + `, ?) > 0`
+		args = []any{folded}
 	}
-	return `(LOWER(work.` + column + `) LIKE ? OR EXISTS (
+	operator := "IN"
+	if negated {
+		operator = "NOT IN"
+	}
+	return `work.id ` + operator + ` (
+		WITH search_hit(work_id) AS (` + hits + `)
+		SELECT work_id FROM search_hit
+		UNION
+		SELECT search_current_edition.work_id
+		FROM work_edition AS search_current_edition
+		INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
+		WHERE search_sibling_edition.work_id IN (SELECT work_id FROM search_hit)
+	)`, args
+}
+
+func searchIndexColumn(kind string) string {
+	switch kind {
+	case "circle":
+		return "circle"
+	case "voice_actor":
+		return "voice_actor"
+	default:
+		return "tag"
+	}
+}
+
+func familyAgeRatingContainsClause() string {
+	return `(instr(` + foldedSQL("work.age_rating") + `, ?) > 0 OR EXISTS (
 		SELECT 1
 		FROM work_edition AS search_current_edition
 		INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
 		INNER JOIN work AS search_sibling_work ON search_sibling_work.id = search_sibling_edition.work_id
-		WHERE search_current_edition.work_id = work.id AND LOWER(search_sibling_work.` + column + `) LIKE ?
+		WHERE search_current_edition.work_id = work.id AND instr(` + foldedSQL("search_sibling_work.age_rating") + `, ?) > 0
 	))`
 }
 
-func familyEditionLanguageLikeClause() string {
+func familyEditionLanguageContainsClause() string {
 	return `(EXISTS (
 		SELECT 1
 		FROM work_edition AS search_current_edition
 		WHERE search_current_edition.work_id = work.id
-			AND (LOWER(search_current_edition.metadata_language) LIKE ? OR LOWER(search_current_edition.edition_label) LIKE ?)
+			AND (instr(` + foldedSQL("search_current_edition.metadata_language") + `, ?) > 0 OR instr(` + foldedSQL("search_current_edition.edition_label") + `, ?) > 0)
 	) OR EXISTS (
 		SELECT 1
 		FROM work_edition AS search_current_edition
 		INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
 		WHERE search_current_edition.work_id = work.id
-			AND (LOWER(search_sibling_edition.metadata_language) LIKE ? OR LOWER(search_sibling_edition.edition_label) LIKE ?)
+			AND (instr(` + foldedSQL("search_sibling_edition.metadata_language") + `, ?) > 0 OR instr(` + foldedSQL("search_sibling_edition.edition_label") + `, ?) > 0)
 	))`
 }
 
@@ -661,39 +649,18 @@ func familyDurationClause(operator string, value float64) string {
 	))`, operator, value, operator, value)
 }
 
-func manualOverrideFieldLikeClause(field string) string {
-	return `EXISTS (SELECT 1 FROM work_manual_override AS search_override WHERE search_override.work_id = work.id AND search_override.field_name = '` + field + `' AND LOWER(search_override.value_json) LIKE ?)`
-}
-
-func normalizedTagLikeClause(negated bool) string {
+func userTagContainsClause(negated bool) string {
 	prefix := "EXISTS"
 	if negated {
 		prefix = "NOT EXISTS"
 	}
-	return prefix + ` (
-		SELECT 1
-		FROM work_tag AS search_work_tag
-		INNER JOIN tag AS search_tag ON search_tag.id = search_work_tag.tag_id
-		WHERE search_tag.namespace = 'dlsite'
-			AND (
-				search_work_tag.work_id = work.id
-				OR search_work_tag.work_id IN (
-					SELECT search_sibling_edition.work_id
-					FROM work_edition AS search_current_edition
-					INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
-					WHERE search_current_edition.work_id = work.id
-				)
-			)
-			AND LOWER(search_tag.display_name) LIKE ?
-	)`
+	return prefix + ` (SELECT 1 FROM user_work_tag AS search_user_work_tag INNER JOIN user_tag AS search_user_tag ON search_user_tag.id = search_user_work_tag.user_tag_id WHERE search_user_work_tag.work_id = work.id AND search_user_work_tag.user_id = ? AND instr(` + foldedSQL("search_user_tag.name") + `, ?) > 0)`
 }
 
-func userTagLikeClause(negated bool) string {
-	prefix := "EXISTS"
-	if negated {
-		prefix = "NOT EXISTS"
-	}
-	return prefix + ` (SELECT 1 FROM user_work_tag AS search_user_work_tag INNER JOIN user_tag AS search_user_tag ON search_user_tag.id = search_user_work_tag.user_tag_id WHERE search_user_work_tag.work_id = work.id AND search_user_work_tag.user_id = ? AND LOWER(search_user_tag.name) LIKE ?)`
+// foldedSQL applies searchtext.Fold to a column inside SQLite so small
+// per-work fields compare with the same normalization as the search index.
+func foldedSQL(column string) string {
+	return searchtext.SQLFoldFunction + `(` + column + `)`
 }
 
 func userShelfClause(negated bool) string {
@@ -710,14 +677,6 @@ func userShelfClause(negated bool) string {
 				AND search_shelf_list.kind = 'user'
 				AND search_shelf_item.work_id = work.id
 		))`
-}
-
-func manualOverrideAnyLikeClause(fields ...string) string {
-	quoted := make([]string, 0, len(fields))
-	for _, field := range fields {
-		quoted = append(quoted, "'"+field+"'")
-	}
-	return `EXISTS (SELECT 1 FROM work_manual_override AS search_override WHERE search_override.work_id = work.id AND search_override.field_name IN (` + strings.Join(quoted, ",") + `) AND LOWER(search_override.value_json) LIKE ?)`
 }
 
 func familyNumericClause(column string, operator string, value float64) string {

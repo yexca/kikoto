@@ -124,6 +124,36 @@ test("does not suppress other sensitive content on an approved endpoint line", (
   assert.equal(findings[0].kind, "literal value assigned to a sensitive key");
 });
 
+test("treats tokenizer options as configuration, not credentials", () => {
+  const findings = [];
+
+  scanLine(
+    {
+      file: "backend/migrations/001_example.sql",
+      line: 1,
+      text: "  tokenize = 'trigram'",
+    },
+    findings,
+    approvedAllowlist(),
+  );
+
+  assert.deepEqual(findings, []);
+});
+
+test("still flags a credential key that follows a tokenizer prefix", () => {
+  const sensitiveKey = ["tokenizer", "Token"].join("");
+  const findings = [];
+
+  scanLine(
+    { file: "config.js", line: 1, text: `const ${sensitiveKey} = "value";` },
+    findings,
+    approvedAllowlist(),
+  );
+
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].kind, "literal value assigned to a sensitive key");
+});
+
 test("rejects malformed endpoint allowlist entries", () => {
   assert.throws(
     () =>

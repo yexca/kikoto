@@ -14,7 +14,7 @@ export const libraryEnglish = {
   bulkTrackFailed: "Bulk track failed.",
   savedAndMarked: "Saved and marked {{code}}.",
   savedForList: "Saved {{code}} for list selection.",
-  searchPlaceholder: "Search title, code, circle, tag, or creator",
+  searchPlaceholder: "Search title, code, circle, tag, or creator (e.g. tag: healing)",
   clearSearch: "Clear search",
   addSearchCondition: "Add search condition",
   removeSearchClause: "Remove {{clause}}",

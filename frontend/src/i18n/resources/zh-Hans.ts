@@ -15,7 +15,7 @@ export const libraryHans = {
   bulkTrackFailed: "批量跟踪失败。",
   savedAndMarked: "已保存并将 {{code}} 标记。",
   savedForList: "已保存 {{code}}，可加入列表。",
-  searchPlaceholder: "搜索标题、代码、社团、标签或创作者",
+  searchPlaceholder: "搜索标题、代码、社团、标签或创作者（例：tag: 癒し）",
   clearSearch: "清除搜索",
   addSearchCondition: "添加搜索条件",
   removeSearchClause: "移除 {{clause}}",

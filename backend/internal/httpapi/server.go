@@ -117,6 +117,12 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 
 func (s *Server) newDLsiteClient() *dlsite.Client { return s.dlsiteEndpoints.NewClient(nil) }
 
+// WarmSearchIndex builds queued Library search documents, including the full
+// backlog queued when the index is first created, before users search.
+func (s *Server) WarmSearchIndex(ctx context.Context) error {
+	return s.libraryStore.RefreshSearchIndex(ctx)
+}
+
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.health)

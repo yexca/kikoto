@@ -129,10 +129,12 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	queryText := strings.TrimSpace(r.URL.Query().Get("q"))
+	s.libraryStore.PrepareSearch(r.Context(), queryText)
 	where, args := favoriteWorksWhere(
 		strings.TrimSpace(r.URL.Query().Get("status")),
 		strings.TrimSpace(r.URL.Query().Get("availability")),
-		strings.TrimSpace(r.URL.Query().Get("q")),
+		queryText,
 		user.ID,
 		query.ListID,
 		query.SourceIDs,

@@ -22,6 +22,7 @@ type MaintenancePage struct {
 }
 
 func (s *Store) ListMaintenance(ctx context.Context, options MaintenanceOptions) (MaintenancePage, error) {
+	s.PrepareSearch(ctx, options.Query)
 	where, args := listWhere("", "all", options.Query, options.UserID, options.DemoOnly)
 	// A family without a chosen canonical edition still has one maintenance row.
 	where += ` AND work.id = COALESCE((SELECT COALESCE(logical.canonical_work_id,
