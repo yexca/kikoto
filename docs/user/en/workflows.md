@@ -5,8 +5,9 @@ Workflows make backend actions inspectable.
 
 ## User Surfaces
 
-- Workflows: built-in and custom definitions with their triggers managed in the
-  selected definition.
+- Workflows: built-in definitions, including the preset follow workflows, with
+  their triggers managed in the selected definition. There is no custom
+  workflow editor.
 - Activity at the right end of the workflow tabs opens a desktop panel or mobile
   sheet for the selected workflow only. Active runs appear above **Needs attention**
   and **History**. Each row shows the status, run number, trigger, and elapsed
@@ -34,9 +35,9 @@ Workflows make backend actions inspectable.
 - The header notification center combines Review items with completed or failed
   Fetch results. Fetch notifications open the local work detail and can be
   dismissed independently for the signed-in user.
-- The horizontal definition bar puts the five built-in workflows first, followed
-  by custom definitions and the add button. The filter offers All, Built-in, and
-  Custom.
+- The horizontal definition bar lists the built-in workflows in a fixed order,
+  with the preset follow workflows after the collectors. Definitions cannot be
+  created, edited, or deleted from the page.
 - Needs attention collects unresolved candidates, metadata issues, and
   unacknowledged failures. Resolving recorded issues clears the corresponding
   dedicated metadata-run notice. Other failures can be marked reviewed once
@@ -85,11 +86,9 @@ Workflows make backend actions inspectable.
   limits. New works only skips works already in the library. Leaving the tag
   template empty skips tagging. Automated runs use stored or incremental circle
   catalog refresh; a full refresh is manual only.
-- Editable version-2 custom workflows with one simple declared input show that
-  input directly in the selected definition for repeated Quick Run previews.
-  Multi-input and work-code-list definitions still use Configure. The shortcut
-  uses the same server preview token, permission checks, and confirmation policy
-  as the full run dialog.
+- User-authored custom workflows, the DAG editor, slash commands, and the
+  definition run dialog were removed. Upgrading deletes existing user
+  definitions and their triggers; their runs stay in Activity history.
 - DLsite popular collection supports 24-hour, 7-day, 30-day, and annual voice
   rankings. Recent periods can be limited to works released within 30 days;
   annual runs select an explicit year and default to a template containing

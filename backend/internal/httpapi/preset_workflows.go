@@ -265,7 +265,7 @@ func (s *Server) runWorkflowPreset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	runID, err := s.enqueueCustomWorkflow(r.Context(), definition, plan.Graph, actor.ID, actor.Permissions, plan.Inputs.public(), "", customWorkflowEnqueueOptions{
+	runID, err := s.enqueueCustomWorkflow(r.Context(), definition, plan.Graph, actor.ID, actor.Permissions, plan.Inputs.public(), customWorkflowEnqueueOptions{
 		TriggerType: "manual", TriggerReason: "workflow_preset", DefinitionJSON: plan.DefinitionJSON,
 	})
 	if err != nil {
@@ -642,7 +642,7 @@ func (s *Server) executePresetSystemTrigger(ctx context.Context, definition work
 	if err != nil {
 		return "", nil, err
 	}
-	_, err = s.enqueueCustomWorkflow(ctx, definition, plan.Graph, owner.ID, owner.Permissions, plan.Inputs.public(), "", customWorkflowEnqueueOptions{
+	_, err = s.enqueueCustomWorkflow(ctx, definition, plan.Graph, owner.ID, owner.Permissions, plan.Inputs.public(), customWorkflowEnqueueOptions{
 		TriggerID: trigger.ID, TriggerType: triggerType, TriggerReason: triggerReason, DefinitionJSON: plan.DefinitionJSON,
 	})
 	return "succeeded", nil, err

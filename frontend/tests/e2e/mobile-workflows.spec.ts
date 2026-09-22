@@ -58,20 +58,6 @@ const systemDefinitions = [
     updatedAt: "2026-01-01T00:00:00Z",
   },
   {
-    id: 5,
-    code: "custom_draft",
-    displayName: "Custom draft",
-    description: "Test custom definition.",
-    definitionJson:
-      '{"nodes":[{"id":"select","type":"select_works","displayName":"Select works"},{"id":"sync","type":"sync_metadata","displayName":"Sync metadata"}]}',
-    scope: "user",
-    editable: true,
-    ownerUserId: 1,
-    triggerCount: 0,
-    createdAt: "2026-01-01T00:00:00Z",
-    updatedAt: "2026-01-01T00:00:00Z",
-  },
-  {
     id: 6,
     code: "availability_watch",
     displayName: "Availability Watch",
@@ -446,10 +432,6 @@ async function mockWorkflows(
       });
       return;
     }
-    if (url.pathname === "/api/workflow-node-types") {
-      await route.fulfill({ json: [] });
-      return;
-    }
     if (url.pathname === "/api/workflow-triggers") {
       if (route.request().method() === "POST") {
         const payload = route.request().postDataJSON() as {
@@ -753,11 +735,8 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await mockWorkflows(page);
   await page.goto("/workflows");
 
-  await expect(page.getByRole("tablist", { name: "Workflows", exact: true }).getByRole("tab")).toHaveCount(6);
-  await filterWorkflows(page, "Custom");
-  await expect(page.getByRole("tab", { name: "Custom draft", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("button", { name: "New workflow", exact: true })).toBeVisible();
-  await filterWorkflows(page, "Built-in");
+  await expect(page.getByRole("tablist", { name: "Workflows", exact: true }).getByRole("tab")).toHaveCount(5);
+  await expect(page.getByRole("button", { name: "New workflow", exact: true })).toHaveCount(0);
   const dlsiteDefinition = page.getByRole("tab", { name: /Collect DLsite popular voice works/ });
   await expect(dlsiteDefinition.getByText("Built-in", { exact: true })).toHaveCount(0);
 
@@ -828,9 +807,13 @@ test("workflow deep links do not override a later definition tab selection", asy
   await page.goto("/workflows?workflow=availability_watch");
 
   await expect(page.getByRole("heading", { name: "Availability Watch", exact: true })).toBeVisible();
-  await filterWorkflows(page, "Custom");
-  await expect(page.getByRole("tab", { name: "Custom draft", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("heading", { name: "Custom draft", exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Sync work metadata", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Sync work metadata", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Availability Watch", exact: true })).toHaveCount(0);
 });
 
 test("local scan folder watcher exposes incremental and full scan modes", async ({ page }) => {
@@ -917,33 +900,6 @@ test("local scan follow-up is explicit and defaults off for manual and automatic
   await triggerDialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect.poll(() => triggerPayloads).toHaveLength(1);
   expect(JSON.parse(String(triggerPayloads[0].configJson))).toEqual({ followUpRun: true });
-});
-
-test("legacy custom definitions remain read-only while showing their linear connections", async ({ page }) => {
-  await mockWorkflows(page);
-  await page.goto("/workflows");
-
-  await filterWorkflows(page, "Custom");
-  await page.getByRole("tab", { name: /Custom draft/ }).click();
-  await expect(page.getByRole("heading", { name: "Custom draft", exact: true })).toBeVisible();
-  await expect(
-    page.getByText(
-      "Legacy upgrade is reserved for a future release. This definition remains read-only, and its original linear connections are shown below.",
-      { exact: true },
-    ),
-  ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Upgrade workflow", exact: true })).toBeDisabled();
-  const legacyCanvas = page.getByLabel("Workflow node canvas");
-  await expect(legacyCanvas).toBeVisible();
-  await expect(legacyCanvas.locator(".react-flow__edge")).toHaveCount(1);
-  await expect(legacyCanvas.locator(".react-flow__handle")).toHaveCount(2);
-  await expect(legacyCanvas.locator(".react-flow__controls-button")).toHaveCount(4);
-  const legacyMinimapToggle = legacyCanvas.getByRole("button", { name: "Workflow minimap", exact: true });
-  await expect(legacyMinimapToggle).toHaveAttribute("aria-pressed", "false");
-  await legacyMinimapToggle.click();
-  await expect(legacyCanvas.getByRole("img", { name: "Workflow minimap", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Edit workflow", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Preview / Run", exact: true })).toHaveCount(0);
 });
 
 test("availability watch shares pools, schedules checks, and handles ready works on mobile", async ({ page }) => {
@@ -1301,7 +1257,7 @@ test("workflow metadata loads as one snapshot without an interim empty panel", a
 
   await page.goto("/workflows");
   await expect(page.getByRole("status", { name: "Loading workflow data" })).toBeVisible();
-  await expect(page.getByText("No runnable or custom workflow definitions exist yet.", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("No runnable workflow definitions exist yet.", { exact: true })).toHaveCount(0);
 
   releaseDefinitions();
   await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toBeVisible();
@@ -1588,45 +1544,42 @@ test("demo settings keeps account and workflows read-only while allowing appeara
       exact: true,
     }),
   ).toBeVisible();
-  await filterWorkflows(page, "Custom");
-  await expect(page.getByRole("button", { name: "New workflow", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "New workflow", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "New workflow" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Preview only", exact: true })).toBeDisabled();
-  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByRole("button", { name: "New workflow", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Run at startup", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Add schedule", exact: true })).toHaveCount(0);
 });
 
-async function filterWorkflows(page: Page, name: "All" | "Built-in" | "Custom") {
-  await page.getByRole("button", { name: "Filter workflows", exact: true }).click();
-  await page.getByRole("radio", { name, exact: true }).click();
-}
-
-test("workflow filters retain selection, stay reachable on mobile, and support keyboard navigation", async ({
-  page,
-}) => {
+test("workflow tabs retain selection, stay reachable on mobile, and support keyboard navigation", async ({ page }) => {
   await mockWorkflows(page);
   await page.goto("/workflows");
   const tabs = page.getByRole("tablist", { name: "Workflows", exact: true });
-  await expect(tabs.getByRole("tab")).toHaveCount(6);
+  await expect(tabs.getByRole("tab")).toHaveCount(5);
   await tabs.getByRole("tab", { name: "Scan local library", exact: true }).focus();
   await page.keyboard.press("ArrowRight");
   await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toBeVisible();
-  await filterWorkflows(page, "Built-in");
-  await expect(tabs.getByRole("tab")).toHaveCount(5);
   await expect(tabs.getByRole("tab", { name: "Sync work metadata", exact: true })).toHaveAttribute(
     "aria-selected",
     "true",
   );
-  await filterWorkflows(page, "Custom");
-  await expect(tabs.getByRole("tab")).toHaveCount(1);
+  await page.keyboard.press("End");
+  await expect(tabs.getByRole("tab", { name: "Availability Watch", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await page.keyboard.press("Home");
+  await expect(tabs.getByRole("tab", { name: "Scan local library", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await tabs.getByRole("tab", { name: "Sync work metadata", exact: true }).click();
   await page.reload();
-  await expect(tabs.getByRole("tab", { name: "Custom draft", exact: true })).toHaveAttribute("aria-selected", "true");
-  await filterWorkflows(page, "All");
-  await expect(tabs.getByRole("tab", { name: "Custom draft", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("button", { name: "Filter workflows", exact: true })).toBeInViewport();
-  await expect(page.getByRole("button", { name: "New workflow", exact: true })).toBeInViewport();
+  await expect(tabs.getByRole("tab", { name: "Sync work metadata", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Filter workflows", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Activity", exact: true })).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
@@ -1769,19 +1722,6 @@ for (const viewport of ["mobile", "@desktop"]) {
     await expect(page).not.toHaveURL(/run=72/);
   });
 }
-
-test("empty-custom filter keeps the global Activity available", async ({ page }) => {
-  await mockWorkflows(page);
-  await page.route("**/api/workflow-definitions", (route) =>
-    route.fulfill({ json: systemDefinitions.filter((definition) => definition.scope === "system") }),
-  );
-  await page.goto("/workflows?workflow=metadata_sync");
-  await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toBeVisible();
-  await filterWorkflows(page, "Custom");
-  await expect(page.getByRole("tablist", { name: "Workflows", exact: true }).getByRole("tab")).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Activity", exact: true })).toBeEnabled();
-});
 
 test("@desktop canvas wheel scrolls the page unless a modifier is held", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 600 });

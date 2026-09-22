@@ -142,7 +142,7 @@ It does not decompress or re-encode the image.
 ## Current Limits
 
 - Some operations remain synchronous even though the major Fetch, cache,
-  cleanup, scan, metadata, and custom workflow paths use persisted jobs.
+  cleanup, scan, metadata, and preset workflow paths use persisted jobs.
 - The embedded job runner is single-instance and SQLite-backed; it is not a
   distributed worker system.
 - Retry, cancellation, and restart recovery are defined per job family rather

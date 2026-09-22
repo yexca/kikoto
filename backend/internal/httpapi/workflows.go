@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,101 +17,11 @@ import (
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
-var workflowCodePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`)
-
-var workflowNodeTypeRegistry = []workflowNodeTypeRecord{
-	nodeType("select_local_source", "target", "Select local source", "Choose a configured local folder source.", true, schemaObject("sourceId", "scanDepth"), schemaObject(), schemaObject("sourceId", "path")),
-	nodeType("select_remote_source", "target", "Select remote source", "Choose one or more configured remote sources.", true, schemaObject("sourceId", "sourceIds"), schemaObject(), schemaObject("sourceIds")),
-	nodeType("select_works", "target", "Select works", "Choose known works for a workflow run.", true, schemaObject("workIds", "codes", "scope"), schemaObject(), schemaObject("workIds", "codes")),
-	nodeType("select_media_items", "target", "Select media items", "Choose media items or file locations.", true, schemaObject("mediaItemIds", "locationIds", "locationType"), schemaObject(), schemaObject("mediaItemIds", "locationIds")),
-	nodeType("select_remote_works", "target", "Select remote works", "Choose multiple remote works for a bulk action.", false, schemaObject("sourceId", "codes", "action"), schemaObject(), schemaObject("sourceId", "codes")),
-	nodeType("select_party", "target", "Select circle", "Choose a circle or party catalog target.", false, schemaObject("externalId", "provider"), schemaObject(), schemaObject("partyId", "externalId")),
-	nodeType("select_ranking", "target", "Configure ranking", "Choose a provider ranking period and release scope.", false, schemaObject("period", "releaseWindow", "year"), schemaObject(), schemaObject("period", "releaseWindow", "year")),
-
-	nodeType("discover_local_files", "discover", "Discover local files", "Scan local folders and detect work files.", true, schemaObject("includeExisting", "markMissing"), schemaObject("sourceId", "path"), schemaObject("files", "detectedWorks")),
-	nodeType("discover_remote_works", "discover", "Discover remote works", "Find remote works or remote matches.", true, schemaObject("query", "pageSize"), schemaObject("sourceIds", "codes"), schemaObject("remoteWorks")),
-	nodeType("discover_remote_collection", "discover", "Discover remote collection", "Fetch a named source collection such as popular works.", true, schemaObject("collectionKind", "pageSize"), schemaObject("sourceId"), schemaObject("works", "pagination")),
-	nodeType("discover_provider_ranking", "discover", "Discover provider ranking", "Fetch an ordered provider ranking without creating file-source presence.", false, schemaObject("provider", "period", "releaseWindow", "year"), schemaObject(), schemaObject("codes")),
-	nodeType("fetch_remote_tree", "discover", "Fetch remote tree", "Fetch a remote work file tree.", true, schemaObject("sourceId", "code"), schemaObject("sourceId", "code"), schemaObject("tracks", "snapshotBytes")),
-	nodeType("refresh_circle_catalog", "discover", "Refresh circle catalog", "Fetch and update a circle catalog.", false, schemaObject("mode", "productMode"), schemaObject("partyId", "externalId"), schemaObject("catalogWorks", "pagesFetched")),
-
-	nodeType("filter_candidates", "filter", "Filter candidates", "Keep only candidates matching workflow rules.", true, schemaObject("rule", "status", "limit"), schemaObject("candidates"), schemaObject("candidates", "rejected")),
-
-	nodeType("match_works", "match", "Match works", "Match candidates to known works and availability state.", true, schemaObject("strategy"), schemaObject("candidates"), schemaObject("matchedWorks", "unmatched")),
-	nodeType("check_source_availability", "match", "Check source availability", "Check remote source availability for works.", false, schemaObject("sourceIds", "staleAfterDays"), schemaObject("codes", "sourceIds"), schemaObject("sources", "hasLocal", "hasCache", "hasRemote")),
-
-	nodeType("plan_save", "plan", "Plan fetch", "Build a cache and local promotion plan for selected remote files.", true, schemaObject("saveRootTemplate", "paths"), schemaObject("tracks", "cacheState"), schemaObject("items", "summary")),
-
-	nodeType("materialize_cache", "execute", "Materialize cache", "Download or copy media into cache.", true, schemaObject("cacheRoot", "overwrite"), schemaObject("downloadUrl", "cachePath"), schemaObject("cachePath", "bytes")),
-	nodeType("stage_fetch_result", "execute", "Stage fetch result", "Assemble the complete result tree outside scanner-visible library roots.", true, schemaObject("stagingRoot"), schemaObject("plan"), schemaObject("staged")),
-	nodeType("publish_staged_fetch", "commit", "Publish staged fetch", "Atomically publish a verified staging tree and retain a recoverable backup until registration.", true, schemaObject("targetRoot"), schemaObject("stagingRoot"), schemaObject("published")),
-	nodeType("materialize_save", "execute", "Materialize save", "Compatibility node for older save workflows.", false, schemaObject("overwrite", "dryRun"), schemaObject("items", "saveRoot"), schemaObject("saved", "skipped", "downloaded", "copiedFromCache")),
-	nodeType("promote_cache_to_local", "execute", "Promote cache to local", "Move cached media into the local library.", true, schemaObject("mode", "overwrite"), schemaObject("cachePath", "targetPath"), schemaObject("localPath", "moved")),
-	nodeType("cleanup_cache", "execute", "Cleanup cache", "Delete cached files or clear cache-related state.", true, schemaObject("deleteFiles", "clearState"), schemaObject("locationIds", "cachePath"), schemaObject("deleted", "cleared")),
-	nodeType("cleanup_local_locations", "execute", "Cleanup local locations", "Mark selected local locations unavailable and optionally delete their files.", true, schemaObject("deleteFiles"), schemaObject("locationIds"), schemaObject("deleted", "marked")),
-	nodeType("delete_local_media", "execute", "Delete local media", "Delete local media files and mark their locations unavailable.", true, schemaObject(), schemaObject("locationIds"), schemaObject("deleted")),
-	nodeType("cleanup_media_locations", "execute", "Cleanup media locations", "Delete selected cache or local files and mark their locations unavailable.", true, schemaObject(), schemaObject("targets"), schemaObject("deleted")),
-	nodeType("forget_unlinked_work", "commit", "Forget unlinked work", "Remove a logical work family only when no available source remains.", true, schemaObject(), schemaObject("workIds"), schemaObject("forgottenWorkIds", "skipped")),
-	nodeType("dispatch_child_workflows", "execute", "Dispatch child workflows", "Run child workflows from a parent workflow.", false, schemaObject("workflowCode", "mode"), schemaObject("codes", "action"), schemaObject("childRuns")),
-
-	nodeType("verify_files", "verify", "Verify files", "Validate materialized file outputs.", true, schemaObject("checkSize", "checkHash"), schemaObject("paths", "expected"), schemaObject("verified", "failed")),
-
-	nodeType("sync_file_locations", "commit", "Sync file locations", "Persist local, remote, or cache file locations.", true, schemaObject("locationType", "markMissing"), schemaObject("workId", "locations"), schemaObject("syncedLocations")),
-	nodeType("sync_metadata", "commit", "Sync metadata", "Persist metadata snapshots and normalized work fields.", true, schemaObject("provider", "language", "forceRefresh"), schemaObject("workIds", "codes"), schemaObject("syncedWorks", "skippedWorks", "failedWorks")),
-	nodeType("sync_tracked_presence", "commit", "Sync tracked presence", "Persist selected remote works as tracked source presence.", true, schemaObject("presenceType"), schemaObject("works", "sourceId"), schemaObject("tracked")),
-	nodeType("assign_user_tags", "commit", "Assign user tags", "Append user-owned tags to synchronized works.", false, schemaObject("tagName"), schemaObject("workIds", "userId"), schemaObject("tagged")),
-}
-
-var allowedWorkflowNodeTypes = workflowNodeTypeMap(workflowNodeTypeRegistry)
-
 var allowedScheduledTriggerTypes = map[string]bool{
 	"startup":          true,
 	"schedule":         true,
 	"filesystem_event": true,
 	"source_poll":      true,
-}
-
-func nodeType(nodeType string, phase string, displayName string, description string, userVisible bool, configSchema string, inputSchema string, outputSchema string) workflowNodeTypeRecord {
-	return workflowNodeTypeRecord{
-		Type:         nodeType,
-		Phase:        phase,
-		DisplayName:  displayName,
-		Description:  description,
-		UserVisible:  userVisible,
-		ConfigSchema: configSchema,
-		InputSchema:  inputSchema,
-		OutputSchema: outputSchema,
-	}
-}
-
-func schemaObject(fields ...string) string {
-	properties := map[string]any{}
-	for _, field := range fields {
-		properties[field] = map[string]string{"description": field}
-	}
-	raw, err := json.Marshal(map[string]any{
-		"type":       "object",
-		"properties": properties,
-	})
-	if err != nil {
-		return "{}"
-	}
-	return string(raw)
-}
-
-func workflowNodeTypeMap(records []workflowNodeTypeRecord) map[string]bool {
-	result := map[string]bool{}
-	for _, record := range records {
-		result[record.Type] = true
-	}
-	return result
-}
-
-type workflowDefinitionPayload struct {
-	Code           string `json:"code"`
-	DisplayName    string `json:"displayName"`
-	Description    string `json:"description"`
-	DefinitionJSON string `json:"definitionJson"`
 }
 
 type workflowTriggerPayload struct {
@@ -172,30 +81,6 @@ func (s *Server) ensureSystemWorkflowDefinitions(ctx context.Context) error {
 		}
 	}
 	return tx.Commit()
-}
-
-func (s *Server) listWorkflowNodeTypes(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
-		return
-	}
-	writeJSON(w, http.StatusOK, mergedWorkflowNodeTypeRecords())
-}
-
-func mergedWorkflowNodeTypeRecords() []workflowNodeTypeRecord {
-	nodeTypes := append([]workflowNodeTypeRecord{}, workflowNodeTypeRegistry...)
-	indexByType := make(map[string]int, len(nodeTypes))
-	for index, record := range nodeTypes {
-		indexByType[record.Type] = index
-	}
-	for _, record := range customWorkflowNodeTypeRecords() {
-		if index, exists := indexByType[record.Type]; exists {
-			nodeTypes[index] = record
-			continue
-		}
-		indexByType[record.Type] = len(nodeTypes)
-		nodeTypes = append(nodeTypes, record)
-	}
-	return nodeTypes
 }
 
 type systemWorkflowSpec struct {
@@ -357,188 +242,6 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 			{"id": "check", "type": "filter_candidates", "displayName": "Check endpoint"},
 		},
 	},
-}
-
-func (s *Server) createWorkflowDefinition(w http.ResponseWriter, r *http.Request) {
-	actor, ok := s.requirePermission(w, r, "workflows:run")
-	if !ok {
-		return
-	}
-	payload, ok := decodeWorkflowDefinitionPayload(w, r)
-	if !ok {
-		return
-	}
-	if err := validateWorkflowDefinitionPayload(payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-	tx, err := s.db.BeginTx(r.Context(), nil)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := ensureWorkflowCommandAliasAvailableFrom(r.Context(), tx, actor.ID, 0, payload.DefinitionJSON); err != nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
-		return
-	}
-
-	id, err := insertAndID(r.Context(), tx, `
-		INSERT INTO workflow_definition (
-			code,
-			display_name,
-			description,
-			definition_json,
-			scope,
-			editable,
-			owner_user_id,
-			created_by_user_id
-		)
-		VALUES (?, ?, ?, ?, 'user', 1, ?, ?)
-	`, payload.Code, payload.DisplayName, payload.Description, payload.DefinitionJSON, actor.ID, actor.ID)
-	if err != nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "workflow code already exists"})
-		return
-	}
-	if err := tx.Commit(); err != nil {
-		writeError(w, err)
-		return
-	}
-	definition, err := s.loadWorkflowDefinition(r.Context(), id)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, definition)
-}
-
-func (s *Server) updateWorkflowDefinition(w http.ResponseWriter, r *http.Request) {
-	actor, ok := s.requirePermission(w, r, "workflows:run")
-	if !ok {
-		return
-	}
-	id, err := parseInt64PathValue(r, "id")
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow definition id"})
-		return
-	}
-	current, err := s.loadWorkflowDefinition(r.Context(), id)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow definition not found"})
-			return
-		}
-		writeError(w, err)
-		return
-	}
-	if !current.Editable {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "system workflow definitions cannot be edited"})
-		return
-	}
-	if !canManageWorkflowDefinition(actor, current) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow definition belongs to another user"})
-		return
-	}
-
-	payload, ok := decodeWorkflowDefinitionPayload(w, r)
-	if !ok {
-		return
-	}
-	payload.Code = current.Code
-	if err := validateWorkflowDefinitionPayload(payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-	if err := s.validateWorkflowDefinitionTriggerUpdate(r.Context(), current, payload.DefinitionJSON); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-	ownerID := actor.ID
-	if current.OwnerUserID != nil {
-		ownerID = *current.OwnerUserID
-	}
-	tx, err := s.db.BeginTx(r.Context(), nil)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := updateWorkflowDefinitionTx(r.Context(), tx, current.ID, ownerID, payload); err != nil {
-		var aliasErr *workflowCommandAliasConflictError
-		if errors.As(err, &aliasErr) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
-			return
-		}
-		writeError(w, err)
-		return
-	}
-	if err := tx.Commit(); err != nil {
-		writeError(w, err)
-		return
-	}
-	definition, err := s.loadWorkflowDefinition(r.Context(), id)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, definition)
-}
-
-type workflowCommandAliasConflictError struct{ err error }
-
-func (e *workflowCommandAliasConflictError) Error() string { return e.err.Error() }
-func (e *workflowCommandAliasConflictError) Unwrap() error { return e.err }
-
-func updateWorkflowDefinitionTx(ctx context.Context, tx *sql.Tx, definitionID, ownerID int64, payload workflowDefinitionPayload) error {
-	if err := ensureWorkflowCommandAliasAvailableFrom(ctx, tx, ownerID, definitionID, payload.DefinitionJSON); err != nil {
-		return &workflowCommandAliasConflictError{err: err}
-	}
-	_, err := tx.ExecContext(ctx, `
-		UPDATE workflow_definition
-		SET display_name = ?, description = ?, definition_json = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ? AND editable = 1
-	`, payload.DisplayName, payload.Description, payload.DefinitionJSON, definitionID)
-	return err
-}
-
-func (s *Server) deleteWorkflowDefinition(w http.ResponseWriter, r *http.Request) {
-	actor, ok := s.requirePermission(w, r, "workflows:run")
-	if !ok {
-		return
-	}
-	id, err := parseInt64PathValue(r, "id")
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow definition id"})
-		return
-	}
-	current, err := s.loadWorkflowDefinition(r.Context(), id)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "editable workflow definition not found"})
-			return
-		}
-		writeError(w, err)
-		return
-	}
-	if !current.Editable || !canManageWorkflowDefinition(actor, current) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow definition cannot be deleted"})
-		return
-	}
-	result, err := s.db.ExecContext(r.Context(), "DELETE FROM workflow_definition WHERE id = ? AND editable = 1", id)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	if rows == 0 {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "editable workflow definition not found"})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (s *Server) createWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
@@ -1945,19 +1648,6 @@ func (s *Server) recoverStaleWorkflowRuns(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, workflowRunActionResult{Status: "recovered", Message: "recoverable jobs requeued; unsupported stale runs marked failed", Recovered: recovered})
 }
 
-func decodeWorkflowDefinitionPayload(w http.ResponseWriter, r *http.Request) (workflowDefinitionPayload, bool) {
-	var payload workflowDefinitionPayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
-		return payload, false
-	}
-	payload.Code = strings.TrimSpace(payload.Code)
-	payload.DisplayName = strings.TrimSpace(payload.DisplayName)
-	payload.Description = strings.TrimSpace(payload.Description)
-	payload.DefinitionJSON = strings.TrimSpace(payload.DefinitionJSON)
-	return payload, true
-}
-
 func (s *Server) loadWorkflowRun(ctx context.Context, id int64) (workflowRunRecord, error) {
 	return s.workflowStore.LoadRun(ctx, id)
 }
@@ -1987,88 +1677,6 @@ func decodeWorkflowTriggerPayload(w http.ResponseWriter, r *http.Request) (workf
 		payload.ConfigJSON = "{}"
 	}
 	return payload, true
-}
-
-func validateWorkflowDefinitionPayload(payload workflowDefinitionPayload) error {
-	if err := validateWorkflowDefinitionMetadata(payload); err != nil {
-		return err
-	}
-	var versionProbe struct {
-		SchemaVersion int `json:"schemaVersion"`
-	}
-	if err := json.Unmarshal([]byte(payload.DefinitionJSON), &versionProbe); err != nil {
-		return fmt.Errorf("definition JSON is invalid")
-	}
-	if versionProbe.SchemaVersion == customWorkflowSchemaVersion {
-		_, err := validateCustomWorkflowDefinition(payload.DefinitionJSON)
-		return err
-	}
-	if versionProbe.SchemaVersion != 0 {
-		return fmt.Errorf("unsupported workflow schemaVersion: %d", versionProbe.SchemaVersion)
-	}
-	return validateLegacyWorkflowDefinition(payload.DefinitionJSON)
-}
-
-func validateWorkflowDefinitionMetadata(payload workflowDefinitionPayload) error {
-	if !workflowCodePattern.MatchString(payload.Code) {
-		return fmt.Errorf("workflow code must be lowercase snake_case and 3-64 characters")
-	}
-	if payload.DisplayName == "" {
-		return fmt.Errorf("display name is required")
-	}
-	if payload.DefinitionJSON == "" {
-		return fmt.Errorf("definition JSON is required")
-	}
-	return nil
-}
-
-type legacyWorkflowNodePayload struct {
-	ID          string `json:"id"`
-	Type        string `json:"type"`
-	DisplayName string `json:"displayName"`
-	Config      any    `json:"config"`
-}
-
-type legacyWorkflowDefinitionPayload struct {
-	Nodes []legacyWorkflowNodePayload `json:"nodes"`
-}
-
-func validateLegacyWorkflowDefinition(raw string) error {
-	var definition legacyWorkflowDefinitionPayload
-	if err := json.Unmarshal([]byte(raw), &definition); err != nil {
-		return fmt.Errorf("definition JSON is invalid")
-	}
-	if len(definition.Nodes) == 0 {
-		return fmt.Errorf("workflow needs at least one node")
-	}
-	seen := map[string]bool{}
-	for _, node := range definition.Nodes {
-		if err := validateLegacyWorkflowNode(node, seen); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func validateLegacyWorkflowNode(node legacyWorkflowNodePayload, seen map[string]bool) error {
-	nodeID := strings.TrimSpace(node.ID)
-	nodeType := strings.TrimSpace(node.Type)
-	if nodeID == "" {
-		return fmt.Errorf("node id is required")
-	}
-	if seen[nodeID] {
-		return fmt.Errorf("node id must be unique")
-	}
-	seen[nodeID] = true
-	if !allowedWorkflowNodeTypes[nodeType] {
-		return fmt.Errorf("unsupported node type: %s", nodeType)
-	}
-	if node.Config != nil {
-		if _, ok := node.Config.(map[string]any); !ok {
-			return fmt.Errorf("node config must be an object")
-		}
-	}
-	return nil
 }
 
 func validateWorkflowTriggerPayload(payload workflowTriggerPayload) error {

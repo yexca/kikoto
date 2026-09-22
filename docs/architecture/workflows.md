@@ -119,7 +119,7 @@ Remote popular collection reads the configured compatible file source's own
 recommendations and may track or fetch those remote works when run manually.
 Startup and interval triggers retain a bounded Track configuration and expand
 their tag template when each run is dispatched. Automatic Fetch remains in the
-typed custom-workflow path where file, byte, known-size, and disk-reserve bounds
+typed preset-workflow path where file, byte, known-size, and disk-reserve bounds
 are explicit.
 
 DLsite popular voice collection reads the provider ranking for 24 hours, 7
@@ -135,7 +135,15 @@ store both their trigger reference and the final resolved input.
 ## Preset Workflows
 
 Preset workflows are system definitions whose graph is composed by the server
-from a small validated parameter set instead of authored by a user. `circle_follow`,
+from a small validated parameter set. They replace the removed user-authored
+custom workflow editor: `workflow_definition` rows are system-scope only, the
+definition CRUD, preview, node-type, slash-command, subworkflow, and workflow
+input surfaces are gone, and migration 035 deletes any remaining user
+definitions with their triggers while runs keep their code and name snapshots.
+The typed DAG runtime (`custom_workflow` jobs, checkpoints, retry) stays and
+executes only the node kinds the presets compose: `circle_catalog`,
+`series_catalog`, `voice_source_works`, `filter_works`, `metadata_sync`,
+`track_works`, `fetch_works`, and `tag_works`. `circle_follow`,
 `series_follow`, and `voice_follow` share one shape:
 
 ```text

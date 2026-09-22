@@ -1098,72 +1098,6 @@ export type WorkflowPresetRunResult = {
   inputs: Record<string, unknown>;
 };
 
-export type WorkflowNodeTypePort = {
-  id: string;
-  dataType?: string;
-  type?: string;
-  label?: string;
-  required?: boolean;
-  multiple?: boolean;
-};
-
-export type WorkflowNodeType = {
-  type: string;
-  phase: string;
-  displayName: string;
-  description: string;
-  userVisible: boolean;
-  configSchema: string;
-  inputSchema: string;
-  outputSchema: string;
-  inputPorts?: WorkflowNodeTypePort[];
-  outputPorts?: WorkflowNodeTypePort[];
-  requiredPermissions?: string[];
-  composite?: boolean;
-};
-
-export type WorkflowPreviewEstimate = {
-  candidateCount?: number | null;
-  fileCount?: number | null;
-  totalBytes?: number | null;
-};
-
-export type WorkflowPreviewLimit = {
-  key: string;
-  label: string;
-  value: string | number | boolean | null;
-  unit?: string;
-  satisfied?: boolean;
-  message?: string;
-};
-
-export type WorkflowDefinitionRunPreview = {
-  mode: "preview";
-  definitionId: number;
-  workflowCode: string;
-  status: "preview";
-  previewToken: string;
-  requiredPermissions?: string[];
-  normalizedInputs?: Record<string, unknown>;
-  plan: {
-    nodeCount: number;
-    edgeCount: number;
-    topologicalOrder: string[];
-    actions: unknown[];
-    estimates?: WorkflowPreviewEstimate | null;
-    limits?: WorkflowPreviewLimit[];
-  };
-  warnings?: string[];
-};
-
-export type WorkflowDefinitionRunConfirmation = {
-  mode: "confirm";
-  runId: number;
-  status: string;
-};
-
-export type WorkflowDefinitionRunResponse = WorkflowDefinitionRunPreview | WorkflowDefinitionRunConfirmation;
-
 export type AvailabilityWatchTarget = {
   id: number;
   workCode: string;
@@ -2470,23 +2404,6 @@ export const api = {
   trackAvailabilityWatchTarget: (id: number) =>
     postJSON<RemoteWorkTrackResult>(`/api/availability-watch/targets/${id}/track`),
   runAvailabilityWatch: () => postJSON<AvailabilityWatchRunResult>("/api/availability-watch/run"),
-  listWorkflowNodeTypes: () => getJSON<WorkflowNodeType[]>("/api/workflow-node-types"),
-  createWorkflowDefinition: (payload: {
-    code: string;
-    displayName: string;
-    description: string;
-    definitionJson: string;
-  }) => postJSONBody<WorkflowDefinition>("/api/workflow-definitions", payload),
-  updateWorkflowDefinition: (
-    id: number,
-    payload: { code: string; displayName: string; description: string; definitionJson: string },
-  ) => patchJSONBody<WorkflowDefinition>(`/api/workflow-definitions/${id}`, payload),
-  deleteWorkflowDefinition: (id: number) => deleteJSON<{ ok: boolean }>(`/api/workflow-definitions/${id}`),
-  runWorkflowDefinition: (
-    id: number,
-    payload: { mode: "preview" | "confirm"; inputs: Record<string, unknown>; previewToken?: string },
-    signal?: AbortSignal,
-  ) => postJSONBody<WorkflowDefinitionRunResponse>(`/api/workflow-definitions/${id}/runs`, payload, signal),
   listWorkflowTriggers: () => getJSON<WorkflowTrigger[]>("/api/workflow-triggers"),
   createWorkflowTrigger: (payload: {
     workflowDefinitionId: number;

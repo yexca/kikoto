@@ -554,7 +554,6 @@ function AuthenticatedApp() {
               onOpenChange={setCommandPaletteOpen}
               hasPermission={effectiveHasPermission}
               visibleNavItems={visibleNavItems}
-              currentUserId={auth.user?.id ?? null}
               onBusyChange={setCommandPaletteBusy}
               onOpenPage={openPage}
               onOpenPath={openPath}

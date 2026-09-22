@@ -56,44 +56,6 @@ type localScanTriggerConfig struct {
 var workflowTagTemplateTokenPattern = regexp.MustCompile(`\{[a-z_]+\}`)
 
 func (s *Server) prepareWorkflowTrigger(ctx context.Context, actor currentUser, definition workflowDefinitionRecord, payload workflowTriggerPayload, now time.Time, existing *workflowTriggerRecord) (preparedWorkflowTrigger, error) {
-	var probe struct {
-		SchemaVersion int `json:"schemaVersion"`
-	}
-	if json.Unmarshal([]byte(definition.DefinitionJSON), &probe) != nil || probe.SchemaVersion != customWorkflowSchemaVersion {
-		return s.prepareSystemWorkflowTrigger(ctx, actor, definition, payload, now, existing)
-	}
-	if definition.Scope != "user" || !definition.Editable {
-		return preparedWorkflowTrigger{}, fmt.Errorf("automated DAG must be an editable user workflow")
-	}
-	if payload.TriggerType != "schedule" && payload.TriggerType != "startup" {
-		return preparedWorkflowTrigger{}, fmt.Errorf("custom workflow DAGs support startup and interval schedule triggers only")
-	}
-	var graph customWorkflowGraph
-	var schedule customWorkflowSchedule
-	var err error
-	if payload.TriggerType == "schedule" {
-		graph, schedule, _, err = validateCustomWorkflowSchedule(definition, payload.ScheduleJSON, payload.ConfigJSON)
-	} else {
-		graph, _, err = validateCustomWorkflowAutomation(definition, payload.ConfigJSON)
-	}
-	if err != nil {
-		return preparedWorkflowTrigger{}, err
-	}
-	if missing := missingCustomWorkflowPermission(actor.Permissions, customWorkflowRequiredPermissions(graph)); missing != "" {
-		return preparedWorkflowTrigger{}, fmt.Errorf("automated workflow requires permission %s", missing)
-	}
-	prepared := preparedWorkflowTrigger{ConfigJSON: payload.ConfigJSON}
-	if payload.TriggerType == "startup" {
-		return prepared, nil
-	}
-	if payload.Enabled != nil && !*payload.Enabled {
-		return prepared, nil
-	}
-	prepared.NextRunAt = formatWorkflowTimestamp(now.Add(time.Duration(schedule.IntervalMinutes) * time.Minute))
-	return prepared, nil
-}
-
-func (s *Server) prepareSystemWorkflowTrigger(ctx context.Context, actor currentUser, definition workflowDefinitionRecord, payload workflowTriggerPayload, now time.Time, existing *workflowTriggerRecord) (preparedWorkflowTrigger, error) {
 	if definition.Scope != "system" || !systemWorkflowSupportsConfigurableTriggers(definition.Code) {
 		return preparedWorkflowTrigger{}, fmt.Errorf("this workflow does not support configurable triggers")
 	}
@@ -413,25 +375,6 @@ func workflowTagFragment(value string) string {
 	return strings.Trim(builder.String(), "_- ")
 }
 
-func validateCustomWorkflowAutomation(definition workflowDefinitionRecord, configJSON string) (customWorkflowGraph, map[string]any, error) {
-	graph, err := validateCustomWorkflowDefinition(definition.DefinitionJSON)
-	if err != nil {
-		return customWorkflowGraph{}, nil, err
-	}
-	if customWorkflowRequiresPreview(graph.Definition) {
-		return customWorkflowGraph{}, nil, fmt.Errorf("automated workflows must disable interactive preview")
-	}
-	config := customWorkflowScheduleConfig{Inputs: map[string]any{}}
-	if err := decodeStrictJSON(configJSON, &config); err != nil {
-		return customWorkflowGraph{}, nil, fmt.Errorf("config JSON must contain only workflow inputs")
-	}
-	inputs, err := normalizeCustomWorkflowInputs(graph.Definition.Inputs, config.Inputs)
-	if err != nil {
-		return customWorkflowGraph{}, nil, err
-	}
-	return graph, inputs, nil
-}
-
 func validateWorkflowIntervalSchedule(scheduleJSON string) (customWorkflowSchedule, error) {
 	var schedule customWorkflowSchedule
 	if err := decodeStrictJSON(scheduleJSON, &schedule); err != nil {
@@ -441,53 +384,6 @@ func validateWorkflowIntervalSchedule(scheduleJSON string) (customWorkflowSchedu
 		return customWorkflowSchedule{}, fmt.Errorf("intervalMinutes must be between %d and %d", minimumCustomWorkflowIntervalMinutes, maximumCustomWorkflowIntervalMinutes)
 	}
 	return schedule, nil
-}
-
-func validateCustomWorkflowSchedule(definition workflowDefinitionRecord, scheduleJSON, configJSON string) (customWorkflowGraph, customWorkflowSchedule, map[string]any, error) {
-	graph, inputs, err := validateCustomWorkflowAutomation(definition, configJSON)
-	if err != nil {
-		return customWorkflowGraph{}, customWorkflowSchedule{}, nil, err
-	}
-	schedule, err := validateWorkflowIntervalSchedule(scheduleJSON)
-	if err != nil {
-		return customWorkflowGraph{}, customWorkflowSchedule{}, nil, err
-	}
-	return graph, schedule, inputs, nil
-}
-
-func (s *Server) validateWorkflowDefinitionTriggerUpdate(ctx context.Context, definition workflowDefinitionRecord, definitionJSON string) error {
-	var probe struct {
-		SchemaVersion int `json:"schemaVersion"`
-	}
-	if json.Unmarshal([]byte(definitionJSON), &probe) != nil || probe.SchemaVersion != customWorkflowSchemaVersion {
-		return nil
-	}
-	definition.DefinitionJSON = definitionJSON
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT trigger_type, schedule_json, config_json
-		FROM workflow_trigger WHERE workflow_definition_id = ? ORDER BY id
-	`, definition.ID)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var triggerType, scheduleJSON, configJSON string
-		if err := rows.Scan(&triggerType, &scheduleJSON, &configJSON); err != nil {
-			return err
-		}
-		if triggerType != "schedule" && triggerType != "startup" {
-			return fmt.Errorf("remove unsupported %s triggers before upgrading this workflow", triggerType)
-		}
-		if triggerType == "schedule" {
-			if _, _, _, err := validateCustomWorkflowSchedule(definition, scheduleJSON, configJSON); err != nil {
-				return fmt.Errorf("existing schedule is incompatible with this workflow: %w", err)
-			}
-		} else if _, _, err := validateCustomWorkflowAutomation(definition, configJSON); err != nil {
-			return fmt.Errorf("existing startup trigger is incompatible with this workflow: %w", err)
-		}
-	}
-	return rows.Err()
 }
 
 func decodeStrictJSON(raw string, target any) error {
@@ -516,13 +412,11 @@ func (s *Server) dispatchDueCustomWorkflowTrigger(ctx context.Context) error {
 			AND trigger.trigger_type = 'schedule'
 			AND trigger.next_run_at IS NOT NULL
 			AND trigger.next_run_at <= CURRENT_TIMESTAMP
-			AND (
-				(definition.scope = 'user' AND json_extract(definition.definition_json, '$.schemaVersion') = ?)
-				OR (definition.scope = 'system' AND definition.code IN (`+sqlPlaceholders(len(scheduledCodes))+`))
-			)
+			AND definition.scope = 'system'
+			AND definition.code IN (`+sqlPlaceholders(len(scheduledCodes))+`)
 		ORDER BY trigger.next_run_at ASC, trigger.id ASC
 		LIMIT 1
-	`, append([]any{customWorkflowSchemaVersion}, stringArgs(scheduledCodes)...)...).Scan(&triggerID)
+	`, stringArgs(scheduledCodes)...).Scan(&triggerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -537,60 +431,7 @@ func (s *Server) dispatchDueCustomWorkflowTrigger(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if definition.Scope == "system" {
-		return s.dispatchDueSystemWorkflowTrigger(ctx, definition, trigger)
-	}
-	return s.dispatchLoadedCustomWorkflowTrigger(ctx, definition, trigger)
-}
-
-func (s *Server) dispatchLoadedCustomWorkflowTrigger(ctx context.Context, definition workflowDefinitionRecord, trigger workflowTriggerRecord) error {
-	if definition.OwnerUserID == nil {
-		return s.disableInvalidCustomWorkflowTrigger(ctx, trigger.ID, "scheduled workflow owner is unavailable")
-	}
-	owner, err := s.accountStore.LoadByID(ctx, *definition.OwnerUserID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return s.disableInvalidCustomWorkflowTrigger(ctx, trigger.ID, "scheduled workflow owner is unavailable")
-		}
-		return err
-	}
-	graph, schedule, inputs, err := validateCustomWorkflowSchedule(definition, trigger.ScheduleJSON, trigger.ConfigJSON)
-	if err != nil {
-		return s.disableInvalidCustomWorkflowTrigger(ctx, trigger.ID, err.Error())
-	}
-	if missing := missingCustomWorkflowPermission(owner.Permissions, customWorkflowRequiredPermissions(graph)); missing != "" {
-		return s.disableInvalidCustomWorkflowTrigger(ctx, trigger.ID, "scheduled workflow owner no longer has required permissions")
-	}
-	now := time.Now().UTC()
-	nextRunAt := formatWorkflowTimestamp(now.Add(time.Duration(schedule.IntervalMinutes) * time.Minute))
-	var active int
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM workflow_run WHERE trigger_id = ? AND status IN ('queued', 'running')", trigger.ID).Scan(&active); err != nil {
-		return err
-	}
-	if active > 0 {
-		_, err := s.db.ExecContext(ctx, "UPDATE workflow_trigger SET next_run_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", nextRunAt, trigger.ID)
-		return err
-	}
-	claim, err := s.db.ExecContext(ctx, `
-		UPDATE workflow_trigger SET next_run_at = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ? AND enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= CURRENT_TIMESTAMP
-	`, nextRunAt, trigger.ID)
-	if err != nil {
-		return err
-	}
-	claimed, err := claim.RowsAffected()
-	if err != nil || claimed == 0 {
-		return err
-	}
-	_, err = s.enqueueCustomWorkflow(ctx, definition, graph, owner.ID, owner.Permissions, inputs, "", customWorkflowEnqueueOptions{
-		TriggerID: trigger.ID, TriggerType: "schedule", TriggerReason: "scheduled_interval", DefinitionStack: []int64{definition.ID},
-	})
-	if err != nil {
-		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", "scheduled workflow could not be queued", trigger.ID)
-		return err
-	}
-	_, err = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_run_at = ?, last_error_message = '', updated_at = CURRENT_TIMESTAMP WHERE id = ?", formatWorkflowTimestamp(now), trigger.ID)
-	return err
+	return s.dispatchDueSystemWorkflowTrigger(ctx, definition, trigger)
 }
 
 func (s *Server) dispatchDueSystemWorkflowTrigger(ctx context.Context, definition workflowDefinitionRecord, trigger workflowTriggerRecord) error {
@@ -871,85 +712,6 @@ func (s *Server) dispatchStartupSystemWorkflowTrigger(ctx context.Context, trigg
 		return err
 	}
 	return s.executeSystemWorkflowTrigger(ctx, definition, trigger, "startup", "application_startup")
-}
-
-func (s *Server) dispatchStartupCustomWorkflowTriggers(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT trigger.id
-		FROM workflow_trigger AS trigger
-		INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
-		WHERE trigger.enabled = 1
-			AND trigger.trigger_type = 'startup'
-			AND definition.scope = 'user'
-			AND json_extract(definition.definition_json, '$.schemaVersion') = ?
-		ORDER BY trigger.id
-	`, customWorkflowSchemaVersion)
-	if err != nil {
-		return err
-	}
-	var triggerIDs []int64
-	for rows.Next() {
-		var triggerID int64
-		if err := rows.Scan(&triggerID); err != nil {
-			_ = rows.Close()
-			return err
-		}
-		triggerIDs = append(triggerIDs, triggerID)
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	var firstErr error
-	for _, triggerID := range triggerIDs {
-		if err := s.dispatchStartupCustomWorkflowTrigger(ctx, triggerID); err != nil && firstErr == nil {
-			firstErr = err
-		}
-	}
-	return firstErr
-}
-
-func (s *Server) dispatchStartupCustomWorkflowTrigger(ctx context.Context, triggerID int64) error {
-	trigger, err := s.loadWorkflowTrigger(ctx, triggerID)
-	if err != nil {
-		return err
-	}
-	definition, err := s.loadWorkflowDefinition(ctx, trigger.WorkflowDefinitionID)
-	if err != nil {
-		return err
-	}
-	if definition.OwnerUserID == nil {
-		return s.disableInvalidCustomWorkflowTrigger(ctx, trigger.ID, "startup workflow owner is unavailable")
-	}
-	owner, err := s.accountStore.LoadByID(ctx, *definition.OwnerUserID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return s.disableInvalidCustomWorkflowTrigger(ctx, trigger.ID, "startup workflow owner is unavailable")
-		}
-		return err
-	}
-	graph, inputs, err := validateCustomWorkflowAutomation(definition, trigger.ConfigJSON)
-	if err != nil {
-		return s.disableInvalidCustomWorkflowTrigger(ctx, trigger.ID, err.Error())
-	}
-	if missing := missingCustomWorkflowPermission(owner.Permissions, customWorkflowRequiredPermissions(graph)); missing != "" {
-		return s.disableInvalidCustomWorkflowTrigger(ctx, trigger.ID, "startup workflow owner no longer has required permissions")
-	}
-	var active int
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM workflow_run WHERE trigger_id = ? AND status IN ('queued', 'running')", trigger.ID).Scan(&active); err != nil {
-		return err
-	}
-	if active > 0 {
-		return nil
-	}
-	_, err = s.enqueueCustomWorkflow(ctx, definition, graph, owner.ID, owner.Permissions, inputs, "", customWorkflowEnqueueOptions{
-		TriggerID: trigger.ID, TriggerType: "startup", TriggerReason: "application_startup", DefinitionStack: []int64{definition.ID},
-	})
-	if err != nil {
-		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", "startup workflow could not be queued", trigger.ID)
-		return err
-	}
-	_, err = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_run_at = CURRENT_TIMESTAMP, last_error_message = '', updated_at = CURRENT_TIMESTAMP WHERE id = ?", trigger.ID)
-	return err
 }
 
 func (s *Server) disableInvalidCustomWorkflowTrigger(ctx context.Context, triggerID int64, message string) error {

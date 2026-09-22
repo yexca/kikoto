@@ -2,24 +2,19 @@ package httpapi
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"math"
-	"net/http"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
-	texttemplate "text/template"
 	"time"
 
-	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
@@ -28,35 +23,18 @@ const customWorkflowSchemaVersion = 2
 
 var (
 	customWorkflowIDPattern       = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,63}$`)
-	customWorkflowAliasPattern    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{1,31}$`)
-	customWorkflowInputKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 	customWorkflowWorkCodePattern = regexp.MustCompile(`(?i)^(RJ|BJ|VJ|CC)[0-9]{5,8}$`)
 )
 
 type customWorkflowDefinition struct {
-	SchemaVersion int                   `json:"schemaVersion"`
-	Command       customWorkflowCommand `json:"command,omitempty"`
-	Inputs        []customWorkflowInput `json:"inputs,omitempty"`
-	Nodes         []customWorkflowNode  `json:"nodes"`
-	Edges         []customWorkflowEdge  `json:"edges"`
-	Policy        customWorkflowPolicy  `json:"policy,omitempty"`
-}
-
-type customWorkflowCommand struct {
-	Enabled bool   `json:"enabled"`
-	Alias   string `json:"alias"`
+	SchemaVersion int                  `json:"schemaVersion"`
+	Nodes         []customWorkflowNode `json:"nodes"`
+	Edges         []customWorkflowEdge `json:"edges"`
+	Policy        customWorkflowPolicy `json:"policy,omitempty"`
 }
 
 type customWorkflowPolicy struct {
 	RequirePreview *bool `json:"requirePreview,omitempty"`
-}
-
-type customWorkflowInput struct {
-	Key          string `json:"key"`
-	Label        string `json:"label"`
-	Type         string `json:"type"`
-	Required     bool   `json:"required"`
-	DefaultValue any    `json:"defaultValue,omitempty"`
 }
 
 type customWorkflowNode struct {
@@ -143,42 +121,6 @@ type customWorkflowCapability struct {
 }
 
 var customWorkflowCapabilities = map[string]customWorkflowCapability{
-	"workflow_input": {
-		Type: "workflow_input", Phase: "target", DisplayName: "Workflow input",
-		Description: "Read one typed value supplied when the workflow starts.",
-		Outputs:     []customWorkflowPort{{ID: "value", DataType: "dynamic"}}, ConfigKeys: []string{"inputKey"},
-	},
-	"input_text": {
-		Type: "input_text", Phase: "target", DisplayName: "Text input",
-		Description: "Provide text from a workflow input or a configured value.",
-		Outputs:     []customWorkflowPort{{ID: "value", DataType: "text"}}, ConfigKeys: []string{"inputKey", "value"},
-	},
-	"input_circle": {
-		Type: "input_circle", Phase: "target", DisplayName: "Circle input",
-		Description: "Provide a validated DLsite circle id.",
-		Outputs:     []customWorkflowPort{{ID: "value", DataType: "circle_id"}}, ConfigKeys: []string{"inputKey", "value"},
-	},
-	"input_series": {
-		Type: "input_series", Phase: "target", DisplayName: "Series input",
-		Description: "Provide a provider series id.",
-		Outputs:     []customWorkflowPort{{ID: "value", DataType: "series_id"}}, ConfigKeys: []string{"inputKey", "value"},
-	},
-	"input_voice": {
-		Type: "input_voice", Phase: "target", DisplayName: "Voice input",
-		Description: "Provide a voice actor name.",
-		Outputs:     []customWorkflowPort{{ID: "value", DataType: "voice_name"}}, ConfigKeys: []string{"inputKey", "value"},
-	},
-	"input_work": {
-		Type: "input_work", Phase: "target", DisplayName: "Work input",
-		Description: "Provide one or more validated work codes.",
-		Outputs:     []customWorkflowPort{{ID: "works", DataType: "work_candidates"}}, ConfigKeys: []string{"inputKey", "codes"},
-	},
-	"template_text": {
-		Type: "template_text", Phase: "filter", DisplayName: "Text template",
-		Description: "Render text from workflow inputs and a frozen run timestamp.",
-		Inputs:      []customWorkflowPort{{ID: "value", DataType: "text"}},
-		Outputs:     []customWorkflowPort{{ID: "text", DataType: "text"}}, ConfigKeys: []string{"template"},
-	},
 	"circle_catalog": {
 		Type: "circle_catalog", Phase: "discover", DisplayName: "Circle catalog",
 		Description: "Read or refresh a circle catalog without materializing every discovered work.",
@@ -200,18 +142,6 @@ var customWorkflowCapabilities = map[string]customWorkflowCapability{
 		Outputs:     []customWorkflowPort{{ID: "works", DataType: "work_candidates"}},
 		Permissions: []string{"library:read"}, Composite: true, ConfigKeys: []string{"voiceName", "sourceId", "pageSize", "maxPages", "maxWorks"},
 	},
-	"provider_popular_works": {
-		Type: "provider_popular_works", Phase: "discover", DisplayName: "Provider popular works",
-		Description: "Read a bounded metadata-provider ranking without materializing discovered works.",
-		Outputs:     []customWorkflowPort{{ID: "works", DataType: "work_candidates"}},
-		Permissions: []string{"metadata:sync"}, Composite: true, ConfigKeys: []string{"period", "releaseWindow", "year", "maxWorks"},
-	},
-	"source_popular_works": {
-		Type: "source_popular_works", Phase: "discover", DisplayName: "Source popular works",
-		Description: "Read a bounded popular collection from one compatible file source without importing it.",
-		Outputs:     []customWorkflowPort{{ID: "works", DataType: "work_candidates"}},
-		Permissions: []string{"library:read"}, Composite: true, ConfigKeys: []string{"sourceId", "maxWorks"},
-	},
 	"filter_works": {
 		Type: "filter_works", Phase: "filter", DisplayName: "Filter works",
 		Description: "Apply bounded, structured filters to work candidates.",
@@ -225,20 +155,6 @@ var customWorkflowCapabilities = map[string]customWorkflowCapability{
 		Inputs:      []customWorkflowPort{{ID: "works", DataType: "work_candidates", Required: true}},
 		Outputs:     []customWorkflowPort{{ID: "completed", DataType: "work_refs"}, {ID: "failed", DataType: "work_candidates"}},
 		Permissions: []string{"metadata:sync"}, Composite: true, ConfigKeys: []string{"maxWorks"},
-	},
-	"filter_library_works": {
-		Type: "filter_library_works", Phase: "filter", DisplayName: "Filter library works",
-		Description: "Filter materialized works by normalized dates, voice credits, provider tags, and user tags.",
-		Inputs:      []customWorkflowPort{{ID: "works", DataType: "work_refs", Required: true}},
-		Outputs:     []customWorkflowPort{{ID: "accepted", DataType: "work_refs"}, {ID: "rejected", DataType: "work_refs"}},
-		Permissions: []string{"library:read"}, ConfigKeys: []string{"limit", "releaseFrom", "releaseTo", "voiceNames", "metadataTags", "userTags"},
-	},
-	"check_source_availability": {
-		Type: "check_source_availability", Phase: "match", DisplayName: "Check source availability",
-		Description: "Health-gate one source and partition candidates into available, missing, and error outputs.",
-		Inputs:      []customWorkflowPort{{ID: "works", DataType: "work_candidates", Required: true}},
-		Outputs:     []customWorkflowPort{{ID: "available", DataType: "work_candidates"}, {ID: "missing", DataType: "work_candidates"}, {ID: "error", DataType: "work_candidates"}},
-		Permissions: []string{"library:read"}, Composite: true, ConfigKeys: []string{"sourceId"},
 	},
 	"track_works": {
 		Type: "track_works", Phase: "execute", DisplayName: "Track works",
@@ -262,128 +178,6 @@ var customWorkflowCapabilities = map[string]customWorkflowCapability{
 		Outputs:     []customWorkflowPort{{ID: "completed", DataType: "work_refs"}, {ID: "failed", DataType: "work_refs"}},
 		Permissions: []string{"tags:write"}, Composite: true, ConfigKeys: []string{"tagName"},
 	},
-	"subworkflow": {
-		Type: "subworkflow", Phase: "execute", DisplayName: "Reusable workflow",
-		Description: "Run another owned workflow for a bounded candidate collection and wait for its terminal work outputs.",
-		Inputs:      []customWorkflowPort{{ID: "works", DataType: "work_candidates", Required: true}},
-		Outputs:     []customWorkflowPort{{ID: "completed", DataType: "work_refs"}, {ID: "failed", DataType: "work_candidates"}},
-		Permissions: []string{"workflows:run"}, Composite: true, ConfigKeys: []string{"definitionId", "inputKey", "maxWorks"},
-	},
-}
-
-func customWorkflowNodeTypeRecords() []workflowNodeTypeRecord {
-	types := make([]string, 0, len(customWorkflowCapabilities))
-	for nodeType := range customWorkflowCapabilities {
-		types = append(types, nodeType)
-	}
-	sort.Strings(types)
-	result := make([]workflowNodeTypeRecord, 0, len(types))
-	for _, nodeType := range types {
-		capability := customWorkflowCapabilities[nodeType]
-		record := workflowNodeTypeRecord{
-			Type: nodeType, Phase: capability.Phase, DisplayName: capability.DisplayName,
-			Description: capability.Description, UserVisible: true, ConfigSchema: customWorkflowConfigSchema(capability),
-			InputSchema: schemaObject(portIDs(capability.Inputs)...), OutputSchema: schemaObject(portIDs(capability.Outputs)...),
-			RequiredPermissions: append([]string{}, capability.Permissions...), Composite: capability.Composite,
-		}
-		for _, port := range capability.Inputs {
-			record.InputPorts = append(record.InputPorts, workflowNodePortRecord{ID: port.ID, Label: customPortLabel(port.ID), Type: port.DataType, Required: port.Required})
-		}
-		for _, port := range capability.Outputs {
-			record.OutputPorts = append(record.OutputPorts, workflowNodePortRecord{ID: port.ID, Label: customPortLabel(port.ID), Type: port.DataType, Required: port.Required})
-		}
-		result = append(result, record)
-	}
-	return result
-}
-
-func customWorkflowConfigSchema(capability customWorkflowCapability) string {
-	property := func(title, propertyType string, extra map[string]any) map[string]any {
-		result := map[string]any{"title": title, "type": propertyType}
-		for key, value := range extra {
-			result[key] = value
-		}
-		return result
-	}
-	integer := func(title string, defaultValue, maximum int64) map[string]any {
-		return property(title, "integer", map[string]any{"default": defaultValue, "minimum": 1, "maximum": maximum})
-	}
-	sourceID := func() map[string]any {
-		return property("Remote source", "integer", map[string]any{"minimum": 1, "maximum": math.MaxInt32})
-	}
-	properties := map[string]any{}
-	switch capability.Type {
-	case "workflow_input":
-		properties["inputKey"] = property("Workflow input", "string", nil)
-	case "input_text", "input_circle", "input_series", "input_voice":
-		properties["inputKey"] = property("Workflow input", "string", nil)
-		properties["value"] = property("Fixed value", "string", nil)
-	case "input_work":
-		properties["inputKey"] = property("Workflow input", "string", nil)
-		properties["codes"] = property("Work codes", "array", map[string]any{"items": map[string]any{"type": "string"}})
-	case "template_text":
-		properties["template"] = property("Template", "string", map[string]any{"default": "{{.Value}}"})
-	case "circle_catalog":
-		properties["circleId"] = property("Circle ID", "string", nil)
-		properties["mode"] = property("Catalog mode", "string", map[string]any{"default": "stored", "enum": []string{"stored", "incremental", "full"}})
-		properties["maxWorks"] = integer("Maximum works", 100, 5000)
-	case "series_catalog":
-		properties["seriesId"] = property("Series ID", "string", nil)
-		properties["circleExternalId"] = property("Circle ID", "string", nil)
-		properties["maxWorks"] = integer("Maximum works", 100, 5000)
-	case "voice_source_works":
-		properties["voiceName"] = property("Voice name", "string", nil)
-		properties["sourceId"] = sourceID()
-		properties["pageSize"] = integer("Page size", 48, 100)
-		properties["maxPages"] = integer("Maximum pages", 10, 100)
-		properties["maxWorks"] = integer("Maximum works", 100, 2000)
-	case "provider_popular_works":
-		properties["period"] = property("Ranking period", "string", map[string]any{"default": "day", "enum": []string{"day", "week", "month", "year"}})
-		properties["releaseWindow"] = property("Release window", "string", map[string]any{"default": "", "enum": []string{"", "30d"}})
-		properties["year"] = property("Ranking year", "integer", map[string]any{"minimum": 2000, "maximum": time.Now().UTC().Year()})
-		properties["maxWorks"] = integer("Maximum works", 100, 1000)
-	case "source_popular_works":
-		properties["sourceId"] = sourceID()
-		properties["maxWorks"] = integer("Maximum works", 100, 100)
-	case "filter_works", "filter_library_works":
-		properties["limit"] = integer("Maximum accepted works", 100, 5000)
-		properties["releaseFrom"] = property("Released on or after", "string", nil)
-		properties["releaseTo"] = property("Released on or before", "string", nil)
-		properties["voiceNames"] = property("Voice names", "array", map[string]any{"items": map[string]any{"type": "string"}})
-		properties["metadataTags"] = property("Provider tags", "array", map[string]any{"items": map[string]any{"type": "string"}})
-		properties["userTags"] = property("User tags", "array", map[string]any{"items": map[string]any{"type": "string"}})
-		if capability.Type == "filter_works" {
-			properties["codePrefix"] = property("Code prefix", "string", nil)
-			properties["existing"] = property("Database state", "string", map[string]any{"default": "any", "enum": []string{"any", "known", "unknown"}})
-		}
-	case "metadata_sync":
-		properties["maxWorks"] = integer("Maximum works", 25, 500)
-	case "check_source_availability":
-		properties["sourceId"] = sourceID()
-	case "track_works":
-		properties["sourceId"] = sourceID()
-		properties["maxWorks"] = integer("Maximum works", 25, 500)
-	case "fetch_works":
-		properties["sourceId"] = sourceID()
-		properties["excludeExtensions"] = property("Exclude extensions", "array", map[string]any{"default": []string{"wav"}, "items": map[string]any{"type": "string"}})
-		properties["maxWorks"] = integer("Maximum works", 25, 100)
-		properties["maxFiles"] = integer("Maximum files", 10000, 50000)
-		properties["maxBytes"] = integer("Maximum bytes", 100*1024*1024*1024, 2*1024*1024*1024*1024)
-		properties["minFreeBytes"] = integer("Minimum free bytes", 2*1024*1024*1024, 1024*1024*1024*1024)
-		properties["allowUnknownSizes"] = property("Allow unknown sizes", "boolean", map[string]any{"default": false})
-		properties["targetRoot"] = property("Existing target root", "string", nil)
-	case "tag_works":
-		properties["tagName"] = property("Tag name", "string", map[string]any{"maxLength": 40})
-	case "subworkflow":
-		properties["definitionId"] = property("Workflow definition ID", "integer", map[string]any{"minimum": 1, "maximum": math.MaxInt32})
-		properties["inputKey"] = property("Child work-code input", "string", map[string]any{"default": "works"})
-		properties["maxWorks"] = integer("Maximum works", 25, 500)
-	}
-	raw, err := json.Marshal(map[string]any{"type": "object", "properties": properties})
-	if err != nil {
-		return schemaObject(capability.ConfigKeys...)
-	}
-	return string(raw)
 }
 
 func customPortLabel(id string) string {
@@ -394,29 +188,17 @@ func customPortLabel(id string) string {
 	return strings.ToUpper(label[:1]) + label[1:]
 }
 
-func portIDs(ports []customWorkflowPort) []string {
-	result := make([]string, 0, len(ports))
-	for _, port := range ports {
-		result = append(result, port.ID)
-	}
-	return result
-}
-
 func validateCustomWorkflowDefinition(raw string) (customWorkflowGraph, error) {
 	definition, err := parseCustomWorkflowDefinition(raw)
 	if err != nil {
 		return customWorkflowGraph{}, err
 	}
-	inputsByKey, err := validateCustomWorkflowInputs(&definition)
-	if err != nil {
-		return customWorkflowGraph{}, err
-	}
 	requiresPreview := customWorkflowRequiresPreview(definition)
-	nodesByID, nodeOrder, err := validateCustomWorkflowNodes(&definition, inputsByKey, requiresPreview)
+	nodesByID, nodeOrder, err := validateCustomWorkflowNodes(&definition, requiresPreview)
 	if err != nil {
 		return customWorkflowGraph{}, err
 	}
-	edges, err := validateCustomWorkflowEdges(&definition, inputsByKey, nodesByID)
+	edges, err := validateCustomWorkflowEdges(&definition, nodesByID)
 	if err != nil {
 		return customWorkflowGraph{}, err
 	}
@@ -449,44 +231,11 @@ func parseCustomWorkflowDefinition(raw string) (customWorkflowDefinition, error)
 	if len(definition.Edges) > 300 {
 		return customWorkflowDefinition{}, fmt.Errorf("custom workflow supports at most 300 edges")
 	}
-	definition.Command.Alias = strings.TrimPrefix(strings.TrimSpace(definition.Command.Alias), "/")
-	if definition.Command.Enabled && !customWorkflowAliasPattern.MatchString(definition.Command.Alias) {
-		return customWorkflowDefinition{}, fmt.Errorf("command alias must be 2-32 letters, numbers, underscores, or hyphens")
-	}
 	return definition, nil
-}
-
-func validateCustomWorkflowInputs(definition *customWorkflowDefinition) (map[string]customWorkflowInput, error) {
-	inputsByKey := map[string]customWorkflowInput{}
-	for index := range definition.Inputs {
-		input := &definition.Inputs[index]
-		input.Key = strings.TrimSpace(input.Key)
-		input.Label = strings.TrimSpace(input.Label)
-		input.Type = strings.ToLower(strings.TrimSpace(input.Type))
-		if !customWorkflowInputKeyPattern.MatchString(input.Key) {
-			return nil, fmt.Errorf("invalid workflow input key: %s", input.Key)
-		}
-		if _, exists := inputsByKey[input.Key]; exists {
-			return nil, fmt.Errorf("workflow input key must be unique: %s", input.Key)
-		}
-		if customInputDataType(input.Type) == "" {
-			return nil, fmt.Errorf("unsupported workflow input type: %s", input.Type)
-		}
-		if input.DefaultValue != nil {
-			normalizedDefault, err := normalizeCustomWorkflowInputValue(input.Type, input.DefaultValue)
-			if err != nil {
-				return nil, fmt.Errorf("invalid default value for workflow input %s: %w", input.Key, err)
-			}
-			input.DefaultValue = normalizedDefault
-		}
-		inputsByKey[input.Key] = *input
-	}
-	return inputsByKey, nil
 }
 
 func validateCustomWorkflowNodes(
 	definition *customWorkflowDefinition,
-	inputsByKey map[string]customWorkflowInput,
 	requiresPreview bool,
 ) (map[string]customWorkflowNode, map[string]int, error) {
 	nodesByID := make(map[string]customWorkflowNode, len(definition.Nodes))
@@ -515,9 +264,6 @@ func validateCustomWorkflowNodes(
 		if math.IsNaN(node.Position.X) || math.IsInf(node.Position.X, 0) || math.IsNaN(node.Position.Y) || math.IsInf(node.Position.Y, 0) {
 			return nil, nil, fmt.Errorf("node position must be finite: %s", node.ID)
 		}
-		if err := validateCustomInputNode(*node, inputsByKey); err != nil {
-			return nil, nil, err
-		}
 		if err := validateCustomWorkflowNodeConfig(*node, requiresPreview); err != nil {
 			return nil, nil, err
 		}
@@ -529,7 +275,6 @@ func validateCustomWorkflowNodes(
 
 func validateCustomWorkflowEdges(
 	definition *customWorkflowDefinition,
-	inputsByKey map[string]customWorkflowInput,
 	nodesByID map[string]customWorkflowNode,
 ) (customWorkflowEdgeState, error) {
 	state := customWorkflowEdgeState{
@@ -543,7 +288,7 @@ func validateCustomWorkflowEdges(
 		state.indegree[nodeID] = 0
 	}
 	for index := range definition.Edges {
-		if err := validateCustomWorkflowEdge(&definition.Edges[index], inputsByKey, nodesByID, &state); err != nil {
+		if err := validateCustomWorkflowEdge(&definition.Edges[index], nodesByID, &state); err != nil {
 			return customWorkflowEdgeState{}, err
 		}
 	}
@@ -552,7 +297,6 @@ func validateCustomWorkflowEdges(
 
 func validateCustomWorkflowEdge(
 	edge *customWorkflowEdge,
-	inputsByKey map[string]customWorkflowInput,
 	nodesByID map[string]customWorkflowNode,
 	state *customWorkflowEdgeState,
 ) error {
@@ -568,7 +312,7 @@ func validateCustomWorkflowEdge(
 	if edge.Source == edge.Target {
 		return fmt.Errorf("node cannot connect to itself: %s", edge.Source)
 	}
-	sourcePorts := customNodeOutputPorts(source, inputsByKey)
+	sourcePorts := customNodeOutputPorts(source)
 	targetPortsForNode := customNodeInputPorts(target)
 	if edge.SourceHandle == "" && len(sourcePorts) == 1 {
 		edge.SourceHandle = sourcePorts[0].ID
@@ -655,19 +399,14 @@ func customWorkflowRequiresPreview(definition customWorkflowDefinition) bool {
 type customWorkflowNodeConfigValidator func(customWorkflowNode, bool) error
 
 var customWorkflowNodeConfigValidators = map[string]customWorkflowNodeConfigValidator{
-	"circle_catalog":            validateCustomCircleCatalogConfig,
-	"series_catalog":            validateCustomSeriesCatalogConfig,
-	"voice_source_works":        validateCustomVoiceSourceWorksConfig,
-	"provider_popular_works":    validateCustomProviderPopularWorksConfig,
-	"source_popular_works":      validateCustomSourcePopularWorksConfig,
-	"filter_works":              validateCustomFilterWorksConfig,
-	"filter_library_works":      validateCustomFilterWorksConfig,
-	"metadata_sync":             validateCustomMetadataSyncConfig,
-	"check_source_availability": validateCustomSourceAvailabilityConfig,
-	"track_works":               validateCustomTrackWorksConfig,
-	"fetch_works":               validateCustomFetchWorksConfig,
-	"tag_works":                 validateCustomTagWorksConfig,
-	"subworkflow":               validateCustomSubworkflowConfig,
+	"circle_catalog":     validateCustomCircleCatalogConfig,
+	"series_catalog":     validateCustomSeriesCatalogConfig,
+	"voice_source_works": validateCustomVoiceSourceWorksConfig,
+	"filter_works":       validateCustomFilterWorksConfig,
+	"metadata_sync":      validateCustomMetadataSyncConfig,
+	"track_works":        validateCustomTrackWorksConfig,
+	"fetch_works":        validateCustomFetchWorksConfig,
+	"tag_works":          validateCustomTagWorksConfig,
 }
 
 func validateCustomWorkflowNodeConfig(node customWorkflowNode, requiresPreview bool) error {
@@ -753,50 +492,6 @@ func validateCustomVoiceSourceWorksConfig(node customWorkflowNode, requiresPrevi
 	return validateCustomWorkflowBound(node, "pageSize", 48, 100, false)
 }
 
-func validateCustomProviderPopularWorksConfig(node customWorkflowNode, requiresPreview bool) error {
-	period, err := customWorkflowRankingPeriod(node)
-	if err != nil {
-		return err
-	}
-	releaseWindow := strings.ToLower(configString(node.Config, "releaseWindow"))
-	if releaseWindow != "" && releaseWindow != "30d" {
-		return fmt.Errorf("node %s has invalid release window", node.ID)
-	}
-	if err := validateCustomWorkflowRankingYear(node, period); err != nil {
-		return err
-	}
-	return validateCustomWorkflowBound(node, "maxWorks", 100, 1000, !requiresPreview)
-}
-
-func customWorkflowRankingPeriod(node customWorkflowNode) (string, error) {
-	period := strings.ToLower(configString(node.Config, "period"))
-	if period == "" {
-		return "day", nil
-	}
-	if period != "day" && period != "week" && period != "month" && period != "year" {
-		return "", fmt.Errorf("node %s has invalid ranking period", node.ID)
-	}
-	return period, nil
-}
-
-func validateCustomWorkflowRankingYear(node customWorkflowNode, period string) error {
-	year := configInt(node.Config, "year", 0)
-	if period == "year" && (year < 2000 || year > time.Now().UTC().Year()) {
-		return fmt.Errorf("node %s requires a valid ranking year", node.ID)
-	}
-	if period != "year" && year != 0 {
-		return fmt.Errorf("node %s ranking year is only valid for annual rankings", node.ID)
-	}
-	return nil
-}
-
-func validateCustomSourcePopularWorksConfig(node customWorkflowNode, requiresPreview bool) error {
-	if err := validateCustomPositiveConfigID(node, "sourceId"); err != nil {
-		return err
-	}
-	return validateCustomWorkflowBound(node, "maxWorks", 100, 100, !requiresPreview)
-}
-
 func validateCustomFilterWorksConfig(node customWorkflowNode, _ bool) error {
 	if err := validateCustomWorkFilterConfig(node); err != nil {
 		return err
@@ -813,10 +508,6 @@ func validateCustomFilterWorksConfig(node customWorkflowNode, _ bool) error {
 
 func validateCustomMetadataSyncConfig(node customWorkflowNode, requiresPreview bool) error {
 	return validateCustomWorkflowBound(node, "maxWorks", 25, 500, !requiresPreview)
-}
-
-func validateCustomSourceAvailabilityConfig(node customWorkflowNode, _ bool) error {
-	return validateCustomPositiveConfigID(node, "sourceId")
 }
 
 func validateCustomTrackWorksConfig(node customWorkflowNode, requiresPreview bool) error {
@@ -853,16 +544,6 @@ func validateCustomTagWorksConfig(node customWorkflowNode, _ bool) error {
 	return nil
 }
 
-func validateCustomSubworkflowConfig(node customWorkflowNode, requiresPreview bool) error {
-	if err := validateCustomPositiveConfigID(node, "definitionId"); err != nil {
-		return err
-	}
-	if !customWorkflowInputKeyPattern.MatchString(configString(node.Config, "inputKey")) {
-		return fmt.Errorf("node %s requires a valid child inputKey", node.ID)
-	}
-	return validateCustomWorkflowBound(node, "maxWorks", 25, 500, !requiresPreview)
-}
-
 type customWorkflowConfigKind uint8
 
 const (
@@ -896,9 +577,6 @@ func validateCustomWorkflowConfigTypes(node customWorkflowNode) error {
 		if err := validateCustomWorkflowConfigType(node.ID, key, value); err != nil {
 			return err
 		}
-	}
-	if err := validateCustomWorkflowTemplate(node); err != nil {
-		return err
 	}
 	return validateCustomWorkflowExcludedExtensions(node)
 }
@@ -939,15 +617,6 @@ func customWorkflowStringArray(value any) bool {
 	default:
 		return false
 	}
-}
-
-func validateCustomWorkflowTemplate(node customWorkflowNode) error {
-	if templateText := configString(node.Config, "template"); templateText != "" {
-		if _, err := texttemplate.New("workflow-text-validation").Option("missingkey=error").Parse(templateText); err != nil {
-			return fmt.Errorf("node %s has invalid text template", node.ID)
-		}
-	}
-	return nil
 }
 
 func validateCustomWorkflowExcludedExtensions(node customWorkflowNode) error {
@@ -997,61 +666,15 @@ func customConfigInteger(value any) (int64, bool) {
 	}
 }
 
-func validateCustomInputNode(node customWorkflowNode, inputs map[string]customWorkflowInput) error {
-	if node.Type != "workflow_input" && !strings.HasPrefix(node.Type, "input_") {
-		return nil
-	}
-	inputKey := configString(node.Config, "inputKey")
-	if node.Type == "workflow_input" {
-		if inputKey == "" {
-			return fmt.Errorf("workflow_input requires config.inputKey: %s", node.ID)
-		}
-		if _, ok := inputs[inputKey]; !ok {
-			return fmt.Errorf("workflow_input references an unknown input: %s", inputKey)
-		}
-		return nil
-	}
-	if inputKey == "" {
-		if node.Type == "input_work" {
-			if len(configStringSlice(node.Config, "codes")) == 0 {
-				return fmt.Errorf("%s requires config.inputKey or config.codes", node.ID)
-			}
-		} else if configString(node.Config, "value") == "" {
-			return fmt.Errorf("%s requires config.inputKey or config.value", node.ID)
-		}
-		return nil
-	}
-	input, ok := inputs[inputKey]
-	if !ok {
-		return fmt.Errorf("node %s references an unknown input: %s", node.ID, inputKey)
-	}
-	want := map[string]string{
-		"input_text": "text", "input_circle": "circle_id", "input_series": "series_id",
-		"input_voice": "voice_name", "input_work": "work_candidates",
-	}[node.Type]
-	if customInputDataType(input.Type) != want {
-		return fmt.Errorf("node %s input type is incompatible with %s", node.ID, inputKey)
-	}
-	return nil
-}
-
 func customNodeInputPorts(node customWorkflowNode) []customWorkflowPort {
 	return append([]customWorkflowPort{}, customWorkflowCapabilities[node.Type].Inputs...)
 }
 
-func customNodeOutputPorts(node customWorkflowNode, inputs map[string]customWorkflowInput) []customWorkflowPort {
-	ports := append([]customWorkflowPort{}, customWorkflowCapabilities[node.Type].Outputs...)
-	if node.Type == "workflow_input" && len(ports) == 1 {
-		ports[0].DataType = customInputDataType(inputs[configString(node.Config, "inputKey")].Type)
-	}
-	return ports
+func customNodeOutputPorts(node customWorkflowNode) []customWorkflowPort {
+	return append([]customWorkflowPort{}, customWorkflowCapabilities[node.Type].Outputs...)
 }
 
 func publicCustomWorkflowRunGraph(graph customWorkflowGraph) customWorkflowRunGraph {
-	inputsByKey := make(map[string]customWorkflowInput, len(graph.Definition.Inputs))
-	for _, input := range graph.Definition.Inputs {
-		inputsByKey[input.Key] = input
-	}
 	result := customWorkflowRunGraph{SchemaVersion: 1, Nodes: []customWorkflowRunGraphNode{}, Edges: []customWorkflowRunGraphEdge{}}
 	for _, node := range graph.Definition.Nodes {
 		runNode := customWorkflowRunGraphNode{
@@ -1061,7 +684,7 @@ func publicCustomWorkflowRunGraph(graph customWorkflowGraph) customWorkflowRunGr
 		for _, port := range customNodeInputPorts(node) {
 			runNode.Inputs = append(runNode.Inputs, customWorkflowRunGraphPort{ID: port.ID, DataType: port.DataType})
 		}
-		for _, port := range customNodeOutputPorts(node, inputsByKey) {
+		for _, port := range customNodeOutputPorts(node) {
 			runNode.Outputs = append(runNode.Outputs, customWorkflowRunGraphPort{ID: port.ID, DataType: port.DataType})
 		}
 		result.Nodes = append(result.Nodes, runNode)
@@ -1069,7 +692,7 @@ func publicCustomWorkflowRunGraph(graph customWorkflowGraph) customWorkflowRunGr
 	for _, edge := range graph.Definition.Edges {
 		dataType := "dynamic"
 		if source, ok := graph.NodesByID[edge.Source]; ok {
-			if port, found := findCustomPort(customNodeOutputPorts(source, inputsByKey), edge.SourceHandle); found {
+			if port, found := findCustomPort(customNodeOutputPorts(source), edge.SourceHandle); found {
 				dataType = port.DataType
 			}
 		}
@@ -1135,270 +758,6 @@ func customNodeConfigSuppliesPort(node customWorkflowNode, portID string) bool {
 	}
 }
 
-func customInputDataType(inputType string) string {
-	switch strings.ToLower(strings.TrimSpace(inputType)) {
-	case "text":
-		return "text"
-	case "circle_id":
-		return "circle_id"
-	case "series_id":
-		return "series_id"
-	case "voice_name":
-		return "voice_name"
-	case "work_code", "work_codes":
-		return "work_candidates"
-	default:
-		return ""
-	}
-}
-
-type customWorkflowRunRequest struct {
-	Mode         string         `json:"mode"`
-	Inputs       map[string]any `json:"inputs"`
-	PreviewToken string         `json:"previewToken"`
-}
-
-type customWorkflowRunResponse struct {
-	Mode                string                     `json:"mode"`
-	DefinitionID        int64                      `json:"definitionId,omitempty"`
-	WorkflowCode        string                     `json:"workflowCode,omitempty"`
-	Status              string                     `json:"status"`
-	PreviewToken        string                     `json:"previewToken,omitempty"`
-	RequiredPermissions []string                   `json:"requiredPermissions,omitempty"`
-	NormalizedInputs    map[string]any             `json:"normalizedInputs,omitempty"`
-	Plan                *customWorkflowPreviewPlan `json:"plan,omitempty"`
-	Warnings            []string                   `json:"warnings,omitempty"`
-	RunID               int64                      `json:"runId,omitempty"`
-}
-
-type customWorkflowPreviewPlan struct {
-	NodeCount        int                           `json:"nodeCount"`
-	EdgeCount        int                           `json:"edgeCount"`
-	TopologicalOrder []string                      `json:"topologicalOrder"`
-	Actions          []customWorkflowPreviewAction `json:"actions"`
-	Estimates        *customWorkflowEstimates      `json:"estimates"`
-	Limits           []customWorkflowPreviewLimit  `json:"limits"`
-}
-
-type customWorkflowPreviewAction struct {
-	NodeID               string `json:"nodeId"`
-	NodeType             string `json:"nodeType"`
-	DisplayName          string `json:"displayName"`
-	Phase                string `json:"phase"`
-	RequiresConfirmation bool   `json:"requiresConfirmation"`
-}
-
-type customWorkflowEstimates struct {
-	CandidateCount int    `json:"candidateCount,omitempty"`
-	FileCount      int    `json:"fileCount,omitempty"`
-	TotalBytes     *int64 `json:"totalBytes,omitempty"`
-}
-
-type customWorkflowPreviewLimit struct {
-	Key       string `json:"key"`
-	Label     string `json:"label"`
-	Value     any    `json:"value"`
-	Unit      string `json:"unit,omitempty"`
-	Satisfied *bool  `json:"satisfied,omitempty"`
-	Message   string `json:"message,omitempty"`
-}
-
-func (s *Server) runCustomWorkflowDefinition(w http.ResponseWriter, r *http.Request) {
-	actor, ok := s.requirePermission(w, r, "workflows:run")
-	if !ok {
-		return
-	}
-	definitionID, err := parseInt64PathValue(r, "id")
-	if err != nil || definitionID <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow definition id"})
-		return
-	}
-	definition, err := s.loadWorkflowDefinition(r.Context(), definitionID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow definition not found"})
-			return
-		}
-		writeError(w, err)
-		return
-	}
-	if definition.Scope != "user" || !definition.Editable {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only custom workflow definitions use the DAG runner"})
-		return
-	}
-	if !canManageWorkflowDefinition(actor, definition) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
-		return
-	}
-	graph, err := validateCustomWorkflowDefinition(definition.DefinitionJSON)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-	request, err := decodeCustomWorkflowRunRequest(r)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-	normalizedInputs, err := normalizeCustomWorkflowInputs(graph.Definition.Inputs, request.Inputs)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-	requiredPermissions := customWorkflowRequiredPermissions(graph)
-	if missing := missingCustomWorkflowPermission(actor.Permissions, requiredPermissions); missing != "" {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied", "permission": missing})
-		return
-	}
-	previewToken := customWorkflowPreviewToken(definition.ID, actor.ID, definition.DefinitionJSON, normalizedInputs)
-	preview := buildCustomWorkflowPreview(graph, normalizedInputs)
-	s.finishCustomWorkflowRunRequest(w, r, actor, definition, graph, request, normalizedInputs, requiredPermissions, previewToken, preview)
-}
-
-func (s *Server) finishCustomWorkflowRunRequest(w http.ResponseWriter, r *http.Request, actor currentUser, definition workflowDefinitionRecord, graph customWorkflowGraph, request customWorkflowRunRequest, normalizedInputs map[string]any, requiredPermissions []string, previewToken string, preview customWorkflowPreviewPlan) {
-	if request.Mode == "preview" {
-		writeJSON(w, http.StatusOK, customWorkflowRunResponse{
-			Mode: "preview", DefinitionID: definition.ID, WorkflowCode: definition.Code, Status: "preview",
-			PreviewToken: previewToken, RequiredPermissions: requiredPermissions, NormalizedInputs: normalizedInputs,
-			Plan: &preview, Warnings: customWorkflowPreviewWarnings(graph),
-		})
-		return
-	}
-	if !customWorkflowPreviewMatches(graph.Definition, request.PreviewToken, previewToken) {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "workflow preview is required or no longer matches the definition and inputs"})
-		return
-	}
-	runID, err := s.enqueueCustomWorkflow(r.Context(), definition, graph, actor.ID, actor.Permissions, normalizedInputs, previewToken, customWorkflowEnqueueOptions{})
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusAccepted, customWorkflowRunResponse{Mode: "confirm", DefinitionID: definition.ID, WorkflowCode: definition.Code, Status: "queued", RunID: runID})
-}
-
-func decodeCustomWorkflowRunRequest(r *http.Request) (customWorkflowRunRequest, error) {
-	var request customWorkflowRunRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		return customWorkflowRunRequest{}, errors.New("invalid JSON body")
-	}
-	request.Mode = strings.ToLower(strings.TrimSpace(request.Mode))
-	if request.Mode != "preview" && request.Mode != "confirm" {
-		return customWorkflowRunRequest{}, errors.New("mode must be preview or confirm")
-	}
-	return request, nil
-}
-
-func customWorkflowPreviewMatches(definition customWorkflowDefinition, suppliedToken, expectedToken string) bool {
-	suppliedToken = strings.TrimSpace(suppliedToken)
-	if customWorkflowRequiresPreview(definition) && suppliedToken == "" {
-		return false
-	}
-	return suppliedToken == "" || suppliedToken == expectedToken
-}
-
-func normalizeCustomWorkflowInputs(specs []customWorkflowInput, supplied map[string]any) (map[string]any, error) {
-	if supplied == nil {
-		supplied = map[string]any{}
-	}
-	known := map[string]bool{}
-	result := map[string]any{}
-	for _, spec := range specs {
-		known[spec.Key] = true
-		value, exists := supplied[spec.Key]
-		if !exists {
-			value = spec.DefaultValue
-		}
-		if value == nil {
-			if spec.Required {
-				return nil, fmt.Errorf("workflow input is required: %s", spec.Key)
-			}
-			continue
-		}
-		normalized, err := normalizeCustomWorkflowInputValue(spec.Type, value)
-		if err != nil {
-			return nil, fmt.Errorf("invalid workflow input %s: %w", spec.Key, err)
-		}
-		result[spec.Key] = normalized
-	}
-	for key := range supplied {
-		if !known[key] {
-			return nil, fmt.Errorf("unknown workflow input: %s", key)
-		}
-	}
-	return result, nil
-}
-
-func normalizeCustomWorkflowInputValue(inputType string, value any) (any, error) {
-	switch strings.ToLower(strings.TrimSpace(inputType)) {
-	case "text":
-		return normalizeCustomTextInput(value)
-	case "circle_id":
-		return normalizeCustomCircleIDInput(value)
-	case "series_id":
-		return normalizeCustomSeriesIDInput(value)
-	case "voice_name":
-		return normalizeCustomVoiceNameInput(value)
-	case "work_code":
-		return normalizeCustomWorkCodeInput(value)
-	case "work_codes":
-		return normalizeCustomWorkCodesInput(value)
-	default:
-		return nil, fmt.Errorf("unsupported input type")
-	}
-}
-
-func normalizeCustomTextInput(value any) (string, error) {
-	text, ok := value.(string)
-	if !ok || len([]rune(strings.TrimSpace(text))) > 4096 {
-		return "", fmt.Errorf("text must be a string of at most 4096 characters")
-	}
-	return strings.TrimSpace(text), nil
-}
-
-func normalizeCustomCircleIDInput(value any) (string, error) {
-	text, ok := value.(string)
-	text = normalizeMakerID(text)
-	if !ok || !dlsiteMakerIDPattern.MatchString(text) {
-		return "", fmt.Errorf("invalid circle id")
-	}
-	return text, nil
-}
-
-func normalizeCustomSeriesIDInput(value any) (string, error) {
-	text, ok := value.(string)
-	text = strings.ToUpper(strings.TrimSpace(text))
-	if !ok || text == "" || len(text) > 128 {
-		return "", fmt.Errorf("invalid series id")
-	}
-	return text, nil
-}
-
-func normalizeCustomVoiceNameInput(value any) (string, error) {
-	text, ok := value.(string)
-	text = strings.TrimSpace(text)
-	if !ok || text == "" || len([]rune(text)) > 200 || isUnknownVoiceActorName(text) {
-		return "", fmt.Errorf("invalid voice name")
-	}
-	return text, nil
-}
-
-func normalizeCustomWorkCodeInput(value any) (string, error) {
-	text, ok := value.(string)
-	text = strings.ToUpper(strings.TrimSpace(text))
-	if !ok || !customWorkflowWorkCodePattern.MatchString(text) {
-		return "", fmt.Errorf("invalid work code")
-	}
-	return text, nil
-}
-
-func normalizeCustomWorkCodesInput(value any) ([]string, error) {
-	codes, err := customStringValues(value)
-	if err != nil {
-		return nil, err
-	}
-	return normalizeCustomWorkCodes(codes, 1000)
-}
-
 func customStringValues(value any) ([]string, error) {
 	switch typed := value.(type) {
 	case string:
@@ -1420,29 +779,6 @@ func customStringValues(value any) ([]string, error) {
 	default:
 		return nil, fmt.Errorf("work codes must be a string or array")
 	}
-}
-
-func normalizeCustomWorkCodes(values []string, limit int) ([]string, error) {
-	result := []string{}
-	seen := map[string]bool{}
-	for _, value := range values {
-		code := strings.ToUpper(strings.TrimSpace(value))
-		if code == "" || seen[code] {
-			continue
-		}
-		if !customWorkflowWorkCodePattern.MatchString(code) {
-			return nil, fmt.Errorf("invalid work code: %s", code)
-		}
-		seen[code] = true
-		result = append(result, code)
-		if limit > 0 && len(result) > limit {
-			return nil, fmt.Errorf("too many work codes; maximum is %d", limit)
-		}
-	}
-	if len(result) == 0 {
-		return nil, fmt.Errorf("at least one work code is required")
-	}
-	return result, nil
 }
 
 func customWorkflowRequiredPermissions(graph customWorkflowGraph) []string {
@@ -1481,131 +817,16 @@ func missingCustomWorkflowPermission(actual []string, required []string) string 
 	return ""
 }
 
-func canManageWorkflowDefinition(actor currentUser, definition workflowDefinitionRecord) bool {
-	if missingCustomWorkflowPermission(actor.Permissions, []string{"system:admin"}) == "" {
-		return true
-	}
-	return definition.OwnerUserID != nil && *definition.OwnerUserID == actor.ID
-}
-
 func canUseWorkflowDefinition(actor currentUser, definition workflowDefinitionRecord) bool {
-	return definition.Scope == "system" || canManageWorkflowDefinition(actor, definition)
-}
-
-func (s *Server) ensureWorkflowCommandAliasAvailable(ctx context.Context, ownerID int64, excludeDefinitionID int64, rawDefinition string) error {
-	return ensureWorkflowCommandAliasAvailableFrom(ctx, s.db, ownerID, excludeDefinitionID, rawDefinition)
-}
-
-type workflowAliasQuerier interface {
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-}
-
-func ensureWorkflowCommandAliasAvailableFrom(ctx context.Context, db workflowAliasQuerier, ownerID int64, excludeDefinitionID int64, rawDefinition string) error {
-	var definition customWorkflowDefinition
-	if json.Unmarshal([]byte(rawDefinition), &definition) != nil || definition.SchemaVersion != customWorkflowSchemaVersion || !definition.Command.Enabled {
-		return nil
-	}
-	alias := strings.TrimPrefix(strings.TrimSpace(definition.Command.Alias), "/")
-	if alias == "" {
-		return nil
-	}
-	rows, err := db.QueryContext(ctx, `
-		SELECT id, definition_json
-		FROM workflow_definition
-		WHERE scope = 'user' AND owner_user_id = ? AND id <> ?
-	`, ownerID, excludeDefinitionID)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id int64
-		var raw string
-		if err := rows.Scan(&id, &raw); err != nil {
-			return err
-		}
-		var existing customWorkflowDefinition
-		if json.Unmarshal([]byte(raw), &existing) != nil {
-			continue
-		}
-		existingAlias := strings.TrimPrefix(strings.TrimSpace(existing.Command.Alias), "/")
-		if existing.SchemaVersion == customWorkflowSchemaVersion && existing.Command.Enabled && strings.EqualFold(existingAlias, alias) {
-			return fmt.Errorf("quick action alias /%s is already in use", alias)
-		}
-	}
-	return rows.Err()
-}
-
-func customWorkflowPreviewToken(definitionID int64, userID int64, definitionJSON string, inputs map[string]any) string {
-	inputJSON, _ := json.Marshal(inputs)
-	hash := sha256.Sum256([]byte(fmt.Sprintf("custom-workflow-preview-v1\n%d\n%d\n%s\n%s", definitionID, userID, definitionJSON, inputJSON)))
-	return "cwp_" + hex.EncodeToString(hash[:])
-}
-
-func buildCustomWorkflowPreview(graph customWorkflowGraph, inputs map[string]any) customWorkflowPreviewPlan {
-	plan := customWorkflowPreviewPlan{
-		NodeCount: len(graph.Definition.Nodes), EdgeCount: len(graph.Definition.Edges),
-		TopologicalOrder: append([]string{}, graph.TopologicalOrder...), Actions: []customWorkflowPreviewAction{}, Limits: []customWorkflowPreviewLimit{},
-	}
-	inputTypes := map[string]string{}
-	for _, input := range graph.Definition.Inputs {
-		inputTypes[input.Key] = input.Type
-		if customInputDataType(input.Type) == "work_candidates" {
-			switch value := inputs[input.Key].(type) {
-			case string:
-				plan.Estimates = &customWorkflowEstimates{CandidateCount: 1}
-			case []string:
-				plan.Estimates = &customWorkflowEstimates{CandidateCount: len(value)}
-			case []any:
-				plan.Estimates = &customWorkflowEstimates{CandidateCount: len(value)}
-			}
-		}
-	}
-	for _, nodeID := range graph.TopologicalOrder {
-		node := graph.NodesByID[nodeID]
-		capability := customWorkflowCapabilities[node.Type]
-		confirm := capability.Phase == "execute" || capability.Phase == "commit" || (node.Type == "circle_catalog" && !strings.EqualFold(configString(node.Config, "mode"), "stored"))
-		plan.Actions = append(plan.Actions, customWorkflowPreviewAction{NodeID: node.ID, NodeType: node.Type, DisplayName: node.DisplayName, Phase: capability.Phase, RequiresConfirmation: confirm})
-		if node.Type == "fetch_works" {
-			appendLimit := func(key, label string, value int64, unit string) {
-				if value > 0 {
-					plan.Limits = append(plan.Limits, customWorkflowPreviewLimit{Key: key, Label: label, Value: value, Unit: unit})
-				}
-			}
-			appendLimit("maxWorks", "Maximum works", int64(configInt(node.Config, "maxWorks", 25)), "works")
-			appendLimit("maxFiles", "Maximum files", int64(configInt(node.Config, "maxFiles", 10000)), "files")
-			appendLimit("maxBytes", "Maximum bytes", configInt64(node.Config, "maxBytes", 100*1024*1024*1024), "bytes")
-			appendLimit("minFreeBytes", "Minimum free space", configInt64(node.Config, "minFreeBytes", 0), "bytes")
-		}
-	}
-	_ = inputTypes
-	return plan
-}
-
-func customWorkflowPreviewWarnings(graph customWorkflowGraph) []string {
-	warnings := []string{}
-	for _, node := range graph.Definition.Nodes {
-		switch node.Type {
-		case "track_works":
-			warnings = append(warnings, "Track creates unified works only for accepted remote candidates and records tracked source presence.")
-		case "fetch_works":
-			warnings = append(warnings, "Fetch queues separate recoverable child runs; publication remains under the existing staging and verification boundary.")
-		case "circle_catalog":
-			warnings = append(warnings, "Circle catalog discovery stores catalog candidates and does not materialize every discovered code as a work.")
-		}
-	}
-	return warnings
+	return definition.Scope == "system"
 }
 
 type customWorkflowJobPayload struct {
-	DefinitionJSON  string         `json:"definitionJson"`
-	Inputs          map[string]any `json:"inputs"`
-	UserID          int64          `json:"userId"`
-	Permissions     []string       `json:"permissions"`
-	PreviewToken    string         `json:"previewToken"`
-	StartedAt       string         `json:"startedAt"`
-	OwnerUserID     int64          `json:"ownerUserId"`
-	DefinitionStack []int64        `json:"definitionStack"`
+	DefinitionJSON string         `json:"definitionJson"`
+	Inputs         map[string]any `json:"inputs"`
+	UserID         int64          `json:"userId"`
+	Permissions    []string       `json:"permissions"`
+	StartedAt      string         `json:"startedAt"`
 }
 
 type customWorkflowCheckpoint struct {
@@ -1618,17 +839,16 @@ type customWorkflowCheckpoint struct {
 }
 
 type customWorkflowEnqueueOptions struct {
-	TriggerID       int64
-	TriggerType     string
-	TriggerReason   string
-	DefinitionStack []int64
+	TriggerID     int64
+	TriggerType   string
+	TriggerReason string
 	// DefinitionJSON overrides the stored definition snapshot. Preset workflows
 	// build their graph per dispatch while the system definition record only
 	// carries a display pipeline.
 	DefinitionJSON string
 }
 
-func (s *Server) enqueueCustomWorkflow(ctx context.Context, definition workflowDefinitionRecord, graph customWorkflowGraph, userID int64, permissions []string, inputs map[string]any, previewToken string, options customWorkflowEnqueueOptions) (int64, error) {
+func (s *Server) enqueueCustomWorkflow(ctx context.Context, definition workflowDefinitionRecord, graph customWorkflowGraph, userID int64, permissions []string, inputs map[string]any, options customWorkflowEnqueueOptions) (int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -1641,14 +861,6 @@ func (s *Server) enqueueCustomWorkflow(ctx context.Context, definition workflowD
 	triggerReason := strings.TrimSpace(options.TriggerReason)
 	if triggerReason == "" {
 		triggerReason = "custom_definition"
-	}
-	stack := append([]int64{}, options.DefinitionStack...)
-	if len(stack) == 0 {
-		stack = []int64{definition.ID}
-	}
-	ownerUserID := int64(0)
-	if definition.OwnerUserID != nil {
-		ownerUserID = *definition.OwnerUserID
 	}
 	runInput := map[string]any{"inputs": inputs, "definition_schema_version": customWorkflowSchemaVersion, "requested_by_user_id": userID}
 	runID, err := workflow.InsertRun(ctx, tx, definition.ID, definition.Code, definition.DisplayName, "queued", triggerType, triggerReason, runInput, map[string]any{"nodes": len(graph.TopologicalOrder)})
@@ -1678,7 +890,7 @@ func (s *Server) enqueueCustomWorkflow(ctx context.Context, definition workflowD
 	if strings.TrimSpace(options.DefinitionJSON) != "" {
 		definitionJSON = options.DefinitionJSON
 	}
-	payload := customWorkflowJobPayload{DefinitionJSON: definitionJSON, Inputs: inputs, UserID: userID, Permissions: append([]string{}, permissions...), PreviewToken: previewToken, StartedAt: time.Now().UTC().Format(time.RFC3339Nano), OwnerUserID: ownerUserID, DefinitionStack: stack}
+	payload := customWorkflowJobPayload{DefinitionJSON: definitionJSON, Inputs: inputs, UserID: userID, Permissions: append([]string{}, permissions...), StartedAt: time.Now().UTC().Format(time.RFC3339Nano)}
 	jobPriority := workflowJobPriorityForTrigger(triggerType)
 	checkpoint := customWorkflowCheckpoint{CompletedNodeIDs: []string{}, Outputs: map[string]map[string]customPortValue{}, ChildRunIDs: []int64{}, BasePriority: jobPriority}
 	if _, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
@@ -2009,8 +1221,6 @@ func (s *Server) resumeCustomPendingExecution(ctx context.Context, pending custo
 	switch pending.Kind {
 	case "fetch":
 		return s.resumeCustomPendingFetch(ctx, pending)
-	case "subworkflow":
-		return s.resumeCustomPendingSubworkflow(ctx, pending)
 	default:
 		return customNodeExecution{}, false, fmt.Errorf("unsupported pending custom workflow operation")
 	}
@@ -2050,93 +1260,6 @@ func (s *Server) resumeCustomPendingFetch(ctx context.Context, pending customPen
 		"completed": {Type: "work_refs", WorkRefs: uniqueCustomWorkRefs(completed)},
 		"failed":    {Type: "work_candidates", Candidates: uniqueCustomCandidates(failed)},
 	}}, false, nil
-}
-
-func (s *Server) resumeCustomPendingSubworkflow(ctx context.Context, pending customPendingExecution) (customNodeExecution, bool, error) {
-	if len(pending.Children) != 1 {
-		return customNodeExecution{}, false, fmt.Errorf("subworkflow checkpoint is invalid")
-	}
-	childRunID := pending.Children[0].RunID
-	status, err := s.customSubworkflowStatus(ctx, childRunID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return failedCustomSubworkflowExecution(pending, "subworkflow_child_missing"), false, nil
-	}
-	if err != nil {
-		return customNodeExecution{}, false, err
-	}
-	if status == "queued" || status == "running" {
-		return customNodeExecution{}, true, nil
-	}
-	if status != "succeeded" && status != "partial" {
-		return failedCustomSubworkflowExecution(pending, "subworkflow_child_"+strings.ToLower(strings.TrimSpace(status))), false, nil
-	}
-	refs, err := s.loadCustomSubworkflowWorkRefs(ctx, childRunID, pending.OutputNodeIDs)
-	if err != nil {
-		return customNodeExecution{}, false, err
-	}
-	failed := customSubworkflowFailedCandidates(pending, refs)
-	return customNodeExecution{Partial: status == "partial" || len(failed) > 0, ChildRunIDs: []int64{childRunID}, Outputs: map[string]customPortValue{
-		"completed": {Type: "work_refs", WorkRefs: refs}, "failed": {Type: "work_candidates", Candidates: uniqueCustomCandidates(failed)},
-	}}, false, nil
-}
-
-func (s *Server) customSubworkflowStatus(ctx context.Context, runID int64) (string, error) {
-	var status string
-	err := s.db.QueryRowContext(ctx, "SELECT status FROM workflow_run WHERE id = ?", runID).Scan(&status)
-	return status, err
-}
-
-func (s *Server) loadCustomSubworkflowWorkRefs(ctx context.Context, runID int64, outputNodeIDs []string) ([]customWorkRef, error) {
-	var rawCheckpoint string
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT checkpoint_json FROM workflow_job
-		WHERE workflow_run_id = ? AND worker_type = 'custom_workflow'
-		ORDER BY id DESC LIMIT 1
-	`, runID).Scan(&rawCheckpoint); err != nil {
-		return nil, err
-	}
-	checkpoint := customWorkflowCheckpoint{}
-	if err := decodeWorkflowJobCheckpointDetail(rawCheckpoint, &checkpoint); err != nil {
-		return nil, err
-	}
-	refs := []customWorkRef{}
-	for _, nodeID := range outputNodeIDs {
-		for _, value := range checkpoint.Outputs[nodeID] {
-			refs = append(refs, value.WorkRefs...)
-		}
-	}
-	return uniqueCustomWorkRefs(refs), nil
-}
-
-func customSubworkflowFailedCandidates(pending customPendingExecution, refs []customWorkRef) []customWorkCandidate {
-	completedCodes := map[string]bool{}
-	for _, ref := range refs {
-		completedCodes[strings.ToUpper(strings.TrimSpace(ref.Code))] = true
-	}
-	failed := append([]customWorkCandidate{}, pending.Failed...)
-	for _, candidate := range pending.Candidates {
-		if completedCodes[strings.ToUpper(strings.TrimSpace(candidate.Code))] {
-			continue
-		}
-		candidate.Reason = "subworkflow_no_work_ref"
-		failed = append(failed, candidate)
-	}
-	return failed
-}
-
-func failedCustomSubworkflowExecution(pending customPendingExecution, reason string) customNodeExecution {
-	failed := append([]customWorkCandidate{}, pending.Failed...)
-	for _, candidate := range pending.Candidates {
-		candidate.Reason = reason
-		failed = append(failed, candidate)
-	}
-	childRuns := []int64{}
-	for _, child := range pending.Children {
-		childRuns = append(childRuns, child.RunID)
-	}
-	return customNodeExecution{Partial: len(failed) > 0, ChildRunIDs: childRuns, Outputs: map[string]customPortValue{
-		"completed": {Type: "work_refs", WorkRefs: []customWorkRef{}}, "failed": {Type: "work_candidates", Candidates: uniqueCustomCandidates(failed)},
-	}}
 }
 
 func (s *Server) deferCustomWorkflowJob(ctx context.Context, job workflowJobRecord, nodeRunID int64, checkpoint customWorkflowCheckpoint) error {
@@ -2208,150 +1331,25 @@ func customRuntimeNodeInputs(graph customWorkflowGraph, node customWorkflowNode,
 
 func (s *Server) executeCustomWorkflowNode(ctx context.Context, runID int64, jobPriority int, payload customWorkflowJobPayload, graph customWorkflowGraph, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
 	switch node.Type {
-	case "workflow_input", "input_text", "input_circle", "input_series", "input_voice", "input_work":
-		return executeCustomInputNode(payload, graph, node)
-	case "template_text":
-		return executeCustomTemplateNode(payload, node, inputs)
 	case "circle_catalog":
 		return s.executeCustomCircleCatalog(ctx, node, inputs)
 	case "series_catalog":
 		return s.executeCustomSeriesCatalog(ctx, node, inputs)
 	case "voice_source_works":
 		return s.executeCustomVoiceSourceWorks(ctx, runID, node, inputs)
-	case "provider_popular_works":
-		return s.executeCustomProviderPopularWorks(ctx, node)
-	case "source_popular_works":
-		return s.executeCustomSourcePopularWorks(ctx, node)
 	case "filter_works":
 		return s.executeCustomFilterWorks(ctx, payload.UserID, node, inputs)
 	case "metadata_sync":
 		return s.executeCustomMetadataSync(ctx, runID, node, inputs)
-	case "filter_library_works":
-		return s.executeCustomFilterLibraryWorks(ctx, payload.UserID, node, inputs)
-	case "check_source_availability":
-		return s.executeCustomSourceAvailability(ctx, runID, node, inputs)
 	case "track_works":
 		return s.executeCustomTrackWorks(ctx, runID, node, inputs)
 	case "fetch_works":
 		return s.executeCustomFetchWorks(ctx, runID, payload.UserID, jobPriority, node, inputs)
 	case "tag_works":
 		return s.executeCustomTagWorks(ctx, payload.UserID, node, inputs)
-	case "subworkflow":
-		return s.executeCustomSubworkflow(ctx, runID, payload, node, inputs)
 	default:
 		return customNodeExecution{}, fmt.Errorf("unsupported custom workflow node: %s", node.Type)
 	}
-}
-
-func executeCustomInputNode(payload customWorkflowJobPayload, graph customWorkflowGraph, node customWorkflowNode) (customNodeExecution, error) {
-	input, err := resolveCustomInputNode(payload, graph, node)
-	if err != nil {
-		return customNodeExecution{}, err
-	}
-	if !input.HasValue {
-		if input.Required {
-			return customNodeExecution{}, fmt.Errorf("workflow input is missing: %s", input.Key)
-		}
-		return customNodeExecution{Outputs: map[string]customPortValue{input.OutputHandle: {Type: input.DataType}}}, nil
-	}
-	if node.Type == "input_work" || input.DataType == "work_candidates" {
-		values, err := customStringValues(input.Value)
-		if err != nil {
-			if text, ok := input.Value.(string); ok {
-				values = []string{text}
-			} else {
-				return customNodeExecution{}, err
-			}
-		}
-		codes, err := normalizeCustomWorkCodes(values, 1000)
-		if err != nil {
-			return customNodeExecution{}, err
-		}
-		return customNodeExecution{Outputs: map[string]customPortValue{input.OutputHandle: {Type: "work_candidates", Candidates: customCandidatesForCodes(codes, 0)}}}, nil
-	}
-	text, ok := input.Value.(string)
-	if !ok {
-		return customNodeExecution{}, fmt.Errorf("input value must be text")
-	}
-	return customNodeExecution{Outputs: map[string]customPortValue{input.OutputHandle: {Type: input.DataType, Text: strings.TrimSpace(text)}}}, nil
-}
-
-type customInputNodeValue struct {
-	Key          string
-	Value        any
-	HasValue     bool
-	DataType     string
-	OutputHandle string
-	Required     bool
-}
-
-func resolveCustomInputNode(payload customWorkflowJobPayload, graph customWorkflowGraph, node customWorkflowNode) (customInputNodeValue, error) {
-	inputKey := configString(node.Config, "inputKey")
-	value, hasValue := payload.Inputs[inputKey]
-	if inputKey == "" {
-		hasValue = true
-		if node.Type == "input_work" {
-			value = configStringSlice(node.Config, "codes")
-		} else {
-			value = configString(node.Config, "value")
-		}
-	}
-	dataType := ""
-	outputHandle := "value"
-	inputRequired := true
-	if node.Type == "workflow_input" {
-		for _, input := range graph.Definition.Inputs {
-			if input.Key == inputKey {
-				dataType = customInputDataType(input.Type)
-				inputRequired = input.Required
-				break
-			}
-		}
-	} else {
-		dataType = customWorkflowCapabilities[node.Type].Outputs[0].DataType
-		if inputKey != "" {
-			for _, input := range graph.Definition.Inputs {
-				if input.Key == inputKey {
-					inputRequired = input.Required
-					break
-				}
-			}
-		}
-	}
-	if node.Type == "input_work" {
-		outputHandle = "works"
-	}
-	return customInputNodeValue{Key: inputKey, Value: value, HasValue: hasValue, DataType: dataType, OutputHandle: outputHandle, Required: inputRequired}, nil
-}
-
-func executeCustomTemplateNode(payload customWorkflowJobPayload, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
-	templateText := configString(node.Config, "template")
-	if templateText == "" {
-		templateText = "{{.Value}}"
-	}
-	tmpl, err := texttemplate.New("workflow-text").Option("missingkey=error").Parse(templateText)
-	if err != nil {
-		return customNodeExecution{}, fmt.Errorf("invalid text template: %w", err)
-	}
-	startedAt, err := time.Parse(time.RFC3339Nano, payload.StartedAt)
-	if err != nil {
-		startedAt = time.Now().UTC()
-	}
-	data := struct {
-		Inputs    map[string]any
-		Value     string
-		StartedAt string
-		Date      string
-	}{Inputs: payload.Inputs, Value: inputs["value"].Text, StartedAt: startedAt.Format(time.RFC3339), Date: startedAt.Format("2006-01-02")}
-	var rendered strings.Builder
-	if err := tmpl.Execute(&rendered, data); err != nil {
-		return customNodeExecution{}, fmt.Errorf("render text template: %w", err)
-	}
-	text := strings.TrimSpace(rendered.String())
-	if len([]rune(text)) > 4096 {
-		return customNodeExecution{}, fmt.Errorf("rendered text exceeds 4096 characters")
-	}
-	return customNodeExecution{Outputs: map[string]customPortValue{"text": {Type: "text", Text: text}}}, nil
 }
 
 func (s *Server) executeCustomCircleCatalog(ctx context.Context, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
@@ -2531,59 +1529,6 @@ func (s *Server) collectCustomVoiceSourceWorks(ctx context.Context, runID int64,
 	return candidates, nil
 }
 
-func (s *Server) executeCustomProviderPopularWorks(ctx context.Context, node customWorkflowNode) (customNodeExecution, error) {
-	period := strings.ToLower(configString(node.Config, "period"))
-	if period == "" {
-		period = "day"
-	}
-	result, err := s.newDLsiteClient().FetchVoiceRanking(ctx, dlsite.RankingOptions{
-		Period: period, ReleaseWindow: strings.ToLower(configString(node.Config, "releaseWindow")), Year: configInt(node.Config, "year", 0),
-	})
-	if err != nil {
-		return customNodeExecution{}, err
-	}
-	maxWorks := configInt(node.Config, "maxWorks", 100)
-	codes := result.WorkCodes
-	if len(codes) > maxWorks {
-		codes = codes[:maxWorks]
-	}
-	return customNodeExecution{Outputs: map[string]customPortValue{
-		"works": {Type: "work_candidates", Candidates: customCandidatesForCodes(codes, 0)},
-	}}, nil
-}
-
-func (s *Server) executeCustomSourcePopularWorks(ctx context.Context, node customWorkflowNode) (customNodeExecution, error) {
-	source, err := s.loadRemoteSourceForUse(ctx, configInt64(node.Config, "sourceId", 0))
-	if err != nil {
-		return customNodeExecution{}, err
-	}
-	if !source.Enabled || !isKikoeruSourceType(source.SourceType) || strings.TrimSpace(source.Endpoint.APIURL) == "" {
-		return customNodeExecution{}, fmt.Errorf("source is not an enabled compatible remote source")
-	}
-	maxWorks := configInt(node.Config, "maxWorks", 100)
-	page, err := s.kikoeruCrawlClientForSource(source).PopularWorks(ctx, 1, maxWorks)
-	if err != nil {
-		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
-		return customNodeExecution{}, err
-	}
-	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
-	projector := s.remoteCatalogProjector(ctx)
-	candidates := make([]customWorkCandidate, 0, min(len(page.Works), maxWorks))
-	for _, work := range page.Works {
-		candidate := customCandidateFromRemoteWork(work, source.ID, projector)
-		if candidate.Code == "" {
-			continue
-		}
-		candidates = append(candidates, candidate)
-		if len(candidates) >= maxWorks {
-			break
-		}
-	}
-	return customNodeExecution{Outputs: map[string]customPortValue{
-		"works": {Type: "work_candidates", Candidates: uniqueCustomCandidates(candidates)},
-	}}, nil
-}
-
 func customCandidateFromRemoteWork(work kikoeru.Work, sourceID int64, projector remoteCatalogProjector) customWorkCandidate {
 	projected := projector.project(sourceID, work)
 	return customWorkCandidate{
@@ -2678,30 +1623,6 @@ func (s *Server) executeCustomMetadataSync(ctx context.Context, runID int64, nod
 	return customNodeExecution{Partial: partial || len(failed) > 0, Outputs: map[string]customPortValue{
 		"completed": {Type: "work_refs", WorkRefs: uniqueCustomWorkRefs(completed)},
 		"failed":    {Type: "work_candidates", Candidates: uniqueCustomCandidates(failed)},
-	}}, nil
-}
-
-func (s *Server) executeCustomFilterLibraryWorks(ctx context.Context, userID int64, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
-	refs := uniqueCustomWorkRefs(inputs["works"].WorkRefs)
-	limit := configInt(node.Config, "limit", min(100, len(refs)))
-	if limit <= 0 {
-		limit = len(refs)
-	}
-	accepted := []customWorkRef{}
-	rejected := []customWorkRef{}
-	for _, ref := range refs {
-		metadata, err := s.customWorkFilterMetadata(ctx, userID, ref.Code)
-		if err != nil {
-			return customNodeExecution{}, err
-		}
-		if customWorkMatchesFilter(metadata.ReleaseDate, metadata.VoiceNames, metadata.MetadataTags, metadata.UserTags, node.Config) && len(accepted) < limit {
-			accepted = append(accepted, ref)
-		} else {
-			rejected = append(rejected, ref)
-		}
-	}
-	return customNodeExecution{Outputs: map[string]customPortValue{
-		"accepted": {Type: "work_refs", WorkRefs: accepted}, "rejected": {Type: "work_refs", WorkRefs: rejected},
 	}}, nil
 }
 
@@ -2801,127 +1722,6 @@ func uniqueFoldedStrings(values []string) []string {
 		result = append(result, value)
 	}
 	return result
-}
-
-func (s *Server) executeCustomSourceAvailability(ctx context.Context, runID int64, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
-	sourceID := configInt64(node.Config, "sourceId", 0)
-	source, err := s.loadRemoteSourceForUse(ctx, sourceID)
-	if err != nil {
-		return customNodeExecution{}, err
-	}
-	candidates := uniqueCustomCandidates(inputs["works"].Candidates)
-	if err := s.ensureCustomAvailabilitySource(ctx, source); err != nil {
-		failed := unavailableCustomAvailabilityCandidates(candidates, source.ID)
-		return customNodeExecution{Partial: len(failed) > 0, Outputs: customAvailabilityOutputs(nil, nil, failed)}, nil
-	}
-	client := s.kikoeruCrawlClientForSource(source)
-	available, missing, failed, resultsByCode := []customWorkCandidate{}, []customWorkCandidate{}, []customWorkCandidate{}, map[string]sourceAvailabilitySummary{}
-	for _, candidate := range candidates {
-		if err := s.ensureWorkflowRunActive(ctx, runID); err != nil {
-			return customNodeExecution{}, err
-		}
-		outcome, err := s.checkCustomAvailabilityCandidate(ctx, client, source, candidate)
-		if err != nil {
-			return customNodeExecution{}, err
-		}
-		available = append(available, outcome.Available...)
-		missing = append(missing, outcome.Missing...)
-		failed = append(failed, outcome.Failed...)
-		if outcome.Summary != nil {
-			resultsByCode[outcome.Code] = *outcome.Summary
-		}
-	}
-	if err := s.persistCustomAvailabilityResults(ctx, resultsByCode); err != nil {
-		return customNodeExecution{}, err
-	}
-	return customNodeExecution{Partial: len(failed) > 0, Outputs: customAvailabilityOutputs(available, missing, failed)}, nil
-}
-
-func (s *Server) ensureCustomAvailabilitySource(ctx context.Context, source remoteSourceForUse) error {
-	if !source.Enabled || !isKikoeruSourceType(source.SourceType) || strings.TrimSpace(source.Endpoint.APIURL) == "" {
-		return fmt.Errorf("source is unavailable")
-	}
-	healthCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	err := s.checkRemoteSourceHealthWithClass(healthCtx, source, sourceRequestCrawl)
-	cancel()
-	if err != nil {
-		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
-		return err
-	}
-	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
-	return nil
-}
-
-func unavailableCustomAvailabilityCandidates(candidates []customWorkCandidate, sourceID int64) []customWorkCandidate {
-	failed := make([]customWorkCandidate, 0, len(candidates))
-	for _, candidate := range candidates {
-		candidate.SourceID = sourceID
-		candidate.Reason = "source_unavailable"
-		failed = append(failed, candidate)
-	}
-	return failed
-}
-
-type customAvailabilityCandidateOutcome struct {
-	Code      string
-	Available []customWorkCandidate
-	Missing   []customWorkCandidate
-	Failed    []customWorkCandidate
-	Summary   *sourceAvailabilitySummary
-}
-
-func (s *Server) checkCustomAvailabilityCandidate(ctx context.Context, client *kikoeru.Client, source remoteSourceForUse, candidate customWorkCandidate) (customAvailabilityCandidateOutcome, error) {
-	started := time.Now()
-	remoteWork, _, checkErr := s.resolveKikoeruWork(ctx, client, candidate.Code)
-	summary := sourceAvailabilitySummary{SourceID: source.ID, SourceCode: source.Code, DisplayName: source.DisplayName, ElapsedMS: time.Since(started).Milliseconds()}
-	candidate.SourceID = source.ID
-	if checkErr != nil {
-		if isNotFoundLikeError(checkErr) {
-			candidate.Reason = "not_found"
-			summary.Status = "not_found"
-			return customAvailabilityCandidateOutcome{Code: candidate.Code, Missing: []customWorkCandidate{candidate}, Summary: &summary}, nil
-		}
-		candidate.Reason = "source_error"
-		summary.Status = "error"
-		summary.Error = "remote source request failed"
-		return customAvailabilityCandidateOutcome{Code: candidate.Code, Failed: []customWorkCandidate{candidate}, Summary: &summary}, nil
-	}
-	remoteCode := normalizedRemoteWorkCode(remoteWork)
-	if remoteCode == "" {
-		remoteCode = candidate.Code
-	}
-	candidate.Code = remoteCode
-	candidate.Title = firstNonEmpty(remoteWork.Title, remoteWork.Name, candidate.Title, remoteCode)
-	summary.Status = "available"
-	summary.RemoteID = strconv.FormatInt(remoteWork.ID, 10)
-	summary.PrimaryCode = remoteCode
-	summary.Title = candidate.Title
-	return customAvailabilityCandidateOutcome{Code: candidate.Code, Available: []customWorkCandidate{candidate}, Summary: &summary}, nil
-}
-
-func (s *Server) persistCustomAvailabilityResults(ctx context.Context, resultsByCode map[string]sourceAvailabilitySummary) error {
-	if len(resultsByCode) == 0 {
-		return nil
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	for code, summary := range resultsByCode {
-		if err := s.recordAvailabilityPresence(ctx, tx, code, []sourceAvailabilitySummary{summary}); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
-
-func customAvailabilityOutputs(available, missing, failed []customWorkCandidate) map[string]customPortValue {
-	return map[string]customPortValue{
-		"available": {Type: "work_candidates", Candidates: available},
-		"missing":   {Type: "work_candidates", Candidates: missing},
-		"error":     {Type: "work_candidates", Candidates: failed},
-	}
 }
 
 func (s *Server) executeCustomTrackWorks(ctx context.Context, runID int64, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
@@ -3248,107 +2048,6 @@ func (s *Server) executeCustomTagWorks(ctx context.Context, userID int64, node c
 	}}, nil
 }
 
-func (s *Server) executeCustomSubworkflow(ctx context.Context, runID int64, payload customWorkflowJobPayload, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
-	candidates := uniqueCustomCandidates(inputs["works"].Candidates)
-	maxWorks := configInt(node.Config, "maxWorks", 25)
-	if len(candidates) > maxWorks {
-		return customNodeExecution{}, fmt.Errorf("subworkflow candidate count exceeds maxWorks")
-	}
-	if len(candidates) == 0 {
-		return customNodeExecution{Outputs: map[string]customPortValue{
-			"completed": {Type: "work_refs", WorkRefs: []customWorkRef{}}, "failed": {Type: "work_candidates", Candidates: []customWorkCandidate{}},
-		}}, nil
-	}
-	plan, err := s.prepareCustomSubworkflow(ctx, payload, node, candidates)
-	if err != nil {
-		return customNodeExecution{}, err
-	}
-	childRunID, err := s.enqueueCustomWorkflow(ctx, plan.Definition, plan.Graph, payload.UserID, payload.Permissions, plan.Inputs, "", customWorkflowEnqueueOptions{
-		TriggerType: "subworkflow", TriggerReason: fmt.Sprintf("parent_run_%d", runID), DefinitionStack: plan.Stack,
-	})
-	if err != nil {
-		return customNodeExecution{}, err
-	}
-	return customNodeExecution{ChildRunIDs: []int64{childRunID}, Pending: &customPendingExecution{
-		NodeID: node.ID, Kind: "subworkflow", Children: []customPendingChild{{RunID: childRunID}}, Candidates: candidates,
-		OutputNodeIDs: customWorkflowTerminalNodeIDs(plan.Graph),
-	}}, nil
-}
-
-type customSubworkflowPlan struct {
-	Definition workflowDefinitionRecord
-	Graph      customWorkflowGraph
-	Inputs     map[string]any
-	Stack      []int64
-}
-
-func (s *Server) prepareCustomSubworkflow(ctx context.Context, payload customWorkflowJobPayload, node customWorkflowNode, candidates []customWorkCandidate) (customSubworkflowPlan, error) {
-	definitionID := configInt64(node.Config, "definitionId", 0)
-	if len(payload.DefinitionStack) >= 5 {
-		return customSubworkflowPlan{}, fmt.Errorf("subworkflow nesting depth exceeds 5")
-	}
-	for _, ancestorID := range payload.DefinitionStack {
-		if ancestorID == definitionID {
-			return customSubworkflowPlan{}, fmt.Errorf("subworkflow definition cycle detected")
-		}
-	}
-	definition, err := s.loadWorkflowDefinition(ctx, definitionID)
-	if err != nil {
-		return customSubworkflowPlan{}, err
-	}
-	if definition.Scope != "user" || !definition.Editable || definition.OwnerUserID == nil || payload.OwnerUserID <= 0 || *definition.OwnerUserID != payload.OwnerUserID {
-		return customSubworkflowPlan{}, fmt.Errorf("subworkflow must reference a workflow owned by the same user")
-	}
-	graph, err := validateCustomWorkflowDefinition(definition.DefinitionJSON)
-	if err != nil {
-		return customSubworkflowPlan{}, err
-	}
-	if missing := missingCustomWorkflowPermission(payload.Permissions, customWorkflowRequiredPermissions(graph)); missing != "" {
-		return customSubworkflowPlan{}, fmt.Errorf("subworkflow permission snapshot is missing %s", missing)
-	}
-	inputKey := configString(node.Config, "inputKey")
-	if err := validateCustomSubworkflowInput(graph, inputKey); err != nil {
-		return customSubworkflowPlan{}, err
-	}
-	codes := make([]string, 0, len(candidates))
-	for _, candidate := range candidates {
-		codes = append(codes, candidate.Code)
-	}
-	childInputs, err := normalizeCustomWorkflowInputs(graph.Definition.Inputs, map[string]any{inputKey: codes})
-	if err != nil {
-		return customSubworkflowPlan{}, err
-	}
-	stack := append(append([]int64{}, payload.DefinitionStack...), definition.ID)
-	return customSubworkflowPlan{Definition: definition, Graph: graph, Inputs: childInputs, Stack: stack}, nil
-}
-
-func validateCustomSubworkflowInput(graph customWorkflowGraph, inputKey string) error {
-	for _, input := range graph.Definition.Inputs {
-		if input.Key != inputKey {
-			continue
-		}
-		if customInputDataType(input.Type) != "work_candidates" {
-			return fmt.Errorf("subworkflow input %s must accept work codes", inputKey)
-		}
-		return nil
-	}
-	return fmt.Errorf("subworkflow input %s does not exist", inputKey)
-}
-
-func customWorkflowTerminalNodeIDs(graph customWorkflowGraph) []string {
-	hasOutgoing := map[string]bool{}
-	for _, edge := range graph.Definition.Edges {
-		hasOutgoing[edge.Source] = true
-	}
-	result := []string{}
-	for _, nodeID := range graph.TopologicalOrder {
-		if !hasOutgoing[nodeID] {
-			result = append(result, nodeID)
-		}
-	}
-	return result
-}
-
 func (s *Server) finishCustomWorkflowJob(ctx context.Context, job workflowJobRecord, checkpoint customWorkflowCheckpoint, total int) error {
 	status := "succeeded"
 	if checkpoint.Partial {
@@ -3506,14 +2205,6 @@ func insertCustomWorkflowFailureEvents(ctx context.Context, tx *sql.Tx, job work
 	return nil
 }
 
-func customCandidatesForCodes(codes []string, sourceID int64) []customWorkCandidate {
-	result := make([]customWorkCandidate, 0, len(codes))
-	for _, code := range codes {
-		result = append(result, customWorkCandidate{Code: strings.ToUpper(strings.TrimSpace(code)), SourceID: sourceID})
-	}
-	return result
-}
-
 func uniqueCustomCandidates(values []customWorkCandidate) []customWorkCandidate {
 	result := []customWorkCandidate{}
 	seen := map[string]bool{}
@@ -3642,4 +2333,35 @@ func publicCustomWorkflowError(nodeType string) string {
 	default:
 		return "custom workflow node failed"
 	}
+}
+
+func normalizeCustomWorkCodes(values []string, limit int) ([]string, error) {
+	result := []string{}
+	seen := map[string]bool{}
+	for _, value := range values {
+		code := strings.ToUpper(strings.TrimSpace(value))
+		if code == "" || seen[code] {
+			continue
+		}
+		if !customWorkflowWorkCodePattern.MatchString(code) {
+			return nil, fmt.Errorf("invalid work code: %s", code)
+		}
+		seen[code] = true
+		result = append(result, code)
+		if limit > 0 && len(result) > limit {
+			return nil, fmt.Errorf("too many work codes; maximum is %d", limit)
+		}
+	}
+	if len(result) == 0 {
+		return nil, fmt.Errorf("at least one work code is required")
+	}
+	return result, nil
+}
+
+func customCandidatesForCodes(codes []string, sourceID int64) []customWorkCandidate {
+	result := make([]customWorkCandidate, 0, len(codes))
+	for _, code := range codes {
+		result = append(result, customWorkCandidate{Code: strings.ToUpper(strings.TrimSpace(code)), SourceID: sourceID})
+	}
+	return result
 }

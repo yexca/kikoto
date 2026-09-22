@@ -157,12 +157,12 @@ func TestDemoReadRoutesExposeAdminSurfacesButBlockWrites(t *testing.T) {
 		t.Fatalf("settings read created file sources: before=%d after=%d", sourcesBefore, sourcesAfter)
 	}
 
-	writeWorkflowDefinition := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/workflow-definitions", strings.NewReader(`{"code":"demo_preview_only","displayName":"Demo preview","definitionJson":"{}"}`))
+	writeWorkflowTrigger := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(`{"workflowDefinitionId":1,"displayName":"Demo startup","triggerType":"startup"}`))
 	request.Header.Set("Content-Type", "application/json")
-	handler.ServeHTTP(writeWorkflowDefinition, request)
-	if writeWorkflowDefinition.Code != http.StatusForbidden || !strings.Contains(writeWorkflowDefinition.Body.String(), `"code":"demo_read_only"`) {
-		t.Fatalf("workflow write status = %d, body = %s", writeWorkflowDefinition.Code, writeWorkflowDefinition.Body.String())
+	handler.ServeHTTP(writeWorkflowTrigger, request)
+	if writeWorkflowTrigger.Code != http.StatusForbidden || !strings.Contains(writeWorkflowTrigger.Body.String(), `"code":"demo_read_only"`) {
+		t.Fatalf("workflow write status = %d, body = %s", writeWorkflowTrigger.Code, writeWorkflowTrigger.Body.String())
 	}
 }
 

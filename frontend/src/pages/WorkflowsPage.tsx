@@ -6,14 +6,12 @@ import {
   Edit3,
   Eye,
   ExternalLink,
-  FileJson,
   GitBranchPlus,
   Loader2,
   Play,
   Plus,
   RotateCcw,
   Save,
-  Search,
   Settings2,
   Tag,
   Trash2,
@@ -39,7 +37,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import { Input, NativeSelect, Textarea } from "@/components/ui/input";
+import { Input, NativeSelect } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useWorkflowActivityLocation } from "@/features/workflows/useWorkflowActivityLocation";
 import { toastFromError, useToast } from "@/components/ui/toast";
@@ -56,20 +54,7 @@ import {
   WorkflowHeader,
   WorkflowSection,
 } from "@/features/workflows/WorkflowDetailLayout";
-import { WorkflowCanvas } from "@/features/workflows/WorkflowCanvas";
-import {
-  WorkflowNavigation,
-  builtInWorkflowOrder,
-  matchesWorkflowFilter,
-  type WorkflowFilter,
-} from "@/features/workflows/WorkflowNavigation";
-import { WorkflowComposer } from "@/features/workflows/WorkflowComposer";
-import {
-  parseWorkflowDefinition,
-  upgradeLegacyWorkflowDefinition,
-  type WorkflowInputDefinition,
-} from "@/features/workflows/definitionModel";
-import { WorkflowRunDialog } from "@/features/workflows/WorkflowRunDialog";
+import { WorkflowNavigation, builtInWorkflowOrder } from "@/features/workflows/WorkflowNavigation";
 import {
   presetAction,
   presetBlockers,
@@ -97,7 +82,6 @@ import {
   type WorkflowCandidate,
   type WorkflowEvent,
   type WorkflowDefinition,
-  type WorkflowNodeType,
   type WorkflowNodeRun,
   type WorkflowPreset,
   type WorkflowPresetParameter,
@@ -122,7 +106,7 @@ function localizedWorkflowDefinition(definition: WorkflowDefinition) {
   };
 }
 
-type ModalMode = "create-workflow" | "edit-workflow" | "edit-node" | "create-trigger" | "edit-trigger" | null;
+type ModalMode = "create-trigger" | "edit-trigger" | null;
 type AutomationTriggerType = "startup" | "filesystem_event" | "schedule";
 type CreatableAutomationTriggerType = Exclude<AutomationTriggerType, "filesystem_event">;
 
@@ -133,118 +117,54 @@ type WorkflowNode = {
   config?: Record<string, unknown>;
 };
 
-type WorkflowTemplate = {
-  id: string;
-  label: string;
-  nodes: WorkflowNode[];
+type WorkflowNodeTypeMetadata = {
+  type: string;
+  phase: string;
+  displayName: string;
+  description: string;
 };
 
-const fallbackNodeTypes: WorkflowNodeType[] = [
+const fallbackNodeTypes: WorkflowNodeTypeMetadata[] = [
   {
     type: "select_works",
     phase: "target",
     displayName: "Select works",
     description: "Choose known works.",
-    userVisible: true,
-    configSchema: "{}",
-    inputSchema: "{}",
-    outputSchema: "{}",
   },
   {
     type: "select_ranking",
     phase: "target",
     displayName: "Configure ranking",
     description: "Choose a ranking period.",
-    userVisible: false,
-    configSchema: "{}",
-    inputSchema: "{}",
-    outputSchema: "{}",
   },
   {
     type: "discover_provider_ranking",
     phase: "discover",
     displayName: "Discover provider ranking",
     description: "Fetch an ordered provider ranking.",
-    userVisible: false,
-    configSchema: "{}",
-    inputSchema: "{}",
-    outputSchema: "{}",
   },
   {
     type: "filter_candidates",
     phase: "filter",
     displayName: "Filter candidates",
     description: "Filter workflow candidates.",
-    userVisible: true,
-    configSchema: "{}",
-    inputSchema: "{}",
-    outputSchema: "{}",
   },
   {
     type: "sync_metadata",
     phase: "commit",
     displayName: "Sync metadata",
     description: "Persist metadata.",
-    userVisible: true,
-    configSchema: "{}",
-    inputSchema: "{}",
-    outputSchema: "{}",
   },
   {
     type: "assign_user_tags",
     phase: "commit",
     displayName: "Assign user tags",
     description: "Append user-owned tags.",
-    userVisible: false,
-    configSchema: "{}",
-    inputSchema: "{}",
-    outputSchema: "{}",
   },
 ];
-
-const phaseOrder = ["target", "discover", "filter", "match", "plan", "execute", "verify", "commit"] as const;
 
 const automationTriggerTypes: CreatableAutomationTriggerType[] = ["startup", "schedule"];
-const workflowDefinitionStorageBaseKey = "kikoto.workflows.definition:v2";
-const workflowDefinitionTabStorageBaseKey = "kikoto.workflows.definition-tab:v1";
-type WorkflowDefinitionTab = WorkflowFilter;
-
-function storedWorkflowFilter(key: string): WorkflowFilter {
-  const value = window.localStorage.getItem(key);
-  return value === "built-in" || value === "custom" ? value : "all";
-}
-
-const workflowTemplates: WorkflowTemplate[] = [
-  { id: "blank", label: "Blank", nodes: [{ id: "select", type: "select_works", displayName: "Select works" }] },
-  {
-    id: "metadata",
-    label: "Metadata sync",
-    nodes: [
-      { id: "select", type: "select_works", displayName: "Select works" },
-      { id: "sync", type: "sync_metadata", displayName: "Sync metadata" },
-    ],
-  },
-  {
-    id: "local",
-    label: "Local scan",
-    nodes: [
-      { id: "select", type: "select_local_source", displayName: "Select local source" },
-      { id: "discover", type: "discover_local_files", displayName: "Discover files" },
-      { id: "match", type: "match_works", displayName: "Match works" },
-      { id: "sync", type: "sync_file_locations", displayName: "Sync locations" },
-    ],
-  },
-  {
-    id: "remote",
-    label: "Remote sync",
-    nodes: [
-      { id: "select", type: "select_remote_source", displayName: "Select source" },
-      { id: "discover", type: "discover_remote_works", displayName: "Discover works" },
-      { id: "filter", type: "filter_candidates", displayName: "Filter" },
-      { id: "sync", type: "sync_file_locations", displayName: "Sync locations" },
-    ],
-  },
-];
+const workflowDefinitionStorageBaseKey = "kikoto.workflows.definition:v3";
 
 type SystemRunKind = "local_scan" | "metadata_sync" | "remote_popular" | "dlsite_popular" | "preset";
 
@@ -324,28 +244,18 @@ export function WorkflowsPage({
   const { t } = useTranslation();
   const auth = useAuth();
   const workflowDefinitionStorageKey = currentScopedStorageKey(workflowDefinitionStorageBaseKey, auth.user?.id ?? null);
-  const workflowDefinitionTabStorageKey = currentScopedStorageKey(
-    workflowDefinitionTabStorageBaseKey,
-    auth.user?.id ?? null,
-  );
-  const [definitionTab, setDefinitionTab] = useState<WorkflowDefinitionTab>(() =>
-    storedWorkflowFilter(workflowDefinitionTabStorageKey),
-  );
-  const definitionSelectionKey = `${workflowDefinitionStorageKey}:${definitionTab}`;
   const activityLocation = useWorkflowActivityLocation();
   const activityRun = useWorkflowRunWatcher(activityLocation.open ? activityLocation.runId : null);
   const linkedRun = activityRun.run?.id === activityLocation.runId ? activityRun.run : null;
   const linkedCode = linkedRun?.workflowCode || activityLocation.workflowCode || "";
   const [activityRevision, setActivityRevision] = useState(0);
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
-  const [nodeTypes, setNodeTypes] = useState<WorkflowNodeType[]>(fallbackNodeTypes);
   const [triggers, setTriggers] = useState<WorkflowTrigger[]>([]);
   const [presets, setPresets] = useState<WorkflowPreset[]>([]);
   const [selectedDefinitionId, setSelectedDefinitionID] = useState<number | null>(() =>
-    storedPositiveInt(`${workflowDefinitionStorageKey}:${storedWorkflowFilter(workflowDefinitionTabStorageKey)}`),
+    storedPositiveInt(workflowDefinitionStorageKey),
   );
   const [modalMode, setModalMode] = useState<ModalMode>(null);
-  const [editingNodeIndex, setEditingNodeIndex] = useState<number | null>(null);
   const [editingTrigger, setEditingTrigger] = useState<WorkflowTrigger | null>(null);
   const [creatingTriggerType, setCreatingTriggerType] = useState<CreatableAutomationTriggerType>("schedule");
   const [isRunningScan, setIsRunningScan] = useState(false);
@@ -358,11 +268,6 @@ export function WorkflowsPage({
     "loading",
   );
   const [recentDefinitionRuns, setRecentDefinitionRuns] = useState<WorkflowRun[]>([]);
-  const [workflowLaunch, setWorkflowLaunch] = useState<{
-    definition: WorkflowDefinition;
-    inputs: Record<string, unknown>;
-    autoPreview: boolean;
-  } | null>(null);
   const workflowMetaRequestSeq = useRef(0);
   const recentRunsRequestSeq = useRef(0);
 
@@ -370,16 +275,10 @@ export function WorkflowsPage({
     const seq = ++workflowMetaRequestSeq.current;
     setIsWorkflowMetaLoading(true);
     setWorkflowMetaError("");
-    Promise.all([
-      api.listWorkflowDefinitions(),
-      api.listWorkflowNodeTypes(),
-      api.listWorkflowTriggers(),
-      api.listWorkflowPresets(),
-    ])
-      .then(([nextDefinitions, nextNodeTypes, nextTriggers, nextPresets]) => {
+    Promise.all([api.listWorkflowDefinitions(), api.listWorkflowTriggers(), api.listWorkflowPresets()])
+      .then(([nextDefinitions, nextTriggers, nextPresets]) => {
         if (seq !== workflowMetaRequestSeq.current) return;
         setDefinitions(nextDefinitions);
-        setNodeTypes(nextNodeTypes);
         setTriggers(nextTriggers);
         setPresets(nextPresets);
         setHasWorkflowMetaSnapshot(true);
@@ -443,54 +342,33 @@ export function WorkflowsPage({
         updatedAt: linkedRun?.createdAt ?? "",
       });
     }
+    const builtInRank = (definition: WorkflowDefinition) =>
+      builtInWorkflowOrder.includes(definition.code) ? builtInWorkflowOrder.indexOf(definition.code) : 99;
     return choices
       .filter(
         (definition) =>
-          definition.scope === "user" ||
           configurableSystemWorkflowCodes.has(definition.code) ||
           presetByCode.has(definition.code) ||
           definition.code === linkedCode,
       )
-      .sort((left, right) => {
-        if (left.scope !== right.scope) return left.scope === "system" ? -1 : 1;
-        return left.scope === "system"
-          ? (builtInWorkflowOrder.includes(left.code) ? builtInWorkflowOrder.indexOf(left.code) : 99) -
-              (builtInWorkflowOrder.includes(right.code) ? builtInWorkflowOrder.indexOf(right.code) : 99)
-          : left.id - right.id;
-      });
+      .sort((left, right) => builtInRank(left) - builtInRank(right) || left.id - right.id);
   }, [definitions, linkedCode, linkedRun, presetByCode]);
-  const tabDefinitions = useMemo(
-    () => visibleDefinitions.filter((definition) => matchesWorkflowFilter(definition, definitionTab)),
-    [definitionTab, visibleDefinitions],
-  );
   const selectedDefinition = useMemo(() => {
     return (
       visibleDefinitions.find((definition) => definition.code === linkedCode) ??
-      tabDefinitions.find((definition) => definition.id === selectedDefinitionId) ??
-      tabDefinitions[0] ??
+      visibleDefinitions.find((definition) => definition.id === selectedDefinitionId) ??
+      visibleDefinitions[0] ??
       null
     );
-  }, [linkedCode, selectedDefinitionId, tabDefinitions, visibleDefinitions]);
+  }, [linkedCode, selectedDefinitionId, visibleDefinitions]);
 
   useEffect(() => {
-    if (visibleDefinitions.length === 0) return;
-    const syncLinkedWorkflow = () => {
-      const code = linkedCode;
-      if (!code) return;
-      const linked = visibleDefinitions.find((definition) => definition.code === code);
-      if (!linked) return;
-      const tab = matchesWorkflowFilter(linked, definitionTab)
-        ? definitionTab
-        : linked.scope === "system"
-          ? "built-in"
-          : "custom";
-      setDefinitionTab(tab);
-      window.localStorage.setItem(workflowDefinitionTabStorageKey, tab);
-      setSelectedDefinitionID(linked.id);
-      storePositiveInt(`${workflowDefinitionStorageKey}:${tab}`, linked.id);
-    };
-    syncLinkedWorkflow();
-  }, [definitionTab, linkedCode, visibleDefinitions, workflowDefinitionStorageKey, workflowDefinitionTabStorageKey]);
+    if (!linkedCode) return;
+    const linked = visibleDefinitions.find((definition) => definition.code === linkedCode);
+    if (!linked) return;
+    setSelectedDefinitionID(linked.id);
+    storePositiveInt(workflowDefinitionStorageKey, linked.id);
+  }, [linkedCode, visibleDefinitions, workflowDefinitionStorageKey]);
 
   const refreshRecentRuns = (workflowCode: string) => {
     if (!workflowCode) {
@@ -539,48 +417,23 @@ export function WorkflowsPage({
     const linkedDefinition = linkedCode
       ? visibleDefinitions.find((definition) => definition.code === linkedCode)
       : undefined;
-    const nextID =
-      (linkedDefinition && matchesWorkflowFilter(linkedDefinition, definitionTab) ? linkedDefinition.id : null) ??
-      selectedDefinition?.id ??
-      null;
+    const nextID = linkedDefinition?.id ?? selectedDefinition?.id ?? null;
     if (selectedDefinitionId !== nextID) {
       setSelectedDefinitionID(nextID);
     }
-    storePositiveInt(definitionSelectionKey, nextID);
+    storePositiveInt(workflowDefinitionStorageKey, nextID);
   }, [
-    definitionTab,
-    definitionSelectionKey,
     isWorkflowMetaLoading,
     selectedDefinition?.id,
     selectedDefinitionId,
     visibleDefinitions,
+    workflowDefinitionStorageKey,
   ]);
 
-  const selectDefinition = (definition: WorkflowDefinition, filter = definitionTab) => {
+  const selectDefinition = (definition: WorkflowDefinition) => {
     setSelectedDefinitionID(definition.id);
-    storePositiveInt(`${workflowDefinitionStorageKey}:${filter}`, definition.id);
-    storePositiveInt(
-      `${workflowDefinitionStorageKey}:${definition.scope === "system" ? "built-in" : "custom"}`,
-      definition.id,
-    );
+    storePositiveInt(workflowDefinitionStorageKey, definition.id);
     activityLocation.selectWorkflow(definition.code);
-  };
-
-  const selectDefinitionTab = (tab: WorkflowDefinitionTab) => {
-    setDefinitionTab(tab);
-    window.localStorage.setItem(workflowDefinitionTabStorageKey, tab);
-    const rememberedID = storedPositiveInt(`${workflowDefinitionStorageKey}:${tab}`);
-    const next =
-      selectedDefinition && matchesWorkflowFilter(selectedDefinition, tab)
-        ? selectedDefinition
-        : (visibleDefinitions.find(
-            (definition) => definition.id === rememberedID && matchesWorkflowFilter(definition, tab),
-          ) ?? visibleDefinitions.find((definition) => matchesWorkflowFilter(definition, tab)));
-    if (next) selectDefinition(next, tab);
-    else {
-      setSelectedDefinitionID(null);
-      activityLocation.clearWorkflow();
-    }
   };
 
   const runLocalScan = async (followUpRun = false) => {
@@ -791,10 +644,7 @@ export function WorkflowsPage({
             }
             definitions={visibleDefinitions}
             selectedId={selectedDefinition?.id ?? null}
-            filter={definitionTab}
             onSelect={selectDefinition}
-            onFilterChange={selectDefinitionTab}
-            onCreate={() => setModalMode("create-workflow")}
           />
           <div
             id="workflow-definition-panel"
@@ -810,7 +660,6 @@ export function WorkflowsPage({
               <AvailabilityWatchPanel
                 definition={selectedDefinition}
                 triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition.id)}
-                nodeTypes={nodeTypes}
                 recentRuns={recentDefinitionRuns}
                 readOnly={readOnly}
                 canManageDownloads={canManageDownloads}
@@ -826,8 +675,6 @@ export function WorkflowsPage({
                 definitionTriggers={triggers.filter(
                   (trigger) => trigger.workflowDefinitionId === selectedDefinition?.id,
                 )}
-                nodeTypes={nodeTypes}
-                readonly={readOnly || !selectedDefinition?.editable}
                 canManageTriggers={!readOnly && (selectedDefinition?.id ?? 0) > 0}
                 systemRunKinds={selectedSystemRunKinds}
                 isSystemActionRunning={systemActionBusy}
@@ -842,82 +689,16 @@ export function WorkflowsPage({
                 onRunPreset={runPreset}
                 recentRuns={recentDefinitionRuns}
                 onOpenRun={openActivityRun}
-                onRunDefinition={
-                  !readOnly && selectedDefinition?.scope === "user"
-                    ? (inputs = {}, autoPreview = false) =>
-                        setWorkflowLaunch({ definition: selectedDefinition, inputs, autoPreview })
-                    : undefined
-                }
                 onCreateTrigger={createAutomationTrigger}
                 onEditTrigger={editAutomationTrigger}
                 onToggleTrigger={toggleAutomationTrigger}
-                emptyText={definitionTab === "custom" ? workflowCopy("noCustomDefinitions") : definitionEmptyText}
-                onEditDefinition={() => setModalMode("edit-workflow")}
-                onEditNode={(index) => {
-                  setEditingNodeIndex(index);
-                  setModalMode("edit-node");
-                }}
+                emptyText={definitionEmptyText}
               />
             )}
           </div>
         </div>
       }
 
-      {modalMode === "create-workflow" && (
-        <WorkflowComposer
-          definition={null}
-          nodeTypes={nodeTypes}
-          readOnly={readOnly}
-          onClose={() => setModalMode(null)}
-          onSaved={(definition) => {
-            setDefinitions((current) => [...current.filter((item) => item.id !== definition.id), definition]);
-            if (definitionTab === "built-in") {
-              setDefinitionTab("custom");
-              window.localStorage.setItem(workflowDefinitionTabStorageKey, "custom");
-            }
-            selectDefinition(definition, definitionTab === "built-in" ? "custom" : definitionTab);
-            setModalMode(null);
-            refresh();
-          }}
-        />
-      )}
-      {modalMode === "edit-workflow" &&
-        selectedDefinition &&
-        parseWorkflowDefinition(selectedDefinition.definitionJson).kind === "v2" && (
-          <WorkflowComposer
-            definition={selectedDefinition}
-            triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition.id)}
-            nodeTypes={nodeTypes}
-            readOnly={readOnly}
-            onClose={() => setModalMode(null)}
-            onDeleted={() => {
-              const deletedID = selectedDefinition.id;
-              const deletedName = selectedDefinition.displayName;
-              setDefinitions((current) => current.filter((definition) => definition.id !== deletedID));
-              setSelectedDefinitionID(null);
-              setModalMode(null);
-              refresh();
-              toast.success(workflowCopy("deletedWorkflow", { name: deletedName }));
-            }}
-            onSaved={(definition) => {
-              selectDefinition(definition);
-              setModalMode(null);
-              refresh();
-            }}
-          />
-        )}
-      {modalMode === "edit-node" && selectedDefinition && editingNodeIndex !== null && (
-        <NodeModal
-          definition={selectedDefinition}
-          nodeTypes={nodeTypes}
-          nodeIndex={editingNodeIndex}
-          onClose={() => setModalMode(null)}
-          onSaved={() => {
-            setModalMode(null);
-            refresh();
-          }}
-        />
-      )}
       {modalMode === "create-trigger" && selectedDefinition && (
         <TriggerModal
           definition={selectedDefinition}
@@ -952,18 +733,6 @@ export function WorkflowsPage({
           }}
         />
       )}
-      {workflowLaunch && (
-        <WorkflowRunDialog
-          definition={workflowLaunch.definition}
-          initialInputs={workflowLaunch.inputs}
-          autoPreview={workflowLaunch.autoPreview}
-          onClose={() => setWorkflowLaunch(null)}
-          onQueued={(runId) => {
-            setWorkflowLaunch(null);
-            activityLocation.openRun(runId, workflowLaunch.definition.code);
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -973,7 +742,6 @@ type AvailabilityWatchDialog = "configure" | "monitoring" | "ready" | null;
 function AvailabilityWatchPanel({
   definition,
   triggers,
-  nodeTypes,
   recentRuns,
   readOnly,
   canManageDownloads,
@@ -985,7 +753,6 @@ function AvailabilityWatchPanel({
 }: {
   definition: WorkflowDefinition;
   triggers: WorkflowTrigger[];
-  nodeTypes: WorkflowNodeType[];
   recentRuns: WorkflowRun[];
   readOnly: boolean;
   canManageDownloads: boolean;
@@ -1139,7 +906,7 @@ function AvailabilityWatchPanel({
           </div>
         </section>
 
-        <DefinitionNodeCanvas nodes={nodes} nodeTypes={nodeTypes} readonly onEditNode={() => undefined} />
+        <DefinitionNodeCanvas nodes={nodes} />
         <div className="grid min-w-0 gap-x-10 gap-y-5 lg:grid-cols-2">
           <WorkflowAutomationPanel
             definition={definition}
@@ -1508,8 +1275,6 @@ function WorkflowMetadataErrorState({ message, onRetry }: { message: string; onR
 function WorkflowDetail({
   definition,
   definitionTriggers = [],
-  nodeTypes,
-  readonly,
   canManageTriggers,
   systemRunKinds,
   isSystemActionRunning,
@@ -1524,18 +1289,13 @@ function WorkflowDetail({
   onRunPreset,
   recentRuns = [],
   onOpenRun,
-  onRunDefinition,
   emptyText = workflowCopy("selectWorkflowNodePipeline"),
-  onEditDefinition,
   onCreateTrigger,
   onEditTrigger,
   onToggleTrigger,
-  onEditNode,
 }: {
   definition: WorkflowDefinition | null;
   definitionTriggers?: WorkflowTrigger[];
-  nodeTypes: WorkflowNodeType[];
-  readonly: boolean;
   canManageTriggers: boolean;
   systemRunKinds?: SystemRunKind[];
   isSystemActionRunning?: (kind: SystemRunKind) => boolean;
@@ -1550,65 +1310,28 @@ function WorkflowDetail({
   onRunPreset?: (inputs: Record<string, unknown>) => Promise<boolean>;
   recentRuns?: WorkflowRun[];
   onOpenRun?: (run: WorkflowRun) => void;
-  onRunDefinition?: (inputs?: Record<string, unknown>, autoPreview?: boolean) => void;
   emptyText?: string;
-  onEditDefinition?: () => void;
   onCreateTrigger: (triggerType: CreatableAutomationTriggerType) => void;
   onEditTrigger: (trigger: WorkflowTrigger) => void;
   onToggleTrigger: (trigger: WorkflowTrigger, enabled: boolean) => Promise<void>;
-  onEditNode: (index: number) => void;
 }) {
   const [configuredSystemRun, setConfiguredSystemRun] = useState<
     "local_scan" | "dlsite_popular" | "remote_popular" | "preset" | null
   >(null);
-  const [quickRunValues, setQuickRunValues] = useState<Record<string, string>>({});
   const definitionID = definition?.id ?? null;
   const definitionJson = definition?.definitionJson ?? "";
 
   useEffect(() => {
     setConfiguredSystemRun(null);
-    const parsed = definitionJson ? parseWorkflowDefinition(definitionJson) : null;
-    setQuickRunValues(
-      parsed?.kind === "v2"
-        ? Object.fromEntries(parsed.document.inputs.map((input) => [input.key, input.defaultValue ?? ""]))
-        : {},
-    );
   }, [definitionID, definitionJson]);
 
-  const parsedDefinition = useMemo(() => parseWorkflowDefinition(definitionJson), [definitionJson]);
+  const nodes = useMemo(() => parseNodes(definitionJson), [definitionJson]);
   if (!definition) {
     return <EmptyPanel text={emptyText} />;
   }
-  const nodes = parsedDefinition.kind === "v2" ? parsedDefinition.document.nodes : parsedDefinition.nodes;
-  const workflowInputs = parsedDefinition.kind === "v2" ? parsedDefinition.document.inputs : [];
-  const quickRunInput =
-    workflowInputs.length === 1 && workflowInputs[0].type !== "work_codes" ? workflowInputs[0] : null;
-  const legacyUpgrade =
-    parsedDefinition.kind === "legacy"
-      ? upgradeLegacyWorkflowDefinition(parsedDefinition.nodes, definitionTriggers)
-      : null;
-  const composerEditable = parsedDefinition.kind === "v2";
   const displayDefinition = localizedWorkflowDefinition(definition);
   const headerActions = (
     <>
-      {composerEditable && onEditDefinition && (
-        <Button size="sm" variant={onRunDefinition ? "outline" : "default"} onClick={onEditDefinition}>
-          <Edit3 className="h-4 w-4" />
-          {workflowCopy("editWorkflow")}
-        </Button>
-      )}
-      {!readonly && parsedDefinition.kind === "legacy" && (
-        <Button size="sm" variant="outline" disabled title={workflowCopy("legacyUpgradeReserved")}>
-          <FileJson className="h-4 w-4" />
-          {workflowCopy("upgradeWorkflow")}
-        </Button>
-      )}
-      {onRunDefinition && parsedDefinition.kind === "v2" && !quickRunInput && (
-        <Button size="sm" onClick={() => onRunDefinition()}>
-          <Play className="h-4 w-4" />
-          {workflowInputs.length > 0 ? workflowCopy("configure") : workflowCopy("previewRun")}
-        </Button>
-      )}
       {definition.scope === "system" &&
         systemRunKinds &&
         onRunSystemAction &&
@@ -1651,37 +1374,7 @@ function WorkflowDetail({
           actions={headerActions}
         />
 
-        {definition.scope === "user" && parsedDefinition.kind === "legacy" && (
-          <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-            {workflowCopy("legacyNotice")}
-            {legacyUpgrade?.kind === "blocked" && (
-              <span className="ml-1">
-                {workflowCopy("compatibilityCheck", { reasons: legacyUpgrade.reasons.join(" ") })}
-              </span>
-            )}
-          </div>
-        )}
-        {parsedDefinition.kind === "v2" ? (
-          <WorkflowCanvas
-            document={parsedDefinition.document}
-            nodeTypes={nodeTypes}
-            selectedNodeId=""
-            readonly
-            compact
-            onChange={() => undefined}
-            onSelectNode={() => undefined}
-          />
-        ) : (
-          <DefinitionNodeCanvas nodes={nodes} nodeTypes={nodeTypes} readonly onEditNode={onEditNode} />
-        )}
-        {onRunDefinition && quickRunInput && (
-          <CustomWorkflowQuickRun
-            input={quickRunInput}
-            value={quickRunValues[quickRunInput.key] ?? ""}
-            onChange={(value) => setQuickRunValues((current) => ({ ...current, [quickRunInput.key]: value }))}
-            onPreview={() => onRunDefinition({ [quickRunInput.key]: quickRunValues[quickRunInput.key] ?? "" }, true)}
-          />
-        )}
+        <DefinitionNodeCanvas nodes={nodes} />
 
         <div className="grid min-w-0 gap-x-10 gap-y-5 lg:grid-cols-2">
           <WorkflowAutomationPanel
@@ -1695,7 +1388,6 @@ function WorkflowDetail({
           />
           {onOpenRun && <RecentWorkflowRuns runs={recentRuns} onOpen={onOpenRun} />}
         </div>
-        {parsedDefinition.kind === "legacy" && !preset && <WorkflowHints nodes={nodes} nodeTypes={nodeTypes} compact />}
       </CardContent>
       {definition.code === "remote_popular_collection" && remoteSourceUnavailable && (
         <div
@@ -1796,65 +1488,6 @@ function LocalScanRunPanel({
       </Button>
     </div>
   );
-}
-
-function CustomWorkflowQuickRun({
-  input,
-  value,
-  onChange,
-  onPreview,
-}: {
-  input: WorkflowInputDefinition;
-  value: string;
-  onChange: (value: string) => void;
-  onPreview: () => void;
-}) {
-  const missingRequiredValue = input.required && !value.trim();
-  return (
-    <form
-      className="flex flex-col gap-2 rounded-md border bg-muted/25 p-3 sm:flex-row sm:items-end"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!missingRequiredValue) onPreview();
-      }}
-      aria-label={workflowCopy("quickRunInputs")}
-    >
-      <label className="grid min-w-0 flex-1 gap-1.5 text-sm">
-        <span className="font-medium">
-          {input.label}
-          {input.required && <span className="text-error-foreground"> *</span>}
-        </span>
-        <Input
-          fieldSize="sm"
-          className="w-full"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={workflowInputPlaceholder(input)}
-          autoCapitalize="off"
-          spellCheck={input.type === "text" || input.type === "voice_name"}
-        />
-      </label>
-      <Button type="submit" size="sm" className="h-9 shrink-0" disabled={missingRequiredValue}>
-        <Play className="h-4 w-4" />
-        {workflowCopy("preview")}
-      </Button>
-    </form>
-  );
-}
-
-function workflowInputPlaceholder(input: WorkflowInputDefinition) {
-  switch (input.type) {
-    case "circle_id":
-      return "RG012345";
-    case "series_id":
-      return "SRI0000000000";
-    case "work_code":
-      return "RJ00000000";
-    case "voice_name":
-      return workflowCopy("voiceName");
-    default:
-      return input.label;
-  }
 }
 
 function systemRunKindLabel(kind: SystemRunKind) {
@@ -3182,54 +2815,26 @@ type WorkflowCanvasConnection = {
   dataType: string;
 };
 
-function DefinitionNodeCanvas({
-  nodes,
-  nodeTypes,
-  readonly,
-  onEditNode,
-}: {
-  nodes: WorkflowNode[];
-  nodeTypes: WorkflowNodeType[];
-  readonly: boolean;
-  onEditNode: (index: number) => void;
-}) {
+function DefinitionNodeCanvas({ nodes }: { nodes: WorkflowNode[] }) {
   const [selectedNodeID, setSelectedNodeID] = useState("");
   const selectedIndex = nodes.findIndex((node, index) => `${node.id}-${index}` === selectedNodeID);
   const selectedNode = selectedIndex >= 0 ? nodes[selectedIndex] : null;
   const canvasNodes = nodes.map((node, index) => ({
     id: `${node.id}-${index}`,
     title: node.displayName || node.id,
-    subtitle: nodeSubtitle(node.type, nodeTypes),
+    subtitle: nodeSubtitle(node.type),
     status: "idle",
     detail: summarizeJSON(JSON.stringify(node.config ?? {})) || node.type,
   }));
   return (
     <div className="space-y-2">
-      <WorkflowNodeCanvas
-        nodes={canvasNodes}
-        responsiveLinear
-        onNodeClick={setSelectedNodeID}
-        onNodeDoubleClick={
-          readonly
-            ? undefined
-            : (nodeID) => {
-                const index = canvasNodes.findIndex((node) => node.id === nodeID);
-                if (index >= 0) onEditNode(index);
-              }
-        }
-      />
+      <WorkflowNodeCanvas nodes={canvasNodes} responsiveLinear onNodeClick={setSelectedNodeID} />
       {selectedNode && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2">
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold">{selectedNode.displayName || selectedNode.id}</div>
-            <div className="text-xs text-muted-foreground">{nodeSubtitle(selectedNode.type, nodeTypes)}</div>
+            <div className="text-xs text-muted-foreground">{nodeSubtitle(selectedNode.type)}</div>
           </div>
-          {!readonly && (
-            <Button size="sm" variant="outline" onClick={() => onEditNode(selectedIndex)}>
-              <Edit3 className="h-4 w-4" />
-              Edit
-            </Button>
-          )}
         </div>
       )}
     </div>
@@ -3350,14 +2955,12 @@ function WorkflowNodeCanvas({
   nodes,
   connections,
   onNodeClick,
-  onNodeDoubleClick,
   compact = false,
   responsiveLinear = false,
 }: {
   nodes: WorkflowCanvasItem[];
   connections?: WorkflowCanvasConnection[];
   onNodeClick?: (nodeID: string) => void;
-  onNodeDoubleClick?: (nodeID: string) => void;
   compact?: boolean;
   responsiveLinear?: boolean;
 }) {
@@ -3467,7 +3070,6 @@ function WorkflowNodeCanvas({
         minZoom={responsiveLinear ? 0.7 : 0.45}
         maxZoom={1.5}
         onNodeClick={(_, node) => onNodeClick?.(node.id)}
-        onNodeDoubleClick={(_, node) => onNodeDoubleClick?.(node.id)}
         proOptions={{ hideAttribution: true }}
       >
         <WorkflowCanvasRuntimeSync nodeIDs={nodeIDs} layoutKey={layoutKey} />
@@ -3527,8 +3129,7 @@ function supportedAutomationTriggerTypes(definition: WorkflowDefinition, isPrese
     return ["startup", "filesystem_event", "schedule"];
   if (definition.scope === "system" && configurableSystemWorkflowCodes.has(definition.code))
     return automationTriggerTypes;
-  if (definition.scope !== "user" || !definition.editable) return [];
-  return parseWorkflowDefinition(definition.definitionJson).kind === "v2" ? automationTriggerTypes : [];
+  return [];
 }
 
 function workflowTriggerCondition(trigger: WorkflowTrigger) {
@@ -3686,216 +3287,6 @@ function WorkflowAutomationPanel({
   );
 }
 
-function WorkflowModal({
-  title,
-  definition,
-  nodeTypes,
-  onClose,
-  onSaved,
-}: {
-  title: string;
-  definition: WorkflowDefinition | null;
-  nodeTypes: WorkflowNodeType[];
-  onClose: () => void;
-  onSaved: (definition: WorkflowDefinition) => void;
-}) {
-  const [code, setCode] = useState(definition?.code ?? `custom_workflow_${Date.now().toString().slice(-5)}`);
-  const [displayName, setDisplayName] = useState(definition?.displayName ?? workflowCopy("newWorkflow"));
-  const [description, setDescription] = useState(definition?.description ?? "");
-  const [templateId, setTemplateID] = useState(workflowTemplates[1].id);
-  const [nodes, setNodes] = useState<WorkflowNode[]>(
-    definition ? parseNodes(definition.definitionJson) : workflowTemplates[1].nodes,
-  );
-  const recommendedPhase = recommendedNextPhase(nodes, nodeTypes);
-  const [insertPhase, setInsertPhase] = useState(recommendedPhase);
-  const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setInsertPhase(recommendedNextPhase(nodes, nodeTypes));
-  }, [nodes, nodeTypes]);
-
-  const save = async () => {
-    setSaving(true);
-    setError("");
-    try {
-      const payload = { code, displayName, description, definitionJson: JSON.stringify({ nodes }) };
-      const saved = definition
-        ? await api.updateWorkflowDefinition(definition.id, payload)
-        : await api.createWorkflowDefinition(payload);
-      onSaved(saved);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : workflowCopy("saveFailed"));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const remove = async () => {
-    if (!definition) return;
-    setSaving(true);
-    try {
-      await api.deleteWorkflowDefinition(definition.id);
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : workflowCopy("deleteFailed"));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Modal title={title} onClose={onClose}>
-      <div className="grid gap-3">
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field label={workflowCopy("code")}>
-            <Input
-              fieldSize="sm"
-              value={code}
-              disabled={!!definition}
-              onChange={(event) => setCode(event.target.value)}
-            />
-          </Field>
-          <Field label={workflowCopy("name")}>
-            <Input fieldSize="sm" value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
-          </Field>
-        </div>
-        {!definition && (
-          <Field label={workflowCopy("template")}>
-            <NativeSelect
-              fieldSize="sm"
-              value={templateId}
-              onChange={(event) => {
-                setTemplateID(event.target.value);
-                setNodes(
-                  workflowTemplates.find((template) => template.id === event.target.value)?.nodes ??
-                    workflowTemplates[0].nodes,
-                );
-              }}
-            >
-              {workflowTemplates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.label}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
-        )}
-        <Field label={workflowCopy("description")}>
-          <Textarea value={description} onChange={(event) => setDescription(event.target.value)} />
-        </Field>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-sm font-medium">{workflowCopy("nodes")}</div>
-            <div className="flex items-center gap-2">
-              <NativeSelect
-                fieldSize="sm"
-                value={insertPhase}
-                onChange={(event) => setInsertPhase(event.target.value)}
-                aria-label={workflowCopy("nodePhaseToAdd")}
-              >
-                {availableInsertPhases(nodeTypes).map((phase) => (
-                  <option key={phase} value={phase}>
-                    {phase}
-                  </option>
-                ))}
-              </NativeSelect>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  setNodes((current) => [...current, createSuggestedNode(current, nodeTypes, insertPhase)])
-                }
-              >
-                <Plus className="h-4 w-4" />
-                {workflowCopy("addNode")}
-              </Button>
-            </div>
-          </div>
-          <WorkflowHints nodes={nodes} nodeTypes={nodeTypes} />
-          <div className="grid gap-2">
-            {nodes.map((node, index) => (
-              <NodeInlineEditor
-                key={`${node.id}-${index}`}
-                node={node}
-                nodeTypes={nodeTypes}
-                onChange={(patch) => setNodes(updateNodes(nodes, index, patch))}
-                onRemove={() => setNodes(nodes.filter((_, nodeIndex) => nodeIndex !== index))}
-              />
-            ))}
-          </div>
-        </div>
-        {error && <ErrorPanel error={error} />}
-        <div className="flex justify-end gap-2">
-          {definition && (
-            <Button variant="outline" onClick={remove} disabled={saving}>
-              <Trash2 className="h-4 w-4" />
-              {workflowCopy("delete")}
-            </Button>
-          )}
-          <Button onClick={save} disabled={saving}>
-            <Save className="h-4 w-4" />
-            {saving ? workflowCopy("saving") : workflowCopy("save")}
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-function NodeModal({
-  definition,
-  nodeTypes,
-  nodeIndex,
-  onClose,
-  onSaved,
-}: {
-  definition: WorkflowDefinition;
-  nodeTypes: WorkflowNodeType[];
-  nodeIndex: number;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const nodes = parseNodes(definition.definitionJson);
-  const [node, setNode] = useState<WorkflowNode>(nodes[nodeIndex] ?? { id: "node", type: "filter_candidates" });
-  const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const save = async () => {
-    setSaving(true);
-    setError("");
-    try {
-      const nextNodes = updateNodes(nodes, nodeIndex, node);
-      await api.updateWorkflowDefinition(definition.id, {
-        code: definition.code,
-        displayName: definition.displayName,
-        description: definition.description,
-        definitionJson: JSON.stringify({ nodes: nextNodes }),
-      });
-      onSaved();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : workflowCopy("saveFailed"));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Modal title={workflowCopy("editNode")} onClose={onClose}>
-      <div className="space-y-3">
-        <NodeInlineEditor node={node} nodeTypes={nodeTypes} onChange={(patch) => setNode({ ...node, ...patch })} />
-        {error && <ErrorPanel error={error} />}
-        <div className="flex justify-end">
-          <Button onClick={save} disabled={saving}>
-            <Save className="h-4 w-4" />
-            {saving ? workflowCopy("saving") : workflowCopy("save")}
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 function TriggerModal({
   definition,
   preset = null,
@@ -3921,8 +3312,6 @@ function TriggerModal({
     trigger?.triggerType === "schedule"
       ? trigger.triggerType
       : initialTriggerType;
-  const selectedParsed = parseWorkflowDefinition(definition.definitionJson);
-  const dagDocument = selectedParsed.kind === "v2" ? selectedParsed.document : null;
   const [systemConfig, setSystemConfig] = useState<SystemWorkflowTriggerConfig>(() =>
     workflowSystemTriggerConfig(definition.code, trigger),
   );
@@ -3935,22 +3324,6 @@ function TriggerModal({
     const value = parseJSONRecord(trigger?.scheduleJson ?? "").intervalMinutes;
     return typeof value === "number" ? value : 60;
   });
-  const [scheduledInputs, setScheduledInputs] = useState<Record<string, string>>(() => {
-    const inputs = parseJSONRecord(trigger?.configJson ?? "").inputs;
-    if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) {
-      return Object.fromEntries(
-        dagDocument?.inputs.flatMap((input) =>
-          input.defaultValue === undefined ? [] : [[input.key, input.defaultValue]],
-        ) ?? [],
-      );
-    }
-    return Object.fromEntries(
-      Object.entries(inputs).map(([key, value]) => [
-        key,
-        Array.isArray(value) ? value.join(", ") : String(value ?? ""),
-      ]),
-    );
-  });
   const [presetValues, setPresetValues] = useState<PresetFormValues>(() =>
     preset ? presetValuesFromInputs(preset, parseJSONRecord(trigger?.configJson ?? "").inputs) : {},
   );
@@ -3959,23 +3332,10 @@ function TriggerModal({
   const presetTriggerBlockers = preset
     ? presetBlockers(preset, presetValues, { canFetch, automated: true }).map((blocker) => presetBlockerText(blocker))
     : [];
-  const missingScheduledInputs =
-    dagDocument?.inputs.filter((input) => input.required && !scheduledInputs[input.key]?.trim()) ?? [];
-  const invalidScheduledInputs =
-    dagDocument?.inputs.filter(
-      (input) => input.type === "work_codes" && parseWorkCodes(scheduledInputs[input.key] ?? "").invalid.length > 0,
-    ) ?? [];
   const systemConfigBlockers = workflowSystemTriggerConfigBlockers(definition.code, systemConfig);
   const automationBlockers = [
-    ...(dagDocument?.policy.requirePreview ? [workflowCopy("disableRequirePreview")] : []),
     ...(triggerType === "schedule" && (intervalMinutes < 5 || intervalMinutes > 10080)
       ? [workflowCopy("intervalRange")]
-      : []),
-    ...(missingScheduledInputs.length > 0
-      ? [workflowCopy("requiredInputs", { inputs: missingScheduledInputs.map((input) => input.label).join(", ") })]
-      : []),
-    ...(invalidScheduledInputs.length > 0
-      ? [workflowCopy("invalidWorkCodes", { inputs: invalidScheduledInputs.map((input) => input.label).join(", ") })]
       : []),
     ...systemConfigBlockers,
     ...presetTriggerBlockers,
@@ -3986,14 +3346,6 @@ function TriggerModal({
     setError("");
     try {
       if (automationBlockers.length > 0) throw new Error(automationBlockers[0]);
-      const resolvedInputs = dagDocument
-        ? Object.fromEntries(
-            dagDocument.inputs.flatMap((input) => {
-              const value = scheduledInputs[input.key]?.trim() ?? "";
-              return !input.required && value === "" ? [] : [[input.key, value]];
-            }),
-          )
-        : null;
       const payload = {
         workflowDefinitionId: definition.id,
         displayName,
@@ -4005,9 +3357,7 @@ function TriggerModal({
             : (trigger?.scheduleJson ?? JSON.stringify({ type: "startup" })),
         configJson: preset
           ? JSON.stringify({ inputs: presetInputsPayload(preset, presetValues) })
-          : dagDocument
-            ? JSON.stringify({ inputs: resolvedInputs })
-            : JSON.stringify(workflowSystemTriggerConfigPayload(definition.code, triggerType, systemConfig)),
+          : JSON.stringify(workflowSystemTriggerConfigPayload(definition.code, triggerType, systemConfig)),
         nextRunAt: null,
       };
       const saved = trigger
@@ -4086,28 +3436,6 @@ function TriggerModal({
             <span>{workflowCopy("enabled")}</span>
           </div>
         </div>
-        {dagDocument && dagDocument.inputs.length > 0 && (
-          <div className="grid gap-3 md:grid-cols-2">
-            {dagDocument.inputs.map((input) => (
-              <Field key={input.key} label={`${input.label}${input.required ? " *" : ""}`}>
-                {input.type === "work_codes" ? (
-                  <WorkCodesField
-                    value={scheduledInputs[input.key] ?? ""}
-                    onChange={(value) => setScheduledInputs((current) => ({ ...current, [input.key]: value }))}
-                  />
-                ) : (
-                  <Input
-                    fieldSize="sm"
-                    value={scheduledInputs[input.key] ?? ""}
-                    onChange={(event) =>
-                      setScheduledInputs((current) => ({ ...current, [input.key]: event.target.value }))
-                    }
-                  />
-                )}
-              </Field>
-            ))}
-          </div>
-        )}
         {preset ? (
           <PresetParameterFields
             idPrefix="preset-trigger"
@@ -4644,219 +3972,6 @@ function utcShortDate(value: Date) {
   return `${String(value.getUTCFullYear()).slice(-2)}${String(value.getUTCMonth() + 1).padStart(2, "0")}${String(value.getUTCDate()).padStart(2, "0")}`;
 }
 
-function NodeInlineEditor({
-  node,
-  nodeTypes,
-  onChange,
-  onRemove,
-}: {
-  node: WorkflowNode;
-  nodeTypes: WorkflowNodeType[];
-  onChange: (patch: Partial<WorkflowNode>) => void;
-  onRemove?: () => void;
-}) {
-  const visibleTypes = nodeTypes.filter((type) => type.userVisible || type.type === node.type);
-  const metadata = nodeTypes.find((type) => type.type === node.type);
-  const configFields = metadata ? schemaFieldNames(metadata.configSchema) : [];
-  const configKey = JSON.stringify(node.config ?? {});
-  const [configDraft, setConfigDraft] = useState(JSON.stringify(node.config ?? {}, null, 2));
-  const [configError, setConfigError] = useState("");
-
-  useEffect(() => {
-    setConfigDraft(JSON.stringify(node.config ?? {}, null, 2));
-    setConfigError("");
-  }, [node.id, node.type, configKey]);
-
-  const commitConfigDraft = () => {
-    try {
-      const parsed = JSON.parse(configDraft);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        setConfigError(workflowCopy("configMustJson"));
-        return;
-      }
-      setConfigError("");
-      onChange({ config: parsed as Record<string, unknown> });
-    } catch {
-      setConfigError(workflowCopy("configJsonInvalid"));
-    }
-  };
-
-  return (
-    <div className="grid gap-3 rounded-md border p-3">
-      <div className="grid gap-2 md:grid-cols-[1fr_1.3fr_1fr_auto]">
-        <Input fieldSize="sm" value={node.id} onChange={(event) => onChange({ id: event.target.value })} />
-        <NativeSelect
-          fieldSize="sm"
-          value={node.type}
-          onChange={(event) => onChange({ type: event.target.value, config: {} })}
-        >
-          {phaseOrder.map((phase) => {
-            const options = visibleTypes.filter((type) => type.phase === phase);
-            if (options.length === 0) return null;
-            return (
-              <optgroup key={phase} label={phase}>
-                {options.map((option) => (
-                  <option key={option.type} value={option.type}>
-                    {option.displayName}
-                  </option>
-                ))}
-              </optgroup>
-            );
-          })}
-          {visibleTypes.some((type) => !phaseOrder.includes(type.phase as (typeof phaseOrder)[number])) && (
-            <optgroup label={workflowCopy("other")}>
-              {visibleTypes
-                .filter((type) => !phaseOrder.includes(type.phase as (typeof phaseOrder)[number]))
-                .map((option) => (
-                  <option key={option.type} value={option.type}>
-                    {option.displayName}
-                  </option>
-                ))}
-            </optgroup>
-          )}
-        </NativeSelect>
-        <Input
-          fieldSize="sm"
-          placeholder={workflowCopy("displayName")}
-          value={node.displayName ?? ""}
-          onChange={(event) => onChange({ displayName: event.target.value })}
-        />
-        {onRemove && (
-          <Button size="icon" variant="outline" aria-label={workflowCopy("removeNode")} onClick={onRemove}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        )}
-      </div>
-      {metadata && (
-        <div className="grid gap-3 md:grid-cols-[1fr_1fr]">
-          <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-            <div className="font-medium text-foreground">
-              {metadata.phase} · {metadata.type}
-            </div>
-            <div className="mt-1">{metadata.description}</div>
-            <div className="mt-2 grid gap-1">
-              <span>Config: {schemaFields(metadata.configSchema)}</span>
-              <span>Input: {schemaFields(metadata.inputSchema)}</span>
-              <span>Output: {schemaFields(metadata.outputSchema)}</span>
-            </div>
-          </div>
-          <div className="grid gap-3">
-            <ConfigFields
-              fields={configFields}
-              config={node.config ?? {}}
-              onChange={(config) => onChange({ config })}
-            />
-            <Field label={workflowCopy("configJson")}>
-              <Textarea
-                className="min-h-24 font-mono text-xs"
-                value={configDraft}
-                onBlur={commitConfigDraft}
-                onChange={(event) => setConfigDraft(event.target.value)}
-              />
-              {configError && <span className="text-xs text-error-foreground">{configError}</span>}
-            </Field>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ConfigFields({
-  fields,
-  config,
-  onChange,
-}: {
-  fields: string[];
-  config: Record<string, unknown>;
-  onChange: (config: Record<string, unknown>) => void;
-}) {
-  if (fields.length === 0) {
-    return (
-      <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-        {workflowCopy("noStructuredConfigFields")}
-      </div>
-    );
-  }
-
-  const updateField = (field: string, value: unknown) => {
-    const next = { ...config };
-    if (value === "" || (Array.isArray(value) && value.length === 0)) {
-      delete next[field];
-    } else {
-      next[field] = value;
-    }
-    onChange(next);
-  };
-
-  return (
-    <div className="grid gap-2 rounded-md border bg-background p-3">
-      <div className="text-xs font-medium text-muted-foreground">{workflowCopy("configFields")}</div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {fields.map((field) => {
-          const kind = configFieldKind(field);
-          const value = config[field];
-          if (kind === "boolean") {
-            return (
-              <div
-                key={field}
-                className="flex h-9 items-center justify-between gap-2 rounded-md border bg-card px-3 text-sm"
-              >
-                <span>{field}</span>
-                <Switch
-                  checked={Boolean(value)}
-                  onCheckedChange={(checked) => updateField(field, checked)}
-                  aria-label={workflowCopy("toggleField", { field })}
-                />
-              </div>
-            );
-          }
-          return (
-            <Field key={field} label={field}>
-              <Input
-                fieldSize="sm"
-                type={kind === "number" ? "number" : "text"}
-                value={formatConfigInputValue(value)}
-                onChange={(event) => updateField(field, parseConfigInputValue(event.target.value, kind, field))}
-              />
-            </Field>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function WorkflowHints({
-  nodes,
-  nodeTypes,
-  compact = false,
-}: {
-  nodes: WorkflowNode[];
-  nodeTypes: WorkflowNodeType[];
-  compact?: boolean;
-}) {
-  const hints = workflowHints(nodes, nodeTypes);
-  if (hints.length === 0) {
-    return compact ? null : (
-      <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
-        {workflowCopy("workflowShapeConsistent")}
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid gap-1 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
-      {hints.map((hint) => (
-        <div key={hint} className="flex gap-2">
-          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-          <span>{hint}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (
     <Dialog onClose={onClose} size="xl" dismissible={false} className="max-w-3xl">
@@ -5013,114 +4128,26 @@ function JsonPreview({ value, empty, compact = false }: { value: string; empty: 
 
 function parseNodes(definitionJson: string): WorkflowNode[] {
   try {
-    const parsed = JSON.parse(definitionJson) as { nodes?: WorkflowNode[] };
-    return parsed.nodes?.length ? parsed.nodes : workflowTemplates[0].nodes;
+    const parsed = JSON.parse(definitionJson) as { nodes?: unknown } | null;
+    if (!Array.isArray(parsed?.nodes)) return [];
+    return parsed.nodes.flatMap((node): WorkflowNode[] => {
+      if (!node || typeof node !== "object" || Array.isArray(node)) return [];
+      const { id, type, displayName, config } = node as Record<string, unknown>;
+      if (typeof id !== "string" || !id || typeof type !== "string" || !type) return [];
+      return [
+        {
+          id,
+          type,
+          ...(typeof displayName === "string" && displayName ? { displayName } : {}),
+          ...(config && typeof config === "object" && !Array.isArray(config)
+            ? { config: config as Record<string, unknown> }
+            : {}),
+        },
+      ];
+    });
   } catch {
-    return workflowTemplates[0].nodes;
+    return [];
   }
-}
-
-function updateNodes(nodes: WorkflowNode[], index: number, patch: Partial<WorkflowNode>) {
-  return nodes.map((node, nodeIndex) => (nodeIndex === index ? { ...node, ...patch } : node));
-}
-
-function availableInsertPhases(nodeTypes: WorkflowNodeType[]) {
-  const phases = phaseOrder.filter((phase) =>
-    nodeTypes.some((nodeType) => nodeType.userVisible && nodeType.phase === phase),
-  );
-  return phases.length > 0 ? phases : ["filter"];
-}
-
-function recommendedNextPhase(nodes: WorkflowNode[], nodeTypes: WorkflowNodeType[]) {
-  const phases = availableInsertPhases(nodeTypes);
-  if (nodes.length === 0) {
-    return phases.includes("target") ? "target" : phases[0];
-  }
-  const lastKnownNode = [...nodes]
-    .reverse()
-    .map((node) => nodeTypes.find((nodeType) => nodeType.type === node.type))
-    .find(Boolean);
-  if (!lastKnownNode) {
-    return phases[0];
-  }
-  const lastIndex = phaseOrder.indexOf(lastKnownNode.phase as (typeof phaseOrder)[number]);
-  const nextPhase = phaseOrder.slice(Math.max(0, lastIndex + 1)).find((phase) => phases.includes(phase));
-  return nextPhase ?? lastKnownNode.phase;
-}
-
-function createSuggestedNode(nodes: WorkflowNode[], nodeTypes: WorkflowNodeType[], phase: string): WorkflowNode {
-  const visibleTypes = nodeTypes.filter((nodeType) => nodeType.userVisible);
-  const selectedType = visibleTypes.find((nodeType) => nodeType.phase === phase) ?? visibleTypes[0] ?? nodeTypes[0];
-  const type = selectedType?.type ?? "filter_candidates";
-  const baseID = nodeIDBase(type);
-  const used = new Set(nodes.map((node) => node.id));
-  let id = baseID;
-  let suffix = 2;
-  while (used.has(id)) {
-    id = `${baseID}_${suffix}`;
-    suffix += 1;
-  }
-  return { id, type, displayName: selectedType?.displayName ?? type };
-}
-
-function nodeIDBase(type: string) {
-  return (
-    type
-      .replace(/^(select|discover|filter|match|plan|materialize|verify|sync|cleanup|dispatch)_/, "")
-      .replace(/[^a-z0-9_]/g, "_")
-      .replace(/^_+|_+$/g, "") || "node"
-  );
-}
-
-function workflowHints(nodes: WorkflowNode[], nodeTypes: WorkflowNodeType[]) {
-  const hints: string[] = [];
-  const typeMap = new Map(nodeTypes.map((nodeType) => [nodeType.type, nodeType]));
-  const seen = new Set<string>();
-  let hasTarget = false;
-  let hasCommit = false;
-  let lastPhaseIndex = -1;
-
-  nodes.forEach((node, index) => {
-    const nodeID = node.id.trim();
-    const metadata = typeMap.get(node.type);
-    if (!nodeID) {
-      hints.push(`Node ${index + 1} needs an id.`);
-    } else if (seen.has(nodeID)) {
-      hints.push(`Node id "${nodeID}" is duplicated.`);
-    }
-    seen.add(nodeID);
-
-    if (!metadata) {
-      hints.push(`${nodeID || `Node ${index + 1}`} uses an unknown type: ${node.type}.`);
-      return;
-    }
-
-    if (metadata.phase === "target") {
-      hasTarget = true;
-    }
-    if (metadata.phase === "commit") {
-      hasCommit = true;
-    }
-    const phaseIndex = phaseOrder.indexOf(metadata.phase as (typeof phaseOrder)[number]);
-    if (phaseIndex >= 0 && lastPhaseIndex > phaseIndex) {
-      hints.push(
-        `${nodeID || metadata.displayName} moves from a later phase back to ${metadata.phase}; that is allowed, but check the data flow.`,
-      );
-    }
-    if (phaseIndex >= 0) {
-      lastPhaseIndex = Math.max(lastPhaseIndex, phaseIndex);
-    }
-  });
-
-  if (!hasTarget) {
-    hints.push("Consider starting with a target node so the run has an explicit source or work set.");
-  }
-  if (!hasCommit) {
-    hints.push(
-      "This workflow has no commit node; it may inspect or materialize data without persisting library state.",
-    );
-  }
-  return hints.slice(0, 5);
 }
 
 function storedPositiveInt(key: string) {
@@ -5264,64 +4291,9 @@ function nullableNumberValue(value: unknown) {
   return number === null ? null : number;
 }
 
-function nodeSubtitle(type: string, nodeTypes: WorkflowNodeType[]) {
-  const metadata = nodeTypes.find((nodeType) => nodeType.type === type);
+function nodeSubtitle(type: string) {
+  const metadata = fallbackNodeTypes.find((nodeType) => nodeType.type === type);
   return metadata ? `${metadata.phase} · ${type}` : type;
-}
-
-function schemaFields(schemaJson: string) {
-  const fields = schemaFieldNames(schemaJson);
-  return fields.length > 0 ? fields.join(", ") : "none";
-}
-
-function schemaFieldNames(schemaJson: string) {
-  try {
-    const parsed = JSON.parse(schemaJson) as { properties?: Record<string, unknown> };
-    return Object.keys(parsed.properties ?? {});
-  } catch {
-    return [];
-  }
-}
-
-function configFieldKind(field: string) {
-  if (
-    /^(is|has|can)[A-Z_]/.test(field) ||
-    /enabled|overwrite|dryRun|force|include|mark|delete|clear|check/i.test(field)
-  ) {
-    return "boolean";
-  }
-  if (/count|limit|size|depth|days|page|minutes|seconds|gb|no$/i.test(field)) {
-    return "number";
-  }
-  return "text";
-}
-
-function formatConfigInputValue(value: unknown) {
-  if (Array.isArray(value)) {
-    return value.join(", ");
-  }
-  if (value === undefined || value === null || typeof value === "object") {
-    return "";
-  }
-  return String(value);
-}
-
-function parseConfigInputValue(value: string, kind: string, field: string) {
-  const trimmed = value.trim();
-  if (trimmed === "") {
-    return "";
-  }
-  if (kind === "number") {
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : trimmed;
-  }
-  if (/(ids|codes|paths)$/i.test(field) || trimmed.includes(",")) {
-    return trimmed
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-  return value;
 }
 
 function hasNonEmptyJSON(value: string) {

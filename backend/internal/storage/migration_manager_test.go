@@ -16,7 +16,7 @@ import (
 
 var numberedMigrationFilePattern = regexp.MustCompile(`^[0-9]{3}_[a-z0-9][a-z0-9_]*\.sql$`)
 
-const latestNumberedMigrationVersion = 34
+const latestNumberedMigrationVersion = 35
 
 func TestMigrationChecksumNormalizesLineEndings(t *testing.T) {
 	lf := []byte("CREATE TABLE probe (id INTEGER);\n-- stable\n")
@@ -55,7 +55,7 @@ func TestMigrateFreshDatabaseReusesBaselineAcrossAppReleases(t *testing.T) {
 	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = ?", latestNumberedMigrationVersion).Scan(&filename); err != nil {
 		t.Fatal(err)
 	}
-	if filename != "baseline/034_v0.6.0.sql" {
+	if filename != "baseline/035_v0.6.1.sql" {
 		t.Fatalf("baseline history filename = %q", filename)
 	}
 }
@@ -89,8 +89,8 @@ func TestMigrateUpgradesExistingDatabaseThroughNumberedChain(t *testing.T) {
 	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = ?", latestNumberedMigrationVersion).Scan(&filename); err != nil {
 		t.Fatal(err)
 	}
-	if filename != "034_user_preferences.sql" {
-		t.Fatalf("applied migration = %q, want 034_user_preferences.sql", filename)
+	if filename != "035_remove_custom_workflow_definitions.sql" {
+		t.Fatalf("applied migration = %q, want 035_remove_custom_workflow_definitions.sql", filename)
 	}
 }
 
@@ -122,7 +122,7 @@ func TestMigratePreservesMislabeledV060Baseline(t *testing.T) {
 	}
 	var filename, checksum, baselineChecksum, value string
 	var count int
-	if err := db.QueryRow(`SELECT filename, checksum FROM schema_migration`).Scan(&filename, &checksum); err != nil {
+	if err := db.QueryRow(`SELECT filename, checksum FROM schema_migration WHERE version = 34`).Scan(&filename, &checksum); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migration`).Scan(&count); err != nil {
@@ -134,10 +134,12 @@ func TestMigratePreservesMislabeledV060Baseline(t *testing.T) {
 	if err := db.QueryRow(`SELECT value_json FROM app_setting WHERE key = 'baseline_test'`).Scan(&value); err != nil {
 		t.Fatal(err)
 	}
-	if count != 1 || filename != "baseline/034_v0.5.5.sql" || checksum != originalChecksum || baselineChecksum != originalChecksum || value != `"retained"` {
+	// The corrected catalog keeps the historical baseline row and only appends the
+	// numbered migrations released after it.
+	if count != 2 || filename != "baseline/034_v0.5.5.sql" || checksum != originalChecksum || baselineChecksum != originalChecksum || value != `"retained"` {
 		t.Fatalf("baseline correction changed history or user data: count=%d filename=%q checksum=%q baseline=%q value=%q", count, filename, checksum, baselineChecksum, value)
 	}
-	if _, err := db.Exec(`UPDATE schema_migration SET checksum = 'tampered'`); err != nil {
+	if _, err := db.Exec(`UPDATE schema_migration SET checksum = 'tampered' WHERE version = 34`); err != nil {
 		t.Fatal(err)
 	}
 	if err := MigrateFS(db, migrations.Files, "v0.6.1"); err == nil || !strings.Contains(err.Error(), "checksum") {
@@ -157,13 +159,13 @@ func TestMigrateUpgradesRetiredBaselineLedger(t *testing.T) {
 			name:            "schema version 031 applies the remaining numbered migration",
 			baseline:        "baseline/031_current.sql",
 			previousVersion: 31,
-			wantHistory:     "baseline/031_current.sql,032_shared_availability_watch.sql,033_metadata_sync_issues.sql,034_user_preferences.sql",
+			wantHistory:     "baseline/031_current.sql,032_shared_availability_watch.sql,033_metadata_sync_issues.sql,034_user_preferences.sql,035_remove_custom_workflow_definitions.sql",
 		},
 		{
 			name:            "schema version 032 upgrades without replaying old migrations",
 			baseline:        "baseline/032_current.sql",
 			previousVersion: 32,
-			wantHistory:     "baseline/032_current.sql,033_metadata_sync_issues.sql,034_user_preferences.sql",
+			wantHistory:     "baseline/032_current.sql,033_metadata_sync_issues.sql,034_user_preferences.sql,035_remove_custom_workflow_definitions.sql",
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {

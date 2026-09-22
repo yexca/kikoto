@@ -42,10 +42,11 @@ as a self-hosted web application with a responsive player and an Android client.
 > Kikoto is under active development. Back up `config/` and `data/` before an upgrade, and review the [security model](docs/operations/security.md) before exposing an instance to a network.
 
 > [!NOTE]
-> **Planned change to custom workflows.** The next release may remove custom
-> workflow editing and provide only built-in preset workflows. Custom
-> workflows currently have too many issues while offering limited flexibility,
-> which makes them costly to maintain.
+> **Custom workflows have been removed.** Workflows are now built-in only. The
+> former custom editor is replaced by preset workflows (Follow a circle, Follow
+> a series, Follow a voice actor) that expose a small validated parameter set.
+> Upgrading deletes user-authored definitions and their triggers; their run
+> history stays readable in Activity.
 
 ## Key Features
 

@@ -1,34 +1,21 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowRight, FileAudio, Loader2, Search, Workflow, X } from "lucide-react";
+import { ArrowRight, FileAudio, Loader2, Search, X } from "lucide-react";
 
 import { commandActions, type CommandAction } from "@/app/commandActions";
 import { type NavigationItem, type PageID } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
 import { MobileSheet, MobileSheetBody, MobileSheetHeader } from "@/components/ui/mobile-sheet";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { parseWorkflowDefinition } from "@/features/workflows/definitionModel";
-import {
-  parseWorkflowCommand,
-  publishedWorkflowCommandsForUser,
-  workflowCommandInputValues,
-  workflowCommandUsage,
-} from "@/features/workflows/workflowCommands";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
-import { api, type WorkflowDefinition } from "@/lib/api";
 import { cx } from "@/lib/classNames";
 import { isWorkCode } from "@/lib/workCode";
-
-const WorkflowRunDialog = lazy(() =>
-  import("@/features/workflows/WorkflowRunDialog").then((module) => ({ default: module.WorkflowRunDialog })),
-);
 
 type CommandPaletteProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   hasPermission: (permission: string) => boolean;
   visibleNavItems: readonly NavigationItem[];
-  currentUserId: number | null;
   onBusyChange?: (busy: boolean) => void;
   onOpenPage: (id: PageID) => void;
   onOpenPath: (path: string, state?: unknown) => void;
@@ -43,7 +30,6 @@ export function CommandPalette({
   onOpenChange,
   hasPermission,
   visibleNavItems,
-  currentUserId,
   onBusyChange,
   onOpenPage,
   onOpenPath,
@@ -53,92 +39,21 @@ export function CommandPalette({
   const mobile = useMobileNavigationLayout();
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
-  const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
-  const [loadingWorkflows, setLoadingWorkflows] = useState(false);
-  const [workflowLaunch, setWorkflowLaunch] = useState<{
-    definition: WorkflowDefinition;
-    inputs: Record<string, unknown>;
-  } | null>(null);
-  const [workflowLaunchBusy, setWorkflowLaunchBusy] = useState(false);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const baseActions = useMemo<PaletteAction[]>(
     () => commandActions({ hasPermission, visibleNavItems, translate: t, onOpenPage, onOpenPath }),
     [hasPermission, t, visibleNavItems, onOpenPage, onOpenPath],
   );
-  const workflowCommands = useMemo(
-    () => publishedWorkflowCommandsForUser(definitions, currentUserId),
-    [currentUserId, definitions],
-  );
   const cleanQuery = query.trim();
-  const parsedCommand = useMemo(() => parseWorkflowCommand(query), [query]);
   const codeMatch = isWorkCode(cleanQuery);
-  const handleWorkflowBusyChange = useCallback(
-    (nextBusy: boolean) => {
-      setWorkflowLaunchBusy(nextBusy);
-      onBusyChange?.(nextBusy);
-    },
-    [onBusyChange],
-  );
 
   const actions = useMemo<PaletteAction[]>(() => {
-    if (parsedCommand.isCommand) {
-      const matching = workflowCommands.filter(
-        (command) => !parsedCommand.alias || command.alias.toLowerCase().startsWith(parsedCommand.alias.toLowerCase()),
-      );
-      const exact = matching.filter((command) => command.alias.toLowerCase() === parsedCommand.alias.toLowerCase());
-      if (exact.length > 0) {
-        return exact.map((command) => {
-          const parsedValues = workflowCommandInputValues(parsedCommand.arguments, command.document.inputs);
-          const errors = [parsedCommand.error, ...parsedValues.errors].filter(Boolean);
-          const launchMode = command.document.policy.requirePreview
-            ? t("commands.previewRequired")
-            : t("commands.previewThenRun");
-          return {
-            id: `workflow:${command.definition.id}`,
-            label: `${command.document.policy.requirePreview ? t("commands.preview") : t("commands.run")} ${command.definition.displayName}`,
-            description:
-              errors.length > 0
-                ? errors.join(" ")
-                : `${launchMode} · ${workflowCommandUsage(command.alias, command.document.inputs)}`,
-            icon: errors.length > 0 ? <Workflow className="h-4 w-4 opacity-50" /> : <Workflow className="h-4 w-4" />,
-            disabled: errors.length > 0,
-            closeOnRun: false,
-            run: () => setWorkflowLaunch({ definition: command.definition, inputs: parsedValues.values }),
-          };
-        });
-      }
-      return matching.map((command) => ({
-        id: `workflow-suggest:${command.definition.id}`,
-        label: `/${command.alias}`,
-        description: `${command.definition.displayName} · ${workflowCommandUsage(command.alias, command.document.inputs)}`,
-        icon: <Workflow className="h-4 w-4" />,
-        closeOnRun: false,
-        run: () => {
-          setQuery(`/${command.alias}${command.document.inputs.length > 0 ? " " : ""}`);
-          window.setTimeout(() => inputRef.current?.focus(), 0);
-        },
-      }));
-    }
-
     const queryLower = cleanQuery.toLowerCase();
     const filtered = queryLower
       ? baseActions.filter((action) => `${action.label} ${action.description}`.toLowerCase().includes(queryLower))
       : baseActions;
-    const commandSuggestions = !queryLower
-      ? workflowCommands.slice(0, 5).map((command): PaletteAction => ({
-          id: `workflow-home:${command.definition.id}`,
-          label: `/${command.alias}`,
-          description: `${command.definition.displayName} · ${workflowCommandUsage(command.alias, command.document.inputs)}`,
-          icon: <Workflow className="h-4 w-4" />,
-          closeOnRun: false,
-          run: () => {
-            setQuery(`/${command.alias}${command.document.inputs.length > 0 ? " " : ""}`);
-            window.setTimeout(() => inputRef.current?.focus(), 0);
-          },
-        }))
-      : [];
-    if (!codeMatch) return [...commandSuggestions, ...filtered];
+    if (!codeMatch) return filtered;
     const code = cleanQuery.toUpperCase();
     return [
       {
@@ -150,72 +65,32 @@ export function CommandPalette({
       },
       ...filtered,
     ];
-  }, [baseActions, cleanQuery, codeMatch, onOpenPath, parsedCommand, t, workflowCommands]);
+  }, [baseActions, cleanQuery, codeMatch, onOpenPath, t]);
 
   useEffect(() => {
     if (!open) return;
     setQuery("");
     setActiveIndex(0);
-    setWorkflowLaunch(null);
-    handleWorkflowBusyChange(false);
     setActionBusy(null);
     window.setTimeout(() => inputRef.current?.focus(), 0);
-    if (!hasPermission("workflows:run")) {
-      setDefinitions([]);
-      setLoadingWorkflows(false);
-      return;
-    }
-    setLoadingWorkflows(true);
-    api
-      .listWorkflowDefinitions()
-      .then(setDefinitions)
-      .catch(() => setDefinitions([]))
-      .finally(() => setLoadingWorkflows(false));
-  }, [handleWorkflowBusyChange, hasPermission, open]);
+  }, [open]);
 
   useEffect(() => {
-    onBusyChange?.(workflowLaunchBusy || actionBusy !== null);
-  }, [actionBusy, onBusyChange, workflowLaunchBusy]);
+    onBusyChange?.(actionBusy !== null);
+  }, [actionBusy, onBusyChange]);
 
   useEffect(() => {
     if (!open) return;
     const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        if (workflowLaunch) {
-          if (!workflowLaunchBusy) setWorkflowLaunch(null);
-          return;
-        }
-        onOpenChange(false);
-      }
+      if (event.key === "Escape") onOpenChange(false);
     };
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
-  }, [open, onOpenChange, workflowLaunch, workflowLaunchBusy]);
+  }, [open, onOpenChange]);
 
   useEffect(() => {
     setActiveIndex(0);
   }, [query]);
-
-  if (open && workflowLaunch) {
-    const parsed = parseWorkflowDefinition(workflowLaunch.definition.definitionJson);
-    return (
-      <Suspense fallback={null}>
-        <WorkflowRunDialog
-          definition={workflowLaunch.definition}
-          initialInputs={workflowLaunch.inputs}
-          autoPreview
-          autoConfirmWhenAllowed={parsed.kind === "v2" && !parsed.document.policy.requirePreview}
-          onClose={() => setWorkflowLaunch(null)}
-          onBusyChange={handleWorkflowBusyChange}
-          onQueued={(runId) => {
-            setWorkflowLaunch(null);
-            onOpenChange(false);
-            onOpenPath(`/workflows?activity=1&view=running&run=${runId}`);
-          }}
-        />
-      </Suspense>
-    );
-  }
 
   const runAction = async (index: number) => {
     const action = actions[index];
@@ -258,9 +133,6 @@ export function CommandPalette({
         className="min-w-0 flex-1 bg-transparent text-sm outline-none"
         placeholder={t("commands.searchPlaceholder")}
       />
-      {loadingWorkflows && (
-        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label={t("commands.loadingWorkflows")} />
-      )}
       {!mobile && (
         <Button variant="ghost" size="icon" aria-label={t("commands.closePalette")} onClick={() => onOpenChange(false)}>
           <X className="h-4 w-4" />
@@ -273,7 +145,7 @@ export function CommandPalette({
     <>
       {actions.length === 0 ? (
         <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-          {parsedCommand.isCommand ? t("commands.noPublishedMatch") : t("commands.noMatch")}
+          {t("commands.noMatch")}
         </div>
       ) : (
         actions.map((action, index) => (

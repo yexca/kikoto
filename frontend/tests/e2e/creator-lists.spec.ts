@@ -242,8 +242,10 @@ async function mockCreatorLists(page: Page, options: { circleSyncState?: string;
 }
 
 function withoutCatalogSyncState<T extends { syncState: unknown; syncReason: unknown }>(creator: T) {
-  const { syncState: _syncState, syncReason: _syncReason, ...legacyCreator } = creator;
-  return legacyCreator;
+  const legacyCreator: Record<string, unknown> = { ...creator };
+  delete legacyCreator.syncState;
+  delete legacyCreator.syncReason;
+  return legacyCreator as Omit<T, "syncState" | "syncReason">;
 }
 
 async function mockCreatorDetails(
@@ -988,7 +990,7 @@ test("mobile command palette uses a sheet, stays in the visual viewport, and clo
 
   await page.getByRole("button", { name: "Quick actions" }).click();
   const dialog = page.getByRole("dialog", { name: "Command palette" });
-  const input = page.getByPlaceholder("Search, open a work code, or type /workflow");
+  const input = page.getByPlaceholder("Search or open a work code");
   await expect(dialog).toBeVisible();
   await expect(dialog).toHaveAttribute("data-mobile-sheet");
   await expect(dialog).toHaveAttribute("data-state", "open");

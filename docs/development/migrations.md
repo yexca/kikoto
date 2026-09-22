@@ -82,7 +82,12 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain includes
-`034_user_preferences.sql`, with the `034_v0.6.0.sql` baseline.
+`035_remove_custom_workflow_definitions.sql`, with the `035_v0.6.1.sql`
+baseline generated from the `v0.6.1` `VERSION` file; regenerate it after the
+next release bump so the snapshot carries the release that ships schema 035.
+Migration 035 deletes user-authored workflow definitions and their triggers
+because custom workflow editing was removed; runs keep their code and name
+snapshots.
 Migration 033 preserves structured `not_found` observations as pending metadata
 issues. Historical free-text workflow errors are not reinterpreted or copied
 into the shared list. Existing installations apply 033 through the numbered

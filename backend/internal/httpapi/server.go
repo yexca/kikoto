@@ -234,11 +234,6 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/cache", s.cacheRemoteSourceWorkMedia)
 	mux.HandleFunc("DELETE /api/works/{id}/tracked-sources/{sourceId}", s.untrackWorkSource)
 	mux.HandleFunc("GET /api/workflow-definitions", s.listWorkflowDefinitions)
-	mux.HandleFunc("GET /api/workflow-node-types", s.listWorkflowNodeTypes)
-	mux.HandleFunc("POST /api/workflow-definitions", s.createWorkflowDefinition)
-	mux.HandleFunc("PATCH /api/workflow-definitions/{id}", s.updateWorkflowDefinition)
-	mux.HandleFunc("DELETE /api/workflow-definitions/{id}", s.deleteWorkflowDefinition)
-	mux.HandleFunc("POST /api/workflow-definitions/{id}/runs", s.runCustomWorkflowDefinition)
 	mux.HandleFunc("GET /api/workflow-presets", s.listWorkflowPresets)
 	mux.HandleFunc("POST /api/workflow-presets/{code}/runs", s.runWorkflowPreset)
 	mux.HandleFunc("GET /api/workflow-triggers", s.listWorkflowTriggers)
@@ -4298,7 +4293,7 @@ func (s *Server) listWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listWorkflowDefinitions(w http.ResponseWriter, r *http.Request) {
-	actor, ok := s.requirePermission(w, r, "workflows:run")
+	_, ok := s.requirePermission(w, r, "workflows:run")
 	if !ok {
 		return
 	}
@@ -4310,9 +4305,6 @@ func (s *Server) listWorkflowDefinitions(w http.ResponseWriter, r *http.Request)
 	visible := definitions[:0]
 	for _, definition := range definitions {
 		if definition.Code == "remote_work_save" {
-			continue
-		}
-		if definition.Scope == "user" && !canManageWorkflowDefinition(actor, definition) {
 			continue
 		}
 		visible = append(visible, definition)
@@ -4732,9 +4724,6 @@ func (s *Server) RunStartupWorkflows(ctx context.Context) error {
 		return err
 	}
 	if err := s.dispatchStartupSystemWorkflowTriggers(ctx); err != nil {
-		return err
-	}
-	if err := s.dispatchStartupCustomWorkflowTriggers(ctx); err != nil {
 		return err
 	}
 	return s.syncVoiceCreditsFromSnapshots(ctx)
