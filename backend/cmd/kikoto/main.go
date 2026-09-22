@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/httpapi"
@@ -22,6 +23,7 @@ func main() {
 		slog.Error("load configuration", "error", err)
 		os.Exit(1)
 	}
+	account.SetPasswordCheckConcurrency(cfg.LoginConcurrency)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

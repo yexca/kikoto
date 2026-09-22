@@ -62,6 +62,46 @@ Development exposes the same control for production-feature debugging, but its
 automatic root identity means every development request remains authenticated.
 Demo mode neither exposes nor uses the setting.
 
+### Sign-in Throttling
+
+Failed sign-ins are throttled in memory and reset when the process restarts.
+After 5 failures for one username from one client, 20 failures from one client
+across any usernames, or 50 failures for one username across all clients, that
+client or username receives `429 Too Many Requests` with a `Retry-After`
+header. The first lockout lasts one minute and doubles with each further
+failure, up to 15 minutes for one client and username or 30 minutes otherwise.
+A locked sign-in is rejected without checking the password, even when the
+password is correct. A successful sign-in clears the username counters but not
+the client counter. Unknown usernames are counted and timed like real ones, so
+neither a lockout nor the response time reveals whether an account exists.
+
+Passwords are hashed with Argon2id using 19 MiB of memory and two passes per
+check. By default at most eight checks run at once, about 152 MiB in total;
+set `KIKOTO_LOGIN_CONCURRENCY` to change that limit. A sign-in that cannot
+start a check within five seconds receives a retryable `503` instead of
+queueing without bound. A password stored with older, more expensive
+parameters still works and is rehashed with the current parameters after the
+next successful sign-in; the root password is also rehashed when Kikoto
+starts. Until that happens, verifying that password takes longer than
+verifying the password of an account that does not exist.
+
+Kikoto identifies the client by its direct peer address and groups IPv6 clients
+by `/64`. Behind a reverse proxy every request arrives from the proxy, so all
+clients would share one throttle. List the proxy address or network in
+`KIKOTO_TRUSTED_PROXIES`, for example:
+
+```dotenv
+KIKOTO_TRUSTED_PROXIES=192.0.2.10
+```
+
+Kikoto then reads `X-Forwarded-For` only from those peers and uses the nearest
+address that is not itself a trusted proxy. Configure the proxy to append the
+connecting address to `X-Forwarded-For`, and never list an address range that
+untrusted clients can connect from directly, because they could then choose
+their own throttle key.
+
+### Cookies
+
 Browser sessions use HttpOnly, SameSite cookies. When HTTPS terminates at a
 reverse proxy, set:
 

@@ -442,6 +442,7 @@ export const englishResource = {
         signingIn: "Signing in",
         failed: "Login failed",
         invalidCredentials: "Invalid username or password.",
+        tooManyAttempts: "Too many sign-in attempts. Wait a few minutes and try again.",
         changeServer: "Change server",
       },
       settings: {

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -26,6 +27,8 @@ type Config struct {
 	Mode                Mode
 	SessionCookieSecure bool
 	AllowedOrigins      []string
+	TrustedProxies      []netip.Prefix
+	LoginConcurrency    int
 	RootUsername        string
 	RootPassword        string
 	RemoteSourceSeeds   []RemoteSourceSeed
@@ -58,6 +61,10 @@ func Load() (Config, error) {
 	if mode == ModeProduction && rootPassword == "change-me" {
 		return Config{}, fmt.Errorf("KIKOTO_ROOT_PASSWORD must not use the default value in production mode")
 	}
+	trustedProxies, err := parseTrustedProxies(os.Getenv("KIKOTO_TRUSTED_PROXIES"))
+	if err != nil {
+		return Config{}, err
+	}
 	return Config{
 		HTTPAddr:            env("KIKOTO_HTTP_ADDR", "127.0.0.1:7659"),
 		DatabasePath:        env("KIKOTO_DB_PATH", "../config/kikoto.db"),
@@ -68,6 +75,8 @@ func Load() (Config, error) {
 		Mode:                mode,
 		SessionCookieSecure: envBool("KIKOTO_SESSION_COOKIE_SECURE", false),
 		AllowedOrigins:      envList("KIKOTO_ALLOWED_ORIGINS"),
+		TrustedProxies:      trustedProxies,
+		LoginConcurrency:    envInt("KIKOTO_LOGIN_CONCURRENCY", 8),
 		RootUsername:        env("KIKOTO_ROOT_USERNAME", "root"),
 		RootPassword:        rootPassword,
 		RemoteSourceSeeds:   loadRemoteSourceSeeds(),
@@ -98,6 +107,34 @@ func parseMode(value string) (Mode, error) {
 	default:
 		return "", fmt.Errorf("invalid KIKOTO_MODE %q: expected development, production, or demo", value)
 	}
+}
+
+// parseTrustedProxies reads comma-separated reverse-proxy addresses or CIDR
+// prefixes. An invalid entry is a startup error rather than a silently
+// narrower or wider trust boundary.
+func parseTrustedProxies(value string) ([]netip.Prefix, error) {
+	prefixes := []netip.Prefix{}
+	for _, item := range strings.Split(value, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if strings.Contains(item, "/") {
+			prefix, err := netip.ParsePrefix(item)
+			if err != nil {
+				return nil, fmt.Errorf("invalid KIKOTO_TRUSTED_PROXIES entry %q: expected an IP address or CIDR prefix", item)
+			}
+			prefixes = append(prefixes, prefix.Masked())
+			continue
+		}
+		addr, err := netip.ParseAddr(item)
+		if err != nil {
+			return nil, fmt.Errorf("invalid KIKOTO_TRUSTED_PROXIES entry %q: expected an IP address or CIDR prefix", item)
+		}
+		addr = addr.Unmap()
+		prefixes = append(prefixes, netip.PrefixFrom(addr, addr.BitLen()))
+	}
+	return prefixes, nil
 }
 
 func envList(key string) []string {

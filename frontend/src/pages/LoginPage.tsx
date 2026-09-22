@@ -29,11 +29,13 @@ export function LoginPage({ embedded = false, onSuccess }: { embedded?: boolean;
       setError(
         err instanceof ApiError && err.status === 401
           ? t("login.invalidCredentials")
-          : err instanceof TypeError
-            ? t("errors.network")
-            : err instanceof Error
-              ? err.message
-              : t("login.failed"),
+          : err instanceof ApiError && err.status === 429
+            ? t("login.tooManyAttempts")
+            : err instanceof TypeError
+              ? t("errors.network")
+              : err instanceof Error
+                ? err.message
+                : t("login.failed"),
       );
     } finally {
       setIsSubmitting(false);

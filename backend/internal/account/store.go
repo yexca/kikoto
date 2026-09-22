@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 )
@@ -109,7 +110,20 @@ func ensureRootCredential(ctx context.Context, tx *sql.Tx, userID int64, passwor
 		_, err = tx.ExecContext(ctx, `INSERT INTO user_password_credential (user_id, password_hash) VALUES (?, ?)`, userID, hash)
 		return err
 	}
-	if err != nil || VerifyPassword(password, currentHash) {
+	if err != nil {
+		return err
+	}
+	if VerifyPassword(password, currentHash) {
+		// Same password: only move a legacy hash to the current parameters,
+		// without revoking root sessions.
+		if !passwordNeedsRehash(currentHash) {
+			return nil
+		}
+		hash, err := HashPassword(password)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `UPDATE user_password_credential SET password_hash = ? WHERE user_id = ?`, hash, userID)
 		return err
 	}
 	hash, err := HashPassword(password)
@@ -208,19 +222,40 @@ func (s *Store) UserForSession(ctx context.Context, sessionID string, now time.T
 	return s.LoadByID(ctx, userID)
 }
 
+// Authenticate returns sql.ErrNoRows for any rejected credential. An unknown,
+// disabled, or passwordless username still performs one Argon2id derivation so
+// response timing does not reveal which usernames exist. It returns
+// ErrPasswordVerificationBusy when no derivation slot frees up in time.
 func (s *Store) Authenticate(ctx context.Context, username string, password string, now time.Time) (Session, error) {
 	var userID int64
 	var passwordHash string
-	if err := s.db.QueryRowContext(ctx, `
+	err := s.db.QueryRowContext(ctx, `
 		SELECT account.id, credential.password_hash
 		FROM user_account AS account
 		INNER JOIN user_password_credential AS credential ON credential.user_id = account.id
 		WHERE account.username = ? AND account.enabled = 1
-	`, username).Scan(&userID, &passwordHash); err != nil {
+	`, username).Scan(&userID, &passwordHash)
+	knownUser := err == nil
+	if errors.Is(err, sql.ErrNoRows) {
+		passwordHash, err = dummyPasswordHash()
+	}
+	if err != nil {
 		return Session{}, err
 	}
-	if !VerifyPassword(password, passwordHash) {
+	waitCtx, cancel := context.WithTimeout(ctx, argon2idSlotWait)
+	matched, err := verifyPasswordContext(waitCtx, password, passwordHash)
+	cancel()
+	if err != nil {
+		if ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
+			return Session{}, ErrPasswordVerificationBusy
+		}
+		return Session{}, err
+	}
+	if !knownUser || !matched {
 		return Session{}, sql.ErrNoRows
+	}
+	if passwordNeedsRehash(passwordHash) {
+		s.upgradePasswordHash(ctx, userID, password, passwordHash)
 	}
 	sessionID, err := newSessionID()
 	if err != nil {
@@ -235,6 +270,22 @@ func (s *Store) Authenticate(ctx context.Context, username string, password stri
 		return Session{}, err
 	}
 	return Session{ID: sessionID, ExpiresAt: expiresAt, User: user}, nil
+}
+
+// upgradePasswordHash rehashes a verified legacy hash with the current
+// parameters. It is best effort: on failure the legacy hash stays valid and the
+// upgrade is retried at the next sign-in. The compare-and-swap keeps a
+// concurrent password change from being overwritten.
+func (s *Store) upgradePasswordHash(ctx context.Context, userID int64, password string, legacyHash string) {
+	waitCtx, cancel := context.WithTimeout(ctx, argon2idSlotWait)
+	upgraded, err := hashPasswordContext(waitCtx, password)
+	cancel()
+	if err == nil {
+		_, err = s.db.ExecContext(ctx, `UPDATE user_password_credential SET password_hash = ? WHERE user_id = ? AND password_hash = ?`, upgraded, userID, legacyHash)
+	}
+	if err != nil {
+		slog.Warn("password hash upgrade failed", "user_id", userID, "error", err)
+	}
 }
 
 func (s *Store) DeleteSession(ctx context.Context, sessionID string) error {
