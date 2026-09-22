@@ -36,7 +36,7 @@ import {
   recommendedDirectoryPath,
   sortedFiles,
   sortedFolders,
-} from "@/pages/library/detail/directory/directoryModel";
+} from "@/features/work-detail/directory/directoryModel";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { fileIcon, formatFolderStats } from "@/features/work-detail/dialogs/mediaFilePresentation";
 import { type LyricsChoice, lyricsChoiceDisplayLabel } from "@/player/lyricsMatching";

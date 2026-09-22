@@ -52,6 +52,8 @@ import { ANDROID_BACK_EVENT, LOGIN_REQUEST_EVENT } from "@/app/events";
 import { isNativeApp } from "@/lib/serverConfig";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { isWorkCodePath } from "@/lib/workCode";
+import { workDetailCodeFromLocation } from "@/app/workDetailNavigation";
+import { preloadWorkDetail } from "@/features/work-detail/lazyWorkDetail";
 import { useLocale } from "@/i18n/LocaleProvider";
 import type { UiLocale } from "@/i18n";
 import {
@@ -664,9 +666,16 @@ const browsePages: Record<CachedBrowsePage, { preload: () => Promise<unknown> }>
   "voice-actors": creatorWorksPage,
 };
 // Fetch the current location's workspace chunk alongside the session request
-// rather than after the shell mounts.
+// rather than after the shell mounts. A direct work link also starts the work
+// detail chunk now instead of waiting for the Library chunk to evaluate.
 const initialPage = pageFromPath(window.location.pathname);
 if (isCachedBrowsePage(initialPage)) void browsePages[initialPage].preload().catch(() => {});
+if (
+  initialPage === "library" &&
+  workDetailCodeFromLocation(window.location.pathname, window.location.search) !== null
+) {
+  preloadWorkDetail();
+}
 
 function CachedBrowsePages({ activePage }: { activePage: AppPage | null }) {
   const [visitedPages, setVisitedPages] = useState<readonly CachedBrowsePage[]>(() =>

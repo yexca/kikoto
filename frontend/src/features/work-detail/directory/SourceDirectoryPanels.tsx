@@ -11,11 +11,11 @@ import {
   type TrackedPresenceOption,
 } from "@/features/work-detail/source/sourceContextModel";
 import { Badge } from "@/components/ui/badge";
-import { formatDateTime } from "@/pages/library/detail/workDetailHelpers";
+import { formatDateTime } from "@/features/work-detail/workDetailHelpers";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { TreeNode, TreeTrack } from "@/features/work-detail/media/mediaTreeModel";
 import type { FilePreviewState } from "@/features/work-detail/dialogs/FilePreviewDialog";
-import { DirectoryBrowser, DirectoryTree } from "@/pages/library/detail/directory/DirectoryTree";
+import { DirectoryBrowser, DirectoryTree } from "@/features/work-detail/directory/DirectoryTree";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,7 +23,7 @@ import {
   type DirectoryRouteMatch,
   directoryRouteSummary,
   nodeAtPath,
-} from "@/pages/library/detail/directory/directoryModel";
+} from "@/features/work-detail/directory/directoryModel";
 import { IconButton } from "@/components/ui/icon-button";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 

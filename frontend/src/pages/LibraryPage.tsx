@@ -60,7 +60,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { preloadableComponent } from "@/lib/preloadableComponent";
 import { readOrCreateRecommendationSession, RECOMMENDATION_ALGORITHM_VERSION } from "@/lib/recommendationSession";
 import {
   useWorkCollectionLayout,
@@ -68,10 +67,14 @@ import {
   WorkCollectionLayoutPicker as LayoutPicker,
   workCollectionStyle,
 } from "@/components/work-collection/WorkCollectionLayout";
-import { getCachedWorkMedia, invalidateCachedWorkMedia, setCachedWorkMedia } from "@/pages/workMediaCache";
+import {
+  getCachedWorkMedia,
+  invalidateCachedWorkMedia,
+  setCachedWorkMedia,
+} from "@/features/work-detail/media/workMediaCache";
 import { isMobileTabResumeHistoryState, navigateToWorkspaceUp } from "@/lib/browserHistory";
 import { type DetailSourceIntent, remoteSourceTabKey } from "@/features/work-detail/source/sourceContextModel";
-import { openWorkDetail } from "@/app/workDetailNavigation";
+import { openWorkDetail, REMOTE_SOURCE_WORK_PATTERN, workDetailCodeFromLocation } from "@/app/workDetailNavigation";
 import i18n from "@/i18n";
 import {
   announceRemoteTrackCreated,
@@ -115,7 +118,15 @@ import { RecentlyPlayedPicker } from "@/pages/library/RecentlyPlayedPicker";
 import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { Badge } from "@/components/ui/badge";
 import { RecommendationExplanationDialog } from "@/pages/library/RecommendationExplanationDialog";
-import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
+import {
+  LazyRemoteFetchWorkspaceDialog,
+  preloadRemoteFetchWorkspaceDialog,
+} from "@/features/work-detail/workflows/LazyRemoteFetchWorkspaceDialog";
+import {
+  PersistedWorkDetailController,
+  preloadWorkDetail,
+  RemoteOnlyWorkDetailController,
+} from "@/features/work-detail/lazyWorkDetail";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
 import {
   directoryLoadErrorMessage,
@@ -126,7 +137,7 @@ import {
   safeExternalHTTPURL,
   sourcePresenceActionCode,
   type WorkPreview,
-} from "@/pages/library/libraryDetailShared";
+} from "@/features/work-detail/workDetailShared";
 import { IconButton } from "@/components/ui/icon-button";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import type { TFunction } from "i18next";
@@ -155,27 +166,16 @@ import { FloatingSelect } from "@/components/ui/floating-select";
 import { Input } from "@/components/ui/input";
 import { WORK_CODE_PATH_PATTERN } from "@/lib/workCode";
 
-const REMOTE_SOURCE_WORK_PATTERN = /^\/([^/?#]+)\/?$/;
+// The app shell starts the detail chunk for a direct work link; this covers a
+// detail location reached before the Library chunk finished loading. Both share
+// the feature's single dynamic import, so the chunk is fetched once.
+if (workDetailCodeFromLocation(window.location.pathname, window.location.search) !== null) preloadWorkDetail();
 
-// Work detail loads separately from the list. An idle Library preloads it, and a
-// detail location starts it with the page, so opening or restoring a work
-// normally renders without suspending.
-const loadWorkDetail = () => import("@/pages/library/detail/WorkDetail");
-const remoteOnlyWorkDetail = preloadableComponent(() =>
-  loadWorkDetail().then((module) => module.RemoteOnlyWorkDetailController),
-);
-const persistedWorkDetail = preloadableComponent(() =>
-  loadWorkDetail().then((module) => module.PersistedWorkDetailController),
-);
-const RemoteOnlyWorkDetailController = remoteOnlyWorkDetail.Component;
-const PersistedWorkDetailController = persistedWorkDetail.Component;
-
-function preloadWorkDetail() {
-  void remoteOnlyWorkDetail.preload().catch(() => {});
-  void persistedWorkDetail.preload().catch(() => {});
+// An idle Library warms the surfaces it opens on demand.
+function preloadLibraryDeferredSurfaces() {
+  preloadWorkDetail();
+  void preloadRemoteFetchWorkspaceDialog().catch(() => {});
 }
-
-if (codeFromLocation(window.location.pathname, window.location.search) !== null) preloadWorkDetail();
 
 const librarySortOptions: { value: LibrarySort; label: string }[] = [
   { value: "recommend", label: "Recommended" },
@@ -332,10 +332,10 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   useEffect(() => {
     if (!active) return;
     if (typeof window.requestIdleCallback === "function") {
-      const handle = window.requestIdleCallback(preloadWorkDetail, { timeout: 4000 });
+      const handle = window.requestIdleCallback(preloadLibraryDeferredSurfaces, { timeout: 4000 });
       return () => window.cancelIdleCallback(handle);
     }
-    const timer = window.setTimeout(preloadWorkDetail, 1500);
+    const timer = window.setTimeout(preloadLibraryDeferredSurfaces, 1500);
     return () => window.clearTimeout(timer);
   }, [active]);
   const toast = useToast();
@@ -374,12 +374,12 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     error: string;
   } | null>(null);
   const [selectedCode, setSelectedCode] = useState<string | null>(() =>
-    codeFromLocation(window.location.pathname, window.location.search),
+    workDetailCodeFromLocation(window.location.pathname, window.location.search),
   );
   const [selectedWork, setSelectedWork] = useState<WorkDetail | null>(null);
   const [selectedWorkNotFound, setSelectedWorkNotFound] = useState(false);
   const [selectedWorkPreview, setSelectedWorkPreview] = useState<WorkPreview | null>(() =>
-    workPreviewFromHistory(codeFromLocation(window.location.pathname, window.location.search)),
+    workPreviewFromHistory(workDetailCodeFromLocation(window.location.pathname, window.location.search)),
   );
   const [isSelectedMediaLoading, setIsSelectedMediaLoading] = useState(false);
   const [selectedMediaError, setSelectedMediaError] = useState("");
@@ -705,7 +705,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
               readLibraryHistoryBrowseState(browseStorageScope) ?? { ...sessionDefaultBrowseState, ...sortPreference },
           ),
           resolved,
-          codeFromLocation(window.location.pathname, window.location.search) === null,
+          workDetailCodeFromLocation(window.location.pathname, window.location.search) === null,
         );
         setActiveTab(resolved);
         const routeRemoteTarget = remoteTargetFromLocation(window.location.pathname, window.location.search, items);
@@ -912,7 +912,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       const nextScope = localScopeFromPath(window.location.pathname);
       const stored = readLibraryBrowseState(libraryBrowseKey(nextTab, nextScope, browseStorageScope));
       const sortPreference = readLibrarySortPreference(libraryBrowseKey(nextTab, nextScope, browseStorageScope));
-      const nextCode = codeFromLocation(window.location.pathname, window.location.search);
+      const nextCode = workDetailCodeFromLocation(window.location.pathname, window.location.search);
       applyBrowseState(
         libraryBrowseStateFromSearch(
           window.location.search,
@@ -1004,7 +1004,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     const flushScroll = () => {
       if (pendingWrite !== null) window.clearTimeout(pendingWrite);
       pendingWrite = null;
-      if (codeFromLocation(window.location.pathname, window.location.search) !== null) return;
+      if (workDetailCodeFromLocation(window.location.pathname, window.location.search) !== null) return;
       const browseState = { ...activeBrowseState, scrollY: lastScrollY };
       writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
       writeLibraryHistoryBrowseState(browseStorageScope, browseState);
@@ -1120,7 +1120,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       t("nav.library"),
       preview,
     );
-    setSelectedCode(codeFromLocation(window.location.pathname, window.location.search));
+    setSelectedCode(workDetailCodeFromLocation(window.location.pathname, window.location.search));
   };
 
   const backToLibrary = () => {
@@ -1878,7 +1878,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       {recommendationDialog && (
         <RecommendationExplanationDialog state={recommendationDialog} onClose={() => setRecommendationDialog(null)} />
       )}
-      <RemoteFetchWorkspaceDialog workspace={trackedFetchWorkspace} />
+      <LazyRemoteFetchWorkspaceDialog workspace={trackedFetchWorkspace} />
       <BrowseLoadingIndicator refreshing={browseRefreshing} label={browseLoadingLabel} />
     </div>
   );
@@ -2498,7 +2498,7 @@ function RemoteSourcePanel({
           onConfirm={() => void saveConfirm.run()}
         />
       )}
-      <RemoteFetchWorkspaceDialog workspace={actions.fetchWorkspace} />
+      <LazyRemoteFetchWorkspaceDialog workspace={actions.fetchWorkspace} />
     </section>
   );
 }
@@ -3219,7 +3219,7 @@ async function resolveAndOpenWork(
     if (
       resolved.resolvedCode &&
       resolved.resolvedCode.toUpperCase() !== code.toUpperCase() &&
-      codeFromLocation(window.location.pathname, window.location.search)?.toUpperCase() === code.toUpperCase()
+      workDetailCodeFromLocation(window.location.pathname, window.location.search)?.toUpperCase() === code.toUpperCase()
     ) {
       window.history.replaceState(window.history.state ?? {}, "", `/${resolved.resolvedCode}${window.location.search}`);
       setSelectedCode(resolved.resolvedCode);
@@ -3510,23 +3510,8 @@ function searchClauseLabel(clause: SearchClause, t?: TFunction) {
   }
 }
 
-function codeFromPath(path: string) {
-  const match = path.match(WORK_CODE_PATH_PATTERN);
-  return match ? match[1].toUpperCase() : null;
-}
-
-function codeFromLocation(path: string, search: string) {
-  const standardCode = codeFromPath(path);
-  if (standardCode) return standardCode;
-  const params = new URLSearchParams(search);
-  const sourceID = Number(params.get("source"));
-  if (!Number.isFinite(sourceID) || sourceID <= 0) return null;
-  const match = path.match(REMOTE_SOURCE_WORK_PATTERN);
-  return match ? safeDecodePathSegment(match[1]) : null;
-}
-
 function remoteTargetFromLocation(path: string, search: string, sources: LibrarySource[]) {
-  const code = codeFromLocation(path, search);
+  const code = workDetailCodeFromLocation(path, search);
   if (!code) return null;
   const params = new URLSearchParams(search);
   if (params.get("view") === "remote") return null;

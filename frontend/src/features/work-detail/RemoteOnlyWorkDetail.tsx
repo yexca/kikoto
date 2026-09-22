@@ -23,8 +23,8 @@ import {
   UnifiedWorkDetailPage,
   type UnifiedWorkDetailPresentation,
   useCompactDetailLayout,
-} from "@/pages/library/detail/WorkDetailLayout";
-import { dlsiteWorkURL, type RemoteWorkPreview, safeExternalHTTPURL } from "@/pages/library/libraryDetailShared";
+} from "@/features/work-detail/WorkDetailLayout";
+import { dlsiteWorkURL, type RemoteWorkPreview, safeExternalHTTPURL } from "@/features/work-detail/workDetailShared";
 import {
   buildRemoteTree,
   buildTree,
@@ -50,7 +50,7 @@ import {
   RemoteSourceStatePanel,
   SourceDirectoryPanel,
   TrackedUnforkedPanel,
-} from "@/pages/library/detail/directory/SourceDirectoryPanels";
+} from "@/features/work-detail/directory/SourceDirectoryPanels";
 import i18n from "@/i18n";
 import {
   type ActiveSourceInfoModel,
@@ -58,7 +58,7 @@ import {
   listeningStatusLabel,
   remoteDetailActionCode,
   trackedPresenceForRemoteSource,
-} from "@/pages/library/detail/workDetailHelpers";
+} from "@/features/work-detail/workDetailHelpers";
 import { resolveMetadataVariant } from "@/features/work-detail/metadataPresentationModel";
 import { DirectoryManagerDialog } from "@/features/work-detail/dialogs/DirectoryManagerDialog";
 import { toastFromError, useToast } from "@/components/ui/toast";
@@ -78,7 +78,7 @@ import {
 } from "@/app/remoteTrackWorkflows";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
-import { defaultDirectoryRoutingRules } from "@/pages/library/detail/directory/directoryModel";
+import { defaultDirectoryRoutingRules } from "@/features/work-detail/directory/directoryModel";
 
 type RemoteOnlyDetailActionsProps = {
   detail: RemoteWorkDetail | null;

@@ -1,4 +1,8 @@
 import { NAVIGATION_EVENT, historyStateWithReturn } from "../lib/browserHistory";
+import { WORK_CODE_PATH_PATTERN } from "../lib/workCode";
+
+// A remote-only work route is one path segment qualified by a `source` query.
+export const REMOTE_SOURCE_WORK_PATTERN = /^\/([^/?#]+)\/?$/;
 
 export type WorkDetailSourceIntent = {
   sourceId: number;
@@ -64,6 +68,29 @@ export function openWorkDetail(intent: WorkDetailIntent, options: WorkDetailNavi
   );
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
   return true;
+}
+
+/**
+ * Returns the work code a location opens as work detail, or null for a list
+ * location. It is the inverse of `workDetailRoute` and stays free of page
+ * imports so the app shell can recognize a direct work link before the Library
+ * chunk loads.
+ */
+export function workDetailCodeFromLocation(path: string, search: string) {
+  const standardMatch = path.match(WORK_CODE_PATH_PATTERN);
+  if (standardMatch) return standardMatch[1].toUpperCase();
+  const sourceID = Number(new URLSearchParams(search).get("source"));
+  if (!Number.isFinite(sourceID) || sourceID <= 0) return null;
+  const match = path.match(REMOTE_SOURCE_WORK_PATTERN);
+  return match ? safeDecodePathSegment(match[1]) : null;
+}
+
+function safeDecodePathSegment(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 function validSourceID(value: number) {
