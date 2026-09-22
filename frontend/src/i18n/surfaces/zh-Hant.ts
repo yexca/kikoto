@@ -93,6 +93,7 @@ export const surfaceHant = {
     error: "無法儲存此操作，請重試。",
   },
   workMaintenance: {
+    pageStatus: "{{page}} / {{total}}",
     rows: "每頁列數",
     title: "中繼資料記錄",
     description: "按作品家族查看中繼資料問題或無可用檔案來源的作品。中繼資料更新成功後，只清除對應問題。",
@@ -1246,7 +1247,7 @@ export const surfaceHant = {
     moveLater: "將 {{language}} 下移",
     priorityTitle: "DLsite 標題與標籤語言優先順序",
     priorityDescription:
-      "已儲存的 DLsite 版本會由左至右匹配。原版始終保留為最後的備援；同步時使用的請求語言與此顯示順序相互獨立。",
+      "已儲存的 DLsite 版本會由上至下匹配。原版始終保留為最後的備援；同步時使用的請求語言與此顯示順序相互獨立。",
     preferredLanguages: "偏好語言",
   },
   detailActions: {

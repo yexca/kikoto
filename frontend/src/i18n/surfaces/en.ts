@@ -96,6 +96,7 @@ export const surfaceEnglish = {
     error: "Could not save this action. Please try again.",
   },
   workMaintenance: {
+    pageStatus: "{{page}} / {{total}}",
     rows: "Rows",
     title: "Metadata records",
     description:
@@ -1378,7 +1379,7 @@ export const surfaceEnglish = {
     moveLater: "Move {{language}} later",
     priorityTitle: "DLsite title and tag language priority",
     priorityDescription:
-      "Stored DLsite editions are matched from left to right. Origin is always retained as the final fallback; the request locale used during sync is independent from this display order.",
+      "Stored DLsite editions are matched from top to bottom. Origin is always retained as the final fallback; the request locale used during sync is independent from this display order.",
     preferredLanguages: "Preferred languages",
   },
   detailActions: {

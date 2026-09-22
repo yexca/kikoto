@@ -93,6 +93,7 @@ export const surfaceJapanese = {
     error: "操作を保存できませんでした。もう一度お試しください。",
   },
   workMaintenance: {
+    pageStatus: "{{page}} / {{total}}",
     rows: "表示件数",
     title: "メタデータ一覧",
     description:
@@ -1320,7 +1321,7 @@ export const surfaceJapanese = {
     moveLater: "{{language}}を下へ移動",
     priorityTitle: "DLsite タイトルとタグの言語優先順位",
     priorityDescription:
-      "保存された DLsite 版は左から右へ照合されます。原版は最後のフォールバックとして常に保持されます。同期時のリクエスト言語はこの表示順序とは独立しています。",
+      "保存された DLsite 版は上から順に照合されます。原版は最後のフォールバックとして常に保持されます。同期時のリクエスト言語はこの表示順序とは独立しています。",
     preferredLanguages: "優先する言語",
   },
   detailActions: {

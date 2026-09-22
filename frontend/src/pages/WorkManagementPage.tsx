@@ -1,7 +1,8 @@
-import { ExternalLink, Settings, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ExternalLink, Settings } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { WorkMaintenance } from "@/features/maintenance/WorkMaintenance";
 import { MetadataSettingsPanel } from "@/features/maintenance/MetadataSettingsPanel";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
@@ -21,7 +22,6 @@ export function WorkManagementPage({
   const [settingsOpen, setSettingsOpen] = useState(
     () => new URLSearchParams(window.location.search).get("tab") === "settings",
   );
-  const dialogRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const sync = () => setSettingsOpen(new URLSearchParams(window.location.search).get("tab") === "settings");
     window.addEventListener("popstate", sync);
@@ -31,11 +31,6 @@ export function WorkManagementPage({
       window.removeEventListener(NAVIGATION_EVENT, sync);
     };
   }, []);
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (settingsOpen && canManageSources) dialog?.showModal();
-    else dialog?.close();
-  }, [settingsOpen, canManageSources]);
   const showSettings = (open: boolean) => {
     const url = new URL(window.location.href);
     if (open) url.searchParams.set("tab", "settings");
@@ -46,7 +41,10 @@ export function WorkManagementPage({
   return (
     <div className="min-w-0 space-y-4">
       {readOnly && (
-        <div role="status" className="rounded-lg border p-3 text-sm text-muted-foreground">
+        <div
+          role="status"
+          className="rounded-lg border border-info-border bg-info-surface px-3 py-2 text-sm text-info-foreground"
+        >
           {t("maintenance.demoReadOnly")}
         </div>
       )}
@@ -58,7 +56,7 @@ export function WorkManagementPage({
           <>
             {canManageSources && (
               <Button
-                variant="outline"
+                variant="toolbar"
                 aria-label={t("workManagement.settings")}
                 title={t("workManagement.settings")}
                 onClick={() => showSettings(true)}
@@ -69,7 +67,7 @@ export function WorkManagementPage({
             )}
             {canSyncMetadata && canOpenWorkflows && (
               <Button
-                variant="outline"
+                variant="toolbar"
                 aria-label={t("workManagement.openSync")}
                 title={t("workManagement.openSync")}
                 onClick={() => {
@@ -84,34 +82,16 @@ export function WorkManagementPage({
           </>
         }
       />
-      {canManageSources && (
-        <dialog
-          ref={dialogRef}
-          aria-labelledby="metadata-settings-title"
-          className="w-[calc(100%-2rem)] max-w-4xl overflow-hidden rounded-lg border bg-background p-0 text-foreground shadow-xl backdrop:bg-black/50"
-          onCancel={() => showSettings(false)}
-          onClick={(event) => {
-            if (event.target === event.currentTarget) showSettings(false);
-          }}
-        >
-          <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
-            <h2 id="metadata-settings-title" className="font-semibold">
-              {t("workManagement.settings")}
-            </h2>
-            <Button
-              autoFocus
-              variant="ghost"
-              size="icon"
-              aria-label={t("common.close")}
-              onClick={() => showSettings(false)}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="max-h-[calc(85dvh-4rem)] overflow-y-auto p-4">
-            {settingsOpen && <MetadataSettingsPanel readOnly={readOnly} />}
-          </div>
-        </dialog>
+      {canManageSources && settingsOpen && (
+        <Dialog onClose={() => showSettings(false)} size="xl">
+          <DialogHeader
+            title={t("workManagement.settings")}
+            icon={<Settings className="h-4 w-4" />}
+            onClose={() => showSettings(false)}
+            closeLabel={t("common.close")}
+          />
+          <MetadataSettingsPanel readOnly={readOnly} />
+        </Dialog>
       )}
     </div>
   );

@@ -92,6 +92,7 @@ export const surfaceHans = {
     error: "操作未能保存，请重试。",
   },
   workMaintenance: {
+    pageStatus: "{{page}} / {{total}}",
     rows: "每页行数",
     title: "元数据记录",
     description: "按作品家族查看元数据问题或无可用文件来源的作品。元数据更新成功后，只清除对应问题。",
@@ -1278,7 +1279,7 @@ export const surfaceHans = {
     moveLater: "将 {{language}} 下移",
     priorityTitle: "DLsite 标题和标签语言优先级",
     priorityDescription:
-      "已保存的 DLsite 版本会从左到右匹配。原版始终保留为最后的回退；同步时使用的请求语言与此显示顺序相互独立。",
+      "已保存的 DLsite 版本会从上到下匹配。原版始终保留为最后的回退；同步时使用的请求语言与此显示顺序相互独立。",
     preferredLanguages: "首选语言",
   },
   detailActions: {

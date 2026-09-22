@@ -93,6 +93,7 @@ export const surfaceKorean = {
     error: "작업을 저장하지 못했습니다. 다시 시도해 주세요.",
   },
   workMaintenance: {
+    pageStatus: "{{page}} / {{total}}",
     rows: "페이지당 행",
     title: "메타데이터 목록",
     description:
@@ -1317,7 +1318,7 @@ export const surfaceKorean = {
     moveLater: "{{language}} 아래로 이동",
     priorityTitle: "DLsite 제목 및 태그 언어 우선순위",
     priorityDescription:
-      "저장된 DLsite 에디션은 왼쪽부터 순서대로 일치시킵니다. 원본은 항상 마지막 대체 항목으로 유지되며 동기화 요청 언어는 표시 순서와 독립적입니다.",
+      "저장된 DLsite 에디션은 위에서부터 순서대로 일치시킵니다. 원본은 항상 마지막 대체 항목으로 유지되며 동기화 요청 언어는 표시 순서와 독립적입니다.",
     preferredLanguages: "선호 언어",
   },
   detailActions: {

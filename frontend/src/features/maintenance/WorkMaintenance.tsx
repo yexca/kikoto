@@ -1,5 +1,16 @@
-import { ChevronLeft, ChevronRight, ExternalLink, ImageOff, RefreshCw, Search, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent, type MouseEventHandler, type ReactNode } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  ImageOff,
+  Inbox,
+  RefreshCw,
+  Search,
+  SearchCheck,
+  Trash2,
+  X,
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEventHandler, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +18,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import { NativeSelect } from "@/components/ui/input";
+import { Input, NativeSelect } from "@/components/ui/input";
+import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { formatNumber } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, assetURL, type Work, type MaintenanceWorkPage } from "@/lib/api";
@@ -26,6 +38,10 @@ function reasonFromLocation() {
 }
 
 const PAGE_SIZES = [25, 50] as const;
+
+// Keeps a 44px touch target on phones while drawing the regular 20px box inside it.
+const touchCheckboxClassName =
+  "max-sm:relative max-sm:h-11 max-sm:w-11 max-sm:border-0 max-sm:bg-transparent max-sm:hover:bg-transparent max-sm:before:absolute max-sm:before:inset-3 max-sm:before:rounded max-sm:before:border max-sm:before:border-input max-sm:before:bg-background max-sm:data-[state=checked]:before:border-primary max-sm:data-[state=checked]:before:bg-primary max-sm:data-[state=indeterminate]:before:border-primary max-sm:data-[state=indeterminate]:before:bg-primary max-sm:[&>svg]:relative";
 
 type PendingDelete = {
   workIds: number[];
@@ -89,6 +105,13 @@ export function WorkMaintenance({
   useEffect(() => {
     setSelectedWorkIds(new Set());
   }, [page, pageSize, query, reason, runId]);
+
+  const tabListRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    tabListRef.current
+      ?.querySelector<HTMLElement>('[aria-selected="true"]')
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [reason]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -274,28 +297,32 @@ export function WorkMaintenance({
     }
   };
 
+  const controlsDisabled = readOnly || !!loadError || loading;
+  const tabs = [
+    ["catalog", "workManagement.all"],
+    ["all", "workMaintenance.all"],
+    ...(canSyncMetadata ? [["metadata", "workMaintenance.metadata"]] : []),
+    ...(canManageSources ? [["no_source", "workMaintenance.noSource"]] : []),
+  ];
+
   return (
     <div className="min-w-0 space-y-4">
-      <div className="flex items-center justify-between gap-3 border-b pb-3">
+      <div className="flex items-center justify-between gap-3">
         <div
+          ref={tabListRef}
           role="tablist"
           aria-label={t("workMaintenance.reason")}
-          className="flex min-w-0 flex-1 gap-1 overflow-x-auto"
+          className={segmentedListClassName("min-w-0")}
         >
-          {[
-            ["catalog", "workManagement.all"],
-            ["all", "workMaintenance.all"],
-            ...(canSyncMetadata ? [["metadata", "workMaintenance.metadata"]] : []),
-            ...(canManageSources ? [["no_source", "workMaintenance.noSource"]] : []),
-          ].map(([value, label]) => (
-            <Button
+          {tabs.map(([value, label]) => (
+            <button
               key={value}
+              type="button"
               role="tab"
               aria-selected={reason === value}
               aria-controls="metadata-records"
               id={`metadata-tab-${value}`}
-              variant={reason === value ? "secondary" : "ghost"}
-              className="shrink-0"
+              className={segmentedItemClassName(reason === value)}
               onClick={() => setFilter(value)}
               onKeyDown={(event) => {
                 const tabs = Array.from(
@@ -320,44 +347,49 @@ export function WorkMaintenance({
               tabIndex={reason === value ? 0 : -1}
             >
               {t(label)}
-            </Button>
+            </button>
           ))}
         </div>
-        <div className="ml-auto flex shrink-0 gap-2">{actions}</div>
+        <div className="flex shrink-0 gap-2">{actions}</div>
       </div>
       <section
         id="metadata-records"
         aria-label={t("workMaintenance.title")}
         className="overflow-hidden rounded-lg border bg-card"
       >
-        <div className="flex flex-col gap-3 border-b px-4 py-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-semibold">
-                {reason === "catalog" ? t("workManagement.allMetadata") : t("workManagement.issues")}
-              </h2>
-              <Badge variant="outline">{formatNumber(result.total, resolvedLocale)}</Badge>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {reason === "catalog" ? t("workManagement.catalogDescription") : t("workMaintenance.description")}
-            </p>
+        <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-baseline gap-2">
+            <h2 className="truncate text-base font-semibold">
+              {reason === "catalog" ? t("workManagement.allMetadata") : t("workManagement.issues")}
+            </h2>
+            <span className="text-sm tabular-nums text-muted-foreground">
+              {formatNumber(result.total, resolvedLocale)}
+            </span>
           </div>
-          <form className="flex min-w-0 gap-2 sm:w-[min(100%,28rem)]" onSubmit={submitSearch}>
+          <form className="flex min-w-0 items-center gap-1 sm:w-80" onSubmit={submitSearch}>
             <div className="relative min-w-0 flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
+              <button
+                type="submit"
+                className="absolute left-1 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground max-sm:h-11 max-sm:w-11"
+                aria-label={t("unlinked.search")}
+                title={t("unlinked.search")}
+              >
+                <Search className="h-4 w-4" />
+              </button>
+              <Input
                 type="search"
                 maxLength={256}
                 value={queryDraft}
                 onChange={(event) => setQueryDraft(event.target.value)}
                 placeholder={t("unlinked.searchPlaceholder")}
                 aria-label={t("workMaintenance.search")}
-                className="h-10 w-full rounded-md border bg-background pl-9 pr-9 text-sm outline-none focus:ring-2 focus:ring-ring"
+                fieldSize="sm"
+                className="w-full pl-9 pr-9 max-sm:h-11 max-sm:pl-12 [&::-webkit-search-cancel-button]:hidden"
               />
               {queryDraft && (
                 <button
                   type="button"
-                  className="absolute right-1 top-1 grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                  className="absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground max-sm:h-9 max-sm:w-9"
                   onClick={clearSearch}
                   aria-label={t("unlinked.clearSearch")}
                   title={t("unlinked.clearSearch")}
@@ -367,18 +399,10 @@ export function WorkMaintenance({
               )}
             </div>
             <Button
-              type="submit"
-              size="icon"
-              variant="outline"
-              aria-label={t("unlinked.search")}
-              title={t("unlinked.search")}
-            >
-              <Search className="h-4 w-4" />
-            </Button>
-            <Button
               type="button"
-              size="icon"
+              size="icon-sm"
               variant="ghost"
+              className="shrink-0 text-muted-foreground max-sm:h-11 max-sm:w-11"
               onClick={() => setRefreshKey((current) => current + 1)}
               disabled={loading}
               aria-label={t("unlinked.refresh")}
@@ -390,29 +414,25 @@ export function WorkMaintenance({
         </div>
 
         {runId && (
-          <div className="border-b px-4 py-3">
-            {runId && (
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span>{t("metadataIssues.runFilter", { id: runId })}</span>
-                <Button variant="ghost" onClick={() => setFilter("all")}>
-                  {t("metadataIssues.showAll")}
-                </Button>
-              </div>
-            )}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-info-border bg-info-surface px-4 py-1.5 text-sm text-info-foreground">
+            <span>{t("metadataIssues.runFilter", { id: runId })}</span>
+            <Button size="sm" variant="ghost" onClick={() => setFilter("all")}>
+              {t("metadataIssues.showAll")}
+            </Button>
           </div>
         )}
-        <div className="flex min-h-14 flex-wrap items-center gap-2 border-b bg-muted/20 px-4 py-2">
+        <div className="flex min-h-12 flex-wrap items-center gap-x-2 gap-y-1 border-y bg-muted/30 px-4 py-1.5 max-sm:pl-1.5">
           <Checkbox
             checked={selection.checked}
             indeterminate={selection.indeterminate}
             onCheckedChange={(checked) =>
               setSelectedWorkIds((current) => setCurrentPageSelected(pageWorkIds, current, checked))
             }
-            className="h-11 w-11 sm:h-5 sm:w-5"
-            disabled={readOnly || !!loadError || loading || pageWorkIds.length === 0 || checking || deleting}
+            className={touchCheckboxClassName}
+            disabled={controlsDisabled || pageWorkIds.length === 0 || checking || deleting}
             aria-label={t("unlinked.selectPage")}
           />
-          <span className="mr-auto text-sm text-muted-foreground">
+          <span className="mr-auto text-xs tabular-nums text-muted-foreground sm:ml-2">
             {selection.selectedCount > 0
               ? t("unlinked.selected", { count: selection.selectedCount })
               : t("unlinked.range", {
@@ -424,39 +444,50 @@ export function WorkMaintenance({
           {canSyncMetadata && (
             <Button
               size="sm"
+              variant={retryIds.length > 0 ? "default" : "ghost"}
+              title={t("workMaintenance.retrySelected", { count: retryIds.length })}
               onClick={() => void retryMetadata(retryIds)}
-              disabled={readOnly || !!loadError || loading || retrying || retryIds.length === 0}
+              disabled={controlsDisabled || retrying || retryIds.length === 0}
             >
-              <RefreshCw className={`h-4 w-4 ${retrying ? "animate-spin" : ""}`} />
-              {t("workMaintenance.retrySelected", { count: retryIds.length })}
+              <RefreshCw className={`h-3.5 w-3.5 ${retrying ? "animate-spin" : ""}`} />
+              <BulkLabel
+                label={t("workMaintenance.retrySelected", { count: retryIds.length })}
+                count={retryIds.length}
+              />
             </Button>
           )}
           {canManageSources && (
             <Button
               size="sm"
-              variant="outline"
+              variant={sourceWorks.length > 0 ? "outline" : "ghost"}
+              title={t("workMaintenance.checkSources", { count: sourceWorks.length })}
               onClick={() => void checkSources(sourceWorks.map((work) => work.id))}
-              disabled={sourceWorks.length === 0 || readOnly || !!loadError || loading || checking || deleting}
+              disabled={sourceWorks.length === 0 || controlsDisabled || checking || deleting}
             >
-              <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} />
-              {t("workMaintenance.checkSources", { count: sourceWorks.length })}
+              <SearchCheck className={`h-3.5 w-3.5 ${checking ? "animate-pulse" : ""}`} />
+              <BulkLabel
+                label={t("workMaintenance.checkSources", { count: sourceWorks.length })}
+                count={sourceWorks.length}
+              />
             </Button>
           )}
           {canManageSources && reason === "no_source" && (
             <Button
               size="sm"
-              variant="destructive"
+              variant="ghost"
+              className="hover:bg-error-surface hover:text-error-foreground"
+              title={t("unlinked.deleteInfo")}
               onClick={() => requestDelete(sourceWorks)}
-              disabled={sourceWorks.length === 0 || readOnly || !!loadError || loading || checking || deleting}
+              disabled={sourceWorks.length === 0 || controlsDisabled || checking || deleting}
             >
-              <Trash2 className="h-4 w-4" />
-              {t("unlinked.deleteInfo")}
+              <Trash2 className="h-3.5 w-3.5" />
+              <span className="max-sm:sr-only">{t("unlinked.deleteInfo")}</span>
             </Button>
           )}
         </div>
 
         {notice && (
-          <p role="status" className="border-b px-4 py-3 text-sm">
+          <p role="status" className="border-b px-4 py-2 text-sm text-muted-foreground">
             {notice}
           </p>
         )}
@@ -477,7 +508,7 @@ export function WorkMaintenance({
           {!hasLoaded && loadError ? (
             <div className="grid min-h-64 place-items-center px-4 py-10 text-center" role="alert">
               <div>
-                <p className="text-sm text-destructive">{loadError}</p>
+                <p className="text-sm text-error-foreground">{loadError}</p>
                 <Button
                   className="mt-4"
                   size="sm"
@@ -491,8 +522,11 @@ export function WorkMaintenance({
           ) : initialLoading ? (
             <UnlinkedWorksTableSkeleton />
           ) : result.works.length === 0 ? (
-            <div className="grid min-h-64 place-items-center px-4 py-10 text-center">
-              <div>
+            <div className="grid min-h-64 place-items-center px-6 py-10 text-center">
+              <div className="max-w-sm">
+                <div className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-full bg-muted text-muted-foreground">
+                  {query ? <Search className="h-4 w-4" /> : <Inbox className="h-4 w-4" />}
+                </div>
                 <p className="text-sm font-medium">
                   {query
                     ? t("workMaintenance.noMatching")
@@ -500,6 +534,11 @@ export function WorkMaintenance({
                       ? t("workManagement.catalogEmpty")
                       : t("workMaintenance.empty")}
                 </p>
+                {!query && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {reason === "catalog" ? t("workManagement.catalogDescription") : t("workMaintenance.description")}
+                  </p>
+                )}
                 {query && (
                   <Button className="mt-4" size="sm" variant="outline" onClick={clearSearch}>
                     {t("unlinked.clearSearch")}
@@ -508,142 +547,150 @@ export function WorkMaintenance({
               </div>
             </div>
           ) : (
-            <div className="overflow-x-auto" aria-busy={loading}>
-              <table className="w-full min-w-[680px] table-fixed text-left text-sm">
-                <UnlinkedWorksTableHead />
-                <tbody className="divide-y">
-                  {result.works.map((work) => {
-                    const rowChecking = checkingWorkIds.has(work.id);
-                    const rowRetrying = work.metadataIssues.some((issue) => issue.retrying);
-                    return (
-                      <tr key={work.id} className="transition-colors hover:bg-muted/25">
-                        <td className="px-4 py-2 align-middle">
-                          <Checkbox
-                            className="h-11 w-11 sm:h-5 sm:w-5"
-                            checked={selectedWorkIds.has(work.id)}
-                            onCheckedChange={(checked) => toggleWork(work.id, checked)}
-                            disabled={
-                              readOnly ||
-                              !!loadError ||
-                              loading ||
-                              checking ||
-                              deleting ||
-                              (!canManageSources && work.metadataIssues.every((issue) => issue.retrying))
-                            }
-                            aria-label={t("metadataIssues.selectWork", { code: work.primaryCode })}
-                          />
-                        </td>
-                        <td className="px-2 py-2 align-middle">
-                          <div className="grid h-12 w-12 place-items-center overflow-hidden rounded border bg-muted">
+            <table className="w-full table-fixed text-left text-sm" aria-busy={loading}>
+              <UnlinkedWorksTableHead />
+              <tbody className="divide-y">
+                {result.works.map((work) => {
+                  const rowChecking = checkingWorkIds.has(work.id);
+                  const rowRetrying = work.metadataIssues.some((issue) => issue.retrying);
+                  const selected = selectedWorkIds.has(work.id);
+                  const href = `/${encodeURIComponent(work.primaryCode)}`;
+                  return (
+                    <tr
+                      key={work.id}
+                      className={`group transition-colors ${selected ? "bg-primary/5" : "hover:bg-muted/30"}`}
+                    >
+                      <td className="py-2.5 pl-4 align-top max-sm:pl-1.5">
+                        <Checkbox
+                          className={`sm:mt-3.5 ${touchCheckboxClassName}`}
+                          checked={selected}
+                          onCheckedChange={(checked) => toggleWork(work.id, checked)}
+                          disabled={
+                            controlsDisabled ||
+                            checking ||
+                            deleting ||
+                            (!canManageSources && work.metadataIssues.every((issue) => issue.retrying))
+                          }
+                          aria-label={t("metadataIssues.selectWork", { code: work.primaryCode })}
+                        />
+                      </td>
+                      <td className="min-w-0 py-2.5 pl-2 align-top sm:pl-3">
+                        <div className="flex min-w-0 gap-3">
+                          <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-md bg-muted ring-1 ring-foreground/5">
                             {work.coverUrl ? (
                               <img
                                 src={assetURL(work.coverUrl)}
                                 alt=""
-                                className="h-full w-full object-contain"
+                                className="h-full w-full object-cover"
                                 loading="lazy"
                               />
                             ) : (
                               <ImageOff className="h-4 w-4 text-muted-foreground" />
                             )}
                           </div>
-                        </td>
-                        <td className="px-2 py-2 align-middle">
-                          <a
-                            onClick={navigateWork}
-                            href={`/${encodeURIComponent(work.primaryCode)}`}
-                            className="font-mono text-xs font-semibold hover:text-primary"
-                          >
-                            {work.primaryCode}
-                          </a>
-                        </td>
-                        <td className="min-w-0 px-2 py-2 align-middle">
-                          <a
-                            onClick={navigateWork}
-                            href={`/${encodeURIComponent(work.primaryCode)}`}
-                            className="block truncate font-medium hover:text-primary"
-                            title={work.title}
-                          >
-                            {work.title}
-                          </a>
-                          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                            {work.circle || "Unknown circle"}
-                          </span>
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {work.noSource && <Badge variant="outline">{t("workMaintenance.noSource")}</Badge>}
-                            {work.metadataIssues.length > 0 && (
-                              <Badge variant="warning">{t("workMaintenance.metadata")}</Badge>
-                            )}
-                          </div>
-                          {rowRetrying && (
-                            <p role="status" className="mt-1 text-xs text-primary">
-                              {t("metadataIssues.retrying")}
-                            </p>
-                          )}
-                          {work.metadataIssues.length > 0 && (
-                            <MetadataIssueDetails
-                              items={work.metadataIssues}
-                              disabled={readOnly || !!loadError || loading || retrying}
-                              onRetry={(ids) => void retryMetadata(ids)}
-                            />
-                          )}
-                        </td>
-                        <td className="px-4 py-2 align-middle">
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              asChild
-                              size="icon"
-                              variant="ghost"
-                              className="h-9 w-9"
-                              title={t("unlinked.openDlsite")}
-                            >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                               <a
-                                href={work.dlsiteUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                aria-label={`Open DLsite page for ${work.primaryCode}`}
+                                onClick={navigateWork}
+                                href={href}
+                                className="font-mono text-xs text-muted-foreground transition-colors hover:text-primary"
                               >
-                                <ExternalLink className="h-4 w-4" />
+                                {work.primaryCode}
                               </a>
-                            </Button>
-                            {canManageSources && work.noSource && (
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-11 w-11 sm:h-9 sm:w-9"
-                                onClick={() => void checkSources([work.id])}
-                                disabled={readOnly || !!loadError || loading || checking || deleting}
-                                aria-label={`Check sources for ${work.primaryCode}`}
-                                title={t("unlinked.checkSources")}
-                              >
-                                <RefreshCw className={`h-4 w-4 ${rowChecking ? "animate-spin" : ""}`} />
-                              </Button>
+                              {work.noSource && (
+                                <Badge variant="outline" className="px-1.5 py-0 text-[11px] text-muted-foreground">
+                                  {t("workMaintenance.noSource")}
+                                </Badge>
+                              )}
+                              {work.metadataIssues.length > 0 && (
+                                <Badge variant="warning" className="px-1.5 py-0 text-[11px]">
+                                  {t("workMaintenance.metadata")}
+                                </Badge>
+                              )}
+                            </div>
+                            <a
+                              onClick={navigateWork}
+                              href={href}
+                              className="mt-0.5 block truncate font-medium transition-colors hover:text-primary"
+                              title={work.title}
+                            >
+                              {work.title}
+                            </a>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {work.circle || "Unknown circle"}
+                            </span>
+                            {rowRetrying && (
+                              <p role="status" className="mt-1.5 flex items-center gap-1.5 text-xs text-primary">
+                                <RefreshCw className="h-3 w-3 animate-spin" aria-hidden="true" />
+                                {t("metadataIssues.retrying")}
+                              </p>
                             )}
-                            {canManageSources && reason === "no_source" && work.noSource && (
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-11 w-11 sm:h-9 sm:w-9 text-destructive hover:text-destructive"
-                                onClick={() => requestDelete([work])}
-                                disabled={readOnly || !!loadError || loading || checking || deleting}
-                                aria-label={t("unlinked.deleteFor", { code: work.primaryCode })}
-                                title={t("unlinked.deleteInfo")}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                            {work.metadataIssues.length > 0 && (
+                              <MetadataIssueDetails
+                                items={work.metadataIssues}
+                                disabled={controlsDisabled || retrying}
+                                onRetry={(ids) => void retryMetadata(ids)}
+                              />
                             )}
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        </div>
+                      </td>
+                      <td className="py-2.5 pr-1 align-top sm:pr-3">
+                        <div className="flex flex-col items-end gap-0.5 sm:mt-1.5 sm:flex-row sm:justify-end">
+                          {canManageSources && work.noSource && (
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              className="text-muted-foreground max-sm:h-11 max-sm:w-11"
+                              onClick={() => void checkSources([work.id])}
+                              disabled={controlsDisabled || checking || deleting}
+                              aria-label={`Check sources for ${work.primaryCode}`}
+                              title={t("unlinked.checkSources")}
+                            >
+                              <SearchCheck className={`h-4 w-4 ${rowChecking ? "animate-pulse" : ""}`} />
+                            </Button>
+                          )}
+                          {canManageSources && reason === "no_source" && work.noSource && (
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              className="text-muted-foreground hover:bg-error-surface hover:text-error-foreground max-sm:h-11 max-sm:w-11"
+                              onClick={() => requestDelete([work])}
+                              disabled={controlsDisabled || checking || deleting}
+                              aria-label={t("unlinked.deleteFor", { code: work.primaryCode })}
+                              title={t("unlinked.deleteInfo")}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button
+                            asChild
+                            size="icon-sm"
+                            variant="ghost"
+                            className="text-muted-foreground max-sm:h-11 max-sm:w-11"
+                            title={t("unlinked.openDlsite")}
+                          >
+                            <a
+                              href={work.dlsiteUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              aria-label={`Open DLsite page for ${work.primaryCode}`}
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                            </a>
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
-          <label className="flex items-center gap-2 text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-2 text-xs text-muted-foreground">
+          <label className="flex items-center gap-2">
             {t("workMaintenance.rows")}
             <NativeSelect
               fieldSize="sm"
@@ -652,7 +699,7 @@ export function WorkMaintenance({
                 setPageSize(Number(event.target.value) as (typeof PAGE_SIZES)[number]);
                 setPage(1);
               }}
-              className="px-2"
+              className="h-8 px-2 text-xs"
             >
               {PAGE_SIZES.map((size) => (
                 <option key={size} value={size}>
@@ -661,14 +708,11 @@ export function WorkMaintenance({
               ))}
             </NativeSelect>
           </label>
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground">
-              Page {Math.min(page, totalPages)} of {totalPages}
-            </span>
+          <div className="flex items-center gap-1">
             <Button
-              size="icon"
-              variant="outline"
-              className="h-9 w-9"
+              size="icon-sm"
+              variant="ghost"
+              className="max-sm:h-11 max-sm:w-11"
               onClick={() => setPage((current) => Math.max(1, current - 1))}
               disabled={page <= 1 || loading}
               aria-label={t("collection.previousPage")}
@@ -676,10 +720,13 @@ export function WorkMaintenance({
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
+            <span className="min-w-12 text-center tabular-nums">
+              {t("workMaintenance.pageStatus", { page: Math.min(page, totalPages), total: totalPages })}
+            </span>
             <Button
-              size="icon"
-              variant="outline"
-              className="h-9 w-9"
+              size="icon-sm"
+              variant="ghost"
+              className="max-sm:h-11 max-sm:w-11"
               onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
               disabled={page >= totalPages || loading}
               aria-label={t("collection.nextPage")}
@@ -700,6 +747,18 @@ export function WorkMaintenance({
         )}
       </section>
     </div>
+  );
+}
+
+/** Phones show only the count next to the icon; the full label stays as the accessible name. */
+function BulkLabel({ label, count }: { label: string; count: number }) {
+  return (
+    <>
+      <span className="max-sm:sr-only">{label}</span>
+      <span className="tabular-nums sm:hidden" aria-hidden="true">
+        {count}
+      </span>
+    </>
   );
 }
 
@@ -746,50 +805,55 @@ function UnlinkedWorkDeleteDialog({
 function UnlinkedWorksTableSkeleton() {
   const { t } = useTranslation();
   return (
-    <div className="overflow-x-auto" role="status" aria-label={t("workMaintenance.loading")} aria-busy="true">
-      <table className="w-full min-w-[680px] table-fixed text-left text-sm">
-        <UnlinkedWorksTableHead />
-        <tbody className="divide-y" aria-hidden="true">
-          {Array.from({ length: 3 }, (_, index) => (
-            <tr key={index} className="h-16">
-              <td className="px-4 py-2">
-                <div className="h-5 w-5 animate-pulse rounded bg-muted" />
-              </td>
-              <td className="px-2 py-2">
-                <div className="h-12 w-12 animate-pulse rounded bg-muted" />
-              </td>
-              <td className="px-2 py-2">
-                <div className="h-3 w-28 animate-pulse rounded bg-muted" />
-              </td>
-              <td className="px-2 py-2">
-                <div className="h-3 w-3/4 animate-pulse rounded bg-muted" />
-              </td>
-              <td className="px-4 py-2">
-                <div className="ml-auto h-8 w-28 animate-pulse rounded bg-muted" />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <table
+      className="w-full table-fixed text-left text-sm"
+      role="status"
+      aria-label={t("workMaintenance.loading")}
+      aria-busy="true"
+    >
+      <UnlinkedWorksTableHead />
+      <tbody className="divide-y" aria-hidden="true">
+        {Array.from({ length: 3 }, (_, index) => (
+          <tr key={index}>
+            <td className="py-2.5 pl-4 align-top max-sm:pl-1.5">
+              <div className="mx-auto h-5 w-5 animate-pulse rounded bg-muted sm:mx-0 sm:mt-3.5" />
+            </td>
+            <td className="py-2.5 pl-2 sm:pl-3">
+              <div className="flex gap-3">
+                <div className="h-12 w-12 shrink-0 animate-pulse rounded-md bg-muted" />
+                <div className="min-w-0 flex-1 space-y-2 pt-1">
+                  <div className="h-2.5 w-20 animate-pulse rounded bg-muted" />
+                  <div className="h-3 w-3/4 animate-pulse rounded bg-muted" />
+                  <div className="h-2.5 w-1/3 animate-pulse rounded bg-muted" />
+                </div>
+              </div>
+            </td>
+            <td className="py-2.5 pr-3">
+              <div className="ml-auto mt-1.5 h-8 w-8 animate-pulse rounded-md bg-muted" />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
 function UnlinkedWorksTableHead() {
   const { t } = useTranslation();
   return (
-    <thead className="border-b bg-muted/35 text-xs text-muted-foreground">
-      <tr>
-        <th className="w-20 px-4 py-2 font-medium">
-          <span className="sr-only">{t("unlinked.select")}</span>
-        </th>
-        <th className="w-16 px-2 py-2 font-medium">
-          <span className="sr-only">{t("unlinked.cover")}</span>
-        </th>
-        <th className="w-32 px-2 py-2 font-medium">{t("unlinked.code")}</th>
-        <th className="px-2 py-2 font-medium">{t("unlinked.titleColumn")}</th>
-        <th className="w-40 px-4 py-2 text-right font-medium">{t("unlinked.actions")}</th>
-      </tr>
-    </thead>
+    <>
+      <colgroup>
+        <col className="w-14 sm:w-11" />
+        <col />
+        <col className="w-12 sm:w-32" />
+      </colgroup>
+      <thead className="sr-only">
+        <tr>
+          <th>{t("unlinked.select")}</th>
+          <th>{t("unlinked.titleColumn")}</th>
+          <th>{t("unlinked.actions")}</th>
+        </tr>
+      </thead>
+    </>
   );
 }
