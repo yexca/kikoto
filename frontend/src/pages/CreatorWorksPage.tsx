@@ -18,7 +18,7 @@ import {
   Tags,
   Trash2,
 } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -53,6 +53,7 @@ import { NotFoundPage } from "@/app/NotFoundPage";
 import { usePageHeaderBack } from "@/app/pageHeader";
 import { openWorkDetail } from "@/app/workDetailNavigation";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import {
   announceRemoteTrackCreated,
   isMatchingRemoteTrack,
@@ -107,11 +108,14 @@ import {
 } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { hasPlaybackHistory } from "@/lib/playbackHistory";
-import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
+import { openCircleRoute, openCircleSeriesRoute } from "@/pages/circleNavigationState";
 import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
 import {
+  currentVoiceReturnPath,
   isVoiceListLocation,
+  openVoiceRoute,
   readLastVoiceListLocation,
+  voiceReturnLabelForLocation,
   writeLastVoiceListLocation,
 } from "@/pages/voiceNavigationState";
 import {
@@ -187,6 +191,36 @@ function VoiceCreatorWorksPage({ active }: { active: boolean }) {
   if (personId) return <VoiceDetailPage personId={personId} active={active} />;
   return <VoiceListPage active={active} />;
 }
+
+const VoiceCard = memo(function VoiceCard({
+  voice,
+  onFavoriteToggle,
+  onTagsSave,
+}: {
+  voice: VoiceSummary;
+  onFavoriteToggle: (voice: VoiceSummary) => Promise<void>;
+  onTagsSave: (voice: VoiceSummary, tags: string[]) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  return (
+    <CreatorCard
+      name={voice.displayName}
+      identityLabel={voice.latestWork ? undefined : t("creatorBrowse.voiceActor")}
+      aliases={voice.aliases}
+      latestWork={voice.latestWork}
+      favorite={voice.favorite}
+      userTags={voice.userTags}
+      syncState={voice.syncState}
+      workCount={voice.knownWorks}
+      availabilityCounts={{ local: voice.localWorks, remote: voice.remoteWorks }}
+      unavailableCount={Math.max(0, voice.knownWorks - voice.playableWorks)}
+      sources={voice.sourceSummaries}
+      onOpen={() => openVoiceRoute(voice.personId)}
+      onFavoriteToggle={() => void onFavoriteToggle(voice)}
+      onTagsSave={(tags) => onTagsSave(voice, tags)}
+    />
+  );
+});
 
 function VoiceListPage({ active }: { active: boolean }) {
   const { t } = useTranslation();
@@ -321,6 +355,8 @@ function VoiceListPage({ active }: { active: boolean }) {
       toast.notify(toastFromError(error, t("creatorBrowse.tagsUpdateFailed")));
     }
   };
+  const toggleCardFavorite = useStableCallback(toggleFavorite);
+  const saveCardTags = useStableCallback(saveTags);
 
   return (
     <div className="relative space-y-5">
@@ -365,22 +401,11 @@ function VoiceListPage({ active }: { active: boolean }) {
           >
             {voices.length > 0 ? (
               voices.map((voice) => (
-                <CreatorCard
+                <VoiceCard
                   key={voice.personId}
-                  name={voice.displayName}
-                  identityLabel={voice.latestWork ? undefined : t("creatorBrowse.voiceActor")}
-                  aliases={voice.aliases}
-                  latestWork={voice.latestWork}
-                  favorite={voice.favorite}
-                  userTags={voice.userTags}
-                  syncState={voice.syncState}
-                  workCount={voice.knownWorks}
-                  availabilityCounts={{ local: voice.localWorks, remote: voice.remoteWorks }}
-                  unavailableCount={Math.max(0, voice.knownWorks - voice.playableWorks)}
-                  sources={voice.sourceSummaries}
-                  onOpen={() => openVoiceRoute(voice.personId)}
-                  onFavoriteToggle={() => void toggleFavorite(voice)}
-                  onTagsSave={(tags) => saveTags(voice, tags)}
+                  voice={voice}
+                  onFavoriteToggle={toggleCardFavorite}
+                  onTagsSave={saveCardTags}
                 />
               ))
             ) : (
@@ -1623,16 +1648,6 @@ function openVoiceAliasMaintenance(personId: number) {
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 
-export function openVoiceRoute(personId: number) {
-  const returnTo = currentVoiceReturnPath();
-  window.history.pushState(
-    historyStateWithReturn(returnTo, voiceReturnLabelForLocation(returnTo)),
-    "",
-    `/voices/${personId}`,
-  );
-  window.dispatchEvent(new Event(NAVIGATION_EVENT));
-}
-
 function navigateToVoicesList(storageScope: string, mobile: boolean) {
   navigateToWorkspaceUp({
     mobile,
@@ -1660,27 +1675,8 @@ function openWorkRoute(work: VoiceWorkView) {
   }
 }
 
-function currentVoiceReturnPath() {
-  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
-}
-
 function voiceReturnLabel(mobile: boolean) {
   if (mobile) return "Back to voices";
   const state = window.history.state as { returnTo?: unknown } | null;
   return typeof state?.returnTo === "string" ? voiceReturnLabelForLocation(state.returnTo) : "Back to voices";
-}
-
-function voiceReturnLabelForLocation(location: string) {
-  try {
-    const pathname = new URL(location, window.location.origin).pathname;
-    if (pathname === "/" || pathname === "") return "Back to library";
-    if (/^\/favorites\/?$/i.test(pathname)) return "Back to favorites";
-    if (/^\/circles(?:\/|$)/i.test(pathname)) return "Back to circles";
-    if (/^\/voices\/?$/i.test(pathname)) return "Back to voices";
-    if (/^\/settings\/?$/i.test(pathname)) return "Back to settings";
-    if (/^\/(?:RJ|BJ|VJ|CC)/i.test(pathname)) return "Back to work";
-  } catch {
-    // Fall through to the generic label for malformed history state.
-  }
-  return "Back";
 }

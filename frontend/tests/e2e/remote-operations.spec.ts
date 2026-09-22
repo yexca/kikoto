@@ -645,7 +645,8 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await expect(page.getByRole("menu", { name: "Selected source options" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Refresh local files", exact: true })).toBeFocused();
   await expect(page.getByRole("menuitem", { name: "Manage files", exact: true })).toBeVisible();
-  await page.mouse.click(8, 8);
+  // Dismiss on a non-interactive surface; a screen corner can fall inside a control's touch target.
+  await page.getByRole("heading", { name: work.title, exact: true }).click();
   await expect(page.getByRole("menu", { name: "Selected source options" })).toHaveCount(0);
 
   await remoteTab.click();

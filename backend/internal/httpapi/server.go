@@ -5776,7 +5776,7 @@ func (s *Server) coverURL(primaryCode string) string {
 		file := coverAssetRelativePath(code, extension)
 		path := filepath.Join(s.cfg.CacheRoot, "cover", filepath.FromSlash(file))
 		if info, err := os.Stat(path); err == nil {
-			return fmt.Sprintf("/api/assets/covers/%s?v=%s-%s", file, strconv.FormatInt(info.Size(), 36), strconv.FormatInt(info.ModTime().UnixNano(), 36))
+			return "/api/assets/covers/" + file + "?v=" + coverRevision(info)
 		}
 	}
 	return ""

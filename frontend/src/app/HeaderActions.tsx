@@ -208,8 +208,18 @@ export function HeaderActions({
   useEffect(() => {
     refreshNotificationCenter();
     if (!user && !canRunWorkflows) return;
-    const timer = window.setInterval(refreshNotificationCenter, 30000);
-    return () => window.clearInterval(timer);
+    // Background tabs and a backgrounded native app skip polling and catch up on return.
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") refreshNotificationCenter();
+    }, 30000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") refreshNotificationCenter();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [canRunWorkflows, notificationPage, user?.id]);
 
   const totalNotificationCount = notificationCount + reviewCount;
@@ -888,7 +898,7 @@ function HeaderPopover({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  trigger: ReactElement;
+  trigger: ReactElement<{ onClick?: () => void; "aria-expanded"?: boolean }>;
   children: ReactNode;
   align?: "left" | "right";
   ariaLabel?: string;

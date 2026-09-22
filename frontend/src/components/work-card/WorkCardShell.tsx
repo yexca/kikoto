@@ -24,7 +24,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import i18n, { intlLocaleFor, type ResolvedUiLocale } from "@/i18n";
+import i18n, { type ResolvedUiLocale } from "@/i18n";
+import { numberFormat } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
 import {
   api,
@@ -226,6 +227,7 @@ export function WorkCardMedia({
           alt=""
           className="h-full w-full object-contain transition-transform duration-300 ease-out group-hover:scale-[1.03] motion-reduce:group-hover:scale-100"
           loading="lazy"
+          decoding="async"
         />
       ) : (
         <div className="grid h-full place-items-center bg-secondary text-2xl font-bold text-secondary-foreground">
@@ -484,6 +486,9 @@ function MeasuredBadgeList({
   const overflowRef = useRef<HTMLButtonElement | null>(null);
   const [visibleCount, setVisibleCount] = useState(badges.length);
   const [open, setOpen] = useState(false);
+  // Card view models rebuild badge arrays on every parent render; re-measure only
+  // when the rendered badge content changes.
+  const badgeLayoutKey = JSON.stringify(badges.map((badge) => [badge.key, badge.label, badge.variant]));
 
   const measure = useCallback(() => {
     const containerWidth = containerRef.current?.clientWidth ?? 0;
@@ -495,7 +500,7 @@ function MeasuredBadgeList({
     const overflowWidth =
       measurement.querySelector<HTMLElement>("[data-measured-overflow]")?.getBoundingClientRect().width ?? 0;
     setVisibleCount(visibleBadgeCountForRows(widths, containerWidth, overflowWidth));
-  }, [badges]);
+  }, [badgeLayoutKey]);
 
   useLayoutEffect(() => {
     measure();
@@ -736,7 +741,7 @@ function WorkCardMetrics({
 
 function formatPrice(value: number, currency: string | undefined, locale: ResolvedUiLocale) {
   try {
-    return new Intl.NumberFormat(intlLocaleFor(locale), {
+    return numberFormat(locale, {
       style: "currency",
       currency: currency || "JPY",
       maximumFractionDigits: 0,
@@ -747,19 +752,19 @@ function formatPrice(value: number, currency: string | undefined, locale: Resolv
 }
 
 function formatRating(value: number, locale: ResolvedUiLocale) {
-  return new Intl.NumberFormat(intlLocaleFor(locale), {
+  return numberFormat(locale, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
 }
 
 function formatStandardCount(value: number, locale: ResolvedUiLocale) {
-  return new Intl.NumberFormat(intlLocaleFor(locale)).format(value);
+  return numberFormat(locale).format(value);
 }
 
 function formatCompactCount(value: number | null, locale: ResolvedUiLocale) {
   if (value === null || !Number.isFinite(value) || value < 0) return "--";
-  return new Intl.NumberFormat(intlLocaleFor(locale), {
+  return numberFormat(locale, {
     notation: value >= 10_000 ? "compact" : "standard",
     maximumFractionDigits: value >= 10_000 ? 1 : 0,
   }).format(Math.floor(value));

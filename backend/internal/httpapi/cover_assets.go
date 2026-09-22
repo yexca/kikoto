@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/download"
@@ -50,5 +51,14 @@ func serveCoverFile(w http.ResponseWriter, r *http.Request, filePath, identity s
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	setAssetRevisionHeaders(w, info, identity)
+	if r.URL.Query().Get("v") == coverRevision(info) {
+		// A versioned URL names this exact file revision; a replaced cover gets a new URL.
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	}
 	http.ServeContent(w, r, info.Name(), info.ModTime(), file)
+}
+
+// coverRevision is the version token cover URLs carry, derived from the cached file's size and modification time.
+func coverRevision(info os.FileInfo) string {
+	return strconv.FormatInt(info.Size(), 36) + "-" + strconv.FormatInt(info.ModTime().UnixNano(), 36)
 }

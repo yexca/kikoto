@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
@@ -66,5 +67,48 @@ func TestRemoteCoverAcceptsRasterContentAndRejectsActiveDocuments(t *testing.T) 
 		if response.Code != http.StatusNotFound {
 			t.Fatalf("legacy %s response status=%d", extension, response.Code)
 		}
+	}
+}
+
+func TestVersionedCoverURLIsImmutableUntilTheCoverChanges(t *testing.T) {
+	var picture bytes.Buffer
+	if err := png.Encode(&picture, image.NewRGBA(image.Rect(0, 0, 1, 1))); err != nil {
+		t.Fatal(err)
+	}
+	s := NewServer(openMigratedTestDB(t), config.Config{CacheRoot: t.TempDir()})
+	code := testfixture.WorkCode(testfixture.PrefixRJ, 1)
+	coverPath := filepath.Join(s.cfg.CacheRoot, "cover", filepath.FromSlash(coverAssetRelativePath(code, ".png")))
+	if err := os.MkdirAll(filepath.Dir(coverPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(coverPath, picture.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cacheControl := func(url string) string {
+		response := httptest.NewRecorder()
+		s.getCoverAsset(response, httptest.NewRequest(http.MethodGet, url, nil))
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s status=%d", url, response.Code)
+		}
+		return response.Header().Get("Cache-Control")
+	}
+
+	versioned := s.coverURL(code)
+	if got := cacheControl(versioned); got != "private, max-age=31536000, immutable" {
+		t.Fatalf("versioned Cache-Control = %q", got)
+	}
+	unversioned, _, _ := strings.Cut(versioned, "?")
+	if got := cacheControl(unversioned); got != "private, no-cache" {
+		t.Fatalf("unversioned Cache-Control = %q", got)
+	}
+
+	if err := os.WriteFile(coverPath, append(picture.Bytes(), 0), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := cacheControl(versioned); got != "private, no-cache" {
+		t.Fatalf("stale version Cache-Control = %q", got)
+	}
+	if replaced := s.coverURL(code); replaced == versioned {
+		t.Fatalf("cover URL %q did not change after the cover was replaced", replaced)
 	}
 }

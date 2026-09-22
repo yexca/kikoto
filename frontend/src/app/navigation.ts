@@ -68,7 +68,7 @@ export const navItems = [
     id: "workflows",
     label: "Workflows",
     labelKey: "nav.workflows",
-    description: "Run built-in operations and manage custom automations",
+    description: "Run built-in operations and preset workflows",
     descriptionKey: "nav.workflowsDescription",
     path: "/workflows",
     icon: Workflow,

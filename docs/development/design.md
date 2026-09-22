@@ -84,7 +84,10 @@ Every reusable interactive component defines:
 - A readable accessible name. Icon-only actions use an `aria-label` and a
   tooltip when the icon is not self-explanatory.
 - A minimum 44px touch target on primary mobile interaction paths, even when the
-  visible icon is smaller.
+  visible icon is smaller. The shared `Button` extends a compact control's hit
+  area to 44px on coarse pointers (`touch-target`) without changing its visible
+  size. Adjacent compact controls share their overlap, so space destructive
+  actions away from frequent ones.
 
 Keyboard focus must remain clearly visible. Do not remove focus feedback merely
 to match pointer styling, and do not rely on hover for a control used on touch.

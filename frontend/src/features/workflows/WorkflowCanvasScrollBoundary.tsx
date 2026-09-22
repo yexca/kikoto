@@ -9,7 +9,7 @@ export const WorkflowCanvasScrollBoundary = forwardRef<HTMLDivElement, WorkflowC
   function WorkflowCanvasScrollBoundary({ children, className, requireModifier = true, ...props }, ref) {
     const { t } = useTranslation();
     const [showHint, setShowHint] = useState(false);
-    const timer = useRef<ReturnType<typeof setTimeout>>();
+    const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
     const modifier = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
 
     useEffect(() => () => clearTimeout(timer.current), []);

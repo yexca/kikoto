@@ -52,7 +52,9 @@ the new server configuration. Re-selecting the same server retains its session.
 Non-English translation resources and their surface labels live in separate
 language modules loaded on demand. The English fallback must not synchronously
 import a module that also owns deferred languages, or those languages enter the
-initial bundle despite the dynamic resource entry points.
+initial bundle despite the dynamic resource entry points. Each deferred locale
+module owns its own copy, and a unit test keeps other scripts out of the English
+modules apart from the language picker's native labels.
 
 ## Code Organization
 
@@ -75,6 +77,12 @@ This is an incremental extraction direction, not a request for a repository-wide
 move. A domain earns its own feature boundary after it owns a real page or flow
 and several mostly private components, models, or hooks. App composition or a
 small shared contract should resolve cross-domain needs.
+
+Library work detail lives in `pages/library/detail` and loads as its own chunk
+from the Library list. An idle Library preloads it and a detail location starts
+it with the page, so opening a work normally renders without suspending. Circle
+and voice route helpers live in their navigation-state modules so one page does
+not import another page's module.
 
 Work detail metadata editing exposes one entry from
 `features/work-detail/metadata`. Its modal owns interaction and save actions,
@@ -124,9 +132,21 @@ storage keys; it remains mounted across navigation.
   Switching destinations restores that destination's last stable list or detail
   route, history state, and scroll position for the current server and user;
   dialogs, pending mutations, and other transient overlays are not resumed.
-- Bound mounted browse workspaces by layout: desktop may retain all four primary
-  destinations, while mobile retains only the two most recently used. An
-  inactive workspace cancels unfinished detail/list work and pauses polling.
+- Retain every visited primary browse workspace (Library, Favorites, Circles,
+  and Voice Actors) on both layouts so returning to a destination never reloads
+  its rendered list. Each workspace has its own loading boundary. The current
+  location's page chunk starts loading with the app, the other three and the
+  command palette when the shell is idle, and a loaded chunk renders without
+  suspending: React holds a shown Suspense fallback for at least 300ms, which
+  would otherwise delay the page and the requests its effects start. An inactive
+  workspace is hidden, cancels unfinished detail/list work, and pauses polling.
+- Keep destination switches proportional to the workspaces that change. A
+  workspace that stays hidden skips shell-driven renders, and browse list items
+  are memoized with stable item handlers (`useStableCallback`) so a page render
+  does not re-render unchanged cards.
+- Browse workspaces share the window scroll position. When a retained workspace
+  becomes active, the shell applies that history entry's scroll offset before the
+  first paint; a resumed workspace does not replay its own stored list offset.
 - Tapping the active Library, Circles, or Voice Actors destination from its
   detail route returns to that workspace's last list state. Work detail routes
   remain part of Library regardless of the workspace that opened them.
