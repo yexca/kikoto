@@ -41,6 +41,12 @@ as a self-hosted web application with a responsive player and an Android client.
 > [!IMPORTANT]
 > Kikoto is under active development. Back up `config/` and `data/` before an upgrade, and review the [security model](docs/operations/security.md) before exposing an instance to a network.
 
+> [!NOTE]
+> **Planned change to custom workflows.** The next release may remove custom
+> workflow editing and provide only built-in preset workflows. Custom
+> workflows currently have too many issues while offering limited flexibility,
+> which makes them costly to maintain.
+
 ## Key Features
 
 - **One library, multiple locations.** Local, cached, tracked, and remote files

@@ -1325,10 +1325,16 @@ export const englishResource = {
         title: "Project background and credits",
         intro:
           "Kikoto is a local-first personal audio library focused on DLsite-style works, unified metadata, compatible remote sources, and browser playback.",
-        builtWithCodex: "Built with Codex",
-        codexCredit: "This software is developed by yexca with assistance from Codex.",
-        modelCredit:
-          "v0.1.0 was developed with GPT-5.5 assistance. v0.1.1 through v0.5.4 used GPT-5.6-sol. From v0.5.5 onward, development assistance uses GPT-6-Astra.",
+        builtWithAi: "Built with AI",
+        aiCredit: "This software is developed by yexca with assistance from AI Agent.",
+        currentModels: "Starting with {{version}}, development assistance uses {{models}}.",
+        viewModelHistory: "View all models",
+        modelHistoryTitle: "AI models used",
+        modelHistoryDescription: "Models that assisted development in each release range.",
+        versionColumn: "Version",
+        modelColumn: "Model",
+        firstRelease: "Start",
+        present: "Present",
         softwareOverview: "Software overview",
         overviewOne:
           "Kikoto combines local folders, DLsite metadata, and Kikoeru-compatible remote sources under one unified work model.",

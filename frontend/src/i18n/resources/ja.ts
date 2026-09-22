@@ -154,10 +154,16 @@ export const japaneseResource = {
         title: "プロジェクトの背景とクレジット",
         intro:
           "Kikoto は、DLsite 形式の作品、統合メタデータ、互換リモートソース、ブラウザー再生に対応したローカルファーストの個人オーディオライブラリです。",
-        builtWithCodex: "Codex で開発",
-        codexCredit: "このソフトウェアは yexca が Codex の支援を受けて開発しています。",
-        modelCredit:
-          "v0.1.0 は GPT-5.5 の支援で開発されました。v0.1.1 から v0.5.4 までは GPT-5.6-sol を使用しました。v0.5.5 以降は GPT-6-Astra の開発支援を使用しています。",
+        builtWithAi: "AI で開発",
+        aiCredit: "このソフトウェアは yexca が AI Agent の支援を受けて開発しています。",
+        currentModels: "{{version}} 以降は {{models}} の開発支援を使用しています。",
+        viewModelHistory: "すべてのモデルを表示",
+        modelHistoryTitle: "使用している AI モデル",
+        modelHistoryDescription: "各バージョン範囲で開発を支援したモデルです。",
+        versionColumn: "バージョン",
+        modelColumn: "モデル",
+        firstRelease: "初期",
+        present: "現在",
         softwareOverview: "ソフトウェア概要",
         overviewOne:
           "Kikoto はローカルフォルダー、DLsite メタデータ、Kikoeru 互換リモートソースを統合した作品モデルを提供します。",

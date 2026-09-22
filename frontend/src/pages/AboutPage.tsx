@@ -1,8 +1,10 @@
-import { BookOpen, Boxes, FolderCode, Github, RefreshCw, Scale, Sparkles } from "lucide-react";
+import { BookOpen, Boxes, FolderCode, Github, History, RefreshCw, Scale, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogBody, DialogHeader } from "@/components/ui/dialog";
 import { APP_CLIENT_VERSION, githubReleaseURL } from "@/lib/appInfo";
 import { api, type AppUpdate } from "@/lib/api";
 import { KIKOTO_GITHUB_ENDPOINTS } from "@/lib/official-links";
@@ -24,6 +26,16 @@ const referenceProjects = [
     description: "about.cherryReference",
   },
 ] as const;
+
+// Ordered oldest first. A null bound means the range is open-ended.
+const aiModelHistory = [
+  { from: null, to: "v0.1.0", models: ["GPT-5.5"] },
+  { from: "v0.1.1", to: "v0.5.4", models: ["GPT-5.6-Sol"] },
+  { from: "v0.5.5", to: "v0.6.0", models: ["GPT-6-Astra"] },
+  { from: "v0.6.1", to: null, models: ["GPT-6-Astra", "Claude Opus 5"] },
+] as const;
+
+const currentAiModels = aiModelHistory[aiModelHistory.length - 1];
 
 const technologyGroups = [
   {
@@ -47,6 +59,7 @@ const technologyGroups = [
 export function AboutPage() {
   const { t } = useTranslation();
   const [update, setUpdate] = useState<AppUpdate | null>(null);
+  const [modelHistoryOpen, setModelHistoryOpen] = useState(false);
   useEffect(() => {
     let active = true;
     void api
@@ -110,12 +123,18 @@ export function AboutPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Sparkles className="h-4 w-4" />
-              {t("about.builtWithCodex")}
+              {t("about.builtWithAi")}
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <p>{t("about.codexCredit")}</p>
-            <p>{t("about.modelCredit")}</p>
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
+            <p>{t("about.aiCredit")}</p>
+            <p>
+              {t("about.currentModels", { version: currentAiModels.from, models: currentAiModels.models.join(", ") })}
+            </p>
+            <Button size="sm" variant="outline" onClick={() => setModelHistoryOpen(true)}>
+              <History className="h-4 w-4" />
+              {t("about.viewModelHistory")}
+            </Button>
           </CardContent>
         </Card>
 
@@ -212,6 +231,54 @@ export function AboutPage() {
           </CardContent>
         </Card>
       </section>
+      {modelHistoryOpen && <ModelHistoryDialog onClose={() => setModelHistoryOpen(false)} />}
     </div>
+  );
+}
+
+function ModelHistoryDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <Dialog onClose={onClose} size="lg">
+      <DialogHeader
+        title={t("about.modelHistoryTitle")}
+        description={t("about.modelHistoryDescription")}
+        icon={<Sparkles className="h-4 w-4" />}
+        onClose={onClose}
+        closeLabel={t("common.close")}
+      />
+      <DialogBody className="p-0">
+        <table className="w-full text-left text-sm">
+          <thead className="border-b bg-muted/35 text-xs text-muted-foreground">
+            <tr>
+              <th scope="col" className="px-5 py-2.5 font-medium">
+                {t("about.versionColumn")}
+              </th>
+              <th scope="col" className="px-5 py-2.5 font-medium">
+                {t("about.modelColumn")}
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {aiModelHistory.map((entry) => (
+              <tr key={entry.from ?? "start"}>
+                <td className="whitespace-nowrap px-5 py-3 tabular-nums">
+                  {`${entry.from ?? t("about.firstRelease")} – ${entry.to ?? t("about.present")}`}
+                </td>
+                <td className="px-5 py-3">
+                  <div className="flex flex-wrap gap-2">
+                    {entry.models.map((model) => (
+                      <span key={model} className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">
+                        {model}
+                      </span>
+                    ))}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </DialogBody>
+    </Dialog>
   );
 }

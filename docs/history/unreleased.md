@@ -1,2 +1,2 @@
-No unreleased changes are recorded yet. Changes through the corrected v0.6.0
-release are summarized in [v0.6.0](v0.6.0.md).
+No unreleased changes are recorded yet. Changes through v0.6.1 are summarized
+in [v0.6.1](v0.6.1.md).

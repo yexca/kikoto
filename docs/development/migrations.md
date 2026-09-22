@@ -153,3 +153,9 @@ the normal immutable-baseline rule, not a reason to rename snapshots on each
 release. The historical `033_v0.5.5.sql` development snapshot remains available
 for databases that used it. Databases on schema 032 or 033 continue through
 the remaining numbered migrations.
+
+## v0.6.1 Upgrade
+
+v0.6.1 adds no numbered SQL and remains on schema 034. Existing databases start
+without applying migrations, and fresh installs continue to use
+`034_v0.6.0.sql`.

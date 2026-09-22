@@ -17,6 +17,7 @@ Avoid using history pages as the only source of truth for current behavior.
 
 ## Releases
 
+- [v0.6.1](v0.6.1.md)
 - [v0.6.0](v0.6.0.md)
 - [v0.5.5](v0.5.5.md)
 - [v0.5.4](v0.5.4.md)
