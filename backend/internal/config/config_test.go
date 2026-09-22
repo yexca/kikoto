@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/netip"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -43,22 +44,24 @@ func TestLoadParsesConfiguredPositiveIntegerAndBooleanValues(t *testing.T) {
 	t.Setenv("KIKOTO_MODE", "development")
 	t.Setenv("KIKOTO_LOCAL_SCAN_DEPTH", "5")
 	t.Setenv("KIKOTO_SESSION_COOKIE_SECURE", "YES")
+	t.Setenv("KIKOTO_LOGIN_CONCURRENCY", "3")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.LocalScanDepth != 5 || !cfg.SessionCookieSecure {
-		t.Fatalf("parsed config = depth %d secure %t, want 5/true", cfg.LocalScanDepth, cfg.SessionCookieSecure)
+	if cfg.LocalScanDepth != 5 || !cfg.SessionCookieSecure || cfg.LoginConcurrency != 3 {
+		t.Fatalf("parsed config = depth %d secure %t login concurrency %d, want 5/true/3", cfg.LocalScanDepth, cfg.SessionCookieSecure, cfg.LoginConcurrency)
 	}
 
 	t.Setenv("KIKOTO_LOCAL_SCAN_DEPTH", "0")
 	t.Setenv("KIKOTO_SESSION_COOKIE_SECURE", "not-a-boolean")
+	t.Setenv("KIKOTO_LOGIN_CONCURRENCY", "-1")
 	cfg, err = Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.LocalScanDepth != 3 || cfg.SessionCookieSecure {
-		t.Fatalf("invalid config fallback = depth %d secure %t, want 3/false", cfg.LocalScanDepth, cfg.SessionCookieSecure)
+	if cfg.LocalScanDepth != 3 || cfg.SessionCookieSecure || cfg.LoginConcurrency != 8 {
+		t.Fatalf("invalid config fallback = depth %d secure %t login concurrency %d, want 3/false/8", cfg.LocalScanDepth, cfg.SessionCookieSecure, cfg.LoginConcurrency)
 	}
 }
 
@@ -83,6 +86,28 @@ func TestLoadReadsDemoMode(t *testing.T) {
 	}
 	if !cfg.IsDemo() {
 		t.Fatal("Load() did not enable demo mode")
+	}
+}
+
+func TestLoadParsesTrustedProxiesAndRejectsInvalidEntries(t *testing.T) {
+	t.Setenv("KIKOTO_MODE", "development")
+	t.Setenv("KIKOTO_TRUSTED_PROXIES", " 192.0.2.1 , 198.51.100.7/24, 2001:db8::/48 ")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []netip.Prefix{
+		netip.MustParsePrefix("192.0.2.1/32"),
+		netip.MustParsePrefix("198.51.100.0/24"),
+		netip.MustParsePrefix("2001:db8::/48"),
+	}
+	if !reflect.DeepEqual(cfg.TrustedProxies, want) {
+		t.Fatalf("trusted proxies = %v, want %v", cfg.TrustedProxies, want)
+	}
+
+	t.Setenv("KIKOTO_TRUSTED_PROXIES", "proxy.example.invalid")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted a trusted proxy that is not an address or CIDR prefix")
 	}
 }
 

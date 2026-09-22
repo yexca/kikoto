@@ -20,6 +20,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/accesspolicy"
 	"github.com/yexca/kikoto/backend/internal/account"
+	"github.com/yexca/kikoto/backend/internal/auththrottle"
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
@@ -39,6 +40,7 @@ type Server struct {
 	db                             *sql.DB
 	accountStore                   *account.Store
 	accessPolicy                   *accesspolicy.Store
+	loginThrottle                  *auththrottle.Limiter
 	libraryStore                   *library.Store
 	workflowStore                  *workflow.Store
 	cfg                            config.Config
@@ -94,6 +96,7 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 	dlsiteEndpoints := dlsite.DefaultEndpoints()
 	return &Server{
 		db: db, accountStore: account.NewStore(db), accessPolicy: accesspolicy.NewStore(db), libraryStore: library.NewStore(db), workflowStore: workflow.NewStore(db), cfg: cfg,
+		loginThrottle:                  auththrottle.New(),
 		dlsiteEndpoints:                dlsiteEndpoints,
 		dlsiteClient:                   dlsiteEndpoints.NewClient(nil),
 		metadataCoordinator:            metasync.NewCoordinator(),
@@ -336,15 +339,27 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	attempt, retryAfter, allowed := s.loginThrottle.Begin(loginThrottleKeys(s.loginClientKey(r), username))
+	if !allowed {
+		writeLoginRateLimited(w, retryAfter)
+		return
+	}
 	session, err := s.accountStore.Authenticate(r.Context(), username, password, time.Now())
 	if errors.Is(err, sql.ErrNoRows) {
+		attempt.Fail()
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid username or password"})
 		return
 	}
 	if err != nil {
+		attempt.Cancel()
+		if errors.Is(err, account.ErrPasswordVerificationBusy) {
+			writeLoginBusy(w)
+			return
+		}
 		writeError(w, err)
 		return
 	}
+	attempt.Succeed()
 
 	s.setSessionCookie(r, w, &http.Cookie{
 		Name:     sessionCookieName,

@@ -596,6 +596,7 @@ export const japaneseResource = {
         signingIn: "ログイン中",
         failed: "ログインに失敗しました",
         invalidCredentials: "ユーザー名またはパスワードが正しくありません。",
+        tooManyAttempts: "ログインの試行回数が多すぎます。数分待ってから再度お試しください。",
         changeServer: "サーバーを変更",
       },
       settings: {

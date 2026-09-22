@@ -586,6 +586,7 @@ export const zhHantResource = {
         signingIn: "正在登入",
         failed: "登入失敗",
         invalidCredentials: "使用者名稱或密碼不正確。",
+        tooManyAttempts: "登入嘗試次數過多，請稍候幾分鐘再試。",
         changeServer: "更換伺服器",
       },
       settings: {

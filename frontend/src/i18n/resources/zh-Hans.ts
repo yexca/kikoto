@@ -584,6 +584,7 @@ export const zhHansResource = {
         signingIn: "正在登录",
         failed: "登录失败",
         invalidCredentials: "用户名或密码不正确。",
+        tooManyAttempts: "登录尝试次数过多，请等待几分钟后再试。",
         changeServer: "更换服务器",
       },
       settings: {

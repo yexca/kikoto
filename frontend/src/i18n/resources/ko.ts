@@ -590,6 +590,7 @@ export const koreanResource = {
         signingIn: "로그인 중",
         failed: "로그인 실패",
         invalidCredentials: "사용자 이름 또는 비밀번호가 올바르지 않습니다.",
+        tooManyAttempts: "로그인 시도가 너무 많습니다. 몇 분 후에 다시 시도하세요.",
         changeServer: "서버 변경",
       },
       settings: {
