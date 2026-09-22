@@ -100,7 +100,7 @@ test("mobile tabs restore the current Library detail after visiting a voice acto
   await expect(page).toHaveURL(new RegExp(`/${voicedWork.primaryCode}`));
   await page.getByRole("button", { name: "Example Voice", exact: true }).first().click();
   await expect(page).toHaveURL(/\/voices\/7$/);
-  await expect(page.getByText("Example Voice", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Example Voice", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Library", exact: true }).click();
 

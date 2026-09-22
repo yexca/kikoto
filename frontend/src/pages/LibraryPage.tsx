@@ -205,7 +205,12 @@ import {
   type WorkMetadataPresentation,
   type WorkMetadataSyncStatus,
 } from "@/lib/api";
-import { historyStateWithReturn, navigateToWorkspaceUp, NAVIGATION_EVENT } from "@/lib/browserHistory";
+import {
+  historyStateWithReturn,
+  isMobileTabResumeHistoryState,
+  navigateToWorkspaceUp,
+  NAVIGATION_EVENT,
+} from "@/lib/browserHistory";
 import { currentClientStorageScope, type ClientPrincipalID } from "@/lib/clientStorageScope";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { DLSITE_ENDPOINTS } from "@/lib/official-links";
@@ -1028,7 +1033,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       wasActive.current = false;
       return;
     }
-    const syncFromPath = () => {
+    const syncFromPath = (restoreListScroll = true) => {
       if (!knownLibraryRoute(window.location.pathname, window.location.search, sources)) return;
       const nextTab = resolveTabFromPath(window.location.pathname, sources, activeTab);
       const nextScope = localScopeFromPath(window.location.pathname);
@@ -1042,7 +1047,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             readLibraryHistoryBrowseState(browseStorageScope) ?? { ...sessionDefaultBrowseState, ...sortPreference },
         ),
         nextTab,
-        nextCode === null,
+        restoreListScroll && nextCode === null,
       );
       setSelectedCode(nextCode);
       setSelectedWorkPreview(workPreviewFromHistory(nextCode));
@@ -1052,7 +1057,9 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     };
     const becameActive = !wasActive.current;
     wasActive.current = true;
-    if (becameActive) syncFromPath();
+    // A resumed bottom-navigation workspace keeps its rendered list; the app shell
+    // restores that entry's scroll offset before paint.
+    if (becameActive) syncFromPath(!isMobileTabResumeHistoryState(window.history.state));
     const handlePopState = () => syncFromPath();
     const handleAppNavigation = () => syncFromPath();
     window.addEventListener("popstate", handlePopState);
@@ -1118,15 +1125,19 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   useEffect(() => {
     if (!active || selectedCode !== null || selectedRemoteTarget !== null) return;
     let pendingWrite: number | null = null;
+    // Cleanup runs after another workspace has replaced this one in the shared
+    // window scroll, so persist the last offset observed while this list was visible.
+    let lastScrollY = window.scrollY;
     const flushScroll = () => {
       if (pendingWrite !== null) window.clearTimeout(pendingWrite);
       pendingWrite = null;
       if (codeFromLocation(window.location.pathname, window.location.search) !== null) return;
-      const browseState = { ...activeBrowseState, scrollY: window.scrollY };
+      const browseState = { ...activeBrowseState, scrollY: lastScrollY };
       writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
       writeLibraryHistoryBrowseState(browseStorageScope, browseState);
     };
     const rememberScroll = () => {
+      lastScrollY = window.scrollY;
       if (pendingWrite !== null) return;
       pendingWrite = window.setTimeout(flushScroll, 150);
     };
@@ -1557,7 +1568,9 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     setClauseEditor(null);
   };
 
-  if (sourceRoutesReady && !knownLibraryRoute(window.location.pathname, window.location.search, sources)) {
+  // A hidden retained workspace sees another destination's location; keep its
+  // last rendered list instead of replacing it with a route-not-found view.
+  if (active && sourceRoutesReady && !knownLibraryRoute(window.location.pathname, window.location.search, sources)) {
     return (
       <NotFoundPage
         onBack={() => (window.history.length > 1 ? window.history.back() : openLibraryHome())}
@@ -8990,7 +9003,7 @@ function TreeFileMoreActions({
   canPlay: boolean;
   hasQueueActions: boolean;
   open: boolean;
-  anchorRef: RefObject<HTMLDivElement>;
+  anchorRef: RefObject<HTMLDivElement | null>;
   onOpenChange: (open: boolean) => void;
   onOpenLyrics: () => void;
   onCloseLyrics: () => void;

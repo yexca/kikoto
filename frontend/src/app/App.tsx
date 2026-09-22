@@ -1,6 +1,6 @@
 import { USER_PREFERENCES_CHANGED } from "@/lib/recommendationSession";
 import { App as CapacitorApp } from "@capacitor/app";
-import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
@@ -35,7 +35,6 @@ import { RouteErrorBoundary } from "@/app/RouteErrorBoundary";
 import { PageActiveProvider, PageHeaderProvider, usePageHeaderBackState } from "@/app/pageHeader";
 import { useScrollRestoration } from "@/app/scrollRestoration";
 import { MobileRuntimeProvider, useMobileRuntime } from "@/app/MobileRuntime";
-import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { ANDROID_BACK_EVENT, LOGIN_REQUEST_EVENT } from "@/app/events";
 import { isNativeApp } from "@/lib/serverConfig";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
@@ -64,17 +63,21 @@ import {
   type RemoteTrackTerminalDetail,
 } from "@/app/remoteTrackWorkflows";
 
-const LibraryPage = lazy(() => import("@/pages/LibraryPage").then((module) => ({ default: module.LibraryPage })));
+// Browse workspaces share the bottom navigation, so their chunks are preloaded
+// once the shell is idle instead of suspending on the first tap.
+const loadLibraryPage = () => import("@/pages/LibraryPage");
+const loadFavoritesPage = () => import("@/pages/FavoritesPage");
+const loadCirclesPage = () => import("@/pages/CirclesPage");
+const loadCreatorWorksPage = () => import("@/pages/CreatorWorksPage");
+const LibraryPage = lazy(() => loadLibraryPage().then((module) => ({ default: module.LibraryPage })));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
 const WorkManagementPage = lazy(() =>
   import("@/pages/WorkManagementPage").then((module) => ({ default: module.WorkManagementPage })),
 );
 const WorkflowsPage = lazy(() => import("@/pages/WorkflowsPage").then((module) => ({ default: module.WorkflowsPage })));
-const FavoritesPage = lazy(() => import("@/pages/FavoritesPage").then((module) => ({ default: module.FavoritesPage })));
-const CreatorWorksPage = lazy(() =>
-  import("@/pages/CreatorWorksPage").then((module) => ({ default: module.CreatorWorksPage })),
-);
-const CirclesPage = lazy(() => import("@/pages/CirclesPage").then((module) => ({ default: module.CirclesPage })));
+const FavoritesPage = lazy(() => loadFavoritesPage().then((module) => ({ default: module.FavoritesPage })));
+const CreatorWorksPage = lazy(() => loadCreatorWorksPage().then((module) => ({ default: module.CreatorWorksPage })));
+const CirclesPage = lazy(() => loadCirclesPage().then((module) => ({ default: module.CirclesPage })));
 const AboutPage = lazy(() => import("@/pages/AboutPage").then((module) => ({ default: module.AboutPage })));
 const CommandPalette = lazy(() =>
   import("@/app/CommandPalette").then((module) => ({ default: module.CommandPalette })),
@@ -336,7 +339,7 @@ function AuthenticatedApp() {
       <RemoteTrackWorkflowBridge />
       <div
         className={cx(
-          "app-shell min-h-screen bg-background lg:grid",
+          "app-shell min-h-dvh bg-background lg:grid",
           sidebarCollapsed ? "lg:grid-cols-[76px_minmax(0,1fr)]" : "lg:grid-cols-[248px_minmax(0,1fr)]",
         )}
       >
@@ -533,11 +536,18 @@ function AuthenticatedApp() {
                   >
                     <span
                       className={cx(
-                        "grid h-7 w-12 place-items-center rounded-full transition-colors",
-                        page === item.id ? "bg-primary/15 text-primary" : "group-active:bg-muted",
+                        "relative grid h-7 w-12 place-items-center rounded-full transition-colors",
+                        page === item.id ? "text-primary" : "group-active:bg-muted",
                       )}
                     >
-                      <item.icon className="h-[1.125rem] w-[1.125rem]" />
+                      {page === item.id && (
+                        <span
+                          aria-hidden="true"
+                          data-active="true"
+                          className="mobile-nav-pill absolute inset-0 rounded-full bg-primary/15"
+                        />
+                      )}
+                      <item.icon className="relative h-[1.125rem] w-[1.125rem] transition-transform duration-150 group-active:scale-90" />
                     </span>
                     <span>{navigationLabel(item, t)}</span>
                   </button>
@@ -618,51 +628,78 @@ const cachedBrowsePages = ["library", "favorites", "circles", "voice-actors"] as
 type CachedBrowsePage = (typeof cachedBrowsePages)[number];
 
 function CachedBrowsePages({ activePage }: { activePage: AppPage | null }) {
-  const mobile = useMobileNavigationLayout();
   const [visitedPages, setVisitedPages] = useState<readonly CachedBrowsePage[]>(() =>
     activePage && isCachedBrowsePage(activePage) ? [activePage] : [],
   );
   const pageToMount = activePage && isCachedBrowsePage(activePage) ? activePage : null;
-  const orderedPages = pageToMount
-    ? [...visitedPages.filter((page) => page !== pageToMount), pageToMount]
-    : visitedPages;
-  const mountedPages = new Set(mobile ? orderedPages.slice(-2) : orderedPages);
+  const mountedPages = new Set(pageToMount ? [...visitedPages, pageToMount] : visitedPages);
+  const previousActivePage = useRef(activePage);
 
   useEffect(() => {
     if (!pageToMount) return;
-    setVisitedPages((current) => {
-      if (current[current.length - 1] === pageToMount) return current;
-      return [...current.filter((page) => page !== pageToMount), pageToMount];
-    });
+    setVisitedPages((current) => (current.includes(pageToMount) ? current : [...current, pageToMount]));
   }, [pageToMount]);
+
+  // Every browse page shares the window scroll position. A retained page already
+  // has its content, so place the entry's scroll position before the first paint
+  // instead of showing the previous page's offset and correcting it later.
+  useLayoutEffect(() => {
+    const previous = previousActivePage.current;
+    previousActivePage.current = activePage;
+    if (!pageToMount || previous === activePage || !visitedPages.includes(pageToMount)) return;
+    window.scrollTo({ top: historyScrollY(window.history.state), behavior: "auto" });
+  }, [activePage, pageToMount, visitedPages]);
+
+  useEffect(() => {
+    const preload = () => {
+      void loadLibraryPage().catch(() => {});
+      void loadFavoritesPage().catch(() => {});
+      void loadCirclesPage().catch(() => {});
+      void loadCreatorWorksPage().catch(() => {});
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      const handle = window.requestIdleCallback(preload, { timeout: 4000 });
+      return () => window.cancelIdleCallback(handle);
+    }
+    const timer = window.setTimeout(preload, 1500);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   return (
     <>
       {mountedPages.has("library") && (
         <div data-browse-page="library" hidden={activePage !== "library"}>
           <PageActiveProvider value={activePage === "library"}>
-            <LibraryPage active={activePage === "library"} />
+            <Suspense fallback={<PageLoading />}>
+              <LibraryPage active={activePage === "library"} />
+            </Suspense>
           </PageActiveProvider>
         </div>
       )}
       {mountedPages.has("favorites") && (
         <div data-browse-page="favorites" hidden={activePage !== "favorites"}>
           <PageActiveProvider value={activePage === "favorites"}>
-            <FavoritesPage active={activePage === "favorites"} />
+            <Suspense fallback={<PageLoading />}>
+              <FavoritesPage active={activePage === "favorites"} />
+            </Suspense>
           </PageActiveProvider>
         </div>
       )}
       {mountedPages.has("circles") && (
         <div data-browse-page="circles" hidden={activePage !== "circles"}>
           <PageActiveProvider value={activePage === "circles"}>
-            <CirclesPage active={activePage === "circles"} />
+            <Suspense fallback={<PageLoading />}>
+              <CirclesPage active={activePage === "circles"} />
+            </Suspense>
           </PageActiveProvider>
         </div>
       )}
       {mountedPages.has("voice-actors") && (
         <div data-browse-page="voice-actors" hidden={activePage !== "voice-actors"}>
           <PageActiveProvider value={activePage === "voice-actors"}>
-            <CreatorWorksPage kind="voice" active={activePage === "voice-actors"} />
+            <Suspense fallback={<PageLoading />}>
+              <CreatorWorksPage kind="voice" active={activePage === "voice-actors"} />
+            </Suspense>
           </PageActiveProvider>
         </div>
       )}

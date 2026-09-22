@@ -484,6 +484,9 @@ function MeasuredBadgeList({
   const overflowRef = useRef<HTMLButtonElement | null>(null);
   const [visibleCount, setVisibleCount] = useState(badges.length);
   const [open, setOpen] = useState(false);
+  // Card view models rebuild badge arrays on every parent render; re-measure only
+  // when the rendered badge content changes.
+  const badgeLayoutKey = JSON.stringify(badges.map((badge) => [badge.key, badge.label, badge.variant]));
 
   const measure = useCallback(() => {
     const containerWidth = containerRef.current?.clientWidth ?? 0;
@@ -495,7 +498,7 @@ function MeasuredBadgeList({
     const overflowWidth =
       measurement.querySelector<HTMLElement>("[data-measured-overflow]")?.getBoundingClientRect().width ?? 0;
     setVisibleCount(visibleBadgeCountForRows(widths, containerWidth, overflowWidth));
-  }, [badges]);
+  }, [badgeLayoutKey]);
 
   useLayoutEffect(() => {
     measure();

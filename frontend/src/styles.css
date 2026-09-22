@@ -44,6 +44,26 @@
   }
 }
 
+@keyframes browse-page-enter {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes mobile-nav-pill-enter {
+  from {
+    opacity: 0.4;
+    transform: scaleX(0.55);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
 @keyframes overflow-marquee {
   from {
     transform: translateX(0);
@@ -513,7 +533,7 @@
     font-family: var(--font-heading);
   }
 
-  button {
+  html {
     -webkit-tap-highlight-color: transparent;
   }
 
@@ -532,6 +552,16 @@
 
   html {
     scroll-padding-bottom: var(--app-content-bottom-clearance);
+  }
+
+  /* A retained browse workspace restarts this when its hidden attribute is removed.
+     Opacity only: a transform would re-anchor inline fixed dialogs and indicators. */
+  [data-browse-page]:not([hidden]) {
+    animation: browse-page-enter calc(160ms * var(--motion-scale)) ease-out;
+  }
+
+  .mobile-nav-pill[data-active="true"] {
+    animation: mobile-nav-pill-enter calc(200ms * var(--motion-scale)) cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 
   .app-main {

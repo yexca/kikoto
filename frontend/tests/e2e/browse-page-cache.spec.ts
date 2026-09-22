@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { syntheticWorkCode } from "../../src/test-support/workCode";
+
 const emptyCollection = { works: [], page: 1, pageSize: 24, total: 0 };
 const cachedWork = {
   id: 1,
@@ -86,7 +88,28 @@ const cachedVoice = {
 
 type BrowsePageMockOptions = {
   deferAliasResolution?: boolean;
+  collectionSize?: number;
 };
+
+function collectionWorks(size: number) {
+  if (size <= 1) return [cachedWork];
+  return Array.from({ length: size }, (_, index) => ({
+    ...cachedWork,
+    id: index + 1,
+    primaryCode: syntheticWorkCode("RJ", index + 1),
+    title: `Example Work ${index + 1}`,
+  }));
+}
+
+function collectionCircles(size: number) {
+  if (size <= 1) return [cachedCircle];
+  return Array.from({ length: size }, (_, index) => ({
+    ...cachedCircle,
+    id: index + 1,
+    externalId: `RG${String(index + 1).padStart(6, "0")}`,
+    displayName: `Example Circle ${index + 1}`,
+  }));
+}
 
 async function mockBrowsePages(page: Page, requests: Record<string, number>, options: BrowsePageMockOptions = {}) {
   let releaseAliasResolution: (() => void) | null = null;
@@ -158,7 +181,8 @@ async function mockBrowsePages(page: Page, requests: Record<string, number>, opt
     }
     if (url.pathname === "/api/works") {
       count("works");
-      await route.fulfill({ json: { ...emptyCollection, works: [cachedWork], total: 1 } });
+      const works = collectionWorks(options.collectionSize ?? 1);
+      await route.fulfill({ json: { ...emptyCollection, works, total: works.length } });
       return;
     }
     if (url.pathname === "/api/works/1") {
@@ -218,8 +242,9 @@ async function mockBrowsePages(page: Page, requests: Record<string, number>, opt
     }
     if (url.pathname === "/api/circles") {
       count("circles");
+      const circles = collectionCircles(options.collectionSize ?? 1);
       await route.fulfill({
-        json: { circles: [cachedCircle], page: 1, pageSize: 24, total: 1, catalogWorks: 1, availableWorks: 1 },
+        json: { circles, page: 1, pageSize: 24, total: circles.length, catalogWorks: 1, availableWorks: 1 },
       });
       return;
     }
@@ -319,11 +344,12 @@ test("@desktop keeps visited browse workspaces mounted for the current user and 
   });
 });
 
-test("keeps only the two most recent browse workspaces mounted on mobile", async ({ page }) => {
+test("keeps every visited browse workspace mounted on mobile", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const requests: Record<string, number> = {};
   await mockBrowsePages(page, requests);
   await page.goto("/");
+  await expect.poll(() => (requests.works ?? 0) > 0).toBe(true);
 
   const tabs = page.locator("footer");
   await tabs.getByRole("button", { name: "Circles", exact: true }).click();
@@ -332,17 +358,63 @@ test("keeps only the two most recent browse workspaces mounted on mobile", async
   await expect.poll(() => (requests.voices ?? 0) > 0).toBe(true);
   await tabs.getByRole("button", { name: "Favorites", exact: true }).click();
   await expect.poll(() => (requests["favorite-works"] ?? 0) > 0).toBe(true);
+  await expect(page.locator("[data-browse-page]")).toHaveCount(4);
 
-  await expect(page.locator("[data-browse-page]")).toHaveCount(2);
-  await expect(page.locator('[data-browse-page="voice-actors"]')).toHaveCount(1);
-  await expect(page.locator('[data-browse-page="favorites"]')).toHaveCount(1);
-  await expect(page.locator('[data-browse-page="library"]')).toHaveCount(0);
-
+  const initialRequests = { ...requests };
   await tabs.getByRole("button", { name: "Library", exact: true }).click();
-  await expect(page.locator("[data-browse-page]")).toHaveCount(2);
-  await expect(page.locator('[data-browse-page="favorites"]')).toHaveCount(1);
-  await expect(page.locator('[data-browse-page="library"]')).toHaveCount(1);
-  await expect(page.locator('[data-browse-page="voice-actors"]')).toHaveCount(0);
+  await tabs.getByRole("button", { name: "Circles", exact: true }).click();
+  await tabs.getByRole("button", { name: "Voice Actors", exact: true }).click();
+  await tabs.getByRole("button", { name: "Circles", exact: true }).click();
+
+  await expect(page.locator("[data-browse-page]")).toHaveCount(4);
+  expect(requests).toMatchObject({
+    works: initialRequests.works,
+    circles: initialRequests.circles,
+    voices: initialRequests.voices,
+    "favorite-works": initialRequests["favorite-works"],
+  });
+});
+
+async function switchMobileTabAndSampleScroll(page: Page, name: string) {
+  return page.evaluate(async (label) => {
+    const button = Array.from(document.querySelectorAll<HTMLButtonElement>("footer button")).find(
+      (candidate) => candidate.textContent?.trim() === label,
+    );
+    if (!button) throw new Error(`Missing bottom navigation button: ${label}`);
+    const samples: number[] = [];
+    button.click();
+    for (let frame = 0; frame < 45; frame += 1) {
+      await new Promise((resolve) => window.requestAnimationFrame(resolve));
+      samples.push(Math.round(window.scrollY));
+    }
+    return samples;
+  }, name);
+}
+
+test("resumes a retained mobile workspace at its scroll offset from the first frame", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const requests: Record<string, number> = {};
+  await mockBrowsePages(page, requests, { collectionSize: 24 });
+  await page.goto("/");
+  await expect(page.getByTestId("work-card")).toHaveCount(24);
+  await page.evaluate(() => window.scrollTo({ top: 1800, behavior: "auto" }));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(1800);
+
+  await page.locator("footer").getByRole("button", { name: "Circles", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Open Example Circle 24", exact: true })).toBeVisible();
+  await page.evaluate(() => window.scrollTo({ top: 900, behavior: "auto" }));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(900);
+  const initialRequests = { ...requests };
+  // A retained workspace keeps its rendered cards rather than rebuilding them on return.
+  await page.evaluate(() => {
+    const card = document.querySelector('[data-browse-page="library"] [data-testid="work-card"]');
+    if (card) card.setAttribute("data-retention-probe", "library");
+  });
+
+  expect(await switchMobileTabAndSampleScroll(page, "Library")).toEqual(Array(45).fill(1800));
+  await expect(page.locator('[data-retention-probe="library"]')).toHaveCount(1);
+  expect(await switchMobileTabAndSampleScroll(page, "Circles")).toEqual(Array(45).fill(900));
+  expect(requests).toMatchObject({ works: initialRequests.works, circles: initialRequests.circles });
 });
 
 test("restores cached mobile detail workspaces through bottom navigation history", async ({ page }) => {

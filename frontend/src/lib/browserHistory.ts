@@ -73,6 +73,10 @@ export function mobileTabResumeHistoryState(state: unknown): HistoryStateRecord 
   };
 }
 
+export function isMobileTabResumeHistoryState(state: unknown) {
+  return historyStateRecord(state)[mobileTabResumeStateKey] === true;
+}
+
 export function navigateToHistoryReturn({
   fallbackLocation,
   fallbackState = {},

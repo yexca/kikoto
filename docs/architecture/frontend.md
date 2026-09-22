@@ -124,9 +124,14 @@ storage keys; it remains mounted across navigation.
   Switching destinations restores that destination's last stable list or detail
   route, history state, and scroll position for the current server and user;
   dialogs, pending mutations, and other transient overlays are not resumed.
-- Bound mounted browse workspaces by layout: desktop may retain all four primary
-  destinations, while mobile retains only the two most recently used. An
-  inactive workspace cancels unfinished detail/list work and pauses polling.
+- Retain every visited primary browse workspace (Library, Favorites, Circles,
+  and Voice Actors) on both layouts so returning to a destination never reloads
+  its rendered list. Each workspace has its own loading boundary, and the four
+  page chunks are preloaded when the shell is idle. An inactive workspace is
+  hidden, cancels unfinished detail/list work, and pauses polling.
+- Browse workspaces share the window scroll position. When a retained workspace
+  becomes active, the shell applies that history entry's scroll offset before the
+  first paint; a resumed workspace does not replay its own stored list offset.
 - Tapping the active Library, Circles, or Voice Actors destination from its
   detail route returns to that workspace's last list state. Work detail routes
   remain part of Library regardless of the workspace that opened them.
