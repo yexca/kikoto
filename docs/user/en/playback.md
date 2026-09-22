@@ -78,10 +78,20 @@ Playback is handled by a global browser audio player.
 - Browser queue persistence does not retain per-track progress. Reloaded queue
   metadata is refreshed from the server, while only explicit Resume applies
   the durable work cursor's saved position.
-- The player dock supports collapsed and expanded states, queue view, seeking,
-  previous/next, skip controls, and playback mode. Sleep timer is the
-  second-last secondary action; playback speed and compatibility scope share
-  the final More menu.
+- The player dock supports Mini, Compact, and full Now Playing states, queue
+  view, seeking, previous/next, skip controls, and playback mode. The full view
+  uses borderless transport glyphs, a thin scrubber with elapsed and remaining
+  time, and the playback source between them. Its secondary row holds lyrics,
+  screen lyrics, playback mode, sleep timer, and queue; playback speed and
+  compatibility scope share the More menu beside the title. The Compact bar
+  adds a Next control.
+- While a track plays, the next track that end-of-track advancement would
+  select is preloaded once the current track is within 45 seconds of its end
+  or already fully buffered. Only that one track is warmed, through the same
+  playback URL the player will request, so a prepared compatibility conversion
+  is also ready. Preloading is skipped for repeat-one, the end of an ordered
+  queue, a finishing sleep timer, and when the browser requests reduced data
+  usage.
 - Backward and forward seeking default to 10 and 30 seconds. Settings accepts
   whole-second values from 1 through 300 and stores them per server and user in
   the browser. The same values drive player buttons, keyboard shortcuts,
@@ -103,9 +113,11 @@ Playback is handled by a global browser audio player.
 - Compact relative drag seeking maps a full-width drag to 20% of the track,
   bounded between 20 seconds and 10 minutes, then clamps the result to the
   playable duration.
-- Queue rows place move-up, move-down, and remove inside an Options menu that
-  closes after selection, on Escape, or on outside interaction. Overflowing
-  queue titles scroll without resizing the player.
+- Queue rows can be reordered by dragging their handle; the list scrolls near
+  its edges and Escape cancels the drag. A focused handle also moves its row
+  with the Up and Down arrow keys. Move-up, move-down, and remove remain in an
+  Options menu that closes after selection, on Escape, or on outside
+  interaction. Overflowing queue titles scroll without resizing the player.
 - Text lyrics include LRC, SRT, VTT, and plain-text sidecars. A compound
   sidecar such as `track.mp3.vtt` is preferred for `track.mp3`, followed by a
   same-stem file and then normalized-name matches.
@@ -131,9 +143,10 @@ Playback is handled by a global browser audio player.
   Browsers with Document Picture-in-Picture open a small always-on-top window
   that stays visible while the browser is minimized; other browsers with video
   Picture-in-Picture show a rendered lyrics video instead. The Android app shows
-  a draggable floating overlay above other apps while Kikoto is in the
-  background. It requires the "Display over other apps" permission and advances
-  lines from the playback clock even when the WebView is throttled.
+  a floating overlay above other apps while Kikoto is in the background. The
+  overlay opens centered on screen and can be dragged vertically. It requires
+  the "Display over other apps" permission and advances lines from the playback
+  clock even when the WebView is throttled.
 - Every player mode reserves the same bottom page space, so switching between
   mini, compact, and full modes does not change the page height.
 

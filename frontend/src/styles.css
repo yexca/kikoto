@@ -945,6 +945,58 @@
     width: min(100cqw, calc(100cqh * 4 / 3), 26rem);
   }
 
+  /* Queue rows animate out of the way only while a row is being dragged. */
+  .player-queue[data-reordering] .player-queue-row {
+    transition: transform calc(180ms * var(--motion-scale)) cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .player-queue[data-reordering] .player-queue-row[data-dragging] {
+    transition: none;
+  }
+
+  .player-now-playing > span {
+    width: 3px;
+    height: 40%;
+    border-radius: 9999px;
+    background: currentColor;
+    transform-origin: bottom;
+  }
+
+  .player-now-playing > span:nth-child(2) {
+    height: 100%;
+  }
+
+  .player-now-playing > span:nth-child(3) {
+    height: 65%;
+  }
+
+  .player-now-playing[data-playing] > span {
+    animation: player-now-playing-bar 0.9s ease-in-out infinite alternate;
+  }
+
+  .player-now-playing[data-playing] > span:nth-child(2) {
+    animation-delay: -0.45s;
+  }
+
+  .player-now-playing[data-playing] > span:nth-child(3) {
+    animation-delay: -0.2s;
+  }
+
+  @keyframes player-now-playing-bar {
+    from {
+      transform: scaleY(0.35);
+    }
+    to {
+      transform: scaleY(1);
+    }
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    .player-ambient {
+      display: none;
+    }
+  }
+
   .lyrics-scroller {
     mask-image: linear-gradient(to bottom, transparent, #000 18%, #000 82%, transparent);
     -webkit-mask-image: linear-gradient(to bottom, transparent, #000 18%, #000 82%, transparent);
@@ -1088,6 +1140,10 @@
     .overflow-marquee-group__track {
       animation: none !important;
       transform: none !important;
+    }
+
+    .player-now-playing[data-playing] > span {
+      animation: none;
     }
   }
 }
