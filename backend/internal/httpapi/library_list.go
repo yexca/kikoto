@@ -8,26 +8,6 @@ import (
 	"github.com/yexca/kikoto/backend/internal/library"
 )
 
-func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
-	userID := optionalUserID(r.Context())
-	pagedRequest := r.URL.Query().Has("page") || r.URL.Query().Has("pageSize") || r.URL.Query().Has("q") || r.URL.Query().Has("scope") || r.URL.Query().Has("status")
-	if pagedRequest {
-		s.listWorksPageFast(w, r, userID)
-		return
-	}
-	rawWorks, err := s.libraryStore.ListAll(r.Context(), userID, s.cfg.IsDemo())
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	works, err := s.scanLibraryWorkRows(r.Context(), userID, rawWorks, false)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, works)
-}
-
 func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []library.RawWork, canonicalFiltered bool, includeRecommendation ...bool) ([]libraryWorkSummary, error) {
 	works := make([]libraryWorkSummary, 0, len(rows))
 	for _, row := range rows {
@@ -104,7 +84,10 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []l
 	return works, nil
 }
 
-func (s *Server) listWorksPageFast(w http.ResponseWriter, r *http.Request, userID int64) {
+// listWorks always returns one bounded page. A request without page
+// parameters receives the first page of the default order.
+func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
+	userID := optionalUserID(r.Context())
 	recommendationSessionID := strings.TrimSpace(r.URL.Query().Get("recommendationSession"))
 	if recommendationSessionID != "" && !recommendationSessionIDPattern.MatchString(recommendationSessionID) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid recommendation session"})

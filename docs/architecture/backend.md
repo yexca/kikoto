@@ -71,6 +71,10 @@ Work summary and media APIs remain separate. The media endpoint resolves the
 media-bearing edition and loads media items directly; it does not repeat the
 complete metadata, credit, tag, and manual-override detail projection.
 
+The Library list endpoint always returns one bounded page; a request without
+page parameters receives the first page of the default order. No endpoint
+returns the complete library in one response.
+
 Library pagination selects normalized fields and ordering inputs before loading
 media aggregates, source presence, and metadata snapshots for the selected page.
 Both stages run in one SQL statement. Recommendation sessions retain their score
