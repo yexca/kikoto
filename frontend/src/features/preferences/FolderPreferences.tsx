@@ -120,10 +120,12 @@ export function FolderPreferences({
               </div>
             )}
           </div>
-          <Button size="sm" onClick={() => void onSave()}>
-            <Save className="h-4 w-4" />
-            {i18n.t("settings.saveFolderPreferences")}
-          </Button>
+          <div className="flex justify-end">
+            <Button size="sm" onClick={() => void onSave()}>
+              <Save className="h-4 w-4" />
+              {i18n.t("settings.saveFolderPreferences")}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

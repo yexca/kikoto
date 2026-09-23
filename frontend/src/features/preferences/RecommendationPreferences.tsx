@@ -233,10 +233,12 @@ export function RecommendationPreferences({
             </div>
           </details>
 
-          <Button size="sm" onClick={() => void onSave()}>
-            <Save className="h-4 w-4" />
-            {maintenanceCopy("recommendation.save")}
-          </Button>
+          <div className="flex justify-end">
+            <Button size="sm" onClick={() => void onSave()}>
+              <Save className="h-4 w-4" />
+              {maintenanceCopy("recommendation.save")}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>
