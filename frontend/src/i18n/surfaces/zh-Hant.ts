@@ -482,6 +482,7 @@ export const surfaceHant = {
   },
   workflowPage: {
     ...surfaceEnglish.workflowPage,
+    viewTrigger: "檢視 {{name}}",
     builtInDefinitions: {
       circle_follow: {
         name: "關注社團",

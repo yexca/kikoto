@@ -481,6 +481,7 @@ export const surfaceHans = {
   },
   workflowPage: {
     ...surfaceEnglish.workflowPage,
+    viewTrigger: "查看 {{name}}",
     builtInDefinitions: {
       circle_follow: {
         name: "关注社团",

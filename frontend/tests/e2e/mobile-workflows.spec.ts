@@ -1566,8 +1566,11 @@ test("demo settings keeps account and workflows read-only while allowing appeara
   await page.goto("/workflows");
   await expect(page.getByText(demoNotice, { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "New workflow", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Run at startup", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Add schedule", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add schedule", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "View Startup local library scan", exact: true }).click();
+  const triggerDialog = page.getByRole("dialog");
+  await expect(triggerDialog.getByRole("textbox").first()).toBeDisabled();
+  await expect(triggerDialog.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
 });
 
 test("workflow tabs retain selection, stay reachable on mobile, and support keyboard navigation", async ({ page }) => {

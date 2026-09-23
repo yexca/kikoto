@@ -490,6 +490,7 @@ export const surfaceJapanese = {
   },
   workflowPage: {
     ...surfaceEnglish.workflowPage,
+    viewTrigger: "{{name}} を表示",
     builtInDefinitions: {
       circle_follow: {
         name: "サークルをフォロー",

@@ -364,6 +364,7 @@ type PersistedDetailActionsProps = {
 };
 
 function PersistedIdentityActions(props: PersistedDetailActionsProps) {
+  const { demoMode } = useAuth();
   if (!props.work) return <DetailSkeletonActions />;
   const busy =
     props.isSyncingDetail || props.fetchBusy || props.isRefreshingLocalFiles || props.cleanupBusy || props.isResuming;
@@ -377,7 +378,8 @@ function PersistedIdentityActions(props: PersistedDetailActionsProps) {
       onListSaved={props.onListSaved}
       onResume={!props.playbackCursorLoading && props.hasResumableCursor ? props.onResume : undefined}
       onMark={props.onMark}
-      onSync={props.canSyncMetadata ? props.onSyncMetadata : undefined}
+      onSync={props.canSyncMetadata || demoMode ? props.onSyncMetadata : undefined}
+      syncDisabled={demoMode}
       onEditMetadata={props.onEditMetadata}
       metadataSyncBusy={props.isSyncingDetail || Boolean(props.activeMetadataRunId)}
     />
@@ -935,7 +937,8 @@ export function PersistedWorkDetailController({
   onWorkReload: (workID: number, includeMedia?: boolean) => Promise<void>;
   onWorksChanged: () => Promise<void>;
 }) {
-  const canViewMetadataActivity = useAuth().hasPermission("workflows:run");
+  const auth = useAuth();
+  const canViewMetadataActivity = auth.hasPermission("workflows:run");
   const toast = useToast();
   const { t } = useTranslation();
   const sourceContext = useWorkSourceContext({
@@ -1478,6 +1481,11 @@ export function PersistedWorkDetailController({
 
   const refreshSourceAvailability = async () => {
     if (!work?.primaryCode) return;
+    // Checking sources probes remotes and persists availability, so Demo answers locally instead.
+    if (auth.demoMode) {
+      toast.warning(t("permissions.demoReadOnly"));
+      return;
+    }
     setMessage("");
     try {
       const result = await refreshAvailability();
@@ -1734,7 +1742,7 @@ export function PersistedWorkDetailController({
       onDirectoryModeChange={setDirectoryMode}
       onRetry={() => {
         if (selectedRemoteSource) {
-          void refreshAvailability();
+          if (!auth.demoMode) void refreshAvailability();
           selectSource(remoteSourceTabKey(selectedRemoteSource.source.id));
         } else if (work) {
           const failedEdition = work.translations.find(

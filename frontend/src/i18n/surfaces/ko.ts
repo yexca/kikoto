@@ -491,6 +491,7 @@ export const surfaceKorean = {
   },
   workflowPage: {
     ...surfaceEnglish.workflowPage,
+    viewTrigger: "{{name}} 보기",
     builtInDefinitions: {
       circle_follow: {
         name: "서클 팔로우",

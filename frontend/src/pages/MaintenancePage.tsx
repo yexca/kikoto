@@ -329,38 +329,36 @@ export function MaintenancePage({
 
   return (
     <div className="min-w-0 space-y-5">
-      {/* Users and remote sources gate their own writes, so Demo can still browse and open their details. */}
+      {/* Each tab gates its own writes, so Demo can still browse, open details, and follow links. */}
       <fieldset
         data-testid="maintenance-content"
-        disabled={readOnly && activeTab === "cache"}
         className={`min-w-0 border-0 p-0 ${activeTab === "users" ? "w-full" : "w-full max-w-3xl"}`}
       >
         {isSettingsLoading && activeTab !== "users" ? (
           <SettingsSkeleton />
         ) : activeTab === "library" && draft ? (
           <div className="space-y-6">
-            <fieldset disabled={readOnly} className="min-w-0 border-0 p-0">
-              <SettingsSection
-                title={t("maintenance.library.local")}
-                description={localSource?.displayName ?? t("maintenance.mainLocalLibrary")}
-                icon={<FolderOpen />}
-                footer={saveButton(["localScanDepth"], t("maintenance.library.save"))}
+            <SettingsSection
+              title={t("maintenance.library.local")}
+              description={localSource?.displayName ?? t("maintenance.mainLocalLibrary")}
+              icon={<FolderOpen />}
+              footer={saveButton(["localScanDepth"], t("maintenance.library.save"))}
+            >
+              <SettingsRow
+                title={t("maintenance.library.scanDepth")}
+                description={t("sourceSetup.scanDepthDescription")}
               >
-                <SettingsRow
-                  title={t("maintenance.library.scanDepth")}
-                  description={t("sourceSetup.scanDepthDescription")}
-                >
-                  <SettingsNumberInput
-                    label={t("maintenance.library.scanDepth")}
-                    value={draft.localScanDepth}
-                    min={1}
-                    max={8}
-                    unit={t("sourceSetup.levels")}
-                    onChange={(localScanDepth) => patchDraft({ localScanDepth })}
-                  />
-                </SettingsRow>
-              </SettingsSection>
-            </fieldset>
+                <SettingsNumberInput
+                  disabled={readOnly}
+                  label={t("maintenance.library.scanDepth")}
+                  value={draft.localScanDepth}
+                  min={1}
+                  max={8}
+                  unit={t("sourceSetup.levels")}
+                  onChange={(localScanDepth) => patchDraft({ localScanDepth })}
+                />
+              </SettingsRow>
+            </SettingsSection>
 
             <RemoteSourceList
               sources={remoteSources}
@@ -527,6 +525,7 @@ function CacheFetchSettings({
         </SettingsRow>
         <SettingsRow title={t("maintenance.cache.limit")} description={t("maintenance.cache.limitDescription")}>
           <SettingsNumberInput
+            disabled={readOnly}
             label={t("maintenance.cache.limit")}
             value={draft.cacheLimitGb}
             min={0}
@@ -539,6 +538,7 @@ function CacheFetchSettings({
           description={t("maintenance.cache.transcodeLimitDescription")}
         >
           <SettingsNumberInput
+            disabled={readOnly}
             label={t("maintenance.cache.transcodeLimit")}
             value={draft.transcodeCacheLimitGb}
             min={1}
@@ -564,6 +564,7 @@ function CacheFetchSettings({
           description={t("maintenance.cache.downloadLimitDescription")}
         >
           <SettingsNumberInput
+            disabled={readOnly}
             label={t("maintenance.cache.downloadLimit")}
             value={draft.remoteDownloadLimitGb}
             min={1}
@@ -577,6 +578,7 @@ function CacheFetchSettings({
           description={t("maintenance.cache.stagingRetentionDescription")}
         >
           <SettingsNumberInput
+            disabled={readOnly}
             label={t("maintenance.cache.stagingRetention")}
             value={draft.fetchStagingRetentionDays}
             min={1}
@@ -600,6 +602,7 @@ function CacheFetchSettings({
             description={t("maintenance.cache.baseDelayDescription")}
           >
             <SettingsNumberInput
+              disabled={readOnly}
               label={t("maintenance.cache.baseDelay")}
               value={draft.remoteDelayBaseSeconds}
               min={0}
@@ -613,6 +616,7 @@ function CacheFetchSettings({
             description={t("maintenance.cache.randomDelayDescription")}
           >
             <SettingsNumberInput
+              disabled={readOnly}
               label={t("maintenance.cache.randomDelay")}
               value={draft.remoteDelayRandomSeconds}
               min={0}
@@ -626,6 +630,7 @@ function CacheFetchSettings({
             description={t("maintenance.cache.initialBackoffDescription")}
           >
             <SettingsNumberInput
+              disabled={readOnly}
               label={t("maintenance.cache.initialBackoff")}
               value={draft.remoteBackoffSeconds}
               min={0}
@@ -638,6 +643,7 @@ function CacheFetchSettings({
             description={t("maintenance.cache.maximumBackoffDescription")}
           >
             <SettingsNumberInput
+              disabled={readOnly}
               label={t("maintenance.cache.maximumBackoff")}
               value={draft.remoteMaxBackoffSeconds}
               min={0}

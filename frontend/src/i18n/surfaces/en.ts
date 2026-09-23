@@ -865,6 +865,7 @@ export const surfaceEnglish = {
     monitoring: "Monitoring",
     ready: "Ready",
     view: "View",
+    viewTrigger: "View {{name}}",
     searchRuns: "Search runs",
     recoverStale: "Recover stale",
     noSelectableLocalLocations: "No selectable local locations in this candidate.",
