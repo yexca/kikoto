@@ -18,47 +18,163 @@ function approvedEndpoint() {
   return endpointFor(["www", "dlsite", "com"].join("."));
 }
 
-function approvedAllowlist() {
+function allowlistWith(...endpoints) {
   return parseApprovedEndpointAllowlist(
     JSON.stringify({
       version: 1,
-      endpoints: [
-        {
-          url: approvedEndpoint(),
-          files: [ownerFile],
-          reason: "Test-only approved public endpoint.",
-        },
-      ],
+      endpoints: endpoints.map(({ url, files }) => ({
+        url,
+        files,
+        reason: "Test-only approved public endpoint.",
+      })),
     }),
   );
 }
 
-test("allows only the exact public npm registry host", () => {
-  const registryHost = ["registry", "npmjs", "org"].join(".");
+function approvedAllowlist() {
+  return allowlistWith({ url: approvedEndpoint(), files: [ownerFile] });
+}
+
+function urlFindings(file, urls, allowlist) {
   const findings = [];
+  for (const [index, url] of urls.entries()) {
+    scanLine(
+      { file, line: index + 1, text: `const endpoint = "${url}";` },
+      findings,
+      allowlist,
+    );
+  }
+  return findings.map((finding) => `${finding.line}:${finding.kind}`);
+}
 
-  scanLine(
-    {
-      file: "frontend/package-lock.json",
-      line: 1,
-      text: `"resolved": "${endpointFor(registryHost)}package.tgz"`,
-    },
-    findings,
-    new Map(),
-  );
-  assert.deepEqual(findings, []);
+const codeHost = ["code", "host", "net"].join(".");
 
-  scanLine(
-    {
-      file: "frontend/package-lock.json",
-      line: 2,
-      text: `"resolved": "${endpointFor(`mirror.${registryHost}`)}package.tgz"`,
-    },
-    findings,
-    new Map(),
+test("matches a ** URL path at any depth only under the declared origin and prefix", () => {
+  const repository = `${endpointFor(codeHost)}owner/project`;
+  const allowlist = allowlistWith({
+    url: `${repository}/**`,
+    files: [ownerFile],
+  });
+
+  assert.deepEqual(
+    urlFindings(
+      ownerFile,
+      [
+        repository,
+        `${repository}/releases`,
+        `${repository}/tags?per_page=100`,
+        `${repository}-fork`,
+        `${endpointFor(codeHost)}owner/other`,
+        `${endpointFor(`api.${codeHost}`)}owner/project`,
+        `${repository.replace("https:", "http:")}/releases`,
+      ],
+      allowlist,
+    ),
+    [
+      "4:non-reserved service URL",
+      "5:non-reserved service URL",
+      "6:non-reserved service URL",
+      "7:non-reserved service URL",
+    ],
   );
-  assert.equal(findings.length, 1);
-  assert.equal(findings[0].kind, "non-reserved service URL");
+  assert.deepEqual(
+    urlFindings("README.md", [`${repository}/releases`], allowlist),
+    ["1:non-reserved service URL"],
+  );
+});
+
+test("matches a * URL segment without crossing a path separator", () => {
+  const sponsors = `${endpointFor(codeHost)}sponsors`;
+  const allowlist = allowlistWith({
+    url: `${sponsors}/*`,
+    files: [ownerFile],
+  });
+
+  assert.deepEqual(
+    urlFindings(
+      ownerFile,
+      [`${sponsors}/maintainer`, `${sponsors}/maintainer/extra`, sponsors],
+      allowlist,
+    ),
+    ["2:non-reserved service URL", "3:non-reserved service URL"],
+  );
+});
+
+test("matches owner-file globs by path segment", () => {
+  const registry = endpointFor(["registry", "npmjs", "org"].join("."));
+  const allowlist = allowlistWith(
+    { url: `${registry}**`, files: ["**/package-lock.json"] },
+    { url: approvedEndpoint(), files: ["helper/helper.*.ps1"] },
+  );
+
+  for (const file of ["package-lock.json", "frontend/package-lock.json"]) {
+    assert.deepEqual(
+      urlFindings(file, [`${registry}pkg/-/pkg-1.0.0.tgz`], allowlist),
+      [],
+    );
+  }
+  assert.deepEqual(
+    urlFindings("frontend/package.json", [`${registry}pkg`], allowlist),
+    ["1:non-reserved service URL"],
+  );
+  assert.deepEqual(
+    urlFindings("helper/helper.en.ps1", [approvedEndpoint()], allowlist),
+    [],
+  );
+  for (const file of ["helper/nested/helper.en.ps1", "helper/helper.cmd"]) {
+    assert.deepEqual(urlFindings(file, [approvedEndpoint()], allowlist), [
+      "1:non-reserved service URL",
+    ]);
+  }
+});
+
+test("still flags a sensitive query on a wildcard-approved URL", () => {
+  const repository = `${endpointFor(codeHost)}owner/project`;
+  const sensitiveParameter = ["access", "token"].join("_");
+  const allowlist = allowlistWith({
+    url: `${repository}/**`,
+    files: [ownerFile],
+  });
+
+  assert.deepEqual(
+    urlFindings(
+      ownerFile,
+      [`${repository}/tags?${sensitiveParameter}=abcdef123456`],
+      allowlist,
+    ),
+    ["1:URL query contains a sensitive parameter"],
+  );
+});
+
+test("rejects wildcards outside the URL path and malformed globs", () => {
+  const cases = [
+    [
+      { url: `${endpointFor(codeHost).replace("//", "//*.")}owner/**` },
+      /only in the URL path/,
+    ],
+    [
+      { url: `${endpointFor(codeHost).replace(/\/$/u, ":*/")}owner/**` },
+      /invalid URL/,
+    ],
+    [
+      { url: `${endpointFor(codeHost)}owner/**?page=1` },
+      /must not contain a query/,
+    ],
+    [
+      { url: `${endpointFor(codeHost)}owner/a**` },
+      /\*\* only as a whole segment/,
+    ],
+    [
+      { url: approvedEndpoint(), files: ["frontend/**.ts"] },
+      /\*\* only as a whole segment/,
+    ],
+  ];
+  for (const [entry, expected] of cases) {
+    assert.throws(
+      () => allowlistWith({ files: [ownerFile], ...entry }),
+      expected,
+    );
+  }
 });
 
 test("allows an exact approved endpoint only in its declared file", () => {

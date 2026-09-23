@@ -140,9 +140,12 @@ the Makefile has no target for the required check.
   tree diff and review any findings. This privacy check is intentionally
   separate from the GitHub Actions validation sequence.
 - Do not bypass the privacy scan with source comments. An approved built-in
-  public endpoint belongs in `scripts/privacy-allowlist.json` as an exact URL
-  with its repository-relative owner files and a reason; review every change to
-  that list before committing.
+  public endpoint belongs in `scripts/privacy-allowlist.json` with its
+  repository-relative owner files and a reason. Prefer an exact URL; use a
+  path-only `*`/`**` wildcard only for a stable public namespace, as described
+  in
+  [Before Committing](docs/development/testing.md#before-committing). Review
+  every change to that list before committing.
 
 ## Release and Handoff
 

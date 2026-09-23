@@ -7,7 +7,6 @@ import { fileURLToPath } from "node:url";
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, "..");
 const approvedEndpointAllowlistFile = "scripts/privacy-allowlist.json";
-const approvedPublicArtifactHosts = new Set(["registry.npmjs.org"]);
 const urlPattern = /\b(?:https?|wss?):\/\/[^\s<>"'`]+/giu;
 const ipv4Pattern = /\b(?:\d{1,3}\.){3}\d{1,3}\b/gu;
 const knownTokenPatterns = [
@@ -59,6 +58,86 @@ function canonicalEndpointURL(value) {
   return parsed.toString();
 }
 
+function hasWildcard(value) {
+  return value.includes("*");
+}
+
+// `*` matches within one segment and a whole `**` segment matches zero or more
+// segments. No other glob syntax is supported.
+function compileGlobSegments(segments, label) {
+  return segments.map((segment) => {
+    if (segment === "**") return segment;
+    if (segment.includes("**")) {
+      throw new Error(`${label} may use ** only as a whole segment`);
+    }
+    const source = segment
+      .split("*")
+      .map((part) => part.replace(/[.+?^${}()|[\]\\]/gu, "\\$&"))
+      .join("[^/]*");
+    return new RegExp(`^${source}$`, "u");
+  });
+}
+
+function matchGlobSegments(patterns, segments) {
+  if (patterns.length === 0) return segments.length === 0;
+  const [pattern, ...remainingPatterns] = patterns;
+  if (pattern === "**") {
+    for (let skipped = 0; skipped <= segments.length; skipped += 1) {
+      if (matchGlobSegments(remainingPatterns, segments.slice(skipped))) {
+        return true;
+      }
+    }
+    return false;
+  }
+  return (
+    segments.length > 0 &&
+    pattern.test(segments[0]) &&
+    matchGlobSegments(remainingPatterns, segments.slice(1))
+  );
+}
+
+function pathSegments(pathname) {
+  return pathname.slice(1).split("/");
+}
+
+function compileEndpointMatcher(value) {
+  const canonical = canonicalEndpointURL(value);
+  if (!hasWildcard(value)) {
+    return { key: canonical, matches: (url) => url.toString() === canonical };
+  }
+  const parsed = new URL(canonical);
+  if (hasWildcard(parsed.protocol) || hasWildcard(parsed.host)) {
+    throw new Error("wildcards are allowed only in the URL path");
+  }
+  if (parsed.search !== "") {
+    throw new Error("a wildcard URL must not contain a query");
+  }
+  const segments = compileGlobSegments(
+    pathSegments(parsed.pathname),
+    "URL path",
+  );
+  // A wildcard entry approves an origin and path shape. Its query is ignored
+  // here because scanLine checks query parameters separately.
+  return {
+    key: canonical,
+    matches: (url) =>
+      url.origin === parsed.origin &&
+      matchGlobSegments(segments, pathSegments(url.pathname)),
+  };
+}
+
+function compileOwnerFileMatcher(file) {
+  if (!hasWildcard(file)) {
+    return { pattern: file, isGlob: false, matches: (other) => other === file };
+  }
+  const segments = compileGlobSegments(file.split("/"), "owner file");
+  return {
+    pattern: file,
+    isGlob: true,
+    matches: (other) => matchGlobSegments(segments, other.split("/")),
+  };
+}
+
 function validateAllowlistFile(file, entryIndex) {
   if (typeof file !== "string" || file.trim() === "") {
     throw new Error(`endpoint ${entryIndex} has an invalid owner file`);
@@ -100,7 +179,8 @@ export function parseApprovedEndpointAllowlist(contents) {
     throw new Error("root must contain only version 1 and an endpoints array");
   }
 
-  const endpoints = new Map();
+  const endpoints = [];
+  const approvedURLs = new Set();
   for (const [index, entry] of parsed.endpoints.entries()) {
     const entryIndex = index + 1;
     if (entry === null || Array.isArray(entry) || typeof entry !== "object") {
@@ -119,9 +199,9 @@ export function parseApprovedEndpointAllowlist(contents) {
     ) {
       throw new Error(`endpoint ${entryIndex} has an invalid URL`);
     }
-    let url;
+    let urlMatcher;
     try {
-      url = canonicalEndpointURL(entry.url);
+      urlMatcher = compileEndpointMatcher(entry.url);
     } catch (error) {
       throw new Error(
         `endpoint ${entryIndex} has an invalid URL: ${error instanceof Error ? error.message : String(error)}`,
@@ -135,18 +215,31 @@ export function parseApprovedEndpointAllowlist(contents) {
         `endpoint ${entryIndex} must declare at least one owner file`,
       );
     }
-    if (endpoints.has(url)) {
+    if (approvedURLs.has(urlMatcher.key)) {
       throw new Error(`endpoint ${entryIndex} duplicates an approved URL`);
     }
-    const files = new Set();
+    approvedURLs.add(urlMatcher.key);
+    const ownerFiles = new Set();
+    const files = [];
     for (const file of entry.files) {
       const normalized = validateAllowlistFile(file, entryIndex);
-      if (files.has(normalized)) {
+      if (ownerFiles.has(normalized)) {
         throw new Error(`endpoint ${entryIndex} repeats an owner file`);
       }
-      files.add(normalized);
+      ownerFiles.add(normalized);
+      try {
+        files.push(compileOwnerFileMatcher(normalized));
+      } catch (error) {
+        throw new Error(
+          `endpoint ${entryIndex} has an invalid owner file: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
-    endpoints.set(url, { files, reason: entry.reason });
+    endpoints.push({
+      matchesURL: urlMatcher.matches,
+      files,
+      reason: entry.reason,
+    });
   }
   return endpoints;
 }
@@ -163,11 +256,23 @@ function loadApprovedEndpointAllowlist() {
       `${approvedEndpointAllowlistFile}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  for (const endpoint of endpoints.values()) {
+  let repositoryFiles;
+  for (const endpoint of endpoints) {
     for (const file of endpoint.files) {
-      if (!fs.existsSync(path.resolve(repositoryRoot, file))) {
+      if (!file.isGlob) {
+        if (!fs.existsSync(path.resolve(repositoryRoot, file.pattern))) {
+          throw new Error(
+            `${approvedEndpointAllowlistFile}: owner file does not exist: ${file.pattern}`,
+          );
+        }
+        continue;
+      }
+      repositoryFiles ??= [...trackedFiles(), ...untrackedFiles()].filter(
+        (candidate) => fs.existsSync(path.resolve(repositoryRoot, candidate)),
+      );
+      if (!repositoryFiles.some((candidate) => file.matches(candidate))) {
         throw new Error(
-          `${approvedEndpointAllowlistFile}: owner file does not exist: ${file}`,
+          `${approvedEndpointAllowlistFile}: owner file pattern matches no file: ${file.pattern}`,
         );
       }
     }
@@ -176,19 +281,26 @@ function loadApprovedEndpointAllowlist() {
 }
 
 export function isApprovedPublicEndpoint(file, url, endpoints) {
-  let canonicalURL;
+  let candidate;
   try {
-    canonicalURL = canonicalEndpointURL(url);
+    candidate = new URL(canonicalEndpointURL(url));
   } catch {
     return false;
   }
-  const endpoint = endpoints.get(canonicalURL);
-  if (endpoint === undefined) return false;
   const normalizedFile = normalizeRepositoryPath(file);
-  return (
-    normalizedFile === approvedEndpointAllowlistFile ||
-    endpoint.files.has(normalizedFile)
+  return endpoints.some(
+    (endpoint) =>
+      endpoint.matchesURL(candidate) &&
+      (normalizedFile === approvedEndpointAllowlistFile ||
+        endpoint.files.some((owner) => owner.matches(normalizedFile))),
   );
+}
+
+function trackedFiles() {
+  return runGit(["ls-files", "--cached", "-z"], "buffer")
+    .toString("utf8")
+    .split("\0")
+    .filter(Boolean);
 }
 
 function changedTrackedFiles() {
@@ -293,7 +405,6 @@ function isAllowedHost(host) {
     normalized === "0.0.0.0" ||
     normalized === "::1" ||
     normalized.startsWith("127.") ||
-    approvedPublicArtifactHosts.has(normalized) ||
     ["example.com", "example.net", "example.org", "example.invalid"].some(
       (domain) => normalized === domain || normalized.endsWith(`.${domain}`),
     ) ||

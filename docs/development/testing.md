@@ -337,12 +337,24 @@ HTTP bodies, request timeouts, polling, and Docker commands are bounded.
 - Run `make sensitive-check` to scan the working-tree diff and prospective
   untracked files for secrets, private paths, runtime data, and non-reserved
   service URLs. A narrowly scoped, built-in public product endpoint must be
-  recorded as an exact URL with its owner files and reason in
+  recorded with its owner files and reason in
   [`scripts/privacy-allowlist.json`](../../scripts/privacy-allowlist.json).
   The scanner continues checking credentials, private paths, and other URLs on
-  the same line. Do not use a wildcard, a runtime-configured endpoint, or a
-  user-supplied destination in that list; review every allowlist change before
-  committing.
+  the same line.
+  - A URL without `*` must match exactly, including its query.
+  - A URL may use wildcards only in its path: `*` matches one path segment
+    and a whole `**` segment matches zero or more segments. The scheme, host,
+    and port must be literal, a wildcard URL must not contain a query, and it
+    matches any query on the scanned URL. For example,
+    `https://code.example/owner/project/**` covers the repository page and its
+    release, issue, and API paths, but not `owner/project-fork`.
+  - Owner files use the same `*` and `**` segment rules, and each pattern must
+    match at least one repository file.
+  - Use a wildcard only for a stable public namespace, such as this project's
+    repository, a referenced upstream repository, or package-manager lockfile
+    metadata, and scope it to the files that need it.
+    Never add a runtime-configured endpoint or a user-supplied destination.
+    Review every allowlist change before committing.
 - Check `git status`.
 - Review staged changes for secrets, real source details, private paths, logs,
   databases, and runtime data.

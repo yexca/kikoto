@@ -2,13 +2,26 @@
   "version": 1,
   "endpoints": [
     {
-      "url": "https://raw.githubusercontent.com/yexca/kikoto/main",
-      "files": ["kikoto-helper/kikoto-helper.core.ps1", "kikoto-helper/kikoto-helper.en.ps1", "kikoto-helper/kikoto-helper.zh-Hans.ps1"],
+      "url": "https://github.com/yexca/kikoto/**",
+      "files": [
+        "backend/internal/httpapi/app_update_endpoints.go",
+        "frontend/src/lib/official-links.ts"
+      ],
+      "reason": "Kikoto's public repository, release pages, and About links."
+    },
+    {
+      "url": "https://api.github.com/repos/yexca/kikoto/**",
+      "files": ["backend/internal/httpapi/app_update_endpoints.go"],
+      "reason": "Kikoto's public GitHub API endpoints for update checks."
+    },
+    {
+      "url": "https://raw.githubusercontent.com/yexca/kikoto/**",
+      "files": ["kikoto-helper/kikoto-helper.*.ps1"],
       "reason": "Public release assets downloaded by the Windows installation helper."
     },
     {
       "url": "https://docs.docker.com/desktop/setup/install/windows-install/",
-      "files": ["kikoto-helper/kikoto-helper.core.ps1", "kikoto-helper/kikoto-helper.en.ps1", "kikoto-helper/kikoto-helper.zh-Hans.ps1"],
+      "files": ["kikoto-helper/kikoto-helper.*.ps1"],
       "reason": "Official Docker Desktop installation instructions opened by the Windows helper."
     },
     {
@@ -21,82 +34,38 @@
     },
     {
       "url": "https://img.dlsite.jp",
-      "files": [
-        "backend/internal/dlsite/endpoints.go"
-      ],
+      "files": ["backend/internal/dlsite/endpoints.go"],
       "reason": "Built-in public DLsite image origin used by the outbound metadata policy."
     },
     {
-      "url": "https://api.github.com/repos/yexca/kikoto/tags?per_page=100",
-      "files": [
-        "backend/internal/httpapi/app_update_endpoints.go"
-      ],
-      "reason": "Built-in public release-tag endpoint for update checks."
-    },
-    {
-      "url": "https://github.com/yexca/kikoto/releases",
-      "files": [
-        "backend/internal/httpapi/app_update_endpoints.go"
-      ],
-      "reason": "Built-in public release-page origin for update links."
-    },
-    {
-      "url": "https://github.com/yexca/kikoto",
-      "files": [
-        "frontend/src/lib/official-links.ts"
-      ],
-      "reason": "Built-in public repository origin for About and release links."
-    },
-    {
       "url": "https://github.com/Number178/kikoeru-express",
-      "files": [
-        "frontend/src/pages/AboutPage.tsx"
-      ],
+      "files": ["frontend/src/pages/AboutPage.tsx"],
       "reason": "Public Kikoeru-compatible reference repository linked from the About page."
     },
     {
       "url": "https://github.com/comfyanonymous/ComfyUI",
-      "files": [
-        "frontend/src/pages/AboutPage.tsx"
-      ],
+      "files": ["frontend/src/pages/AboutPage.tsx"],
       "reason": "Public workflow-canvas design reference repository linked from the About page."
     },
     {
       "url": "https://github.com/cherryhq/cherry-studio",
-      "files": [
-        "frontend/src/pages/AboutPage.tsx"
-      ],
+      "files": ["frontend/src/pages/AboutPage.tsx"],
       "reason": "Public AGENTS.md-configuration and application-versioning reference repository linked from the About page."
     },
     {
-      "url": "https://github.com/ionic-team/capacitor/issues/8525",
+      "url": "https://github.com/ionic-team/capacitor/**",
       "files": ["README.md"],
-      "reason": "Public upstream Capacitor issue documenting the Android 10 keyboard-layout fix."
+      "reason": "Public upstream Capacitor issues, pull requests, and releases documenting the Android 10 keyboard-layout fix."
     },
     {
-      "url": "https://github.com/ionic-team/capacitor/issues/8466",
-      "files": ["README.md"],
-      "reason": "Public upstream Capacitor issue documenting the Android 10 inset-handling regression."
-    },
-    {
-      "url": "https://github.com/ionic-team/capacitor/pull/8535",
-      "files": ["README.md"],
-      "reason": "Public upstream Capacitor pull request containing the Android 10 keyboard-layout fix."
-    },
-    {
-      "url": "https://github.com/ionic-team/capacitor/releases/tag/8.5.2",
-      "files": ["README.md"],
-      "reason": "Public upstream Capacitor release page documenting the adopted fix."
-    },
-    {
-      "url": "https://github.com/sponsors/broofa",
+      "url": "https://registry.npmjs.org/**",
       "files": ["frontend/package-lock.json"],
-      "reason": "Package metadata funding URL retained in the npm lockfile."
+      "reason": "Public npm registry tarball URLs resolved in the npm lockfile."
     },
     {
-      "url": "https://github.com/sponsors/ctavan",
+      "url": "https://github.com/sponsors/*",
       "files": ["frontend/package-lock.json"],
-      "reason": "Package metadata funding URL retained in the npm lockfile."
+      "reason": "Package metadata funding URLs retained in the npm lockfile."
     }
   ]
 }
