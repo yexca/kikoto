@@ -1,4 +1,4 @@
-import { ExternalLink, ImageOff, Inbox, RefreshCw, Search, SearchCheck, Trash2 } from "lucide-react";
+import { ExternalLink, ImageOff, Inbox, RefreshCw, RotateCcw, Search, SearchCheck, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, type MouseEventHandler } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -7,13 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import { formatNumber } from "@/i18n/format";
-import { useLocale } from "@/i18n/LocaleProvider";
+import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { api, assetURL, type Work, type MaintenanceWorkPage } from "@/lib/api";
 import { currentPageSelection, pageAfterUnlinkedDelete, setCurrentPageSelected } from "./unlinkedWorksModel";
 
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
-import { MaintenancePager, MaintenanceSearchForm } from "./MaintenanceControls";
+import { MaintenanceToolbar, useMaintenanceSearch, type MaintenanceToolbarSlots } from "./MaintenanceControls";
 import { MetadataIssueDetails } from "./MetadataIssueDetails";
 
 const PAGE_SIZES = [25, 50] as const;
@@ -30,7 +29,8 @@ type PendingDelete = {
 /**
  * Saved work metadata and attention records for one reason. The page owns the
  * reason tabs and URL state; this table owns paging, search, selection, and
- * the recovery actions.
+ * the recovery actions. Its search, list controls, and selection actions render
+ * into the page header through `toolbar` so they share the row with the tabs.
  */
 export function WorkMaintenance({
   canManageSources,
@@ -38,6 +38,7 @@ export function WorkMaintenance({
   readOnly = false,
   reason,
   runId,
+  toolbar,
   onFilterChange,
 }: {
   canManageSources: boolean;
@@ -45,15 +46,15 @@ export function WorkMaintenance({
   readOnly?: boolean;
   reason: string;
   runId: number | null;
+  toolbar: MaintenanceToolbarSlots;
   onFilterChange: (reason: string, runId?: number | null) => void;
 }) {
   const toast = useToast();
   const { t } = useTranslation();
-  const { resolvedLocale } = useLocale();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(25);
-  const [query, setQuery] = useState("");
-  const [queryDraft, setQueryDraft] = useState("");
+  const search = useMaintenanceSearch(() => setPage(1));
+  const query = search.query;
   const [result, setResult] = useState<MaintenanceWorkPage>({ works: [], page: 1, pageSize: 25, total: 0 });
   const [loading, setLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -155,16 +156,9 @@ export function WorkMaintenance({
     window.dispatchEvent(new Event(NAVIGATION_EVENT));
   };
   const totalPages = Math.max(1, Math.ceil(result.total / pageSize));
-  const rangeStart = result.total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const rangeEnd = Math.min(result.total, page * pageSize);
   const checking = checkingWorkIds.size > 0;
   const initialLoading = loading && !hasLoaded;
-
-  const clearSearch = () => {
-    setQueryDraft("");
-    setQuery("");
-    setPage(1);
-  };
+  const clearSearch = search.clear;
 
   const toggleWork = (workId: number, checked: boolean) => {
     setSelectedWorkIds((current) => {
@@ -245,322 +239,319 @@ export function WorkMaintenance({
   };
 
   const controlsDisabled = readOnly || !!loadError || loading;
+  const paginationProps = {
+    page,
+    pageSize,
+    totalItems: result.total,
+    totalPages,
+    onPageChange: setPage,
+  };
+
+  const selectionActions = (
+    <>
+      {canSyncMetadata && (
+        <Button
+          size="sm"
+          variant={retryIds.length > 0 ? "default" : "toolbar"}
+          title={t("workMaintenance.retrySelected", { count: retryIds.length })}
+          onClick={() => void retryMetadata(retryIds)}
+          disabled={controlsDisabled || retrying || retryIds.length === 0}
+        >
+          <RotateCcw className={`h-4 w-4 ${retrying ? "animate-spin" : ""}`} />
+          <BulkLabel label={t("workMaintenance.retrySelected", { count: retryIds.length })} count={retryIds.length} />
+        </Button>
+      )}
+      {canManageSources && (
+        <Button
+          size="sm"
+          variant="toolbar"
+          className={sourceWorks.length > 0 ? "text-foreground" : undefined}
+          title={t("workMaintenance.checkSources", { count: sourceWorks.length })}
+          onClick={() => void checkSources(sourceWorks.map((work) => work.id))}
+          disabled={sourceWorks.length === 0 || controlsDisabled || checking || deleting}
+        >
+          <SearchCheck className={`h-4 w-4 ${checking ? "animate-pulse" : ""}`} />
+          <BulkLabel
+            label={t("workMaintenance.checkSources", { count: sourceWorks.length })}
+            count={sourceWorks.length}
+          />
+        </Button>
+      )}
+    </>
+  );
 
   return (
-    <section
-      id="metadata-records"
-      aria-label={t("workMaintenance.title")}
-      className="overflow-hidden rounded-lg border bg-card"
-    >
-      <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <h2 className="truncate text-base font-semibold">
-            {reason === "catalog" ? t("workManagement.allMetadata") : t("workManagement.issues")}
-          </h2>
-          <span className="text-sm tabular-nums text-muted-foreground">
-            {formatNumber(result.total, resolvedLocale)}
-          </span>
-        </div>
-        <MaintenanceSearchForm
-          value={queryDraft}
-          label={t("workMaintenance.search")}
-          placeholder={t("unlinked.searchPlaceholder")}
-          loading={loading}
-          onChange={setQueryDraft}
-          onSubmit={() => {
-            setPage(1);
-            setQuery(queryDraft.trim());
-          }}
-          onClear={clearSearch}
-          onRefresh={() => setRefreshKey((current) => current + 1)}
-        />
-      </div>
-
-      {runId && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-info-border bg-info-surface px-4 py-1.5 text-sm text-info-foreground">
-          <span>{t("metadataIssues.runFilter", { id: runId })}</span>
-          <Button size="sm" variant="ghost" onClick={() => onFilterChange("all")}>
-            {t("metadataIssues.showAll")}
-          </Button>
-        </div>
-      )}
-      <div className="flex min-h-12 flex-wrap items-center gap-x-2 gap-y-1 border-y bg-muted/30 px-4 py-1.5 max-sm:pl-1.5">
-        <Checkbox
-          checked={selection.checked}
-          indeterminate={selection.indeterminate}
-          onCheckedChange={(checked) =>
-            setSelectedWorkIds((current) => setCurrentPageSelected(pageWorkIds, current, checked))
-          }
-          className={touchCheckboxClassName}
-          disabled={controlsDisabled || pageWorkIds.length === 0 || checking || deleting}
-          aria-label={t("unlinked.selectPage")}
-        />
-        <span className="mr-auto text-xs tabular-nums text-muted-foreground sm:ml-2">
-          {selection.selectedCount > 0
-            ? t("unlinked.selected", { count: selection.selectedCount })
-            : t("unlinked.range", {
-                first: rangeStart,
-                last: rangeEnd,
-                total: formatNumber(result.total, resolvedLocale),
-              })}
-        </span>
-        {canSyncMetadata && (
-          <Button
-            size="sm"
-            variant={retryIds.length > 0 ? "default" : "ghost"}
-            title={t("workMaintenance.retrySelected", { count: retryIds.length })}
-            onClick={() => void retryMetadata(retryIds)}
-            disabled={controlsDisabled || retrying || retryIds.length === 0}
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${retrying ? "animate-spin" : ""}`} />
-            <BulkLabel label={t("workMaintenance.retrySelected", { count: retryIds.length })} count={retryIds.length} />
-          </Button>
-        )}
-        {canManageSources && (
-          <Button
-            size="sm"
-            variant={sourceWorks.length > 0 ? "outline" : "ghost"}
-            title={t("workMaintenance.checkSources", { count: sourceWorks.length })}
-            onClick={() => void checkSources(sourceWorks.map((work) => work.id))}
-            disabled={sourceWorks.length === 0 || controlsDisabled || checking || deleting}
-          >
-            <SearchCheck className={`h-3.5 w-3.5 ${checking ? "animate-pulse" : ""}`} />
-            <BulkLabel
-              label={t("workMaintenance.checkSources", { count: sourceWorks.length })}
-              count={sourceWorks.length}
-            />
-          </Button>
-        )}
-        {canManageSources && reason === "no_source" && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="hover:bg-error-surface hover:text-error-foreground"
-            title={t("unlinked.deleteInfo")}
-            onClick={() => requestDelete(sourceWorks)}
-            disabled={sourceWorks.length === 0 || controlsDisabled || checking || deleting}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            <span className="max-sm:sr-only">{t("unlinked.deleteInfo")}</span>
-          </Button>
-        )}
-      </div>
-
-      {notice && (
-        <p role="status" className="border-b px-4 py-2 text-sm text-muted-foreground">
-          {notice}
-        </p>
-      )}
-      <div className="min-h-64">
-        {loadError && hasLoaded && (
-          <div
-            className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-error-border bg-error-surface px-4 py-2"
-            role="alert"
-          >
-            <span className="text-sm text-error-foreground">
-              {loadError} {t("unlinked.existingResultsShown")}
-            </span>
-            <Button size="sm" variant="outline" onClick={() => setRefreshKey((current) => current + 1)}>
-              {t("common.retry")}
-            </Button>
-          </div>
-        )}
-        {!hasLoaded && loadError ? (
-          <div className="grid min-h-64 place-items-center px-4 py-10 text-center" role="alert">
-            <div>
-              <p className="text-sm text-error-foreground">{loadError}</p>
-              <Button
-                className="mt-4"
-                size="sm"
-                variant="outline"
-                onClick={() => setRefreshKey((current) => current + 1)}
-              >
-                {t("common.retry")}
-              </Button>
-            </div>
-          </div>
-        ) : initialLoading ? (
-          <UnlinkedWorksTableSkeleton />
-        ) : result.works.length === 0 ? (
-          <div className="grid min-h-64 place-items-center px-6 py-10 text-center">
-            <div className="max-w-sm">
-              <div className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-full bg-muted text-muted-foreground">
-                {query ? <Search className="h-4 w-4" /> : <Inbox className="h-4 w-4" />}
-              </div>
-              <p className="text-sm font-medium">
-                {query
-                  ? t("workMaintenance.noMatching")
-                  : reason === "catalog"
-                    ? t("workManagement.catalogEmpty")
-                    : t("workMaintenance.empty")}
-              </p>
-              {!query && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {reason === "catalog" ? t("workManagement.catalogDescription") : t("workMaintenance.description")}
-                </p>
-              )}
-              {query && (
-                <Button className="mt-4" size="sm" variant="outline" onClick={clearSearch}>
-                  {t("unlinked.clearSearch")}
-                </Button>
-              )}
-            </div>
-          </div>
-        ) : (
-          <table className="w-full table-fixed text-left text-sm" aria-busy={loading}>
-            <UnlinkedWorksTableHead />
-            <tbody className="divide-y">
-              {result.works.map((work) => {
-                const rowChecking = checkingWorkIds.has(work.id);
-                const rowRetrying = work.metadataIssues.some((issue) => issue.retrying);
-                const selected = selectedWorkIds.has(work.id);
-                const href = `/${encodeURIComponent(work.primaryCode)}`;
-                return (
-                  <tr
-                    key={work.id}
-                    className={`group transition-colors ${selected ? "bg-primary/5" : "hover:bg-muted/30"}`}
-                  >
-                    <td className="py-2.5 pl-4 align-top max-sm:pl-1.5">
-                      <Checkbox
-                        className={`sm:mt-3.5 ${touchCheckboxClassName}`}
-                        checked={selected}
-                        onCheckedChange={(checked) => toggleWork(work.id, checked)}
-                        disabled={
-                          controlsDisabled ||
-                          checking ||
-                          deleting ||
-                          (!canManageSources && work.metadataIssues.every((issue) => issue.retrying))
-                        }
-                        aria-label={t("metadataIssues.selectWork", { code: work.primaryCode })}
-                      />
-                    </td>
-                    <td className="min-w-0 py-2.5 pl-2 align-top sm:pl-3">
-                      <div className="flex min-w-0 gap-3">
-                        <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-md bg-muted ring-1 ring-foreground/5">
-                          {work.coverUrl ? (
-                            <img
-                              src={assetURL(work.coverUrl)}
-                              alt=""
-                              className="h-full w-full object-cover"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <ImageOff className="h-4 w-4 text-muted-foreground" />
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                            <a
-                              onClick={navigateWork}
-                              href={href}
-                              className="font-mono text-xs text-muted-foreground transition-colors hover:text-primary"
-                            >
-                              {work.primaryCode}
-                            </a>
-                            {work.noSource && (
-                              <Badge variant="outline" className="px-1.5 py-0 text-[11px] text-muted-foreground">
-                                {t("workMaintenance.noSource")}
-                              </Badge>
-                            )}
-                            {work.metadataIssues.length > 0 && (
-                              <Badge variant="warning" className="px-1.5 py-0 text-[11px]">
-                                {t("workMaintenance.metadata")}
-                              </Badge>
-                            )}
-                          </div>
-                          <a
-                            onClick={navigateWork}
-                            href={href}
-                            className="mt-0.5 block truncate font-medium transition-colors hover:text-primary"
-                            title={work.title}
-                          >
-                            {work.title}
-                          </a>
-                          <span className="block truncate text-xs text-muted-foreground">
-                            {work.circle || "Unknown circle"}
-                          </span>
-                          {rowRetrying && (
-                            <p role="status" className="mt-1.5 flex items-center gap-1.5 text-xs text-primary">
-                              <RefreshCw className="h-3 w-3 animate-spin" aria-hidden="true" />
-                              {t("metadataIssues.retrying")}
-                            </p>
-                          )}
-                          {work.metadataIssues.length > 0 && (
-                            <MetadataIssueDetails
-                              items={work.metadataIssues}
-                              disabled={controlsDisabled || retrying}
-                              onRetry={(ids) => void retryMetadata(ids)}
-                            />
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-2.5 pr-1 align-top sm:pr-3">
-                      <div className="flex flex-col items-end gap-0.5 sm:mt-1.5 sm:flex-row sm:justify-end">
-                        {canManageSources && work.noSource && (
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            className="text-muted-foreground max-sm:h-11 max-sm:w-11"
-                            onClick={() => void checkSources([work.id])}
-                            disabled={controlsDisabled || checking || deleting}
-                            aria-label={`Check sources for ${work.primaryCode}`}
-                            title={t("unlinked.checkSources")}
-                          >
-                            <SearchCheck className={`h-4 w-4 ${rowChecking ? "animate-pulse" : ""}`} />
-                          </Button>
-                        )}
-                        {canManageSources && reason === "no_source" && work.noSource && (
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            className="text-muted-foreground hover:bg-error-surface hover:text-error-foreground max-sm:h-11 max-sm:w-11"
-                            onClick={() => requestDelete([work])}
-                            disabled={controlsDisabled || checking || deleting}
-                            aria-label={t("unlinked.deleteFor", { code: work.primaryCode })}
-                            title={t("unlinked.deleteInfo")}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                        <Button
-                          asChild
-                          size="icon-sm"
-                          variant="ghost"
-                          className="text-muted-foreground max-sm:h-11 max-sm:w-11"
-                          title={t("unlinked.openDlsite")}
-                        >
-                          <a
-                            href={work.dlsiteUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            aria-label={`Open DLsite page for ${work.primaryCode}`}
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </a>
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <MaintenancePager
-        page={page}
-        totalPages={totalPages}
+    <div className="min-w-0 space-y-3">
+      <MaintenanceToolbar
+        slots={toolbar}
+        query={search.draft}
+        label={t("workMaintenance.search")}
+        placeholder={t("unlinked.searchPlaceholder")}
+        loading={loading}
         pageSize={pageSize}
         pageSizeOptions={PAGE_SIZES}
-        loading={loading}
-        onPageChange={setPage}
+        onQueryChange={search.setDraft}
+        onQueryCommit={search.commit}
+        onClear={clearSearch}
+        onRefresh={() => setRefreshKey((current) => current + 1)}
         onPageSizeChange={(size) => {
           setPageSize(size as (typeof PAGE_SIZES)[number]);
           setPage(1);
         }}
-      />
+      >
+        {selectionActions}
+      </MaintenanceToolbar>
+      {(hasLoaded || !loadError) && (
+        <WorkCollectionPagination {...paginationProps} placement="top" compactMobile compactTop />
+      )}
+      <section
+        id="metadata-records"
+        aria-label={t("workMaintenance.title")}
+        className="overflow-hidden rounded-lg border bg-card"
+      >
+        {runId && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-info-border bg-info-surface px-4 py-1.5 text-sm text-info-foreground">
+            <span>{t("metadataIssues.runFilter", { id: runId })}</span>
+            <Button size="sm" variant="ghost" onClick={() => onFilterChange("all")}>
+              {t("metadataIssues.showAll")}
+            </Button>
+          </div>
+        )}
+        <div className="flex min-h-12 items-center gap-x-2 border-b bg-muted/30 px-4 py-1.5 max-sm:pl-1.5">
+          <Checkbox
+            checked={selection.checked}
+            indeterminate={selection.indeterminate}
+            onCheckedChange={(checked) =>
+              setSelectedWorkIds((current) => setCurrentPageSelected(pageWorkIds, current, checked))
+            }
+            className={touchCheckboxClassName}
+            disabled={controlsDisabled || pageWorkIds.length === 0 || checking || deleting}
+            aria-label={t("unlinked.selectPage")}
+          />
+          <span className="mr-auto text-xs tabular-nums text-muted-foreground sm:ml-2" aria-live="polite">
+            {selection.selectedCount > 0
+              ? t("unlinked.selected", { count: selection.selectedCount })
+              : t("unlinked.selectPage")}
+          </span>
+          {canManageSources && reason === "no_source" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="hover:bg-error-surface hover:text-error-foreground"
+              title={t("unlinked.deleteInfo")}
+              onClick={() => requestDelete(sourceWorks)}
+              disabled={sourceWorks.length === 0 || controlsDisabled || checking || deleting}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span className="max-sm:sr-only">{t("unlinked.deleteInfo")}</span>
+            </Button>
+          )}
+        </div>
+
+        {notice && (
+          <p role="status" className="border-b px-4 py-2 text-sm text-muted-foreground">
+            {notice}
+          </p>
+        )}
+        <div className="min-h-64">
+          {loadError && hasLoaded && (
+            <div
+              className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-error-border bg-error-surface px-4 py-2"
+              role="alert"
+            >
+              <span className="text-sm text-error-foreground">
+                {loadError} {t("unlinked.existingResultsShown")}
+              </span>
+              <Button size="sm" variant="outline" onClick={() => setRefreshKey((current) => current + 1)}>
+                {t("common.retry")}
+              </Button>
+            </div>
+          )}
+          {!hasLoaded && loadError ? (
+            <div className="grid min-h-64 place-items-center px-4 py-10 text-center" role="alert">
+              <div>
+                <p className="text-sm text-error-foreground">{loadError}</p>
+                <Button
+                  className="mt-4"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setRefreshKey((current) => current + 1)}
+                >
+                  {t("common.retry")}
+                </Button>
+              </div>
+            </div>
+          ) : initialLoading ? (
+            <UnlinkedWorksTableSkeleton />
+          ) : result.works.length === 0 ? (
+            <div className="grid min-h-64 place-items-center px-6 py-10 text-center">
+              <div className="max-w-sm">
+                <div className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-full bg-muted text-muted-foreground">
+                  {query ? <Search className="h-4 w-4" /> : <Inbox className="h-4 w-4" />}
+                </div>
+                <p className="text-sm font-medium">
+                  {query
+                    ? t("workMaintenance.noMatching")
+                    : reason === "catalog"
+                      ? t("workManagement.catalogEmpty")
+                      : t("workMaintenance.empty")}
+                </p>
+                {!query && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {reason === "catalog" ? t("workManagement.catalogDescription") : t("workMaintenance.description")}
+                  </p>
+                )}
+                {query && (
+                  <Button className="mt-4" size="sm" variant="outline" onClick={clearSearch}>
+                    {t("unlinked.clearSearch")}
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <table className="w-full table-fixed text-left text-sm" aria-busy={loading}>
+              <UnlinkedWorksTableHead />
+              <tbody className="divide-y">
+                {result.works.map((work) => {
+                  const rowChecking = checkingWorkIds.has(work.id);
+                  const rowRetrying = work.metadataIssues.some((issue) => issue.retrying);
+                  const selected = selectedWorkIds.has(work.id);
+                  const href = `/${encodeURIComponent(work.primaryCode)}`;
+                  return (
+                    <tr
+                      key={work.id}
+                      className={`group transition-colors ${selected ? "bg-primary/5" : "hover:bg-muted/30"}`}
+                    >
+                      <td className="py-2.5 pl-4 align-top max-sm:pl-1.5">
+                        <Checkbox
+                          className={`sm:mt-3.5 ${touchCheckboxClassName}`}
+                          checked={selected}
+                          onCheckedChange={(checked) => toggleWork(work.id, checked)}
+                          disabled={
+                            controlsDisabled ||
+                            checking ||
+                            deleting ||
+                            (!canManageSources && work.metadataIssues.every((issue) => issue.retrying))
+                          }
+                          aria-label={t("metadataIssues.selectWork", { code: work.primaryCode })}
+                        />
+                      </td>
+                      <td className="min-w-0 py-2.5 pl-2 align-top sm:pl-3">
+                        <div className="flex min-w-0 gap-3">
+                          <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-md bg-muted ring-1 ring-foreground/5">
+                            {work.coverUrl ? (
+                              <img
+                                src={assetURL(work.coverUrl)}
+                                alt=""
+                                className="h-full w-full object-cover"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <ImageOff className="h-4 w-4 text-muted-foreground" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                              <a
+                                onClick={navigateWork}
+                                href={href}
+                                className="font-mono text-xs text-muted-foreground transition-colors hover:text-primary"
+                              >
+                                {work.primaryCode}
+                              </a>
+                              {work.noSource && (
+                                <Badge variant="outline" className="px-1.5 py-0 text-[11px] text-muted-foreground">
+                                  {t("workMaintenance.noSource")}
+                                </Badge>
+                              )}
+                              {work.metadataIssues.length > 0 && (
+                                <Badge variant="warning" className="px-1.5 py-0 text-[11px]">
+                                  {t("workMaintenance.metadata")}
+                                </Badge>
+                              )}
+                            </div>
+                            <a
+                              onClick={navigateWork}
+                              href={href}
+                              className="mt-0.5 block truncate font-medium transition-colors hover:text-primary"
+                              title={work.title}
+                            >
+                              {work.title}
+                            </a>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {work.circle || "Unknown circle"}
+                            </span>
+                            {rowRetrying && (
+                              <p role="status" className="mt-1.5 flex items-center gap-1.5 text-xs text-primary">
+                                <RefreshCw className="h-3 w-3 animate-spin" aria-hidden="true" />
+                                {t("metadataIssues.retrying")}
+                              </p>
+                            )}
+                            {work.metadataIssues.length > 0 && (
+                              <MetadataIssueDetails
+                                items={work.metadataIssues}
+                                disabled={controlsDisabled || retrying}
+                                onRetry={(ids) => void retryMetadata(ids)}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-2.5 pr-1 align-top sm:pr-3">
+                        <div className="flex flex-col items-end gap-0.5 sm:mt-1.5 sm:flex-row sm:justify-end">
+                          {canManageSources && work.noSource && (
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              className="text-muted-foreground max-sm:h-11 max-sm:w-11"
+                              onClick={() => void checkSources([work.id])}
+                              disabled={controlsDisabled || checking || deleting}
+                              aria-label={`Check sources for ${work.primaryCode}`}
+                              title={t("unlinked.checkSources")}
+                            >
+                              <SearchCheck className={`h-4 w-4 ${rowChecking ? "animate-pulse" : ""}`} />
+                            </Button>
+                          )}
+                          {canManageSources && reason === "no_source" && work.noSource && (
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              className="text-muted-foreground hover:bg-error-surface hover:text-error-foreground max-sm:h-11 max-sm:w-11"
+                              onClick={() => requestDelete([work])}
+                              disabled={controlsDisabled || checking || deleting}
+                              aria-label={t("unlinked.deleteFor", { code: work.primaryCode })}
+                              title={t("unlinked.deleteInfo")}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button
+                            asChild
+                            size="icon-sm"
+                            variant="ghost"
+                            className="text-muted-foreground max-sm:h-11 max-sm:w-11"
+                            title={t("unlinked.openDlsite")}
+                          >
+                            <a
+                              href={work.dlsiteUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              aria-label={`Open DLsite page for ${work.primaryCode}`}
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                            </a>
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
+      <WorkCollectionPagination {...paginationProps} placement="bottom" />
 
       {pendingDelete && (
         <UnlinkedWorkDeleteDialog
@@ -570,16 +561,16 @@ export function WorkMaintenance({
           onClose={() => setPendingDelete(null)}
         />
       )}
-    </section>
+    </div>
   );
 }
 
-/** Phones show only the count next to the icon; the full label stays as the accessible name. */
+/** The header shows only the count next to the icon; the full label stays as the accessible name and tooltip. */
 function BulkLabel({ label, count }: { label: string; count: number }) {
   return (
     <>
-      <span className="max-sm:sr-only">{label}</span>
-      <span className="tabular-nums sm:hidden" aria-hidden="true">
+      <span className="sr-only">{label}</span>
+      <span className="tabular-nums" aria-hidden="true">
         {count}
       </span>
     </>

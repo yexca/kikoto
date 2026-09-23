@@ -3,13 +3,10 @@ import { surfaceEnglish } from "./en";
 export const surfaceJapanese = {
   workManagement: {
     all: "すべて",
-    allMetadata: "すべてのメタデータ",
     catalogDescription: "保存済みの作品メタデータを作品ファミリーごとに表示します。",
     catalogEmpty: "保存済みの作品メタデータはありません。",
 
-    issues: "対応が必要な作品",
     settings: "メタデータ設定",
-    openSync: "メタデータ同期",
     voiceAliases: "声優の別名",
     voiceAliasesTitle: "声優の別名",
     voiceAliasesDescription: "声優ごとの別名を確認し、重複した人物を統合します。検索は名前と別名に一致します。",
@@ -101,8 +98,6 @@ export const surfaceJapanese = {
     error: "操作を保存できませんでした。もう一度お試しください。",
   },
   workMaintenance: {
-    pageStatus: "{{page}} / {{total}}",
-    rows: "表示件数",
     title: "メタデータ一覧",
     description:
       "メタデータに問題がある作品や利用可能なファイルソースがない作品を、作品ファミリー単位で表示します。更新が成功すると該当する問題だけが解消されます。",
@@ -371,16 +366,14 @@ export const surfaceJapanese = {
     },
     metadata: {
       languagePriority: "DLsiteメタデータの言語優先順位",
-      firstChoice: "第一候補",
-      fallbackChoice: "フォールバック {{count}}",
       priority: "優先順位 {{count}}",
-      remoteRequests: "リモートソースのメタデータリクエスト",
+      remoteRequests: "リモートのリクエスト言語",
       remoteRequestsDescription:
-        "Accept-Languageヒントとして送信します。リモートサービスは無視、フォールバック、または混在言語のメタデータを返す場合があります。",
-      noRemoteSources: "リモートソースが設定されていません。",
+        "Accept-Language ヒントとして送信します。ソースによっては無視されたり、言語が混在したりします。",
       catalogFreshnessDays: "カタログの更新日数",
       catalogFreshnessDescription: "サークルと声優のカタログは{{count}}日後に注意状態になります。",
       save: "メタデータ設定を保存",
+      about: "{{label}}について",
     },
     recommendation: {
       tuning: "おすすめ調整",
@@ -1164,7 +1157,6 @@ export const surfaceJapanese = {
     actions: "操作",
     cover: "カバー",
     select: "選択",
-    range: "{{first}}-{{last}} / {{total}}",
     existingResultsShown: "既存の結果は引き続き表示されます。",
   },
   route: {
@@ -1285,9 +1277,9 @@ export const surfaceJapanese = {
     drag: "{{language}}をドラッグ",
     moveEarlier: "{{language}}を上へ移動",
     moveLater: "{{language}}を下へ移動",
-    priorityTitle: "DLsite タイトルとタグの言語優先順位",
+    priorityTitle: "タイトルとタグの言語",
     priorityDescription:
-      "保存された DLsite 版は上から順に照合されます。原版は最後のフォールバックとして常に保持されます。同期時のリクエスト言語はこの表示順序とは独立しています。",
+      "DLsite の版を上から順に照合します。原版は常に最後のフォールバックです。同期時のリクエスト言語は別に設定します。",
     preferredLanguages: "優先する言語",
   },
   detailActions: {
@@ -1309,6 +1301,7 @@ export const surfaceJapanese = {
     alreadyTracked: "追跡済み",
     sourceDetailsUnavailable: "ソースの詳細を利用できません",
     sourceUnavailable: "ソースを利用できません",
+    fork: "フォーク",
     switchFork: "フォークを切り替え",
     forkFrom: "フォーク元",
     noForkSourceAvailable: "利用可能なフォーク元はありません",
@@ -1603,15 +1596,11 @@ export const surfaceJapanese = {
     catalogWorkAlreadyRemoved: "{{code}}はすでに削除されています。",
     markUpdateFailed: "マークの更新に失敗しました。",
     saveForListFailed: "リストへの保存に失敗しました。",
+    bulkForkSummary: "一括ワークフロー {{runIds}}：{{synced}}件をフォーク、{{failed}}件失敗。",
+    bulkForkFailed: "一括フォークに失敗しました。",
     bulkFetchFailed: "一括取得に失敗しました。",
-    bulkTrackFetchFailed: "一括追跡／取得に失敗しました。",
-    trackFailed: "追跡に失敗しました。",
     savedAndMarked: "{{code}}を保存してマークしました。",
     bulkFetchSummary: "一括ワークフロー {{runIds}}：{{fetched}}件の取得をキューに追加、{{failed}}件失敗。",
-    bulkTrackFetchSummary:
-      "一括ワークフロー {{runIds}}：{{synced}}件追跡、{{fetched}}件の取得をキューに追加、{{failed}}件失敗。",
-    trackAlreadyQueued: "追跡ワークフロー #{{id}}はすでにキューにあります。",
-    trackQueued: "追跡ワークフロー #{{id}}をキューに追加しました。",
     refreshWorkflowSummary:
       "更新ワークフロー #{{id}}（{{scope}}）：{{pages}}ページ、カタログ作品{{catalog}}件、作品JSON{{synced}}件{{skipped}}{{failed}}、ソース一致{{sources}}件。",
     scopeRecommended: "推奨",
@@ -1624,7 +1613,6 @@ export const surfaceJapanese = {
     voiceActor: "声優",
     refreshingVoiceWorks: "声優作品を更新中",
     openVoiceWorkOptions: "声優作品オプションを開く",
-    selectedWorks: "{{count}}件を選択",
     loadingVoiceWorks: "声優作品を読み込み中",
     noVoiceWorks: "この表示に一致する作品はありません。",
     refreshingVoiceDetails: "声優の詳細を更新中",
@@ -1691,9 +1679,7 @@ export const surfaceJapanese = {
     editLists: "リストを編集",
     statusFilters: "再生ステータスのフィルター",
     status: "状態",
-    selected: "{{count}} 件を選択",
     selectedWorks: "{{count}} 作品を選択",
-    selectPage: "ページを選択",
     changeLists: "リストを変更",
     refreshing: "お気に入りを更新中",
     reordered: "お気に入りリストの順序を変更しました。",

@@ -6,13 +6,10 @@
 export const surfaceEnglish = {
   workManagement: {
     all: "All",
-    allMetadata: "All metadata",
     catalogDescription: "All saved work metadata, grouped by work family.",
     catalogEmpty: "No work metadata saved yet.",
 
-    issues: "Pending works",
     settings: "Metadata settings",
-    openSync: "Metadata sync",
     voiceAliases: "Voice aliases",
     voiceAliasesTitle: "Voice actor aliases",
     voiceAliasesDescription:
@@ -105,8 +102,6 @@ export const surfaceEnglish = {
     error: "Could not save this action. Please try again.",
   },
   workMaintenance: {
-    pageStatus: "{{page}} / {{total}}",
-    rows: "Rows",
     title: "Metadata records",
     description:
       "Works with metadata issues or no available file source, grouped by family. Successful metadata updates clear only the corresponding issue.",
@@ -289,16 +284,13 @@ export const surfaceEnglish = {
     },
     metadata: {
       languagePriority: "DLsite metadata language priority",
-      firstChoice: "First choice",
-      fallbackChoice: "Fallback {{count}}",
       priority: "Priority {{count}}",
-      remoteRequests: "Remote source metadata requests",
-      remoteRequestsDescription:
-        "Sent as an Accept-Language request hint. A remote service may ignore it, fall back, or return mixed-language metadata.",
-      noRemoteSources: "No remote sources configured.",
+      remoteRequests: "Remote request language",
+      remoteRequestsDescription: "Sent as an Accept-Language hint. A source may ignore it or return mixed languages.",
       catalogFreshnessDays: "Catalog freshness days",
-      catalogFreshnessDescription: "Circle and voice catalog status changes to Attention after {{count}} days.",
+      catalogFreshnessDescription: "Circle and voice catalogs are marked Attention after {{count}} days.",
       save: "Save metadata settings",
+      about: "About {{label}}",
     },
     recommendation: {
       tuning: "Recommendation tuning",
@@ -1304,9 +1296,9 @@ export const surfaceEnglish = {
     drag: "Drag {{language}}",
     moveEarlier: "Move {{language}} earlier",
     moveLater: "Move {{language}} later",
-    priorityTitle: "DLsite title and tag language priority",
+    priorityTitle: "Title and tag language",
     priorityDescription:
-      "Stored DLsite editions are matched from top to bottom. Origin is always retained as the final fallback; the request locale used during sync is independent from this display order.",
+      "DLsite editions are matched from top to bottom. Origin is always the last fallback. The sync request language is set separately.",
     preferredLanguages: "Preferred languages",
   },
   detailActions: {
@@ -1328,6 +1320,7 @@ export const surfaceEnglish = {
     alreadyTracked: "Already tracked",
     sourceDetailsUnavailable: "Source details unavailable",
     sourceUnavailable: "Source unavailable",
+    fork: "Fork",
     switchFork: "Switch fork",
     forkFrom: "Fork from",
     noForkSourceAvailable: "No fork source available",
@@ -1424,7 +1417,6 @@ export const surfaceEnglish = {
     actions: "Actions",
     cover: "Cover",
     select: "Select",
-    range: "{{first}}-{{last}} of {{total}}",
     existingResultsShown: "Existing results are still shown.",
   },
 
@@ -1666,15 +1658,11 @@ export const surfaceEnglish = {
     catalogWorkAlreadyRemoved: "{{code}} was already removed.",
     markUpdateFailed: "Mark update failed.",
     saveForListFailed: "Save for list failed.",
+    bulkForkSummary: "Bulk workflow {{runIds}}: forked {{synced}}, failed {{failed}}.",
+    bulkForkFailed: "Bulk fork failed.",
     bulkFetchFailed: "Bulk fetch failed.",
-    bulkTrackFetchFailed: "Bulk track/fetch failed.",
-    trackFailed: "Track failed.",
     savedAndMarked: "Saved and marked {{code}}.",
     bulkFetchSummary: "Bulk workflow {{runIds}}: queued {{fetched}} Fetch jobs, failed {{failed}}.",
-    bulkTrackFetchSummary:
-      "Bulk workflow {{runIds}}: tracked {{synced}}, queued {{fetched}} Fetch jobs, failed {{failed}}.",
-    trackAlreadyQueued: "Track workflow #{{id}} is already queued.",
-    trackQueued: "Track workflow #{{id}} queued.",
     refreshWorkflowSummary:
       "Refresh workflow #{{id}} ({{scope}}): {{pages}} pages, {{catalog}} catalog works, {{synced}} product JSON{{skipped}}{{failed}}, {{sources}} source matches.",
     scopeRecommended: "recommended",
@@ -1687,7 +1675,6 @@ export const surfaceEnglish = {
     voiceActor: "Voice actor",
     refreshingVoiceWorks: "Refreshing voice works",
     openVoiceWorkOptions: "Open voice work options",
-    selectedWorks: "{{count}} selected",
     loadingVoiceWorks: "Loading voice works",
     noVoiceWorks: "No works match this view.",
     refreshingVoiceDetails: "Refreshing voice details",
@@ -1754,9 +1741,7 @@ export const surfaceEnglish = {
     editLists: "Edit lists",
     statusFilters: "Listening status filters",
     status: "Status",
-    selected: "{{count}} selected",
     selectedWorks: "{{count}} selected works",
-    selectPage: "Select page",
     changeLists: "Change lists",
     refreshing: "Refreshing favorites",
     reordered: "Favorite list reordered.",

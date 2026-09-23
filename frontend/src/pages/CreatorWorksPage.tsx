@@ -4,7 +4,7 @@ import {
   Cloud,
   ExternalLink,
   FileAudio,
-  GitBranchPlus,
+  GitFork,
   GitMerge,
   HardDriveDownload,
   Heart,
@@ -26,7 +26,6 @@ import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { Dialog, DialogFooter, DialogHeader } from "@/components/ui/dialog";
@@ -45,6 +44,7 @@ import { CreatorListToolbar } from "@/components/creator/CreatorListToolbar";
 import { CatalogWorkToolbar } from "@/components/creator/CatalogWorkToolbar";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
+import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
 import { VoiceWorkOptionsSheet, type VoiceWorkFilter } from "@/pages/VoiceWorkOptionsSheet";
 import { VoiceAdvancedRefreshSheet, isVoiceCatalogSourceSelectable } from "@/pages/VoiceAdvancedRefreshSheet";
 import { useAuth } from "@/auth/AuthProvider";
@@ -707,7 +707,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
   const selectedWorks = mergedWorks.filter((work) => selectedWorkKeys.has(voiceWorkSelectionKey(work)));
   const selectablePageWorks = pageWorks.filter(isVoiceBulkSelectable);
   const selectedSaveable = selectedWorks.filter(voiceWorkRemoteTarget);
-  const selectedSyncable = selectedWorks.filter(
+  const selectedForkable = selectedWorks.filter(
     (work) => voiceWorkRemoteTarget(work) && !voiceWorkHasImportedRemote(work),
   );
 
@@ -851,23 +851,21 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
     });
   };
 
-  const bulkSyncAndSave = async () => {
-    if (selectedSyncable.length === 0) return;
-    if (!requireDownloadsManage()) return;
+  const bulkFork = async () => {
+    if (selectedForkable.length === 0) return;
     setIsBulkBusy(true);
     setMessage("");
     try {
-      const results = await runVoiceBulkBySource(selectedSyncable, "track_fetch");
+      const results = await runVoiceBulkBySource(selectedForkable, "track");
       const synced = results.reduce((total, result) => total + result.synced, 0);
-      const fetched = results.reduce((total, result) => total + result.fetched, 0);
       const failed = results.reduce((total, result) => total + result.failed, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      const message = t("creatorBrowse.bulkTrackFetchSummary", { runIds, synced, fetched, failed });
+      const message = t("creatorBrowse.bulkForkSummary", { runIds, synced, failed });
       if (failed > 0) toast.warning(message);
       else toast.success(message);
       await refreshDetail();
     } catch (error) {
-      toast.notify(toastFromError(error, t("creatorBrowse.bulkTrackFetchFailed")));
+      toast.notify(toastFromError(error, t("creatorBrowse.bulkForkFailed")));
     } finally {
       setIsBulkBusy(false);
     }
@@ -900,7 +898,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
     }
   };
 
-  const runVoiceBulkBySource = (works: VoiceWorkView[], action: "fetch" | "track_fetch") => {
+  const runVoiceBulkBySource = (works: VoiceWorkView[], action: "fetch" | "track") => {
     const groups = new Map<number, string[]>();
     works.forEach((work) => {
       const target = voiceWorkRemoteTarget(work);
@@ -921,21 +919,21 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
     });
   };
 
-  const syncSingleWork = async (work: VoiceWorkView) => {
+  const forkSingleWork = async (work: VoiceWorkView) => {
     const target = voiceWorkRemoteTarget(work);
     if (!target) return;
     setIsBulkBusy(true);
     try {
-      const result = await api.trackRemoteSourceWork(target.sourceId, target.code, "voice_card_fetch");
+      const result = await api.trackRemoteSourceWork(target.sourceId, target.code, "voice_card_fork");
       announceRemoteTrackCreated(target.sourceId, target.code, result);
       toast.notify({
         kind: "info",
         message: result.deduplicated
-          ? t("creatorBrowse.trackAlreadyQueued", { id: result.runId })
-          : t("creatorBrowse.trackQueued", { id: result.runId }),
+          ? t("libraryDetail.forkAlreadyQueued", { runId: result.runId })
+          : t("libraryDetail.forkQueued", { runId: result.runId }),
       });
     } catch (error) {
-      toast.notify(toastFromError(error, t("creatorBrowse.trackFailed")));
+      toast.notify(toastFromError(error, t("libraryDetail.forkQueueFailed")));
     } finally {
       setIsBulkBusy(false);
     }
@@ -1189,53 +1187,34 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
           }}
         />
         {selectionMode && (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Checkbox
-                checked={
-                  selectablePageWorks.length > 0 &&
-                  selectablePageWorks.every((work) => selectedWorkKeys.has(voiceWorkSelectionKey(work)))
-                }
-                onCheckedChange={toggleVisibleSelection}
-                aria-label={t("detailActions.select")}
-              />
-              {t("creatorBrowse.selectedWorks", { count: selectedWorks.length })}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => toggleVisibleSelection(true)}>
-                {t("library.selectAll")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setSelectedWorkKeys(new Set());
-                  setSelectionMode(false);
-                }}
-              >
-                {t("library.cancelSelection")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isBulkBusy || selectedSyncable.length === 0}
-                onClick={() => void bulkSyncAndSave()}
-              >
-                <GitBranchPlus className="h-4 w-4" />
-                {t("library.trackCount", { count: selectedSyncable.length })} +{" "}
-                {t("library.fetchCount", { count: selectedSyncable.length })}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isBulkBusy || selectedSaveable.length === 0}
-                onClick={() => void bulkSave()}
-              >
-                <HardDriveDownload className="h-4 w-4" />
-                {t("library.fetchCount", { count: selectedSaveable.length })}
-              </Button>
-            </div>
-          </div>
+          <WorkSelectionBar
+            selectedCount={selectedWorks.length}
+            scopeSelectableCount={selectablePageWorks.length}
+            scopeSelectedCount={
+              selectablePageWorks.filter((work) => selectedWorkKeys.has(voiceWorkSelectionKey(work))).length
+            }
+            onSelectScope={() => toggleVisibleSelection(true)}
+            onClear={() => setSelectedWorkKeys(new Set())}
+            onExit={() => {
+              setSelectedWorkKeys(new Set());
+              setSelectionMode(false);
+            }}
+          >
+            <WorkSelectionAction
+              icon={<GitFork className="h-4 w-4" />}
+              label={t("detailActions.fork")}
+              count={selectedForkable.length}
+              disabled={isBulkBusy}
+              onClick={() => void bulkFork()}
+            />
+            <WorkSelectionAction
+              icon={<HardDriveDownload className="h-4 w-4" />}
+              label={t("detailActions.fetch")}
+              count={selectedSaveable.length}
+              disabled={isBulkBusy}
+              onClick={() => void bulkSave()}
+            />
+          </WorkSelectionBar>
         )}
         {pageWorks.length > 0 ? (
           <div
@@ -1251,7 +1230,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
                   selectable={isVoiceBulkSelectable(work)}
                   selectionActive={selectionMode}
                   onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
-                  onSync={() => void syncSingleWork(work)}
+                  onFork={() => void forkSingleWork(work)}
                   onSave={() => void saveSingleWork(work)}
                   onStatusChange={(status) => void updateWorkMark(work, status)}
                   onFavoriteSaved={(favorite) => {
@@ -1315,7 +1294,7 @@ function VoiceWorkCard({
   selectable,
   selectionActive,
   onSelectedChange,
-  onSync,
+  onFork,
   onSave,
   onStatusChange,
   onFavoriteSaved,
@@ -1326,7 +1305,7 @@ function VoiceWorkCard({
   selectable: boolean;
   selectionActive: boolean;
   onSelectedChange: (checked: boolean) => void;
-  onSync: () => void;
+  onFork: () => void;
   onSave: () => void;
   onStatusChange: (status: ListeningStatus) => void;
   onFavoriteSaved: (favorite: boolean) => void;
@@ -1366,14 +1345,14 @@ function VoiceWorkCard({
           right={
             <>
               <WorkCardActionButton
-                title={t("detailActions.track")}
+                title={t("detailActions.fork")}
                 disabled={!voiceWorkRemoteTarget(work)}
                 onClick={(event) => {
                   event.stopPropagation();
-                  onSync();
+                  onFork();
                 }}
               >
-                <GitBranchPlus className="h-4 w-4" />
+                <GitFork className="h-4 w-4" />
               </WorkCardActionButton>
               <WorkCardActionButton
                 title={t("detailActions.fetch")}

@@ -58,21 +58,20 @@ test("metadata operators retry selected issues without source settings access", 
   expect(touchTarget?.width).toBeGreaterThanOrEqual(44);
   expect(touchTarget?.height).toBeGreaterThanOrEqual(44);
   await selectFirst.click();
-  await list.getByRole("button", { name: "Retry metadata (1)", exact: true }).click();
+  await page.getByRole("button", { name: "Retry metadata (1)", exact: true }).click();
   expect(retries).toEqual([[1]]);
   await expect(
     list.getByRole("checkbox", { name: `Select ${syntheticWorkCode("RJ", 0)}`, exact: true }),
   ).toBeDisabled();
   await expect(list.getByText("Retry queued or running")).toBeVisible();
   failList = true;
-  await list.getByRole("button", { name: "Refresh list", exact: true }).click();
+  await page.getByRole("button", { name: "Refresh list", exact: true }).click();
   await expect(list.getByRole("alert")).toBeVisible();
   await expect(list.getByRole("link", { name: /Synthetic work 0/ })).toBeVisible();
   failList = false;
   items = items.filter((item) => item.workId !== 1);
-  await list.getByRole("button", { name: "Refresh list", exact: true }).click();
+  await page.getByRole("button", { name: "Refresh list", exact: true }).click();
   await expect(list.getByRole("link", { name: /Synthetic work 0/ })).toHaveCount(0);
-  await expect(list.getByText("1-1 of 1", { exact: true })).toBeVisible();
   // Internal navigation must preserve the global media element and its queue.
   const audio = await page.locator("audio").first().elementHandle();
   expect(audio).not.toBeNull();
@@ -120,17 +119,17 @@ test("@desktop metadata page selection resets when searching or changing pages",
   await page.goto("/maintenance?tab=works&reason=metadata");
   const list = page.getByRole("region", { name: "Metadata records" });
   await list.getByRole("checkbox", { name: "Select current page", exact: true }).click();
-  await expect(list.getByRole("button", { name: "Retry metadata (25)", exact: true })).toBeEnabled();
-  await list.getByRole("button", { name: "Next page", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Retry metadata (25)", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Next page", exact: true }).first().click();
   await expect(list.getByRole("link", { name: /Synthetic work 25/ })).toBeVisible();
-  await expect(list.getByRole("button", { name: "Retry metadata (0)", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Retry metadata (0)", exact: true })).toBeDisabled();
   await list.getByRole("checkbox", { name: `Select ${syntheticWorkCode("RJ", 25)}`, exact: true }).click();
-  await list.getByRole("searchbox", { name: "Search metadata", exact: true }).fill(syntheticWorkCode("RJ", 0));
-  await list.getByRole("button", { name: "Search", exact: true }).click();
+  await page.getByRole("searchbox", { name: "Search metadata", exact: true }).fill(syntheticWorkCode("RJ", 0));
+  await page.getByRole("searchbox", { name: "Search metadata", exact: true }).press("Enter");
   await expect(list.getByRole("checkbox", { name: /^Select RJ/ })).toHaveCount(1);
   await expect(list.getByRole("link", { name: /Synthetic work 0/ })).toBeVisible();
-  await expect(list.getByRole("button", { name: "Retry metadata (0)", exact: true })).toBeDisabled();
-  await expect(list.getByRole("button", { name: "Previous page", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Retry metadata (0)", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Previous page", exact: true }).first()).toBeDisabled();
 });
 
 function asMaintenanceWork(item: { workId: number; primaryCode: string; title: string }) {
@@ -222,14 +221,14 @@ test("work maintenance keeps source actions scoped and metadata settings separat
   );
   await expect(list.getByRole("button", { name: /Delete local information/ })).toHaveCount(0);
   await list.getByRole("checkbox", { name: "Select current page", exact: true }).click();
-  await expect(list.getByRole("button", { name: "Retry metadata (1)", exact: true })).toBeEnabled();
-  await list.getByRole("button", { name: "Retry metadata (1)", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Retry metadata (1)", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Retry metadata (1)", exact: true }).click();
   expect(retried).toEqual([2]);
   await list.getByRole("checkbox", { name: "Select current page", exact: true }).click();
-  await list.getByRole("button", { name: "Check sources (2)", exact: true }).click();
+  await page.getByRole("button", { name: "Check sources (2)", exact: true }).click();
   expect(checked).toEqual([1, 3]);
   await page.getByRole("tab", { name: "Metadata issues", exact: true }).click();
-  await expect(list.getByRole("button", { name: "Retry metadata (0)", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Retry metadata (0)", exact: true })).toBeDisabled();
   const row = list.getByRole("row").filter({ hasText: "Example mixed work" });
   await expect(row.getByText("No available source", { exact: true })).toBeVisible();
   await expect(row.getByText("Metadata issues", { exact: true })).toBeVisible();
@@ -320,8 +319,13 @@ for (const viewport of ["mobile", "@desktop"]) {
     );
     await expect(list.getByRole("link", { name: "Example healthy work", exact: true })).toHaveCount(0);
     await expect(list.getByRole("link", { name: "Example missing-source work", exact: true })).toBeVisible();
-    await list.getByRole("searchbox", { name: "Search metadata", exact: true }).fill("Example");
-    await list.getByRole("searchbox", { name: "Search metadata", exact: true }).press("Enter");
+    // Five tabs leave no room for an inline field at these widths, so search starts behind its icon.
+    const searchToggle = page.getByRole("button", { name: "Search metadata", exact: true });
+    await expect(searchToggle).toHaveAttribute("aria-expanded", "false");
+    await searchToggle.click();
+    await expect(page.getByRole("searchbox", { name: "Search metadata", exact: true })).toBeFocused();
+    await page.getByRole("searchbox", { name: "Search metadata", exact: true }).fill("Example");
+    await page.getByRole("searchbox", { name: "Search metadata", exact: true }).press("Enter");
     await page.getByRole("button", { name: "Metadata settings", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Metadata settings", exact: true });
     await expect(dialog).toBeVisible();
@@ -336,10 +340,9 @@ for (const viewport of ["mobile", "@desktop"]) {
       "aria-selected",
       "true",
     );
-    await expect(list.getByRole("searchbox", { name: "Search metadata", exact: true })).toHaveValue("Example");
+    await expect(page.getByRole("searchbox", { name: "Search metadata", exact: true })).toHaveValue("Example");
     await page.screenshot({ path: testInfo.outputPath("metadata-management.png") });
-    await page.getByRole("button", { name: "Metadata sync", exact: true }).click();
-    await expect(page).toHaveURL(/workflows\?workflow=metadata_sync/);
+    await expect(page.getByRole("button", { name: "Metadata sync", exact: true })).toHaveCount(0);
   });
 }
 

@@ -1,10 +1,11 @@
-import { ExternalLink, Settings } from "lucide-react";
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { Settings } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
+import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
+import type { MaintenanceToolbarSlots } from "@/features/maintenance/MaintenanceControls";
 import { WorkMaintenance } from "@/features/maintenance/WorkMaintenance";
 import { MetadataSettingsPanel } from "@/features/maintenance/MetadataSettingsPanel";
 import { VoiceAliasMaintenance } from "@/features/maintenance/VoiceAliasMaintenance";
@@ -31,6 +32,38 @@ function settingsFromLocation() {
   return new URLSearchParams(window.location.search).get("tab") === "settings";
 }
 
+// Narrowest search field worth showing inline; below it the field collapses to an icon.
+const INLINE_SEARCH_MIN_WIDTH = 224;
+const HEADER_GAP = 8;
+
+/**
+ * Whether the header row has room for an inline search field between the tabs
+ * and the actions. Widths come from content (`scrollWidth`) and exclude the
+ * collapsed-search toggle, so switching modes does not change the answer.
+ */
+function useInlineSearchFits(
+  header: RefObject<HTMLElement | null>,
+  tabs: RefObject<HTMLElement | null>,
+  actions: RefObject<HTMLElement | null>,
+) {
+  const [fits, setFits] = useState(true);
+  useLayoutEffect(() => {
+    const measure = () => {
+      if (!header.current || !tabs.current || !actions.current) return;
+      const toggle = actions.current.querySelector<HTMLElement>("[data-search-toggle]");
+      const actionsWidth = actions.current.scrollWidth - (toggle ? toggle.offsetWidth + HEADER_GAP : 0);
+      const required = tabs.current.scrollWidth + actionsWidth + INLINE_SEARCH_MIN_WIDTH + HEADER_GAP * 2;
+      setFits(header.current.clientWidth >= required);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    for (const element of [header.current, tabs.current, actions.current]) if (element) observer.observe(element);
+    return () => observer.disconnect();
+  }, [header, tabs, actions]);
+  return fits;
+}
+
 function moveTabFocus(event: KeyboardEvent<HTMLButtonElement>) {
   const tabs = Array.from(event.currentTarget.parentElement!.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
   const current = tabs.indexOf(event.currentTarget);
@@ -52,18 +85,18 @@ function moveTabFocus(event: KeyboardEvent<HTMLButtonElement>) {
 
 /**
  * Metadata page shell: one tab strip that switches between the saved-work
- * attention views and the voice actor alias view, plus the settings dialog and
- * sync shortcut. Views own their own tables; this page owns the URL state.
+ * attention views and the voice actor alias view, plus the settings popover.
+ * The header is one row: tabs, then the active view's search, list controls,
+ * and selection actions rendered into slots. Views own their own tables; this
+ * page owns the URL state and decides whether search fits inline.
  */
 export function WorkManagementPage({
   canSyncMetadata,
   canManageSources,
-  canOpenWorkflows,
   readOnly = false,
 }: {
   canSyncMetadata: boolean;
   canManageSources: boolean;
-  canOpenWorkflows: boolean;
   readOnly?: boolean;
 }) {
   const { t } = useTranslation();
@@ -78,6 +111,14 @@ export function WorkManagementPage({
   const [runId, setRunId] = useState<number | null>(metadataIssueRunFromLocation);
   const [view, setView] = useState<MetadataView>(availableView);
   const [settingsOpen, setSettingsOpen] = useState(settingsFromLocation);
+  const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
+  const [inlineSearchSlot, setInlineSearchSlot] = useState<HTMLDivElement | null>(null);
+  const [searchRowSlot, setSearchRowSlot] = useState<HTMLDivElement | null>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const headerActionsRef = useRef<HTMLDivElement>(null);
+  const settingsAnchorRef = useRef<HTMLDivElement>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const settingsPanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const sync = () => {
@@ -95,6 +136,12 @@ export function WorkManagementPage({
   }, [canManageSources, canSyncMetadata]);
 
   const tabListRef = useRef<HTMLDivElement>(null);
+  const inlineSearch = useInlineSearchFits(headerRef, tabListRef, headerActionsRef);
+  const toolbar: MaintenanceToolbarSlots = {
+    actions: actionsSlot,
+    search: inlineSearch ? inlineSearchSlot : searchRowSlot,
+    compactSearch: !inlineSearch,
+  };
   useEffect(() => {
     tabListRef.current
       ?.querySelector<HTMLElement>('[aria-selected="true"]')
@@ -120,6 +167,16 @@ export function WorkManagementPage({
     window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
     setSettingsOpen(open);
   };
+  // Keyboard users land inside the portaled popover and return to its trigger
+  // when it closes from within; an outside click keeps the clicked focus.
+  useEffect(() => {
+    if (settingsOpen) settingsPanelRef.current?.focus({ preventScroll: true });
+  }, [settingsOpen]);
+  const closeSettings = () => {
+    const focusInside = settingsPanelRef.current?.contains(document.activeElement) ?? false;
+    showSettings(false);
+    if (focusInside) settingsButtonRef.current?.focus({ preventScroll: true });
+  };
 
   const reasonTabs = [
     ["catalog", "workManagement.all"],
@@ -129,9 +186,9 @@ export function WorkManagementPage({
   ];
 
   return (
-    <div className="min-w-0 space-y-4">
+    <div className="min-w-0 space-y-3">
       {readOnly && <DemoReadOnlyNotice />}
-      <div className="flex items-center justify-between gap-3">
+      <div ref={headerRef} className="flex items-center gap-2 max-sm:flex-wrap">
         <div
           ref={tabListRef}
           role="tablist"
@@ -176,36 +233,42 @@ export function WorkManagementPage({
             </>
           )}
         </div>
-        <div className="flex shrink-0 gap-2">
+        <div ref={setInlineSearchSlot} className="contents" />
+        <div ref={headerActionsRef} className="ml-auto flex shrink-0 items-center gap-2">
+          <div ref={setActionsSlot} className="contents" />
           {canManageSources && (
-            <Button
-              variant="toolbar"
-              aria-label={t("workManagement.settings")}
-              title={t("workManagement.settings")}
-              onClick={() => showSettings(true)}
-            >
-              <Settings className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("workManagement.settings")}</span>
-            </Button>
-          )}
-          {canSyncMetadata && canOpenWorkflows && (
-            <Button
-              variant="toolbar"
-              aria-label={t("workManagement.openSync")}
-              title={t("workManagement.openSync")}
-              onClick={() => {
-                window.history.pushState({}, "", "/workflows?workflow=metadata_sync");
-                window.dispatchEvent(new Event(NAVIGATION_EVENT));
-              }}
-            >
-              <ExternalLink className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("workManagement.openSync")}</span>
-            </Button>
+            <div ref={settingsAnchorRef} className="relative">
+              <Button
+                ref={settingsButtonRef}
+                variant="toolbar"
+                size="icon-sm"
+                aria-label={t("workManagement.settings")}
+                aria-expanded={settingsOpen}
+                aria-haspopup="dialog"
+                title={t("workManagement.settings")}
+                onClick={() => showSettings(!settingsOpen)}
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+              <AnchoredPopover
+                open={settingsOpen}
+                anchorRef={settingsAnchorRef}
+                ariaLabel={t("workManagement.settings")}
+                preserveOnNestedLayers
+                className="w-[min(24rem,calc(100vw-1.5rem))]"
+                onOpenChange={(open) => (open ? showSettings(true) : closeSettings())}
+              >
+                <div ref={settingsPanelRef} tabIndex={-1} className="outline-none">
+                  <MetadataSettingsPanel readOnly={readOnly} onClose={closeSettings} />
+                </div>
+              </AnchoredPopover>
+            </div>
           )}
         </div>
       </div>
+      <div ref={setSearchRowSlot} className="empty:hidden" />
       {view === "aliases" ? (
-        <VoiceAliasMaintenance canManage={canSyncMetadata && !readOnly} readOnly={readOnly} />
+        <VoiceAliasMaintenance canManage={canSyncMetadata && !readOnly} readOnly={readOnly} toolbar={toolbar} />
       ) : (
         <WorkMaintenance
           canManageSources={canManageSources}
@@ -213,19 +276,9 @@ export function WorkManagementPage({
           readOnly={readOnly}
           reason={reason}
           runId={runId}
+          toolbar={toolbar}
           onFilterChange={showWorks}
         />
-      )}
-      {canManageSources && settingsOpen && (
-        <Dialog onClose={() => showSettings(false)} size="xl">
-          <DialogHeader
-            title={t("workManagement.settings")}
-            icon={<Settings className="h-4 w-4" />}
-            onClose={() => showSettings(false)}
-            closeLabel={t("common.close")}
-          />
-          <MetadataSettingsPanel readOnly={readOnly} />
-        </Dialog>
       )}
     </div>
   );
