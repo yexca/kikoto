@@ -75,18 +75,6 @@ type RawWork struct {
 	RecommendScore         int
 }
 
-func (s *Store) ListAll(ctx context.Context, userID int64, demoOnly bool) ([]RawWork, error) {
-	where := "1 = 1"
-	if demoOnly {
-		where += " AND " + contentpolicy.DemoEligibleWorkSQL("work")
-	}
-	rows, err := s.db.QueryContext(ctx, listBaseSelectSQL(where, false)+" ORDER BY work.created_at DESC", userID)
-	if err != nil {
-		return nil, err
-	}
-	return ScanRows(rows)
-}
-
 func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, error) {
 	if options.Page < 1 {
 		options.Page = 1
@@ -315,18 +303,28 @@ func listOrderBy(sortKey string, direction string, randomSeed int64, config Reco
 	case "random":
 		return seededOrderBy("work.id", randomSeed)
 	case "release":
-		return "work.release_date IS NULL ASC, work.release_date " + direction + ", work.created_at " + direction + ", work.id " + direction
+		return nullsLastOrderBy("work.release_date", direction) + ", work.created_at " + direction + ", work.id " + direction
 	case "code":
 		return "work.primary_code " + direction + ", work.id " + direction
 	case "title":
 		return "work.title COLLATE NOCASE " + direction + ", work.id " + direction
 	case "rating":
-		return "work.rating_average IS NULL ASC, work.rating_average " + direction + ", work.created_at " + direction + ", work.id " + direction
+		return nullsLastOrderBy("work.rating_average", direction) + ", work.created_at " + direction + ", work.id " + direction
 	case "sales":
-		return "work.sales_count IS NULL ASC, work.sales_count " + direction + ", work.created_at " + direction + ", work.id " + direction
+		return nullsLastOrderBy("work.sales_count", direction) + ", work.created_at " + direction + ", work.id " + direction
 	default:
 		return "work.created_at " + direction + ", work.id " + direction
 	}
+}
+
+// nullsLastOrderBy sorts column in direction with NULL values last. SQLite
+// already places NULL last in a descending order, so only an ascending order
+// adds the explicit null group; the plain descending form can read an index.
+func nullsLastOrderBy(column string, direction string) string {
+	if direction == "DESC" {
+		return column + " DESC"
+	}
+	return column + " IS NULL ASC, " + column + " " + direction
 }
 
 func seededOrderBy(idExpression string, randomSeed int64) string {
@@ -731,10 +729,6 @@ func listSelectSQLWithRecommendationGeneration(
 	return listBaseSelectSQLWithConfigAndExtraAndGeneration(
 		where, includeRecommendation, config, "", recommendationGenerationID,
 	) + " ORDER BY " + orderBy
-}
-
-func listBaseSelectSQL(where string, includeRecommendation bool) string {
-	return listBaseSelectSQLWithConfigAndExtra(where, includeRecommendation, DefaultRecommendationConfig(), "")
 }
 
 func listBaseSelectSQLWithExtra(where string, includeRecommendation bool, extraSelect string) string {

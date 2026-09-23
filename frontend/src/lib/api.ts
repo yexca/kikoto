@@ -2031,7 +2031,6 @@ export const api = {
     payload: { displayName?: string; role?: ManagedUser["role"]; password?: string; enabled?: boolean },
   ) => patchJSONBody<ManagedUser>(`/api/users/${id}`, payload),
   deleteUser: (id: number) => deleteJSON<{ ok: boolean }>(`/api/users/${id}`),
-  listWorks: () => getJSON<Work[]>("/api/works"),
   getWorkRecommendation: (id: number, recommendationSession = "", seed?: number) => {
     const params = new URLSearchParams();
     if (recommendationSession) params.set("recommendationSession", recommendationSession);

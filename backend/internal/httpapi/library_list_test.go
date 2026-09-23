@@ -13,6 +13,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
 func TestListWorksPageClosesOuterRowsBeforeEnrichment(t *testing.T) {
@@ -86,6 +87,21 @@ func TestListWorksPageClosesOuterRowsBeforeEnrichment(t *testing.T) {
 	}
 	if response.Works[0].AgeRating != "R18" {
 		t.Fatalf("age rating = %q, want R18", response.Works[0].AgeRating)
+	}
+}
+
+// The Library list never returns the complete catalog: a request without page
+// parameters is bounded to the first default page.
+func TestListWorksWithoutPageParametersReturnsFirstPage(t *testing.T) {
+	db := openMigratedTestDB(t)
+	for ordinal := 0; ordinal < 30; ordinal++ {
+		if _, err := db.Exec("INSERT INTO work (primary_code, title) VALUES (?, 'Example work')", testfixture.WorkCode(testfixture.PrefixRJ, ordinal)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page := requestLibraryWorksPage(t, NewServer(db, config.Config{}), "/api/works")
+	if page.Total != 30 || len(page.Works) != 24 {
+		t.Fatalf("unpaged list = total %d, %d works; want the first 24 of 30", page.Total, len(page.Works))
 	}
 }
 

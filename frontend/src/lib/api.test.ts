@@ -82,11 +82,11 @@ describe("API client transport", () => {
       .mockResolvedValueOnce(jsonResponse({ authenticated: true, sessionToken: "new-synthetic-token" }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await api.listWorks();
+    await api.listUsers();
     await api.login("synthetic-user", "synthetic-password");
 
     const [listURL, listInit] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(listURL).toBe("https://mobile.example.invalid/kikoto/api/works");
+    expect(listURL).toBe("https://mobile.example.invalid/kikoto/api/users");
     expect(listInit.credentials).toBe("omit");
     const headers = new Headers(listInit.headers);
     expect(headers.get("X-Kikoto-Mobile")).toBe("1");
