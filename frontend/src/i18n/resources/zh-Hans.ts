@@ -466,7 +466,6 @@ export const zhHansResource = {
         profileUpdateFailed: "资料更新失败。",
         ["passwordChanged"]: "密码已更改，其他会话已退出。",
         ["passwordChangeFailed"]: "密码更改失败。",
-        demoReadOnly: "演示模式下账户设置为只读。",
         accountMenu: "账户菜单",
         reviewCount_one: "审核（{{count}}）",
         reviewCount_other: "审核（{{count}}）",

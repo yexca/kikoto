@@ -156,6 +156,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/metadata-suggestions/voices", s.suggestVoices)
 	mux.HandleFunc("GET /api/metadata-suggestions/series", s.suggestSeries)
 	mux.HandleFunc("GET /api/works/{code}/resolve", s.resolveWorkCode)
+	mux.HandleFunc("GET /api/works/{code}/entity-links", s.lookupWorkEntityLink)
 	mux.HandleFunc("POST /api/works/{code}/entity-links/resolve", s.resolveWorkEntityLink)
 	mux.HandleFunc("GET /api/works/{code}/source-availability", s.getWorkSourceAvailability)
 	mux.HandleFunc("POST /api/works/{code}/source-availability", s.checkWorkSourceAvailabilityNow)

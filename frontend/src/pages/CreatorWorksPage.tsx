@@ -1105,7 +1105,9 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
           error={remoteError}
           canRefresh={canForceRefreshCatalog}
           onManageAliases={
-            auth.hasPermission("metadata:sync") ? () => openVoiceAliasMaintenance(detail.personId) : undefined
+            auth.demoMode || auth.hasPermission("metadata:sync")
+              ? () => openVoiceAliasMaintenance(detail.personId)
+              : undefined
           }
           onClose={() => setAdvancedOpen(false)}
           onRefreshCatalog={(mode, sourceIds) =>

@@ -470,7 +470,6 @@ export const koreanResource = {
         profileUpdateFailed: "프로필 업데이트에 실패했습니다.",
         ["passwordChanged"]: "비밀번호를 변경했습니다. 다른 세션은 로그아웃되었습니다.",
         ["passwordChangeFailed"]: "비밀번호 변경에 실패했습니다.",
-        demoReadOnly: "데모 모드에서는 계정 설정이 읽기 전용입니다.",
         accountMenu: "계정 메뉴",
         reviewCount_one: "검토 ({{count}})",
         reviewCount_other: "검토 ({{count}})",

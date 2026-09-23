@@ -63,7 +63,8 @@ import { useLocale } from "@/i18n/LocaleProvider";
 
 type HeaderActionsProps = {
   user: CurrentUser | null;
-  hasPermission: (permission: string) => boolean;
+  /** Gates navigation and read-only views; Demo can open every surface it cannot change. */
+  canView: (permission: string) => boolean;
   onLogout: () => void;
   onOpenLogin: () => void;
   onOpenPage: (id: PageID) => void;
@@ -74,7 +75,7 @@ type HeaderActionsProps = {
 
 export function HeaderActions({
   user,
-  hasPermission,
+  canView,
   onLogout,
   onOpenLogin,
   onOpenPage,
@@ -84,9 +85,10 @@ export function HeaderActions({
 }: HeaderActionsProps) {
   const { t } = useTranslation();
   const toast = useToast();
-  const canRunWorkflows = hasPermission("workflows:run");
-  const canSyncMetadata = hasPermission("metadata:sync");
-  const canManageUsers = hasPermission("users:manage");
+  const canViewWorkflows = canView("workflows:run");
+  const canViewMetadataIssues = canView("metadata:sync");
+  const canViewUsers = canView("users:manage");
+  const readOnly = user?.demoMode ?? false;
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredThemeMode());
   const [themePreset, setThemePreset] = useState<ThemePreset>(() => getStoredThemePreset());
   const [themePalette, setThemePalette] = useState<ThemePalette>(() => getStoredThemePalette());
@@ -188,7 +190,7 @@ export function HeaderActions({
       setNotificationTotalPages(1);
       setClearableNotificationCount(0);
     }
-    if (canRunWorkflows) {
+    if (canViewWorkflows) {
       api
         .listWorkflowRuns(1, 5, "review")
         .then((page) => {
@@ -207,7 +209,7 @@ export function HeaderActions({
 
   useEffect(() => {
     refreshNotificationCenter();
-    if (!user && !canRunWorkflows) return;
+    if (!user && !canViewWorkflows) return;
     // Background tabs and a backgrounded native app skip polling and catch up on return.
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") refreshNotificationCenter();
@@ -220,7 +222,7 @@ export function HeaderActions({
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [canRunWorkflows, notificationPage, user?.id]);
+  }, [canViewWorkflows, notificationPage, user?.id]);
 
   const totalNotificationCount = notificationCount + reviewCount;
 
@@ -364,7 +366,7 @@ export function HeaderActions({
               />
               {user && (
                 <MenuList>
-                  {canRunWorkflows && (
+                  {canViewWorkflows && (
                     <>
                       <ActionItem
                         icon={<Activity className="h-4 w-4" />}
@@ -392,7 +394,7 @@ export function HeaderActions({
                       onOpenPage("settings");
                     }}
                   />
-                  {canManageUsers && (
+                  {canViewUsers && (
                     <ActionItem
                       icon={<Users className="h-4 w-4" />}
                       label={t("account.users")}
@@ -608,13 +610,13 @@ export function HeaderActions({
                             setReviewOpen(false);
                             if (notification.type === "metadata_onboarding") {
                               onOpenPath(
-                                canSyncMetadata
+                                canViewMetadataIssues
                                   ? metadataSyncResultURL(
                                       notification.workflowRunId,
                                       notification.status !== "succeeded",
-                                      canRunWorkflows,
+                                      canViewWorkflows,
                                     )
-                                  : canRunWorkflows
+                                  : canViewWorkflows
                                     ? `/workflows?activity=1&run=${notification.workflowRunId}`
                                     : "/",
                               );
@@ -627,7 +629,7 @@ export function HeaderActions({
                               return;
                             }
                             if (notification.type === "remote_track" && notification.status === "failed") {
-                              if (canRunWorkflows)
+                              if (canViewWorkflows)
                                 onOpenPath(`/workflows?activity=1&run=${notification.workflowRunId}`);
                               return;
                             }
@@ -677,6 +679,7 @@ export function HeaderActions({
                           className="m-1 h-8 w-8 shrink-0"
                           aria-label={t("notifications.dismissFor", { workCode: notification.workCode })}
                           title={t("notifications.dismiss")}
+                          disabled={readOnly}
                           onClick={() => void dismissFetchNotification(notification.id)}
                         >
                           <X className="h-4 w-4" />
@@ -690,7 +693,7 @@ export function HeaderActions({
                         onClick={() => {
                           setReviewOpen(false);
                           onOpenPath(
-                            canSyncMetadata && (run.pendingMetadata ?? 0) > 0
+                            canViewMetadataIssues && (run.pendingMetadata ?? 0) > 0
                               ? metadataIssuesURL(run.id)
                               : `/workflows?activity=1&view=review&run=${run.id}`,
                           );
@@ -745,7 +748,7 @@ export function HeaderActions({
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={clearingSucceeded || clearableNotificationCount === 0}
+                    disabled={readOnly || clearingSucceeded || clearableNotificationCount === 0}
                     onClick={() => void clearSucceededNotifications()}
                   >
                     {clearingSucceeded ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -850,7 +853,7 @@ export function HeaderActions({
                     onOpenPage("settings");
                   }}
                 />
-                {canManageUsers && (
+                {canViewUsers && (
                   <ActionItem
                     icon={<Users className="h-4 w-4" />}
                     label={t("account.users")}

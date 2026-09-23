@@ -15,6 +15,7 @@ type CommandPaletteProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   hasPermission: (permission: string) => boolean;
+  canView?: (permission: string) => boolean;
   visibleNavItems: readonly NavigationItem[];
   onBusyChange?: (busy: boolean) => void;
   onOpenPage: (id: PageID) => void;
@@ -29,6 +30,7 @@ export function CommandPalette({
   open,
   onOpenChange,
   hasPermission,
+  canView,
   visibleNavItems,
   onBusyChange,
   onOpenPage,
@@ -42,8 +44,8 @@ export function CommandPalette({
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const baseActions = useMemo<PaletteAction[]>(
-    () => commandActions({ hasPermission, visibleNavItems, translate: t, onOpenPage, onOpenPath }),
-    [hasPermission, t, visibleNavItems, onOpenPage, onOpenPath],
+    () => commandActions({ hasPermission, canView, visibleNavItems, translate: t, onOpenPage, onOpenPath }),
+    [canView, hasPermission, t, visibleNavItems, onOpenPage, onOpenPath],
   );
   const cleanQuery = query.trim();
   const codeMatch = isWorkCode(cleanQuery);

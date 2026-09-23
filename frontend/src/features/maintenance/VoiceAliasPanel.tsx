@@ -23,6 +23,7 @@ export function VoiceAliasPanel({
   personId,
   aliases,
   canManage,
+  readOnly = false,
   onAliasesChange,
   onMerged,
   onMessage,
@@ -30,6 +31,8 @@ export function VoiceAliasPanel({
   personId: number;
   aliases: VoiceAlias[];
   canManage: boolean;
+  /** Demo shows the merge history read-only; undo and edits still require canManage. */
+  readOnly?: boolean;
   onAliasesChange: (aliases: VoiceAlias[]) => void;
   onMerged: () => void;
   onMessage: (message: string, tone: VoiceAliasMessageTone) => void;
@@ -45,7 +48,7 @@ export function VoiceAliasPanel({
   const shouldShowSuggestions = isSuggestOpen && candidates.length > 0 && candidates.length <= aliasSuggestMaxResults;
 
   const loadMergeReviews = async () => {
-    if (!canManage) {
+    if (!canManage && !readOnly) {
       setMergeReviews([]);
       return;
     }
@@ -58,7 +61,7 @@ export function VoiceAliasPanel({
 
   useEffect(() => {
     void loadMergeReviews();
-  }, [canManage, personId]);
+  }, [canManage, personId, readOnly]);
 
   useEffect(() => {
     if (!canManage) return;

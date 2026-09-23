@@ -18,6 +18,7 @@ import {
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useAuth } from "@/auth/AuthProvider";
 import { Badge } from "@/components/ui/badge";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
@@ -99,6 +100,7 @@ export function WorkCardShell({
 }) {
   const toast = useToast();
   const { t } = useTranslation();
+  const { demoMode } = useAuth();
   const [resolvingEntity, setResolvingEntity] = useState<WorkEntityLink["kind"] | null>(null);
   const resolveEntity = async (kind: WorkEntityLink["kind"], name = "") => {
     if (!work.code || resolvingEntity) return;
@@ -106,7 +108,9 @@ export function WorkCardShell({
     const entityKind = entityKindLabel(kind);
     toast.info(kind === "series" ? t("workCard.loadingSeries") : t("workCard.loadingEntity", { kind: entityKind }));
     try {
-      const result = await api.resolveWorkEntityLink(work.code, kind, name);
+      const result = demoMode
+        ? await api.lookupWorkEntityLink(work.code, kind, name)
+        : await api.resolveWorkEntityLink(work.code, kind, name);
       if (result.route) openEntityRoute(result.route);
     } catch (error) {
       toast.notify(toastFromError(error, t("workCard.couldNotOpenEntity", { kind: entityKind })));
@@ -928,8 +932,9 @@ export function WorkCardListButton({
       .catch((nextError) => {
         if (!cancelled) {
           const fallback = t("workCard.favoriteListsLoadFailed");
-          toast.notify(toastFromError(nextError, fallback));
-          setError(nextError instanceof Error ? nextError.message : fallback);
+          const feedback = toastFromError(nextError, fallback);
+          toast.notify(feedback);
+          setError(feedback.message);
         }
       })
       .finally(() => {
@@ -959,8 +964,9 @@ export function WorkCardListButton({
       setOpen(false);
     } catch (nextError) {
       const fallback = t("workCard.favoriteListsSaveFailed");
-      toast.notify(toastFromError(nextError, fallback));
-      setError(nextError instanceof Error ? nextError.message : fallback);
+      const feedback = toastFromError(nextError, fallback);
+      toast.notify(feedback);
+      setError(feedback.message);
     } finally {
       setSaving(false);
     }
@@ -991,8 +997,9 @@ export function WorkCardListButton({
             })
             .catch((nextError) => {
               const fallback = t("workCard.workTrackFailed");
-              toast.notify(toastFromError(nextError, fallback));
-              setError(nextError instanceof Error ? nextError.message : fallback);
+              const feedback = toastFromError(nextError, fallback);
+              toast.notify(feedback);
+              setError(feedback.message);
             })
             .finally(() => setResolving(false));
         }}

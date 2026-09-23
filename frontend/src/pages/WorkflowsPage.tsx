@@ -33,6 +33,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
+import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -578,14 +579,7 @@ export function WorkflowsPage({
 
   return (
     <div className="space-y-4">
-      {readOnly && (
-        <div
-          className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-muted-foreground"
-          role="status"
-        >
-          {t("workflow.demoReadOnly")}
-        </div>
-      )}
+      {readOnly && <DemoReadOnlyNotice />}
       {hasWorkflowMetaSnapshot && workflowMetaError && (
         <div
           className="flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-lg border border-error-border bg-error-surface px-3 py-2"
@@ -676,6 +670,7 @@ export function WorkflowsPage({
                   (trigger) => trigger.workflowDefinitionId === selectedDefinition?.id,
                 )}
                 canManageTriggers={!readOnly && (selectedDefinition?.id ?? 0) > 0}
+                readOnly={readOnly}
                 systemRunKinds={selectedSystemRunKinds}
                 isSystemActionRunning={systemActionBusy}
                 canRunSystemAction={systemActionAllowed}
@@ -720,6 +715,7 @@ export function WorkflowsPage({
           preset={selectedPreset}
           canFetch={canManageDownloads}
           trigger={editingTrigger}
+          readOnly={readOnly}
           initialTriggerType={editingTrigger.triggerType === "startup" ? "startup" : "schedule"}
           onClose={() => setModalMode(null)}
           onSaved={() => {
@@ -876,7 +872,7 @@ function AvailabilityWatchPanel({
           title={displayDefinition.displayName}
           description={displayDefinition.description}
           actions={
-            <Button size="sm" onClick={() => setDialog("configure")} disabled={readOnly}>
+            <Button size="sm" onClick={() => setDialog("configure")}>
               <Settings2 className="h-4 w-4" />
               {workflowCopy("configure")}
             </Button>
@@ -889,7 +885,7 @@ function AvailabilityWatchPanel({
               <div className="text-sm font-semibold">{workflowCopy("monitoring")}</div>
               <div className="mt-1 text-2xl font-semibold">{monitoring.length}</div>
             </div>
-            <Button size="sm" variant="outline" onClick={() => setDialog("monitoring")} disabled={readOnly}>
+            <Button size="sm" variant="outline" onClick={() => setDialog("monitoring")}>
               <Edit3 className="h-4 w-4" />
               {workflowCopy("editNode")}
             </Button>
@@ -912,6 +908,7 @@ function AvailabilityWatchPanel({
             definition={definition}
             triggers={triggers}
             canManage={!readOnly}
+            readOnly={readOnly}
             onCreate={onCreateTrigger}
             onEdit={onEditTrigger}
             onToggle={onToggleTrigger}
@@ -1096,13 +1093,13 @@ function AvailabilityWatchMonitoringDialog({
     <Modal title={workflowCopy("editMonitoringPool")} onClose={onClose}>
       <div className="space-y-4">
         <Field label={workflowCopy("works")}>
-          <WorkCodesField value={codes} onChange={setCodes} ariaLabel={workflowCopy("works")} />
+          <WorkCodesField value={codes} onChange={setCodes} readOnly={readOnly} ariaLabel={workflowCopy("works")} />
         </Field>
         {error && <ErrorPanel error={error} />}
         <div className="flex justify-end">
           <Button onClick={() => void save()} disabled={readOnly || saving || parsed.invalid.length > 0}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Save
+            {workflowCopy("save")}
           </Button>
         </div>
       </div>
@@ -1276,6 +1273,7 @@ function WorkflowDetail({
   definition,
   definitionTriggers = [],
   canManageTriggers,
+  readOnly = false,
   systemRunKinds,
   isSystemActionRunning,
   canRunSystemAction,
@@ -1297,6 +1295,8 @@ function WorkflowDetail({
   definition: WorkflowDefinition | null;
   definitionTriggers?: WorkflowTrigger[];
   canManageTriggers: boolean;
+  /** Demo opens run forms and triggers for inspection; running and saving stay disabled. */
+  readOnly?: boolean;
   systemRunKinds?: SystemRunKind[];
   isSystemActionRunning?: (kind: SystemRunKind) => boolean;
   canRunSystemAction?: (kind: SystemRunKind) => boolean;
@@ -1357,7 +1357,12 @@ function WorkflowDetail({
             const running = isSystemActionRunning?.(kind) ?? false;
             const allowed = canRunSystemAction?.(kind) ?? false;
             return (
-              <Button key={kind} size="sm" onClick={() => setConfiguredSystemRun(kind)} disabled={running || !allowed}>
+              <Button
+                key={kind}
+                size="sm"
+                onClick={() => setConfiguredSystemRun(kind)}
+                disabled={running || (!allowed && !readOnly)}
+              >
                 <Settings2 className="h-4 w-4" />
                 {running ? workflowCopy("queueing") : workflowCopy("configure")}
               </Button>
@@ -1382,6 +1387,7 @@ function WorkflowDetail({
             isPreset={Boolean(preset)}
             triggers={definitionTriggers}
             canManage={canManageTriggers}
+            readOnly={readOnly}
             onCreate={onCreateTrigger}
             onEdit={onEditTrigger}
             onToggle={onToggleTrigger}
@@ -3155,6 +3161,7 @@ function WorkflowAutomationPanel({
   isPreset = false,
   triggers,
   canManage,
+  readOnly = false,
   onCreate,
   onEdit,
   onToggle,
@@ -3163,6 +3170,8 @@ function WorkflowAutomationPanel({
   isPreset?: boolean;
   triggers: WorkflowTrigger[];
   canManage: boolean;
+  /** Demo keeps trigger controls visible and opens existing triggers read-only. */
+  readOnly?: boolean;
   onCreate: (triggerType: CreatableAutomationTriggerType) => void;
   onEdit: (trigger: WorkflowTrigger) => void;
   onToggle: (trigger: WorkflowTrigger, enabled: boolean) => Promise<void>;
@@ -3197,16 +3206,16 @@ function WorkflowAutomationPanel({
       title={workflowCopy("triggers")}
       label={workflowCopy("workflowAutomations")}
       actions={
-        canManage && supportedTypes.length > 0 ? (
+        (canManage || readOnly) && supportedTypes.length > 0 ? (
           <>
             {canAddStartup && (
-              <Button size="sm" variant="ghost" onClick={() => onCreate("startup")}>
+              <Button size="sm" variant="ghost" disabled={readOnly} onClick={() => onCreate("startup")}>
                 <Plus className="h-4 w-4" />
                 {workflowCopy("runAtStartup")}
               </Button>
             )}
             {canAddSchedule && (
-              <Button size="sm" variant="ghost" onClick={() => onCreate("schedule")}>
+              <Button size="sm" variant="ghost" disabled={readOnly} onClick={() => onCreate("schedule")}>
                 <CalendarClock className="h-4 w-4" />
                 {workflowCopy("addSchedule")}
               </Button>
@@ -3218,7 +3227,12 @@ function WorkflowAutomationPanel({
       {orderedTriggers.length > 0 ? (
         <ul className="-mx-2">
           {orderedTriggers.map((trigger) => {
-            const manageable = canManage && supportedTypes.includes(trigger.triggerType as AutomationTriggerType);
+            const configurable = supportedTypes.includes(trigger.triggerType as AutomationTriggerType);
+            const manageable = canManage && configurable;
+            const inspectable = manageable || (readOnly && configurable);
+            const openLabel = manageable
+              ? `Edit ${trigger.displayName}`
+              : workflowCopy("viewTrigger", { name: trigger.displayName });
             const next =
               trigger.enabled && trigger.triggerType === "schedule" && trigger.nextRunAt ? (
                 <>
@@ -3262,16 +3276,16 @@ function WorkflowAutomationPanel({
                     </div>
                   )}
                 </div>
-                {manageable && (
+                {inspectable && (
                   <Button
                     size="icon"
                     variant="ghost"
                     className="shrink-0 text-muted-foreground"
                     onClick={() => onEdit(trigger)}
-                    title={`Edit ${trigger.displayName}`}
-                    aria-label={`Edit ${trigger.displayName}`}
+                    title={openLabel}
+                    aria-label={openLabel}
                   >
-                    <Edit3 className="h-4 w-4" />
+                    {manageable ? <Edit3 className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
                 )}
               </li>
@@ -3292,6 +3306,7 @@ function TriggerModal({
   preset = null,
   canFetch = false,
   trigger,
+  readOnly = false,
   initialTriggerType,
   onClose,
   onSaved,
@@ -3301,6 +3316,7 @@ function TriggerModal({
   preset?: WorkflowPreset | null;
   canFetch?: boolean;
   trigger: WorkflowTrigger | null;
+  readOnly?: boolean;
   initialTriggerType: CreatableAutomationTriggerType;
   onClose: () => void;
   onSaved: (trigger: WorkflowTrigger) => void;
@@ -3395,7 +3411,7 @@ function TriggerModal({
       }
       onClose={onClose}
     >
-      <div className="grid gap-3">
+      <fieldset disabled={readOnly} className="m-0 grid min-w-0 gap-3 border-0 p-0">
         <div className="grid gap-1 rounded-md border bg-muted/30 px-3 py-2">
           <div className="text-xs text-muted-foreground">{workflowCopy("workflow")}</div>
           <div className="text-sm font-medium">{localizedWorkflowDefinition(definition).displayName}</div>
@@ -3472,7 +3488,7 @@ function TriggerModal({
             {saving ? workflowCopy("saving") : workflowCopy("save")}
           </Button>
         </div>
-      </div>
+      </fieldset>
     </Modal>
   );
 }

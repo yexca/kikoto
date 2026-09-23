@@ -38,6 +38,7 @@ export function WorkIdentityActionBar({
   onSync,
   onEditMetadata,
   metadataSyncBusy = false,
+  syncDisabled = false,
   syncLabel,
 }: {
   busy: boolean;
@@ -51,6 +52,8 @@ export function WorkIdentityActionBar({
   onSync?: () => void;
   onEditMetadata?: () => void;
   metadataSyncBusy?: boolean;
+  /** Demo shows the refresh action without letting it start a sync. */
+  syncDisabled?: boolean;
   syncLabel?: string;
 }) {
   const { t } = useTranslation();
@@ -105,7 +108,7 @@ export function WorkIdentityActionBar({
             {onSync && (
               <button
                 className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
-                disabled={metadataSyncBusy}
+                disabled={metadataSyncBusy || syncDisabled}
                 onClick={() => {
                   setManageMenuOpen(false);
                   onSync();
