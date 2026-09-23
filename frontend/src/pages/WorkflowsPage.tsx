@@ -54,6 +54,7 @@ import {
   type PresetFormValues,
 } from "@/features/workflows/presetWorkflowModel";
 import { parseWorkCodes, WorkCodesField } from "@/features/workflows/WorkCodesField";
+import { OptionField, SegmentedControl, ToggleField } from "@/features/workflows/RunOptionControls";
 import { WorkflowRunMonitor } from "@/features/workflows/WorkflowRunMonitor";
 import { workflowStages } from "@/features/workflows/workflowStageModel";
 import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
@@ -797,18 +798,11 @@ function AvailabilityWatchPanel({
   const nodes = parseNodes(definition.definitionJson);
   const displayDefinition = localizedWorkflowDefinition(definition);
 
-  const layout: RunFormLayout = ({ run, options, optionsActions }) => (
-    <>
-      <WorkflowHeader title={displayDefinition.displayName} description={displayDefinition.description} actions={run} />
-      <WorkflowSection
-        title={workflowCopy("configuration")}
-        label={workflowCopy("configuration")}
-        actions={optionsActions}
-      >
-        {options}
-      </WorkflowSection>
-    </>
-  );
+  const layout = runFormLayout({
+    title: displayDefinition.displayName,
+    description: displayDefinition.description,
+    optionsTitle: workflowCopy("configuration"),
+  });
 
   return (
     <Card className="min-w-0">
@@ -1280,20 +1274,11 @@ function WorkflowDetail({
   const runKind = definition.scope === "system" ? systemRunKinds?.[0] : undefined;
   const running = runKind ? (isSystemActionRunning?.(runKind) ?? false) : false;
   const allowed = runKind ? (canRunSystemAction?.(runKind) ?? false) : false;
-  const layout: RunFormLayout = ({ run, options }) => (
-    <>
-      <WorkflowHeader
-        title={displayDefinition.displayName}
-        description={displayDefinition.description || workflowCopy("noDescription")}
-        actions={run}
-      />
-      {options && (
-        <WorkflowSection title={workflowCopy("runOptions")} label={workflowCopy("runOptions")}>
-          {options}
-        </WorkflowSection>
-      )}
-    </>
-  );
+  const layout = runFormLayout({
+    title: displayDefinition.displayName,
+    description: displayDefinition.description || workflowCopy("noDescription"),
+    optionsTitle: workflowCopy("runOptions"),
+  });
   // Keyed by definition so switching workflows starts from that workflow's defaults.
   const runForm =
     runKind === "local_scan" && onRunSystemAction ? (
@@ -1392,6 +1377,31 @@ function WorkflowDetail({
 /** Places a workflow's run action in its header and its run options directly below. */
 type RunFormLayout = (parts: { run: ReactNode; options: ReactNode; optionsActions?: ReactNode }) => ReactNode;
 
+function runFormLayout({
+  title,
+  description,
+  optionsTitle,
+}: {
+  title: string;
+  description?: string;
+  optionsTitle: string;
+}): RunFormLayout {
+  return ({ run, options, optionsActions }) => (
+    <div className="space-y-5">
+      <WorkflowHeader title={title} description={description} actions={run} />
+      {options && (
+        <section className="min-w-0 space-y-4 border-t pt-5" aria-label={optionsTitle}>
+          <div className="flex min-h-8 items-center justify-between gap-2">
+            <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{optionsTitle}</h4>
+            {optionsActions && <div className="-mr-2 flex gap-1">{optionsActions}</div>}
+          </div>
+          {options}
+        </section>
+      )}
+    </div>
+  );
+}
+
 function WorkflowRunButton({
   running,
   disabled,
@@ -1402,10 +1412,20 @@ function WorkflowRunButton({
   onClick: () => void;
 }) {
   return (
-    <Button size="sm" disabled={running || disabled} onClick={onClick}>
-      {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+    <Button className="min-w-24" disabled={running || disabled} onClick={onClick}>
+      {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}
       {running ? workflowCopy("queueing") : workflowCopy("run")}
     </Button>
+  );
+}
+
+/** Explains why Run is unavailable, next to the inputs that resolve it. */
+function RunBlockerNote({ children }: { children: ReactNode }) {
+  return (
+    <p className="flex items-center gap-1.5 text-xs text-muted-foreground" role="status">
+      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+      {children}
+    </p>
   );
 }
 
@@ -1424,19 +1444,14 @@ function LocalScanRunPanel({
   return layout({
     run: <WorkflowRunButton running={running} disabled={!allowed} onClick={() => void onRun(followUpRun)} />,
     options: (
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/30 px-3 py-3">
-          <div>
-            <div className="text-sm font-medium">{workflowCopy("followUpRun")}</div>
-            <div className="text-xs text-muted-foreground">{workflowCopy("followUpDescription")}</div>
-          </div>
-          <Switch
-            checked={followUpRun}
-            onCheckedChange={setFollowUpRun}
-            aria-label={workflowCopy("followUpRun")}
-            disabled={running || !allowed}
-          />
-        </div>
+      <div className="max-w-xl">
+        <ToggleField
+          label={workflowCopy("followUpRun")}
+          description={workflowCopy("followUpDescription")}
+          checked={followUpRun}
+          onCheckedChange={setFollowUpRun}
+          disabled={running || !allowed}
+        />
       </div>
     ),
   });
@@ -1512,11 +1527,11 @@ function RemotePopularRunPanel({
       />
     ),
     options: (
-      <div className="grid gap-x-10 gap-y-4 lg:grid-cols-2">
-        <div className="min-w-0 space-y-4">
-          <label className="grid gap-2 text-sm font-medium">
-            {workflowCopy("remoteSource")}
+      <div className="grid gap-x-10 gap-y-5 lg:grid-cols-2">
+        <div className="grid min-w-0 content-start gap-4 sm:grid-cols-2">
+          <OptionField label={workflowCopy("remoteSource")} htmlFor="remote-popular-source" className="sm:col-span-2">
             <NativeSelect
+              id="remote-popular-source"
               fieldSize="sm"
               value={sourceId}
               disabled={loadingSources || compatibleSources.length === 0}
@@ -1533,41 +1548,35 @@ function RemotePopularRunPanel({
                 </option>
               ))}
             </NativeSelect>
-          </label>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <div className="text-sm font-medium">{workflowCopy("action")}</div>
-              <div
-                className="mt-2 inline-flex rounded-md border bg-muted/40 p-1"
-                aria-label={workflowCopy("remotePopularAction")}
-              >
-                {(["track", "fetch"] as const).map((item) => (
-                  <button
-                    key={item}
-                    className={`h-8 rounded px-3 text-sm font-medium capitalize transition-colors ${action === item ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-                    aria-pressed={action === item}
-                    onClick={() => setAction(item)}
-                  >
-                    {item === "track" ? workflowCopy("track") : workflowCopy("fetch")}
-                  </button>
-                ))}
-              </div>
-              {action === "fetch" && !canFetch && (
-                <div className="mt-1 text-xs text-error-foreground">{workflowCopy("fetchPermissionRequired")}</div>
-              )}
-            </div>
-            <label className="grid content-start gap-2 text-sm font-medium">
-              {workflowCopy("workLimit")}
-              <NativeSelect fieldSize="sm" value={limit} onChange={(event) => setLimit(Number(event.target.value))}>
-                {[10, 25, 50, 100].map((item) => (
-                  <option key={item} value={item}>
-                    {workflowCopy("worksCount", { count: item })}
-                  </option>
-                ))}
-              </NativeSelect>
-            </label>
-          </div>
+          </OptionField>
+          <OptionField label={workflowCopy("action")}>
+            <SegmentedControl
+              label={workflowCopy("remotePopularAction")}
+              value={action}
+              onChange={setAction}
+              options={[
+                { value: "track", label: workflowCopy("track") },
+                { value: "fetch", label: workflowCopy("fetch") },
+              ]}
+            />
+            {action === "fetch" && !canFetch && (
+              <p className="text-xs text-error-foreground">{workflowCopy("fetchPermissionRequired")}</p>
+            )}
+          </OptionField>
+          <OptionField label={workflowCopy("workLimit")} htmlFor="remote-popular-limit">
+            <NativeSelect
+              id="remote-popular-limit"
+              fieldSize="sm"
+              value={limit}
+              onChange={(event) => setLimit(Number(event.target.value))}
+            >
+              {[10, 25, 50, 100].map((item) => (
+                <option key={item} value={item}>
+                  {workflowCopy("worksCount", { count: item })}
+                </option>
+              ))}
+            </NativeSelect>
+          </OptionField>
         </div>
 
         <TagTemplateField
@@ -1666,9 +1675,12 @@ function PresetParameterFields({
   preset,
   values,
   canFetch,
+  compact = false,
   onChange,
 }: {
   idPrefix: string;
+  /** Dialogs use two field columns; the page detail uses up to three. */
+  compact?: boolean;
   preset: WorkflowPreset;
   values: PresetFormValues;
   canFetch: boolean;
@@ -1779,7 +1791,7 @@ function PresetParameterFields({
         );
       case "text_template":
         return (
-          <div key={parameter.key} className="grid gap-1 md:col-span-2">
+          <div key={parameter.key} className="min-w-0 sm:col-span-full">
             <TagTemplateField
               id={id}
               value={value}
@@ -1787,9 +1799,10 @@ function PresetParameterFields({
               tokens={tagTokens}
               preview={tagPreview}
               error={tagError}
+              spanColumns={false}
+              hint={workflowCopy("presetTagOptional")}
               onChange={(next) => update(parameter.key, next)}
             />
-            <p className="text-xs text-muted-foreground">{workflowCopy("presetTagOptional")}</p>
           </div>
         );
       default:
@@ -1808,16 +1821,17 @@ function PresetParameterFields({
 
   const groups = ["target", "filter", "action", "fetch", "tag"] as const;
   return (
-    <div className="grid gap-4">
+    <div className="grid divide-y">
       {groups.map((group) => {
         const parameters = visible.filter((parameter) => parameter.group === group);
         if (parameters.length === 0) return null;
         return (
-          <section key={group} className="grid gap-2">
-            <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {workflowCopy(`presetGroups.${group}`)}
-            </h4>
-            <div className="grid gap-3 md:grid-cols-2">{parameters.map(renderField)}</div>
+          <section
+            key={group}
+            className={`grid min-w-0 content-start gap-4 py-4 first:pt-0 last:pb-0 sm:grid-cols-2 ${compact ? "" : "lg:grid-cols-3"}`}
+            aria-label={workflowCopy(`presetGroups.${group}`)}
+          >
+            {parameters.map(renderField)}
           </section>
         );
       })}
@@ -1859,7 +1873,7 @@ function PresetRunPanel({
       />
     ),
     options: (
-      <div className="grid gap-4">
+      <div className="grid gap-5">
         <PresetParameterFields
           idPrefix="preset-run"
           preset={preset}
@@ -1867,11 +1881,7 @@ function PresetRunPanel({
           canFetch={canFetch}
           onChange={setValues}
         />
-        {blockers.length > 0 && (
-          <div className="text-xs text-muted-foreground" role="status">
-            {presetBlockerText(blockers[0])}
-          </div>
-        )}
+        {blockers.length > 0 && <RunBlockerNote>{presetBlockerText(blockers[0])}</RunBlockerNote>}
       </div>
     ),
   });
@@ -1930,31 +1940,24 @@ function DLsitePopularRunPanel({
       />
     ),
     options: (
-      <div className="grid gap-x-10 gap-y-4 lg:grid-cols-2">
-        <div className="min-w-0 space-y-4">
-          <div>
-            <div className="text-sm font-medium">{workflowCopy("rankingPeriod")}</div>
-            <div
-              className="mt-2 inline-flex max-w-full gap-1 overflow-x-auto rounded-md border bg-muted/40 p-1"
-              aria-label={workflowCopy("rankingPeriod")}
-            >
-              {periodOptions.map((option) => (
-                <button
-                  key={option.value}
-                  className={`h-8 shrink-0 rounded px-3 text-sm font-medium transition-colors ${period === option.value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-                  aria-pressed={period === option.value}
-                  onClick={() => setPeriod(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
+      <div className="grid gap-x-10 gap-y-5 lg:grid-cols-2">
+        <div className="grid min-w-0 max-w-lg content-start gap-4">
+          <OptionField label={workflowCopy("rankingPeriod")}>
+            <SegmentedControl
+              label={workflowCopy("rankingPeriod")}
+              value={period}
+              onChange={setPeriod}
+              options={periodOptions}
+            />
+          </OptionField>
           {period === "year" ? (
-            <label className="grid max-w-56 gap-2 text-sm font-medium">
-              {workflowCopy("rankingYear")}
-              <NativeSelect fieldSize="sm" value={year} onChange={(event) => setYear(Number(event.target.value))}>
+            <OptionField label={workflowCopy("rankingYear")} htmlFor="dlsite-popular-year" className="max-w-56">
+              <NativeSelect
+                id="dlsite-popular-year"
+                fieldSize="sm"
+                value={year}
+                onChange={(event) => setYear(Number(event.target.value))}
+              >
                 {years.map((item) => (
                   <option key={item} value={item}>
                     {item}
@@ -1962,19 +1965,15 @@ function DLsitePopularRunPanel({
                   </option>
                 ))}
               </NativeSelect>
-            </label>
+            </OptionField>
           ) : (
-            <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/30 px-3 py-2.5">
-              <div>
-                <div className="text-sm font-medium">{workflowCopy("recentReleasesOnly")}</div>
-                <div className="text-xs text-muted-foreground">{workflowCopy("recentReleasesDescription")}</div>
-              </div>
-              <Switch
-                checked={recentOnly}
-                onCheckedChange={setRecentOnly}
-                aria-label={workflowCopy("onlyWorksReleased30Days")}
-              />
-            </div>
+            <ToggleField
+              label={workflowCopy("recentReleasesOnly")}
+              description={workflowCopy("recentReleasesDescription")}
+              switchLabel={workflowCopy("onlyWorksReleased30Days")}
+              checked={recentOnly}
+              onCheckedChange={setRecentOnly}
+            />
           )}
         </div>
 
@@ -2770,6 +2769,7 @@ function TriggerModal({
         {preset ? (
           <PresetParameterFields
             idPrefix="preset-trigger"
+            compact
             preset={preset}
             values={presetValues}
             canFetch={canFetch}
@@ -3134,6 +3134,7 @@ function TagTemplateField({
   preview,
   error,
   spanColumns = true,
+  hint,
   onChange,
 }: {
   id: string;
@@ -3143,6 +3144,7 @@ function TagTemplateField({
   preview: WorkflowTagTemplatePreview;
   error?: string;
   spanColumns?: boolean;
+  hint?: string;
   onChange: (value: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -3159,77 +3161,73 @@ function TagTemplateField({
   };
 
   return (
-    <div className={`grid min-w-0 gap-3 ${spanColumns ? "md:col-span-2" : ""}`} data-testid={`${id}-field`}>
-      <div className="grid min-w-0 gap-1.5 text-sm">
-        <div className="flex items-center justify-between gap-2 font-medium">
-          <label className="flex items-center gap-1.5" htmlFor={id}>
-            <Tag className="h-3.5 w-3.5" />
-            {workflowCopy("tagTemplate")}
-          </label>
-          <Button
+    <div
+      className={`grid min-w-0 content-start gap-2 ${spanColumns ? "md:col-span-2" : ""}`}
+      data-testid={`${id}-field`}
+    >
+      <div className="flex min-h-7 items-center justify-between gap-2">
+        <label className="flex items-center gap-1.5 text-sm font-medium" htmlFor={id}>
+          <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+          {workflowCopy("tagTemplate")}
+        </label>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="h-7 w-7 text-muted-foreground"
+          disabled={value === defaultValue}
+          onClick={() => onChange(defaultValue)}
+          title={workflowCopy("resetTagTemplate")}
+          aria-label={workflowCopy("resetTagTemplate")}
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+      <Input
+        ref={inputRef}
+        id={id}
+        fieldSize="sm"
+        className="w-full font-mono"
+        value={value}
+        maxLength={TAG_TEMPLATE_MAX_LENGTH}
+        aria-invalid={Boolean(error)}
+        onChange={(event) => onChange(event.target.value)}
+      />
+
+      <div className="flex flex-wrap gap-1.5" aria-label={workflowCopy("availableVariables")} role="group">
+        {tokens.map((token) => (
+          <button
+            key={token.name}
             type="button"
-            size="icon"
-            variant="ghost"
-            className="h-7 w-7"
-            disabled={value === defaultValue}
-            onClick={() => onChange(defaultValue)}
-            title={workflowCopy("resetTagTemplate")}
-            aria-label={workflowCopy("resetTagTemplate")}
+            className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border bg-card px-2 text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => insertToken(token.name)}
+            title={`${token.description} · ${workflowCopy("insertTemplatePlaceholder", { placeholder: `{${token.name}}` })}`}
           >
-            <RotateCcw className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-        <Input
-          ref={inputRef}
-          id={id}
-          fieldSize="sm"
-          className="w-full font-mono"
-          value={value}
-          maxLength={TAG_TEMPLATE_MAX_LENGTH}
-          aria-invalid={Boolean(error)}
-          onChange={(event) => onChange(event.target.value)}
-        />
+            <code className="font-semibold text-primary">{`{${token.name}}`}</code>
+            <span className="min-w-0 truncate font-mono text-muted-foreground">{token.value || "-"}</span>
+          </button>
+        ))}
       </div>
 
-      <div className="grid gap-1.5">
-        <div className="text-xs font-medium text-muted-foreground">{workflowCopy("availableVariables")}</div>
-        <div className="divide-y rounded-md border">
-          {tokens.map((token) => (
-            <button
-              key={token.name}
-              type="button"
-              className="grid w-full min-w-0 gap-0.5 px-2.5 py-2 text-left hover:bg-muted/50 sm:grid-cols-[minmax(135px,0.8fr)_minmax(0,1.2fr)_minmax(90px,0.7fr)] sm:items-center sm:gap-3"
-              onClick={() => insertToken(token.name)}
-              title={workflowCopy("insertTemplatePlaceholder", { placeholder: `{${token.name}}` })}
-            >
-              <code className="text-xs font-semibold text-primary">{`{${token.name}}`}</code>
-              <span className="text-xs text-muted-foreground">{token.description}</span>
-              <code className="min-w-0 truncate text-xs text-foreground sm:text-right" title={token.value}>
-                {token.value || "-"}
-              </code>
-            </button>
-          ))}
-        </div>
+      <div className="flex min-w-0 items-baseline gap-3 rounded-md bg-muted/50 px-3 py-2 text-xs" aria-live="polite">
+        <span className="shrink-0 text-muted-foreground">{workflowCopy("preview")}</span>
+        <code className="min-w-0 flex-1 break-all text-foreground">{preview.value || "-"}</code>
+        <span
+          className={`shrink-0 tabular-nums ${preview.truncated ? "text-warning-foreground" : "text-muted-foreground"}`}
+        >
+          {Math.min(preview.renderedLength, TAG_NAME_MAX_LENGTH)}/{TAG_NAME_MAX_LENGTH}
+        </span>
       </div>
-
-      <div className="grid gap-1 rounded-md bg-muted/35 px-3 py-2" aria-live="polite">
-        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-          <span>{workflowCopy("preview")}</span>
-          <span>
-            {Math.min(preview.renderedLength, TAG_NAME_MAX_LENGTH)}/{TAG_NAME_MAX_LENGTH}
-          </span>
-        </div>
-        <code className="break-all text-xs text-foreground">{preview.value || "-"}</code>
-        {preview.truncated && (
-          <span className="text-xs text-warning-foreground">
-            {workflowCopy("tagTemplateTruncated", { count: TAG_NAME_MAX_LENGTH })}
-          </span>
-        )}
-      </div>
+      {preview.truncated && (
+        <p className="text-xs text-warning-foreground">
+          {workflowCopy("tagTemplateTruncated", { count: TAG_NAME_MAX_LENGTH })}
+        </p>
+      )}
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       {error && (
-        <div className="text-xs text-error-foreground" role="alert">
+        <p className="text-xs text-error-foreground" role="alert">
           {error}
-        </div>
+        </p>
       )}
     </div>
   );
