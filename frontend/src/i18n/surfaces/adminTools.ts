@@ -44,6 +44,7 @@ export const adminToolsEnglish = {
   cleanup: {
     tab: "Cleanup",
     ofLimit: "of {{limit}}",
+    usageValue: "{{used}} of {{limit}} ({{percent}}%)",
     transcodeDescription: "Converted audio and HLS video segments created for playback.",
     transcodeUsage: "Transcode cache usage",
     transcodeLru: "Least recently used files are evicted automatically when the limit is reached.",
@@ -142,7 +143,10 @@ export const adminToolsEnglish = {
       failed: "Database could not be compacted.",
       confirmTitle: "Compact the database?",
       confirmDescription:
-        "Kikoto rewrites the database file. Other requests may wait briefly while it runs; nothing is deleted.",
+        "Kikoto rewrites the database file in the background and shows progress in Activity. Other requests may wait while it runs; nothing is deleted.",
+      queued: "Compaction queued as workflow run #{{runId}}.",
+      alreadyQueued: "Compaction is already queued as workflow run #{{runId}}.",
+      runFailed: "Database compaction did not finish. See Activity for details.",
     },
   },
   recommendationActivity: {

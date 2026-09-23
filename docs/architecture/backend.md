@@ -95,6 +95,26 @@ anonymous-access policy is enabled, in which case only `GET` and `HEAD` continue
 The cached effective value is loaded before the server starts and updated only
 after the SQLite setting and audit entry commit.
 
+## HTTP Responses
+
+When the backend serves the bundled frontend, content-hashed files under
+`/assets/` are cached for a year as `immutable`. `index.html`, the SPA fallback,
+`sw.js`, and `manifest.webmanifest` use `no-cache`, and other static files
+use a one-hour public lifetime. A missing `/assets/` file returns 404 rather
+than the app shell.
+
+A response middleware gzip-compresses JSON, HTML, CSS, JavaScript, SVG, and web
+manifest bodies of at least 1 KiB when the client accepts gzip, and adds
+`Vary: Accept-Encoding` to those content types. It never compresses Range
+requests, 206 responses, responses that already carry `Content-Encoding`,
+event streams, or media, cover, and asset routes, and it preserves flushing.
+Authentication responses are also excluded because a mobile sign-in response
+returns a session token next to the reflected username. Without that exclusion,
+compressed response length could leak the token (a BREACH-style attack). No other
+response currently embeds a credential or CSRF token. The split-deployment
+`frontend/nginx.conf` applies the same `/assets/` caching, `no-cache` app shell,
+and static compression.
+
 ## Outbound Requests
 
 An administrator-configured source endpoint may intentionally be on a private

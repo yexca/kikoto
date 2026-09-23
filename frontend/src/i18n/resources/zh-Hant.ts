@@ -279,6 +279,7 @@ const adminToolsHant = {
   cleanup: {
     tab: "清理",
     ofLimit: "/ {{limit}}",
+    usageValue: "已使用 {{used}}，共 {{limit}}（{{percent}}%）",
     transcodeDescription: "為播放產生的轉換音訊與 HLS 影片分段。",
     transcodeUsage: "轉碼快取用量",
     transcodeLru: "達到上限時會自動淘汰最久未使用的檔案。",
@@ -373,7 +374,11 @@ const adminToolsHant = {
       done: "資料庫已壓縮。",
       failed: "無法壓縮資料庫。",
       confirmTitle: "壓縮資料庫？",
-      confirmDescription: "Kikoto 會重寫資料庫檔案。執行期間其他請求可能會短暫等待；不會刪除任何內容。",
+      confirmDescription:
+        "Kikoto 會在背景重寫資料庫檔案，並在活動中顯示進度。執行期間其他請求可能需要等待；不會刪除任何內容。",
+      queued: "已將壓縮加入佇列，工作流程執行 #{{runId}}。",
+      alreadyQueued: "壓縮已在佇列中，工作流程執行 #{{runId}}。",
+      runFailed: "資料庫壓縮未完成。請在活動中查看詳情。",
     },
   },
   recommendationActivity: {

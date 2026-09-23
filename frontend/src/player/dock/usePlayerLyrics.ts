@@ -2,22 +2,23 @@ import { useEffect, useMemo, useState } from "react";
 
 import { api, assetURL } from "@/lib/api";
 import type { LyricsChoice } from "@/player/lyricsMatching";
-import { preferredLyricsMediaItemID } from "@/player/PlayerProvider";
+import { preferredLyricsMediaItemID, usePlayerTime } from "@/player/PlayerProvider";
 import type { LyricsPreferenceTarget, PlayerTrack } from "@/player/playerTypes";
 
-import { activeTimedLyricIndex, parseTimedLyrics } from "./timedLyrics";
+import { activeTimedLyricIndex, parseTimedLyrics, type TimedLyricLine } from "./timedLyrics";
 
 const MAX_LYRICS_BYTES = 512 * 1024;
 
-/** Resolves, loads, and tracks the active line of the current track's lyrics. */
+/**
+ * Resolves and loads the current track's lyrics. The active line follows the
+ * playback clock, so read it with `useActiveLyricIndex` in the leaf that shows it.
+ */
 export function usePlayerLyrics({
   track,
-  currentTime,
   preferenceOverrides,
   changeLyricsChoice,
 }: {
   track: PlayerTrack | null;
-  currentTime: number;
   preferenceOverrides: Record<string, number | null>;
   changeLyricsChoice: (target: LyricsPreferenceTarget, choice: LyricsChoice | null) => Promise<void>;
 }) {
@@ -26,10 +27,6 @@ export function usePlayerLyrics({
   const [activeLyricsLocationId, setActiveLyricsLocationId] = useState<number | null>(null);
   const [usingAutomaticLyrics, setUsingAutomaticLyrics] = useState(true);
   const parsedLyrics = useMemo(() => parseTimedLyrics(lyricsText ?? ""), [lyricsText]);
-  const activeLyricIndex = useMemo(
-    () => activeTimedLyricIndex(parsedLyrics.lines, currentTime),
-    [parsedLyrics.lines, currentTime],
-  );
   const activeLyricsChoice = track?.lyricsChoices?.find((choice) => choice.locationId === activeLyricsLocationId);
 
   useEffect(() => {
@@ -84,9 +81,6 @@ export function usePlayerLyrics({
     if (choice) void changeLyricsChoice(track, choice);
   };
 
-  const currentLyricLine =
-    parsedLyrics.timed && activeLyricIndex >= 0 ? (parsedLyrics.lines[activeLyricIndex]?.text ?? "") : "";
-
   return {
     lyricsText,
     lyricsError,
@@ -94,10 +88,14 @@ export function usePlayerLyrics({
     activeLyricsChoice,
     usingAutomaticLyrics,
     parsedLyrics,
-    activeLyricIndex,
-    currentLyricLine,
     selectLyricsLocation,
   };
+}
+
+/** The lyric line at the current playback position; re-renders with the clock. */
+export function useActiveLyricIndex(lines: TimedLyricLine[]) {
+  const { currentTime } = usePlayerTime();
+  return useMemo(() => activeTimedLyricIndex(lines, currentTime), [lines, currentTime]);
 }
 
 export type PlayerLyricsState = ReturnType<typeof usePlayerLyrics>;

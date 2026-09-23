@@ -80,12 +80,17 @@ func (s *Server) runWorkflowCoordinator(ctx context.Context) {
 	defer ticker.Stop()
 	stagingCleanupTicker := time.NewTicker(remoteFetchStagingCleanupPeriod)
 	defer stagingCleanupTicker.Stop()
+	databaseCleanupTimer := time.NewTimer(databaseAutoCleanupInitialDelay)
+	defer databaseCleanupTimer.Stop()
 	for {
 		if err := s.dispatchDueScheduledWorkflowTrigger(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("dispatch scheduled custom workflow", "error", err)
 		}
 		if _, err := workflow.NewStore(s.db).RequeueExpiredJobs(ctx, 30*time.Second); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("requeue expired workflow jobs", "error", err)
+		}
+		if _, err := s.backfillSnapshotCardSummaries(ctx, snapshotCardSummaryBackfillBatch); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Error("backfill snapshot card summaries", "error", err)
 		}
 		select {
 		case <-ctx.Done():
@@ -95,6 +100,9 @@ func (s *Server) runWorkflowCoordinator(ctx context.Context) {
 			if _, err := s.cleanupExpiredRemoteFetchStaging(ctx, time.Now()); err != nil && !errors.Is(err, context.Canceled) {
 				slog.Error("clean expired remote Fetch staging", "error", err)
 			}
+		case <-databaseCleanupTimer.C:
+			s.runAutomaticDatabaseCleanup(ctx)
+			databaseCleanupTimer.Reset(databaseAutoCleanupPeriod)
 		}
 	}
 }
@@ -160,6 +168,7 @@ func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobR
 		"unlinked_work_source_check": s.executeUnlinkedWorkSourceCheckJob,
 		"custom_workflow":            s.executeWorkflowGraphJob,
 		"availability_watch":         s.executeAvailabilityWatchJob,
+		databaseOptimizeWorkerType:   s.executeDatabaseOptimizeJob,
 	}
 	executor := executors[job.WorkerType]
 	if executor != nil {

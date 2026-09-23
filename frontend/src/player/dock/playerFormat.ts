@@ -44,3 +44,8 @@ export function validSleepMinutes(value: string) {
   const minutes = Number(value);
   return Number.isInteger(minutes) && minutes >= 1 && minutes <= 1440;
 }
+
+/** Played share of the track as a 0-100 percentage; 0 while the duration is unknown. */
+export function playbackProgressPercent(currentTime: number, duration: number) {
+  return duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
+}

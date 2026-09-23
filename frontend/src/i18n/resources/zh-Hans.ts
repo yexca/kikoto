@@ -278,6 +278,7 @@ const adminToolsHans = {
   cleanup: {
     tab: "清理",
     ofLimit: "/ {{limit}}",
+    usageValue: "已使用 {{used}}，共 {{limit}}（{{percent}}%）",
     transcodeDescription: "为播放生成的转换音频和 HLS 视频分段。",
     transcodeUsage: "转码缓存用量",
     transcodeLru: "达到上限时会自动淘汰最久未使用的文件。",
@@ -371,7 +372,11 @@ const adminToolsHans = {
       done: "数据库已压缩。",
       failed: "无法压缩数据库。",
       confirmTitle: "压缩数据库？",
-      confirmDescription: "Kikoto 会重写数据库文件。运行期间其他请求可能会短暂等待；不会删除任何内容。",
+      confirmDescription:
+        "Kikoto 会在后台重写数据库文件，并在活动中显示进度。运行期间其他请求可能需要等待；不会删除任何内容。",
+      queued: "已将压缩加入队列，工作流运行 #{{runId}}。",
+      alreadyQueued: "压缩已在队列中，工作流运行 #{{runId}}。",
+      runFailed: "数据库压缩未完成。请在活动中查看详情。",
     },
   },
   recommendationActivity: {

@@ -962,3 +962,66 @@ test("ordinary users save folder preferences without instance administration", a
   expect(Object.keys(saves[0])).toEqual(["directoryRoutingRules"]);
   expect(instanceRequests).toBe(0);
 });
+
+test("modal dialogs keep Tab focus inside the top-most dialog", async ({ page }) => {
+  await mockCacheSettings(page, () => undefined, undefined, undefined, undefined, false);
+  await page.goto("/settings?tab=cache");
+  await page.getByRole("switch", { name: "Cache remote playback", exact: true }).click();
+  const cacheDialog = page.getByRole("alertdialog", { name: "Enable remote playback cache?" });
+  const cancel = cacheDialog.getByRole("button", { name: "Cancel", exact: true });
+  const enable = cacheDialog.getByRole("button", { name: "Enable cache", exact: true });
+  await expect(cacheDialog).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(enable).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(cancel).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(enable).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(cacheDialog).toHaveCount(0);
+
+  await page.route("**/api/users", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 1,
+          username: "admin",
+          displayName: "Admin",
+          role: "admin",
+          enabled: true,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+        },
+        {
+          id: 2,
+          username: "synthetic-member",
+          displayName: "Example Member",
+          role: "user",
+          enabled: true,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+        },
+      ],
+    }),
+  );
+  await page.goto("/settings?tab=users");
+  await page.getByRole("button", { name: "Details for Example Member", exact: true }).click();
+  const details = page.getByRole("dialog");
+  await details.getByRole("button", { name: "Delete user", exact: true }).click();
+  const confirmation = page.getByRole("alertdialog", { name: "Delete Example Member?" });
+  await expect(confirmation).toBeFocused();
+  const confirmCancel = confirmation.getByRole("button", { name: "Cancel", exact: true });
+  const confirmDelete = confirmation.getByRole("button", { name: "Delete", exact: true });
+  for (const [key, expected] of [
+    ["Tab", confirmCancel],
+    ["Tab", confirmDelete],
+    ["Tab", confirmCancel],
+    ["Shift+Tab", confirmDelete],
+  ] as const) {
+    await page.keyboard.press(key);
+    await expect(expected).toBeFocused();
+  }
+  await page.keyboard.press("Escape");
+  await expect(confirmation).toHaveCount(0);
+  await expect(details).toBeVisible();
+});

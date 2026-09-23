@@ -52,6 +52,51 @@ endpoints should not reconcile metadata on every request; required indexing or
 sync writes belong at an explicit ingestion boundary. Busy timeouts are a
 fallback, not a substitute for short and intentional write transactions.
 
+## Connection Settings
+
+The file-backed pool opens at most four connections. Every connection applies:
+
+| Pragma | Value | Purpose |
+| --- | --- | --- |
+| `foreign_keys` | `1` | Enforce declared references. |
+| `journal_mode` | `WAL` | Let readers continue while one writer commits. |
+| `busy_timeout` | `5000` ms | Wait briefly for a competing writer. |
+| `synchronous` | `NORMAL` | Sync at WAL checkpoints rather than every commit. |
+| `cache_size` | `-16000` (about 16 MiB) | Page cache per connection, about 64 MiB in total. |
+| `mmap_size` | 256 MiB | Memory-mapped reads per connection; address space, not resident memory. |
+
+With WAL, `synchronous=NORMAL` keeps the database consistent after an
+application or operating-system crash. A power loss can roll back only the most
+recently committed transactions. An in-memory database uses one connection and
+the same settings where they apply.
+
+## Maintenance
+
+Settings -> Cleanup lists the record types that the database cleanup can
+remove. Manual cleanup runs after confirmation and writes a `database.cleanup`
+audit entry.
+
+Two of those tasks also run automatically: expired sessions and old workflow
+runs. The workflow coordinator runs them two minutes after startup and then
+every 24 hours, with the same retention rules as the manual task. An old run is
+kept while a Fetch record, review candidate, metadata issue, or cleanup
+provenance still refers to it, and the latest run of each workflow is always
+kept. Automatic cleanup writes its results to the server log instead of the
+audit log. Sessions are also rejected and removed when an expired one is
+presented.
+
+**Compact database** queues a `database_optimize` workflow run and returns
+`202 Accepted` with its run ID. Only one optimization can be queued or running;
+a repeated request returns the active run. The workflow executor then runs
+`VACUUM`, `PRAGMA optimize`, and a truncating WAL checkpoint. The run appears in
+Activity. On completion, the run summary and a `database.optimize` audit entry
+record the database size before and after compaction.
+
+`VACUUM` still holds the write lock while it rewrites the file. Other writes
+wait for the busy timeout and may fail during a long compaction, so run it
+when the instance is quiet. The job is not resumed after a restart: an
+interrupted optimization fails and can be started again.
+
 ## Backups
 
 Prefer SQLite's backup mechanism for a live database. If copying the database

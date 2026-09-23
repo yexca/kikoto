@@ -1180,13 +1180,7 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 			work.current_price,
 			work.price_currency,
 			work.is_permanently_free,
-			COALESCE((
-				SELECT snapshot_json
-				FROM metadata_snapshot
-				WHERE metadata_snapshot.work_id = work.id
-				ORDER BY fetched_at DESC, id DESC
-				LIMIT 1
-			), '') AS snapshot_json,
+			`+latestSnapshotCardColumnsAnyProviderSQL+`,
 			(
 				SELECT primary_circle.display_name || '|' || primary_circle.external_id
 				FROM work_primary_circle AS primary_circle
@@ -1290,7 +1284,7 @@ func (s *Server) buildVoiceKnownWork(ctx context.Context, userID int64, row voic
 			return voiceKnownWork{}, false, nil
 		}
 	}
-	metadata := parseDLsiteSnapshot(row.Snapshot)
+	metadata := dlsiteCardMetadata(row.CardSummary, row.Snapshot)
 	if title, tags, projected, err := s.loadProjectedDLsiteMetadata(ctx, displayWorkID); err != nil {
 		return voiceKnownWork{}, false, err
 	} else if projected {
@@ -2893,6 +2887,7 @@ type voiceWorkRow struct {
 	Price           *int64
 	PriceCurrency   string
 	PermanentlyFree *bool
+	CardSummary     string
 	Snapshot        string
 	CircleLink      sql.NullString
 	ListeningStatus string
@@ -2912,7 +2907,7 @@ func scanVoiceWorkRow(rows *sql.Rows) (voiceWorkRow, error) {
 	var permanentlyFree sql.NullBool
 	err := rows.Scan(&item.ID, &item.PrimaryCode, &item.Title, &item.ReleaseDate, &item.AgeRating,
 		&rating, &sales, &regularPrice, &currentPrice, &item.PriceCurrency, &permanentlyFree,
-		&item.Snapshot, &item.CircleLink, &item.ListeningStatus, &favorite, &hasLocal, &hasRemote, &hasCache, &item.SeriesTitleID)
+		&item.CardSummary, &item.Snapshot, &item.CircleLink, &item.ListeningStatus, &favorite, &hasLocal, &hasRemote, &hasCache, &item.SeriesTitleID)
 	item.Rating = sqlutil.Float64(rating)
 	item.Sales = sqlutil.Int64(sales)
 	item.RegularPrice = sqlutil.Int64(regularPrice)

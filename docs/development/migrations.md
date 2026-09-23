@@ -82,9 +82,14 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain includes
-`037_list_and_foreign_key_indexes.sql`, with the `037_v0.6.1.sql` baseline
+`038_metadata_snapshot_card_summary.sql`, with the `038_v0.6.1.sql` baseline
 generated from the `v0.6.1` `VERSION` file; regenerate it after the next
-release bump so the snapshot carries the release that ships schema 037.
+release bump so the snapshot carries the release that ships schema 038.
+Migration 038 adds the derived `metadata_snapshot_card_summary` cache and its
+`metadata_snapshot_card_summary_dirty` queue, queues every existing snapshot,
+and adds triggers that queue inserted or changed snapshots. Summaries are
+written by the application in small background batches; list queries fall
+back to the raw snapshot until a row has a current summary.
 Migration 037 adds only indexes: Library created and release-date order, and
 work, favorite-item, and session lookups by their owning row.
 Migration 036 creates the `work_search` FTS5 trigram index and the

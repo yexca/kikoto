@@ -1,5 +1,5 @@
 import { AlertTriangle, ArrowRight, Database, Gauge, Loader2, RefreshCw, Sparkles, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
@@ -9,8 +9,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { formatNumber } from "@/i18n/format";
+import { isActiveWorkflowStatus, useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type DatabaseCleanupTaskKey, type DatabaseMaintenanceOverview } from "@/lib/api";
+import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { cn } from "@/lib/tailwindClassNames";
 
 import { formatByteSize } from "./cacheCleanupModel";
@@ -287,26 +289,57 @@ export function DatabaseOptimizeSection({
   const { t } = useTranslation();
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
-  const [running, setRunning] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [activeRunId, setActiveRunId] = useState<number | null>(null);
   const [result, setResult] = useState("");
+  const watchedRun = useWorkflowRunWatcher(activeRunId);
+  const running = submitting || activeRunId !== null;
 
-  const optimize = async () => {
-    setRunning(true);
-    try {
-      const next = await api.optimizeDatabase();
-      setConfirming(false);
+  useEffect(() => {
+    const run = watchedRun.run;
+    if (!run || run.id !== activeRunId || isActiveWorkflowStatus(run.status)) return;
+    setActiveRunId(null);
+    if (run.status !== "succeeded") {
+      toast.notify({
+        kind: "error",
+        message: t("cleanup.optimize.runFailed"),
+        actionLabel: t("notifications.openActivity"),
+        onAction: () => openActivityRun(run.id),
+      });
+      return;
+    }
+    const summary = parseOptimizeSummary(run.summaryJson);
+    if (summary) {
       setResult(
         t("cleanup.optimize.result", {
-          before: formatByteSize(next.beforeBytes),
-          after: formatByteSize(next.afterBytes),
+          before: formatByteSize(summary.beforeBytes),
+          after: formatByteSize(summary.afterBytes),
         }),
       );
-      toast.success(t("cleanup.optimize.done"));
-      await onOptimized();
+    }
+    toast.success(t("cleanup.optimize.done"));
+    void onOptimized();
+  }, [activeRunId, onOptimized, t, toast, watchedRun.run]);
+
+  const optimize = async () => {
+    setSubmitting(true);
+    try {
+      const queued = await api.optimizeDatabase();
+      setConfirming(false);
+      setResult("");
+      setActiveRunId(queued.runId);
+      toast.notify({
+        kind: queued.existing ? "info" : "success",
+        message: t(queued.existing ? "cleanup.optimize.alreadyQueued" : "cleanup.optimize.queued", {
+          runId: queued.runId,
+        }),
+        actionLabel: t("notifications.openActivity"),
+        onAction: () => openActivityRun(queued.runId),
+      });
     } catch (error) {
       toast.notify(toastFromError(error, t("cleanup.optimize.failed")));
     } finally {
-      setRunning(false);
+      setSubmitting(false);
     }
   };
 
@@ -353,4 +386,20 @@ export function DatabaseOptimizeSection({
       )}
     </SettingsSection>
   );
+}
+
+function parseOptimizeSummary(raw: string): { beforeBytes: number; afterBytes: number } | null {
+  try {
+    const parsed: unknown = JSON.parse(raw || "{}");
+    if (!parsed || typeof parsed !== "object") return null;
+    const { before_bytes: beforeBytes, after_bytes: afterBytes } = parsed as Record<string, unknown>;
+    return typeof beforeBytes === "number" && typeof afterBytes === "number" ? { beforeBytes, afterBytes } : null;
+  } catch {
+    return null;
+  }
+}
+
+function openActivityRun(runId: number) {
+  window.history.pushState({}, "", `/workflows?activity=1&run=${runId}`);
+  window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }

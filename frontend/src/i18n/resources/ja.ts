@@ -278,6 +278,7 @@ const adminToolsJapanese = {
   cleanup: {
     tab: "クリーンアップ",
     ofLimit: "/ {{limit}}",
+    usageValue: "{{limit}} 中 {{used}} 使用（{{percent}}%）",
     transcodeDescription: "再生用に作成された変換済み音声と HLS 動画セグメント。",
     transcodeUsage: "トランスコードキャッシュの使用量",
     transcodeLru: "上限に達すると、最も長く使われていないファイルから自動で削除されます。",
@@ -378,7 +379,10 @@ const adminToolsJapanese = {
       failed: "データベースを最適化できませんでした。",
       confirmTitle: "データベースを最適化しますか？",
       confirmDescription:
-        "Kikoto はデータベースファイルを書き直します。実行中は他のリクエストが少し待つことがあります。何も削除されません。",
+        "Kikoto はバックグラウンドでデータベースファイルを書き直し、進行状況をアクティビティに表示します。実行中は他のリクエストが待つことがあります。何も削除されません。",
+      queued: "最適化をワークフロー実行 #{{runId}} としてキューに追加しました。",
+      alreadyQueued: "最適化はすでにワークフロー実行 #{{runId}} としてキューに入っています。",
+      runFailed: "データベースの最適化が完了しませんでした。詳細はアクティビティを確認してください。",
     },
   },
   recommendationActivity: {

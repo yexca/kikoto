@@ -52,6 +52,9 @@ type MatchingListOptions struct {
 	DemoOnly   bool
 }
 
+// RawWork is one listed work row. CardSummary is the current-version card
+// summary of the latest DLsite snapshot; Snapshot holds that raw snapshot only
+// when CardSummary is empty.
 type RawWork struct {
 	ID                     int64
 	PrimaryCode            string
@@ -68,6 +71,7 @@ type RawWork struct {
 	AvailableLocations     int64
 	AvailableLocationTypes string
 	SourcePresence         string
+	CardSummary            string
 	Snapshot               string
 	PartyLink              string
 	ListeningStatus        string
@@ -166,7 +170,7 @@ func (s *Store) ListMatchingSorted(ctx context.Context, where string, args []any
 func matchingListSelectSQL(where string, options MatchingListOptions) (string, []any) {
 	sortKey := strings.ToLower(strings.TrimSpace(options.Sort))
 	_, direction := normalizeSort("recent", options.Direction)
-	outerProjection := `SELECT id, primary_code, title, age_rating, rating_average, sales_count, regular_price, current_price, price_currency, is_permanently_free, created_at, track_count, available_locations, available_location_types, source_presence, snapshot_json, party_link, listening_status, favorite, recommend_score FROM (`
+	outerProjection := `SELECT id, primary_code, title, age_rating, rating_average, sales_count, regular_price, current_price, price_currency, is_permanently_free, created_at, track_count, available_locations, available_location_types, source_presence, card_summary_json, snapshot_json, party_link, listening_status, favorite, recommend_score FROM (`
 	switch sortKey {
 	case "activity":
 		expression := `MAX(
@@ -235,7 +239,7 @@ func ScanRows(rows *sql.Rows) ([]RawWork, error) {
 	works := []RawWork{}
 	for rows.Next() {
 		var item RawWork
-		var availableLocationTypes, sourcePresence, snapshot, partyLink sql.NullString
+		var availableLocationTypes, sourcePresence, cardSummary, snapshot, partyLink sql.NullString
 		var rating sql.NullFloat64
 		var sales, regularPrice, currentPrice sql.NullInt64
 		var permanentlyFree sql.NullBool
@@ -256,6 +260,7 @@ func ScanRows(rows *sql.Rows) ([]RawWork, error) {
 			&item.AvailableLocations,
 			&availableLocationTypes,
 			&sourcePresence,
+			&cardSummary,
 			&snapshot,
 			&partyLink,
 			&item.ListeningStatus,
@@ -281,6 +286,7 @@ func ScanRows(rows *sql.Rows) ([]RawWork, error) {
 			item.PermanentlyFree = &permanentlyFree.Bool
 		}
 		item.SourcePresence = sourcePresence.String
+		item.CardSummary = cardSummary.String
 		item.Snapshot = snapshot.String
 		item.PartyLink = partyLink.String
 		item.Favorite = favorite != 0
@@ -763,12 +769,12 @@ const listWorkColumnsSQL = `work.id, work.primary_code, work.title, work.age_rat
 		work.rating_average, work.sales_count, work.regular_price, work.current_price, work.price_currency, work.is_permanently_free,
 		work.created_at`
 
-const listSummaryColumnsSQL = listWorkColumnsSQL + `,
+var listSummaryColumnsSQL = listWorkColumnsSQL + `,
 		(SELECT COUNT(*) FROM media_item WHERE media_item.work_id = work.id AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1))) AS track_count,
 		(SELECT COUNT(*) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1)) AND media_file_location.availability = 'available') AS available_locations,
 		(SELECT GROUP_CONCAT(DISTINCT media_file_location.location_type) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND media_file_location.availability = 'available') AS available_location_types,
 		(SELECT GROUP_CONCAT(DISTINCT presence.presence_type || '|' || presence.availability || '|' || presence.file_source_id || '|' || COALESCE(source.code, '') || '|' || COALESCE(source.display_name, '') || '|' || COALESCE(presence.remote_id, '') || '|' || COALESCE(presence.source_url, '') || '|' || COALESCE(presence.remote_code, '') || '|' || COALESCE(presence.work_id, 0)) FROM work_source_presence AS presence LEFT JOIN file_source AS source ON source.id = presence.file_source_id WHERE presence.work_id = work.id OR presence.work_id IN (SELECT sibling.work_id FROM work_edition AS current_edition INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id WHERE current_edition.work_id = work.id)) AS source_presence,
-		(SELECT snapshot_json FROM metadata_snapshot INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id WHERE metadata_snapshot.work_id = work.id AND metadata_provider.code = 'dlsite' ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC LIMIT 1) AS snapshot_json,
+		` + LatestSnapshotCardColumnsSQL("work.id", true) + `,
 		(SELECT display_name || '|' || external_id FROM work_primary_circle WHERE work_id = work.id) AS party_link`
 
 func listRecommendationProjection(includeRecommendation bool, config RecommendationConfig, recommendationGenerationID int64) (string, string) {

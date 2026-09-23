@@ -635,7 +635,7 @@ func recommendationLaneSuppressedExpression(config RecommendationConfig, statusE
 
 func recommendationListSelectSQL(baseSelect string, direction string, randomSeed int64, config RecommendationConfig) string {
 	return recommendationOrderedSelectSQL(baseSelect, direction, randomSeed, config, `id, primary_code, title, age_rating, rating_average, sales_count, regular_price, current_price, price_currency, is_permanently_free,
-		created_at, track_count, available_locations, available_location_types, source_presence, snapshot_json, party_link,
+		created_at, track_count, available_locations, available_location_types, source_presence, card_summary_json, snapshot_json, party_link,
 		listening_status, favorite, recommend_score`)
 }
 

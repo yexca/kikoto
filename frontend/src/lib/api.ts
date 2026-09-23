@@ -1,4 +1,5 @@
 import { normalizeCatalogSyncState, type CatalogSyncState } from "@/lib/catalogSyncState";
+import { sharedInflightRequests } from "@/lib/inflightRequests";
 
 export type { CatalogSyncState } from "@/lib/catalogSyncState";
 
@@ -150,9 +151,12 @@ export type DatabaseCleanupResult = {
   results: Array<{ key: DatabaseCleanupTaskKey; removed: number; skipped: boolean }>;
 };
 
+/** Compaction runs as a workflow job; an active run is returned instead of a second one. */
 export type DatabaseOptimizeResult = {
-  beforeBytes: number;
-  afterBytes: number;
+  runId: number;
+  jobId: number;
+  status: "queued" | "running";
+  existing: boolean;
 };
 
 export type SourcePresenceItem = {
@@ -412,6 +416,12 @@ export type FavoriteList = {
 export type FavoriteListWorkIDs = {
   listId: number;
   workIds: number[];
+};
+
+/** How many of the requested works each of the user's own lists contains. */
+export type FavoriteListMembershipSummary = {
+  total: number;
+  lists: { listId: number; count: number }[];
 };
 
 export type WorkResolveResponse = {
@@ -1967,6 +1977,9 @@ function requestInit(init: RequestInit = {}, authenticate = true): RequestInit {
 
 async function fetchAPI(path: string, init: RequestInit = {}, baseURL?: string, authenticate = true) {
   const url = apiURL(path, baseURL);
+  const method = (init.method ?? "GET").toUpperCase();
+  // A read that starts after a write must not join a read that began before it.
+  if (method !== "GET" && method !== "HEAD") sharedInflightRequests.forgetAll();
   try {
     return await fetch(url, requestInit(init, authenticate));
   } catch (error) {
@@ -2199,7 +2212,12 @@ export const api = {
     }),
   untrackWorkSource: (workId: number, sourceId: number) =>
     deleteJSON<WorkSourceUntrackResult>(`/api/works/${workId}/tracked-sources/${sourceId}`),
-  getWork: (id: number, signal?: AbortSignal) => getJSON<WorkDetail>(`/api/works/${id}`, signal),
+  // Components that mount together often ask for the same work; they share one
+  // in-flight request, and nothing is cached once it settles.
+  getWork: (id: number, signal?: AbortSignal) => {
+    const path = `/api/works/${id}`;
+    return sharedInflightRequests.run(path, (shared) => getJSON<WorkDetail>(path, shared), signal);
+  },
   getWorkSummary: (id: number, signal?: AbortSignal) =>
     getJSON<WorkDetail>(`/api/works/${id}?includeMedia=false`, signal),
   getWorkMedia: (id: number, signal?: AbortSignal) =>
@@ -2248,6 +2266,11 @@ export const api = {
     putJSONBody<{ workId: number; favorite: boolean; lists: FavoriteList[] }>(`/api/works/${id}/favorite-lists`, {
       listIds,
     }),
+  summarizeFavoriteListMembership: (workIds: number[]) =>
+    postJSONBody<FavoriteListMembershipSummary>("/api/favorite-lists/membership/summary", { workIds }),
+  /** Adds and removes works in one transaction; lists named in neither set keep their membership. */
+  updateFavoriteListMembership: (payload: { workIds: number[]; addListIds: number[]; removeListIds: number[] }) =>
+    postJSONBody<{ updated: number }>("/api/favorite-lists/membership", payload),
   setWorkUserTags: (id: number, tags: string[]) =>
     putJSONBody<{ workId: number; userTags: UserTag[] }>(`/api/works/${id}/tags`, { tags }),
   getMediaText: (locationId: number) => getJSON<MediaTextPreview>(`/api/media/${locationId}/text`),

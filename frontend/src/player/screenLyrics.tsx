@@ -41,6 +41,28 @@ type VideoPictureInPicture = {
   timer: number;
 };
 
+type NativeLyricsSync = {
+  trackKey: string;
+  lineCount: number;
+  playing: boolean;
+  rate: number;
+  at: number;
+  position: number;
+};
+
+type ScreenLyricsControls = { onTogglePlay: () => void; onPrevious: () => void; onNext: () => void };
+
+const EMPTY_SNAPSHOT: ScreenLyricsSnapshot = {
+  trackKey: "",
+  title: "",
+  subtitle: "",
+  lines: [],
+  activeIndex: -1,
+  currentTime: 0,
+  playing: false,
+  playbackRate: 1,
+};
+
 const PIP_WIDTH = 460;
 const PIP_HEIGHT = 150;
 const CANVAS_WIDTH = 960;
@@ -70,25 +92,19 @@ export function screenLyricsBackend(): ScreenLyricsBackend | null {
  * Keeps the current lyric line visible outside the page: a Document
  * Picture-in-Picture window on desktop browsers, a canvas-backed video
  * Picture-in-Picture fallback elsewhere, and a native overlay on Android.
+ *
+ * This hook owns the open state and does not depend on the playback clock, so
+ * its host does not re-render on every time update. Pair it with
+ * `useScreenLyricsSync`, called from a leaf that reads the clock, to push the
+ * current line to the open surface and render its portal.
  */
-export function useScreenLyrics(
-  snapshot: ScreenLyricsSnapshot,
-  controls: { onTogglePlay: () => void; onPrevious: () => void; onNext: () => void },
-) {
+export function useScreenLyrics() {
   const backend = screenLyricsBackend();
   const [open, setOpen] = useState(false);
   const [pipWindow, setPipWindow] = useState<Window | null>(null);
   const videoPipRef = useRef<VideoPictureInPicture | null>(null);
-  const snapshotRef = useRef(snapshot);
-  snapshotRef.current = snapshot;
-  const nativeSyncRef = useRef<{
-    trackKey: string;
-    lineCount: number;
-    playing: boolean;
-    rate: number;
-    at: number;
-    position: number;
-  } | null>(null);
+  const snapshotRef = useRef<ScreenLyricsSnapshot>(EMPTY_SNAPSHOT);
+  const nativeSyncRef = useRef<NativeLyricsSync | null>(null);
 
   const closeVideoPip = useCallback(() => {
     const current = videoPipRef.current;
@@ -175,6 +191,57 @@ export function useScreenLyrics(
     }
   }, [backend, closeVideoPip]);
 
+  useEffect(() => {
+    if (backend !== "native") return;
+    let disposed = false;
+    let remove: (() => void) | null = null;
+    void addNativeLyricsOverlayListener(() => {
+      nativeSyncRef.current = null;
+      setOpen(false);
+    }).then((dispose) => {
+      if (disposed) dispose();
+      else remove = dispose;
+    });
+    return () => {
+      disposed = true;
+      remove?.();
+    };
+  }, [backend]);
+
+  useEffect(() => () => stop(), [stop]);
+
+  return {
+    backend,
+    supported: backend !== null,
+    open,
+    start,
+    stop,
+    pipWindow,
+    snapshotRef,
+    nativeSyncRef,
+    videoPipRef,
+  };
+}
+
+export type ScreenLyricsController = ReturnType<typeof useScreenLyrics>;
+
+/**
+ * Pushes the latest lyric snapshot to an open screen-lyrics surface and returns
+ * the Document Picture-in-Picture portal to render. Call it from the leaf that
+ * reads the playback clock.
+ */
+export function useScreenLyricsSync(
+  screenLyrics: ScreenLyricsController,
+  snapshot: ScreenLyricsSnapshot,
+  controls: ScreenLyricsControls,
+): ReactNode {
+  const { backend, open, pipWindow, stop, snapshotRef, nativeSyncRef, videoPipRef } = screenLyrics;
+
+  // The video Picture-in-Picture timer and its first frame read the latest snapshot.
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  });
+
   // Native overlay: send the whole timed track once, then only playback corrections so the
   // overlay can keep advancing on its own while the WebView is in the background.
   useEffect(() => {
@@ -225,44 +292,22 @@ export function useScreenLyrics(
   ]);
 
   useEffect(() => {
-    if (backend !== "native") return;
-    let disposed = false;
-    let remove: (() => void) | null = null;
-    void addNativeLyricsOverlayListener(() => {
-      nativeSyncRef.current = null;
-      setOpen(false);
-    }).then((dispose) => {
-      if (disposed) dispose();
-      else remove = dispose;
-    });
-    return () => {
-      disposed = true;
-      remove?.();
-    };
-  }, [backend]);
-
-  useEffect(() => {
     if (!open || backend !== "video-pip" || !videoPipRef.current) return;
     drawLyricsCanvas(videoPipRef.current.canvas, snapshot);
   }, [backend, open, snapshot]);
 
-  useEffect(() => () => stop(), [stop]);
-
-  const portal: ReactNode =
-    open && pipWindow
-      ? createPortal(
-          <ScreenLyricsWindow
-            snapshot={snapshot}
-            onTogglePlay={controls.onTogglePlay}
-            onPrevious={controls.onPrevious}
-            onNext={controls.onNext}
-            onClose={stop}
-          />,
-          pipWindow.document.body,
-        )
-      : null;
-
-  return { backend, supported: backend !== null, open, start, stop, portal };
+  return open && pipWindow
+    ? createPortal(
+        <ScreenLyricsWindow
+          snapshot={snapshot}
+          onTogglePlay={controls.onTogglePlay}
+          onPrevious={controls.onPrevious}
+          onNext={controls.onNext}
+          onClose={stop}
+        />,
+        pipWindow.document.body,
+      )
+    : null;
 }
 
 function prepareLyricsDocument(target: Document) {

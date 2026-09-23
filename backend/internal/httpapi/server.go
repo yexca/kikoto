@@ -170,6 +170,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/favorite-lists/{id}", s.updateFavoriteList)
 	mux.HandleFunc("DELETE /api/favorite-lists/{id}", s.deleteFavoriteList)
 	mux.HandleFunc("GET /api/favorite-lists/{id}/work-ids", s.listFavoriteListWorkIDs)
+	mux.HandleFunc("POST /api/favorite-lists/membership", s.updateFavoriteListMembership)
+	mux.HandleFunc("POST /api/favorite-lists/membership/summary", s.summarizeFavoriteListMembership)
 	mux.HandleFunc("GET /api/works/{id}/favorite-lists", s.getWorkFavoriteLists)
 	mux.HandleFunc("PUT /api/works/{id}/favorite-lists", s.setWorkFavoriteLists)
 	mux.HandleFunc("GET /api/circles", s.listCircles)
@@ -270,9 +272,30 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/availability-watch/run", s.runAvailabilityWatch)
 	apiHandler := s.withCORS(limitRequestBody(s.authMiddleware(s.anonymousAccessMiddleware(s.demoReadOnlyMiddleware(s.demoContentMiddleware(mux)))), maxJSONRequestBytes))
 	if strings.TrimSpace(s.cfg.StaticDir) == "" {
-		return apiHandler
+		return withGzip(apiHandler)
 	}
-	return s.staticAppHandler(apiHandler)
+	return withGzip(s.staticAppHandler(apiHandler))
+}
+
+const (
+	// Vite emits content-hashed file names under /assets/, so a URL never
+	// changes meaning and may be cached for a year.
+	staticImmutableCacheControl = "public, max-age=31536000, immutable"
+	// The app shell, service worker, and manifest must be revalidated so a
+	// deploy is picked up on the next navigation.
+	staticRevalidateCacheControl = "no-cache"
+	staticDefaultCacheControl    = "public, max-age=3600"
+)
+
+func staticCacheControl(requestPath string) string {
+	switch {
+	case strings.HasPrefix(requestPath, "/assets/"):
+		return staticImmutableCacheControl
+	case requestPath == "/sw.js", requestPath == "/manifest.webmanifest", strings.HasSuffix(requestPath, ".html"):
+		return staticRevalidateCacheControl
+	default:
+		return staticDefaultCacheControl
+	}
 }
 
 func (s *Server) staticAppHandler(apiHandler http.Handler) http.Handler {
@@ -292,9 +315,20 @@ func (s *Server) staticAppHandler(apiHandler http.Handler) http.Handler {
 			return
 		}
 		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			w.Header().Set("Cache-Control", staticCacheControl(requestPath))
+			if path.Ext(requestPath) == ".webmanifest" {
+				w.Header().Set("Content-Type", "application/manifest+json")
+			}
 			http.ServeFile(w, r, candidate)
 			return
 		}
+		// A missing hashed asset is a stale or mistyped URL, not an app route;
+		// answering with the HTML shell would be cached as a script or style.
+		if strings.HasPrefix(requestPath, "/assets/") {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Cache-Control", staticRevalidateCacheControl)
 		http.ServeFile(w, r, indexPath)
 	})
 }

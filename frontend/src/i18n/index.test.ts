@@ -96,4 +96,39 @@ describe("translation resources", () => {
     const englishValues = values(resources.en.translation);
     for (const resource of Object.values(resources)) expect(values(resource.translation)).toEqual(englishValues);
   });
+
+  it("translates sections that inherit the English copy through object spreads", () => {
+    // These locale sections start from `...english` so a missing translation
+    // still passes key parity while silently rendering English. Values that are
+    // intentionally identical in every locale must be listed here.
+    const inheritedSections = ["library", "collection", "workCard", "maintenance", "workflowPage"] as const;
+    const intentionallyEnglish = new Set([
+      // Interpolation-only format.
+      "collection.filterValue",
+      "maintenance.library.apiUrl",
+      // Preset action names keep the product terms, as in the preset descriptions.
+      "workflowPage.presetOptions.track",
+      "workflowPage.presetOptions.fetch",
+      // Synthetic identifier examples.
+      "workflowPage.presetTargetPlaceholders.circleId",
+      "workflowPage.presetTargetPlaceholders.seriesId",
+    ]);
+    const strings = (value: unknown, prefix: string): [string, string][] =>
+      Object.entries(value as object).flatMap(([key, child]) => {
+        const path = `${prefix}.${key}`;
+        return typeof child === "string" ? [[path, child] as [string, string]] : strings(child, path);
+      });
+    const english = resources.en.translation as Record<string, unknown>;
+    for (const [locale, resource] of Object.entries(resources)) {
+      if (locale === "en") continue;
+      const translation = resource.translation as Record<string, unknown>;
+      const untranslated = inheritedSections.flatMap((section) => {
+        const localized = new Map(strings(translation[section], section));
+        return strings(english[section], section)
+          .filter(([path, value]) => localized.get(path) === value && !intentionallyEnglish.has(path))
+          .map(([path]) => path);
+      });
+      expect(untranslated, locale).toEqual([]);
+    }
+  });
 });

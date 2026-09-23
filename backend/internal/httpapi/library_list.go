@@ -20,7 +20,7 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []l
 			ListeningStatus: row.ListeningStatus, Favorite: row.Favorite, RecommendScore: row.RecommendScore,
 		}
 		item.SourcePresence = parseSourcePresenceSummary(row.SourcePresence)
-		metadata := parseDLsiteSnapshot(row.Snapshot)
+		metadata := dlsiteCardMetadata(row.CardSummary, row.Snapshot)
 		item.RatingCount = metadata.RatingCount
 		if !canonicalFiltered {
 			if visible, err := s.workEditionVisibleInLibrary(ctx, item.ID); err != nil {

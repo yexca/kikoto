@@ -22,9 +22,71 @@ const sizeClassNames: Record<DialogSize, string> = {
   full: "max-w-6xl",
 };
 
-// Only the most recently opened dialog reacts to Escape, so a nested confirm
-// does not also dismiss the dialog underneath it.
-const escapeStack: symbol[] = [];
+// Only the most recently opened dialog reacts to Escape and traps Tab, so a
+// nested confirm neither dismisses nor steals focus from the dialog under it.
+const dialogStack: symbol[] = [];
+
+const focusableSelector = [
+  "a[href]",
+  "area[href]",
+  "button",
+  "input:not([type='hidden'])",
+  "select",
+  "textarea",
+  "iframe",
+  "summary",
+  "audio[controls]",
+  "video[controls]",
+  "[contenteditable]:not([contenteditable='false'])",
+  "[tabindex]",
+].join(",");
+const floatingLayerSelector = "[data-android-back-close], [role='dialog'], [role='alertdialog']";
+
+function isTabbable(element: HTMLElement) {
+  if (element.tabIndex < 0 || element.matches(":disabled")) return false;
+  if (element.closest("[hidden], [inert], [aria-hidden='true']")) return false;
+  // Collapsed <details> content and display:none subtrees have no layout box.
+  if (element.getClientRects().length === 0) return false;
+  return window.getComputedStyle(element).visibility !== "hidden";
+}
+
+function tabbableElements(panel: HTMLElement) {
+  const candidates = Array.from(panel.querySelectorAll<HTMLElement>(focusableSelector)).filter(isTabbable);
+  // A named radio group is one tab stop: its checked radio, or the first one.
+  const radioStops = new Map<string, HTMLInputElement>();
+  for (const element of candidates) {
+    if (!(element instanceof HTMLInputElement) || element.type !== "radio" || !element.name) continue;
+    const stop = radioStops.get(element.name);
+    if (!stop || (!stop.checked && element.checked)) radioStops.set(element.name, element);
+  }
+  return candidates.filter(
+    (element) =>
+      !(element instanceof HTMLInputElement) ||
+      element.type !== "radio" ||
+      !element.name ||
+      radioStops.get(element.name) === element,
+  );
+}
+
+/** Keeps sequential focus inside the panel; returns the element to focus, or null to let the browser move. */
+function trappedTabTarget(panel: HTMLElement, backwards: boolean): HTMLElement | null {
+  const tabbables = tabbableElements(panel);
+  if (tabbables.length === 0) return panel;
+  const first = tabbables[0];
+  const last = tabbables[tabbables.length - 1];
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || active === panel || !panel.contains(active)) {
+    // A portaled popover or sheet opened above this dialog manages its own focus;
+    // a dialog that contains this one (a nested confirm's parent) does not.
+    const layer = active instanceof HTMLElement && active !== panel ? active.closest(floatingLayerSelector) : null;
+    if (layer && !layer.contains(panel)) return null;
+    return backwards ? last : first;
+  }
+  if (backwards) {
+    return active === first || active.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING ? last : null;
+  }
+  return active === last || active.compareDocumentPosition(last) & Node.DOCUMENT_POSITION_PRECEDING ? first : null;
+}
 
 type DialogLabelContextValue = { titleId: string; descriptionId: string; setHasDescription: (value: boolean) => void };
 
@@ -73,18 +135,26 @@ export function Dialog({
 
   React.useEffect(() => {
     const token = Symbol("dialog");
-    escapeStack.push(token);
+    dialogStack.push(token);
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
-      if (escapeStack[escapeStack.length - 1] !== token || !escapeEnabledRef.current) return;
+      if (event.defaultPrevented || dialogStack[dialogStack.length - 1] !== token) return;
+      if (event.key === "Tab") {
+        const panel = panelRef.current;
+        const target = panel ? trappedTabTarget(panel, event.shiftKey) : null;
+        if (!target) return;
+        event.preventDefault();
+        target.focus();
+        return;
+      }
+      if (event.key !== "Escape" || !escapeEnabledRef.current) return;
       event.preventDefault();
       onCloseRef.current();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-      const index = escapeStack.indexOf(token);
-      if (index >= 0) escapeStack.splice(index, 1);
+      const index = dialogStack.indexOf(token);
+      if (index >= 0) dialogStack.splice(index, 1);
     };
   }, []);
 

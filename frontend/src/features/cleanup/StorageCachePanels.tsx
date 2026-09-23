@@ -21,7 +21,7 @@ import {
 
 const CACHE_GROUP_PAGE_SIZE = 50;
 
-export function UsageBar({ percent, label }: { percent: number; label: string }) {
+export function UsageBar({ percent, label, valueText }: { percent: number; label: string; valueText?: string }) {
   return (
     <div
       className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
@@ -30,6 +30,7 @@ export function UsageBar({ percent, label }: { percent: number; label: string })
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={percent}
+      aria-valuetext={valueText ?? `${percent}%`}
     >
       <div
         className={cn("h-full rounded-full transition-[width]", percent >= 90 ? "bg-warning" : "bg-primary")}
@@ -108,7 +109,19 @@ export function TranscodeCacheSection({
             {transcode ? t("maintenance.cache.segments", { count: transcode.files }) : ""}
           </span>
         </div>
-        <UsageBar percent={percent} label={t("cleanup.transcodeUsage")} />
+        <UsageBar
+          percent={percent}
+          label={t("cleanup.transcodeUsage")}
+          valueText={
+            transcode
+              ? t("cleanup.usageValue", {
+                  used: formatByteSize(transcode.bytes),
+                  limit: formatByteSize(transcode.limitBytes),
+                  percent,
+                })
+              : t("maintenance.cache.scanning")
+          }
+        />
         <p className="text-xs text-muted-foreground">{t("cleanup.transcodeLru")}</p>
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2 bg-muted/25 px-4 py-2.5">

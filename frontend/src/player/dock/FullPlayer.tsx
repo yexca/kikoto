@@ -11,7 +11,14 @@ import {
   SkipForward,
   Timer,
 } from "lucide-react";
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import { ANDROID_BACK_EVENT } from "@/app/events";
@@ -19,17 +26,18 @@ import { useToast } from "@/components/ui/toast";
 import { assetURL } from "@/lib/api";
 import { historyStateWithReturn, NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { cn } from "@/lib/tailwindClassNames";
-import type { usePlayer } from "@/player/PlayerProvider";
+import { usePlayerTime, type usePlayer } from "@/player/PlayerProvider";
 import type { useScreenLyrics } from "@/player/screenLyrics";
 import type { DockMode, PlayerTrack } from "@/player/playerTypes";
 import { orderedTrackLocations } from "@/player/trackLocations";
 
-import { formatRemaining, formatSleepRemaining, formatTime } from "./playerFormat";
+import { formatRemaining, formatTime } from "./playerFormat";
 import { CoverImage, GlyphButton, PlayPauseGlyph, SeekBar, SeekIcon } from "./playerControls";
 import { LyricsLoadingSkeleton, LyricsPanel } from "./PlayerLyricsPanel";
-import { locationLabel, MoreOptionsMenu, SleepTimerMenu, SourceMenu } from "./PlayerMenus";
+import { locationLabel, MoreOptionsMenu, SleepRemaining, SleepTimerMenu, SourceMenu } from "./PlayerMenus";
 import { PlayerQueuePanel } from "./PlayerQueuePanel";
-import type { PlayerLyricsState } from "./usePlayerLyrics";
+import type { TimedLyricLine } from "./timedLyrics";
+import { useActiveLyricIndex, type PlayerLyricsState } from "./usePlayerLyrics";
 
 type PlayerSidePanel = "lyrics" | "queue";
 type FullDrag = { pointerId: number; startY: number; startedAt: number; moved: boolean };
@@ -64,7 +72,7 @@ export function FullPlayer({
   const suppressCollapseClickRef = useRef(false);
   const coverTapRef = useRef<{ at: number; x: number; y: number } | null>(null);
   const sidePanelOpen = sidePanel !== null;
-  const { parsedLyrics, activeLyricIndex, activeLyricsLocationId } = lyrics;
+  const { parsedLyrics, activeLyricsLocationId } = lyrics;
   const busy = player.isPlaying && player.isBuffering;
   const subtitle = track.circle || track.workTitle;
   const availableLocations = orderedTrackLocations(track);
@@ -170,11 +178,10 @@ export function FullPlayer({
     ) : lyrics.lyricsText === null ? (
       <LyricsLoadingSkeleton />
     ) : (
-      <LyricsPanel
+      <ActiveLyricsPanel
         title={lyrics.activeLyricsChoice?.title ?? track.lyricsTitle}
         text={lyrics.lyricsText}
         parsed={parsedLyrics}
-        activeIndex={activeLyricIndex}
         choices={track.lyricsChoices ?? []}
         activeLocationId={activeLyricsLocationId}
         automatic={lyrics.usingAutomaticLyrics}
@@ -353,33 +360,26 @@ export function FullPlayer({
                     onClick={() => setSidePanel("lyrics")}
                     aria-label={t("player.openLyrics")}
                   >
-                    <span key={activeLyricIndex} className="animate-lyric-line line-clamp-2">
-                      {lyrics.currentLyricLine || " "}
-                    </span>
+                    <ActiveLyricLine lines={parsedLyrics.lines} />
                   </button>
                 )}
               </>
             )}
 
-            <div className="mt-3">
-              <SeekBar currentTime={player.currentTime} duration={player.duration} onSeek={player.seekTo} />
-              <div className="flex items-center justify-between gap-2 text-[11px] font-medium tabular-nums text-muted-foreground">
-                <span className="min-w-12">{formatTime(player.currentTime)}</span>
-                <button
-                  ref={sourceButtonRef}
-                  type="button"
-                  className="touch-target relative inline-flex min-w-0 max-w-[55%] items-center gap-1 rounded-full bg-foreground/[0.06] px-2 py-0.5 font-semibold text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
-                  onClick={() => setIsSourceOpen((value) => !value)}
-                  aria-label={t("player.chooseSource")}
-                  aria-haspopup="dialog"
-                  aria-expanded={isSourceOpen}
-                >
-                  <HardDrive className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{locationLabel(currentLocation, t)}</span>
-                </button>
-                <span className="min-w-12 text-right">{formatRemaining(player.currentTime, player.duration)}</span>
-              </div>
-            </div>
+            <PlayerTimeline duration={player.duration} onSeek={player.seekTo}>
+              <button
+                ref={sourceButtonRef}
+                type="button"
+                className="touch-target relative inline-flex min-w-0 max-w-[55%] items-center gap-1 rounded-full bg-foreground/[0.06] px-2 py-0.5 font-semibold text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+                onClick={() => setIsSourceOpen((value) => !value)}
+                aria-label={t("player.chooseSource")}
+                aria-haspopup="dialog"
+                aria-expanded={isSourceOpen}
+              >
+                <HardDrive className="h-3 w-3 shrink-0" />
+                <span className="truncate">{locationLabel(currentLocation, t)}</span>
+              </button>
+            </PlayerTimeline>
 
             <div className="mt-3 flex items-center justify-between lg:mt-2">
               <GlyphButton
@@ -487,9 +487,7 @@ export function FullPlayer({
                 <Timer className="h-5 w-5" />
                 {player.sleepTimer && (
                   <span className="text-[11px] font-semibold tabular-nums">
-                    {player.sleepTimer.waitingForTrackEnd
-                      ? t("player.track")
-                      : formatSleepRemaining(player.sleepRemainingSeconds)}
+                    {player.sleepTimer.waitingForTrackEnd ? t("player.track") : <SleepRemaining />}
                   </span>
                 )}
               </GlyphButton>
@@ -533,4 +531,43 @@ export function FullPlayer({
       />
     </section>
   );
+}
+
+/** Seek bar and elapsed/remaining labels; the part of the Now Playing view that follows the clock. */
+function PlayerTimeline({
+  duration,
+  onSeek,
+  children,
+}: {
+  duration: number;
+  onSeek: (seconds: number) => void;
+  children: ReactNode;
+}) {
+  const { currentTime } = usePlayerTime();
+  return (
+    <div className="mt-3">
+      <SeekBar currentTime={currentTime} duration={duration} onSeek={onSeek} />
+      <div className="flex items-center justify-between gap-2 text-[11px] font-medium tabular-nums text-muted-foreground">
+        <span className="min-w-12">{formatTime(currentTime)}</span>
+        {children}
+        <span className="min-w-12 text-right">{formatRemaining(currentTime, duration)}</span>
+      </div>
+    </div>
+  );
+}
+
+/** The current timed lyric line under the title; re-keyed per line so it animates in. */
+function ActiveLyricLine({ lines }: { lines: TimedLyricLine[] }) {
+  const activeIndex = useActiveLyricIndex(lines);
+  const text = activeIndex >= 0 ? (lines[activeIndex]?.text ?? "") : "";
+  return (
+    <span key={activeIndex} className="animate-lyric-line line-clamp-2">
+      {text || " "}
+    </span>
+  );
+}
+
+function ActiveLyricsPanel(props: Omit<ComponentProps<typeof LyricsPanel>, "activeIndex">) {
+  const activeIndex = useActiveLyricIndex(props.parsed.lines);
+  return <LyricsPanel {...props} activeIndex={activeIndex} />;
 }
