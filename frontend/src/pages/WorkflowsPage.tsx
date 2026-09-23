@@ -15,7 +15,7 @@ import {
   Tag,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
@@ -426,7 +426,7 @@ export function WorkflowsPage({
   };
 
   const runPreset = async (inputs: Record<string, unknown>) => {
-    if (!selectedPreset || !selectedDefinition) return false;
+    if (!selectedPreset || !selectedDefinition) return;
     setRunningSystemAction("preset");
     try {
       const result = await api.runWorkflowPreset(selectedPreset.code, inputs);
@@ -438,10 +438,8 @@ export function WorkflowsPage({
       );
       void refreshRecentRuns(selectedDefinition.code);
       activityLocation.openRun(result.runId, selectedDefinition.code);
-      return true;
     } catch (error) {
       toast.notify(toastFromError(error, workflowCopy("presetQueueFailed")));
-      return false;
     } finally {
       setRunningSystemAction(null);
     }
@@ -667,7 +665,7 @@ export function WorkflowsPage({
   );
 }
 
-type AvailabilityWatchDialog = "configure" | "monitoring" | "ready" | null;
+type AvailabilityWatchDialog = "monitoring" | "ready" | null;
 
 function AvailabilityWatchPanel({
   definition,
@@ -799,18 +797,30 @@ function AvailabilityWatchPanel({
   const nodes = parseNodes(definition.definitionJson);
   const displayDefinition = localizedWorkflowDefinition(definition);
 
+  const layout: RunFormLayout = ({ run, options, optionsActions }) => (
+    <>
+      <WorkflowHeader title={displayDefinition.displayName} description={displayDefinition.description} actions={run} />
+      <WorkflowSection
+        title={workflowCopy("configuration")}
+        label={workflowCopy("configuration")}
+        actions={optionsActions}
+      >
+        {options}
+      </WorkflowSection>
+    </>
+  );
+
   return (
     <Card className="min-w-0">
       <CardContent className="min-w-0 space-y-5 p-5">
-        <WorkflowHeader
-          title={displayDefinition.displayName}
-          description={displayDefinition.description}
-          actions={
-            <Button size="sm" onClick={() => setDialog("configure")}>
-              <Settings2 className="h-4 w-4" />
-              {workflowCopy("configure")}
-            </Button>
-          }
+        <AvailabilityWatchRunForm
+          layout={layout}
+          watch={watch}
+          sources={sources}
+          readOnly={readOnly}
+          canManageDownloads={canManageDownloads}
+          onSaved={setWatch}
+          onRunQueued={onRunQueued}
         />
 
         <section className="grid rounded-lg bg-muted/35 sm:grid-cols-2" aria-label={workflowCopy("availabilityPools")}>
@@ -851,17 +861,6 @@ function AvailabilityWatchPanel({
         </div>
       </CardContent>
 
-      {dialog === "configure" && (
-        <AvailabilityWatchConfigureDialog
-          watch={watch}
-          sources={sources}
-          readOnly={readOnly}
-          canManageDownloads={canManageDownloads}
-          onClose={closeDialog}
-          onSaved={setWatch}
-          onRunQueued={onRunQueued}
-        />
-      )}
       {dialog === "monitoring" && (
         <AvailabilityWatchMonitoringDialog watch={watch} readOnly={readOnly} onClose={closeDialog} onSaved={setWatch} />
       )}
@@ -881,20 +880,27 @@ function AvailabilityWatchPanel({
   );
 }
 
-function AvailabilityWatchConfigureDialog({
+function availabilityWatchExtensions(value: string) {
+  return value
+    .split(/[\s,;，；]+/u)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function AvailabilityWatchRunForm({
+  layout,
   watch,
   sources,
   readOnly,
   canManageDownloads,
-  onClose,
   onSaved,
   onRunQueued,
 }: {
+  layout: RunFormLayout;
   watch: AvailabilityWatch;
   sources: LibrarySource[];
   readOnly: boolean;
   canManageDownloads: boolean;
-  onClose: () => void;
   onSaved: (watch: AvailabilityWatch) => void;
   onRunQueued: () => void;
 }) {
@@ -904,20 +910,24 @@ function AvailabilityWatchConfigureDialog({
   const [excluded, setExcluded] = useState(watch.excludeExtensions.join(", "));
   const [busy, setBusy] = useState<"save" | "run" | null>(null);
   const [error, setError] = useState("");
+  const excludeExtensions = availabilityWatchExtensions(excluded);
+  const dirty =
+    action !== watch.action ||
+    sourceId !== (watch.sourceId ?? 0) ||
+    excludeExtensions.join(",") !== watch.excludeExtensions.join(",");
 
-  const save = async (runNow: boolean) => {
+  // Run applies pending configuration first so the queued run uses what is on screen.
+  const submit = async (runNow: boolean) => {
     setBusy(runNow ? "run" : "save");
     setError("");
     try {
-      const next = await api.updateAvailabilityWatch({
-        action,
-        sourceId: sourceId || null,
-        excludeExtensions: excluded
-          .split(/[\s,;，；]+/u)
-          .map((value) => value.trim())
-          .filter(Boolean),
-      });
-      onSaved(next);
+      if (dirty) {
+        const saved = await api.updateAvailabilityWatch({ action, sourceId: sourceId || null, excludeExtensions });
+        setAction(saved.action);
+        setSourceId(saved.sourceId ?? 0);
+        setExcluded(saved.excludeExtensions.join(", "));
+        onSaved(saved);
+      }
       if (runNow) {
         const result = await api.runAvailabilityWatch();
         toast.success(workflowCopy("availabilityWatchRunQueued", { runId: result.runId }));
@@ -925,7 +935,6 @@ function AvailabilityWatchConfigureDialog({
       } else {
         toast.success(workflowCopy("availabilityWatchSaved"));
       }
-      onClose();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : workflowCopy("availabilityWatchSaveFailed"));
     } finally {
@@ -933,61 +942,74 @@ function AvailabilityWatchConfigureDialog({
     }
   };
 
-  return (
-    <Modal title={workflowCopy("configureAvailabilityWatch")} onClose={onClose}>
+  return layout({
+    run: (
+      <WorkflowRunButton
+        running={busy === "run"}
+        disabled={readOnly || busy !== null}
+        onClick={() => void submit(true)}
+      />
+    ),
+    optionsActions: (
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => void submit(false)}
+        disabled={readOnly || !dirty || busy !== null}
+      >
+        {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+        {workflowCopy("save")}
+      </Button>
+    ),
+    options: (
       <div className="grid gap-4">
-        <Field label={workflowCopy("remoteSource")}>
-          <NativeSelect
-            value={sourceId}
-            onChange={(event) => setSourceId(Number(event.target.value))}
-            disabled={readOnly || busy !== null}
-          >
-            <option value={0}>{workflowCopy("anyHealthySource")}</option>
-            {sources.map((source) => (
-              <option key={source.id} value={source.id}>
-                {source.displayName}
+        <div className="grid gap-4 md:grid-cols-3">
+          <Field label={workflowCopy("remoteSource")}>
+            <NativeSelect
+              fieldSize="sm"
+              value={sourceId}
+              onChange={(event) => setSourceId(Number(event.target.value))}
+              disabled={readOnly || busy !== null}
+            >
+              <option value={0}>{workflowCopy("anyHealthySource")}</option>
+              {sources.map((source) => (
+                <option key={source.id} value={source.id}>
+                  {source.displayName}
+                </option>
+              ))}
+            </NativeSelect>
+          </Field>
+          <Field label={workflowCopy("whenAvailable")}>
+            <NativeSelect
+              fieldSize="sm"
+              value={action}
+              onChange={(event) => setAction(event.target.value as AvailabilityWatch["action"])}
+              disabled={readOnly || busy !== null}
+            >
+              <option value="monitor">{workflowCopy("monitorOnly")}</option>
+              <option value="track">{workflowCopy("track")}</option>
+              <option value="fetch" disabled={!canManageDownloads}>
+                {workflowCopy("fetch")}
               </option>
-            ))}
-          </NativeSelect>
-        </Field>
-        <Field label={workflowCopy("whenAvailable")}>
-          <NativeSelect
-            value={action}
-            onChange={(event) => setAction(event.target.value as AvailabilityWatch["action"])}
-            disabled={readOnly || busy !== null}
-          >
-            <option value="monitor">{workflowCopy("monitorOnly")}</option>
-            <option value="track">{workflowCopy("track")}</option>
-            <option value="fetch" disabled={!canManageDownloads}>
-              {workflowCopy("fetch")}
-            </option>
-            <option value="track_fetch" disabled={!canManageDownloads}>
-              {workflowCopy("trackFetch")}
-            </option>
-          </NativeSelect>
-        </Field>
-        <Field label={workflowCopy("excludeExtensions")}>
-          <Input
-            value={excluded}
-            onChange={(event) => setExcluded(event.target.value)}
-            placeholder={workflowCopy("extensionsPlaceholder")}
-            disabled={readOnly || busy !== null}
-          />
-        </Field>
-        {error && <ErrorPanel error={error} />}
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="outline" onClick={() => void save(false)} disabled={readOnly || busy !== null}>
-            {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {workflowCopy("save")}
-          </Button>
-          <Button onClick={() => void save(true)} disabled={readOnly || busy !== null}>
-            {busy === "run" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-            {workflowCopy("runNow")}
-          </Button>
+              <option value="track_fetch" disabled={!canManageDownloads}>
+                {workflowCopy("trackFetch")}
+              </option>
+            </NativeSelect>
+          </Field>
+          <Field label={workflowCopy("excludeExtensions")}>
+            <Input
+              fieldSize="sm"
+              value={excluded}
+              onChange={(event) => setExcluded(event.target.value)}
+              placeholder={workflowCopy("extensionsPlaceholder")}
+              disabled={readOnly || busy !== null}
+            />
+          </Field>
         </div>
+        {error && <ErrorPanel error={error} />}
       </div>
-    </Modal>
-  );
+    ),
+  });
 }
 
 function AvailabilityWatchMonitoringDialog({
@@ -1241,7 +1263,7 @@ function WorkflowDetail({
   remoteSourceUnavailable?: boolean;
   onRunDLsitePopular?: (options: DLsitePopularRunOptions) => Promise<void>;
   preset?: WorkflowPreset | null;
-  onRunPreset?: (inputs: Record<string, unknown>) => Promise<boolean>;
+  onRunPreset?: (inputs: Record<string, unknown>) => Promise<void>;
   recentRuns?: WorkflowRun[];
   onOpenRun?: (run: WorkflowRun) => void;
   emptyText?: string;
@@ -1249,69 +1271,83 @@ function WorkflowDetail({
   onEditTrigger: (trigger: WorkflowTrigger) => void;
   onToggleTrigger: (trigger: WorkflowTrigger, enabled: boolean) => Promise<void>;
 }) {
-  const [configuredSystemRun, setConfiguredSystemRun] = useState<
-    "local_scan" | "dlsite_popular" | "remote_popular" | "preset" | null
-  >(null);
-  const definitionID = definition?.id ?? null;
   const definitionJson = definition?.definitionJson ?? "";
-
-  useEffect(() => {
-    setConfiguredSystemRun(null);
-  }, [definitionID, definitionJson]);
-
   const nodes = useMemo(() => parseNodes(definitionJson), [definitionJson]);
   if (!definition) {
     return <EmptyPanel text={emptyText} />;
   }
   const displayDefinition = localizedWorkflowDefinition(definition);
-  const headerActions = (
+  const runKind = definition.scope === "system" ? systemRunKinds?.[0] : undefined;
+  const running = runKind ? (isSystemActionRunning?.(runKind) ?? false) : false;
+  const allowed = runKind ? (canRunSystemAction?.(runKind) ?? false) : false;
+  const layout: RunFormLayout = ({ run, options }) => (
     <>
-      {definition.scope === "system" &&
-        systemRunKinds &&
-        onRunSystemAction &&
-        systemRunKinds
-          .filter((kind) => kind === "metadata_sync")
-          .map((kind) => {
-            const running = isSystemActionRunning?.(kind) ?? false;
-            const allowed = canRunSystemAction?.(kind) ?? false;
-            return (
-              <Button key={kind} size="sm" onClick={() => void onRunSystemAction(kind)} disabled={running || !allowed}>
-                <Play className="h-4 w-4" />
-                {running ? workflowCopy("creating") : systemRunKindLabel(kind)}
-              </Button>
-            );
-          })}
-      {definition.scope === "system" &&
-        systemRunKinds
-          ?.filter(
-            (kind): kind is "local_scan" | "dlsite_popular" | "remote_popular" | "preset" =>
-              kind === "local_scan" || kind === "dlsite_popular" || kind === "remote_popular" || kind === "preset",
-          )
-          .map((kind) => {
-            const running = isSystemActionRunning?.(kind) ?? false;
-            const allowed = canRunSystemAction?.(kind) ?? false;
-            return (
-              <Button
-                key={kind}
-                size="sm"
-                onClick={() => setConfiguredSystemRun(kind)}
-                disabled={running || (!allowed && !readOnly)}
-              >
-                <Settings2 className="h-4 w-4" />
-                {running ? workflowCopy("queueing") : workflowCopy("configure")}
-              </Button>
-            );
-          })}
+      <WorkflowHeader
+        title={displayDefinition.displayName}
+        description={displayDefinition.description || workflowCopy("noDescription")}
+        actions={run}
+      />
+      {options && (
+        <WorkflowSection title={workflowCopy("runOptions")} label={workflowCopy("runOptions")}>
+          {options}
+        </WorkflowSection>
+      )}
     </>
   );
+  // Keyed by definition so switching workflows starts from that workflow's defaults.
+  const runForm =
+    runKind === "local_scan" && onRunSystemAction ? (
+      <LocalScanRunPanel
+        key={definition.code}
+        layout={layout}
+        running={running}
+        allowed={allowed}
+        onRun={(followUpRun) => onRunSystemAction("local_scan", { followUpRun })}
+      />
+    ) : runKind === "dlsite_popular" && onRunDLsitePopular ? (
+      <DLsitePopularRunPanel
+        key={definition.code}
+        layout={layout}
+        running={running}
+        allowed={allowed}
+        onRun={onRunDLsitePopular}
+      />
+    ) : runKind === "remote_popular" && onRunRemotePopular ? (
+      <RemotePopularRunPanel
+        key={definition.code}
+        layout={layout}
+        running={running}
+        allowed={allowed}
+        canFetch={canFetchRemotePopular}
+        onRun={onRunRemotePopular}
+      />
+    ) : runKind === "preset" && preset && onRunPreset ? (
+      <PresetRunPanel
+        key={definition.code}
+        layout={layout}
+        preset={preset}
+        running={running}
+        allowed={allowed}
+        canFetch={canFetchRemotePopular}
+        onRun={onRunPreset}
+      />
+    ) : (
+      layout({
+        run:
+          runKind === "metadata_sync" && onRunSystemAction ? (
+            <WorkflowRunButton
+              running={running}
+              disabled={!allowed}
+              onClick={() => void onRunSystemAction("metadata_sync")}
+            />
+          ) : null,
+        options: null,
+      })
+    );
   return (
     <Card className="relative min-w-0 overflow-hidden">
       <CardContent className="min-w-0 space-y-5 p-5">
-        <WorkflowHeader
-          title={displayDefinition.displayName}
-          description={displayDefinition.description || workflowCopy("noDescription")}
-          actions={headerActions}
-        />
+        {runForm}
 
         <DefinitionRunMonitor nodes={nodes} recentRuns={recentRuns} onOpenRun={onOpenRun} />
 
@@ -1349,111 +1385,74 @@ function WorkflowDetail({
           </div>
         </div>
       )}
-      {configuredSystemRun === "local_scan" && onRunSystemAction && (
-        <Modal title={workflowCopy("configureLocalScan")} onClose={() => setConfiguredSystemRun(null)}>
-          <LocalScanRunPanel
-            running={isSystemActionRunning?.("local_scan") ?? false}
-            allowed={canRunSystemAction?.("local_scan") ?? false}
-            onRun={(followUpRun) => onRunSystemAction("local_scan", { followUpRun })}
-          />
-        </Modal>
-      )}
-      {configuredSystemRun === "dlsite_popular" && onRunDLsitePopular && (
-        <Modal title={workflowCopy("configureDLsitePopular")} onClose={() => setConfiguredSystemRun(null)}>
-          <DLsitePopularRunPanel
-            running={isSystemActionRunning?.("dlsite_popular") ?? false}
-            allowed={canRunSystemAction?.("dlsite_popular") ?? false}
-            onRun={onRunDLsitePopular}
-          />
-        </Modal>
-      )}
-      {configuredSystemRun === "preset" && preset && onRunPreset && (
-        <Modal
-          title={workflowCopy("configurePreset", { name: displayDefinition.displayName })}
-          onClose={() => setConfiguredSystemRun(null)}
-        >
-          <PresetRunPanel
-            preset={preset}
-            running={isSystemActionRunning?.("preset") ?? false}
-            allowed={canRunSystemAction?.("preset") ?? false}
-            canFetch={canFetchRemotePopular}
-            onRun={async (inputs) => {
-              if (await onRunPreset(inputs)) setConfiguredSystemRun(null);
-            }}
-          />
-        </Modal>
-      )}
-      {configuredSystemRun === "remote_popular" && onRunRemotePopular && (
-        <Modal title={workflowCopy("configureRemotePopular")} onClose={() => setConfiguredSystemRun(null)}>
-          <RemotePopularRunPanel
-            running={isSystemActionRunning?.("remote_popular") ?? false}
-            allowed={canRunSystemAction?.("remote_popular") ?? false}
-            canFetch={canFetchRemotePopular}
-            onOpenRemoteSourceSettings={onOpenRemoteSourceSettings}
-            onRun={onRunRemotePopular}
-          />
-        </Modal>
-      )}
     </Card>
   );
 }
 
+/** Places a workflow's run action in its header and its run options directly below. */
+type RunFormLayout = (parts: { run: ReactNode; options: ReactNode; optionsActions?: ReactNode }) => ReactNode;
+
+function WorkflowRunButton({
+  running,
+  disabled,
+  onClick,
+}: {
+  running: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Button size="sm" disabled={running || disabled} onClick={onClick}>
+      {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+      {running ? workflowCopy("queueing") : workflowCopy("run")}
+    </Button>
+  );
+}
+
 function LocalScanRunPanel({
+  layout,
   running,
   allowed,
   onRun,
 }: {
+  layout: RunFormLayout;
   running: boolean;
   allowed: boolean;
   onRun: (followUpRun: boolean) => Promise<void>;
 }) {
   const [followUpRun, setFollowUpRun] = useState(false);
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/30 px-3 py-3">
-        <div>
-          <div className="text-sm font-medium">{workflowCopy("followUpRun")}</div>
-          <div className="text-xs text-muted-foreground">{workflowCopy("followUpDescription")}</div>
+  return layout({
+    run: <WorkflowRunButton running={running} disabled={!allowed} onClick={() => void onRun(followUpRun)} />,
+    options: (
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/30 px-3 py-3">
+          <div>
+            <div className="text-sm font-medium">{workflowCopy("followUpRun")}</div>
+            <div className="text-xs text-muted-foreground">{workflowCopy("followUpDescription")}</div>
+          </div>
+          <Switch
+            checked={followUpRun}
+            onCheckedChange={setFollowUpRun}
+            aria-label={workflowCopy("followUpRun")}
+            disabled={running || !allowed}
+          />
         </div>
-        <Switch
-          checked={followUpRun}
-          onCheckedChange={setFollowUpRun}
-          aria-label={workflowCopy("followUpRun")}
-          disabled={running || !allowed}
-        />
       </div>
-      <Button className="w-full" disabled={running || !allowed} onClick={() => void onRun(followUpRun)}>
-        <Play className="h-4 w-4" />
-        {running ? workflowCopy("creating") : workflowCopy("runScan")}
-      </Button>
-    </div>
-  );
-}
-
-function systemRunKindLabel(kind: SystemRunKind) {
-  switch (kind) {
-    case "local_scan":
-      return workflowCopy("runLocalScan");
-    case "metadata_sync":
-      return workflowCopy("syncMetadata");
-    case "remote_popular":
-      return workflowCopy("collectRemotePopular");
-    case "dlsite_popular":
-      return workflowCopy("collectDLsitePopular");
-  }
+    ),
+  });
 }
 
 function RemotePopularRunPanel({
+  layout,
   running,
   allowed,
   canFetch,
-  onOpenRemoteSourceSettings,
   onRun,
 }: {
+  layout: RunFormLayout;
   running: boolean;
   allowed: boolean;
   canFetch: boolean;
-  onOpenRemoteSourceSettings?: () => void;
   onRun: (options: RemotePopularRunOptions) => Promise<void>;
 }) {
   const [sources, setSources] = useState<LibrarySource[]>([]);
@@ -1504,21 +1503,17 @@ function RemotePopularRunPanel({
 
   const canSubmit =
     allowed && sourceId > 0 && !tagError && tagPreview.value.length > 0 && (action !== "fetch" || canFetch);
-  return (
-    <section>
-      <div className="grid gap-4">
-        <div className="space-y-4">
-          {!loadingSources && compatibleSources.length === 0 && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-warning-border bg-warning-surface px-3 py-2">
-              <p className="text-sm text-warning-foreground">{workflowCopy("remotePopularRequiresSource")}</p>
-              {onOpenRemoteSourceSettings && (
-                <Button size="sm" variant="outline" onClick={onOpenRemoteSourceSettings}>
-                  <Settings2 className="h-4 w-4" />
-                  {workflowCopy("configureRemoteSource")}
-                </Button>
-              )}
-            </div>
-          )}
+  return layout({
+    run: (
+      <WorkflowRunButton
+        running={running}
+        disabled={!canSubmit}
+        onClick={() => void onRun({ sourceId, action, limit, tagNameTemplate: tagNameTemplate.trim() })}
+      />
+    ),
+    options: (
+      <div className="grid gap-x-10 gap-y-4 lg:grid-cols-2">
+        <div className="min-w-0 space-y-4">
           <label className="grid gap-2 text-sm font-medium">
             {workflowCopy("remoteSource")}
             <NativeSelect
@@ -1575,29 +1570,19 @@ function RemotePopularRunPanel({
           </div>
         </div>
 
-        <div className="grid min-w-0 gap-4 pt-1">
-          <TagTemplateField
-            id="remote-popular-tag-template"
-            value={tagNameTemplate}
-            defaultValue={REMOTE_POPULAR_TAG_TEMPLATE}
-            tokens={tagTokens}
-            preview={tagPreview}
-            error={tagError}
-            spanColumns={false}
-            onChange={setTagNameTemplate}
-          />
-          <Button
-            className="w-full"
-            disabled={running || !canSubmit}
-            onClick={() => void onRun({ sourceId, action, limit, tagNameTemplate: tagNameTemplate.trim() })}
-          >
-            <Play className="h-4 w-4" />
-            {running ? workflowCopy("queueing") : workflowCopy("runCollection")}
-          </Button>
-        </div>
+        <TagTemplateField
+          id="remote-popular-tag-template"
+          value={tagNameTemplate}
+          defaultValue={REMOTE_POPULAR_TAG_TEMPLATE}
+          tokens={tagTokens}
+          preview={tagPreview}
+          error={tagError}
+          spanColumns={false}
+          onChange={setTagNameTemplate}
+        />
       </div>
-    </section>
-  );
+    ),
+  });
 }
 
 function presetParameterLabel(key: string) {
@@ -1841,12 +1826,14 @@ function PresetParameterFields({
 }
 
 function PresetRunPanel({
+  layout,
   preset,
   running,
   allowed,
   canFetch,
   onRun,
 }: {
+  layout: RunFormLayout;
   preset: WorkflowPreset;
   running: boolean;
   allowed: boolean;
@@ -1863,37 +1850,40 @@ function PresetRunPanel({
       presetTagTemplateTokens(preset, values, new Date()).map((token) => token.name),
     ).length > 0;
   const canSubmit = allowed && blockers.length === 0 && !tagInvalid;
-  return (
-    <section className="grid gap-4">
-      <PresetParameterFields
-        idPrefix="preset-run"
-        preset={preset}
-        values={values}
-        canFetch={canFetch}
-        onChange={setValues}
-      />
-      {blockers.length > 0 && (
-        <div className="text-xs text-muted-foreground" role="status">
-          {presetBlockerText(blockers[0])}
-        </div>
-      )}
-      <Button
-        className="w-full"
-        disabled={running || !canSubmit}
+  return layout({
+    run: (
+      <WorkflowRunButton
+        running={running}
+        disabled={!canSubmit}
         onClick={() => void onRun(presetInputsPayload(preset, values))}
-      >
-        <Play className="h-4 w-4" />
-        {running ? workflowCopy("queueing") : workflowCopy("presetRun")}
-      </Button>
-    </section>
-  );
+      />
+    ),
+    options: (
+      <div className="grid gap-4">
+        <PresetParameterFields
+          idPrefix="preset-run"
+          preset={preset}
+          values={values}
+          canFetch={canFetch}
+          onChange={setValues}
+        />
+        {blockers.length > 0 && (
+          <div className="text-xs text-muted-foreground" role="status">
+            {presetBlockerText(blockers[0])}
+          </div>
+        )}
+      </div>
+    ),
+  });
 }
 
 function DLsitePopularRunPanel({
+  layout,
   running,
   allowed,
   onRun,
 }: {
+  layout: RunFormLayout;
   running: boolean;
   allowed: boolean;
   onRun: (options: DLsitePopularRunOptions) => Promise<void>;
@@ -1924,10 +1914,24 @@ function DLsitePopularRunPanel({
     if (!tagCustomized) setTagNameTemplate(defaultTagTemplate);
   }, [defaultTagTemplate, tagCustomized]);
 
-  return (
-    <section>
-      <div className="grid gap-4">
-        <div className="space-y-4">
+  return layout({
+    run: (
+      <WorkflowRunButton
+        running={running}
+        disabled={!allowed || Boolean(tagError) || !tagPreview.value}
+        onClick={() =>
+          void onRun({
+            period,
+            releaseWindow,
+            year: period === "year" ? year : 0,
+            tagNameTemplate: tagNameTemplate.trim(),
+          })
+        }
+      />
+    ),
+    options: (
+      <div className="grid gap-x-10 gap-y-4 lg:grid-cols-2">
+        <div className="min-w-0 space-y-4">
           <div>
             <div className="text-sm font-medium">{workflowCopy("rankingPeriod")}</div>
             <div
@@ -1974,39 +1978,22 @@ function DLsitePopularRunPanel({
           )}
         </div>
 
-        <div className="grid min-w-0 gap-4 pt-1">
-          <TagTemplateField
-            id="dlsite-popular-tag-template"
-            value={tagNameTemplate}
-            defaultValue={defaultTagTemplate}
-            tokens={tagTokens}
-            preview={tagPreview}
-            error={tagError}
-            spanColumns={false}
-            onChange={(next) => {
-              setTagCustomized(next !== defaultTagTemplate);
-              setTagNameTemplate(next);
-            }}
-          />
-          <Button
-            className="w-full"
-            disabled={running || !allowed || Boolean(tagError) || !tagPreview.value}
-            onClick={() =>
-              void onRun({
-                period,
-                releaseWindow,
-                year: period === "year" ? year : 0,
-                tagNameTemplate: tagNameTemplate.trim(),
-              })
-            }
-          >
-            <Play className="h-4 w-4" />
-            {running ? workflowCopy("queueing") : workflowCopy("runCollection")}
-          </Button>
-        </div>
+        <TagTemplateField
+          id="dlsite-popular-tag-template"
+          value={tagNameTemplate}
+          defaultValue={defaultTagTemplate}
+          tokens={tagTokens}
+          preview={tagPreview}
+          error={tagError}
+          spanColumns={false}
+          onChange={(next) => {
+            setTagCustomized(next !== defaultTagTemplate);
+            setTagNameTemplate(next);
+          }}
+        />
       </div>
-    </section>
-  );
+    ),
+  });
 }
 
 function RunDetail({

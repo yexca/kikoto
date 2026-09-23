@@ -71,16 +71,18 @@ Workflows make backend actions inspectable.
   expand the template on request; automatic triggers store it unchanged and
   expand it at dispatch. Remote automatic collection is Track-only so it
   cannot bypass Fetch size and disk-reserve safeguards.
-- The two configurable popular collectors keep their detail surfaces compact.
-  `Configure` in the selected workflow header opens a modal containing the run
-  inputs, tag preview, and final run action in one vertical column at every
-  viewport width. Local scan uses the same compact configuration surface for
-  its follow-up option. Built-in workflows without run parameters continue to
-  expose a direct run action.
+- Every workflow exposes `Run` in its header. Workflows with run parameters show
+  them in a Run options section directly below the header, so the inputs, tag
+  preview, and run action stay visible without opening a dialog. Options apply
+  to the next manual run only and reset when another workflow is selected.
+  Local scan shows its follow-up option there; built-in workflows without run
+  parameters show only the run action.
+- Availability Watch shows its saved Configuration (source, action on
+  availability, and excluded extensions) in the same position. `Save` stores a
+  change; `Run` saves any pending change first and then queues a check.
 - Follow a circle, Follow a series, and Follow a voice actor are preset
-  workflows. `Configure` in the selected workflow header opens the target,
-  filter, action, Fetch limits, and tag template in one dialog; the same fields
-  configure Startup and interval triggers. Sync metadata only needs no source;
+  workflows. Their Run options hold the target, filter, action, Fetch limits,
+  and tag template; the same fields configure Startup and interval triggers. Sync metadata only needs no source;
   Track and Fetch need an enabled compatible remote source, and Fetch requires
   download management permission plus explicit file, size, and free-space
   limits. New works only skips works already in the library. Leaving the tag

@@ -155,8 +155,8 @@ discover (circle_catalog | series_catalog | voice_source_works)
 ```
 
 `GET /api/workflow-presets` publishes each preset's parameter schema; the
-Workflows page renders it as a Configure dialog and as the startup or interval
-trigger form. `POST /api/workflow-presets/{code}/runs` validates the inputs,
+Workflows page renders it as the inline Run options below the workflow header and
+as the startup or interval trigger form. `POST /api/workflow-presets/{code}/runs` validates the inputs,
 checks that a selected source is an enabled compatible remote source, renders
 the tag template for this dispatch (`{date}`, `{target}`, `{action}`), builds
 the graph, validates it with the typed workflow graph validator, and enqueues
