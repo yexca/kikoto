@@ -734,7 +734,7 @@ test("notification center paginates and clears only succeeded remote notificatio
   await expect(dialog.getByRole("button", { name: "Clear succeeded", exact: true })).toBeDisabled();
 });
 
-test("definitions foreground runnable presets and configure DLsite popular collection", async ({ page }) => {
+test("definitions foreground runnable presets and show DLsite popular run options inline", async ({ page }) => {
   await mockWorkflows(page);
   await page.goto("/workflows");
 
@@ -749,21 +749,19 @@ test("definitions foreground runnable presets and configure DLsite popular colle
 
   await page.getByRole("tab", { name: /Collect DLsite popular voice works/ }).click();
   await expect(page.getByRole("heading", { name: "Collect DLsite popular voice works", exact: true })).toBeVisible();
-  await expect(page.getByText("Ranking period", { exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "Configure", exact: true }).click();
-  let configureDialog = page.getByRole("dialog", { name: "Configure DLsite popular collection" });
-  await expect(configureDialog.getByText("Ranking period", { exact: true }).first()).toBeVisible();
-  await expect(configureDialog.getByRole("switch", { name: "Only works released within 30 days" })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: "Configure", exact: true })).toHaveCount(0);
+  const runOptions = page.getByRole("region", { name: "Run options", exact: true });
+  await expect(runOptions.getByText("Ranking period", { exact: true }).first()).toBeVisible();
+  await expect(runOptions.getByRole("switch", { name: "Only works released within 30 days" })).toHaveAttribute(
     "aria-checked",
     "true",
   );
-  let dlsiteTagField = configureDialog.getByTestId("dlsite-popular-tag-template-field");
+  const dlsiteTagField = runOptions.getByTestId("dlsite-popular-tag-template-field");
   await expect(dlsiteTagField.getByLabel("Tag template", { exact: true })).toHaveValue(
     "{date}_DL_{period}_{release_window}_popular",
   );
   await expect(dlsiteTagField).toContainText(/Preview.*_DL_24h_r30d_popular/);
   await expect(dlsiteTagField.getByText("{release_window}", { exact: true })).toBeVisible();
-  await configureDialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(page.getByRole("region", { name: "Workflow run" })).toBeVisible();
   await expect(page.getByText("Recent runs", { exact: true })).toBeVisible();
 
@@ -780,21 +778,19 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   );
   await scheduleDialog.getByRole("button", { name: "Close", exact: true }).click();
 
-  await page.getByRole("button", { name: "Configure", exact: true }).click();
-  configureDialog = page.getByRole("dialog", { name: "Configure DLsite popular collection" });
-  dlsiteTagField = configureDialog.getByTestId("dlsite-popular-tag-template-field");
-  await configureDialog.getByRole("button", { name: "Annual", exact: true }).click();
-  await expect(configureDialog.getByRole("switch", { name: "Only works released within 30 days" })).toHaveCount(0);
-  await configureDialog.getByLabel("Ranking year").selectOption("2025");
+  await runOptions.getByRole("button", { name: "Annual", exact: true }).click();
+  await expect(runOptions.getByRole("switch", { name: "Only works released within 30 days" })).toHaveCount(0);
+  await runOptions.getByLabel("Ranking year").selectOption("2025");
   await expect(dlsiteTagField.getByLabel("Tag template", { exact: true })).toHaveValue("{date}_DL_year_{year}_popular");
   await expect(dlsiteTagField).toContainText(/Preview.*_DL_year_2025_popular/);
   const dlsiteRequest = page.waitForRequest((request) => request.url().endsWith("/api/workflow-runs/dlsite-popular"));
-  await page.getByRole("button", { name: "Run collection" }).click();
+  await page.getByRole("button", { name: "Run", exact: true }).click();
   expect((await dlsiteRequest).postDataJSON()).toEqual({
     period: "year",
     releaseWindow: "",
     year: 2025,
     tagNameTemplate: "{date}_DL_year_{year}_popular",
+    skipTag: false,
   });
   await expect(page.getByText(/run #31 queued/)).toBeVisible();
 
@@ -886,14 +882,12 @@ test("local scan follow-up is explicit and defaults off for manual and automatic
 
   await page.goto("/workflows");
   await page.getByRole("tab", { name: /Scan local library/ }).click();
-  await page.getByRole("button", { name: "Configure", exact: true }).click();
-  const runDialog = page.getByRole("dialog", { name: "Configure local library scan" });
-  const manualFollowUp = runDialog.getByRole("switch", { name: "Follow-up run" });
+  const runOptions = page.getByRole("region", { name: "Run options", exact: true });
+  const manualFollowUp = runOptions.getByRole("switch", { name: "Follow-up run" });
   await expect(manualFollowUp).toHaveAttribute("aria-checked", "false");
   await manualFollowUp.click();
-  await runDialog.getByRole("button", { name: "Run scan" }).click();
+  await page.getByRole("button", { name: "Run", exact: true }).click();
   await expect.poll(() => manualPayloads).toEqual([{ followUpRun: true }]);
-  await runDialog.getByRole("button", { name: "Close", exact: true }).click();
 
   await page.getByRole("button", { name: "Edit Startup local library scan" }).click();
   const triggerDialog = page.getByRole("dialog", { name: "Edit trigger" });
@@ -926,14 +920,27 @@ test("availability watch shares pools, schedules checks, and handles ready works
   await scheduleDialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("button", { name: "Edit Availability interval", exact: true })).toBeVisible();
 
+  const configuration = page.getByRole("region", { name: "Configuration", exact: true });
+  await expect(configuration).toContainText("Any healthy source");
+  await expect(configuration).toContainText("wav");
   await page.getByRole("button", { name: "Configure", exact: true }).click();
-  const configureDialog = page.getByRole("dialog", { name: "Configure Availability Watch" });
-  await configureDialog.getByRole("combobox", { name: "Remote source", exact: true }).selectOption({
+  const configurePopover = page.getByRole("dialog", { name: "Configuration", exact: true });
+  await configurePopover.getByRole("combobox", { name: "Remote source", exact: true }).selectOption({
     label: "Remote Test",
   });
-  await configureDialog.getByRole("combobox", { name: "When available", exact: true }).selectOption({ label: "Track" });
-  await configureDialog.getByLabel("Exclude extensions", { exact: true }).fill("wav, flac");
-  await configureDialog.getByRole("button", { name: "Run now", exact: true }).click();
+  await configurePopover
+    .getByRole("group", { name: "When available", exact: true })
+    .getByRole("button", { name: "Track", exact: true })
+    .click();
+  await expect(configurePopover.getByRole("switch", { name: "Exclude extensions", exact: true })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await configurePopover.getByLabel("Extensions to exclude", { exact: true }).fill("wav, flac");
+  await configurePopover.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(configurePopover).toHaveCount(0);
+  await expect.poll(() => updates).toHaveLength(1);
+  await page.getByRole("button", { name: "Run", exact: true }).click();
   await expect(page.getByText("Availability Watch run #91 queued.", { exact: true })).toBeVisible();
   await expect.poll(() => updates).toHaveLength(2);
   expect(updates).toContainEqual({ action: "track", sourceId: 8, excludeExtensions: ["wav", "flac"] });
@@ -1272,19 +1279,18 @@ test("remote popular collection requires an explicit source and queues configure
   await mockWorkflows(page, (payload) => payloads.push(payload));
   await page.goto("/workflows");
   await page.getByRole("tab", { name: /Collect popular remote works/ }).click();
-  await page.getByRole("button", { name: "Configure", exact: true }).click();
 
-  const configureDialog = page.getByRole("dialog", { name: "Configure remote popular collection" });
-  await expect(configureDialog.getByLabel("Remote source")).toHaveValue("8");
-  await configureDialog.getByRole("button", { name: "Fetch", exact: true }).click();
-  await configureDialog.getByLabel("Work limit").selectOption("50");
-  const remoteTagField = configureDialog.getByTestId("remote-popular-tag-template-field");
+  const runOptions = page.getByRole("region", { name: "Run options", exact: true });
+  await expect(runOptions.getByLabel("Remote source")).toHaveValue("8");
+  await runOptions.getByRole("button", { name: "Fetch", exact: true }).click();
+  await runOptions.getByRole("group", { name: "Work limit" }).getByRole("button", { name: "50", exact: true }).click();
+  const remoteTagField = runOptions.getByTestId("remote-popular-tag-template-field");
   await expect(remoteTagField.getByRole("button", { name: /\{remote_name\}.*Remote_Test/ })).toBeVisible();
   await expect(remoteTagField.getByRole("button", { name: /\{source_code\}.*remote-test/ })).toBeVisible();
   await expect(remoteTagField.getByRole("button", { name: /\{action\}.*fetch/ })).toBeVisible();
   await remoteTagField.getByLabel("Tag template", { exact: true }).fill("weekly_{source_code}_{action}_popular");
   await expect(remoteTagField).toContainText("weekly_remote-test_fetch_popular");
-  await configureDialog.getByRole("button", { name: "Run collection" }).click();
+  await page.getByRole("button", { name: "Run", exact: true }).click();
 
   await expect.poll(() => payloads).toHaveLength(1);
   expect(payloads[0]).toEqual({
@@ -1292,6 +1298,7 @@ test("remote popular collection requires an explicit source and queues configure
     action: "fetch",
     limit: 50,
     tagNameTemplate: "weekly_{source_code}_{action}_popular",
+    skipTag: false,
   });
   await expect(page.getByText(/run #41 queued/)).toBeVisible();
 });

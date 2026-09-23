@@ -4,7 +4,13 @@ import {
   presetBlockers,
   presetDefaultValues,
   presetInputsPayload,
+  presetOptionalEnabled,
+  presetOptionalFlagKey,
+  presetReleaseRange,
+  presetTagEnabled,
+  PRESET_RELEASE_KEYS,
   presetValuesFromInputs,
+  PRESET_TAG_ENABLED_KEY,
   presetVisibleParameters,
 } from "./presetWorkflowModel";
 import type { WorkflowPreset } from "@/lib/api";
@@ -34,6 +40,7 @@ const circleFollow: WorkflowPreset = {
       options: ["unknown", "any"],
     },
     { key: "releaseFrom", kind: "date", group: "filter", required: false },
+    { key: "releaseTo", kind: "date", group: "filter", required: false },
     { key: "maxWorks", kind: "integer", group: "filter", required: false, default: 25, minimum: 1, maximum: 100 },
     {
       key: "action",
@@ -133,10 +140,76 @@ describe("presetWorkflowModel", () => {
     expect(
       presetBlockers(
         circleFollow,
-        { ...base, circleId: "RG1", releaseFrom: "2025/1/1" },
+        { ...base, circleId: "RG1", releaseFrom: "2025/1/1", releaseEnabled: "true" },
         { canFetch: true, automated: false },
       ),
     ).toEqual([{ kind: "invalid_date", key: "releaseFrom" }]);
+  });
+
+  it("turns tagging off with an empty template and requires a template while it is on", () => {
+    const base = { ...presetDefaultValues(circleFollow), circleId: "RG12345" };
+    expect(presetTagEnabled(base)).toBe(true);
+    const untagged = { ...base, [PRESET_TAG_ENABLED_KEY]: "false" };
+    expect(presetInputsPayload(circleFollow, untagged).tagNameTemplate).toBe("");
+    expect(presetBlockers(circleFollow, untagged, { canFetch: true, automated: false })).toEqual([]);
+    expect(
+      presetBlockers(circleFollow, { ...base, tagNameTemplate: " " }, { canFetch: true, automated: false }),
+    ).toEqual([{ kind: "required", key: "tagNameTemplate" }]);
+
+    const restored = presetValuesFromInputs(circleFollow, { circleId: "RG12345", tagNameTemplate: "" });
+    expect(presetTagEnabled(restored)).toBe(false);
+    expect(restored.tagNameTemplate).toBe("{date}_circle_{target}");
+  });
+
+  it("runs at the maximum when the work limit is switched off", () => {
+    const base = { ...presetDefaultValues(circleFollow), circleId: "RG12345" };
+    expect(presetOptionalEnabled(base, "maxWorks")).toBe(true);
+    expect(presetInputsPayload(circleFollow, base).maxWorks).toBe(25);
+    const unlimited = { ...base, [presetOptionalFlagKey("maxWorks")]: "false", maxWorks: "500" };
+    expect(presetInputsPayload(circleFollow, unlimited).maxWorks).toBe(100);
+    expect(presetBlockers(circleFollow, unlimited, { canFetch: true, automated: false })).toEqual([]);
+
+    const restored = presetValuesFromInputs(circleFollow, { circleId: "RG12345", maxWorks: 100 });
+    expect(presetOptionalEnabled(restored, "maxWorks")).toBe(false);
+    expect(restored.maxWorks).toBe("25");
+  });
+
+  it("sends an inclusive release range with open ends only while the range is on", () => {
+    const base = { ...presetDefaultValues(circleFollow), circleId: "RG12345", releaseFrom: "2025-01-01" };
+    expect(presetReleaseRange(base)).toEqual({ enabled: false, fromOpen: false, toOpen: true });
+    expect(presetInputsPayload(circleFollow, base)).not.toHaveProperty("releaseFrom");
+
+    const after = { ...base, [PRESET_RELEASE_KEYS.enabled]: "true" };
+    expect(presetInputsPayload(circleFollow, after)).toMatchObject({ releaseFrom: "2025-01-01" });
+    expect(presetInputsPayload(circleFollow, after)).not.toHaveProperty("releaseTo");
+
+    const before = {
+      ...after,
+      [PRESET_RELEASE_KEYS.fromOpen]: "true",
+      [PRESET_RELEASE_KEYS.toOpen]: "false",
+      releaseTo: "2025-06-30",
+    };
+    const beforePayload = presetInputsPayload(circleFollow, before);
+    expect(beforePayload).toMatchObject({ releaseTo: "2025-06-30" });
+    expect(beforePayload).not.toHaveProperty("releaseFrom");
+
+    const options = { canFetch: true, automated: false };
+    expect(presetBlockers(circleFollow, { ...before, releaseTo: "" }, options)).toEqual([
+      { kind: "required", key: "releaseTo" },
+    ]);
+    expect(presetBlockers(circleFollow, { ...before, [PRESET_RELEASE_KEYS.toOpen]: "true" }, options)).toEqual([
+      { kind: "release_range_open" },
+    ]);
+    expect(
+      presetBlockers(
+        circleFollow,
+        { ...before, [PRESET_RELEASE_KEYS.fromOpen]: "false", releaseFrom: "2025-07-01" },
+        options,
+      ),
+    ).toEqual([{ kind: "release_range_order" }]);
+
+    const restored = presetValuesFromInputs(circleFollow, { circleId: "RG12345", releaseTo: "2025-06-30" });
+    expect(presetReleaseRange(restored)).toEqual({ enabled: true, fromOpen: true, toOpen: false });
   });
 
   it("restores stored trigger inputs into form values", () => {

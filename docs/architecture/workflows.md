@@ -128,6 +128,10 @@ released within 30 days. The recoverable worker synchronizes metadata and
 appends a run-specific tag owned by the user who started the run. It does not
 create remote file-source presence or fetch media.
 
+Both collectors accept `skipTag` on a manual run. The run then renders no tag,
+adds none, and records its tag node as `skipped`; omitting the template without
+`skipTag` keeps the previous required (remote) or default (DLsite) tag.
+
 Configurable built-in triggers retain the configuring user for user-owned tag
 effects and revalidate that user's permissions when dispatching. Triggered runs
 store both their trigger reference and the final resolved input.
@@ -155,8 +159,8 @@ discover (circle_catalog | series_catalog | voice_source_works)
 ```
 
 `GET /api/workflow-presets` publishes each preset's parameter schema; the
-Workflows page renders it as a Configure dialog and as the startup or interval
-trigger form. `POST /api/workflow-presets/{code}/runs` validates the inputs,
+Workflows page renders it as the inline Run options below the workflow header and
+as the startup or interval trigger form. `POST /api/workflow-presets/{code}/runs` validates the inputs,
 checks that a selected source is an enabled compatible remote source, renders
 the tag template for this dispatch (`{date}`, `{target}`, `{action}`), builds
 the graph, validates it with the typed workflow graph validator, and enqueues
@@ -164,6 +168,18 @@ one recoverable `custom_workflow` job. The job payload carries the built graph,
 so Activity shows the real nodes while the definition record only stores a
 display pipeline. Required permissions are derived from the composed node
 capabilities: Fetch needs `downloads:manage`, tagging needs `tags:write`.
+
+The target parameter (`circleId`, `seriesId`, or `voiceName`) accepts up to 20
+entries separated by commas, semicolons, or new lines. They are normalized and
+deduplicated into one comma-separated input, and the single discover node reads
+each target in order, combining the catalogs and keeping each work once within
+its catalog bound. `{target}` renders the joined list as a tag fragment. An
+empty tag template omits the tag node.
+
+`releaseFrom` and `releaseTo` are optional inclusive bounds passed to
+`filter_works`; either may be omitted to leave that side open, and a start
+after the end is rejected. `maxWorks` always has a value: a disabled limit in
+the form sends the 100-work maximum rather than removing the bound.
 
 Every bound is explicit in the composed graph: `maxWorks` (at most 100), and for
 Fetch `maxFiles`, `maxBytes`, `minFreeBytes`, `allowUnknownSizes=false`, and
@@ -263,8 +279,10 @@ Availability Watch is one instance-level system workflow with a shared
   monitoring pool, rather than one watch per user. Authorized users can edit the
   pool of normalized work codes, while its configuration selects a compatible
 remote source (or any healthy compatible source), an action on availability,
-and Fetch extension exclusions. A change to that configuration records the
-user whose permissions govern its scheduled execution.
+and Fetch extension exclusions. Exclusions are opt-in: a watch created without
+an explicit configuration excludes no extensions. A change to that
+configuration records the user whose permissions govern its scheduled
+execution.
 
 It supports at most one interval schedule trigger and may also be run directly
 from its configuration surface. Each execution snapshots the active pool,

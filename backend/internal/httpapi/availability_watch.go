@@ -343,8 +343,8 @@ func (s *Server) persistAvailabilityWatchTargets(ctx context.Context, userID int
 	}
 	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO availability_watch (id, configured_by_user_id)
-		VALUES (?, ?)
+		INSERT INTO availability_watch (id, configured_by_user_id, exclude_extensions_json)
+		VALUES (?, ?, '[]')
 		ON CONFLICT(id) DO NOTHING
 	`, availabilityWatchID, userID); err != nil {
 		return err
@@ -396,7 +396,8 @@ func (s *Server) persistAvailabilityWatchTargets(ctx context.Context, userID int
 }
 
 func (s *Server) loadAvailabilityWatch(ctx context.Context) (availabilityWatchView, error) {
-	view := availabilityWatchView{Action: "monitor", ExcludeExtensions: []string{"wav"}, Targets: []availabilityWatchTarget{}}
+	// Extension exclusion is opt-in: a watch that was never configured excludes nothing.
+	view := availabilityWatchView{Action: "monitor", ExcludeExtensions: []string{}, Targets: []availabilityWatchTarget{}}
 	var sourceID sql.NullInt64
 	var rawExcluded string
 	err := s.db.QueryRowContext(ctx, `

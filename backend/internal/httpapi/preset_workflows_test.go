@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -81,12 +83,13 @@ func TestNormalizePresetWorkflowInputsRejectsInvalidValues(t *testing.T) {
 		raw  map[string]any
 		want string
 	}{
-		{"invalid circle", circle, map[string]any{"circleId": "RJ123456"}, "circleId must be"},
+		{"invalid circle", circle, map[string]any{"circleId": "RJ123456"}, "circleId must list"},
 		{"unknown key", circle, map[string]any{"circleId": "RG12345", "definitionId": 3}, "unknown preset input"},
 		{"track without source", circle, map[string]any{"circleId": "RG12345", "action": "track"}, "sourceId is required"},
 		{"bad action", circle, map[string]any{"circleId": "RG12345", "action": "delete"}, "action must be one of"},
 		{"works over limit", circle, map[string]any{"circleId": "RG12345", "maxWorks": 500}, "maxWorks must be between"},
 		{"bad date", circle, map[string]any{"circleId": "RG12345", "releaseFrom": "2025/01/01"}, "YYYY-MM-DD"},
+		{"reversed release range", circle, map[string]any{"circleId": "RG12345", "releaseFrom": "2025-02-01", "releaseTo": "2025-01-31"}, "must not be after"},
 		{"bad extension", circle, map[string]any{"circleId": "RG12345", "action": "fetch", "sourceId": 1, "excludeExtensions": []any{"a/b"}}, "invalid extension"},
 		{"voice without source", voice, map[string]any{"voiceName": "Example"}, "sourceId is required"},
 	}
@@ -95,6 +98,106 @@ func TestNormalizePresetWorkflowInputsRejectsInvalidValues(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), testCase.want) {
 			t.Fatalf("%s: err = %v, want %q", testCase.name, err, testCase.want)
 		}
+	}
+}
+
+func TestNormalizePresetWorkflowInputsSplitsTargetLists(t *testing.T) {
+	circle, _ := presetWorkflowSpecByCode("circle_follow")
+	series, _ := presetWorkflowSpecByCode("series_follow")
+	voice, _ := presetWorkflowSpecByCode("voice_follow")
+	cases := []struct {
+		spec presetWorkflowSpec
+		raw  map[string]any
+		read func(presetWorkflowInputs) string
+		want string
+	}{
+		{circle, map[string]any{"circleId": "rg12345, RG12345\nrg67890"}, func(i presetWorkflowInputs) string { return i.CircleID }, "RG12345, RG67890"},
+		{series, map[string]any{"seriesId": "sri0000001；SRI0000002"}, func(i presetWorkflowInputs) string { return i.SeriesID }, "SRI0000001, SRI0000002"},
+		{voice, map[string]any{"voiceName": "Example Voice、Other Voice", "sourceId": 91}, func(i presetWorkflowInputs) string { return i.VoiceName }, "Example Voice, Other Voice"},
+	}
+	for _, testCase := range cases {
+		inputs, err := normalizePresetWorkflowInputs(testCase.spec, testCase.raw)
+		if err != nil {
+			t.Fatalf("%s: %v", testCase.spec.Code, err)
+		}
+		if got := testCase.read(inputs); got != testCase.want {
+			t.Fatalf("%s targets = %q, want %q", testCase.spec.Code, got, testCase.want)
+		}
+	}
+	if values := presetWorkflowTagValues(circle, presetWorkflowInputs{CircleID: "RG12345, RG67890", Action: "metadata"}, time.Now()); values["target"] != "RG12345_RG67890" {
+		t.Fatalf("target tag value = %q", values["target"])
+	}
+
+	tooMany := make([]string, presetWorkflowMaxTargets+1)
+	for index := range tooMany {
+		tooMany[index] = fmt.Sprintf("RG%05d", 10000+index)
+	}
+	for name, raw := range map[string]map[string]any{
+		"invalid item": {"circleId": "RG12345, RJ00000000"},
+		"too many":     {"circleId": strings.Join(tooMany, ",")},
+		"only commas":  {"circleId": " , ,"},
+	} {
+		if _, err := normalizePresetWorkflowInputs(circle, raw); err == nil {
+			t.Fatalf("%s: expected an error", name)
+		}
+	}
+}
+
+func TestPresetWorkflowPassesInclusiveReleaseRangeToFilter(t *testing.T) {
+	spec, _ := presetWorkflowSpecByCode("circle_follow")
+	for _, raw := range []map[string]any{
+		{"circleId": "RG12345", "releaseFrom": "2025-01-01", "releaseTo": "2025-01-01"},
+		{"circleId": "RG12345", "releaseTo": "2025-06-30"},
+	} {
+		inputs, err := normalizePresetWorkflowInputs(spec, raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		definition := buildPresetWorkflowDefinition(spec, inputs, "")
+		config := definition.Nodes[1].Config
+		if config["releaseFrom"] != raw["releaseFrom"] {
+			t.Fatalf("filter releaseFrom = %v for %v", config["releaseFrom"], raw)
+		}
+		if config["releaseTo"] != raw["releaseTo"] {
+			t.Fatalf("filter releaseTo = %v for %v", config["releaseTo"], raw)
+		}
+		if inputs.public()["releaseTo"] != raw["releaseTo"] {
+			t.Fatalf("stored releaseTo = %v", inputs.public()["releaseTo"])
+		}
+	}
+	if !graphWorkMatchesFilter("2025-01-01", nil, nil, nil, map[string]any{"releaseFrom": "2025-01-01", "releaseTo": "2025-01-01"}) {
+		t.Fatal("a work released on the boundary date must match")
+	}
+}
+
+func TestSeriesCatalogNodeCombinesListedSeries(t *testing.T) {
+	db := openMigratedTestDB(t)
+	for _, statement := range []string{
+		"INSERT INTO party (id, display_name) VALUES (20, 'Example circle')",
+		"INSERT INTO party_series (id, party_id, provider_id, title_id, name) SELECT 30, 20, id, 'SRI0000001', 'First series' FROM metadata_provider WHERE code = 'dlsite'",
+		"INSERT INTO party_series (id, party_id, provider_id, title_id, name) SELECT 31, 20, id, 'SRI0000002', 'Second series' FROM metadata_provider WHERE code = 'dlsite'",
+		"INSERT INTO party_series_work (series_id, primary_code) VALUES (30, 'RJ00000000')",
+		"INSERT INTO party_series_work (series_id, primary_code) VALUES (31, 'RJ00000001')",
+		"INSERT INTO party_series_work (series_id, primary_code) VALUES (31, 'RJ00000000')",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server := NewServer(db, config.Config{})
+	execution, err := server.executeGraphSeriesCatalog(context.Background(), workflowGraphNode{
+		ID: "discover", Type: "series_catalog", Config: map[string]any{"seriesId": "SRI0000001, SRI0000002", "maxWorks": 10},
+	}, map[string]graphPortValue{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	codes := []string{}
+	for _, candidate := range execution.Outputs["works"].Candidates {
+		codes = append(codes, candidate.Code)
+	}
+	sort.Strings(codes)
+	if got := strings.Join(codes, ","); got != "RJ00000000,RJ00000001" {
+		t.Fatalf("combined series works = %s", got)
 	}
 }
 
