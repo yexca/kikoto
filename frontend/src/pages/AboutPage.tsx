@@ -1,10 +1,10 @@
 import { BookOpen, Boxes, FolderCode, Github, History, RefreshCw, Scale, Sparkles } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogBody, DialogHeader } from "@/components/ui/dialog";
+import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { APP_CLIENT_VERSION, githubReleaseURL } from "@/lib/appInfo";
 import { api, type AppUpdate } from "@/lib/api";
 import { KIKOTO_GITHUB_ENDPOINTS } from "@/lib/official-links";
@@ -32,7 +32,7 @@ const aiModelHistory = [
   { from: null, to: "v0.1.0", models: ["GPT-5.5"] },
   { from: "v0.1.1", to: "v0.5.4", models: ["GPT-5.6-Sol"] },
   { from: "v0.5.5", to: "v0.6.0", models: ["GPT-6-Astra"] },
-  { from: "v0.6.1", to: null, models: ["GPT-6-Astra", "Claude Opus 5"] },
+  { from: "v0.6.1", to: null, models: ["GPT-6-Astra", "Claude Opus 5", "Claude Fable 5.1"] },
 ] as const;
 
 const currentAiModels = aiModelHistory[aiModelHistory.length - 1];
@@ -59,7 +59,6 @@ const technologyGroups = [
 export function AboutPage() {
   const { t } = useTranslation();
   const [update, setUpdate] = useState<AppUpdate | null>(null);
-  const [modelHistoryOpen, setModelHistoryOpen] = useState(false);
   useEffect(() => {
     let active = true;
     void api
@@ -128,13 +127,15 @@ export function AboutPage() {
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
             <p>{t("about.aiCredit")}</p>
-            <p>
-              {t("about.currentModels", { version: currentAiModels.from, models: currentAiModels.models.join(", ") })}
-            </p>
-            <Button size="sm" variant="outline" onClick={() => setModelHistoryOpen(true)}>
-              <History className="h-4 w-4" />
-              {t("about.viewModelHistory")}
-            </Button>
+            <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
+              <p className="min-w-0 flex-1">
+                {t("about.currentModels", {
+                  version: currentAiModels.from,
+                  models: currentAiModels.models.join(", "),
+                })}
+              </p>
+              <ModelHistoryPopover />
+            </div>
           </CardContent>
         </Card>
 
@@ -231,30 +232,41 @@ export function AboutPage() {
           </CardContent>
         </Card>
       </section>
-      {modelHistoryOpen && <ModelHistoryDialog onClose={() => setModelHistoryOpen(false)} />}
     </div>
   );
 }
 
-function ModelHistoryDialog({ onClose }: { onClose: () => void }) {
+function ModelHistoryPopover() {
   const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
   return (
-    <Dialog onClose={onClose} size="lg">
-      <DialogHeader
-        title={t("about.modelHistoryTitle")}
-        description={t("about.modelHistoryDescription")}
-        icon={<Sparkles className="h-4 w-4" />}
-        onClose={onClose}
-        closeLabel={t("common.close")}
-      />
-      <DialogBody className="p-0">
-        <table className="w-full text-left text-sm">
+    <div ref={anchorRef} className="shrink-0">
+      <Button size="sm" variant="outline" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+        <History className="h-4 w-4" />
+        {t("about.viewModelHistory")}
+      </Button>
+      <AnchoredPopover
+        open={open}
+        anchorRef={anchorRef}
+        onOpenChange={setOpen}
+        ariaLabel={t("about.modelHistoryTitle")}
+        className="w-[min(26rem,calc(100vw-1.5rem))] text-sm"
+      >
+        <div className="border-b px-4 py-3">
+          <p className="flex items-center gap-2 font-medium">
+            <Sparkles className="h-4 w-4" aria-hidden="true" />
+            {t("about.modelHistoryTitle")}
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{t("about.modelHistoryDescription")}</p>
+        </div>
+        <table className="w-full text-left">
           <thead className="border-b bg-muted/35 text-xs text-muted-foreground">
             <tr>
-              <th scope="col" className="px-5 py-2.5 font-medium">
+              <th scope="col" className="px-4 py-2 font-medium">
                 {t("about.versionColumn")}
               </th>
-              <th scope="col" className="px-5 py-2.5 font-medium">
+              <th scope="col" className="px-4 py-2 font-medium">
                 {t("about.modelColumn")}
               </th>
             </tr>
@@ -262,13 +274,13 @@ function ModelHistoryDialog({ onClose }: { onClose: () => void }) {
           <tbody className="divide-y">
             {aiModelHistory.map((entry) => (
               <tr key={entry.from ?? "start"}>
-                <td className="whitespace-nowrap px-5 py-3 tabular-nums">
+                <td className="whitespace-nowrap px-4 py-2.5 align-top tabular-nums">
                   {`${entry.from ?? t("about.firstRelease")} – ${entry.to ?? t("about.present")}`}
                 </td>
-                <td className="px-5 py-3">
-                  <div className="flex flex-wrap gap-2">
+                <td className="px-4 py-2.5">
+                  <div className="flex flex-wrap gap-1.5">
                     {entry.models.map((model) => (
-                      <span key={model} className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">
+                      <span key={model} className="rounded-md border bg-background px-2 py-0.5 text-xs text-foreground">
                         {model}
                       </span>
                     ))}
@@ -278,7 +290,7 @@ function ModelHistoryDialog({ onClose }: { onClose: () => void }) {
             ))}
           </tbody>
         </table>
-      </DialogBody>
-    </Dialog>
+      </AnchoredPopover>
+    </div>
   );
 }
