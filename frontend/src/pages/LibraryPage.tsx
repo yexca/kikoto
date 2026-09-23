@@ -85,6 +85,7 @@ import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRem
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
+import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
 import { MetadataOnboardingNotice } from "@/components/MetadataOnboardingNotice";
 import {
   ArrowDownAZ,
@@ -100,6 +101,7 @@ import {
   ExternalLink,
   Filter,
   GitBranchPlus,
+  GitFork,
   HardDrive,
   HardDriveDownload,
   Headphones,
@@ -2103,7 +2105,7 @@ function useRemoteSourceActions({
   const [saveConfirm, setSaveConfirm] = useState<{ codes: string[]; run: () => Promise<void> } | null>(null);
   const fetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged: () => onSynced(0) });
 
-  const trackWork = async (work: RemoteWork, reason: string) => {
+  const forkWork = async (work: RemoteWork, reason: string) => {
     if (!work.primaryCode) {
       toast.warning(t("library.remoteWorkNoCode"));
       return;
@@ -2116,12 +2118,12 @@ function useRemoteSourceActions({
       toast.notify({
         kind: "info",
         message: result.deduplicated
-          ? t("workflowPage.trackAlreadyQueued", { runId: result.runId })
-          : t("workflowPage.trackQueued", { runId: result.runId }),
+          ? t("libraryDetail.forkAlreadyQueued", { runId: result.runId })
+          : t("libraryDetail.forkQueued", { runId: result.runId }),
       });
       return result.runId;
     } catch (error) {
-      toast.notify(toastFromError(error, t("library.trackCouldNotQueue")));
+      toast.notify(toastFromError(error, t("libraryDetail.forkQueueFailed")));
       return null;
     } finally {
       setIsSyncingCode(null);
@@ -2153,7 +2155,7 @@ function useRemoteSourceActions({
     }
   };
 
-  const bulkSyncSelected = async () => {
+  const bulkForkSelected = async () => {
     if (selectedSyncable.length === 0) return;
     setIsBulkBusy(true);
     try {
@@ -2162,7 +2164,7 @@ function useRemoteSourceActions({
         sourceId: source.id,
         codes: selectedSyncable.map(remoteWorkActionCode),
       });
-      const message = t("library.bulkTrackSummary", {
+      const message = t("library.bulkForkSummary", {
         runId: parent.runId,
         synced: parent.synced,
         failed: parent.failed,
@@ -2171,7 +2173,7 @@ function useRemoteSourceActions({
       else toast.success(message);
       await onSynced(0);
     } catch (error) {
-      toast.notify(toastFromError(error, t("library.bulkTrackFailed")));
+      toast.notify(toastFromError(error, t("library.bulkForkFailed")));
     } finally {
       setIsBulkBusy(false);
     }
@@ -2228,8 +2230,8 @@ function useRemoteSourceActions({
     isBulkBusy,
     saveConfirm,
     clearSaveConfirm: () => setSaveConfirm(null),
-    trackWork,
-    bulkSyncSelected,
+    forkWork,
+    bulkForkSelected,
     bulkSaveSelected,
     runBulkSaveSelected,
     markRemoteWork,
@@ -2240,44 +2242,52 @@ function useRemoteSourceActions({
 function RemoteSourceSelectionBar({
   t,
   selectedCount,
-  selectedSyncableCount,
-  selectedSaveableCount,
+  scopeSelectableCount,
+  selectedForkableCount,
+  selectedFetchableCount,
   isBulkBusy,
-  onSelectAll,
-  onCancel,
-  onTrack,
+  onSelectScope,
+  onClear,
+  onExit,
+  onFork,
   onFetch,
 }: {
   t: TFunction;
   selectedCount: number;
-  selectedSyncableCount: number;
-  selectedSaveableCount: number;
+  scopeSelectableCount: number;
+  selectedForkableCount: number;
+  selectedFetchableCount: number;
   isBulkBusy: boolean;
-  onSelectAll: () => void;
-  onCancel: () => void;
-  onTrack: () => void;
+  onSelectScope: () => void;
+  onClear: () => void;
+  onExit: () => void;
+  onFork: () => void;
   onFetch: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
-      <div className="text-muted-foreground">{t("library.selectedCount", { count: selectedCount })}</div>
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" onClick={onSelectAll}>
-          {t("library.selectAll")}
-        </Button>
-        <Button variant="outline" size="sm" onClick={onCancel}>
-          {t("library.cancelSelection")}
-        </Button>
-        <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSyncableCount === 0} onClick={onTrack}>
-          <GitBranchPlus className="h-4 w-4" />
-          {t("library.trackCount", { count: selectedSyncableCount })}
-        </Button>
-        <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSaveableCount === 0} onClick={onFetch}>
-          <HardDriveDownload className="h-4 w-4" />
-          {t("library.fetchCount", { count: selectedSaveableCount })}
-        </Button>
-      </div>
-    </div>
+    <WorkSelectionBar
+      selectedCount={selectedCount}
+      scopeSelectableCount={scopeSelectableCount}
+      scopeSelectedCount={selectedCount}
+      onSelectScope={onSelectScope}
+      onClear={onClear}
+      onExit={onExit}
+    >
+      <WorkSelectionAction
+        icon={<GitFork className="h-4 w-4" />}
+        label={t("detailActions.fork")}
+        count={selectedForkableCount}
+        disabled={isBulkBusy}
+        onClick={onFork}
+      />
+      <WorkSelectionAction
+        icon={<HardDriveDownload className="h-4 w-4" />}
+        label={t("detailActions.fetch")}
+        count={selectedFetchableCount}
+        disabled={isBulkBusy}
+        onClick={onFetch}
+      />
+    </WorkSelectionBar>
   );
 }
 
@@ -2358,7 +2368,7 @@ function RemoteSourceResults({
               isBusy={isSyncingCode === work.primaryCode || actions.fetchWorkspace.isBusy}
               onSelectedChange={(checked) => onToggleBulkCode(work.primaryCode, checked)}
               onOpen={() => onOpenPreview(work)}
-              onFetch={() => void actions.trackWork(work, "manual_track")}
+              onFork={() => void actions.forkWork(work, "manual_fork")}
               onTagOpen={onTagOpen}
               onMark={(status) => void actions.markRemoteWork(work, status)}
               onSave={() =>
@@ -2444,7 +2454,7 @@ function RemoteSourcePanel({
     onWorkStateChanged,
     onSynced,
   });
-  const { isSyncingCode, isBulkBusy, saveConfirm, clearSaveConfirm, bulkSyncSelected, bulkSaveSelected } = actions;
+  const { isSyncingCode, isBulkBusy, saveConfirm, clearSaveConfirm, bulkForkSelected, bulkSaveSelected } = actions;
   const remotePaginationProps = model.remotePaginationProps;
   const remoteTopPagination = (
     <WorkCollectionPagination {...remotePaginationProps} placement="top" compactMobile compactTop />
@@ -2457,15 +2467,17 @@ function RemoteSourcePanel({
         <RemoteSourceSelectionBar
           t={t}
           selectedCount={model.selectedWorks.length}
-          selectedSyncableCount={model.selectedSyncable.length}
-          selectedSaveableCount={model.selectedSaveable.length}
+          scopeSelectableCount={model.selectableWorks.length}
+          selectedForkableCount={model.selectedSyncable.length}
+          selectedFetchableCount={model.selectedSaveable.length}
           isBulkBusy={isBulkBusy}
-          onSelectAll={() => selection.toggleAllVisible(true)}
-          onCancel={() => {
+          onSelectScope={() => selection.toggleAllVisible(true)}
+          onClear={selection.clearSelection}
+          onExit={() => {
             selection.clearSelection();
             onSelectionModeChange(false);
           }}
-          onTrack={() => void bulkSyncSelected()}
+          onFork={() => void bulkForkSelected()}
           onFetch={() => void bulkSaveSelected()}
         />
       )}
@@ -2700,7 +2712,7 @@ function RemoteWorkCard({
   isBusy,
   onSelectedChange,
   onOpen,
-  onFetch,
+  onFork,
   onTagOpen,
   onMark,
   onSave,
@@ -2715,7 +2727,7 @@ function RemoteWorkCard({
   isBusy: boolean;
   onSelectedChange: (checked: boolean) => void;
   onOpen: () => void;
-  onFetch: () => void;
+  onFork: () => void;
   onTagOpen: (tag: string) => void;
   onMark: (status: ListeningStatus) => void;
   onSave: () => void;
@@ -2741,14 +2753,14 @@ function RemoteWorkCard({
           right={
             <>
               <WorkCardActionButton
-                title={i18n.t("detailActions.track")}
+                title={i18n.t("detailActions.fork")}
                 disabled={isBusy || !work.primaryCode}
                 onClick={(event) => {
                   event.stopPropagation();
-                  onFetch();
+                  onFork();
                 }}
               >
-                <GitBranchPlus className="h-4 w-4" />
+                <GitFork className="h-4 w-4" />
               </WorkCardActionButton>
               <WorkCardActionButton
                 title={i18n.t("detailActions.fetch")}

@@ -5,7 +5,7 @@ import {
   CircleAlert,
   ExternalLink,
   FileAudio,
-  GitBranchPlus,
+  GitFork,
   HardDriveDownload,
   Heart,
   ListChecks,
@@ -23,7 +23,6 @@ import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { MobileSheet } from "@/components/ui/mobile-sheet";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { Dialog, DialogFooter, DialogHeader } from "@/components/ui/dialog";
@@ -61,6 +60,7 @@ import {
   useWorkCollectionLayout,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
+import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
 import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
@@ -529,7 +529,7 @@ function CircleDetailPage({
   const pagedWorks = filteredWorks.slice((currentWorkPage - 1) * workPageSize, currentWorkPage * workPageSize);
   const selectablePagedWorks = pagedWorks.filter(isCircleBulkSaveSelectable);
   const selectedWorks = circle.works.filter((work) => selectedWorkCodes.has(work.primaryCode));
-  const selectedSyncableWorks = selectedWorks.filter((work) => work.workId === null);
+  const selectedForkableWorks = selectedWorks.filter((work) => work.workId === null);
   const circleListStorageScope = currentClientStorageScope(auth.user?.id ?? null);
   const navigateToList = () => navigateToCirclesList(circleListStorageScope, compactLayout);
   usePageHeaderBack({
@@ -766,29 +766,27 @@ function CircleDetailPage({
     }
   };
 
-  const bulkSyncAndSaveSelected = async () => {
-    if (selectedSyncableWorks.length === 0) return;
-    if (!requireDownloadsManage()) return;
+  const bulkForkSelected = async () => {
+    if (selectedForkableWorks.length === 0) return;
     setIsBulkSaving(true);
     try {
-      const results = await runCircleBulkBySource(selectedSyncableWorks, "track_fetch");
+      const results = await runCircleBulkBySource(selectedForkableWorks, "track");
       const synced = results.reduce((total, result) => total + result.synced, 0);
-      const fetched = results.reduce((total, result) => total + result.fetched, 0);
       const failed = results.reduce((total, result) => total + result.failed, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      const message = t("creatorBrowse.bulkTrackFetchSummary", { runIds, synced, fetched, failed });
+      const message = t("creatorBrowse.bulkForkSummary", { runIds, synced, failed });
       if (failed > 0) toast.warning(message);
       else toast.success(message);
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
-      toast.notify(toastFromError(error, t("creatorBrowse.bulkTrackFetchFailed")));
+      toast.notify(toastFromError(error, t("creatorBrowse.bulkForkFailed")));
     } finally {
       setIsBulkSaving(false);
     }
   };
 
-  const runCircleBulkBySource = (works: CircleCatalogWork[], action: "fetch" | "track_fetch") => {
+  const runCircleBulkBySource = (works: CircleCatalogWork[], action: "fetch" | "track") => {
     const groups = new Map<number, string[]>();
     works.forEach((work) => {
       const target = circleWorkRemoteTarget(work);
@@ -809,21 +807,21 @@ function CircleDetailPage({
     });
   };
 
-  const syncSingleWork = async (work: CircleCatalogWork) => {
+  const forkSingleWork = async (work: CircleCatalogWork) => {
     const target = circleWorkRemoteTarget(work);
     if (!target) return;
     setIsBulkSaving(true);
     try {
-      const result = await api.trackRemoteSourceWork(target.sourceId, target.code, "circle_card_fetch");
+      const result = await api.trackRemoteSourceWork(target.sourceId, target.code, "circle_card_fork");
       announceRemoteTrackCreated(target.sourceId, target.code, result);
       toast.notify({
         kind: "info",
         message: result.deduplicated
-          ? t("creatorBrowse.trackAlreadyQueued", { id: result.runId })
-          : t("creatorBrowse.trackQueued", { id: result.runId }),
+          ? t("libraryDetail.forkAlreadyQueued", { runId: result.runId })
+          : t("libraryDetail.forkQueued", { runId: result.runId }),
       });
     } catch (error) {
-      toast.notify(toastFromError(error, t("creatorBrowse.trackFailed")));
+      toast.notify(toastFromError(error, t("libraryDetail.forkQueueFailed")));
     } finally {
       setIsBulkSaving(false);
     }
@@ -1112,7 +1110,7 @@ function CircleDetailPage({
                           selectable={isCircleBulkSaveSelectable(work)}
                           selectionActive={false}
                           onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
-                          onSync={() => void syncSingleWork(work)}
+                          onFork={() => void forkSingleWork(work)}
                           onSave={() => void saveSingleWork(work)}
                           onDeleteMissing={() => setDeleteTarget(work)}
                           onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
@@ -1169,53 +1167,34 @@ function CircleDetailPage({
         ) : (
           <>
             {selectionMode && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Checkbox
-                    checked={
-                      selectablePagedWorks.length > 0 &&
-                      selectablePagedWorks.every((work) => selectedWorkCodes.has(work.primaryCode))
-                    }
-                    onCheckedChange={toggleVisibleSelection}
-                    aria-label={t("detailActions.select")}
-                  />
-                  {t("library.selectedCount", { count: selectedWorks.length })}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={() => toggleVisibleSelection(true)}>
-                    {t("library.selectAll")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setSelectedWorkCodes(new Set());
-                      setSelectionMode(false);
-                    }}
-                  >
-                    {t("library.cancelSelection")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isBulkSaving || selectedSyncableWorks.length === 0}
-                    onClick={() => void bulkSyncAndSaveSelected()}
-                  >
-                    <GitBranchPlus className="h-4 w-4" />
-                    {t("library.trackCount", { count: selectedSyncableWorks.length })} +{" "}
-                    {t("library.fetchCount", { count: selectedSyncableWorks.length })}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isBulkSaving || selectedWorks.length === 0}
-                    onClick={() => void bulkSaveSelected()}
-                  >
-                    <HardDriveDownload className="h-4 w-4" />
-                    {t("library.fetchCount", { count: selectedWorks.length })}
-                  </Button>
-                </div>
-              </div>
+              <WorkSelectionBar
+                selectedCount={selectedWorks.length}
+                scopeSelectableCount={selectablePagedWorks.length}
+                scopeSelectedCount={
+                  selectablePagedWorks.filter((work) => selectedWorkCodes.has(work.primaryCode)).length
+                }
+                onSelectScope={() => toggleVisibleSelection(true)}
+                onClear={() => setSelectedWorkCodes(new Set())}
+                onExit={() => {
+                  setSelectedWorkCodes(new Set());
+                  setSelectionMode(false);
+                }}
+              >
+                <WorkSelectionAction
+                  icon={<GitFork className="h-4 w-4" />}
+                  label={t("detailActions.fork")}
+                  count={selectedForkableWorks.length}
+                  disabled={isBulkSaving}
+                  onClick={() => void bulkForkSelected()}
+                />
+                <WorkSelectionAction
+                  icon={<HardDriveDownload className="h-4 w-4" />}
+                  label={t("detailActions.fetch")}
+                  count={selectedWorks.length}
+                  disabled={isBulkSaving}
+                  onClick={() => void bulkSaveSelected()}
+                />
+              </WorkSelectionBar>
             )}
 
             <div className={workCollectionClassName()} style={workCollectionStyle(mobileColumns, desktopColumns)}>
@@ -1229,7 +1208,7 @@ function CircleDetailPage({
                       selectable={isCircleBulkSaveSelectable(work)}
                       selectionActive={selectionMode}
                       onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
-                      onSync={() => void syncSingleWork(work)}
+                      onFork={() => void forkSingleWork(work)}
                       onSave={() => void saveSingleWork(work)}
                       onDeleteMissing={() => setDeleteTarget(work)}
                       onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
@@ -1319,7 +1298,7 @@ function CatalogWorkCard({
   selectable,
   selectionActive,
   onSelectedChange,
-  onSync,
+  onFork,
   onSave,
   onDeleteMissing,
   onStatusChange,
@@ -1333,7 +1312,7 @@ function CatalogWorkCard({
   selectable: boolean;
   selectionActive: boolean;
   onSelectedChange: (checked: boolean) => void;
-  onSync: () => void;
+  onFork: () => void;
   onSave: () => void;
   onDeleteMissing: () => void;
   onStatusChange: (status: ListeningStatus) => void;
@@ -1368,14 +1347,14 @@ function CatalogWorkCard({
           right={
             <>
               <WorkCardActionButton
-                title={t("detailActions.track")}
+                title={t("detailActions.fork")}
                 disabled={busy || !circleWorkRemoteTarget(work)}
                 onClick={(event) => {
                   event.stopPropagation();
-                  onSync();
+                  onFork();
                 }}
               >
-                <GitBranchPlus className="h-4 w-4" />
+                <GitFork className="h-4 w-4" />
               </WorkCardActionButton>
               <WorkCardActionButton
                 title={t("detailActions.fetch")}
