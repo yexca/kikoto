@@ -161,9 +161,12 @@ export const surfaceHant = {
     previewDuration: "影片預覽，長度 {{duration}}",
     retry: "重試",
   },
-  permissions: { demoReadOnly: "示範模式為唯讀。", permissionDenied: "您的帳戶沒有使用此功能的權限。" },
+  permissions: {
+    demoReadOnly: "示範模式為唯讀。",
+    demoReadOnlyNotice: "示範模式：可以檢視全部功能，但無法變更伺服器資料。",
+    permissionDenied: "您的帳戶沒有使用此功能的權限。",
+  },
   workflow: {
-    demoReadOnly: "示範模式為唯讀。無法變更工作流程定義、排程、執行和審核。",
     existingDataShown: "仍會顯示現有工作流程資料。",
   },
   maintenance: {
@@ -299,7 +302,6 @@ export const surfaceHant = {
       enableDescription: "播放預覽可能執行遠端追蹤同步以取得媒體和目錄資訊。這不是取得操作，不會將媒體發佈到 /data。",
       enable: "啟用快取",
     },
-    demoReadOnly: "示範模式為唯讀。設定和來源可檢視但不能變更。",
     tabs: {
       ...surfaceEnglish.maintenance.tabs,
       overview: "概覽",
@@ -480,6 +482,7 @@ export const surfaceHant = {
   },
   workflowPage: {
     ...surfaceEnglish.workflowPage,
+    viewTrigger: "檢視 {{name}}",
     builtInDefinitions: {
       circle_follow: {
         name: "關注社團",
@@ -1584,8 +1587,6 @@ export const surfaceHant = {
     all: "全部收藏",
     lists: "收藏清單",
     listTabs: "收藏清單標籤",
-    listOptions: "收藏清單選項",
-    manageLists: "管理收藏清單",
     quickMarkWorks: "帶有快速標記的作品",
     exitSelection: "結束選取",
     selectWorks: "選取作品",

@@ -27,7 +27,7 @@ function requestedVoiceId() {
  * with their confirmed aliases, and a dialog that reviews aliases and merges
  * duplicates for one person. `?voice=<id>` opens that person's dialog directly.
  */
-export function VoiceAliasMaintenance({ canManage }: { canManage: boolean }) {
+export function VoiceAliasMaintenance({ canManage, readOnly = false }: { canManage: boolean; readOnly?: boolean }) {
   const { t } = useTranslation();
   const toast = useToast();
   const { resolvedLocale } = useLocale();
@@ -222,6 +222,7 @@ export function VoiceAliasMaintenance({ canManage }: { canManage: boolean }) {
         <VoiceAliasDialog
           personId={managedId}
           canManage={canManage}
+          readOnly={readOnly}
           onClose={closeVoice}
           onAliasesChange={(aliases) => updateVoiceAliases(managedId, aliases)}
           onMerged={() => setRefreshKey((current) => current + 1)}
@@ -314,6 +315,7 @@ function VoiceAliasRow({
 function VoiceAliasDialog({
   personId,
   canManage,
+  readOnly,
   onClose,
   onAliasesChange,
   onMerged,
@@ -321,6 +323,7 @@ function VoiceAliasDialog({
 }: {
   personId: number;
   canManage: boolean;
+  readOnly: boolean;
   onClose: () => void;
   onAliasesChange: (aliases: VoiceAlias[]) => void;
   onMerged: () => void;
@@ -375,6 +378,7 @@ function VoiceAliasDialog({
             personId={personId}
             aliases={aliases}
             canManage={canManage}
+            readOnly={readOnly}
             onAliasesChange={(next) => {
               setAliases(next);
               onAliasesChange(next);

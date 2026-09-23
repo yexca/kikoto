@@ -35,6 +35,7 @@ export function RemoteSourceDialog({
   defaultSaveTemplate,
   editing,
   saving,
+  readOnly = false,
   onChange,
   onSave,
   onClose,
@@ -43,6 +44,8 @@ export function RemoteSourceDialog({
   defaultSaveTemplate: string;
   editing: boolean;
   saving: boolean;
+  /** Demo opens existing sources for inspection; every field stays visible but cannot be changed. */
+  readOnly?: boolean;
   onChange: (source: FileSource) => void;
   onSave: () => Promise<void>;
   onClose: () => void;
@@ -64,7 +67,7 @@ export function RemoteSourceDialog({
     source.config.saveRootTemplate?.trim() || defaultSaveTemplate,
     source.code.trim() || "source",
   );
-  const canSave = Boolean(source.displayName.trim() && source.endpoint.apiUrl.trim()) && !saving;
+  const canSave = Boolean(source.displayName.trim() && source.endpoint.apiUrl.trim()) && !saving && !readOnly;
 
   useEffect(() => () => detectAbort.current?.abort(), []);
 
@@ -170,6 +173,7 @@ export function RemoteSourceDialog({
                 id="remote-source-name"
                 ref={nameInput}
                 value={source.displayName}
+                readOnly={readOnly}
                 onChange={(event) => patch({ displayName: event.target.value })}
               />
             </label>
@@ -181,6 +185,7 @@ export function RemoteSourceDialog({
               </div>
               <Switch
                 checked={source.enabled}
+                disabled={readOnly}
                 onCheckedChange={(enabled) => patch({ enabled })}
                 aria-label={t("maintenance.library.enableSource")}
               />
@@ -207,6 +212,7 @@ export function RemoteSourceDialog({
                     <Input
                       ref={apiInput}
                       value={source.endpoint.apiUrl}
+                      readOnly={readOnly}
                       spellCheck={false}
                       placeholder="https://api.kikoeru.example.invalid"
                       onChange={(event) => patchEndpoint({ apiUrl: event.target.value })}
@@ -215,6 +221,7 @@ export function RemoteSourceDialog({
                   <Field label={t("maintenance.library.publicSiteUrl")}>
                     <Input
                       value={source.endpoint.baseUrl}
+                      readOnly={readOnly}
                       spellCheck={false}
                       onChange={(event) => patchEndpoint({ baseUrl: event.target.value })}
                     />
@@ -223,6 +230,7 @@ export function RemoteSourceDialog({
                     <Field label={t("maintenance.library.workUrlTemplate")}>
                       <Input
                         value={source.endpoint.workUrlTemplate}
+                        readOnly={readOnly}
                         spellCheck={false}
                         onChange={(event) => patchEndpoint({ workUrlTemplate: event.target.value })}
                       />
@@ -232,6 +240,7 @@ export function RemoteSourceDialog({
                         type="number"
                         min={1}
                         value={source.priority}
+                        readOnly={readOnly}
                         onChange={(event) => patch({ priority: Number(event.target.value) })}
                       />
                     </Field>
@@ -239,6 +248,7 @@ export function RemoteSourceDialog({
                   <Field label={t("maintenance.library.fallbackUrl")}>
                     <Input
                       value={source.endpoint.fallbackUrl}
+                      readOnly={readOnly}
                       spellCheck={false}
                       onChange={(event) => patchEndpoint({ fallbackUrl: event.target.value })}
                     />
@@ -260,6 +270,7 @@ export function RemoteSourceDialog({
                       </div>
                       <Switch
                         checked={source.endpoint.restrictOutboundHosts ?? false}
+                        disabled={readOnly}
                         onCheckedChange={(restrictOutboundHosts) => patchEndpoint({ restrictOutboundHosts })}
                         aria-label={t("maintenance.library.restrictOutboundHosts")}
                       />
@@ -291,6 +302,7 @@ export function RemoteSourceDialog({
                           <Textarea
                             className="min-h-24 resize-y font-mono text-xs"
                             value={(source.endpoint.allowedHostPatterns ?? []).join("\n")}
+                            readOnly={readOnly}
                             onChange={(event) =>
                               patchEndpoint({ allowedHostPatterns: event.target.value.split(/\r?\n/u) })
                             }

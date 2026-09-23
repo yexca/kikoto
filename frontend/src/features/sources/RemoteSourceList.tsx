@@ -67,7 +67,6 @@ export function RemoteSourceList({
               type="button"
               className="min-w-0 flex-1 text-left disabled:cursor-default"
               onClick={() => onEdit(source)}
-              disabled={readOnly}
             >
               <span className={cn("block truncate text-sm font-medium", !source.enabled && "text-muted-foreground")}>
                 {source.displayName}
@@ -101,7 +100,6 @@ export function RemoteSourceList({
                 aria-label={t("maintenance.library.configure")}
                 title={t("maintenance.library.configure")}
                 onClick={() => onEdit(source)}
-                disabled={readOnly}
               >
                 <Settings2 className="h-4 w-4" />
               </Button>

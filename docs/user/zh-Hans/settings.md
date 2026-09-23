@@ -38,4 +38,4 @@ Activity 和 Workflows 保留原有功能。**前往元数据待处理列表**�
 
 元数据页面的正式地址为 `/metadata`。旧 `/work-management` 链接仍可使用，并保留筛选或设置上下文。首次同步失败及存在待处理元数据问题的结果入口会打开元数据问题列表；没有工作流权限的用户进入不限定运行的列表。运行诊断仍可在 Workflows 的 Activity 中查看。
 
-Settings 现在仅有 Account、Playback 和 Recommendation。Playback 内的目录偏好和推荐配置按账号保存到服务器，可跨设备使用；没有个人覆盖时沿用现有实例默认配置。保存推荐设置会更新当前页面的推荐会话，其他已打开页面保留原快照。Maintenance 仅保留 Library、Cache & Fetch、Users，全站推荐统计位于 Library 的折叠区域。外观设置只保留右上角入口，地球图标表示跟随浏览器或设备语言。Demo 模式不能修改账号偏好。
+Settings 现在仅有 Account、Playback 和 Recommendation。Playback 内的目录偏好和推荐配置按账号保存到服务器，可跨设备使用；没有个人覆盖时沿用现有实例默认配置。保存推荐设置会更新当前页面的推荐会话，其他已打开页面保留原快照。Maintenance 仅保留 Library、Cache & Fetch、Users，全站推荐统计位于 Library 的折叠区域。外观设置只保留右上角入口，地球图标表示跟随浏览器或设备语言。Demo 模式不能修改账号偏好；管理标签页（Library、Cache & Fetch、Cleanup、Users）仍可查看，但无法修改。

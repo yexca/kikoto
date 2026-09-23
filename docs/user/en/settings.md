@@ -26,8 +26,10 @@ value and restarting Kikoto replaces the stored root password and revokes its
 existing sessions. Other super administrators remain account-managed and can
 change their own passwords normally.
 
-Demo mode keeps account-backed Settings read-only. Appearance and playback
-controls remain available because theme mode, style, color, and seek intervals
+Demo mode keeps account-backed Settings read-only. The administration tabs
+(Library, Cache & Fetch, Cleanup, and Users) stay visible for inspection even
+though the Demo identity is not an administrator, and every change in them is
+disabled. Appearance and playback controls remain available because theme mode, style, color, and seek intervals
 are browser-local preferences and do not modify Demo server data. Playback
 preferences are isolated by server identity and authenticated user, or by the
 anonymous principal when anonymous access is enabled.

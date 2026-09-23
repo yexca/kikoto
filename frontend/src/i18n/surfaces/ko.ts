@@ -162,9 +162,12 @@ export const surfaceKorean = {
     previewDuration: "동영상 미리보기, 길이 {{duration}}",
     retry: "다시 시도",
   },
-  permissions: { demoReadOnly: "데모 모드는 읽기 전용입니다.", permissionDenied: "이 기능을 사용할 권한이 없습니다." },
+  permissions: {
+    demoReadOnly: "데모 모드는 읽기 전용입니다.",
+    demoReadOnlyNotice: "데모 모드: 모든 기능을 볼 수 있지만 서버 데이터는 변경할 수 없습니다.",
+    permissionDenied: "이 기능을 사용할 권한이 없습니다.",
+  },
   workflow: {
-    demoReadOnly: "데모 모드는 읽기 전용입니다. 워크플로 정의, 일정, 실행 및 검토를 변경할 수 없습니다.",
     existingDataShown: "기존 워크플로 데이터는 계속 표시됩니다.",
   },
   maintenance: {
@@ -305,7 +308,6 @@ export const surfaceKorean = {
         "재생 미리보기에서 미디어 및 디렉터리 정보를 얻기 위해 원격 추적 동기화를 수행할 수 있습니다. 가져오기가 아니며 /data에 미디어를 게시하지 않습니다.",
       enable: "캐시 활성화",
     },
-    demoReadOnly: "데모 모드는 읽기 전용입니다. 설정과 소스는 볼 수 있지만 변경할 수 없습니다.",
     tabs: {
       ...surfaceEnglish.maintenance.tabs,
       overview: "개요",
@@ -489,6 +491,7 @@ export const surfaceKorean = {
   },
   workflowPage: {
     ...surfaceEnglish.workflowPage,
+    viewTrigger: "{{name}} 보기",
     builtInDefinitions: {
       circle_follow: {
         name: "서클 팔로우",
@@ -1657,8 +1660,6 @@ export const surfaceKorean = {
     all: "모든 즐겨찾기",
     lists: "즐겨찾기 목록",
     listTabs: "즐겨찾기 목록 탭",
-    listOptions: "즐겨찾기 목록 옵션",
-    manageLists: "즐겨찾기 목록 관리",
     quickMarkWorks: "빠른 표시가 있는 작품",
     exitSelection: "선택 종료",
     selectWorks: "작품 선택",

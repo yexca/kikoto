@@ -1,6 +1,7 @@
 import { ExternalLink, Settings } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
@@ -129,14 +130,7 @@ export function WorkManagementPage({
 
   return (
     <div className="min-w-0 space-y-4">
-      {readOnly && (
-        <div
-          role="status"
-          className="rounded-lg border border-info-border bg-info-surface px-3 py-2 text-sm text-info-foreground"
-        >
-          {t("maintenance.demoReadOnly")}
-        </div>
-      )}
+      {readOnly && <DemoReadOnlyNotice />}
       <div className="flex items-center justify-between gap-3">
         <div
           ref={tabListRef}
@@ -211,7 +205,7 @@ export function WorkManagementPage({
         </div>
       </div>
       {view === "aliases" ? (
-        <VoiceAliasMaintenance canManage={canSyncMetadata && !readOnly} />
+        <VoiceAliasMaintenance canManage={canSyncMetadata && !readOnly} readOnly={readOnly} />
       ) : (
         <WorkMaintenance
           canManageSources={canManageSources}

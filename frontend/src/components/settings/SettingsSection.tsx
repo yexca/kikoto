@@ -135,6 +135,7 @@ export function SettingsNumberInput({
   step = 1,
   unit,
   onChange,
+  disabled = false,
   className,
 }: {
   id?: string;
@@ -145,6 +146,7 @@ export function SettingsNumberInput({
   step?: number;
   unit?: string;
   onChange: (value: number) => void;
+  disabled?: boolean;
   className?: string;
 }) {
   return (
@@ -164,6 +166,7 @@ export function SettingsNumberInput({
         max={max}
         step={step}
         value={value}
+        disabled={disabled}
         onChange={(event) => onChange(Number(event.target.value))}
       />
       {unit && (

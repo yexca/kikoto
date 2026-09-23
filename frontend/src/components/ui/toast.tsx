@@ -96,7 +96,9 @@ export function toastFromError(error: unknown, fallback: string): ToastInput {
     const messageKey = apiErrorMessageKeys[error.code];
     if (messageKey) {
       return {
-        kind: error.retryable || error.code === "database_busy" ? "warning" : "error",
+        // Demo rejections are expected read-only feedback, matching usePermissionGate.
+        kind:
+          error.retryable || error.code === "database_busy" || error.code === "demo_read_only" ? "warning" : "error",
         message: i18n.t(messageKey),
       };
     }

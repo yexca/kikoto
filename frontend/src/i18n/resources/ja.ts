@@ -473,7 +473,6 @@ export const japaneseResource = {
         profileUpdateFailed: "プロフィールの更新に失敗しました。",
         ["passwordChanged"]: "パスワードを変更しました。他のセッションはログアウトされました。",
         ["passwordChangeFailed"]: "パスワードの変更に失敗しました。",
-        demoReadOnly: "デモモードではアカウント設定は読み取り専用です。",
         accountMenu: "アカウントメニュー",
         reviewCount_one: "レビュー（{{count}}）",
         reviewCount_other: "レビュー（{{count}}）",

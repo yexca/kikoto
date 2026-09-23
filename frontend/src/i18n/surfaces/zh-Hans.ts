@@ -160,9 +160,12 @@ export const surfaceHans = {
     previewDuration: "视频预览，时长 {{duration}}",
     retry: "重试",
   },
-  permissions: { demoReadOnly: "演示模式为只读。", permissionDenied: "您的账户没有使用此功能的权限。" },
+  permissions: {
+    demoReadOnly: "演示模式为只读。",
+    demoReadOnlyNotice: "演示模式：可以查看全部功能，但无法更改服务器数据。",
+    permissionDenied: "您的账户没有使用此功能的权限。",
+  },
   workflow: {
-    demoReadOnly: "演示模式为只读。无法更改工作流定义、计划、运行和审核。",
     existingDataShown: "仍会显示现有工作流数据。",
   },
   maintenance: {
@@ -298,7 +301,6 @@ export const surfaceHans = {
       enableDescription: "播放预览可能执行远程跟踪同步以获取媒体和目录信息。这不是获取操作，不会将媒体发布到 /data。",
       enable: "启用缓存",
     },
-    demoReadOnly: "演示模式为只读。设置和来源可查看但不能更改。",
     tabs: {
       ...surfaceEnglish.maintenance.tabs,
       overview: "概览",
@@ -479,6 +481,7 @@ export const surfaceHans = {
   },
   workflowPage: {
     ...surfaceEnglish.workflowPage,
+    viewTrigger: "查看 {{name}}",
     builtInDefinitions: {
       circle_follow: {
         name: "关注社团",
@@ -1607,8 +1610,6 @@ export const surfaceHans = {
     all: "全部收藏",
     lists: "收藏列表",
     listTabs: "收藏列表标签",
-    listOptions: "收藏列表选项",
-    manageLists: "管理收藏列表",
     quickMarkWorks: "带有快速标记的作品",
     exitSelection: "退出选择",
     selectWorks: "选择作品",

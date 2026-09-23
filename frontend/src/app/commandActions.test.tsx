@@ -26,6 +26,23 @@ describe("commandActions", () => {
     expect(actions.map((action) => action.id)).toEqual(["page:library"]);
   });
 
+  it("offers read-only activity navigation without maintenance commands in Demo", () => {
+    const actions = commandActions({
+      hasPermission: () => false,
+      canView: () => true,
+      visibleNavItems: navigation,
+      onOpenPage: vi.fn(),
+      onOpenPath: vi.fn(),
+    });
+
+    expect(actions.map((action) => action.id)).toEqual([
+      "page:library",
+      "activity:running",
+      "activity:review",
+      "activity:failed",
+    ]);
+  });
+
   it("puts maintenance commands before navigation and runs a local scan through the shared command", async () => {
     const onOpenPath = vi.fn();
     vi.mocked(api.runLocalScan).mockResolvedValue({

@@ -164,10 +164,10 @@ export const surfaceJapanese = {
   },
   permissions: {
     demoReadOnly: "デモモードは読み取り専用です。",
+    demoReadOnlyNotice: "デモモード：すべての機能を表示できますが、サーバーのデータは変更できません。",
     permissionDenied: "この機能を使用する権限がありません。",
   },
   workflow: {
-    demoReadOnly: "デモモードは読み取り専用です。ワークフロー定義、スケジュール、実行、レビューは変更できません。",
     existingDataShown: "既存のワークフローデータは引き続き表示されます。",
   },
   maintenance: {
@@ -307,7 +307,6 @@ export const surfaceJapanese = {
         "再生プレビューはメディアやディレクトリ情報を得るためにリモート追跡同期を行う場合があります。Fetchとは異なり、/dataへのメディア公開は行いません。",
       enable: "キャッシュを有効化",
     },
-    demoReadOnly: "デモモードは読み取り専用です。設定とソースは表示できますが変更できません。",
     tabs: {
       ...surfaceEnglish.maintenance.tabs,
       overview: "概要",
@@ -491,6 +490,7 @@ export const surfaceJapanese = {
   },
   workflowPage: {
     ...surfaceEnglish.workflowPage,
+    viewTrigger: "{{name}} を表示",
     builtInDefinitions: {
       circle_follow: {
         name: "サークルをフォロー",
@@ -1662,8 +1662,6 @@ export const surfaceJapanese = {
     all: "すべてのお気に入り",
     lists: "お気に入りリスト",
     listTabs: "お気に入りリストのタブ",
-    listOptions: "お気に入りリストのオプション",
-    manageLists: "お気に入りリストを管理",
     quickMarkWorks: "クイックマーク付きの作品",
     exitSelection: "選択を終了",
     selectWorks: "作品を選択",

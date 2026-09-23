@@ -23,6 +23,13 @@ describe("toast error localization", () => {
     expect(databaseBusy.kind).toBe("warning");
     expect(databaseBusy.message).toBe("数据库繁忙，请稍后重试。");
 
+    const demoReadOnly = toastFromError(
+      new ApiError("demo mode is read-only", 403, "demo_read_only", false),
+      "fallback",
+    );
+    expect(demoReadOnly.kind).toBe("warning");
+    expect(demoReadOnly.message).toBe("演示模式为只读。");
+
     const unknown = toastFromError(new Error("private local path"), "安全回退");
     expect(unknown.message).toBe("安全回退");
     expect(unknown.message).not.toContain("private local path");

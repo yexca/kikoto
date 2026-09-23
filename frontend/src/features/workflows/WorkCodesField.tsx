@@ -38,11 +38,13 @@ export function WorkCodesField({
   value,
   onChange,
   className = "",
+  readOnly = false,
   ariaLabel,
 }: {
   value: string;
   onChange: (value: string) => void;
   className?: string;
+  readOnly?: boolean;
   ariaLabel?: string;
 }) {
   const parsed = parseWorkCodes(value);
@@ -51,6 +53,7 @@ export function WorkCodesField({
       <Textarea
         className="min-h-28 w-full resize-y font-mono"
         value={value}
+        readOnly={readOnly}
         onChange={(event) => onChange(event.target.value)}
         placeholder={"RJ00000000\nRJ00000001"}
         aria-label={ariaLabel}

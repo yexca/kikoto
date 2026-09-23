@@ -347,10 +347,12 @@ function useMetadataEditorActions({
 
 export function WorkMetadataEditorModal({
   work,
+  readOnly = false,
   onClose,
   onSaved,
 }: {
   work: WorkDetail;
+  readOnly?: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -408,97 +410,100 @@ export function WorkMetadataEditorModal({
         onClose={onClose}
         closeLabel={i18n.t("content.close")}
       />
-      <DialogBody className="space-y-5">
-        <EditorSection title={i18n.t("libraryDetail.work")}>
-          <LabeledInput label={i18n.t("libraryDetail.title")} value={title} onChange={setTitle} />
-          <div className="flex justify-end">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={saving || !manual.title}
-              onClick={() => void resetField("title")}
-            >
-              {i18n.t("libraryDetail.resetTitle")}
-            </Button>
-          </div>
-        </EditorSection>
+      <DialogBody>
+        {/* Demo opens the editor for inspection; every field stays visible but cannot be changed. */}
+        <fieldset disabled={readOnly} className="m-0 min-w-0 space-y-5 border-0 p-0">
+          <EditorSection title={i18n.t("libraryDetail.work")}>
+            <LabeledInput label={i18n.t("libraryDetail.title")} value={title} onChange={setTitle} />
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={saving || !manual.title}
+                onClick={() => void resetField("title")}
+              >
+                {i18n.t("libraryDetail.resetTitle")}
+              </Button>
+            </div>
+          </EditorSection>
 
-        <EditorSection title={i18n.t("libraryDetail.cover")}>
-          <MetadataEditorCoverSection
-            manualCover={manual.cover}
-            coverCandidates={coverState.coverCandidates}
-            selectedCoverId={coverState.selectedCoverId}
-            loadingCovers={coverState.loadingCovers}
-            saving={saving}
-            onSelectCover={coverState.setSelectedCoverId}
-            onReset={() => void resetField("cover")}
-          />
-        </EditorSection>
+          <EditorSection title={i18n.t("libraryDetail.cover")}>
+            <MetadataEditorCoverSection
+              manualCover={manual.cover}
+              coverCandidates={coverState.coverCandidates}
+              selectedCoverId={coverState.selectedCoverId}
+              loadingCovers={coverState.loadingCovers}
+              saving={saving}
+              onSelectCover={coverState.setSelectedCoverId}
+              onReset={() => void resetField("cover")}
+            />
+          </EditorSection>
 
-        <EditorSection title={i18n.t("libraryDetail.circle")}>
-          <MetadataEditorCircleSection
-            name={circleName}
-            externalId={circleExternalId}
-            suggestions={circleSuggestions}
-            saving={saving}
-            hasManualValue={Boolean(manual.circle)}
-            onNameChange={setCircleName}
-            onExternalIdChange={setCircleExternalId}
-            onSuggestionSelect={(item) => {
-              setCircleName(item.name);
-              setCircleExternalId(item.externalId);
-              setSeriesCircleExternalId(item.externalId);
-              circleSuggestions.clear();
-            }}
-            onReset={() => void resetField("circle")}
-          />
-        </EditorSection>
+          <EditorSection title={i18n.t("libraryDetail.circle")}>
+            <MetadataEditorCircleSection
+              name={circleName}
+              externalId={circleExternalId}
+              suggestions={circleSuggestions}
+              saving={saving}
+              hasManualValue={Boolean(manual.circle)}
+              onNameChange={setCircleName}
+              onExternalIdChange={setCircleExternalId}
+              onSuggestionSelect={(item) => {
+                setCircleName(item.name);
+                setCircleExternalId(item.externalId);
+                setSeriesCircleExternalId(item.externalId);
+                circleSuggestions.clear();
+              }}
+              onReset={() => void resetField("circle")}
+            />
+          </EditorSection>
 
-        <EditorSection title={i18n.t("libraryDetail.series")}>
-          <MetadataEditorSeriesSection
-            name={seriesName}
-            titleId={seriesTitleId}
-            circleExternalId={seriesCircleExternalId}
-            suggestions={seriesSuggestions}
-            saving={saving}
-            hasManualValue={Boolean(manual.series)}
-            onNameChange={setSeriesName}
-            onTitleIdChange={setSeriesTitleId}
-            onCircleExternalIdChange={setSeriesCircleExternalId}
-            onSuggestionSelect={(item) => {
-              setSeriesName(item.name);
-              setSeriesTitleId(item.titleId);
-              setSeriesCircleExternalId(item.circleExternalId);
-              seriesSuggestions.clear();
-            }}
-            onReset={() => void resetField("series")}
-          />
-        </EditorSection>
+          <EditorSection title={i18n.t("libraryDetail.series")}>
+            <MetadataEditorSeriesSection
+              name={seriesName}
+              titleId={seriesTitleId}
+              circleExternalId={seriesCircleExternalId}
+              suggestions={seriesSuggestions}
+              saving={saving}
+              hasManualValue={Boolean(manual.series)}
+              onNameChange={setSeriesName}
+              onTitleIdChange={setSeriesTitleId}
+              onCircleExternalIdChange={setSeriesCircleExternalId}
+              onSuggestionSelect={(item) => {
+                setSeriesName(item.name);
+                setSeriesTitleId(item.titleId);
+                setSeriesCircleExternalId(item.circleExternalId);
+                seriesSuggestions.clear();
+              }}
+              onReset={() => void resetField("series")}
+            />
+          </EditorSection>
 
-        <EditorSection title={i18n.t("libraryDetail.voiceActors")}>
-          <MetadataEditorVoiceActorsSection
-            voiceActors={voiceActors}
-            suggestions={voiceSuggestions}
-            focusedVoiceIndex={focusedVoiceIndex}
-            saving={saving}
-            hasManualValue={Boolean(manual.voiceActors?.length)}
-            onFocus={setFocusedVoiceIndex}
-            onUpdate={updateVoiceActor}
-            onRemove={removeVoiceActor}
-            onAdd={addVoiceActor}
-            onSuggestionSelect={(item) => {
-              updateVoiceActor(focusedVoiceIndex, { name: item.name, personId: item.personId });
-              voiceSuggestions.clear();
-            }}
-            onReset={() => void resetField("voice_actors")}
-          />
-        </EditorSection>
+          <EditorSection title={i18n.t("libraryDetail.voiceActors")}>
+            <MetadataEditorVoiceActorsSection
+              voiceActors={voiceActors}
+              suggestions={voiceSuggestions}
+              focusedVoiceIndex={focusedVoiceIndex}
+              saving={saving}
+              hasManualValue={Boolean(manual.voiceActors?.length)}
+              onFocus={setFocusedVoiceIndex}
+              onUpdate={updateVoiceActor}
+              onRemove={removeVoiceActor}
+              onAdd={addVoiceActor}
+              onSuggestionSelect={(item) => {
+                updateVoiceActor(focusedVoiceIndex, { name: item.name, personId: item.personId });
+                voiceSuggestions.clear();
+              }}
+              onReset={() => void resetField("voice_actors")}
+            />
+          </EditorSection>
+        </fieldset>
       </DialogBody>
       <DialogFooter>
         <Button variant="outline" size="sm" disabled={saving} onClick={onClose}>
           {i18n.t("content.cancel")}
         </Button>
-        <Button size="sm" disabled={saving} onClick={() => void save()}>
+        <Button size="sm" disabled={readOnly || saving} onClick={() => void save()}>
           {saving ? i18n.t("common.saving") : i18n.t("content.save")}
         </Button>
       </DialogFooter>

@@ -14,6 +14,8 @@ export type CommandAction = {
 
 type CommandActionContext = {
   hasPermission: (permission: string) => boolean;
+  /** Read-only view permission; Demo can open surfaces it cannot change. Defaults to hasPermission. */
+  canView?: (permission: string) => boolean;
   visibleNavItems: readonly NavigationItem[];
   translate?: (key: string) => string;
   onOpenPage: (id: PageID) => void;
@@ -22,6 +24,7 @@ type CommandActionContext = {
 
 export function commandActions({
   hasPermission,
+  canView = hasPermission,
   visibleNavItems,
   translate,
   onOpenPage,
@@ -79,7 +82,7 @@ export function commandActions({
       : []),
   ];
 
-  const activityActions: CommandAction[] = hasPermission("workflows:run")
+  const activityActions: CommandAction[] = canView("workflows:run")
     ? [
         {
           id: "activity:running",

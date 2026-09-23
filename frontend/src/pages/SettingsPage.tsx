@@ -1,4 +1,5 @@
 import { RecommendationActivity, UserPreferencePanels } from "@/features/preferences";
+import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
 import { Badge } from "@/components/ui/badge";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
@@ -84,13 +85,17 @@ export function SettingsPage({
     backward: String(seekPreferences.seekBackwardSeconds),
   }));
   const [seekError, setSeekError] = useState<string | null>(null);
-  const isAdmin = user.role === "admin" || user.role === "super_admin";
+  // Demo shows every administration surface read-only even though its identity
+  // is not an administrator; the server rejects every write.
+  const canViewAdministration = readOnly || user.role === "admin" || user.role === "super_admin";
   const isSystemAdmin = user.permissions.includes("system:admin");
-  const canManageSources = isAdmin && (readOnly || isSystemAdmin || user.permissions.includes("sources:write"));
-  const canManageUsers = isAdmin && (readOnly || isSystemAdmin || user.permissions.includes("users:manage"));
+  const hasAdminPermission = (permission: string) =>
+    canViewAdministration && (readOnly || isSystemAdmin || user.permissions.includes(permission));
+  const canManageSources = hasAdminPermission("sources:write");
+  const canManageUsers = hasAdminPermission("users:manage");
+  const canManageCache = hasAdminPermission("downloads:manage");
   const canManageAccessPolicy = user.role === "super_admin" && !readOnly;
-  const canManageCleanup =
-    isAdmin && (readOnly || isSystemAdmin || user.permissions.includes("downloads:manage") || canManageSources);
+  const canManageCleanup = canManageCache || canManageSources;
 
   useEffect(() => {
     const syncTabFromLocation = () => {
@@ -105,12 +110,12 @@ export function SettingsPage({
   }, []);
 
   useEffect(() => {
-    if (isAdmin || !adminSettingsTabs.includes(activeTab)) return;
+    if (canViewAdministration || !adminSettingsTabs.includes(activeTab)) return;
     setActiveTab("account");
     const url = new URL(window.location.href);
     url.searchParams.delete("tab");
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
-  }, [activeTab, isAdmin]);
+  }, [activeTab, canViewAdministration]);
 
   useEffect(() => {
     setDisplayName(user.displayName || user.username);
@@ -240,17 +245,10 @@ export function SettingsPage({
 
   return (
     <div className="space-y-6">
-      {readOnly && (
-        <div
-          className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-muted-foreground"
-          role="status"
-        >
-          {t("account.demoReadOnly")}
-        </div>
-      )}
+      {readOnly && <DemoReadOnlyNotice />}
       <div className={segmentedListClassName()} role="tablist" aria-label={t("nav.settings")}>
         {settingsTabs
-          .filter((tab) => isAdmin || !adminSettingsTabs.includes(tab.id))
+          .filter((tab) => canViewAdministration || !adminSettingsTabs.includes(tab.id))
           .map((tab) => (
             <SettingsTabButton
               key={tab.id}
@@ -457,16 +455,12 @@ export function SettingsPage({
           <RecommendationActivity userId={user.id} />
         </div>
       )}
-      {isAdmin && activeTab === "cleanup" && (
+      {canViewAdministration && activeTab === "cleanup" && (
         <div role="tabpanel" id="settings-panel-cleanup" aria-labelledby="settings-tab-cleanup">
-          <CleanupPage
-            canManageCache={isAdmin && (readOnly || isSystemAdmin || user.permissions.includes("downloads:manage"))}
-            canManageDatabase={canManageSources}
-            readOnly={readOnly}
-          />
+          <CleanupPage canManageCache={canManageCache} canManageDatabase={canManageSources} readOnly={readOnly} />
         </div>
       )}
-      {isAdmin && adminSettingsTabs.includes(activeTab) && activeTab !== "cleanup" && (
+      {canViewAdministration && adminSettingsTabs.includes(activeTab) && activeTab !== "cleanup" && (
         <div role="tabpanel" id={`settings-panel-${activeTab}`} aria-labelledby={`settings-tab-${activeTab}`}>
           <MaintenancePage
             canManageSources={canManageSources}

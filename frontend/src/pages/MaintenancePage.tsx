@@ -135,7 +135,7 @@ export function MaintenancePage({
   }, [canManageSources, canManageAccessPolicy]);
 
   useEffect(() => {
-    if (openedLinkedSource.current || readOnly || !settings) return;
+    if (openedLinkedSource.current || !settings) return;
     const sourceID = Number(new URLSearchParams(window.location.search).get("source"));
     if (!Number.isInteger(sourceID) || sourceID <= 0) return;
     const source = settings.fileSources.find(
@@ -146,7 +146,7 @@ export function MaintenancePage({
     setDraftSource(source);
     setEditingSourceId(source.id);
     setIsSourceModalOpen(true);
-  }, [readOnly, settings]);
+  }, [settings]);
 
   useEffect(() => {
     if (activeTab !== "library" || window.location.hash !== "#remote-sources") return;
@@ -201,7 +201,6 @@ export function MaintenancePage({
   };
 
   const openEditSource = (source: FileSource) => {
-    if (readOnly) return;
     setDraftSource(source);
     setEditingSourceId(source.id);
     setIsSourceModalOpen(true);
@@ -330,18 +329,9 @@ export function MaintenancePage({
 
   return (
     <div className="min-w-0 space-y-5">
-      {readOnly && (
-        <div
-          className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-muted-foreground"
-          role="status"
-        >
-          {t("maintenance.demoReadOnly")}
-        </div>
-      )}
-
+      {/* Each tab gates its own writes, so Demo can still browse, open details, and follow links. */}
       <fieldset
         data-testid="maintenance-content"
-        disabled={readOnly}
         className={`min-w-0 border-0 p-0 ${activeTab === "users" ? "w-full" : "w-full max-w-3xl"}`}
       >
         {isSettingsLoading && activeTab !== "users" ? (
@@ -359,6 +349,7 @@ export function MaintenancePage({
                 description={t("sourceSetup.scanDepthDescription")}
               >
                 <SettingsNumberInput
+                  disabled={readOnly}
                   label={t("maintenance.library.scanDepth")}
                   value={draft.localScanDepth}
                   min={1}
@@ -455,6 +446,7 @@ export function MaintenancePage({
           defaultSaveTemplate={settings?.remoteSaveTemplate ?? `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`}
           editing={editingSourceId !== null}
           saving={savingSource}
+          readOnly={readOnly}
           onChange={setDraftSource}
           onSave={saveSource}
           onClose={closeSourceModal}
@@ -533,6 +525,7 @@ function CacheFetchSettings({
         </SettingsRow>
         <SettingsRow title={t("maintenance.cache.limit")} description={t("maintenance.cache.limitDescription")}>
           <SettingsNumberInput
+            disabled={readOnly}
             label={t("maintenance.cache.limit")}
             value={draft.cacheLimitGb}
             min={0}
@@ -545,6 +538,7 @@ function CacheFetchSettings({
           description={t("maintenance.cache.transcodeLimitDescription")}
         >
           <SettingsNumberInput
+            disabled={readOnly}
             label={t("maintenance.cache.transcodeLimit")}
             value={draft.transcodeCacheLimitGb}
             min={1}
@@ -570,6 +564,7 @@ function CacheFetchSettings({
           description={t("maintenance.cache.downloadLimitDescription")}
         >
           <SettingsNumberInput
+            disabled={readOnly}
             label={t("maintenance.cache.downloadLimit")}
             value={draft.remoteDownloadLimitGb}
             min={1}
@@ -583,6 +578,7 @@ function CacheFetchSettings({
           description={t("maintenance.cache.stagingRetentionDescription")}
         >
           <SettingsNumberInput
+            disabled={readOnly}
             label={t("maintenance.cache.stagingRetention")}
             value={draft.fetchStagingRetentionDays}
             min={1}
@@ -606,6 +602,7 @@ function CacheFetchSettings({
             description={t("maintenance.cache.baseDelayDescription")}
           >
             <SettingsNumberInput
+              disabled={readOnly}
               label={t("maintenance.cache.baseDelay")}
               value={draft.remoteDelayBaseSeconds}
               min={0}
@@ -619,6 +616,7 @@ function CacheFetchSettings({
             description={t("maintenance.cache.randomDelayDescription")}
           >
             <SettingsNumberInput
+              disabled={readOnly}
               label={t("maintenance.cache.randomDelay")}
               value={draft.remoteDelayRandomSeconds}
               min={0}
@@ -632,6 +630,7 @@ function CacheFetchSettings({
             description={t("maintenance.cache.initialBackoffDescription")}
           >
             <SettingsNumberInput
+              disabled={readOnly}
               label={t("maintenance.cache.initialBackoff")}
               value={draft.remoteBackoffSeconds}
               min={0}
@@ -644,6 +643,7 @@ function CacheFetchSettings({
             description={t("maintenance.cache.maximumBackoffDescription")}
           >
             <SettingsNumberInput
+              disabled={readOnly}
               label={t("maintenance.cache.maximumBackoff")}
               value={draft.remoteMaxBackoffSeconds}
               min={0}
