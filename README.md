@@ -200,10 +200,11 @@ through the private process in [SECURITY.md](SECURITY.md) and review
 
 ## Acknowledgements
 
-The workflow canvas interaction design was informed by
-[ComfyUI](https://github.com/comfyanonymous/ComfyUI). Kikoto does not include
-or adapt ComfyUI source code; its canvas is an independent React implementation
-built with the MIT-licensed `@xyflow/react` library.
+Kikoto's former workflow canvas drew on the interaction design of
+[ComfyUI](https://github.com/comfyanonymous/ComfyUI). Kikoto never included or
+adapted ComfyUI source code; that canvas was an independent React
+implementation built with the MIT-licensed `@xyflow/react` library and has
+since been retired.
 
 ## License
 

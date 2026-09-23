@@ -2232,6 +2232,11 @@ export const api = {
     getJSON<WorkResolveResponse>(`/api/works/${encodeURIComponent(code)}/resolve`, signal),
   resolveWorkEntityLink: (code: string, kind: WorkEntityLink["kind"], name = "") =>
     postJSONBody<WorkEntityLink>(`/api/works/${encodeURIComponent(code)}/entity-links/resolve`, { kind, name }),
+  /** Read-only lookup of persisted relationships; Demo uses it because the resolver may sync metadata. */
+  lookupWorkEntityLink: (code: string, kind: WorkEntityLink["kind"], name = "") =>
+    getJSON<WorkEntityLink>(
+      `/api/works/${encodeURIComponent(code)}/entity-links?${new URLSearchParams({ kind, name })}`,
+    ),
   listFavoriteLists: (signal?: AbortSignal) => getJSON<FavoriteList[]>("/api/favorite-lists", signal),
   createFavoriteList: (payload: { name: string; description?: string }) =>
     postJSONBody<FavoriteList>("/api/favorite-lists", payload),

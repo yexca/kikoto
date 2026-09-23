@@ -466,7 +466,6 @@ export const zhHansResource = {
         profileUpdateFailed: "资料更新失败。",
         ["passwordChanged"]: "密码已更改，其他会话已退出。",
         ["passwordChangeFailed"]: "密码更改失败。",
-        demoReadOnly: "演示模式下账户设置为只读。",
         accountMenu: "账户菜单",
         reviewCount_one: "审核（{{count}}）",
         reviewCount_other: "审核（{{count}}）",
@@ -541,7 +540,7 @@ export const zhHansResource = {
         referenceProjects: "参考项目",
         kikoeruReference: "Kikoto 的 Kikoeru 兼容远程来源集成参考了该项目的公开后端接口。",
         comfyReference:
-          "Kikoto 的工作流画布交互设计参考了该项目；未包含或改编其源代码，画布使用 @xyflow/react 独立实现。",
+          "Kikoto 曾经的工作流画布参考了该项目的交互设计；从未包含或改编其源代码，该画布当时使用 @xyflow/react 独立实现，现已停用。",
         cherryReference: "Kikoto 的 AGENTS.md 配置方式和程序版本管理设计参考了该项目。",
         technologies: "主要技术栈",
         license: "许可证",

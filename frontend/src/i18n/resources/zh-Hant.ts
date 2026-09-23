@@ -468,7 +468,6 @@ export const zhHantResource = {
         profileUpdateFailed: "資料更新失敗。",
         ["passwordChanged"]: "密碼已變更，其他工作階段已登出。",
         ["passwordChangeFailed"]: "密碼變更失敗。",
-        demoReadOnly: "示範模式下帳戶設定為唯讀。",
         accountMenu: "帳戶選單",
         reviewCount_one: "審核（{{count}}）",
         reviewCount_other: "審核（{{count}}）",
@@ -543,7 +542,7 @@ export const zhHantResource = {
         referenceProjects: "參考專案",
         kikoeruReference: "Kikoto 的 Kikoeru 相容遠端來源整合參考了該專案的公開後端介面。",
         comfyReference:
-          "Kikoto 的工作流程畫布互動設計參考了該專案；未包含或改編其原始碼，畫布使用 @xyflow/react 獨立實作。",
+          "Kikoto 過去的工作流程畫布參考了該專案的互動設計；從未包含或改編其原始碼，該畫布當時使用 @xyflow/react 獨立實作，現已停用。",
         cherryReference: "Kikoto 的 AGENTS.md 設定方式和程式版本管理設計參考了該專案。",
         technologies: "主要技術棧",
         license: "授權條款",

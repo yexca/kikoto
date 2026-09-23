@@ -6,11 +6,13 @@ export function IconButton({
   disabled,
   children,
   onClick,
+  "aria-pressed": pressed,
 }: {
   title: string;
   disabled?: boolean;
   children: ReactNode;
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+  "aria-pressed"?: boolean;
 }) {
   return (
     <Button
@@ -20,6 +22,7 @@ export function IconButton({
       className="relative"
       title={title}
       aria-label={title}
+      aria-pressed={pressed}
       disabled={disabled}
       onClick={onClick}
     >

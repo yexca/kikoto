@@ -119,9 +119,6 @@
     --border: 32 22% 84%;
     --input: 30 18% 77%;
     --ring: 15 62% 52%;
-    --workflow-shell: 34 25% 92%;
-    --workflow-canvas: 32 19% 87%;
-    --workflow-grid: 28 10% 62%;
     --radius: 0.625rem;
     --control-radius: 0.5rem;
     --badge-radius: 0.375rem;
@@ -216,9 +213,6 @@
     --border: 24 7% 21%;
     --input: 24 8% 28%;
     --ring: 19 76% 70%;
-    --workflow-shell: 24 9% 13%;
-    --workflow-canvas: 24 8% 18%;
-    --workflow-grid: 25 7% 37%;
     --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.24);
     --shadow-md: 0 6px 16px hsl(0 0% 0% / 0.28);
     --shadow-lg: 0 12px 32px hsl(0 0% 0% / 0.34);
@@ -244,9 +238,6 @@
     --border: 0 0% 83%;
     --input: 0 0% 78%;
     --ring: 160 76% 36%;
-    --workflow-shell: 0 0% 95%;
-    --workflow-canvas: 0 0% 90%;
-    --workflow-grid: 0 0% 64%;
     --radius: 0.5rem;
     --control-radius: 0.375rem;
     --badge-radius: 0.375rem;
@@ -298,9 +289,6 @@
     --border: 0 0% 25%;
     --input: 0 0% 29%;
     --ring: 160 55% 60%;
-    --workflow-shell: 0 0% 13%;
-    --workflow-canvas: 0 0% 18%;
-    --workflow-grid: 0 0% 37%;
     --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.24);
     --shadow-md: 0 4px 12px hsl(0 0% 0% / 0.28);
     --shadow-lg: 0 8px 24px hsl(0 0% 0% / 0.32);
@@ -326,9 +314,6 @@
     --border: 240 6% 82%;
     --input: 240 5% 77%;
     --ring: 211 100% 50%;
-    --workflow-shell: 240 15% 94%;
-    --workflow-canvas: 240 10% 89%;
-    --workflow-grid: 240 5% 63%;
     --radius: 0.875rem;
     --control-radius: 0.625rem;
     --badge-radius: 9999px;
@@ -380,9 +365,6 @@
     --border: 240 4% 27%;
     --input: 240 4% 31%;
     --ring: 211 100% 66%;
-    --workflow-shell: 240 4% 13%;
-    --workflow-canvas: 240 4% 18%;
-    --workflow-grid: 240 3% 38%;
     --surface-opacity: 0.78;
     --shell-opacity: 0.72;
     --shadow-sm: 0 1px 3px hsl(0 0% 0% / 0.28);
@@ -410,9 +392,6 @@
     --border: 214 15% 80%;
     --input: 214 16% 75%;
     --ring: 217 82% 55%;
-    --workflow-shell: 214 30% 94%;
-    --workflow-canvas: 214 20% 89%;
-    --workflow-grid: 214 10% 62%;
     --radius: 0.875rem;
     --control-radius: 9999px;
     --badge-radius: 9999px;
@@ -464,9 +443,6 @@
     --border: 216 10% 27%;
     --input: 216 11% 31%;
     --ring: 216 86% 76%;
-    --workflow-shell: 220 8% 13%;
-    --workflow-canvas: 220 7% 18%;
-    --workflow-grid: 216 6% 38%;
     --shadow-sm: 0 1px 3px hsl(0 0% 0% / 0.3);
     --shadow-md: 0 3px 9px hsl(0 0% 0% / 0.34);
     --shadow-lg: 0 7px 18px hsl(0 0% 0% / 0.4);
@@ -764,157 +740,125 @@
     background-clip: content-box;
   }
 
-  .workflow-canvas .react-flow__controls {
-    overflow: hidden;
-    border: 1px solid hsl(var(--border));
-    border-radius: 0.375rem;
-    box-shadow: none;
+  /* Workflow run monitor: stage list beside a streaming run log. */
+  .workflow-monitor {
+    container-type: inline-size;
   }
 
-  .workflow-canvas .workflow-viewport-controls,
-  .workflow-canvas .workflow-viewport-minimap {
-    transition: right calc(160ms * var(--motion-scale)) ease;
+  .workflow-monitor-grid {
+    display: grid;
   }
 
-  .workflow-canvas .workflow-minimap-toggle svg {
-    fill: none;
+  .workflow-monitor-steps {
+    border-bottom: 1px solid hsl(var(--border));
   }
 
-  .workflow-composer-shell {
-    background: hsl(var(--workflow-shell));
+  .workflow-monitor-log {
+    height: 18rem;
   }
 
-  .workflow-canvas .react-flow {
-    background: hsl(var(--workflow-canvas));
-  }
-
-  .workflow-canvas .react-flow__controls-button {
-    border-color: hsl(var(--border));
-    background: hsl(var(--card));
-    color: hsl(var(--foreground));
-  }
-
-  .workflow-canvas .react-flow__controls-button:hover {
-    background: hsl(var(--muted));
-  }
-
-  .workflow-canvas .react-flow__controls-button svg {
-    fill: currentColor;
-  }
-
-  .workflow-canvas .workflow-data-edge .react-flow__edge-path {
-    opacity: 0.58;
-    transition:
-      opacity calc(160ms * var(--motion-scale)) ease,
-      stroke-width calc(160ms * var(--motion-scale)) ease,
-      filter calc(160ms * var(--motion-scale)) ease;
-  }
-
-  .workflow-canvas .workflow-data-edge.selected .react-flow__edge-path,
-  .workflow-canvas .workflow-data-edge:focus .react-flow__edge-path {
-    opacity: 1;
-    stroke-width: 3;
-    filter: drop-shadow(0 0 3px var(--workflow-edge-color));
-  }
-
-  .workflow-canvas .workflow-data-edge--completed .react-flow__edge-path {
-    opacity: 0.82;
-  }
-
-  .workflow-canvas .workflow-data-edge--active .react-flow__edge-path {
-    opacity: 1;
-    stroke-width: 3;
-    filter: drop-shadow(0 0 4px var(--workflow-edge-color));
-  }
-
-  .workflow-canvas .workflow-data-edge--active.animated .react-flow__edge-path {
-    stroke-dasharray: 8 6;
-    animation: workflow-edge-flow calc(650ms * var(--motion-scale)) linear infinite;
-  }
-
-  .workflow-canvas .workflow-data-edge--failed .react-flow__edge-path {
-    stroke: hsl(var(--error)) !important;
-    opacity: 1;
-    filter: drop-shadow(0 0 3px hsl(var(--error) / 0.65));
-  }
-
-  .workflow-canvas .workflow-data-edge--skipped .react-flow__edge-path {
-    opacity: 0.24;
-  }
-
-  .workflow-canvas .workflow-run-node {
-    transition:
-      border-color calc(160ms * var(--motion-scale)) ease,
-      box-shadow calc(160ms * var(--motion-scale)) ease,
-      opacity calc(160ms * var(--motion-scale)) ease,
-      transform calc(160ms * var(--motion-scale)) ease;
-  }
-
-  .workflow-canvas .workflow-run-node--queued {
-    opacity: 0.62;
-  }
-
-  .workflow-canvas .workflow-run-node--running,
-  .workflow-canvas .workflow-run-node--flowing {
-    border-color: hsl(var(--info) / 0.9);
-    box-shadow:
-      0 0 0 2px hsl(var(--info) / 0.2),
-      0 0 16px hsl(var(--info) / 0.22);
-    animation: workflow-node-running 1.25s ease-in-out infinite;
-  }
-
-  .workflow-canvas .workflow-run-node--succeeded {
-    border-color: hsl(var(--success) / 0.48);
-  }
-
-  .workflow-canvas .workflow-run-node--partial {
-    border-color: hsl(var(--warning) / 0.75);
-    box-shadow: 0 0 0 1px hsl(var(--warning) / 0.12);
-  }
-
-  .workflow-canvas .workflow-run-node--failed {
-    border-color: hsl(var(--error) / 0.9);
-    box-shadow:
-      0 0 0 2px hsl(var(--error) / 0.18),
-      0 0 14px hsl(var(--error) / 0.18);
-  }
-
-  .workflow-canvas .workflow-run-node--skipped {
-    opacity: 0.38;
-  }
-
-  .workflow-canvas .workflow-port-handle {
-    width: 1.5rem;
-    height: 1.5rem;
-    border: 0;
-    background: transparent;
-  }
-
-  .workflow-canvas .workflow-port-handle::after {
+  .workflow-monitor-connector {
     position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 0.625rem;
-    height: 0.625rem;
-    border: 2px solid hsl(var(--card));
+    top: calc(50% + 13px);
+    bottom: calc(13px - 50%);
+    left: calc(1.125rem - 0.5px);
+    width: 1px;
+    background: hsl(var(--border));
+  }
+
+  .workflow-monitor-connector:is(
+    [data-state="succeeded"],
+    [data-state="partial"],
+    [data-state="failed"],
+    [data-state="skipped"]
+  ) {
+    background: hsl(var(--muted-foreground) / 0.45);
+  }
+
+  .workflow-log {
+    background: hsl(var(--muted) / 0.3);
+  }
+
+  .workflow-log-row,
+  .workflow-log-group {
+    display: grid;
+    grid-template-columns: 3.25rem minmax(0, 1fr);
+    padding-right: 1rem;
+  }
+
+  .workflow-log-row {
+    animation: workflow-log-in calc(180ms * var(--motion-scale)) ease-out;
+  }
+
+  .workflow-log-row:hover {
+    background: hsl(var(--muted) / 0.7);
+  }
+
+  .workflow-log-row[data-level="warn"] {
+    background: hsl(var(--warning-surface) / 0.7);
+  }
+
+  .workflow-log-row[data-level="warn"] .workflow-log-message {
+    color: hsl(var(--warning-foreground));
+  }
+
+  .workflow-log-row[data-level="error"] {
+    background: hsl(var(--error-surface) / 0.8);
+  }
+
+  .workflow-log-row[data-level="error"] .workflow-log-message {
+    color: hsl(var(--error-foreground));
+  }
+
+  .workflow-log-group {
+    margin-top: 0.5rem;
+    font-weight: 600;
+  }
+
+  .workflow-log-group:first-child {
+    margin-top: 0;
+  }
+
+  .workflow-log-gutter {
+    padding-right: 0.875rem;
+    color: hsl(var(--muted-foreground) / 0.6);
+    text-align: right;
+    user-select: none;
+  }
+
+  .workflow-log-cursor {
+    display: inline-block;
+    width: 0.5rem;
+    height: 1rem;
+    vertical-align: text-bottom;
+    background: hsl(var(--foreground) / 0.65);
+    animation: workflow-log-cursor 1.1s steps(1) infinite;
+  }
+
+  .workflow-log-live {
+    width: 0.4375rem;
+    height: 0.4375rem;
     border-radius: 9999px;
-    background: var(--workflow-port-color);
-    content: "";
-    transform: translate(-50%, -50%);
-    transition:
-      box-shadow calc(120ms * var(--motion-scale)) ease,
-      transform calc(120ms * var(--motion-scale)) ease;
+    background: hsl(var(--info));
+    animation: workflow-log-live calc(1600ms * var(--motion-scale)) ease-out infinite;
   }
 
-  .workflow-canvas .workflow-port-handle:hover::after,
-  .workflow-canvas .workflow-port-handle.connectingfrom::after {
-    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.22);
-    transform: translate(-50%, -50%) scale(1.2);
-  }
+  @container (min-width: 40rem) {
+    .workflow-monitor-grid {
+      height: 20rem;
+      grid-template-columns: minmax(13rem, 17rem) minmax(0, 1fr);
+    }
 
-  .workflow-canvas .workflow-port-handle.valid::after {
-    box-shadow: 0 0 0 4px hsl(var(--primary) / 0.3);
-    transform: translate(-50%, -50%) scale(1.35);
+    .workflow-monitor-steps {
+      overflow-y: auto;
+      border-right: 1px solid hsl(var(--border));
+      border-bottom: 0;
+    }
+
+    .workflow-monitor-log {
+      height: auto;
+      min-height: 0;
+    }
   }
 
   .animate-toast-progress {
@@ -1106,17 +1050,26 @@
     will-change: transform;
   }
 
-  @keyframes workflow-edge-flow {
-    to {
-      stroke-dashoffset: -14;
+  @keyframes workflow-log-in {
+    from {
+      opacity: 0;
+      transform: translateY(3px);
     }
   }
 
-  @keyframes workflow-node-running {
+  @keyframes workflow-log-cursor {
     50% {
-      box-shadow:
-        0 0 0 3px hsl(var(--info) / 0.24),
-        0 0 22px hsl(var(--info) / 0.3);
+      opacity: 0;
+    }
+  }
+
+  @keyframes workflow-log-live {
+    0% {
+      box-shadow: 0 0 0 0 hsl(var(--info) / 0.45);
+    }
+    70%,
+    100% {
+      box-shadow: 0 0 0 5px hsl(var(--info) / 0);
     }
   }
 
@@ -1130,12 +1083,11 @@
       transition-duration: 0.01ms !important;
     }
 
-    .workflow-canvas .workflow-data-edge--active.animated .react-flow__edge-path,
-    .workflow-canvas .workflow-run-node--running,
-    .workflow-canvas .workflow-run-node--flowing {
+    .workflow-log-row,
+    .workflow-log-cursor,
+    .workflow-log-live {
       animation: none;
     }
-
     .overflow-marquee__track,
     .overflow-marquee-group__track {
       animation: none !important;

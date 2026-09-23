@@ -470,7 +470,6 @@ export const koreanResource = {
         profileUpdateFailed: "프로필 업데이트에 실패했습니다.",
         ["passwordChanged"]: "비밀번호를 변경했습니다. 다른 세션은 로그아웃되었습니다.",
         ["passwordChangeFailed"]: "비밀번호 변경에 실패했습니다.",
-        demoReadOnly: "데모 모드에서는 계정 설정이 읽기 전용입니다.",
         accountMenu: "계정 메뉴",
         reviewCount_one: "검토 ({{count}})",
         reviewCount_other: "검토 ({{count}})",
@@ -547,7 +546,7 @@ export const koreanResource = {
         referenceProjects: "참조 프로젝트",
         kikoeruReference: "Kikoto의 Kikoeru 호환 원격 소스 연동은 이 프로젝트의 공개 백엔드 인터페이스를 참고합니다.",
         comfyReference:
-          "Kikoto의 워크플로 캔버스 상호작용 설계는 이 프로젝트를 참고했습니다. 소스 코드를 포함하거나 수정하지 않으며 캔버스는 @xyflow/react로 독립 구현했습니다.",
+          "Kikoto의 이전 워크플로 캔버스는 이 프로젝트의 상호작용 설계를 참고했습니다. 소스 코드를 포함하거나 수정한 적은 없으며, 해당 캔버스는 @xyflow/react로 독립 구현했으나 현재는 더 이상 사용하지 않습니다.",
         cherryReference: "Kikoto의 AGENTS.md 구성 방식과 프로그램 버전 관리 설계는 이 프로젝트를 참고했습니다.",
         technologies: "주요 기술",
         license: "라이선스",

@@ -12,6 +12,58 @@ import (
 	"github.com/yexca/kikoto/backend/internal/config"
 )
 
+func TestDemoLookupWorkEntityLinkReadsPersistedRoutesOnly(t *testing.T) {
+	db := openMigratedTestDB(t)
+	statements := []string{
+		"INSERT INTO work (id, primary_code, title, age_rating, is_permanently_free) VALUES (10, 'RJ00000000', 'Eligible work', 'general', 1)",
+		"INSERT INTO work (id, primary_code, title, age_rating, is_permanently_free) VALUES (11, 'RJ00000001', 'Restricted work', 'adult', 0)",
+		"INSERT INTO work (id, primary_code, title, age_rating, is_permanently_free) VALUES (12, 'RJ00000002', 'Unlinked work', 'general', 1)",
+		"INSERT INTO party (id, display_name) VALUES (20, 'Linked circle')",
+		"INSERT INTO party_external_id (party_id, provider_id, id_type, external_id, is_primary) SELECT 20, id, 'maker_id', 'RG01234567', 1 FROM metadata_provider WHERE code = 'dlsite'",
+		"INSERT INTO work_party (work_id, party_id, role, provider_id, source) SELECT 10, 20, 'circle', id, 'test' FROM metadata_provider WHERE code = 'dlsite'",
+		"INSERT INTO work_party (work_id, party_id, role, provider_id, source) SELECT 11, 20, 'circle', id, 'test' FROM metadata_provider WHERE code = 'dlsite'",
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server := NewServer(db, config.Config{Mode: config.ModeDemo})
+	lookup := func(code string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodGet, "/api/works/"+code+"/entity-links?kind=circle&name=Linked+circle", nil)
+		request.SetPathValue("code", code)
+		response := httptest.NewRecorder()
+		server.lookupWorkEntityLink(response, request)
+		return response
+	}
+
+	response := lookup("RJ00000000")
+	var body workEntityLinkResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusOK || body.Route != "/circles/RG01234567" || !body.Resolved || body.Fetched {
+		t.Fatalf("eligible lookup = %d %+v", response.Code, body)
+	}
+	if response := lookup("RJ00000001"); response.Code != http.StatusNotFound {
+		t.Fatalf("restricted lookup status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var partiesBefore int
+	if err := db.QueryRow("SELECT COUNT(*) FROM work_party").Scan(&partiesBefore); err != nil {
+		t.Fatal(err)
+	}
+	if response := lookup("RJ00000002"); response.Code != http.StatusNotFound {
+		t.Fatalf("unlinked lookup status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var partiesAfter int
+	if err := db.QueryRow("SELECT COUNT(*) FROM work_party").Scan(&partiesAfter); err != nil {
+		t.Fatal(err)
+	}
+	if partiesAfter != partiesBefore {
+		t.Fatalf("lookup materialized relationships: %d -> %d", partiesBefore, partiesAfter)
+	}
+}
+
 func TestSyncVoiceCreditPersistsProviderScopedExternalIdentity(t *testing.T) {
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec("INSERT INTO work (id, primary_code, title) VALUES (50, 'RJ00000001', 'Remote identity work')"); err != nil {

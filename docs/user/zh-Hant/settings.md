@@ -86,4 +86,4 @@ Activity 和 Workflows 保留原有功能。待處理按鈕會開啟作品維護
 
 中繼資料頁面的正式位址為 `/metadata`。舊 `/work-management` 連結仍可使用，並保留篩選或設定情境。首次同步失敗及存在待處理中繼資料問題的結果入口會開啟問題清單；沒有工作流程權限的使用者進入不限定執行的清單。執行診斷仍可在 Workflows 的 Activity 中查看。
 
-Settings 現在僅有 Account、Playback 和 Recommendation。Playback 內的目錄偏好與推薦設定按帳號儲存於伺服器，跨裝置共用；未自訂時沿用現有執行個體預設值。儲存推薦設定會更新目前頁面的推薦工作階段，其他已開啟頁面保留原快照。Maintenance 僅保留 Library、Cache & Fetch、Users，全站推薦統計位於 Library 的摺疊區域。外觀設定僅保留右上角入口，地球圖示表示跟隨瀏覽器或裝置語言。Demo 模式不能修改帳號偏好。
+Settings 現在僅有 Account、Playback 和 Recommendation。Playback 內的目錄偏好與推薦設定按帳號儲存於伺服器，跨裝置共用；未自訂時沿用現有執行個體預設值。儲存推薦設定會更新目前頁面的推薦工作階段，其他已開啟頁面保留原快照。Maintenance 僅保留 Library、Cache & Fetch、Users，全站推薦統計位於 Library 的摺疊區域。外觀設定僅保留右上角入口，地球圖示表示跟隨瀏覽器或裝置語言。Demo 模式不能修改帳號偏好；管理分頁（Library、Cache & Fetch、Cleanup、Users）仍可檢視，但無法修改。

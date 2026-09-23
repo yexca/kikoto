@@ -1,5 +1,4 @@
 import { expect, test, type Page } from "@playwright/test";
-import { expectCooperativeCanvasScroll } from "./workflow-canvas-scroll";
 
 const systemDefinitions = [
   {
@@ -765,7 +764,7 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await expect(dlsiteTagField).toContainText(/Preview.*_DL_24h_r30d_popular/);
   await expect(dlsiteTagField.getByText("{release_window}", { exact: true })).toBeVisible();
   await configureDialog.getByRole("button", { name: "Close", exact: true }).click();
-  await expect(page.getByLabel("Workflow node canvas")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Workflow run" })).toBeVisible();
   await expect(page.getByText("Recent runs", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Add schedule", exact: true }).click();
@@ -917,7 +916,7 @@ test("availability watch shares pools, schedules checks, and handles ready works
   await expect(pools).toContainText("Monitoring");
   await expect(pools).toContainText("Ready");
   await expect(pools).toContainText("1");
-  await expect(page.getByLabel("Workflow node canvas")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Workflow run" })).toBeVisible();
   await expect(page.getByText("Recent runs", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Add schedule", exact: true }).click();
@@ -1033,7 +1032,7 @@ test("activity presents a compact run summary without the execution canvas", asy
   await expect(activity.getByText("Nodes", { exact: true })).toBeVisible();
   await expect(activity.getByText("jobs", { exact: true })).toBeVisible();
   await expect(activity.getByText("Run signals", { exact: true })).toHaveCount(0);
-  await expect(activity.getByLabel("Workflow node canvas")).toHaveCount(0);
+  await expect(activity.getByRole("region", { name: "Workflow run" })).toHaveCount(0);
   await expect(activity.getByText("Node logs", { exact: true })).toHaveCount(0);
   await expect(activity.getByRole("button", { name: "Overview", exact: true })).toHaveCount(0);
   await expect(activity.getByRole("button", { name: "Steps", exact: true })).toHaveCount(0);
@@ -1513,6 +1512,7 @@ test("settings identifies an environment-managed root password", async ({ page }
 });
 
 test("demo settings keeps account and workflows read-only while allowing appearance changes", async ({ page }) => {
+  const demoNotice = "Demo mode: every feature is visible, but server data cannot be changed.";
   await mockWorkflows(page);
   await page.route("**/api/runtime-settings", (route) =>
     route.fulfill({
@@ -1525,9 +1525,29 @@ test("demo settings keeps account and workflows read-only while allowing appeara
       },
     }),
   );
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: {
+        authenticated: true,
+        user: {
+          id: 1,
+          username: "__demo__",
+          displayName: "Demo",
+          role: "user",
+          permissions: ["library:read", "playback:use"],
+          devMode: false,
+          demoMode: true,
+        },
+      },
+    }),
+  );
 
   await page.goto("/settings");
-  await expect(page.getByRole("status")).toHaveText("Demo mode keeps account settings read-only.");
+  await expect(page.getByRole("status")).toHaveText(demoNotice);
+  const settingsTabs = page.getByRole("tablist", { name: "Settings", exact: true });
+  for (const name of ["Account", "Playback", "Recommendation", "Library", "Cache & Fetch", "Cleanup", "Users"]) {
+    await expect(settingsTabs.getByRole("tab", { name, exact: true })).toBeVisible();
+  }
   await expect(page.getByRole("tab", { name: "Appearance", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Open appearance settings", exact: true }).click();
   for (const name of ["Anthropic", "OpenAI", "Apple", "Google MD", "Original", "Graphite", "Cobalt", "Iris"]) {
@@ -1543,14 +1563,13 @@ test("demo settings keeps account and workflows read-only while allowing appeara
   await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");
 
   await page.goto("/workflows");
-  await expect(
-    page.getByText("Demo mode is read-only. Workflow definitions, schedules, runs, and reviews cannot be changed.", {
-      exact: true,
-    }),
-  ).toBeVisible();
+  await expect(page.getByText(demoNotice, { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "New workflow", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Run at startup", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Add schedule", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add schedule", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "View Startup local library scan", exact: true }).click();
+  const triggerDialog = page.getByRole("dialog");
+  await expect(triggerDialog.getByRole("textbox").first()).toBeDisabled();
+  await expect(triggerDialog.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
 });
 
 test("workflow tabs retain selection, stay reachable on mobile, and support keyboard navigation", async ({ page }) => {
@@ -1727,10 +1746,54 @@ for (const viewport of ["mobile", "@desktop"]) {
   });
 }
 
-test("@desktop canvas wheel scrolls the page unless a modifier is held", async ({ page }) => {
-  // Short enough that the workflow panel overflows and the page has room to scroll.
-  await page.setViewportSize({ width: 1280, height: 400 });
+test("workflow run monitor lists stages and filters the run log by stage", async ({ page }) => {
   await mockWorkflows(page);
-  await page.goto("/workflows?workflow=metadata_sync");
-  await expectCooperativeCanvasScroll(page, page.getByLabel("Workflow node canvas"));
+  const node = (id: number, nodeId: string, displayName: string, status: string, errorMessage = "") => ({
+    ...sampleNodes[0],
+    id,
+    nodeId,
+    displayName,
+    position: id - 600,
+    status,
+    errorMessage,
+    finishedAt: status === "skipped" ? "" : sampleNodes[0].finishedAt,
+  });
+  await page.route("**/api/workflow-runs/51", (route) =>
+    route.fulfill({
+      json: {
+        ...sampleRun,
+        status: "failed",
+        nodeRuns: [
+          node(601, "configure", "Configure ranking", "succeeded"),
+          node(602, "discover", "Discover ranking", "succeeded"),
+          node(603, "metadata", "Sync metadata", "failed", "Provider timed out"),
+          node(604, "tag", "Add user tag", "skipped"),
+        ],
+        graphJson: "",
+      },
+    }),
+  );
+  await page.goto("/workflows?workflow=dlsite_popular_collection");
+
+  const monitor = page.getByRole("region", { name: "Workflow run" });
+  const stages = monitor.getByRole("list", { name: "Workflow stages" }).getByRole("listitem");
+  await expect(stages).toHaveCount(4);
+  await expect(stages.nth(1)).toContainText("Discover ranking");
+  await expect(stages.nth(1)).toContainText("Succeeded");
+  await expect(stages.nth(2)).toContainText("Failed");
+  await expect(stages.nth(3)).toContainText("Skipped");
+
+  const log = monitor.getByRole("log", { name: "Run log" });
+  await expect(log).toContainText("Tagging works");
+  await expect(log).toContainText("Sync metadata finished: Failed");
+  await expect(log).toContainText("Provider timed out");
+
+  await stages.nth(2).getByRole("button").click();
+  await expect(log).not.toContainText("Tagging works");
+  await expect(log).toContainText("Sync metadata finished: Failed");
+  await monitor.getByRole("button", { name: "Show all stages", exact: true }).click();
+  await expect(log).toContainText("Tagging works");
+
+  await monitor.getByRole("button", { name: "Open run #51 (Failed) in Activity", exact: true }).click();
+  await expect(page).toHaveURL(/run=51/);
 });

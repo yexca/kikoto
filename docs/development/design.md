@@ -162,7 +162,7 @@ content cap, but ordinary forms should not define their own page-local width.
 
 Accessible roles, names, labels, and native semantics are the primary UI
 contract. For complex app-owned regions such as Work detail, the global player,
-or a workflow canvas, an explicit stable semantic marker may define the region
+or the workflow run monitor, an explicit stable semantic marker may define the region
 for browser tests and controlled automation.
 
 Markers describe business roles, not current styling or visible copy. Utility
