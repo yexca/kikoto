@@ -147,6 +147,9 @@ import { usePermissionGate } from "@/auth/usePermissionGate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { SaveConfirmDialog } from "@/pages/library/SaveConfirmDialog";
+import { LibrarySourceVisibilityPicker } from "@/pages/library/LibrarySourceVisibilityPicker";
+import { remoteSourceVisibilityKey } from "@/pages/library/librarySourceVisibility";
+import { useLibrarySourceVisibility } from "@/pages/library/useLibrarySourceVisibility";
 import {
   dlsiteTagBadges,
   userTagBadges,
@@ -445,6 +448,12 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const workScope = localScope;
   const activePrimaryTab: "local" | "tracked" | null = activeTab.kind === "source" ? null : localScope;
   const activeRemoteSourceState = activeRemoteSourceViewState(activeTab, remoteSourceStates);
+  const sourceVisibility = useLibrarySourceVisibility({
+    storageScope: browseStorageScope,
+    sources,
+    active,
+    refreshKey: localScope,
+  });
   const activeBrowseState = activeLibraryBrowseState({
     activeTab,
     remoteSourceState: activeRemoteSourceState,
@@ -1630,6 +1639,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             active={activePrimaryTab}
             activeSourceId={activeTab.kind === "source" ? activeTab.source.id : null}
             sources={sources}
+            sourceVisibility={sourceVisibility}
             onChange={changePrimaryTab}
             onSourceChange={(source) => changeTab({ kind: "source", source })}
           />
@@ -1894,38 +1904,54 @@ function LibraryPrimaryTabs({
   active,
   activeSourceId,
   sources,
+  sourceVisibility,
   onChange,
   onSourceChange,
 }: {
   active: "local" | "tracked" | null;
   activeSourceId: number | null;
   sources: LibrarySource[];
+  sourceVisibility: ReturnType<typeof useLibrarySourceVisibility>;
   onChange: (tab: "local" | "tracked") => void;
   onSourceChange: (source: LibrarySource) => void;
 }) {
   const { t } = useTranslation();
+  const { rows, visibleKeys, changeMode } = sourceVisibility;
+  // The selected entry stays visible so the bar never hides where the viewer is.
+  const shown = (key: Parameters<typeof visibleKeys.has>[0], selected: boolean) => selected || visibleKeys.has(key);
   return (
     <div className={segmentedListClassName()}>
-      <TabButton active={active === "local"} onClick={() => onChange("local")} icon={<HardDrive className="h-4 w-4" />}>
-        {t("library.local")}
-      </TabButton>
-      <TabButton
-        active={active === "tracked"}
-        onClick={() => onChange("tracked")}
-        icon={<GitBranchPlus className="h-4 w-4" />}
-      >
-        {t("library.tracked")}
-      </TabButton>
-      {sources.map((source) => (
+      <LibrarySourceVisibilityPicker rows={rows} onChange={changeMode} />
+      {shown("local", active === "local") && (
         <TabButton
-          key={source.id}
-          active={activeSourceId === source.id}
-          onClick={() => onSourceChange(source)}
-          icon={<Cloud className="h-4 w-4" />}
+          active={active === "local"}
+          onClick={() => onChange("local")}
+          icon={<HardDrive className="h-4 w-4" />}
         >
-          {source.displayName}
+          {t("library.local")}
         </TabButton>
-      ))}
+      )}
+      {shown("tracked", active === "tracked") && (
+        <TabButton
+          active={active === "tracked"}
+          onClick={() => onChange("tracked")}
+          icon={<GitBranchPlus className="h-4 w-4" />}
+        >
+          {t("library.tracked")}
+        </TabButton>
+      )}
+      {sources
+        .filter((source) => shown(remoteSourceVisibilityKey(source.id), activeSourceId === source.id))
+        .map((source) => (
+          <TabButton
+            key={source.id}
+            active={activeSourceId === source.id}
+            onClick={() => onSourceChange(source)}
+            icon={<Cloud className="h-4 w-4" />}
+          >
+            {source.displayName}
+          </TabButton>
+        ))}
     </div>
   );
 }

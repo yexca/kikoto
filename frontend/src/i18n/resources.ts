@@ -28,6 +28,17 @@ export const libraryEnglish = {
   clearMarkFilter: "Clear mark filter",
   local: "Local",
   tracked: "Tracked",
+  sourceVisibility: {
+    title: "Source visibility",
+    sourceLabel: "{{source}} visibility",
+    disabled: "Disabled",
+    storedLocally: "Saved in this browser only; other devices and browsers keep their own settings.",
+    modes: {
+      auto: "Auto",
+      always: "Always show",
+      never: "Never show",
+    },
+  },
   remoteWorkNoCode: "This remote work has no stable work code.",
   remoteBrowseDescription: "Browse source results without importing until a user action needs local state.",
   select: "Select",

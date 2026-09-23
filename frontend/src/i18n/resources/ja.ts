@@ -29,6 +29,17 @@ const libraryJapanese = {
   clearMarkFilter: "マークフィルターをクリア",
   local: "ローカル",
   tracked: "追跡済み",
+  sourceVisibility: {
+    title: "ソースの表示",
+    sourceLabel: "{{source}} の表示",
+    disabled: "無効",
+    storedLocally: "この設定はこのブラウザーにのみ保存され、他のデバイスやブラウザーには同期されません。",
+    modes: {
+      auto: "自動",
+      always: "常に表示",
+      never: "表示しない",
+    },
+  },
   remoteWorkNoCode: "このリモート作品には安定した作品コードがありません。",
   remoteBrowseDescription: "ユーザー操作でローカル状態が必要になるまで、インポートせずにソース結果を閲覧します。",
   select: "選択",

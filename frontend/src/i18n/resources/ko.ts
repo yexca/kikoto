@@ -29,6 +29,17 @@ const libraryKorean = {
   clearMarkFilter: "표시 필터 지우기",
   local: "로컬",
   tracked: "추적됨",
+  sourceVisibility: {
+    title: "소스 표시",
+    sourceLabel: "{{source}} 표시",
+    disabled: "비활성화됨",
+    storedLocally: "이 설정은 이 브라우저에만 저장되며 다른 기기나 브라우저와 동기화되지 않습니다.",
+    modes: {
+      auto: "자동",
+      always: "항상 표시",
+      never: "표시 안 함",
+    },
+  },
   remoteWorkNoCode: "이 원격 작품에는 안정적인 작품 코드가 없습니다.",
   remoteBrowseDescription: "사용자 작업에 로컬 상태가 필요할 때까지 가져오지 않고 소스 결과를 탐색합니다.",
   select: "선택",

@@ -30,6 +30,17 @@ const libraryHant = {
   clearMarkFilter: "清除標記篩選",
   local: "本機",
   tracked: "已追蹤",
+  sourceVisibility: {
+    title: "來源顯示",
+    sourceLabel: "{{source}} 顯示方式",
+    disabled: "已停用",
+    storedLocally: "此設定僅儲存在目前的瀏覽器，不會同步到其他裝置或瀏覽器。",
+    modes: {
+      auto: "自動",
+      always: "一律顯示",
+      never: "不顯示",
+    },
+  },
   remoteWorkNoCode: "此遠端作品沒有穩定的作品代碼。",
   remoteBrowseDescription: "瀏覽來源結果；只有在使用者操作需要時才匯入本機狀態。",
   select: "選取",

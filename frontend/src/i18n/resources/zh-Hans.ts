@@ -29,6 +29,17 @@ export const libraryHans = {
   clearMarkFilter: "清除标记筛选",
   local: "本地",
   tracked: "已跟踪",
+  sourceVisibility: {
+    title: "来源显示",
+    sourceLabel: "{{source}} 显示方式",
+    disabled: "已停用",
+    storedLocally: "此设置仅保存在当前浏览器，不会同步到其他设备或浏览器。",
+    modes: {
+      auto: "自动",
+      always: "始终显示",
+      never: "不显示",
+    },
+  },
   remoteWorkNoCode: "此远程作品没有稳定的作品代码。",
   remoteBrowseDescription: "浏览来源结果；只有在用户操作需要时才导入本地状态。",
   select: "选择",

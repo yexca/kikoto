@@ -59,7 +59,16 @@ test("remote source reloads after switching through the local library", async ({
 test("remote source renders disabled and unavailable failures inside the works area", async ({ page }) => {
   await mockRemoteSource(page, () => undefined, { remoteStatus: "disabled" });
   await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  const remoteTab = page.getByRole("button", { name: "Example Remote", exact: true });
+  await expect(page.getByRole("button", { name: "Local", exact: true })).toBeVisible();
+  await expect(remoteTab).toHaveCount(0);
+  await page.getByRole("button", { name: "Source visibility", exact: true }).click();
+  await page
+    .getByRole("radiogroup", { name: "Example Remote visibility" })
+    .getByRole("radio", { name: "Always show" })
+    .click();
+  await page.keyboard.press("Escape");
+  await remoteTab.click();
 
   await expect(page.getByText("Remote source is disabled", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Try again", exact: true })).toHaveCount(0);
