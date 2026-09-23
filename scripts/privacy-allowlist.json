@@ -57,9 +57,10 @@
     {
       "url": "https://github.com/comfyanonymous/ComfyUI",
       "files": [
+        "README.md",
         "frontend/src/pages/AboutPage.tsx"
       ],
-      "reason": "Public workflow-canvas design reference repository linked from the About page."
+      "reason": "Public design reference for the former workflow canvas, acknowledged in the README and linked from the About page."
     },
     {
       "url": "https://github.com/cherryhq/cherry-studio",

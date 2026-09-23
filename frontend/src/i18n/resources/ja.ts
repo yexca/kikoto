@@ -552,7 +552,7 @@ export const japaneseResource = {
         kikoeruReference:
           "Kikoto の Kikoeru 互換リモートソース連携は、このプロジェクトの公開バックエンドインターフェースを参考にしています。",
         comfyReference:
-          "Kikoto のワークフローキャンバス操作設計は、このプロジェクトを参考にしています。ソースコードは含めたり改変したりせず、キャンバスは @xyflow/react で独自に実装しています。",
+          "Kikoto のかつてのワークフローキャンバスは、このプロジェクトの操作設計を参考にしていました。ソースコードを含めたり改変したりしたことはなく、キャンバスは @xyflow/react で独自に実装していましたが、現在は廃止されています。",
         cherryReference:
           "Kikoto の AGENTS.md 設定方法とアプリケーションのバージョン管理設計は、このプロジェクトを参考にしています。",
         technologies: "主要技術",
