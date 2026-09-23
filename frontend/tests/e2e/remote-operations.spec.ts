@@ -133,7 +133,7 @@ test("remote source remembers sorting after transient browse state is cleared", 
   await expect.poll(() => requests.some((url) => url.searchParams.get("sort") === "code")).toBe(true);
 });
 
-test("remote card Track queues in place and reports a terminal failure without navigation", async ({ page }) => {
+test("remote card Fork queues in place and reports a terminal failure without navigation", async ({ page }) => {
   const trackControl: RemoteTrackControl = { status: "queued", trackRequests: [], statusRequests: 0 };
   await mockRemoteSource(page, () => undefined, { trackControl });
   await page.goto("/");
@@ -141,7 +141,7 @@ test("remote card Track queues in place and reports a terminal failure without n
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
   const sourceURL = page.url();
 
-  await page.getByTitle("Track").click();
+  await page.getByTitle("Fork").click();
 
   await expect.poll(() => trackControl.trackRequests).toHaveLength(1);
   expect(page.url()).toBe(sourceURL);

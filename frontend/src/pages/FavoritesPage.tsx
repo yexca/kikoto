@@ -64,6 +64,7 @@ import {
   type WorkCollectionColumnSetting,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
+import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import {
   CreatorCard,
@@ -490,7 +491,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const userFavoriteLists = favoriteLists.filter((list) => list.kind !== "marked");
   const selectedList = activeList === "all" ? null : (userFavoriteLists.find((list) => list.id === activeList) ?? null);
   const selectedWorks = works.filter((work) => selectedWorkIDs.has(work.id));
-  const allPagedWorksSelected = works.length > 0 && works.every((work) => selectedWorkIDs.has(work.id));
   const favoriteCircles = circles.filter((circle) => circle.favorite);
   const favoriteVoices = voices.filter((voice) => voice.favorite);
   const hasEntitySnapshot = entitySnapshotUserID === principalID;
@@ -1029,54 +1029,41 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
           </div>
 
           {selectionMode && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Checkbox
-                  checked={allPagedWorksSelected}
-                  disabled={works.length === 0}
-                  onCheckedChange={togglePagedSelection}
-                  aria-label={t("favorites.selectPage")}
+            <WorkSelectionBar
+              selectedCount={selectedWorks.length}
+              scopeSelectableCount={works.length}
+              scopeSelectedCount={selectedWorks.length}
+              onSelectScope={() => togglePagedSelection(true)}
+              onClear={() => setSelectedWorkIDs(new Set())}
+              onExit={() => {
+                setSelectedWorkIDs(new Set());
+                setSelectionMode(false);
+              }}
+            >
+              <div className="relative">
+                <WorkSelectionAction
+                  icon={<ListMusic className="h-4 w-4" />}
+                  label={t("favorites.changeLists")}
+                  count={selectedWorks.length}
+                  disabled={isBulkUpdating}
+                  className="w-full"
+                  aria-expanded={Boolean(listDialogTarget)}
+                  onClick={() => setListDialogTarget((target) => (target ? null : { mode: "bulk" }))}
                 />
-                {t("favorites.selected", { count: selectedWorks.length })}
+                {listDialogTarget && (
+                  <ListMembershipPopover
+                    title={t("favorites.selectedWorks", { count: selectedWorks.length })}
+                    work={null}
+                    favoriteLists={userFavoriteLists}
+                    defaultSelectedListIDs={selectedList ? [selectedList.id] : undefined}
+                    disabled={isBulkUpdating}
+                    align="right"
+                    onClose={() => setListDialogTarget(null)}
+                    onSave={applyListMembership}
+                  />
+                )}
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" onClick={() => togglePagedSelection(true)}>
-                  {t("favorites.selectPage")}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSelectedWorkIDs(new Set());
-                    setSelectionMode(false);
-                  }}
-                >
-                  {t("common.cancel")}
-                </Button>
-                <div className="relative">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={selectedWorks.length === 0 || isBulkUpdating}
-                    onClick={() => setListDialogTarget((target) => (target ? null : { mode: "bulk" }))}
-                  >
-                    {t("favorites.changeLists")}
-                  </Button>
-                  {listDialogTarget && (
-                    <ListMembershipPopover
-                      title={t("favorites.selectedWorks", { count: selectedWorks.length })}
-                      work={null}
-                      favoriteLists={userFavoriteLists}
-                      defaultSelectedListIDs={selectedList ? [selectedList.id] : undefined}
-                      disabled={isBulkUpdating}
-                      align="right"
-                      onClose={() => setListDialogTarget(null)}
-                      onSave={applyListMembership}
-                    />
-                  )}
-                </div>
-              </div>
-            </div>
+            </WorkSelectionBar>
           )}
 
           {hasWorksSnapshot && worksLoadError && (
