@@ -1679,8 +1679,6 @@ export const surfaceKorean = {
     all: "모든 즐겨찾기",
     lists: "즐겨찾기 목록",
     listTabs: "즐겨찾기 목록 탭",
-    listOptions: "즐겨찾기 목록 옵션",
-    manageLists: "즐겨찾기 목록 관리",
     quickMarkWorks: "빠른 표시가 있는 작품",
     exitSelection: "선택 종료",
     selectWorks: "작품 선택",

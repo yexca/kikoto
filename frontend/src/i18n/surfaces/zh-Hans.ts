@@ -1631,8 +1631,6 @@ export const surfaceHans = {
     all: "全部收藏",
     lists: "收藏列表",
     listTabs: "收藏列表标签",
-    listOptions: "收藏列表选项",
-    manageLists: "管理收藏列表",
     quickMarkWorks: "带有快速标记的作品",
     exitSelection: "退出选择",
     selectWorks: "选择作品",

@@ -266,7 +266,15 @@ test("@desktop favorites keeps type and search left with work controls on the ri
   await listPicker.click();
   await expect(page.getByRole("menuitemradio", { name: /All Favorites/ })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("menuitemradio", { name: /Marked/ })).toBeVisible();
-  await page.getByRole("menuitem", { name: "Edit lists", exact: true }).click();
+  await expect(page.getByRole("menuitem")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Select works", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Exit selection", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.getByRole("button", { name: "Exit selection", exact: true }).click();
+  await page.getByRole("button", { name: "Edit lists", exact: true }).click();
   const listManager = page.getByRole("dialog", { name: "Edit lists" });
   await expect(listManager).toBeVisible();
   await expect(listManager.getByRole("button", { name: "Rename: Study" })).toBeVisible();
@@ -356,20 +364,13 @@ test("mobile favorites collapses type and search into icon controls", async ({ p
   expect(mobileListTabBox).not.toBeNull();
   expect(mobileListTabBox!.height).toBeGreaterThanOrEqual(44);
 
-  const mobileListOptions = page.getByRole("button", { name: "Favorite list options", exact: true });
-  const mobileListOptionsBox = await mobileListOptions.boundingBox();
-  expect(mobileListOptionsBox).not.toBeNull();
-  expect(mobileListOptionsBox!.height).toBeGreaterThanOrEqual(44);
+  const mobileEditLists = page.getByRole("button", { name: "Edit lists", exact: true });
+  const mobileEditListsBox = await mobileEditLists.boundingBox();
+  expect(mobileEditListsBox).not.toBeNull();
+  expect(mobileEditListsBox!.height).toBeGreaterThanOrEqual(44);
+  await expect(page.getByRole("button", { name: "Select works", exact: true })).toBeVisible();
   await page.getByRole("button", { name: /Study/ }).click();
-  await mobileListOptions.click();
-  await expect(page.getByRole("menuitem", { name: "Edit lists", exact: true })).toBeVisible();
-  await expect(page.getByRole("menuitem")).toHaveCount(2);
-  await expect(page.getByRole("menuitem", { name: "New list", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("menuitem", { name: "Rename list", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("menuitem", { name: "Move list left", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("menuitem", { name: "Move list right", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("menuitem", { name: "Delete list", exact: true })).toHaveCount(0);
-  await page.getByRole("menuitem", { name: "Edit lists", exact: true }).click();
+  await mobileEditLists.click();
   const mobileListManager = page.getByRole("dialog", { name: "Edit lists" });
   await expect(mobileListManager).toBeVisible();
   await mobileListManager.getByRole("button", { name: "Add list", exact: true }).click();
@@ -420,8 +421,7 @@ test("favorites detail uses Library Up navigation while the Favorites tab restor
   await expect(page.getByRole("menuitemradio", { name: "Sales" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("textbox")).toHaveCount(0);
-  await page.getByRole("button", { name: "Favorite list options", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Select works", exact: true }).click();
+  await page.getByRole("button", { name: "Select works", exact: true }).click();
   await page.locator('[aria-label="Select work"]').nth(17).click();
   const target = page.getByText("Favorite work 18", { exact: true });
   await target.scrollIntoViewIfNeeded();
@@ -479,13 +479,14 @@ test("switching favorite lists keeps the entire playlist row stable while works 
     listTabs.locator("button").nth(0),
     listTabs.locator("button").nth(1),
     listTabs.locator("button").nth(2),
-    page.getByRole("button", { name: "Favorite list options", exact: true }),
+    page.getByRole("button", { name: "Edit lists", exact: true }),
   ];
   await expect(playlistButtons[0]).toBeVisible();
   await expect(page.getByText("Favorite work 1", { exact: true })).toBeVisible();
   await playlistButtons[3].click();
-  await expect(page.getByRole("menuitem", { name: "Edit lists", exact: true })).toBeVisible();
-  await page.keyboard.press("Escape");
+  const listManager = page.getByRole("dialog", { name: "Edit lists" });
+  await expect(listManager).toBeVisible();
+  await listManager.getByRole("button", { name: "Done", exact: true }).click();
   // Normalize horizontal scroll before measuring; click() may reveal a partially clipped tab.
   await playlistButtons[2].scrollIntoViewIfNeeded();
   const positionsBefore = await Promise.all(playlistButtons.map((button) => button.boundingBox()));

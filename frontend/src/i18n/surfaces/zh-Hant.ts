@@ -1606,8 +1606,6 @@ export const surfaceHant = {
     all: "全部收藏",
     lists: "收藏清單",
     listTabs: "收藏清單標籤",
-    listOptions: "收藏清單選項",
-    manageLists: "管理收藏清單",
     quickMarkWorks: "帶有快速標記的作品",
     exitSelection: "結束選取",
     selectWorks: "選取作品",
