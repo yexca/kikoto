@@ -2,7 +2,6 @@ import {
   Activity,
   AlertCircle,
   CalendarClock,
-  ChevronRight,
   Edit3,
   Eye,
   ExternalLink,
@@ -2122,86 +2121,6 @@ function RunStats({ run }: { run: WorkflowRun }) {
   );
 }
 
-function RunOverviewSkeleton() {
-  return (
-    <div className="grid gap-3 lg:grid-cols-2">
-      <div className="rounded-md border p-3">
-        <SkeletonLine className="h-4 w-28" />
-        <div className="mt-3 space-y-2">
-          <SkeletonLine className="h-3 w-full" />
-          <SkeletonLine className="h-3 w-5/6" />
-          <SkeletonLine className="h-3 w-2/3" />
-        </div>
-      </div>
-      <div className="rounded-md border p-3">
-        <SkeletonLine className="h-4 w-32" />
-        <div className="mt-3 grid gap-2">
-          {Array.from({ length: 4 }, (_, index) => (
-            <SkeletonLine key={index} className="h-3 w-full" />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RunNodePipelineSkeleton() {
-  return (
-    <div className="divide-y rounded-md border">
-      {Array.from({ length: 5 }, (_, index) => (
-        <div key={index} className="grid gap-2 p-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="space-y-2">
-              <SkeletonLine className="h-4 w-44" />
-              <SkeletonLine className="h-3 w-28" />
-            </div>
-            <SkeletonLine className="h-5 w-20" />
-          </div>
-          <SkeletonLine className="h-3 w-full" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function RunItemsSkeleton() {
-  return (
-    <div className="grid gap-3">
-      {Array.from({ length: 3 }, (_, index) => (
-        <div key={index} className="rounded-md border p-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="space-y-2">
-              <SkeletonLine className="h-4 w-48" />
-              <SkeletonLine className="h-3 w-32" />
-            </div>
-            <SkeletonLine className="h-5 w-16" />
-          </div>
-          <div className="mt-3 space-y-2">
-            <SkeletonLine className="h-3 w-full" />
-            <SkeletonLine className="h-3 w-4/5" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function RunLogsSkeleton() {
-  return (
-    <div className="divide-y rounded-md border">
-      {Array.from({ length: 8 }, (_, index) => (
-        <div key={index} className="grid gap-2 p-3">
-          <div className="flex gap-2">
-            <SkeletonLine className="h-4 w-16" />
-            <SkeletonLine className="h-4 w-24" />
-          </div>
-          <SkeletonLine className="h-3 w-4/5" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function RunItems({
   candidates,
   onCandidateUpdate,
@@ -2230,113 +2149,6 @@ function RunItems({
         ))}
       </div>
     </section>
-  );
-}
-
-function ActivityNodeSections({
-  run,
-  nodes,
-  events,
-}: {
-  run: WorkflowRunDetail | WorkflowRun;
-  nodes: WorkflowNodeRun[];
-  events: WorkflowEvent[];
-}) {
-  const [openNodes, setOpenNodes] = useState<Set<number>>(
-    () =>
-      new Set(nodes.filter((node) => ["running", "failed", "partial"].includes(node.status)).map((node) => node.id)),
-  );
-  useEffect(() => {
-    setOpenNodes((current) => {
-      const next = new Set(current);
-      nodes
-        .filter((node) => ["running", "failed", "partial"].includes(node.status))
-        .forEach((node) => next.add(node.id));
-      return next;
-    });
-  }, [nodes]);
-  const runEvents = events.filter((event) => event.nodeRunId === null);
-  return (
-    <section className="space-y-3">
-      <div className="text-sm font-semibold">{workflowCopy("nodeLogs")}</div>
-      <div className="divide-y rounded-md border">
-        {nodes.map((node) => {
-          const open = openNodes.has(node.id);
-          const nodeEvents = events.filter((event) => event.nodeRunId === node.id);
-          return (
-            <section key={node.id} id={`workflow-node-${node.id}`} className="scroll-mt-24">
-              <button
-                className="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-muted/40"
-                aria-expanded={open}
-                onClick={() =>
-                  setOpenNodes((current) => {
-                    const next = new Set(current);
-                    if (next.has(node.id)) next.delete(node.id);
-                    else next.add(node.id);
-                    return next;
-                  })
-                }
-              >
-                <ChevronRight className={`h-4 w-4 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
-                <StatusPoint status={node.status} />
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold">{node.displayName || node.nodeId}</span>
-                <span className="text-xs text-muted-foreground">{nodeEvents.length} events</span>
-                <StatusBadge status={node.status} />
-              </button>
-              {open && (
-                <div className="space-y-3 border-t bg-muted/15 px-3 py-3">
-                  {node.errorMessage && <ErrorPanel error={node.errorMessage} />}
-                  {hasNonEmptyJSON(node.outputJson) && (
-                    <JsonPreview value={node.outputJson} empty={workflowCopy("noOutputPayload")} compact />
-                  )}
-                  <WorkflowEventRows events={nodeEvents} empty={workflowCopy("noEventsNode")} />
-                </div>
-              )}
-            </section>
-          );
-        })}
-      </div>
-      {runEvents.length > 0 && (
-        <div className="space-y-2">
-          <div className="text-sm font-semibold">{workflowCopy("runEvents")}</div>
-          <div className="rounded-md border">
-            <WorkflowEventRows events={runEvents} empty={workflowCopy("noRunEvents")} />
-          </div>
-        </div>
-      )}
-      {nodes.length === 0 && <RunLogs run={run} nodeRuns={nodes} events={events} />}
-    </section>
-  );
-}
-
-function WorkflowEventRows({ events, empty }: { events: WorkflowEvent[]; empty: string }) {
-  if (events.length === 0) return <div className="p-3 text-sm text-muted-foreground">{empty}</div>;
-  return (
-    <div className="divide-y rounded-md border bg-background">
-      {events.map((event) => (
-        <div key={event.id} className="grid gap-1 p-3 text-sm md:grid-cols-[150px_70px_minmax(0,1fr)]">
-          <div className="text-xs text-muted-foreground">{event.createdAt}</div>
-          <div
-            className={
-              event.level === "error"
-                ? "text-error-foreground"
-                : event.level === "warn"
-                  ? "text-warning-foreground"
-                  : "text-muted-foreground"
-            }
-          >
-            {event.level}
-          </div>
-          <div className="min-w-0">
-            <div className="font-medium">{event.message}</div>
-            <div className="text-xs text-muted-foreground">{event.eventType}</div>
-            {hasNonEmptyJSON(event.detailJson) && (
-              <div className="mt-1 break-words text-xs text-muted-foreground">{summarizeJSON(event.detailJson)}</div>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -2597,66 +2409,6 @@ function CandidateReviewCard({
   );
 }
 
-function RunLogs({
-  run,
-  nodeRuns,
-  events,
-}: {
-  run: WorkflowRunDetail | WorkflowRun;
-  nodeRuns: WorkflowNodeRun[];
-  events: WorkflowEvent[];
-}) {
-  const entries =
-    events.length > 0
-      ? events.map((event) => ({
-          time: event.createdAt,
-          level: event.level,
-          message: event.message,
-          detail: summarizeJSON(event.detailJson),
-          type: event.eventType,
-        }))
-      : [
-          { time: run.createdAt, level: "info", message: `Run created: ${run.displayName}`, detail: run.triggerReason },
-          ...nodeRuns.map((node) => ({
-            time: node.startedAt || node.createdAt,
-            level:
-              node.status === "failed"
-                ? "error"
-                : node.status === "skipped" || node.status === "partial"
-                  ? "warn"
-                  : "info",
-            message: `${node.displayName || node.nodeId} ${node.status}`,
-            detail: node.errorMessage || summarizeJSON(node.outputJson),
-            type: "node.derived",
-          })),
-        ];
-  return (
-    <div className="divide-y rounded-md border bg-background">
-      {entries.map((entry, index) => (
-        <div key={`${entry.time}-${index}`} className="grid gap-1 p-3 text-sm md:grid-cols-[150px_70px_minmax(0,1fr)]">
-          <div className="text-xs text-muted-foreground">{entry.time || "unknown time"}</div>
-          <div
-            className={
-              entry.level === "error"
-                ? "text-error-foreground"
-                : entry.level === "warn"
-                  ? "text-warning-foreground"
-                  : "text-muted-foreground"
-            }
-          >
-            {entry.level}
-          </div>
-          <div className="min-w-0">
-            <div className="font-medium">{entry.message}</div>
-            {"type" in entry && entry.type && <div className="text-xs text-muted-foreground">{entry.type}</div>}
-            {entry.detail && <div className="mt-1 break-words text-xs text-muted-foreground">{entry.detail}</div>}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 const emptyEvents: WorkflowEvent[] = [];
 const emptyNodeRuns: WorkflowNodeRun[] = [];
 
@@ -2687,20 +2439,6 @@ function DefinitionRunMonitor({
       onOpenRun={onOpenRun}
     />
   );
-}
-
-function StatusPoint({ status }: { status: string }) {
-  if (status === "running")
-    return <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-info" aria-label={workflowCopy("running")} />;
-  const color =
-    status === "succeeded"
-      ? "bg-success"
-      : status === "failed"
-        ? "bg-error"
-        : status === "partial"
-          ? "bg-warning"
-          : "bg-muted-foreground/45";
-  return <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${color}`} aria-label={status} />;
 }
 
 function RecentWorkflowRuns({ runs, onOpen }: { runs: WorkflowRun[]; onOpen: (run: WorkflowRun) => void }) {
