@@ -125,6 +125,7 @@ frontend-docs: frontend-install
 	cd frontend && $(NPM) run docs:check-links && $(NPM) run docs:check-locales
 
 frontend-i18n:
+	$(NODE) --test scripts/check-ui-copy.test.mjs
 	$(NODE) scripts/check-ui-copy.mjs
 
 frontend-audit: frontend-install

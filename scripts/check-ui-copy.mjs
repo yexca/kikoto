@@ -47,7 +47,7 @@ function candidates(file) {
   const source = fs.readFileSync(file, "utf8");
   const found = {};
   for (const match of source.matchAll(
-    />\s*([A-Za-z][A-Za-z0-9 ,.!?/:()'&+\-]{2,})\s*</gu,
+    /(?<![=])>\s*([A-Za-z][A-Za-z0-9 ,.!?/:()'&+\-]{2,})\s*</gu,
   )) {
     addCandidate(found, file, "text", match[1]);
   }
@@ -59,39 +59,43 @@ function candidates(file) {
   return found;
 }
 
-const actual = {};
-for (const file of walk(frontendSource)) {
-  const found = candidates(file);
-  for (const [relative, values] of Object.entries(found))
-    actual[relative] = [...values].sort();
-}
+export { candidates };
 
-if (update || !fs.existsSync(baselinePath)) {
-  fs.writeFileSync(baselinePath, `${JSON.stringify(actual, null, 2)}\n`);
-  console.log(
-    `Recorded ${Object.values(actual).flat().length} existing UI copy entries.`,
-  );
-  process.exit(0);
-}
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const actual = {};
+  for (const file of walk(frontendSource)) {
+    const found = candidates(file);
+    for (const [relative, values] of Object.entries(found))
+      actual[relative] = [...values].sort();
+  }
 
-const baseline = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
-const failures = [];
-for (const [file, values] of Object.entries(actual)) {
-  const approved = new Set(baseline[file] ?? []);
-  for (const value of values)
-    if (!approved.has(value)) failures.push(`${file}: ${value}`);
-}
-if (failures.length > 0) {
-  console.error(
-    `Found ${failures.length} new hard-coded UI copy entr${failures.length === 1 ? "y" : "ies"}.`,
-  );
-  for (const failure of failures) console.error(`- ${failure}`);
-  console.error(
-    "Translate new user-facing copy or update scripts/ui-copy-baseline.json after review.",
-  );
-  process.exitCode = 1;
-} else {
-  console.log(
-    `Checked ${Object.values(actual).flat().length} baseline UI copy entries.`,
-  );
+  if (update || !fs.existsSync(baselinePath)) {
+    fs.writeFileSync(baselinePath, `${JSON.stringify(actual, null, 2)}\n`);
+    console.log(
+      `Recorded ${Object.values(actual).flat().length} existing UI copy entries.`,
+    );
+    process.exit(0);
+  }
+
+  const baseline = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
+  const failures = [];
+  for (const [file, values] of Object.entries(actual)) {
+    const approved = new Set(baseline[file] ?? []);
+    for (const value of values)
+      if (!approved.has(value)) failures.push(`${file}: ${value}`);
+  }
+  if (failures.length > 0) {
+    console.error(
+      `Found ${failures.length} new hard-coded UI copy entr${failures.length === 1 ? "y" : "ies"}.`,
+    );
+    for (const failure of failures) console.error(`- ${failure}`);
+    console.error(
+      "Translate new user-facing copy or update scripts/ui-copy-baseline.json after review.",
+    );
+    process.exitCode = 1;
+  } else {
+    console.log(
+      `Checked ${Object.values(actual).flat().length} baseline UI copy entries.`,
+    );
+  }
 }
