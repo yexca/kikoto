@@ -16,23 +16,9 @@ import {
   Tag,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import {
-  Background,
-  Handle,
-  Position,
-  ReactFlow,
-  useNodesInitialized,
-  useReactFlow,
-  useUpdateNodeInternals,
-  type Edge,
-  type Node,
-  type NodeProps,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -47,7 +33,7 @@ import { WorkflowActivity } from "@/features/workflows/WorkflowActivity";
 import { RunDiagnostics } from "@/features/workflows/RunDiagnostics";
 import { RunFacts, RunStatusBadge, RunSteps } from "@/features/workflows/RunOverview";
 import { RunTransferProgress } from "@/features/workflows/RunTransferProgress";
-import { formatBytes } from "@/features/workflows/runPresentation";
+import { formatBytes, isActiveRunStatus } from "@/features/workflows/runPresentation";
 import {
   RecentRunList,
   RelativeTime,
@@ -67,13 +53,8 @@ import {
   type PresetFormValues,
 } from "@/features/workflows/presetWorkflowModel";
 import { parseWorkCodes, WorkCodesField } from "@/features/workflows/WorkCodesField";
-import { WorkflowCanvasScrollBoundary } from "@/features/workflows/WorkflowCanvasScrollBoundary";
-import { WorkflowViewportTools } from "@/features/workflows/WorkflowViewportTools";
-import {
-  workflowDataTypeColor,
-  workflowEdgeClassName,
-  type WorkflowEdgeVisualState,
-} from "@/features/workflows/workflowVisuals";
+import { WorkflowRunMonitor } from "@/features/workflows/WorkflowRunMonitor";
+import { workflowStages } from "@/features/workflows/workflowStageModel";
 import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import {
   api,
@@ -87,7 +68,6 @@ import {
   type WorkflowPresetParameter,
   type WorkflowRun,
   type WorkflowRunDetail,
-  type WorkflowRunGraph,
   type WorkflowTrigger,
 } from "@/lib/api";
 import { currentScopedStorageKey } from "@/lib/clientStorageScope";
@@ -116,52 +96,6 @@ type WorkflowNode = {
   displayName?: string;
   config?: Record<string, unknown>;
 };
-
-type WorkflowNodeTypeMetadata = {
-  type: string;
-  phase: string;
-  displayName: string;
-  description: string;
-};
-
-const fallbackNodeTypes: WorkflowNodeTypeMetadata[] = [
-  {
-    type: "select_works",
-    phase: "target",
-    displayName: "Select works",
-    description: "Choose known works.",
-  },
-  {
-    type: "select_ranking",
-    phase: "target",
-    displayName: "Configure ranking",
-    description: "Choose a ranking period.",
-  },
-  {
-    type: "discover_provider_ranking",
-    phase: "discover",
-    displayName: "Discover provider ranking",
-    description: "Fetch an ordered provider ranking.",
-  },
-  {
-    type: "filter_candidates",
-    phase: "filter",
-    displayName: "Filter candidates",
-    description: "Filter workflow candidates.",
-  },
-  {
-    type: "sync_metadata",
-    phase: "commit",
-    displayName: "Sync metadata",
-    description: "Persist metadata.",
-  },
-  {
-    type: "assign_user_tags",
-    phase: "commit",
-    displayName: "Assign user tags",
-    description: "Append user-owned tags.",
-  },
-];
 
 const automationTriggerTypes: CreatableAutomationTriggerType[] = ["startup", "schedule"];
 const workflowDefinitionStorageBaseKey = "kikoto.workflows.definition:v3";
@@ -906,7 +840,7 @@ function AvailabilityWatchPanel({
           </div>
         </section>
 
-        <DefinitionNodeCanvas nodes={nodes} />
+        <DefinitionRunMonitor nodes={nodes} recentRuns={recentRuns} onOpenRun={onOpenRun} />
         <div className="grid min-w-0 gap-x-10 gap-y-5 lg:grid-cols-2">
           <WorkflowAutomationPanel
             definition={definition}
@@ -1374,7 +1308,7 @@ function WorkflowDetail({
           actions={headerActions}
         />
 
-        <DefinitionNodeCanvas nodes={nodes} />
+        <DefinitionRunMonitor nodes={nodes} recentRuns={recentRuns} onOpenRun={onOpenRun} />
 
         <div className="grid min-w-0 gap-x-10 gap-y-5 lg:grid-cols-2">
           <WorkflowAutomationPanel
@@ -2069,81 +2003,6 @@ function DLsitePopularRunPanel({
   );
 }
 
-function useRecentWorkflowNodeStarts(runID: number | null, status: string, events: WorkflowEvent[]) {
-  const [recentNodeRunIDs, setRecentNodeRunIDs] = useState<Set<number>>(() => new Set());
-  const trackedRunID = useRef<number | null>(null);
-  const lastEventID = useRef(0);
-  const wasActive = useRef(false);
-  const timers = useRef(new Map<number, number>());
-
-  useEffect(
-    () => () => {
-      timers.current.forEach((timer) => window.clearTimeout(timer));
-      timers.current.clear();
-    },
-    [],
-  );
-
-  useEffect(() => {
-    const active = status === "queued" || status === "running";
-    if (trackedRunID.current !== runID) {
-      timers.current.forEach((timer) => window.clearTimeout(timer));
-      timers.current.clear();
-      trackedRunID.current = runID;
-      lastEventID.current = events.reduce((maximum, event) => Math.max(maximum, event.id), 0);
-      wasActive.current = active;
-      setRecentNodeRunIDs(new Set());
-      return;
-    }
-
-    const newEvents = events.filter((event) => event.id > lastEventID.current);
-    lastEventID.current = events.reduce((maximum, event) => Math.max(maximum, event.id), lastEventID.current);
-    const shouldPulse = active || wasActive.current;
-    wasActive.current = active;
-    if (!shouldPulse) return;
-
-    const startedNodeRunIDs = newEvents.flatMap((event) =>
-      event.eventType === "custom_workflow.node_started" && event.nodeRunId ? [event.nodeRunId] : [],
-    );
-    if (startedNodeRunIDs.length === 0) return;
-    setRecentNodeRunIDs((current) => new Set([...current, ...startedNodeRunIDs]));
-    startedNodeRunIDs.forEach((nodeRunID) => {
-      const existing = timers.current.get(nodeRunID);
-      if (existing !== undefined) window.clearTimeout(existing);
-      timers.current.set(
-        nodeRunID,
-        window.setTimeout(() => {
-          timers.current.delete(nodeRunID);
-          setRecentNodeRunIDs((current) => {
-            const next = new Set(current);
-            next.delete(nodeRunID);
-            return next;
-          });
-        }, 1800),
-      );
-    });
-  }, [events, runID, status]);
-
-  return recentNodeRunIDs;
-}
-
-function parseWorkflowRunGraph(value: string | undefined): WorkflowRunGraph | null {
-  if (!value?.trim()) return null;
-  try {
-    const graph = JSON.parse(value) as WorkflowRunGraph;
-    if (
-      graph.schemaVersion !== 1 ||
-      !Array.isArray(graph.nodes) ||
-      graph.nodes.length === 0 ||
-      !Array.isArray(graph.edges)
-    )
-      return null;
-    return graph;
-  } catch {
-    return null;
-  }
-}
-
 function RunDetail({
   run,
   candidates,
@@ -2798,306 +2657,36 @@ function RunLogs({
   );
 }
 
-type WorkflowCanvasItem = {
-  id: string;
-  title: string;
-  subtitle: string;
-  status: string;
-  detail: string;
-  position?: { x: number; y: number };
-  flowing?: boolean;
-};
+const emptyEvents: WorkflowEvent[] = [];
+const emptyNodeRuns: WorkflowNodeRun[] = [];
 
-type WorkflowCanvasConnection = {
-  id: string;
-  source: string;
-  target: string;
-  dataType: string;
-};
-
-function DefinitionNodeCanvas({ nodes }: { nodes: WorkflowNode[] }) {
-  const [selectedNodeID, setSelectedNodeID] = useState("");
-  const selectedIndex = nodes.findIndex((node, index) => `${node.id}-${index}` === selectedNodeID);
-  const selectedNode = selectedIndex >= 0 ? nodes[selectedIndex] : null;
-  const canvasNodes = nodes.map((node, index) => ({
-    id: `${node.id}-${index}`,
-    title: node.displayName || node.id,
-    subtitle: nodeSubtitle(node.type),
-    status: "idle",
-    detail: summarizeJSON(JSON.stringify(node.config ?? {})) || node.type,
-  }));
-  return (
-    <div className="space-y-2">
-      <WorkflowNodeCanvas nodes={canvasNodes} responsiveLinear onNodeClick={setSelectedNodeID} />
-      {selectedNode && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2">
-          <div className="min-w-0">
-            <div className="truncate text-sm font-semibold">{selectedNode.displayName || selectedNode.id}</div>
-            <div className="text-xs text-muted-foreground">{nodeSubtitle(selectedNode.type)}</div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-type WorkflowCanvasData = WorkflowCanvasItem &
-  Record<string, unknown> & {
-    hasIncoming: boolean;
-    hasOutgoing: boolean;
-    incomingColor: string;
-    outgoingColor: string;
-    incomingPosition: Position;
-    outgoingPosition: Position;
-  };
-type WorkflowCanvasNode = Node<WorkflowCanvasData, "workflow">;
-
-function WorkflowCanvasRuntimeSync({ nodeIDs, layoutKey }: { nodeIDs: string[]; layoutKey: string }) {
-  const nodesInitialized = useNodesInitialized();
-  const reactFlow = useReactFlow<WorkflowCanvasNode, Edge>();
-  const updateNodeInternals = useUpdateNodeInternals();
-
-  useEffect(() => {
-    if (nodeIDs.length === 0) return;
-    updateNodeInternals(nodeIDs);
-  }, [layoutKey, nodeIDs, updateNodeInternals]);
-
-  useEffect(() => {
-    if (!layoutKey || !nodesInitialized || !reactFlow.viewportInitialized) return;
-    const frame = window.requestAnimationFrame(() => {
-      void reactFlow.fitView({ padding: 0.22, maxZoom: 1, duration: 160 });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [layoutKey, nodesInitialized, reactFlow]);
-
-  return null;
-}
-
-function WorkflowCanvasNodeView({ data }: NodeProps<WorkflowCanvasNode>) {
-  const status = normalizedWorkflowNodeStatus(data.status);
-  return (
-    <div
-      className={`workflow-run-node workflow-run-node--${status} ${data.flowing ? "workflow-run-node--flowing" : ""} group relative flex h-11 min-w-40 max-w-52 items-center gap-2 rounded-md border bg-card px-3 shadow-sm`}
-    >
-      {data.hasIncoming && (
-        <Handle
-          id="in"
-          type="target"
-          position={data.incomingPosition}
-          className="!h-3 !w-3 !border-2 !border-card"
-          style={{ background: data.incomingColor }}
-          aria-hidden
-        />
-      )}
-      <StatusPoint status={data.status} />
-      <span className="truncate text-sm font-medium">{data.title}</span>
-      {data.hasOutgoing && (
-        <Handle
-          id="out"
-          type="source"
-          position={data.outgoingPosition}
-          className="!h-3 !w-3 !border-2 !border-card"
-          style={{ background: data.outgoingColor }}
-          aria-hidden
-        />
-      )}
-      <div className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-64 -translate-x-1/2 rounded-md border bg-popover p-3 text-left shadow-lg group-hover:block group-focus-within:block">
-        <div className="text-sm font-semibold">{data.title}</div>
-        <div className="mt-1 text-xs text-muted-foreground">{data.subtitle}</div>
-        <div className="mt-2 break-words text-xs text-muted-foreground">{data.detail}</div>
-      </div>
-    </div>
-  );
-}
-
-const workflowCanvasNodeTypes = { workflow: WorkflowCanvasNodeView };
-
-type WorkflowLinearPreviewLayout = {
-  positions: { x: number; y: number }[];
-  incomingPositions: Position[];
-  outgoingPositions: Position[];
-  height: number;
-};
-
-function positionToward(origin: { x: number; y: number }, target: { x: number; y: number }) {
-  const deltaX = target.x - origin.x;
-  const deltaY = target.y - origin.y;
-  if (Math.abs(deltaY) > Math.abs(deltaX)) return deltaY > 0 ? Position.Bottom : Position.Top;
-  return deltaX > 0 ? Position.Right : Position.Left;
-}
-
-function workflowLinearPreviewLayout(nodeCount: number, width: number): WorkflowLinearPreviewLayout {
-  const nodeWidth = 176;
-  const horizontalGap = 56;
-  const verticalStep = 88;
-  const usableWidth = Math.max(220, width - 80);
-  const columns = Math.max(
-    1,
-    Math.min(nodeCount, Math.floor((usableWidth + horizontalGap) / (nodeWidth + horizontalGap))),
-  );
-  const rows = Math.max(1, Math.ceil(nodeCount / columns));
-  const positions = Array.from({ length: nodeCount }, (_, index) => {
-    const row = Math.floor(index / columns);
-    const offset = index % columns;
-    const column = row % 2 === 0 ? offset : columns - 1 - offset;
-    return { x: column * (nodeWidth + horizontalGap), y: 48 + row * verticalStep };
-  });
-  const incomingPositions = positions.map((position, index) =>
-    index === 0 ? Position.Left : positionToward(position, positions[index - 1]),
-  );
-  const outgoingPositions = positions.map((position, index) =>
-    index === positions.length - 1 ? Position.Right : positionToward(position, positions[index + 1]),
-  );
-  return { positions, incomingPositions, outgoingPositions, height: rows * verticalStep + 96 };
-}
-
-function WorkflowNodeCanvas({
+/** Stages and log of the definition's most recent run; an active run streams into the log. */
+function DefinitionRunMonitor({
   nodes,
-  connections,
-  onNodeClick,
-  compact = false,
-  responsiveLinear = false,
+  recentRuns,
+  onOpenRun,
 }: {
-  nodes: WorkflowCanvasItem[];
-  connections?: WorkflowCanvasConnection[];
-  onNodeClick?: (nodeID: string) => void;
-  compact?: boolean;
-  responsiveLinear?: boolean;
+  nodes: WorkflowNode[];
+  recentRuns: WorkflowRun[];
+  onOpenRun?: (run: WorkflowRun) => void;
 }) {
-  const canvasRef = useRef<HTMLDivElement | null>(null);
-  const [canvasWidth, setCanvasWidth] = useState(0);
-  useEffect(() => {
-    if (!responsiveLinear || !canvasRef.current) return;
-    const observer = new ResizeObserver((entries) => setCanvasWidth(entries[0]?.contentRect.width ?? 0));
-    observer.observe(canvasRef.current);
-    return () => observer.disconnect();
-  }, [responsiveLinear]);
-  const responsiveLayout = useMemo(
-    () => (responsiveLinear && canvasWidth > 0 ? workflowLinearPreviewLayout(nodes.length, canvasWidth) : null),
-    [canvasWidth, nodes.length, responsiveLinear],
+  const latestRun = useMemo(
+    () => recentRuns.reduce<WorkflowRun | null>((latest, run) => (!latest || run.id > latest.id ? run : latest), null),
+    [recentRuns],
   );
-  const resolvedConnections = useMemo<WorkflowCanvasConnection[]>(
-    () =>
-      connections ??
-      nodes.slice(0, -1).map((node, index) => ({
-        id: `${node.id}->${nodes[index + 1].id}`,
-        source: node.id,
-        target: nodes[index + 1].id,
-        dataType: "dynamic",
-      })),
-    [connections, nodes],
-  );
-  const incomingByNode = useMemo(
-    () => new Map(nodes.map((node) => [node.id, resolvedConnections.filter((edge) => edge.target === node.id)])),
-    [nodes, resolvedConnections],
-  );
-  const outgoingByNode = useMemo(
-    () => new Map(nodes.map((node) => [node.id, resolvedConnections.filter((edge) => edge.source === node.id)])),
-    [nodes, resolvedConnections],
-  );
-  const flowNodes = useMemo<WorkflowCanvasNode[]>(
-    () =>
-      nodes.map((node, index) => ({
-        id: node.id,
-        type: "workflow",
-        data: {
-          ...node,
-          hasIncoming: (incomingByNode.get(node.id)?.length ?? 0) > 0,
-          hasOutgoing: (outgoingByNode.get(node.id)?.length ?? 0) > 0,
-          incomingColor: workflowDataTypeColor(incomingByNode.get(node.id)?.[0]?.dataType),
-          outgoingColor: workflowDataTypeColor(outgoingByNode.get(node.id)?.[0]?.dataType),
-          incomingPosition: responsiveLayout?.incomingPositions[index] ?? Position.Left,
-          outgoingPosition: responsiveLayout?.outgoingPositions[index] ?? Position.Right,
-        },
-        position: responsiveLayout?.positions[index] ?? node.position ?? { x: index * 210, y: 48 },
-        sourcePosition: Position.Right,
-        targetPosition: Position.Left,
-        draggable: false,
-        selectable: true,
-      })),
-    [incomingByNode, nodes, outgoingByNode, responsiveLayout],
-  );
-  const nodeByID = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
-  const layoutKey = useMemo(
-    () =>
-      flowNodes
-        .map(
-          (node) =>
-            `${node.id}:${node.position.x}:${node.position.y}:${node.data.hasIncoming ? node.data.incomingPosition : "none"}:${node.data.hasOutgoing ? node.data.outgoingPosition : "none"}`,
-        )
-        .join("|"),
-    [flowNodes],
-  );
-  const nodeIDs = useMemo(() => flowNodes.map((node) => node.id), [flowNodes]);
-  const edges = useMemo<Edge[]>(
-    () =>
-      resolvedConnections.map((connection) => {
-        const source = nodeByID.get(connection.source);
-        const target = nodeByID.get(connection.target);
-        const state = workflowRunEdgeState(source, target);
-        const color = workflowDataTypeColor(connection.dataType);
-        return {
-          id: connection.id,
-          source: connection.source,
-          sourceHandle: "out",
-          target: connection.target,
-          targetHandle: "in",
-          type: "default",
-          className: workflowEdgeClassName(state),
-          style: { stroke: color, strokeWidth: 2, "--workflow-edge-color": color } as CSSProperties,
-          animated: state === "active",
-        };
-      }),
-    [nodeByID, resolvedConnections],
-  );
-
+  const watched = useWorkflowRunWatcher(latestRun?.id ?? null, isActiveRunStatus(latestRun?.status ?? ""));
+  const detail = latestRun && watched.run?.id === latestRun.id ? watched.run : null;
+  const nodeRuns = detail?.nodeRuns;
+  const stages = useMemo(() => workflowStages(nodes, nodeRuns), [nodeRuns, nodes]);
   return (
-    <WorkflowCanvasScrollBoundary
-      ref={canvasRef}
-      className={`workflow-canvas overflow-hidden rounded-md border ${responsiveLayout ? "" : compact ? "h-48" : "h-64"}`}
-      style={responsiveLayout ? { height: responsiveLayout.height } : undefined}
-      aria-label={workflowCopy("workflowNodeCanvas")}
-    >
-      <ReactFlow
-        nodes={flowNodes}
-        edges={edges}
-        nodeTypes={workflowCanvasNodeTypes}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable
-        panOnDrag
-        zoomOnDoubleClick={false}
-        minZoom={responsiveLinear ? 0.7 : 0.45}
-        maxZoom={1.5}
-        onNodeClick={(_, node) => onNodeClick?.(node.id)}
-        proOptions={{ hideAttribution: true }}
-      >
-        <WorkflowCanvasRuntimeSync nodeIDs={nodeIDs} layoutKey={layoutKey} />
-        <Background gap={20} size={1} color="hsl(var(--workflow-grid))" />
-        <WorkflowViewportTools compact={compact} />
-      </ReactFlow>
-    </WorkflowCanvasScrollBoundary>
+    <WorkflowRunMonitor
+      stages={stages}
+      run={detail ?? latestRun}
+      events={detail ? watched.events : emptyEvents}
+      nodeRuns={nodeRuns ?? emptyNodeRuns}
+      onOpenRun={onOpenRun}
+    />
   );
-}
-
-function workflowRunEdgeState(
-  source: WorkflowCanvasItem | undefined,
-  target: WorkflowCanvasItem | undefined,
-): WorkflowEdgeVisualState {
-  if (!source || !target) return "idle";
-  if (target.flowing || normalizedWorkflowNodeStatus(target.status) === "running") return "active";
-  if (normalizedWorkflowNodeStatus(target.status) === "failed") return "failed";
-  if (normalizedWorkflowNodeStatus(target.status) === "skipped") return "skipped";
-  const sourceStatus = normalizedWorkflowNodeStatus(source.status);
-  const targetStatus = normalizedWorkflowNodeStatus(target.status);
-  if (["succeeded", "partial"].includes(sourceStatus) && ["succeeded", "partial"].includes(targetStatus))
-    return "completed";
-  return "idle";
-}
-
-function normalizedWorkflowNodeStatus(status: string) {
-  const normalized = status.trim().toLowerCase();
-  return ["queued", "running", "succeeded", "partial", "failed", "skipped"].includes(normalized) ? normalized : "idle";
 }
 
 function StatusPoint({ status }: { status: string }) {
@@ -4289,11 +3878,6 @@ function numberValue(value: unknown) {
 function nullableNumberValue(value: unknown) {
   const number = numberValue(value);
   return number === null ? null : number;
-}
-
-function nodeSubtitle(type: string) {
-  const metadata = fallbackNodeTypes.find((nodeType) => nodeType.type === type);
-  return metadata ? `${metadata.phase} · ${type}` : type;
 }
 
 function hasNonEmptyJSON(value: string) {

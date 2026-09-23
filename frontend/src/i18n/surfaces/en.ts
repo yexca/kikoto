@@ -692,7 +692,6 @@ export const surfaceEnglish = {
     cannotUndoKeep: "This cannot be undone. Work metadata and the published Fetch result will be kept.",
     continue: "Continue",
     permanentlyDelete: "Permanently delete",
-    workflowNodeCanvas: "Workflow node canvas",
     builtInDefinitions: {
       circle_follow: {
         name: "Follow a circle",
@@ -906,10 +905,20 @@ export const surfaceEnglish = {
     workflow: "Workflow",
     extensionsPlaceholder: "wav, flac",
   },
-  workflowCanvas: {
-    scrollZoomHint: "Hold {{key}} and scroll to zoom the canvas.",
-    viewportControls: "Workflow viewport controls",
-    minimap: "Workflow minimap",
+  workflowMonitor: {
+    label: "Workflow run",
+    stages: "Workflow stages",
+    standby: "No runs yet",
+    notRun: "Not run",
+    openRun: "Open run #{{id}} ({{status}}) in Activity",
+    log: "Run log",
+    live: "Live",
+    showAll: "Show all stages",
+    empty: "Output from this workflow's next run will appear here.",
+    noOutput: "This run recorded no output.",
+    earlierHidden: "{{count}} earlier lines hidden",
+    stageStarted: "{{name}} started",
+    stageFinished: "{{name}} finished: {{status}}",
   },
   libraryDetail: {
     untrackSource: "Untrack source?",

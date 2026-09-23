@@ -40,7 +40,7 @@ const currentAiModels = aiModelHistory[aiModelHistory.length - 1];
 const technologyGroups = [
   {
     title: "Frontend",
-    items: ["React", "TypeScript", "Vite", "Tailwind CSS", "i18next", "@xyflow/react", "lucide-react", "Radix UI Slot"],
+    items: ["React", "TypeScript", "Vite", "Tailwind CSS", "i18next", "lucide-react", "Radix UI Slot"],
   },
   {
     title: "Backend",
