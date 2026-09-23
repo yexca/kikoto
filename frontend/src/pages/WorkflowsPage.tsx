@@ -33,6 +33,11 @@ import { toastFromError, useToast } from "@/components/ui/toast";
 import { useAuth } from "@/auth/AuthProvider";
 import { openWorkDetail } from "@/app/workDetailNavigation";
 import { WorkflowActivity } from "@/features/workflows/WorkflowActivity";
+import {
+  WorkflowRunSlotContent,
+  WorkflowRunSlotProvider,
+  WorkflowRunSlotTarget,
+} from "@/features/workflows/WorkflowRunSlot";
 import { RunDiagnostics } from "@/features/workflows/RunDiagnostics";
 import { RunFacts, RunStatusBadge, RunSteps } from "@/features/workflows/RunOverview";
 import { RunTransferProgress } from "@/features/workflows/RunTransferProgress";
@@ -392,12 +397,18 @@ export function WorkflowsPage({
     activityLocation.selectWorkflow(definition.code);
   };
 
+  // Activity replaces a success toast: the new run is visible there with the rest of the queue.
+  const showQueuedRun = () => {
+    setActivityRevision((value) => value + 1);
+    activityLocation.openList();
+  };
+
   const runLocalScan = async (followUpRun = false) => {
     setIsRunningScan(true);
     try {
-      const result = await api.runLocalScan({ followUpRun });
-      toast.success(workflowCopy("localScanCreated", { runId: result.runId }));
+      await api.runLocalScan({ followUpRun });
       void refreshRecentRuns("local_library_scan");
+      showQueuedRun();
     } catch (error) {
       toast.notify(toastFromError(error, workflowCopy("localScanCreateFailed")));
     } finally {
@@ -408,9 +419,9 @@ export function WorkflowsPage({
   const runMetadataSync = async () => {
     setIsSyncingMetadata(true);
     try {
-      const result = await api.runDLsiteSync();
-      toast.success(workflowCopy("metadataSyncCreated", { runId: result.runId }));
+      await api.runDLsiteSync();
       void refreshRecentRuns("metadata_sync");
+      showQueuedRun();
     } catch (error) {
       toast.notify(toastFromError(error, workflowCopy("metadataSyncCreateFailed")));
     } finally {
@@ -421,14 +432,9 @@ export function WorkflowsPage({
   const runPopularCollection = async (options: RemotePopularRunOptions) => {
     setRunningSystemAction("remote_popular");
     try {
-      const result = await api.runRemotePopularCollection(options);
-      toast.success(
-        result.tagName
-          ? workflowCopy("remotePopularQueued", { runId: result.runId, tag: result.tagName })
-          : workflowCopy("remotePopularQueuedUntagged", { runId: result.runId }),
-      );
+      await api.runRemotePopularCollection(options);
       refresh();
-      activityLocation.openRun(result.runId, selectedDefinition?.code);
+      showQueuedRun();
     } catch (error) {
       toast.notify(toastFromError(error, workflowCopy("remotePopularQueueFailed")));
     } finally {
@@ -439,14 +445,9 @@ export function WorkflowsPage({
   const runDLsitePopularCollection = async (options: DLsitePopularRunOptions) => {
     setRunningSystemAction("dlsite_popular");
     try {
-      const result = await api.runDLsitePopularCollection(options);
-      toast.success(
-        result.tagName
-          ? workflowCopy("dlsitePopularQueued", { runId: result.runId, tag: result.tagName })
-          : workflowCopy("dlsitePopularQueuedUntagged", { runId: result.runId }),
-      );
+      await api.runDLsitePopularCollection(options);
       refresh();
-      activityLocation.openRun(result.runId, selectedDefinition?.code);
+      showQueuedRun();
     } catch (error) {
       toast.notify(toastFromError(error, workflowCopy("dlsitePopularQueueFailed")));
     } finally {
@@ -458,15 +459,9 @@ export function WorkflowsPage({
     if (!selectedPreset || !selectedDefinition) return;
     setRunningSystemAction("preset");
     try {
-      const result = await api.runWorkflowPreset(selectedPreset.code, inputs);
-      toast.success(
-        workflowCopy("presetQueued", {
-          name: localizedWorkflowDefinition(selectedDefinition).displayName,
-          runId: result.runId,
-        }),
-      );
+      await api.runWorkflowPreset(selectedPreset.code, inputs);
       void refreshRecentRuns(selectedDefinition.code);
-      activityLocation.openRun(result.runId, selectedDefinition.code);
+      showQueuedRun();
     } catch (error) {
       toast.notify(toastFromError(error, workflowCopy("presetQueueFailed")));
     } finally {
@@ -556,48 +551,51 @@ export function WorkflowsPage({
           </Button>
         </div>
       )}
-      {
+      <WorkflowRunSlotProvider>
         <div className="min-w-0 space-y-4">
           <WorkflowNavigation
             actions={
-              <WorkflowActivity
-                key="global-activity"
-                workflowCode="all"
-                workflowName=""
-                open={activityLocation.open}
-                onOpenChange={activityLocation.setOpen}
-                selectedRunId={activityLocation.runId}
-                onSelectRun={openActivityRun}
-                onBack={activityLocation.backToList}
-                refreshKey={activityRevision}
-                readOnly={readOnly}
-                canSyncMetadata={canSyncMetadata}
-                detail={
-                  activityLocation.runId ? (
-                    <>
-                      {activityRun.error && (
-                        <div role="alert" className="rounded-md border p-3 text-sm">
-                          {workflowCopy("activityLoadFailed")}{" "}
-                          <Button variant="outline" onClick={() => void activityRun.refresh(true)}>
-                            {t("common.retry")}
-                          </Button>
-                        </div>
-                      )}
-                      <RunDetail
-                        key={activityLocation.runId}
-                        run={linkedRun}
-                        candidates={linkedRun ? activityRun.candidates : []}
-                        events={linkedRun ? activityRun.events : []}
-                        loading={!linkedRun && !activityRun.error}
-                        onCandidateUpdate={refreshSelectedRunReview}
-                        onRunAction={refreshSelectedRunReview}
-                        canSyncMetadata={canSyncMetadata}
-                        readOnly={readOnly}
-                      />
-                    </>
-                  ) : undefined
-                }
-              />
+              <>
+                <WorkflowRunSlotTarget />
+                <WorkflowActivity
+                  key="global-activity"
+                  workflowCode="all"
+                  workflowName=""
+                  open={activityLocation.open}
+                  onOpenChange={activityLocation.setOpen}
+                  selectedRunId={activityLocation.runId}
+                  onSelectRun={openActivityRun}
+                  onBack={activityLocation.backToList}
+                  refreshKey={activityRevision}
+                  readOnly={readOnly}
+                  canSyncMetadata={canSyncMetadata}
+                  detail={
+                    activityLocation.runId ? (
+                      <>
+                        {activityRun.error && (
+                          <div role="alert" className="rounded-md border p-3 text-sm">
+                            {workflowCopy("activityLoadFailed")}{" "}
+                            <Button variant="outline" onClick={() => void activityRun.refresh(true)}>
+                              {t("common.retry")}
+                            </Button>
+                          </div>
+                        )}
+                        <RunDetail
+                          key={activityLocation.runId}
+                          run={linkedRun}
+                          candidates={linkedRun ? activityRun.candidates : []}
+                          events={linkedRun ? activityRun.events : []}
+                          loading={!linkedRun && !activityRun.error}
+                          onCandidateUpdate={refreshSelectedRunReview}
+                          onRunAction={refreshSelectedRunReview}
+                          canSyncMetadata={canSyncMetadata}
+                          readOnly={readOnly}
+                        />
+                      </>
+                    ) : undefined
+                  }
+                />
+              </>
             }
             definitions={visibleDefinitions}
             selectedId={selectedDefinition?.id ?? null}
@@ -624,7 +622,10 @@ export function WorkflowsPage({
                 onEditTrigger={editAutomationTrigger}
                 onToggleTrigger={toggleAutomationTrigger}
                 onOpenRun={openActivityRun}
-                onRunQueued={() => void refreshRecentRuns("availability_watch")}
+                onRunQueued={() => {
+                  void refreshRecentRuns("availability_watch");
+                  showQueuedRun();
+                }}
               />
             ) : (
               <WorkflowDetail
@@ -656,7 +657,7 @@ export function WorkflowsPage({
             )}
           </div>
         </div>
-      }
+      </WorkflowRunSlotProvider>
 
       {modalMode === "create-trigger" && selectedDefinition && (
         <TriggerModal
@@ -972,8 +973,7 @@ function AvailabilityWatchRunForm({
   const run = async () => {
     setRunning(true);
     try {
-      const result = await api.runAvailabilityWatch();
-      toast.success(workflowCopy("availabilityWatchRunQueued", { runId: result.runId }));
+      await api.runAvailabilityWatch();
       onRunQueued();
     } catch (error) {
       toast.notify(toastFromError(error, workflowCopy("availabilityWatchRunFailed")));
@@ -994,19 +994,17 @@ function AvailabilityWatchRunForm({
   return (
     <>
       {layout({
-        run: (
-          <>
-            <Button
-              ref={configureRef}
-              variant="outline"
-              aria-expanded={configuring}
-              onClick={() => setConfiguring((open) => !open)}
-            >
-              <Settings2 className="h-4 w-4" />
-              {workflowCopy("configure")}
-            </Button>
-            <WorkflowRunButton running={running} disabled={readOnly} onClick={() => void run()} />
-          </>
+        run: <WorkflowRunButton running={running} disabled={readOnly} onClick={() => void run()} />,
+        actions: (
+          <Button
+            ref={configureRef}
+            variant="outline"
+            aria-expanded={configuring}
+            onClick={() => setConfiguring((open) => !open)}
+          >
+            <Settings2 className="h-4 w-4" />
+            {workflowCopy("configure")}
+          </Button>
         ),
         options: (
           <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-3">
@@ -1523,8 +1521,13 @@ function WorkflowDetail({
   );
 }
 
-/** Places a workflow's run action in its header and its run options directly below. */
-type RunFormLayout = (parts: { run: ReactNode; options: ReactNode; optionsActions?: ReactNode }) => ReactNode;
+/** Places a workflow's run action in the page toolbar and its run options below the header. */
+type RunFormLayout = (parts: {
+  run: ReactNode;
+  actions?: ReactNode;
+  options: ReactNode;
+  optionsActions?: ReactNode;
+}) => ReactNode;
 
 function runFormLayout({
   title,
@@ -1535,9 +1538,10 @@ function runFormLayout({
   description?: string;
   optionsTitle: string;
 }): RunFormLayout {
-  return ({ run, options, optionsActions }) => (
+  return ({ run, actions, options, optionsActions }) => (
     <div className="space-y-5">
-      <WorkflowHeader title={title} description={description} actions={run} />
+      {run && <WorkflowRunSlotContent>{run}</WorkflowRunSlotContent>}
+      <WorkflowHeader title={title} description={description} actions={actions} />
       {options && (
         <section className="min-w-0 space-y-4 border-t pt-5" aria-label={optionsTitle}>
           <div className="flex min-h-8 items-center justify-between gap-2">
@@ -1561,9 +1565,14 @@ function WorkflowRunButton({
   onClick: () => void;
 }) {
   return (
-    <Button className="min-w-24" disabled={running || disabled} onClick={onClick}>
+    <Button
+      className="h-9 px-3 sm:min-w-24"
+      aria-label={running ? workflowCopy("queueing") : workflowCopy("run")}
+      disabled={running || disabled}
+      onClick={onClick}
+    >
       {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}
-      {running ? workflowCopy("queueing") : workflowCopy("run")}
+      <span className="hidden sm:inline">{running ? workflowCopy("queueing") : workflowCopy("run")}</span>
     </Button>
   );
 }

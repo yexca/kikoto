@@ -58,6 +58,12 @@ export function useWorkflowActivityLocation() {
         params.delete("view");
         params.delete("dialog");
       }),
+    /** Opens the Activity list, where a newly queued run appears with the active runs. */
+    openList: () =>
+      update((params) => {
+        params.set("activity", "1");
+        params.delete("run");
+      }, true),
     openRun: (runId: number, workflowCode?: string) =>
       update((params) => {
         params.set("activity", "1");

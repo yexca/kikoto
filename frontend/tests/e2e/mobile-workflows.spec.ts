@@ -802,7 +802,10 @@ test("definitions foreground runnable presets and show DLsite popular run option
     tagNameTemplate: "{date}_DL_year_{year}_popular",
     skipTag: false,
   });
-  await expect(page.getByText(/run #31 queued/)).toBeVisible();
+  const queuedActivity = page.getByRole("dialog", { name: "Activity", exact: true });
+  await expect(queuedActivity).toBeVisible();
+  await expect(page).toHaveURL(/activity=1/);
+  await expect(page).not.toHaveURL(/run=/);
 
   await page.goto("/about");
   await page.goto("/workflows");
@@ -948,6 +951,10 @@ test("local scan follow-up is explicit and defaults off for manual and automatic
   await manualFollowUp.click();
   await page.getByRole("button", { name: "Run", exact: true }).click();
   await expect.poll(() => manualPayloads).toEqual([{ followUpRun: true }]);
+  const queuedActivity = page.getByRole("dialog", { name: "Activity", exact: true });
+  await expect(queuedActivity).toBeVisible();
+  await queuedActivity.getByRole("button", { name: "Close Activity", exact: true }).click();
+  await expect(queuedActivity).toHaveCount(0);
 
   await page.getByRole("button", { name: "Edit Startup local library scan" }).click();
   const triggerDialog = page.getByRole("dialog", { name: "Edit trigger" });
@@ -1001,7 +1008,12 @@ test("availability watch shares pools, schedules checks, and handles ready works
   await expect(configurePopover).toHaveCount(0);
   await expect.poll(() => updates).toHaveLength(1);
   await page.getByRole("button", { name: "Run", exact: true }).click();
-  await expect(page.getByText("Availability Watch run #91 queued.", { exact: true })).toBeVisible();
+  const queuedActivity = page.getByRole("dialog", { name: "Activity", exact: true });
+  await expect(queuedActivity).toBeVisible();
+  await expect(page).toHaveURL(/activity=1/);
+  await expect(page).not.toHaveURL(/run=/);
+  await queuedActivity.getByRole("button", { name: "Close Activity", exact: true }).click();
+  await expect(queuedActivity).toHaveCount(0);
   await expect.poll(() => updates).toHaveLength(2);
   expect(updates).toContainEqual({ action: "track", sourceId: 8, excludeExtensions: ["wav", "flac"] });
   expect(updates).toContainEqual({ run: true });
@@ -1360,7 +1372,10 @@ test("remote popular collection requires an explicit source and queues configure
     tagNameTemplate: "weekly_{source_code}_{action}_popular",
     skipTag: false,
   });
-  await expect(page.getByText(/run #41 queued/)).toBeVisible();
+  const queuedActivity = page.getByRole("dialog", { name: "Activity", exact: true });
+  await expect(queuedActivity).toBeVisible();
+  await expect(page).toHaveURL(/activity=1/);
+  await expect(page).not.toHaveURL(/run=/);
 });
 
 test("remote popular shows an unavailable overlay without a compatible source", async ({ page }) => {

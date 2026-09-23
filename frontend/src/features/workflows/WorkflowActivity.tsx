@@ -1,5 +1,5 @@
-import { Activity, ArrowLeft, Check, ChevronLeft, ChevronRight, Loader2, X } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Activity, ArrowLeft, Check, ChevronLeft, ChevronRight, CircleDashed, Loader2, X } from "lucide-react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,7 @@ export function WorkflowActivity({
   const { t } = useTranslation();
   const mobile = useMobileNavigationLayout();
   const anchorRef = useRef<HTMLButtonElement>(null);
+  const runningCountId = useId();
   const [view, setView] = useState<"attention" | "history">(() =>
     ["history", "completed"].includes(new URLSearchParams(window.location.search).get("view") ?? "")
       ? "history"
@@ -177,6 +178,7 @@ export function WorkflowActivity({
     );
   };
   const displayed = snapshot?.view === view && snapshot.page === page ? snapshot.result : null;
+  const runningCount = totals.running > 0 ? t("workflowActivity.runningCount", { count: totals.running }) : "";
   const content = (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b py-1.5 pl-4 pr-2">
@@ -224,42 +226,48 @@ export function WorkflowActivity({
                 </Button>
               </div>
             )}
-            {totals.running > 0 && (
-              <section aria-label={t("workflowActivity.running")} className="space-y-2">
-                <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+            <section aria-label={t("workflowActivity.running")} className="space-y-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+                {totals.running > 0 ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  {t("workflowActivity.running")} · {totals.running}
-                </div>
+                ) : (
+                  <CircleDashed className="h-3.5 w-3.5" />
+                )}
+                {t("workflowActivity.running")} · {totals.running}
+              </div>
+              {totals.running === 0 ? (
+                <RunningPlaceholder label={t("workflowActivity.empty.running")} />
+              ) : (
                 <ol className="-mx-1 divide-y rounded-lg border bg-card">
                   {active?.runs.map((run) => runRow(run, true))}
                 </ol>
-                {totals.running > 5 && (
-                  <div className="flex items-center justify-between">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      aria-label={t("workflowActivity.previous")}
-                      disabled={activePage === 1}
-                      onClick={() => setActivePage(activePage - 1)}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <span className="text-xs">
-                      {activePage} / {Math.ceil(totals.running / 5)}
-                    </span>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      aria-label={t("workflowActivity.next")}
-                      disabled={activePage * 5 >= totals.running}
-                      onClick={() => setActivePage(activePage + 1)}
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                )}
-              </section>
-            )}
+              )}
+              {totals.running > 5 && (
+                <div className="flex items-center justify-between">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label={t("workflowActivity.previous")}
+                    disabled={activePage === 1}
+                    onClick={() => setActivePage(activePage - 1)}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-xs">
+                    {activePage} / {Math.ceil(totals.running / 5)}
+                  </span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label={t("workflowActivity.next")}
+                    disabled={activePage * 5 >= totals.running}
+                    onClick={() => setActivePage(activePage + 1)}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </section>
             <div
               role="tablist"
               aria-label={t("workflowActivity.categories")}
@@ -327,7 +335,8 @@ export function WorkflowActivity({
         variant="ghost"
         className="h-11 shrink-0 gap-2 px-3"
         aria-label={t("nav.activity")}
-        title={t("nav.activity")}
+        aria-describedby={runningCount ? runningCountId : undefined}
+        title={runningCount ? `${t("nav.activity")} · ${runningCount}` : t("nav.activity")}
         disabled={!workflowCode && !selectedRunId}
         aria-expanded={open}
         aria-haspopup="dialog"
@@ -335,6 +344,16 @@ export function WorkflowActivity({
       >
         {totals.running > 0 ? <Loader2 className="h-4 w-4 animate-spin" /> : <Activity className="h-4 w-4" />}
         <span className="hidden lg:inline">{t("nav.activity")}</span>
+        {totals.running > 0 && (
+          <Badge variant="info" className="px-2 tabular-nums">
+            {totals.running}
+          </Badge>
+        )}
+        {runningCount && (
+          <span id={runningCountId} className="sr-only">
+            {runningCount}
+          </span>
+        )}
         {totals.attention > 0 && <Badge variant="warning">{totals.attention}</Badge>}
       </Button>
       {mobile ? (
@@ -359,5 +378,26 @@ export function WorkflowActivity({
         </AnchoredPopover>
       )}
     </>
+  );
+}
+
+/** Holds the running section's place while idle, shaped like a run row so a new run does not shift the list. */
+function RunningPlaceholder({ label }: { label: string }) {
+  return (
+    <div className="-mx-1 rounded-lg border border-dashed px-3 py-2.5">
+      <div className="flex min-w-0 gap-2.5">
+        <span className="flex h-5 w-3.5 shrink-0 items-center justify-center" aria-hidden="true">
+          <span className="h-2 w-2 rounded-full border border-muted-foreground/40" />
+        </span>
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <p className="truncate text-sm text-muted-foreground">{label}</p>
+          <div className="flex items-center gap-1.5" aria-hidden="true">
+            <span className="h-2 w-12 rounded-full bg-muted" />
+            <span className="h-2 w-8 rounded-full bg-muted" />
+            <span className="h-2 w-14 rounded-full bg-muted" />
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
