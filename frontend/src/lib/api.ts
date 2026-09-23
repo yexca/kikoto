@@ -2498,6 +2498,7 @@ export const api = {
     sourceId: number;
     limit: number;
     tagNameTemplate: string;
+    skipTag?: boolean;
   }) => postJSONBody<RemoteCollectionRunResult>("/api/workflow-runs/remote-popular", payload),
   listWorkflowPresets: () => getJSON<WorkflowPreset[]>("/api/workflow-presets"),
   runWorkflowPreset: (code: string, inputs: Record<string, unknown>) =>
@@ -2507,6 +2508,7 @@ export const api = {
     releaseWindow: "30d" | "";
     year: number;
     tagNameTemplate: string;
+    skipTag?: boolean;
   }) => postJSONBody<DLsitePopularRunResult>("/api/workflow-runs/dlsite-popular", payload),
   recordRemoteBulkRun: (payload: {
     action: "track" | "fetch" | "track_fetch" | "sync" | "sync_fetch" | "save" | "sync_save";

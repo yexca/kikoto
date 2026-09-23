@@ -107,3 +107,51 @@ func TestDLsitePopularWorkflowQueuesSyncsAndTagsCurrentUser(t *testing.T) {
 		t.Fatalf("tag assignments = %d", assignments)
 	}
 }
+
+func TestDLsitePopularWorkflowSkipTagSyncsWithoutTagging(t *testing.T) {
+	db := openMigratedTestDB(t)
+	userResult, err := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('untagged-user', 'Untagged User', 'admin')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, _ := userResult.LastInsertId()
+	server := NewServer(db, config.Config{})
+	request := httptest.NewRequest(http.MethodPost, "/api/workflow-runs/dlsite-popular", strings.NewReader(`{"period":"week","skipTag":true,"tagNameTemplate":"{date}_ignored"}`))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: userID, Permissions: []string{"workflows:run", "metadata:sync", "tags:write"}}))
+	response := httptest.NewRecorder()
+	server.createDLsitePopularCollectionRun(response, request)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var queued dlsitePopularRunResult
+	if err := json.Unmarshal(response.Body.Bytes(), &queued); err != nil {
+		t.Fatal(err)
+	}
+	if queued.TagName != "" {
+		t.Fatalf("skipped tag name = %q", queued.TagName)
+	}
+	job, ok, err := server.claimNextQueuedWorkflowJob(context.Background(), "test-runner")
+	if err != nil || !ok {
+		t.Fatalf("claim = %+v, %v, %v", job, ok, err)
+	}
+	if err := server.executeDLsitePopularCollectionJobWith(context.Background(), job, fakeDLsiteRankingProvider{codes: []string{"RJ00000000", "RJ00000001"}}, fakeDLsiteFamilySyncer{db: db}); err != nil {
+		t.Fatal(err)
+	}
+	var runStatus, tagStatus string
+	if err := db.QueryRow("SELECT status FROM workflow_run WHERE id = ?", queued.RunID).Scan(&runStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT status FROM workflow_node_run WHERE workflow_run_id = ? AND node_id = 'tag'", queued.RunID).Scan(&tagStatus); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "succeeded" || tagStatus != "skipped" {
+		t.Fatalf("run = %s, tag node = %s", runStatus, tagStatus)
+	}
+	var assignments int
+	if err := db.QueryRow("SELECT COUNT(*) FROM user_work_tag WHERE user_id = ?", userID).Scan(&assignments); err != nil {
+		t.Fatal(err)
+	}
+	if assignments != 0 {
+		t.Fatalf("tag assignments = %d, want 0", assignments)
+	}
+}

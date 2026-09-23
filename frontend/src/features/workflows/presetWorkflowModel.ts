@@ -2,13 +2,67 @@ import type { WorkflowPreset, WorkflowPresetParameter } from "@/lib/api";
 
 export type PresetFormValues = Record<string, string>;
 
+/** Form-only flag: when "false" the run sends an empty template, which skips tagging. */
+export const PRESET_TAG_ENABLED_KEY = "tagEnabled";
+const TAG_TEMPLATE_KEY = "tagNameTemplate";
+
+export function presetTagEnabled(values: PresetFormValues) {
+  return values[PRESET_TAG_ENABLED_KEY] !== "false";
+}
+
+/**
+ * Filters the form can switch off, with their default state. A disabled work
+ * limit runs at the parameter's maximum, since every preset run keeps an
+ * explicit bound.
+ */
+export const PRESET_OPTIONAL_FILTERS: Record<string, boolean> = { maxWorks: true };
+
+/** Form-only release range flags: the range switch and an open ("No limit") end per side. */
+export const PRESET_RELEASE_KEYS = {
+  enabled: "releaseEnabled",
+  fromOpen: "releaseFromOpen",
+  toOpen: "releaseToOpen",
+} as const;
+const RELEASE_FROM_KEY = "releaseFrom";
+const RELEASE_TO_KEY = "releaseTo";
+
+export type PresetReleaseRange = { enabled: boolean; fromOpen: boolean; toOpen: boolean };
+
+/** Both bounds are inclusive; an open end leaves that side unlimited. */
+export function presetReleaseRange(values: PresetFormValues): PresetReleaseRange {
+  return {
+    enabled: values[PRESET_RELEASE_KEYS.enabled] === "true",
+    fromOpen: values[PRESET_RELEASE_KEYS.fromOpen] === "true",
+    toOpen: values[PRESET_RELEASE_KEYS.toOpen] !== "false",
+  };
+}
+
+function releaseRangeActiveValue(values: PresetFormValues, key: string) {
+  const range = presetReleaseRange(values);
+  if (!range.enabled) return null;
+  if (key === RELEASE_FROM_KEY && range.fromOpen) return null;
+  if (key === RELEASE_TO_KEY && range.toOpen) return null;
+  return (values[key] ?? "").trim();
+}
+
+export function presetOptionalFlagKey(key: string) {
+  return `${key}Enabled`;
+}
+
+export function presetOptionalEnabled(values: PresetFormValues, key: string) {
+  const flag = values[presetOptionalFlagKey(key)];
+  return flag === undefined ? (PRESET_OPTIONAL_FILTERS[key] ?? true) : flag === "true";
+}
+
 export type PresetBlocker =
   | { kind: "required"; key: string }
   | { kind: "range"; key: string; minimum: number; maximum: number }
   | { kind: "source_required" }
   | { kind: "fetch_permission" }
   | { kind: "full_refresh_automated" }
-  | { kind: "invalid_date"; key: string };
+  | { kind: "invalid_date"; key: string }
+  | { kind: "release_range_open" }
+  | { kind: "release_range_order" };
 
 export const PRESET_ACTIONS = ["metadata", "track", "fetch"] as const;
 export type PresetAction = (typeof PRESET_ACTIONS)[number];
@@ -16,12 +70,21 @@ export type PresetAction = (typeof PRESET_ACTIONS)[number];
 export function presetDefaultValues(preset: WorkflowPreset): PresetFormValues {
   const values: PresetFormValues = {};
   for (const parameter of preset.parameters) {
-    if (parameter.key === "tagNameTemplate") {
+    if (parameter.key === TAG_TEMPLATE_KEY) {
       values[parameter.key] = preset.defaultTagTemplate;
+      values[PRESET_TAG_ENABLED_KEY] = "true";
       continue;
     }
     values[parameter.key] =
       parameter.default === undefined || parameter.default === null ? "" : String(parameter.default);
+    if (parameter.key in PRESET_OPTIONAL_FILTERS) {
+      values[presetOptionalFlagKey(parameter.key)] = String(PRESET_OPTIONAL_FILTERS[parameter.key]);
+    }
+  }
+  if (preset.parameters.some((parameter) => parameter.key === RELEASE_FROM_KEY)) {
+    values[PRESET_RELEASE_KEYS.enabled] = "false";
+    values[PRESET_RELEASE_KEYS.fromOpen] = "false";
+    values[PRESET_RELEASE_KEYS.toOpen] = "true";
   }
   return values;
 }
@@ -32,6 +95,24 @@ export function presetValuesFromInputs(preset: WorkflowPreset, inputs: unknown):
   for (const [key, value] of Object.entries(inputs as Record<string, unknown>)) {
     if (!(key in values)) continue;
     values[key] = Array.isArray(value) ? value.join(", ") : value === null || value === undefined ? "" : String(value);
+  }
+  const storedFrom = (values[RELEASE_FROM_KEY] ?? "").trim();
+  const storedTo = (values[RELEASE_TO_KEY] ?? "").trim();
+  if (storedFrom || storedTo) {
+    values[PRESET_RELEASE_KEYS.enabled] = "true";
+    values[PRESET_RELEASE_KEYS.fromOpen] = String(!storedFrom);
+    values[PRESET_RELEASE_KEYS.toOpen] = String(!storedTo);
+  }
+  const maxWorks = preset.parameters.find((parameter) => parameter.key === "maxWorks");
+  if (maxWorks?.maximum !== undefined && integerValue(values.maxWorks ?? "") === maxWorks.maximum) {
+    // Running at the maximum is what a disabled limit sends, so it restores as disabled.
+    values[presetOptionalFlagKey("maxWorks")] = "false";
+    values.maxWorks = maxWorks.default === undefined || maxWorks.default === null ? "" : String(maxWorks.default);
+  }
+  if (TAG_TEMPLATE_KEY in values && values[TAG_TEMPLATE_KEY].trim() === "") {
+    // A stored empty template means tagging was turned off; keep the default ready to turn it back on.
+    values[PRESET_TAG_ENABLED_KEY] = "false";
+    values[TAG_TEMPLATE_KEY] = preset.defaultTagTemplate;
   }
   return values;
 }
@@ -61,6 +142,15 @@ export function presetInputsPayload(preset: WorkflowPreset, values: PresetFormVa
   const payload: Record<string, unknown> = {};
   for (const parameter of presetVisibleParameters(preset, values)) {
     const raw = (values[parameter.key] ?? "").trim();
+    if (parameter.key in PRESET_OPTIONAL_FILTERS && !presetOptionalEnabled(values, parameter.key)) {
+      if (parameter.kind === "integer" && parameter.maximum !== undefined) payload[parameter.key] = parameter.maximum;
+      continue;
+    }
+    if (parameter.key === RELEASE_FROM_KEY || parameter.key === RELEASE_TO_KEY) {
+      const active = releaseRangeActiveValue(values, parameter.key);
+      if (active) payload[parameter.key] = active;
+      continue;
+    }
     switch (parameter.kind) {
       case "integer":
       case "source_id": {
@@ -75,7 +165,7 @@ export function presetInputsPayload(preset: WorkflowPreset, values: PresetFormVa
           .filter(Boolean);
         break;
       case "text_template":
-        payload[parameter.key] = raw;
+        payload[parameter.key] = parameter.key === TAG_TEMPLATE_KEY && !presetTagEnabled(values) ? "" : raw;
         break;
       default:
         if (raw !== "") payload[parameter.key] = raw;
@@ -93,6 +183,25 @@ export function presetBlockers(
   const action = presetAction(values);
   for (const parameter of presetVisibleParameters(preset, values)) {
     const raw = (values[parameter.key] ?? "").trim();
+    if (parameter.key in PRESET_OPTIONAL_FILTERS) {
+      if (!presetOptionalEnabled(values, parameter.key)) continue;
+      if (raw === "") {
+        blockers.push({ kind: "required", key: parameter.key });
+        continue;
+      }
+    }
+    if (parameter.key === RELEASE_FROM_KEY || parameter.key === RELEASE_TO_KEY) {
+      const active = releaseRangeActiveValue(values, parameter.key);
+      if (active === null) continue;
+      if (active === "") {
+        blockers.push({ kind: "required", key: parameter.key });
+        continue;
+      }
+    }
+    if (parameter.key === TAG_TEMPLATE_KEY && presetTagEnabled(values) && raw === "") {
+      blockers.push({ kind: "required", key: parameter.key });
+      continue;
+    }
     if (parameter.required && raw === "" && parameter.kind !== "source_id") {
       blockers.push({ kind: "required", key: parameter.key });
       continue;
@@ -109,6 +218,11 @@ export function presetBlockers(
       blockers.push({ kind: "invalid_date", key: parameter.key });
     }
   }
+  const range = presetReleaseRange(values);
+  if (range.enabled && range.fromOpen && range.toOpen) blockers.push({ kind: "release_range_open" });
+  const from = releaseRangeActiveValue(values, RELEASE_FROM_KEY);
+  const to = releaseRangeActiveValue(values, RELEASE_TO_KEY);
+  if (from && to && from > to) blockers.push({ kind: "release_range_order" });
   const needsSource =
     action !== "metadata" || preset.parameters.some((parameter) => parameter.key === "sourceId" && parameter.required);
   if (needsSource && !(integerValue(values.sourceId ?? "") ?? 0)) blockers.push({ kind: "source_required" });

@@ -21,6 +21,8 @@ type remoteCollectionRunRequest struct {
 	Limit           int    `json:"limit"`
 	TagName         string `json:"tagName"`
 	TagNameTemplate string `json:"tagNameTemplate"`
+	// SkipTag leaves collected works untagged; the tag node is recorded as skipped.
+	SkipTag bool `json:"skipTag"`
 }
 
 type remoteCollectionRunResult struct {
@@ -89,6 +91,10 @@ func (s *Server) prepareRemotePopularWorkflow(ctx context.Context, payload remot
 	}
 	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
 		return "", remoteSourceForUse{}, payload, fmt.Errorf("source has no API endpoint")
+	}
+	if payload.SkipTag {
+		payload.TagName, payload.TagNameTemplate = "", ""
+		return action, source, payload, nil
 	}
 	payload.TagNameTemplate = strings.TrimSpace(payload.TagNameTemplate)
 	if payload.TagNameTemplate != "" {
@@ -343,6 +349,9 @@ func (s *Server) dispatchRemotePopularCandidate(ctx context.Context, job workflo
 		outcome.failure = fmt.Sprintf("%s: work was not persisted", code)
 		return outcome
 	}
+	if payload.TagName == "" {
+		return outcome
+	}
 	if _, err := s.addWorkUserTag(ctx, payload.UserID, []int64{outcome.workID}, payload.TagName); err != nil {
 		outcome.failure = fmt.Sprintf("%s tag: %s", code, err.Error())
 		return outcome
@@ -378,6 +387,9 @@ func (s *Server) finishRemotePopularCollectionJob(ctx context.Context, job workf
 	}
 	if result.Tagged == 0 && succeeded > 0 {
 		tagStatus = "failed"
+	}
+	if result.TagName == "" {
+		tagStatus = "skipped"
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE workflow_node_run SET status = ?, output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", tagStatus, mustJSON(map[string]any{"tag_name": result.TagName, "tagged": result.Tagged}), nodeIDs["tag"]); err != nil {
 		return err

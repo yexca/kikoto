@@ -294,3 +294,27 @@ func TestAvailabilityWatchUsesOneScheduleTriggerAndRecordsScheduledRuns(t *testi
 		t.Fatalf("scheduled Availability Watch run = trigger %d type %q reason %q", runTriggerID, runType, runReason)
 	}
 }
+
+func TestAvailabilityWatchExcludesNoExtensionsUntilConfigured(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`INSERT INTO user_account (id, username, role) VALUES (1, 'watch-editor', 'admin')`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	view, err := server.loadAvailabilityWatch(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(view.ExcludeExtensions) != 0 {
+		t.Fatalf("unconfigured watch excludes %v", view.ExcludeExtensions)
+	}
+	if err := server.persistAvailabilityWatchTargets(context.Background(), 1, []string{"RJ00000000"}); err != nil {
+		t.Fatal(err)
+	}
+	if view, err = server.loadAvailabilityWatch(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(view.ExcludeExtensions) != 0 {
+		t.Fatalf("watch created from the pool excludes %v", view.ExcludeExtensions)
+	}
+}

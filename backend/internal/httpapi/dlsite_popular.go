@@ -23,6 +23,8 @@ type dlsitePopularRunRequest struct {
 	Year            int    `json:"year"`
 	TagName         string `json:"tagName"`
 	TagNameTemplate string `json:"tagNameTemplate"`
+	// SkipTag synchronizes the ranking without tagging; the tag node is recorded as skipped.
+	SkipTag bool `json:"skipTag"`
 }
 
 type dlsitePopularJobPayload struct {
@@ -110,6 +112,10 @@ func normalizeDLsitePopularRequest(payload dlsitePopularRunRequest, now time.Tim
 		}
 	default:
 		return dlsitePopularRunRequest{}, fmt.Errorf("period must be day, week, month, or year")
+	}
+	if payload.SkipTag {
+		payload.TagName, payload.TagNameTemplate = "", ""
+		return payload, nil
 	}
 	payload.TagNameTemplate = strings.TrimSpace(payload.TagNameTemplate)
 	if payload.TagNameTemplate != "" {
@@ -332,6 +338,8 @@ func (s *Server) syncDLsitePopularCode(ctx context.Context, payload dlsitePopula
 	if err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE UPPER(primary_code) = UPPER(?)", code).Scan(&workID); err != nil {
 		result.Failed++
 		result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
+	} else if payload.TagName == "" {
+		result.Synced++
 	} else if _, err := s.addWorkUserTag(ctx, payload.UserID, []int64{workID}, payload.TagName); err != nil {
 		result.Failed++
 		result.Failures = append(result.Failures, fmt.Sprintf("%s tag: %s", code, err.Error()))
@@ -372,6 +380,9 @@ func (s *Server) finishDLsitePopularCollection(ctx context.Context, job workflow
 	}
 	if result.Tagged == 0 && result.Discovered > 0 {
 		tagStatus = "failed"
+	}
+	if result.TagName == "" {
+		tagStatus = "skipped"
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE workflow_node_run SET status = ?, output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", tagStatus, mustJSON(map[string]any{"tag_name": result.TagName, "tagged": result.Tagged}), nodeIDs["tag"]); err != nil {
 		return err

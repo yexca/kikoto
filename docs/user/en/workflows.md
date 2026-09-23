@@ -69,24 +69,32 @@ Workflows make backend actions inspectable.
   current-value preview, the complete workflow-specific variable list, and an
   explicit warning when the rendered tag exceeds 40 characters. Manual runs
   expand the template on request; automatic triggers store it unchanged and
-  expand it at dispatch. Remote automatic collection is Track-only so it
+  expand it at dispatch. A manual run can turn tagging off; its tag step is
+  then recorded as skipped. Remote automatic collection is Track-only so it
   cannot bypass Fetch size and disk-reserve safeguards.
 - Every workflow exposes `Run` in its header. Workflows with run parameters show
-  them in a Run options section directly below the header, so the inputs, tag
-  preview, and run action stay visible without opening a dialog. Options apply
-  to the next manual run only and reset when another workflow is selected.
+  them in a Run options section directly below the header, with each label
+  beside its control, so the inputs, tag preview, and run action stay visible
+  without opening a dialog. Options apply to the next manual run only and reset
+  when another workflow is selected.
   Local scan shows its follow-up option there; built-in workflows without run
   parameters show only the run action.
-- Availability Watch shows its saved Configuration (source, action on
-  availability, and excluded extensions) in the same position. `Save` stores a
-  change; `Run` saves any pending change first and then queues a check.
+- Availability Watch keeps a saved configuration. `Configure` beside `Run`
+  opens a panel for the remote source, the action on availability, and optional
+  Fetch extension exclusions, which are off until enabled; the section below
+  the header summarizes the saved values that `Run` uses.
 - Follow a circle, Follow a series, and Follow a voice actor are preset
   workflows. Their Run options hold the target, filter, action, Fetch limits,
-  and tag template; the same fields configure Startup and interval triggers. Sync metadata only needs no source;
+  and tag template; the same fields configure Startup and interval triggers.
+  The target accepts up to 20 comma-separated circle IDs, series IDs, or voice
+  actor names, whose catalogs are combined before filtering. Sync metadata only needs no source;
   Track and Fetch need an enabled compatible remote source, and Fetch requires
   download management permission plus explicit file, size, and free-space
-  limits. New works only skips works already in the library. Leaving the tag
-  template empty skips tagging. Automated runs use stored or incremental circle
+  limits. New works only skips works already in the library. The work limit is
+  on by default; switching it off still stops a run at 100 works. The release
+  date range is off by default; when on, each end is a date or No limit, and
+  works released on either boundary date are included. Turning the tag template
+  off skips tagging. Automated runs use stored or incremental circle
   catalog refresh; a full refresh is manual only.
 - User-authored custom workflows, the DAG editor, slash commands, and the
   definition run dialog were removed. Upgrading deletes existing user

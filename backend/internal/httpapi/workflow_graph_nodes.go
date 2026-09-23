@@ -37,39 +37,55 @@ func (s *Server) executeWorkflowGraphNode(ctx context.Context, runID int64, jobP
 	}
 }
 
+// executeGraphCircleCatalog combines the catalogs of every listed circle in
+// input order, keeping each work once and stopping at maxWorks.
 func (s *Server) executeGraphCircleCatalog(ctx context.Context, node workflowGraphNode, inputs map[string]graphPortValue) (graphNodeExecution, error) {
-	circleID := normalizeMakerID(firstNonEmpty(inputs["circle"].Text, configString(node.Config, "circleId")))
-	if !dlsiteMakerIDPattern.MatchString(circleID) {
+	circleIDs := splitPresetWorkflowTargets(firstNonEmpty(inputs["circle"].Text, configString(node.Config, "circleId")), normalizeMakerID)
+	if len(circleIDs) == 0 {
 		return graphNodeExecution{}, fmt.Errorf("invalid circle id")
 	}
-	partyID, err := s.ensurePlaceholderCircle(ctx, circleID)
-	if err != nil {
-		return graphNodeExecution{}, err
-	}
-	visible, err := s.circlePartyVisible(ctx, partyID)
-	if err != nil {
-		return graphNodeExecution{}, err
-	}
-	if !visible {
-		return graphNodeExecution{}, fmt.Errorf("circle is translation-only")
+	for _, circleID := range circleIDs {
+		if !dlsiteMakerIDPattern.MatchString(circleID) {
+			return graphNodeExecution{}, fmt.Errorf("invalid circle id")
+		}
 	}
 	mode := strings.ToLower(configString(node.Config, "mode"))
 	if mode == "" {
 		mode = "stored"
 	}
-	if mode != "stored" {
-		if _, err := s.runCircleCatalogRefresh(ctx, partyID, circleID, mode, s.newDLsiteClient()); err != nil {
+	maxWorks := configInt(node.Config, "maxWorks", 100)
+	codes := []string{}
+	seen := map[string]bool{}
+	for _, circleID := range circleIDs {
+		partyID, err := s.ensurePlaceholderCircle(ctx, circleID)
+		if err != nil {
 			return graphNodeExecution{}, err
 		}
-	}
-	profile, err := s.loadCircleProfileForRefresh(ctx, partyID, circleID)
-	if err != nil {
-		return graphNodeExecution{}, err
-	}
-	maxWorks := configInt(node.Config, "maxWorks", 100)
-	codes := profile.WorkCodes
-	if len(codes) > maxWorks {
-		codes = codes[:maxWorks]
+		visible, err := s.circlePartyVisible(ctx, partyID)
+		if err != nil {
+			return graphNodeExecution{}, err
+		}
+		if !visible {
+			return graphNodeExecution{}, fmt.Errorf("circle %s is translation-only", circleID)
+		}
+		if mode != "stored" {
+			if _, err := s.runCircleCatalogRefresh(ctx, partyID, circleID, mode, s.newDLsiteClient()); err != nil {
+				return graphNodeExecution{}, err
+			}
+		}
+		profile, err := s.loadCircleProfileForRefresh(ctx, partyID, circleID)
+		if err != nil {
+			return graphNodeExecution{}, err
+		}
+		for _, code := range profile.WorkCodes {
+			if len(codes) >= maxWorks {
+				break
+			}
+			if key := strings.ToUpper(code); !seen[key] {
+				seen[key] = true
+				codes = append(codes, code)
+			}
+		}
 	}
 	normalized, err := normalizeGraphWorkCodes(codes, maxWorks)
 	if err != nil && len(codes) > 0 {
@@ -79,17 +95,20 @@ func (s *Server) executeGraphCircleCatalog(ctx context.Context, node workflowGra
 }
 
 func (s *Server) executeGraphSeriesCatalog(ctx context.Context, node workflowGraphNode, inputs map[string]graphPortValue) (graphNodeExecution, error) {
-	seriesID := strings.ToUpper(strings.TrimSpace(firstNonEmpty(inputs["series"].Text, configString(node.Config, "seriesId"))))
-	if seriesID == "" {
+	seriesIDs := splitPresetWorkflowTargets(firstNonEmpty(inputs["series"].Text, configString(node.Config, "seriesId")), normalizeSeriesID)
+	if len(seriesIDs) == 0 {
 		return graphNodeExecution{}, fmt.Errorf("series id is required")
 	}
 	query := `
 		SELECT DISTINCT series_work.primary_code
 		FROM party_series_work AS series_work
 		INNER JOIN party_series AS series ON series.id = series_work.series_id
-		WHERE UPPER(series.title_id) = ?
+		WHERE UPPER(series.title_id) IN (` + strings.TrimSuffix(strings.Repeat("?,", len(seriesIDs)), ",") + `)
 	`
-	args := []any{seriesID}
+	args := []any{}
+	for _, seriesID := range seriesIDs {
+		args = append(args, seriesID)
+	}
 	if circleID := normalizeMakerID(configString(node.Config, "circleExternalId")); circleID != "" {
 		query += ` AND series.party_id IN (SELECT party_id FROM party_external_id WHERE UPPER(external_id) = ?)`
 		args = append(args, circleID)
@@ -128,9 +147,26 @@ func (s *Server) executeGraphVoiceSourceWorks(ctx context.Context, runID int64, 
 	if err != nil {
 		return graphNodeExecution{}, err
 	}
-	candidates, err := s.collectGraphVoiceSourceWorks(ctx, runID, search)
-	if err != nil {
-		return graphNodeExecution{}, err
+	// Each listed voice actor is searched in turn against the shared work budget.
+	candidates := []graphWorkCandidate{}
+	seen := map[string]bool{}
+	for _, keyword := range search.Keywords {
+		if len(candidates) >= search.MaxWorks {
+			break
+		}
+		single := search
+		single.Keyword = keyword
+		single.MaxWorks = search.MaxWorks - len(candidates)
+		found, err := s.collectGraphVoiceSourceWorks(ctx, runID, single)
+		if err != nil {
+			return graphNodeExecution{}, err
+		}
+		for _, candidate := range found {
+			if key := strings.ToUpper(candidate.Code); !seen[key] {
+				seen[key] = true
+				candidates = append(candidates, candidate)
+			}
+		}
 	}
 	return graphNodeExecution{Outputs: map[string]graphPortValue{"works": {Type: "work_candidates", Candidates: candidates}}}, nil
 }
@@ -138,14 +174,22 @@ func (s *Server) executeGraphVoiceSourceWorks(ctx context.Context, runID int64, 
 type graphVoiceSourceSearch struct {
 	Source   remoteSourceForUse
 	Keyword  string
+	Keywords []string
 	PageSize int
 	MaxPages int
 	MaxWorks int
 }
 
 func (s *Server) prepareGraphVoiceSourceSearch(ctx context.Context, node workflowGraphNode, inputs map[string]graphPortValue) (graphVoiceSourceSearch, error) {
-	voiceName := strings.TrimSpace(firstNonEmpty(inputs["voice"].Text, configString(node.Config, "voiceName")))
-	if voiceName == "" || isUnknownVoiceActorName(voiceName) {
+	voiceNames := splitPresetWorkflowTargets(firstNonEmpty(inputs["voice"].Text, configString(node.Config, "voiceName")), strings.TrimSpace)
+	keywords := make([]string, 0, len(voiceNames))
+	for _, voiceName := range voiceNames {
+		if isUnknownVoiceActorName(voiceName) {
+			return graphVoiceSourceSearch{}, fmt.Errorf("voice name is required")
+		}
+		keywords = append(keywords, "$va:"+voiceName+"$")
+	}
+	if len(keywords) == 0 {
 		return graphVoiceSourceSearch{}, fmt.Errorf("voice name is required")
 	}
 	sourceID := configInt64(node.Config, "sourceId", 0)
@@ -165,7 +209,7 @@ func (s *Server) prepareGraphVoiceSourceSearch(ctx context.Context, node workflo
 	}
 	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
 	return graphVoiceSourceSearch{
-		Source: source, Keyword: "$va:" + voiceName + "$",
+		Source: source, Keyword: keywords[0], Keywords: keywords,
 		PageSize: configInt(node.Config, "pageSize", 48),
 		MaxPages: configInt(node.Config, "maxPages", 10),
 		MaxWorks: configInt(node.Config, "maxWorks", 100),

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -14,6 +15,35 @@ import (
 // fixed typed DAG from a small validated input set and executes it through the
 // existing custom-workflow runtime, so node executors, checkpoints, retries, and
 // Fetch bounds are shared with that runtime while users never author a graph.
+
+// presetWorkflowMaxTargets bounds how many circles, series, or voice actors one
+// preset run may follow; their catalogs are combined before filtering.
+const presetWorkflowMaxTargets = 20
+
+// presetWorkflowMaxTargetText bounds the raw target list before it is split.
+const presetWorkflowMaxTargetText = 2000
+
+var presetWorkflowTargetSeparator = regexp.MustCompile(`[,;\r\n，；、]+`)
+
+// splitPresetWorkflowTargets splits a target list separated by commas,
+// semicolons, or new lines, dropping blanks and duplicates in input order.
+func splitPresetWorkflowTargets(value string, normalize func(string) string) []string {
+	targets := []string{}
+	for _, part := range presetWorkflowTargetSeparator.Split(value, -1) {
+		if target := normalize(strings.TrimSpace(part)); target != "" {
+			targets = append(targets, target)
+		}
+	}
+	return uniqueStrings(targets)
+}
+
+func joinPresetWorkflowTargets(targets []string) string {
+	return strings.Join(targets, ", ")
+}
+
+func normalizeSeriesID(value string) string {
+	return strings.ToUpper(strings.TrimSpace(value))
+}
 
 const (
 	presetWorkflowMaxWorksLimit  = 100
@@ -69,6 +99,7 @@ type presetWorkflowInputs struct {
 	CatalogRefresh    string
 	Existing          string
 	ReleaseFrom       string
+	ReleaseTo         string
 	MaxWorks          int
 	Action            string
 	ExcludeExtensions []string
@@ -109,6 +140,7 @@ func presetActionParameters() []presetWorkflowParameter {
 	return []presetWorkflowParameter{
 		{Key: "existing", Kind: "select", Group: "filter", Default: "unknown", Options: []string{"unknown", "any"}},
 		{Key: "releaseFrom", Kind: "date", Group: "filter"},
+		{Key: "releaseTo", Kind: "date", Group: "filter"},
 		{Key: "maxWorks", Kind: "integer", Group: "filter", Default: presetWorkflowDefaultWorks, Minimum: 1, Maximum: presetWorkflowMaxWorksLimit},
 		{Key: "action", Kind: "select", Group: "action", Default: "metadata", Options: []string{"metadata", "track", "fetch"}},
 		{Key: "sourceId", Kind: "source_id", Group: "action"},
@@ -370,22 +402,46 @@ func normalizePresetWorkflowInputs(spec presetWorkflowSpec, raw map[string]any) 
 			return presetWorkflowInputs{}, err
 		}
 	}
+	targets := []string{}
 	switch spec.Target {
 	case "circle":
-		if !dlsiteMakerIDPattern.MatchString(inputs.CircleID) {
-			return presetWorkflowInputs{}, fmt.Errorf("circleId must be a DLsite circle id such as RG12345")
+		targets = splitPresetWorkflowTargets(inputs.CircleID, normalizeMakerID)
+		for _, circleID := range targets {
+			if !dlsiteMakerIDPattern.MatchString(circleID) {
+				return presetWorkflowInputs{}, fmt.Errorf("circleId must list DLsite circle ids such as RG12345")
+			}
 		}
+		if len(targets) == 0 {
+			return presetWorkflowInputs{}, fmt.Errorf("circleId must list DLsite circle ids such as RG12345")
+		}
+		inputs.CircleID = joinPresetWorkflowTargets(targets)
 	case "series":
-		if inputs.SeriesID == "" {
+		targets = splitPresetWorkflowTargets(inputs.SeriesID, normalizeSeriesID)
+		if len(targets) == 0 {
 			return presetWorkflowInputs{}, fmt.Errorf("seriesId is required")
 		}
+		inputs.SeriesID = joinPresetWorkflowTargets(targets)
 	case "voice":
-		if inputs.VoiceName == "" || isUnknownVoiceActorName(inputs.VoiceName) {
+		targets = splitPresetWorkflowTargets(inputs.VoiceName, strings.TrimSpace)
+		for _, voiceName := range targets {
+			if isUnknownVoiceActorName(voiceName) {
+				return presetWorkflowInputs{}, fmt.Errorf("voiceName is required")
+			}
+		}
+		if len(targets) == 0 {
 			return presetWorkflowInputs{}, fmt.Errorf("voiceName is required")
 		}
+		inputs.VoiceName = joinPresetWorkflowTargets(targets)
 		if inputs.SourceID <= 0 {
 			return presetWorkflowInputs{}, fmt.Errorf("sourceId is required")
 		}
+	}
+	// Both release bounds are inclusive; either may be empty to leave that side open.
+	if inputs.ReleaseFrom != "" && inputs.ReleaseTo != "" && inputs.ReleaseFrom > inputs.ReleaseTo {
+		return presetWorkflowInputs{}, fmt.Errorf("releaseFrom must not be after releaseTo")
+	}
+	if len(targets) > presetWorkflowMaxTargets {
+		return presetWorkflowInputs{}, fmt.Errorf("a preset run supports at most %d targets", presetWorkflowMaxTargets)
 	}
 	if inputs.Action != "metadata" && inputs.SourceID <= 0 {
 		return presetWorkflowInputs{}, fmt.Errorf("sourceId is required for %s", inputs.Action)
@@ -408,18 +464,22 @@ func applyPresetWorkflowInput(inputs *presetWorkflowInputs, parameter presetWork
 		}
 		switch parameter.Key {
 		case "circleId":
-			inputs.CircleID = normalizeMakerID(text)
+			inputs.CircleID = text
 		case "seriesId":
-			inputs.SeriesID = strings.ToUpper(text)
+			inputs.SeriesID = text
 		case "voiceName":
 			inputs.VoiceName = text
-		case "releaseFrom":
+		case "releaseFrom", "releaseTo":
 			if text != "" {
 				if _, err := time.Parse("2006-01-02", text); err != nil {
-					return fmt.Errorf("releaseFrom must use YYYY-MM-DD")
+					return fmt.Errorf("%s must use YYYY-MM-DD", parameter.Key)
 				}
 			}
-			inputs.ReleaseFrom = text
+			if parameter.Key == "releaseFrom" {
+				inputs.ReleaseFrom = text
+			} else {
+				inputs.ReleaseTo = text
+			}
 		case "tagNameTemplate":
 			if supplied {
 				inputs.TagNameTemplate = text
@@ -517,8 +577,13 @@ func presetWorkflowText(parameter presetWorkflowParameter, value any, supplied b
 		return "", fmt.Errorf("%s must be text", parameter.Key)
 	}
 	text = strings.TrimSpace(text)
-	if len([]rune(text)) > 160 {
-		return "", fmt.Errorf("%s must be at most 160 characters", parameter.Key)
+	limit := 160
+	switch parameter.Kind {
+	case "circle_id", "series_id", "voice_name":
+		limit = presetWorkflowMaxTargetText
+	}
+	if len([]rune(text)) > limit {
+		return "", fmt.Errorf("%s must be at most %d characters", parameter.Key, limit)
 	}
 	if parameter.Required && text == "" {
 		return "", fmt.Errorf("%s is required", parameter.Key)
@@ -545,6 +610,9 @@ func (inputs presetWorkflowInputs) public() map[string]any {
 	}
 	if inputs.ReleaseFrom != "" {
 		result["releaseFrom"] = inputs.ReleaseFrom
+	}
+	if inputs.ReleaseTo != "" {
+		result["releaseTo"] = inputs.ReleaseTo
 	}
 	if inputs.Action == "fetch" {
 		result["excludeExtensions"] = append([]string{}, inputs.ExcludeExtensions...)
@@ -583,6 +651,9 @@ func buildPresetWorkflowDefinition(spec presetWorkflowSpec, inputs presetWorkflo
 	filterConfig := map[string]any{"existing": inputs.Existing, "limit": inputs.MaxWorks}
 	if inputs.ReleaseFrom != "" {
 		filterConfig["releaseFrom"] = inputs.ReleaseFrom
+	}
+	if inputs.ReleaseTo != "" {
+		filterConfig["releaseTo"] = inputs.ReleaseTo
 	}
 	addNode("filter", "filter_works", "Filter new works", filterConfig)
 	addEdge("discover", "works", "filter", "works")

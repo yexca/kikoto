@@ -790,6 +790,7 @@ test("definitions foreground runnable presets and show DLsite popular run option
     releaseWindow: "",
     year: 2025,
     tagNameTemplate: "{date}_DL_year_{year}_popular",
+    skipTag: false,
   });
   await expect(page.getByText(/run #31 queued/)).toBeVisible();
 
@@ -920,13 +921,25 @@ test("availability watch shares pools, schedules checks, and handles ready works
   await expect(page.getByRole("button", { name: "Edit Availability interval", exact: true })).toBeVisible();
 
   const configuration = page.getByRole("region", { name: "Configuration", exact: true });
-  await expect(configuration.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
-  await configuration.getByRole("combobox", { name: "Remote source", exact: true }).selectOption({
+  await expect(configuration).toContainText("Any healthy source");
+  await expect(configuration).toContainText("wav");
+  await page.getByRole("button", { name: "Configure", exact: true }).click();
+  const configurePopover = page.getByRole("dialog", { name: "Configuration", exact: true });
+  await configurePopover.getByRole("combobox", { name: "Remote source", exact: true }).selectOption({
     label: "Remote Test",
   });
-  await configuration.getByRole("combobox", { name: "When available", exact: true }).selectOption({ label: "Track" });
-  await configuration.getByLabel("Exclude extensions", { exact: true }).fill("wav, flac");
-  await expect(configuration.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+  await configurePopover
+    .getByRole("group", { name: "When available", exact: true })
+    .getByRole("button", { name: "Track", exact: true })
+    .click();
+  await expect(configurePopover.getByRole("switch", { name: "Exclude extensions", exact: true })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await configurePopover.getByLabel("Extensions to exclude", { exact: true }).fill("wav, flac");
+  await configurePopover.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(configurePopover).toHaveCount(0);
+  await expect.poll(() => updates).toHaveLength(1);
   await page.getByRole("button", { name: "Run", exact: true }).click();
   await expect(page.getByText("Availability Watch run #91 queued.", { exact: true })).toBeVisible();
   await expect.poll(() => updates).toHaveLength(2);
@@ -1270,7 +1283,7 @@ test("remote popular collection requires an explicit source and queues configure
   const runOptions = page.getByRole("region", { name: "Run options", exact: true });
   await expect(runOptions.getByLabel("Remote source")).toHaveValue("8");
   await runOptions.getByRole("button", { name: "Fetch", exact: true }).click();
-  await runOptions.getByLabel("Work limit").selectOption("50");
+  await runOptions.getByRole("group", { name: "Work limit" }).getByRole("button", { name: "50", exact: true }).click();
   const remoteTagField = runOptions.getByTestId("remote-popular-tag-template-field");
   await expect(remoteTagField.getByRole("button", { name: /\{remote_name\}.*Remote_Test/ })).toBeVisible();
   await expect(remoteTagField.getByRole("button", { name: /\{source_code\}.*remote-test/ })).toBeVisible();
@@ -1285,6 +1298,7 @@ test("remote popular collection requires an explicit source and queues configure
     action: "fetch",
     limit: 50,
     tagNameTemplate: "weekly_{source_code}_{action}_popular",
+    skipTag: false,
   });
   await expect(page.getByText(/run #41 queued/)).toBeVisible();
 });
