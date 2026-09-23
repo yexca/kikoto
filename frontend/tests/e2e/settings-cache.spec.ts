@@ -400,6 +400,11 @@ test("cleanup page removes only the selected database records after confirmation
   await page.goto("/settings?tab=cleanup");
 
   const database = page.getByRole("region", { name: "Database records" });
+  const libraryGroup = database.getByRole("button", { name: "Library records", exact: true });
+  await expect(libraryGroup).toHaveAttribute("aria-expanded", "false");
+  await expect(database.getByRole("checkbox", { name: "Missing work folders", exact: true })).toBeHidden();
+  await libraryGroup.click();
+  await database.getByRole("button", { name: "History and sessions", exact: true }).click();
   await expect(database.getByRole("checkbox", { name: "Unused tags", exact: true })).toBeDisabled();
   await database.getByRole("checkbox", { name: "Missing work folders", exact: true }).click();
   await database.getByRole("checkbox", { name: "Expired sign-in sessions", exact: true }).click();

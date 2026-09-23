@@ -330,10 +330,7 @@ export function MaintenancePage({
   return (
     <div className="min-w-0 space-y-5">
       {/* Each tab gates its own writes, so Demo can still browse, open details, and follow links. */}
-      <fieldset
-        data-testid="maintenance-content"
-        className={`min-w-0 border-0 p-0 ${activeTab === "users" ? "w-full" : "w-full max-w-3xl"}`}
-      >
+      <fieldset data-testid="maintenance-content" className="w-full min-w-0 border-0 p-0">
         {isSettingsLoading && activeTab !== "users" ? (
           <SettingsSkeleton />
         ) : activeTab === "library" && draft ? (
@@ -396,7 +393,7 @@ export function MaintenancePage({
             )}
           />
         ) : activeTab === "users" ? (
-          <div className="max-w-4xl space-y-6">
+          <div className="space-y-6">
             {canManageUsers && (
               <UsersPage currentUserId={currentUserId} isSuperAdmin={isSuperAdmin} readOnly={readOnly} embedded />
             )}

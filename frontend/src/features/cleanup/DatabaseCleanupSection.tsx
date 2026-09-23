@@ -1,5 +1,15 @@
-import { AlertTriangle, ArrowRight, Database, Gauge, Loader2, RefreshCw, Sparkles, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  ChevronDown,
+  Database,
+  Gauge,
+  Loader2,
+  RefreshCw,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
@@ -17,7 +27,9 @@ import { cn } from "@/lib/tailwindClassNames";
 
 import { formatByteSize } from "./cacheCleanupModel";
 
-export const databaseCleanupGroups: Array<{ key: "library" | "history"; tasks: DatabaseCleanupTaskKey[] }> = [
+type DatabaseCleanupGroupKey = "library" | "history";
+
+export const databaseCleanupGroups: Array<{ key: DatabaseCleanupGroupKey; tasks: DatabaseCleanupTaskKey[] }> = [
   {
     key: "library",
     tasks: [
@@ -59,7 +71,10 @@ export function DatabaseCleanupSection({
   const { t } = useTranslation();
   const { resolvedLocale } = useLocale();
   const toast = useToast();
+  const groupIdPrefix = useId();
   const [selected, setSelected] = useState<Set<DatabaseCleanupTaskKey>>(new Set());
+  // Groups start collapsed; the header count still shows whether anything needs attention.
+  const [expandedGroups, setExpandedGroups] = useState<Set<DatabaseCleanupGroupKey>>(new Set());
   const [confirming, setConfirming] = useState(false);
   const [cleaning, setCleaning] = useState(false);
   const tasks = useMemo(() => new Map(overview?.tasks.map((task) => [task.key, task]) ?? []), [overview]);
@@ -76,6 +91,14 @@ export function DatabaseCleanupSection({
       const next = new Set(current);
       if (checked) next.add(key);
       else next.delete(key);
+      return next;
+    });
+
+  const toggleGroup = (key: DatabaseCleanupGroupKey) =>
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
 
@@ -127,6 +150,10 @@ export function DatabaseCleanupSection({
       {databaseCleanupGroups.map((group) => {
         const groupCleanable = group.tasks.filter(cleanable);
         const groupSelected = groupCleanable.filter((key) => selected.has(key)).length;
+        const groupRecords = group.tasks.reduce((total, key) => total + (tasks.get(key)?.count ?? 0), 0);
+        const groupLabel = t(`cleanup.database.groups.${group.key}`);
+        const expanded = expandedGroups.has(group.key);
+        const panelId = `${groupIdPrefix}-${group.key}`;
         return (
           <div key={group.key}>
             <div className="flex items-center gap-3 bg-muted/30 px-4 py-2">
@@ -135,13 +162,33 @@ export function DatabaseCleanupSection({
                 indeterminate={groupSelected > 0 && groupSelected < groupCleanable.length}
                 disabled={readOnly || groupCleanable.length === 0}
                 onCheckedChange={(checked) => groupCleanable.forEach((key) => toggle(key, checked))}
-                aria-label={t("cleanup.database.selectGroup", { group: t(`cleanup.database.groups.${group.key}`) })}
+                aria-label={t("cleanup.database.selectGroup", { group: groupLabel })}
               />
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {t(`cleanup.database.groups.${group.key}`)}
-              </span>
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center gap-2 self-stretch text-left"
+                aria-expanded={expanded}
+                aria-controls={panelId}
+                onClick={() => toggleGroup(group.key)}
+              >
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                    !expanded && "-rotate-90",
+                  )}
+                />
+                <span className="truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {groupLabel}
+                </span>
+              </button>
+              <TaskCount
+                loading={!overview}
+                available={group.tasks.some((key) => tasks.get(key)?.available ?? true)}
+                count={groupRecords}
+                label={formatNumber(groupRecords, resolvedLocale)}
+              />
             </div>
-            <div className="divide-y">
+            <div id={panelId} className="divide-y" hidden={!expanded}>
               {group.tasks.map((key) => {
                 const task = tasks.get(key);
                 const enabled = cleanable(key);

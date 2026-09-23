@@ -48,6 +48,9 @@ type SettingsTab = "account" | "playback" | "recommendation" | "library" | "cach
 
 const adminSettingsTabs: SettingsTab[] = ["library", "cache", "cleanup", "users"];
 
+// Every tab shares one content width so switching tabs never shifts the layout.
+const settingsPanelClassName = "w-full max-w-4xl space-y-6";
+
 const settingsTabs: Array<{ id: SettingsTab; labelKey: string; icon: ReactNode }> = [
   { id: "account", labelKey: "settings.account", icon: <UserRound className="h-4 w-4" /> },
   { id: "playback", labelKey: "settings.playback", icon: <FastForward className="h-4 w-4" /> },
@@ -265,7 +268,7 @@ export function SettingsPage({
       {activeTab === "account" && (
         <div
           id="settings-panel-account"
-          className="w-full max-w-3xl space-y-6"
+          className={settingsPanelClassName}
           role="tabpanel"
           aria-labelledby="settings-tab-account"
         >
@@ -382,7 +385,7 @@ export function SettingsPage({
 
       {activeTab === "playback" && (
         <div
-          className="w-full max-w-3xl space-y-6"
+          className={settingsPanelClassName}
           role="tabpanel"
           id="settings-panel-playback"
           aria-labelledby="settings-tab-playback"
@@ -446,7 +449,7 @@ export function SettingsPage({
       )}
       {activeTab === "recommendation" && (
         <div
-          className="w-full max-w-4xl space-y-6"
+          className={settingsPanelClassName}
           role="tabpanel"
           id="settings-panel-recommendation"
           aria-labelledby="settings-tab-recommendation"
@@ -456,12 +459,22 @@ export function SettingsPage({
         </div>
       )}
       {canViewAdministration && activeTab === "cleanup" && (
-        <div role="tabpanel" id="settings-panel-cleanup" aria-labelledby="settings-tab-cleanup">
+        <div
+          className={settingsPanelClassName}
+          role="tabpanel"
+          id="settings-panel-cleanup"
+          aria-labelledby="settings-tab-cleanup"
+        >
           <CleanupPage canManageCache={canManageCache} canManageDatabase={canManageSources} readOnly={readOnly} />
         </div>
       )}
       {canViewAdministration && adminSettingsTabs.includes(activeTab) && activeTab !== "cleanup" && (
-        <div role="tabpanel" id={`settings-panel-${activeTab}`} aria-labelledby={`settings-tab-${activeTab}`}>
+        <div
+          className={settingsPanelClassName}
+          role="tabpanel"
+          id={`settings-panel-${activeTab}`}
+          aria-labelledby={`settings-tab-${activeTab}`}
+        >
           <MaintenancePage
             canManageSources={canManageSources}
             canManageUsers={canManageUsers}
