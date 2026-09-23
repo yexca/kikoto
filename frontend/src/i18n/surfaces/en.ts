@@ -1757,8 +1757,6 @@ export const surfaceEnglish = {
     all: "All Favorites",
     lists: "Favorite lists",
     listTabs: "Favorite list tabs",
-    listOptions: "Favorite list options",
-    manageLists: "Manage favorite lists",
     quickMarkWorks: "Works with a quick mark",
     exitSelection: "Exit selection",
     selectWorks: "Select works",

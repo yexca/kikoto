@@ -13,7 +13,6 @@ import {
   ListChecks,
   ListMusic,
   Mic2,
-  MoreHorizontal,
   Pencil,
   Pause,
   Play,
@@ -35,6 +34,7 @@ import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingInd
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { IconButton } from "@/components/ui/icon-button";
 import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
@@ -210,8 +210,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const [deleteListTarget, setDeleteListTarget] = useState<FavoriteList | null>(null);
   const [isDeletingList, setIsDeletingList] = useState(false);
   const [listManagerOpen, setListManagerOpen] = useState(false);
-  const [listActionsOpen, setListActionsOpen] = useState(false);
-  const listActionsRef = useRef<HTMLDivElement | null>(null);
   const requestSeq = useRef(0);
   const favoriteListsLoadedFor = useRef<number | null>(null);
   const fileSourcesLoadedFor = useRef<number | null>(null);
@@ -502,8 +500,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     if (!isLoading && page > totalPages) setPage(totalPages);
   }, [isLoading, page, totalPages]);
 
-  useEffect(() => setListActionsOpen(false), [activeList]);
-
   const openWork = (work: Work) => {
     const browseState = {
       entity: favoriteEntity,
@@ -791,12 +787,10 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
               favoriteTotal={favoriteTotal}
               listCounts={listCounts}
               loading={areFavoriteListsLoading}
-              selectionMode={selectionMode}
               onListChange={(list) => {
                 setActiveList(list);
                 setPage(1);
               }}
-              onToggleSelection={toggleSelectionMode}
               onEditLists={openFavoriteListManager}
             />
           )}
@@ -840,6 +834,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                 options={pageSizeOptions}
                 onChange={(value) => changePageSize(value as PageSize)}
               />
+              <FavoriteSelectionToggle active={selectionMode} onToggle={toggleSelectionMode} />
             </div>
           )}
         </div>
@@ -897,6 +892,8 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                 onMobileColumnsChange={setMobileColumns}
                 desktopColumns={desktopColumns}
                 onDesktopColumnsChange={setDesktopColumns}
+                selectionMode={selectionMode}
+                onToggleSelection={toggleSelectionMode}
               />
             ) : null
           }
@@ -970,46 +967,19 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                   ))}
                 </div>
               </div>
-              <div ref={listActionsRef} className="relative shrink-0">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="group -m-1 h-11 w-11 hover:bg-transparent lg:m-0 lg:h-8 lg:w-8"
-                  disabled={areFavoriteListsLoading}
-                  onClick={() => setListActionsOpen((open) => !open)}
-                  aria-label={t("favorites.listOptions")}
-                  title={t("favorites.manageLists")}
-                >
-                  <span className="grid h-9 w-9 place-items-center rounded-[var(--control-radius)] border border-input bg-card transition-colors group-hover:bg-muted lg:h-8 lg:w-8">
-                    <MoreHorizontal className="h-4 w-4" />
-                  </span>
-                </Button>
-                <AnchoredPopover
-                  open={listActionsOpen}
-                  anchorRef={listActionsRef}
-                  onOpenChange={setListActionsOpen}
-                  className="w-52 p-1 text-sm"
-                >
-                  <div role="menu" aria-label={t("favorites.listOptions")}>
-                    <FavoriteListAction
-                      icon={<Check className="h-4 w-4" />}
-                      label={selectionMode ? t("favorites.exitSelection") : t("favorites.selectWorks")}
-                      onClick={() => {
-                        setListActionsOpen(false);
-                        toggleSelectionMode();
-                      }}
-                    />
-                    <FavoriteListAction
-                      icon={<Pencil className="h-4 w-4" />}
-                      label={t("favorites.editLists")}
-                      onClick={() => {
-                        setListActionsOpen(false);
-                        openFavoriteListManager();
-                      }}
-                    />
-                  </div>
-                </AnchoredPopover>
-              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="group -m-1 h-11 w-11 shrink-0 hover:bg-transparent lg:m-0 lg:h-8 lg:w-8"
+                disabled={areFavoriteListsLoading}
+                onClick={openFavoriteListManager}
+                aria-label={t("favorites.editLists")}
+                title={t("favorites.editLists")}
+              >
+                <span className="grid h-9 w-9 place-items-center rounded-[var(--control-radius)] border border-input bg-card transition-colors group-hover:bg-muted lg:h-8 lg:w-8">
+                  <Pencil className="h-4 w-4" />
+                </span>
+              </Button>
             </div>
 
             <div className="flex items-center gap-1 overflow-x-auto pb-1" aria-label={t("favorites.statusFilters")}>
@@ -1387,9 +1357,7 @@ function FavoriteDesktopListPicker({
   favoriteTotal,
   listCounts,
   loading,
-  selectionMode,
   onListChange,
-  onToggleSelection,
   onEditLists,
 }: {
   markedList: FavoriteList | null;
@@ -1398,9 +1366,7 @@ function FavoriteDesktopListPicker({
   favoriteTotal: number;
   listCounts: Record<string, number>;
   loading: boolean;
-  selectionMode: boolean;
   onListChange: (list: "all" | number) => void;
-  onToggleSelection: () => void;
   onEditLists: () => void;
 }) {
   const { t } = useTranslation();
@@ -1428,27 +1394,42 @@ function FavoriteDesktopListPicker({
   const selected = options.find((option) => option.value === activeList) ?? options[0];
   const close = () => setOpen(false);
 
-  if (loading) return <FavoriteSkeletonLine className="h-9 w-40 shrink-0" />;
+  if (loading) return <FavoriteSkeletonLine className="h-9 w-48 shrink-0" />;
 
   return (
     <div className="relative min-w-0 shrink-0" ref={anchorRef}>
-      <Button
-        variant="outline"
-        size="sm"
-        className={`h-9 max-w-64 justify-between gap-2 ${selectionMode ? "border-primary/30" : ""}`}
-        onClick={() => setOpen((current) => !current)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label={`${t("favorites.lists")}: ${selected.label} (${selected.count})`}
-        title={selected.title}
-      >
-        <span className="flex min-w-0 items-center gap-2">
-          <ListMusic className="h-4 w-4 shrink-0" />
-          <span className="min-w-0 truncate">{selected.label}</span>
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{selected.count}</span>
-        </span>
-        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-      </Button>
+      <div className="inline-flex h-9 max-w-72 items-center rounded-[var(--control-radius)] border border-input bg-card">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-full min-w-0 justify-between gap-2 rounded-r-none"
+          onClick={() => setOpen((current) => !current)}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-label={`${t("favorites.lists")}: ${selected.label} (${selected.count})`}
+          title={selected.title}
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <ListMusic className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 truncate">{selected.label}</span>
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{selected.count}</span>
+          </span>
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-full w-9 shrink-0 rounded-l-none border-l"
+          onClick={() => {
+            close();
+            onEditLists();
+          }}
+          aria-label={t("favorites.editLists")}
+          title={t("favorites.editLists")}
+        >
+          <Pencil className="h-4 w-4" />
+        </Button>
+      </div>
       <AnchoredPopover
         open={open}
         anchorRef={anchorRef}
@@ -1477,23 +1458,6 @@ function FavoriteDesktopListPicker({
               </button>
             ))}
           </div>
-          <div role="separator" className="my-1 h-px bg-border" />
-          <FavoriteListAction
-            icon={<Check className="h-4 w-4" />}
-            label={selectionMode ? t("favorites.exitSelection") : t("favorites.selectWorks")}
-            onClick={() => {
-              close();
-              onToggleSelection();
-            }}
-          />
-          <FavoriteListAction
-            icon={<Pencil className="h-4 w-4" />}
-            label={t("favorites.editLists")}
-            onClick={() => {
-              close();
-              onEditLists();
-            }}
-          />
         </div>
       </AnchoredPopover>
     </div>
@@ -1902,30 +1866,16 @@ function FavoriteListTabSkeletons() {
   );
 }
 
-function FavoriteListAction({
-  icon,
-  label,
-  disabled = false,
-  destructive = false,
-  onClick,
-}: {
-  icon: ReactNode;
-  label: string;
-  disabled?: boolean;
-  destructive?: boolean;
-  onClick: () => void;
-}) {
+function FavoriteSelectionToggle({ active, onToggle }: { active: boolean; onToggle: () => void }) {
+  const { t } = useTranslation();
   return (
-    <button
-      type="button"
-      role="menuitem"
-      className={`flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-45 ${destructive ? "text-destructive hover:bg-destructive/10" : "hover:bg-muted"}`}
-      disabled={disabled}
-      onClick={onClick}
+    <IconButton
+      title={active ? t("favorites.exitSelection") : t("favorites.selectWorks")}
+      aria-pressed={active}
+      onClick={onToggle}
     >
-      {icon}
-      <span>{label}</span>
-    </button>
+      <ListChecks className={`h-4 w-4 ${active ? "text-primary" : ""}`} />
+    </IconButton>
   );
 }
 
@@ -2196,6 +2146,8 @@ function FavoriteMobileWorksControls({
   onPageSizeChange,
   onMobileColumnsChange,
   onDesktopColumnsChange,
+  selectionMode,
+  onToggleSelection,
 }: {
   availability: AvailabilityFilter;
   sources: LibrarySource[];
@@ -2214,6 +2166,8 @@ function FavoriteMobileWorksControls({
   onPageSizeChange: (value: PageSize) => void;
   onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
   onDesktopColumnsChange: (value: WorkCollectionColumnSetting) => void;
+  selectionMode: boolean;
+  onToggleSelection: () => void;
 }) {
   const { t } = useTranslation();
   const availabilityLabel = favoriteResourceLabel(sources, { availability, sourceIDs: [] }, t);
@@ -2254,6 +2208,7 @@ function FavoriteMobileWorksControls({
         options={pageSizeOptions}
         onChange={(value) => onPageSizeChange(value as PageSize)}
       />
+      <FavoriteSelectionToggle active={selectionMode} onToggle={onToggleSelection} />
     </div>
   );
 }

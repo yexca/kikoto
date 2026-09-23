@@ -1684,8 +1684,6 @@ export const surfaceJapanese = {
     all: "すべてのお気に入り",
     lists: "お気に入りリスト",
     listTabs: "お気に入りリストのタブ",
-    listOptions: "お気に入りリストのオプション",
-    manageLists: "お気に入りリストを管理",
     quickMarkWorks: "クイックマーク付きの作品",
     exitSelection: "選択を終了",
     selectWorks: "作品を選択",
