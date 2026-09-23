@@ -1,150 +1,186 @@
-import { ChevronLeft, ChevronRight, RefreshCw, Search, X } from "lucide-react";
-import type { FormEvent } from "react";
+import { RefreshCw, Search, X } from "lucide-react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
+import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { Button } from "@/components/ui/button";
-import { Input, NativeSelect } from "@/components/ui/input";
+import { IconButton } from "@/components/ui/icon-button";
+import { useStableCallback } from "@/hooks/useStableCallback";
+import { dismissKeyboardOnEnter } from "@/lib/keyboard";
+
+const SEARCH_DEBOUNCE_MS = 300;
 
 /**
- * Submit-on-enter search used by the Metadata record tables: a leading search
- * button, an optional clear action, and a quiet refresh control.
+ * Live search state for the Metadata record tables: the draft follows the
+ * input, and the committed query settles after a short pause or on Enter.
+ * `onCommit` runs in the same update as a changed query so callers can reset
+ * paging without an extra request.
  */
-export function MaintenanceSearchForm({
-  value,
+export function useMaintenanceSearch(onCommit: () => void) {
+  const [draft, setDraft] = useState("");
+  const [query, setQuery] = useState("");
+  const committed = useRef("");
+  const notifyCommit = useStableCallback(onCommit);
+
+  const commit = (value: string) => {
+    const next = value.trim();
+    if (next === committed.current) return;
+    committed.current = next;
+    setQuery(next);
+    notifyCommit();
+  };
+
+  useEffect(() => {
+    if (draft.trim() === query) return;
+    const timer = window.setTimeout(() => commit(draft), SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [draft, query]);
+
+  return {
+    draft,
+    query,
+    setDraft,
+    commit: () => commit(draft),
+    clear: () => {
+      setDraft("");
+      commit("");
+    },
+  };
+}
+
+/**
+ * Where the Metadata page header lets a view place its toolbar. The page
+ * measures the header row and decides whether the search field fits beside
+ * the tabs (`search` is then an inline slot) or collapses behind an icon and
+ * opens on its own row below the header.
+ */
+export type MaintenanceToolbarSlots = {
+  actions: HTMLElement | null;
+  search: HTMLElement | null;
+  compactSearch: boolean;
+};
+
+/**
+ * Library-style toolbar for the Metadata record tables, rendered into the page
+ * header: a live search field plus quiet refresh and page-size controls, with
+ * view-specific actions (`children`) after them.
+ */
+export function MaintenanceToolbar({
+  slots,
+  query,
   label,
   placeholder,
   loading,
-  onChange,
-  onSubmit,
+  pageSize,
+  pageSizeOptions,
+  children,
+  onQueryChange,
+  onQueryCommit,
   onClear,
   onRefresh,
+  onPageSizeChange,
 }: {
-  value: string;
+  slots: MaintenanceToolbarSlots;
+  query: string;
   label: string;
   placeholder: string;
   loading: boolean;
-  onChange: (value: string) => void;
-  onSubmit: () => void;
-  onClear: () => void;
-  onRefresh: () => void;
-}) {
-  const { t } = useTranslation();
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    onSubmit();
-  };
-  return (
-    <form className="flex min-w-0 items-center gap-1 sm:w-80" onSubmit={submit}>
-      <div className="relative min-w-0 flex-1">
-        <button
-          type="submit"
-          className="absolute left-1 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground max-sm:h-11 max-sm:w-11"
-          aria-label={t("unlinked.search")}
-          title={t("unlinked.search")}
-        >
-          <Search className="h-4 w-4" />
-        </button>
-        <Input
-          type="search"
-          maxLength={256}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={placeholder}
-          aria-label={label}
-          fieldSize="sm"
-          className="w-full pl-9 pr-9 max-sm:h-11 max-sm:pl-12 [&::-webkit-search-cancel-button]:hidden"
-        />
-        {value && (
-          <button
-            type="button"
-            className="absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground max-sm:h-9 max-sm:w-9"
-            onClick={onClear}
-            aria-label={t("unlinked.clearSearch")}
-            title={t("unlinked.clearSearch")}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
-      </div>
-      <Button
-        type="button"
-        size="icon-sm"
-        variant="ghost"
-        className="shrink-0 text-muted-foreground max-sm:h-11 max-sm:w-11"
-        onClick={onRefresh}
-        disabled={loading}
-        aria-label={t("unlinked.refresh")}
-        title={t("unlinked.refresh")}
-      >
-        <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-      </Button>
-    </form>
-  );
-}
-
-/** Footer pager shared by the Metadata record tables: rows per page plus previous/next. */
-export function MaintenancePager({
-  page,
-  totalPages,
-  pageSize,
-  pageSizeOptions,
-  loading,
-  onPageChange,
-  onPageSizeChange,
-}: {
-  page: number;
-  totalPages: number;
   pageSize: number;
   pageSizeOptions: readonly number[];
-  loading: boolean;
-  onPageChange: (page: number) => void;
+  children?: ReactNode;
+  onQueryChange: (value: string) => void;
+  onQueryCommit: () => void;
+  onClear: () => void;
+  onRefresh: () => void;
   onPageSizeChange: (pageSize: number) => void;
 }) {
   const { t } = useTranslation();
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-2 text-xs text-muted-foreground">
-      <label className="flex items-center gap-2">
-        {t("workMaintenance.rows")}
-        <NativeSelect
-          fieldSize="sm"
-          value={pageSize}
-          onChange={(event) => onPageSizeChange(Number(event.target.value))}
-          className="h-8 px-2 text-xs"
+  const searchId = useId();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [searchOpen, setSearchOpen] = useState(() => Boolean(query.trim()));
+  const focusOnOpen = useRef(false);
+  const showSearch = !slots.compactSearch || searchOpen || Boolean(query.trim());
+
+  useEffect(() => {
+    if (!showSearch || !focusOnOpen.current) return;
+    focusOnOpen.current = false;
+    inputRef.current?.focus();
+  }, [showSearch]);
+
+  const submitOnEnter = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter" && !event.nativeEvent.isComposing) onQueryCommit();
+    dismissKeyboardOnEnter(event);
+  };
+  const toggleSearch = () => {
+    if (query.trim()) {
+      inputRef.current?.focus();
+      return;
+    }
+    focusOnOpen.current = !searchOpen;
+    setSearchOpen((current) => !current);
+  };
+
+  const searchField = (
+    <div
+      id={searchId}
+      className={`search-field flex min-h-10 min-w-0 items-center gap-2 rounded-lg border bg-card px-3 text-sm ${
+        slots.compactSearch ? "w-full" : "min-w-[12rem] max-w-2xl flex-1"
+      }`}
+    >
+      <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <input
+        ref={inputRef}
+        type="search"
+        maxLength={256}
+        className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"
+        value={query}
+        onChange={(event) => onQueryChange(event.target.value)}
+        onKeyDown={submitOnEnter}
+        placeholder={placeholder}
+        aria-label={label}
+      />
+      {query && (
+        <button
+          type="button"
+          className="touch-target relative text-muted-foreground hover:text-foreground"
+          onClick={onClear}
+          aria-label={t("unlinked.clearSearch")}
+          title={t("unlinked.clearSearch")}
         >
-          {pageSizeOptions.map((size) => (
-            <option key={size} value={size}>
-              {size}
-            </option>
-          ))}
-        </NativeSelect>
-      </label>
-      <div className="flex items-center gap-1">
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          className="max-sm:h-11 max-sm:w-11"
-          onClick={() => onPageChange(Math.max(1, page - 1))}
-          disabled={page <= 1 || loading}
-          aria-label={t("collection.previousPage")}
-          title={t("collection.previousPage")}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <span className="min-w-12 text-center tabular-nums">
-          {t("workMaintenance.pageStatus", { page: Math.min(page, totalPages), total: totalPages })}
-        </span>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          className="max-sm:h-11 max-sm:w-11"
-          onClick={() => onPageChange(Math.min(totalPages, page + 1))}
-          disabled={page >= totalPages || loading}
-          aria-label={t("collection.nextPage")}
-          title={t("collection.nextPage")}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-      </div>
+          <X className="h-4 w-4" />
+        </button>
+      )}
     </div>
+  );
+  const actions = (
+    <>
+      {slots.compactSearch && (
+        <Button
+          type="button"
+          variant="toolbar"
+          size="icon-sm"
+          data-search-toggle
+          title={label}
+          aria-label={label}
+          aria-expanded={showSearch}
+          aria-controls={showSearch ? searchId : undefined}
+          onClick={toggleSearch}
+        >
+          <Search className="h-4 w-4" />
+        </Button>
+      )}
+      <IconButton title={t("unlinked.refresh")} disabled={loading} onClick={onRefresh}>
+        <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+      </IconButton>
+      <PageSizePicker value={pageSize} options={pageSizeOptions} onChange={onPageSizeChange} />
+      {children}
+    </>
+  );
+  return (
+    <>
+      {slots.search && showSearch && createPortal(searchField, slots.search)}
+      {slots.actions && createPortal(actions, slots.actions)}
+    </>
   );
 }

@@ -7,11 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogHeader } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
-import { formatNumber } from "@/i18n/format";
-import { useLocale } from "@/i18n/LocaleProvider";
+import { CollectionPagination } from "@/components/collection/CollectionPagination";
 import { api, assetURL, type VoiceAlias, type VoiceSummary, type VoiceSummaryPage } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
-import { MaintenancePager, MaintenanceSearchForm } from "./MaintenanceControls";
+import { MaintenanceToolbar, useMaintenanceSearch, type MaintenanceToolbarSlots } from "./MaintenanceControls";
 import { VoiceAliasPanel } from "./VoiceAliasPanel";
 
 const PAGE_SIZES = [25, 50] as const;
@@ -27,14 +26,21 @@ function requestedVoiceId() {
  * with their confirmed aliases, and a dialog that reviews aliases and merges
  * duplicates for one person. `?voice=<id>` opens that person's dialog directly.
  */
-export function VoiceAliasMaintenance({ canManage, readOnly = false }: { canManage: boolean; readOnly?: boolean }) {
+export function VoiceAliasMaintenance({
+  canManage,
+  readOnly = false,
+  toolbar,
+}: {
+  canManage: boolean;
+  readOnly?: boolean;
+  toolbar: MaintenanceToolbarSlots;
+}) {
   const { t } = useTranslation();
   const toast = useToast();
-  const { resolvedLocale } = useLocale();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(25);
-  const [query, setQuery] = useState("");
-  const [queryDraft, setQueryDraft] = useState("");
+  const search = useMaintenanceSearch(() => setPage(1));
+  const query = search.query;
   const [result, setResult] = useState<VoiceSummaryPage>({
     voices: [],
     page: 1,
@@ -101,123 +107,110 @@ export function VoiceAliasMaintenance({ canManage, readOnly = false }: { canMana
     }));
   };
 
+  const paginationProps = {
+    page,
+    pageSize,
+    totalItems: result.total,
+    totalPages,
+    itemLabel: t("creatorBrowse.voiceActors"),
+    ariaLabel: t("creatorBrowse.voicePages"),
+    onPageChange: setPage,
+  };
+
   return (
-    <section
-      id="metadata-aliases"
-      aria-label={t("workManagement.voiceAliasesTitle")}
-      className="overflow-hidden rounded-lg border bg-card"
-    >
-      <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <h2 className="truncate text-base font-semibold">{t("workManagement.voiceAliasesTitle")}</h2>
-          <span className="text-sm tabular-nums text-muted-foreground">
-            {formatNumber(result.total, resolvedLocale)}
-          </span>
-        </div>
-        <MaintenanceSearchForm
-          value={queryDraft}
-          label={t("workManagement.searchVoices")}
-          placeholder={t("workManagement.searchVoicesPlaceholder")}
-          loading={loading}
-          onChange={setQueryDraft}
-          onSubmit={() => {
-            setPage(1);
-            setQuery(queryDraft.trim());
-          }}
-          onClear={() => {
-            setQueryDraft("");
-            setQuery("");
-            setPage(1);
-          }}
-          onRefresh={() => setRefreshKey((current) => current + 1)}
-        />
-      </div>
-      <p className="border-y bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
-        {t("workManagement.voiceAliasesDescription")}
-      </p>
-      <div className="min-h-64">
-        {loadError && hasLoaded && (
-          <div
-            className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-error-border bg-error-surface px-4 py-2"
-            role="alert"
-          >
-            <span className="text-sm text-error-foreground">
-              {loadError} {t("unlinked.existingResultsShown")}
-            </span>
-            <Button size="sm" variant="outline" onClick={() => setRefreshKey((current) => current + 1)}>
-              {t("common.retry")}
-            </Button>
-          </div>
-        )}
-        {!hasLoaded && loadError ? (
-          <div className="grid min-h-64 place-items-center px-4 py-10 text-center" role="alert">
-            <div>
-              <p className="text-sm text-error-foreground">{loadError}</p>
-              <Button
-                className="mt-4"
-                size="sm"
-                variant="outline"
-                onClick={() => setRefreshKey((current) => current + 1)}
-              >
-                {t("common.retry")}
-              </Button>
-            </div>
-          </div>
-        ) : initialLoading ? (
-          <VoiceAliasTableSkeleton />
-        ) : result.voices.length === 0 ? (
-          <div className="grid min-h-64 place-items-center px-6 py-10 text-center">
-            <div className="max-w-sm">
-              <div className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-full bg-muted text-muted-foreground">
-                {query ? <Search className="h-4 w-4" /> : <Inbox className="h-4 w-4" />}
-              </div>
-              <p className="text-sm font-medium">
-                {query ? t("workManagement.noMatchingVoices") : t("creatorBrowse.noVoiceCredits")}
-              </p>
-              {query && (
-                <Button
-                  className="mt-4"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setQueryDraft("");
-                    setQuery("");
-                    setPage(1);
-                  }}
-                >
-                  {t("unlinked.clearSearch")}
-                </Button>
-              )}
-            </div>
-          </div>
-        ) : (
-          <table className="w-full table-fixed text-left text-sm" aria-busy={loading}>
-            <VoiceAliasTableHead />
-            <tbody className="divide-y">
-              {result.voices.map((voice) => (
-                <VoiceAliasRow
-                  key={voice.personId}
-                  voice={voice}
-                  onNavigate={navigateVoice}
-                  onManage={() => openVoice(voice.personId)}
-                />
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-      <MaintenancePager
-        page={page}
-        totalPages={totalPages}
+    <div className="min-w-0 space-y-3">
+      <MaintenanceToolbar
+        slots={toolbar}
+        query={search.draft}
+        label={t("workManagement.searchVoices")}
+        placeholder={t("workManagement.searchVoicesPlaceholder")}
+        loading={loading}
         pageSize={pageSize}
         pageSizeOptions={PAGE_SIZES}
-        loading={loading}
-        onPageChange={setPage}
+        onQueryChange={search.setDraft}
+        onQueryCommit={search.commit}
+        onClear={search.clear}
+        onRefresh={() => setRefreshKey((current) => current + 1)}
         onPageSizeChange={(size) => {
           setPageSize(size as (typeof PAGE_SIZES)[number]);
           setPage(1);
         }}
       />
+      {(hasLoaded || !loadError) && (
+        <CollectionPagination {...paginationProps} placement="top" compactMobile compactTop />
+      )}
+      <section
+        id="metadata-aliases"
+        aria-label={t("workManagement.voiceAliasesTitle")}
+        className="overflow-hidden rounded-lg border bg-card"
+      >
+        <p className="border-b bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
+          {t("workManagement.voiceAliasesDescription")}
+        </p>
+        <div className="min-h-64">
+          {loadError && hasLoaded && (
+            <div
+              className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-error-border bg-error-surface px-4 py-2"
+              role="alert"
+            >
+              <span className="text-sm text-error-foreground">
+                {loadError} {t("unlinked.existingResultsShown")}
+              </span>
+              <Button size="sm" variant="outline" onClick={() => setRefreshKey((current) => current + 1)}>
+                {t("common.retry")}
+              </Button>
+            </div>
+          )}
+          {!hasLoaded && loadError ? (
+            <div className="grid min-h-64 place-items-center px-4 py-10 text-center" role="alert">
+              <div>
+                <p className="text-sm text-error-foreground">{loadError}</p>
+                <Button
+                  className="mt-4"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setRefreshKey((current) => current + 1)}
+                >
+                  {t("common.retry")}
+                </Button>
+              </div>
+            </div>
+          ) : initialLoading ? (
+            <VoiceAliasTableSkeleton />
+          ) : result.voices.length === 0 ? (
+            <div className="grid min-h-64 place-items-center px-6 py-10 text-center">
+              <div className="max-w-sm">
+                <div className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-full bg-muted text-muted-foreground">
+                  {query ? <Search className="h-4 w-4" /> : <Inbox className="h-4 w-4" />}
+                </div>
+                <p className="text-sm font-medium">
+                  {query ? t("workManagement.noMatchingVoices") : t("creatorBrowse.noVoiceCredits")}
+                </p>
+                {query && (
+                  <Button className="mt-4" size="sm" variant="outline" onClick={search.clear}>
+                    {t("unlinked.clearSearch")}
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <table className="w-full table-fixed text-left text-sm" aria-busy={loading}>
+              <VoiceAliasTableHead />
+              <tbody className="divide-y">
+                {result.voices.map((voice) => (
+                  <VoiceAliasRow
+                    key={voice.personId}
+                    voice={voice}
+                    onNavigate={navigateVoice}
+                    onManage={() => openVoice(voice.personId)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
+      <CollectionPagination {...paginationProps} placement="bottom" />
       {managedId !== null && (
         <VoiceAliasDialog
           personId={managedId}
@@ -229,7 +222,7 @@ export function VoiceAliasMaintenance({ canManage, readOnly = false }: { canMana
           onMessage={(message, tone) => (tone === "error" ? toast.error(message) : toast.success(message))}
         />
       )}
-    </section>
+    </div>
   );
 }
 

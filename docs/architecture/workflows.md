@@ -52,7 +52,7 @@ in `app_setting`, so they survive browser changes and server restarts.
 ## Metadata Recovery
 
 Metadata synchronization remains a workflow. Metadata management owns the current
-attention list and metadata settings, with a shortcut to the existing workflow.
+attention list and metadata settings; sync itself starts from Workflows.
 Activity run detail links to the unresolved
 issues encountered by that run. Selecting works queues recoverable family-sync
 jobs, reusing an already queued/running job for that family. Explicit recovery
@@ -72,7 +72,7 @@ checks, and confirmed deletion require `sources:write`; the UI exposes deletion
 only in the no-source view and the server still revalidates family availability.
 Each permission grants only its corresponding maintenance actions, without
 exposing settings to metadata-only operators. Metadata management presents All and attention categories horizontally.
-Metadata settings open in a dialog, with the current list retained underneath.
+Metadata settings open in a popover anchored to the header, with the current list retained underneath.
 Activity links use `/metadata?reason=metadata&metadataRun=<id>`;
 legacy Maintenance work and metadata links redirect to Metadata management. Filtering by a run additionally
 checks workflow permission and that run's ownership. Successful recovery changes shared work state, never

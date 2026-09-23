@@ -3,13 +3,10 @@ import { surfaceEnglish } from "./en";
 export const surfaceHans = {
   workManagement: {
     all: "全部",
-    allMetadata: "全部元数据",
     catalogDescription: "按作品系列归并展示所有已保存的作品元数据。",
     catalogEmpty: "暂无已保存的作品元数据。",
 
-    issues: "待处理作品",
     settings: "元数据设置",
-    openSync: "元数据同步",
     voiceAliases: "声优别名",
     voiceAliasesTitle: "声优别名",
     voiceAliasesDescription: "查看每位声优的别名并合并重复人物。搜索会匹配名称和别名。",
@@ -100,8 +97,6 @@ export const surfaceHans = {
     error: "操作未能保存，请重试。",
   },
   workMaintenance: {
-    pageStatus: "{{page}} / {{total}}",
-    rows: "每页行数",
     title: "元数据记录",
     description: "按作品家族查看元数据问题或无可用文件来源的作品。元数据更新成功后，只清除对应问题。",
     reason: "元数据视图",
@@ -364,15 +359,13 @@ export const surfaceHans = {
     },
     metadata: {
       languagePriority: "DLsite 元数据语言优先级",
-      firstChoice: "首选",
-      fallbackChoice: "回退 {{count}}",
       priority: "优先级 {{count}}",
-      remoteRequests: "远程来源元数据请求",
-      remoteRequestsDescription: "作为 Accept-Language 请求提示发送。远程服务可能忽略、回退或返回混合语言元数据。",
-      noRemoteSources: "未配置远程来源。",
+      remoteRequests: "远程请求语言",
+      remoteRequestsDescription: "作为 Accept-Language 提示发送。来源可能忽略它或返回混合语言。",
       catalogFreshnessDays: "目录新鲜度天数",
       catalogFreshnessDescription: "社团和声优目录超过 {{count}} 天后会变为注意状态。",
       save: "保存元数据设置",
+      about: "关于{{label}}",
     },
     recommendation: {
       tuning: "推荐调优",
@@ -1098,7 +1091,6 @@ export const surfaceHans = {
     actions: "操作",
     cover: "封面",
     select: "选择",
-    range: "{{first}}-{{last}}，共 {{total}}",
     existingResultsShown: "仍显示现有结果。",
   },
   route: {
@@ -1213,9 +1205,8 @@ export const surfaceHans = {
     drag: "拖动 {{language}}",
     moveEarlier: "将 {{language}} 上移",
     moveLater: "将 {{language}} 下移",
-    priorityTitle: "DLsite 标题和标签语言优先级",
-    priorityDescription:
-      "已保存的 DLsite 版本会从上到下匹配。原版始终保留为最后的回退；同步时使用的请求语言与此显示顺序相互独立。",
+    priorityTitle: "标题和标签语言",
+    priorityDescription: "按从上到下的顺序匹配 DLsite 版本。原版始终作为最后的回退。同步请求语言单独设置。",
     preferredLanguages: "首选语言",
   },
   detailActions: {

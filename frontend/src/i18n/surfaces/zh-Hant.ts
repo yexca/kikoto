@@ -3,13 +3,10 @@ import { surfaceEnglish } from "./en";
 export const surfaceHant = {
   workManagement: {
     all: "全部",
-    allMetadata: "全部中繼資料",
     catalogDescription: "依作品系列彙整顯示所有已儲存的作品中繼資料。",
     catalogEmpty: "尚無已儲存的作品中繼資料。",
 
-    issues: "待處理作品",
     settings: "中繼資料設定",
-    openSync: "中繼資料同步",
     voiceAliases: "聲優別名",
     voiceAliasesTitle: "聲優別名",
     voiceAliasesDescription: "檢視每位聲優的別名並合併重複人物。搜尋會比對名稱與別名。",
@@ -101,8 +98,6 @@ export const surfaceHant = {
     error: "無法儲存此操作，請重試。",
   },
   workMaintenance: {
-    pageStatus: "{{page}} / {{total}}",
-    rows: "每頁列數",
     title: "中繼資料記錄",
     description: "按作品家族查看中繼資料問題或無可用檔案來源的作品。中繼資料更新成功後，只清除對應問題。",
     reason: "中繼資料檢視",
@@ -365,15 +360,13 @@ export const surfaceHant = {
     },
     metadata: {
       languagePriority: "DLsite 中繼資料語言優先順序",
-      firstChoice: "首選",
-      fallbackChoice: "備援 {{count}}",
       priority: "優先順序 {{count}}",
-      remoteRequests: "遠端來源中繼資料要求",
-      remoteRequestsDescription: "作為 Accept-Language 要求提示傳送。遠端服務可能忽略、備援或回傳混合語言中繼資料。",
-      noRemoteSources: "未設定遠端來源。",
+      remoteRequests: "遠端要求語言",
+      remoteRequestsDescription: "作為 Accept-Language 提示傳送。來源可能忽略它或回傳混合語言。",
       catalogFreshnessDays: "目錄新鮮度天數",
       catalogFreshnessDescription: "社團和聲優目錄超過 {{count}} 天後會變為注意狀態。",
       save: "儲存中繼資料設定",
+      about: "關於{{label}}",
     },
     recommendation: {
       tuning: "推薦調整",
@@ -1075,7 +1068,6 @@ export const surfaceHant = {
     actions: "操作",
     cover: "封面",
     select: "選取",
-    range: "{{first}}-{{last}}，共 {{total}}",
     existingResultsShown: "仍顯示現有結果。",
   },
   route: {
@@ -1190,9 +1182,8 @@ export const surfaceHant = {
     drag: "拖曳 {{language}}",
     moveEarlier: "將 {{language}} 上移",
     moveLater: "將 {{language}} 下移",
-    priorityTitle: "DLsite 標題與標籤語言優先順序",
-    priorityDescription:
-      "已儲存的 DLsite 版本會由上至下匹配。原版始終保留為最後的備援；同步時使用的請求語言與此顯示順序相互獨立。",
+    priorityTitle: "標題與標籤語言",
+    priorityDescription: "依由上至下的順序比對 DLsite 版本。原版始終作為最後的備援。同步要求語言另行設定。",
     preferredLanguages: "偏好語言",
   },
   detailActions: {
