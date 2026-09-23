@@ -85,6 +85,7 @@ import {
 } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
+import { coalesceRuns } from "@/lib/inflightRequests";
 import { DLSITE_ENDPOINTS } from "@/lib/official-links";
 import { hasPlaybackHistory } from "@/lib/playbackHistory";
 import { useAuth } from "@/auth/AuthProvider";
@@ -472,6 +473,24 @@ function CircleDetailPage({
     [active, externalId, t],
   );
 
+  // Track completions can arrive in bursts; each one only needs the circle's
+  // recomputed aggregates once, so collapse them into serialized reloads that
+  // keep the known circle on failure.
+  const reloadAfterTrack = useMemo(
+    () =>
+      coalesceRuns(async () => {
+        try {
+          const next = await api.getCircle(externalId);
+          if (loadedExternalID.current === externalId) setDetail(next);
+        } catch (error) {
+          if (loadedExternalID.current === externalId) {
+            toast.notify(toastFromError(error, t("errors.unavailable")));
+          }
+        }
+      }),
+    [externalId, t, toast],
+  );
+
   useEffect(() => {
     if (!active) return;
     const refreshTrackedWork = (event: Event) => {
@@ -485,11 +504,11 @@ function CircleDetailPage({
         })
       )
         return;
-      void loadCircleDetail();
+      void reloadAfterTrack();
     };
     window.addEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshTrackedWork);
     return () => window.removeEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshTrackedWork);
-  }, [active, detail?.works, loadCircleDetail]);
+  }, [active, detail?.works, reloadAfterTrack]);
 
   useEffect(() => {
     if (!active || loadedExternalID.current === externalId) return;

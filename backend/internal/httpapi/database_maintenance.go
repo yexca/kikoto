@@ -90,11 +90,6 @@ type databaseCleanupResult struct {
 	Removed int                         `json:"removed"`
 }
 
-type databaseOptimizeResult struct {
-	BeforeBytes int64 `json:"beforeBytes"`
-	AfterBytes  int64 `json:"afterBytes"`
-}
-
 type staleDiskRecord struct {
 	ID   int64
 	Path string
@@ -169,39 +164,6 @@ func (s *Server) cleanupDatabase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
-}
-
-func (s *Server) optimizeDatabase(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requirePermission(w, r, "sources:write")
-	if !ok {
-		return
-	}
-	before, _, err := s.databaseFileUsage(r.Context())
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	for _, statement := range []string{"VACUUM", "PRAGMA optimize"} {
-		if _, err := s.db.ExecContext(r.Context(), statement); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	var busy, logPages, checkpointed int
-	_ = s.db.QueryRowContext(r.Context(), "PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &logPages, &checkpointed)
-	after, _, err := s.databaseFileUsage(r.Context())
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	if _, err := s.db.ExecContext(r.Context(), `
-		INSERT INTO audit_log (actor_user_id, action, target_type, target_id, detail_json)
-		VALUES (?, 'database.optimize', 'database', '', ?)
-	`, user.ID, mustJSON(databaseOptimizeResult{BeforeBytes: before, AfterBytes: after})); err != nil {
-		writeError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, databaseOptimizeResult{BeforeBytes: before, AfterBytes: after})
 }
 
 func isDatabaseCleanupTask(key string) bool {

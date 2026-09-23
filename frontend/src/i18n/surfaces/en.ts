@@ -710,6 +710,10 @@ export const surfaceEnglish = {
         name: "Maintain media cache",
         description: "Remove unreferenced managed cache files after a safety grace period.",
       },
+      database_optimize: {
+        name: "Optimize database",
+        description: "Compact the SQLite database, refresh query statistics, and truncate the write-ahead log.",
+      },
       circle_metadata_refresh: {
         name: "Refresh circle metadata",
         description: "Refresh DLsite maker profile and catalog for one circle.",
@@ -1210,6 +1214,7 @@ export const surfaceEnglish = {
     compatibility: "Compatibility playback",
     compatibilityScope: "Compatibility playback scope",
     seek: "Seek",
+    seekPosition: "{{current}} of {{total}}",
     loadingLyrics: "Loading lyrics",
     openLyrics: "Open lyrics",
     directPlayback: "Direct playback",

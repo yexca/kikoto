@@ -181,3 +181,50 @@ func TestDatabaseCleanupRejectsUnknownTasksAndRequiresPermission(t *testing.T) {
 		t.Fatalf("non-admin status = %d", response.Code)
 	}
 }
+
+func TestDatabaseOptimizeQueuesOneWorkflowJobAndAuditsCompletion(t *testing.T) {
+	db := openMigratedTestDB(t)
+	insertUnlinkedMaintenanceUser(t, db, 1)
+	server := NewServer(db, config.Config{})
+
+	queue := func() databaseOptimizeQueuedResult {
+		t.Helper()
+		response := httptest.NewRecorder()
+		server.Routes().ServeHTTP(response, databaseMaintenanceRequest(http.MethodPost, "/api/maintenance/database/optimize", `{}`))
+		if response.Code != http.StatusAccepted {
+			t.Fatalf("optimize status = %d, body = %s", response.Code, response.Body.String())
+		}
+		var result databaseOptimizeQueuedResult
+		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	first := queue()
+	if first.RunID <= 0 || first.JobID <= 0 || first.Status != "queued" || first.Existing {
+		t.Fatalf("first result = %+v", first)
+	}
+	second := queue()
+	if second.RunID != first.RunID || second.JobID != first.JobID || !second.Existing {
+		t.Fatalf("second result = %+v, want existing run %d", second, first.RunID)
+	}
+	assertUnlinkedMaintenanceCount(t, db, "SELECT COUNT(*) FROM workflow_job WHERE worker_type = 'database_optimize'", 1)
+	assertUnlinkedMaintenanceCount(t, db, "SELECT COUNT(*) FROM audit_log WHERE action = 'database.optimize'", 0)
+
+	if err := server.runNextQueuedWorkflowJob(context.Background(), "optimize-test-worker"); err != nil {
+		t.Fatalf("run optimize job: %v", err)
+	}
+	var status, summary string
+	if err := db.QueryRow("SELECT status, summary_json FROM workflow_run WHERE id = ?", first.RunID).Scan(&status, &summary); err != nil {
+		t.Fatal(err)
+	}
+	if status != "succeeded" || !strings.Contains(summary, `"after_bytes"`) {
+		t.Fatalf("run status = %s, summary = %s", status, summary)
+	}
+	assertUnlinkedMaintenanceCount(t, db, "SELECT COUNT(*) FROM audit_log WHERE action = 'database.optimize' AND actor_user_id = 1 AND json_extract(detail_json, '$.beforeBytes') > 0", 1)
+
+	third := queue()
+	if third.RunID == first.RunID || third.Existing {
+		t.Fatalf("a finished optimization must not block a new one: %+v", third)
+	}
+}

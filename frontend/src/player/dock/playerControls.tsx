@@ -6,6 +6,8 @@ import { assetURL } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
 import type { PlayerTrack } from "@/player/playerTypes";
 
+import { formatTime } from "./playerFormat";
+
 export function CoverImage({
   track,
   className,
@@ -141,6 +143,11 @@ export function SeekBar({
         onPointerCancel={() => setInteracting(false)}
         onBlur={() => setInteracting(false)}
         aria-label={t("player.seek")}
+        aria-valuetext={
+          hasDuration
+            ? t("player.seekPosition", { current: formatTime(value), total: formatTime(duration) })
+            : undefined
+        }
       />
     </div>
   );

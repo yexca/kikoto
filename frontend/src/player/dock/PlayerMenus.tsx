@@ -9,7 +9,7 @@ import { FloatingSelect } from "@/components/ui/floating-select";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/tailwindClassNames";
 import { isPlaybackCompatibilityScope } from "@/player/playerPersistence";
-import type { usePlayer } from "@/player/PlayerProvider";
+import { usePlayerTime, type usePlayer } from "@/player/PlayerProvider";
 import type { PlayerTrack, PlayerTrackLocation } from "@/player/playerTypes";
 
 import { formatSleepRemaining, validSleepMinutes } from "./playerFormat";
@@ -19,6 +19,12 @@ type PlayerState = ReturnType<typeof usePlayer>;
 const menuSurface = "rounded-2xl border-border/70 p-1.5 shadow-2xl";
 const menuRow =
   "flex min-h-10 w-full items-center gap-2.5 rounded-xl px-2.5 text-left text-sm transition-colors hover:bg-muted active:bg-muted disabled:opacity-40";
+
+/** The sleep timer countdown; re-renders with the playback clock instead of its menu or button. */
+export function SleepRemaining() {
+  const { sleepRemainingSeconds } = usePlayerTime();
+  return formatSleepRemaining(sleepRemainingSeconds);
+}
 
 export function SleepTimerMenu({
   open,
@@ -64,9 +70,7 @@ export function SleepTimerMenu({
         <span>{t("player.sleepTimer")}</span>
         {player.sleepTimer && (
           <span className="tabular-nums text-primary">
-            {player.sleepTimer.waitingForTrackEnd
-              ? t("player.finishingTrack")
-              : formatSleepRemaining(player.sleepRemainingSeconds)}
+            {player.sleepTimer.waitingForTrackEnd ? t("player.finishingTrack") : <SleepRemaining />}
           </span>
         )}
       </div>

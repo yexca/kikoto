@@ -51,6 +51,19 @@ func TestOpenEnablesForeignKeysOnEveryConnection(t *testing.T) {
 		if _, err := conn.ExecContext(ctx, "INSERT INTO child (parent_id) VALUES (?)", 404); err == nil {
 			t.Fatalf("connection %d allowed invalid foreign key insert", i)
 		}
+		for pragma, want := range map[string]int64{
+			"synchronous": 1, // NORMAL
+			"cache_size":  -sqliteCacheSizeKiB,
+			"mmap_size":   sqliteMmapSizeBytes,
+		} {
+			var got int64
+			if err := conn.QueryRowContext(ctx, "PRAGMA "+pragma).Scan(&got); err != nil {
+				t.Fatalf("PRAGMA %s on connection %d: %v", pragma, i, err)
+			}
+			if got != want {
+				t.Fatalf("PRAGMA %s on connection %d = %d, want %d", pragma, i, got, want)
+			}
+		}
 	}
 }
 

@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { ANDROID_BACK_EVENT } from "@/app/events";
 import { cn } from "@/lib/tailwindClassNames";
-import type { usePlayer } from "@/player/PlayerProvider";
+import { usePlayerTime, type usePlayer } from "@/player/PlayerProvider";
 import type { DockMode, PlayerTrack } from "@/player/playerTypes";
 
 import {
@@ -19,6 +19,7 @@ import {
   type MiniPosition,
 } from "./miniPosition";
 import { CoverImage, PlayPauseGlyph } from "./playerControls";
+import { playbackProgressPercent } from "./playerFormat";
 
 type MiniDrag = { pointerId: number; offsetX: number; offsetY: number; moved: boolean };
 
@@ -26,13 +27,11 @@ export function MiniPlayer({
   player,
   track,
   isMobile,
-  progress,
   onDockModeChange,
 }: {
   player: ReturnType<typeof usePlayer>;
   track: PlayerTrack;
   isMobile: boolean;
-  progress: number;
   onDockModeChange: (mode: DockMode) => void;
 }) {
   const { t } = useTranslation();
@@ -101,10 +100,6 @@ export function MiniPlayer({
     onDockModeChange(mode);
   };
 
-  const radius = 44;
-  const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference - (Math.max(0, Math.min(100, progress)) / 100) * circumference;
-
   return (
     <div
       data-player-surface="mini"
@@ -169,29 +164,7 @@ export function MiniPlayer({
       }}
     >
       <div className="relative h-[92px] w-[92px] animate-player-enter cursor-grab rounded-full bg-card/90 shadow-[0_12px_32px_-8px_hsl(var(--foreground)/0.35)] ring-1 ring-foreground/[0.08] transition-[scale] duration-200 ease-out active:cursor-grabbing active:[scale:0.97] motion-reduce:active:[scale:1]">
-        <svg className="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 100 100" aria-hidden="true">
-          <circle
-            cx="50"
-            cy="50"
-            r={radius}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3.5"
-            className="text-foreground/10"
-          />
-          <circle
-            cx="50"
-            cy="50"
-            r={radius}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3.5"
-            strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={dashOffset}
-            className="text-primary transition-[stroke-dashoffset] duration-500 ease-linear"
-          />
-        </svg>
+        <MiniProgressRing duration={player.duration} />
         <div
           className="pointer-events-none absolute inset-[8px] z-10 overflow-hidden rounded-full bg-background"
           aria-hidden="true"
@@ -246,5 +219,40 @@ export function MiniPlayer({
         </button>
       </div>
     </div>
+  );
+}
+
+const MINI_RING_RADIUS = 44;
+const MINI_RING_CIRCUMFERENCE = 2 * Math.PI * MINI_RING_RADIUS;
+
+/** The ring around the Mini bubble; the only part that re-renders with the playback clock. */
+function MiniProgressRing({ duration }: { duration: number }) {
+  const { currentTime } = usePlayerTime();
+  const progress = playbackProgressPercent(currentTime, duration);
+  const dashOffset = MINI_RING_CIRCUMFERENCE - (Math.max(0, Math.min(100, progress)) / 100) * MINI_RING_CIRCUMFERENCE;
+  return (
+    <svg className="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 100 100" aria-hidden="true">
+      <circle
+        cx="50"
+        cy="50"
+        r={MINI_RING_RADIUS}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3.5"
+        className="text-foreground/10"
+      />
+      <circle
+        cx="50"
+        cy="50"
+        r={MINI_RING_RADIUS}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3.5"
+        strokeLinecap="round"
+        strokeDasharray={MINI_RING_CIRCUMFERENCE}
+        strokeDashoffset={dashOffset}
+        className="text-primary transition-[stroke-dashoffset] duration-500 ease-linear"
+      />
+    </svg>
   );
 }

@@ -28,6 +28,8 @@ workflow_definition
 - DLsite popular voice collection.
 - Cache cleanup.
 - Local location cleanup.
+- Database optimization (single-flight `VACUUM`; see
+  [Database](../operations/database.md#maintenance)).
 - Circle metadata refresh.
 - Voice catalog refresh.
 - Preset follow workflows: Follow a circle, Follow a series, Follow a voice

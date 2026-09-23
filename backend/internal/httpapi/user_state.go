@@ -791,7 +791,13 @@ func applyWorkFavoriteListSelection(ctx context.Context, tx *sql.Tx, userID, wor
 	if err := addWorkToSelectedFavoriteLists(ctx, tx, workID, selected, current); err != nil {
 		return err
 	}
-	favorite := len(selected) > 0
+	return syncWorkFavoriteFlag(ctx, tx, userID, workID, len(selected) > 0)
+}
+
+// syncWorkFavoriteFlag keeps user_work_state.favorite equal to whether the work
+// belongs to any of the user's own lists.
+func syncWorkFavoriteFlag(ctx context.Context, tx *sql.Tx, userID, workID int64, favorite bool) error {
+	var err error
 	if favorite {
 		_, err = tx.ExecContext(ctx, `
 			INSERT INTO user_work_state (user_id, work_id, listening_status, favorite)

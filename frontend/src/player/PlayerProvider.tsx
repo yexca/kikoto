@@ -78,11 +78,9 @@ type PlayerContextValue = {
   currentTrack: PlayerTrack | null;
   isPlaying: boolean;
   isBuffering: boolean;
-  currentTime: number;
   duration: number;
   playbackRate: number;
   sleepTimer: SleepTimerState;
-  sleepRemainingSeconds: number;
   mode: PlayMode;
   playQueue: (tracks: PlayerTrack[], locationId: number, startPositionSeconds?: number) => void;
   selectTrack: (index: number) => void;
@@ -118,6 +116,16 @@ type PlayerContextValue = {
 };
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
+
+// The playback clock changes several times a second while audio plays. It has
+// its own context so components that only need controls or track state do not
+// re-render on every time update; read it from the smallest leaf that shows it.
+type PlayerTimeContextValue = {
+  currentTime: number;
+  sleepRemainingSeconds: number;
+};
+
+const PlayerTimeContext = createContext<PlayerTimeContextValue | null>(null);
 type LibraryPlayerContextValue = {
   currentTrack: PlayerTrack | null;
   isPlaying: boolean;
@@ -1411,11 +1419,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       currentTrack,
       isPlaying,
       isBuffering,
-      currentTime,
       duration,
       playbackRate,
       sleepTimer,
-      sleepRemainingSeconds,
       mode,
       playbackCompatibilityScope,
       compatibilityPlaybackEnabled,
@@ -1469,11 +1475,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       currentTrack,
       isPlaying,
       isBuffering,
-      currentTime,
       duration,
       playbackRate,
       sleepTimer,
-      sleepRemainingSeconds,
       mode,
       playbackCompatibilityScope,
       compatibilityPlaybackEnabled,
@@ -1485,6 +1489,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       lyricsPreferenceOverrides,
       changeLyricsChoice,
     ],
+  );
+  const timeValue = useMemo<PlayerTimeContextValue>(
+    () => ({ currentTime, sleepRemainingSeconds }),
+    [currentTime, sleepRemainingSeconds],
   );
   const libraryValue = useMemo<LibraryPlayerContextValue>(
     () => ({
@@ -1514,7 +1522,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   return (
     <LibraryPlayerContext.Provider value={libraryValue}>
       <PlayerContext.Provider value={value}>
-        {children}
+        <PlayerTimeContext.Provider value={timeValue}>{children}</PlayerTimeContext.Provider>
         <audio
           ref={audioRef}
           preload="metadata"
@@ -1610,6 +1618,15 @@ export function usePlayer() {
   const value = useContext(PlayerContext);
   if (!value) {
     throw new Error("usePlayer must be used inside PlayerProvider");
+  }
+  return value;
+}
+
+/** The playback clock; changes several times a second while audio plays. */
+export function usePlayerTime() {
+  const value = useContext(PlayerTimeContext);
+  if (!value) {
+    throw new Error("usePlayerTime must be used inside PlayerProvider");
   }
   return value;
 }

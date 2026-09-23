@@ -101,12 +101,16 @@ sections need `sources:write`.
   signals older than 90 days, and unused recommendation snapshots. Personal
   tags, runs with reviews, Fetch records, or metadata issues, and the latest run
   of each workflow are kept. Selected tasks are removed after confirmation and
-  recorded in the audit log; media files are never deleted.
+  recorded in the audit log; media files are never deleted. Expired sessions
+  and eligible old workflow runs are also removed automatically once a day
+  with the same rules.
 - Path checks pause when the data folder is missing or empty, so an unmounted
   library is never treated as deleted.
 - **Works without any source** links to Metadata's **No available source** view
   for review and deletion.
 - **Compact database** rewrites the SQLite file to return free pages to disk.
+  It runs in the background as a workflow run shown in Activity, and only one
+  compaction can be queued or running at a time.
 
 ## Metadata
 

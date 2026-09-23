@@ -1,13 +1,13 @@
 import { Minimize2, SkipForward } from "lucide-react";
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { OverflowMarqueeGroup } from "@/components/ui/overflow-marquee";
 import { cn } from "@/lib/tailwindClassNames";
-import type { usePlayer } from "@/player/PlayerProvider";
+import { usePlayerTime, type usePlayer } from "@/player/PlayerProvider";
 import type { DockMode, PlayerTrack } from "@/player/playerTypes";
 
-import { formatScrubTime, formatSignedSeconds } from "./playerFormat";
+import { formatScrubTime, formatSignedSeconds, playbackProgressPercent } from "./playerFormat";
 import { CoverImage, GlyphButton, PlayPauseGlyph } from "./playerControls";
 
 type CompactScrubState = {
@@ -22,18 +22,18 @@ type CompactScrubState = {
 export function CompactPlayer({
   player,
   track,
-  progress,
   onDockModeChange,
 }: {
   player: ReturnType<typeof usePlayer>;
   track: PlayerTrack;
-  progress: number;
   onDockModeChange: (mode: DockMode) => void;
 }) {
   const { t } = useTranslation();
   const [scrub, setScrub] = useState<CompactScrubState | null>(null);
   const scrubRef = useRef<CompactScrubState | null>(null);
   const suppressClickRef = useRef(false);
+  // Mirrors the playback clock for the scrub origin without re-rendering the bar on every update.
+  const currentTimeRef = useRef(0);
   const busy = player.isPlaying && player.isBuffering;
 
   useEffect(() => {
@@ -64,8 +64,8 @@ export function CompactPlayer({
     const state: CompactScrubState = {
       pointerId: event.pointerId,
       startX: event.clientX,
-      originTime: player.currentTime,
-      previewTime: player.currentTime,
+      originTime: currentTimeRef.current,
+      previewTime: currentTimeRef.current,
       width: Math.max(1, rect.width),
       dragging: false,
     };
@@ -111,9 +111,10 @@ export function CompactPlayer({
   };
 
   const activeScrub = scrub?.dragging ? scrub : null;
-  const toPercent = (seconds: number) => (player.duration > 0 ? (seconds / player.duration) * 100 : progress);
-  const originProgress = activeScrub ? toPercent(activeScrub.originTime) : progress;
-  const previewProgress = activeScrub ? toPercent(activeScrub.previewTime) : progress;
+  // A scrub only starts with a known duration, so the percentages are defined while it is active.
+  const toPercent = (seconds: number) => (player.duration > 0 ? (seconds / player.duration) * 100 : 0);
+  const originProgress = activeScrub ? toPercent(activeScrub.originTime) : 0;
+  const previewProgress = activeScrub ? toPercent(activeScrub.previewTime) : 0;
   const changedLeft = Math.min(originProgress, previewProgress);
   const changedWidth = Math.abs(previewProgress - originProgress);
   const scrubDelta = activeScrub ? activeScrub.previewTime - activeScrub.originTime : 0;
@@ -208,15 +209,34 @@ export function CompactPlayer({
             <SkipForward className="h-5 w-5" fill="currentColor" />
           </GlyphButton>
         </div>
-        {!activeScrub && (
-          <div className="pointer-events-none absolute inset-x-4 bottom-1 h-[3px] overflow-hidden rounded-full bg-foreground/10">
-            <div
-              className="h-full origin-left rounded-full bg-primary transition-transform duration-500 ease-linear"
-              style={{ transform: `scaleX(${Math.max(0, Math.min(100, progress)) / 100})` }}
-            />
-          </div>
-        )}
+        <CompactProgressBar duration={player.duration} hidden={Boolean(activeScrub)} currentTimeRef={currentTimeRef} />
       </div>
+    </div>
+  );
+}
+
+/** The thin progress line under the Compact bar; the only part that re-renders with the playback clock. */
+function CompactProgressBar({
+  duration,
+  hidden,
+  currentTimeRef,
+}: {
+  duration: number;
+  hidden: boolean;
+  currentTimeRef: MutableRefObject<number>;
+}) {
+  const { currentTime } = usePlayerTime();
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime, currentTimeRef]);
+  if (hidden) return null;
+  const progress = playbackProgressPercent(currentTime, duration);
+  return (
+    <div className="pointer-events-none absolute inset-x-4 bottom-1 h-[3px] overflow-hidden rounded-full bg-foreground/10">
+      <div
+        className="h-full origin-left rounded-full bg-primary transition-transform duration-500 ease-linear"
+        style={{ transform: `scaleX(${Math.max(0, Math.min(100, progress)) / 100})` }}
+      />
     </div>
   );
 }

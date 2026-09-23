@@ -13,6 +13,7 @@ Important tables:
 - `work_external_id`
 - `metadata_provider`
 - `metadata_snapshot`
+- `metadata_snapshot_card_summary`
 - `dlsite_metadata_variant`
 - `work_metadata_sync_state`
 - `metadata_sync_attempt`
@@ -26,6 +27,15 @@ Important tables:
 
 DLsite metadata sync stores raw snapshots and updates normalized fields used by
 library and detail views.
+
+`metadata_snapshot_card_summary` holds one compact, versioned card summary per
+snapshot (circle, base and edition codes, release date, rating count, series,
+tags, and voice actors) so Library and voice lists do not decode the raw
+snapshot for every row. It is a derived cache of `snapshot_json`, not a second
+metadata source: triggers drop the summary when the snapshot content changes
+and queue the snapshot in `metadata_snapshot_card_summary_dirty`, and the
+server rebuilds queued or outdated-version summaries in small background
+batches. A row without a current summary is read from the raw snapshot.
 
 `work_metadata_sync_state` records the latest synchronization outcome for each
 work, metadata provider, and component (`metadata` or `cover`). Failed and

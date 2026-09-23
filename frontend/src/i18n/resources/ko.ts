@@ -278,6 +278,7 @@ const adminToolsKorean = {
   cleanup: {
     tab: "정리",
     ofLimit: "/ {{limit}}",
+    usageValue: "{{limit}} 중 {{used}} 사용({{percent}}%)",
     transcodeDescription: "재생을 위해 만든 변환 오디오와 HLS 비디오 세그먼트입니다.",
     transcodeUsage: "트랜스코드 캐시 사용량",
     transcodeLru: "한도에 도달하면 가장 오래 사용하지 않은 파일부터 자동으로 제거됩니다.",
@@ -375,7 +376,10 @@ const adminToolsKorean = {
       failed: "데이터베이스를 압축할 수 없습니다.",
       confirmTitle: "데이터베이스를 압축할까요?",
       confirmDescription:
-        "Kikoto가 데이터베이스 파일을 다시 씁니다. 실행 중에는 다른 요청이 잠시 기다릴 수 있으며, 아무것도 삭제되지 않습니다.",
+        "Kikoto가 백그라운드에서 데이터베이스 파일을 다시 쓰고 진행 상황을 활동에 표시합니다. 실행 중에는 다른 요청이 기다릴 수 있으며, 아무것도 삭제되지 않습니다.",
+      queued: "압축을 워크플로 실행 #{{runId}}(으)로 대기열에 추가했습니다.",
+      alreadyQueued: "압축이 이미 워크플로 실행 #{{runId}}(으)로 대기 중입니다.",
+      runFailed: "데이터베이스 압축을 완료하지 못했습니다. 자세한 내용은 활동에서 확인하세요.",
     },
   },
   recommendationActivity: {

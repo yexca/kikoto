@@ -33,7 +33,6 @@ import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { IconButton } from "@/components/ui/icon-button";
 import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { toastFromError, useToast } from "@/components/ui/toast";
@@ -99,6 +98,10 @@ import {
   type FavoritesBrowseState,
   type FavoriteEntity,
 } from "@/pages/favoritesBrowseState";
+import {
+  FavoriteListMembershipPopover,
+  type FavoriteListMembershipChanges,
+} from "@/pages/FavoriteListMembershipPopover";
 import { defaultLibraryBrowseState, libraryLocation } from "@/pages/libraryBrowseState";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
@@ -489,7 +492,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       : Boolean(query.trim());
   const markedList = favoriteLists.find((list) => list.kind === "marked") ?? null;
   const userFavoriteLists = favoriteLists.filter((list) => list.kind !== "marked");
-  const selectedList = activeList === "all" ? null : (userFavoriteLists.find((list) => list.id === activeList) ?? null);
   const selectedWorks = works.filter((work) => selectedWorkIDs.has(work.id));
   const favoriteCircles = circles.filter((circle) => circle.favorite);
   const favoriteVoices = voices.filter((voice) => voice.favorite);
@@ -725,14 +727,12 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     });
   };
 
-  const applyListMembership = async (targetListIDs: number[]) => {
+  const applyListMembership = async (changes: FavoriteListMembershipChanges) => {
     const targetWorks = selectedWorks;
     if (targetWorks.length === 0) return;
     setIsBulkUpdating(true);
     try {
-      for (const work of targetWorks) {
-        await api.setWorkFavoriteLists(work.id, targetListIDs);
-      }
+      await api.updateFavoriteListMembership({ workIds: targetWorks.map((work) => work.id), ...changes });
       await reloadFavoriteLists();
       setSelectedWorkIDs(new Set());
       setSelectionMode(false);
@@ -1051,11 +1051,10 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                   onClick={() => setListDialogTarget((target) => (target ? null : { mode: "bulk" }))}
                 />
                 {listDialogTarget && (
-                  <ListMembershipPopover
+                  <FavoriteListMembershipPopover
                     title={t("favorites.selectedWorks", { count: selectedWorks.length })}
-                    work={null}
+                    workIDs={selectedWorks.map((work) => work.id)}
                     favoriteLists={userFavoriteLists}
-                    defaultSelectedListIDs={selectedList ? [selectedList.id] : undefined}
                     disabled={isBulkUpdating}
                     align="right"
                     onClose={() => setListDialogTarget(null)}
@@ -2637,142 +2636,6 @@ function FavoriteListManagerRow({
           </div>
         </div>
       </AnchoredPopover>
-    </div>
-  );
-}
-
-function ListMembershipPopover({
-  title,
-  work,
-  favoriteLists,
-  defaultSelectedListIDs,
-  disabled,
-  align = "left",
-  onClose,
-  onSave,
-}: {
-  title: string;
-  work: Work | null;
-  favoriteLists: FavoriteList[];
-  defaultSelectedListIDs?: number[];
-  disabled: boolean;
-  align?: "left" | "right";
-  onClose: () => void;
-  onSave: (listIDs: number[]) => Promise<void>;
-}) {
-  const { t } = useTranslation();
-  const [selectedIDs, setSelectedIDs] = useState<Set<number>>(() => new Set(defaultSelectedListIDs ?? []));
-  const [isLoading, setIsLoading] = useState(Boolean(work));
-  const [error, setError] = useState("");
-  const popoverRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!work) return;
-    let cancelled = false;
-    setIsLoading(true);
-    api
-      .getWorkFavoriteLists(work.id)
-      .then((lists) => {
-        if (!cancelled)
-          setSelectedIDs(
-            new Set(lists.filter((list) => list.kind !== "marked" && list.selected).map((list) => list.id)),
-          );
-      })
-      .catch((nextError) => {
-        if (!cancelled) setError(t("favorites.listLoadFailed"));
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [work]);
-
-  useEffect(() => {
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (target && popoverRef.current?.contains(target)) return;
-      onClose();
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onClose]);
-
-  const toggleList = (listID: number, selected: boolean) => {
-    setSelectedIDs((items) => {
-      const next = new Set(items);
-      if (selected) next.add(listID);
-      else next.delete(listID);
-      return next;
-    });
-  };
-
-  const save = async () => {
-    setError("");
-    try {
-      await onSave(Array.from(selectedIDs));
-    } catch (nextError) {
-      setError(t("favorites.membershipSaveFailed"));
-    }
-  };
-
-  return (
-    <div
-      ref={popoverRef}
-      className={`absolute top-full z-50 mt-2 w-72 rounded-lg border bg-card p-3 text-left shadow-xl ${align === "right" ? "right-0" : "left-0"}`}
-      onClick={(event) => event.stopPropagation()}
-    >
-      <h3 className="text-sm font-semibold">{title}</h3>
-      <div className="app-scroll mt-3 max-h-64 space-y-2 overflow-auto">
-        {isLoading ? (
-          <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
-            {t("favorites.loadingLists")}
-          </div>
-        ) : favoriteLists.length > 0 ? (
-          favoriteLists.map((list) => (
-            <div
-              key={list.id}
-              className={`flex min-h-9 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm hover:bg-muted ${selectedIDs.has(list.id) ? "border-primary/30 bg-primary/10" : "bg-background"}`}
-              onClick={() => toggleList(list.id, !selectedIDs.has(list.id))}
-            >
-              <Checkbox
-                checked={selectedIDs.has(list.id)}
-                onCheckedChange={(checked) => toggleList(list.id, checked)}
-                onClick={(event) => event.stopPropagation()}
-                aria-label={
-                  selectedIDs.has(list.id)
-                    ? t("workCard.removeFromList", { name: list.name })
-                    : t("workCard.addToNamedList", { name: list.name })
-                }
-              />
-              <span className="min-w-0 flex-1 truncate">{list.name}</span>
-            </div>
-          ))
-        ) : (
-          <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
-            {t("favorites.noFavoriteLists")}
-          </div>
-        )}
-        {error && (
-          <div className="rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">{error}</div>
-        )}
-      </div>
-      <div className="mt-3 flex justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={onClose}>
-          {t("content.cancel")}
-        </Button>
-        <Button size="sm" disabled={disabled || isLoading} onClick={() => void save()}>
-          {t("content.save")}
-        </Button>
-      </div>
     </div>
   );
 }
