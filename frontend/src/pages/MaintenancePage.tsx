@@ -135,7 +135,7 @@ export function MaintenancePage({
   }, [canManageSources, canManageAccessPolicy]);
 
   useEffect(() => {
-    if (openedLinkedSource.current || readOnly || !settings) return;
+    if (openedLinkedSource.current || !settings) return;
     const sourceID = Number(new URLSearchParams(window.location.search).get("source"));
     if (!Number.isInteger(sourceID) || sourceID <= 0) return;
     const source = settings.fileSources.find(
@@ -146,7 +146,7 @@ export function MaintenancePage({
     setDraftSource(source);
     setEditingSourceId(source.id);
     setIsSourceModalOpen(true);
-  }, [readOnly, settings]);
+  }, [settings]);
 
   useEffect(() => {
     if (activeTab !== "library" || window.location.hash !== "#remote-sources") return;
@@ -201,7 +201,6 @@ export function MaintenancePage({
   };
 
   const openEditSource = (source: FileSource) => {
-    if (readOnly) return;
     setDraftSource(source);
     setEditingSourceId(source.id);
     setIsSourceModalOpen(true);
@@ -330,44 +329,38 @@ export function MaintenancePage({
 
   return (
     <div className="min-w-0 space-y-5">
-      {readOnly && (
-        <div
-          className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-muted-foreground"
-          role="status"
-        >
-          {t("maintenance.demoReadOnly")}
-        </div>
-      )}
-
+      {/* Users and remote sources gate their own writes, so Demo can still browse and open their details. */}
       <fieldset
         data-testid="maintenance-content"
-        disabled={readOnly}
+        disabled={readOnly && activeTab === "cache"}
         className={`min-w-0 border-0 p-0 ${activeTab === "users" ? "w-full" : "w-full max-w-3xl"}`}
       >
         {isSettingsLoading && activeTab !== "users" ? (
           <SettingsSkeleton />
         ) : activeTab === "library" && draft ? (
           <div className="space-y-6">
-            <SettingsSection
-              title={t("maintenance.library.local")}
-              description={localSource?.displayName ?? t("maintenance.mainLocalLibrary")}
-              icon={<FolderOpen />}
-              footer={saveButton(["localScanDepth"], t("maintenance.library.save"))}
-            >
-              <SettingsRow
-                title={t("maintenance.library.scanDepth")}
-                description={t("sourceSetup.scanDepthDescription")}
+            <fieldset disabled={readOnly} className="min-w-0 border-0 p-0">
+              <SettingsSection
+                title={t("maintenance.library.local")}
+                description={localSource?.displayName ?? t("maintenance.mainLocalLibrary")}
+                icon={<FolderOpen />}
+                footer={saveButton(["localScanDepth"], t("maintenance.library.save"))}
               >
-                <SettingsNumberInput
-                  label={t("maintenance.library.scanDepth")}
-                  value={draft.localScanDepth}
-                  min={1}
-                  max={8}
-                  unit={t("sourceSetup.levels")}
-                  onChange={(localScanDepth) => patchDraft({ localScanDepth })}
-                />
-              </SettingsRow>
-            </SettingsSection>
+                <SettingsRow
+                  title={t("maintenance.library.scanDepth")}
+                  description={t("sourceSetup.scanDepthDescription")}
+                >
+                  <SettingsNumberInput
+                    label={t("maintenance.library.scanDepth")}
+                    value={draft.localScanDepth}
+                    min={1}
+                    max={8}
+                    unit={t("sourceSetup.levels")}
+                    onChange={(localScanDepth) => patchDraft({ localScanDepth })}
+                  />
+                </SettingsRow>
+              </SettingsSection>
+            </fieldset>
 
             <RemoteSourceList
               sources={remoteSources}
@@ -455,6 +448,7 @@ export function MaintenancePage({
           defaultSaveTemplate={settings?.remoteSaveTemplate ?? `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`}
           editing={editingSourceId !== null}
           saving={savingSource}
+          readOnly={readOnly}
           onChange={setDraftSource}
           onSave={saveSource}
           onClose={closeSourceModal}

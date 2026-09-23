@@ -870,8 +870,9 @@ function PersistedMetadataEditorOverlay({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { demoMode } = useAuth();
   if (!open || !work) return null;
-  return <WorkMetadataEditorModal work={work} onClose={onClose} onSaved={onSaved} />;
+  return <WorkMetadataEditorModal work={work} readOnly={demoMode} onClose={onClose} onSaved={onSaved} />;
 }
 
 function PersistedReforkOverlay({

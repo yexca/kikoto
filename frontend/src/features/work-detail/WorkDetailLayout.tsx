@@ -33,6 +33,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { openVoiceRoute } from "@/pages/voiceNavigationState";
+import { useAuth } from "@/auth/AuthProvider";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -516,6 +517,7 @@ type DetailEntityResolver = {
 
 function useDetailEntityResolver(code: string): DetailEntityResolver {
   const toast = useToast();
+  const { demoMode } = useAuth();
   const [resolvingEntity, setResolvingEntity] = useState<DetailEntityKind | null>(null);
   const resolveEntity = async (kind: DetailEntityKind, name: string) => {
     if (resolvingEntity || !code) return;
@@ -526,7 +528,9 @@ function useDetailEntityResolver(code: string): DetailEntityResolver {
         : i18n.t("workCard.loadingEntity", { kind: i18n.t(`workCard.entityKinds.${kind}`) }),
     );
     try {
-      const result = await api.resolveWorkEntityLink(code, kind, name);
+      const result = demoMode
+        ? await api.lookupWorkEntityLink(code, kind, name)
+        : await api.resolveWorkEntityLink(code, kind, name);
       if (result.route) openResolvedEntityRoute(result.route);
     } catch (error) {
       toast.notify(

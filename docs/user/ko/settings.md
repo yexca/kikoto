@@ -41,4 +41,4 @@ Activity와 Workflows는 유지합니다. Activity의 문제 목록 버튼은 �
 
 메타데이터 화면의 기본 주소는 `/metadata`입니다. 기존 `/work-management` 링크도 필터와 설정 상태를 유지해 이동합니다. 첫 동기화 실패와 미해결 메타데이터 결과는 문제 목록을 엽니다. 워크플로 권한이 없으면 실행별 필터 없이 표시합니다. 실행 진단은 Workflows의 Activity에서 확인할 수 있습니다.
 
-Settings는 Account, Playback, Recommendation으로 구성됩니다. 폴더와 추천 환경설정은 계정별로 서버에 저장되어 기기 간에 공유됩니다. 개인 설정이 없으면 기존 인스턴스 기본값을 사용합니다. 추천 설정을 저장하면 현재 탭의 추천 세션만 갱신하며 다른 탭의 스냅샷은 유지합니다. Maintenance에는 Library, Cache & Fetch, Users만 남고 전체 추천 통계는 Library의 접을 수 있는 영역에 있습니다. 외관 설정은 오른쪽 위 메뉴에 있으며 지구 아이콘은 브라우저 또는 기기 언어를 따릅니다. Demo에서는 계정 환경설정을 변경할 수 없습니다.
+Settings는 Account, Playback, Recommendation으로 구성됩니다. 폴더와 추천 환경설정은 계정별로 서버에 저장되어 기기 간에 공유됩니다. 개인 설정이 없으면 기존 인스턴스 기본값을 사용합니다. 추천 설정을 저장하면 현재 탭의 추천 세션만 갱신하며 다른 탭의 스냅샷은 유지합니다. Maintenance에는 Library, Cache & Fetch, Users만 남고 전체 추천 통계는 Library의 접을 수 있는 영역에 있습니다. 외관 설정은 오른쪽 위 메뉴에 있으며 지구 아이콘은 브라우저 또는 기기 언어를 따릅니다. Demo에서는 계정 환경설정을 변경할 수 없습니다. 관리 탭(Library, Cache & Fetch, Cleanup, Users)은 둘러볼 수 있도록 표시되지만 변경할 수 없습니다.

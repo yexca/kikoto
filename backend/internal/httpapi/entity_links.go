@@ -57,11 +57,47 @@ func (s *Server) resolveWorkEntityLink(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": fmt.Sprintf("No %s link was found for this work.", request.Kind)})
 }
 
+// lookupWorkEntityLink resolves a route from already persisted relationships
+// only. Unlike the POST resolver it never hydrates snapshots or contacts a
+// provider, so it stays inside Demo's read-only boundary.
+func (s *Server) lookupWorkEntityLink(w http.ResponseWriter, r *http.Request) {
+	code := normalizeDLsiteCode(r.PathValue("code"))
+	if code == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work code"})
+		return
+	}
+	request, err := normalizeWorkEntityLinkRequest(workEntityLinkRequest{
+		Kind: r.URL.Query().Get("kind"),
+		Name: r.URL.Query().Get("name"),
+	})
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if !s.requireDemoWorkCode(w, r, code) {
+		return
+	}
+	route, err := s.findWorkEntityRoute(r.Context(), code, request)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if route == "" {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": fmt.Sprintf("No %s link was found for this work.", request.Kind)})
+		return
+	}
+	writeJSON(w, http.StatusOK, workEntityLinkResponse{Kind: request.Kind, Route: route, Resolved: true})
+}
+
 func decodeWorkEntityLinkRequest(r *http.Request) (workEntityLinkRequest, error) {
 	var request workEntityLinkRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		return workEntityLinkRequest{}, errors.New("invalid json")
 	}
+	return normalizeWorkEntityLinkRequest(request)
+}
+
+func normalizeWorkEntityLinkRequest(request workEntityLinkRequest) (workEntityLinkRequest, error) {
 	request.Kind = strings.ToLower(strings.TrimSpace(request.Kind))
 	request.Name = strings.TrimSpace(request.Name)
 	if request.Kind != "circle" && request.Kind != "series" && request.Kind != "voice" {

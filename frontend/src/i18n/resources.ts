@@ -319,7 +319,6 @@ export const englishResource = {
         profileUpdateFailed: "Profile update failed.",
         passwordChanged: "Password changed. Other sessions were signed out.",
         passwordChangeFailed: "Password change failed.",
-        demoReadOnly: "Demo mode keeps account settings read-only.",
         accountMenu: "Account menu",
         reviewCount_one: "Review ({{count}})",
         reviewCount_other: "Review ({{count}})",

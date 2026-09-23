@@ -468,7 +468,6 @@ export const zhHantResource = {
         profileUpdateFailed: "資料更新失敗。",
         ["passwordChanged"]: "密碼已變更，其他工作階段已登出。",
         ["passwordChangeFailed"]: "密碼變更失敗。",
-        demoReadOnly: "示範模式下帳戶設定為唯讀。",
         accountMenu: "帳戶選單",
         reviewCount_one: "審核（{{count}}）",
         reviewCount_other: "審核（{{count}}）",

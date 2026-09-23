@@ -164,10 +164,10 @@ export const surfaceJapanese = {
   },
   permissions: {
     demoReadOnly: "デモモードは読み取り専用です。",
+    demoReadOnlyNotice: "デモモード：すべての機能を表示できますが、サーバーのデータは変更できません。",
     permissionDenied: "この機能を使用する権限がありません。",
   },
   workflow: {
-    demoReadOnly: "デモモードは読み取り専用です。ワークフロー定義、スケジュール、実行、レビューは変更できません。",
     existingDataShown: "既存のワークフローデータは引き続き表示されます。",
   },
   maintenance: {
@@ -307,7 +307,6 @@ export const surfaceJapanese = {
         "再生プレビューはメディアやディレクトリ情報を得るためにリモート追跡同期を行う場合があります。Fetchとは異なり、/dataへのメディア公開は行いません。",
       enable: "キャッシュを有効化",
     },
-    demoReadOnly: "デモモードは読み取り専用です。設定とソースは表示できますが変更できません。",
     tabs: {
       ...surfaceEnglish.maintenance.tabs,
       overview: "概要",

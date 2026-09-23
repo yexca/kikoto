@@ -469,7 +469,7 @@ function AuthenticatedApp() {
               />
               <HeaderActions
                 user={auth.user}
-                hasPermission={effectiveHasPermission}
+                canView={navigationHasPermission}
                 onLogout={() => void auth.logout()}
                 onOpenLogin={() => setLoginOpen(true)}
                 onOpenPage={openPage}
@@ -596,6 +596,7 @@ function AuthenticatedApp() {
               open={commandPaletteOpen}
               onOpenChange={setCommandPaletteOpen}
               hasPermission={effectiveHasPermission}
+              canView={navigationHasPermission}
               visibleNavItems={visibleNavItems}
               onBusyChange={setCommandPaletteBusy}
               onOpenPage={openPage}

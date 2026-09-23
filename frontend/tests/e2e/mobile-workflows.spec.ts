@@ -1513,6 +1513,7 @@ test("settings identifies an environment-managed root password", async ({ page }
 });
 
 test("demo settings keeps account and workflows read-only while allowing appearance changes", async ({ page }) => {
+  const demoNotice = "Demo mode: every feature is visible, but server data cannot be changed.";
   await mockWorkflows(page);
   await page.route("**/api/runtime-settings", (route) =>
     route.fulfill({
@@ -1525,9 +1526,29 @@ test("demo settings keeps account and workflows read-only while allowing appeara
       },
     }),
   );
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: {
+        authenticated: true,
+        user: {
+          id: 1,
+          username: "__demo__",
+          displayName: "Demo",
+          role: "user",
+          permissions: ["library:read", "playback:use"],
+          devMode: false,
+          demoMode: true,
+        },
+      },
+    }),
+  );
 
   await page.goto("/settings");
-  await expect(page.getByRole("status")).toHaveText("Demo mode keeps account settings read-only.");
+  await expect(page.getByRole("status")).toHaveText(demoNotice);
+  const settingsTabs = page.getByRole("tablist", { name: "Settings", exact: true });
+  for (const name of ["Account", "Playback", "Recommendation", "Library", "Cache & Fetch", "Cleanup", "Users"]) {
+    await expect(settingsTabs.getByRole("tab", { name, exact: true })).toBeVisible();
+  }
   await expect(page.getByRole("tab", { name: "Appearance", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Open appearance settings", exact: true }).click();
   for (const name of ["Anthropic", "OpenAI", "Apple", "Google MD", "Original", "Graphite", "Cobalt", "Iris"]) {
@@ -1543,11 +1564,7 @@ test("demo settings keeps account and workflows read-only while allowing appeara
   await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");
 
   await page.goto("/workflows");
-  await expect(
-    page.getByText("Demo mode is read-only. Workflow definitions, schedules, runs, and reviews cannot be changed.", {
-      exact: true,
-    }),
-  ).toBeVisible();
+  await expect(page.getByText(demoNotice, { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "New workflow", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Run at startup", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Add schedule", exact: true })).toHaveCount(0);

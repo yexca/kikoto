@@ -169,10 +169,10 @@ export const surfaceEnglish = {
   },
   permissions: {
     demoReadOnly: "Demo mode is read-only.",
+    demoReadOnlyNotice: "Demo mode: every feature is visible, but server data cannot be changed.",
     permissionDenied: "Your account does not have permission to use this feature.",
   },
   workflow: {
-    demoReadOnly: "Demo mode is read-only. Workflow definitions, schedules, runs, and reviews cannot be changed.",
     existingDataShown: "Existing workflow data is still shown.",
   },
   maintenance: {
@@ -196,7 +196,6 @@ export const surfaceEnglish = {
     sourceHealthFailed: "Source health check failed.",
     sourceHealthCheckFailed: "Source health check could not run.",
     adminRequired: "Instance maintenance requires administrator access.",
-    demoReadOnly: "Demo mode is read-only. Settings and sources remain visible but cannot be changed.",
     unknown: "Unknown",
     close: "Close",
     save: "Save",

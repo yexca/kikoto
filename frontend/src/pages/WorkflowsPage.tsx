@@ -33,6 +33,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
+import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -578,14 +579,7 @@ export function WorkflowsPage({
 
   return (
     <div className="space-y-4">
-      {readOnly && (
-        <div
-          className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-muted-foreground"
-          role="status"
-        >
-          {t("workflow.demoReadOnly")}
-        </div>
-      )}
+      {readOnly && <DemoReadOnlyNotice />}
       {hasWorkflowMetaSnapshot && workflowMetaError && (
         <div
           className="flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-lg border border-error-border bg-error-surface px-3 py-2"
@@ -876,7 +870,7 @@ function AvailabilityWatchPanel({
           title={displayDefinition.displayName}
           description={displayDefinition.description}
           actions={
-            <Button size="sm" onClick={() => setDialog("configure")} disabled={readOnly}>
+            <Button size="sm" onClick={() => setDialog("configure")}>
               <Settings2 className="h-4 w-4" />
               {workflowCopy("configure")}
             </Button>
@@ -889,7 +883,7 @@ function AvailabilityWatchPanel({
               <div className="text-sm font-semibold">{workflowCopy("monitoring")}</div>
               <div className="mt-1 text-2xl font-semibold">{monitoring.length}</div>
             </div>
-            <Button size="sm" variant="outline" onClick={() => setDialog("monitoring")} disabled={readOnly}>
+            <Button size="sm" variant="outline" onClick={() => setDialog("monitoring")}>
               <Edit3 className="h-4 w-4" />
               {workflowCopy("editNode")}
             </Button>
@@ -1096,13 +1090,13 @@ function AvailabilityWatchMonitoringDialog({
     <Modal title={workflowCopy("editMonitoringPool")} onClose={onClose}>
       <div className="space-y-4">
         <Field label={workflowCopy("works")}>
-          <WorkCodesField value={codes} onChange={setCodes} ariaLabel={workflowCopy("works")} />
+          <WorkCodesField value={codes} onChange={setCodes} readOnly={readOnly} ariaLabel={workflowCopy("works")} />
         </Field>
         {error && <ErrorPanel error={error} />}
         <div className="flex justify-end">
           <Button onClick={() => void save()} disabled={readOnly || saving || parsed.invalid.length > 0}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Save
+            {workflowCopy("save")}
           </Button>
         </div>
       </div>
