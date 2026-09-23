@@ -120,4 +120,4 @@ Workflows make backend actions inspectable.
 - [Reliability](../../operations/reliability.md)
 - [Testing](../../development/testing.md)
 
-Canvas navigation: ordinary wheel scrolling moves the page or Activity panel. Hold Ctrl (⌘ on Mac) while scrolling to zoom the canvas; a brief hint appears when scrolling without the modifier. Drag to pan, or use the zoom and fit buttons.
+Run monitor: each workflow page lists its stages on the left and the most recent run's log on the right. While a run is active, new log lines stream in and the log follows the latest output unless you scroll up. Select a stage to show only its lines, and select the run summary to open that run in Activity.

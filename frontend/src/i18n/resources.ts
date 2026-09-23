@@ -397,7 +397,7 @@ export const englishResource = {
         kikoeruReference:
           "Kikoto's Kikoeru-compatible remote source integration references this project's public backend interface.",
         comfyReference:
-          "Kikoto's workflow-canvas interaction design was informed by this project. Kikoto does not include or adapt its source code; the canvas is an independent implementation built with @xyflow/react.",
+          "Kikoto's former workflow canvas drew on this project's interaction design. Kikoto never included or adapted its source code; that canvas was an independent implementation built with @xyflow/react and has since been retired.",
         cherryReference:
           "Kikoto's AGENTS.md configuration approach and application version-management design were informed by this project.",
         technologies: "Core technologies",
