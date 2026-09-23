@@ -836,6 +836,10 @@ export const surfaceJapanese = {
     enableTrigger: "トリガーを有効化",
     newStartupTrigger: "新しい起動時トリガー",
     newSchedule: "新しいスケジュール",
+    customizeTrigger: "実行オプションをカスタマイズ",
+    customizeTriggerDescription:
+      "未チェックの場合は上の設定を使用します。カスタマイズを有効にすると、保存またはキャンセルするまで外側をクリックしても閉じません。",
+    addTrigger: "追加",
     scanMode: "スキャンモード",
     incremental: "増分",
     full: "完全",

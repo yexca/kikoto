@@ -825,6 +825,10 @@ export const surfaceEnglish = {
     enableTrigger: "Enable trigger",
     newStartupTrigger: "New startup trigger",
     newSchedule: "New schedule",
+    customizeTrigger: "Customize run options",
+    customizeTriggerDescription:
+      "Leave unchecked to use the options configured above. Custom options keep this panel open until you save or cancel.",
+    addTrigger: "Add",
     scanMode: "Scan mode",
     incremental: "Incremental",
     full: "Full",

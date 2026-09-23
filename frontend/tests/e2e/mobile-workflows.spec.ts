@@ -768,15 +768,25 @@ test("definitions foreground runnable presets and show DLsite popular run option
   await page.getByRole("button", { name: "Add schedule", exact: true }).click();
   const scheduleDialog = page.getByRole("dialog", { name: "New schedule" });
   await expect(scheduleDialog).toBeVisible();
+  await page.mouse.click(2, 2);
+  await expect(scheduleDialog).toHaveCount(0);
+  await page.getByRole("button", { name: "Add schedule", exact: true }).click();
+  await expect(scheduleDialog).toBeVisible();
+  const customizeSchedule = scheduleDialog.getByRole("checkbox", { name: "Customize run options", exact: true });
+  await expect(customizeSchedule).toHaveAttribute("aria-checked", "false");
+  await expect(scheduleDialog.getByLabel("Ranking period")).toHaveCount(0);
+  await customizeSchedule.click();
   await expect(scheduleDialog.getByLabel("Ranking period")).toHaveValue("day");
-  await expect(scheduleDialog.getByLabel("Release window")).toHaveValue("");
+  await expect(scheduleDialog.getByLabel("Release window")).toHaveValue("30d");
   await expect(scheduleDialog.getByLabel("Tag template", { exact: true })).toHaveValue(
     "{date}_DL_{period}_{release_window}_popular",
   );
   await expect(scheduleDialog.getByTestId("dlsite-trigger-tag-template-field")).toContainText(
-    /Preview.*_DL_24h_all_popular/,
+    /Preview.*_DL_24h_r30d_popular/,
   );
-  await scheduleDialog.getByRole("button", { name: "Close", exact: true }).click();
+  await page.mouse.click(2, 2);
+  await expect(scheduleDialog).toBeVisible();
+  await scheduleDialog.getByRole("button", { name: "Cancel", exact: true }).click();
 
   await runOptions.getByRole("button", { name: "Annual", exact: true }).click();
   await expect(runOptions.getByRole("switch", { name: "Only works released within 30 days" })).toHaveCount(0);
@@ -799,6 +809,56 @@ test("definitions foreground runnable presets and show DLsite popular run option
   await expect(page.getByRole("heading", { name: "Collect DLsite popular voice works", exact: true })).toBeVisible();
   await page.getByRole("button", { name: /^#51 Manual · day / }).click();
   await expect(page).toHaveURL(/\/workflows\?.*run=51/);
+});
+
+test("popular trigger popovers save the run options shown above", async ({ page }) => {
+  await mockWorkflows(page);
+  await page.goto("/workflows");
+
+  await page.getByRole("tab", { name: /Collect DLsite popular voice works/ }).click();
+  const dlsiteOptions = page.getByRole("region", { name: "Run options", exact: true });
+  await dlsiteOptions.getByRole("button", { name: "7 days", exact: true }).click();
+  const dlsiteTriggerRequest = page.waitForRequest(
+    (request) => request.method() === "POST" && request.url().endsWith("/api/workflow-triggers"),
+  );
+  await page.getByRole("button", { name: "Add schedule", exact: true }).click();
+  const dlsitePopover = page.getByRole("dialog", { name: "New schedule" });
+  await expect(dlsitePopover.getByRole("checkbox", { name: "Customize run options" })).toHaveAttribute(
+    "aria-checked",
+    "false",
+  );
+  await dlsitePopover.getByRole("button", { name: "Add", exact: true }).click();
+  const dlsitePayload = (await dlsiteTriggerRequest).postDataJSON();
+  expect(JSON.parse(dlsitePayload.configJson)).toMatchObject({
+    period: "week",
+    releaseWindow: "30d",
+    year: 0,
+    tagNameTemplate: "{date}_DL_{period}_{release_window}_popular",
+    skipTag: false,
+  });
+
+  await page.getByRole("tab", { name: /Collect popular remote works/ }).click();
+  const remoteOptions = page.getByRole("region", { name: "Run options", exact: true });
+  await remoteOptions.getByRole("group", { name: "Work limit" }).getByRole("button", { name: "50" }).click();
+  await remoteOptions.getByRole("switch", { name: "Add a user tag to collected works" }).click();
+  const remoteTriggerRequest = page.waitForRequest(
+    (request) => request.method() === "POST" && request.url().endsWith("/api/workflow-triggers"),
+  );
+  await page.getByRole("button", { name: "Run at startup", exact: true }).click();
+  const remotePopover = page.getByRole("dialog", { name: "New startup trigger" });
+  await expect(remotePopover.getByRole("checkbox", { name: "Customize run options" })).toHaveAttribute(
+    "aria-checked",
+    "false",
+  );
+  await remotePopover.getByRole("button", { name: "Add", exact: true }).click();
+  const remotePayload = (await remoteTriggerRequest).postDataJSON();
+  expect(JSON.parse(remotePayload.configJson)).toMatchObject({
+    sourceId: 8,
+    action: "track",
+    limit: 50,
+    skipTag: true,
+  });
+  expect(remotePayload.triggerType).toBe("startup");
 });
 
 test("workflow deep links do not override a later definition tab selection", async ({ page }) => {
@@ -917,7 +977,7 @@ test("availability watch shares pools, schedules checks, and handles ready works
   const scheduleDialog = page.getByRole("dialog", { name: "New schedule" });
   await scheduleDialog.getByLabel("Name", { exact: true }).fill("Availability interval");
   await scheduleDialog.getByLabel("Interval (minutes)", { exact: true }).fill("120");
-  await scheduleDialog.getByRole("button", { name: "Save", exact: true }).click();
+  await scheduleDialog.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByRole("button", { name: "Edit Availability interval", exact: true })).toBeVisible();
 
   const configuration = page.getByRole("region", { name: "Configuration", exact: true });

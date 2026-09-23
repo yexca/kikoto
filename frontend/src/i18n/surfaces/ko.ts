@@ -834,6 +834,10 @@ export const surfaceKorean = {
     enableTrigger: "트리거 활성화",
     newStartupTrigger: "새 시작 트리거",
     newSchedule: "새 일정",
+    customizeTrigger: "실행 옵션 사용자 지정",
+    customizeTriggerDescription:
+      "선택하지 않으면 위에서 설정한 옵션을 사용합니다. 사용자 지정을 켜면 저장하거나 취소할 때까지 바깥을 눌러도 패널이 닫히지 않습니다.",
+    addTrigger: "추가",
     scanMode: "스캔 모드",
     incremental: "증분",
     full: "전체",

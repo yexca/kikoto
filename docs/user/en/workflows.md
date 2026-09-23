@@ -46,11 +46,13 @@ Workflows make backend actions inspectable.
 - Metadata owns pending-work recovery and metadata settings. Its metadata
   sync shortcut selects the existing workflow here.
 - Built-in local scan, metadata sync, remote popular, and DLsite popular
-  workflows support editable Startup and interval triggers. Local scan ships
+  workflows support editable interval triggers; local scan and the two popular
+  collectors also support Startup triggers. Local scan ships
   with the default Startup trigger and does not check remote availability or
   synchronize metadata. Manual, Startup, and interval scans expose a
   disabled-by-default `Follow-up run`; enabling it queues an independent
-  metadata run after the scan finishes.
+  metadata run after the scan finishes. Metadata sync has no Startup trigger,
+  so it cannot compete with a scan follow-up.
 - Local scan also ships with one fixed, enabled folder watcher. It can be paused,
   resumed, or switched between Incremental and Full, but it cannot be created,
   duplicated, converted, renamed, or deleted. Incremental is the default. The
@@ -85,7 +87,8 @@ Workflows make backend actions inspectable.
   the header summarizes the saved values that `Run` uses.
 - Follow a circle, Follow a series, and Follow a voice actor are preset
   workflows. Their Run options hold the target, filter, action, Fetch limits,
-  and tag template; the same fields configure Startup and interval triggers.
+  and tag template. Trigger popovers use these values by default; enable
+  Customize run options to override them.
   The target accepts up to 20 comma-separated circle IDs, series IDs, or voice
   actor names, whose catalogs are combined before filtering. Sync metadata only needs no source;
   Track and Fetch need an enabled compatible remote source, and Fetch requires

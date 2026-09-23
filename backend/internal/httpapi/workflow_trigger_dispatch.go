@@ -42,6 +42,7 @@ type systemWorkflowTriggerConfig struct {
 	ReleaseWindow   string `json:"releaseWindow,omitempty"`
 	Year            int    `json:"year,omitempty"`
 	TagNameTemplate string `json:"tagNameTemplate,omitempty"`
+	SkipTag         bool   `json:"skipTag,omitempty"`
 }
 
 type localScanTriggerConfig struct {
@@ -73,6 +74,9 @@ func prepareSystemWorkflowTriggerTiming(definition workflowDefinitionRecord, pay
 	prepared := preparedWorkflowTrigger{ConfigJSON: "{}"}
 	if definition.Code == "availability_watch" && payload.TriggerType != "schedule" {
 		return preparedWorkflowTrigger{}, fmt.Errorf("%s supports one interval schedule only", availabilityWatchDisplayName)
+	}
+	if definition.Code == "metadata_sync" && payload.TriggerType != "schedule" {
+		return preparedWorkflowTrigger{}, fmt.Errorf("metadata sync supports interval schedules only")
 	}
 	switch payload.TriggerType {
 	case "startup":
@@ -273,13 +277,15 @@ func (s *Server) normalizeRemotePopularTriggerConfig(ctx context.Context, actor 
 	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
 		return config, fmt.Errorf("source has no API endpoint")
 	}
-	if strings.TrimSpace(config.TagNameTemplate) == "" {
+	if strings.TrimSpace(config.TagNameTemplate) == "" && !config.SkipTag {
 		config.TagNameTemplate = "{date}_{remote_name}_popular"
 	}
-	_, err = renderWorkflowTagNameTemplate(config.TagNameTemplate, map[string]string{
-		"date": now.UTC().Format("060102"), "remote_name": workflowTagFragment(source.DisplayName),
-		"source_code": workflowTagFragment(source.Code), "action": config.Action,
-	})
+	if !config.SkipTag {
+		_, err = renderWorkflowTagNameTemplate(config.TagNameTemplate, map[string]string{
+			"date": now.UTC().Format("060102"), "remote_name": workflowTagFragment(source.DisplayName),
+			"source_code": workflowTagFragment(source.Code), "action": config.Action,
+		})
+	}
 	return config, err
 }
 
@@ -298,14 +304,16 @@ func normalizeDLsitePopularTriggerConfig(actor currentUser, raw string, existing
 	config.Period = normalized.Period
 	config.ReleaseWindow = normalized.ReleaseWindow
 	config.Year = normalized.Year
-	if strings.TrimSpace(config.TagNameTemplate) == "" {
+	if strings.TrimSpace(config.TagNameTemplate) == "" && !config.SkipTag {
 		if config.Period == "year" {
 			config.TagNameTemplate = "{date}_DL_year_{year}_popular"
 		} else {
 			config.TagNameTemplate = "{date}_DL_{period}_{release_window}_popular"
 		}
 	}
-	_, err = renderWorkflowTagNameTemplate(config.TagNameTemplate, dlsitePopularTemplateValues(config, now))
+	if !config.SkipTag {
+		_, err = renderWorkflowTagNameTemplate(config.TagNameTemplate, dlsitePopularTemplateValues(config, now))
+	}
 	return config, err
 }
 
@@ -539,15 +547,18 @@ func (s *Server) executeRemotePopularSystemTrigger(ctx context.Context, trigger 
 	if err != nil {
 		return "", nil, err
 	}
-	tagName, err := renderWorkflowTagNameTemplate(config.TagNameTemplate, map[string]string{
-		"date": time.Now().UTC().Format("060102"), "remote_name": workflowTagFragment(source.DisplayName),
-		"source_code": workflowTagFragment(source.Code), "action": config.Action,
-	})
-	if err != nil {
-		return "", nil, err
+	tagName := ""
+	if !config.SkipTag {
+		tagName, err = renderWorkflowTagNameTemplate(config.TagNameTemplate, map[string]string{
+			"date": time.Now().UTC().Format("060102"), "remote_name": workflowTagFragment(source.DisplayName),
+			"source_code": workflowTagFragment(source.Code), "action": config.Action,
+		})
+		if err != nil {
+			return "", nil, err
+		}
 	}
 	_, err = s.runRemotePopularWorkflowWithTrigger(ctx, owner.ID, remoteCollectionRunRequest{
-		SourceID: config.SourceID, Action: config.Action, Limit: config.Limit, TagName: tagName,
+		SourceID: config.SourceID, Action: config.Action, Limit: config.Limit, TagName: tagName, SkipTag: config.SkipTag,
 	}, workflowRunTrigger{Type: triggerType, Reason: triggerReason, ID: trigger.ID})
 	return "succeeded", nil, err
 }
@@ -558,12 +569,15 @@ func (s *Server) executeDLsitePopularSystemTrigger(ctx context.Context, trigger 
 		return "", nil, err
 	}
 	now := time.Now()
-	tagName, err := renderWorkflowTagNameTemplate(config.TagNameTemplate, dlsitePopularTemplateValues(config, now))
-	if err != nil {
-		return "", nil, err
+	tagName := ""
+	if !config.SkipTag {
+		tagName, err = renderWorkflowTagNameTemplate(config.TagNameTemplate, dlsitePopularTemplateValues(config, now))
+		if err != nil {
+			return "", nil, err
+		}
 	}
 	request, err := normalizeDLsitePopularRequest(dlsitePopularRunRequest{
-		Period: config.Period, ReleaseWindow: config.ReleaseWindow, Year: config.Year, TagName: tagName,
+		Period: config.Period, ReleaseWindow: config.ReleaseWindow, Year: config.Year, TagName: tagName, SkipTag: config.SkipTag,
 	}, now)
 	if err != nil {
 		return "", nil, err
@@ -655,7 +669,7 @@ func (s *Server) dispatchStartupSystemWorkflowTriggers(ctx context.Context) erro
 
 func (s *Server) startupSystemWorkflowTriggerIDs(ctx context.Context) ([]int64, error) {
 	startupCodes := append([]string{
-		"local_library_scan", "metadata_sync", "remote_popular_collection", "dlsite_popular_collection",
+		"local_library_scan", "remote_popular_collection", "dlsite_popular_collection",
 	}, presetWorkflowCodes()...)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT trigger.id

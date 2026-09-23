@@ -15,7 +15,7 @@ import {
   Tag,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
@@ -162,6 +162,13 @@ type SystemWorkflowTriggerConfig = {
   releaseWindow: "30d" | "";
   year: number;
   tagNameTemplate: string;
+  skipTag: boolean;
+};
+
+type CurrentTriggerRunOptions = {
+  code: string;
+  systemConfig?: SystemWorkflowTriggerConfig;
+  presetValues?: PresetFormValues;
 };
 
 const manuallyRunnableSystemWorkflows: Record<string, SystemRunKind[]> = {
@@ -205,6 +212,8 @@ export function WorkflowsPage({
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [editingTrigger, setEditingTrigger] = useState<WorkflowTrigger | null>(null);
   const [creatingTriggerType, setCreatingTriggerType] = useState<CreatableAutomationTriggerType>("schedule");
+  const triggerAnchorRef = useRef<HTMLElement | null>(null);
+  const [currentTriggerRunOptions, setCurrentTriggerRunOptions] = useState<CurrentTriggerRunOptions | null>(null);
   const [isRunningScan, setIsRunningScan] = useState(false);
   const [isSyncingMetadata, setIsSyncingMetadata] = useState(false);
   const [runningSystemAction, setRunningSystemAction] = useState<SystemRunKind | null>(null);
@@ -487,14 +496,16 @@ export function WorkflowsPage({
     return canRun;
   };
 
-  const createAutomationTrigger = (triggerType: CreatableAutomationTriggerType) => {
+  const createAutomationTrigger = (triggerType: CreatableAutomationTriggerType, anchor?: HTMLElement | null) => {
     setCreatingTriggerType(triggerType);
     setEditingTrigger(null);
+    triggerAnchorRef.current = anchor ?? null;
     setModalMode("create-trigger");
   };
 
-  const editAutomationTrigger = (trigger: WorkflowTrigger) => {
+  const editAutomationTrigger = (trigger: WorkflowTrigger, anchor?: HTMLElement | null) => {
     setEditingTrigger(trigger);
+    triggerAnchorRef.current = anchor ?? null;
     setModalMode("edit-trigger");
   };
 
@@ -634,6 +645,7 @@ export function WorkflowsPage({
                 onRunDLsitePopular={runDLsitePopularCollection}
                 preset={selectedPreset}
                 onRunPreset={runPreset}
+                onTriggerRunOptionsChange={setCurrentTriggerRunOptions}
                 recentRuns={recentDefinitionRuns}
                 onOpenRun={openActivityRun}
                 onCreateTrigger={createAutomationTrigger}
@@ -653,8 +665,16 @@ export function WorkflowsPage({
           canFetch={canManageDownloads}
           trigger={null}
           initialTriggerType={creatingTriggerType}
-          onClose={() => setModalMode(null)}
+          currentRunOptions={
+            currentTriggerRunOptions?.code === selectedDefinition.code ? currentTriggerRunOptions : null
+          }
+          anchorRef={triggerAnchorRef}
+          onClose={() => {
+            triggerAnchorRef.current = null;
+            setModalMode(null);
+          }}
           onSaved={() => {
+            triggerAnchorRef.current = null;
             setModalMode(null);
             refresh();
           }}
@@ -669,12 +689,21 @@ export function WorkflowsPage({
           trigger={editingTrigger}
           readOnly={readOnly}
           initialTriggerType={editingTrigger.triggerType === "startup" ? "startup" : "schedule"}
-          onClose={() => setModalMode(null)}
+          currentRunOptions={
+            currentTriggerRunOptions?.code === selectedDefinition.code ? currentTriggerRunOptions : null
+          }
+          anchorRef={triggerAnchorRef}
+          onClose={() => {
+            triggerAnchorRef.current = null;
+            setModalMode(null);
+          }}
           onSaved={() => {
+            triggerAnchorRef.current = null;
             setModalMode(null);
             refresh();
           }}
           onDeleted={() => {
+            triggerAnchorRef.current = null;
             setEditingTrigger(null);
             setModalMode(null);
             refresh();
@@ -704,8 +733,8 @@ function AvailabilityWatchPanel({
   recentRuns: WorkflowRun[];
   readOnly: boolean;
   canManageDownloads: boolean;
-  onCreateTrigger: (triggerType: CreatableAutomationTriggerType) => void;
-  onEditTrigger: (trigger: WorkflowTrigger) => void;
+  onCreateTrigger: (triggerType: CreatableAutomationTriggerType, anchor?: HTMLElement | null) => void;
+  onEditTrigger: (trigger: WorkflowTrigger, anchor?: HTMLElement | null) => void;
   onToggleTrigger: (trigger: WorkflowTrigger, enabled: boolean) => Promise<void>;
   onOpenRun: (run: WorkflowRun) => void;
   onRunQueued: () => void;
@@ -1350,6 +1379,7 @@ function WorkflowDetail({
   onRunDLsitePopular,
   preset = null,
   onRunPreset,
+  onTriggerRunOptionsChange,
   recentRuns = [],
   onOpenRun,
   emptyText = workflowCopy("selectWorkflowNodePipeline"),
@@ -1373,11 +1403,12 @@ function WorkflowDetail({
   onRunDLsitePopular?: (options: DLsitePopularRunOptions) => Promise<void>;
   preset?: WorkflowPreset | null;
   onRunPreset?: (inputs: Record<string, unknown>) => Promise<void>;
+  onTriggerRunOptionsChange?: (options: CurrentTriggerRunOptions) => void;
   recentRuns?: WorkflowRun[];
   onOpenRun?: (run: WorkflowRun) => void;
   emptyText?: string;
-  onCreateTrigger: (triggerType: CreatableAutomationTriggerType) => void;
-  onEditTrigger: (trigger: WorkflowTrigger) => void;
+  onCreateTrigger: (triggerType: CreatableAutomationTriggerType, anchor?: HTMLElement | null) => void;
+  onEditTrigger: (trigger: WorkflowTrigger, anchor?: HTMLElement | null) => void;
   onToggleTrigger: (trigger: WorkflowTrigger, enabled: boolean) => Promise<void>;
 }) {
   const definitionJson = definition?.definitionJson ?? "";
@@ -1411,6 +1442,7 @@ function WorkflowDetail({
         running={running}
         allowed={allowed}
         onRun={onRunDLsitePopular}
+        onTriggerRunOptionsChange={onTriggerRunOptionsChange}
       />
     ) : runKind === "remote_popular" && onRunRemotePopular ? (
       <RemotePopularRunPanel
@@ -1420,6 +1452,7 @@ function WorkflowDetail({
         allowed={allowed}
         canFetch={canFetchRemotePopular}
         onRun={onRunRemotePopular}
+        onTriggerRunOptionsChange={onTriggerRunOptionsChange}
       />
     ) : runKind === "preset" && preset && onRunPreset ? (
       <PresetRunPanel
@@ -1430,6 +1463,7 @@ function WorkflowDetail({
         allowed={allowed}
         canFetch={canFetchRemotePopular}
         onRun={onRunPreset}
+        onTriggerRunOptionsChange={onTriggerRunOptionsChange}
       />
     ) : (
       layout({
@@ -1585,12 +1619,14 @@ function RemotePopularRunPanel({
   allowed,
   canFetch,
   onRun,
+  onTriggerRunOptionsChange,
 }: {
   layout: RunFormLayout;
   running: boolean;
   allowed: boolean;
   canFetch: boolean;
   onRun: (options: RemotePopularRunOptions) => Promise<void>;
+  onTriggerRunOptionsChange?: (options: CurrentTriggerRunOptions) => void;
 }) {
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [sourceId, setSourceId] = useState(0);
@@ -1641,6 +1677,19 @@ function RemotePopularRunPanel({
 
   const tagReady = !tagEnabled || (!tagError && tagPreview.value.length > 0);
   const canSubmit = allowed && sourceId > 0 && tagReady && (action !== "fetch" || canFetch);
+  useEffect(() => {
+    onTriggerRunOptionsChange?.({
+      code: "remote_popular_collection",
+      systemConfig: {
+        ...workflowSystemTriggerConfig("remote_popular_collection", null),
+        sourceId,
+        action,
+        limit,
+        tagNameTemplate,
+        skipTag: !tagEnabled,
+      },
+    });
+  }, [sourceId, action, limit, tagNameTemplate, tagEnabled, onTriggerRunOptionsChange]);
   return layout({
     run: (
       <WorkflowRunButton
@@ -2072,6 +2121,7 @@ function PresetRunPanel({
   allowed,
   canFetch,
   onRun,
+  onTriggerRunOptionsChange,
 }: {
   layout: RunFormLayout;
   preset: WorkflowPreset;
@@ -2079,8 +2129,12 @@ function PresetRunPanel({
   allowed: boolean;
   canFetch: boolean;
   onRun: (inputs: Record<string, unknown>) => Promise<void>;
+  onTriggerRunOptionsChange?: (options: CurrentTriggerRunOptions) => void;
 }) {
   const [values, setValues] = useState<PresetFormValues>(() => presetDefaultValues(preset));
+  useEffect(() => {
+    onTriggerRunOptionsChange?.({ code: preset.code, presetValues: values });
+  }, [preset.code, values, onTriggerRunOptionsChange]);
   const blockers = presetBlockers(preset, values, { canFetch, automated: false });
   const tagTemplate = (values.tagNameTemplate ?? "").trim();
   const tagInvalid =
@@ -2119,11 +2173,13 @@ function DLsitePopularRunPanel({
   running,
   allowed,
   onRun,
+  onTriggerRunOptionsChange,
 }: {
   layout: RunFormLayout;
   running: boolean;
   allowed: boolean;
   onRun: (options: DLsitePopularRunOptions) => Promise<void>;
+  onTriggerRunOptionsChange?: (options: CurrentTriggerRunOptions) => void;
 }) {
   const [period, setPeriod] = useState<DLsitePopularPeriod>("day");
   const [recentOnly, setRecentOnly] = useState(true);
@@ -2153,6 +2209,19 @@ function DLsitePopularRunPanel({
   }, [defaultTagTemplate, tagCustomized]);
 
   const tagReady = !tagEnabled || (!tagError && Boolean(tagPreview.value));
+  useEffect(() => {
+    onTriggerRunOptionsChange?.({
+      code: "dlsite_popular_collection",
+      systemConfig: {
+        ...workflowSystemTriggerConfig("dlsite_popular_collection", null),
+        period,
+        releaseWindow,
+        year: period === "year" ? year : 0,
+        tagNameTemplate,
+        skipTag: !tagEnabled,
+      },
+    });
+  }, [period, releaseWindow, year, tagNameTemplate, tagEnabled, onTriggerRunOptionsChange]);
   return layout({
     run: (
       <WorkflowRunButton
@@ -2678,6 +2747,7 @@ function supportedAutomationTriggerTypes(definition: WorkflowDefinition, isPrese
   if (definition.scope === "system" && definition.code === "availability_watch") return ["schedule"];
   if (definition.scope === "system" && definition.code === "local_library_scan")
     return ["startup", "filesystem_event", "schedule"];
+  if (definition.scope === "system" && definition.code === "metadata_sync") return ["schedule"];
   if (definition.scope === "system" && configurableSystemWorkflowCodes.has(definition.code))
     return automationTriggerTypes;
   return [];
@@ -2717,8 +2787,8 @@ function WorkflowAutomationPanel({
   canManage: boolean;
   /** Demo keeps trigger controls visible and opens existing triggers read-only. */
   readOnly?: boolean;
-  onCreate: (triggerType: CreatableAutomationTriggerType) => void;
-  onEdit: (trigger: WorkflowTrigger) => void;
+  onCreate: (triggerType: CreatableAutomationTriggerType, anchor?: HTMLElement | null) => void;
+  onEdit: (trigger: WorkflowTrigger, anchor?: HTMLElement | null) => void;
   onToggle: (trigger: WorkflowTrigger, enabled: boolean) => Promise<void>;
 }) {
   const supportedTypes = supportedAutomationTriggerTypes(definition, isPreset);
@@ -2754,13 +2824,23 @@ function WorkflowAutomationPanel({
         (canManage || readOnly) && supportedTypes.length > 0 ? (
           <>
             {canAddStartup && (
-              <Button size="sm" variant="ghost" disabled={readOnly} onClick={() => onCreate("startup")}>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={readOnly}
+                onClick={(event) => onCreate("startup", event.currentTarget)}
+              >
                 <Plus className="h-4 w-4" />
                 {workflowCopy("runAtStartup")}
               </Button>
             )}
             {canAddSchedule && (
-              <Button size="sm" variant="ghost" disabled={readOnly} onClick={() => onCreate("schedule")}>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={readOnly}
+                onClick={(event) => onCreate("schedule", event.currentTarget)}
+              >
                 <CalendarClock className="h-4 w-4" />
                 {workflowCopy("addSchedule")}
               </Button>
@@ -2826,7 +2906,7 @@ function WorkflowAutomationPanel({
                     size="icon"
                     variant="ghost"
                     className="shrink-0 text-muted-foreground"
-                    onClick={() => onEdit(trigger)}
+                    onClick={(event) => onEdit(trigger, event.currentTarget)}
                     title={openLabel}
                     aria-label={openLabel}
                   >
@@ -2853,6 +2933,8 @@ function TriggerModal({
   trigger,
   readOnly = false,
   initialTriggerType,
+  currentRunOptions,
+  anchorRef,
   onClose,
   onSaved,
   onDeleted,
@@ -2863,6 +2945,8 @@ function TriggerModal({
   trigger: WorkflowTrigger | null;
   readOnly?: boolean;
   initialTriggerType: CreatableAutomationTriggerType;
+  currentRunOptions?: CurrentTriggerRunOptions | null;
+  anchorRef?: RefObject<HTMLElement | null>;
   onClose: () => void;
   onSaved: (trigger: WorkflowTrigger) => void;
   onDeleted: () => void;
@@ -2874,20 +2958,31 @@ function TriggerModal({
       ? trigger.triggerType
       : initialTriggerType;
   const [systemConfig, setSystemConfig] = useState<SystemWorkflowTriggerConfig>(() =>
-    workflowSystemTriggerConfig(definition.code, trigger),
+    trigger
+      ? workflowSystemTriggerConfig(definition.code, trigger)
+      : (currentRunOptions?.systemConfig ?? workflowSystemTriggerConfig(definition.code, null)),
   );
   const [displayName, setDisplayName] = useState(
     trigger?.displayName ??
       (triggerType === "startup" ? workflowCopy("runAtStartup") : workflowCopy("scheduledWorkflow")),
   );
-  const [enabled, setEnabled] = useState(trigger?.enabled ?? true);
+  const enabled = trigger?.enabled ?? true;
   const [intervalMinutes, setIntervalMinutes] = useState(() => {
     const value = parseJSONRecord(trigger?.scheduleJson ?? "").intervalMinutes;
     return typeof value === "number" ? value : 60;
   });
   const [presetValues, setPresetValues] = useState<PresetFormValues>(() =>
-    preset ? presetValuesFromInputs(preset, parseJSONRecord(trigger?.configJson ?? "").inputs) : {},
+    preset
+      ? trigger
+        ? presetValuesFromInputs(preset, parseJSONRecord(trigger.configJson).inputs)
+        : (currentRunOptions?.presetValues ?? presetDefaultValues(preset))
+      : {},
   );
+  const customizable =
+    Boolean(preset) ||
+    definition.code === "remote_popular_collection" ||
+    definition.code === "dlsite_popular_collection";
+  const [customize, setCustomize] = useState(() => customizable && Boolean(trigger));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const presetTriggerBlockers = preset
@@ -2902,11 +2997,33 @@ function TriggerModal({
     ...presetTriggerBlockers,
   ];
 
+  useEffect(() => {
+    if (definition.code !== "remote_popular_collection" || systemConfig.sourceId > 0) return;
+    let active = true;
+    api
+      .listLibrarySources()
+      .then((sources) => {
+        if (!active) return;
+        const source = sources.find(
+          (item) => item.enabled && ["kikoeru_compatible", "kikoeru_compatible_number178"].includes(item.sourceType),
+        );
+        if (source)
+          setSystemConfig((current) => (current.sourceId > 0 ? current : { ...current, sourceId: source.id }));
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [definition.code, systemConfig.sourceId]);
+
   const save = async () => {
     setSaving(true);
     setError("");
     try {
       if (automationBlockers.length > 0) throw new Error(automationBlockers[0]);
+      const configPayload = preset
+        ? presetInputsPayload(preset, presetValues)
+        : workflowSystemTriggerConfigPayload(definition.code, triggerType, systemConfig);
       const payload = {
         workflowDefinitionId: definition.id,
         displayName,
@@ -2916,9 +3033,7 @@ function TriggerModal({
           triggerType === "schedule"
             ? JSON.stringify({ intervalMinutes })
             : (trigger?.scheduleJson ?? JSON.stringify({ type: "startup" })),
-        configJson: preset
-          ? JSON.stringify({ inputs: presetInputsPayload(preset, presetValues) })
-          : JSON.stringify(workflowSystemTriggerConfigPayload(definition.code, triggerType, systemConfig)),
+        configJson: preset ? JSON.stringify({ inputs: configPayload }) : JSON.stringify(configPayload),
         nextRunAt: null,
       };
       const saved = trigger
@@ -2945,6 +3060,16 @@ function TriggerModal({
     }
   };
 
+  const showSystemOptions = definition.code === "local_library_scan" || customize;
+  const showPresetOptions = Boolean(preset && customize);
+  const setCustomizeAndReset = (next: boolean) => {
+    if (!next) {
+      if (preset) setPresetValues(currentRunOptions?.presetValues ?? presetDefaultValues(preset));
+      else setSystemConfig(currentRunOptions?.systemConfig ?? workflowSystemTriggerConfig(definition.code, null));
+    }
+    setCustomize(next);
+  };
+
   return (
     <Modal
       title={
@@ -2955,12 +3080,11 @@ function TriggerModal({
             : workflowCopy("newSchedule")
       }
       onClose={onClose}
+      dismissible={!customize && !saving}
+      anchorRef={anchorRef}
+      popoverClassName={customize ? "w-[min(42rem,calc(100vw-1.5rem))]" : "w-[min(27rem,calc(100vw-1.5rem))]"}
     >
       <fieldset disabled={readOnly} className="m-0 grid min-w-0 gap-3 border-0 p-0">
-        <div className="grid gap-1 rounded-md border bg-muted/30 px-3 py-2">
-          <div className="text-xs text-muted-foreground">{workflowCopy("workflow")}</div>
-          <div className="text-sm font-medium">{localizedWorkflowDefinition(definition).displayName}</div>
-        </div>
         <Field label={workflowCopy("name")}>
           <Input
             fieldSize="sm"
@@ -2969,50 +3093,56 @@ function TriggerModal({
             onChange={(event) => setDisplayName(event.target.value)}
           />
         </Field>
-        <div className="grid gap-3 md:grid-cols-2">
-          {triggerType === "schedule" ? (
-            <Field label={workflowCopy("intervalMinutes")}>
-              <Input
-                fieldSize="sm"
-                type="number"
-                min={5}
-                max={10080}
-                value={intervalMinutes}
-                onChange={(event) => setIntervalMinutes(Number(event.target.value))}
+        {triggerType === "schedule" && (
+          <Field label={workflowCopy("intervalMinutes")}>
+            <Input
+              fieldSize="sm"
+              type="number"
+              min={5}
+              max={10080}
+              value={intervalMinutes}
+              onChange={(event) => setIntervalMinutes(Number(event.target.value))}
+            />
+          </Field>
+        )}
+        {customizable && (
+          <label className="flex items-start gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+            <Checkbox
+              checked={customize}
+              onCheckedChange={setCustomizeAndReset}
+              aria-label={workflowCopy("customizeTrigger")}
+            />
+            <span className="grid gap-0.5">
+              <span className="font-medium">{workflowCopy("customizeTrigger")}</span>
+              <span className="text-xs text-muted-foreground">{workflowCopy("customizeTriggerDescription")}</span>
+            </span>
+          </label>
+        )}
+        {(showPresetOptions || showSystemOptions) && (
+          <section className="grid min-w-0 gap-3 border-t pt-4" aria-label={workflowCopy("runOptions")}>
+            {customize && (
+              <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {workflowCopy("runOptions")}
+              </h4>
+            )}
+            {showPresetOptions && preset ? (
+              <PresetParameterFields
+                idPrefix="preset-trigger"
+                compact
+                preset={preset}
+                values={presetValues}
+                canFetch={canFetch}
+                onChange={setPresetValues}
               />
-            </Field>
-          ) : triggerType === "startup" ? (
-            <div className="grid gap-1 rounded-md border bg-muted/30 px-3 py-2">
-              <div className="text-xs text-muted-foreground">{workflowCopy("runsLabel")}</div>
-              <div className="text-sm font-medium">{workflowCopy("whenServiceStarts")}</div>
-            </div>
-          ) : (
-            <div className="grid gap-1 rounded-md border bg-muted/30 px-3 py-2">
-              <div className="text-xs text-muted-foreground">{workflowCopy("runsLabel")}</div>
-              <div className="text-sm font-medium">{workflowCopy("afterFoldersSettle")}</div>
-            </div>
-          )}
-          <div className="flex items-center gap-2 self-end pb-1 text-sm">
-            <Switch checked={enabled} onCheckedChange={setEnabled} aria-label={workflowCopy("enableTrigger")} />
-            <span>{workflowCopy("enabled")}</span>
-          </div>
-        </div>
-        {preset ? (
-          <PresetParameterFields
-            idPrefix="preset-trigger"
-            compact
-            preset={preset}
-            values={presetValues}
-            canFetch={canFetch}
-            onChange={setPresetValues}
-          />
-        ) : (
-          <SystemWorkflowTriggerFields
-            definitionCode={definition.code}
-            triggerType={triggerType}
-            value={systemConfig}
-            onChange={setSystemConfig}
-          />
+            ) : showSystemOptions ? (
+              <SystemWorkflowTriggerFields
+                definitionCode={definition.code}
+                triggerType={triggerType}
+                value={systemConfig}
+                onChange={setSystemConfig}
+              />
+            ) : null}
+          </section>
         )}
         {automationBlockers.length > 0 && (
           <div className="rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-sm text-warning-foreground">
@@ -3029,9 +3159,12 @@ function TriggerModal({
               {workflowCopy("delete")}
             </Button>
           )}
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            {workflowCopy("cancel")}
+          </Button>
           <Button onClick={save} disabled={saving || automationBlockers.length > 0 || !displayName.trim()}>
             <Save className="h-4 w-4" />
-            {saving ? workflowCopy("saving") : workflowCopy("save")}
+            {saving ? workflowCopy("saving") : trigger ? workflowCopy("save") : workflowCopy("addTrigger")}
           </Button>
         </div>
       </fieldset>
@@ -3064,6 +3197,7 @@ function workflowSystemTriggerConfig(
       typeof record.tagNameTemplate === "string" && record.tagNameTemplate.trim()
         ? record.tagNameTemplate
         : defaultTemplate,
+    skipTag: record.skipTag === true,
   };
 }
 
@@ -3083,6 +3217,7 @@ function workflowSystemTriggerConfigPayload(
       action: value.action,
       limit: value.limit,
       tagNameTemplate: value.tagNameTemplate.trim(),
+      skipTag: value.skipTag,
     };
   }
   if (definitionCode === "dlsite_popular_collection") {
@@ -3091,6 +3226,7 @@ function workflowSystemTriggerConfigPayload(
       releaseWindow: value.period === "year" ? "" : value.releaseWindow,
       year: value.period === "year" ? value.year : 0,
       tagNameTemplate: value.tagNameTemplate.trim(),
+      skipTag: value.skipTag,
     };
   }
   return {};
@@ -3102,7 +3238,9 @@ function workflowSystemTriggerConfigBlockers(definitionCode: string, value: Syst
       ...(value.sourceId <= 0 ? [workflowCopy("selectRemoteSource")] : []),
       ...(value.action === "fetch" ? [workflowCopy("automatedTrackOnly")] : []),
       ...(value.limit <= 0 || value.limit > 100 ? [workflowCopy("workLimitRange")] : []),
-      ...workflowTagTemplateBlockers(value.tagNameTemplate, ["date", "remote_name", "source_code", "action"]),
+      ...(!value.skipTag
+        ? workflowTagTemplateBlockers(value.tagNameTemplate, ["date", "remote_name", "source_code", "action"])
+        : []),
     ];
   }
   if (definitionCode === "dlsite_popular_collection") {
@@ -3110,7 +3248,9 @@ function workflowSystemTriggerConfigBlockers(definitionCode: string, value: Syst
       ...(value.period === "year" && (value.year < 2000 || value.year > new Date().getUTCFullYear())
         ? [workflowCopy("yearRange", { year: new Date().getUTCFullYear() })]
         : []),
-      ...workflowTagTemplateBlockers(value.tagNameTemplate, ["date", "period", "release_window", "year"]),
+      ...(!value.skipTag
+        ? workflowTagTemplateBlockers(value.tagNameTemplate, ["date", "period", "release_window", "year"])
+        : []),
     ];
   }
   return [];
@@ -3208,7 +3348,7 @@ function SystemWorkflowTriggerFields({
       );
     }
     return (
-      <div className="flex items-center justify-between gap-4 border-t pt-3">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <div className="text-sm font-medium">{workflowCopy("followUpRun")}</div>
           <div className="text-xs text-muted-foreground">{workflowCopy("followUpEachDescription")}</div>
@@ -3231,7 +3371,7 @@ function SystemWorkflowTriggerFields({
       tokens.map((token) => token.name),
     )[0];
     return (
-      <div className="grid gap-3 border-t pt-3 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-2">
         <Field label={workflowCopy("remoteSource")}>
           <NativeSelect
             fieldSize="sm"
@@ -3278,6 +3418,8 @@ function SystemWorkflowTriggerFields({
         </Field>
         <TagTemplateField
           id="remote-trigger-tag-template"
+          enabled={!value.skipTag}
+          onEnabledChange={(enabled) => onChange({ ...value, skipTag: !enabled })}
           value={value.tagNameTemplate}
           defaultValue={REMOTE_POPULAR_TAG_TEMPLATE}
           tokens={tokens}
@@ -3298,7 +3440,7 @@ function SystemWorkflowTriggerFields({
       tokens.map((token) => token.name),
     )[0];
     return (
-      <div className="grid gap-3 border-t pt-3 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-2">
         <Field label={workflowCopy("rankingPeriod")}>
           <NativeSelect
             fieldSize="sm"
@@ -3343,6 +3485,8 @@ function SystemWorkflowTriggerFields({
         )}
         <TagTemplateField
           id="dlsite-trigger-tag-template"
+          enabled={!value.skipTag}
+          onEnabledChange={(enabled) => onChange({ ...value, skipTag: !enabled })}
           value={value.tagNameTemplate}
           defaultValue={defaultTemplate}
           tokens={tokens}
@@ -3563,9 +3707,41 @@ function utcShortDate(value: Date) {
   return `${String(value.getUTCFullYear()).slice(-2)}${String(value.getUTCMonth() + 1).padStart(2, "0")}${String(value.getUTCDate()).padStart(2, "0")}`;
 }
 
-function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+function Modal({
+  title,
+  children,
+  onClose,
+  dismissible = false,
+  anchorRef,
+  popoverClassName,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+  dismissible?: boolean;
+  anchorRef?: RefObject<HTMLElement | null>;
+  popoverClassName?: string;
+}) {
+  if (anchorRef) {
+    return (
+      <AnchoredPopover
+        open
+        anchorRef={anchorRef}
+        ariaLabel={title}
+        className={`${popoverClassName ?? "w-[min(42rem,calc(100vw-1.5rem))]"} p-0`}
+        floatingLayer
+        dismissOnOutsidePointer={dismissible}
+        onOpenChange={(open) => {
+          if (!open && dismissible) onClose();
+        }}
+      >
+        <DialogHeader title={title} onClose={onClose} closeLabel={workflowCopy("close")} />
+        <div className="app-scrollbar max-h-[min(70dvh,42rem)] overflow-y-auto px-5 py-4">{children}</div>
+      </AnchoredPopover>
+    );
+  }
   return (
-    <Dialog onClose={onClose} size="xl" dismissible={false} className="max-w-3xl">
+    <Dialog onClose={onClose} size="xl" dismissible={dismissible} className="max-w-3xl">
       <DialogHeader title={title} onClose={onClose} closeLabel={workflowCopy("close")} />
       <DialogBody>{children}</DialogBody>
     </Dialog>
