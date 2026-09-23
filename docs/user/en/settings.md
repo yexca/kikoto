@@ -112,15 +112,15 @@ sections need `sources:write`.
 
 The **Metadata** sidebar entry sits directly below **Workflows**. Its horizontal categories are **All**, **Needs attention**, **Metadata issues**, and **No available source**. All includes every saved work family, including metadata without pending issues; the other categories show the applicable attention reasons. Search, pagination, covers, selection, and affected edition/provider details are shared. A separate **Voice aliases** view (requires `metadata:sync`) lists voice actors with their confirmed aliases; **Manage aliases** opens a dialog to add or remove aliases, merge duplicate people, and undo merges. The voice detail Advanced popover links to this view, and `/metadata?view=aliases&voice=<id>` opens one person directly.
 
-Use **Metadata settings** at the upper right to open settings in a dialog; closing it preserves the current list and filters. **Metadata sync** opens the existing sync workflow, where you choose the scope and start it.
+The header keeps the categories, search, and list controls on one row. On wide screens the search field sits beside the categories; on narrower screens it collapses to a search icon at the right that opens the field below the row. Refresh, rows per page, **Retry metadata**, **Check sources**, and the **Metadata settings** gear follow. Pagination above and below the list matches the Library. Metadata settings open in a popover; hover or focus an info icon for a setting's explanation, and closing it preserves the current list and filters. Start metadata sync from Workflows.
 
 Select families and choose **Retry metadata**; its count includes only eligible selections. You can also retry an affected edition from its details, including products previously reported unavailable. Failed retries preserve existing metadata and manual overrides. **Check sources** applies to selected families without a source. Confirmed deletion of local information is available only in the **No available source** view; the server rechecks availability and retains media files.
 
-**Open metadata issues** in Activity opens Metadata filtered to that run's unresolved metadata issues; **Show all pending works** removes the run filter. Recovery never changes another user's Activity review. Metadata recovery requires `metadata:sync`, while source checks, deletion, and source/language settings require `sources:write`. The **Metadata settings** dialog contains settings only. **Metadata sync** opens the existing workflow in Workflows; this page does not duplicate its configuration or run controls. Old Maintenance links redirect here.
+**Open metadata issues** in Activity opens Metadata filtered to that run's unresolved metadata issues; **Show all pending works** removes the run filter. Recovery never changes another user's Activity review. Metadata recovery requires `metadata:sync`, while source checks, deletion, and source/language settings require `sources:write`. The **Metadata settings** popover contains settings only; this page does not duplicate the sync workflow's configuration or run controls. Old Maintenance links redirect here.
 
 Metadata settings let administrators choose and reorder the supported DLsite
   title/tag languages. `Origin` is always retained as the final fallback. Each
-  compatible remote source also has its request-language hint in this dialog; the
+  compatible remote source also has its request-language hint in this popover; the
   upstream may ignore it, fall back, or return mixed-language metadata.
 
 ## Related Docs

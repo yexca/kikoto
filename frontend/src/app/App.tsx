@@ -522,7 +522,6 @@ function AuthenticatedApp() {
                   <WorkManagementPage
                     canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")}
                     canManageSources={auth.demoMode || auth.hasPermission("sources:write")}
-                    canOpenWorkflows={auth.demoMode || auth.hasPermission("workflows:run")}
                     readOnly={auth.demoMode}
                   />
                 )}

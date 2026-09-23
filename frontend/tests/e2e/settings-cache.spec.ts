@@ -586,8 +586,10 @@ test("work maintenance mounts once and keeps its result region stable while sett
   });
 
   await page.goto("/metadata?reason=no_source");
-  const heading = page.getByRole("heading", { name: "Pending works", exact: true });
-  await expect(heading).toBeVisible();
+  await expect(page.getByRole("tab", { name: "No available source", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(page.getByRole("status", { name: "Loading work maintenance" })).toBeVisible();
   const panel = page.getByRole("region", { name: "Metadata records", exact: true });
   const loadingBox = await panel.boundingBox();
@@ -889,9 +891,7 @@ test("recommendation restores all default weights and threshold before saving", 
   await expect(page.getByLabel("Badge threshold")).toHaveValue("50");
 });
 
-test("@desktop work management owns metadata settings and links to the existing workflow", async ({
-  page,
-}, testInfo) => {
+test("@desktop work management owns metadata settings in a popover", async ({ page }, testInfo) => {
   const saves: Record<string, unknown>[] = [];
   await mockCacheSettings(
     page,
@@ -925,8 +925,8 @@ test("@desktop work management owns metadata settings and links to the existing 
     .getByRole("dialog", { name: "Metadata settings", exact: true })
     .getByRole("button", { name: "Close", exact: true })
     .click();
-  await page.getByRole("button", { name: "Metadata sync", exact: true }).click();
-  await expect(page).toHaveURL(/workflows\?workflow=metadata_sync/);
+  await expect(page.getByRole("dialog", { name: "Metadata settings", exact: true })).toHaveCount(0);
+  await expect(page).not.toHaveURL(/tab=settings/);
 });
 
 test("ordinary users save folder preferences without instance administration", async ({ page }) => {

@@ -3,13 +3,10 @@ import { surfaceEnglish } from "./en";
 export const surfaceKorean = {
   workManagement: {
     all: "전체",
-    allMetadata: "모든 메타데이터",
     catalogDescription: "저장된 작품 메타데이터를 작품 계열별로 표시합니다.",
     catalogEmpty: "저장된 작품 메타데이터가 없습니다.",
 
-    issues: "처리가 필요한 작품",
     settings: "메타데이터 설정",
-    openSync: "메타데이터 동기화",
     voiceAliases: "성우 별칭",
     voiceAliasesTitle: "성우 별칭",
     voiceAliasesDescription: "성우별 별칭을 검토하고 중복된 인물을 병합합니다. 검색은 이름과 별칭에 일치합니다.",
@@ -101,8 +98,6 @@ export const surfaceKorean = {
     error: "작업을 저장하지 못했습니다. 다시 시도해 주세요.",
   },
   workMaintenance: {
-    pageStatus: "{{page}} / {{total}}",
-    rows: "페이지당 행",
     title: "메타데이터 목록",
     description:
       "메타데이터 문제가 있거나 사용 가능한 파일 소스가 없는 작품을 작품 그룹별로 표시합니다. 업데이트가 성공하면 해당 문제만 해제됩니다.",
@@ -372,16 +367,14 @@ export const surfaceKorean = {
     },
     metadata: {
       languagePriority: "DLsite 메타데이터 언어 우선순위",
-      firstChoice: "첫 번째 선택",
-      fallbackChoice: "대체 {{count}}",
       priority: "우선순위 {{count}}",
-      remoteRequests: "원격 소스 메타데이터 요청",
+      remoteRequests: "원격 요청 언어",
       remoteRequestsDescription:
-        "Accept-Language 요청 힌트로 전송됩니다. 원격 서비스가 무시하거나 대체하거나 여러 언어의 메타데이터를 반환할 수 있습니다.",
-      noRemoteSources: "구성된 원격 소스가 없습니다.",
+        "Accept-Language 힌트로 전송됩니다. 소스가 무시하거나 여러 언어를 섞어 반환할 수 있습니다.",
       catalogFreshnessDays: "카탈로그 최신 유지 일수",
       catalogFreshnessDescription: "서클 및 성우 카탈로그는 {{count}}일 후 주의 상태가 됩니다.",
       save: "메타데이터 설정 저장",
+      about: "{{label}} 정보",
     },
     recommendation: {
       tuning: "추천 조정",
@@ -1140,7 +1133,6 @@ export const surfaceKorean = {
     actions: "작업",
     cover: "표지",
     select: "선택",
-    range: "{{first}}-{{last}} / {{total}}",
     existingResultsShown: "기존 결과가 계속 표시됩니다.",
   },
   route: {
@@ -1261,9 +1253,9 @@ export const surfaceKorean = {
     drag: "{{language}} 끌기",
     moveEarlier: "{{language}} 위로 이동",
     moveLater: "{{language}} 아래로 이동",
-    priorityTitle: "DLsite 제목 및 태그 언어 우선순위",
+    priorityTitle: "제목 및 태그 언어",
     priorityDescription:
-      "저장된 DLsite 에디션은 위에서부터 순서대로 일치시킵니다. 원본은 항상 마지막 대체 항목으로 유지되며 동기화 요청 언어는 표시 순서와 독립적입니다.",
+      "DLsite 에디션을 위에서부터 순서대로 일치시킵니다. 원본은 항상 마지막 대체 항목입니다. 동기화 요청 언어는 별도로 설정합니다.",
     preferredLanguages: "선호 언어",
   },
   detailActions: {
