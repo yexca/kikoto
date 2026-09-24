@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -17,7 +18,6 @@ import (
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/metasync"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
-	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 var (
@@ -69,6 +69,9 @@ type circleDetail struct {
 	AvailableWorks int                 `json:"availableWorks"`
 	Works          []circleCatalogWork `json:"works"`
 	Series         []circleSeries      `json:"series"`
+	// Refresh is the newest follow run for this circle, so the page can follow
+	// a queued refresh across reloads and link it in Activity.
+	Refresh *creatorRefreshRun `json:"refresh"`
 }
 
 type circleSeries struct {
@@ -117,12 +120,6 @@ type circleCatalogWork struct {
 	Remote           bool                `json:"remote"`
 	SourceTags       []circleSourceStat  `json:"sourceTags"`
 	Progress         workProgressSummary `json:"progress"`
-}
-
-type circleRefreshRequest struct {
-	Scope       string `json:"scope"`
-	Mode        string `json:"mode"`
-	ProductMode string `json:"productMode"`
 }
 
 // circleCatalogProjection keeps catalog discovery attached to the party that
@@ -404,11 +401,19 @@ func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	var refresh *creatorRefreshRun
+	if latest, ok, err := s.latestCircleFollowRun(r.Context(), externalID, false); err != nil {
+		writeError(w, err)
+		return
+	} else if ok {
+		refresh = &latest
+	}
 	writeJSON(w, http.StatusOK, circleDetail{
 		circleSummary:  summary,
 		AvailableWorks: availableWorks,
 		Works:          works,
 		Series:         series,
+		Refresh:        refresh,
 	})
 }
 
@@ -562,8 +567,11 @@ func (s *Server) setCircleUserTags(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"externalId": externalID, "userTags": tags})
 }
 
+// refreshCircle queues the circle follow workflow with its new-works step off,
+// so a detail refresh and a Workflows run share one pipeline.
 func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
+	actor, ok := s.requirePermission(w, r, "metadata:sync")
+	if !ok {
 		return
 	}
 	externalID := normalizeMakerID(r.PathValue("externalId"))
@@ -585,44 +593,29 @@ func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "circle not found"})
 		return
 	}
-	var payload circleRefreshRequest
+	var request creatorRefreshRequest
 	if r.Body != nil {
-		_ = json.NewDecoder(r.Body).Decode(&payload)
+		_ = json.NewDecoder(r.Body).Decode(&request)
 	}
-	payload = normalizeCircleRefreshRequest(payload)
-	result, err := s.runCircleRefresh(r.Context(), partyID, externalID, payload)
-	if err != nil {
-		writeUpstreamError(w, err)
+	request = request.normalized()
+	inputs := map[string]any{
+		"circleId": externalID, "catalogRefresh": request.CatalogRefresh, "metadataRefresh": request.MetadataRefresh, "newWorks": false,
+	}
+	if request.SourceCheck {
+		sourceIDs, err := s.compatibleRemoteSourceIDs(r.Context())
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		inputs["checkSourceIds"] = sourceIDs
+	}
+	run, err := s.queueCreatorRefresh(r.Context(), actor, "circle_follow", inputs, func(ctx context.Context) (creatorRefreshRun, bool, error) {
+		return s.latestCircleFollowRun(ctx, externalID, true)
+	})
+	if !s.writeCreatorRefreshError(w, err) {
 		return
 	}
-	writeJSON(w, http.StatusAccepted, map[string]any{
-		"runId":           result.RunID,
-		"externalId":      externalID,
-		"status":          result.Status,
-		"scope":           result.Scope,
-		"catalogWorks":    result.CatalogWorks,
-		"pagesFetched":    result.PagesFetched,
-		"productSynced":   result.ProductSynced,
-		"productSkipped":  result.ProductSkipped,
-		"productFailed":   result.ProductFailed,
-		"productFailures": publicCircleProductFailures(result.ProductFailures),
-		"sourceSynced":    result.SourceSynced,
-		"mode":            result.Mode,
-		"productMode":     result.ProductMode,
-	})
-}
-
-func publicCircleProductFailures(failures []string) []string {
-	public := make([]string, 0, len(failures))
-	for _, failure := range failures {
-		code := strings.TrimSpace(strings.SplitN(failure, ":", 2)[0])
-		if !dlsiteProductCodePattern.MatchString(code) {
-			public = append(public, "metadata sync failed")
-			continue
-		}
-		public = append(public, code+": metadata sync failed")
-	}
-	return public
+	writeJSON(w, http.StatusAccepted, run)
 }
 
 func (s *Server) deleteCircleCatalogWork(w http.ResponseWriter, r *http.Request) {
@@ -2631,92 +2624,6 @@ func mergeRemoteSourceTagRows(rows *sql.Rows, tags *workSourceTagAccumulator) er
 	return rows.Err()
 }
 
-type circleRefreshResult struct {
-	RunID           int64
-	JobID           int64
-	Status          string
-	Scope           string
-	CatalogWorks    int
-	PagesFetched    int
-	ProductSynced   int
-	SourceSynced    int
-	ProductFailed   int
-	ProductSkipped  int
-	ProductFailures []string
-	Mode            string
-	ProductMode     string
-	Error           string
-}
-
-func (s *Server) runCircleRefresh(ctx context.Context, partyID int64, externalID string, request circleRefreshRequest) (circleRefreshResult, error) {
-	client := s.newDLsiteClient()
-	profile := dlsite.MakerProfile{MakerID: externalID}
-	result := circleRefreshResult{Status: "succeeded", Scope: request.Scope, Mode: request.Mode, ProductMode: request.ProductMode}
-
-	if circleRefreshIncludesCatalog(request.Scope) {
-		fetchedProfile, err := s.runCircleCatalogRefresh(ctx, partyID, externalID, request.Mode, client)
-		if err != nil {
-			result.Status = "failed"
-			result.Error = err.Error()
-		} else {
-			profile = fetchedProfile
-			result.CatalogWorks = len(profile.WorkCodes)
-			result.PagesFetched = profile.PagesFetched
-		}
-	} else {
-		fallbackProfile, err := s.loadCircleProfileForRefresh(ctx, partyID, externalID)
-		if err != nil {
-			result.Status = "failed"
-			result.Error = err.Error()
-		} else {
-			profile = fallbackProfile
-			result.CatalogWorks = len(profile.WorkCodes)
-		}
-	}
-
-	if result.Status != "failed" && circleRefreshIncludesWork(request.Scope) {
-		productResult, err := s.syncCircleProductJSON(ctx, partyID, profile.WorkCodes, request.ProductMode, client)
-		if err != nil {
-			result.Status = "failed"
-			result.Error = err.Error()
-		} else {
-			result.ProductSynced = productResult.Synced
-			result.ProductSkipped = productResult.Skipped
-			result.ProductFailed = len(productResult.Failures)
-			result.ProductFailures = productResult.Failures
-			if result.ProductFailed > 0 {
-				result.Status = "partial"
-			}
-		}
-	}
-
-	if result.Status != "failed" && circleRefreshIncludesSource(request.Scope) {
-		sourceSynced, err := s.syncCircleRemoteSourceCatalogs(ctx, partyID, profile.MakerName, request.Mode)
-		if err != nil {
-			result.Status = "failed"
-			result.Error = err.Error()
-		} else {
-			result.SourceSynced = sourceSynced
-		}
-	}
-
-	runID, jobID, err := s.recordCircleRefreshWorkflow(ctx, partyID, externalID, profile, result)
-	if err != nil {
-		return circleRefreshResult{}, err
-	}
-	result.RunID = runID
-	result.JobID = jobID
-	if circleRefreshIncludesCatalog(request.Scope) {
-		if err := s.recordCircleCatalogRefreshAttempt(ctx, partyID, "dlsite", result); err != nil {
-			return circleRefreshResult{}, err
-		}
-	}
-	if result.Status == "failed" {
-		return result, fmt.Errorf("%s", result.Error)
-	}
-	return result, nil
-}
-
 func (s *Server) runCircleCatalogRefresh(ctx context.Context, partyID int64, externalID string, mode string, client *dlsite.Client) (dlsite.MakerProfile, error) {
 	knownCodes, err := s.knownCircleCatalogCodes(ctx, partyID)
 	if err != nil {
@@ -2795,14 +2702,12 @@ func (s *Server) recordCircleCatalogRefreshSuccess(ctx context.Context, partyID 
 	return err
 }
 
-func (s *Server) recordCircleCatalogRefreshAttempt(ctx context.Context, partyID int64, providerCode string, result circleRefreshResult) error {
-	errorText := result.Error
-	if errorText == "" && result.Status == "failed" {
-		errorText = "refresh failed"
-	}
-	_, err := s.db.ExecContext(ctx, `
+// recordCircleCatalogRefreshFailure keeps the last successful pull and marks
+// the attempt, so the circle shows Attention instead of Never or Synced.
+func (s *Server) recordCircleCatalogRefreshFailure(ctx context.Context, partyID int64, mode string, runID int64) {
+	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO party_catalog_refresh_state (party_id, provider_code, last_attempt_at, last_mode, last_status, last_run_id, last_error, updated_at)
-		VALUES (?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		VALUES (?, 'dlsite', CURRENT_TIMESTAMP, ?, 'failed', ?, 'Circle catalog refresh failed.', CURRENT_TIMESTAMP)
 		ON CONFLICT(party_id, provider_code) DO UPDATE SET
 			last_attempt_at = excluded.last_attempt_at,
 			last_mode = excluded.last_mode,
@@ -2810,8 +2715,9 @@ func (s *Server) recordCircleCatalogRefreshAttempt(ctx context.Context, partyID 
 			last_run_id = excluded.last_run_id,
 			last_error = excluded.last_error,
 			updated_at = CURRENT_TIMESTAMP
-	`, partyID, providerCode, result.Mode, result.Status, nullableRunID(result.RunID), errorText)
-	return err
+	`, partyID, mode, nullableRunID(runID)); err != nil {
+		slog.Warn("record circle catalog refresh failure", "party_id", partyID, "error", err)
+	}
 }
 
 func nullableRunID(id int64) any {
@@ -2977,7 +2883,7 @@ type circleProductSyncResult struct {
 	Failures []string
 }
 
-func (s *Server) syncCircleProductJSON(ctx context.Context, partyID int64, workCodes []string, productMode string, client *dlsite.Client) (circleProductSyncResult, error) {
+func (s *Server) syncCircleProductJSON(ctx context.Context, partyID int64, workCodes []string, productMode string, client *dlsite.Client, progress func(done int, total int)) (circleProductSyncResult, error) {
 	if len(workCodes) == 0 {
 		return circleProductSyncResult{}, nil
 	}
@@ -2992,7 +2898,10 @@ func (s *Server) syncCircleProductJSON(ctx context.Context, partyID int64, workC
 		WithMetadataPriority(s.preferredMetadataLanguages(ctx)).
 		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.preferredMetadataLanguages(ctx)))
 	result := circleProductSyncResult{Skipped: len(workCodes) - len(candidates), Failures: []string{}}
-	for _, code := range candidates {
+	for index, code := range candidates {
+		if progress != nil {
+			progress(index, len(candidates))
+		}
 		failure, err := s.syncCircleProduct(ctx, partyID, code, client, syncer)
 		if err != nil {
 			return result, err
@@ -3002,6 +2911,9 @@ func (s *Server) syncCircleProductJSON(ctx context.Context, partyID int64, workC
 			continue
 		}
 		result.Synced++
+	}
+	if progress != nil {
+		progress(len(candidates), len(candidates))
 	}
 	return result, nil
 }
@@ -3064,31 +2976,43 @@ func (s *Server) syncCircleProduct(ctx context.Context, partyID int64, code stri
 	return "", nil
 }
 
-func (s *Server) syncCircleRemoteSourceCatalogs(ctx context.Context, partyID int64, circleName string, mode string) (int, error) {
+// syncCircleRemoteSourceCatalogs matches a circle's works on the selected
+// compatible sources. A failing source is marked unavailable and counted; the
+// remaining sources still run.
+func (s *Server) syncCircleRemoteSourceCatalogs(ctx context.Context, partyID int64, circleName string, mode string, sourceIDs []int64) (int, int, error) {
 	circleName = strings.TrimSpace(circleName)
 	if circleName == "" || strings.HasPrefix(circleName, "Unfetched circle ") {
-		return 0, nil
+		return 0, 0, nil
 	}
 	sources, err := s.loadRemoteSourcesForAvailability(ctx)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	totalSynced := 0
+	selected := map[int64]bool{}
+	for _, id := range sourceIDs {
+		selected[id] = true
+	}
+	totalSynced, failed := 0, 0
 	for _, source := range sources {
-		if !isKikoeruSourceType(source.SourceType) || !source.Enabled || strings.TrimSpace(source.Endpoint.APIURL) == "" {
+		if !selected[source.ID] || !isKikoeruSourceType(source.SourceType) || !source.Enabled || strings.TrimSpace(source.Endpoint.APIURL) == "" {
 			continue
 		}
 		synced, err := s.syncCircleRemoteSourceCatalog(ctx, partyID, circleName, source, mode)
 		if err != nil {
+			if ctx.Err() != nil {
+				return totalSynced, failed, ctx.Err()
+			}
+			slog.Warn("circle source check failed", "party_id", partyID, "source_id", source.ID, "error", err)
 			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
-			return totalSynced, err
+			failed++
+			continue
 		}
 		if synced > 0 {
 			_ = s.updateSourceHealth(ctx, source.ID, "healthy")
 		}
 		totalSynced += synced
 	}
-	return totalSynced, nil
+	return totalSynced, failed, nil
 }
 
 func (s *Server) syncCircleRemoteSourceCatalog(ctx context.Context, partyID int64, circleName string, source remoteSourceForUse, mode string) (int, error) {
@@ -3385,50 +3309,6 @@ func (s *Server) circleWorkAvailableInAnyRemoteSource(ctx context.Context, sourc
 	return false
 }
 
-func normalizeCircleRefreshRequest(request circleRefreshRequest) circleRefreshRequest {
-	request.Scope = strings.ToLower(strings.TrimSpace(request.Scope))
-	switch request.Scope {
-	case "catalog", "work", "source", "metadata":
-	default:
-		request.Scope = "all"
-	}
-	request.Mode = strings.ToLower(strings.TrimSpace(request.Mode))
-	if request.Mode != "full" {
-		request.Mode = "incremental"
-	}
-	request.ProductMode = strings.ToLower(strings.TrimSpace(request.ProductMode))
-	if request.ProductMode != "all" {
-		request.ProductMode = "available"
-	}
-	return request
-}
-
-func circleRefreshIncludesCatalog(scope string) bool {
-	return scope == "all" || scope == "metadata" || scope == "catalog"
-}
-
-func circleRefreshIncludesWork(scope string) bool {
-	return scope == "all" || scope == "metadata" || scope == "work"
-}
-
-func circleRefreshIncludesSource(scope string) bool {
-	return scope == "all" || scope == "source"
-}
-
-func scopedNodeStatus(result circleRefreshResult, included bool) string {
-	if !included {
-		return "skipped"
-	}
-	return result.Status
-}
-
-func scopedNodeError(result circleRefreshResult, status string) string {
-	if status != "failed" {
-		return ""
-	}
-	return result.Error
-}
-
 func circleRefreshMaxPages(mode string) int {
 	if mode == "full" {
 		return 100
@@ -3480,121 +3360,6 @@ func nullableStringFromText(value string) *string {
 		return nil
 	}
 	return &value
-}
-
-func (s *Server) recordCircleRefreshWorkflow(ctx context.Context, partyID int64, externalID string, profile dlsite.MakerProfile, result circleRefreshResult) (int64, int64, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, 0, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, "circle_metadata_refresh", "Refresh circle metadata", "Refresh DLsite maker profile and catalog for one circle.", map[string]any{
-		"nodes": []map[string]string{
-			{"id": "select", "type": "select_party"},
-			{"id": "catalog", "type": "refresh_circle_catalog"},
-			{"id": "work", "type": "sync_metadata"},
-			{"id": "source", "type": "check_source_availability"},
-		},
-	})
-	if err != nil {
-		return 0, 0, err
-	}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "circle_metadata_refresh", "Refresh circle metadata", result.Status, "manual", "circle_shortcut", map[string]any{
-		"party_id":    partyID,
-		"external_id": externalID,
-		"scope":       result.Scope,
-	}, map[string]any{
-		"status":           result.Status,
-		"scope":            result.Scope,
-		"catalog_works":    result.CatalogWorks,
-		"pages_fetched":    result.PagesFetched,
-		"product_synced":   result.ProductSynced,
-		"product_skipped":  result.ProductSkipped,
-		"product_failed":   result.ProductFailed,
-		"product_failures": result.ProductFailures,
-		"source_synced":    result.SourceSynced,
-		"mode":             result.Mode,
-		"product_mode":     result.ProductMode,
-		"error":            result.Error,
-	})
-	if err != nil {
-		return 0, 0, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID:      "select",
-		NodeType:    "select_party",
-		DisplayName: "Select circle",
-		Position:    1,
-		Status:      "succeeded",
-		Input:       map[string]any{"external_id": externalID},
-		Output:      map[string]any{"party_id": partyID},
-	}); err != nil {
-		return 0, 0, err
-	}
-	catalogStatus := scopedNodeStatus(result, circleRefreshIncludesCatalog(result.Scope))
-	catalogNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID:      "catalog",
-		NodeType:    "refresh_circle_catalog",
-		DisplayName: "Refresh catalog",
-		Position:    2,
-		Status:      catalogStatus,
-		Input:       map[string]any{"external_id": externalID, "mode": result.Mode},
-		Output:      map[string]any{"maker_name": profile.MakerName, "catalog_works": result.CatalogWorks, "pages_fetched": result.PagesFetched, "url": profile.URL},
-		Error:       scopedNodeError(result, catalogStatus),
-	})
-	if err != nil {
-		return 0, 0, err
-	}
-	workStatus := scopedNodeStatus(result, circleRefreshIncludesWork(result.Scope))
-	workNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID:      "work",
-		NodeType:    "sync_metadata",
-		DisplayName: "Sync work metadata",
-		Position:    3,
-		Status:      workStatus,
-		Input:       map[string]any{"external_id": externalID, "product_mode": result.ProductMode},
-		Output:      map[string]any{"product_synced": result.ProductSynced, "product_skipped": result.ProductSkipped, "product_failed": result.ProductFailed, "product_failures": result.ProductFailures, "catalog_works": result.CatalogWorks},
-		Error:       scopedNodeError(result, workStatus),
-	})
-	if err != nil {
-		return 0, 0, err
-	}
-	sourceStatus := scopedNodeStatus(result, circleRefreshIncludesSource(result.Scope))
-	sourceNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID:      "source",
-		NodeType:    "check_source_availability",
-		DisplayName: "Find available sources",
-		Position:    4,
-		Status:      sourceStatus,
-		Input:       map[string]any{"external_id": externalID, "mode": result.Mode},
-		Output:      map[string]any{"source_synced": result.SourceSynced},
-		Error:       scopedNodeError(result, sourceStatus),
-	})
-	if err != nil {
-		return 0, 0, err
-	}
-	jobNodeID := catalogNodeID
-	if result.Scope == "work" {
-		jobNodeID = workNodeID
-	} else if result.Scope == "source" {
-		jobNodeID = sourceNodeID
-	}
-	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID:       jobNodeID,
-		WorkerType:      "circle_metadata_refresh",
-		Status:          result.Status,
-		Payload:         map[string]any{"external_id": externalID, "scope": result.Scope, "mode": result.Mode, "product_mode": result.ProductMode},
-		ProgressCurrent: result.CatalogWorks,
-		ProgressTotal:   result.CatalogWorks,
-		Error:           result.Error,
-	})
-	if err != nil {
-		return 0, 0, err
-	}
-	if err := tx.Commit(); err != nil {
-		return 0, 0, err
-	}
-	return runID, jobID, nil
 }
 
 func (s *Server) replaceCircleUserTags(ctx context.Context, userID int64, partyID int64, rawTags []string) ([]voiceUserTag, error) {

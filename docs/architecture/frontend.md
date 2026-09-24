@@ -13,9 +13,9 @@ stay anchored to their triggers.
 bottom and out toward the bottom, supports Escape and outside dismissal, and
 accepts a downward drag on its handle to close. Its default layer is
 transparent so sheet content does not add a backdrop mask. The shared
-`MobileSheetHeader` and `MobileSheetBody` keep command and advanced-refresh
+`MobileSheetHeader` and `MobileSheetBody` keep command and catalog-options
 sheets on the same bordered header and compact scrolling body treatment. Mobile
-command and advanced-refresh sheets rely on sheet dismissal rather than an
+command and catalog-options sheets rely on sheet dismissal rather than an
 in-content close icon; desktop command surfaces may retain an explicit close
 action.
 

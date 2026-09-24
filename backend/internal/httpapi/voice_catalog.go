@@ -16,20 +16,11 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
-	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
-const (
-	voiceCatalogRefreshWorker   = "voice_catalog_refresh"
-	voiceCatalogRefreshWorkflow = "voice_catalog_refresh"
-	voiceCatalogSourceTimeout   = 15 * time.Minute
-	voiceCatalogRetryDelay      = 10 * time.Minute
-)
+const voiceCatalogSourceTimeout = 15 * time.Minute
 
-var (
-	errVoiceCatalogRefreshInProgress = errors.New("a voice catalog workflow is already running")
-	errVoiceCatalogNoSourcesSelected = errors.New("select at least one remote source")
-)
+var errVoiceCatalogNoSourcesSelected = errors.New("select at least one remote source")
 
 type voiceCatalogRefreshPayload struct {
 	PersonID   int64    `json:"person_id"`
@@ -44,6 +35,19 @@ type voiceCatalogRefreshRequest struct {
 	Scope     string  `json:"scope"`
 	Mode      string  `json:"mode"`
 	SourceIDs []int64 `json:"sourceIds"`
+}
+
+// voiceCatalogProgress reports catalog refresh progress to the workflow run
+// that drives it. The report callback is optional.
+type voiceCatalogProgress struct {
+	runID  int64
+	report func(phase string, detail map[string]any, current int, total int)
+}
+
+func (p voiceCatalogProgress) update(phase string, detail map[string]any, current int, total int) {
+	if p.report != nil {
+		p.report(phase, detail, current, total)
+	}
 }
 
 type voiceCatalogQueryCursor struct {
@@ -172,141 +176,63 @@ type voiceCatalogRefreshStateSnapshot struct {
 	UpdatedAt        string  `json:"updatedAt"`
 }
 
+// refreshVoiceCatalog queues the voice actor follow workflow with its new-works
+// step off, so a detail refresh and a Workflows run share one pipeline.
 func (s *Server) refreshVoiceCatalog(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
+	actor, ok := s.requirePermission(w, r, "metadata:sync")
+	if !ok {
 		return
 	}
-	var request voiceCatalogRefreshRequest
+	personID, err := parseInt64PathValue(r, "personId")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		return
+	}
+	var request creatorRefreshRequest
 	if r.Body != nil {
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil && !errors.Is(err, io.EOF) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice catalog refresh request"})
 			return
 		}
 	}
-	s.refreshVoiceCatalogResponse(w, r, true, request)
-}
-
-func (s *Server) refreshVoiceCatalogResponse(w http.ResponseWriter, r *http.Request, force bool, request voiceCatalogRefreshRequest) {
-	personID, err := parseInt64PathValue(r, "personId")
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
-		return
-	}
-	state, err := s.ensureVoiceCatalogRefresh(r.Context(), personID, request, force)
-	if err != nil {
+	if _, err := s.loadPersonName(r.Context(), personID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
-			return
-		}
-		if errors.Is(err, errVoiceCatalogRefreshInProgress) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "a voice catalog workflow is already running"})
-			return
-		}
-		if errors.Is(err, errVoiceCatalogNoSourcesSelected) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "select at least one remote source"})
 			return
 		}
 		writeError(w, err)
 		return
 	}
-	status := http.StatusOK
-	if state.Status == "queued" || state.Status == "running" {
-		status = http.StatusAccepted
+	request = request.normalized()
+	inputs := map[string]any{
+		"personId": personID, "catalogRefresh": request.CatalogRefresh, "metadataRefresh": request.MetadataRefresh, "newWorks": false,
 	}
-	writeJSON(w, status, state)
-}
-
-func (s *Server) ensureVoiceCatalogRefresh(ctx context.Context, personID int64, request voiceCatalogRefreshRequest, force bool) (voiceCatalogRefreshState, error) {
-	request = normalizeVoiceCatalogRefreshRequest(request)
-	prepared, err := s.prepareVoiceCatalogRefresh(ctx, personID, request)
-	if err != nil {
-		return voiceCatalogRefreshState{}, err
-	}
-	if prepared.State.Status == "skipped" {
-		return prepared.State, nil
-	}
-
-	s.voiceCatalogRefreshMu.Lock()
-	defer s.voiceCatalogRefreshMu.Unlock()
-	return s.ensureVoiceCatalogRefreshLocked(ctx, personID, prepared, force)
-}
-
-type voiceCatalogRefreshPreparation struct {
-	Request voiceCatalogRefreshRequest
-	Queries []string
-	Sources []remoteSourceForUse
-	State   voiceCatalogRefreshState
-}
-
-func (s *Server) prepareVoiceCatalogRefresh(ctx context.Context, personID int64, request voiceCatalogRefreshRequest) (voiceCatalogRefreshPreparation, error) {
-	prepared := voiceCatalogRefreshPreparation{Request: request, Queries: []string{}, Sources: []remoteSourceForUse{}}
-	var err error
-	if voiceCatalogRefreshIncludesRemote(request.Scope) {
-		prepared.Queries, err = s.voiceCatalogQueries(ctx, personID)
-	} else {
-		_, err = s.loadPersonName(ctx, personID)
-	}
-	if err != nil {
-		return voiceCatalogRefreshPreparation{}, err
-	}
-	prepared.State, err = s.loadVoiceCatalogRefreshState(ctx, personID)
-	if err != nil {
-		return voiceCatalogRefreshPreparation{}, err
-	}
-	if s.cfg.IsDemo() {
-		prepared.State.Status = "skipped"
-		prepared.State.Reason = "demo mode"
-		return prepared, nil
-	}
-	if voiceCatalogRefreshIncludesRemote(request.Scope) && len(prepared.Queries) == 0 {
-		prepared.State.Status = "skipped"
-		prepared.State.Reason = "voice actor has no searchable name"
-		return prepared, nil
-	}
-	if voiceCatalogRefreshIncludesRemote(request.Scope) {
-		prepared.Sources, err = s.resolveVoiceCatalogSources(ctx, request.SourceIDs)
+	if request.CatalogRefresh != "stored" {
+		sourceIDs, err := s.compatibleRemoteSourceIDs(r.Context())
 		if err != nil {
-			return voiceCatalogRefreshPreparation{}, err
+			writeError(w, err)
+			return
 		}
-		prepared.Request.SourceIDs = voiceCatalogSourceIDs(prepared.Sources)
-	}
-	return prepared, nil
-}
-
-func (s *Server) ensureVoiceCatalogRefreshLocked(ctx context.Context, personID int64, prepared voiceCatalogRefreshPreparation, force bool) (voiceCatalogRefreshState, error) {
-	request, queries, sources := prepared.Request, prepared.Queries, prepared.Sources
-
-	if active, ok, activeErr := s.activeVoiceCatalogRefresh(ctx, personID); activeErr != nil {
-		return voiceCatalogRefreshState{}, activeErr
-	} else if ok {
-		if voiceCatalogRefreshRequestsEqual(active, request) {
-			active.Queries = queries
-			active.Reason = "refresh already running"
-			return active, nil
+		if len(sourceIDs) == 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": errVoiceCatalogNoSourcesSelected.Error()})
+			return
 		}
-		return voiceCatalogRefreshState{}, errVoiceCatalogRefreshInProgress
+		inputs["sourceIds"] = sourceIDs
 	}
-
-	state, err := s.loadVoiceCatalogRefreshState(ctx, personID)
+	run, err := s.queueCreatorRefresh(r.Context(), actor, "voice_follow", inputs, func(ctx context.Context) (creatorRefreshRun, bool, error) {
+		return s.latestVoiceFollowRun(ctx, personID, true)
+	})
+	if !s.writeCreatorRefreshError(w, err) {
+		return
+	}
+	state, err := s.loadVoiceCatalogRefreshState(r.Context(), personID)
 	if err != nil {
-		return voiceCatalogRefreshState{}, err
+		writeError(w, err)
+		return
 	}
-	reason, due := "manual refresh", true
-	if voiceCatalogRefreshIncludesRemote(request.Scope) {
-		reason, due = voiceCatalogRefreshReason(state, queries, force, time.Now().UTC(), s.catalogFreshnessDays(ctx))
-	}
-	if !due {
-		state.Status = voiceCatalogIdleStatus(state)
-		state.Reason = reason
-		state.Queries = queries
-		return state, nil
-	}
-
-	payload := voiceCatalogRefreshPayload{
-		PersonID: personID, Queries: queries, Generation: state.Generation + 1,
-		Scope: request.Scope, Mode: request.Mode, SourceIDs: voiceCatalogSourceIDs(sources),
-	}
-	return s.enqueueVoiceCatalogRefresh(ctx, payload, state, reason)
+	state.Status = run.Status
+	state.RunID = run.RunID
+	writeJSON(w, http.StatusAccepted, state)
 }
 
 func normalizeVoiceCatalogRefreshRequest(request voiceCatalogRefreshRequest) voiceCatalogRefreshRequest {
@@ -344,19 +270,6 @@ func voiceCatalogRefreshIncludesMetadata(scope string) bool {
 	return scope == "all" || scope == "metadata"
 }
 
-func voiceCatalogRefreshRequestsEqual(state voiceCatalogRefreshState, request voiceCatalogRefreshRequest) bool {
-	request = normalizeVoiceCatalogRefreshRequest(request)
-	if state.Scope != request.Scope || state.Mode != request.Mode || len(state.SourceIDs) != len(request.SourceIDs) {
-		return false
-	}
-	for index := range state.SourceIDs {
-		if state.SourceIDs[index] != request.SourceIDs[index] {
-			return false
-		}
-	}
-	return true
-}
-
 func (s *Server) resolveVoiceCatalogSources(ctx context.Context, requestedIDs []int64) ([]remoteSourceForUse, error) {
 	sources, err := s.loadRemoteSourcesForAvailability(ctx)
 	if err != nil {
@@ -392,46 +305,6 @@ func voiceCatalogSourceIDs(sources []remoteSourceForUse) []int64 {
 		ids = append(ids, source.ID)
 	}
 	return ids
-}
-
-func voiceCatalogRefreshReason(state voiceCatalogRefreshState, queries []string, force bool, now time.Time, freshnessDays int) (string, bool) {
-	if force {
-		if state.LastSuccessAt == "" && state.LastAttemptAt == "" {
-			return "first pull", true
-		}
-		return "manual refresh", true
-	}
-	if !state.exists {
-		return "first pull", true
-	}
-	if !state.Complete && (state.LastStatus == "failed" || state.LastStatus == "partial") {
-		if state.LastAttemptAt != "" {
-			if attemptedAt, err := parseSQLiteTime(state.LastAttemptAt); err == nil && now.Sub(attemptedAt) < voiceCatalogRetryDelay {
-				return "recent refresh did not complete", false
-			}
-		}
-		return "previous refresh did not complete", true
-	}
-	if state.LastSuccessAt == "" {
-		return "first pull", true
-	}
-	if !equalVoiceCatalogQuerySets(state.Queries, queries) {
-		return "voice aliases changed", true
-	}
-	if syncState, _ := catalogFreshnessState(state.LastSuccessAt, state.LastAttemptAt, freshnessDays, now); syncState != catalogSyncSynced {
-		return "catalog is stale", true
-	}
-	return "catalog is fresh", false
-}
-
-func voiceCatalogIdleStatus(state voiceCatalogRefreshState) string {
-	if state.LastStatus == "" {
-		return "skipped"
-	}
-	if state.LastStatus == "succeeded" {
-		return "skipped"
-	}
-	return state.LastStatus
 }
 
 func (s *Server) voiceCatalogQueries(ctx context.Context, personID int64) ([]string, error) {
@@ -560,50 +433,17 @@ func voiceCatalogStringValue(value sql.NullString) string {
 }
 
 func (s *Server) activeVoiceCatalogRefresh(ctx context.Context, personID int64) (voiceCatalogRefreshState, bool, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT run.id, run.status, run.input_json
-		FROM workflow_run AS run
-		INNER JOIN workflow_job AS job ON job.workflow_run_id = run.id AND job.worker_type = ?
-		WHERE run.workflow_code = ? AND run.status IN ('queued', 'running')
-		ORDER BY run.id DESC
-	`, voiceCatalogRefreshWorker, voiceCatalogRefreshWorkflow)
+	run, ok, err := s.latestVoiceFollowRun(ctx, personID, true)
+	if err != nil || !ok {
+		return voiceCatalogRefreshState{}, false, err
+	}
+	state, err := s.loadVoiceCatalogRefreshState(ctx, personID)
 	if err != nil {
 		return voiceCatalogRefreshState{}, false, err
 	}
-	defer rows.Close()
-	var matchedRunID int64
-	var matchedStatus string
-	for rows.Next() {
-		var runID int64
-		var status, inputJSON string
-		if err := rows.Scan(&runID, &status, &inputJSON); err != nil {
-			return voiceCatalogRefreshState{}, false, err
-		}
-		var payload voiceCatalogRefreshPayload
-		if json.Unmarshal([]byte(inputJSON), &payload) != nil || payload.PersonID != personID {
-			continue
-		}
-		payload = normalizeVoiceCatalogRefreshPayload(payload)
-		matchedRunID = runID
-		matchedStatus = status
-		state, stateErr := s.loadVoiceCatalogRefreshState(ctx, personID)
-		if stateErr != nil {
-			return voiceCatalogRefreshState{}, false, stateErr
-		}
-		state.Status = matchedStatus
-		state.RunID = matchedRunID
-		state.Scope = payload.Scope
-		state.Mode = payload.Mode
-		state.SourceIDs = append([]int64{}, payload.SourceIDs...)
-		if voiceCatalogRefreshIncludesRemote(payload.Scope) {
-			state.Queries = append([]string{}, payload.Queries...)
-		}
-		return state, true, nil
-	}
-	if err := rows.Err(); err != nil {
-		return voiceCatalogRefreshState{}, false, err
-	}
-	return voiceCatalogRefreshState{}, false, nil
+	state.Status = run.Status
+	state.RunID = run.RunID
+	return state, true, nil
 }
 
 func normalizeVoiceCatalogRefreshPayload(payload voiceCatalogRefreshPayload) voiceCatalogRefreshPayload {
@@ -614,96 +454,6 @@ func normalizeVoiceCatalogRefreshPayload(payload voiceCatalogRefreshPayload) voi
 	payload.Mode = request.Mode
 	payload.SourceIDs = request.SourceIDs
 	return payload
-}
-
-func (s *Server) enqueueVoiceCatalogRefresh(ctx context.Context, payload voiceCatalogRefreshPayload, previous voiceCatalogRefreshState, reason string) (voiceCatalogRefreshState, error) {
-	payload = normalizeVoiceCatalogRefreshPayload(payload)
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return voiceCatalogRefreshState{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	setup, err := s.insertVoiceCatalogRefreshWorkflow(ctx, tx, payload, reason)
-	if err != nil {
-		return voiceCatalogRefreshState{}, err
-	}
-	queries := payload.Queries
-	if !setup.remote {
-		queries = previous.Queries
-	}
-	if err := persistVoiceCatalogRefreshState(ctx, tx, payload, previous, setup.runID, queries, setup.remote); err != nil {
-		return voiceCatalogRefreshState{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return voiceCatalogRefreshState{}, err
-	}
-	return queuedVoiceCatalogRefreshState(payload, previous, reason, setup.runID, queries, setup.remote), nil
-}
-
-type voiceCatalogRefreshWorkflowSetup struct {
-	runID     int64
-	remote    bool
-	jobNodeID int64
-}
-
-func (s *Server) insertVoiceCatalogRefreshWorkflow(ctx context.Context, tx *sql.Tx, payload voiceCatalogRefreshPayload, reason string) (voiceCatalogRefreshWorkflowSetup, error) {
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, voiceCatalogRefreshWorkflow, "Refresh voice catalog", "Refresh a voice actor's remote catalog and known-work metadata in one recoverable workflow.", voiceCatalogWorkflowDefinition())
-	if err != nil {
-		return voiceCatalogRefreshWorkflowSetup{}, err
-	}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, voiceCatalogRefreshWorkflow, "Refresh voice catalog", "queued", "detail_view", reason, payload, map[string]any{
-		"person_id": payload.PersonID, "generation": payload.Generation, "queries": payload.Queries,
-		"scope": payload.Scope, "mode": payload.Mode, "source_ids": payload.SourceIDs,
-	})
-	if err != nil {
-		return voiceCatalogRefreshWorkflowSetup{}, err
-	}
-	remote := voiceCatalogRefreshIncludesRemote(payload.Scope)
-	metadata := voiceCatalogRefreshIncludesMetadata(payload.Scope)
-	selectStatus := "skipped"
-	if remote {
-		selectStatus = "succeeded"
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "select", NodeType: "select_voice_aliases", DisplayName: "Select confirmed voice names", Position: 1,
-		Status: selectStatus, Input: map[string]any{"person_id": payload.PersonID}, Output: map[string]any{"queries": payload.Queries},
-	}); err != nil {
-		return voiceCatalogRefreshWorkflowSetup{}, err
-	}
-	discoverNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "discover", NodeType: "discover_remote_works", DisplayName: "Discover remote voice works", Position: 2,
-		Status: map[bool]string{true: "queued", false: "skipped"}[remote], Input: map[string]any{"queries": payload.Queries, "page_size": voiceRemotePageSize, "mode": payload.Mode, "source_ids": payload.SourceIDs},
-	})
-	if err != nil {
-		return voiceCatalogRefreshWorkflowSetup{}, err
-	}
-	for _, node := range []workflow.NodeRunSpec{
-		{NodeID: "persist", NodeType: "persist_voice_catalog", DisplayName: "Persist voice catalog", Position: 3, Status: map[bool]string{true: "queued", false: "skipped"}[remote]},
-		{NodeID: "metadata", NodeType: "sync_metadata", DisplayName: "Refresh known-work metadata", Position: 4, Status: map[bool]string{true: "queued", false: "skipped"}[metadata], Input: map[string]any{"mode": payload.Mode}},
-	} {
-		if _, err := workflow.InsertNodeRun(ctx, tx, runID, node); err != nil {
-			return voiceCatalogRefreshWorkflowSetup{}, err
-		}
-	}
-	jobNodeID := discoverNodeID
-	resourceKey := "remote:voice-catalog"
-	if !remote {
-		var metadataNodeID int64
-		if err := tx.QueryRowContext(ctx, "SELECT id FROM workflow_node_run WHERE workflow_run_id = ? AND node_id = 'metadata'", runID).Scan(&metadataNodeID); err != nil {
-			return voiceCatalogRefreshWorkflowSetup{}, err
-		}
-		jobNodeID = metadataNodeID
-		resourceKey = "metadata:provider"
-	}
-	_, err = workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: jobNodeID, WorkerType: voiceCatalogRefreshWorker, Status: "queued",
-		Priority: workflow.JobPriorityBackground, ResourceKey: resourceKey, Payload: payload,
-		Checkpoint: map[string]any{"phase": "queued", "generation": payload.Generation, "scope": payload.Scope, "mode": payload.Mode}, Recoverable: true, MaxRetries: 3,
-	})
-	if err != nil {
-		return voiceCatalogRefreshWorkflowSetup{}, err
-	}
-	return voiceCatalogRefreshWorkflowSetup{runID: runID, remote: remote, jobNodeID: jobNodeID}, nil
 }
 
 func persistVoiceCatalogRefreshState(ctx context.Context, tx *sql.Tx, payload voiceCatalogRefreshPayload, previous voiceCatalogRefreshState, runID int64, queries []string, remote bool) error {
@@ -745,172 +495,31 @@ func persistVoiceCatalogRefreshState(ctx context.Context, tx *sql.Tx, payload vo
 	return nil
 }
 
-func queuedVoiceCatalogRefreshState(payload voiceCatalogRefreshPayload, previous voiceCatalogRefreshState, reason string, runID int64, queries []string, remote bool) voiceCatalogRefreshState {
-	result := voiceCatalogRefreshState{
-		Status: "queued", Reason: reason, LastStatus: "queued", Generation: payload.Generation, RunID: runID,
-		Queries: queries, Sources: previous.Sources, LastAttemptAt: time.Now().UTC().Format(time.RFC3339),
-		Scope: payload.Scope, Mode: payload.Mode, SourceIDs: append([]int64{}, payload.SourceIDs...),
-	}
-	if !remote {
-		result.LastSuccessAt = previous.LastSuccessAt
-		result.Complete = previous.Complete
-		result.PagesFetched = previous.PagesFetched
-		result.CatalogWorks = previous.CatalogWorks
-	}
-	return result
-}
-
-func voiceCatalogWorkflowDefinition() map[string]any {
-	return map[string]any{"nodes": []map[string]string{
-		{"id": "select", "type": "select_voice_aliases", "displayName": "Select confirmed voice names"},
-		{"id": "discover", "type": "discover_remote_works", "displayName": "Discover remote voice works"},
-		{"id": "persist", "type": "persist_voice_catalog", "displayName": "Persist voice catalog"},
-		{"id": "metadata", "type": "sync_metadata", "displayName": "Refresh known-work metadata"},
-	}}
-}
-
-func (s *Server) executeVoiceCatalogRefreshJob(ctx context.Context, job workflowJobRecord) (runErr error) {
-	var payload voiceCatalogRefreshPayload
-	defer func() {
-		if runErr == nil || payload.PersonID <= 0 || payload.Generation <= 0 {
-			return
-		}
-		_ = s.markVoiceCatalogRefreshFailed(context.WithoutCancel(ctx), payload, job.RunID)
-	}()
-	previous, nodeIDs, err := s.prepareVoiceCatalogRefreshJob(ctx, job, &payload)
-	if err != nil {
-		return s.failVoiceCatalogRefreshJob(ctx, job, err)
-	}
-	execution, err := s.runVoiceCatalogRefreshPhases(ctx, job, payload, previous, nodeIDs)
-	if err != nil {
-		return s.failVoiceCatalogRefreshJob(ctx, job, err)
-	}
-	active, err := s.voiceCatalogRefreshRunActive(ctx, payload, job.RunID)
-	if err != nil {
-		return s.failVoiceCatalogRefreshJob(ctx, job, err)
-	}
-	if !active {
-		return nil
-	}
-
-	catalogWorks, err := s.countVoiceCatalogWorks(ctx, payload.PersonID)
-	if err != nil {
-		return s.failVoiceCatalogRefreshJob(ctx, job, err)
-	}
-	if err := s.finishVoiceCatalogRefreshJob(ctx, job, nodeIDs, payload, previous, execution.status, execution.remoteStatus, execution.catalogComplete, execution.sourceStatuses, execution.pagesFetched, catalogWorks, execution.metadata); err != nil {
-		return s.failVoiceCatalogRefreshJob(ctx, job, err)
-	}
-	return retryableVoiceCatalogRefreshError(execution.status, execution.results)
-}
-
-func (s *Server) failVoiceCatalogRefreshJob(ctx context.Context, job workflowJobRecord, err error) error {
-	_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
-	return err
-}
-
-func (s *Server) prepareVoiceCatalogRefreshJob(ctx context.Context, job workflowJobRecord, payload *voiceCatalogRefreshPayload) (voiceCatalogRefreshState, map[string]int64, error) {
-	if err := decodeWorkflowJobPayload(job.PayloadJSON, payload); err != nil {
-		return voiceCatalogRefreshState{}, nil, err
-	}
-	*payload = normalizeVoiceCatalogRefreshPayload(*payload)
-	if payload.PersonID <= 0 || payload.Generation <= 0 || (voiceCatalogRefreshIncludesRemote(payload.Scope) && len(payload.Queries) == 0) {
-		return voiceCatalogRefreshState{}, nil, errors.New("voice catalog refresh payload is incomplete")
-	}
-	if voiceCatalogRefreshIncludesRemote(payload.Scope) {
-		if _, err := s.loadPersonName(ctx, payload.PersonID); err != nil {
-			return voiceCatalogRefreshState{}, nil, err
-		}
-	}
-	previous, err := s.loadVoiceCatalogRefreshState(ctx, payload.PersonID)
-	if err != nil {
-		return voiceCatalogRefreshState{}, nil, err
-	}
-	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, job.RunID)
-	if err != nil {
-		return voiceCatalogRefreshState{}, nil, err
-	}
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE voice_catalog_refresh_state
-		SET last_status = 'running', last_run_id = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE person_id = ? AND generation = ?
-	`, job.RunID, payload.PersonID, payload.Generation); err != nil {
-		return voiceCatalogRefreshState{}, nil, err
-	}
-	return previous, nodeIDs, nil
-}
-
-type voiceCatalogRefreshExecution struct {
-	results         []voiceCatalogSourceResult
-	sourceStatuses  []voiceCatalogSourceStatus
-	pagesFetched    int
-	catalogComplete bool
-	status          string
-	remoteStatus    string
-	metadata        voiceCatalogMetadataResult
-}
-
-func (s *Server) runVoiceCatalogRefreshPhases(ctx context.Context, job workflowJobRecord, payload voiceCatalogRefreshPayload, previous voiceCatalogRefreshState, nodeIDs map[string]int64) (voiceCatalogRefreshExecution, error) {
-	execution := voiceCatalogRefreshExecution{
-		results: []voiceCatalogSourceResult{}, sourceStatuses: append([]voiceCatalogSourceStatus{}, previous.Sources...),
-		catalogComplete: previous.Complete, status: "succeeded", remoteStatus: "skipped",
-	}
-	var err error
-	if voiceCatalogRefreshIncludesRemote(payload.Scope) {
-		execution.results, execution.sourceStatuses, execution.pagesFetched, execution.catalogComplete, execution.remoteStatus, err = s.refreshVoiceCatalogSources(ctx, job, payload, previous)
-		if err != nil {
-			return execution, err
-		}
-		execution.status = execution.remoteStatus
-	}
-	if voiceCatalogRefreshIncludesMetadata(payload.Scope) {
-		execution.metadata, err = s.refreshVoiceCatalogMetadata(ctx, job, nodeIDs, payload, len(execution.results))
-		if err != nil {
-			return execution, err
-		}
-		if execution.metadata.Failed > 0 && execution.status == "succeeded" {
-			execution.status = "partial"
-		}
-	}
-	return execution, nil
-}
-
-func retryableVoiceCatalogRefreshError(status string, results []voiceCatalogSourceResult) error {
-	if status != "failed" {
-		return nil
-	}
-	for _, result := range results {
-		if result.Err != nil && isRetryableWorkflowError(result.Err) {
-			return result.Err
-		}
-	}
-	return nil
-}
-
-func (s *Server) refreshVoiceCatalogSources(ctx context.Context, job workflowJobRecord, payload voiceCatalogRefreshPayload, previous voiceCatalogRefreshState) ([]voiceCatalogSourceResult, []voiceCatalogSourceStatus, int, bool, string, error) {
+func (s *Server) refreshVoiceCatalogSources(ctx context.Context, progress voiceCatalogProgress, payload voiceCatalogRefreshPayload, previous voiceCatalogRefreshState) ([]voiceCatalogSourceResult, []voiceCatalogSourceStatus, int, bool, string, error) {
 	sources, err := s.resolveVoiceCatalogSources(ctx, payload.SourceIDs)
 	if err != nil {
 		return nil, nil, 0, false, "failed", err
 	}
-	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "discovering", map[string]any{
+	progress.update("discovering", map[string]any{
 		"personId": payload.PersonID, "sources": len(sources), "queries": len(payload.Queries), "mode": payload.Mode,
 	}, 0, len(sources))
-	results := s.discoverVoiceCatalogSources(ctx, job.RunID, sources, payload, previous.Sources)
-	active, err := s.voiceCatalogRefreshRunActive(ctx, payload, job.RunID)
+	results := s.discoverVoiceCatalogSources(ctx, progress.runID, sources, payload, previous.Sources)
+	active, err := s.voiceCatalogRefreshRunActive(ctx, payload, progress.runID)
 	if err != nil {
 		return nil, nil, 0, false, "failed", err
 	}
 	if !active {
 		return results, previous.Sources, 0, previous.Complete, "succeeded", nil
 	}
-	progress, err := s.persistVoiceCatalogRefreshResults(ctx, job, payload, results)
+	persisted, err := s.persistVoiceCatalogRefreshResults(ctx, progress, payload, results)
 	if err != nil {
 		return nil, nil, 0, false, "failed", err
 	}
-	if !progress.Active {
-		return results, previous.Sources, progress.PagesFetched, previous.Complete, "succeeded", nil
+	if !persisted.Active {
+		return results, previous.Sources, persisted.PagesFetched, previous.Complete, "succeeded", nil
 	}
-	status := voiceCatalogSourceRefreshStatus(progress.EligibleSources, progress.SuccessfulSources)
-	return results, mergeVoiceCatalogSourceStatuses(previous.Sources, progress.Statuses), progress.PagesFetched, progress.SuccessfulSources == progress.EligibleSources, status, nil
+	status := voiceCatalogSourceRefreshStatus(persisted.EligibleSources, persisted.SuccessfulSources)
+	return results, mergeVoiceCatalogSourceStatuses(previous.Sources, persisted.Statuses), persisted.PagesFetched, persisted.SuccessfulSources == persisted.EligibleSources, status, nil
 }
 
 func (s *Server) discoverVoiceCatalogSources(ctx context.Context, runID int64, sources []remoteSourceForUse, payload voiceCatalogRefreshPayload, previous []voiceCatalogSourceStatus) []voiceCatalogSourceResult {
@@ -941,10 +550,10 @@ type voiceCatalogSourceRefreshProgress struct {
 	Active            bool
 }
 
-func (s *Server) persistVoiceCatalogRefreshResults(ctx context.Context, job workflowJobRecord, payload voiceCatalogRefreshPayload, results []voiceCatalogSourceResult) (voiceCatalogSourceRefreshProgress, error) {
+func (s *Server) persistVoiceCatalogRefreshResults(ctx context.Context, reporter voiceCatalogProgress, payload voiceCatalogRefreshPayload, results []voiceCatalogSourceResult) (voiceCatalogSourceRefreshProgress, error) {
 	progress := voiceCatalogSourceRefreshProgress{Statuses: make([]voiceCatalogSourceStatus, 0, len(results)), Active: true}
 	for index := range results {
-		active, err := s.voiceCatalogRefreshRunActive(ctx, payload, job.RunID)
+		active, err := s.voiceCatalogRefreshRunActive(ctx, payload, reporter.runID)
 		if err != nil {
 			return voiceCatalogSourceRefreshProgress{}, err
 		}
@@ -967,11 +576,11 @@ func (s *Server) persistVoiceCatalogRefreshResults(ctx context.Context, job work
 			}
 		}
 		if result.Err != nil {
-			slog.Warn("voice catalog source refresh failed", "run_id", job.RunID, "source_id", result.Source.ID, "error", result.Err)
+			slog.Warn("voice catalog source refresh failed", "run_id", reporter.runID, "source_id", result.Source.ID, "error", result.Err)
 		}
 		progress.PagesFetched += result.Status.Pages
 		progress.Statuses = append(progress.Statuses, result.Status)
-		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "persisting", map[string]any{
+		reporter.update("persisting", map[string]any{
 			"completedSources": index + 1, "sources": len(results), "pagesFetched": progress.PagesFetched,
 		}, index+1, len(results))
 	}
@@ -1023,31 +632,23 @@ func mergeVoiceCatalogSourceStatuses(previous []voiceCatalogSourceStatus, update
 	return merged
 }
 
-func (s *Server) refreshVoiceCatalogMetadata(ctx context.Context, job workflowJobRecord, nodeIDs map[string]int64, payload voiceCatalogRefreshPayload, remoteProgress int) (voiceCatalogMetadataResult, error) {
-	targets, err := s.loadVoiceCatalogMetadataTargets(ctx, payload.PersonID, payload.Mode)
+// refreshVoiceCatalogMetadata synchronizes known works of a voice actor's
+// catalog. Incremental mode selects works without a provider snapshot; full
+// mode selects every known work. Catalog-only rows are never materialized.
+func (s *Server) refreshVoiceCatalogMetadata(ctx context.Context, progress voiceCatalogProgress, personID int64, mode string) (voiceCatalogMetadataResult, error) {
+	targets, err := s.loadVoiceCatalogMetadataTargets(ctx, personID, mode)
 	if err != nil {
 		return voiceCatalogMetadataResult{}, err
 	}
 	result := voiceCatalogMetadataResult{Targeted: len(targets)}
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE workflow_node_run
-		SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP)
-		WHERE id = ?
-	`, nodeIDs["metadata"]); err != nil {
-		return voiceCatalogMetadataResult{}, err
-	}
 	for index, target := range targets {
-		active, activeErr := s.voiceCatalogRefreshRunActive(ctx, payload, job.RunID)
-		if activeErr != nil {
-			return voiceCatalogMetadataResult{}, activeErr
-		}
-		if !active {
-			return result, nil
+		if err := s.ensureWorkflowRunActive(ctx, progress.runID); err != nil {
+			return result, err
 		}
 		family, syncErr := s.syncWorkMetadataFamily(ctx, target.FamilyCode)
 		if syncErr != nil {
 			result.Failed++
-			slog.Warn("voice catalog metadata refresh failed", "run_id", job.RunID, "code", target.FamilyCode, "error", syncErr)
+			slog.Warn("voice catalog metadata refresh failed", "run_id", progress.runID, "code", target.FamilyCode, "error", syncErr)
 		} else if len(family.Failures) > 0 {
 			result.Failed++
 		} else if len(family.SyncedCodes) > 0 {
@@ -1055,11 +656,83 @@ func (s *Server) refreshVoiceCatalogMetadata(ctx context.Context, job workflowJo
 		} else {
 			result.Skipped++
 		}
-		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "syncing_metadata", map[string]any{
-			"completedWorks": index + 1, "targetWorks": len(targets), "sourceProgress": remoteProgress,
-		}, remoteProgress+index+1, remoteProgress+len(targets))
+		progress.update("syncing_metadata", map[string]any{"completedWorks": index + 1, "targetWorks": len(targets)}, index+1, len(targets))
 	}
 	return result, nil
+}
+
+// refreshVoiceCatalogRemote runs one catalog generation for a voice actor
+// inside the workflow run that requested it and persists its outcome.
+func (s *Server) refreshVoiceCatalogRemote(ctx context.Context, progress voiceCatalogProgress, personID int64, sourceIDs []int64, mode string) (voiceCatalogRefreshOutcome, error) {
+	queries, err := s.voiceCatalogQueries(ctx, personID)
+	if err != nil {
+		return voiceCatalogRefreshOutcome{}, err
+	}
+	if len(queries) == 0 {
+		return voiceCatalogRefreshOutcome{status: "skipped"}, nil
+	}
+	sources, err := s.resolveVoiceCatalogSources(ctx, sourceIDs)
+	if err != nil {
+		return voiceCatalogRefreshOutcome{}, err
+	}
+	previous, err := s.loadVoiceCatalogRefreshState(ctx, personID)
+	if err != nil {
+		return voiceCatalogRefreshOutcome{}, err
+	}
+	payload := normalizeVoiceCatalogRefreshPayload(voiceCatalogRefreshPayload{
+		PersonID: personID, Queries: queries, Generation: previous.Generation + 1,
+		Scope: "remote", Mode: mode, SourceIDs: voiceCatalogSourceIDs(sources),
+	})
+	if err := s.startVoiceCatalogGeneration(ctx, payload, previous, progress.runID); err != nil {
+		return voiceCatalogRefreshOutcome{}, err
+	}
+	_, statuses, pages, complete, remoteStatus, err := s.refreshVoiceCatalogSources(ctx, progress, payload, previous)
+	if err != nil {
+		_ = s.markVoiceCatalogRefreshFailed(context.WithoutCancel(ctx), payload, progress.runID)
+		return voiceCatalogRefreshOutcome{}, err
+	}
+	active, err := s.voiceCatalogRefreshRunActive(ctx, payload, progress.runID)
+	if err != nil {
+		return voiceCatalogRefreshOutcome{}, err
+	}
+	if !active {
+		return voiceCatalogRefreshOutcome{status: "cancelled"}, nil
+	}
+	catalogWorks, err := s.countVoiceCatalogWorks(ctx, personID)
+	if err != nil {
+		return voiceCatalogRefreshOutcome{}, err
+	}
+	outcome, err := prepareVoiceCatalogRefreshOutcome(payload, previous, remoteStatus, remoteStatus, complete, statuses, pages, catalogWorks, voiceCatalogMetadataResult{})
+	if err != nil {
+		return voiceCatalogRefreshOutcome{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return voiceCatalogRefreshOutcome{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := persistVoiceCatalogRefreshOutcome(ctx, tx, progress.runID, payload, outcome); err != nil {
+		return voiceCatalogRefreshOutcome{}, err
+	}
+	return outcome, tx.Commit()
+}
+
+func (s *Server) startVoiceCatalogGeneration(ctx context.Context, payload voiceCatalogRefreshPayload, previous voiceCatalogRefreshState, runID int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := persistVoiceCatalogRefreshState(ctx, tx, payload, previous, runID, payload.Queries, true); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE voice_catalog_refresh_state SET last_status = 'running', updated_at = CURRENT_TIMESTAMP
+		WHERE person_id = ? AND generation = ?
+	`, payload.PersonID, payload.Generation); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Server) loadVoiceCatalogMetadataTargets(ctx context.Context, personID int64, mode string) ([]voiceCatalogMetadataTarget, error) {
@@ -1959,44 +1632,6 @@ type voiceCatalogRefreshOutcome struct {
 	summary           map[string]any
 }
 
-func (s *Server) finishVoiceCatalogRefreshJob(
-	ctx context.Context,
-	job workflowJobRecord,
-	nodeIDs map[string]int64,
-	payload voiceCatalogRefreshPayload,
-	previous voiceCatalogRefreshState,
-	status string,
-	remoteStatus string,
-	catalogComplete bool,
-	sourceStatuses []voiceCatalogSourceStatus,
-	pagesFetched int,
-	catalogWorks int,
-	metadata voiceCatalogMetadataResult,
-) error {
-	outcome, err := prepareVoiceCatalogRefreshOutcome(
-		payload, previous, status, remoteStatus, catalogComplete,
-		sourceStatuses, pagesFetched, catalogWorks, metadata,
-	)
-	if err != nil {
-		return err
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := persistVoiceCatalogRefreshOutcome(ctx, tx, job, payload, outcome); err != nil {
-		return err
-	}
-	if err := finishVoiceCatalogRefreshNodes(ctx, tx, nodeIDs, payload, outcome); err != nil {
-		return err
-	}
-	if err := finishVoiceCatalogWorkflow(ctx, tx, job, payload, outcome); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
 func prepareVoiceCatalogRefreshOutcome(
 	payload voiceCatalogRefreshPayload,
 	previous voiceCatalogRefreshState,
@@ -2064,7 +1699,7 @@ func prepareVoiceCatalogRefreshOutcome(
 func persistVoiceCatalogRefreshOutcome(
 	ctx context.Context,
 	tx *sql.Tx,
-	job workflowJobRecord,
+	runID int64,
 	payload voiceCatalogRefreshPayload,
 	outcome voiceCatalogRefreshOutcome,
 ) error {
@@ -2090,106 +1725,9 @@ func persistVoiceCatalogRefreshOutcome(
 			metadata_queued = ?,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE person_id = ? AND generation = ?
-	`, outcome.sourceJSON, remoteSucceeded, time.Now().UTC().Format(time.RFC3339), outcome.status, job.RunID, outcome.lastError,
+	`, outcome.sourceJSON, remoteSucceeded, time.Now().UTC().Format(time.RFC3339), outcome.status, runID, outcome.lastError,
 		complete, outcome.pagesFetched, outcome.catalogWorks, outcome.metadataProcessed, payload.PersonID, payload.Generation)
 	return err
-}
-
-func finishVoiceCatalogRefreshNodes(
-	ctx context.Context,
-	tx *sql.Tx,
-	nodeIDs map[string]int64,
-	payload voiceCatalogRefreshPayload,
-	outcome voiceCatalogRefreshOutcome,
-) error {
-	if outcome.remoteScope {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE workflow_node_run
-			SET status = ?, output_json = ?, error_message = ?,
-				started_at = COALESCE(started_at, CURRENT_TIMESTAMP), finished_at = CURRENT_TIMESTAMP
-			WHERE id = ?
-		`, outcome.remoteStatus, mustJSON(map[string]any{
-			"sources": outcome.sourceStatuses, "pages_fetched": outcome.pagesFetched, "mode": payload.Mode,
-		}), outcome.remoteError, nodeIDs["discover"]); err != nil {
-			return err
-		}
-		persistStatus := outcome.remoteStatus
-		if outcome.remoteStatus == "failed" {
-			persistStatus = "skipped"
-		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE workflow_node_run
-			SET status = ?, output_json = ?, error_message = ?,
-				started_at = COALESCE(started_at, CURRENT_TIMESTAMP), finished_at = CURRENT_TIMESTAMP
-			WHERE id = ?
-		`, persistStatus, mustJSON(map[string]any{
-			"catalog_works": outcome.catalogWorks, "generation": payload.Generation,
-		}), outcome.remoteError, nodeIDs["persist"]); err != nil {
-			return err
-		}
-	}
-	if outcome.metadataScope {
-		metadataStatus := "succeeded"
-		if outcome.metadata.Failed > 0 {
-			metadataStatus = "partial"
-		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE workflow_node_run
-			SET status = ?, output_json = ?, error_message = ?,
-				started_at = COALESCE(started_at, CURRENT_TIMESTAMP), finished_at = CURRENT_TIMESTAMP
-			WHERE id = ?
-		`, metadataStatus, mustJSON(map[string]any{
-			"targeted": outcome.metadata.Targeted, "synced": outcome.metadata.Synced,
-			"skipped": outcome.metadata.Skipped, "failed": outcome.metadata.Failed, "mode": payload.Mode,
-		}), outcome.metadataError, nodeIDs["metadata"]); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func finishVoiceCatalogWorkflow(
-	ctx context.Context,
-	tx *sql.Tx,
-	job workflowJobRecord,
-	payload voiceCatalogRefreshPayload,
-	outcome voiceCatalogRefreshOutcome,
-) error {
-	jobStatus := "succeeded"
-	if outcome.status == "failed" {
-		jobStatus = "failed"
-	}
-	remoteProgress := 0
-	if outcome.remoteScope {
-		remoteProgress = len(payload.SourceIDs)
-	}
-	progressCurrent := remoteProgress + outcome.metadataProcessed
-	progressTotal := remoteProgress
-	if outcome.metadataScope {
-		progressTotal += outcome.metadata.Targeted
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE workflow_job
-		SET status = ?, progress_current = ?, progress_total = ?, error_message = ?,
-			locked_by = '', locked_at = NULL, heartbeat_at = NULL,
-			checkpoint_json = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, jobStatus, progressCurrent, progressTotal, outcome.lastError,
-		mustJSON(map[string]any{"phase": "completed", "detail": outcome.summary, "progressCurrent": progressCurrent, "progressTotal": progressTotal}), job.ID); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?
-	`, outcome.status, mustJSON(outcome.summary), job.RunID); err != nil {
-		return err
-	}
-	if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
-		NodeRunID: job.NodeRunID, JobID: job.ID, Level: eventLevelForWorkflowStatus(outcome.status),
-		Type: "voice_catalog_refresh.completed", Message: "Voice catalog refresh " + outcome.status, Detail: outcome.summary,
-	}); err != nil {
-		return err
-	}
-	return nil
 }
 
 // loadVoiceCatalogMatches returns the persisted source catalog, including

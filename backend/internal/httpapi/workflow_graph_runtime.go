@@ -37,7 +37,10 @@ type graphPortValue struct {
 }
 
 type graphNodeExecution struct {
-	Outputs     map[string]graphPortValue
+	Outputs map[string]graphPortValue
+	// Summary adds counts to the node output for nodes whose work has no
+	// downstream port, such as metadata refresh or source checks.
+	Summary     map[string]any
 	Partial     bool
 	ChildRunIDs []int64
 	Pending     *graphPendingExecution
@@ -164,7 +167,7 @@ func (s *Server) executeWorkflowGraphRuntimeNode(ctx context.Context, job workfl
 	if execution.Outputs == nil {
 		execution.Outputs = map[string]graphPortValue{}
 	}
-	if err := s.completeWorkflowGraphNode(ctx, job, nodeRunID, node, status, execution.Outputs); err != nil {
+	if err := s.completeWorkflowGraphNode(ctx, job, nodeRunID, node, status, execution.Outputs, execution.Summary); err != nil {
 		return false, err
 	}
 	runtime.checkpoint.Outputs[nodeID] = execution.Outputs
@@ -212,7 +215,11 @@ func (s *Server) startWorkflowGraphNode(ctx context.Context, job workflowJobReco
 	return tx.Commit()
 }
 
-func (s *Server) completeWorkflowGraphNode(ctx context.Context, job workflowJobRecord, nodeRunID int64, node workflowGraphNode, status string, outputs map[string]graphPortValue) error {
+func (s *Server) completeWorkflowGraphNode(ctx context.Context, job workflowJobRecord, nodeRunID int64, node workflowGraphNode, status string, outputs map[string]graphPortValue, summary map[string]any) error {
+	output := graphPortValuesSummary(outputs)
+	for key, value := range summary {
+		output[key] = value
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -222,7 +229,7 @@ func (s *Server) completeWorkflowGraphNode(ctx context.Context, job workflowJobR
 		UPDATE workflow_node_run
 		SET status = ?, output_json = ?, error_message = '', finished_at = CURRENT_TIMESTAMP
 		WHERE id = ?
-	`, status, mustJSON(graphPortValuesSummary(outputs)), nodeRunID); err != nil {
+	`, status, mustJSON(output), nodeRunID); err != nil {
 		return err
 	}
 	level := "info"
@@ -513,8 +520,10 @@ func publicWorkflowGraphError(nodeType string) string {
 		return "circle catalog request failed"
 	case "series_catalog":
 		return "series catalog query failed"
-	case "voice_source_works", "check_source_availability", "track_works":
+	case "voice_catalog", "circle_sources", "check_source_availability", "track_works":
 		return "remote source operation failed"
+	case "circle_metadata", "voice_metadata":
+		return "metadata refresh failed"
 	case "fetch_works":
 		return "fetch planning or submission failed"
 	case "tag_works":

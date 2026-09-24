@@ -227,3 +227,77 @@ describe("presetWorkflowModel", () => {
     expect(values.maxWorks).toBe("25");
   });
 });
+
+describe("preset refresh steps", () => {
+  const circleWithSteps: WorkflowPreset = {
+    ...circleFollow,
+    parameters: [
+      ...circleFollow.parameters.slice(0, 2),
+      {
+        key: "metadataRefresh",
+        kind: "select",
+        group: "metadata",
+        required: false,
+        default: "off",
+        options: ["off", "missing", "all"],
+      },
+      { key: "checkSourceIds", kind: "source_ids", group: "sources", required: false },
+      { key: "newWorks", kind: "boolean", group: "follow", required: false, default: true },
+      ...circleFollow.parameters.slice(2),
+    ],
+  };
+
+  it("sends only the refresh steps when new works are off", () => {
+    const values = {
+      ...presetDefaultValues(circleWithSteps),
+      circleId: "RG12345",
+      newWorks: "false",
+      metadataRefresh: "all",
+      [presetOptionalFlagKey("checkSourceIds")]: "true",
+      checkSourceIds: "11,12",
+    };
+    expect(presetVisibleParameters(circleWithSteps, values).map((parameter) => parameter.key)).toEqual([
+      "circleId",
+      "catalogRefresh",
+      "metadataRefresh",
+      "checkSourceIds",
+      "newWorks",
+    ]);
+    expect(presetInputsPayload(circleWithSteps, values)).toEqual({
+      circleId: "RG12345",
+      catalogRefresh: "incremental",
+      metadataRefresh: "all",
+      checkSourceIds: [11, 12],
+      newWorks: false,
+    });
+    expect(presetBlockers(circleWithSteps, values, { canFetch: false, automated: false })).toEqual([]);
+  });
+
+  it("omits a switched-off source check and blocks a run with nothing to do", () => {
+    const values = {
+      ...presetDefaultValues(circleWithSteps),
+      circleId: "RG12345",
+      catalogRefresh: "stored",
+      newWorks: "false",
+      checkSourceIds: "11",
+    };
+    expect(presetInputsPayload(circleWithSteps, values)).not.toHaveProperty("checkSourceIds");
+    expect(presetBlockers(circleWithSteps, values, { canFetch: false, automated: false })).toEqual([
+      { kind: "no_steps" },
+    ]);
+    const emptyCheck = { ...values, [presetOptionalFlagKey("checkSourceIds")]: "true", checkSourceIds: "" };
+    expect(presetBlockers(circleWithSteps, emptyCheck, { canFetch: false, automated: false })).toEqual([
+      { kind: "sources_required", key: "checkSourceIds" },
+    ]);
+  });
+
+  it("restores a stored source check as switched on", () => {
+    const values = presetValuesFromInputs(circleWithSteps, {
+      circleId: "RG12345",
+      checkSourceIds: [11],
+      newWorks: false,
+    });
+    expect(values[presetOptionalFlagKey("checkSourceIds")]).toBe("true");
+    expect(values.newWorks).toBe("false");
+  });
+});

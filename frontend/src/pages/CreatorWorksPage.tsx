@@ -1,7 +1,8 @@
 import {
+  ArrowUpRight,
   ChevronLeft,
   ChevronRight,
-  Cloud,
+  CircleAlert,
   ExternalLink,
   FileAudio,
   GitFork,
@@ -10,15 +11,15 @@ import {
   Heart,
   ListChecks,
   Loader2,
-  MoreHorizontal,
   Plus,
   RefreshCw,
+  Rss,
   Search,
   SlidersHorizontal,
   Tags,
   Trash2,
 } from "lucide-react";
-import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -39,6 +40,7 @@ import {
   creatorCollectionClassName,
 } from "@/components/creator/CreatorCard";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
+import { CreatorActionMenu } from "@/components/creator/CreatorActionMenu";
 import { CreatorDetailHeader } from "@/components/creator/CreatorDetailHeader";
 import { CreatorListToolbar } from "@/components/creator/CreatorListToolbar";
 import { CatalogWorkToolbar } from "@/components/creator/CatalogWorkToolbar";
@@ -46,7 +48,7 @@ import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCol
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
 import { VoiceWorkOptionsSheet, type VoiceWorkFilter } from "@/pages/VoiceWorkOptionsSheet";
-import { VoiceAdvancedRefreshSheet, isVoiceCatalogSourceSelectable } from "@/pages/VoiceAdvancedRefreshSheet";
+import { openWorkflowPath, workflowActivityRunPath, workflowRunFormPath } from "@/features/workflows/workflowLinks";
 import { useAuth } from "@/auth/AuthProvider";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
@@ -90,7 +92,7 @@ import {
   type VoiceAlias,
   type VoiceAliasCandidate,
   type VoiceCatalogRefreshState,
-  type VoiceCatalogRefreshRequest,
+  type CreatorRefreshRequest,
   type VoiceDetail,
   type VoiceKnownWork,
   type VoiceMergeReview,
@@ -446,7 +448,6 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
   const [remoteMatches, setRemoteMatches] = useState<VoiceRemoteSourceSet[]>([]);
   const [catalogRefresh, setCatalogRefresh] = useState<VoiceCatalogRefreshState | null>(null);
   const [isRemoteLoading, setIsRemoteLoading] = useState(false);
-  const [remoteError, setRemoteError] = useState("");
   usePageHeaderBack({
     label: voiceReturnLabel(mobileNavigationLayout),
     title: detail?.displayName,
@@ -464,9 +465,6 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const advancedActionRef = useRef<HTMLButtonElement | null>(null);
-  const advancedPanelID = useId();
   const loadedPersonID = useRef<number | null>(null);
   const loadedCatalogPersonID = useRef<number | null>(null);
 
@@ -474,11 +472,9 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
     if (!active || loadedPersonID.current === personId) return;
     const controller = new AbortController();
     setIsLoading(true);
-    setAdvancedOpen(false);
     setWorkOptionsOpen(false);
     setRemoteMatches([]);
     setCatalogRefresh(null);
-    setRemoteError("");
     setNotFound(false);
     void (async () => {
       try {
@@ -518,7 +514,6 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
 
   const loadRemoteMatches = async (notify = false) => {
     setIsRemoteLoading(true);
-    setRemoteError("");
     try {
       const result = await api.getVoiceRemoteMatches(personId);
       setRemoteMatches(result.remoteMatches);
@@ -536,9 +531,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
         else toast.success(message);
       }
     } catch (error) {
-      const fallback = t("errors.unavailable");
-      setRemoteError(fallback);
-      toast.notify(toastFromError(error, fallback));
+      toast.notify(toastFromError(error, t("errors.unavailable")));
     } finally {
       setIsRemoteLoading(false);
     }
@@ -552,7 +545,6 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
     let cancelled = false;
     const loadPersistedCatalog = async () => {
       setIsRemoteLoading(true);
-      setRemoteError("");
       try {
         const persisted = await api.getVoiceRemoteMatches(personId, controller.signal);
         if (cancelled) return;
@@ -561,8 +553,6 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
         setCatalogRefresh(persisted.refresh);
       } catch (error) {
         if (cancelled) return;
-        const fallback = t("errors.unavailable");
-        setRemoteError(fallback);
         toast.notify(toastFromError(error, t("errors.unavailable")));
       } finally {
         if (!cancelled) setIsRemoteLoading(false);
@@ -589,6 +579,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
         setRemoteMatches(result.remoteMatches);
         const stillActive = result.refresh.status === "queued" || result.refresh.status === "running";
         if (!stillActive) {
+          notifyRefreshSettled(result.refresh);
           try {
             const summary = await api.getVoiceSummary(personId);
             if (!cancelled) {
@@ -599,8 +590,8 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
           }
         }
         if (!cancelled) setCatalogRefresh(result.refresh);
-      } catch (error) {
-        if (!cancelled) setRemoteError(t("errors.unavailable"));
+      } catch {
+        // A failed poll keeps the known state; the next tick retries.
       } finally {
         requestRunning = false;
       }
@@ -612,48 +603,65 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
     };
   }, [active, catalogRefresh?.runId, catalogRefreshActive, personId]);
 
-  const refreshVoiceCatalog = async (request: VoiceCatalogRefreshRequest, queuedMessage: string) => {
+  const canOpenWorkflows = auth.hasPermission("workflows:run") && !auth.demoMode;
+  const openRefreshRun = (runId: number) => openWorkflowPath(workflowActivityRunPath(runId));
+  const runAction = (runId?: number) =>
+    canOpenWorkflows && runId ? { actionLabel: t("nav.activity"), onAction: () => openRefreshRun(runId) } : {};
+  const notifyRefreshSettled = (refresh: VoiceCatalogRefreshState) => {
+    const failed = refresh.status === "failed";
+    toast.notify({
+      kind: failed ? "error" : refresh.status === "partial" ? "warning" : "success",
+      message: failed ? t("creatorBrowse.voiceRefreshFailed") : t("creatorBrowse.voiceRefreshFinished"),
+      ...runAction(refresh.runId),
+    });
+  };
+
+  const refreshVoiceCatalog = async (request: CreatorRefreshRequest, queuedMessage: string) => {
     if (!canForceRefreshCatalog) {
       await loadRemoteMatches(true);
       return;
     }
     setIsRemoteLoading(true);
-    setRemoteError("");
     try {
       const refresh = await api.refreshVoiceCatalog(personId, request);
       setCatalogRefresh(refresh);
-      toast.info(
-        refresh.status === "queued" || refresh.status === "running"
-          ? queuedMessage
-          : t("creatorBrowse.voiceCatalogCurrent"),
-      );
+      const queued = refresh.status === "queued" || refresh.status === "running";
+      toast.notify({
+        kind: "info",
+        message: queued ? queuedMessage : t("creatorBrowse.voiceCatalogCurrent"),
+        ...(queued ? runAction(refresh.runId) : {}),
+      });
     } catch (error) {
-      setRemoteError(t("creatorBrowse.voiceCatalogRefreshFailed"));
-      toast.notify(toastFromError(error, t("creatorBrowse.voiceCatalogRefreshFailed")));
+      toast.notify(
+        error instanceof ApiError && error.status === 409
+          ? { kind: "error", message: t("creatorBrowse.refreshAlreadyRunning") }
+          : toastFromError(error, t("creatorBrowse.voiceCatalogRefreshFailed")),
+      );
     } finally {
       setIsRemoteLoading(false);
     }
   };
 
-  const refreshVoiceMetadata = (mode: "incremental" | "full") =>
+  // Detail refreshes search every compatible source; Follow picks sources per run.
+  const retryVoiceMetadata = () =>
     void refreshVoiceCatalog(
-      { scope: "metadata", mode },
-      mode === "full" ? t("creatorBrowse.fullVoiceMetadataQueued") : t("creatorBrowse.voiceMetadataQueued"),
+      { catalogRefresh: "stored", metadataRefresh: "missing" },
+      t("creatorBrowse.voiceMetadataQueued"),
     );
-  const retryVoiceMetadata = () => refreshVoiceMetadata("incremental");
-  const refreshAllRemoteSources = () => {
-    const sourceIds = remoteMatches.filter(isVoiceCatalogSourceSelectable).map((source) => source.sourceId);
-    return void refreshVoiceCatalog(
-      { scope: "remote", mode: "incremental", ...(sourceIds.length > 0 ? { sourceIds } : {}) },
-      t("creatorBrowse.voiceRemoteRefreshQueued"),
+  const refreshVoice = () =>
+    void refreshVoiceCatalog(
+      { catalogRefresh: "incremental", metadataRefresh: "missing" },
+      t("creatorBrowse.voiceRefreshQueued"),
     );
-  };
   const firstPull = detail?.syncState === "never";
   const firstPullVoiceCatalog = () =>
-    void refreshVoiceCatalog({ scope: "all", mode: "full" }, t("creatorBrowse.firstVoiceCatalogQueued"));
+    void refreshVoiceCatalog(
+      { catalogRefresh: "full", metadataRefresh: "missing" },
+      t("creatorBrowse.firstVoiceCatalogQueued"),
+    );
 
   const knownWorks = detail?.works ?? [];
-  const remoteSourceWarning = Boolean(remoteError) || remoteMatches.some(remoteSourceFailed);
+  const failedRemoteSources = remoteMatches.filter(remoteSourceFailed).length;
   const mergedWorks = useMemo(() => mergeVoiceWorks(knownWorks, remoteMatches), [knownWorks, remoteMatches]);
   const filteredWorks = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -977,6 +985,14 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
           <>
             <span className="font-mono tracking-tight">#{detail.personId}</span>
             <CatalogSyncBadge state={detail.syncState} appearance="dot" />
+            {failedRemoteSources > 0 && (
+              <RemoteSourceWarning
+                count={failedRemoteSources}
+                onOpen={
+                  canOpenWorkflows && catalogRefresh?.runId ? () => openRefreshRun(catalogRefresh.runId!) : undefined
+                }
+              />
+            )}
           </>
         }
         meta={
@@ -1011,109 +1027,77 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
               <Heart className={`h-4 w-4 ${detail.favorite ? "fill-current" : ""}`} />
               <span className="hidden lg:inline">{t("detailActions.favorite")}</span>
             </Button>
-            {firstPull ? (
+            {!firstPull && !catalogRefreshActive && (detail.metadataMissingWorks ?? 0) > 0 && (
               <Button
-                variant="default"
+                variant="outline"
                 size="sm"
-                className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
-                aria-label={t("detailActions.firstPull")}
-                disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
-                onClick={firstPullVoiceCatalog}
+                className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+                aria-label={t("detailActions.retryMetadata")}
+                title={t("detailActions.retryMetadataCount", { count: detail.metadataMissingWorks ?? 0 })}
+                disabled={!canForceRefreshCatalog || isRemoteLoading}
+                onClick={retryVoiceMetadata}
               >
-                {isRemoteLoading || catalogRefreshActive ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4" />
-                )}
-                <span>{t("detailActions.firstPull")}</span>
+                <RefreshCw className="h-4 w-4" />
+                <span className="lg:hidden">{t("detailActions.metadata")}</span>
+                <span className="hidden lg:inline">{t("detailActions.retryMetadata")}</span>
+              </Button>
+            )}
+            {catalogRefreshActive ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+                aria-label={t("detailActions.refreshRunning")}
+                title={canOpenWorkflows ? t("detailActions.viewRefreshRun") : undefined}
+                disabled={!canOpenWorkflows || !catalogRefresh?.runId}
+                onClick={() => catalogRefresh?.runId && openRefreshRun(catalogRefresh.runId)}
+              >
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>{t("detailActions.refreshRunning")}</span>
               </Button>
             ) : (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-                  aria-label={t("detailActions.retryMetadata")}
-                  title={t("detailActions.retryMetadata")}
-                  disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
-                  onClick={retryVoiceMetadata}
-                >
-                  {isRemoteLoading || catalogRefreshActive ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                  <span className="lg:hidden">{t("detailActions.metadata")}</span>
-                  <span className="hidden lg:inline">{t("detailActions.retryMetadata")}</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-                  aria-label={t("detailActions.refreshRemote")}
-                  title={t("detailActions.refreshRemote")}
-                  disabled={!canForceRefreshCatalog || isRemoteLoading || catalogRefreshActive}
-                  onClick={refreshAllRemoteSources}
-                >
-                  {isRemoteLoading || catalogRefreshActive ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Cloud className="h-4 w-4" />
-                  )}
-                  <span className="lg:hidden">{t("detailActions.remote")}</span>
-                  <span className="hidden lg:inline">{t("detailActions.refreshRemote")}</span>
-                </Button>
-              </>
+              <Button
+                variant={firstPull ? "default" : "outline"}
+                size="sm"
+                className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+                aria-label={firstPull ? t("detailActions.firstPull") : t("detailActions.refreshVoice")}
+                disabled={!canForceRefreshCatalog || isRemoteLoading}
+                onClick={firstPull ? firstPullVoiceCatalog : refreshVoice}
+              >
+                {isRemoteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                <span>{firstPull ? t("detailActions.firstPull") : t("detailActions.refreshVoice")}</span>
+              </Button>
             )}
-            <Button
-              ref={advancedActionRef}
-              variant={advancedOpen ? "secondary" : "outline"}
-              size="icon"
-              className="relative h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-              aria-haspopup="dialog"
-              aria-expanded={advancedOpen}
-              aria-controls={advancedOpen ? advancedPanelID : undefined}
-              aria-label={
-                remoteSourceWarning
-                  ? t("detailActions.openAdvancedRefreshActionsAttention")
-                  : t("detailActions.openAdvancedRefreshActions")
-              }
-              title={t("detailActions.advancedRefresh")}
-              onClick={() => setAdvancedOpen((open) => !open)}
-            >
-              {mobileNavigationLayout ? (
-                <MoreHorizontal className="h-4 w-4" />
-              ) : (
-                <SlidersHorizontal className="h-4 w-4" />
-              )}
-              <span className="hidden lg:inline">{t("detailActions.advanced")}</span>
-              {remoteSourceWarning && <span className="text-warning-foreground">!</span>}
-            </Button>
+            <CreatorActionMenu
+              label={t("detailActions.moreVoiceActions")}
+              buttonLabel={t("detailActions.more")}
+              items={[
+                ...(canOpenWorkflows
+                  ? [
+                      {
+                        key: "follow",
+                        label: t("detailActions.followVoice"),
+                        icon: <Rss className="h-4 w-4" />,
+                        onSelect: () =>
+                          openWorkflowPath(workflowRunFormPath("voice_follow", { personId: String(detail.personId) })),
+                      },
+                    ]
+                  : []),
+                ...(auth.demoMode || auth.hasPermission("metadata:sync")
+                  ? [
+                      {
+                        key: "aliases",
+                        label: t("detailActions.manageAliases"),
+                        icon: <ArrowUpRight className="h-4 w-4" />,
+                        onSelect: () => openVoiceAliasMaintenance(detail.personId),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
           </div>
         }
-      >
-        <VoiceAdvancedRefreshSheet
-          open={advancedOpen}
-          mobile={mobileNavigationLayout}
-          anchorRef={advancedActionRef}
-          sources={remoteMatches}
-          loading={isRemoteLoading}
-          refreshing={catalogRefreshActive}
-          activeScope={catalogRefreshActive ? catalogRefresh?.scope : null}
-          error={remoteError}
-          canRefresh={canForceRefreshCatalog}
-          onManageAliases={
-            auth.demoMode || auth.hasPermission("metadata:sync")
-              ? () => openVoiceAliasMaintenance(detail.personId)
-              : undefined
-          }
-          onClose={() => setAdvancedOpen(false)}
-          onRefreshCatalog={(mode, sourceIds) =>
-            void refreshVoiceCatalog({ scope: "remote", mode, sourceIds }, t("creatorBrowse.voiceRemoteRefreshQueued"))
-          }
-          onRefreshMetadata={refreshVoiceMetadata}
-        />
-      </CreatorDetailHeader>
+      ></CreatorDetailHeader>
 
       <section className="space-y-3">
         <CatalogWorkToolbar
@@ -1481,6 +1465,29 @@ function voiceWorkCardView(work: VoiceWorkView, t: TFunction): WorkCardViewModel
 
 function remoteSourceFailed(source: VoiceRemoteSourceSet) {
   return !["ok", "disabled", "unsupported", "refreshing", "pending"].includes(source.status);
+}
+
+/** Flags remote sources whose last voice catalog pass failed; opens that run when allowed. */
+function RemoteSourceWarning({ count, onOpen }: { count: number; onOpen?: () => void }) {
+  const { t } = useTranslation();
+  const label = t("creatorBrowse.remoteSourcesFailed", { count });
+  const content = (
+    <>
+      <CircleAlert className="h-3.5 w-3.5" />
+      <span>{t("detailActions.sourcesFailedShort", { count })}</span>
+    </>
+  );
+  const className =
+    "inline-flex items-center gap-1 rounded-full border border-warning-border bg-warning-surface px-2 py-0.5 text-2xs font-medium text-warning-foreground";
+  return onOpen ? (
+    <button type="button" className={`${className} hover:opacity-80`} title={label} aria-label={label} onClick={onOpen}>
+      {content}
+    </button>
+  ) : (
+    <span className={className} title={label}>
+      {content}
+    </span>
+  );
 }
 
 function VoiceDetailSkeleton() {

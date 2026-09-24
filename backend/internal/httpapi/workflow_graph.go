@@ -132,12 +132,26 @@ var workflowGraphCapabilities = map[string]workflowGraphCapability{
 		Outputs:     []workflowGraphPort{{ID: "works", DataType: "work_candidates"}}, Composite: true,
 		ConfigKeys: []string{"seriesId", "circleExternalId", "maxWorks"},
 	},
-	"voice_source_works": {
-		Type: "voice_source_works", Phase: "discover", DisplayName: "Voice works from source",
-		Description: "Page through one compatible remote source for a voice actor without importing results.",
-		Inputs:      []workflowGraphPort{{ID: "voice", DataType: "voice_name", Required: true}},
+	"voice_catalog": {
+		Type: "voice_catalog", Phase: "discover", DisplayName: "Voice actor catalog",
+		Description: "Read or refresh a voice actor's persisted remote catalog without materializing discovered works.",
 		Outputs:     []workflowGraphPort{{ID: "works", DataType: "work_candidates"}},
-		Permissions: []string{"library:read"}, Composite: true, ConfigKeys: []string{"voiceName", "sourceId", "pageSize", "maxPages", "maxWorks"},
+		Permissions: []string{"metadata:sync"}, Composite: true, ConfigKeys: []string{"personId", "sourceIds", "mode", "maxWorks"},
+	},
+	"circle_metadata": {
+		Type: "circle_metadata", Phase: "commit", DisplayName: "Refresh circle metadata",
+		Description: "Synchronize provider metadata for a circle's catalog works that lack it, or for every catalog work.",
+		Permissions: []string{"metadata:sync"}, Composite: true, ConfigKeys: []string{"circleId", "productMode"},
+	},
+	"circle_sources": {
+		Type: "circle_sources", Phase: "discover", DisplayName: "Check circle sources",
+		Description: "Match a circle's works on the selected compatible remote sources.",
+		Permissions: []string{"metadata:sync"}, Composite: true, ConfigKeys: []string{"circleId", "sourceIds", "mode"},
+	},
+	"voice_metadata": {
+		Type: "voice_metadata", Phase: "commit", DisplayName: "Refresh known-work metadata",
+		Description: "Synchronize provider metadata for a voice actor's known works that lack it, or for every known work.",
+		Permissions: []string{"metadata:sync"}, Composite: true, ConfigKeys: []string{"personId", "mode"},
 	},
 	"filter_works": {
 		Type: "filter_works", Phase: "filter", DisplayName: "Filter works",
@@ -388,14 +402,17 @@ func workflowGraphRequiresPreview(definition workflowGraphDefinition) bool {
 type workflowGraphNodeConfigValidator func(workflowGraphNode, bool) error
 
 var workflowGraphNodeConfigValidators = map[string]workflowGraphNodeConfigValidator{
-	"circle_catalog":     validateGraphCircleCatalogConfig,
-	"series_catalog":     validateGraphSeriesCatalogConfig,
-	"voice_source_works": validateGraphVoiceSourceWorksConfig,
-	"filter_works":       validateGraphFilterWorksConfig,
-	"metadata_sync":      validateGraphMetadataSyncConfig,
-	"track_works":        validateGraphTrackWorksConfig,
-	"fetch_works":        validateGraphFetchWorksConfig,
-	"tag_works":          validateGraphTagWorksConfig,
+	"circle_catalog":  validateGraphCircleCatalogConfig,
+	"series_catalog":  validateGraphSeriesCatalogConfig,
+	"voice_catalog":   validateGraphVoiceCatalogConfig,
+	"circle_metadata": validateGraphCircleMetadataConfig,
+	"circle_sources":  validateGraphCircleSourcesConfig,
+	"voice_metadata":  validateGraphVoiceMetadataConfig,
+	"filter_works":    validateGraphFilterWorksConfig,
+	"metadata_sync":   validateGraphMetadataSyncConfig,
+	"track_works":     validateGraphTrackWorksConfig,
+	"fetch_works":     validateGraphFetchWorksConfig,
+	"tag_works":       validateGraphTagWorksConfig,
 }
 
 func validateWorkflowGraphNodeConfig(node workflowGraphNode, requiresPreview bool) error {
@@ -468,17 +485,54 @@ func validateGraphSeriesCatalogConfig(node workflowGraphNode, requiresPreview bo
 	return validateWorkflowGraphBound(node, "maxWorks", 100, 5000, !requiresPreview)
 }
 
-func validateGraphVoiceSourceWorksConfig(node workflowGraphNode, requiresPreview bool) error {
-	if err := validateGraphPositiveConfigID(node, "sourceId"); err != nil {
+func validateGraphVoiceCatalogConfig(node workflowGraphNode, requiresPreview bool) error {
+	if err := validateGraphPositiveConfigID(node, "personId"); err != nil {
 		return err
 	}
-	if err := validateWorkflowGraphBound(node, "maxWorks", 100, 2000, !requiresPreview); err != nil {
+	mode := strings.ToLower(configString(node.Config, "mode"))
+	if mode == "" {
+		mode = "stored"
+	}
+	if mode != "stored" && mode != "incremental" && mode != "full" {
+		return fmt.Errorf("node %s has invalid catalog mode", node.ID)
+	}
+	if mode != "stored" && len(configInt64Slice(node.Config, "sourceIds")) == 0 {
+		return fmt.Errorf("node %s requires sourceIds to refresh the catalog", node.ID)
+	}
+	return validateWorkflowGraphBound(node, "maxWorks", 100, 5000, !requiresPreview)
+}
+
+func validateGraphCircleMetadataConfig(node workflowGraphNode, _ bool) error {
+	if configString(node.Config, "circleId") == "" {
+		return fmt.Errorf("node %s requires a circleId", node.ID)
+	}
+	if mode := configString(node.Config, "productMode"); mode != "available" && mode != "all" {
+		return fmt.Errorf("node %s has invalid productMode", node.ID)
+	}
+	return nil
+}
+
+func validateGraphCircleSourcesConfig(node workflowGraphNode, _ bool) error {
+	if configString(node.Config, "circleId") == "" {
+		return fmt.Errorf("node %s requires a circleId", node.ID)
+	}
+	if len(configInt64Slice(node.Config, "sourceIds")) == 0 {
+		return fmt.Errorf("node %s requires sourceIds", node.ID)
+	}
+	if mode := configString(node.Config, "mode"); mode != "incremental" && mode != "full" {
+		return fmt.Errorf("node %s has invalid source check mode", node.ID)
+	}
+	return nil
+}
+
+func validateGraphVoiceMetadataConfig(node workflowGraphNode, _ bool) error {
+	if err := validateGraphPositiveConfigID(node, "personId"); err != nil {
 		return err
 	}
-	if err := validateWorkflowGraphBound(node, "maxPages", 10, 100, !requiresPreview); err != nil {
-		return err
+	if mode := configString(node.Config, "mode"); mode != "incremental" && mode != "full" {
+		return fmt.Errorf("node %s has invalid metadata mode", node.ID)
 	}
-	return validateWorkflowGraphBound(node, "pageSize", 48, 100, false)
+	return nil
 }
 
 func validateGraphFilterWorksConfig(node workflowGraphNode, _ bool) error {
@@ -540,10 +594,13 @@ const (
 	workflowGraphIntegerConfig
 	workflowGraphStringArrayConfig
 	workflowGraphBooleanConfig
+	workflowGraphIntegerArrayConfig
 )
 
 var workflowGraphConfigKinds = map[string]workflowGraphConfigKind{
 	"sourceId":          workflowGraphIntegerConfig,
+	"personId":          workflowGraphIntegerConfig,
+	"sourceIds":         workflowGraphIntegerArrayConfig,
 	"definitionId":      workflowGraphIntegerConfig,
 	"pageSize":          workflowGraphIntegerConfig,
 	"maxPages":          workflowGraphIntegerConfig,
@@ -584,12 +641,36 @@ func validateWorkflowGraphConfigType(nodeID, key string, value any) error {
 		if _, ok := value.(bool); !ok {
 			return fmt.Errorf("node %s config %s must be a boolean", nodeID, key)
 		}
+	case workflowGraphIntegerArrayConfig:
+		if _, ok := graphIntegerArray(value); !ok {
+			return fmt.Errorf("node %s config %s must be an array of integers", nodeID, key)
+		}
 	default:
 		if _, ok := value.(string); !ok {
 			return fmt.Errorf("node %s config %s must be a string", nodeID, key)
 		}
 	}
 	return nil
+}
+
+// graphIntegerArray accepts integer lists before and after a JSON round trip.
+func graphIntegerArray(value any) ([]int64, bool) {
+	switch items := value.(type) {
+	case []int64:
+		return items, true
+	case []any:
+		result := make([]int64, 0, len(items))
+		for _, item := range items {
+			number, ok := graphConfigInteger(item)
+			if !ok {
+				return nil, false
+			}
+			result = append(result, number)
+		}
+		return result, true
+	default:
+		return nil, false
+	}
 }
 
 func workflowGraphStringArray(value any) bool {
@@ -738,8 +819,6 @@ func graphNodeConfigSuppliesPort(node workflowGraphNode, portID string) bool {
 		return configString(node.Config, "circleId") != ""
 	case "series_catalog:series":
 		return configString(node.Config, "seriesId") != ""
-	case "voice_source_works:voice":
-		return configString(node.Config, "voiceName") != ""
 	case "tag_works:tag":
 		return configString(node.Config, "tagName") != ""
 	default:
@@ -776,7 +855,8 @@ func workflowGraphRequiredPermissions(graph workflowGraph) []string {
 		capability := workflowGraphCapabilities[node.Type]
 		for _, permission := range capability.Permissions {
 			mode := strings.ToLower(configString(node.Config, "mode"))
-			if node.Type == "circle_catalog" && (mode == "" || mode == "stored") && permission == "metadata:sync" {
+			// Reading a stored catalog writes nothing; only a catalog refresh needs metadata:sync.
+			if (node.Type == "circle_catalog" || node.Type == "voice_catalog") && (mode == "" || mode == "stored") && permission == "metadata:sync" {
 				continue
 			}
 			permissions[permission] = true

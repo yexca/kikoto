@@ -54,6 +54,7 @@ type Server struct {
 	activeWorkflowMu               sync.Mutex
 	activeWorkflowCancels          map[int64]map[int64]context.CancelFunc
 	voiceCatalogRefreshMu          sync.Mutex
+	creatorRefreshMu               sync.Mutex
 	fetchStagingCleanupMu          sync.Mutex
 	sourceGate                     *sourceRequestGate
 	sourceTransports               sourceTransportCache

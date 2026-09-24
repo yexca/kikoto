@@ -282,6 +282,7 @@ async function mockCreatorDetails(
     ],
     works: [],
     remoteMatches: [],
+    metadataMissingWorks: 1,
   };
   const circleDetail = {
     ...circle,
@@ -307,7 +308,7 @@ async function mockCreatorDetails(
             username: "listener",
             displayName: "Listener",
             role: "user",
-            permissions: ["library:read", "favorites:write", "tags:write", "metadata:sync"],
+            permissions: ["library:read", "favorites:write", "tags:write", "metadata:sync", "workflows:run"],
             devMode: true,
           },
         },
@@ -373,21 +374,7 @@ async function mockCreatorDetails(
       options.onRefresh?.(url.pathname, route.request().postDataJSON());
       await route.fulfill({
         status: 202,
-        json: {
-          runId: 1,
-          externalId: "RG09999",
-          status: "succeeded",
-          scope: "metadata",
-          catalogWorks: 0,
-          pagesFetched: 0,
-          productSynced: 0,
-          productSkipped: 0,
-          productFailed: 0,
-          productFailures: [],
-          sourceSynced: 0,
-          mode: "full",
-          productMode: "available",
-        },
+        json: { runId: 1, status: "queued" },
       });
       return;
     }
@@ -534,8 +521,10 @@ test("creator detail does not auto-refresh and exposes First pull for a new cata
   await circlePullRequest;
   expect(refreshRequests).toContainEqual({
     path: "/api/circles/RG09999/refresh",
-    payload: { scope: "metadata", mode: "full", productMode: "available" },
+    payload: { catalogRefresh: "full", metadataRefresh: "missing" },
   });
+  await expect(circleSummary.getByRole("button", { name: "Refreshing" })).toBeVisible();
+  await expect(circleSummary.getByRole("button", { name: "First pull" })).toHaveCount(0);
 
   const voiceCatalogLoaded = page.waitForResponse(
     (response) => new URL(response.url()).pathname === "/api/voices/7/remote-matches",
@@ -554,7 +543,7 @@ test("creator detail does not auto-refresh and exposes First pull for a new cata
   await voicePullRequest;
   expect(refreshRequests).toContainEqual({
     path: "/api/voices/7/catalog/refresh",
-    payload: { scope: "all", mode: "full" },
+    payload: { catalogRefresh: "full", metadataRefresh: "missing" },
   });
 });
 
@@ -657,18 +646,16 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   );
   expect(Math.max(...statisticTops) - Math.min(...statisticTops)).toBeLessThanOrEqual(4);
 
-  const advancedAction = page.getByRole("button", { name: "Open advanced refresh actions" });
-  await expect(advancedAction).toHaveAttribute("aria-expanded", "false");
-  await expect(advancedAction.locator("svg circle")).toHaveCount(3);
   const actions = page.getByRole("group", { name: "Voice actor actions" });
+  const moreActions = actions.getByRole("button", { name: "More voice actor actions" });
+  await expect(moreActions).toHaveAttribute("aria-expanded", "false");
   await expect(actions.getByRole("button", { name: "Add favorite" })).toBeVisible();
   await expect(actions.getByText("Favorite", { exact: true })).toBeHidden();
   await expect(actions.getByText("Metadata", { exact: true })).toBeVisible();
-  await expect(actions.getByText("Remote", { exact: true })).toBeVisible();
+  await expect(actions.getByText("Refresh", { exact: true })).toBeVisible();
   await expect(actions.getByText("Retry metadata", { exact: true })).toBeHidden();
-  await expect(actions.getByText("Refresh remote", { exact: true })).toBeHidden();
-  await expect(actions.getByText("Advanced", { exact: true })).toBeHidden();
-  const actionMetrics = await actions.locator(":scope > button").evaluateAll((elements) =>
+  await expect(actions.getByText("More", { exact: true })).toBeHidden();
+  const actionMetrics = await actions.locator(":scope button[aria-label]").evaluateAll((elements) =>
     elements.map((element) => ({
       label: element.getAttribute("aria-label"),
       height: element.getBoundingClientRect().height,
@@ -679,58 +666,41 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   expect(actionMetrics.map((metric) => metric.label)).toEqual([
     "Add favorite",
     "Retry metadata",
-    "Refresh remote",
-    "Open advanced refresh actions",
+    "Refresh",
+    "More voice actor actions",
   ]);
   expect(actionMetrics.every((metric) => metric.height >= 44 && metric.width >= 44)).toBe(true);
   expect(
     Math.max(...actionMetrics.map((metric) => metric.top)) - Math.min(...actionMetrics.map((metric) => metric.top)),
   ).toBeLessThanOrEqual(1);
-  await expect(page.getByRole("dialog", { name: "Advanced refresh" })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Open advanced refresh actions" }).click();
-  const advancedDialog = page.getByRole("dialog", { name: "Advanced refresh" });
-  await expect(advancedDialog).toBeVisible();
-  await expect(advancedDialog.getByRole("button", { name: "Close advanced refresh actions" })).toHaveCount(0);
-  await expect(advancedDialog.getByRole("button", { name: "Open Metadata", exact: true })).toBeVisible();
-  await expect(advancedDialog.getByPlaceholder("Add alias or search duplicate voice actor")).toHaveCount(0);
-  await expect(advancedDialog.getByRole("checkbox", { name: "Refresh Example Remote" })).toBeChecked();
-  const catalogRefresh = advancedDialog.getByRole("group", { name: "Catalog refresh" });
-  const metadataRefresh = advancedDialog.getByRole("group", { name: "Metadata refresh" });
-  await expect(catalogRefresh.getByRole("button", { name: "Incremental", exact: true })).toBeVisible();
-  await expect(catalogRefresh.getByRole("button", { name: "Full", exact: true })).toBeVisible();
-  await expect(metadataRefresh.getByRole("button", { name: "Incremental", exact: true })).toBeVisible();
-  await expect(metadataRefresh.getByRole("button", { name: "Full", exact: true })).toBeVisible();
-  const fullCatalogRequest = page.waitForRequest((request) => {
-    if (new URL(request.url()).pathname !== "/api/voices/7/catalog/refresh" || request.method() !== "POST") {
-      return false;
-    }
-    const payload = request.postDataJSON() as { scope?: string; mode?: string };
-    return payload.scope === "remote" && payload.mode === "full";
-  });
-  await catalogRefresh.getByRole("button", { name: "Full", exact: true }).click();
-  expect((await fullCatalogRequest).postDataJSON()).toEqual({ scope: "remote", mode: "full", sourceIds: [3] });
-  const fullMetadataRequest = page.waitForRequest((request) => {
-    if (new URL(request.url()).pathname !== "/api/voices/7/catalog/refresh" || request.method() !== "POST") {
-      return false;
-    }
-    const payload = request.postDataJSON() as { scope?: string; mode?: string };
-    return payload.scope === "metadata" && payload.mode === "full";
-  });
-  await metadataRefresh.getByRole("button", { name: "Full", exact: true }).click();
-  expect((await fullMetadataRequest).postDataJSON()).toEqual({ scope: "metadata", mode: "full" });
+  // Secondary actions are workflow shortcuts; refresh options live in the workflow's run form.
+  await moreActions.click();
+  const moreMenu = page.getByRole("menu", { name: "More voice actor actions" });
+  await expect(moreMenu.getByRole("menuitem")).toHaveText(["Follow this voice actor…", "Manage aliases"]);
   await page.keyboard.press("Escape");
-  await expect(advancedDialog).toHaveCount(0);
+  await expect(moreMenu).toHaveCount(0);
+
+  const refreshRequest = page.waitForRequest((request) => {
+    if (new URL(request.url()).pathname !== "/api/voices/7/catalog/refresh" || request.method() !== "POST") {
+      return false;
+    }
+    return (request.postDataJSON() as { catalogRefresh?: string }).catalogRefresh === "incremental";
+  });
+  await actions.getByRole("button", { name: "Refresh", exact: true }).click();
+  expect((await refreshRequest).postDataJSON()).toEqual({ catalogRefresh: "incremental", metadataRefresh: "missing" });
 
   const metadataRefreshRequest = page.waitForRequest((request) => {
     if (new URL(request.url()).pathname !== "/api/voices/7/catalog/refresh" || request.method() !== "POST") {
       return false;
     }
-    const payload = request.postDataJSON() as { scope?: string; mode?: string };
-    return payload.scope === "metadata" && payload.mode === "incremental";
+    return (request.postDataJSON() as { catalogRefresh?: string }).catalogRefresh === "stored";
   });
   await actions.getByRole("button", { name: "Retry metadata" }).click();
-  expect((await metadataRefreshRequest).postDataJSON()).toEqual({ scope: "metadata", mode: "incremental" });
+  expect((await metadataRefreshRequest).postDataJSON()).toEqual({
+    catalogRefresh: "stored",
+    metadataRefresh: "missing",
+  });
 
   await page.getByRole("button", { name: "Open voice work options" }).click();
   const optionsDialog = page.getByRole("dialog", { name: "Voice work options" });
@@ -755,13 +725,9 @@ test("@desktop voice detail keeps full action labels and inline work controls", 
   const actions = page.getByRole("group", { name: "Voice actor actions" });
   await expect(actions.getByText("Favorite", { exact: true })).toBeVisible();
   await expect(actions.getByText("Retry metadata", { exact: true })).toBeVisible();
-  await expect(actions.getByText("Refresh remote", { exact: true })).toBeVisible();
+  await expect(actions.getByText("Refresh", { exact: true })).toBeVisible();
   await expect(actions.getByText("Metadata", { exact: true })).toBeHidden();
-  await expect(actions.getByText("Remote", { exact: true })).toBeHidden();
-  await expect(actions.getByText("Advanced", { exact: true })).toBeVisible();
-  const advancedAction = actions.getByRole("button", { name: "Open advanced refresh actions" });
-  await expect(advancedAction.locator("svg circle")).toHaveCount(0);
-  await expect(advancedAction.locator("svg line")).toHaveCount(9);
+  await expect(actions.getByText("More", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open voice work options" })).toBeHidden();
   await expect(page.getByLabel("Voice work availability")).toBeVisible();
   await expect(page.getByRole("button", { name: /^Columns:/ })).toBeVisible();
@@ -782,7 +748,7 @@ test("circle detail keeps availability and primary actions compact on mobile", a
   await expect(actions.getByText("Retry metadata", { exact: true })).toBeHidden();
   await expect(actions.getByRole("button", { name: "Refresh circle", exact: true })).toBeVisible();
   await expect(actions.getByText("Favorite", { exact: true })).toBeHidden();
-  await expect(actions.getByText("Advanced", { exact: true })).toBeHidden();
+  await expect(actions.getByText("More", { exact: true })).toBeHidden();
   const dlsiteLink = summary.getByRole("link", { name: "Open DLsite for RG09999" });
   await expect(dlsiteLink).toBeVisible();
   await expect(dlsiteLink).toContainText("RG09999");
@@ -799,11 +765,8 @@ test("circle detail keeps availability and primary actions compact on mobile", a
   expect(codeAndTitle[0]).not.toBeNull();
   expect(codeAndTitle[1]).not.toBeNull();
   expect(codeAndTitle[0]!.y).toBeLessThan(codeAndTitle[1]!.y);
-  await expect(actions.getByRole("button", { name: "Open advanced refresh actions" })).toHaveAttribute(
-    "aria-expanded",
-    "false",
-  );
-  const actionMetrics = await actions.locator(":scope > :is(button, a)").evaluateAll((elements) =>
+  await expect(actions.getByRole("button", { name: "More circle actions" })).toHaveAttribute("aria-expanded", "false");
+  const actionMetrics = await actions.locator(":scope button[aria-label], :scope > a").evaluateAll((elements) =>
     elements
       .map((element) => ({
         label: element.getAttribute("aria-label"),
@@ -817,14 +780,20 @@ test("circle detail keeps availability and primary actions compact on mobile", a
     "Remove favorite",
     "Retry metadata",
     "Refresh circle",
-    "Open advanced refresh actions",
+    "More circle actions",
   ]);
   expect(actionMetrics.every((metric) => metric.height >= 44 && metric.width >= 44)).toBe(true);
   expect(
     Math.max(...actionMetrics.map((metric) => metric.top)) - Math.min(...actionMetrics.map((metric) => metric.top)),
   ).toBeLessThanOrEqual(1);
-  await expect(page.getByRole("dialog", { name: "Advanced refresh" })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  // The Follow shortcut opens the circle follow workflow with this circle prefilled.
+  await actions.getByRole("button", { name: "More circle actions" }).click();
+  const moreMenu = page.getByRole("menu", { name: "More circle actions" });
+  await expect(moreMenu.getByRole("menuitem")).toHaveText(["Follow this circle…"]);
+  await moreMenu.getByRole("menuitem", { name: "Follow this circle…" }).click();
+  await expect(page).toHaveURL(/\/workflows\?workflow=circle_follow&circleId=RG09999$/);
 });
 
 test("mobile circle detail keeps the work surface visible and moves secondary controls into sheets", async ({
@@ -835,19 +804,7 @@ test("mobile circle detail keeps the work surface visible and moves secondary co
 
   await expect(page.getByRole("heading", { name: "Example Circle", exact: true })).toBeVisible();
   await expect(page.getByTestId("work-card").first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open advanced refresh actions" })).toBeVisible();
-  await expect(page.getByText("Workflow Shortcuts", { exact: true })).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Open advanced refresh actions" }).click();
-  const refreshDialog = page.getByRole("dialog", { name: "Advanced refresh" });
-  await expect(refreshDialog).toBeVisible();
-  await expect(refreshDialog.getByRole("button", { name: "Incremental" }).first()).toBeVisible();
-  await expect(refreshDialog.getByRole("button", { name: "Close advanced refresh actions" })).toHaveCount(0);
-  const refreshDialogBox = await refreshDialog.boundingBox();
-  expect(refreshDialogBox).not.toBeNull();
-  expect(refreshDialogBox!.y + refreshDialogBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
-  await page.keyboard.press("Escape");
-  await expect(refreshDialog).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "More circle actions" })).toBeVisible();
 
   await page.getByRole("button", { name: "Catalog options" }).click();
   const optionsDialog = page.getByRole("dialog", { name: "Catalog options" });
@@ -925,21 +882,21 @@ test("@desktop circle detail keeps a full-width compact summary and source-aware
   await expect(actions.getByText("Favorite", { exact: true })).toBeVisible();
   await expect(actions.getByText("Retry metadata", { exact: true })).toBeVisible();
   await expect(actions.getByRole("button", { name: "Refresh circle", exact: true })).toBeVisible();
-  await expect(actions.getByText("Advanced", { exact: true })).toBeVisible();
+  await expect(actions.getByText("More", { exact: true })).toBeVisible();
   await expect(actions.getByText("DLsite", { exact: true })).toHaveCount(0);
   const dlsiteLink = summary.getByRole("link", { name: "Open DLsite for RG09999" });
   await expect(dlsiteLink).toBeVisible();
   await expect(dlsiteLink).toContainText("RG09999");
   const actionOrder = await actions
-    .locator(":scope > :is(button, a)")
+    .locator(":scope button[aria-label], :scope > a")
     .evaluateAll((elements) => elements.map((element) => element.getAttribute("aria-label")));
-  expect(actionOrder).toEqual(["Remove favorite", "Retry metadata", "Refresh circle", "Open advanced refresh actions"]);
+  expect(actionOrder).toEqual(["Remove favorite", "Retry metadata", "Refresh circle", "More circle actions"]);
 
   await page.getByRole("button", { name: "Catalog availability filter" }).click();
   await page.getByRole("menuitemradio", { name: "Unavailable", exact: true }).click();
   await expect(summary.getByText("Available 1", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Catalog options" })).toBeHidden();
-  await expect(page.getByRole("button", { name: "Open advanced refresh actions" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "More circle actions" })).toBeVisible();
 });
 
 test("mobile circle detail returns to the circle list entry that opened it", async ({ page }) => {

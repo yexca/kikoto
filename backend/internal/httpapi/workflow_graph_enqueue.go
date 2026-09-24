@@ -140,6 +140,11 @@ func configStringSlice(config map[string]any, key string) []string {
 	return items
 }
 
+func configInt64Slice(config map[string]any, key string) []int64 {
+	values, _ := graphIntegerArray(config[key])
+	return values
+}
+
 func configInt(config map[string]any, key string, fallback int) int {
 	value := configInt64(config, key, int64(fallback))
 	if value > math.MaxInt32 || value < math.MinInt32 {

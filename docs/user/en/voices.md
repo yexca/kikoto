@@ -18,7 +18,7 @@ Voice pages present persisted person and credit data.
 - Shows favorite, rating, note, and user tag state.
 - Shows confirmed aliases under the detail title. Alias review, duplicate
   merge, and merge undo live in the Metadata page's **Voice aliases** view;
-  the detail Advanced popover links there for users with `metadata:sync`.
+  the detail **More** menu links there for users with `metadata:sync`.
 - Groups works with no provider voice credits under an `unknown` bucket.
 - Shows Local and Remote availability badges followed by user tags on voice
   detail. Cache remains available to playback and filtering data, but is not
@@ -28,8 +28,15 @@ Voice pages present persisted person and credit data.
 - Loads person detail, known works, and remote matches independently. Remote
   source searches use bounded concurrency, while voice counts and user tags are
   aggregated in batches.
-- Keeps Favorite, the two common refresh actions, and Advanced in the detail
-  summary. The works toolbar mirrors the Library: a bounded search on the
+- Keeps Favorite, the common refresh actions, and a **More** menu in the
+  detail summary. **First pull** or **Refresh** queues a Follow a voice actor
+  run with its new-works step off across every compatible remote source, and
+  **Retry metadata** appears only while known works still lack metadata. The
+  button shows **Refreshing** until the run settles. A warning beside the sync
+  state counts remote sources that failed their last pass and opens that run
+  in Activity. **More** holds **Follow this voice actor…**, which opens the
+  preset with this voice actor selected for source, metadata, and new-works
+  choices, and **Manage aliases**. The works toolbar mirrors the Library: a bounded search on the
   left with columns, page size, availability filter, and selection as quiet
   icon actions on the right, and the shared collection pagination above and
   below the grid. Mobile work search keeps one row and opens filter, column,

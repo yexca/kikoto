@@ -1,5 +1,8 @@
+import { AlertCircle, Loader2, Play } from "lucide-react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
+import { Button } from "@/components/ui/button";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/tailwindClassNames";
@@ -110,4 +113,46 @@ export function SwitchControl({
       {description && <span className="min-w-0 text-xs leading-5 text-muted-foreground">{description}</span>}
     </div>
   );
+}
+
+/** Places a workflow's run action in the page toolbar and its run options below the header. */
+export type RunFormLayout = (parts: {
+  run: ReactNode;
+  actions?: ReactNode;
+  options: ReactNode;
+  optionsActions?: ReactNode;
+}) => ReactNode;
+
+export function WorkflowRunButton({
+  running,
+  disabled,
+  onClick,
+}: {
+  running: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  const { t } = useTranslation();
+  const label = running ? t("workflowPage.queueing") : t("workflowPage.run");
+  return (
+    <Button className="h-9 px-3 sm:min-w-24" aria-label={label} disabled={running || disabled} onClick={onClick}>
+      {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}
+      <span className="hidden sm:inline">{label}</span>
+    </Button>
+  );
+}
+
+/** Explains why Run is unavailable, next to the inputs that resolve it. */
+export function RunBlockerNote({ children }: { children: ReactNode }) {
+  return (
+    <p className="flex items-center gap-1.5 text-xs text-muted-foreground" role="status">
+      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+      {children}
+    </p>
+  );
+}
+
+/** Vertical rhythm for label-beside-control option rows. */
+export function RunOptionRows({ children }: { children: ReactNode }) {
+  return <div className="grid gap-4">{children}</div>;
 }

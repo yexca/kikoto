@@ -26,7 +26,8 @@ func TestPresetWorkflowBuildsValidGraphForEveryAction(t *testing.T) {
 			case "series":
 				raw["seriesId"] = "srs001"
 			case "voice":
-				raw["voiceName"] = "Example Voice"
+				raw["personId"] = 7
+				raw["sourceIds"] = []any{91}
 			}
 			inputs, err := normalizePresetWorkflowInputs(spec, raw)
 			if err != nil {
@@ -91,7 +92,10 @@ func TestNormalizePresetWorkflowInputsRejectsInvalidValues(t *testing.T) {
 		{"bad date", circle, map[string]any{"circleId": "RG12345", "releaseFrom": "2025/01/01"}, "YYYY-MM-DD"},
 		{"reversed release range", circle, map[string]any{"circleId": "RG12345", "releaseFrom": "2025-02-01", "releaseTo": "2025-01-31"}, "must not be after"},
 		{"bad extension", circle, map[string]any{"circleId": "RG12345", "action": "fetch", "sourceId": 1, "excludeExtensions": []any{"a/b"}}, "invalid extension"},
-		{"voice without source", voice, map[string]any{"voiceName": "Example"}, "sourceId is required"},
+		{"voice without actor", voice, map[string]any{"sourceIds": []any{91}}, "personId is required"},
+		{"voice refresh without sources", voice, map[string]any{"personId": 7, "catalogRefresh": "incremental"}, "sourceIds is required"},
+		{"bad metadata refresh", circle, map[string]any{"circleId": "RG12345", "metadataRefresh": "some"}, "metadataRefresh must be one of"},
+		{"nothing to run", circle, map[string]any{"circleId": "RG12345", "newWorks": false, "catalogRefresh": "stored"}, "choose at least one step"},
 	}
 	for _, testCase := range cases {
 		_, err := normalizePresetWorkflowInputs(testCase.spec, testCase.raw)
@@ -104,7 +108,6 @@ func TestNormalizePresetWorkflowInputsRejectsInvalidValues(t *testing.T) {
 func TestNormalizePresetWorkflowInputsSplitsTargetLists(t *testing.T) {
 	circle, _ := presetWorkflowSpecByCode("circle_follow")
 	series, _ := presetWorkflowSpecByCode("series_follow")
-	voice, _ := presetWorkflowSpecByCode("voice_follow")
 	cases := []struct {
 		spec presetWorkflowSpec
 		raw  map[string]any
@@ -113,7 +116,6 @@ func TestNormalizePresetWorkflowInputsSplitsTargetLists(t *testing.T) {
 	}{
 		{circle, map[string]any{"circleId": "rg12345, RG12345\nrg67890"}, func(i presetWorkflowInputs) string { return i.CircleID }, "RG12345, RG67890"},
 		{series, map[string]any{"seriesId": "sri0000001；SRI0000002"}, func(i presetWorkflowInputs) string { return i.SeriesID }, "SRI0000001, SRI0000002"},
-		{voice, map[string]any{"voiceName": "Example Voice、Other Voice", "sourceId": 91}, func(i presetWorkflowInputs) string { return i.VoiceName }, "Example Voice, Other Voice"},
 	}
 	for _, testCase := range cases {
 		inputs, err := normalizePresetWorkflowInputs(testCase.spec, testCase.raw)
@@ -140,6 +142,67 @@ func TestNormalizePresetWorkflowInputsSplitsTargetLists(t *testing.T) {
 		if _, err := normalizePresetWorkflowInputs(circle, raw); err == nil {
 			t.Fatalf("%s: expected an error", name)
 		}
+	}
+}
+
+func TestPresetWorkflowComposesOptionalRefreshSteps(t *testing.T) {
+	circle, _ := presetWorkflowSpecByCode("circle_follow")
+	voice, _ := presetWorkflowSpecByCode("voice_follow")
+	cases := []struct {
+		name  string
+		spec  presetWorkflowSpec
+		raw   map[string]any
+		order string
+	}{
+		{"circle refresh only", circle, map[string]any{
+			"circleId": "RG12345", "newWorks": false, "catalogRefresh": "full", "metadataRefresh": "all", "checkSourceIds": []any{91},
+		}, "discover,metadata,sources"},
+		{"circle retry metadata", circle, map[string]any{
+			"circleId": "RG12345", "newWorks": false, "catalogRefresh": "stored", "metadataRefresh": "missing",
+		}, "metadata"},
+		{"voice follow with metadata", voice, map[string]any{
+			"personId": 7, "sourceIds": []any{91}, "metadataRefresh": "missing",
+		}, "discover,metadata,filter,action,tag"},
+		{"voice stored metadata only", voice, map[string]any{
+			"personId": 7, "catalogRefresh": "stored", "metadataRefresh": "all", "newWorks": false,
+		}, "metadata"},
+	}
+	for _, testCase := range cases {
+		inputs, err := normalizePresetWorkflowInputs(testCase.spec, testCase.raw)
+		if err != nil {
+			t.Fatalf("%s: %v", testCase.name, err)
+		}
+		tagName := ""
+		if inputs.TagNameTemplate != "" {
+			tagName = "250101_test"
+		}
+		encoded, err := json.Marshal(buildPresetWorkflowDefinition(testCase.spec, inputs, tagName))
+		if err != nil {
+			t.Fatal(err)
+		}
+		graph, err := validateWorkflowGraphDefinition(string(encoded))
+		if err != nil {
+			t.Fatalf("%s graph: %v", testCase.name, err)
+		}
+		if got := strings.Join(graph.TopologicalOrder, ","); got != testCase.order {
+			t.Fatalf("%s order = %s, want %s", testCase.name, got, testCase.order)
+		}
+	}
+	inputs, err := normalizePresetWorkflowInputs(circle, map[string]any{
+		"circleId": "RG12345", "newWorks": false, "catalogRefresh": "full", "metadataRefresh": "all", "checkSourceIds": []any{91},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodes := map[string]workflowGraphNode{}
+	for _, node := range buildPresetWorkflowDefinition(circle, inputs, "").Nodes {
+		nodes[node.ID] = node
+	}
+	if nodes["metadata"].Config["productMode"] != "all" || nodes["sources"].Config["mode"] != "full" {
+		t.Fatalf("refresh step configs = metadata %v, sources %v", nodes["metadata"].Config, nodes["sources"].Config)
+	}
+	if public := inputs.public(); public["newWorks"] != false || public["tagNameTemplate"] != nil {
+		t.Fatalf("refresh-only public inputs = %v, want no new-works options", public)
 	}
 }
 
@@ -305,6 +368,9 @@ func TestPresetWorkflowScheduleStoresOwnerAndDispatchesWithCurrentPermissions(t 
 	db := openMigratedTestDB(t)
 	ownerID := insertWorkflowGraphAPIUser(t, db, "preset-schedule-owner")
 	insertPresetWorkflowSource(t, db)
+	if _, err := db.Exec("INSERT INTO person (id, display_name) VALUES (7, 'Example Voice')"); err != nil {
+		t.Fatal(err)
+	}
 	server := NewServer(db, config.Config{})
 	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
 		t.Fatal(err)
@@ -316,7 +382,7 @@ func TestPresetWorkflowScheduleStoresOwnerAndDispatchesWithCurrentPermissions(t 
 	body := mustJSON(map[string]any{
 		"workflowDefinitionId": definitionID, "displayName": "Weekly voice follow", "triggerType": "schedule", "enabled": true,
 		"scheduleJson": `{"intervalMinutes":10080}`,
-		"configJson":   mustJSON(map[string]any{"inputs": map[string]any{"voiceName": "Example Voice", "sourceId": 91, "action": "track"}}),
+		"configJson":   mustJSON(map[string]any{"inputs": map[string]any{"personId": 7, "sourceIds": []int64{91}, "sourceId": 91, "action": "track"}}),
 	})
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Permissions: []string{"workflows:run", "library:read", "metadata:sync", "tags:write"}}))
@@ -333,7 +399,7 @@ func TestPresetWorkflowScheduleStoresOwnerAndDispatchesWithCurrentPermissions(t 
 	if err := json.Unmarshal([]byte(trigger.ConfigJSON), &storedConfig); err != nil {
 		t.Fatal(err)
 	}
-	if storedConfig.UserID != ownerID || storedConfig.Inputs["voiceName"] != "Example Voice" || storedConfig.Inputs["tagNameTemplate"] != "{date}_voice_{target}" {
+	if storedConfig.UserID != ownerID || storedConfig.Inputs["personId"] != float64(7) || storedConfig.Inputs["tagNameTemplate"] != "{date}_voice_{target}" {
 		t.Fatalf("stored preset config = %+v", storedConfig)
 	}
 	definition, err := server.loadWorkflowDefinition(context.Background(), definitionID)
@@ -358,7 +424,7 @@ func TestPresetWorkflowScheduleStoresOwnerAndDispatchesWithCurrentPermissions(t 
 	if err := json.Unmarshal([]byte(inputJSON), &runInput); err != nil {
 		t.Fatal(err)
 	}
-	if runInput.RequestedBy != ownerID || runInput.Inputs["voiceName"] != "Example Voice" {
+	if runInput.RequestedBy != ownerID || runInput.Inputs["personId"] != float64(7) {
 		t.Fatalf("scheduled preset run input = %+v", runInput)
 	}
 

@@ -25,11 +25,17 @@ Circles represent makers, circles, and related party catalog state.
   the separate circle-entity list keeps its own controls.
 - Shows one `Available N` badge beside user-defined tags on circle detail. The
   duplicated statistic tiles and circle aliases are omitted from circle UI.
-- Keeps the two common refresh actions in the detail summary and moves targeted
-  catalog, metadata, and source refresh modes into an anchored Advanced
-  popover.
+- Keeps the common refresh actions in the detail summary: **First pull** for a
+  circle that was never pulled, then **Refresh circle**, which also checks the
+  remote sources. **Retry metadata** appears only while catalog works still
+  lack metadata and fills just those. Each action queues a Follow a circle run
+  with its new-works step off and returns at once; the button shows
+  **Refreshing** until the run settles, and the run is visible in Activity.
+- The **More** menu opens **Follow this circle…**, the Follow a circle preset
+  with this circle filled in, for every other combination of catalog refresh,
+  metadata refresh, source check, and new-works options.
 - Shortens the common detail actions on mobile, keeps icon-only Favorite,
-  Advanced, and DLsite controls accessible by name, and places DLsite last.
+  More, and DLsite controls accessible by name, and places DLsite last.
 - Uses the Library-style works toolbar on wide layouts: the Works/Series switch
   and a bounded search on the left, with columns, page size, availability
   filter, and selection as quiet icon actions on the right. The shared

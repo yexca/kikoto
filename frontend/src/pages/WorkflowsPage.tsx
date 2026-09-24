@@ -15,7 +15,16 @@ import {
   Tag,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type ReactNode,
+  type RefObject,
+  type SetStateAction,
+} from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
@@ -57,6 +66,9 @@ import {
   presetOptionalEnabled,
   presetOptionalFlagKey,
   presetReleaseRange,
+  presetSourceCheckEnabled,
+  presetSourceIds,
+  PRESET_PERSON_NAME_KEY,
   presetTagEnabled,
   presetTargetValue,
   presetValuesFromInputs,
@@ -68,14 +80,28 @@ import {
   type PresetFormValues,
 } from "@/features/workflows/presetWorkflowModel";
 import { parseWorkCodes, WorkCodesField } from "@/features/workflows/WorkCodesField";
-import { OptionField, SegmentedControl, SwitchControl } from "@/features/workflows/RunOptionControls";
+import {
+  OptionField,
+  RunBlockerNote,
+  RunOptionRows,
+  SegmentedControl,
+  SwitchControl,
+  WorkflowRunButton,
+  type RunFormLayout,
+} from "@/features/workflows/RunOptionControls";
 import { WorkflowRunMonitor } from "@/features/workflows/WorkflowRunMonitor";
+import {
+  RemoteSourceCheckboxes,
+  VoiceActorPicker,
+  useCompatibleRemoteSources,
+} from "@/features/workflows/CreatorPresetFields";
+import { clearWorkflowRunPrefill, readWorkflowRunPrefill } from "@/features/workflows/workflowLinks";
 import { workflowStages } from "@/features/workflows/workflowStageModel";
 import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import {
   api,
-  type LibrarySource,
   type AvailabilityWatch,
+  type LibrarySource,
   type WorkflowCandidate,
   type WorkflowEvent,
   type WorkflowDefinition,
@@ -1484,16 +1510,19 @@ function WorkflowDetail({
         <DefinitionRunMonitor nodes={nodes} recentRuns={recentRuns} onOpenRun={onOpenRun} />
 
         <div className="grid min-w-0 gap-x-10 gap-y-5 lg:grid-cols-2">
-          <WorkflowAutomationPanel
-            definition={definition}
-            isPreset={Boolean(preset)}
-            triggers={definitionTriggers}
-            canManage={canManageTriggers}
-            readOnly={readOnly}
-            onCreate={onCreateTrigger}
-            onEdit={onEditTrigger}
-            onToggle={onToggleTrigger}
-          />
+          {(supportedAutomationTriggerTypes(definition, Boolean(preset)).length > 0 ||
+            definitionTriggers.length > 0) && (
+            <WorkflowAutomationPanel
+              definition={definition}
+              isPreset={Boolean(preset)}
+              triggers={definitionTriggers}
+              canManage={canManageTriggers}
+              readOnly={readOnly}
+              onCreate={onCreateTrigger}
+              onEdit={onEditTrigger}
+              onToggle={onToggleTrigger}
+            />
+          )}
           {onOpenRun && <RecentWorkflowRuns runs={recentRuns} onOpen={onOpenRun} />}
         </div>
       </CardContent>
@@ -1521,14 +1550,6 @@ function WorkflowDetail({
   );
 }
 
-/** Places a workflow's run action in the page toolbar and its run options below the header. */
-type RunFormLayout = (parts: {
-  run: ReactNode;
-  actions?: ReactNode;
-  options: ReactNode;
-  optionsActions?: ReactNode;
-}) => ReactNode;
-
 function runFormLayout({
   title,
   description,
@@ -1552,38 +1573,6 @@ function runFormLayout({
         </section>
       )}
     </div>
-  );
-}
-
-function WorkflowRunButton({
-  running,
-  disabled,
-  onClick,
-}: {
-  running: boolean;
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <Button
-      className="h-9 px-3 sm:min-w-24"
-      aria-label={running ? workflowCopy("queueing") : workflowCopy("run")}
-      disabled={running || disabled}
-      onClick={onClick}
-    >
-      {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}
-      <span className="hidden sm:inline">{running ? workflowCopy("queueing") : workflowCopy("run")}</span>
-    </Button>
-  );
-}
-
-/** Explains why Run is unavailable, next to the inputs that resolve it. */
-function RunBlockerNote({ children }: { children: ReactNode }) {
-  return (
-    <p className="flex items-center gap-1.5 text-xs text-muted-foreground" role="status">
-      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-      {children}
-    </p>
   );
 }
 
@@ -1615,11 +1604,6 @@ function LocalScanRunPanel({
       </RunOptionRows>
     ),
   });
-}
-
-/** Vertical rhythm for label-beside-control option rows. */
-function RunOptionRows({ children }: { children: ReactNode }) {
-  return <div className="grid gap-4">{children}</div>;
 }
 
 function RemotePopularRunPanel({
@@ -1810,6 +1794,10 @@ function presetBlockerText(blocker: PresetBlocker) {
       return workflowCopy("presetReleaseRange.bothOpen");
     case "release_range_order":
       return workflowCopy("presetReleaseRange.order");
+    case "sources_required":
+      return workflowCopy("presetBlockers.sourcesRequired", { label: presetParameterLabel(blocker.key) });
+    case "no_steps":
+      return workflowCopy("presetBlockers.noSteps");
   }
 }
 
@@ -1829,37 +1817,6 @@ function presetTagTemplateTokens(
   ];
 }
 
-function useCompatibleRemoteSources() {
-  const [sources, setSources] = useState<LibrarySource[]>([]);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    let active = true;
-    api
-      .listLibrarySources()
-      .then((items) => {
-        if (active) setSources(items);
-      })
-      .catch(() => {
-        if (active) setSources([]);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-  const compatible = useMemo(
-    () =>
-      sources.filter(
-        (source) =>
-          source.enabled && ["kikoeru_compatible", "kikoeru_compatible_number178"].includes(source.sourceType),
-      ),
-    [sources],
-  );
-  return { sources: compatible, loading };
-}
-
 function PresetParameterFields({
   idPrefix,
   preset,
@@ -1874,11 +1831,12 @@ function PresetParameterFields({
   preset: WorkflowPreset;
   values: PresetFormValues;
   canFetch: boolean;
-  onChange: (values: PresetFormValues) => void;
+  /** Receives functional updates so concurrent async fills do not overwrite each other. */
+  onChange: Dispatch<SetStateAction<PresetFormValues>>;
 }) {
   const { sources, loading: loadingSources } = useCompatibleRemoteSources();
   const visible = presetVisibleParameters(preset, values);
-  const update = (key: string, value: string) => onChange({ ...values, [key]: value });
+  const update = (key: string, value: string) => onChange((current) => ({ ...current, [key]: value }));
   const tagEnabled = presetTagEnabled(values);
   const tagTokens = presetTagTemplateTokens(preset, values, new Date());
   const tagPreview = workflowTagTemplatePreview(
@@ -1896,8 +1854,23 @@ function PresetParameterFields({
   useEffect(() => {
     if (loadingSources || sources.length === 0 || (values.sourceId ?? "").trim() !== "") return;
     if (!visible.some((parameter) => parameter.kind === "source_id")) return;
-    onChange({ ...values, sourceId: String(sources[0].id) });
+    onChange((current) => ({ ...current, sourceId: String(sources[0].id) }));
   }, [loadingSources, sources, visible.length]);
+
+  // Catalog sources start with every compatible source selected; a stored or
+  // prefilled selection is kept as it is.
+  const catalogSourcesInitialized = useRef(false);
+  useEffect(() => {
+    if (catalogSourcesInitialized.current || loadingSources) return;
+    catalogSourcesInitialized.current = true;
+    if (!preset.parameters.some((parameter) => parameter.key === "sourceIds")) return;
+    if (sources.length === 0) return;
+    onChange((current) =>
+      presetSourceIds(current.sourceIds).length > 0
+        ? current
+        : { ...current, sourceIds: sources.map((source) => source.id).join(",") },
+    );
+  }, [loadingSources, sources]);
 
   const renderField = (parameter: WorkflowPresetParameter) => {
     const id = `${idPrefix}-${parameter.key}`;
@@ -1928,7 +1901,78 @@ function PresetParameterFields({
         {control}
       </OptionField>
     );
+    const stepSwitch = (checked: boolean, onCheckedChange: (next: boolean) => void) => (
+      <SwitchControl
+        label={workflowCopy(`presetSwitches.${parameter.key}`)}
+        description={workflowCopy(`presetSwitchHints.${parameter.key}`)}
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+      />
+    );
+    if (parameter.key === "metadataRefresh") {
+      const enabled = value !== "" && value !== "off";
+      return field(
+        <>
+          {stepSwitch(enabled, (next) => update(parameter.key, next ? "missing" : "off"))}
+          {enabled && (
+            <SegmentedControl
+              label={presetParameterLabel(parameter.key)}
+              value={value}
+              onChange={(next) => update(parameter.key, next)}
+              options={["missing", "all"].map((option) => ({ value: option, label: presetOptionLabel(option) }))}
+            />
+          )}
+        </>,
+        { labelFor: false },
+      );
+    }
     switch (parameter.kind) {
+      case "boolean":
+        return field(
+          stepSwitch(value !== "false", (next) => update(parameter.key, next ? "true" : "false")),
+          { labelFor: false },
+        );
+      case "voice_person":
+        return field(
+          <VoiceActorPicker
+            id={id}
+            personId={value}
+            displayName={values[PRESET_PERSON_NAME_KEY] ?? ""}
+            onChange={(personId, displayName) =>
+              onChange((current) => ({ ...current, [parameter.key]: personId, [PRESET_PERSON_NAME_KEY]: displayName }))
+            }
+          />,
+        );
+      case "source_ids": {
+        const checkboxes = (
+          <RemoteSourceCheckboxes
+            label={presetParameterLabel(parameter.key)}
+            sources={sources}
+            loading={loadingSources}
+            selected={presetSourceIds(value)}
+            onChange={(ids) => update(parameter.key, ids.join(","))}
+          />
+        );
+        if (parameter.key !== "checkSourceIds") return field(checkboxes, { labelFor: false });
+        const enabled = presetSourceCheckEnabled(values);
+        return field(
+          <>
+            {stepSwitch(enabled, (next) =>
+              onChange((current) => ({
+                ...current,
+                [presetOptionalFlagKey(parameter.key)]: next ? "true" : "false",
+                // Turning the check on starts from every compatible source.
+                [parameter.key]:
+                  next && presetSourceIds(current[parameter.key]).length === 0
+                    ? sources.map((source) => source.id).join(",")
+                    : current[parameter.key],
+              })),
+            )}
+            {enabled && checkboxes}
+          </>,
+          { labelFor: false },
+        );
+      }
       case "source_id":
         return field(
           <NativeSelect
@@ -2088,7 +2132,7 @@ function PresetParameterFields({
           />
         );
       default:
-        // Circle, series, and voice targets accept a list; the server combines their catalogs.
+        // Circle and series targets accept a list; the server combines their catalogs.
         return field(
           <Input
             id={id}
@@ -2103,7 +2147,7 @@ function PresetParameterFields({
     }
   };
 
-  const groups = ["target", "filter", "action", "fetch", "tag"] as const;
+  const groups = ["target", "metadata", "sources", "follow", "filter", "action", "fetch", "tag"] as const;
   return (
     <div className="grid divide-y">
       {groups.map((group) => {
@@ -2140,7 +2184,15 @@ function PresetRunPanel({
   onRun: (inputs: Record<string, unknown>) => Promise<void>;
   onTriggerRunOptionsChange?: (options: CurrentTriggerRunOptions) => void;
 }) {
-  const [values, setValues] = useState<PresetFormValues>(() => presetDefaultValues(preset));
+  const [values, setValues] = useState<PresetFormValues>(() => {
+    // A detail page's Follow shortcut prefills this preset's target.
+    const prefill = readWorkflowRunPrefill(preset.code);
+    const targets = Object.fromEntries(
+      Object.entries(prefill).filter(([key]) => preset.parameters.some((parameter) => parameter.key === key)),
+    );
+    return Object.keys(targets).length > 0 ? presetValuesFromInputs(preset, targets) : presetDefaultValues(preset);
+  });
+  useEffect(() => clearWorkflowRunPrefill(), []);
   useEffect(() => {
     onTriggerRunOptionsChange?.({ code: preset.code, presetValues: values });
   }, [preset.code, values, onTriggerRunOptionsChange]);

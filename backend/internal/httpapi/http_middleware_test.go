@@ -192,20 +192,6 @@ func TestWriteUpstreamErrorHidesInternalMessage(t *testing.T) {
 	}
 }
 
-func TestPublicCircleProductFailuresHideInternalMessage(t *testing.T) {
-	got := publicCircleProductFailures([]string{
-		"RJ00000001: Get https://private.invalid/api: connection refused",
-		"database path C:/private/library.db",
-	})
-	joined := strings.Join(got, " ")
-	if strings.Contains(joined, "private.invalid") || strings.Contains(joined, "C:/private") {
-		t.Fatalf("failures exposed internal details: %q", joined)
-	}
-	if got[0] != "RJ00000001: metadata sync failed" {
-		t.Fatalf("failure = %q", got[0])
-	}
-}
-
 func TestWriteErrorClassifiesDatabaseBusy(t *testing.T) {
 	response := httptest.NewRecorder()
 	writeError(response, errors.New("database is locked (5)"))

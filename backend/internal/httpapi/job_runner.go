@@ -158,7 +158,6 @@ func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobR
 		"local_library_scan":         s.executeLocalScanJob,
 		"metadata_sync":              s.executeDLsiteMetadataSyncJob,
 		"metadata_family_sync":       s.executeWorkMetadataSyncJob,
-		"voice_catalog_refresh":      s.executeVoiceCatalogRefreshJob,
 		"media_cache_limit_cleanup":  s.executeMediaCacheLimitCleanupJob,
 		"media_cache_cleanup":        s.executeMediaCacheCleanupJob,
 		"local_media_delete":         s.executeLocalMediaDeleteJob,

@@ -1075,14 +1075,16 @@ export type WorkflowPresetParameter = {
   kind:
     | "circle_id"
     | "series_id"
-    | "voice_name"
+    | "voice_person"
     | "source_id"
+    | "source_ids"
+    | "boolean"
     | "select"
     | "integer"
     | "date"
     | "text_template"
     | "extensions";
-  group: "target" | "filter" | "action" | "fetch" | "tag";
+  group: "target" | "metadata" | "sources" | "follow" | "filter" | "action" | "fetch" | "tag";
   required: boolean;
   default?: string | number | boolean;
   options?: string[];
@@ -1428,6 +1430,8 @@ export type CircleDetail = CircleSummary & {
   availableWorks: number;
   works: CircleCatalogWork[];
   series: CircleSeries[];
+  /** Newest follow run for this circle, so the page can follow a queued refresh across reloads. */
+  refresh?: CreatorRefreshRun | null;
 };
 
 export type VoiceSummary = {
@@ -1591,10 +1595,22 @@ export type VoiceCatalogSourceStatus = {
   elapsedMs: number;
 };
 
-export type VoiceCatalogRefreshRequest = {
-  scope: "remote" | "metadata" | "all";
-  mode?: "incremental" | "full";
-  sourceIds?: number[];
+/**
+ * A circle or voice actor detail refresh. It queues the creator's follow
+ * workflow with the new-works step off.
+ */
+export type CreatorRefreshRequest = {
+  catalogRefresh: "stored" | "incremental" | "full";
+  metadataRefresh: "off" | "missing" | "all";
+  /** Circles only: also match the circle's works on every compatible remote source. */
+  sourceCheck?: boolean;
+};
+
+export type CreatorRefreshRun = {
+  runId: number;
+  status: string;
+  /** True when an identical refresh was already queued or running. */
+  deduplicated?: boolean;
 };
 
 export type VoiceCatalogRefreshState = {
@@ -1612,31 +1628,14 @@ export type VoiceCatalogRefreshState = {
   queries: string[];
   sources: VoiceCatalogSourceStatus[];
   error: string;
-  scope?: VoiceCatalogRefreshRequest["scope"];
-  mode?: NonNullable<VoiceCatalogRefreshRequest["mode"]>;
-  sourceIds?: number[];
 };
 
 export type VoiceDetail = VoiceSummary & {
   aliasRecords: VoiceAlias[];
   works: VoiceKnownWork[];
   remoteMatches: VoiceRemoteSourceSet[];
-};
-
-export type CircleRefreshResult = {
-  runId: number;
-  externalId: string;
-  status: string;
-  scope: "all" | "catalog" | "work" | "source" | "metadata";
-  catalogWorks: number;
-  pagesFetched: number;
-  productSynced: number;
-  productSkipped: number;
-  productFailed: number;
-  productFailures: string[];
-  sourceSynced: number;
-  mode: "incremental" | "full";
-  productMode: "available" | "all";
+  /** Known works without a provider snapshot; Retry metadata targets exactly these. */
+  metadataMissingWorks?: number;
 };
 
 export type MediaTextPreview = {
@@ -2334,10 +2333,11 @@ export const api = {
       `/api/voices/${encodeURIComponent(String(personId))}/remote-matches`,
       signal,
     ),
-  refreshVoiceCatalog: (personId: number | string, payload?: VoiceCatalogRefreshRequest) => {
-    const path = `/api/voices/${encodeURIComponent(String(personId))}/catalog/refresh`;
-    return payload ? postJSONBody<VoiceCatalogRefreshState>(path, payload) : postJSON<VoiceCatalogRefreshState>(path);
-  },
+  refreshVoiceCatalog: (personId: number | string, payload: CreatorRefreshRequest) =>
+    postJSONBody<VoiceCatalogRefreshState>(
+      `/api/voices/${encodeURIComponent(String(personId))}/catalog/refresh`,
+      payload,
+    ),
   listVoiceAliasCandidates: (personId: number, query = "") =>
     getJSON<VoiceAliasCandidate[]>(
       `/api/voices/${personId}/alias-candidates${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ""}`,
@@ -2377,14 +2377,8 @@ export const api = {
       `/api/circles/${encodeURIComponent(externalId)}/tags`,
       { tags },
     ),
-  refreshCircle: (
-    externalId: string,
-    payload: {
-      scope: "all" | "catalog" | "work" | "source" | "metadata";
-      mode: "incremental" | "full";
-      productMode: "available" | "all";
-    },
-  ) => postJSONBody<CircleRefreshResult>(`/api/circles/${encodeURIComponent(externalId)}/refresh`, payload),
+  refreshCircle: (externalId: string, payload: CreatorRefreshRequest) =>
+    postJSONBody<CreatorRefreshRun>(`/api/circles/${encodeURIComponent(externalId)}/refresh`, payload),
   deleteCircleCatalogWork: (externalId: string, code: string) =>
     deleteJSON<{ ok: boolean; deleted: number }>(
       `/api/circles/${encodeURIComponent(externalId)}/catalog/${encodeURIComponent(code)}`,

@@ -85,12 +85,19 @@ Workflows make backend actions inspectable.
   opens a panel for the remote source, the action on availability, and optional
   Fetch extension exclusions, which are off until enabled; the section below
   the header summarizes the saved values that `Run` uses.
-- Follow a circle, Follow a series, and Follow a voice actor are preset
-  workflows. Their Run options hold the target, filter, action, Fetch limits,
-  and tag template. Trigger popovers use these values by default; enable
-  Customize run options to override them.
-  The target accepts up to 20 comma-separated circle IDs, series IDs, or voice
-  actor names, whose catalogs are combined before filtering. Sync metadata only needs no source;
+- Follow a circle, Follow a series, and Follow a voice actor (tab **VAs
+  follow**) are preset workflows. Their Run options hold the target, filter,
+  action, Fetch limits, and tag template. Trigger popovers use these values by
+  default; enable Customize run options to override them.
+  Circle and series targets accept up to 20 comma-separated IDs, whose catalogs
+  are combined before filtering. The voice actor target is one picked voice
+  actor; its catalog is refreshed on the checked remote sources with the
+  display name and confirmed aliases.
+  Circle and voice actor follows also switch optional refresh steps: **Refresh
+  work metadata** for works missing metadata or for all works, and for circles
+  **Check remote sources** on the checked sources. **Follow new works** can be
+  turned off to run only the refresh steps; circle and voice actor detail
+  refreshes are such runs. Sync metadata only needs no source;
   Track and Fetch need an enabled compatible remote source, and Fetch requires
   download management permission plus explicit file, size, and free-space
   limits. New works only skips works already in the library. The work limit is

@@ -298,11 +298,23 @@ the notification opens the shared Ready pool.
 ## Voice Catalog Refresh
 
 Opening a voice actor detail reads the persisted local works and voice catalog
-only; entering either a voice or circle detail never queues a workflow. Creator
+only; entering either a voice or circle detail never queues a workflow.
+
+Circle and voice actor detail refreshes are follow preset runs with the
+new-works step off. `POST /api/circles/{externalId}/refresh` and `POST
+/api/voices/{personId}/catalog/refresh` only queue a `circle_follow` or
+`voice_follow` run and return its id. The graph then runs the catalog node,
+the optional metadata node, and for circles the optional source-check node. A
+request identical to an active run for the same creator joins it, and a
+different request is rejected until that run settles. A detail refresh is
+authorized by `metadata:sync`; because its graph holds only refresh steps, the
+run carries `workflows:run` on the requester's behalf. Circle detail returns
+the newest follow run for the circle so the page can follow it across reloads.
+The only inline circle refresh left is the bounded incremental catalog lookup
+that resolves a series link. Creator
 catalogs expose Never, Attention, or Synced from their last successful pull and
 the configured freshness window. An authorized user can start an explicit First
-pull or manual refresh through the same durable workflow, which requires
-metadata-sync permission.
+pull or manual refresh through the same follow workflow.
 
 The workflow searches the display name and every confirmed alias against each
 enabled compatible source. It follows the source-reported result count through
@@ -316,8 +328,8 @@ A failed source keeps its previous catalog observations, while a complete
 source marks observations absent from the new generation `not_found`. Remote
 discoveries remain catalog rows and never materialize works recursively. Only
 catalog items that already resolve to canonical works enter the refresh run's
-metadata node; it synchronizes them within the same `voice_catalog_refresh`
-run rather than creating one metadata workflow per work. Metadata incremental
+metadata node; it synchronizes them within the same `voice_follow` run
+rather than creating one metadata workflow per work. Metadata incremental
 refreshes select only those known canonical work families without a DLsite
 snapshot; full refreshes retry every known canonical family. Neither mode
 materializes a catalog-only row as a work. Metadata failures can make the

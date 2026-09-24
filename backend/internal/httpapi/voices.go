@@ -144,6 +144,9 @@ type voiceDetail struct {
 	voiceSummary
 	Works         []voiceKnownWork       `json:"works"`
 	RemoteMatches []voiceRemoteSourceSet `json:"remoteMatches"`
+	// MetadataMissingWorks counts known catalog works without a provider
+	// snapshot; an incremental metadata refresh targets exactly these.
+	MetadataMissingWorks int `json:"metadataMissingWorks"`
 }
 
 type voiceKnownWork struct {
@@ -300,10 +303,17 @@ func (s *Server) getVoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	summary.Aliases = aliasNames(aliases)
+	missing, err := s.loadVoiceCatalogMetadataTargets(r.Context(), personID, "incremental")
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, struct {
 		voiceDetail
 		AliasRecords []voiceAlias `json:"aliasRecords"`
-	}{voiceDetail: voiceDetail{voiceSummary: summary, Works: works, RemoteMatches: []voiceRemoteSourceSet{}}, AliasRecords: aliases})
+	}{voiceDetail: voiceDetail{
+		voiceSummary: summary, Works: works, RemoteMatches: []voiceRemoteSourceSet{}, MetadataMissingWorks: len(missing),
+	}, AliasRecords: aliases})
 }
 
 func (s *Server) getVoiceWorks(w http.ResponseWriter, r *http.Request) {

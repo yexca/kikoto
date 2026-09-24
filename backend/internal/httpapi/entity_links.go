@@ -146,9 +146,7 @@ func (s *Server) resolveWorkEntityLinkRoute(ctx context.Context, code string, re
 	if partyID <= 0 || makerID == "" {
 		return workEntityLinkResolution{}, "", nil
 	}
-	if _, err := s.runCircleRefresh(ctx, partyID, makerID, circleRefreshRequest{
-		Scope: "catalog", Mode: "incremental", ProductMode: "available",
-	}); err != nil {
+	if _, err := s.runCircleCatalogRefresh(ctx, partyID, makerID, "incremental", s.newDLsiteClient()); err != nil {
 		return workEntityLinkResolution{}, "catalog", err
 	}
 	route, err := s.findWorkEntityRoute(ctx, code, request)

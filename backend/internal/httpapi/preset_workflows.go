@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -92,11 +94,19 @@ type presetWorkflowRecord struct {
 }
 
 type presetWorkflowInputs struct {
-	CircleID          string
-	SeriesID          string
-	VoiceName         string
+	CircleID string
+	SeriesID string
+	PersonID int64
+	// VoiceName is the resolved display name of PersonID for tag templates.
+	VoiceName string
+	// SourceID is the Track or Fetch source; SourceIDs are the voice catalog
+	// sources and CheckSourceIDs the circle source check sources.
 	SourceID          int64
+	SourceIDs         []int64
+	CheckSourceIDs    []int64
 	CatalogRefresh    string
+	MetadataRefresh   string
+	NewWorks          bool
 	Existing          string
 	ReleaseFrom       string
 	ReleaseTo         string
@@ -152,19 +162,32 @@ func presetActionParameters() []presetWorkflowParameter {
 	}
 }
 
+func presetMetadataRefreshParameter() presetWorkflowParameter {
+	return presetWorkflowParameter{Key: "metadataRefresh", Kind: "select", Group: "metadata", Default: "off", Options: []string{"off", "missing", "all"}}
+}
+
+func presetNewWorksParameter() presetWorkflowParameter {
+	return presetWorkflowParameter{Key: "newWorks", Kind: "boolean", Group: "follow", Default: true}
+}
+
 var presetWorkflowSpecs = []presetWorkflowSpec{
 	{
 		Code:               "circle_follow",
 		DisplayName:        "Follow a circle",
-		Description:        "Read a circle catalog, filter new works, then synchronize metadata, track, or fetch them and append a user tag.",
+		Description:        "Refresh a circle catalog, optionally refresh its work metadata and check sources, then sync, track, or fetch new works and append a user tag.",
 		Target:             "circle",
 		DefaultTagTemplate: "{date}_circle_{target}",
 		Parameters: append([]presetWorkflowParameter{
 			{Key: "circleId", Kind: "circle_id", Group: "target", Required: true},
 			{Key: "catalogRefresh", Kind: "select", Group: "target", Default: "incremental", Options: []string{"stored", "incremental", "full"}},
+			presetMetadataRefreshParameter(),
+			{Key: "checkSourceIds", Kind: "source_ids", Group: "sources"},
+			presetNewWorksParameter(),
 		}, presetActionParameters()...),
 		DisplayNodes: []map[string]string{
 			{"id": "discover", "type": "circle_catalog", "displayName": "Circle catalog"},
+			{"id": "metadata", "type": "circle_metadata", "displayName": "Refresh circle metadata"},
+			{"id": "sources", "type": "circle_sources", "displayName": "Check circle sources"},
 			{"id": "filter", "type": "filter_works", "displayName": "Filter new works"},
 			{"id": "action", "type": "track_works", "displayName": "Sync, track, or fetch"},
 			{"id": "tag", "type": "tag_works", "displayName": "Add user tag"},
@@ -189,34 +212,24 @@ var presetWorkflowSpecs = []presetWorkflowSpec{
 	{
 		Code:               "voice_follow",
 		DisplayName:        "Follow a voice actor",
-		Description:        "Search one compatible remote source for a voice actor, filter new works, then synchronize metadata, track, or fetch them and append a user tag.",
+		Description:        "Refresh a voice actor's catalog on the selected remote sources, optionally refresh known-work metadata, then sync, track, or fetch new works and append a user tag.",
 		Target:             "voice",
 		DefaultTagTemplate: "{date}_voice_{target}",
 		Parameters: append([]presetWorkflowParameter{
-			{Key: "voiceName", Kind: "voice_name", Group: "target", Required: true},
-			{Key: "sourceId", Kind: "source_id", Group: "target", Required: true},
-		}, filterPresetParameters(presetActionParameters(), "sourceId")...),
+			{Key: "personId", Kind: "voice_person", Group: "target", Required: true},
+			{Key: "sourceIds", Kind: "source_ids", Group: "target"},
+			{Key: "catalogRefresh", Kind: "select", Group: "target", Default: "incremental", Options: []string{"stored", "incremental", "full"}},
+			presetMetadataRefreshParameter(),
+			presetNewWorksParameter(),
+		}, presetActionParameters()...),
 		DisplayNodes: []map[string]string{
-			{"id": "discover", "type": "voice_source_works", "displayName": "Voice works from source"},
+			{"id": "discover", "type": "voice_catalog", "displayName": "Voice actor catalog"},
+			{"id": "metadata", "type": "voice_metadata", "displayName": "Refresh known-work metadata"},
 			{"id": "filter", "type": "filter_works", "displayName": "Filter new works"},
 			{"id": "action", "type": "track_works", "displayName": "Sync, track, or fetch"},
 			{"id": "tag", "type": "tag_works", "displayName": "Add user tag"},
 		},
 	},
-}
-
-func filterPresetParameters(parameters []presetWorkflowParameter, excludedKeys ...string) []presetWorkflowParameter {
-	excluded := map[string]bool{}
-	for _, key := range excludedKeys {
-		excluded[key] = true
-	}
-	result := make([]presetWorkflowParameter, 0, len(parameters))
-	for _, parameter := range parameters {
-		if !excluded[parameter.Key] {
-			result = append(result, parameter)
-		}
-	}
-	return result
 }
 
 func presetWorkflowSpecByCode(code string) (presetWorkflowSpec, bool) {
@@ -327,10 +340,24 @@ func (s *Server) planPresetWorkflow(ctx context.Context, spec presetWorkflowSpec
 	if automated && inputs.CatalogRefresh == "full" {
 		return presetWorkflowPlan{}, fmt.Errorf("automated runs support stored or incremental catalog refresh only")
 	}
+	sourceIDs := append(append([]int64{}, inputs.SourceIDs...), inputs.CheckSourceIDs...)
 	if inputs.SourceID > 0 {
-		if err := s.validatePresetWorkflowSource(ctx, inputs.SourceID); err != nil {
+		sourceIDs = append(sourceIDs, inputs.SourceID)
+	}
+	for _, sourceID := range sourceIDs {
+		if err := s.validatePresetWorkflowSource(ctx, sourceID); err != nil {
 			return presetWorkflowPlan{}, err
 		}
+	}
+	if spec.Target == "voice" {
+		name, err := s.loadPersonName(ctx, inputs.PersonID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return presetWorkflowPlan{}, fmt.Errorf("voice actor not found")
+		}
+		if err != nil {
+			return presetWorkflowPlan{}, err
+		}
+		inputs.VoiceName = name
 	}
 	tagName := ""
 	if inputs.TagNameTemplate != "" {
@@ -392,7 +419,8 @@ func normalizePresetWorkflowInputs(spec presetWorkflowSpec, raw map[string]any) 
 		}
 	}
 	inputs := presetWorkflowInputs{
-		CatalogRefresh: "incremental", Existing: "unknown", MaxWorks: presetWorkflowDefaultWorks, Action: "metadata",
+		CatalogRefresh: "incremental", MetadataRefresh: "off", NewWorks: true, Existing: "unknown",
+		MaxWorks: presetWorkflowDefaultWorks, Action: "metadata",
 		MaxFiles: presetWorkflowDefaultFiles, MaxGiB: presetWorkflowDefaultGiB, MinFreeGiB: presetWorkflowDefaultMinFree,
 		TagNameTemplate: spec.DefaultTagTemplate,
 	}
@@ -422,18 +450,11 @@ func normalizePresetWorkflowInputs(spec presetWorkflowSpec, raw map[string]any) 
 		}
 		inputs.SeriesID = joinPresetWorkflowTargets(targets)
 	case "voice":
-		targets = splitPresetWorkflowTargets(inputs.VoiceName, strings.TrimSpace)
-		for _, voiceName := range targets {
-			if isUnknownVoiceActorName(voiceName) {
-				return presetWorkflowInputs{}, fmt.Errorf("voiceName is required")
-			}
+		if inputs.PersonID <= 0 {
+			return presetWorkflowInputs{}, fmt.Errorf("personId is required")
 		}
-		if len(targets) == 0 {
-			return presetWorkflowInputs{}, fmt.Errorf("voiceName is required")
-		}
-		inputs.VoiceName = joinPresetWorkflowTargets(targets)
-		if inputs.SourceID <= 0 {
-			return presetWorkflowInputs{}, fmt.Errorf("sourceId is required")
+		if inputs.CatalogRefresh != "stored" && len(inputs.SourceIDs) == 0 {
+			return presetWorkflowInputs{}, fmt.Errorf("sourceIds is required to refresh the catalog")
 		}
 	}
 	// Both release bounds are inclusive; either may be empty to leave that side open.
@@ -442,6 +463,15 @@ func normalizePresetWorkflowInputs(spec presetWorkflowSpec, raw map[string]any) 
 	}
 	if len(targets) > presetWorkflowMaxTargets {
 		return presetWorkflowInputs{}, fmt.Errorf("a preset run supports at most %d targets", presetWorkflowMaxTargets)
+	}
+	if !inputs.NewWorks {
+		// Without the new-works step only the refresh steps run.
+		if inputs.CatalogRefresh == "stored" && inputs.MetadataRefresh == "off" && len(inputs.CheckSourceIDs) == 0 {
+			return presetWorkflowInputs{}, fmt.Errorf("choose at least one step to run")
+		}
+		inputs.Existing, inputs.ReleaseFrom, inputs.ReleaseTo = "unknown", "", ""
+		inputs.MaxWorks, inputs.Action, inputs.SourceID = presetWorkflowDefaultWorks, "metadata", 0
+		inputs.TagNameTemplate = ""
 	}
 	if inputs.Action != "metadata" && inputs.SourceID <= 0 {
 		return presetWorkflowInputs{}, fmt.Errorf("sourceId is required for %s", inputs.Action)
@@ -457,7 +487,54 @@ func normalizePresetWorkflowInputs(spec presetWorkflowSpec, raw map[string]any) 
 
 func applyPresetWorkflowInput(inputs *presetWorkflowInputs, parameter presetWorkflowParameter, value any, supplied bool) error {
 	switch parameter.Kind {
-	case "circle_id", "series_id", "voice_name", "date", "text_template":
+	case "boolean":
+		if !supplied || value == nil {
+			return nil
+		}
+		enabled, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("%s must be true or false", parameter.Key)
+		}
+		if parameter.Key == "newWorks" {
+			inputs.NewWorks = enabled
+		}
+	case "voice_person":
+		if !supplied || value == nil {
+			return nil
+		}
+		number, ok := graphConfigInteger(value)
+		if !ok || number <= 0 {
+			return fmt.Errorf("personId must be a voice actor id")
+		}
+		inputs.PersonID = number
+	case "source_ids":
+		if !supplied || value == nil {
+			return nil
+		}
+		values, ok := graphIntegerArray(value)
+		if !ok {
+			return fmt.Errorf("%s must be a list of source ids", parameter.Key)
+		}
+		ids := []int64{}
+		seen := map[int64]bool{}
+		for _, id := range values {
+			if id <= 0 {
+				return fmt.Errorf("%s must be a list of source ids", parameter.Key)
+			}
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+		if len(ids) > presetWorkflowMaxTargets {
+			return fmt.Errorf("%s supports at most %d sources", parameter.Key, presetWorkflowMaxTargets)
+		}
+		if parameter.Key == "checkSourceIds" {
+			inputs.CheckSourceIDs = ids
+		} else {
+			inputs.SourceIDs = ids
+		}
+	case "circle_id", "series_id", "date", "text_template":
 		text, err := presetWorkflowText(parameter, value, supplied)
 		if err != nil {
 			return err
@@ -467,8 +544,6 @@ func applyPresetWorkflowInput(inputs *presetWorkflowInputs, parameter presetWork
 			inputs.CircleID = text
 		case "seriesId":
 			inputs.SeriesID = text
-		case "voiceName":
-			inputs.VoiceName = text
 		case "releaseFrom", "releaseTo":
 			if text != "" {
 				if _, err := time.Parse("2006-01-02", text); err != nil {
@@ -504,6 +579,8 @@ func applyPresetWorkflowInput(inputs *presetWorkflowInputs, parameter presetWork
 		switch parameter.Key {
 		case "catalogRefresh":
 			inputs.CatalogRefresh = text
+		case "metadataRefresh":
+			inputs.MetadataRefresh = text
 		case "existing":
 			inputs.Existing = text
 		case "action":
@@ -579,7 +656,7 @@ func presetWorkflowText(parameter presetWorkflowParameter, value any, supplied b
 	text = strings.TrimSpace(text)
 	limit := 160
 	switch parameter.Kind {
-	case "circle_id", "series_id", "voice_name":
+	case "circle_id", "series_id":
 		limit = presetWorkflowMaxTargetText
 	}
 	if len([]rune(text)) > limit {
@@ -592,18 +669,29 @@ func presetWorkflowText(parameter presetWorkflowParameter, value any, supplied b
 }
 
 func (inputs presetWorkflowInputs) public() map[string]any {
-	result := map[string]any{
-		"existing": inputs.Existing, "maxWorks": inputs.MaxWorks, "action": inputs.Action, "tagNameTemplate": inputs.TagNameTemplate,
+	result := map[string]any{"newWorks": inputs.NewWorks}
+	if inputs.NewWorks {
+		result["existing"] = inputs.Existing
+		result["maxWorks"] = inputs.MaxWorks
+		result["action"] = inputs.Action
+		result["tagNameTemplate"] = inputs.TagNameTemplate
 	}
 	if inputs.CircleID != "" {
 		result["circleId"] = inputs.CircleID
+	}
+	if inputs.CircleID != "" || inputs.PersonID > 0 {
 		result["catalogRefresh"] = inputs.CatalogRefresh
+		result["metadataRefresh"] = inputs.MetadataRefresh
 	}
 	if inputs.SeriesID != "" {
 		result["seriesId"] = inputs.SeriesID
 	}
-	if inputs.VoiceName != "" {
-		result["voiceName"] = inputs.VoiceName
+	if inputs.PersonID > 0 {
+		result["personId"] = inputs.PersonID
+		result["sourceIds"] = append([]int64{}, inputs.SourceIDs...)
+	}
+	if len(inputs.CheckSourceIDs) > 0 {
+		result["checkSourceIds"] = append([]int64{}, inputs.CheckSourceIDs...)
 	}
 	if inputs.SourceID > 0 {
 		result["sourceId"] = inputs.SourceID
@@ -623,9 +711,10 @@ func (inputs presetWorkflowInputs) public() map[string]any {
 	return result
 }
 
-// buildPresetWorkflowDefinition composes the fixed discover -> filter -> action
-// -> tag graph. Every bound is explicit so the graph is valid for both manual
-// and automated dispatch; the policy flag only keeps catalog refresh available.
+// buildPresetWorkflowDefinition composes the preset graph. Refresh steps run in
+// order after the catalog, and the optional new-works steps follow:
+// discover -> metadata -> sources -> filter -> action -> tag. Every bound is
+// explicit so the graph is valid for both manual and automated dispatch.
 func buildPresetWorkflowDefinition(spec presetWorkflowSpec, inputs presetWorkflowInputs, tagName string) workflowGraphDefinition {
 	requirePreview := true
 	definition := workflowGraphDefinition{SchemaVersion: workflowGraphSchemaVersion, Nodes: []workflowGraphNode{}, Edges: []workflowGraphEdge{}, Policy: workflowGraphPolicy{RequirePreview: &requirePreview}}
@@ -640,13 +729,36 @@ func buildPresetWorkflowDefinition(spec presetWorkflowSpec, inputs presetWorkflo
 			ID: source + "_" + sourceHandle + "_" + target, Source: source, SourceHandle: sourceHandle, Target: target, TargetHandle: targetHandle,
 		})
 	}
+	discover := inputs.NewWorks || inputs.CatalogRefresh != "stored"
+	metadataMode := map[string]string{"missing": "incremental", "all": "full"}[inputs.MetadataRefresh]
 	switch spec.Target {
 	case "circle":
-		addNode("discover", "circle_catalog", "Circle catalog", map[string]any{"circleId": inputs.CircleID, "mode": inputs.CatalogRefresh, "maxWorks": presetWorkflowMaxCatalogSize})
+		if discover {
+			addNode("discover", "circle_catalog", "Circle catalog", map[string]any{"circleId": inputs.CircleID, "mode": inputs.CatalogRefresh, "maxWorks": presetWorkflowMaxCatalogSize})
+		}
+		if metadataMode != "" {
+			productMode := map[string]string{"missing": "available", "all": "all"}[inputs.MetadataRefresh]
+			addNode("metadata", "circle_metadata", "Refresh circle metadata", map[string]any{"circleId": inputs.CircleID, "productMode": productMode})
+		}
+		if len(inputs.CheckSourceIDs) > 0 {
+			mode := "incremental"
+			if inputs.CatalogRefresh == "full" {
+				mode = "full"
+			}
+			addNode("sources", "circle_sources", "Check circle sources", map[string]any{"circleId": inputs.CircleID, "sourceIds": append([]int64{}, inputs.CheckSourceIDs...), "mode": mode})
+		}
 	case "series":
 		addNode("discover", "series_catalog", "Series catalog", map[string]any{"seriesId": inputs.SeriesID, "maxWorks": presetWorkflowMaxCatalogSize})
 	case "voice":
-		addNode("discover", "voice_source_works", "Voice works from source", map[string]any{"voiceName": inputs.VoiceName, "sourceId": inputs.SourceID, "pageSize": 48, "maxPages": 42, "maxWorks": 2000})
+		if discover {
+			addNode("discover", "voice_catalog", "Voice actor catalog", map[string]any{"personId": inputs.PersonID, "sourceIds": append([]int64{}, inputs.SourceIDs...), "mode": inputs.CatalogRefresh, "maxWorks": presetWorkflowMaxCatalogSize})
+		}
+		if metadataMode != "" {
+			addNode("metadata", "voice_metadata", "Refresh known-work metadata", map[string]any{"personId": inputs.PersonID, "mode": metadataMode})
+		}
+	}
+	if !inputs.NewWorks {
+		return definition
 	}
 	filterConfig := map[string]any{"existing": inputs.Existing, "limit": inputs.MaxWorks}
 	if inputs.ReleaseFrom != "" {

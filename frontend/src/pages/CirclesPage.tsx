@@ -9,8 +9,9 @@ import {
   HardDriveDownload,
   Heart,
   ListChecks,
-  MoreHorizontal,
+  Loader2,
   RefreshCw,
+  Rss,
   Search,
   SlidersHorizontal,
   X,
@@ -37,6 +38,7 @@ import {
   creatorCollectionClassName,
 } from "@/components/creator/CreatorCard";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
+import { CreatorActionMenu } from "@/components/creator/CreatorActionMenu";
 import { CreatorDetailHeader } from "@/components/creator/CreatorDetailHeader";
 import { CreatorListToolbar } from "@/components/creator/CreatorListToolbar";
 import { CatalogWorkToolbar } from "@/components/creator/CatalogWorkToolbar";
@@ -63,6 +65,7 @@ import { WorkCollectionPagination } from "@/components/work-collection/WorkColle
 import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
 import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
+import { openWorkflowPath, workflowActivityRunPath, workflowRunFormPath } from "@/features/workflows/workflowLinks";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import {
@@ -71,6 +74,7 @@ import {
   assetURL,
   type CircleCatalogWork,
   type CircleDetail,
+  type CreatorRefreshRequest,
   type CircleSeries,
   type CircleSourceStat,
   type CircleSummary,
@@ -108,13 +112,8 @@ import {
   readLastCircleListLocation,
   writeLastCircleListLocation,
 } from "@/pages/circleNavigationState";
-import {
-  CircleAdvancedRefreshSheet,
-  CircleCatalogOptionsSheet,
-  type CircleAvailabilityFilter,
-  type CircleRefreshMode,
-  type CircleRefreshScope,
-} from "@/pages/CircleDetailSheets";
+import { CircleCatalogOptionsSheet, type CircleAvailabilityFilter } from "@/pages/CircleDetailSheets";
+import { circleRefreshSettledMessage, useCircleRefreshRun } from "@/pages/circleRefreshRun";
 import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
 
 const circlePageSizeOptions = [24, 48, 96] as const;
@@ -423,15 +422,13 @@ function CircleDetailPage({
   const [detail, setDetail] = useState<CircleDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [refreshingScope, setRefreshingScope] = useState<CircleRefreshScope | null>(null);
+  const [queueingRefresh, setQueueingRefresh] = useState(false);
   const { mobileColumns, desktopColumns, setMobileColumns, setDesktopColumns } = useWorkCollectionLayout();
   const [deleteTarget, setDeleteTarget] = useState<CircleCatalogWork | null>(null);
   const [selectedWorkCodes, setSelectedWorkCodes] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkSaving, setIsBulkSaving] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
-  const [advancedRefreshOpen, setAdvancedRefreshOpen] = useState(false);
-  const advancedRefreshAnchorRef = useRef<HTMLButtonElement | null>(null);
   const [catalogOptionsOpen, setCatalogOptionsOpen] = useState(false);
   const fetchWorkspace = useRemoteFetchWorkspace({
     onWorksChanged: async () => setDetail(await api.getCircle(externalId)),
@@ -618,23 +615,72 @@ function CircleDetailPage({
     ? selectedSeries.works
     : circle.series.reduce((total, series) => total + series.works, 0);
 
-  const refresh = async (scope: CircleRefreshScope, mode: CircleRefreshMode) => {
-    if (!canRefreshCatalog) return;
-    setRefreshingScope(scope);
+  const canOpenWorkflows = auth.hasPermission("workflows:run") && !auth.demoMode;
+  const openRefreshRun = (runId: number) => openWorkflowPath(workflowActivityRunPath(runId));
+  const refreshRun = useCircleRefreshRun({
+    run: detail?.refresh,
+    canWatchRuns: canOpenWorkflows,
+    onPoll: () => void reloadAfterTrack(),
+    onSettled: (run) => {
+      void reloadAfterTrack();
+      const message = circleRefreshSettledMessage(run, t);
+      toast.notify({
+        kind: run.status === "failed" ? "error" : run.status === "partial" ? "warning" : "success",
+        message,
+        actionLabel: canOpenWorkflows ? t("nav.activity") : undefined,
+        onAction: canOpenWorkflows ? () => openRefreshRun(run.runId) : undefined,
+      });
+    },
+  });
+  const refreshBusy = queueingRefresh || refreshRun.active;
+
+  // Refreshes run as queued workflows; the request only returns the run to follow.
+  const queueRefresh = async (request: CreatorRefreshRequest) => {
+    if (!canRefreshCatalog || refreshBusy) return;
+    setQueueingRefresh(true);
     try {
-      const result = await api.refreshCircle(externalId, { scope, mode, productMode: workProductMode(scope, mode) });
-      toast.success(refreshMessage(result, t));
-      const next = await api.getCircle(externalId);
-      setDetail(next);
+      const queued = await api.refreshCircle(externalId, request);
+      setDetail((current) =>
+        current && loadedExternalID.current === externalId
+          ? { ...current, refresh: { runId: queued.runId, status: queued.status } }
+          : current,
+      );
+      toast.notify({
+        kind: "info",
+        message: t("creatorBrowse.circleRefreshQueued", { id: queued.runId }),
+        actionLabel: canOpenWorkflows ? t("nav.activity") : undefined,
+        onAction: canOpenWorkflows ? () => openRefreshRun(queued.runId) : undefined,
+      });
     } catch (error) {
-      toast.notify(toastFromError(error, t("creatorBrowse.refreshWorkflowFailed")));
+      toast.notify(
+        error instanceof ApiError && error.status === 409
+          ? { kind: "error", message: t("creatorBrowse.refreshAlreadyRunning") }
+          : toastFromError(error, t("creatorBrowse.refreshWorkflowFailed")),
+      );
     } finally {
-      setRefreshingScope(null);
+      setQueueingRefresh(false);
     }
   };
 
   const firstPull = circle.syncState === "never";
-  const runPrimaryRefresh = () => void refresh(firstPull ? "metadata" : "all", firstPull ? "full" : "incremental");
+  // First pull reads the whole catalog and fills its metadata; Refresh also
+  // matches the circle's works on the remote sources.
+  const runPrimaryRefresh = () =>
+    void queueRefresh(
+      firstPull
+        ? { catalogRefresh: "full", metadataRefresh: "missing" }
+        : { catalogRefresh: "incremental", metadataRefresh: "missing", sourceCheck: true },
+    );
+  const workflowMenuItems = canOpenWorkflows
+    ? [
+        {
+          key: "follow",
+          label: t("detailActions.followCircle"),
+          icon: <Rss className="h-4 w-4" />,
+          onSelect: () => openWorkflowPath(workflowRunFormPath("circle_follow", { circleId: circle.externalId })),
+        },
+      ]
+    : [];
 
   const toggleCircleFavorite = async () => {
     try {
@@ -909,46 +955,52 @@ function CircleDetailPage({
               <Heart className={`h-4 w-4 ${circle.favorite ? "fill-current" : ""}`} />
               <span className="hidden lg:inline">{t("detailActions.favorite")}</span>
             </Button>
-            {!firstPull && (
+            {!firstPull && !refreshRun.active && catalogOnlyCount > 0 && (
               <Button
                 variant="outline"
                 size="sm"
                 className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
                 aria-label={t("detailActions.retryMetadata")}
-                disabled={!canRefreshCatalog || isLoading || refreshingScope !== null}
-                onClick={() => void refresh("work", "full")}
+                title={t("detailActions.retryMetadataCount", { count: catalogOnlyCount })}
+                disabled={!canRefreshCatalog || isLoading || refreshBusy}
+                onClick={() => void queueRefresh({ catalogRefresh: "stored", metadataRefresh: "missing" })}
               >
                 <RefreshCw className="h-4 w-4" />
                 <span className="lg:hidden">{t("detailActions.metadata")}</span>
                 <span className="hidden lg:inline">{t("detailActions.retryMetadata")}</span>
               </Button>
             )}
-            <Button
-              variant={firstPull ? "default" : "outline"}
-              size="sm"
-              className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
-              aria-label={firstPull ? t("detailActions.firstPull") : t("detailActions.refreshCircle")}
-              disabled={!canRefreshCatalog || isLoading || refreshingScope !== null}
-              onClick={runPrimaryRefresh}
-            >
-              <RefreshCw className="h-4 w-4" />
-              <span>{firstPull ? t("detailActions.firstPull") : t("detailActions.refreshCircle")}</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="lg:h-[var(--control-height-sm)] lg:w-auto lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs"
-              ref={advancedRefreshAnchorRef}
-              aria-label={t("detailActions.openAdvancedRefreshActions")}
-              aria-haspopup="dialog"
-              aria-expanded={advancedRefreshOpen}
-              aria-controls={advancedRefreshOpen ? "circle-advanced-refresh" : undefined}
-              title={t("detailActions.advancedRefresh")}
-              onClick={() => setAdvancedRefreshOpen((open) => !open)}
-            >
-              <MoreHorizontal className="h-4 w-4" />
-              <span className="hidden lg:inline">{t("detailActions.advanced")}</span>
-            </Button>
+            {refreshRun.active && detail?.refresh ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
+                aria-label={t("detailActions.refreshRunning")}
+                title={canOpenWorkflows ? t("detailActions.viewRefreshRun") : undefined}
+                disabled={!canOpenWorkflows}
+                onClick={() => detail.refresh && openRefreshRun(detail.refresh.runId)}
+              >
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>{t("detailActions.refreshRunning")}</span>
+              </Button>
+            ) : (
+              <Button
+                variant={firstPull ? "default" : "outline"}
+                size="sm"
+                className="h-[var(--control-icon-size)] gap-1.5 px-2 lg:h-[var(--control-height-sm)] lg:gap-2 lg:px-[var(--control-padding-sm-x)]"
+                aria-label={firstPull ? t("detailActions.firstPull") : t("detailActions.refreshCircle")}
+                disabled={!canRefreshCatalog || isLoading || refreshBusy}
+                onClick={runPrimaryRefresh}
+              >
+                {queueingRefresh ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                <span>{firstPull ? t("detailActions.firstPull") : t("detailActions.refreshCircle")}</span>
+              </Button>
+            )}
+            <CreatorActionMenu
+              label={t("detailActions.moreCircleActions")}
+              buttonLabel={t("detailActions.more")}
+              items={workflowMenuItems}
+            />
           </div>
         }
       />
@@ -1289,23 +1341,8 @@ function CircleDetailPage({
           onConfirm={() => void saveConfirm.run()}
         />
       )}
-      <CircleAdvancedRefreshSheet
-        open={advancedRefreshOpen}
-        mobile={compactLayout}
-        anchorRef={advancedRefreshAnchorRef}
-        circle={circle}
-        catalogOnlyCount={catalogOnlyCount}
-        availableCount={availableWorkCount}
-        refreshingScope={refreshingScope}
-        canRefresh={canRefreshCatalog}
-        onClose={() => setAdvancedRefreshOpen(false)}
-        onRun={(scope, mode) => void refresh(scope, mode)}
-      />
       <RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
-      <BrowseLoadingIndicator
-        refreshing={isLoading || refreshingScope !== null}
-        label={t("creatorBrowse.loadingCircles")}
-      />
+      <BrowseLoadingIndicator refreshing={isLoading || queueingRefresh} label={t("creatorBrowse.loadingCircles")} />
     </div>
   );
 }
@@ -1529,50 +1566,6 @@ function WorkProgressLine({ progress }: { progress: NonNullable<CircleCatalogWor
       </div>
     </div>
   );
-}
-
-function workProductMode(scope: CircleRefreshScope, mode: CircleRefreshMode): "available" | "all" {
-  if (scope === "work" && mode === "full") {
-    return "all";
-  }
-  return "available";
-}
-
-function refreshMessage(
-  result: {
-    runId: number;
-    scope: CircleRefreshScope;
-    pagesFetched: number;
-    catalogWorks: number;
-    productSynced: number;
-    productSkipped?: number;
-    productFailed?: number;
-    sourceSynced: number;
-  },
-  t: TFunction,
-) {
-  const scopeLabel =
-    result.scope === "all"
-      ? t("creatorBrowse.scopeRecommended")
-      : result.scope === "metadata"
-        ? t("creatorBrowse.scopeMetadata")
-        : result.scope === "catalog"
-          ? t("creatorBrowse.scopeCatalog")
-          : result.scope === "work"
-            ? t("creatorBrowse.scopeWork")
-            : t("creatorBrowse.scopeSource");
-  const failed = result.productFailed ? t("creatorBrowse.failedSuffix", { count: result.productFailed }) : "";
-  const skipped = result.productSkipped ? t("creatorBrowse.skippedSuffix", { count: result.productSkipped }) : "";
-  return t("creatorBrowse.refreshWorkflowSummary", {
-    id: result.runId,
-    scope: scopeLabel,
-    pages: result.pagesFetched,
-    catalog: result.catalogWorks,
-    synced: result.productSynced,
-    skipped,
-    failed,
-    sources: result.sourceSynced,
-  });
 }
 
 function emptyCircleDetail(externalId: string): CircleDetail {

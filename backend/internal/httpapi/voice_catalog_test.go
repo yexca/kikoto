@@ -247,13 +247,42 @@ func TestVoiceCatalogCanonicalizesMetadataOnlyWorkAlias(t *testing.T) {
 	}
 }
 
-func TestVoiceCatalogReadIsSideEffectFreeAndRefreshEnqueueIsIdempotent(t *testing.T) {
-	db := openMigratedTestDB(t)
-	if _, err := db.Exec("INSERT INTO person (id, display_name) VALUES (1, 'Example Voice')"); err != nil {
+// queueVoiceFollowForTest queues a voice follow run as a detail refresh would.
+func queueVoiceFollowForTest(t *testing.T, server *Server, inputs map[string]any) int64 {
+	t.Helper()
+	personID := int64(inputs["personId"].(int))
+	actor := currentUser{ID: 1, Permissions: []string{"metadata:sync"}}
+	run, err := server.queueCreatorRefresh(context.Background(), actor, "voice_follow", inputs, func(ctx context.Context) (creatorRefreshRun, bool, error) {
+		return server.latestVoiceFollowRun(ctx, personID, true)
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
+	return run.RunID
+}
+
+func postVoiceCatalogRefresh(server *Server, body string) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(http.MethodPost, "/api/voices/1/catalog/refresh", strings.NewReader(body))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: 1, Permissions: []string{"metadata:sync"}}))
+	response := httptest.NewRecorder()
+	server.Routes().ServeHTTP(response, request)
+	return response
+}
+
+func TestVoiceCatalogReadIsSideEffectFreeAndRefreshQueuesOneFollowRun(t *testing.T) {
+	db := openMigratedTestDB(t)
+	for _, statement := range []string{
+		"INSERT INTO person (id, display_name) VALUES (1, 'Example Voice')",
+		"INSERT INTO file_source (id, code, display_name, source_type, enabled) VALUES (11, 'example_remote', 'Example Remote', 'kikoeru_compatible', 1)",
+		"INSERT INTO file_source_endpoint (file_source_id, base_url, api_url) VALUES (11, 'https://example.invalid', 'https://example.invalid/api')",
+		`INSERT INTO app_setting (key, value_json) VALUES ('anonymous_access_enabled', 'true')`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
 	server := NewServer(db, config.Config{})
-	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('anonymous_access_enabled', 'true')`); err != nil {
+	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if err := server.LoadAccessPolicy(context.Background()); err != nil {
@@ -264,12 +293,15 @@ func TestVoiceCatalogReadIsSideEffectFreeAndRefreshEnqueueIsIdempotent(t *testin
 	if response.Code != http.StatusOK {
 		t.Fatalf("GET status = %d, body = %s", response.Code, response.Body.String())
 	}
-	var runCount int
-	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = ?", voiceCatalogRefreshWorkflow).Scan(&runCount); err != nil {
-		t.Fatal(err)
+	runCount := func() int {
+		var count int
+		if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = 'voice_follow'").Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
 	}
-	if runCount != 0 {
-		t.Fatalf("GET created %d workflow runs, want none", runCount)
+	if count := runCount(); count != 0 {
+		t.Fatalf("GET created %d workflow runs, want none", count)
 	}
 	response = httptest.NewRecorder()
 	legacyRequest := httptest.NewRequest(http.MethodPost, "/api/voices/1/auto-refresh", nil)
@@ -278,34 +310,42 @@ func TestVoiceCatalogReadIsSideEffectFreeAndRefreshEnqueueIsIdempotent(t *testin
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("legacy auto-refresh status = %d, want %d", response.Code, http.StatusNotFound)
 	}
-	response = httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/voices/1/catalog/refresh", nil)
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: 1, Permissions: []string{"metadata:sync"}}))
-	server.Routes().ServeHTTP(response, request)
-	if response.Code != http.StatusAccepted {
-		t.Fatalf("empty POST status = %d, body = %s", response.Code, response.Body.String())
-	}
 
-	first, err := server.ensureVoiceCatalogRefresh(context.Background(), 1, voiceCatalogRefreshRequest{Scope: "all", Mode: "incremental"}, false)
-	if err != nil {
+	var first, second voiceCatalogRefreshState
+	for _, target := range []*voiceCatalogRefreshState{&first, &second} {
+		response = postVoiceCatalogRefresh(server, "")
+		if response.Code != http.StatusAccepted {
+			t.Fatalf("refresh POST status = %d, body = %s", response.Code, response.Body.String())
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if first.RunID == 0 || first.Status != "queued" || second.RunID != first.RunID {
+		t.Fatalf("refresh runs = %+v then %+v, want one reused queued run", first, second)
+	}
+	if count := runCount(); count != 1 {
+		t.Fatalf("refresh created %d workflow runs, want one", count)
+	}
+	if response = postVoiceCatalogRefresh(server, `{"catalogRefresh":"stored","metadataRefresh":"all"}`); response.Code != http.StatusConflict {
+		t.Fatalf("different refresh status = %d, want %d", response.Code, http.StatusConflict)
+	}
+	var inputs struct {
+		Inputs map[string]any `json:"inputs"`
+	}
+	var inputJSON string
+	if err := db.QueryRow("SELECT input_json FROM workflow_run WHERE id = ?", first.RunID).Scan(&inputJSON); err != nil {
 		t.Fatal(err)
 	}
-	second, err := server.ensureVoiceCatalogRefresh(context.Background(), 1, voiceCatalogRefreshRequest{Scope: "all", Mode: "incremental"}, false)
-	if err != nil {
+	if err := json.Unmarshal([]byte(inputJSON), &inputs); err != nil {
 		t.Fatal(err)
 	}
-	if first.RunID == 0 || second.RunID != first.RunID {
-		t.Fatalf("refresh runs = %d then %d, want one reused run", first.RunID, second.RunID)
-	}
-	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = ?", voiceCatalogRefreshWorkflow).Scan(&runCount); err != nil {
-		t.Fatal(err)
-	}
-	if runCount != 1 {
-		t.Fatalf("refresh created %d workflow runs, want one", runCount)
+	if inputs.Inputs["newWorks"] != false || inputs.Inputs["catalogRefresh"] != "incremental" || inputs.Inputs["metadataRefresh"] != "missing" {
+		t.Fatalf("detail refresh inputs = %v, want a refresh-only follow run", inputs.Inputs)
 	}
 }
 
-func TestVoiceCatalogTransientFailureUsesBoundedWorkflowRetry(t *testing.T) {
+func TestVoiceFollowContinuesOnTheStoredCatalogWhenEverySourceFails(t *testing.T) {
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "temporary failure", http.StatusServiceUnavailable)
 	}))
@@ -324,59 +364,71 @@ func TestVoiceCatalogTransientFailureUsesBoundedWorkflowRetry(t *testing.T) {
 		}
 	}
 	server := NewServer(db, config.Config{})
-	refresh, err := server.ensureVoiceCatalogRefresh(context.Background(), 1, voiceCatalogRefreshRequest{Scope: "all", Mode: "incremental"}, false)
-	if err != nil {
+	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	runID := queueVoiceFollowForTest(t, server, map[string]any{
+		"personId": 1, "sourceIds": []int64{11}, "catalogRefresh": "incremental", "metadataRefresh": "missing", "newWorks": false,
+	})
 	if err := server.runNextQueuedWorkflowJob(context.Background(), "voice-catalog-test"); err != nil {
 		t.Fatal(err)
 	}
-	var status string
-	var retryCount, maxRetries int
-	if err := db.QueryRow(`
-		SELECT status, retry_count, max_retries
-		FROM workflow_job
-		WHERE workflow_run_id = ? AND worker_type = ?
-	`, refresh.RunID, voiceCatalogRefreshWorker).Scan(&status, &retryCount, &maxRetries); err != nil {
+	var runStatus, catalogStatus string
+	if err := db.QueryRow("SELECT status FROM workflow_run WHERE id = ?", runID).Scan(&runStatus); err != nil {
 		t.Fatal(err)
 	}
-	if status != "queued" || retryCount != 1 || maxRetries != 3 {
-		t.Fatalf("retry job status = %q, retries = %d/%d; want one bounded retry", status, retryCount, maxRetries)
+	if err := db.QueryRow("SELECT last_status FROM voice_catalog_refresh_state WHERE person_id = 1").Scan(&catalogStatus); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "partial" || catalogStatus != "failed" {
+		t.Fatalf("run status = %q, catalog status = %q; want a partial run that records the failed catalog pass", runStatus, catalogStatus)
+	}
+	var metadataStatus string
+	if err := db.QueryRow("SELECT status FROM workflow_node_run WHERE workflow_run_id = ? AND node_id = 'metadata'", runID).Scan(&metadataStatus); err != nil {
+		t.Fatal(err)
+	}
+	if metadataStatus != "succeeded" {
+		t.Fatalf("metadata step status = %q, want it to run after the failed catalog pass", metadataStatus)
 	}
 }
 
-func TestVoiceCatalogWorkerDoesNotOverwriteManualCancellation(t *testing.T) {
+func TestVoiceFollowWorkerDoesNotRestartACancelledRun(t *testing.T) {
 	db := openMigratedTestDB(t)
-	if _, err := db.Exec("INSERT INTO person (id, display_name) VALUES (1, 'Example Voice')"); err != nil {
-		t.Fatal(err)
+	for _, statement := range []string{
+		"INSERT INTO person (id, display_name) VALUES (1, 'Example Voice')",
+		"INSERT INTO file_source (id, code, display_name, source_type, enabled) VALUES (11, 'example_remote', 'Example Remote', 'kikoeru_compatible', 1)",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
 	}
 	server := NewServer(db, config.Config{})
-	refresh, err := server.ensureVoiceCatalogRefresh(context.Background(), 1, voiceCatalogRefreshRequest{Scope: "all", Mode: "incremental"}, false)
-	if err != nil {
+	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	runID := queueVoiceFollowForTest(t, server, map[string]any{
+		"personId": 1, "sourceIds": []int64{11}, "catalogRefresh": "incremental", "newWorks": false,
+	})
 	job, claimed, err := server.claimNextQueuedWorkflowJob(context.Background(), "voice-catalog-test")
 	if err != nil || !claimed {
 		t.Fatalf("claim = %t, %v", claimed, err)
 	}
-	if _, err := db.Exec("UPDATE workflow_run SET status = 'cancelled' WHERE id = ?", refresh.RunID); err != nil {
+	if _, err := db.Exec("UPDATE workflow_run SET status = 'cancelled' WHERE id = ?", runID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec("UPDATE workflow_job SET status = 'cancelled' WHERE id = ?", job.ID); err != nil {
+	if err := server.executeWorkflowGraphJob(context.Background(), job); err == nil {
+		t.Fatal("a cancelled run must stop before its catalog step")
+	}
+	var runStatus string
+	if err := db.QueryRow("SELECT status FROM workflow_run WHERE id = ?", runID).Scan(&runStatus); err != nil {
 		t.Fatal(err)
 	}
-	if err := server.executeVoiceCatalogRefreshJob(context.Background(), job); err != nil {
+	var states int
+	if err := db.QueryRow("SELECT COUNT(*) FROM voice_catalog_refresh_state WHERE person_id = 1 AND last_status IN ('queued', 'running')").Scan(&states); err != nil {
 		t.Fatal(err)
 	}
-	var runStatus, refreshStatus string
-	if err := db.QueryRow("SELECT status FROM workflow_run WHERE id = ?", refresh.RunID).Scan(&runStatus); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.QueryRow("SELECT last_status FROM voice_catalog_refresh_state WHERE person_id = 1").Scan(&refreshStatus); err != nil {
-		t.Fatal(err)
-	}
-	if runStatus != "cancelled" || refreshStatus != "cancelled" {
-		t.Fatalf("run status = %q, catalog status = %q; want cancellation preserved", runStatus, refreshStatus)
+	if runStatus != "cancelled" || states != 0 {
+		t.Fatalf("run status = %q, active catalog states = %d; want cancellation preserved", runStatus, states)
 	}
 }
 
@@ -418,12 +470,12 @@ func TestVoiceCatalogRefreshUsesOnlyRequestedSources(t *testing.T) {
 		}
 	}
 	server := NewServer(db, config.Config{})
-	refresh, err := server.ensureVoiceCatalogRefresh(context.Background(), 1, voiceCatalogRefreshRequest{
-		Scope: "remote", Mode: "full", SourceIDs: []int64{11},
-	}, true)
-	if err != nil {
+	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	queueVoiceFollowForTest(t, server, map[string]any{
+		"personId": 1, "sourceIds": []int64{11}, "catalogRefresh": "full", "newWorks": false,
+	})
 	if err := server.runNextQueuedWorkflowJob(context.Background(), "voice-catalog-test"); err != nil {
 		t.Fatal(err)
 	}
@@ -432,8 +484,12 @@ func TestVoiceCatalogRefreshUsesOnlyRequestedSources(t *testing.T) {
 	if selectedCalls != 1 || unselectedCalls != 0 {
 		t.Fatalf("source calls = selected %d, unselected %d; want only the requested source", selectedCalls, unselectedCalls)
 	}
-	if len(refresh.SourceIDs) != 1 || refresh.SourceIDs[0] != 11 {
-		t.Fatalf("refresh source IDs = %v, want frozen requested source", refresh.SourceIDs)
+	var itemCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM voice_catalog_item WHERE person_id = 1").Scan(&itemCount); err != nil {
+		t.Fatal(err)
+	}
+	if itemCount != 1 {
+		t.Fatalf("persisted catalog items = %d, want the selected source's work", itemCount)
 	}
 }
 
@@ -582,15 +638,17 @@ func TestVoiceCatalogMetadataRefreshStaysInOneWorkflowRun(t *testing.T) {
 		},
 		calls: map[string]int{},
 	}
-	refresh, err := server.ensureVoiceCatalogRefresh(context.Background(), 1, voiceCatalogRefreshRequest{Scope: "metadata"}, true)
-	if err != nil {
+	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	runID := queueVoiceFollowForTest(t, server, map[string]any{
+		"personId": 1, "catalogRefresh": "stored", "metadataRefresh": "missing", "newWorks": false,
+	})
 	if err := server.runNextQueuedWorkflowJob(context.Background(), "voice-catalog-test"); err != nil {
 		t.Fatal(err)
 	}
 	var voiceRuns, metadataRuns int
-	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = ?", voiceCatalogRefreshWorkflow).Scan(&voiceRuns); err != nil {
+	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = 'voice_follow'").Scan(&voiceRuns); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = 'metadata_family_sync'").Scan(&metadataRuns); err != nil {
@@ -600,20 +658,20 @@ func TestVoiceCatalogMetadataRefreshStaysInOneWorkflowRun(t *testing.T) {
 		t.Fatalf("workflow runs = voice %d, metadata %d; want one voice run and no child metadata runs", voiceRuns, metadataRuns)
 	}
 	var status, lastSuccess, sourceJSON string
-	var complete, pages, catalogWorks, metadataProcessed int
+	var complete, pages, catalogWorks int
 	if err := db.QueryRow(`
-		SELECT last_status, last_success_at, source_status_json, complete, pages_fetched, catalog_works, metadata_queued
+		SELECT last_status, last_success_at, source_status_json, complete, pages_fetched, catalog_works
 		FROM voice_catalog_refresh_state WHERE person_id = 1
-	`).Scan(&status, &lastSuccess, &sourceJSON, &complete, &pages, &catalogWorks, &metadataProcessed); err != nil {
+	`).Scan(&status, &lastSuccess, &sourceJSON, &complete, &pages, &catalogWorks); err != nil {
 		t.Fatal(err)
 	}
-	if status != "succeeded" || lastSuccess != "2026-01-02T03:04:05Z" || complete != 1 || pages != 8 || catalogWorks != 1 || metadataProcessed != 1 {
-		t.Fatalf("metadata-only state = status %q success %q complete %d pages %d catalog %d metadata %d", status, lastSuccess, complete, pages, catalogWorks, metadataProcessed)
+	if status != "succeeded" || lastSuccess != "2026-01-02T03:04:05Z" || complete != 1 || pages != 8 || catalogWorks != 1 {
+		t.Fatalf("metadata-only state = status %q success %q complete %d pages %d catalog %d", status, lastSuccess, complete, pages, catalogWorks)
 	}
 	if !strings.Contains(sourceJSON, "example_remote") {
 		t.Fatalf("metadata-only refresh discarded source state: %s", sourceJSON)
 	}
-	rows, err := db.Query(`SELECT node_id, status FROM workflow_node_run WHERE workflow_run_id = ? ORDER BY position ASC`, refresh.RunID)
+	rows, err := db.Query(`SELECT node_id, status FROM workflow_node_run WHERE workflow_run_id = ? ORDER BY position ASC`, runID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -629,7 +687,7 @@ func TestVoiceCatalogMetadataRefreshStaysInOneWorkflowRun(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if nodeStatuses["select"] != "skipped" || nodeStatuses["discover"] != "skipped" || nodeStatuses["persist"] != "skipped" || nodeStatuses["metadata"] != "succeeded" {
+	if len(nodeStatuses) != 1 || nodeStatuses["metadata"] != "succeeded" {
 		t.Fatalf("metadata-only node statuses = %+v", nodeStatuses)
 	}
 	if server.dlsiteClient.(*fakeDemoScanDLsiteClient).calls["RJ00000020"] == 0 {
@@ -784,23 +842,6 @@ func TestVoiceMergeAndUndoPreserveCatalogOwnership(t *testing.T) {
 func TestVoiceCatalogSearchKeywordRemovesQuerySyntax(t *testing.T) {
 	if keyword := voiceCatalogSearchKeyword(" Example$ Voice\n$tag:private$ "); keyword != "$va:Example Voice tag:private$" {
 		t.Fatalf("keyword = %q, want sanitized voice-only query", keyword)
-	}
-}
-
-func TestVoiceCatalogRefreshReasonRetriesOnlyIncompleteCatalog(t *testing.T) {
-	now := time.Now().UTC()
-	incomplete := voiceCatalogRefreshState{
-		exists: true, LastStatus: "partial", Complete: false,
-		LastAttemptAt: now.Add(-voiceCatalogRetryDelay - time.Minute).Format(time.RFC3339),
-		LastSuccessAt: now.Add(-time.Hour).Format(time.RFC3339), Queries: []string{"Example Voice"},
-	}
-	if reason, due := voiceCatalogRefreshReason(incomplete, []string{"Example Voice"}, false, now, defaultCatalogFreshnessDays); !due || reason != "previous refresh did not complete" {
-		t.Fatalf("incomplete refresh reason = %q, due = %t", reason, due)
-	}
-	metadataPartial := incomplete
-	metadataPartial.Complete = true
-	if reason, due := voiceCatalogRefreshReason(metadataPartial, []string{"Example Voice"}, false, now, defaultCatalogFreshnessDays); due || reason != "catalog is fresh" {
-		t.Fatalf("complete catalog with metadata failure reason = %q, due = %t", reason, due)
 	}
 }
 

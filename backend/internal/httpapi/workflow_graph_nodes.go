@@ -17,11 +17,17 @@ import (
 func (s *Server) executeWorkflowGraphNode(ctx context.Context, runID int64, jobPriority int, payload workflowGraphJobPayload, graph workflowGraph, node workflowGraphNode, inputs map[string]graphPortValue) (graphNodeExecution, error) {
 	switch node.Type {
 	case "circle_catalog":
-		return s.executeGraphCircleCatalog(ctx, node, inputs)
+		return s.executeGraphCircleCatalog(ctx, runID, node, inputs)
 	case "series_catalog":
 		return s.executeGraphSeriesCatalog(ctx, node, inputs)
-	case "voice_source_works":
-		return s.executeGraphVoiceSourceWorks(ctx, runID, node, inputs)
+	case "voice_catalog":
+		return s.executeGraphVoiceCatalog(ctx, runID, node)
+	case "circle_metadata":
+		return s.executeGraphCircleMetadata(ctx, node)
+	case "circle_sources":
+		return s.executeGraphCircleSources(ctx, node)
+	case "voice_metadata":
+		return s.executeGraphVoiceMetadata(ctx, runID, node)
 	case "filter_works":
 		return s.executeGraphFilterWorks(ctx, payload.UserID, node, inputs)
 	case "metadata_sync":
@@ -39,7 +45,7 @@ func (s *Server) executeWorkflowGraphNode(ctx context.Context, runID int64, jobP
 
 // executeGraphCircleCatalog combines the catalogs of every listed circle in
 // input order, keeping each work once and stopping at maxWorks.
-func (s *Server) executeGraphCircleCatalog(ctx context.Context, node workflowGraphNode, inputs map[string]graphPortValue) (graphNodeExecution, error) {
+func (s *Server) executeGraphCircleCatalog(ctx context.Context, runID int64, node workflowGraphNode, inputs map[string]graphPortValue) (graphNodeExecution, error) {
 	circleIDs := splitPresetWorkflowTargets(firstNonEmpty(inputs["circle"].Text, configString(node.Config, "circleId")), normalizeMakerID)
 	if len(circleIDs) == 0 {
 		return graphNodeExecution{}, fmt.Errorf("invalid circle id")
@@ -70,6 +76,7 @@ func (s *Server) executeGraphCircleCatalog(ctx context.Context, node workflowGra
 		}
 		if mode != "stored" {
 			if _, err := s.runCircleCatalogRefresh(ctx, partyID, circleID, mode, s.newDLsiteClient()); err != nil {
+				s.recordCircleCatalogRefreshFailure(context.WithoutCancel(ctx), partyID, mode, runID)
 				return graphNodeExecution{}, err
 			}
 		}
@@ -140,130 +147,6 @@ func (s *Server) executeGraphSeriesCatalog(ctx context.Context, node workflowGra
 		}
 	}
 	return graphNodeExecution{Outputs: map[string]graphPortValue{"works": {Type: "work_candidates", Candidates: graphCandidatesForCodes(normalized, 0)}}}, nil
-}
-
-func (s *Server) executeGraphVoiceSourceWorks(ctx context.Context, runID int64, node workflowGraphNode, inputs map[string]graphPortValue) (graphNodeExecution, error) {
-	search, err := s.prepareGraphVoiceSourceSearch(ctx, node, inputs)
-	if err != nil {
-		return graphNodeExecution{}, err
-	}
-	// Each listed voice actor is searched in turn against the shared work budget.
-	candidates := []graphWorkCandidate{}
-	seen := map[string]bool{}
-	for _, keyword := range search.Keywords {
-		if len(candidates) >= search.MaxWorks {
-			break
-		}
-		single := search
-		single.Keyword = keyword
-		single.MaxWorks = search.MaxWorks - len(candidates)
-		found, err := s.collectGraphVoiceSourceWorks(ctx, runID, single)
-		if err != nil {
-			return graphNodeExecution{}, err
-		}
-		for _, candidate := range found {
-			if key := strings.ToUpper(candidate.Code); !seen[key] {
-				seen[key] = true
-				candidates = append(candidates, candidate)
-			}
-		}
-	}
-	return graphNodeExecution{Outputs: map[string]graphPortValue{"works": {Type: "work_candidates", Candidates: candidates}}}, nil
-}
-
-type graphVoiceSourceSearch struct {
-	Source   remoteSourceForUse
-	Keyword  string
-	Keywords []string
-	PageSize int
-	MaxPages int
-	MaxWorks int
-}
-
-func (s *Server) prepareGraphVoiceSourceSearch(ctx context.Context, node workflowGraphNode, inputs map[string]graphPortValue) (graphVoiceSourceSearch, error) {
-	voiceNames := splitPresetWorkflowTargets(firstNonEmpty(inputs["voice"].Text, configString(node.Config, "voiceName")), strings.TrimSpace)
-	keywords := make([]string, 0, len(voiceNames))
-	for _, voiceName := range voiceNames {
-		if isUnknownVoiceActorName(voiceName) {
-			return graphVoiceSourceSearch{}, fmt.Errorf("voice name is required")
-		}
-		keywords = append(keywords, "$va:"+voiceName+"$")
-	}
-	if len(keywords) == 0 {
-		return graphVoiceSourceSearch{}, fmt.Errorf("voice name is required")
-	}
-	sourceID := configInt64(node.Config, "sourceId", 0)
-	source, err := s.loadRemoteSourceForUse(ctx, sourceID)
-	if err != nil {
-		return graphVoiceSourceSearch{}, err
-	}
-	if !source.Enabled || !isKikoeruSourceType(source.SourceType) || strings.TrimSpace(source.Endpoint.APIURL) == "" {
-		return graphVoiceSourceSearch{}, fmt.Errorf("source is not an enabled compatible remote source")
-	}
-	healthCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	err = s.checkRemoteSourceHealthWithClass(healthCtx, source, sourceRequestCrawl)
-	cancel()
-	if err != nil {
-		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
-		return graphVoiceSourceSearch{}, err
-	}
-	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
-	return graphVoiceSourceSearch{
-		Source: source, Keyword: keywords[0], Keywords: keywords,
-		PageSize: configInt(node.Config, "pageSize", 48),
-		MaxPages: configInt(node.Config, "maxPages", 10),
-		MaxWorks: configInt(node.Config, "maxWorks", 100),
-	}, nil
-}
-
-func (s *Server) collectGraphVoiceSourceWorks(ctx context.Context, runID int64, search graphVoiceSourceSearch) ([]graphWorkCandidate, error) {
-	client := s.kikoeruCrawlClientForSource(search.Source)
-	projector := s.remoteCatalogProjector(ctx)
-	candidates := []graphWorkCandidate{}
-	seen := map[string]bool{}
-	for pageNumber := 1; pageNumber <= search.MaxPages && len(candidates) < search.MaxWorks; pageNumber++ {
-		if err := s.ensureWorkflowRunActive(ctx, runID); err != nil {
-			return nil, err
-		}
-		page, err := client.ListWorks(ctx, pageNumber, search.PageSize, search.Keyword)
-		if err != nil {
-			_ = s.updateSourceHealth(ctx, search.Source.ID, "unavailable")
-			return nil, err
-		}
-		for _, remoteWork := range page.Works {
-			code := normalizedRemoteWorkCode(remoteWork)
-			if code == "" || seen[code] {
-				continue
-			}
-			seen[code] = true
-			candidates = append(candidates, graphCandidateFromRemoteWork(remoteWork, search.Source.ID, projector))
-			if len(candidates) >= search.MaxWorks {
-				break
-			}
-		}
-		total := page.Pagination.TotalCount
-		if total == 0 {
-			total = page.Pagination.Total
-		}
-		if total == 0 {
-			total = page.Pagination.Count
-		}
-		if total > 0 && pageNumber*search.PageSize >= total {
-			break
-		}
-		if total == 0 && len(page.Works) < search.PageSize {
-			break
-		}
-	}
-	return candidates, nil
-}
-
-func graphCandidateFromRemoteWork(work kikoeru.Work, sourceID int64, projector remoteCatalogProjector) graphWorkCandidate {
-	projected := projector.project(sourceID, work)
-	return graphWorkCandidate{
-		Code: projected.RemoteCode, SourceID: sourceID, Title: projected.Title,
-		ReleaseDate: normalizeGraphReleaseDate(projected.ReleaseDate), VoiceNames: uniqueFoldedStrings(projected.VoiceActors), MetadataTags: uniqueFoldedStrings(projected.Tags),
-	}
 }
 
 func normalizeGraphReleaseDate(value string) string {
