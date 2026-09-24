@@ -146,6 +146,13 @@ func (s *DLsiteSyncer) WithMetadataPriority(languages []string) *DLsiteSyncer {
 	return s
 }
 
+func (s *DLsiteSyncer) projectionPriority() []string {
+	if len(s.metadataPriority) == 0 {
+		return []string{dlsite.OriginMetadataLanguage}
+	}
+	return s.metadataPriority
+}
+
 func (s *DLsiteSyncer) WithRequestPacing(requestDelay time.Duration, backoff time.Duration, maxBackoff time.Duration) *DLsiteSyncer {
 	if requestDelay < 0 {
 		requestDelay = 0
@@ -1135,11 +1142,7 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 	if err := s.classifyFamilyEditions(ctx, baseProductCode(product)); err != nil {
 		return err
 	}
-	priority := s.metadataPriority
-	if len(priority) == 0 {
-		priority = []string{dlsite.OriginMetadataLanguage}
-	}
-	return ProjectDLsiteMetadataFamily(ctx, s.db, logicalWorkID, priority)
+	return ProjectDLsiteMetadataFamily(ctx, s.db, logicalWorkID, s.projectionPriority())
 }
 
 func replaceDLsiteWorkTags(ctx context.Context, tx *sql.Tx, workID int64, genres []dlsite.Genre, language string, requestLocale string) error {
