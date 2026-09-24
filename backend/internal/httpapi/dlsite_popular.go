@@ -131,10 +131,7 @@ func normalizeDLsitePopularRequest(payload dlsitePopularRunRequest, now time.Tim
 	if payload.TagName == "" {
 		payload.TagName = defaultDLsitePopularTag(payload, now)
 	}
-	runes := []rune(payload.TagName)
-	if len(runes) > 40 {
-		payload.TagName = string(runes[:40])
-	}
+	payload.TagName = clampUserTagName(payload.TagName)
 	return payload, nil
 }
 

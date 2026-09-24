@@ -11,6 +11,18 @@ import (
 
 const maxWorkUserTags = 50
 
+// maxUserTagNameRunes bounds every user tag name by characters, never bytes,
+// so a CJK name is not cut in the middle of a character.
+const maxUserTagNameRunes = 40
+
+func clampUserTagName(name string) string {
+	name = strings.TrimSpace(name)
+	if runes := []rune(name); len(runes) > maxUserTagNameRunes {
+		name = string(runes[:maxUserTagNameRunes])
+	}
+	return name
+}
+
 type workUserTag struct {
 	ID    int64  `json:"id"`
 	Name  string `json:"name"`
@@ -65,16 +77,12 @@ func (s *Server) replaceWorkUserTags(ctx context.Context, userID int64, workID i
 	}
 	seen := map[string]bool{}
 	for _, raw := range rawTags {
-		name := strings.TrimSpace(raw)
+		name := clampUserTagName(raw)
 		key := strings.ToLower(name)
 		if name == "" || seen[key] {
 			continue
 		}
 		seen[key] = true
-		runes := []rune(name)
-		if len(runes) > 40 {
-			name = string(runes[:40])
-		}
 		var tagID int64
 		err := tx.QueryRowContext(ctx, `
 			SELECT id
@@ -108,13 +116,9 @@ func (s *Server) replaceWorkUserTags(ctx context.Context, userID int64, workID i
 }
 
 func (s *Server) addWorkUserTag(ctx context.Context, userID int64, workIDs []int64, rawTag string) (int, error) {
-	name := strings.TrimSpace(rawTag)
+	name := clampUserTagName(rawTag)
 	if userID <= 0 || name == "" {
 		return 0, nil
-	}
-	runes := []rune(name)
-	if len(runes) > 40 {
-		name = string(runes[:40])
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

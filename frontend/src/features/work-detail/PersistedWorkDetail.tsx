@@ -599,7 +599,7 @@ function persistedPersonalTags(work: WorkDetail | null, onSave: (tags: string[])
         <Tags className="h-4 w-4" />
         {i18n.t("libraryDetail.myTags")}
       </div>
-      <UserTagRow tags={work.userTags ?? []} onSave={onSave} />
+      <UserTagRow tags={work.userTags ?? []} scope="work" onSave={onSave} />
     </div>
   );
 }
@@ -1187,7 +1187,6 @@ export function PersistedWorkDetailController({
     try {
       await api.setWorkUserTags(work.id, tags);
       await Promise.all([onWorkReload(work.id), onWorksChanged()]);
-      toast.success(t("libraryDetail.myTagsUpdated"));
     } catch (error) {
       toast.notify(toastFromError(error, t("libraryDetail.myTagsUpdateFailed")));
       throw error;

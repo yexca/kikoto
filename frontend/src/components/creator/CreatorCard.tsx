@@ -43,6 +43,7 @@ export function CreatorCard({
   onOpen,
   onFavoriteToggle,
   onTagsSave,
+  tagScope,
 }: {
   name: string;
   identityLabel?: string;
@@ -60,6 +61,7 @@ export function CreatorCard({
   onOpen: () => void;
   onFavoriteToggle: () => void;
   onTagsSave: (tags: string[]) => Promise<void> | void;
+  tagScope: "circle" | "voice";
 }) {
   const { t } = useTranslation();
   const [imageFailed, setImageFailed] = useState(false);
@@ -128,7 +130,7 @@ export function CreatorCard({
             </Button>
           </div>
 
-          <UserTagRow tags={userTags} onSave={onTagsSave} className="mt-2" />
+          <UserTagRow tags={userTags} scope={tagScope} onSave={onTagsSave} className="mt-2" />
 
           <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-2 text-xs text-muted-foreground">
             <CatalogSyncBadge state={syncState} appearance="dot" />

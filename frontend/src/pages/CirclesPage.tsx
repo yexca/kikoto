@@ -199,6 +199,7 @@ const CircleCard = memo(function CircleCard({
       onOpen={() => openCircleRoute(circle.externalId)}
       onFavoriteToggle={() => void onFavoriteToggle(circle)}
       onTagsSave={(tags) => onTagsSave(circle, tags)}
+      tagScope="circle"
     />
   );
 });
@@ -934,7 +935,7 @@ function CircleDetailPage({
             <Badge variant={availableWorkCount > 0 ? "success" : "warning"} className="tabular-nums">
               {t("detailActions.availableCount", { count: availableWorkCount })}
             </Badge>
-            <UserTagRow tags={circle.userTags} onSave={saveCircleTags} className="min-w-0 flex-1" />
+            <UserTagRow tags={circle.userTags} scope="circle" onSave={saveCircleTags} className="min-w-0 flex-1" />
           </div>
         }
         actions={

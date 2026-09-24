@@ -1478,6 +1478,11 @@ export type UserTag = {
 
 export type VoiceUserTag = UserTag;
 
+/** Works, circles, and voices keep separate per-user tag vocabularies. */
+export type UserTagScope = "work" | "circle" | "voice";
+
+export type UserTagSuggestion = UserTag & { usageCount: number };
+
 export type VoiceAlias = {
   id: number;
   alias: string;
@@ -2278,6 +2283,8 @@ export const api = {
   /** Adds and removes works in one transaction; lists named in neither set keep their membership. */
   updateFavoriteListMembership: (payload: { workIds: number[]; addListIds: number[]; removeListIds: number[] }) =>
     postJSONBody<{ updated: number }>("/api/favorite-lists/membership", payload),
+  listUserTags: (scope: UserTagScope, signal?: AbortSignal) =>
+    sharedGetJSON<{ scope: UserTagScope; tags: UserTagSuggestion[] }>(`/api/tags?scope=${scope}`, signal),
   setWorkUserTags: (id: number, tags: string[]) =>
     putJSONBody<{ workId: number; userTags: UserTag[] }>(`/api/works/${id}/tags`, { tags }),
   getMediaText: (locationId: number) => getJSON<MediaTextPreview>(`/api/media/${locationId}/text`),

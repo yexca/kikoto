@@ -1757,6 +1757,7 @@ const FavoriteCircleCard = memo(function FavoriteCircleCard({
       onOpen={() => openCircleRoute(circle.externalId)}
       onFavoriteToggle={() => void removeFavorite()}
       onTagsSave={saveTags}
+      tagScope="circle"
     />
   );
 });
@@ -1802,6 +1803,7 @@ const FavoriteVoiceCard = memo(function FavoriteVoiceCard({
       onOpen={() => openVoiceRoute(voice.personId)}
       onFavoriteToggle={() => void removeFavorite()}
       onTagsSave={saveTags}
+      tagScope="voice"
     />
   );
 });
