@@ -226,16 +226,33 @@ func (s *DLsiteSyncer) SyncAll(ctx context.Context) (DLsiteSyncResult, error) {
 	return result, nil
 }
 
+// DLsiteSyncScope narrows a bulk synchronization to existing works. Nil
+// WorkIDs selects every work; an empty non-nil list selects none. Full also
+// refreshes works whose current snapshot would otherwise be skipped. A scope
+// never adds a work: catalog codes without a work are not targets.
+type DLsiteSyncScope struct {
+	WorkIDs []int64
+	Full    bool
+}
+
 // SyncAllWithoutWorkflow applies the same metadata synchronization without
 // creating another run. The queued metadata worker owns the persisted run.
 func (s *DLsiteSyncer) SyncAllWithoutWorkflow(ctx context.Context) (DLsiteSyncResult, error) {
-	targets, err := s.loadTargets(ctx)
+	return s.SyncScopeWithoutWorkflow(ctx, DLsiteSyncScope{})
+}
+
+// SyncScopeWithoutWorkflow synchronizes the existing works selected by scope.
+func (s *DLsiteSyncer) SyncScopeWithoutWorkflow(ctx context.Context, scope DLsiteSyncScope) (DLsiteSyncResult, error) {
+	targets, scopedWorks, err := s.loadTargets(ctx, scope)
 	if err != nil {
 		return DLsiteSyncResult{}, err
 	}
-	totalWorks, err := s.countSyncableWorks(ctx)
-	if err != nil {
-		return DLsiteSyncResult{}, err
+	totalWorks := scopedWorks
+	if scope.WorkIDs == nil {
+		totalWorks, err = s.countSyncableWorks(ctx)
+		if err != nil {
+			return DLsiteSyncResult{}, err
+		}
 	}
 
 	result := DLsiteSyncResult{
@@ -861,7 +878,16 @@ func sleepWithContext(ctx context.Context, delay time.Duration) error {
 	}
 }
 
-func (s *DLsiteSyncer) loadTargets(ctx context.Context) ([]workTarget, error) {
+// loadTargets returns the scoped works that need synchronization and how many
+// syncable works the scope contains.
+func (s *DLsiteSyncer) loadTargets(ctx context.Context, scope DLsiteSyncScope) ([]workTarget, int, error) {
+	var wanted map[int64]bool
+	if scope.WorkIDs != nil {
+		wanted = make(map[int64]bool, len(scope.WorkIDs))
+		for _, id := range scope.WorkIDs {
+			wanted[id] = true
+		}
+	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
 			work.id,
@@ -892,7 +918,7 @@ func (s *DLsiteSyncer) loadTargets(ctx context.Context) ([]workTarget, error) {
 		ORDER BY work.id ASC
 	`)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -905,22 +931,25 @@ func (s *DLsiteSyncer) loadTargets(ctx context.Context) ([]workTarget, error) {
 	for rows.Next() {
 		var item snapshotTarget
 		if err := rows.Scan(&item.target.ID, &item.target.PrimaryCode, &item.snapshot, &item.canonicalCode); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		item.target.PrimaryCode = strings.ToUpper(strings.TrimSpace(item.target.PrimaryCode))
+		if wanted != nil && !wanted[item.target.ID] {
+			continue
+		}
 		if dlsiteWorkNoPattern.MatchString(item.target.PrimaryCode) {
 			pending = append(pending, item)
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if err := rows.Close(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	targets := []workTarget{}
 	for _, item := range pending {
-		if strings.TrimSpace(item.snapshot) == "" {
+		if scope.Full || strings.TrimSpace(item.snapshot) == "" {
 			targets = append(targets, item.target)
 			continue
 		}
@@ -930,13 +959,13 @@ func (s *DLsiteSyncer) loadTargets(ctx context.Context) ([]workTarget, error) {
 		}
 		originReady, err := s.hasDLsiteSnapshotForCode(ctx, originCode)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		if !strings.EqualFold(item.canonicalCode, originCode) || !originReady {
 			targets = append(targets, item.target)
 		}
 	}
-	return targets, nil
+	return targets, len(pending), nil
 }
 
 func (s *DLsiteSyncer) hasDLsiteSnapshotForCode(ctx context.Context, code string) (bool, error) {

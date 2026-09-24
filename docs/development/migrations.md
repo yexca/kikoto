@@ -82,9 +82,13 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain includes
-`038_metadata_snapshot_card_summary.sql`, with the `038_v0.6.1.sql` baseline
+`039_reconfigure_follow_triggers.sql`, with the `039_v0.6.1.sql` baseline
 generated from the `v0.6.1` `VERSION` file; regenerate it after the next
-release bump so the snapshot carries the release that ships schema 038.
+release bump so the snapshot carries the release that ships schema 039.
+Migration 039 changes no schema. It disables every follow preset trigger
+(`circle_follow`, `series_follow`, `voice_follow`) saved with the retired
+follow inputs, clears its next run, and records a reconfiguration message; the
+stored inputs are kept so the Workflows page can prefill what still applies.
 Migration 038 adds the derived `metadata_snapshot_card_summary` cache and its
 `metadata_snapshot_card_summary_dirty` queue, queues every existing snapshot,
 and adds triggers that queue inserted or changed snapshots. Summaries are

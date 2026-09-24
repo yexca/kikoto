@@ -1076,21 +1076,28 @@ export type WorkflowPresetParameter = {
     | "circle_id"
     | "series_id"
     | "voice_person"
-    | "source_id"
     | "source_ids"
     | "boolean"
     | "select"
     | "integer"
     | "date"
-    | "text_template"
-    | "extensions";
-  group: "target" | "metadata" | "sources" | "follow" | "filter" | "action" | "fetch" | "tag";
+    | "text_template";
+  /** Input selects and refreshes a catalog, filter narrows its works, action syncs and tags them. */
+  group: "input" | "filter" | "action";
   required: boolean;
   default?: string | number | boolean;
   options?: string[];
   minimum?: number;
   maximum?: number;
   tokens?: string[];
+};
+
+/** Existing works a metadata sync covers; an omitted scope is every work with missing metadata. */
+export type MetadataSyncOptions = {
+  scope: "all" | "circle" | "voice";
+  circleId?: string;
+  personId?: number;
+  mode: "missing" | "full";
 };
 
 export type WorkflowPreset = {
@@ -1597,7 +1604,8 @@ export type VoiceCatalogSourceStatus = {
 
 /**
  * A circle or voice actor detail refresh. It queues the creator's follow
- * workflow with the new-works step off.
+ * workflow without a tag. A circle refresh syncs metadata for catalog works
+ * that lack it; a voice actor refresh keeps to known works.
  */
 export type CreatorRefreshRequest = {
   catalogRefresh: "stored" | "incremental" | "full";
@@ -2544,7 +2552,10 @@ export const api = {
       failures: string[];
       childRuns: number[];
     }>("/api/workflow-runs/remote-bulk", payload),
-  runDLsiteSync: () => postJSON<DLsiteSyncResult>("/api/workflow-runs/dlsite-sync"),
+  runDLsiteSync: (options?: MetadataSyncOptions) =>
+    options
+      ? postJSONBody<DLsiteSyncResult>("/api/workflow-runs/dlsite-sync", options)
+      : postJSON<DLsiteSyncResult>("/api/workflow-runs/dlsite-sync"),
   syncWorkMetadata: (workId: number) => postJSON<WorkMetadataSyncRunResult>(`/api/works/${workId}/metadata-sync`),
   listMetadataIssues: (page: number, query: string, status: string, runId: number | null, signal?: AbortSignal) => {
     const params = new URLSearchParams({ page: String(page), q: query, status });

@@ -248,9 +248,9 @@ func TestVoiceCatalogCanonicalizesMetadataOnlyWorkAlias(t *testing.T) {
 }
 
 // queueVoiceFollowForTest queues a voice follow run as a detail refresh would.
-func queueVoiceFollowForTest(t *testing.T, server *Server, inputs map[string]any) int64 {
+func queueVoiceFollowForTest(t *testing.T, server *Server, inputs presetWorkflowInputs) int64 {
 	t.Helper()
-	personID := int64(inputs["personId"].(int))
+	personID := inputs.PersonID
 	actor := currentUser{ID: 1, Permissions: []string{"metadata:sync"}}
 	run, err := server.queueCreatorRefresh(context.Background(), actor, "voice_follow", inputs, func(ctx context.Context) (creatorRefreshRun, bool, error) {
 		return server.latestVoiceFollowRun(ctx, personID, true)
@@ -340,7 +340,7 @@ func TestVoiceCatalogReadIsSideEffectFreeAndRefreshQueuesOneFollowRun(t *testing
 	if err := json.Unmarshal([]byte(inputJSON), &inputs); err != nil {
 		t.Fatal(err)
 	}
-	if inputs.Inputs["newWorks"] != false || inputs.Inputs["catalogRefresh"] != "incremental" || inputs.Inputs["metadataRefresh"] != "missing" {
+	if inputs.Inputs["metadata"] != false || inputs.Inputs["catalogRefresh"] != "incremental" || inputs.Inputs["knownMetadata"] != true {
 		t.Fatalf("detail refresh inputs = %v, want a refresh-only follow run", inputs.Inputs)
 	}
 }
@@ -367,8 +367,8 @@ func TestVoiceFollowContinuesOnTheStoredCatalogWhenEverySourceFails(t *testing.T
 	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	runID := queueVoiceFollowForTest(t, server, map[string]any{
-		"personId": 1, "sourceIds": []int64{11}, "catalogRefresh": "incremental", "metadataRefresh": "missing", "newWorks": false,
+	runID := queueVoiceFollowForTest(t, server, presetWorkflowInputs{
+		PersonID: 1, SourceIDs: []int64{11}, CatalogRefresh: "incremental", KnownMetadata: true,
 	})
 	if err := server.runNextQueuedWorkflowJob(context.Background(), "voice-catalog-test"); err != nil {
 		t.Fatal(err)
@@ -406,8 +406,8 @@ func TestVoiceFollowWorkerDoesNotRestartACancelledRun(t *testing.T) {
 	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	runID := queueVoiceFollowForTest(t, server, map[string]any{
-		"personId": 1, "sourceIds": []int64{11}, "catalogRefresh": "incremental", "newWorks": false,
+	runID := queueVoiceFollowForTest(t, server, presetWorkflowInputs{
+		PersonID: 1, SourceIDs: []int64{11}, CatalogRefresh: "incremental",
 	})
 	job, claimed, err := server.claimNextQueuedWorkflowJob(context.Background(), "voice-catalog-test")
 	if err != nil || !claimed {
@@ -473,8 +473,8 @@ func TestVoiceCatalogRefreshUsesOnlyRequestedSources(t *testing.T) {
 	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	queueVoiceFollowForTest(t, server, map[string]any{
-		"personId": 1, "sourceIds": []int64{11}, "catalogRefresh": "full", "newWorks": false,
+	queueVoiceFollowForTest(t, server, presetWorkflowInputs{
+		PersonID: 1, SourceIDs: []int64{11}, CatalogRefresh: "full",
 	})
 	if err := server.runNextQueuedWorkflowJob(context.Background(), "voice-catalog-test"); err != nil {
 		t.Fatal(err)
@@ -641,8 +641,8 @@ func TestVoiceCatalogMetadataRefreshStaysInOneWorkflowRun(t *testing.T) {
 	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	runID := queueVoiceFollowForTest(t, server, map[string]any{
-		"personId": 1, "catalogRefresh": "stored", "metadataRefresh": "missing", "newWorks": false,
+	runID := queueVoiceFollowForTest(t, server, presetWorkflowInputs{
+		PersonID: 1, CatalogRefresh: "stored", KnownMetadata: true,
 	})
 	if err := server.runNextQueuedWorkflowJob(context.Background(), "voice-catalog-test"); err != nil {
 		t.Fatal(err)

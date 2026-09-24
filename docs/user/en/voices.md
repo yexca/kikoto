@@ -30,12 +30,12 @@ Voice pages present persisted person and credit data.
   aggregated in batches.
 - Keeps Favorite, the common refresh actions, and a **More** menu in the
   detail summary. **First pull** or **Refresh** queues a Follow a voice actor
-  run with its new-works step off across every compatible remote source, and
+  run with only known works' metadata across every compatible remote source, and
   **Retry metadata** appears only while known works still lack metadata. The
   button shows **Refreshing** until the run settles. A warning beside the sync
   state counts remote sources that failed their last pass and opens that run
   in Activity. **More** holds **Follow this voice actor…**, which opens the
-  preset with this voice actor selected for source, metadata, and new-works
+  preset with this voice actor selected for source, filter, metadata, and tag
   choices, and **Manage aliases**. The works toolbar mirrors the Library: a bounded search on the
   left with columns, page size, availability filter, and selection as quiet
   icon actions on the right, and the shared collection pagination above and

@@ -86,26 +86,33 @@ Workflows make backend actions inspectable.
   Fetch extension exclusions, which are off until enabled; the section below
   the header summarizes the saved values that `Run` uses.
 - Follow a circle, Follow a series, and Follow a voice actor (tab **VAs
-  follow**) are preset workflows. Their Run options hold the target, filter,
-  action, Fetch limits, and tag template. Trigger popovers use these values by
-  default; enable Customize run options to override them.
+  follow**) are preset workflows. Their Run options have three sections:
+  **Input** (the target and the catalog refresh, Incremental or Full),
+  **Filter** (a release date range and a work limit), and **Actions** (Sync
+  metadata, the tag template, and for circles Check remote sources). Trigger
+  popovers use these values by default; enable Customize run options to
+  override them.
   Circle and series targets accept up to 20 comma-separated IDs, whose catalogs
   are combined before filtering. The voice actor target is one picked voice
   actor; its catalog is refreshed on the checked remote sources with the
-  display name and confirmed aliases.
-  Circle and voice actor follows also switch optional refresh steps: **Refresh
-  work metadata** for works missing metadata or for all works, and for circles
-  **Check remote sources** on the checked sources. **Follow new works** can be
-  turned off to run only the refresh steps; circle and voice actor detail
-  refreshes are such runs. Sync metadata only needs no source;
-  Track and Fetch need an enabled compatible remote source, and Fetch requires
-  download management permission plus explicit file, size, and free-space
-  limits. New works only skips works already in the library. The work limit is
-  on by default; switching it off still stops a run at 100 works. The release
-  date range is off by default; when on, each end is a date or No limit, and
-  works released on either boundary date are included. Turning the tag template
-  off skips tagging. Automated runs use stored or incremental circle
-  catalog refresh; a full refresh is manual only.
+  display name and confirmed aliases. A series reads its stored works and has
+  no catalog refresh.
+  Sync metadata covers the catalog works that lack metadata, including works
+  not yet in the library, and the filter and tag apply to those works. Every
+  filter is off by default: without a release range or work limit, a run syncs
+  every catalog work that lacks metadata. A trigger popover warns when an
+  automated follow has no filter and recommends turning one on. With Sync
+  metadata off, a circle or voice actor follow only refreshes the catalog (and
+  checks sources). Track and Fetch are no longer follow actions; use Remote
+  popular, Availability Watch, or a work's detail page instead. Automated runs
+  use incremental catalog refresh; a full refresh is manual only.
+- Upgrading disables follow triggers saved before these options, and each shows
+  that it needs reconfiguring. Open the trigger, check its Run options, save it,
+  and turn it on again.
+- Metadata sync refreshes works already in the library. Its Run options choose
+  **Works** (All works, one circle's works, or one voice actor's works) and
+  **Refresh** (Missing or outdated, or All metadata). Its interval triggers
+  store the same choice.
 - User-authored custom workflows, the DAG editor, slash commands, and the
   definition run dialog were removed. Upgrading deletes existing user
   definitions and their triggers; their runs stay in Activity history.

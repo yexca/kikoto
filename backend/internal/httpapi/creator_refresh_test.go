@@ -81,7 +81,7 @@ func TestCircleRefreshQueuesARefreshOnlyFollowRun(t *testing.T) {
 	if err := db.QueryRow("SELECT status FROM workflow_run WHERE id = ?", queued.RunID).Scan(&runStatus); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRow("SELECT status FROM workflow_node_run WHERE workflow_run_id = ? AND node_id = 'metadata'", queued.RunID).Scan(&metadataStatus); err != nil {
+	if err := db.QueryRow("SELECT status FROM workflow_node_run WHERE workflow_run_id = ? AND node_id = 'action'", queued.RunID).Scan(&metadataStatus); err != nil {
 		t.Fatal(err)
 	}
 	if runStatus != "succeeded" || metadataStatus != "succeeded" {

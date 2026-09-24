@@ -59,13 +59,15 @@ import {
 } from "@/features/workflows/WorkflowDetailLayout";
 import { WorkflowNavigation, builtInWorkflowOrder } from "@/features/workflows/WorkflowNavigation";
 import {
-  presetAction,
   presetBlockers,
   presetDefaultValues,
+  presetInputsNeedReconfiguration,
   presetInputsPayload,
+  presetMetadataEnabled,
   presetOptionalEnabled,
   presetOptionalFlagKey,
   presetReleaseRange,
+  presetRunsUnfiltered,
   presetSourceCheckEnabled,
   presetSourceIds,
   PRESET_PERSON_NAME_KEY,
@@ -73,6 +75,7 @@ import {
   presetTargetValue,
   presetValuesFromInputs,
   presetVisibleParameters,
+  PRESET_GROUPS,
   PRESET_OPTIONAL_FILTERS,
   PRESET_RELEASE_KEYS,
   PRESET_TAG_ENABLED_KEY,
@@ -95,12 +98,23 @@ import {
   VoiceActorPicker,
   useCompatibleRemoteSources,
 } from "@/features/workflows/CreatorPresetFields";
+import {
+  METADATA_SYNC_MODES,
+  METADATA_SYNC_SCOPES,
+  metadataSyncBlockers,
+  metadataSyncDefaultValues,
+  metadataSyncPayload,
+  metadataSyncValuesFromConfig,
+  type MetadataSyncBlocker,
+  type MetadataSyncFormValues,
+} from "@/features/workflows/metadataSyncModel";
 import { clearWorkflowRunPrefill, readWorkflowRunPrefill } from "@/features/workflows/workflowLinks";
 import { workflowStages } from "@/features/workflows/workflowStageModel";
 import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import {
   api,
   type AvailabilityWatch,
+  type MetadataSyncOptions,
   type LibrarySource,
   type WorkflowCandidate,
   type WorkflowEvent,
@@ -146,6 +160,7 @@ type SystemRunKind = "local_scan" | "metadata_sync" | "remote_popular" | "dlsite
 
 type SystemRunOptions = {
   followUpRun?: boolean;
+  metadataSync?: MetadataSyncOptions;
 };
 
 type DLsitePopularPeriod = "day" | "week" | "month" | "year";
@@ -200,6 +215,7 @@ type CurrentTriggerRunOptions = {
   code: string;
   systemConfig?: SystemWorkflowTriggerConfig;
   presetValues?: PresetFormValues;
+  metadataSync?: MetadataSyncFormValues;
 };
 
 const manuallyRunnableSystemWorkflows: Record<string, SystemRunKind[]> = {
@@ -442,10 +458,10 @@ export function WorkflowsPage({
     }
   };
 
-  const runMetadataSync = async () => {
+  const runMetadataSync = async (options?: MetadataSyncOptions) => {
     setIsSyncingMetadata(true);
     try {
-      await api.runDLsiteSync();
+      await api.runDLsiteSync(options);
       void refreshRecentRuns("metadata_sync");
       showQueuedRun();
     } catch (error) {
@@ -497,7 +513,7 @@ export function WorkflowsPage({
 
   const runSystemAction = async (kind: SystemRunKind, options: SystemRunOptions = {}) => {
     if (kind === "local_scan") return runLocalScan(options.followUpRun ?? false);
-    if (kind === "metadata_sync") return runMetadataSync();
+    if (kind === "metadata_sync") return runMetadataSync(options.metadataSync);
     if (kind === "remote_popular") return;
     if (kind === "dlsite_popular") return;
   };
@@ -513,7 +529,8 @@ export function WorkflowsPage({
     if (kind === "local_scan" || kind === "metadata_sync") return canRun && canSyncMetadata;
     if (kind === "dlsite_popular") return canRun && canSyncMetadata && canTagWorks;
     if (kind === "remote_popular") return canRun && canTagWorks && remoteSourceAvailability !== "unavailable";
-    if (kind === "preset") return canRun && canTagWorks;
+    // Follow runs refresh catalogs and sync metadata; the optional tag checks tags:write itself.
+    if (kind === "preset") return canRun && canSyncMetadata;
     return canRun;
   };
 
@@ -667,6 +684,7 @@ export function WorkflowsPage({
                 onRunSystemAction={runSystemAction}
                 onRunRemotePopular={runPopularCollection}
                 canFetchRemotePopular={canManageDownloads}
+                canTag={canTagWorks}
                 remoteSourceUnavailable={remoteSourceAvailability === "unavailable"}
                 onOpenRemoteSourceSettings={openRemoteSourcesSettings}
                 onRunDLsitePopular={runDLsitePopularCollection}
@@ -689,7 +707,7 @@ export function WorkflowsPage({
         <TriggerModal
           definition={selectedDefinition}
           preset={selectedPreset}
-          canFetch={canManageDownloads}
+          canTag={canTagWorks}
           trigger={null}
           initialTriggerType={creatingTriggerType}
           currentRunOptions={
@@ -712,7 +730,7 @@ export function WorkflowsPage({
         <TriggerModal
           definition={selectedDefinition}
           preset={selectedPreset}
-          canFetch={canManageDownloads}
+          canTag={canTagWorks}
           trigger={editingTrigger}
           readOnly={readOnly}
           initialTriggerType={editingTrigger.triggerType === "startup" ? "startup" : "schedule"}
@@ -1399,6 +1417,7 @@ function WorkflowDetail({
   onRunRemotePopular,
   onOpenRemoteSourceSettings,
   canFetchRemotePopular = false,
+  canTag = false,
   remoteSourceUnavailable = false,
   onRunDLsitePopular,
   preset = null,
@@ -1423,6 +1442,7 @@ function WorkflowDetail({
   onRunRemotePopular?: (options: RemotePopularRunOptions) => Promise<void>;
   onOpenRemoteSourceSettings?: () => void;
   canFetchRemotePopular?: boolean;
+  canTag?: boolean;
   remoteSourceUnavailable?: boolean;
   onRunDLsitePopular?: (options: DLsitePopularRunOptions) => Promise<void>;
   preset?: WorkflowPreset | null;
@@ -1485,22 +1505,21 @@ function WorkflowDetail({
         preset={preset}
         running={running}
         allowed={allowed}
-        canFetch={canFetchRemotePopular}
+        canTag={canTag}
         onRun={onRunPreset}
         onTriggerRunOptionsChange={onTriggerRunOptionsChange}
       />
+    ) : runKind === "metadata_sync" && onRunSystemAction ? (
+      <MetadataSyncRunPanel
+        key={definition.code}
+        layout={layout}
+        running={running}
+        allowed={allowed}
+        onRun={(metadataSync) => onRunSystemAction("metadata_sync", { metadataSync })}
+        onTriggerRunOptionsChange={onTriggerRunOptionsChange}
+      />
     ) : (
-      layout({
-        run:
-          runKind === "metadata_sync" && onRunSystemAction ? (
-            <WorkflowRunButton
-              running={running}
-              disabled={!allowed}
-              onClick={() => void onRunSystemAction("metadata_sync")}
-            />
-          ) : null,
-        options: null,
-      })
+      layout({ run: null, options: null })
     );
   return (
     <Card className="relative min-w-0 overflow-hidden">
@@ -1602,6 +1621,127 @@ function LocalScanRunPanel({
           />
         </OptionField>
       </RunOptionRows>
+    ),
+  });
+}
+
+function metadataSyncBlockerText(blocker: MetadataSyncBlocker) {
+  return blocker === "circle_required"
+    ? workflowCopy("metadataSyncScope.circleRequired")
+    : workflowCopy("metadataSyncScope.voiceRequired");
+}
+
+/** Metadata sync scope: which existing works to refresh, and how much of their metadata. */
+function MetadataSyncFields({
+  idPrefix,
+  values,
+  compact = false,
+  disabled = false,
+  onChange,
+}: {
+  idPrefix: string;
+  values: MetadataSyncFormValues;
+  compact?: boolean;
+  disabled?: boolean;
+  onChange: Dispatch<SetStateAction<MetadataSyncFormValues>>;
+}) {
+  const update = (next: Partial<MetadataSyncFormValues>) => onChange((current) => ({ ...current, ...next }));
+  return (
+    <RunOptionRows>
+      <OptionField
+        label={workflowCopy("metadataSyncScope.label")}
+        hint={workflowCopy("metadataSyncScope.hint")}
+        stacked={compact}
+      >
+        <SegmentedControl
+          label={workflowCopy("metadataSyncScope.label")}
+          value={values.scope}
+          onChange={(scope) => update({ scope: scope as MetadataSyncFormValues["scope"] })}
+          options={METADATA_SYNC_SCOPES.map((scope) => ({
+            value: scope,
+            label: workflowCopy(`metadataSyncScope.scopes.${scope}`),
+            disabled,
+          }))}
+        />
+      </OptionField>
+      {values.scope === "circle" && (
+        <OptionField label={presetParameterLabel("circleId")} htmlFor={`${idPrefix}-circle`} stacked={compact}>
+          <Input
+            id={`${idPrefix}-circle`}
+            fieldSize="sm"
+            className="max-w-48"
+            value={values.circleId}
+            placeholder={workflowCopy("metadataSyncScope.circlePlaceholder")}
+            disabled={disabled}
+            onChange={(event) => update({ circleId: event.target.value })}
+          />
+        </OptionField>
+      )}
+      {values.scope === "voice" && (
+        <OptionField label={presetParameterLabel("personId")} htmlFor={`${idPrefix}-voice`} stacked={compact}>
+          <VoiceActorPicker
+            id={`${idPrefix}-voice`}
+            personId={values.personId}
+            displayName={values.personName}
+            onChange={(personId, personName) => update({ personId, personName })}
+          />
+        </OptionField>
+      )}
+      <OptionField
+        label={workflowCopy("metadataSyncScope.mode")}
+        hint={
+          values.mode === "full" && values.scope === "all"
+            ? workflowCopy("metadataSyncScope.fullLibraryHint")
+            : undefined
+        }
+        stacked={compact}
+      >
+        <SegmentedControl
+          label={workflowCopy("metadataSyncScope.mode")}
+          value={values.mode}
+          onChange={(mode) => update({ mode: mode as MetadataSyncFormValues["mode"] })}
+          options={METADATA_SYNC_MODES.map((mode) => ({
+            value: mode,
+            label: workflowCopy(`metadataSyncScope.modes.${mode}`),
+            disabled,
+          }))}
+        />
+      </OptionField>
+    </RunOptionRows>
+  );
+}
+
+function MetadataSyncRunPanel({
+  layout,
+  running,
+  allowed,
+  onRun,
+  onTriggerRunOptionsChange,
+}: {
+  layout: RunFormLayout;
+  running: boolean;
+  allowed: boolean;
+  onRun: (options: MetadataSyncOptions) => Promise<void>;
+  onTriggerRunOptionsChange?: (options: CurrentTriggerRunOptions) => void;
+}) {
+  const [values, setValues] = useState<MetadataSyncFormValues>(metadataSyncDefaultValues);
+  useEffect(() => {
+    onTriggerRunOptionsChange?.({ code: "metadata_sync", metadataSync: values });
+  }, [values, onTriggerRunOptionsChange]);
+  const blockers = metadataSyncBlockers(values);
+  return layout({
+    run: (
+      <WorkflowRunButton
+        running={running}
+        disabled={!allowed || blockers.length > 0}
+        onClick={() => void onRun(metadataSyncPayload(values))}
+      />
+    ),
+    options: (
+      <div className="grid gap-5">
+        <MetadataSyncFields idPrefix="metadata-sync-run" values={values} onChange={setValues} />
+        {blockers.length > 0 && <RunBlockerNote>{metadataSyncBlockerText(blockers[0])}</RunBlockerNote>}
+      </div>
     ),
   });
 }
@@ -1761,9 +1901,6 @@ function RemotePopularRunPanel({
   });
 }
 
-/** Matches the server's preset work bound when a schema omits its maximum. */
-const presetWorkflowWorkLimitFallback = 100;
-
 function presetParameterLabel(key: string) {
   return workflowCopy(`presetParams.${key}`);
 }
@@ -1782,10 +1919,8 @@ function presetBlockerText(blocker: PresetBlocker) {
         min: blocker.minimum,
         max: blocker.maximum,
       });
-    case "source_required":
-      return workflowCopy("selectRemoteSource");
-    case "fetch_permission":
-      return workflowCopy("fetchPermissionRequired");
+    case "tag_permission":
+      return workflowCopy("presetBlockers.tagPermission");
     case "full_refresh_automated":
       return workflowCopy("presetBlockers.fullRefreshAutomated");
     case "invalid_date":
@@ -1813,7 +1948,6 @@ function presetTagTemplateTokens(
       description: workflowCopy("presetTokens.target"),
       value: workflowTagFragmentPreview(presetTargetValue(preset, values) || preset.target),
     },
-    { name: "action", description: workflowCopy("presetTokens.action"), value: presetAction(values) },
   ];
 }
 
@@ -1821,7 +1955,6 @@ function PresetParameterFields({
   idPrefix,
   preset,
   values,
-  canFetch,
   compact = false,
   onChange,
 }: {
@@ -1830,7 +1963,6 @@ function PresetParameterFields({
   compact?: boolean;
   preset: WorkflowPreset;
   values: PresetFormValues;
-  canFetch: boolean;
   /** Receives functional updates so concurrent async fills do not overwrite each other. */
   onChange: Dispatch<SetStateAction<PresetFormValues>>;
 }) {
@@ -1850,12 +1982,6 @@ function PresetParameterFields({
           tagTokens.map((token) => token.name),
         )[0]
       : undefined;
-
-  useEffect(() => {
-    if (loadingSources || sources.length === 0 || (values.sourceId ?? "").trim() !== "") return;
-    if (!visible.some((parameter) => parameter.kind === "source_id")) return;
-    onChange((current) => ({ ...current, sourceId: String(sources[0].id) }));
-  }, [loadingSources, sources, visible.length]);
 
   // Catalog sources start with every compatible source selected; a stored or
   // prefilled selection is kept as it is.
@@ -1909,23 +2035,6 @@ function PresetParameterFields({
         onCheckedChange={onCheckedChange}
       />
     );
-    if (parameter.key === "metadataRefresh") {
-      const enabled = value !== "" && value !== "off";
-      return field(
-        <>
-          {stepSwitch(enabled, (next) => update(parameter.key, next ? "missing" : "off"))}
-          {enabled && (
-            <SegmentedControl
-              label={presetParameterLabel(parameter.key)}
-              value={value}
-              onChange={(next) => update(parameter.key, next)}
-              options={["missing", "all"].map((option) => ({ value: option, label: presetOptionLabel(option) }))}
-            />
-          )}
-        </>,
-        { labelFor: false },
-      );
-    }
     switch (parameter.kind) {
       case "boolean":
         return field(
@@ -1973,44 +2082,16 @@ function PresetParameterFields({
           { labelFor: false },
         );
       }
-      case "source_id":
-        return field(
-          <NativeSelect
-            id={id}
-            fieldSize="sm"
-            className="max-w-sm"
-            value={value}
-            disabled={loadingSources || sources.length === 0}
-            onChange={(event) => update(parameter.key, event.target.value)}
-          >
-            {sources.length === 0 && (
-              <option value="">
-                {loadingSources ? workflowCopy("loadingSources") : workflowCopy("noCompatibleSource")}
-              </option>
-            )}
-            {sources.map((source) => (
-              <option key={source.id} value={String(source.id)}>
-                {source.displayName}
-              </option>
-            ))}
-          </NativeSelect>,
-        );
-      case "select": {
-        const fetchLocked = parameter.key === "action" && !canFetch;
+      case "select":
         return field(
           <SegmentedControl
             label={presetParameterLabel(parameter.key)}
             value={value}
             onChange={(next) => update(parameter.key, next)}
-            options={(parameter.options ?? []).map((option) => ({
-              value: option,
-              label: presetOptionLabel(option),
-              disabled: fetchLocked && option === "fetch",
-            }))}
+            options={(parameter.options ?? []).map((option) => ({ value: option, label: presetOptionLabel(option) }))}
           />,
-          { labelFor: false, hint: fetchLocked ? workflowCopy("fetchPermissionRequired") : undefined },
+          { labelFor: false },
         );
-      }
       case "integer": {
         const input = (
           <Input
@@ -2029,9 +2110,7 @@ function PresetParameterFields({
         if (!optional) return field(input);
         return field(optionalControl(input), {
           labelFor: false,
-          hint: optionalEnabled
-            ? undefined
-            : workflowCopy("presetWorkLimitOff", { count: parameter.maximum ?? presetWorkflowWorkLimitFallback }),
+          hint: optionalEnabled ? undefined : workflowCopy("presetWorkLimitOff"),
         });
       }
       case "date": {
@@ -2103,17 +2182,6 @@ function PresetParameterFields({
           </OptionField>
         );
       }
-      case "extensions":
-        return field(
-          <Input
-            id={id}
-            fieldSize="sm"
-            className="max-w-sm"
-            value={value}
-            placeholder={workflowCopy("extensionsPlaceholder")}
-            onChange={(event) => update(parameter.key, event.target.value)}
-          />,
-        );
       case "text_template":
         return (
           <TagTemplateField
@@ -2147,18 +2215,30 @@ function PresetParameterFields({
     }
   };
 
-  const groups = ["target", "metadata", "sources", "follow", "filter", "action", "fetch", "tag"] as const;
+  // Input reads a catalog, the filter narrows its works without metadata, and
+  // the actions sync, tag, or check them. Without metadata the filter has
+  // nothing to narrow, so it stays hidden.
+  const metadataEnabled = presetMetadataEnabled(values);
   return (
     <div className="grid divide-y">
-      {groups.map((group) => {
+      {PRESET_GROUPS.map((group) => {
         const parameters = visible.filter((parameter) => parameter.group === group);
         if (parameters.length === 0) return null;
+        const groupTitleId = `${idPrefix}-group-${group}`;
         return (
           <section
             key={group}
             className={`grid min-w-0 content-start gap-4 py-4 first:pt-0 last:pb-0 ${compact ? "sm:grid-cols-2" : ""}`}
-            aria-label={workflowCopy(`presetGroups.${group}`)}
+            aria-labelledby={groupTitleId}
           >
+            <div className={compact ? "sm:col-span-2" : undefined}>
+              <h4 id={groupTitleId} className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {workflowCopy(`presetGroups.${group}`)}
+              </h4>
+              {group === "filter" && metadataEnabled && (
+                <p className="mt-1 text-xs text-muted-foreground">{workflowCopy("presetFilterHint")}</p>
+              )}
+            </div>
             {parameters.map(renderField)}
           </section>
         );
@@ -2172,7 +2252,7 @@ function PresetRunPanel({
   preset,
   running,
   allowed,
-  canFetch,
+  canTag,
   onRun,
   onTriggerRunOptionsChange,
 }: {
@@ -2180,7 +2260,7 @@ function PresetRunPanel({
   preset: WorkflowPreset;
   running: boolean;
   allowed: boolean;
-  canFetch: boolean;
+  canTag: boolean;
   onRun: (inputs: Record<string, unknown>) => Promise<void>;
   onTriggerRunOptionsChange?: (options: CurrentTriggerRunOptions) => void;
 }) {
@@ -2196,7 +2276,7 @@ function PresetRunPanel({
   useEffect(() => {
     onTriggerRunOptionsChange?.({ code: preset.code, presetValues: values });
   }, [preset.code, values, onTriggerRunOptionsChange]);
-  const blockers = presetBlockers(preset, values, { canFetch, automated: false });
+  const blockers = presetBlockers(preset, values, { canTag, automated: false });
   const tagTemplate = (values.tagNameTemplate ?? "").trim();
   const tagInvalid =
     presetTagEnabled(values) &&
@@ -2216,13 +2296,7 @@ function PresetRunPanel({
     ),
     options: (
       <div className="grid gap-5">
-        <PresetParameterFields
-          idPrefix="preset-run"
-          preset={preset}
-          values={values}
-          canFetch={canFetch}
-          onChange={setValues}
-        />
+        <PresetParameterFields idPrefix="preset-run" preset={preset} values={values} onChange={setValues} />
         {blockers.length > 0 && <RunBlockerNote>{presetBlockerText(blockers[0])}</RunBlockerNote>}
       </div>
     ),
@@ -2956,10 +3030,16 @@ function WorkflowAutomationPanel({
                       </>
                     )}
                   </div>
-                  {trigger.lastErrorMessage && (
-                    <div className="mt-0.5 break-words text-xs text-error-foreground [overflow-wrap:anywhere]">
-                      {workflowCopy("lastError")}: {trigger.lastErrorMessage}
+                  {isPreset && presetInputsNeedReconfiguration(parseJSONRecord(trigger.configJson).inputs) ? (
+                    <div className="mt-0.5 text-xs text-warning-foreground">
+                      {workflowCopy("presetTriggerNeedsReconfiguration")}
                     </div>
+                  ) : (
+                    trigger.lastErrorMessage && (
+                      <div className="mt-0.5 break-words text-xs text-error-foreground [overflow-wrap:anywhere]">
+                        {workflowCopy("lastError")}: {trigger.lastErrorMessage}
+                      </div>
+                    )
                   )}
                 </div>
                 {inspectable && (
@@ -2990,7 +3070,7 @@ function WorkflowAutomationPanel({
 function TriggerModal({
   definition,
   preset = null,
-  canFetch = false,
+  canTag = false,
   trigger,
   readOnly = false,
   initialTriggerType,
@@ -3002,7 +3082,7 @@ function TriggerModal({
 }: {
   definition: WorkflowDefinition;
   preset?: WorkflowPreset | null;
-  canFetch?: boolean;
+  canTag?: boolean;
   trigger: WorkflowTrigger | null;
   readOnly?: boolean;
   initialTriggerType: CreatableAutomationTriggerType;
@@ -3039,17 +3119,29 @@ function TriggerModal({
         : (currentRunOptions?.presetValues ?? presetDefaultValues(preset))
       : {},
   );
+  const isMetadataSync = definition.code === "metadata_sync";
+  const [metadataSyncValues, setMetadataSyncValues] = useState<MetadataSyncFormValues>(() =>
+    trigger
+      ? metadataSyncValuesFromConfig(parseJSONRecord(trigger.configJson))
+      : (currentRunOptions?.metadataSync ?? metadataSyncDefaultValues()),
+  );
   const customizable =
     Boolean(preset) ||
+    isMetadataSync ||
     definition.code === "remote_popular_collection" ||
     definition.code === "dlsite_popular_collection";
   const [customize, setCustomize] = useState(() => customizable && Boolean(trigger));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const presetTriggerBlockers = preset
-    ? presetBlockers(preset, presetValues, { canFetch, automated: true }).map((blocker) => presetBlockerText(blocker))
+    ? presetBlockers(preset, presetValues, { canTag, automated: true }).map((blocker) => presetBlockerText(blocker))
     : [];
-  const systemConfigBlockers = workflowSystemTriggerConfigBlockers(definition.code, systemConfig);
+  const systemConfigBlockers = isMetadataSync
+    ? metadataSyncBlockers(metadataSyncValues).map(metadataSyncBlockerText)
+    : workflowSystemTriggerConfigBlockers(definition.code, systemConfig);
+  // An unfiltered follow syncs every catalog work without metadata on each
+  // automated run. It is allowed, but recommend a filter before saving one.
+  const unfilteredFollowWarning = Boolean(preset && presetRunsUnfiltered(preset, presetValues));
   const automationBlockers = [
     ...(triggerType === "schedule" && (intervalMinutes < 5 || intervalMinutes > 10080)
       ? [workflowCopy("intervalRange")]
@@ -3084,7 +3176,9 @@ function TriggerModal({
       if (automationBlockers.length > 0) throw new Error(automationBlockers[0]);
       const configPayload = preset
         ? presetInputsPayload(preset, presetValues)
-        : workflowSystemTriggerConfigPayload(definition.code, triggerType, systemConfig);
+        : isMetadataSync
+          ? metadataSyncPayload(metadataSyncValues)
+          : workflowSystemTriggerConfigPayload(definition.code, triggerType, systemConfig);
       const payload = {
         workflowDefinitionId: definition.id,
         displayName,
@@ -3126,6 +3220,7 @@ function TriggerModal({
   const setCustomizeAndReset = (next: boolean) => {
     if (!next) {
       if (preset) setPresetValues(currentRunOptions?.presetValues ?? presetDefaultValues(preset));
+      else if (isMetadataSync) setMetadataSyncValues(currentRunOptions?.metadataSync ?? metadataSyncDefaultValues());
       else setSystemConfig(currentRunOptions?.systemConfig ?? workflowSystemTriggerConfig(definition.code, null));
     }
     setCustomize(next);
@@ -3192,8 +3287,14 @@ function TriggerModal({
                 compact
                 preset={preset}
                 values={presetValues}
-                canFetch={canFetch}
                 onChange={setPresetValues}
+              />
+            ) : showSystemOptions && isMetadataSync ? (
+              <MetadataSyncFields
+                idPrefix="metadata-sync-trigger"
+                compact
+                values={metadataSyncValues}
+                onChange={setMetadataSyncValues}
               />
             ) : showSystemOptions ? (
               <SystemWorkflowTriggerFields
@@ -3204,6 +3305,14 @@ function TriggerModal({
               />
             ) : null}
           </section>
+        )}
+        {unfilteredFollowWarning && (
+          <div
+            role="note"
+            className="rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-sm text-warning-foreground"
+          >
+            {workflowCopy("presetUnfilteredAutomation")}
+          </div>
         )}
         {automationBlockers.length > 0 && (
           <div className="rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-sm text-warning-foreground">

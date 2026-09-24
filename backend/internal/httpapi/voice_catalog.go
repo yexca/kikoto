@@ -176,8 +176,9 @@ type voiceCatalogRefreshStateSnapshot struct {
 	UpdatedAt        string  `json:"updatedAt"`
 }
 
-// refreshVoiceCatalog queues the voice actor follow workflow with its new-works
-// step off, so a detail refresh and a Workflows run share one pipeline.
+// refreshVoiceCatalog queues the voice actor follow workflow with the metadata
+// action off, so a detail refresh and a Workflows run share one pipeline. Its
+// metadata refresh keeps to the voice actor's known works.
 func (s *Server) refreshVoiceCatalog(w http.ResponseWriter, r *http.Request) {
 	actor, ok := s.requirePermission(w, r, "metadata:sync")
 	if !ok {
@@ -204,9 +205,7 @@ func (s *Server) refreshVoiceCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request = request.normalized()
-	inputs := map[string]any{
-		"personId": personID, "catalogRefresh": request.CatalogRefresh, "metadataRefresh": request.MetadataRefresh, "newWorks": false,
-	}
+	inputs := presetWorkflowInputs{PersonID: personID, CatalogRefresh: request.CatalogRefresh, KnownMetadata: request.MetadataRefresh != "off"}
 	if request.CatalogRefresh != "stored" {
 		sourceIDs, err := s.compatibleRemoteSourceIDs(r.Context())
 		if err != nil {
@@ -217,7 +216,7 @@ func (s *Server) refreshVoiceCatalog(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": errVoiceCatalogNoSourcesSelected.Error()})
 			return
 		}
-		inputs["sourceIds"] = sourceIDs
+		inputs.SourceIDs = sourceIDs
 	}
 	run, err := s.queueCreatorRefresh(r.Context(), actor, "voice_follow", inputs, func(ctx context.Context) (creatorRefreshRun, bool, error) {
 		return s.latestVoiceFollowRun(ctx, personID, true)

@@ -10,9 +10,10 @@ import (
 	"time"
 )
 
-// Circle and voice actor detail refreshes queue their follow preset with the
-// new-works step off. A detail refresh and a Workflows run therefore share one
-// pipeline, one run history, and one set of node executors.
+// Circle and voice actor detail refreshes queue their follow preset without a
+// tag. A detail refresh and a Workflows run therefore share one pipeline, one
+// run history, and one set of node executors. A circle refresh syncs metadata
+// for catalog works that lack it; a voice refresh keeps to known works.
 
 // creatorRefreshRequest is the detail-page refresh body shared by circles and
 // voice actors. SourceCheck applies to circles only.
@@ -56,17 +57,19 @@ var errCreatorRefreshInProgress = creatorRefreshError{status: http.StatusConflic
 
 // queueCreatorRefresh plans a follow preset for one detail refresh. An active
 // run with the same inputs is reused; a different active run is a conflict.
-func (s *Server) queueCreatorRefresh(ctx context.Context, actor currentUser, code string, inputs map[string]any, active func(context.Context) (creatorRefreshRun, bool, error)) (creatorRefreshRun, error) {
+func (s *Server) queueCreatorRefresh(ctx context.Context, actor currentUser, code string, inputs presetWorkflowInputs, active func(context.Context) (creatorRefreshRun, bool, error)) (creatorRefreshRun, error) {
 	spec, found := presetWorkflowSpecByCode(code)
 	if !found {
 		return creatorRefreshRun{}, errors.New("workflow preset not found")
 	}
-	plan, err := s.planPresetWorkflow(ctx, spec, inputs, time.Now(), false)
+	// A detail refresh never tags and never narrows the catalog.
+	inputs.TagNameTemplate, inputs.ReleaseFrom, inputs.ReleaseTo, inputs.MaxWorks = "", "", "", 0
+	plan, err := s.planPresetWorkflowInputs(ctx, spec, inputs, time.Now(), false)
 	if err != nil {
 		return creatorRefreshRun{}, creatorRefreshError{status: http.StatusBadRequest, message: err.Error()}
 	}
-	if plan.Inputs.NewWorks {
-		return creatorRefreshRun{}, errors.New("a detail refresh must not follow new works")
+	if len(plan.Definition.Nodes) == 0 {
+		return creatorRefreshRun{}, creatorRefreshError{status: http.StatusBadRequest, message: "choose at least one step to run"}
 	}
 	// A detail refresh is authorized by metadata:sync, as before the merge. Its
 	// graph holds only refresh steps, so the run carries workflows:run on the

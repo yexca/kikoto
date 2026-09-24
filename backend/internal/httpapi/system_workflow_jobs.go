@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"path/filepath"
@@ -31,6 +32,7 @@ const (
 
 type metadataSyncRunInput struct {
 	SourceRunID int64 `json:"source_run_id,omitempty"`
+	metadataSyncOptions
 }
 
 func (s *Server) enqueueLocalScan(ctx context.Context, triggerType string, triggerReason string) (localScanResult, error) {
@@ -434,6 +436,11 @@ func (s *Server) enqueueDLsiteMetadataSyncWithTrigger(ctx context.Context, trigg
 	return s.enqueueDLsiteMetadataSyncWithInput(ctx, triggerType, triggerReason, triggerID, metadataSyncRunInput{})
 }
 
+// enqueueScopedDLsiteMetadataSync queues a metadata sync for normalized options.
+func (s *Server) enqueueScopedDLsiteMetadataSync(ctx context.Context, triggerType string, triggerReason string, triggerID int64, options metadataSyncOptions) (metasync.DLsiteSyncResult, error) {
+	return s.enqueueDLsiteMetadataSyncWithInput(ctx, triggerType, triggerReason, triggerID, metadataSyncRunInput{metadataSyncOptions: options})
+}
+
 func (s *Server) enqueueDLsiteMetadataSyncFollowUp(ctx context.Context, sourceRunID int64) (metasync.DLsiteSyncResult, bool, error) {
 	var result metasync.DLsiteSyncResult
 	err := s.db.QueryRowContext(ctx, `
@@ -444,6 +451,8 @@ func (s *Server) enqueueDLsiteMetadataSyncFollowUp(ctx context.Context, sourceRu
 			AND run.status = 'queued'
 			AND job.worker_type = 'metadata_sync'
 			AND job.status = 'queued'
+			AND COALESCE(json_extract(run.input_json, '$.scope'), 'all') = 'all'
+			AND COALESCE(json_extract(run.input_json, '$.mode'), 'missing') = 'missing'
 		ORDER BY run.id ASC
 		LIMIT 1
 	`).Scan(&result.RunID, &result.JobID)
@@ -466,8 +475,14 @@ func (s *Server) enqueueDLsiteMetadataSyncWithInput(ctx context.Context, trigger
 		return metasync.DLsiteSyncResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	// Bulk metadata sync is a singleton queue item. Repeated clicks subscribe
-	// the caller to the existing run instead of creating another full scan.
+	options, err := input.normalized()
+	if err != nil {
+		return metasync.DLsiteSyncResult{}, err
+	}
+	input.metadataSyncOptions = options
+	// Each metadata sync scope is a singleton queue item. Repeated clicks
+	// subscribe the caller to the existing run instead of creating another
+	// scan; different scopes queue separately and share the provider resource.
 	var existingRunID, existingJobID int64
 	var existingStatus string
 	if err := tx.QueryRowContext(ctx, `
@@ -478,8 +493,12 @@ func (s *Server) enqueueDLsiteMetadataSyncWithInput(ctx context.Context, trigger
 		  AND run.status IN ('queued', 'running')
 		  AND job.worker_type = 'metadata_sync'
 		  AND job.status IN ('queued', 'running')
+		  AND COALESCE(json_extract(run.input_json, '$.scope'), 'all') = ?
+		  AND COALESCE(json_extract(run.input_json, '$.mode'), 'missing') = ?
+		  AND COALESCE(json_extract(run.input_json, '$.circleId'), '') = ?
+		  AND COALESCE(json_extract(run.input_json, '$.personId'), 0) = ?
 		ORDER BY run.id ASC LIMIT 1
-	`).Scan(&existingRunID, &existingJobID, &existingStatus); err == nil {
+	`, options.Scope, options.Mode, options.CircleID, options.PersonID).Scan(&existingRunID, &existingJobID, &existingStatus); err == nil {
 		return metasync.DLsiteSyncResult{RunID: existingRunID, JobID: existingJobID, Status: existingStatus, Deduplicated: true, ReviewCandidates: []metasync.DLsiteReviewCandidate{}, Failures: []string{}}, nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return metasync.DLsiteSyncResult{}, err
@@ -540,7 +559,23 @@ func (s *Server) executeDLsiteMetadataSyncJob(ctx context.Context, job workflowJ
 		return err
 	}
 	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "syncing", map[string]any{"provider": "dlsite"}, 0, 0)
-	result, runErr := s.newDLsiteMetadataSyncer(ctx).SyncAllWithoutWorkflow(ctx)
+	var input metadataSyncRunInput
+	if strings.TrimSpace(job.PayloadJSON) != "" {
+		if err := json.Unmarshal([]byte(job.PayloadJSON), &input); err != nil {
+			_ = s.failClaimedWorkflowJob(ctx, job, "metadata sync input is invalid")
+			return err
+		}
+	}
+	options, err := input.normalized()
+	if err != nil {
+		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		return err
+	}
+	var result metasync.DLsiteSyncResult
+	scope, runErr := s.metadataSyncScope(ctx, options)
+	if runErr == nil {
+		result, runErr = s.newDLsiteMetadataSyncer(ctx).SyncScopeWithoutWorkflow(ctx, scope)
+	}
 	if runErr == nil {
 		runErr = s.syncPartiesFromDLsiteSnapshots(ctx)
 	}

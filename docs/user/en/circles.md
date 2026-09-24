@@ -29,11 +29,12 @@ Circles represent makers, circles, and related party catalog state.
   circle that was never pulled, then **Refresh circle**, which also checks the
   remote sources. **Retry metadata** appears only while catalog works still
   lack metadata and fills just those. Each action queues a Follow a circle run
-  with its new-works step off and returns at once; the button shows
+  without a filter or tag and returns at once; the button shows
   **Refreshing** until the run settles, and the run is visible in Activity.
 - The **More** menu opens **Follow this circle…**, the Follow a circle preset
   with this circle filled in, for every other combination of catalog refresh,
-  metadata refresh, source check, and new-works options.
+  filter, metadata, tag, and source check. To refresh metadata the circle's
+  works already have, run Metadata sync with the circle scope.
 - Shortens the common detail actions on mobile, keeps icon-only Favorite,
   More, and DLsite controls accessible by name, and places DLsite last.
 - Uses the Library-style works toolbar on wide layouts: the Works/Series switch

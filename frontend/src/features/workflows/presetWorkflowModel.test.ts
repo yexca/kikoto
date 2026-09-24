@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   presetBlockers,
   presetDefaultValues,
+  presetInputsNeedReconfiguration,
   presetInputsPayload,
   presetOptionalEnabled,
   presetOptionalFlagKey,
   presetReleaseRange,
+  presetRunsUnfiltered,
   presetTagEnabled,
   PRESET_RELEASE_KEYS,
   presetValuesFromInputs,
@@ -22,128 +24,124 @@ const circleFollow: WorkflowPreset = {
   target: "circle",
   defaultTagTemplate: "{date}_circle_{target}",
   parameters: [
-    { key: "circleId", kind: "circle_id", group: "target", required: true },
+    { key: "circleId", kind: "circle_id", group: "input", required: true },
     {
       key: "catalogRefresh",
       kind: "select",
-      group: "target",
+      group: "input",
       required: false,
       default: "incremental",
-      options: ["stored", "incremental", "full"],
-    },
-    {
-      key: "existing",
-      kind: "select",
-      group: "filter",
-      required: false,
-      default: "unknown",
-      options: ["unknown", "any"],
+      options: ["incremental", "full"],
     },
     { key: "releaseFrom", kind: "date", group: "filter", required: false },
     { key: "releaseTo", kind: "date", group: "filter", required: false },
-    { key: "maxWorks", kind: "integer", group: "filter", required: false, default: 25, minimum: 1, maximum: 100 },
-    {
-      key: "action",
-      kind: "select",
-      group: "action",
-      required: false,
-      default: "metadata",
-      options: ["metadata", "track", "fetch"],
-    },
-    { key: "sourceId", kind: "source_id", group: "action", required: false },
-    { key: "excludeExtensions", kind: "extensions", group: "fetch", required: false },
-    { key: "maxFiles", kind: "integer", group: "fetch", required: false, default: 10000, minimum: 1, maximum: 50000 },
-    { key: "maxGiB", kind: "integer", group: "fetch", required: false, default: 100, minimum: 1, maximum: 2048 },
-    { key: "minFreeGiB", kind: "integer", group: "fetch", required: false, default: 2, minimum: 1, maximum: 1024 },
-    {
-      key: "tagNameTemplate",
-      kind: "text_template",
-      group: "tag",
-      required: false,
-      tokens: ["date", "target", "action"],
-    },
+    { key: "maxWorks", kind: "integer", group: "filter", required: false, default: 25, minimum: 1, maximum: 500 },
+    { key: "metadata", kind: "boolean", group: "action", required: false, default: true },
+    { key: "tagNameTemplate", kind: "text_template", group: "action", required: false, tokens: ["date", "target"] },
+    { key: "checkSourceIds", kind: "source_ids", group: "action", required: false },
   ],
 };
 
+const seriesFollow: WorkflowPreset = {
+  ...circleFollow,
+  code: "series_follow",
+  target: "series",
+  parameters: [
+    { key: "seriesId", kind: "series_id", group: "input", required: true },
+    ...circleFollow.parameters.slice(2, 7),
+  ],
+};
+
+const options = { canTag: true, automated: false };
+
 describe("presetWorkflowModel", () => {
-  it("seeds defaults including the preset tag template", () => {
+  it("starts with the filter off, metadata on, and the preset tag template", () => {
     const values = presetDefaultValues(circleFollow);
-    expect(values.action).toBe("metadata");
-    expect(values.maxWorks).toBe("25");
+    expect(values.metadata).toBe("true");
+    expect(presetOptionalEnabled(values, "maxWorks")).toBe(false);
+    expect(presetReleaseRange(values).enabled).toBe(false);
     expect(values.tagNameTemplate).toBe("{date}_circle_{target}");
-    expect(values.circleId).toBe("");
+    expect(presetRunsUnfiltered(circleFollow, { ...values, circleId: "RG12345" })).toBe(true);
   });
 
-  it("hides fetch bounds and the action source until the action needs them", () => {
-    const metadataKeys = presetVisibleParameters(circleFollow, presetDefaultValues(circleFollow)).map((p) => p.key);
-    expect(metadataKeys).not.toContain("sourceId");
-    expect(metadataKeys).not.toContain("maxGiB");
-    const fetchKeys = presetVisibleParameters(circleFollow, {
-      ...presetDefaultValues(circleFollow),
-      action: "fetch",
-    }).map((p) => p.key);
-    expect(fetchKeys).toContain("sourceId");
-    expect(fetchKeys).toContain("maxGiB");
-  });
-
-  it("converts form text into a typed payload and drops hidden fields", () => {
-    const payload = presetInputsPayload(circleFollow, {
-      ...presetDefaultValues(circleFollow),
-      circleId: "rg12345",
-      action: "fetch",
-      sourceId: "91",
-      maxWorks: "10",
-      excludeExtensions: "WAV, .flac",
-      releaseFrom: "",
-      tagNameTemplate: "",
-    });
-    expect(payload).toEqual({
+  it("sends no work limit while the limit is off and restores a stored limit as on", () => {
+    const base = { ...presetDefaultValues(circleFollow), circleId: "rg12345" };
+    expect(presetInputsPayload(circleFollow, base)).toEqual({
       circleId: "rg12345",
       catalogRefresh: "incremental",
-      existing: "unknown",
-      maxWorks: 10,
-      action: "fetch",
-      sourceId: 91,
-      excludeExtensions: ["wav", "flac"],
-      maxFiles: 10000,
-      maxGiB: 100,
-      minFreeGiB: 2,
-      tagNameTemplate: "",
+      metadata: true,
+      tagNameTemplate: "{date}_circle_{target}",
     });
-    expect(
-      presetInputsPayload(circleFollow, { ...presetDefaultValues(circleFollow), circleId: "RG1" }),
-    ).not.toHaveProperty("maxGiB");
+    const limited = { ...base, [presetOptionalFlagKey("maxWorks")]: "true", maxWorks: "10" };
+    expect(presetInputsPayload(circleFollow, limited).maxWorks).toBe(10);
+    expect(presetRunsUnfiltered(circleFollow, limited)).toBe(false);
+
+    const restored = presetValuesFromInputs(circleFollow, { circleId: "RG12345", maxWorks: 40 });
+    expect(presetOptionalEnabled(restored, "maxWorks")).toBe(true);
+    expect(restored.maxWorks).toBe("40");
+    expect(presetOptionalEnabled(presetValuesFromInputs(circleFollow, { circleId: "RG12345" }), "maxWorks")).toBe(
+      false,
+    );
+  });
+
+  it("drops the filter and the tag when the metadata action is off", () => {
+    const values = {
+      ...presetDefaultValues(circleFollow),
+      circleId: "RG12345",
+      metadata: "false",
+      releaseEnabled: "true",
+      releaseFrom: "2025-01-01",
+      [presetOptionalFlagKey("maxWorks")]: "true",
+    };
+    expect(presetVisibleParameters(circleFollow, values).map((parameter) => parameter.key)).toEqual([
+      "circleId",
+      "catalogRefresh",
+      "metadata",
+      "checkSourceIds",
+    ]);
+    expect(presetInputsPayload(circleFollow, values)).toEqual({
+      circleId: "RG12345",
+      catalogRefresh: "incremental",
+      metadata: false,
+    });
+    expect(presetBlockers(circleFollow, values, options)).toEqual([]);
+    expect(presetRunsUnfiltered(circleFollow, values)).toBe(false);
   });
 
   it("reports blockers that mirror the server rules", () => {
     const base = presetDefaultValues(circleFollow);
-    expect(presetBlockers(circleFollow, base, { canFetch: true, automated: false })).toEqual([
-      { kind: "required", key: "circleId" },
-    ]);
-    expect(
-      presetBlockers(circleFollow, { ...base, circleId: "RG1", action: "track" }, { canFetch: true, automated: false }),
-    ).toEqual([{ kind: "source_required" }]);
+    expect(presetBlockers(circleFollow, base, options)).toEqual([{ kind: "required", key: "circleId" }]);
     expect(
       presetBlockers(
         circleFollow,
-        { ...base, circleId: "RG1", action: "fetch", sourceId: "3", maxWorks: "500" },
-        { canFetch: false, automated: false },
+        { ...base, circleId: "RG1", [presetOptionalFlagKey("maxWorks")]: "true", maxWorks: "501" },
+        options,
       ),
-    ).toEqual([{ kind: "range", key: "maxWorks", minimum: 1, maximum: 100 }, { kind: "fetch_permission" }]);
+    ).toEqual([{ kind: "range", key: "maxWorks", minimum: 1, maximum: 500 }]);
     expect(
       presetBlockers(
         circleFollow,
         { ...base, circleId: "RG1", catalogRefresh: "full" },
-        { canFetch: true, automated: true },
+        { ...options, automated: true },
       ),
     ).toEqual([{ kind: "full_refresh_automated" }]);
     expect(
       presetBlockers(
         circleFollow,
         { ...base, circleId: "RG1", releaseFrom: "2025/1/1", releaseEnabled: "true" },
-        { canFetch: true, automated: false },
+        options,
       ),
     ).toEqual([{ kind: "invalid_date", key: "releaseFrom" }]);
+    expect(presetBlockers(circleFollow, { ...base, circleId: "RG1" }, { ...options, canTag: false })).toEqual([
+      { kind: "tag_permission" },
+    ]);
+    expect(
+      presetBlockers(
+        seriesFollow,
+        { ...presetDefaultValues(seriesFollow), seriesId: "S1", metadata: "false" },
+        options,
+      ),
+    ).toEqual([{ kind: "no_steps" }]);
   });
 
   it("turns tagging off with an empty template and requires a template while it is on", () => {
@@ -151,27 +149,14 @@ describe("presetWorkflowModel", () => {
     expect(presetTagEnabled(base)).toBe(true);
     const untagged = { ...base, [PRESET_TAG_ENABLED_KEY]: "false" };
     expect(presetInputsPayload(circleFollow, untagged).tagNameTemplate).toBe("");
-    expect(presetBlockers(circleFollow, untagged, { canFetch: true, automated: false })).toEqual([]);
-    expect(
-      presetBlockers(circleFollow, { ...base, tagNameTemplate: " " }, { canFetch: true, automated: false }),
-    ).toEqual([{ kind: "required", key: "tagNameTemplate" }]);
+    expect(presetBlockers(circleFollow, untagged, { ...options, canTag: false })).toEqual([]);
+    expect(presetBlockers(circleFollow, { ...base, tagNameTemplate: " " }, options)).toEqual([
+      { kind: "required", key: "tagNameTemplate" },
+    ]);
 
     const restored = presetValuesFromInputs(circleFollow, { circleId: "RG12345", tagNameTemplate: "" });
     expect(presetTagEnabled(restored)).toBe(false);
     expect(restored.tagNameTemplate).toBe("{date}_circle_{target}");
-  });
-
-  it("runs at the maximum when the work limit is switched off", () => {
-    const base = { ...presetDefaultValues(circleFollow), circleId: "RG12345" };
-    expect(presetOptionalEnabled(base, "maxWorks")).toBe(true);
-    expect(presetInputsPayload(circleFollow, base).maxWorks).toBe(25);
-    const unlimited = { ...base, [presetOptionalFlagKey("maxWorks")]: "false", maxWorks: "500" };
-    expect(presetInputsPayload(circleFollow, unlimited).maxWorks).toBe(100);
-    expect(presetBlockers(circleFollow, unlimited, { canFetch: true, automated: false })).toEqual([]);
-
-    const restored = presetValuesFromInputs(circleFollow, { circleId: "RG12345", maxWorks: 100 });
-    expect(presetOptionalEnabled(restored, "maxWorks")).toBe(false);
-    expect(restored.maxWorks).toBe("25");
   });
 
   it("sends an inclusive release range with open ends only while the range is on", () => {
@@ -182,6 +167,7 @@ describe("presetWorkflowModel", () => {
     const after = { ...base, [PRESET_RELEASE_KEYS.enabled]: "true" };
     expect(presetInputsPayload(circleFollow, after)).toMatchObject({ releaseFrom: "2025-01-01" });
     expect(presetInputsPayload(circleFollow, after)).not.toHaveProperty("releaseTo");
+    expect(presetRunsUnfiltered(circleFollow, after)).toBe(false);
 
     const before = {
       ...after,
@@ -193,7 +179,6 @@ describe("presetWorkflowModel", () => {
     expect(beforePayload).toMatchObject({ releaseTo: "2025-06-30" });
     expect(beforePayload).not.toHaveProperty("releaseFrom");
 
-    const options = { canFetch: true, automated: false };
     expect(presetBlockers(circleFollow, { ...before, releaseTo: "" }, options)).toEqual([
       { kind: "required", key: "releaseTo" },
     ]);
@@ -212,92 +197,32 @@ describe("presetWorkflowModel", () => {
     expect(presetReleaseRange(restored)).toEqual({ enabled: true, fromOpen: true, toOpen: false });
   });
 
-  it("restores stored trigger inputs into form values", () => {
-    const values = presetValuesFromInputs(circleFollow, {
-      circleId: "RG12345",
-      action: "fetch",
-      sourceId: 91,
-      excludeExtensions: ["wav"],
-      ignored: "x",
-    });
-    expect(values.circleId).toBe("RG12345");
-    expect(values.sourceId).toBe("91");
-    expect(values.excludeExtensions).toBe("wav");
-    expect(values).not.toHaveProperty("ignored");
-    expect(values.maxWorks).toBe("25");
-  });
-});
-
-describe("preset refresh steps", () => {
-  const circleWithSteps: WorkflowPreset = {
-    ...circleFollow,
-    parameters: [
-      ...circleFollow.parameters.slice(0, 2),
-      {
-        key: "metadataRefresh",
-        kind: "select",
-        group: "metadata",
-        required: false,
-        default: "off",
-        options: ["off", "missing", "all"],
-      },
-      { key: "checkSourceIds", kind: "source_ids", group: "sources", required: false },
-      { key: "newWorks", kind: "boolean", group: "follow", required: false, default: true },
-      ...circleFollow.parameters.slice(2),
-    ],
-  };
-
-  it("sends only the refresh steps when new works are off", () => {
-    const values = {
-      ...presetDefaultValues(circleWithSteps),
-      circleId: "RG12345",
-      newWorks: "false",
-      metadataRefresh: "all",
-      [presetOptionalFlagKey("checkSourceIds")]: "true",
-      checkSourceIds: "11,12",
-    };
-    expect(presetVisibleParameters(circleWithSteps, values).map((parameter) => parameter.key)).toEqual([
-      "circleId",
-      "catalogRefresh",
-      "metadataRefresh",
-      "checkSourceIds",
-      "newWorks",
-    ]);
-    expect(presetInputsPayload(circleWithSteps, values)).toEqual({
-      circleId: "RG12345",
-      catalogRefresh: "incremental",
-      metadataRefresh: "all",
-      checkSourceIds: [11, 12],
-      newWorks: false,
-    });
-    expect(presetBlockers(circleWithSteps, values, { canFetch: false, automated: false })).toEqual([]);
-  });
-
-  it("omits a switched-off source check and blocks a run with nothing to do", () => {
-    const values = {
-      ...presetDefaultValues(circleWithSteps),
-      circleId: "RG12345",
-      catalogRefresh: "stored",
-      newWorks: "false",
-      checkSourceIds: "11",
-    };
-    expect(presetInputsPayload(circleWithSteps, values)).not.toHaveProperty("checkSourceIds");
-    expect(presetBlockers(circleWithSteps, values, { canFetch: false, automated: false })).toEqual([
-      { kind: "no_steps" },
-    ]);
+  it("omits a switched-off source check and restores a stored one as on", () => {
+    const values = { ...presetDefaultValues(circleFollow), circleId: "RG12345", checkSourceIds: "11" };
+    expect(presetInputsPayload(circleFollow, values)).not.toHaveProperty("checkSourceIds");
     const emptyCheck = { ...values, [presetOptionalFlagKey("checkSourceIds")]: "true", checkSourceIds: "" };
-    expect(presetBlockers(circleWithSteps, emptyCheck, { canFetch: false, automated: false })).toEqual([
+    expect(presetBlockers(circleFollow, emptyCheck, options)).toEqual([
       { kind: "sources_required", key: "checkSourceIds" },
     ]);
+    const restored = presetValuesFromInputs(circleFollow, { circleId: "RG12345", checkSourceIds: [11] });
+    expect(restored[presetOptionalFlagKey("checkSourceIds")]).toBe("true");
   });
 
-  it("restores a stored source check as switched on", () => {
-    const values = presetValuesFromInputs(circleWithSteps, {
+  it("keeps what still applies from inputs saved before the follow options changed", () => {
+    const legacy = {
       circleId: "RG12345",
-      checkSourceIds: [11],
-      newWorks: false,
-    });
-    expect(values[presetOptionalFlagKey("checkSourceIds")]).toBe("true");
-    expect(values.newWorks).toBe("false");
+      catalogRefresh: "stored",
+      newWorks: true,
+      action: "fetch",
+      sourceId: 91,
+      releaseFrom: "2025-01-01",
+    };
+    expect(presetInputsNeedReconfiguration(legacy)).toBe(true);
+    expect(presetInputsNeedReconfiguration({ circleId: "RG12345", metadata: true })).toBe(false);
+    const values = presetValuesFromInputs(circleFollow, legacy);
+    expect(values.circleId).toBe("RG12345");
+    expect(values.catalogRefresh).toBe("incremental");
+    expect(values).not.toHaveProperty("action");
+    expect(presetInputsPayload(circleFollow, values)).toMatchObject({ releaseFrom: "2025-01-01", metadata: true });
   });
 });
