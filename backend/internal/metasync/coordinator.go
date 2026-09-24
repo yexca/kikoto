@@ -20,10 +20,13 @@ type Coordinator struct {
 
 type familyCall struct {
 	requested string
-	profile   string
-	done      chan struct{}
-	result    DLsiteFamilySyncResult
-	err       error
+	// profile covers only inputs that change provider requests. Display
+	// priority is excluded; a joined caller reprojects stored variants instead.
+	profile  string
+	priority string
+	done     chan struct{}
+	result   DLsiteFamilySyncResult
+	err      error
 }
 
 type productGate struct {
@@ -53,7 +56,8 @@ func (s *DLsiteSyncer) WithCoordinator(coordinator *Coordinator) *DLsiteSyncer {
 
 func (s *DLsiteSyncer) SyncFamily(ctx context.Context, requestedCode string) (DLsiteFamilySyncResult, error) {
 	requestedCode = strings.ToUpper(strings.TrimSpace(requestedCode))
-	profile := strings.Join(s.languages, "\x00") + "\x01" + strings.Join(s.metadataPriority, "\x00") + "\x01" + s.cacheRoot
+	profile := strings.Join(s.languages, "\x00") + "\x01" + s.cacheRoot
+	priority := strings.Join(s.projectionPriority(), "\x00")
 	key := requestedCode
 	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(NULLIF(logical.canonical_code, ''), work.primary_code)
 		FROM work LEFT JOIN work_edition AS edition ON edition.work_id = work.id
@@ -80,12 +84,17 @@ func (s *DLsiteSyncer) SyncFamily(ctx context.Context, requestedCode string) (DL
 			if active.requested != requestedCode || active.profile != profile || errors.Is(active.err, context.Canceled) || errors.Is(active.err, context.DeadlineExceeded) {
 				continue
 			}
+			if active.priority != priority {
+				if err := s.reprojectFamily(ctx, requestedCode); err != nil {
+					return DLsiteFamilySyncResult{}, err
+				}
+			}
 			if err := s.linkAttemptRun(ctx, active.result.attempt); err != nil {
 				return DLsiteFamilySyncResult{}, err
 			}
 			return cloneFamilyResult(active.result), active.err
 		}
-		active = &familyCall{requested: requestedCode, profile: profile, done: make(chan struct{})}
+		active = &familyCall{requested: requestedCode, profile: profile, priority: priority, done: make(chan struct{})}
 		s.coordinator.families[key] = active
 		s.coordinator.mu.Unlock()
 
@@ -105,6 +114,22 @@ func (s *DLsiteSyncer) SyncFamily(ctx context.Context, requestedCode string) (DL
 		s.coordinator.mu.Unlock()
 		return cloneFamilyResult(active.result), active.err
 	}
+}
+
+// reprojectFamily applies this syncer's priority to variants stored by a joined
+// sync that projected with another priority, without another provider request.
+func (s *DLsiteSyncer) reprojectFamily(ctx context.Context, code string) error {
+	var logicalWorkID int64
+	err := s.db.QueryRowContext(ctx, `SELECT edition.logical_work_id
+		FROM work JOIN work_edition AS edition ON edition.work_id = work.id
+		WHERE work.primary_code = ?`, code).Scan(&logicalWorkID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return ProjectDLsiteMetadataFamily(ctx, s.db, logicalWorkID, s.projectionPriority())
 }
 
 func cloneFamilyResult(result DLsiteFamilySyncResult) DLsiteFamilySyncResult {
