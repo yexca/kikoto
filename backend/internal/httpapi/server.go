@@ -164,6 +164,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/maintenance/unlinked-works/source-check", s.checkUnlinkedWorkSources)
 	mux.HandleFunc("POST /api/maintenance/unlinked-works/delete", s.deleteUnlinkedWorks)
 	mux.HandleFunc("PATCH /api/works/{id}/user-state", s.updateWorkUserState)
+	mux.HandleFunc("GET /api/tags", s.listUserTagVocabulary)
 	mux.HandleFunc("PUT /api/works/{id}/tags", s.setWorkUserTags)
 	mux.HandleFunc("GET /api/favorite-works", s.listFavoriteWorks)
 	mux.HandleFunc("GET /api/favorite-lists", s.listFavoriteLists)

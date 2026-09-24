@@ -220,6 +220,7 @@ const VoiceCard = memo(function VoiceCard({
       onOpen={() => openVoiceRoute(voice.personId)}
       onFavoriteToggle={() => void onFavoriteToggle(voice)}
       onTagsSave={(tags) => onTagsSave(voice, tags)}
+      tagScope="voice"
     />
   );
 });
@@ -1006,7 +1007,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
             <Badge variant="outline" className="tabular-nums">
               {t("detailActions.remoteCount", { count: detail.remoteWorks })}
             </Badge>
-            <UserTagRow tags={detail.userTags} onSave={saveVoiceTags} className="min-w-0 flex-1" />
+            <UserTagRow tags={detail.userTags} scope="voice" onSave={saveVoiceTags} className="min-w-0 flex-1" />
           </div>
         }
         actions={

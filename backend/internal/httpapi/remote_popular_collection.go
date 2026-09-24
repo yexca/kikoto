@@ -110,9 +110,7 @@ func (s *Server) prepareRemotePopularWorkflow(ctx context.Context, payload remot
 	if payload.TagName == "" {
 		return "", remoteSourceForUse{}, payload, fmt.Errorf("tagName or tagNameTemplate is required")
 	}
-	if runes := []rune(payload.TagName); len(runes) > 40 {
-		payload.TagName = string(runes[:40])
-	}
+	payload.TagName = clampUserTagName(payload.TagName)
 	return action, source, payload, nil
 }
 

@@ -31,6 +31,15 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   series work.
 - Circle and voice actor detail refreshes keep their behavior.
 
+## Tags
+
+- Works, circles, and voice actors edit personal tags in a searchable picker
+  instead of a comma-separated field: a popover on desktop and a bottom sheet
+  on mobile. Type to filter your existing tags for that kind of item, press
+  Enter to create one, and check or uncheck a tag to add or remove it. Each
+  change saves immediately, and a tag you uncheck stays listed until the picker
+  closes so it can be checked again.
+
 ## Favorites
 
 - Changing lists for selected works no longer replaces each work's existing

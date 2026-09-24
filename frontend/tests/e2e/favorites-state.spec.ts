@@ -192,6 +192,10 @@ async function mockFavorites(
       });
       return;
     }
+    if (url.pathname === "/api/tags" && url.searchParams.get("scope") === "work") {
+      await route.fulfill({ json: { scope: "work", tags: [{ id: 5, name: "Focus", color: "", usageCount: 3 }] } });
+      return;
+    }
     const tagsMatch = url.pathname.match(/^\/api\/works\/(\d+)\/tags$/);
     if (tagsMatch && request.method() === "PUT") {
       const body = request.postDataJSON() as { tags: string[] };
@@ -432,10 +436,21 @@ test("favorites detail uses Library Up navigation while the Favorites tab restor
   await expect(page).toHaveURL(/RJ00000017/);
   await page.getByRole("button", { name: "Info", exact: true }).click();
   await expect(page.getByText("My tags", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Add tag" }).click();
-  await page.getByPlaceholder("tag1, tag2").fill("Night, Focus");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByText("Night", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Edit tags" }).click();
+  const tagEditor = page.getByRole("dialog", { name: "Edit tags" });
+  await tagEditor.getByRole("combobox", { name: "Search or create a tag" }).fill("Night");
+  await tagEditor.getByRole("combobox", { name: "Search or create a tag" }).press("Enter");
+  await tagEditor.getByRole("option", { name: /Focus/ }).click();
+  await expect(tagEditor.getByRole("option", { name: /Night/ })).toHaveAttribute("aria-selected", "true");
+  await expect(tagEditor.getByRole("option", { name: /Focus/ })).toHaveAttribute("aria-selected", "true");
+  await tagEditor.getByRole("option", { name: /Night/ }).click();
+  await expect(tagEditor.getByRole("option", { name: /Night/ })).toHaveAttribute("aria-selected", "false");
+  await page.keyboard.press("Escape");
+  await expect(tagEditor).toBeHidden();
+  await expect(page.getByRole("list", { name: "Tags", exact: true }).getByRole("listitem")).toHaveText([
+    "Quiet",
+    "Focus",
+  ]);
 
   await page.getByRole("main").getByRole("button", { name: "Library", exact: true }).click();
   await expect(page).toHaveURL(/^http:\/\/[^/]+\/(?:\?.*)?$/);

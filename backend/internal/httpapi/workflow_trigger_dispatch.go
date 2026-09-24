@@ -368,10 +368,7 @@ func renderWorkflowTagNameTemplate(template string, values map[string]string) (s
 	if rendered == "" {
 		return "", fmt.Errorf("tagNameTemplate produces an empty tag")
 	}
-	if runes := []rune(rendered); len(runes) > 40 {
-		rendered = string(runes[:40])
-	}
-	return rendered, nil
+	return clampUserTagName(rendered), nil
 }
 
 func workflowTagFragment(value string) string {

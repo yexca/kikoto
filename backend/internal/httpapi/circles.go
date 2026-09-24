@@ -3371,14 +3371,11 @@ func (s *Server) replaceCircleUserTags(ctx context.Context, userID int64, partyI
 	}
 	seen := map[string]bool{}
 	for _, raw := range rawTags {
-		name := strings.TrimSpace(raw)
+		name := clampUserTagName(raw)
 		if name == "" || seen[strings.ToLower(name)] {
 			continue
 		}
 		seen[strings.ToLower(name)] = true
-		if len(name) > 40 {
-			name = name[:40]
-		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO user_party_tag (user_id, name)
 			VALUES (?, ?)
