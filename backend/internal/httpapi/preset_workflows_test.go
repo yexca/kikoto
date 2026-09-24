@@ -16,47 +16,72 @@ import (
 	"github.com/yexca/kikoto/backend/internal/config"
 )
 
-func TestPresetWorkflowBuildsValidGraphForEveryAction(t *testing.T) {
+func presetTestRaw(spec presetWorkflowSpec, extra map[string]any) map[string]any {
+	raw := map[string]any{}
+	switch spec.Target {
+	case "circle":
+		raw["circleId"] = "rg12345"
+	case "series":
+		raw["seriesId"] = "srs001"
+	case "voice":
+		raw["personId"] = 7
+		raw["sourceIds"] = []any{91}
+	}
+	for key, value := range extra {
+		raw[key] = value
+	}
+	return raw
+}
+
+func presetTestGraph(t *testing.T, spec presetWorkflowSpec, inputs presetWorkflowInputs, tagName string) workflowGraph {
+	t.Helper()
+	encoded, err := json.Marshal(buildPresetWorkflowDefinition(spec, inputs, tagName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	graph, err := validateWorkflowGraphDefinition(string(encoded))
+	if err != nil {
+		t.Fatalf("%s graph: %v", spec.Code, err)
+	}
+	return graph
+}
+
+func TestPresetWorkflowBuildsValidGraphForEveryPreset(t *testing.T) {
 	for _, spec := range presetWorkflowSpecs {
-		for _, action := range []string{"metadata", "track", "fetch"} {
-			raw := map[string]any{"action": action, "sourceId": 91, "maxWorks": 10}
-			switch spec.Target {
-			case "circle":
-				raw["circleId"] = "rg12345"
-			case "series":
-				raw["seriesId"] = "srs001"
-			case "voice":
-				raw["personId"] = 7
-				raw["sourceIds"] = []any{91}
-			}
-			inputs, err := normalizePresetWorkflowInputs(spec, raw)
-			if err != nil {
-				t.Fatalf("%s/%s normalize: %v", spec.Code, action, err)
-			}
-			definition := buildPresetWorkflowDefinition(spec, inputs, "250101_test")
-			encoded, err := json.Marshal(definition)
-			if err != nil {
-				t.Fatal(err)
-			}
-			graph, err := validateWorkflowGraphDefinition(string(encoded))
-			if err != nil {
-				t.Fatalf("%s/%s graph: %v", spec.Code, action, err)
-			}
-			if got := strings.Join(graph.TopologicalOrder, ","); got != "discover,filter,action,tag" {
-				t.Fatalf("%s/%s order = %s", spec.Code, action, got)
-			}
-			wantType := map[string]string{"metadata": "metadata_sync", "track": "track_works", "fetch": "fetch_works"}[action]
-			if graph.NodesByID["action"].Type != wantType {
-				t.Fatalf("%s/%s action node = %s", spec.Code, action, graph.NodesByID["action"].Type)
-			}
-			permissions := workflowGraphRequiredPermissions(graph)
-			if action == "fetch" && missingWorkflowGraphPermission(permissions, []string{"downloads:manage"}) != "" {
-				t.Fatalf("%s fetch permissions = %v", spec.Code, permissions)
-			}
-			if missingWorkflowGraphPermission(permissions, []string{"tags:write"}) != "" {
-				t.Fatalf("%s tag permissions = %v", spec.Code, permissions)
-			}
+		inputs, err := normalizePresetWorkflowInputs(spec, presetTestRaw(spec, map[string]any{"maxWorks": 10}))
+		if err != nil {
+			t.Fatalf("%s normalize: %v", spec.Code, err)
 		}
+		graph := presetTestGraph(t, spec, inputs, "250101_test")
+		if got := strings.Join(graph.TopologicalOrder, ","); got != "discover,filter,action,tag" {
+			t.Fatalf("%s order = %s", spec.Code, got)
+		}
+		if graph.NodesByID["action"].Type != "metadata_sync" || configString(graph.NodesByID["filter"].Config, "existing") != "missing_metadata" {
+			t.Fatalf("%s action = %s, filter = %v", spec.Code, graph.NodesByID["action"].Type, graph.NodesByID["filter"].Config)
+		}
+		permissions := workflowGraphRequiredPermissions(graph)
+		if missingWorkflowGraphPermission(permissions, []string{"metadata:sync", "tags:write"}) != "" {
+			t.Fatalf("%s permissions = %v", spec.Code, permissions)
+		}
+	}
+}
+
+func TestPresetWorkflowFilterIsOffUnlessConfigured(t *testing.T) {
+	spec := mustPresetSpec(t, "circle_follow")
+	inputs, err := normalizePresetWorkflowInputs(spec, map[string]any{"circleId": "RG12345"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	graph := presetTestGraph(t, spec, inputs, "")
+	filter := graph.NodesByID["filter"].Config
+	if configInt(filter, "limit", 0) != presetWorkflowMaxCatalogSize || filter["releaseFrom"] != nil || filter["releaseTo"] != nil {
+		t.Fatalf("unfiltered follow filter = %v", filter)
+	}
+	if configInt(graph.NodesByID["action"].Config, "maxWorks", 0) != presetWorkflowMaxCatalogSize {
+		t.Fatalf("unfiltered metadata bound = %v", graph.NodesByID["action"].Config)
+	}
+	if public := inputs.public(); public["maxWorks"] != nil || public["metadata"] != true {
+		t.Fatalf("unfiltered public inputs = %v", public)
 	}
 }
 
@@ -77,6 +102,7 @@ func TestPresetWorkflowOmitsTagNodeWithoutTemplate(t *testing.T) {
 
 func TestNormalizePresetWorkflowInputsRejectsInvalidValues(t *testing.T) {
 	circle, _ := presetWorkflowSpecByCode("circle_follow")
+	series, _ := presetWorkflowSpecByCode("series_follow")
 	voice, _ := presetWorkflowSpecByCode("voice_follow")
 	cases := []struct {
 		name string
@@ -86,16 +112,15 @@ func TestNormalizePresetWorkflowInputsRejectsInvalidValues(t *testing.T) {
 	}{
 		{"invalid circle", circle, map[string]any{"circleId": "RJ123456"}, "circleId must list"},
 		{"unknown key", circle, map[string]any{"circleId": "RG12345", "definitionId": 3}, "unknown preset input"},
-		{"track without source", circle, map[string]any{"circleId": "RG12345", "action": "track"}, "sourceId is required"},
-		{"bad action", circle, map[string]any{"circleId": "RG12345", "action": "delete"}, "action must be one of"},
-		{"works over limit", circle, map[string]any{"circleId": "RG12345", "maxWorks": 500}, "maxWorks must be between"},
+		{"legacy action", circle, map[string]any{"circleId": "RG12345", "action": "track", "sourceId": 91}, "follow options changed"},
+		{"legacy new works switch", voice, map[string]any{"personId": 7, "sourceIds": []any{91}, "newWorks": false}, "follow options changed"},
+		{"stored catalog", circle, map[string]any{"circleId": "RG12345", "catalogRefresh": "stored"}, "catalogRefresh must be one of"},
+		{"works over limit", circle, map[string]any{"circleId": "RG12345", "maxWorks": presetWorkflowMaxWorksLimit + 1}, "maxWorks must be between"},
 		{"bad date", circle, map[string]any{"circleId": "RG12345", "releaseFrom": "2025/01/01"}, "YYYY-MM-DD"},
 		{"reversed release range", circle, map[string]any{"circleId": "RG12345", "releaseFrom": "2025-02-01", "releaseTo": "2025-01-31"}, "must not be after"},
-		{"bad extension", circle, map[string]any{"circleId": "RG12345", "action": "fetch", "sourceId": 1, "excludeExtensions": []any{"a/b"}}, "invalid extension"},
 		{"voice without actor", voice, map[string]any{"sourceIds": []any{91}}, "personId is required"},
-		{"voice refresh without sources", voice, map[string]any{"personId": 7, "catalogRefresh": "incremental"}, "sourceIds is required"},
-		{"bad metadata refresh", circle, map[string]any{"circleId": "RG12345", "metadataRefresh": "some"}, "metadataRefresh must be one of"},
-		{"nothing to run", circle, map[string]any{"circleId": "RG12345", "newWorks": false, "catalogRefresh": "stored"}, "choose at least one step"},
+		{"voice without sources", voice, map[string]any{"personId": 7}, "sourceIds is required"},
+		{"series without an action", series, map[string]any{"seriesId": "SRI0000001", "metadata": false}, "choose at least one action"},
 	}
 	for _, testCase := range cases {
 		_, err := normalizePresetWorkflowInputs(testCase.spec, testCase.raw)
@@ -126,7 +151,7 @@ func TestNormalizePresetWorkflowInputsSplitsTargetLists(t *testing.T) {
 			t.Fatalf("%s targets = %q, want %q", testCase.spec.Code, got, testCase.want)
 		}
 	}
-	if values := presetWorkflowTagValues(circle, presetWorkflowInputs{CircleID: "RG12345, RG67890", Action: "metadata"}, time.Now()); values["target"] != "RG12345_RG67890" {
+	if values := presetWorkflowTagValues(circle, presetWorkflowInputs{CircleID: "RG12345, RG67890"}, time.Now()); values["target"] != "RG12345_RG67890" {
 		t.Fatalf("target tag value = %q", values["target"])
 	}
 
@@ -145,64 +170,36 @@ func TestNormalizePresetWorkflowInputsSplitsTargetLists(t *testing.T) {
 	}
 }
 
-func TestPresetWorkflowComposesOptionalRefreshSteps(t *testing.T) {
+func TestPresetWorkflowComposesCatalogOnlyAndSourceSteps(t *testing.T) {
 	circle, _ := presetWorkflowSpecByCode("circle_follow")
 	voice, _ := presetWorkflowSpecByCode("voice_follow")
-	cases := []struct {
-		name  string
-		spec  presetWorkflowSpec
-		raw   map[string]any
-		order string
-	}{
-		{"circle refresh only", circle, map[string]any{
-			"circleId": "RG12345", "newWorks": false, "catalogRefresh": "full", "metadataRefresh": "all", "checkSourceIds": []any{91},
-		}, "discover,metadata,sources"},
-		{"circle retry metadata", circle, map[string]any{
-			"circleId": "RG12345", "newWorks": false, "catalogRefresh": "stored", "metadataRefresh": "missing",
-		}, "metadata"},
-		{"voice follow with metadata", voice, map[string]any{
-			"personId": 7, "sourceIds": []any{91}, "metadataRefresh": "missing",
-		}, "discover,metadata,filter,action,tag"},
-		{"voice stored metadata only", voice, map[string]any{
-			"personId": 7, "catalogRefresh": "stored", "metadataRefresh": "all", "newWorks": false,
-		}, "metadata"},
-	}
-	for _, testCase := range cases {
-		inputs, err := normalizePresetWorkflowInputs(testCase.spec, testCase.raw)
-		if err != nil {
-			t.Fatalf("%s: %v", testCase.name, err)
-		}
-		tagName := ""
-		if inputs.TagNameTemplate != "" {
-			tagName = "250101_test"
-		}
-		encoded, err := json.Marshal(buildPresetWorkflowDefinition(testCase.spec, inputs, tagName))
+	normalize := func(raw map[string]any) presetWorkflowInputs {
+		inputs, err := normalizePresetWorkflowInputs(circle, raw)
 		if err != nil {
 			t.Fatal(err)
 		}
-		graph, err := validateWorkflowGraphDefinition(string(encoded))
-		if err != nil {
-			t.Fatalf("%s graph: %v", testCase.name, err)
-		}
+		return inputs
+	}
+	catalogOnly := normalize(map[string]any{"circleId": "RG12345", "metadata": false, "catalogRefresh": "full", "maxWorks": 5, "releaseFrom": "2025-01-01"})
+	if public := catalogOnly.public(); public["maxWorks"] != nil || public["releaseFrom"] != nil || public["tagNameTemplate"] != nil {
+		t.Fatalf("catalog-only public inputs keep filter or tag: %v", public)
+	}
+	cases := []struct {
+		name   string
+		spec   presetWorkflowSpec
+		inputs presetWorkflowInputs
+		order  string
+	}{
+		{"circle with source check", circle, normalize(map[string]any{"circleId": "RG12345", "checkSourceIds": []any{91}}), "discover,sources,filter,action,tag"},
+		{"circle catalog only", circle, catalogOnly, "discover"},
+		{"voice detail refresh of known works", voice, presetWorkflowInputs{PersonID: 7, CatalogRefresh: "stored", KnownMetadata: true}, "metadata"},
+		{"voice detail refresh with catalog", voice, presetWorkflowInputs{PersonID: 7, SourceIDs: []int64{91}, CatalogRefresh: "incremental", KnownMetadata: true}, "discover,metadata"},
+	}
+	for _, testCase := range cases {
+		graph := presetTestGraph(t, testCase.spec, testCase.inputs, "250101_test")
 		if got := strings.Join(graph.TopologicalOrder, ","); got != testCase.order {
 			t.Fatalf("%s order = %s, want %s", testCase.name, got, testCase.order)
 		}
-	}
-	inputs, err := normalizePresetWorkflowInputs(circle, map[string]any{
-		"circleId": "RG12345", "newWorks": false, "catalogRefresh": "full", "metadataRefresh": "all", "checkSourceIds": []any{91},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	nodes := map[string]workflowGraphNode{}
-	for _, node := range buildPresetWorkflowDefinition(circle, inputs, "").Nodes {
-		nodes[node.ID] = node
-	}
-	if nodes["metadata"].Config["productMode"] != "all" || nodes["sources"].Config["mode"] != "full" {
-		t.Fatalf("refresh step configs = metadata %v, sources %v", nodes["metadata"].Config, nodes["sources"].Config)
-	}
-	if public := inputs.public(); public["newWorks"] != false || public["tagNameTemplate"] != nil {
-		t.Fatalf("refresh-only public inputs = %v, want no new-works options", public)
 	}
 }
 
@@ -230,6 +227,45 @@ func TestPresetWorkflowPassesInclusiveReleaseRangeToFilter(t *testing.T) {
 	}
 	if !graphWorkMatchesFilter("2025-01-01", nil, nil, nil, map[string]any{"releaseFrom": "2025-01-01", "releaseTo": "2025-01-01"}) {
 		t.Fatal("a work released on the boundary date must match")
+	}
+}
+
+// A follow filters catalog works that have no work yet, so their release date
+// must come from the catalog rather than the work table.
+func TestFilterWorksKeepsCatalogWorksMissingMetadataByCatalogRelease(t *testing.T) {
+	db := openMigratedTestDB(t)
+	for _, statement := range []string{
+		"INSERT INTO party (id, display_name) VALUES (20, 'Example circle')",
+		`INSERT INTO party_catalog_item (party_id, provider_id, primary_code, title, release_date)
+			SELECT 20, id, 'RJ00000001', 'New in range', '2025-01-10 00:00:00' FROM metadata_provider WHERE code = 'dlsite'`,
+		`INSERT INTO party_catalog_item (party_id, provider_id, primary_code, title, release_date)
+			SELECT 20, id, 'RJ00000002', 'New before range', '2024-12-01' FROM metadata_provider WHERE code = 'dlsite'`,
+		`INSERT INTO party_catalog_item (party_id, provider_id, primary_code, title, release_date)
+			SELECT 20, id, 'RJ00000003', 'Synced in range', '2025-01-05' FROM metadata_provider WHERE code = 'dlsite'`,
+		`INSERT INTO party_catalog_item (party_id, provider_id, primary_code, title, release_date)
+			SELECT 20, id, 'RJ00000004', 'Known without metadata', '2025-01-06' FROM metadata_provider WHERE code = 'dlsite'`,
+		"INSERT INTO work (id, primary_code, title, release_date) VALUES (3, 'RJ00000003', 'Synced in range', '2025-01-05')",
+		"INSERT INTO work (id, primary_code, title) VALUES (4, 'RJ00000004', 'Known without metadata')",
+		`INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
+			SELECT 3, id, 'RJ00000003', '{}' FROM metadata_provider WHERE code = 'dlsite'`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server := NewServer(db, config.Config{})
+	execution, err := server.executeGraphFilterWorks(context.Background(), 0, workflowGraphNode{
+		ID: "filter", Type: "filter_works", Config: map[string]any{"existing": "missing_metadata", "limit": 10, "releaseFrom": "2025-01-01"},
+	}, map[string]graphPortValue{"works": {Type: "work_candidates", Candidates: graphCandidatesForCodes([]string{"RJ00000001", "RJ00000002", "RJ00000003", "RJ00000004"}, 0)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	accepted := []string{}
+	for _, candidate := range execution.Outputs["accepted"].Candidates {
+		accepted = append(accepted, candidate.Code)
+	}
+	if got := strings.Join(accepted, ","); got != "RJ00000001,RJ00000004" {
+		t.Fatalf("accepted = %s, want the in-range works without metadata", got)
 	}
 }
 
@@ -282,7 +318,7 @@ func TestRunWorkflowPresetQueuesSystemRunWithRenderedTag(t *testing.T) {
 	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	body := `{"inputs":{"circleId":"rg12345","action":"track","sourceId":91,"maxWorks":5,"tagNameTemplate":"{date}_{target}_{action}"}}`
+	body := `{"inputs":{"circleId":"rg12345","maxWorks":5,"tagNameTemplate":"{date}_{target}"}}`
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-presets/circle_follow/runs", strings.NewReader(body))
 	request.SetPathValue("code", "circle_follow")
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: userID, Permissions: []string{"workflows:run", "metadata:sync", "tags:write"}}))
@@ -295,7 +331,7 @@ func TestRunWorkflowPresetQueuesSystemRunWithRenderedTag(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(result.TagName, "_RG12345_track") || result.WorkflowCode != "circle_follow" {
+	if !strings.HasSuffix(result.TagName, "_RG12345") || result.WorkflowCode != "circle_follow" {
 		t.Fatalf("preset run result = %+v", result)
 	}
 	var workflowCode, status, triggerType, triggerReason string
@@ -321,7 +357,7 @@ func TestRunWorkflowPresetQueuesSystemRunWithRenderedTag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("queued preset graph: %v", err)
 	}
-	if workerType != "custom_workflow" || configString(graph.NodesByID["tag"].Config, "tagName") != result.TagName || configInt64(graph.NodesByID["action"].Config, "sourceId", 0) != 91 {
+	if workerType != "custom_workflow" || configString(graph.NodesByID["tag"].Config, "tagName") != result.TagName || configInt(graph.NodesByID["filter"].Config, "limit", 0) != 5 {
 		t.Fatalf("queued preset job = %s, tag %s", workerType, configString(graph.NodesByID["tag"].Config, "tagName"))
 	}
 	var nodeCount int
@@ -349,10 +385,10 @@ func TestRunWorkflowPresetRequiresCapabilityPermissions(t *testing.T) {
 		server.runWorkflowPreset(response, request)
 		return response
 	}
-	if response := run(`{"inputs":{"circleId":"RG12345","action":"fetch","sourceId":91}}`, []string{"workflows:run", "metadata:sync", "tags:write"}); response.Code != http.StatusForbidden {
-		t.Fatalf("fetch without downloads permission = %d, %s", response.Code, response.Body.String())
+	if response := run(`{"inputs":{"circleId":"RG12345"}}`, []string{"workflows:run", "metadata:sync"}); response.Code != http.StatusForbidden {
+		t.Fatalf("tag without tags permission = %d, %s", response.Code, response.Body.String())
 	}
-	if response := run(`{"inputs":{"circleId":"RG12345","sourceId":404,"action":"track"}}`, []string{"workflows:run", "metadata:sync", "tags:write"}); response.Code != http.StatusBadRequest {
+	if response := run(`{"inputs":{"circleId":"RG12345","checkSourceIds":[404]}}`, []string{"workflows:run", "metadata:sync", "tags:write"}); response.Code != http.StatusBadRequest {
 		t.Fatalf("unknown source = %d, %s", response.Code, response.Body.String())
 	}
 	if response := run(`{"inputs":{"circleId":"bad"}}`, []string{"workflows:run", "metadata:sync", "tags:write"}); response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "circleId") {
@@ -382,7 +418,7 @@ func TestPresetWorkflowScheduleStoresOwnerAndDispatchesWithCurrentPermissions(t 
 	body := mustJSON(map[string]any{
 		"workflowDefinitionId": definitionID, "displayName": "Weekly voice follow", "triggerType": "schedule", "enabled": true,
 		"scheduleJson": `{"intervalMinutes":10080}`,
-		"configJson":   mustJSON(map[string]any{"inputs": map[string]any{"personId": 7, "sourceIds": []int64{91}, "sourceId": 91, "action": "track"}}),
+		"configJson":   mustJSON(map[string]any{"inputs": map[string]any{"personId": 7, "sourceIds": []int64{91}}}),
 	})
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Permissions: []string{"workflows:run", "library:read", "metadata:sync", "tags:write"}}))

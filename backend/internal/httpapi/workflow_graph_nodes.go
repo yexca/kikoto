@@ -180,7 +180,12 @@ func (s *Server) executeGraphFilterWorks(ctx context.Context, userID int64, node
 			return graphNodeExecution{}, err
 		}
 		candidate = mergeGraphCandidateMetadata(candidate, metadata)
-		if keep && existing != "any" {
+		if keep && existing == "missing_metadata" {
+			keep, err = s.graphWorkMissingMetadata(ctx, candidate.Code)
+			if err != nil {
+				return graphNodeExecution{}, err
+			}
+		} else if keep && existing != "any" {
 			ref, err := s.canonicalWorkForCode(ctx, candidate.Code)
 			if err != nil {
 				return graphNodeExecution{}, err
@@ -245,18 +250,65 @@ type graphWorkFilterMetadata struct {
 	UserTags     []string
 }
 
+// graphWorkMissingMetadata reports whether a catalog code still needs DLsite
+// metadata: it has no work, or its work has no DLsite snapshot. A work the
+// provider reported as not found is skipped so a scheduled follow does not
+// request it again on every run.
+func (s *Server) graphWorkMissingMetadata(ctx context.Context, code string) (bool, error) {
+	var synced bool
+	err := s.db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM work
+			WHERE UPPER(work.primary_code) = UPPER(?)
+				AND (
+					EXISTS (
+						SELECT 1
+						FROM metadata_snapshot AS snapshot
+						INNER JOIN metadata_provider AS provider ON provider.id = snapshot.provider_id
+						WHERE snapshot.work_id = work.id AND provider.code = 'dlsite'
+					)
+					OR EXISTS (
+						SELECT 1
+						FROM work_metadata_provider_state AS state
+						INNER JOIN metadata_provider AS provider ON provider.id = state.provider_id
+						WHERE state.work_id = work.id AND provider.code = 'dlsite' AND state.status = 'not_found'
+					)
+				)
+		)
+	`, code).Scan(&synced)
+	return !synced, err
+}
+
+// graphWorkFilterMetadata reads the filterable facts of a code. A code without
+// a work, or a work without a release date, falls back to the release date its
+// circle or voice actor catalog recorded.
 func (s *Server) graphWorkFilterMetadata(ctx context.Context, userID int64, code string) (graphWorkFilterMetadata, error) {
 	metadata := graphWorkFilterMetadata{}
 	var workID int64
 	var release sql.NullString
 	err := s.db.QueryRowContext(ctx, "SELECT id, release_date FROM work WHERE UPPER(primary_code) = UPPER(?)", code).Scan(&workID, &release)
-	if errors.Is(err, sql.ErrNoRows) {
-		return metadata, nil
-	}
-	if err != nil {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return metadata, err
 	}
 	metadata.ReleaseDate = normalizeGraphReleaseDate(release.String)
+	if metadata.ReleaseDate == "" {
+		var catalogRelease sql.NullString
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT release_date FROM (
+				SELECT release_date FROM party_catalog_item WHERE UPPER(primary_code) = UPPER(?) AND COALESCE(release_date, '') <> ''
+				UNION ALL
+				SELECT release_date FROM voice_catalog_item WHERE UPPER(primary_code) = UPPER(?) AND COALESCE(release_date, '') <> ''
+			)
+			LIMIT 1
+		`, code, code).Scan(&catalogRelease); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return metadata, err
+		}
+		metadata.ReleaseDate = normalizeGraphReleaseDate(catalogRelease.String)
+	}
+	if workID == 0 {
+		return metadata, nil
+	}
 	queries := []struct {
 		Target *[]string
 		SQL    string

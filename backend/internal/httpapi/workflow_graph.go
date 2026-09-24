@@ -540,7 +540,7 @@ func validateGraphFilterWorksConfig(node workflowGraphNode, _ bool) error {
 		return err
 	}
 	existing := strings.ToLower(configString(node.Config, "existing"))
-	if node.Type == "filter_works" && existing != "" && existing != "any" && existing != "known" && existing != "unknown" {
+	if node.Type == "filter_works" && existing != "" && existing != "any" && existing != "known" && existing != "unknown" && existing != "missing_metadata" {
 		return fmt.Errorf("node %s has invalid existing filter", node.ID)
 	}
 	if _, configured := node.Config["limit"]; configured {
@@ -549,8 +549,9 @@ func validateGraphFilterWorksConfig(node workflowGraphNode, _ bool) error {
 	return nil
 }
 
+// A follow without a work limit syncs up to the whole catalog bound.
 func validateGraphMetadataSyncConfig(node workflowGraphNode, requiresPreview bool) error {
-	return validateWorkflowGraphBound(node, "maxWorks", 25, 500, !requiresPreview)
+	return validateWorkflowGraphBound(node, "maxWorks", 25, presetWorkflowMaxCatalogSize, !requiresPreview)
 }
 
 func validateGraphTrackWorksConfig(node workflowGraphNode, requiresPreview bool) error {

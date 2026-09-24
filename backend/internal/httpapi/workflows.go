@@ -431,9 +431,12 @@ func (s *Server) persistWorkflowTriggerUpdate(ctx context.Context, id int64, cur
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE workflow_trigger
 		SET workflow_definition_id = ?, trigger_type = ?, display_name = ?, enabled = ?,
-			schedule_json = ?, config_json = ?, next_run_at = ?, updated_at = CURRENT_TIMESTAMP
+			schedule_json = ?, next_run_at = ?, updated_at = CURRENT_TIMESTAMP,
+			-- A reconfigured trigger no longer reports the error of its old options.
+			last_error_message = CASE WHEN config_json = ? THEN last_error_message ELSE '' END,
+			config_json = ?
 		WHERE id = ?
-	`, payload.WorkflowDefinitionID, payload.TriggerType, payload.DisplayName, enabled, payload.ScheduleJSON, prepared.ConfigJSON, prepared.NextRunAt, id)
+	`, payload.WorkflowDefinitionID, payload.TriggerType, payload.DisplayName, enabled, payload.ScheduleJSON, prepared.NextRunAt, prepared.ConfigJSON, prepared.ConfigJSON, id)
 	if err != nil {
 		return err
 	}
@@ -1416,7 +1419,18 @@ func (s *Server) dispatchWorkflowRetry(ctx context.Context, actor currentUser, r
 		if !userHasPermission(actor, "metadata:sync") {
 			return workflowRetryDispatchResult{}, errWorkflowRetryPermission
 		}
-		result, err := s.enqueueDLsiteMetadataSync(ctx, "manual", "retry_run")
+		// A retry repeats the failed run's scope.
+		var input metadataSyncRunInput
+		var inputJSON string
+		if err := s.db.QueryRowContext(ctx, "SELECT input_json FROM workflow_run WHERE id = ?", runID).Scan(&inputJSON); err != nil {
+			return workflowRetryDispatchResult{}, err
+		}
+		_ = json.Unmarshal([]byte(inputJSON), &input)
+		options, err := input.normalized()
+		if err != nil {
+			options = metadataSyncOptions{}
+		}
+		result, err := s.enqueueScopedDLsiteMetadataSync(ctx, "manual", "retry_run", 0, options)
 		return workflowRetryDispatchResult{NewRunID: result.RunID}, err
 	default:
 		return s.retryWorkflowGraph(ctx, actor, runID)

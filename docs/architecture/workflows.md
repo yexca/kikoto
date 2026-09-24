@@ -30,10 +30,8 @@ workflow_definition
 - Local location cleanup.
 - Database optimization (single-flight `VACUUM`; see
   [Database](../operations/database.md#maintenance)).
-- Circle metadata refresh.
-- Voice catalog refresh.
 - Preset follow workflows: Follow a circle, Follow a series, Follow a voice
-  actor.
+  actor. Circle and voice actor detail refreshes run as follow runs.
 
 ## First Library Metadata Prompt
 
@@ -50,6 +48,27 @@ initiating user receives a notification when the run succeeds or needs attention
 Choosing Later dismisses the prompt for the instance; existing manual metadata
 sync entry points remain available. The dismissal and selected run are stored
 in `app_setting`, so they survive browser changes and server restarts.
+
+## Metadata Sync Scope
+
+Metadata sync maintains works that already exist; it never reads a catalog to
+add works. `POST /api/workflow-runs/dlsite-sync` and its interval trigger
+accept an optional scope:
+
+| Input | Values | Default |
+| --- | --- | --- |
+| `scope` | `all`, `circle` (with `circleId`), `voice` (with `personId`) | `all` |
+| `mode` | `missing` (no DLsite snapshot, or a stale origin link), `full` (every selected work) | `missing` |
+
+A circle scope covers works credited to the circle (circle, translator circle,
+or official translation brand) and works of its stored catalog that already
+exist. A voice actor scope covers works crediting the voice actor and works of
+the voice actor's catalog that already exist. An empty body keeps the previous
+behavior. Each scope is a separate singleton: repeating the same scope while it
+is queued or running joins that run, a different scope queues its own run, and
+all metadata sync runs share the `metadata:provider` resource. Local scan
+follow-ups coalesce only into a queued unscoped `missing` run. A retry repeats
+the failed run's scope.
 
 ## Metadata Recovery
 
@@ -147,31 +166,51 @@ definition CRUD, preview, node-type, slash-command, subworkflow, and workflow
 input surfaces are gone, and migration 035 deletes any remaining user
 definitions with their triggers while runs keep their code and name snapshots.
 The typed workflow graph runtime (`workflow_graph*.go`; persisted as
-`custom_workflow` jobs with checkpoints and retry) stays and
-executes only the node kinds the presets compose: `circle_catalog`,
-`series_catalog`, `voice_source_works`, `filter_works`, `metadata_sync`,
-`track_works`, `fetch_works`, and `tag_works`. `circle_follow`,
-`series_follow`, and `voice_follow` share one shape:
+`custom_workflow` jobs with checkpoints and retry) stays and executes the node
+kinds the presets compose. `circle_follow`, `series_follow`, and
+`voice_follow` share one input, filter, and actions shape:
+
+| Section | Circle | Series | Voice actor |
+| --- | --- | --- | --- |
+| Input | `circleId`, `catalogRefresh` (`incremental`, `full`) | `seriesId` (stored catalog) | `personId`, `sourceIds`, `catalogRefresh` |
+| Filter | `releaseFrom`, `releaseTo`, `maxWorks` | same | same |
+| Actions | `metadata`, `tagNameTemplate`, `checkSourceIds` | `metadata`, `tagNameTemplate` | `metadata`, `tagNameTemplate` |
 
 ```text
-discover (circle_catalog | series_catalog | voice_source_works)
-  -> filter_works (existing, releaseFrom, limit)
-  -> metadata_sync | track_works | fetch_works
+discover (circle_catalog | series_catalog | voice_catalog)
+  -> circle_sources (circle, when checkSourceIds is set)
+  -> filter_works (existing=missing_metadata, releaseFrom, releaseTo, limit)
+  -> metadata_sync
   -> tag_works (optional, rendered from a tag template)
 ```
+
+The filter keeps catalog works that lack DLsite metadata: codes without a work
+and works without a DLsite snapshot, skipping works the provider reported as
+not found. A candidate without a work takes its release date from the circle
+or voice actor catalog. Every filter is off by default; without a work limit a
+run syncs every catalog work that lacks metadata, up to the internal catalog
+bound of 5000. Following a circle or voice actor is therefore an explicit
+request for its catalog. The Workflows page warns before saving an automated
+trigger without a release range or work limit, and recommends turning one on.
+With `metadata` off the run only refreshes the catalog (and checks sources), so
+the filter and tag are dropped; a series has no catalog refresh and requires
+the metadata action. Refreshing the metadata of works that already have it is
+Metadata sync with a circle or voice actor [scope](#metadata-sync-scope).
+Track and Fetch are no longer follow actions.
 
 `GET /api/workflow-presets` publishes each preset's parameter schema; the
 Workflows page renders it as the inline Run options below the workflow header and
 as the startup or interval trigger form. `POST /api/workflow-presets/{code}/runs` validates the inputs,
 checks that a selected source is an enabled compatible remote source, renders
-the tag template for this dispatch (`{date}`, `{target}`, `{action}`), builds
+the tag template for this dispatch (`{date}`, `{target}`), builds
 the graph, validates it with the typed workflow graph validator, and enqueues
 one recoverable `custom_workflow` job. The job payload carries the built graph,
 so Activity shows the real nodes while the definition record only stores a
 display pipeline. Required permissions are derived from the composed node
-capabilities: Fetch needs `downloads:manage`, tagging needs `tags:write`.
+capabilities: catalog refresh and metadata need `metadata:sync`, tagging needs
+`tags:write`.
 
-The target parameter (`circleId`, `seriesId`, or `voiceName`) accepts up to 20
+The circle and series targets (`circleId`, `seriesId`) accept up to 20
 entries separated by commas, semicolons, or new lines. They are normalized and
 deduplicated into one comma-separated input, and the single discover node reads
 each target in order, combining the catalogs and keeping each work once within
@@ -180,16 +219,19 @@ empty tag template omits the tag node.
 
 `releaseFrom` and `releaseTo` are optional inclusive bounds passed to
 `filter_works`; either may be omitted to leave that side open, and a start
-after the end is rejected. `maxWorks` always has a value: a disabled limit in
-the form sends the 100-work maximum rather than removing the bound.
+after the end is rejected. `maxWorks` is optional (1 to 500); an omitted limit
+runs at the 5000-work catalog bound, which is still explicit in the composed
+graph.
 
-Every bound is explicit in the composed graph: `maxWorks` (at most 100), and for
-Fetch `maxFiles`, `maxBytes`, `minFreeBytes`, `allowUnknownSizes=false`, and
-excluded extensions. Preset triggers store the configuring user and the
-normalized inputs in `config_json`; dispatch revalidates that user's current
-permissions, re-renders the tag template, and rebuilds the graph. Automated
-runs accept stored or incremental circle catalog refresh only; a full refresh
-remains a manual action. Preset runs are system-scope runs and follow the
+Preset triggers store the configuring user and the normalized inputs in
+`config_json`; dispatch revalidates that user's current permissions,
+re-renders the tag template, and rebuilds the graph. Automated runs accept
+incremental catalog refresh only; a full refresh remains a manual action. An
+input the follow presets no longer accept (`newWorks`, `existing`, `action`,
+`sourceId`, `metadataRefresh`, and the Fetch limits) is rejected with a
+reconfiguration message rather than reinterpreted. Migration 039 disables every
+follow trigger saved before this shape and records that message; saving the
+trigger again clears it. Preset runs are system-scope runs and follow the
 existing visibility, cancel, retry, and Activity behavior of built-in runs.
 
 ## Local Folder Trigger
@@ -300,11 +342,15 @@ the notification opens the shared Ready pool.
 Opening a voice actor detail reads the persisted local works and voice catalog
 only; entering either a voice or circle detail never queues a workflow.
 
-Circle and voice actor detail refreshes are follow preset runs with the
-new-works step off. `POST /api/circles/{externalId}/refresh` and `POST
+Circle and voice actor detail refreshes are follow preset runs without a tag
+or filter. `POST /api/circles/{externalId}/refresh` and `POST
 /api/voices/{personId}/catalog/refresh` only queue a `circle_follow` or
-`voice_follow` run and return its id. The graph then runs the catalog node,
-the optional metadata node, and for circles the optional source-check node. A
+`voice_follow` run and return its id. A circle refresh runs the catalog node,
+the optional source-check node, and the metadata action for catalog works that
+lack metadata. A voice actor refresh runs the catalog node and a
+`voice_metadata` node limited to the voice actor's known works; it never
+materializes a catalog-only row. A voice actor metadata retry uses the stored
+catalog. A
 request identical to an active run for the same creator joins it, and a
 different request is rejected until that run settles. A detail refresh is
 authorized by `metadata:sync`; because its graph holds only refresh steps, the
@@ -326,8 +372,8 @@ persisted atomically.
 
 A failed source keeps its previous catalog observations, while a complete
 source marks observations absent from the new generation `not_found`. Remote
-discoveries remain catalog rows and never materialize works recursively. Only
-catalog items that already resolve to canonical works enter the refresh run's
+discoveries remain catalog rows and never materialize works recursively. In a
+detail refresh, only catalog items that already resolve to canonical works enter the refresh run's
 metadata node; it synchronizes them within the same `voice_follow` run
 rather than creating one metadata workflow per work. Metadata incremental
 refreshes select only those known canonical work families without a DLsite

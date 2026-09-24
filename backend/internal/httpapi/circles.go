@@ -567,8 +567,8 @@ func (s *Server) setCircleUserTags(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"externalId": externalID, "userTags": tags})
 }
 
-// refreshCircle queues the circle follow workflow with its new-works step off,
-// so a detail refresh and a Workflows run share one pipeline.
+// refreshCircle queues the circle follow workflow without a tag, so a detail
+// refresh and a Workflows run share one pipeline.
 func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
 	actor, ok := s.requirePermission(w, r, "metadata:sync")
 	if !ok {
@@ -598,16 +598,14 @@ func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&request)
 	}
 	request = request.normalized()
-	inputs := map[string]any{
-		"circleId": externalID, "catalogRefresh": request.CatalogRefresh, "metadataRefresh": request.MetadataRefresh, "newWorks": false,
-	}
+	inputs := presetWorkflowInputs{CircleID: externalID, CatalogRefresh: request.CatalogRefresh, Metadata: request.MetadataRefresh != "off"}
 	if request.SourceCheck {
 		sourceIDs, err := s.compatibleRemoteSourceIDs(r.Context())
 		if err != nil {
 			writeError(w, err)
 			return
 		}
-		inputs["checkSourceIds"] = sourceIDs
+		inputs.CheckSourceIDs = sourceIDs
 	}
 	run, err := s.queueCreatorRefresh(r.Context(), actor, "circle_follow", inputs, func(ctx context.Context) (creatorRefreshRun, bool, error) {
 		return s.latestCircleFollowRun(ctx, externalID, true)

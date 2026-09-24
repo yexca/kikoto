@@ -133,7 +133,18 @@ func (s *Server) normalizeSystemWorkflowTriggerConfig(
 		prepared.ConfigJSON = mustJSON(config)
 		requiredPermissions = append(requiredPermissions, "metadata:sync")
 	case "metadata_sync":
+		var options metadataSyncOptions
+		if strings.TrimSpace(payload.ConfigJSON) != "" {
+			if err := decodeStrictJSON(payload.ConfigJSON, &options); err != nil {
+				return preparedWorkflowTrigger{}, nil, fmt.Errorf("config JSON must contain the metadata sync scope")
+			}
+		}
+		options, err := s.validateMetadataSyncOptions(ctx, options)
+		if err != nil {
+			return preparedWorkflowTrigger{}, nil, err
+		}
 		requiredPermissions = append(requiredPermissions, "metadata:sync")
+		prepared.ConfigJSON = mustJSON(options)
 	case "remote_popular_collection":
 		config, err := s.normalizeRemotePopularTriggerConfig(ctx, actor, payload.ConfigJSON, existing, now)
 		if err != nil {
@@ -534,7 +545,17 @@ func (s *Server) executeLocalLibrarySystemTrigger(ctx context.Context, trigger w
 }
 
 func (s *Server) executeMetadataSystemTrigger(ctx context.Context, trigger workflowTriggerRecord, triggerType, triggerReason string) (string, []string, error) {
-	result, err := s.enqueueDLsiteMetadataSyncWithTrigger(ctx, triggerType, triggerReason, trigger.ID)
+	var options metadataSyncOptions
+	if strings.TrimSpace(trigger.ConfigJSON) != "" {
+		if err := decodeStrictJSON(trigger.ConfigJSON, &options); err != nil {
+			return "", nil, fmt.Errorf("metadata sync trigger config is invalid")
+		}
+	}
+	options, err := s.validateMetadataSyncOptions(ctx, options)
+	if err != nil {
+		return "", nil, err
+	}
+	result, err := s.enqueueScopedDLsiteMetadataSync(ctx, triggerType, triggerReason, trigger.ID, options)
 	return result.Status, result.Failures, err
 }
 

@@ -106,12 +106,10 @@ describe("translation resources", () => {
       // Interpolation-only format.
       "collection.filterValue",
       "maintenance.library.apiUrl",
-      // Preset action names keep the product terms, as in the preset descriptions.
-      "workflowPage.presetOptions.track",
-      "workflowPage.presetOptions.fetch",
       // Synthetic identifier examples.
       "workflowPage.presetTargetPlaceholders.circleId",
       "workflowPage.presetTargetPlaceholders.seriesId",
+      "workflowPage.metadataSyncScope.circlePlaceholder",
     ]);
     const strings = (value: unknown, prefix: string): [string, string][] =>
       Object.entries(value as object).flatMap(([key, child]) => {

@@ -534,70 +534,47 @@ export const surfaceEnglish = {
     presetQueueFailed: "Preset workflow could not be queued.",
     presetFetchUnavailable: "requires download permission",
     presetGroups: {
-      target: "Target",
+      input: "Input",
       filter: "Filter",
-      action: "Action",
-      fetch: "Fetch limits",
-      tag: "Tag",
-      metadata: "Metadata",
-      sources: "Sources",
-      follow: "New works",
+      action: "Actions",
     },
     presetParams: {
       circleId: "Circle ID",
       seriesId: "Series ID",
-      sourceId: "Remote source",
       catalogRefresh: "Catalog refresh",
-      existing: "Works to include",
       releaseFrom: "Release start date",
       releaseTo: "Release end date",
       maxWorks: "Work limit",
-      action: "Action",
-      excludeExtensions: "Exclude extensions",
-      maxFiles: "Maximum files",
-      maxGiB: "Maximum size (GiB)",
-      minFreeGiB: "Minimum free space (GiB)",
       tagNameTemplate: "Tag template",
       personId: "Voice actor",
       sourceIds: "Remote sources",
-      metadataRefresh: "Metadata refresh",
+      metadata: "Metadata",
       checkSourceIds: "Source check",
-      newWorks: "New works",
     },
     presetOptions: {
-      metadata: "Sync metadata only",
-      track: "Track",
-      fetch: "Fetch",
-      unknown: "New works only",
-      any: "All works",
-      stored: "Use stored catalog",
       incremental: "Incremental refresh",
       full: "Full refresh",
-      missing: "Missing only",
-      all: "All works",
     },
     presetTokens: {
       date: "UTC date (YYMMDD)",
       target: "Circle, series, or voice actor",
-      action: "Selected action",
     },
     presetSwitches: {
-      metadataRefresh: "Refresh work metadata",
+      metadata: "Sync metadata",
       checkSourceIds: "Check remote sources",
-      newWorks: "Follow new works",
     },
     presetSwitchHints: {
-      metadataRefresh: "Sync metadata for works that lack it, or for every work.",
+      metadata: "Sync metadata for catalog works that lack it. The filter and the tag apply to these works.",
       checkSourceIds: "Match this circle's works on the selected sources.",
-      newWorks: "Filter new works, then sync, track, or fetch them and add a tag.",
     },
     presetBlockers: {
       required: "{{label}} is required.",
       range: "{{label}} must be between {{min}} and {{max}}.",
-      fullRefreshAutomated: "Automated runs support stored or incremental catalog refresh only.",
+      fullRefreshAutomated: "Automated runs support incremental catalog refresh only.",
       invalidDate: "{{label}} must use YYYY-MM-DD.",
       sourcesRequired: "Choose at least one source for {{label}}.",
-      noSteps: "Turn on at least one step to run.",
+      noSteps: "Turn on at least one action.",
+      tagPermission: "Adding a tag requires tag permission. Turn the tag off or ask an administrator.",
     },
     shortNames: {
       local_library_scan: "Local scan",
@@ -617,7 +594,30 @@ export const surfaceEnglish = {
     configure: "Configure",
     tagCollectedWorks: "Add a user tag to collected works",
     presetTargetsHint: "Separate multiple entries with commas.",
-    presetWorkLimitOff: "Without a limit, a run still stops at {{count}} works.",
+    presetWorkLimitOff: "No limit: every catalog work without metadata is synced.",
+    presetFilterHint: "Narrows the works without metadata that are synced and tagged. Every filter is off by default.",
+    presetUnfilteredAutomation:
+      "No filter is on, so every automated run syncs metadata for each catalog work that lacks it. Turning on a release date range or a work limit is recommended.",
+    presetTriggerNeedsReconfiguration:
+      "Follow options changed. Edit this trigger to reconfigure it, then turn it on again.",
+    metadataSyncScope: {
+      label: "Works",
+      hint: "Only works already in the library are refreshed; new catalog works are added by the follow workflows.",
+      scopes: {
+        all: "All works",
+        circle: "Circle",
+        voice: "Voice actor",
+      },
+      mode: "Refresh",
+      modes: {
+        missing: "Missing or outdated",
+        full: "All metadata",
+      },
+      fullLibraryHint: "Refreshes every work in the library, which can take a long time.",
+      circlePlaceholder: "RG12345",
+      circleRequired: "Enter a circle ID such as RG12345.",
+      voiceRequired: "Choose a voice actor.",
+    },
     presetOptionalFilters: {
       maxWorks: "Limit works per run",
     },
@@ -713,17 +713,17 @@ export const surfaceEnglish = {
       circle_follow: {
         name: "Follow a circle",
         description:
-          "Refresh a circle catalog, optionally refresh its work metadata and check remote sources, then sync, track, or fetch new works and add a user tag.",
+          "Refresh a circle catalog, then sync metadata for catalog works that lack it, add a user tag, and optionally check remote sources.",
       },
       series_follow: {
         name: "Follow a series",
         description:
-          "Read the stored works of a provider series, filter new works, then sync metadata, track, or fetch them and append a user tag.",
+          "Read the stored works of a provider series, then sync metadata for the works that lack it and add a user tag.",
       },
       voice_follow: {
         name: "Follow a voice actor",
         description:
-          "Refresh a voice actor's catalog on the selected remote sources, optionally refresh known-work metadata, then sync, track, or fetch new works and add a user tag.",
+          "Refresh a voice actor's catalog on the selected remote sources, then sync metadata for catalog works that lack it and add a user tag.",
       },
       availability_watch: {
         name: "Availability Watch",
@@ -755,7 +755,8 @@ export const surfaceEnglish = {
       },
       metadata_sync: {
         name: "Sync work metadata",
-        description: "Select works and sync normalized metadata snapshots.",
+        description:
+          "Refresh the metadata of existing works: every work, one circle's works, or one voice actor's works.",
       },
       media_cache: {
         name: "Cache media",

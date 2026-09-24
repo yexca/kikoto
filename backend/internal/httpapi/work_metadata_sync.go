@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -275,11 +276,25 @@ func (s *Server) finishWorkMetadataSyncJob(ctx context.Context, job workflowJobR
 	return tx.Commit()
 }
 
+// createDLsiteSyncRun queues metadata sync for existing works. An empty body
+// selects every work with missing or stale metadata.
 func (s *Server) createDLsiteSyncRun(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
 		return
 	}
-	result, err := s.enqueueDLsiteMetadataSync(r.Context(), "manual", "manual")
+	var options metadataSyncOptions
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&options); err != nil && !errors.Is(err, io.EOF) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+			return
+		}
+	}
+	options, err := s.validateMetadataSyncOptions(r.Context(), options)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	result, err := s.enqueueScopedDLsiteMetadataSync(r.Context(), "manual", "manual", 0, options)
 	if err != nil {
 		writeError(w, err)
 		return
