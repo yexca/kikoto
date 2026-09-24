@@ -124,8 +124,9 @@ export function presetDefaultValues(preset: WorkflowPreset): PresetFormValues {
   const values: PresetFormValues = {};
   for (const parameter of preset.parameters) {
     if (parameter.key === TAG_TEMPLATE_KEY) {
+      // Tagging is opt-in; the default template is ready once it is turned on.
       values[parameter.key] = preset.defaultTagTemplate;
-      values[PRESET_TAG_ENABLED_KEY] = "true";
+      values[PRESET_TAG_ENABLED_KEY] = "false";
       continue;
     }
     values[parameter.key] =
@@ -169,10 +170,11 @@ export function presetValuesFromInputs(preset: WorkflowPreset, inputs: unknown):
   if ("maxWorks" in values && typeof storedInputs.maxWorks === "number") {
     values[presetOptionalFlagKey("maxWorks")] = "true";
   }
-  if (TAG_TEMPLATE_KEY in values && values[TAG_TEMPLATE_KEY].trim() === "") {
-    // A stored empty template means tagging was turned off; keep the default ready to turn it back on.
-    values[PRESET_TAG_ENABLED_KEY] = "false";
-    values[TAG_TEMPLATE_KEY] = preset.defaultTagTemplate;
+  if (TAG_TEMPLATE_KEY in values) {
+    // Only a stored non-empty template turns tagging on; otherwise it stays off with the default ready.
+    const tagged = typeof storedInputs[TAG_TEMPLATE_KEY] === "string" && values[TAG_TEMPLATE_KEY].trim() !== "";
+    values[PRESET_TAG_ENABLED_KEY] = String(tagged);
+    if (!tagged) values[TAG_TEMPLATE_KEY] = preset.defaultTagTemplate;
   }
   return values;
 }

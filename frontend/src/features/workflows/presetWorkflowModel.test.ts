@@ -55,9 +55,10 @@ const seriesFollow: WorkflowPreset = {
 const options = { canTag: true, automated: false };
 
 describe("presetWorkflowModel", () => {
-  it("starts with the filter off, metadata on, and the preset tag template", () => {
+  it("starts with the filter and tagging off, metadata on, and the preset tag template ready", () => {
     const values = presetDefaultValues(circleFollow);
     expect(values.metadata).toBe("true");
+    expect(presetTagEnabled(values)).toBe(false);
     expect(presetOptionalEnabled(values, "maxWorks")).toBe(false);
     expect(presetReleaseRange(values).enabled).toBe(false);
     expect(values.tagNameTemplate).toBe("{date}_circle_{target}");
@@ -70,7 +71,7 @@ describe("presetWorkflowModel", () => {
       circleId: "rg12345",
       catalogRefresh: "incremental",
       metadata: true,
-      tagNameTemplate: "{date}_circle_{target}",
+      tagNameTemplate: "",
     });
     const limited = { ...base, [presetOptionalFlagKey("maxWorks")]: "true", maxWorks: "10" };
     expect(presetInputsPayload(circleFollow, limited).maxWorks).toBe(10);
@@ -132,9 +133,6 @@ describe("presetWorkflowModel", () => {
         options,
       ),
     ).toEqual([{ kind: "invalid_date", key: "releaseFrom" }]);
-    expect(presetBlockers(circleFollow, { ...base, circleId: "RG1" }, { ...options, canTag: false })).toEqual([
-      { kind: "tag_permission" },
-    ]);
     expect(
       presetBlockers(
         seriesFollow,
@@ -144,19 +142,29 @@ describe("presetWorkflowModel", () => {
     ).toEqual([{ kind: "no_steps" }]);
   });
 
-  it("turns tagging off with an empty template and requires a template while it is on", () => {
-    const base = { ...presetDefaultValues(circleFollow), circleId: "RG12345" };
-    expect(presetTagEnabled(base)).toBe(true);
-    const untagged = { ...base, [PRESET_TAG_ENABLED_KEY]: "false" };
+  it("sends an empty template while tagging is off and requires a template while it is on", () => {
+    const untagged = { ...presetDefaultValues(circleFollow), circleId: "RG12345" };
     expect(presetInputsPayload(circleFollow, untagged).tagNameTemplate).toBe("");
     expect(presetBlockers(circleFollow, untagged, { ...options, canTag: false })).toEqual([]);
-    expect(presetBlockers(circleFollow, { ...base, tagNameTemplate: " " }, options)).toEqual([
+    const tagged = { ...untagged, [PRESET_TAG_ENABLED_KEY]: "true" };
+    expect(presetInputsPayload(circleFollow, tagged).tagNameTemplate).toBe("{date}_circle_{target}");
+    expect(presetBlockers(circleFollow, tagged, { ...options, canTag: false })).toEqual([{ kind: "tag_permission" }]);
+    expect(presetBlockers(circleFollow, { ...tagged, tagNameTemplate: " " }, options)).toEqual([
       { kind: "required", key: "tagNameTemplate" },
     ]);
+  });
 
-    const restored = presetValuesFromInputs(circleFollow, { circleId: "RG12345", tagNameTemplate: "" });
-    expect(presetTagEnabled(restored)).toBe(false);
-    expect(restored.tagNameTemplate).toBe("{date}_circle_{target}");
+  it("restores tagging on only from a stored non-empty template", () => {
+    const stored = presetValuesFromInputs(circleFollow, { circleId: "RG12345", tagNameTemplate: "{date}_{target}" });
+    expect(presetTagEnabled(stored)).toBe(true);
+    expect(stored.tagNameTemplate).toBe("{date}_{target}");
+
+    const emptied = presetValuesFromInputs(circleFollow, { circleId: "RG12345", tagNameTemplate: "" });
+    expect(presetTagEnabled(emptied)).toBe(false);
+    expect(emptied.tagNameTemplate).toBe("{date}_circle_{target}");
+
+    // A detail page prefill carries only the target, so tagging keeps its default.
+    expect(presetTagEnabled(presetValuesFromInputs(circleFollow, { circleId: "RG12345" }))).toBe(false);
   });
 
   it("sends an inclusive release range with open ends only while the range is on", () => {

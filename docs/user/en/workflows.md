@@ -100,7 +100,8 @@ Workflows make backend actions inspectable.
   Sync metadata covers the catalog works that lack metadata, including works
   not yet in the library, and the filter and tag apply to those works. Every
   filter is off by default: without a release range or work limit, a run syncs
-  every catalog work that lacks metadata. A trigger popover warns when an
+  every catalog work that lacks metadata. The tag template is also off by
+  default; turn it on to tag the synced works. A trigger popover warns when an
   automated follow has no filter and recommends turning one on. With Sync
   metadata off, a circle or voice actor follow only refreshes the catalog (and
   checks sources). Track and Fetch are no longer follow actions; use Remote
