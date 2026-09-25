@@ -6,6 +6,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    stop_grace_period: 30s
     environment:
       KIKOTO_MODE: ${KIKOTO_MODE:-development}
       KIKOTO_ROOT_USERNAME: ${KIKOTO_ROOT_USERNAME:-root}
@@ -19,6 +20,7 @@ services:
       KIKOTO_ALLOWED_ORIGINS: ${KIKOTO_ALLOWED_ORIGINS:-}
       KIKOTO_TRUSTED_PROXIES: ${KIKOTO_TRUSTED_PROXIES:-}
       KIKOTO_LOGIN_CONCURRENCY: ${KIKOTO_LOGIN_CONCURRENCY:-8}
+      KIKOTO_SHUTDOWN_TIMEOUT_SECONDS: ${KIKOTO_SHUTDOWN_TIMEOUT_SECONDS:-20}
       KIKOTO_REMOTE_SOURCES_ENABLED: ${KIKOTO_REMOTE_SOURCES_ENABLED:-false}
     ports:
       - "${KIKOTO_DEV_BACKEND_PORT:-7659}:7659"

@@ -70,6 +70,12 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
 - Expired sessions and old workflow runs are cleaned up automatically shortly
   after startup and then daily, with the same retention rules as manual
   cleanup.
+- Stopping or upgrading the container now shuts down gracefully: in-flight
+  requests finish, and a running workflow job returns to the queue without
+  spending a retry, instead of being recovered as if the service had crashed.
+  The drain is bounded by the new `KIKOTO_SHUTDOWN_TIMEOUT_SECONDS` (default
+  20). The bundled Compose files set `stop_grace_period: 30s`; add the same to
+  a custom Compose file, because Docker's default 10 seconds can kill the drain.
 
 ## Accessibility And Translation
 
