@@ -38,6 +38,7 @@ func main() {
 		slog.Error("run migrations", "error", err)
 		os.Exit(1)
 	}
+	go storage.MonitorPool(ctx, db, storage.PoolMonitorInterval)
 
 	server := httpapi.NewServer(db, cfg)
 	if err := server.LoadAccessPolicy(ctx); err != nil {

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -73,6 +74,14 @@ func defaultErrorClassification(status int) (string, bool) {
 }
 
 func writeError(w http.ResponseWriter, err error) {
+	// A cancelled request context means the client left or the request used
+	// its first-response budget, typically while waiting for a database
+	// connection. Either way the work can be retried.
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		slog.Warn("http request interrupted", "error", err)
+		writeAPIError(w, http.StatusServiceUnavailable, "service_unavailable", "request did not complete in time; please retry", true)
+		return
+	}
 	slog.Error("http request failed", "error", err)
 	if isDatabaseBusyError(err) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{

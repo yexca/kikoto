@@ -115,6 +115,21 @@ response currently embeds a credential or CSRF token. The split-deployment
 `frontend/nginx.conf` applies the same `/assets/` caching, `no-cache` app shell,
 and static compression.
 
+Every API request must start its response within 60 seconds. When it has not,
+its request context is cancelled, so a request waiting for one of the file
+database's four pooled connections cannot wait forever and hold up
+authentication and every later request. A cancelled request answers with a
+retryable 503 `service_unavailable` error. The budget stops once the handler
+writes its headers, so event streams and long downloads are unaffected. Routes
+that legitimately work longer before their first byte are registered with
+`handleSlowFirstResponse`: synchronous media transcodes, remote-source
+operations that make several paced upstream requests, and filesystem
+maintenance that should not stop halfway.
+The server also samples the connection pool every 10 seconds. It logs an error
+when the pool stays fully checked out while new requests keep queueing, logs
+the recovery afterwards, and warns when completed connection waits average a
+second or more.
+
 ## Outbound Requests
 
 An administrator-configured source endpoint may intentionally be on a private
