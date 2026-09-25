@@ -56,23 +56,6 @@ func IsRetryableHTTPError(err error) bool {
 		statusErr.StatusCode == http.StatusGatewayTimeout
 }
 
-func RetryAfterDuration(value string) time.Duration {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return 0
-	}
-	if seconds, err := strconv.ParseFloat(value, 64); err == nil && seconds > 0 {
-		return time.Duration(seconds * float64(time.Second))
-	}
-	if at, err := http.ParseTime(value); err == nil {
-		delay := time.Until(at)
-		if delay > 0 {
-			return delay
-		}
-	}
-	return 0
-}
-
 type Client struct {
 	httpClient *http.Client
 	endpoints  Endpoints
