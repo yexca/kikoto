@@ -2,12 +2,14 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/outbound"
@@ -328,5 +330,56 @@ func TestLocalLocationCleanupResumeSkipsCompletedLocations(t *testing.T) {
 	}
 	if completedAvailability != "available" || pendingAvailability != "unavailable" || candidateStatus != "resolved" || jobStatus != "succeeded" {
 		t.Fatalf("completed=%s pending=%s candidate=%s job=%s", completedAvailability, pendingAvailability, candidateStatus, jobStatus)
+	}
+}
+
+func TestWorkflowJobWaitsForSourceBackoffWithoutSpendingRetries(t *testing.T) {
+	retryAt := time.Now().Add(4 * time.Minute)
+	tests := []struct {
+		name          string
+		runErr        error
+		wantRetries   int
+		wantEventType string
+	}{
+		{"deferred before contacting source", fmt.Errorf("fetch: %w", sourceBackoffError{Until: retryAt}), 1, "job.deferred"},
+		{"rate limited by source", remoteDownloadError{StatusCode: http.StatusTooManyRequests, Retryable: true, RetryAt: retryAt}, 2, "job.retry_scheduled"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db := openMigratedTestDB(t)
+			server := NewServer(db, config.Config{})
+			statements := []string{
+				`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type, finished_at) VALUES (1, (SELECT id FROM workflow_definition WHERE code = 'media_cache'), 'media_cache', 'Cache', 'failed', 'manual', CURRENT_TIMESTAMP)`,
+				`INSERT INTO workflow_node_run (id, workflow_run_id, node_id, node_type, display_name, position, status, finished_at) VALUES (1, 1, 'cache', 'materialize_cache', 'Cache', 1, 'failed', CURRENT_TIMESTAMP)`,
+				`INSERT INTO workflow_job (id, workflow_run_id, workflow_node_run_id, worker_type, status, payload_json, recoverable, max_retries, retry_count) VALUES (1, 1, 1, 'remote_media_cache', 'failed', '{"media_location_id":7}', 1, 3, 1)`,
+			}
+			for _, statement := range statements {
+				if _, err := db.Exec(statement); err != nil {
+					t.Fatal(err)
+				}
+			}
+			job := workflowJobRecord{ID: 1, RunID: 1, NodeRunID: 1, WorkerType: "remote_media_cache", RetryCount: 1, MaxRetries: 3}
+			if err := server.handleWorkflowJobResult(context.Background(), context.Background(), job, test.runErr); err != nil {
+				t.Fatalf("handle result: %v", err)
+			}
+			var jobStatus, availableAt, eventType string
+			var retryCount int
+			if err := db.QueryRow(`SELECT status, retry_count, available_at FROM workflow_job WHERE id = 1`).Scan(&jobStatus, &retryCount, &availableAt); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.QueryRow(`SELECT event_type FROM workflow_event WHERE workflow_job_id = 1 ORDER BY id DESC LIMIT 1`).Scan(&eventType); err != nil {
+				t.Fatal(err)
+			}
+			if jobStatus != "queued" || retryCount != test.wantRetries || eventType != test.wantEventType {
+				t.Fatalf("job=%s retries=%d event=%s, want queued with %d retries and %s", jobStatus, retryCount, eventType, test.wantRetries, test.wantEventType)
+			}
+			scheduled, err := time.Parse("2006-01-02 15:04:05", availableAt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if scheduled.Before(retryAt.UTC().Truncate(time.Second)) {
+				t.Fatalf("job available at %v, before the origin accepts requests at %v", scheduled, retryAt.UTC())
+			}
+		})
 	}
 }

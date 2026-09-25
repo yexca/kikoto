@@ -73,6 +73,12 @@ a response size. Remote and DLsite covers use a separate fixed 20 MiB limit.
 DLsite metadata sync also uses configured base delay and backoff for provider
 product and cover requests.
 
+When a source answers with a rate-limit or temporary-unavailable response,
+Kikoto pauses requests to that source for the time it asks for, but never
+longer than the Maintenance maximum backoff. Queued jobs for that source wait
+for the pause to end without using up their retries, and jobs for other sources
+continue.
+
 Fetch planning uses already complete persisted metadata and cached source
 availability. When the requested code has no DLsite snapshot or edition
 relationship, preparation performs a bounded targeted family sync before

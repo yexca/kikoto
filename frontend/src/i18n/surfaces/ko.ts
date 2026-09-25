@@ -256,7 +256,7 @@ export const surfaceKorean = {
       initialBackoff: "초기 429 백오프",
       initialBackoffDescription: "원격 속도 제한 응답 후 첫 재시도 지연입니다.",
       maximumBackoff: "최대 백오프",
-      maximumBackoffDescription: "반복되는 속도 제한 재시도의 최대 지연입니다.",
+      maximumBackoffDescription: "소스의 Retry-After를 포함한 속도 제한 대기 시간의 상한입니다.",
       save: "구성 저장",
       transcodeCache: "트랜스코드 캐시",
       onDisk: "디스크 사용량",

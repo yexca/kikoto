@@ -251,7 +251,7 @@ export const surfaceHant = {
       initialBackoff: "初始 429 退避",
       initialBackoffDescription: "遠端服務限流後的首次重試延遲。",
       maximumBackoff: "最大退避",
-      maximumBackoffDescription: "重複限流重試的延遲上限。",
+      maximumBackoffDescription: "限流等待時間的上限，包括來源要求的 Retry-After。",
       save: "儲存設定",
       transcodeCache: "轉碼快取",
       onDisk: "磁碟使用量",

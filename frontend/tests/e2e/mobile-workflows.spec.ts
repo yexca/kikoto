@@ -864,6 +864,30 @@ test("popular trigger popovers save the run options shown above", async ({ page 
   expect(remotePayload.triggerType).toBe("startup");
 });
 
+test("an open trigger editor keeps its workflow when another tab is selected", async ({ page }) => {
+  await mockWorkflows(page);
+  await page.goto("/workflows");
+
+  await page.getByRole("tab", { name: /Collect DLsite popular voice works/ }).click();
+  await page.getByRole("button", { name: "Add schedule", exact: true }).click();
+  const popover = page.getByRole("dialog", { name: "New schedule" });
+  // Customizing keeps the popover open through an outside tap.
+  await popover.getByRole("checkbox", { name: "Customize run options" }).click();
+  await page.getByRole("tab", { name: /Collect popular remote works/ }).click();
+  await expect(page.getByRole("tab", { name: /Collect popular remote works/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+
+  const triggerRequest = page.waitForRequest(
+    (request) => request.method() === "POST" && request.url().endsWith("/api/workflow-triggers"),
+  );
+  await popover.getByRole("button", { name: "Add", exact: true }).click();
+  const payload = (await triggerRequest).postDataJSON();
+  expect(payload.workflowDefinitionId).toBe(3);
+  expect(JSON.parse(payload.configJson)).toMatchObject({ period: expect.any(String) });
+});
+
 test("workflow deep links do not override a later definition tab selection", async ({ page }) => {
   await mockWorkflows(page);
   await page.goto("/workflows?workflow=availability_watch");

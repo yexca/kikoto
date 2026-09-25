@@ -152,13 +152,18 @@ export function DirectoryTree({
       return next;
     });
   }, [focusPath, focusRequestKey, root]);
+  const treeRows = useMemo(() => flattenVisibleTreeRows(root, expandedPaths), [root, expandedPaths]);
   const rows = useMemo(
-    () =>
-      flattenVisibleTreeRows(root, expandedPaths).filter(
-        (row) => row.type === "folder" || !lyricsAttachments.isHidden(row.file.locationId),
-      ),
-    [root, expandedPaths, lyricsAttachments.isHidden],
+    () => treeRows.filter((row) => row.type === "folder" || !lyricsAttachments.isHidden(row.file.locationId)),
+    [treeRows, lyricsAttachments.isHidden],
   );
+  const playbackTracksByFolder = useMemo(() => {
+    const tracks = new Map<TreeNode, TreeTrack[]>();
+    for (const row of treeRows) {
+      if (row.type === "file" && !tracks.has(row.parent)) tracks.set(row.parent, folderPlaybackTracks(row.parent));
+    }
+    return tracks;
+  }, [treeRows]);
   const visibleRows = rows.slice(0, visibleLimit);
   const toggleFolder = (path: string) => {
     setExpandedPaths((current) => {
@@ -192,7 +197,7 @@ export function DirectoryTree({
             <TreeFile
               key={`file:${row.file.playbackKey ?? row.file.locationId}`}
               file={row.file}
-              files={folderPlaybackTracks(row.parent)}
+              files={playbackTracksByFolder.get(row.parent) ?? []}
               depth={row.depth}
               isActive={
                 row.file.playbackKey === currentPlaybackKey ||
@@ -246,8 +251,9 @@ export function DirectoryBrowser({
   const appliedRouteRequestKeyRef = useRef<string | null>(null);
   const lyricsAttachments = useDirectoryLyricsAttachmentVisibility(root);
   const current = useMemo(() => nodeAtPath(root, path) ?? root, [root, path]);
-  const folders = sortedFolders(current);
-  const allFiles = sortedFiles(current);
+  const folders = useMemo(() => sortedFolders(current), [current]);
+  const allFiles = useMemo(() => sortedFiles(current), [current]);
+  const playbackTracks = useMemo(() => playableFiles(allFiles), [allFiles]);
   const files = allFiles.filter((file) => !lyricsAttachments.isHidden(file.locationId));
   const currentLyricsAttachmentCount = allFiles.filter((file) => lyricsAttachments.contains(file.locationId)).length;
   useEffect(() => {
@@ -304,7 +310,7 @@ export function DirectoryBrowser({
           <TreeFile
             key={file.playbackKey ?? file.locationId}
             file={file}
-            files={folderPlaybackTracks(current)}
+            files={playbackTracks}
             depth={0}
             isActive={
               file.playbackKey === currentPlaybackKey || (!file.playbackKey && file.locationId === currentLocationId)

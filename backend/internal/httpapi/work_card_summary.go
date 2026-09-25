@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 )
 
@@ -11,7 +12,7 @@ func (s *Server) loadAvailableNonOriginEditions(ctx context.Context, workIDs []i
 	if len(workIDs) == 0 {
 		return result, nil
 	}
-	query, args := int64InQuery(`
+	err := s.queryInt64Batches(ctx, `
 		SELECT current.work_id
 		FROM work_edition AS current
 		INNER JOIN work_edition AS sibling
@@ -38,20 +39,15 @@ func (s *Server) loadAvailableNonOriginEditions(ctx context.Context, workIDs []i
 				)
 			)
 		GROUP BY current.work_id
-	`, workIDs)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
+	`, workIDs, nil, func(rows *sql.Rows) error {
 		var workID int64
 		if err := rows.Scan(&workID); err != nil {
-			return nil, err
+			return err
 		}
 		result[workID] = true
-	}
-	return result, rows.Err()
+		return nil
+	})
+	return result, err
 }
 
 func (s *Server) enrichTrackedPresenceForkState(ctx context.Context, code string, items []sourcePresenceItem) {

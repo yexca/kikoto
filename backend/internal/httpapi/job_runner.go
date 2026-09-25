@@ -214,9 +214,17 @@ func (s *Server) handleWorkflowJobResult(ctx context.Context, jobCtx context.Con
 		s.settleUnfinishedWorkflowJob(settleCtx, jobCtx, job, runErr)
 		return nil
 	}
+	var backoffErr sourceBackoffError
+	if errors.As(runErr, &backoffErr) {
+		// The job never reached the source, so waiting for the origin's bounded
+		// backoff does not consume a retry. Each block starts from a real
+		// rate-limit response, which is counted against the job that received it.
+		err := s.deferWorkflowJob(settleCtx, job, time.Until(backoffErr.Until), "Waiting for the remote source rate limit")
+		s.settleUnfinishedWorkflowJob(settleCtx, jobCtx, job, runErr)
+		return err
+	}
 	if runErr != nil && isRetryableWorkflowError(runErr) && job.RetryCount < job.MaxRetries {
-		delay := time.Duration(job.RetryCount+1) * 30 * time.Second
-		err := s.requeueFailedWorkflowJob(settleCtx, job, delay, "Automatic retry after a transient source failure")
+		err := s.requeueFailedWorkflowJob(settleCtx, job, workflowRetryDelay(job, runErr), "Automatic retry after a transient source failure")
 		s.settleUnfinishedWorkflowJob(settleCtx, jobCtx, job, runErr)
 		return err
 	}
@@ -458,8 +466,29 @@ func isRetryableWorkflowError(runErr error) bool {
 	return err == nil && (status == http.StatusTooManyRequests || status >= 500)
 }
 
+// workflowRetryDelay grows linearly with the retry count and never schedules
+// the retry before a rate-limited origin accepts requests again.
+func workflowRetryDelay(job workflowJobRecord, runErr error) time.Duration {
+	delay := time.Duration(job.RetryCount+1) * 30 * time.Second
+	var downloadErr remoteDownloadError
+	if errors.As(runErr, &downloadErr) && !downloadErr.RetryAt.IsZero() {
+		delay = max(delay, time.Until(downloadErr.RetryAt))
+	}
+	return delay
+}
+
 func (s *Server) requeueFailedWorkflowJob(ctx context.Context, job workflowJobRecord, delay time.Duration, reason string) error {
-	availableAt := time.Now().UTC().Add(delay).Format("2006-01-02 15:04:05")
+	return s.requeueWorkflowJob(ctx, job, delay, reason, true)
+}
+
+// deferWorkflowJob requeues a job that stopped before contacting its source,
+// without counting the attempt as a retry.
+func (s *Server) deferWorkflowJob(ctx context.Context, job workflowJobRecord, delay time.Duration, reason string) error {
+	return s.requeueWorkflowJob(ctx, job, delay, reason, false)
+}
+
+func (s *Server) requeueWorkflowJob(ctx context.Context, job workflowJobRecord, delay time.Duration, reason string, countRetry bool) error {
+	availableAt := time.Now().UTC().Add(max(delay, 0)).Format("2006-01-02 15:04:05")
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -470,7 +499,7 @@ func (s *Server) requeueFailedWorkflowJob(ctx context.Context, job workflowJobRe
 			return err
 		}
 	}
-	if err := requeueWorkflowJobTx(ctx, tx, job, availableAt, reason); err != nil {
+	if err := requeueWorkflowJobTx(ctx, tx, job, availableAt, reason, countRetry); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -507,13 +536,17 @@ func prepareRemoteFetchRetry(ctx context.Context, tx *sql.Tx, job workflowJobRec
 	return err
 }
 
-func requeueWorkflowJobTx(ctx context.Context, tx *sql.Tx, job workflowJobRecord, availableAt, reason string) error {
+func requeueWorkflowJobTx(ctx context.Context, tx *sql.Tx, job workflowJobRecord, availableAt, reason string, countRetry bool) error {
+	retryIncrement, retryCount, eventType := 0, job.RetryCount, "job.deferred"
+	if countRetry {
+		retryIncrement, retryCount, eventType = 1, job.RetryCount+1, "job.retry_scheduled"
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE workflow_job
-		SET status = 'queued', retry_count = retry_count + 1, available_at = ?, error_message = '',
+		SET status = 'queued', retry_count = retry_count + ?, available_at = ?, error_message = '',
 			locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ? AND (status = 'failed' OR (status = 'running' AND locked_by = ? AND locked_by <> ''))
-	`, availableAt, job.ID, job.LockedBy)
+	`, retryIncrement, availableAt, job.ID, job.LockedBy)
 	if err != nil {
 		return err
 	}
@@ -545,8 +578,8 @@ func requeueWorkflowJobTx(ctx context.Context, tx *sql.Tx, job workflowJobRecord
 		return err
 	}
 	if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
-		NodeRunID: job.NodeRunID, JobID: job.ID, Level: "warn", Type: "job.retry_scheduled",
-		Message: reason, Detail: map[string]any{"available_at": availableAt, "retry_count": job.RetryCount + 1},
+		NodeRunID: job.NodeRunID, JobID: job.ID, Level: "warn", Type: eventType,
+		Message: reason, Detail: map[string]any{"available_at": availableAt, "retry_count": retryCount},
 	}); err != nil {
 		return err
 	}

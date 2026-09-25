@@ -47,6 +47,7 @@ import { CatalogWorkToolbar } from "@/components/creator/CatalogWorkToolbar";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
+import { retainVisibleSelection } from "@/components/work-collection/workSelectionModel";
 import { VoiceWorkOptionsSheet, type VoiceWorkFilter } from "@/pages/VoiceWorkOptionsSheet";
 import { openWorkflowPath, workflowActivityRunPath, workflowRunFormPath } from "@/features/workflows/workflowLinks";
 import { useAuth } from "@/auth/AuthProvider";
@@ -143,6 +144,9 @@ const voiceFilterOptions: readonly { value: VoiceFilter; label: string }[] = [
 ];
 const voiceFilters: readonly VoiceFilter[] = voiceFilterOptions.map((option) => option.value);
 const workPageSizeOptions = [24, 48] as const;
+// A stable fallback keeps the works-derived memos, and the selection sync
+// effect that depends on them, from re-running while the detail is absent.
+const emptyKnownWorks: VoiceKnownWork[] = [];
 function voiceWorkFilterOptions(t: TFunction): readonly { value: VoiceWorkFilter; label: string }[] {
   return [
     { value: "all", label: t("detailActions.allWorks") },
@@ -661,7 +665,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
       t("creatorBrowse.firstVoiceCatalogQueued"),
     );
 
-  const knownWorks = detail?.works ?? [];
+  const knownWorks = detail?.works ?? emptyKnownWorks;
   const failedRemoteSources = remoteMatches.filter(remoteSourceFailed).length;
   const mergedWorks = useMemo(() => mergeVoiceWorks(knownWorks, remoteMatches), [knownWorks, remoteMatches]);
   const filteredWorks = useMemo(() => {
@@ -708,10 +712,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
   };
   useEffect(() => setPage(1), [filter, pageSize, query]);
   useEffect(() => {
-    setSelectedWorkKeys(
-      (current) =>
-        new Set(Array.from(current).filter((key) => filteredWorks.some((work) => voiceWorkSelectionKey(work) === key))),
-    );
+    setSelectedWorkKeys((current) => retainVisibleSelection(current, filteredWorks, voiceWorkSelectionKey));
   }, [filteredWorks]);
   const selectedWorks = mergedWorks.filter((work) => selectedWorkKeys.has(voiceWorkSelectionKey(work)));
   const selectablePageWorks = pageWorks.filter(isVoiceBulkSelectable);

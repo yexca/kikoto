@@ -14,6 +14,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/outbound"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
@@ -853,7 +854,7 @@ func (s *DLsiteSyncer) waitRequestDelay(ctx context.Context) error {
 func (s *DLsiteSyncer) retryBackoff(err error, attempt int) time.Duration {
 	var statusErr dlsite.HTTPStatusError
 	if errors.As(err, &statusErr) {
-		if retryAfter := dlsite.RetryAfterDuration(statusErr.RetryAfter); retryAfter > 0 {
+		if retryAfter := outbound.RetryAfter(statusErr.RetryAfter, time.Now()); retryAfter > 0 {
 			return s.clampBackoff(retryAfter)
 		}
 	}

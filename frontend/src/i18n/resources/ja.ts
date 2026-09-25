@@ -707,6 +707,7 @@ export const japaneseResource = {
         authenticationRequired: "ログインが必要です。",
         permissionDenied: "この操作を行う権限がありません。",
         notFound: "要求された項目が見つかりません。",
+        entityNotInDatabase: "まだこのサイトのデータベースにありません。追加するには管理者に連絡してください。",
         invalidLanguage: "その言語はサポートされていません。",
       },
       languageOptions: {
