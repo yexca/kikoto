@@ -40,6 +40,24 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   change saves immediately, and a tag you uncheck stays listed until the picker
   closes so it can be checked again.
 
+## Circles And Voice Actors
+
+- Opening a circle that is not in the database no longer adds it.
+  Administrators are offered Follow a circle with the circle ID filled in;
+  other users are asked to contact an administrator. When a first fetch fails,
+  the circle it started is removed, so a mistyped circle ID no longer stays in
+  the circle list.
+- A Follow run form opened from a circle or voice actor page notes which
+  target it filled in.
+- A voice actor page that does not exist explains that syncing the metadata of
+  any of their works creates it, or asks you to contact an administrator.
+- Opening a work's circle, series, or voice actor link fetches missing
+  metadata from DLsite only for users who can sync metadata. Other users open
+  links the site already stores and are otherwise asked to contact an
+  administrator.
+- The circle and voice actor lists no longer fail in a library with more than
+  about 32,000 circles or voice actors.
+
 ## Playback
 
 - Reloading or restarting the app no longer resets Resume progress to 0:00. A
@@ -87,6 +105,10 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   The drain is bounded by the new `KIKOTO_SHUTDOWN_TIMEOUT_SECONDS` (default
   20). The bundled Compose files set `stop_grace_period: 30s`; add the same to
   a custom Compose file, because Docker's default 10 seconds can kill the drain.
+- The update check now reports only published GitHub Releases, so a version
+  is no longer announced while its image and APK are still being published.
+- A release pushes the Docker image, including `latest`, only after the
+  Android APK has also built, and publishes the GitHub Release last.
 
 ## Accessibility And Translation
 
