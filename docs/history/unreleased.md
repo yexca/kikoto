@@ -71,6 +71,15 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   saves to the workflow it was opened for. Before, a new trigger could be
   created on the other workflow, or an edited one moved there with options in
   the wrong shape.
+- Recover stale workflow runs no longer disturbs a job that is still running:
+  it could return that job to the queue so it ran a second time, and it failed
+  queued jobs that could not resume, such as a database optimization. It now
+  requeues or fails only jobs with no running executor.
+- A job whose heartbeat is delayed, for example by a busy database, is no
+  longer returned to the queue while it is still running.
+- A job whose executor stopped without recording a result, including after a
+  transient source error, is now marked failed or retried instead of staying
+  running and blocking every other job until a restart.
 
 ## Tags
 
@@ -150,6 +159,9 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   is no longer announced while its image and APK are still being published.
 - A release pushes the Docker image, including `latest`, only after the
   Android APK has also built, and publishes the GitHub Release last.
+- The Docker image now installs the current Debian security updates for
+  `ffmpeg` and `ca-certificates` each time it is built, instead of fixed
+  package versions that had stopped receiving fixes.
 
 ## Accessibility And Translation
 

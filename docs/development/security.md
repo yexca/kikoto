@@ -118,6 +118,20 @@ anonymous user.
   may default to `latest` only when the release workflow updates that tag;
   document a reviewed version or digest for reproducible deployments. Treat a
   mutable tag as a convenience entry point, not the deployment trust anchor.
+- Do not pin exact Debian package versions in `apt-get install`. The Debian
+  archive serves only the current version of each package per suite, so an
+  exact pin either breaks the build once that version is superseded or keeps
+  resolving an older copy and silently skips security updates. The
+  digest-pinned base image fixes the release; the release workflow's SBOM
+  records the exact package versions in each published image.
+- Dependabot (`.github/dependabot.yml`) proposes weekly updates for GitHub
+  Actions, the runtime base image digest, Go modules, and frontend npm
+  packages. Action, Go module, and npm version updates wait seven days after
+  a release; security updates are not delayed. Review its pull requests like
+  any other dependency change, including the install-script and audit steps
+  above. It deliberately skips the Go and Node toolchain versions, which must
+  be upgraded by hand everywhere they appear, and Gradle dependencies, which
+  need a reviewed verification-metadata update.
 - Do not add a JAR or AAR to a Capacitor `flatDir` directory without an
   explicit source review and checksum. Those directories do not carry normal
   repository metadata or transitive dependency information.

@@ -70,7 +70,7 @@ export function commandActions({
           {
             id: "action:recover_stale",
             label: text("commands.recoverStaleRuns", "Recover stale workflow runs"),
-            description: text("commands.recoverStaleRunsDescription", "Mark stale claimed jobs recoverable"),
+            description: text("commands.recoverStaleRunsDescription", "Requeue or fail jobs no executor is running"),
             icon: <RotateCcw className="h-4 w-4" />,
             closeOnRun: false,
             run: async () => {

@@ -51,7 +51,7 @@ func TestShutdownInterruptedJobSettlesWithoutSpendingResumeBudget(t *testing.T) 
 	}{
 		{name: "recoverable job returns to the queue", recoverable: 1, lifetime: stopped, wantJob: "queued", wantRun: "queued"},
 		{name: "job without a checkpoint fails with the stop reason", recoverable: 0, lifetime: stopped, wantJob: "failed", wantRun: "failed", wantError: "interrupted by service stop"},
-		{name: "cancellation without a service stop keeps its lease", recoverable: 1, lifetime: cancelled, wantJob: "running", wantRun: "running"},
+		{name: "cancellation without a service stop does not hold the queue", recoverable: 1, lifetime: cancelled, wantJob: "failed", wantRun: "failed", wantError: "context canceled"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			db := openMigratedTestDB(t)

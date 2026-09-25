@@ -211,7 +211,7 @@ func TestDatabaseOptimizeQueuesOneWorkflowJobAndAuditsCompletion(t *testing.T) {
 	assertUnlinkedMaintenanceCount(t, db, "SELECT COUNT(*) FROM workflow_job WHERE worker_type = 'database_optimize'", 1)
 	assertUnlinkedMaintenanceCount(t, db, "SELECT COUNT(*) FROM audit_log WHERE action = 'database.optimize'", 0)
 
-	if err := server.runNextQueuedWorkflowJob(context.Background(), "optimize-test-worker"); err != nil {
+	if err := server.runNextQueuedWorkflowJob(context.Background()); err != nil {
 		t.Fatalf("run optimize job: %v", err)
 	}
 	var status, summary string

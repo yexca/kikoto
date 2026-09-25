@@ -121,7 +121,7 @@ func TestMetadataRecoveryRechecksUnavailableAndKeepsReviews(t *testing.T) {
 		t.Fatalf("not_found cleared before fetch: %+v %v", ordinary, err)
 	}
 	s.dlsiteClient = &recoveryMetadataClient{}
-	if err := s.runNextQueuedWorkflowJob(context.Background(), "metadata-test"); err != nil {
+	if err := s.runNextQueuedWorkflowJob(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	var title, manualTitle string
@@ -156,7 +156,7 @@ func TestMetadataJobFailuresExposeRunRecoverySummary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.runNextQueuedWorkflowJob(context.Background(), "metadata-test"); err != nil {
+	if err := s.runNextQueuedWorkflowJob(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	request := httptest.NewRequest(http.MethodGet, "/api/workflow-runs/"+strconv.FormatInt(run.RunID, 10), nil)

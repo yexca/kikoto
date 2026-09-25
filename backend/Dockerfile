@@ -11,10 +11,11 @@ RUN VERSION="$(cat /src/VERSION)" \
     -o /out/kikoto ./cmd/kikoto
 
 FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241
+# Debian packages float within the digest-pinned release; see the root Dockerfile.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-    ca-certificates=20230311+deb12u1 \
-    ffmpeg=7:5.1.9-0+deb12u1 \
+    ca-certificates \
+    ffmpeg \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /out/kikoto /app/kikoto

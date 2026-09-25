@@ -1,0 +1,71 @@
+# Dependency update policy: docs/development/security.md#dependency-and-build-integrity
+#
+# The Go and Node toolchain versions are repeated across go.mod, package.json
+# engines, workflows, the Makefile, Dockerfiles, and user docs. Upgrade them by
+# hand in one change; Dependabot only tracks the runtime base image digest.
+# Gradle is not listed: Android dependency changes require a reviewed
+# gradle/verification-metadata.xml update that Dependabot cannot produce.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci(actions)
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directories:
+      - /
+      - /backend
+      - /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: chore(docker)
+    ignore:
+      - dependency-name: golang
+      - dependency-name: node
+    groups:
+      docker-base-images:
+        patterns: ["*"]
+
+  - package-ecosystem: gomod
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      go-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore(deps)
+    ignore:
+      # Type definitions follow the pinned Node major.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    groups:
+      # Capacitor packages must move together with the Android project.
+      capacitor:
+        patterns: ["@capacitor/*"]
+      npm-minor-and-patch:
+        update-types: [minor, patch]
