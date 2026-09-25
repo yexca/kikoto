@@ -63,6 +63,7 @@ import {
 } from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
+import { retainVisibleSelection } from "@/components/work-collection/workSelectionModel";
 import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import { openWorkflowPath, workflowActivityRunPath, workflowRunFormPath } from "@/features/workflows/workflowLinks";
@@ -517,7 +518,9 @@ function CircleDetailPage({
     return () => controller.abort();
   }, [active, externalId, loadCircleDetail]);
 
-  const circle = detail ?? emptyCircleDetail(externalId);
+  // The fallback must keep its identity across renders: works-derived memos
+  // feed the selection sync effect below.
+  const circle = useMemo(() => detail ?? emptyCircleDetail(externalId), [detail, externalId]);
   const filteredWorks = useMemo(() => {
     const needle = workQuery.trim().toLowerCase();
     return circle.works.filter((work) => {
@@ -576,10 +579,7 @@ function CircleDetailPage({
   }, [availabilityFilter, externalId, workPageSize, workQuery]);
 
   useEffect(() => {
-    setSelectedWorkCodes(
-      (current) =>
-        new Set(Array.from(current).filter((code) => filteredWorks.some((work) => work.primaryCode === code))),
-    );
+    setSelectedWorkCodes((current) => retainVisibleSelection(current, filteredWorks, (work) => work.primaryCode));
   }, [filteredWorks]);
   const selectedSeries = useMemo(() => {
     const code = seriesCode?.toUpperCase() ?? "";
