@@ -351,13 +351,11 @@ func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid circle external id"})
 		return
 	}
-	partyID, err := s.ensurePlaceholderCircle(r.Context(), externalID)
+	// A read never creates a circle; an unknown maker id is fetched only by an
+	// explicit metadata refresh.
+	partyID, err := s.findCircle(r.Context(), externalID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "circle not found"})
-			return
-		}
-		writeError(w, err)
+		writeCircleLookupError(w, err)
 		return
 	}
 	visible, err := s.circlePartyVisible(r.Context(), partyID)
@@ -451,9 +449,9 @@ func (s *Server) updateCircleUserState(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	partyID, err := s.ensurePlaceholderCircle(r.Context(), externalID)
+	partyID, err := s.findCircle(r.Context(), externalID)
 	if err != nil {
-		writeError(w, err)
+		writeCircleLookupError(w, err)
 		return
 	}
 	current, err := s.loadCircleUserState(r.Context(), user.ID, partyID)
@@ -554,9 +552,9 @@ func (s *Server) setCircleUserTags(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	partyID, err := s.ensurePlaceholderCircle(r.Context(), externalID)
+	partyID, err := s.findCircle(r.Context(), externalID)
 	if err != nil {
-		writeError(w, err)
+		writeCircleLookupError(w, err)
 		return
 	}
 	tags, err := s.replaceCircleUserTags(r.Context(), user.ID, partyID, payload.Tags)
@@ -579,9 +577,11 @@ func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid circle external id"})
 		return
 	}
-	partyID, err := s.ensurePlaceholderCircle(r.Context(), externalID)
+	// A detail refresh targets a known circle; an unknown maker id is added by
+	// the circle follow workflow from the Workflows page.
+	partyID, err := s.findCircle(r.Context(), externalID)
 	if err != nil {
-		writeError(w, err)
+		writeCircleLookupError(w, err)
 		return
 	}
 	visible, err := s.circlePartyVisible(r.Context(), partyID)
@@ -635,9 +635,9 @@ func (s *Server) deleteCircleCatalogWork(w http.ResponseWriter, r *http.Request)
 		writeError(w, err)
 		return
 	}
-	partyID, err := s.ensurePlaceholderCircle(r.Context(), externalID)
+	partyID, err := s.findCircle(r.Context(), externalID)
 	if err != nil {
-		writeError(w, err)
+		writeCircleLookupError(w, err)
 		return
 	}
 	visible, err := s.circlePartyVisible(r.Context(), partyID)
@@ -1157,16 +1157,34 @@ func (s *Server) dlsiteCircleOwnershipNeedsRepair(ctx context.Context, workID, p
 	return false, nil
 }
 
+// findCircle resolves a known circle without creating one. It returns
+// sql.ErrNoRows when the maker id is not in this site's database.
+func (s *Server) findCircle(ctx context.Context, externalID string) (int64, error) {
+	var partyID int64
+	err := s.db.QueryRowContext(ctx, `
+		SELECT external.party_id
+		FROM party_external_id AS external
+		INNER JOIN metadata_provider AS provider ON provider.id = external.provider_id
+		WHERE provider.code = 'dlsite' AND external.id_type = 'maker_id' AND external.external_id = ?
+	`, externalID).Scan(&partyID)
+	return partyID, err
+}
+
+// writeCircleLookupError reports an unknown maker id with a distinct code so
+// the page can offer a fetch to users who may run one.
+func writeCircleLookupError(w http.ResponseWriter, err error) {
+	if errors.Is(err, sql.ErrNoRows) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "circle not found", "code": "circle_not_in_database"})
+		return
+	}
+	writeError(w, err)
+}
+
+// ensurePlaceholderCircle creates an unfetched circle for a metadata fetch.
+// Only metadata:sync paths may call it; reads and per-user state use findCircle.
 func (s *Server) ensurePlaceholderCircle(ctx context.Context, externalID string) (int64, error) {
 	if s.cfg.IsDemo() {
-		var partyID int64
-		err := s.db.QueryRowContext(ctx, `
-			SELECT external.party_id
-			FROM party_external_id AS external
-			INNER JOIN metadata_provider AS provider ON provider.id = external.provider_id
-			WHERE provider.code = 'dlsite' AND external.id_type = 'maker_id' AND external.external_id = ?
-		`, externalID).Scan(&partyID)
-		return partyID, err
+		return s.findCircle(ctx, externalID)
 	}
 	providerID, err := s.metadataProviderID(ctx, "dlsite", "DLsite")
 	if err != nil {
@@ -1185,6 +1203,54 @@ func (s *Server) ensurePlaceholderCircle(ctx context.Context, externalID string)
 		return 0, err
 	}
 	return s.upsertDLsiteParty(ctx, externalID, "Unfetched circle "+externalID, "{}")
+}
+
+// discardUnfetchedCircle removes a placeholder whose first fetch failed, so a
+// mistyped or nonexistent maker id does not linger in the circle list. A
+// circle that gained a name, catalog, relation, or any user state is kept.
+func (s *Server) discardUnfetchedCircle(ctx context.Context, partyID int64) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var unfetched bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT
+			party.display_name = 'Unfetched circle ' || external.external_id
+			AND NOT EXISTS (SELECT 1 FROM party_catalog_item WHERE party_id = party.id)
+			AND NOT EXISTS (SELECT 1 FROM party_series WHERE party_id = party.id)
+			AND NOT EXISTS (SELECT 1 FROM work_party WHERE party_id = party.id)
+			AND NOT EXISTS (SELECT 1 FROM user_party_state WHERE party_id = party.id)
+			AND NOT EXISTS (SELECT 1 FROM user_party_tag_assignment WHERE party_id = party.id)
+			AND NOT EXISTS (
+				SELECT 1 FROM party_catalog_refresh_state
+				WHERE party_id = party.id AND last_success_at IS NOT NULL
+			)
+			AND NOT EXISTS (
+				SELECT 1 FROM party_metadata_snapshot
+				WHERE party_id = party.id AND snapshot_json <> '{}'
+			)
+		FROM party
+		INNER JOIN party_external_id AS external ON external.party_id = party.id AND external.id_type = 'maker_id'
+		WHERE party.id = ?
+	`, partyID).Scan(&unfetched); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	if !unfetched {
+		return false, nil
+	}
+	// Snapshots only detach on delete, so the placeholder's empty one goes first.
+	if _, err := tx.ExecContext(ctx, "DELETE FROM party_metadata_snapshot WHERE party_id = ?", partyID); err != nil {
+		return false, err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM party WHERE id = ?", partyID); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
 }
 
 func (s *Server) demoCircleEligible(ctx context.Context, partyID int64) (bool, error) {

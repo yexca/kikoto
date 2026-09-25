@@ -705,6 +705,7 @@ export const surfaceKorean = {
     tagCollectedWorks: "수집한 작품에 사용자 태그 추가",
     presetTargetsHint: "여러 개는 쉼표로 구분합니다.",
     presetWorkLimitOff: "제한 없음: 메타데이터가 없는 카탈로그 작품을 모두 동기화합니다.",
+    prefillNotice: "이전 페이지에서 {{fields}}을(를) 자동으로 채웠습니다. 실행 전에 확인하세요.",
     presetFilterHint: "동기화하고 태그를 붙일 메타데이터 없는 작품을 좁힙니다. 필터는 기본적으로 모두 꺼져 있습니다.",
     presetUnfilteredAutomation:
       "필터가 꺼져 있어 자동 실행마다 메타데이터가 없는 카탈로그 작품을 모두 동기화합니다. 발매일 범위나 작품 수 제한을 켜는 것을 권장합니다.",
@@ -1724,6 +1725,10 @@ export const surfaceKorean = {
     voiceActorUnavailable: "현재 카탈로그에서 성우 {{id}}을(를) 사용할 수 없습니다.",
     circleNotFound: "서클을 찾을 수 없습니다",
     circleUnavailable: "현재 카탈로그에서 {{id}}을(를) 사용할 수 없습니다.",
+    circleNotInDatabase: "이 사이트 데이터베이스에 없는 서클입니다",
+    circleFetchPrompt: "{{id}}은(는) 아직 이 사이트에 추가되지 않았습니다. DLsite에서 가져와 볼까요?",
+    circleContactAdmin: "{{id}}은(는) 이 사이트 데이터베이스에 없습니다. 추가하려면 관리자에게 문의하세요.",
+    circleFetch: "가져오기 시도",
     backToCircles: "서클로 돌아가기",
     seriesWorksSummary: "{{id}} · 작품 {{count}}개",
     seriesListSummary: "시리즈 {{series}}개 · 등록 작품 {{works}}개",

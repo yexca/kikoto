@@ -547,6 +547,52 @@ test("creator detail does not auto-refresh and exposes First pull for a new cata
   });
 });
 
+for (const role of ["admin", "member"] as const) {
+  test(`an unknown circle ${role === "admin" ? "offers the follow workflow" : "asks a member to contact an administrator"}`, async ({
+    page,
+  }) => {
+    await page.route("**/api/**", async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/auth/me") {
+        await route.fulfill({
+          json: {
+            authenticated: true,
+            user: {
+              id: 1,
+              username: "listener",
+              displayName: "Listener",
+              role: role === "admin" ? "admin" : "user",
+              permissions:
+                role === "admin"
+                  ? ["library:read", "favorites:write", "tags:write", "metadata:sync", "workflows:run"]
+                  : ["library:read", "favorites:write", "tags:write"],
+              devMode: true,
+            },
+          },
+        });
+        return;
+      }
+      if (url.pathname === "/api/circles/RG09999") {
+        await route.fulfill({ status: 404, json: { error: "circle not found", code: "circle_not_in_database" } });
+        return;
+      }
+      await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } });
+    });
+
+    await page.goto("/circles/RG09999");
+    await expect(page.getByRole("heading", { name: "Circle not in this site's database" })).toBeVisible();
+    const fetchButton = page.getByRole("button", { name: "Try fetching" });
+    if (role === "member") {
+      await expect(page.getByText(/Contact an administrator to add it/)).toBeVisible();
+      await expect(fetchButton).toHaveCount(0);
+      return;
+    }
+    await expect(page.getByText(/Try fetching it from DLsite\?/)).toBeVisible();
+    await fetchButton.click();
+    await expect(page).toHaveURL(/\/workflows\?workflow=circle_follow&circleId=RG09999$/);
+  });
+}
+
 test("a one-circle result keeps the initial creator region height", async ({ page }) => {
   let releaseRequest = () => undefined;
   const requestGate = new Promise<void>((resolve) => {

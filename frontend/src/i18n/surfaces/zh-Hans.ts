@@ -650,6 +650,7 @@ export const surfaceHans = {
     tagCollectedWorks: "为收集到的作品添加用户标签",
     presetTargetsHint: "多个请用逗号分隔。",
     presetWorkLimitOff: "不限制：同步所有缺少元数据的目录作品。",
+    prefillNotice: "已根据来源页面自动填充{{fields}}，请确认后再运行。",
     presetFilterHint: "缩小要同步元数据并添加标签的作品范围。所有筛选默认关闭。",
     presetUnfilteredAutomation:
       "未开启任何筛选，每次自动运行都会为所有缺少元数据的目录作品同步元数据。建议开启发售日期范围或作品上限。",
@@ -1650,6 +1651,10 @@ export const surfaceHans = {
     voiceActorUnavailable: "当前目录中没有声优 {{id}}。",
     circleNotFound: "找不到社团",
     circleUnavailable: "当前目录中没有 {{id}}。",
+    circleNotInDatabase: "本站数据库中没有该社团",
+    circleFetchPrompt: "{{id}} 尚未添加到本站。是否尝试从 DLsite 获取？",
+    circleContactAdmin: "{{id}} 不存在于本站数据库，请联系管理员添加。",
+    circleFetch: "尝试获取",
     backToCircles: "返回社团",
     seriesWorksSummary: "{{id}} · {{count}} 项作品",
     seriesListSummary: "{{series}} 个系列 · {{works}} 项作品",

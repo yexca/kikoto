@@ -707,6 +707,7 @@ export const surfaceJapanese = {
     tagCollectedWorks: "収集した作品にユーザータグを追加",
     presetTargetsHint: "複数ある場合はカンマで区切ります。",
     presetWorkLimitOff: "制限なし：メタデータのないカタログ作品をすべて同期します。",
+    prefillNotice: "移動元のページから{{fields}}を自動入力しました。実行前に確認してください。",
     presetFilterHint: "同期してタグを付けるメタデータなしの作品を絞り込みます。フィルターは既定ですべてオフです。",
     presetUnfilteredAutomation:
       "フィルターがオフのため、自動実行のたびにメタデータのないカタログ作品をすべて同期します。発売日範囲または作品数の上限をオンにすることをおすすめします。",
@@ -1727,6 +1728,10 @@ export const surfaceJapanese = {
     voiceActorUnavailable: "現在のカタログに声優{{id}}はありません。",
     circleNotFound: "サークルが見つかりません",
     circleUnavailable: "現在のカタログに{{id}}はありません。",
+    circleNotInDatabase: "このサイトのデータベースにないサークルです",
+    circleFetchPrompt: "{{id}}はまだこのサイトに追加されていません。DLsiteから取得を試みますか？",
+    circleContactAdmin: "{{id}}はこのサイトのデータベースにありません。追加するには管理者に連絡してください。",
+    circleFetch: "取得を試す",
     backToCircles: "サークルに戻る",
     seriesWorksSummary: "{{id}} · {{count}}作品",
     seriesListSummary: "シリーズ{{series}}件 · 掲載作品{{works}}件",

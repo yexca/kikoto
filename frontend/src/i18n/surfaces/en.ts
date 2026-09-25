@@ -595,6 +595,7 @@ export const surfaceEnglish = {
     tagCollectedWorks: "Add a user tag to collected works",
     presetTargetsHint: "Separate multiple entries with commas.",
     presetWorkLimitOff: "No limit: every catalog work without metadata is synced.",
+    prefillNotice: "Auto-filled {{fields}} from the page you came from. Check it before running.",
     presetFilterHint: "Narrows the works without metadata that are synced and tagged. Every filter is off by default.",
     presetUnfilteredAutomation:
       "No filter is on, so every automated run syncs metadata for each catalog work that lacks it. Turning on a release date range or a work limit is recommended.",
@@ -1731,6 +1732,10 @@ export const surfaceEnglish = {
     voiceActorUnavailable: "Voice actor {{id}} is not available in the current catalog.",
     circleNotFound: "Circle not found",
     circleUnavailable: "{{id}} is not available in the current catalog.",
+    circleNotInDatabase: "Circle not in this site's database",
+    circleFetchPrompt: "{{id}} has not been added to this site yet. Try fetching it from DLsite?",
+    circleContactAdmin: "{{id}} is not in this site's database. Contact an administrator to add it.",
+    circleFetch: "Try fetching",
     backToCircles: "Back to circles",
     seriesWorksSummary: "{{id}} · {{count}} works",
     seriesListSummary: "{{series}} series · {{works}} listed works",
