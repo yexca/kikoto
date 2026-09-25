@@ -366,7 +366,7 @@ export const englishResource = {
         runDLsiteSync: "Run DLsite sync",
         runDLsiteSyncDescription: "Queue metadata synchronization",
         recoverStaleRuns: "Recover stale workflow runs",
-        recoverStaleRunsDescription: "Mark stale claimed jobs recoverable",
+        recoverStaleRunsDescription: "Requeue or fail jobs no executor is running",
         runningRuns: "Running runs",
         runningRunsDescription: "Open current workflow activity",
         reviewRuns: "Review runs",

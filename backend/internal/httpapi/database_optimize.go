@@ -93,9 +93,9 @@ func (s *Server) enqueueDatabaseOptimize(ctx context.Context, actorUserID int64)
 	if err != nil {
 		return databaseOptimizeQueuedResult{}, err
 	}
-	// The job is not lease-recoverable: VACUUM blocks heartbeat writes, so an
-	// expired lease would not mean the executor stopped. An interrupted
-	// optimization fails at restart and can simply be started again.
+	// VACUUM has no checkpoint to resume from, so the job is not recoverable:
+	// an optimization interrupted by a crash fails at restart and can simply
+	// be started again.
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
 		NodeRunID: nodeRunID, WorkerType: databaseOptimizeWorkerType, Status: "queued",
 		Priority: workflow.JobPriorityUserInitiated, ResourceKey: "database:optimize", Payload: payload,

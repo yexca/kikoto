@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -66,13 +65,11 @@ func (s *Server) StartJobRunner(ctx context.Context) {
 		defer workers.Done()
 		s.runFilesystemTriggerCoordinator(ctx)
 	}()
-	for index := 0; index < 1; index++ {
-		workers.Add(1)
-		go func(workerIndex int) {
-			defer workers.Done()
-			s.runWorkflowJobWorker(ctx, workflowJobRunnerID()+":"+strconv.Itoa(workerIndex))
-		}(index)
-	}
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		s.runWorkflowJobWorker(ctx)
+	}()
 	workers.Wait()
 }
 
@@ -87,9 +84,7 @@ func (s *Server) runWorkflowCoordinator(ctx context.Context) {
 		if err := s.dispatchDueScheduledWorkflowTrigger(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("dispatch scheduled custom workflow", "error", err)
 		}
-		if _, err := workflow.NewStore(s.db).RequeueExpiredJobs(ctx, 30*time.Second); err != nil && !errors.Is(err, context.Canceled) {
-			slog.Error("requeue expired workflow jobs", "error", err)
-		}
+		s.settleOrphanedWorkflowJobs(ctx)
 		if _, err := s.backfillSnapshotCardSummaries(ctx, snapshotCardSummaryBackfillBatch); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("backfill snapshot card summaries", "error", err)
 		}
@@ -108,11 +103,32 @@ func (s *Server) runWorkflowCoordinator(ctx context.Context) {
 	}
 }
 
-func (s *Server) runWorkflowJobWorker(ctx context.Context, runnerID string) {
+// settleOrphanedWorkflowJobs settles running jobs whose lease no executor in
+// this process holds, such as a job whose executor exited and whose own
+// settlement write failed. Jobs with a live executor are never touched,
+// however long their heartbeat has been delayed.
+func (s *Server) settleOrphanedWorkflowJobs(ctx context.Context) {
+	result, err := s.workflowStore.SettleOrphans(ctx, workflow.OrphanSweep{
+		Reason: "executor no longer holds the lease", LiveLeases: s.workflowLeases.live, CanViewAll: true,
+	})
+	if err != nil {
+		// A job that settled while the sweep read it makes the sweep's write
+		// conflict with its snapshot; the next tick sees the settled state.
+		if !errors.Is(err, context.Canceled) && !isDatabaseBusyError(err) {
+			slog.Error("settle orphaned workflow jobs", "error", err)
+		}
+		return
+	}
+	if result.Changed() > 0 {
+		slog.Warn("settled orphaned workflow jobs", "requeued", result.Requeued, "failed", result.Failed)
+	}
+}
+
+func (s *Server) runWorkflowJobWorker(ctx context.Context) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
-		if err := s.runNextQueuedWorkflowJob(ctx, runnerID); err != nil && !errors.Is(err, context.Canceled) {
+		if err := s.runNextQueuedWorkflowJob(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("run queued workflow job", "error", err)
 		}
 		select {
@@ -123,26 +139,25 @@ func (s *Server) runWorkflowJobWorker(ctx context.Context, runnerID string) {
 	}
 }
 
-func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) error {
+func (s *Server) runNextQueuedWorkflowJob(ctx context.Context) error {
 	if s.cfg.IsDemo() {
 		return nil
 	}
+	lease := s.workflowLeases.reserve()
+	defer s.workflowLeases.release(lease)
 	var job workflowJobRecord
 	var ok bool
 	err := withDatabaseBusyRetry(ctx, func() error {
 		var err error
-		job, ok, err = s.claimNextQueuedWorkflowJob(ctx, runnerID)
+		job, ok, err = s.claimNextQueuedWorkflowJob(ctx, lease)
 		return err
 	})
 	if err != nil || !ok {
 		return err
 	}
 	jobCtx, stopHeartbeat := s.startWorkflowJobHeartbeat(ctx, job)
-	s.registerActiveWorkflowJob(job.RunID, job.ID, stopHeartbeat)
-	defer func() {
-		s.unregisterActiveWorkflowJob(job.RunID, job.ID)
-		stopHeartbeat()
-	}()
+	defer stopHeartbeat()
+	s.workflowLeases.activate(lease, job.RunID, job.ID, stopHeartbeat)
 	runErr := s.executeClaimedWorkflowJob(jobCtx, job)
 	return s.handleWorkflowJobResult(ctx, jobCtx, job, runErr)
 }
@@ -278,7 +293,6 @@ func (s *Server) settleUnfinishedWorkflowJob(ctx context.Context, jobCtx context
 // Short synchronous API operations may execute only if they are at the head
 // of the same durable queue. Otherwise the background worker owns execution.
 func (s *Server) leaseInlineWorkflowJob(ctx context.Context, job workflowJobRecord) (context.Context, context.CancelFunc, error) {
-	runnerID := workflowJobRunnerID()
 	var headID int64
 	err := s.db.QueryRowContext(ctx, `SELECT job.id FROM workflow_job AS job
 		INNER JOIN workflow_run AS run ON run.id = job.workflow_run_id
@@ -291,18 +305,22 @@ func (s *Server) leaseInlineWorkflowJob(ctx context.Context, job workflowJobReco
 	if err != nil {
 		return ctx, func() {}, err
 	}
-	claimed, ok, err := s.claimQueuedWorkflowJob(ctx, runnerID, job.ID)
-	if err != nil {
+	lease := s.workflowLeases.reserve()
+	claimed, ok, err := s.claimQueuedWorkflowJob(ctx, lease, job.ID)
+	if err != nil || !ok {
+		s.workflowLeases.release(lease)
+		if err == nil {
+			err = errWorkflowJobQueued
+		}
 		return ctx, func() {}, err
-	}
-	if !ok {
-		return ctx, func() {}, errWorkflowJobQueued
 	}
 	job = claimed
 	jobCtx, stop := s.startWorkflowJobHeartbeat(ctx, job)
-	s.registerActiveWorkflowJob(job.RunID, job.ID, stop)
+	s.workflowLeases.activate(lease, job.RunID, job.ID, stop)
 	return jobCtx, func() {
-		s.unregisterActiveWorkflowJob(job.RunID, job.ID)
+		// The lease stays live until the job is settled, so the orphan sweep
+		// never races the caller's own result.
+		defer s.workflowLeases.release(lease)
 		stop()
 		if shutdownInterrupted(jobCtx) {
 			s.releaseShutdownInterruptedJob(jobCtx, job)
@@ -312,46 +330,8 @@ func (s *Server) leaseInlineWorkflowJob(ctx context.Context, job workflowJobReco
 	}, nil
 }
 
-func (s *Server) registerActiveWorkflowJob(runID int64, jobID int64, cancel context.CancelFunc) {
-	if runID <= 0 || jobID <= 0 || cancel == nil {
-		return
-	}
-	s.activeWorkflowMu.Lock()
-	if s.activeWorkflowCancels == nil {
-		s.activeWorkflowCancels = map[int64]map[int64]context.CancelFunc{}
-	}
-	if s.activeWorkflowCancels[runID] == nil {
-		s.activeWorkflowCancels[runID] = map[int64]context.CancelFunc{}
-	}
-	s.activeWorkflowCancels[runID][jobID] = cancel
-	s.activeWorkflowMu.Unlock()
-}
-
-func (s *Server) unregisterActiveWorkflowJob(runID int64, jobID int64) {
-	if runID <= 0 || jobID <= 0 {
-		return
-	}
-	s.activeWorkflowMu.Lock()
-	if jobs := s.activeWorkflowCancels[runID]; jobs != nil {
-		delete(jobs, jobID)
-		if len(jobs) == 0 {
-			delete(s.activeWorkflowCancels, runID)
-		}
-	}
-	s.activeWorkflowMu.Unlock()
-}
-
 func (s *Server) cancelActiveWorkflowJob(runID int64) {
-	s.activeWorkflowMu.Lock()
-	jobs := s.activeWorkflowCancels[runID]
-	cancels := make([]context.CancelFunc, 0, len(jobs))
-	for _, cancel := range jobs {
-		cancels = append(cancels, cancel)
-	}
-	s.activeWorkflowMu.Unlock()
-	for _, cancel := range cancels {
-		cancel()
-	}
+	s.workflowLeases.cancelRun(runID)
 }
 
 func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string) (workflowJobRecord, bool, error) {
@@ -709,15 +689,6 @@ func (s *Server) startWorkflowJobHeartbeat(ctx context.Context, job workflowJobR
 		}
 	}()
 	return jobCtx, cancel
-}
-
-func workflowJobRunnerID() string {
-	hostname, _ := os.Hostname()
-	hostname = strings.TrimSpace(hostname)
-	if hostname == "" {
-		hostname = "unknown-host"
-	}
-	return hostname + ":" + time.Now().UTC().Format("20060102T150405.000000000")
 }
 
 func decodeWorkflowJobPayload[T any](raw string, out *T) error {

@@ -317,7 +317,7 @@ func TestMediaCleanupFolderReturnsToActiveAfterRootPreflightFailure(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := server.runNextQueuedWorkflowJob(context.Background(), "root-failure-worker"); err == nil {
+	if err := server.runNextQueuedWorkflowJob(context.Background()); err == nil {
 		t.Fatal("root cleanup unexpectedly succeeded with a remaining file")
 	}
 	var state, runStatus string
@@ -483,7 +483,7 @@ func TestMediaCleanupFilesOnlyPreservesWorkState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := server.runNextQueuedWorkflowJob(context.Background(), "files-only-test-worker"); err != nil {
+	if err := server.runNextQueuedWorkflowJob(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(mediaPath); !os.IsNotExist(err) {
@@ -562,7 +562,7 @@ func TestMediaCleanupForgetWorkDeletesLogicalFamilyAndUserState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := server.runNextQueuedWorkflowJob(context.Background(), "forget-test-worker"); err != nil {
+	if err := server.runNextQueuedWorkflowJob(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(rootPath); !os.IsNotExist(err) {
@@ -640,7 +640,7 @@ func TestMediaCleanupForgetWorkRetainsWorkWhenAnotherSourceIsAvailable(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := server.runNextQueuedWorkflowJob(context.Background(), "partial-test-worker"); err != nil {
+	if err := server.runNextQueuedWorkflowJob(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(rootPath); !os.IsNotExist(err) {

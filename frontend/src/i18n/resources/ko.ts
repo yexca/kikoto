@@ -521,7 +521,7 @@ export const koreanResource = {
         runDLsiteSync: "DLsite 동기화 실행",
         runDLsiteSyncDescription: "메타데이터 동기화 대기열에 추가",
         recoverStaleRuns: "오래된 워크플로 실행 복구",
-        recoverStaleRunsDescription: "오래된 작업을 복구 가능 상태로 표시",
+        recoverStaleRunsDescription: "실행 중인 작업자가 없는 작업을 다시 대기열에 넣거나 실패 처리",
         runningRuns: "실행 중인 작업",
         runningRunsDescription: "현재 워크플로 활동 열기",
         reviewRuns: "검토할 작업",

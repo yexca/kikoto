@@ -3,7 +3,10 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
@@ -119,5 +122,84 @@ func TestSettlementLeavesJobHeldByAnotherLease(t *testing.T) {
 	jobStatus, runStatus, lockedBy, _, _ := loadJobState(t, db, 1)
 	if jobStatus != "running" || runStatus != "running" || lockedBy != "runner-b" {
 		t.Fatalf("job=%s run=%s lock=%q, want the other lease untouched", jobStatus, runStatus, lockedBy)
+	}
+}
+
+func TestManualRecoveryLeavesExecutingAndQueuedJobsAlone(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	ctx := context.Background()
+	seedQueuedCacheJobs(t, db, 1, 2)
+	// Job 2 cannot resume from a checkpoint, like a queued database optimization.
+	if _, err := db.Exec(`UPDATE workflow_job SET recoverable = 0 WHERE id = 2`); err != nil {
+		t.Fatal(err)
+	}
+	lease := server.workflowLeases.reserve()
+	job, ok, err := server.claimNextQueuedWorkflowJob(ctx, lease)
+	if err != nil || !ok || job.ID != 1 {
+		t.Fatalf("claim = %+v, %v, %v", job, ok, err)
+	}
+	server.workflowLeases.activate(lease, job.RunID, job.ID, func() {})
+	// A delayed heartbeat does not make an executing job stale.
+	if _, err := db.Exec(`UPDATE workflow_job SET heartbeat_at = '2000-01-01 00:00:00' WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/workflow-runs/recover-stale", nil)
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"workflows:run"}}))
+	response := httptest.NewRecorder()
+	server.recoverStaleWorkflowRuns(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var result workflowRunActionResult
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Recovered != 0 || result.Active != 1 {
+		t.Fatalf("result = %+v, want nothing recovered and one active job", result)
+	}
+	jobStatus, runStatus, lockedBy, _, _ := loadJobState(t, db, 1)
+	if jobStatus != "running" || runStatus != "running" || lockedBy != lease {
+		t.Fatalf("executing job=%s run=%s lock=%q, want its lease untouched", jobStatus, runStatus, lockedBy)
+	}
+	jobStatus, runStatus, _, _, _ = loadJobState(t, db, 2)
+	if jobStatus != "queued" || runStatus != "queued" {
+		t.Fatalf("queued job=%s run=%s, want it still waiting", jobStatus, runStatus)
+	}
+	if next, ok, err := server.claimNextQueuedWorkflowJob(ctx, "second-claim"); err != nil || ok {
+		t.Fatalf("second claim = %+v, %v, %v; want the queue held by the executing job", next, ok, err)
+	}
+}
+
+func TestOrphanSweepSettlesOnlyReleasedLeases(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	ctx := context.Background()
+	seedQueuedCacheJobs(t, db, 1)
+	lease := server.workflowLeases.reserve()
+	job, ok, err := server.claimNextQueuedWorkflowJob(ctx, lease)
+	if err != nil || !ok {
+		t.Fatalf("claim = %+v, %v, %v", job, ok, err)
+	}
+
+	// A lease reserved for a claim that has not been activated yet is live.
+	server.settleOrphanedWorkflowJobs(ctx)
+	if jobStatus, _, lockedBy, _, _ := loadJobState(t, db, 1); jobStatus != "running" || lockedBy != lease {
+		t.Fatalf("job=%s lock=%q, want the reserved lease untouched", jobStatus, lockedBy)
+	}
+
+	// The executor released its lease without settling the job.
+	server.workflowLeases.release(lease)
+	server.settleOrphanedWorkflowJobs(ctx)
+
+	var jobStatus, runStatus string
+	var resumeCount int
+	if err := db.QueryRow(`SELECT job.status, run.status, job.resume_count FROM workflow_job AS job INNER JOIN workflow_run AS run ON run.id = job.workflow_run_id WHERE job.id = 1`).Scan(&jobStatus, &runStatus, &resumeCount); err != nil {
+		t.Fatal(err)
+	}
+	if jobStatus != "queued" || runStatus != "queued" || resumeCount != 1 {
+		t.Fatalf("job=%s run=%s resumes=%d, want the orphan requeued from its checkpoint", jobStatus, runStatus, resumeCount)
 	}
 }

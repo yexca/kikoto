@@ -44,57 +44,17 @@ func (s *Store) ReleaseInterruptedJob(ctx context.Context, lease JobLease, reaso
 	if err != nil {
 		return false, err
 	}
-	if recoverable {
-		err = requeueInterruptedJob(ctx, tx, lease, reason)
-	} else {
-		err = failInterruptedJob(ctx, tx, lease, reason)
+	settlement := leaseSettlement{
+		requeue: recoverable, reason: reason, eventType: "job.interrupted_by_stop",
+		message: "Job returned to the queue when the service stopped",
 	}
-	if err != nil {
+	if !recoverable {
+		settlement.summary = map[string]any{"interrupted_by_stop": true}
+		settlement.message = "Job stopped with the service and cannot resume from a checkpoint"
+	}
+	settled, err := settleLeaseTx(ctx, tx, lease, settlement)
+	if err != nil || !settled {
 		return false, err
 	}
 	return true, tx.Commit()
-}
-
-func requeueInterruptedJob(ctx context.Context, tx *sql.Tx, lease JobLease, reason string) error {
-	queries := []struct {
-		query string
-		args  []any
-	}{
-		{`UPDATE workflow_job SET status = 'queued', locked_by = '', locked_at = NULL, heartbeat_at = NULL, available_at = CURRENT_TIMESTAMP, error_message = '', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, []any{lease.JobID}},
-		{`UPDATE workflow_node_run SET status = 'queued', error_message = '', finished_at = NULL WHERE workflow_run_id = ? AND status = 'running'`, []any{lease.RunID}},
-		{`UPDATE workflow_run SET status = 'queued', finished_at = NULL WHERE id = ? AND status = 'running'`, []any{lease.RunID}},
-	}
-	for _, item := range queries {
-		if _, err := tx.ExecContext(ctx, item.query, item.args...); err != nil {
-			return err
-		}
-	}
-	return InsertEvent(ctx, tx, lease.RunID, EventSpec{
-		NodeRunID: lease.NodeRunID, JobID: lease.JobID, Level: "warn", Type: "job.interrupted_by_stop",
-		Message: "Job returned to the queue when the service stopped", Detail: map[string]any{"reason": reason},
-	})
-}
-
-func failInterruptedJob(ctx context.Context, tx *sql.Tx, lease JobLease, reason string) error {
-	summary, err := marshal(map[string]any{"error": reason, "interrupted_by_stop": true})
-	if err != nil {
-		return err
-	}
-	queries := []struct {
-		query string
-		args  []any
-	}{
-		{`UPDATE workflow_job SET status = 'failed', error_message = ?, locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, []any{reason, lease.JobID}},
-		{`UPDATE workflow_node_run SET status = 'failed', error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE workflow_run_id = ? AND status = 'running'`, []any{reason, lease.RunID}},
-		{`UPDATE workflow_run SET status = 'failed', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'running'`, []any{summary, lease.RunID}},
-	}
-	for _, item := range queries {
-		if _, err := tx.ExecContext(ctx, item.query, item.args...); err != nil {
-			return err
-		}
-	}
-	return InsertEvent(ctx, tx, lease.RunID, EventSpec{
-		NodeRunID: lease.NodeRunID, JobID: lease.JobID, Level: "warn", Type: "job.interrupted_by_stop",
-		Message: "Job stopped with the service and cannot resume from a checkpoint", Detail: map[string]any{"reason": reason},
-	})
 }
