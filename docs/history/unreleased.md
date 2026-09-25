@@ -137,6 +137,9 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   is no longer announced while its image and APK are still being published.
 - A release pushes the Docker image, including `latest`, only after the
   Android APK has also built, and publishes the GitHub Release last.
+- The Docker image now installs the current Debian security updates for
+  `ffmpeg` and `ca-certificates` each time it is built, instead of fixed
+  package versions that had stopped receiving fixes.
 
 ## Accessibility And Translation
 
