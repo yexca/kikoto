@@ -356,8 +356,8 @@ running job is settled by the orphan rule under
 [Queue Ordering](#queue-ordering): it is requeued from its checkpoint and
 spends one resume, or it fails. Queued jobs keep waiting, runs are repaired as
 the manual command repairs them but without its one-minute wait, and
-interrupted Fetch publications are
-reconciled from the staging, target, and backup directories.
+interrupted Fetch publications are reconciled from the staging, target, and
+backup directories.
 
 ## Source Availability
 
