@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { formatByteSize } from "@/features/cleanup/cacheCleanupModel";
+import { DatabaseBackupSection } from "@/features/cleanup/DatabaseBackupSection";
 import { DatabaseCleanupSection, DatabaseOptimizeSection } from "@/features/cleanup/DatabaseCleanupSection";
 import { ManagedMediaCacheSection, TranscodeCacheSection } from "@/features/cleanup/StorageCachePanels";
 import { api, type CacheOverview, type DatabaseMaintenanceOverview } from "@/lib/api";
@@ -104,6 +105,7 @@ export function CleanupPage({
             onOpenUnlinkedWorks={openUnlinkedWorks}
           />
           <DatabaseOptimizeSection overview={databaseOverview} readOnly={readOnly} onOptimized={scanDatabase} />
+          <DatabaseBackupSection readOnly={readOnly} />
         </div>
       )}
     </div>

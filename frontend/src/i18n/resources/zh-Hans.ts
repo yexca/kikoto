@@ -389,6 +389,28 @@ const adminToolsHans = {
       alreadyQueued: "压缩已在队列中，工作流运行 #{{runId}}。",
       runFailed: "数据库压缩未完成。请在活动中查看详情。",
     },
+    backup: {
+      title: "备份",
+      backUp: "备份数据库",
+      run: "立即备份",
+      running: "正在备份…",
+      latest: "最近：{{time}}（{{kind}}，{{size}}）。共保留 {{count}} 份备份。",
+      none: "尚无备份。首次自动备份会在启动后不久运行。",
+      unavailable: "数据库不是普通文件，无法备份。",
+      loadFailed: "无法列出备份。",
+      policy:
+        "Kikoto 会在数据库旁保存经过校验的副本：每天一份（保留 7 份）、手动备份（保留 5 份），以及每次升级前一份（保留 3 份）。请将备份复制到其他磁盘，以防硬盘损坏。",
+      done: "数据库已备份。",
+      failed: "无法备份数据库。",
+      queued: "备份已加入队列，工作流运行 #{{runId}}。",
+      alreadyQueued: "备份已在队列中，工作流运行 #{{runId}}。",
+      runFailed: "数据库备份未完成。请在活动中查看详情。",
+      kinds: {
+        scheduled: "自动",
+        manual: "手动",
+        "pre-migration": "升级前",
+      },
+    },
   },
   recommendationActivity: {
     title: "我的推荐活动",

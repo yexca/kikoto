@@ -738,6 +738,11 @@ export const surfaceEnglish = {
         name: "Maintain media cache",
         description: "Remove unreferenced managed cache files after a safety grace period.",
       },
+      database_backup: {
+        name: "Back up database",
+        description:
+          "Write a verified copy of the SQLite database beside it and keep a bounded number of recent copies.",
+      },
       database_optimize: {
         name: "Optimize database",
         description: "Compact the SQLite database, refresh query statistics, and truncate the write-ahead log.",

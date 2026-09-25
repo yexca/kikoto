@@ -501,6 +501,10 @@ export const surfaceHans = {
       },
       availability_watch: { name: "可用性监视", description: "监视作品代码，并在远程来源可用时执行配置的操作。" },
       cache_maintenance: { name: "维护媒体缓存", description: "在安全宽限期后移除未引用的托管缓存文件。" },
+      database_backup: {
+        name: "备份数据库",
+        description: "在数据库旁写入经过校验的 SQLite 副本，并保留有限数量的最近副本。",
+      },
       database_optimize: {
         name: "优化数据库",
         description: "压缩 SQLite 数据库，刷新查询统计信息，并截断预写日志。",

@@ -502,6 +502,10 @@ export const surfaceHant = {
       },
       availability_watch: { name: "可用性監視", description: "監視作品代碼，並在遠端來源可用時執行設定的操作。" },
       cache_maintenance: { name: "維護媒體快取", description: "在安全寬限期後移除未引用的託管快取檔案。" },
+      database_backup: {
+        name: "備份資料庫",
+        description: "在資料庫旁寫入經過驗證的 SQLite 副本，並保留有限數量的最近副本。",
+      },
       database_optimize: {
         name: "最佳化資料庫",
         description: "壓縮 SQLite 資料庫，重新整理查詢統計資訊，並截斷預寫日誌。",

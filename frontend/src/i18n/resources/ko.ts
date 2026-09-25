@@ -392,6 +392,28 @@ const adminToolsKorean = {
       alreadyQueued: "압축이 이미 워크플로 실행 #{{runId}}(으)로 대기 중입니다.",
       runFailed: "데이터베이스 압축을 완료하지 못했습니다. 자세한 내용은 활동에서 확인하세요.",
     },
+    backup: {
+      title: "백업",
+      backUp: "데이터베이스 백업",
+      run: "지금 백업",
+      running: "백업 중…",
+      latest: "최근: {{time}} ({{kind}}, {{size}}). 백업 {{count}}개를 보관 중입니다.",
+      none: "아직 백업이 없습니다. 첫 자동 백업은 시작 직후 실행됩니다.",
+      unavailable: "데이터베이스가 일반 파일이 아니어서 백업할 수 없습니다.",
+      loadFailed: "백업 목록을 불러오지 못했습니다.",
+      policy:
+        "Kikoto는 데이터베이스 옆에 검증된 복사본을 저장합니다. 매일 1개(최근 7개), 수동 백업(최근 5개), 업그레이드 전마다 1개(최근 3개)입니다. 드라이브 고장에 대비해 다른 디스크에도 복사하세요.",
+      done: "데이터베이스를 백업했습니다.",
+      failed: "데이터베이스를 백업하지 못했습니다.",
+      queued: "백업을 워크플로 실행 #{{runId}}(으)로 대기열에 추가했습니다.",
+      alreadyQueued: "백업이 이미 워크플로 실행 #{{runId}}(으)로 대기열에 있습니다.",
+      runFailed: "데이터베이스 백업을 완료하지 못했습니다. 자세한 내용은 활동에서 확인하세요.",
+      kinds: {
+        scheduled: "자동",
+        manual: "수동",
+        "pre-migration": "업그레이드 전",
+      },
+    },
   },
   recommendationActivity: {
     title: "내 추천 활동",

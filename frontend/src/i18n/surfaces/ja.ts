@@ -518,6 +518,10 @@ export const surfaceJapanese = {
         name: "メディアキャッシュを管理",
         description: "安全な猶予期間後に未参照の管理キャッシュファイルを削除します。",
       },
+      database_backup: {
+        name: "データベースをバックアップ",
+        description: "SQLite データベースの検証済みコピーを隣に書き込み、最近のコピーを一定数保持します。",
+      },
       database_optimize: {
         name: "データベースを最適化",
         description: "SQLite データベースを最適化し、クエリ統計を更新して、先行書き込みログを切り詰めます。",

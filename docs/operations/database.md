@@ -99,16 +99,45 @@ interrupted optimization fails and can be started again.
 
 ## Backups
 
-Prefer SQLite's backup mechanism for a live database. If copying the database
-file directly, stop the application first so that the database and any WAL
-state form a consistent snapshot. Back up the cache and data directories
-separately if they are important for your deployment.
+Kikoto writes verified database backups to `KIKOTO_DB_BACKUP_DIR`, which
+defaults to a `backups` directory beside the database (`/config/backups` in
+Docker). Backups stay on the durable configuration volume, never in the
+disposable cache or the media library. Each backup is written with
+`VACUUM INTO` from one consistent snapshot, checked with `PRAGMA quick_check`,
+restricted to its owner, and only then renamed to its final name, so a listed
+backup is always complete.
 
-Before upgrading a production instance, make a consistent SQLite backup and
-keep the previous application image available. If startup reports a dirty or
-checksum-mismatch state, do not delete `schema_migration` or `schema_state` to
-force progress: restore the backup or use the compatible binary, then inspect
-the protected logs and retry the recorded migration.
+| Kind | When | Kept |
+| --- | --- | --- |
+| `pre-migration` | At startup, before the first pending numbered migration of an existing database | 3 |
+| `scheduled` | By the workflow coordinator when the newest routine backup is older than 24 hours, checked hourly | 7 |
+| `manual` | **Back up now** in Settings -> Cleanup (`POST /api/maintenance/database/backups`) | 5 |
+
+A fresh install and an up-to-date database start without a pre-migration
+backup. Because numbered migrations cannot be reverted, startup stops without
+changing the schema when the pre-migration backup fails; free space or point
+`KIKOTO_DB_BACKUP_DIR` at a writable directory and start again. Routine
+backups run as `database_backup` workflow runs and appear in Activity; a
+manual backup also writes a `database.backup` audit entry. Only one backup can
+be queued or running. Settings lists backup names, kinds, sizes, and times
+without revealing the backup directory. An in-memory or URI-configured
+database has no backup directory and is not backed up.
+
+Backups contain password hashes and sessions; protect them like the database.
+They share the database's disk, so copy them to another disk or host to
+survive a drive failure.
+
+To restore, stop Kikoto, move `kikoto.db`, `kikoto.db-wal`, and
+`kikoto.db-shm` aside, copy the chosen backup to `kikoto.db`, and start the
+application image whose schema matches it. A pre-migration backup matches the
+release before the upgrade named in its file name (`v038-to-v039`, for
+example). Back up the cache and data directories separately if they are
+important for your deployment.
+
+If startup reports a dirty or checksum-mismatch state, do not delete
+`schema_migration` or `schema_state` to force progress: restore the backup or
+use the compatible binary, then inspect the protected logs and retry the
+recorded migration.
 
 ## Related Docs
 

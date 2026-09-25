@@ -80,6 +80,8 @@ func (s *Server) runWorkflowCoordinator(ctx context.Context) {
 	defer stagingCleanupTicker.Stop()
 	databaseCleanupTimer := time.NewTimer(databaseAutoCleanupInitialDelay)
 	defer databaseCleanupTimer.Stop()
+	databaseBackupTimer := time.NewTimer(databaseBackupCheckInitialDelay)
+	defer databaseBackupTimer.Stop()
 	for {
 		if err := s.dispatchDueScheduledWorkflowTrigger(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("dispatch scheduled custom workflow", "error", err)
@@ -99,6 +101,9 @@ func (s *Server) runWorkflowCoordinator(ctx context.Context) {
 		case <-databaseCleanupTimer.C:
 			s.runAutomaticDatabaseCleanup(ctx)
 			databaseCleanupTimer.Reset(databaseAutoCleanupPeriod)
+		case <-databaseBackupTimer.C:
+			s.queueDueDatabaseBackup(ctx, time.Now())
+			databaseBackupTimer.Reset(databaseBackupCheckPeriod)
 		}
 	}
 }
@@ -193,6 +198,7 @@ func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobR
 		"custom_workflow":            s.executeWorkflowGraphJob,
 		"availability_watch":         s.executeAvailabilityWatchJob,
 		databaseOptimizeWorkerType:   s.executeDatabaseOptimizeJob,
+		databaseBackupWorkerType:     s.executeDatabaseBackupJob,
 	}
 	executor := executors[job.WorkerType]
 	if executor != nil {

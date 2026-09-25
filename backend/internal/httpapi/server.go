@@ -221,6 +221,8 @@ func (s *Server) Routes() http.Handler {
 	handleSlowFirstResponse("GET /api/maintenance/database", s.getDatabaseMaintenance)
 	handleSlowFirstResponse("POST /api/maintenance/database/cleanup", s.cleanupDatabase)
 	mux.HandleFunc("POST /api/maintenance/database/optimize", s.optimizeDatabase)
+	mux.HandleFunc("GET /api/maintenance/database/backups", s.listDatabaseBackups)
+	mux.HandleFunc("POST /api/maintenance/database/backups", s.backUpDatabase)
 	handleSlowFirstResponse("POST /api/cache/cleanup", s.cleanupOrphanCache)
 	handleSlowFirstResponse("DELETE /api/cache/transcodes", s.clearTranscodeCache)
 	mux.HandleFunc("GET /api/media/{id}/asset", s.serveMediaAsset)

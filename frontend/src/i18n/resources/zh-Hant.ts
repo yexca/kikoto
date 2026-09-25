@@ -391,6 +391,28 @@ const adminToolsHant = {
       alreadyQueued: "壓縮已在佇列中，工作流程執行 #{{runId}}。",
       runFailed: "資料庫壓縮未完成。請在活動中查看詳情。",
     },
+    backup: {
+      title: "備份",
+      backUp: "備份資料庫",
+      run: "立即備份",
+      running: "正在備份…",
+      latest: "最近：{{time}}（{{kind}}，{{size}}）。共保留 {{count}} 份備份。",
+      none: "尚無備份。首次自動備份會在啟動後不久執行。",
+      unavailable: "資料庫不是一般檔案，無法備份。",
+      loadFailed: "無法列出備份。",
+      policy:
+        "Kikoto 會在資料庫旁保存經過驗證的副本：每天一份（保留 7 份）、手動備份（保留 5 份），以及每次升級前一份（保留 3 份）。請將備份複製到其他磁碟，以防硬碟損壞。",
+      done: "資料庫已備份。",
+      failed: "無法備份資料庫。",
+      queued: "備份已加入佇列，工作流程執行 #{{runId}}。",
+      alreadyQueued: "備份已在佇列中，工作流程執行 #{{runId}}。",
+      runFailed: "資料庫備份未完成。請在活動中查看詳情。",
+      kinds: {
+        scheduled: "自動",
+        manual: "手動",
+        "pre-migration": "升級前",
+      },
+    },
   },
   recommendationActivity: {
     title: "我的推薦活動",

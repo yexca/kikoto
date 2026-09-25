@@ -148,6 +148,28 @@ export const adminToolsEnglish = {
       alreadyQueued: "Compaction is already queued as workflow run #{{runId}}.",
       runFailed: "Database compaction did not finish. See Activity for details.",
     },
+    backup: {
+      title: "Backups",
+      backUp: "Back up database",
+      run: "Back up now",
+      running: "Backing up…",
+      latest: "Latest: {{time}} ({{kind}}, {{size}}). {{count}} backups kept.",
+      none: "No backups yet. The first automatic backup runs shortly after startup.",
+      unavailable: "Backups are unavailable because the database is not a plain file.",
+      loadFailed: "Backups could not be listed.",
+      policy:
+        "Kikoto keeps verified copies beside the database: one each day (last 7), manual backups (last 5), and one before every upgrade (last 3). Copy backups to another disk to protect against drive failure.",
+      done: "Database backed up.",
+      failed: "Database could not be backed up.",
+      queued: "Backup queued as workflow run #{{runId}}.",
+      alreadyQueued: "A backup is already queued as workflow run #{{runId}}.",
+      runFailed: "Database backup did not finish. See Activity for details.",
+      kinds: {
+        scheduled: "automatic",
+        manual: "manual",
+        "pre-migration": "before upgrade",
+      },
+    },
   },
   recommendationActivity: {
     title: "Your recommendation activity",

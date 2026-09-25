@@ -171,6 +171,12 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
 
 ## Maintenance
 
+- Kikoto now backs up its database. Before upgrading an existing database it
+  writes a verified snapshot to `config/backups` and stops the upgrade if the
+  snapshot fails. It also keeps a daily automatic backup, and Settings ->
+  Cleanup can back up on demand and shows the latest backup. See
+  [Database backups](../operations/database.md#backups) for retention and
+  restore steps.
 - Compact database runs in the background as a workflow shown in Activity.
   Only one can be queued or running at a time, and the result is still recorded
   in the audit log.

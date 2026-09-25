@@ -159,6 +159,20 @@ export type DatabaseOptimizeResult = {
   existing: boolean;
 };
 
+export type DatabaseBackupKind = "scheduled" | "manual" | "pre-migration";
+
+export type DatabaseBackupFile = {
+  name: string;
+  kind: DatabaseBackupKind;
+  sizeBytes: number;
+  createdAt: string;
+};
+
+export type DatabaseBackupList = {
+  available: boolean;
+  backups: DatabaseBackupFile[];
+};
+
 export type SourcePresenceItem = {
   type: string;
   availability: string;
@@ -2479,6 +2493,8 @@ export const api = {
   cleanupDatabase: (tasks: DatabaseCleanupTaskKey[]) =>
     postJSONBody<DatabaseCleanupResult>("/api/maintenance/database/cleanup", { tasks }),
   optimizeDatabase: () => postJSONBody<DatabaseOptimizeResult>("/api/maintenance/database/optimize", {}),
+  listDatabaseBackups: () => getJSON<DatabaseBackupList>("/api/maintenance/database/backups"),
+  backUpDatabase: () => postJSONBody<DatabaseOptimizeResult>("/api/maintenance/database/backups", {}),
   listWorkflowDefinitions: () => getJSON<WorkflowDefinition[]>("/api/workflow-definitions"),
   getAvailabilityWatch: () => getJSON<AvailabilityWatch>("/api/availability-watch"),
   updateAvailabilityWatch: (payload: {

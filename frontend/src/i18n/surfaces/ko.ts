@@ -519,6 +519,10 @@ export const surfaceKorean = {
         name: "미디어 캐시 유지 관리",
         description: "안전 유예 기간이 지나면 참조되지 않는 관리 캐시 파일을 제거합니다.",
       },
+      database_backup: {
+        name: "데이터베이스 백업",
+        description: "SQLite 데이터베이스의 검증된 복사본을 옆에 쓰고 최근 복사본을 일정 수 보관합니다.",
+      },
       database_optimize: {
         name: "데이터베이스 최적화",
         description: "SQLite 데이터베이스를 압축하고 쿼리 통계를 갱신한 뒤 미리 쓰기 로그를 비웁니다.",
