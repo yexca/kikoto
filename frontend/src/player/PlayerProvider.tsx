@@ -863,6 +863,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (!audio || !currentTrack) return;
     if (!currentTrack.progressRecordable) return;
     if (currentTrack.mediaItemId <= 0) return;
+    // A save captured by an older render would pair this track's id with another track's audio position.
+    if (currentPlaybackInstanceKey !== currentPlaybackInstanceKeyRef.current) return;
     // An idle or still-loading element must not replace the persisted cursor with its own 0.
     if (
       !canPersistPlaybackProgress(
@@ -953,7 +955,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setSleepTimer((current) => (current ? { ...current, waitingForTrackEnd: true } : null));
         return;
       }
-      saveProgress(false, true);
+      // This effect outlives track changes; only the latest save knows the current track.
+      progressSaveRef.current(false, true);
       updatePlayingState(false);
       setSleepTimer(null);
     };
