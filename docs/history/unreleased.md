@@ -31,6 +31,19 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   series work.
 - Circle and voice actor detail refreshes keep their behavior.
 
+## Fetch
+
+- Retrying a Fetch whose files were already published, but whose result could
+  not be recorded, no longer replaces the work folder with only the newly
+  selected files. The retry recognizes the published folder and continues from
+  it.
+- Fetch never deletes an existing publication backup. If one is still present,
+  publishing stops and asks for review instead.
+- A Fetch interrupted while registering its published files now completes at
+  the next startup, including Fetches left in that state by earlier versions.
+  A Fetch that still cannot be recovered is reported in Activity and no longer
+  stops the server from starting.
+
 ## Tags
 
 - Works, circles, and voice actors edit personal tags in a searchable picker

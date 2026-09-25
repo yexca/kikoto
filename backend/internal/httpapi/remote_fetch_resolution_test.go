@@ -81,7 +81,9 @@ func TestFinishFetchPresenceKeepsSourceWithoutCreatingTracked(t *testing.T) {
 	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location WHERE media_item_id = 1 AND location_type = 'cache' AND availability = 'available'`).Scan(&caches); err != nil {
 		t.Fatal(err)
 	}
-	if tracked != 0 || source != 1 || remoteStreams != 0 || caches != 0 {
+	// Completion, not presence sync, retires remote_stream rows: recovery of an
+	// interrupted Fetch resolves its media items through them.
+	if tracked != 0 || source != 1 || remoteStreams != 1 || caches != 0 {
 		t.Fatalf("tracked=%d source=%d remoteStreams=%d caches=%d", tracked, source, remoteStreams, caches)
 	}
 }
@@ -105,17 +107,14 @@ func TestFinishFetchPresencePreservesExistingTrackedSource(t *testing.T) {
 	if err := server.finishFetchPresence(ctx, 1, []int64{1}, 2, "TEST-WORK-001"); err != nil {
 		t.Fatal(err)
 	}
-	var tracked, source, remoteStreams int
+	var tracked, source int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM work_source_presence WHERE work_id = 1 AND file_source_id = 1 AND presence_type = 'tracked' AND availability = 'available'`).Scan(&tracked); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRow(`SELECT COUNT(*) FROM work_source_presence WHERE work_id = 1 AND file_source_id = 1 AND presence_type = 'source' AND availability = 'available'`).Scan(&source); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location WHERE media_item_id = 1 AND location_type = 'remote_stream'`).Scan(&remoteStreams); err != nil {
-		t.Fatal(err)
-	}
-	if tracked != 1 || source != 1 || remoteStreams != 0 {
-		t.Fatalf("tracked=%d source=%d remoteStreams=%d", tracked, source, remoteStreams)
+	if tracked != 1 || source != 1 {
+		t.Fatalf("tracked=%d source=%d", tracked, source)
 	}
 }

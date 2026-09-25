@@ -54,6 +54,13 @@ func (s *Server) prepareRemoteWorkFetchExecution(
 	}
 	execution.source = source
 	manifest, manifestErr := s.loadRemoteFetchManifest(ctx, runID)
+	if manifestErr == nil {
+		// Settle before an error message can trigger a plan refresh, which
+		// resets the manifest to planned and would restage over a published root.
+		if manifest, err = s.settleInterruptedRemoteFetchPublication(ctx, manifest); err != nil {
+			return execution, err
+		}
+	}
 	var plan remoteWorkSavePlan
 	if manifestErr == nil && strings.TrimSpace(manifest.ErrorMessage) == "" {
 		manifestErr = json.Unmarshal([]byte(manifest.PlanJSON), &plan)
@@ -444,7 +451,7 @@ func (s *Server) finishRemoteWorkFetch(
 			return err
 		}
 	}
-	if err := s.completeRemoteFetchManifest(ctx, manifest); err != nil {
+	if err := s.completeRemoteFetchManifest(ctx, manifest, remoteFetchPlanSourceIDs(execution.plan, execution.source.ID)); err != nil {
 		return s.failRemoteWorkFetchPhase(ctx, runID, execution.syncNodeID, jobID, len(execution.plan.Items)*2, len(execution.plan.Items)*2, execution.plan.Summary, err)
 	}
 	_ = s.updateWorkflowJobCheckpoint(ctx, jobID, "registered", map[string]any{"locations": syncedLocations}, len(execution.plan.Items)*2, len(execution.plan.Items)*2)
