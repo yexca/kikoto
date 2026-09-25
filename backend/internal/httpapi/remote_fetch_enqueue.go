@@ -96,6 +96,30 @@ func (s *Server) prepareRemoteWorkSaveEnqueue(
 	}, nil
 }
 
+type remoteFetchOriginKey struct{}
+
+// withRemoteFetchOrigin records which workflow queued a Fetch, so its run
+// shows the real origin instead of a manual selection.
+func withRemoteFetchOrigin(ctx context.Context, origin string) context.Context {
+	return context.WithValue(ctx, remoteFetchOriginKey{}, origin)
+}
+
+func remoteFetchOrigin(ctx context.Context) string {
+	if origin, ok := ctx.Value(remoteFetchOriginKey{}).(string); ok && origin != "" {
+		return origin
+	}
+	return "fetch_selected"
+}
+
+// remoteFetchRunName names a Fetch run after its work, so Activity shows
+// which work is downloading.
+func remoteFetchRunName(workCode string) string {
+	if workCode = strings.ToUpper(strings.TrimSpace(workCode)); workCode != "" {
+		return "Fetch " + workCode
+	}
+	return "Fetch remote work"
+}
+
 func requestedCode(code string) string {
 	return strings.ToUpper(strings.TrimSpace(code))
 }
@@ -163,7 +187,7 @@ func (s *Server) insertPreparedRemoteFetchTx(ctx context.Context, tx *sql.Tx, pr
 		Paths: prep.selectedPaths, LocalPaths: prep.selectedLocalPaths, TargetRoot: prep.plan.SaveRoot,
 		RequestID: prep.requestID, Decisions: prep.decisions, MinFreeBytes: prep.minFreeBytes,
 	}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_work_fetch", "Fetch remote work", "queued", "manual", "fetch_selected", runInput, map[string]any{"plan": prep.plan.Summary})
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_work_fetch", remoteFetchRunName(prep.workCode), "queued", "manual", remoteFetchOrigin(ctx), runInput, map[string]any{"plan": prep.plan.Summary})
 	if err != nil {
 		return remoteWorkSaveResult{}, err
 	}
@@ -257,7 +281,9 @@ func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request
 	}
 	plan, err := s.buildRemoteWorkSavePlan(r.Context(), sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.Decisions)
 	if err != nil {
-		writeUpstreamError(w, err)
+		if !writeFetchDestinationError(w, err) {
+			writeUpstreamError(w, err)
+		}
 		return
 	}
 	if err := s.ensureRemoteWorkSaveDiskReserve(plan, payload.MinFreeBytes); err != nil {
@@ -304,6 +330,9 @@ func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 		var conflict remoteWorkSaveConflictError
 		if errors.As(err, &conflict) {
 			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "summary": conflict.Summary})
+			return
+		}
+		if writeFetchDestinationError(w, err) {
 			return
 		}
 		writeUpstreamError(w, err)

@@ -54,7 +54,9 @@ func normalizeFolderRootPath(value string) string {
 	return strings.Trim(value, "/")
 }
 
-func markMissingExternalWorkFolderLocations(ctx context.Context, tx *sql.Tx, fileSourceID int64, seenRoots map[string]bool) error {
+// markMissingExternalWorkFolderLocations marks folders the scan could observe
+// but did not find. inScope limits that to folders the scan reached.
+func markMissingExternalWorkFolderLocations(ctx context.Context, tx *sql.Tx, fileSourceID int64, seenRoots map[string]bool, inScope func(string) bool) error {
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, root_path
 		FROM work_folder_location
@@ -71,7 +73,7 @@ func markMissingExternalWorkFolderLocations(ctx context.Context, tx *sql.Tx, fil
 			_ = rows.Close()
 			return err
 		}
-		if !seenRoots[strings.ToLower(normalizeFolderRootPath(rootPath))] {
+		if !seenRoots[strings.ToLower(normalizeFolderRootPath(rootPath))] && inScope(rootPath) {
 			missingIDs = append(missingIDs, id)
 		}
 	}

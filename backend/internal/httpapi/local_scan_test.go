@@ -16,6 +16,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/localfs"
+	"github.com/yexca/kikoto/backend/internal/storagepool"
 )
 
 func TestDetectedMediaUpsertsReuseExistingRowsWithoutReturningClauses(t *testing.T) {
@@ -526,6 +527,11 @@ func TestLocalLibraryScanInvalidatesLocationsWhenFolderDisappears(t *testing.T) 
 				`, seeded.workID, seeded.sourceID); err != nil {
 					t.Fatal(err)
 				}
+			}
+			// The library was mounted before, so its marker proves that an
+			// empty root now really lost the folder.
+			if err := storagepool.WriteMarker(dataRoot, "synthetic-library"); err != nil {
+				t.Fatal(err)
 			}
 			runID := executeLocalScanForTest(t, server)
 

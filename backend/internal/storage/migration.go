@@ -94,7 +94,20 @@ func Migrate(db *sql.DB, dir string) error {
 // the highest-version packaged baseline snapshot; existing databases continue
 // through the immutable numbered chain. The baseline's release suffix does not
 // need to match appVersion when no numbered SQL changed.
+// MigrateOptions adjusts MigrateFS for the running application.
+type MigrateOptions struct {
+	// BeforeUpgrade runs once before the first numbered migration is applied
+	// to an existing database, with the current and target schema versions.
+	// Numbered migrations cannot be reverted, so an error stops the upgrade
+	// before the schema changes. It is not called for a fresh database.
+	BeforeUpgrade func(fromVersion int, toVersion int) error
+}
+
 func MigrateFS(db *sql.DB, migrationFS fs.FS, appVersion string) error {
+	return MigrateFSWithOptions(db, migrationFS, appVersion, MigrateOptions{})
+}
+
+func MigrateFSWithOptions(db *sql.DB, migrationFS fs.FS, appVersion string, options MigrateOptions) error {
 	if db == nil {
 		return errors.New("migrate database: nil database")
 	}
@@ -108,6 +121,11 @@ func MigrateFS(db *sql.DB, migrationFS fs.FS, appVersion string) error {
 	history, state, err := prepareMigrationState(db, catalog, classification)
 	if err != nil {
 		return err
+	}
+	if options.BeforeUpgrade != nil && state.currentVersion > 0 && catalog.current > state.currentVersion {
+		if err := options.BeforeUpgrade(state.currentVersion, catalog.current); err != nil {
+			return fmt.Errorf("prepare schema upgrade from %03d to %03d: %w", state.currentVersion, catalog.current, err)
+		}
 	}
 	state, applied, err := applyMigrationCatalog(db, catalog, classification, history, state, appVersion)
 	if err != nil {

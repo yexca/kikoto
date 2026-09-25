@@ -85,6 +85,44 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   Incremental covers folders that were never indexed and Full re-indexes every
   local work. It runs manually or from a Startup or interval trigger.
 
+## Fetch
+
+- Retrying a Fetch whose files were already published, but whose result could
+  not be recorded, no longer replaces the work folder with only the newly
+  selected files. The retry recognizes the published folder and continues from
+  it.
+- Fetch never deletes an existing publication backup. If one is still present,
+  publishing stops and asks for review instead.
+- A Fetch interrupted while registering its published files now completes at
+  the next startup, including Fetches left in that state by earlier versions.
+  A Fetch that still cannot be recovered is reported in Activity and no longer
+  stops the server from starting.
+- Activity names each Fetch after its work, such as `Fetch RJ00000001`, finds
+  it by work code, and records whether it was queued by Availability Watch, a
+  bulk action, a popular collection, or a preset workflow. Workflows lists Fetch
+  as a read-only tab with its history.
+- When Fetch cannot write into the library, it says what to configure and links
+  to Settings -> Library instead of failing the plan.
+
+## Library Storage
+
+- A new instance opens **Set up your library** after the administrator is
+  created: choose the Standard layout or Storage pools, scan, optionally sync
+  metadata, and decide whether scans run on startup or when folders change.
+  Both scan triggers now start off on a new install. Upgraded instances keep
+  the Standard layout and their triggers, and skip the setup.
+- Storage pool mode treats selected first-level folders of the data directory
+  as separate disks or cloud drives. Fetch saves new works to the chosen Fetch
+  pool and keeps its staging, backup, and trash inside the target's pool, so
+  publication stays a rename on one disk.
+- An unmounted data directory or offline pool no longer makes a scan report the
+  whole library missing. Kikoto marks each pool root with `.kikoto-pool`; an
+  empty, unmarked root of a library with works fails the scan without changes,
+  and an offline pool is skipped and named in a partial run.
+- Scans always reach the level where Fetch saves works, and Settings rejects a
+  shallower scan depth, so a shallow depth no longer reports Fetched works
+  missing.
+
 ## Tags
 
 - Works, circles, and voice actors edit personal tags in a searchable picker
@@ -158,6 +196,12 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
 
 ## Maintenance
 
+- Kikoto now backs up its database. Before upgrading an existing database it
+  writes a verified snapshot to `config/backups` and stops the upgrade if the
+  snapshot fails. It also keeps a daily automatic backup, and Settings ->
+  Cleanup can back up on demand and shows the latest backup. See
+  [Database backups](../operations/database.md#backups) for retention and
+  restore steps.
 - Compact database runs in the background as a workflow shown in Activity.
   Only one can be queued or running at a time, and the result is still recorded
   in the audit log.

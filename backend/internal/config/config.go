@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -30,8 +31,11 @@ const (
 )
 
 type Config struct {
-	HTTPAddr            string
-	DatabasePath        string
+	HTTPAddr     string
+	DatabasePath string
+	// DatabaseBackupDir holds database backups, or is empty when the database
+	// is not a plain file and cannot be backed up.
+	DatabaseBackupDir   string
 	DataRoot            string
 	CacheRoot           string
 	StaticDir           string
@@ -90,9 +94,11 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	databasePath := env("KIKOTO_DB_PATH", "../config/kikoto.db")
 	return Config{
 		HTTPAddr:            env("KIKOTO_HTTP_ADDR", "127.0.0.1:7659"),
-		DatabasePath:        env("KIKOTO_DB_PATH", "../config/kikoto.db"),
+		DatabasePath:        databasePath,
+		DatabaseBackupDir:   env("KIKOTO_DB_BACKUP_DIR", defaultDatabaseBackupDir(databasePath)),
 		DataRoot:            env("KIKOTO_DATA_ROOT", "../data"),
 		CacheRoot:           env("KIKOTO_CACHE_ROOT", "../cache"),
 		StaticDir:           env("KIKOTO_STATIC_DIR", ""),
@@ -109,6 +115,16 @@ func Load() (Config, error) {
 		RootPasswordReset:   reset,
 		RemoteSourceSeeds:   loadRemoteSourceSeeds(),
 	}, nil
+}
+
+// defaultDatabaseBackupDir keeps backups beside the database, on the same
+// durable volume, and never in the disposable cache or the media library.
+func defaultDatabaseBackupDir(databasePath string) string {
+	databasePath = strings.TrimSpace(databasePath)
+	if databasePath == "" || databasePath == ":memory:" || strings.HasPrefix(databasePath, "file:") {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(databasePath), "backups")
 }
 
 // DevelopmentUsername is the account development mode authenticates every

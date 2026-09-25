@@ -22,6 +22,32 @@ func (s *Server) mediaItemIDForRemotePath(ctx context.Context, workID int64, rem
 	return mediaItemID, err
 }
 
+// Registration normally resolves a remote item through its remote_stream row.
+// Releases that retired those rows before completing the manifest left some
+// published Fetches without them; the local location written before that
+// retirement still identifies the same media item.
+func (s *Server) mediaItemIDForFetchItem(ctx context.Context, workID int64, localSourceID int64, item remoteWorkSavePlanItem) (int64, error) {
+	if item.MediaItemID > 0 {
+		return item.MediaItemID, nil
+	}
+	mediaItemID, err := s.mediaItemIDForRemotePath(ctx, workID, item.Path)
+	if !errors.Is(err, sql.ErrNoRows) {
+		return mediaItemID, err
+	}
+	err = s.db.QueryRowContext(ctx, `
+		SELECT item.id
+		FROM media_item AS item
+		INNER JOIN media_file_location AS location ON location.media_item_id = item.id
+		WHERE item.work_id = ?
+			AND location.file_source_id = ?
+			AND location.location_type = 'local'
+			AND location.path = ?
+		ORDER BY item.id ASC
+		LIMIT 1
+	`, workID, localSourceID, item.TargetPath).Scan(&mediaItemID)
+	return mediaItemID, err
+}
+
 func (s *Server) markCacheLocationUnavailable(ctx context.Context, sourceID int64, cachePath string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE media_file_location
@@ -35,13 +61,9 @@ func (s *Server) markCacheLocationUnavailable(ctx context.Context, sourceID int6
 }
 
 func (s *Server) upsertSavedLocalLocation(ctx context.Context, workID int64, localSourceID int64, item remoteWorkSavePlanItem, targetAbsPath string) error {
-	mediaItemID := item.MediaItemID
-	if mediaItemID == 0 {
-		var err error
-		mediaItemID, err = s.mediaItemIDForRemotePath(ctx, workID, item.Path)
-		if err != nil {
-			return err
-		}
+	mediaItemID, err := s.mediaItemIDForFetchItem(ctx, workID, localSourceID, item)
+	if err != nil {
+		return err
 	}
 	info, err := os.Stat(targetAbsPath)
 	if err != nil {
@@ -120,13 +142,6 @@ func (s *Server) finishFetchPresence(ctx context.Context, workID int64, remoteSo
 		if err := ensureFetchSourcePresence(ctx, tx, workID, remoteSourceID, workCode); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `
-			DELETE FROM media_file_location
-			WHERE file_source_id = ? AND location_type = 'remote_stream'
-				AND media_item_id IN (SELECT id FROM media_item WHERE work_id = ?)
-		`, remoteSourceID, workID); err != nil {
-			return err
-		}
 	}
 	if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
 		WorkID:       workID,
@@ -145,6 +160,22 @@ func (s *Server) finishFetchPresence(ctx context.Context, workID int64, remoteSo
 		return err
 	}
 	return s.cleanupFetchCacheWithoutTrackedPresence(ctx, workID, remoteSourceIDs)
+}
+
+func retireFetchRemoteStreams(ctx context.Context, tx *sql.Tx, workID int64, remoteSourceIDs []int64) error {
+	for _, remoteSourceID := range remoteSourceIDs {
+		if remoteSourceID <= 0 {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM media_file_location
+			WHERE file_source_id = ? AND location_type = 'remote_stream'
+				AND media_item_id IN (SELECT id FROM media_item WHERE work_id = ?)
+		`, remoteSourceID, workID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ensureFetchSourcePresence(ctx context.Context, tx *sql.Tx, workID int64, sourceID int64, workCode string) error {

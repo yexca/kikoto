@@ -586,6 +586,7 @@ export const surfaceEnglish = {
       remote_popular_collection: "Remote popular",
       dlsite_popular_collection: "DLsite popular",
       availability_watch: "Availability Watch",
+      remote_work_fetch: "Fetch",
       circle_follow: "Circle follow",
       series_follow: "Series follow",
       voice_follow: "VAs follow",
@@ -714,6 +715,7 @@ export const surfaceEnglish = {
       voiceResults: "Voice actor results",
       searching: "Searching",
     },
+    fetchRunTitle: "Fetch {{code}}",
     builtInDefinitions: {
       circle_follow: {
         name: "Follow a circle",
@@ -737,6 +739,11 @@ export const surfaceEnglish = {
       cache_maintenance: {
         name: "Maintain media cache",
         description: "Remove unreferenced managed cache files after a safety grace period.",
+      },
+      database_backup: {
+        name: "Back up database",
+        description:
+          "Write a verified copy of the SQLite database beside it and keep a bounded number of recent copies.",
       },
       database_optimize: {
         name: "Optimize database",
@@ -1472,6 +1479,13 @@ export const surfaceEnglish = {
   },
 
   remoteFetch: {
+    destination: {
+      library_not_configured: "Set up the library before fetching works.",
+      fetch_pool_required: "Choose a Fetch storage pool before fetching works.",
+      fetch_pool_offline: "The Fetch storage pool is offline. Check that its disk is mounted.",
+      library_offline: "The library folder is unavailable. Check that the data directory is mounted.",
+      openSettings: "Library settings",
+    },
     title: "Fetch selection",
     demoPreview: "Demo preview",
     description: "Compare the exact language edition, remote source, and final published directory.",

@@ -486,6 +486,7 @@ export const surfaceHans = {
       voiceResults: "声优搜索结果",
       searching: "正在搜索",
     },
+    fetchRunTitle: "获取 {{code}}",
     builtInDefinitions: {
       circle_follow: {
         name: "关注社团",
@@ -501,6 +502,10 @@ export const surfaceHans = {
       },
       availability_watch: { name: "可用性监视", description: "监视作品代码，并在远程来源可用时执行配置的操作。" },
       cache_maintenance: { name: "维护媒体缓存", description: "在安全宽限期后移除未引用的托管缓存文件。" },
+      database_backup: {
+        name: "备份数据库",
+        description: "在数据库旁写入经过校验的 SQLite 副本，并保留有限数量的最近副本。",
+      },
       database_optimize: {
         name: "优化数据库",
         description: "压缩 SQLite 数据库，刷新查询统计信息，并截断预写日志。",
@@ -646,6 +651,7 @@ export const surfaceHans = {
       remote_popular_collection: "远程热门",
       dlsite_popular_collection: "DLsite 热门",
       availability_watch: "到货监控",
+      remote_work_fetch: "获取",
       circle_follow: "关注社团",
       series_follow: "关注系列",
       voice_follow: "关注声优",
@@ -1392,6 +1398,13 @@ export const surfaceHans = {
   },
 
   remoteFetch: {
+    destination: {
+      library_not_configured: "请先设置媒体库，再获取作品。",
+      fetch_pool_required: "请先选择 Fetch 存储池，再获取作品。",
+      fetch_pool_offline: "Fetch 存储池离线。请检查它的磁盘是否已挂载。",
+      library_offline: "媒体库文件夹不可用。请检查数据目录是否已挂载。",
+      openSettings: "媒体库设置",
+    },
     title: "获取选择",
     demoPreview: "演示预览",
     description: "比较确切的语言版本、远程来源和最终发布目录。",

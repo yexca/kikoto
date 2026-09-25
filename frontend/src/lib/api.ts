@@ -159,6 +159,47 @@ export type DatabaseOptimizeResult = {
   existing: boolean;
 };
 
+export type LibraryMode = "standard" | "pools";
+
+export type LibraryPool = {
+  /** First-level folder of the data directory; empty for the standard library. */
+  path: string;
+  online: boolean;
+  reason?: string;
+  canReconnect: boolean;
+};
+
+export type LibraryLayout = {
+  mode: LibraryMode | "";
+  configured: boolean;
+  locked: boolean;
+  onboardingCompleted: boolean;
+  pools: LibraryPool[];
+  candidates: string[];
+  fetchPool: string;
+  localScanTriggers: { startupScan: boolean; watchFolders: boolean };
+};
+
+export type LibraryLayoutUpdate = {
+  mode: LibraryMode;
+  pools?: string[];
+  fetchPool?: string;
+};
+
+export type DatabaseBackupKind = "scheduled" | "manual" | "pre-migration";
+
+export type DatabaseBackupFile = {
+  name: string;
+  kind: DatabaseBackupKind;
+  sizeBytes: number;
+  createdAt: string;
+};
+
+export type DatabaseBackupList = {
+  available: boolean;
+  backups: DatabaseBackupFile[];
+};
+
 export type SourcePresenceItem = {
   type: string;
   availability: string;
@@ -558,6 +599,8 @@ export type AppUpdate = {
 export type AppSettings = {
   anonymousAccessEnabled: boolean;
   localScanDepth: number;
+  /** Shallowest scan depth that still reaches every Fetch folder. */
+  localScanDepthMinimum?: number;
   cacheEnabled: boolean;
   cacheLimitGb: number;
   transcodeCacheLimitGb: number;
@@ -916,6 +959,8 @@ export type WorkflowRun = {
   reviewedByUserId: number | null;
   definitionId: number | null;
   triggerId: number | null;
+  /** The work a Fetch run downloads; empty for other runs. */
+  workCode?: string;
 };
 
 export type WorkflowRunsPage = {
@@ -2479,6 +2524,13 @@ export const api = {
   cleanupDatabase: (tasks: DatabaseCleanupTaskKey[]) =>
     postJSONBody<DatabaseCleanupResult>("/api/maintenance/database/cleanup", { tasks }),
   optimizeDatabase: () => postJSONBody<DatabaseOptimizeResult>("/api/maintenance/database/optimize", {}),
+  getLibraryLayout: (signal?: AbortSignal) => getJSON<LibraryLayout>("/api/library/layout", signal),
+  updateLibraryLayout: (payload: LibraryLayoutUpdate) => putJSONBody<LibraryLayout>("/api/library/layout", payload),
+  reconnectLibraryPool: (path: string) => postJSONBody<LibraryLayout>("/api/library/pools/reconnect", { path }),
+  completeLibraryOnboarding: (payload: { startupScan: boolean; watchFolders: boolean }) =>
+    postJSONBody<LibraryLayout>("/api/library/onboarding/complete", payload),
+  listDatabaseBackups: () => getJSON<DatabaseBackupList>("/api/maintenance/database/backups"),
+  backUpDatabase: () => postJSONBody<DatabaseOptimizeResult>("/api/maintenance/database/backups", {}),
   listWorkflowDefinitions: () => getJSON<WorkflowDefinition[]>("/api/workflow-definitions"),
   getAvailabilityWatch: () => getJSON<AvailabilityWatch>("/api/availability-watch"),
   updateAvailabilityWatch: (payload: {

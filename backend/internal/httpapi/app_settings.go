@@ -18,8 +18,11 @@ import (
 var defaultDLsiteMetadataLanguages = []string{dlsite.OriginMetadataLanguage}
 
 type appSettingsResponse struct {
-	AnonymousAccessEnabled    bool                         `json:"anonymousAccessEnabled"`
-	LocalScanDepth            int                          `json:"localScanDepth"`
+	AnonymousAccessEnabled bool `json:"anonymousAccessEnabled"`
+	LocalScanDepth         int  `json:"localScanDepth"`
+	// LocalScanDepthMinimum is the shallowest depth that still reaches every
+	// Fetch folder; scans use at least this depth.
+	LocalScanDepthMinimum     int                          `json:"localScanDepthMinimum"`
 	CacheEnabled              bool                         `json:"cacheEnabled"`
 	CacheLimitGB              int                          `json:"cacheLimitGb"`
 	TranscodeCacheLimitGB     int                          `json:"transcodeCacheLimitGb"`
@@ -134,6 +137,10 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	recommendationConfig, err := s.parseRecommendationConfig(r.Context(), payload.RecommendationConfig)
 	if err != nil {
+		writeSettingsUpdateError(w, err)
+		return
+	}
+	if err := s.validateLocalScanDepthSettings(r.Context(), payload); err != nil {
 		writeSettingsUpdateError(w, err)
 		return
 	}
@@ -357,9 +364,14 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		return appSettingsResponse{}, err
 	}
 	metadataLanguages := s.preferredMetadataLanguages(r.Context())
+	minimumScanDepth, err := s.requiredLocalScanDepth(r.Context())
+	if err != nil {
+		return appSettingsResponse{}, err
+	}
 	return appSettingsResponse{
 		AnonymousAccessEnabled:    s.configuredAnonymousAccessEnabled(),
 		LocalScanDepth:            s.settingInt(r, "local_scan_depth", s.cfg.LocalScanDepth),
+		LocalScanDepthMinimum:     minimumScanDepth,
 		CacheEnabled:              s.settingBool(r, "remote_cache_enabled", false),
 		CacheLimitGB:              s.settingInt(r, "remote_cache_limit_gb", 20),
 		TranscodeCacheLimitGB:     s.settingInt(r, transcodeCacheLimitSetting, defaultTranscodeCacheLimitGB),

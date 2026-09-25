@@ -822,7 +822,7 @@ func (s *Server) dispatchAvailabilityWatchTarget(ctx context.Context, payload av
 		if err != nil {
 			return trackRunID, 0, err
 		}
-		fetched, err := s.enqueueRemoteWorkSave(ctx, sourceID, code, paths, nil, "", fmt.Sprintf("availability-watch:%d:%d:fetch", targetID, epoch), nil, 0, payload.RequestedByUserID, workflow.JobPriorityBackground)
+		fetched, err := s.enqueueRemoteWorkSave(withRemoteFetchOrigin(ctx, "availability_watch"), sourceID, code, paths, nil, "", fmt.Sprintf("availability-watch:%d:%d:fetch", targetID, epoch), nil, 0, payload.RequestedByUserID, workflow.JobPriorityBackground)
 		if err != nil {
 			return trackRunID, 0, err
 		}

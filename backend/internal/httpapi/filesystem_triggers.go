@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/localfs"
+	"github.com/yexca/kikoto/backend/internal/storagepool"
 )
 
 const (
@@ -294,7 +295,39 @@ func (s *Server) loadFilesystemWatcherConfig(ctx context.Context) (filesystemWat
 	if err != nil {
 		return filesystemWatcherConfig{}, err
 	}
-	return filesystemWatcherConfig{ScanDepth: s.configuredLocalScanDepth(ctx), ExcludedRoots: roots}, nil
+	layout, err := s.loadLibraryLayout(ctx)
+	if err != nil {
+		return filesystemWatcherConfig{}, err
+	}
+	scanDepth := s.effectiveLocalScanDepth(ctx)
+	if layout.poolsMode() {
+		// The watcher counts depth from the data root, one level above the
+		// pools, and ignores first-level folders that are not pools.
+		scanDepth++
+		unregistered, err := s.unregisteredPoolDirectories(layout)
+		if err != nil {
+			return filesystemWatcherConfig{}, err
+		}
+		roots = append(roots, unregistered...)
+		sort.Slice(roots, func(i, j int) bool { return strings.ToLower(roots[i]) < strings.ToLower(roots[j]) })
+	}
+	return filesystemWatcherConfig{ScanDepth: scanDepth, ExcludedRoots: roots}, nil
+}
+
+// unregisteredPoolDirectories lists the absolute first-level directories of
+// the data root that are not registered pools.
+func (s *Server) unregisteredPoolDirectories(layout libraryLayout) ([]string, error) {
+	names, err := storagepool.CandidateDirectories(s.cfg.DataRoot)
+	if err != nil {
+		return nil, err
+	}
+	directories := []string{}
+	for _, name := range names {
+		if _, registered := layout.pool(name); !registered {
+			directories = append(directories, filepath.Join(s.cfg.DataRoot, name))
+		}
+	}
+	return directories, nil
 }
 
 func sameFilesystemWatcherConfig(left filesystemWatcherConfig, right filesystemWatcherConfig) bool {
@@ -343,7 +376,7 @@ func (s *Server) dispatchFilesystemTriggeredLocalScan(ctx context.Context, watch
 		fallbackReason = "watcher_recovery"
 	}
 	_, err = s.enqueueLocalScanWithPayload(ctx, "filesystem_event", "data_directories_changed", trigger.ID, localScanJobPayload{
-		Root: s.cfg.DataRoot, ScanDepth: s.configuredLocalScanDepth(ctx), ScanMode: scanMode,
+		Root: s.cfg.DataRoot, ScanDepth: s.effectiveLocalScanDepth(ctx), ScanMode: scanMode,
 		ChangedPaths: relativePaths, FullFallbackReason: fallbackReason,
 		DirectoryEventAt: formatWorkflowTimestamp(observedAt), ObservedDirectories: watchedDirectories,
 	})

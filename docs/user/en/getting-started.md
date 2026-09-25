@@ -62,16 +62,46 @@ component to update. Network failures retain a separate Reconnect action.
 Kikoto does not silently install Android packages. Opening a Release and
 installing its APK remains an explicit user-confirmed Android system flow.
 
-## First Library Scan
+## First Library Setup
 
-1. Put supported audio work folders under `data/`.
-2. Start the Docker stack.
-3. Open the frontend.
-4. Run the local library scan from Workflows; it discovers local works and
-   updates local source presence without waiting for provider metadata.
-5. Optionally run metadata sync as its own workflow to enrich detected works,
-   or enable the scan's disabled-by-default `Follow-up run` option to queue it
-   after the scan completes.
+1. Put supported audio work folders under `data/`, or mount each storage disk
+   as a folder of `data/` (see below).
+2. Start the Docker stack and open the frontend.
+3. After the administrator account exists, **Set up your library** opens:
+   - Choose **Standard** (the whole `data/` directory is one library) or
+     **Storage pools** (each selected first-level folder of `data/` is its own
+     disk or cloud drive), and in pool mode the **Fetch pool** that receives
+     new Fetches. The mode is fixed once local works are found.
+   - Scan the library. The scan discovers local works without waiting for
+     provider metadata.
+   - Optionally start metadata sync, which runs in the background.
+   - Decide whether scans run on startup and when folders change. Both start
+     off on a new install; they can be turned on later in Workflows.
+
+**Later** closes the setup until the next visit. An instance upgraded from an
+earlier release keeps the standard layout and its scan triggers, and does not
+show this setup.
+
+### Storage Pools
+
+Mount each disk or cloud drive as its own folder of the data directory, for
+example:
+
+```yaml
+volumes:
+  - ./config:/config
+  - ./cache:/cache
+  - ./data:/data
+  - /mnt/disk1:/data/disk1
+  - /mnt/cloud:/data/cloud
+```
+
+Kikoto writes a `.kikoto-pool` marker into each selected folder. When a disk is
+not mounted, its folder is empty and has no marker, so the pool is shown as
+offline and scans leave its works unchanged instead of reporting them missing.
+Fetch stages and publishes inside the pool that receives the files, so each
+publication is a rename on one disk. Choose a Fetch pool in Settings -> Library
+before fetching; until then Fetch explains what to configure.
 
 ## Validate The Build
 

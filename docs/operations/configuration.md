@@ -16,6 +16,7 @@ does not update its environment.
 | --- | --- | --- |
 | `KIKOTO_HTTP_ADDR` | `127.0.0.1:7659` | Backend listen address. |
 | `KIKOTO_DB_PATH` | `../config/kikoto.db` | SQLite database path. |
+| `KIKOTO_DB_BACKUP_DIR` | `backups` beside the database | Verified database backups; see [Database backups](database.md#backups). |
 | `KIKOTO_DATA_ROOT` | `../data` | Local media library root. |
 | `KIKOTO_CACHE_ROOT` | `../cache` | Runtime cache root. |
 | `KIKOTO_STATIC_DIR` | Empty | Frontend asset directory; empty disables static file serving. |

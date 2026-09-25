@@ -6,9 +6,30 @@ import {
   hasTransferProgress,
   parseWorkflowTimestamp,
   runDurationMs,
+  runTitle,
   transferProgress,
   transferRate,
 } from "./runPresentation";
+
+describe("workflow run titles", () => {
+  const t = (key: string, options?: Record<string, unknown>) =>
+    key === "workflowPage.fetchRunTitle" ? `Fetch ${String(options?.code)}` : String(options?.defaultValue ?? key);
+
+  it("names a Fetch after the work it downloads", () => {
+    expect(
+      runTitle({ workflowCode: "remote_work_fetch", displayName: "Fetch remote work", workCode: "RJ00000001" }, t),
+    ).toBe("Fetch RJ00000001");
+  });
+
+  it("keeps the workflow name for other runs and for Fetches recorded without a code", () => {
+    expect(runTitle({ workflowCode: "remote_work_fetch", displayName: "Fetch remote work", workCode: "" }, t)).toBe(
+      "Fetch remote work",
+    );
+    expect(runTitle({ workflowCode: "local_library_scan", displayName: "Scan local library" }, t)).toBe(
+      "Scan local library",
+    );
+  });
+});
 
 describe("workflow run timestamps", () => {
   it("reads zoneless database timestamps as UTC", () => {

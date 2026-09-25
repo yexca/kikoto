@@ -496,6 +496,7 @@ export const surfaceKorean = {
       voiceResults: "성우 검색 결과",
       searching: "검색 중",
     },
+    fetchRunTitle: "{{code}} 가져오기",
     builtInDefinitions: {
       circle_follow: {
         name: "서클 팔로우",
@@ -518,6 +519,10 @@ export const surfaceKorean = {
       cache_maintenance: {
         name: "미디어 캐시 유지 관리",
         description: "안전 유예 기간이 지나면 참조되지 않는 관리 캐시 파일을 제거합니다.",
+      },
+      database_backup: {
+        name: "데이터베이스 백업",
+        description: "SQLite 데이터베이스의 검증된 복사본을 옆에 쓰고 최근 복사본을 일정 수 보관합니다.",
       },
       database_optimize: {
         name: "데이터베이스 최적화",
@@ -701,6 +706,7 @@ export const surfaceKorean = {
       remote_popular_collection: "원격 인기",
       dlsite_popular_collection: "DLsite 인기",
       availability_watch: "가용성 모니터링",
+      remote_work_fetch: "가져오기",
       circle_follow: "서클 팔로우",
       series_follow: "시리즈 팔로우",
       voice_follow: "성우 팔로우",
@@ -1465,6 +1471,13 @@ export const surfaceKorean = {
   },
 
   remoteFetch: {
+    destination: {
+      library_not_configured: "작품을 가져오기 전에 라이브러리를 설정하세요.",
+      fetch_pool_required: "작품을 가져오기 전에 Fetch 스토리지 풀을 선택하세요.",
+      fetch_pool_offline: "Fetch 스토리지 풀이 오프라인입니다. 디스크가 마운트되었는지 확인하세요.",
+      library_offline: "라이브러리 폴더를 사용할 수 없습니다. 데이터 디렉터리가 마운트되었는지 확인하세요.",
+      openSettings: "라이브러리 설정",
+    },
     title: "Fetch 선택",
     demoPreview: "데모 미리보기",
     description: "정확한 언어 에디션, 원격 소스, 최종 게시 디렉터리를 비교합니다.",

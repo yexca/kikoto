@@ -28,6 +28,11 @@ var migratedTestDatabaseImage = sync.OnceValues(func() ([]byte, error) {
 	if err := storage.Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
 		return nil, err
 	}
+	// Tests start from a configured standard library, like an instance that
+	// finished onboarding. Onboarding tests clear the mode themselves.
+	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('library_mode', '"standard"')`); err != nil {
+		return nil, err
+	}
 	var busy, logPages, checkpointed int
 	if err := db.QueryRow("PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &logPages, &checkpointed); err != nil {
 		return nil, err

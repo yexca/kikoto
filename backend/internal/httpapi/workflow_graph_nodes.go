@@ -638,7 +638,7 @@ func (s *Server) enqueuePreparedGraphFetches(ctx context.Context, runID, userID 
 			continue
 		}
 		targetRoot := strings.ReplaceAll(limits.targetTemplate, "<work_code>", item.Candidate.Code)
-		result, err := s.enqueueRemoteWorkSave(ctx, item.Candidate.SourceID, item.Candidate.Code, item.Paths, nil, targetRoot, item.RequestID, nil, limits.minFreeBytes, userID, jobPriority)
+		result, err := s.enqueueRemoteWorkSave(withRemoteFetchOrigin(ctx, "workflow_graph"), item.Candidate.SourceID, item.Candidate.Code, item.Paths, nil, targetRoot, item.RequestID, nil, limits.minFreeBytes, userID, jobPriority)
 		if err != nil {
 			item.Candidate.Reason = "fetch_queue_failed"
 			state.failed = append(state.failed, item.Candidate)

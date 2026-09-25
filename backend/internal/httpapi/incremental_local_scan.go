@@ -23,9 +23,21 @@ func (s *Server) executeIncrementalLocalScanJob(ctx context.Context, job workflo
 		"root": payload.Root, "scan_mode": localScanModeIncremental, "changed_path_count": len(payload.ChangedPaths),
 	}, 0, 0)
 
+	scope, err := s.localScanScope(ctx, payload.Root, payload.ScanDepth)
+	if err != nil {
+		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		return err
+	}
+	if len(scope.online) == 0 {
+		_ = s.failClaimedWorkflowJob(ctx, job, errLibraryUnavailable.Error())
+		return errLibraryUnavailable
+	}
+	// Changes outside the online pools, such as an unregistered folder or an
+	// offline pool's empty mount point, cannot change any work's state.
+	payload.ChangedPaths = scope.filterChangedPaths(payload.ChangedPaths)
 	workFolders, scanSummary, err := localfs.DiscoverChangedFolders(
 		payload.Root,
-		localfs.Options{ScanDepth: payload.ScanDepth},
+		localfs.Options{ScanDepth: scope.walkDepth()},
 		payload.ChangedPaths,
 	)
 	if err != nil {
@@ -33,11 +45,14 @@ func (s *Server) executeIncrementalLocalScanJob(ctx context.Context, job workflo
 		payload.FullFallbackReason = "changed_path_resolution_failed"
 		return s.executeFullLocalScanJob(ctx, job, payload)
 	}
+	workFolders = scope.filterFolders(workFolders)
+	scanSummary.DetectedWorks = len(workFolders)
 	knownRoots, err := s.loadKnownLocalWorkRoots(ctx)
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
+	knownRoots = scope.filterKnownRoots(knownRoots)
 	if incrementalLocalScanNeedsFullFallback(payload.Root, payload.ChangedPaths, workFolders, scanSummary, knownRoots) {
 		payload.ScanMode = localScanModeFull
 		payload.FullFallbackReason = "duplicate_work_roots"
@@ -70,6 +85,10 @@ func (s *Server) executeIncrementalLocalScanJob(ctx context.Context, job workflo
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
+	}
+	scope.applyOfflineResult(&result)
+	if len(scope.offline) > 0 {
+		runSummary["offline_pools"] = scope.offlinePoolSummaries()
 	}
 	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "finishing", map[string]any{
 		"detected_works": result.DetectedWorks, "scan_mode": localScanModeIncremental,

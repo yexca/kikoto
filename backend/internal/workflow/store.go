@@ -79,9 +79,9 @@ func buildRunListConditions(options ListRunsOptions) (string, string, []any) {
 		args = append(args, options.WorkflowCode)
 	}
 	if query := strings.ToLower(strings.TrimSpace(options.Query)); query != "" {
-		conditions = append(conditions, "(LOWER(run.workflow_code) LIKE ? OR LOWER(run.display_name) LIKE ? OR LOWER(run.trigger_reason) LIKE ?)")
+		conditions = append(conditions, "(LOWER(run.workflow_code) LIKE ? OR LOWER(run.display_name) LIKE ? OR LOWER(run.trigger_reason) LIKE ? OR LOWER("+runWorkCodeSQL+") LIKE ?)")
 		like := "%" + query + "%"
-		args = append(args, like, like, like)
+		args = append(args, like, like, like, like)
 	}
 	conditions, args = appendRunVisibility(conditions, args, options.ViewerUserID, options.CanViewAll)
 	baseWhereSQL := strings.Join(conditions, " AND ")
@@ -307,7 +307,7 @@ func scanRun(row rowScanner) (RunRecord, error) {
 		&item.JobCount, &item.CompletedJobs, &item.FailedJobs, &item.SkippedJobs,
 		&item.ProgressBytesCurrent, &item.ProgressBytesTotal, &item.ProgressBytesUnknownItems,
 		&item.CandidateCount, &item.PendingCandidates, &item.AcceptedCandidates, &item.RejectedCandidates,
-		&item.ReviewedAt, &reviewedByUserID, &definitionID, &triggerID, &item.PendingMetadata,
+		&item.ReviewedAt, &reviewedByUserID, &definitionID, &triggerID, &item.PendingMetadata, &item.WorkCode,
 	)
 	item.ReviewedByUserID, item.DefinitionID, item.TriggerID = sqlutil.Int64(reviewedByUserID), sqlutil.Int64(definitionID), sqlutil.Int64(triggerID)
 	return item, err
@@ -356,5 +356,9 @@ func runSelectSQL(reviewFilter string) string {
 		(SELECT COUNT(*) FROM workflow_candidate WHERE workflow_candidate.workflow_run_id = run.id AND workflow_candidate.status = 'rejected'),
 		COALESCE((SELECT review.reviewed_at FROM workflow_run_review AS review WHERE review.workflow_run_id = run.id AND review.status = 'reviewed'` + reviewFilter + ` ORDER BY review.reviewed_at DESC, review.id DESC LIMIT 1), ''),
 		(SELECT review.user_id FROM workflow_run_review AS review WHERE review.workflow_run_id = run.id AND review.status = 'reviewed'` + reviewFilter + ` ORDER BY review.reviewed_at DESC, review.id DESC LIMIT 1),
-		run.workflow_definition_id, run.trigger_id, ` + pendingMetadataSQL
+		run.workflow_definition_id, run.trigger_id, ` + pendingMetadataSQL + `, ` + runWorkCodeSQL
 }
+
+// runWorkCodeSQL is the work a Fetch run downloads, so Activity can name it.
+const runWorkCodeSQL = `CASE WHEN run.workflow_code = 'remote_work_fetch' AND json_valid(run.input_json)
+		THEN UPPER(COALESCE(json_extract(run.input_json, '$.work_code'), '')) ELSE '' END`

@@ -487,6 +487,7 @@ export const surfaceHant = {
       voiceResults: "聲優搜尋結果",
       searching: "正在搜尋",
     },
+    fetchRunTitle: "取得 {{code}}",
     builtInDefinitions: {
       circle_follow: {
         name: "關注社團",
@@ -502,6 +503,10 @@ export const surfaceHant = {
       },
       availability_watch: { name: "可用性監視", description: "監視作品代碼，並在遠端來源可用時執行設定的操作。" },
       cache_maintenance: { name: "維護媒體快取", description: "在安全寬限期後移除未引用的託管快取檔案。" },
+      database_backup: {
+        name: "備份資料庫",
+        description: "在資料庫旁寫入經過驗證的 SQLite 副本，並保留有限數量的最近副本。",
+      },
       database_optimize: {
         name: "最佳化資料庫",
         description: "壓縮 SQLite 資料庫，重新整理查詢統計資訊，並截斷預寫日誌。",
@@ -647,6 +652,7 @@ export const surfaceHant = {
       remote_popular_collection: "遠端熱門",
       dlsite_popular_collection: "DLsite 熱門",
       availability_watch: "到貨監控",
+      remote_work_fetch: "取得",
       circle_follow: "關注社團",
       series_follow: "關注系列",
       voice_follow: "關注聲優",
@@ -1393,6 +1399,13 @@ export const surfaceHant = {
   },
 
   remoteFetch: {
+    destination: {
+      library_not_configured: "請先設定媒體庫，再取得作品。",
+      fetch_pool_required: "請先選擇 Fetch 儲存池，再取得作品。",
+      fetch_pool_offline: "Fetch 儲存池離線。請檢查它的磁碟是否已掛載。",
+      library_offline: "媒體庫資料夾無法使用。請檢查資料目錄是否已掛載。",
+      openSettings: "媒體庫設定",
+    },
     title: "取得選取項目",
     demoPreview: "示範預覽",
     description: "比較確切的語言版本、遠端來源和最終發佈目錄。",

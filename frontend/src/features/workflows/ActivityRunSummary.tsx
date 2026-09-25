@@ -15,6 +15,7 @@ import {
   parseWorkflowTimestamp,
   runDurationMs,
   runStatusTone,
+  runTitle,
 } from "./runPresentation";
 import { useNow } from "./useRunClock";
 
@@ -47,9 +48,7 @@ export function ActivityRunSummary({ run }: { run: WorkflowRun }) {
       </span>
       <div className="min-w-0 flex-1 space-y-0.5">
         <div className="flex min-w-0 items-baseline justify-between gap-3">
-          <span className="min-w-0 truncate text-sm font-medium">
-            {t(`workflowPage.builtInDefinitions.${run.workflowCode}.name`, { defaultValue: run.displayName })}
-          </span>
+          <span className="min-w-0 truncate text-sm font-medium">{runTitle(run, t)}</span>
           {moment && (
             <time
               className="shrink-0 text-xs tabular-nums text-muted-foreground"

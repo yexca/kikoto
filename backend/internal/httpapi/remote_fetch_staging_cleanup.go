@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/storagepool"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -29,9 +30,10 @@ type remoteFetchStagingCleanupResult struct {
 }
 
 type fetchStagingCleanupCandidate struct {
-	ManifestID int64
-	RunID      int64
-	State      string
+	ManifestID  int64
+	RunID       int64
+	State       string
+	StagingRoot string
 }
 
 type removedFetchStaging struct {
@@ -57,7 +59,7 @@ func (s *Server) cleanupExpiredRemoteFetchStaging(ctx context.Context, now time.
 	retentionDays := s.configuredFetchStagingRetentionDays(ctx)
 	cutoff := now.UTC().Add(-time.Duration(retentionDays) * 24 * time.Hour).Format("2006-01-02 15:04:05")
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT manifest.id, manifest.workflow_run_id, manifest.state
+		SELECT manifest.id, manifest.workflow_run_id, manifest.state, manifest.staging_root
 		FROM remote_fetch_manifest AS manifest
 		INNER JOIN workflow_run AS run ON run.id = manifest.workflow_run_id
 		WHERE manifest.staging_cleaned_at IS NULL
@@ -72,7 +74,7 @@ func (s *Server) cleanupExpiredRemoteFetchStaging(ctx context.Context, now time.
 	candidates := []fetchStagingCleanupCandidate{}
 	for rows.Next() {
 		var candidate fetchStagingCleanupCandidate
-		if err := rows.Scan(&candidate.ManifestID, &candidate.RunID, &candidate.State); err != nil {
+		if err := rows.Scan(&candidate.ManifestID, &candidate.RunID, &candidate.State, &candidate.StagingRoot); err != nil {
 			_ = rows.Close()
 			return remoteFetchStagingCleanupResult{}, err
 		}
@@ -94,8 +96,7 @@ func (s *Server) cleanupExpiredRemoteFetchStaging(ctx context.Context, now time.
 		if !claimed {
 			continue
 		}
-		stagingRelative := filepath.ToSlash(filepath.Join(".kikoto-staging", strconv.FormatInt(candidate.RunID, 10)))
-		stagingPath, err := safeDataPath(s.cfg.DataRoot, stagingRelative)
+		stagingPath, err := fetchStagingRunPath(s.cfg.DataRoot, candidate)
 		if err == nil {
 			var removed removedFetchStaging
 			removed, err = removeFetchStagingTree(s.cfg.DataRoot, stagingPath)
@@ -206,6 +207,20 @@ func (s *Server) blockRemoteFetchStagingCleanup(ctx context.Context, candidate f
 		return err
 	}
 	return tx.Commit()
+}
+
+// fetchStagingRunPath is the run directory that holds a Fetch's staging root.
+// A manifest records it inside the target's pool. Only the fixed
+// <pool>/.kikoto-staging/<run> shape is taken from the manifest; any other
+// recorded value falls back to the data-root run directory of earlier
+// releases, so a manifest can never point cleanup at another directory.
+func fetchStagingRunPath(dataRoot string, candidate fetchStagingCleanupCandidate) (string, error) {
+	runDirectory := ".kikoto-staging/" + strconv.FormatInt(candidate.RunID, 10)
+	relative := strings.TrimSuffix(strings.Trim(filepath.ToSlash(candidate.StagingRoot), "/"), "/work")
+	if poolPath, rest, found := strings.Cut(relative, "/"); !found || rest != runDirectory || !storagepool.ValidName(poolPath) {
+		relative = runDirectory
+	}
+	return safeDataPath(dataRoot, relative)
 }
 
 func removeFetchStagingTree(dataRoot string, root string) (removedFetchStaging, error) {

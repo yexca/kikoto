@@ -238,7 +238,9 @@ existing visibility, cancel, retry, and Activity behavior of built-in runs.
 ## Local Folder Trigger
 
 `local_library_scan` owns one fixed `filesystem_event` trigger created by the
-database migration and enabled by default. The API allows pause, resume, and a
+database migration and enabled by default. A fresh install turns it and the
+Startup scan off until [library onboarding](#library-layout-and-onboarding)
+chooses. The API allows pause, resume, and a
 choice between `incremental` and `full` scan mode. Incremental is the default.
 It rejects manual creation, identity or name changes, conversion, duplication,
 and deletion.
@@ -386,6 +388,39 @@ spends one resume, or it fails. Queued jobs keep waiting, runs are repaired as
 the manual command repairs them but without its one-minute wait, and
 interrupted Fetch publications are reconciled from the staging, target, and
 backup directories.
+
+## Library Layout and Onboarding
+
+The library is either one standard pool (the data root) or registered storage
+pools (first-level folders of the data root). `app_setting` holds
+`library_mode`, `storage_pools` (path and marker ID), `fetch_pool`, and the
+standard pool's marker ID; paths in the database stay relative to the data
+root, so a pool is the first path segment in pool mode and no schema changes.
+`GET/PUT /api/library/layout`, `POST /api/library/pools/reconnect`, and
+`POST /api/library/onboarding/complete` require `sources:write`.
+
+At startup, before this start is recorded, an unconfigured instance that ran an
+earlier release (`schema_state.last_successful_app_version`) or already holds
+local works becomes `standard` with onboarding complete and keeps its triggers.
+A fresh install stays unconfigured and turns the local scan's Startup trigger
+and folder watcher off once; onboarding chooses the layout, runs a scan and
+optional metadata sync, and sets both triggers. The mode can change only while
+the library holds no local works; pools that hold works cannot be removed.
+
+Each scan computes its scope from the online pools and the effective depth.
+Depth counts inside a pool and is at least the deepest Fetch save template or
+active `managed_fetch` root. Discovery walks only online pools; missing-marking
+of folders and presences applies only to recorded roots inside that scope.
+Offline pools make a full or incremental scan `partial` with an
+`offline_pools` summary; no online pool fails the scan. Fetch planning resolves
+new works into the Fetch pool and existing folders in their own pool, rejects
+`library_not_configured`, `fetch_pool_required`, `fetch_pool_offline`, and
+`library_offline` with `409`, records the pool as `transactionPool` in the
+plan, and creates staging, backup, and quarantine entries under that pool.
+
+`remote_work_fetch` runs are named `Fetch <code>`, expose `workCode` in run
+records, match Activity search by code, and record the queuing workflow as
+their trigger reason. The Workflows page lists Fetch as a read-only tab.
 
 ## Source Availability
 

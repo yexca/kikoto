@@ -45,7 +45,9 @@ func run() error {
 	}
 	defer db.Close()
 
-	if err := storage.MigrateFS(db, migrations.Files, buildinfo.Version); err != nil {
+	if err := storage.MigrateFSWithOptions(db, migrations.Files, buildinfo.Version, storage.MigrateOptions{
+		BeforeUpgrade: preMigrationBackup(ctx, db, cfg.DatabaseBackupDir),
+	}); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
 	}
 	go storage.MonitorPool(ctx, db, storage.PoolMonitorInterval)
@@ -57,6 +59,11 @@ func run() error {
 	if !cfg.IsDemo() {
 		if err := server.EnsureLocalSource(ctx); err != nil {
 			return fmt.Errorf("initialize local source: %w", err)
+		}
+		// Reads the release of the previous start, so it runs before this
+		// start is recorded.
+		if err := server.PrepareLibraryLayout(ctx); err != nil {
+			return fmt.Errorf("prepare library layout: %w", err)
 		}
 		if err := server.RecoverInterruptedWorkflows(ctx); err != nil {
 			return fmt.Errorf("recover interrupted workflows: %w", err)

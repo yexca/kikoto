@@ -55,6 +55,7 @@ import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { isWorkCodePath } from "@/lib/workCode";
 import { workDetailCodeFromLocation } from "@/app/workDetailNavigation";
 import { preloadWorkDetail } from "@/features/work-detail/lazyWorkDetail";
+import { LibraryOnboarding } from "@/features/library-setup/LibraryOnboarding";
 import { useLocale } from "@/i18n/LocaleProvider";
 import type { UiLocale } from "@/i18n";
 import {
@@ -375,6 +376,7 @@ function AuthenticatedApp() {
   return (
     <PlayerProvider key={clientStorageScope}>
       <RemoteTrackWorkflowBridge />
+      <LibraryOnboarding />
       <div
         className={cx(
           "app-shell min-h-dvh bg-background lg:grid",

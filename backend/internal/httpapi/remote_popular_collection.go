@@ -332,7 +332,7 @@ func (s *Server) dispatchRemotePopularCandidate(ctx context.Context, job workflo
 		}
 		outcome.workID, outcome.tracked = workID, workID > 0
 	} else {
-		fetchResult, err := s.enqueueRemoteWorkSave(ctx, source.ID, code, []string{}, nil, "", "", nil, 0, payload.UserID, workflow.JobPriorityBackground)
+		fetchResult, err := s.enqueueRemoteWorkSave(withRemoteFetchOrigin(ctx, "remote_popular_collection"), source.ID, code, []string{}, nil, "", "", nil, 0, payload.UserID, workflow.JobPriorityBackground)
 		if err != nil {
 			outcome.failure = fmt.Sprintf("%s: %s", code, err.Error())
 			return outcome

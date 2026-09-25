@@ -495,6 +495,7 @@ export const surfaceJapanese = {
       voiceResults: "声優の検索結果",
       searching: "検索中",
     },
+    fetchRunTitle: "{{code}} を取得",
     builtInDefinitions: {
       circle_follow: {
         name: "サークルをフォロー",
@@ -517,6 +518,10 @@ export const surfaceJapanese = {
       cache_maintenance: {
         name: "メディアキャッシュを管理",
         description: "安全な猶予期間後に未参照の管理キャッシュファイルを削除します。",
+      },
+      database_backup: {
+        name: "データベースをバックアップ",
+        description: "SQLite データベースの検証済みコピーを隣に書き込み、最近のコピーを一定数保持します。",
       },
       database_optimize: {
         name: "データベースを最適化",
@@ -703,6 +708,7 @@ export const surfaceJapanese = {
       remote_popular_collection: "リモート人気",
       dlsite_popular_collection: "DLsite 人気",
       availability_watch: "配信状況の監視",
+      remote_work_fetch: "取得",
       circle_follow: "サークルフォロー",
       series_follow: "シリーズフォロー",
       voice_follow: "声優フォロー",
@@ -1467,6 +1473,14 @@ export const surfaceJapanese = {
   },
 
   remoteFetch: {
+    destination: {
+      library_not_configured: "作品を取得する前にライブラリを設定してください。",
+      fetch_pool_required: "作品を取得する前に Fetch ストレージプールを選択してください。",
+      fetch_pool_offline: "Fetch ストレージプールがオフラインです。ディスクがマウントされているか確認してください。",
+      library_offline:
+        "ライブラリフォルダーを利用できません。データディレクトリがマウントされているか確認してください。",
+      openSettings: "ライブラリ設定",
+    },
     title: "Fetch の選択",
     demoPreview: "デモプレビュー",
     description: "正確な言語版、リモートソース、最終公開ディレクトリを比較します。",
