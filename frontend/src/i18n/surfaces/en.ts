@@ -427,7 +427,7 @@ export const surfaceEnglish = {
       initialBackoff: "Initial 429 backoff",
       initialBackoffDescription: "First retry delay after a remote rate-limit response.",
       maximumBackoff: "Maximum backoff",
-      maximumBackoffDescription: "Upper bound for repeated rate-limit retries.",
+      maximumBackoffDescription: "Upper bound for rate-limit waits, including a source's Retry-After.",
       save: "Save configuration",
       transcodeCache: "Transcode cache",
       onDisk: "On disk",

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -30,6 +31,22 @@ type sourceRequestLane struct {
 var errSourceRequestQueueFull = errors.New("remote request queue is full")
 
 const sourceRequestQueueSize = 32
+
+// sourceOriginBlockInlineWait is the longest origin block a request waits out
+// in place. A longer block fails fast with sourceBackoffError so the caller
+// releases its lane slot, and a workflow job releases the single job worker,
+// instead of sleeping until the origin accepts requests again.
+const sourceOriginBlockInlineWait = 5 * time.Second
+
+// sourceBackoffError reports that a request was not sent because its origin
+// asked clients to wait. Until is bounded by remote_max_backoff_seconds.
+type sourceBackoffError struct {
+	Until time.Time
+}
+
+func (e sourceBackoffError) Error() string {
+	return "remote source asked to retry later"
+}
 
 type sourceOriginState struct {
 	mu           sync.Mutex
@@ -168,6 +185,10 @@ func (t *sourceGateTransport) RoundTrip(request *http.Request) (*http.Response, 
 		delay = t.server.remoteRequestDelayDuration(request.Context())
 	}
 	waitUntil := origin.blockedUntilValue()
+	if time.Until(waitUntil) > sourceOriginBlockInlineWait {
+		release()
+		return nil, sourceBackoffError{Until: waitUntil}
+	}
 	lane.mu.Lock()
 	if next := lane.lastStarted.Add(delay); next.After(waitUntil) {
 		waitUntil = next
@@ -188,11 +209,15 @@ func (t *sourceGateTransport) RoundTrip(request *http.Request) (*http.Response, 
 		return nil, err
 	}
 	if isRetryableRemoteStatus(response.StatusCode) {
-		blockedFor := retryAfterDuration(response.Header.Get("Retry-After"))
-		if blockedFor <= 0 {
-			blockedFor = t.server.remoteBackoffDuration(request.Context(), response, 0)
-		}
+		// Retry-After is untrusted input; remoteBackoffDuration bounds it by
+		// remote_max_backoff_seconds so one response cannot stall the origin.
+		blockedFor := t.server.remoteBackoffDuration(request.Context(), response, 0)
 		origin.blockFor(blockedFor)
+		slog.Warn("remote source origin backing off",
+			"origin", originKey,
+			"status", response.StatusCode,
+			"requested", outbound.RetryAfter(response.Header.Get("Retry-After"), time.Now()),
+			"blocked_for", blockedFor)
 	}
 	body := &sourceGateBody{ReadCloser: response.Body, release: release, done: make(chan struct{})}
 	response.Body = body
