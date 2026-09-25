@@ -132,6 +132,7 @@ func TestResolveWorkEntityLinkUsesPersistedRelationshipsWithoutFetching(t *testi
 		t.Run(test.kind, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, "/api/works/RJ00000000/entity-links/resolve", strings.NewReader(`{"kind":"`+test.kind+`","name":"`+test.name+`"}`))
 			request.SetPathValue("code", "RJ00000000")
+			request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"library:read"}}))
 			response := httptest.NewRecorder()
 			server.resolveWorkEntityLink(response, request)
 			if response.Code != http.StatusOK {
@@ -145,5 +146,34 @@ func TestResolveWorkEntityLinkUsesPersistedRelationshipsWithoutFetching(t *testi
 				t.Fatalf("response = %+v, want route %q without fetch", body, test.want)
 			}
 		})
+	}
+}
+
+// Without metadata:sync the resolver answers from stored relationships only,
+// so a member cannot make the server fetch a work and add its circle.
+func TestResolveWorkEntityLinkDoesNotFetchWithoutMetadataSync(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec("INSERT INTO work (id, primary_code, title) VALUES (10, 'RJ00000000', 'Example Work')"); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	request := httptest.NewRequest(http.MethodPost, "/api/works/RJ00000000/entity-links/resolve", strings.NewReader(`{"kind":"circle","name":"Example Circle"}`))
+	request.SetPathValue("code", "RJ00000000")
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"library:read"}}))
+	response := httptest.NewRecorder()
+	server.resolveWorkEntityLink(response, request)
+	var body struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(response.Body.Bytes(), &body)
+	if response.Code != http.StatusNotFound || body.Code != "entity_not_in_database" {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var parties int
+	if err := db.QueryRow("SELECT COUNT(*) FROM party").Scan(&parties); err != nil {
+		t.Fatal(err)
+	}
+	if parties != 0 {
+		t.Fatalf("member resolve created %d circles, want none", parties)
 	}
 }

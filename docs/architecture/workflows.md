@@ -394,7 +394,10 @@ state. A stored-catalog run and the circle metadata and source nodes require
 a circle that already exists. A voice actor exists only once a synced work
 credits them, so an unknown voice actor page asks a user with
 `metadata:sync` to sync the metadata of any of their works and asks anyone
-else to contact an administrator.
+else to contact an administrator. A work's circle, series, or voice link
+resolves from stored relationships for any signed-in user; fetching the
+work's metadata or its circle's catalog to find a missing link requires
+`metadata:sync`, and anyone else gets `404` with `entity_not_in_database`.
 
 The workflow searches the display name and every confirmed alias against each
 enabled compatible source. It follows the source-reported result count through
