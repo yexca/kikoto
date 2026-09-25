@@ -383,6 +383,19 @@ catalogs expose Never, Attention, or Synced from their last successful pull and
 the configured freshness window. An authorized user can start an explicit First
 pull or manual refresh through the same follow workflow.
 
+Reading a circle, changing its per-user state, and a detail refresh never
+create one. An unknown maker id returns `404` with `circle_not_in_database`;
+the page offers a user with `metadata:sync` and `workflows:run` the
+`circle_follow` run form with that id filled in, and asks anyone else to
+contact an administrator. Only a `circle_catalog` fetch adds the circle: it
+starts as an unfetched placeholder, and a failed first fetch removes that
+placeholder unless it has since gained a name, catalog, relation, or user
+state. A stored-catalog run and the circle metadata and source nodes require
+a circle that already exists. A voice actor exists only once a synced work
+credits them, so an unknown voice actor page asks a user with
+`metadata:sync` to sync the metadata of any of their works and asks anyone
+else to contact an administrator.
+
 The workflow searches the display name and every confirmed alias against each
 enabled compatible source. It follows the source-reported result count through
 all pages and applies no product-level page or result maximum. Outbound response

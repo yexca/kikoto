@@ -87,6 +87,7 @@ import {
   OptionField,
   RunBlockerNote,
   RunOptionRows,
+  RunPrefillNote,
   SegmentedControl,
   SwitchControl,
   WorkflowRunButton,
@@ -2264,14 +2265,18 @@ function PresetRunPanel({
   onRun: (inputs: Record<string, unknown>) => Promise<void>;
   onTriggerRunOptionsChange?: (options: CurrentTriggerRunOptions) => void;
 }) {
-  const [values, setValues] = useState<PresetFormValues>(() => {
-    // A detail page's Follow shortcut prefills this preset's target.
-    const prefill = readWorkflowRunPrefill(preset.code);
-    const targets = Object.fromEntries(
-      Object.entries(prefill).filter(([key]) => preset.parameters.some((parameter) => parameter.key === key)),
-    );
-    return Object.keys(targets).length > 0 ? presetValuesFromInputs(preset, targets) : presetDefaultValues(preset);
-  });
+  // A detail page's Follow shortcut prefills this preset's target; the note
+  // keeps saying so after the link's query is cleared.
+  const [prefilledTargets] = useState(() =>
+    Object.entries(readWorkflowRunPrefill(preset.code)).filter(([key]) =>
+      preset.parameters.some((parameter) => parameter.key === key),
+    ),
+  );
+  const [values, setValues] = useState<PresetFormValues>(() =>
+    prefilledTargets.length > 0
+      ? presetValuesFromInputs(preset, Object.fromEntries(prefilledTargets))
+      : presetDefaultValues(preset),
+  );
   useEffect(() => clearWorkflowRunPrefill(), []);
   useEffect(() => {
     onTriggerRunOptionsChange?.({ code: preset.code, presetValues: values });
@@ -2296,6 +2301,18 @@ function PresetRunPanel({
     ),
     options: (
       <div className="grid gap-5">
+        {prefilledTargets.length > 0 && (
+          <RunPrefillNote>
+            {workflowCopy("prefillNotice", {
+              // The voice picker names its target; a circle id is shown as typed.
+              fields: prefilledTargets
+                .map(([key, value]) =>
+                  key === "personId" ? presetParameterLabel(key) : `${presetParameterLabel(key)} ${value}`,
+                )
+                .join(", "),
+            })}
+          </RunPrefillNote>
+        )}
         <PresetParameterFields idPrefix="preset-run" preset={preset} values={values} onChange={setValues} />
         {blockers.length > 0 && <RunBlockerNote>{presetBlockerText(blockers[0])}</RunBlockerNote>}
       </div>

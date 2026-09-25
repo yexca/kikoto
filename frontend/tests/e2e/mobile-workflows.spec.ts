@@ -878,6 +878,51 @@ test("workflow deep links do not override a later definition tab selection", asy
   await expect(page.getByRole("heading", { name: "Availability Watch", exact: true })).toHaveCount(0);
 });
 
+test("a follow shortcut fills the circle id and says it did", async ({ page }) => {
+  await mockWorkflows(page);
+  await page.route("**/api/workflow-*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/workflow-definitions") {
+      await route.fulfill({
+        json: [
+          ...systemDefinitions,
+          { ...systemDefinitions[0], id: 8, code: "circle_follow", displayName: "Follow a circle", description: "" },
+        ],
+      });
+      return;
+    }
+    if (url.pathname === "/api/workflow-presets") {
+      await route.fulfill({
+        json: [
+          {
+            code: "circle_follow",
+            displayName: "Follow a circle",
+            description: "",
+            target: "circle",
+            defaultTagTemplate: "{date}_circle_{target}",
+            parameters: [
+              { key: "circleId", kind: "circle_id", group: "input", required: true },
+              { key: "metadata", kind: "boolean", group: "action", required: false, default: true },
+            ],
+          },
+        ],
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/workflows?workflow=circle_follow&circleId=RG09999");
+
+  await expect(page.getByRole("note")).toHaveText(
+    "Auto-filled Circle ID RG09999 from the page you came from. Check it before running.",
+  );
+  await expect(page.getByLabel("Circle ID")).toHaveValue("RG09999");
+  // The consumed prefill leaves the URL, but the note stays for this form.
+  await expect(page).toHaveURL(/\/workflows\?workflow=circle_follow$/);
+  await expect(page.getByRole("note")).toBeVisible();
+});
+
 test("local scan folder watcher exposes incremental and full scan modes", async ({ page }) => {
   const triggerPayloads: Array<Record<string, unknown>> = [];
   await mockWorkflows(page);
