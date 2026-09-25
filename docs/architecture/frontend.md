@@ -197,9 +197,16 @@ modules.
 - Reserve a directory-shaped skeleton with stable height while media is being
   indexed or loaded, then replace it in place without a separate loading card.
 - Build Tree rows and playback queues from one folder-first natural ordering.
-- Treat Resume as the only persisted-position entry point. Ordinary track
-  selection starts at zero, while an active source fallback carries the current
-  in-memory time to the replacement location.
+- Apply a persisted position only through Resume or the restored current queue
+  item. After a reload, that item continues the work cursor when it still points
+  at the same media item and is unfinished, unless the listener has already
+  played or sought in it. Ordinary track selection starts at zero, while an
+  active source fallback carries the current in-memory time, or a start position
+  still waiting for metadata, to the replacement location.
+- A playback instance writes the work cursor only after its start position is
+  applied and the listener has played or sought in it. Page hide, pause, track
+  switches, and the sleep timer must not replace the cursor with the position
+  of an idle or still-loading element.
 
 ## Design and Semantic Contracts
 

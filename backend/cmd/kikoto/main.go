@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
-	"net/http"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
@@ -18,60 +18,60 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("kikoto stopped", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	cfg, err := config.Load()
 	if err != nil {
-		slog.Error("load configuration", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("load configuration: %w", err)
 	}
 	account.SetPasswordCheckConcurrency(cfg.LoginConcurrency)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	// After the first stop signal, restore default signal handling so a second
+	// one ends the process immediately instead of waiting for the drain.
+	context.AfterFunc(ctx, stop)
 
 	db, err := storage.Open(cfg.DatabasePath)
 	if err != nil {
-		slog.Error("open database", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("open database: %w", err)
 	}
 	defer db.Close()
 
 	if err := storage.MigrateFS(db, migrations.Files, buildinfo.Version); err != nil {
-		slog.Error("run migrations", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("run migrations: %w", err)
 	}
 
 	server := httpapi.NewServer(db, cfg)
 	if err := server.LoadAccessPolicy(ctx); err != nil {
-		slog.Error("load access policy", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("load access policy: %w", err)
 	}
 	if !cfg.IsDemo() {
 		if err := server.EnsureLocalSource(ctx); err != nil {
-			slog.Error("initialize local source", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("initialize local source: %w", err)
 		}
 		if err := server.RecoverInterruptedWorkflows(ctx); err != nil {
-			slog.Error("recover interrupted workflows", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("recover interrupted workflows: %w", err)
 		}
 	}
 	if cfg.IsDemo() {
 		if err := server.BootstrapDemo(ctx); err != nil {
-			slog.Error("bootstrap demo user", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("bootstrap demo user: %w", err)
 		}
 	} else if err := server.BootstrapRoot(ctx); err != nil {
-		slog.Error("bootstrap root user", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("bootstrap root user: %w", err)
 	}
 	if err := server.SeedRemoteSourcesFromConfig(ctx); err != nil {
-		slog.Error("seed remote sources", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("seed remote sources: %w", err)
 	}
 	if cfg.IsDemo() {
 		result, err := server.RunDemoStartupWorkflows(ctx)
 		if err != nil {
-			slog.Error("run demo startup workflows", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("run demo startup workflows: %w", err)
 		}
 		slog.Info("demo library scan finished",
 			"status", result.Status,
@@ -83,8 +83,7 @@ func main() {
 		)
 	}
 	if err := storage.RecordSuccessfulStart(db, buildinfo.Version); err != nil {
-		slog.Error("record successful application start", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("record successful application start: %w", err)
 	}
 	if cfg.IsDevelopment() {
 		slog.Warn("dev mode enabled; requests authenticate as root user", "username", cfg.RootUsername)
@@ -92,39 +91,25 @@ func main() {
 	if cfg.IsDemo() {
 		slog.Info("demo mode enabled; requests authenticate as the restricted demo user")
 	}
+
+	listener, err := net.Listen("tcp", cfg.HTTPAddr)
+	if err != nil {
+		return fmt.Errorf("listen: %w", err)
+	}
 	slog.Info("kikoto api listening", "addr", cfg.HTTPAddr)
-	go func() {
+	server.Go(func(ctx context.Context) {
 		if err := server.WarmSearchIndex(ctx); err != nil && ctx.Err() == nil {
 			slog.Warn("warm search index", "error", err)
 		}
-	}()
+	})
 	if !cfg.IsDemo() {
-		go func() {
+		server.Go(func(ctx context.Context) {
 			if err := server.RunStartupWorkflows(ctx); err != nil && ctx.Err() == nil {
 				slog.Error("run startup workflows", "error", err)
 			}
-		}()
-		go server.StartJobRunner(ctx)
+		})
+		server.Go(server.StartJobRunner)
 	}
 
-	httpServer := &http.Server{
-		Addr:              cfg.HTTPAddr,
-		Handler:           server.Routes(),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		IdleTimeout:       90 * time.Second,
-		MaxHeaderBytes:    1 << 20,
-	}
-	go func() {
-		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		if err := httpServer.Shutdown(shutdownCtx); err != nil {
-			slog.Error("graceful shutdown", "error", err)
-		}
-	}()
-	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		slog.Error("http server stopped", "error", err)
-		os.Exit(1)
-	}
+	return serveUntilStopped(ctx, listener, newHTTPServer(server.Routes()), server, cfg.ShutdownTimeout)
 }

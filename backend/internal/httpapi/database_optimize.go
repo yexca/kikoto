@@ -117,6 +117,9 @@ func (s *Server) executeDatabaseOptimizeJob(ctx context.Context, job workflowJob
 		return err
 	}
 	result, err := s.compactDatabase(ctx)
+	if err != nil && shutdownInterrupted(ctx) {
+		return err
+	}
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(context.WithoutCancel(ctx), job, "database optimization failed: "+err.Error())
 		return err

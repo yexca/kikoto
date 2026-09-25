@@ -88,13 +88,17 @@ func (s *Server) executeGraphCircleCatalog(ctx context.Context, runID int64, nod
 		}
 		if mode != "stored" {
 			if _, err := s.runCircleCatalogRefresh(ctx, partyID, circleID, mode, s.newDLsiteClient()); err != nil {
-				cleanupCtx := context.WithoutCancel(ctx)
-				if discarded, discardErr := s.discardUnfetchedCircle(cleanupCtx, partyID); discardErr != nil {
-					slog.Warn("discard unfetched circle", "circle_id", circleID, "error", discardErr)
-				} else if discarded {
-					return graphNodeExecution{}, fmt.Errorf("circle %s was not added: %w", circleID, err)
+				// A stop interrupts the fetch rather than failing it, so it neither
+				// discards the placeholder nor records a failure.
+				if !shutdownInterrupted(ctx) {
+					cleanupCtx := context.WithoutCancel(ctx)
+					if discarded, discardErr := s.discardUnfetchedCircle(cleanupCtx, partyID); discardErr != nil {
+						slog.Warn("discard unfetched circle", "circle_id", circleID, "error", discardErr)
+					} else if discarded {
+						return graphNodeExecution{}, fmt.Errorf("circle %s was not added: %w", circleID, err)
+					}
+					s.recordCircleCatalogRefreshFailure(cleanupCtx, partyID, mode, runID)
 				}
-				s.recordCircleCatalogRefreshFailure(cleanupCtx, partyID, mode, runID)
 				return graphNodeExecution{}, err
 			}
 		}

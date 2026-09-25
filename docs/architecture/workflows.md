@@ -310,6 +310,27 @@ user work such as manual workflows and cleanup uses the middle tier, and
 scheduled/background work uses the default tier. Priority does not preempt a
 job that is already running.
 
+## Service Stop and Restart
+
+On `SIGTERM` or `SIGINT` the service stops claiming jobs, refuses new
+connections, and lets in-flight requests finish within
+`KIKOTO_SHUTDOWN_TIMEOUT_SECONDS`. Streaming playback and live transcoding are
+cancelled after half of that time. The database closes only after the job
+executor and other background work have returned.
+
+A running job interrupted by the stop is settled before exit. A recoverable job
+returns to the queue with its checkpoint and does not spend its resume budget,
+because a requested stop is not a failure; a job that cannot resume from a
+checkpoint fails with the stop reason. Activity records a
+`job.interrupted_by_stop` event in both cases. Fetch publication does not start
+once a stop has begun, and a publication that already started finishes its
+directory swap and records it before the job stops.
+
+Startup recovery remains the path for crashes, forced kills, and a stop that
+exceeds its deadline: running jobs left with a lease are requeued from their
+checkpoints and consume one resume, and interrupted Fetch publications are
+reconciled from the staging, target, and backup directories.
+
 ## Source Availability
 
 Source availability is checked by the backend instead of frontend fan-out.

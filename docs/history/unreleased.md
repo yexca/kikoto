@@ -40,6 +40,17 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   change saves immediately, and a tag you uncheck stays listed until the picker
   closes so it can be checked again.
 
+## Playback
+
+- Reloading or restarting the app no longer resets Resume progress to 0:00. A
+  restored track saves progress only after it starts playing or you seek in it,
+  so hiding the page, locking the device, or switching tracks before that no
+  longer overwrites the saved cursor.
+- A reloaded queue continues its current track from the saved cursor when that
+  cursor points at the same track and is unfinished.
+- A Resume or reload start position that is still loading carries over when
+  playback falls back to another source, instead of restarting at 0:00.
+
 ## Favorites
 
 - Changing lists for selected works no longer replaces each work's existing
@@ -70,6 +81,12 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
 - Expired sessions and old workflow runs are cleaned up automatically shortly
   after startup and then daily, with the same retention rules as manual
   cleanup.
+- Stopping or upgrading the container now shuts down gracefully: in-flight
+  requests finish, and a running workflow job returns to the queue without
+  spending a retry, instead of being recovered as if the service had crashed.
+  The drain is bounded by the new `KIKOTO_SHUTDOWN_TIMEOUT_SECONDS` (default
+  20). The bundled Compose files set `stop_grace_period: 30s`; add the same to
+  a custom Compose file, because Docker's default 10 seconds can kill the drain.
 
 ## Accessibility And Translation
 

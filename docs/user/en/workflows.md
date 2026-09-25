@@ -138,8 +138,9 @@ Workflows make backend actions inspectable.
 - Workers run inside the Kikoto process, so queued jobs make progress only while
   that process is running. Distributed or multi-instance execution is not
   supported.
-- Restart and expired-lease recovery are bounded by each job's retry budget.
-  Manual stale-run recovery marks interrupted non-recoverable work failed for
+- A normal service stop returns a running recoverable job to the queue without
+  spending its retry budget. Recovery after a crash, forced kill, or expired
+  lease is bounded by each job's retry budget. Manual stale-run recovery marks interrupted non-recoverable work failed for
   inspection.
 
 ## Related Docs
