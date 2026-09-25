@@ -482,9 +482,9 @@ func (s *Server) dispatchDueSystemWorkflowTrigger(ctx context.Context, definitio
 	if err != nil || claimed == 0 {
 		return err
 	}
-	go func() {
+	s.goTracked(func() {
 		_ = s.executeSystemWorkflowTrigger(ctx, definition, trigger, "schedule", "scheduled_interval")
-	}()
+	})
 	return nil
 }
 

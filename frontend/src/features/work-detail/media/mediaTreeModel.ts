@@ -309,8 +309,11 @@ export function flattenTracks(root: TreeNode) {
   return tracks;
 }
 
+// localeCompare with options builds a collator per call; sorting is hot enough to share one.
+const naturalTreeNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
 function naturalTreeNameCompare(left: string, right: string) {
-  return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
+  return naturalTreeNameCollator.compare(left, right);
 }
 
 export function flattenTreeFiles(root: TreeNode) {

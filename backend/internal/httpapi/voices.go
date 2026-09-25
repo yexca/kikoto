@@ -11,17 +11,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
-	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
-	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 const voiceRemotePageSize = 48
-const voiceRemoteSourceTimeout = 5 * time.Second
 const unknownVoiceActorName = "unknown"
 
 type voiceSummary struct {
@@ -788,24 +784,18 @@ func (s *Server) loadVoiceCatalogSyncProjections(ctx context.Context, personIDs 
 	if len(personIDs) == 0 {
 		return projections, nil
 	}
-	query, args := int64InQuery(`
+	err := s.queryInt64Batches(ctx, `
 		SELECT person_id, query_json, last_success_at, last_attempt_at, last_status, complete
 		FROM voice_catalog_refresh_state
 		WHERE person_id IN (%s)
-	`, personIDs)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
+	`, personIDs, nil, func(rows *sql.Rows) error {
 		var personID int64
 		var queryJSON string
 		var lastSuccess, lastAttempt sql.NullString
 		var lastStatus string
 		var complete int
 		if err := rows.Scan(&personID, &queryJSON, &lastSuccess, &lastAttempt, &lastStatus, &complete); err != nil {
-			return nil, err
+			return err
 		}
 		projection := voiceCatalogSyncProjection{
 			Exists:        true,
@@ -820,8 +810,9 @@ func (s *Server) loadVoiceCatalogSyncProjections(ctx context.Context, personIDs 
 			projection.Queries = []string{}
 		}
 		projections[personID] = projection
-	}
-	return projections, rows.Err()
+		return nil
+	})
+	return projections, err
 }
 
 func setVoiceCatalogSyncState(item *voiceSummary, projection voiceCatalogSyncProjection, freshnessDays int, now time.Time) {
@@ -1091,7 +1082,7 @@ func (s *Server) loadVoiceLatestWorks(ctx context.Context, personIDs []int64) (m
 			)
 		`
 	}
-	query, args := int64InQuery(`
+	err := s.queryInt64Batches(ctx, `
 		WITH candidates AS (
 			SELECT
 				catalog.person_id,
@@ -1133,23 +1124,18 @@ func (s *Server) loadVoiceLatestWorks(ctx context.Context, personIDs []int64) (m
 		SELECT person_id, primary_code, title, release_date, cover_url
 		FROM ranked
 		WHERE position = 1 AND person_id IN (%s)
-	`, personIDs)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
+	`, personIDs, nil, func(rows *sql.Rows) error {
 		var personID int64
 		var item creatorLatestWork
 		var releaseDate sql.NullString
 		if err := rows.Scan(&personID, &item.PrimaryCode, &item.Title, &releaseDate, &item.CoverURL); err != nil {
-			return nil, err
+			return err
 		}
 		item.ReleaseDate = sqlutil.String(releaseDate)
 		result[personID] = &item
-	}
-	return result, rows.Err()
+		return nil
+	})
+	return result, err
 }
 
 func (s *Server) loadVoiceUserTagsBatch(ctx context.Context, userID int64) (map[int64][]voiceUserTag, error) {
@@ -1520,158 +1506,6 @@ func mergeVoiceSourceStats(left []circleSourceStat, right []circleSourceStat) []
 	return result
 }
 
-func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, voiceName string) ([]voiceRemoteSourceSet, error) {
-	if isUnknownVoiceActorName(voiceName) {
-		return []voiceRemoteSourceSet{}, nil
-	}
-	sources, err := s.loadRemoteSourcesForAvailability(ctx)
-	if err != nil {
-		return nil, err
-	}
-	results := make([]voiceRemoteSourceSet, len(sources))
-	resultErrors := make([]error, len(sources))
-	semaphore := make(chan struct{}, 3)
-	var wait sync.WaitGroup
-	keyword := "$va:" + strings.TrimSpace(voiceName) + "$"
-	projector := s.remoteCatalogProjector(ctx)
-	for index, source := range sources {
-		wait.Add(1)
-		go func(index int, source remoteSourceForUse) {
-			defer wait.Done()
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-			result, err := s.searchVoiceRemoteSource(ctx, source, keyword, projector)
-			results[index] = result
-			resultErrors[index] = err
-		}(index, source)
-	}
-	wait.Wait()
-	for _, resultErr := range resultErrors {
-		if resultErr != nil {
-			return nil, resultErr
-		}
-	}
-	workIDs := voiceRemoteWorkIDs(results)
-	availableNonOriginEditions, err := s.loadAvailableNonOriginEditions(ctx, workIDs)
-	if err != nil {
-		return nil, err
-	}
-	applyVoiceRemoteNonOriginFlags(results, availableNonOriginEditions)
-	_, err = s.recordVoiceRemoteSearchWorkflow(ctx, personID, voiceName, keyword, results)
-	return results, err
-}
-
-func (s *Server) searchVoiceRemoteSource(ctx context.Context, source remoteSourceForUse, keyword string, projector remoteCatalogProjector) (voiceRemoteSourceSet, error) {
-	result := voiceRemoteSourceSet{
-		SourceID: source.ID, SourceCode: source.Code, DisplayName: source.DisplayName,
-		Status: "ok", Works: []voiceRemoteWork{},
-	}
-	if !isKikoeruSourceType(source.SourceType) {
-		result.Status = "unsupported"
-		return result, nil
-	}
-	if !source.Enabled {
-		result.Status = "disabled"
-		return result, nil
-	}
-	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
-		result.Status = "misconfigured"
-		result.Error = "Remote source API endpoint is not configured."
-		return result, nil
-	}
-	started := time.Now()
-	sourceCtx, cancel := context.WithTimeout(ctx, voiceRemoteSourceTimeout)
-	client := s.kikoeruClientForSource(source)
-	var page kikoeru.WorksPage
-	var err error
-	if s.cfg.IsDemo() {
-		plan := demoRemoteSourceQueryPlan(keyword, source.SourceType)
-		page, err = client.SearchWorksSortedSeeded(sourceCtx, 1, voiceRemotePageSize, plan.PushdownQuery, "create_date", "desc", "")
-	} else {
-		page, err = client.ListWorks(sourceCtx, 1, voiceRemotePageSize, keyword)
-	}
-	ctxErr := sourceCtx.Err()
-	cancel()
-	result.ElapsedMS = time.Since(started).Milliseconds()
-	if err != nil {
-		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
-		result.Status, result.Error = voiceRemoteSourceErrorStatus(err, ctxErr)
-		result.DebugError = err.Error()
-		return result, nil
-	}
-	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
-	result.Total = voiceRemotePageTotal(page)
-	for _, remoteWork := range page.Works {
-		work, err := s.projectVoiceRemoteWork(ctx, source, projector, remoteWork)
-		if err != nil {
-			return result, err
-		}
-		result.Works = append(result.Works, work)
-	}
-	return result, nil
-}
-
-func voiceRemotePageTotal(page kikoeru.WorksPage) int {
-	if page.Pagination.TotalCount != 0 {
-		return page.Pagination.TotalCount
-	}
-	if page.Pagination.Total != 0 {
-		return page.Pagination.Total
-	}
-	return page.Pagination.Count
-}
-
-func (s *Server) projectVoiceRemoteWork(ctx context.Context, source remoteSourceForUse, projector remoteCatalogProjector, remoteWork kikoeru.Work) (voiceRemoteWork, error) {
-	projected := projector.project(source.ID, remoteWork)
-	code := projected.RemoteCode
-	displayCode := code
-	ref, err := s.canonicalWorkForCode(ctx, code)
-	if err != nil {
-		return voiceRemoteWork{}, err
-	}
-	if ref.Code != "" {
-		displayCode = ref.Code
-	}
-	flags, err := s.sourceAvailabilityFlags(ctx, source.ID, code)
-	if err != nil {
-		return voiceRemoteWork{}, err
-	}
-	return voiceRemoteWork{
-		SourceID: source.ID, SourceCode: source.Code, SourceName: source.DisplayName,
-		RemoteID: projected.RemoteID, PrimaryCode: displayCode, RemoteCode: code,
-		Title: firstNonEmpty(projected.Title, displayCode), ReleaseDate: projected.ReleaseDate,
-		UpdatedAt: projected.ReleaseDate, CoverURL: projected.CoverURL, Circle: projected.Circle,
-		AgeRating: projected.AgeRating, Rating: projected.Rating, RatingCount: projected.RatingCount,
-		Sales: projected.Sales, Price: projected.Price, Tags: projected.Tags,
-		VoiceActors: projected.VoiceActors, ImportStatus: remoteImportStatus(flags.WorkID),
-		RemotePlayable: true, WorkID: flags.WorkID, HasLocal: flags.HasLocal,
-		HasCache: flags.HasCache, HasRemote: flags.HasRemote,
-	}, nil
-}
-
-func voiceRemoteWorkIDs(results []voiceRemoteSourceSet) []int64 {
-	workIDs := []int64{}
-	for _, result := range results {
-		for _, work := range result.Works {
-			if work.WorkID != nil {
-				workIDs = append(workIDs, *work.WorkID)
-			}
-		}
-	}
-	return workIDs
-}
-
-func applyVoiceRemoteNonOriginFlags(results []voiceRemoteSourceSet, available map[int64]bool) {
-	for resultIndex := range results {
-		for workIndex := range results[resultIndex].Works {
-			workID := results[resultIndex].Works[workIndex].WorkID
-			if workID != nil {
-				results[resultIndex].Works[workIndex].HasNonOrigin = available[*workID]
-			}
-		}
-	}
-}
-
 func voiceRemoteSourceErrorStatus(err error, ctxErr error) (string, string) {
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctxErr, context.DeadlineExceeded) {
 		return "timeout", "Remote source timed out."
@@ -1702,78 +1536,6 @@ func voiceRemoteSourceErrorStatus(err error, ctxErr error) (string, string) {
 	default:
 		return "error", "Remote source is unavailable."
 	}
-}
-
-func (s *Server) recordVoiceRemoteSearchWorkflow(ctx context.Context, personID int64, voiceName string, keyword string, results []voiceRemoteSourceSet) (int64, error) {
-	if s.cfg.IsDemo() {
-		return 0, nil
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, "voice_remote_search", "Search voice remote sources", "Search configured Kikoeru-compatible sources for a voice actor.", map[string]any{
-		"nodes": []map[string]string{
-			{"id": "select", "type": "select_remote_source"},
-			{"id": "discover", "type": "discover_remote_works"},
-			{"id": "match", "type": "match_works"},
-		},
-	})
-	if err != nil {
-		return 0, err
-	}
-	available := 0
-	errorsCount := 0
-	matches := 0
-	for _, result := range results {
-		if result.Status == "ok" {
-			available++
-		}
-		if result.Status == "error" {
-			errorsCount++
-		}
-		matches += len(result.Works)
-	}
-	input := map[string]any{"person_id": personID, "voice_name": voiceName, "keyword": keyword}
-	summary := map[string]any{"sources": len(results), "ok": available, "errors": errorsCount, "matches": matches}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "voice_remote_search", "Search voice remote sources", "succeeded", "detail_view", "voice_detail_remote_matches", input, summary)
-	if err != nil {
-		return 0, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "select", NodeType: "select_remote_source", DisplayName: "Select remote sources", Position: 1, Status: "succeeded",
-		Input: input, Output: map[string]any{"sources": len(results)},
-	}); err != nil {
-		return 0, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "discover", NodeType: "discover_remote_works", DisplayName: "Discover voice matches", Position: 2, Status: "succeeded",
-		Input: map[string]any{"keyword": keyword}, Output: summary,
-	}); err != nil {
-		return 0, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "match", NodeType: "match_works", DisplayName: "Match local and cached availability", Position: 3, Status: "succeeded",
-		Input: map[string]any{"person_id": personID}, Output: voiceRemoteSearchOutput(results),
-	}); err != nil {
-		return 0, err
-	}
-	return runID, tx.Commit()
-}
-
-func voiceRemoteSearchOutput(results []voiceRemoteSourceSet) map[string]any {
-	output := map[string]any{}
-	for _, result := range results {
-		output[result.SourceCode] = map[string]any{
-			"status":      result.Status,
-			"total":       result.Total,
-			"matches":     len(result.Works),
-			"error":       result.Error,
-			"debug_error": result.DebugError,
-		}
-	}
-	return output
 }
 
 type voiceCreditSnapshotRow struct {

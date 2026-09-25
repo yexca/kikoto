@@ -46,7 +46,12 @@ import {
   type PlaybackSeekPreferencesChangeDetail,
 } from "@/player/playbackPreferences";
 import { isActivePlaybackRequest } from "@/player/playbackRequest";
-import { normalizePlaybackStartPosition, shouldCheckpointPause } from "@/player/playbackStart";
+import {
+  canPersistPlaybackProgress,
+  normalizePlaybackStartPosition,
+  restoredCursorStartPosition,
+  shouldCheckpointPause,
+} from "@/player/playbackStart";
 import {
   NATIVE_MEDIA_POSITION_INTERVAL_MS,
   shouldCommitPlayerTime,
@@ -249,6 +254,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const sourceLoadingRef = useRef(false);
   const restoredMediaItemRef = useRef<string | null>(null);
   const pendingPlaybackStartRef = useRef<PendingPlaybackStart | null>(null);
+  const unappliedStartRef = useRef<{ instanceKey: string; positionSeconds: number } | null>(null);
+  const listenerIntentInstanceRef = useRef<string | null>(null);
+  const [startPositionRequest, setStartPositionRequest] = useState(0);
   const completedPlaybackInstanceRef = useRef<string | null>(null);
   const lastSavedRef = useRef<ProgressSaveMarker | null>(null);
   const lastPlayerTimeCommitRef = useRef<number | null>(null);
@@ -311,6 +319,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   queueRef.current = queue;
   currentIndexRef.current = currentIndex;
   currentPlaybackInstanceKeyRef.current = currentPlaybackInstanceKey;
+  // A start position still waiting for metadata is the instance's real position.
+  const carriedPlaybackPosition = useCallback(() => {
+    const unappliedStart = unappliedStartRef.current;
+    if (unappliedStart && unappliedStart.instanceKey === currentPlaybackInstanceKeyRef.current) {
+      return unappliedStart.positionSeconds;
+    }
+    return normalizePlaybackStartPosition(audioRef.current?.currentTime);
+  }, []);
   currentTrackRef.current = currentTrack;
   playbackCompatibilityScopeRef.current = playbackCompatibilityScope;
   playbackCompatibilityTargetRef.current = playbackCompatibilityTarget;
@@ -346,7 +362,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (nextCompatibilityEnabled !== compatibilityPlaybackEnabledRef.current && track?.queueItemId) {
         pendingPlaybackStartRef.current = {
           queueItemId: track.queueItemId,
-          positionSeconds: normalizePlaybackStartPosition(audioRef.current?.currentTime),
+          positionSeconds: carriedPlaybackPosition(),
         };
       }
       playbackCompatibilityScopeRef.current = scope;
@@ -358,7 +374,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       playbackErrorSequenceRef.current += 1;
       if (resume && track) updatePlayingState(true);
     },
-    [updatePlayingState],
+    [carriedPlaybackPosition, updatePlayingState],
   );
 
   const resetTransientPlaybackCompatibility = useCallback(() => {
@@ -494,14 +510,25 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       )
         return;
       const currentQueueItemID = current[currentIndexRef.current]?.queueItemId;
+      const validatedIndex = Math.max(
+        0,
+        validated.findIndex((track) => track.queueItemId === currentQueueItemID),
+      );
+      // The restored session item continues its Resume cursor until the listener acts on it.
+      const cursorPosition = restoredCursorStartPosition(validated[validatedIndex]?.progress);
+      if (
+        cursorPosition > 0 &&
+        currentQueueItemID &&
+        currentQueueItemID === restored[restoredQueue.currentIndex]?.queueItemId &&
+        listenerIntentInstanceRef.current !== currentPlaybackInstanceKeyRef.current
+      ) {
+        pendingPlaybackStartRef.current = { queueItemId: currentQueueItemID, positionSeconds: cursorPosition };
+        restoredMediaItemRef.current = null;
+        setStartPositionRequest((value) => value + 1);
+      }
       invalidatePlaybackRequests();
       setQueue(validated);
-      setCurrentIndex(
-        Math.max(
-          0,
-          validated.findIndex((track) => track.queueItemId === currentQueueItemID),
-        ),
-      );
+      setCurrentIndex(validatedIndex);
     });
     return () => {
       cancelled = true;
@@ -524,6 +551,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    // Each load() resets playbackRate to defaultPlaybackRate, so both carry the choice across tracks.
+    audio.defaultPlaybackRate = playbackRate;
     audio.playbackRate = playbackRate;
   }, [playbackRate]);
 
@@ -638,14 +667,21 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       return;
     const pendingStart = pendingPlaybackStartRef.current;
     const pendingStartMatches = pendingStart !== null && pendingStart.queueItemId === currentTrack.queueItemId;
-    const position = pendingStartMatches ? pendingStart.positionSeconds : 0;
+    const unappliedStart = unappliedStartRef.current;
+    const position = pendingStartMatches
+      ? pendingStart.positionSeconds
+      : unappliedStart?.instanceKey === currentPlaybackInstanceKey
+        ? unappliedStart.positionSeconds
+        : 0;
     if (pendingStartMatches) {
       pendingPlaybackStartRef.current = null;
     }
     if (position > 0 && Number.isFinite(position)) {
+      unappliedStartRef.current = { instanceKey: currentPlaybackInstanceKey, positionSeconds: position };
       const restore = () => {
         audio.currentTime = Math.min(position, audio.duration || position);
         setCurrentTime(audio.currentTime);
+        unappliedStartRef.current = null;
         restoredMediaItemRef.current = currentPlaybackInstanceKey;
       };
       if (audio.readyState >= 1) {
@@ -655,9 +691,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         return () => audio.removeEventListener("loadedmetadata", restore);
       }
     } else {
+      unappliedStartRef.current = null;
       restoredMediaItemRef.current = currentPlaybackInstanceKey;
     }
-  }, [compatibilityPlaybackEnabled, currentPlaybackInstanceKey, currentTrack?.locationId, currentTrack?.mediaItemId]);
+  }, [
+    compatibilityPlaybackEnabled,
+    currentPlaybackInstanceKey,
+    currentTrack?.locationId,
+    currentTrack?.mediaItemId,
+    startPositionRequest,
+  ]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -788,6 +831,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         pendingSeekTargetRef.current = null;
         return;
       }
+      listenerIntentInstanceRef.current = currentPlaybackInstanceKeyRef.current;
       pendingSeekTimerRef.current = window.setTimeout(() => {
         if (pendingSeekTargetRef.current !== nextTime) return;
         clearPendingSeek();
@@ -821,6 +865,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (!audio || !currentTrack) return;
     if (!currentTrack.progressRecordable) return;
     if (currentTrack.mediaItemId <= 0) return;
+    // A save captured by an older render would pair this track's id with another track's audio position.
+    if (currentPlaybackInstanceKey !== currentPlaybackInstanceKeyRef.current) return;
+    // An idle or still-loading element must not replace the persisted cursor with its own 0.
+    if (
+      !canPersistPlaybackProgress(
+        currentPlaybackInstanceKey,
+        restoredMediaItemRef.current,
+        listenerIntentInstanceRef.current,
+      )
+    )
+      return;
     const durationValue =
       [
         audio.duration,
@@ -902,7 +957,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setSleepTimer((current) => (current ? { ...current, waitingForTrackEnd: true } : null));
         return;
       }
-      saveProgress(false, true);
+      // This effect outlives track changes; only the latest save knows the current track.
+      progressSaveRef.current(false, true);
       updatePlayingState(false);
       setSleepTimer(null);
     };
@@ -1059,7 +1115,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (currentTrack?.queueItemId) {
       pendingPlaybackStartRef.current = {
         queueItemId: currentTrack.queueItemId,
-        positionSeconds: normalizePlaybackStartPosition(audioRef.current?.currentTime),
+        positionSeconds: carriedPlaybackPosition(),
       };
     }
     resetTrackLocationFailures(locationFailureStateRef.current);
@@ -1101,7 +1157,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             if (activeTrack.queueItemId) {
               pendingPlaybackStartRef.current = {
                 queueItemId: activeTrack.queueItemId,
-                positionSeconds: normalizePlaybackStartPosition(audioRef.current?.currentTime),
+                positionSeconds: carriedPlaybackPosition(),
               };
             }
             setPlaybackReloadToken((value) => value + 1);
@@ -1115,7 +1171,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (activeTrack.queueItemId) {
         pendingPlaybackStartRef.current = {
           queueItemId: activeTrack.queueItemId,
-          positionSeconds: normalizePlaybackStartPosition(audioRef.current?.currentTime),
+          positionSeconds: carriedPlaybackPosition(),
         };
       }
       playbackGenerationRef.current += 1;
@@ -1137,7 +1193,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         }),
       );
     },
-    [t, toast, updatePlayingState],
+    [carriedPlaybackPosition, t, toast, updatePlayingState],
   );
 
   const handlePlaybackError = useCallback(() => {
@@ -1529,7 +1585,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           onLoadStart={() => setIsBuffering(true)}
           onWaiting={() => setIsBuffering(true)}
           onCanPlay={() => setIsBuffering(false)}
-          onPlaying={() => setIsBuffering(false)}
+          onPlaying={() => {
+            setIsBuffering(false);
+            if (isPlayingRef.current) listenerIntentInstanceRef.current = currentPlaybackInstanceKey;
+          }}
           onEmptied={() => setIsBuffering(false)}
           onTimeUpdate={(event) => {
             const now = performance.now();

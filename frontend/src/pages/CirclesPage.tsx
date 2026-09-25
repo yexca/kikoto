@@ -63,6 +63,7 @@ import {
 } from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
+import { retainVisibleSelection } from "@/components/work-collection/workSelectionModel";
 import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import { openWorkflowPath, workflowActivityRunPath, workflowRunFormPath } from "@/features/workflows/workflowLinks";
@@ -421,7 +422,9 @@ function CircleDetailPage({
   const canRefreshCatalog = auth.hasPermission("metadata:sync") && !auth.demoMode;
   const compactLayout = useMobileNavigationLayout();
   const [detail, setDetail] = useState<CircleDetail | null>(null);
-  const [notFound, setNotFound] = useState(false);
+  // "missing" means the maker id is not in this site's database, which a
+  // metadata:sync user may fetch; "hidden" is a known circle this page does not show.
+  const [notFound, setNotFound] = useState<"missing" | "hidden" | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [queueingRefresh, setQueueingRefresh] = useState(false);
   const { mobileColumns, desktopColumns, setMobileColumns, setDesktopColumns } = useWorkCollectionLayout();
@@ -451,13 +454,13 @@ function CircleDetailPage({
         if (signal?.aborted) return null;
         loadedExternalID.current = externalId;
         setDetail(next);
-        setNotFound(false);
+        setNotFound(null);
         return next;
       } catch (error) {
         if (signal?.aborted) return null;
         setDetail(null);
         if (error instanceof ApiError && error.status === 404) {
-          setNotFound(true);
+          setNotFound(error.code === "circle_not_in_database" ? "missing" : "hidden");
           return null;
         }
         toast.notify(toastFromError(error, t("errors.unavailable")));
@@ -515,7 +518,9 @@ function CircleDetailPage({
     return () => controller.abort();
   }, [active, externalId, loadCircleDetail]);
 
-  const circle = detail ?? emptyCircleDetail(externalId);
+  // The fallback must keep its identity across renders: works-derived memos
+  // feed the selection sync effect below.
+  const circle = useMemo(() => detail ?? emptyCircleDetail(externalId), [detail, externalId]);
   const filteredWorks = useMemo(() => {
     const needle = workQuery.trim().toLowerCase();
     return circle.works.filter((work) => {
@@ -553,7 +558,7 @@ function CircleDetailPage({
     label: compactLayout ? t("creatorBrowse.backToCircles") : circleReturnLabel(),
     title: detail?.displayName,
     onBack: navigateToList,
-    enabled: !notFound,
+    enabled: notFound === null,
   });
 
   const changeAvailabilityFilter = (value: CircleAvailabilityFilter) => {
@@ -574,10 +579,7 @@ function CircleDetailPage({
   }, [availabilityFilter, externalId, workPageSize, workQuery]);
 
   useEffect(() => {
-    setSelectedWorkCodes(
-      (current) =>
-        new Set(Array.from(current).filter((code) => filteredWorks.some((work) => work.primaryCode === code))),
-    );
+    setSelectedWorkCodes((current) => retainVisibleSelection(current, filteredWorks, (work) => work.primaryCode));
   }, [filteredWorks]);
   const selectedSeries = useMemo(() => {
     const code = seriesCode?.toUpperCase() ?? "";
@@ -663,6 +665,14 @@ function CircleDetailPage({
     }
   };
 
+  // An unknown circle is fetched by the circle follow workflow, which adds it
+  // on success; the run form opens with this maker id filled in.
+  const canFetchMissingCircle = canRefreshCatalog && canOpenWorkflows;
+  const openFollowCircle = () =>
+    openWorkflowPath(
+      workflowRunFormPath("circle_follow", { circleId: detail?.externalId ?? externalId.toUpperCase() }),
+    );
+
   const firstPull = circle.syncState === "never";
   // First pull reads the whole catalog and fills its metadata; Refresh also
   // matches the circle's works on the remote sources.
@@ -678,7 +688,7 @@ function CircleDetailPage({
           key: "follow",
           label: t("detailActions.followCircle"),
           icon: <Rss className="h-4 w-4" />,
-          onSelect: () => openWorkflowPath(workflowRunFormPath("circle_follow", { circleId: circle.externalId })),
+          onSelect: openFollowCircle,
         },
       ]
     : [];
@@ -894,10 +904,25 @@ function CircleDetailPage({
   };
 
   if (notFound) {
+    const missing = notFound === "missing";
     return (
       <NotFoundPage
-        title={t("creatorBrowse.circleNotFound")}
-        message={t("creatorBrowse.circleUnavailable", { id: externalId })}
+        title={missing ? t("creatorBrowse.circleNotInDatabase") : t("creatorBrowse.circleNotFound")}
+        message={
+          !missing
+            ? t("creatorBrowse.circleUnavailable", { id: externalId })
+            : canFetchMissingCircle
+              ? t("creatorBrowse.circleFetchPrompt", { id: externalId })
+              : t("creatorBrowse.circleContactAdmin", { id: externalId })
+        }
+        primaryAction={
+          missing && canFetchMissingCircle ? (
+            <Button onClick={openFollowCircle}>
+              <Rss className="h-4 w-4" />
+              {t("creatorBrowse.circleFetch")}
+            </Button>
+          ) : undefined
+        }
         onBack={navigateToList}
         onOpenLibrary={() => {
           window.history.pushState({}, "", "/");

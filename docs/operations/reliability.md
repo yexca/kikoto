@@ -9,6 +9,12 @@
   temporary destination under a configurable per-file limit; covers use a
   fixed 20 MiB limit. A target is published only after the complete bounded
   response passes its declared or expected-size checks.
+- A remote rate-limit or temporary-unavailable response pauses requests to that
+  origin for its `Retry-After` value, bounded by the configured maximum
+  backoff. A request that meets a longer pause fails fast instead of waiting in
+  place, and a workflow job that has not reached the source is rescheduled for
+  the end of the pause without using a retry. Other sources' queued jobs keep
+  running meanwhile.
 - Remote media is downloaded before opening the database transaction that
   records it, keeping SQLite write-lock time bounded.
 - Idle workflow polling does not acquire a write transaction unless a queued or

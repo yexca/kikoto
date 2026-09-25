@@ -25,6 +25,7 @@ does not update its environment.
 | `KIKOTO_ALLOWED_ORIGINS` | Empty | Comma-separated exact browser origins allowed to call a separately hosted API. Same-origin deployments should leave this empty. |
 | `KIKOTO_TRUSTED_PROXIES` | Empty | Comma-separated reverse-proxy IP addresses or CIDR prefixes whose `X-Forwarded-For` header identifies the client for sign-in throttling. Empty uses the direct peer address. An invalid entry stops startup. |
 | `KIKOTO_LOGIN_CONCURRENCY` | `8` | Maximum concurrent password checks for sign-ins, password changes, and new passwords. Each check uses about 19 MiB of memory; a missing, invalid, or non-positive value uses the default. |
+| `KIKOTO_SHUTDOWN_TIMEOUT_SECONDS` | `20` | Seconds a stop may spend draining in-flight requests and releasing running workflow jobs. Streaming playback and live transcoding are cancelled after half of this time. Keep it below the container stop grace period; a missing, invalid, or non-positive value uses the default. |
 | `KIKOTO_ROOT_USERNAME` | `root` | Root administrator username. |
 | `KIKOTO_ROOT_PASSWORD` | Required in production | Authoritative root administrator password. A changed value is applied on service startup and revokes existing root sessions. |
 | `KIKOTO_REMOTE_SOURCES_ENABLED` | `false` | Enable first-run remote source seeding. |

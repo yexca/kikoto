@@ -701,6 +701,7 @@ export const koreanResource = {
         authenticationRequired: "로그인이 필요합니다.",
         permissionDenied: "이 작업을 수행할 권한이 없습니다.",
         notFound: "요청한 항목을 찾을 수 없습니다.",
+        entityNotInDatabase: "아직 이 사이트 데이터베이스에 없습니다. 추가하려면 관리자에게 문의하세요.",
         invalidLanguage: "지원되지 않는 언어입니다.",
       },
       languageOptions: {
