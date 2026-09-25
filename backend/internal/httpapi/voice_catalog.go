@@ -1802,13 +1802,25 @@ func (s *Server) loadVoiceCatalogMatchRows(ctx context.Context, personID int64, 
 		return nil, err
 	}
 	defer rows.Close()
-	workRefs := map[string]canonicalWorkRef{}
-	availabilityBySource := map[string]sourceAvailabilityState{}
+	// Building a remote work may query canonical identity and availability, so
+	// release the cursor's pooled connection before that enrichment.
+	matchRows := []voiceCatalogMatchRow{}
 	for rows.Next() {
 		row, err := scanVoiceCatalogMatchRow(rows)
 		if err != nil {
 			return nil, err
 		}
+		matchRows = append(matchRows, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	workRefs := map[string]canonicalWorkRef{}
+	availabilityBySource := map[string]sourceAvailabilityState{}
+	for _, row := range matchRows {
 		if !row.SourceID.Valid || row.SourceID.Int64 <= 0 {
 			continue
 		}
@@ -1830,12 +1842,6 @@ func (s *Server) loadVoiceCatalogMatchRows(ctx context.Context, personID int64, 
 			return nil, err
 		}
 		sets[index].Works = append(sets[index].Works, remoteWork)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	return sets, nil
 }

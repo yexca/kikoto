@@ -85,6 +85,20 @@ const systemDefinitions = [
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
   },
+  {
+    id: 8,
+    code: "local_media_index",
+    displayName: "Refresh local work files",
+    description: "Index the media files inside discovered local work folders.",
+    definitionJson:
+      '{"nodes":[{"id":"select","type":"select_local_works","displayName":"Select local works"},{"id":"index","type":"index_local_media","displayName":"Index work files"}]}',
+    scope: "system",
+    editable: false,
+    ownerUserId: null,
+    triggerCount: 0,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+  },
 ];
 
 const workflowTriggers = [
@@ -738,7 +752,7 @@ test("definitions foreground runnable presets and show DLsite popular run option
   await mockWorkflows(page);
   await page.goto("/workflows");
 
-  await expect(page.getByRole("tablist", { name: "Workflows", exact: true }).getByRole("tab")).toHaveCount(5);
+  await expect(page.getByRole("tablist", { name: "Workflows", exact: true }).getByRole("tab")).toHaveCount(6);
   await expect(page.getByRole("button", { name: "New workflow", exact: true })).toHaveCount(0);
   const dlsiteDefinition = page.getByRole("tab", { name: /Collect DLsite popular voice works/ });
   await expect(dlsiteDefinition.getByText("Built-in", { exact: true })).toHaveCount(0);
@@ -1033,6 +1047,43 @@ test("local scan follow-up is explicit and defaults off for manual and automatic
   await triggerDialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect.poll(() => triggerPayloads).toHaveLength(1);
   expect(JSON.parse(String(triggerPayloads[0].configJson))).toEqual({ followUpRun: true });
+});
+
+test("local work file refresh sends the chosen mode for manual and startup runs", async ({ page }) => {
+  const manualPayloads: unknown[] = [];
+  await mockWorkflows(page);
+  await page.route("**/api/workflow-runs/local-media-index", async (route) => {
+    manualPayloads.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 202,
+      json: { runId: 62, jobId: 72, status: "queued", mode: "full", existing: false },
+    });
+  });
+
+  await page.goto("/workflows");
+  await page.getByRole("tab", { name: /Refresh local work files/ }).click();
+  const runOptions = page.getByRole("region", { name: "Run options", exact: true });
+  const mode = runOptions.getByRole("group", { name: "Scan mode" });
+  await expect(mode.getByRole("button", { name: "Incremental", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(runOptions.getByText("Index only local works whose folder has not been scanned yet.")).toBeVisible();
+  await mode.getByRole("button", { name: "Full", exact: true }).click();
+  await page.getByRole("button", { name: "Run", exact: true }).click();
+  await expect.poll(() => manualPayloads).toEqual([{ mode: "full" }]);
+  const queuedActivity = page.getByRole("dialog", { name: "Activity", exact: true });
+  await queuedActivity.getByRole("button", { name: "Close Activity", exact: true }).click();
+
+  const triggerRequest = page.waitForRequest(
+    (request) => request.method() === "POST" && request.url().endsWith("/api/workflow-triggers"),
+  );
+  await page.getByRole("button", { name: "Run at startup", exact: true }).click();
+  const popover = page.getByRole("dialog", { name: "New startup trigger" });
+  await expect(
+    popover.getByRole("group", { name: "Scan mode" }).getByRole("button", { name: "Full", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await popover.getByRole("button", { name: "Add", exact: true }).click();
+  const payload = (await triggerRequest).postDataJSON();
+  expect(payload.triggerType).toBe("startup");
+  expect(JSON.parse(payload.configJson)).toEqual({ mode: "full" });
 });
 
 test("availability watch shares pools, schedules checks, and handles ready works on mobile", async ({ page }) => {
@@ -1785,8 +1836,11 @@ test("workflow tabs retain selection, stay reachable on mobile, and support keyb
   await mockWorkflows(page);
   await page.goto("/workflows");
   const tabs = page.getByRole("tablist", { name: "Workflows", exact: true });
-  await expect(tabs.getByRole("tab")).toHaveCount(5);
+  await expect(tabs.getByRole("tab")).toHaveCount(6);
   await tabs.getByRole("tab", { name: "Scan local library", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  // The local work file refresh follows the local scan that discovers its folders.
+  await expect(page.getByRole("heading", { name: "Refresh local work files", exact: true })).toBeVisible();
   await page.keyboard.press("ArrowRight");
   await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toBeVisible();
   await expect(tabs.getByRole("tab", { name: "Sync work metadata", exact: true })).toHaveAttribute(

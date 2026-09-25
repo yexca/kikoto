@@ -133,8 +133,14 @@ contract.
 
 HTTP handler tests build the real packaged schema once per test process, then
 copy its checkpointed database image into each test's private temporary file.
-Each copy uses the production connection pool, WAL, and foreign-key settings;
-no writable database or WAL is shared between tests. Storage migration tests
+Each copy uses the production WAL and foreign-key settings but a single pooled
+connection, so a path that issues a query while its own cursor or transaction
+still holds a connection blocks deterministically instead of passing until
+concurrent production requests exhaust the pool. A test that hangs in
+`database/sql.(*DB).conn` has this defect: read the rows and close the cursor
+before enrichment queries. Tests that deliberately exercise concurrent
+connections use `openMigratedTestDBWithProductionPool`. No writable database or
+WAL is shared between tests. Storage migration tests
 continue to exercise fresh databases and the numbered upgrade chain directly.
 Do not replace this with a checked-in database or reuse a mutated test copy.
 

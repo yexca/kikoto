@@ -3,8 +3,10 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadVoiceSummariesSerializesMissingUserTagsAsArray(t *testing.T) {
@@ -228,4 +230,46 @@ func voiceRemoteObservationForSource(observations []voiceRemoteObservation, sour
 		}
 	}
 	return voiceRemoteObservation{}, false
+}
+
+func TestLoadVoiceAliasCandidatesAttachesAliasesAfterReleasingCursor(t *testing.T) {
+	db := openMigratedTestDB(t)
+	for _, statement := range []string{
+		"INSERT INTO person (id, display_name) VALUES (1, 'Example Voice A'), (2, 'Example Voice B'), (3, 'Example Voice C')",
+		`INSERT INTO person_alias (person_id, alias, source) VALUES
+			(1, 'Target Alias', 'manual'),
+			(2, 'Zeta Alias', 'manual'),
+			(2, 'Example Voice B', 'primary_name'),
+			(2, 'Alpha Alias', 'manual')`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The single test connection turns a nested query under the open candidate
+	// cursor into a deadline failure instead of a hang.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	candidates, err := (&Server{db: db}).loadVoiceAliasCandidates(ctx, 1, "")
+	if err != nil {
+		t.Fatalf("load alias candidates: %v", err)
+	}
+	aliasesByPerson := map[int64][]string{}
+	for _, candidate := range candidates {
+		if candidate.Aliases == nil {
+			t.Fatalf("candidate %d aliases = nil, want an empty list", candidate.PersonID)
+		}
+		names := []string{}
+		for _, alias := range candidate.Aliases {
+			names = append(names, alias.Alias)
+		}
+		aliasesByPerson[candidate.PersonID] = names
+	}
+	want := map[int64][]string{
+		2: {"Example Voice B", "Alpha Alias", "Zeta Alias"},
+		3: {},
+	}
+	if !reflect.DeepEqual(aliasesByPerson, want) {
+		t.Fatalf("candidate aliases = %#v, want %#v", aliasesByPerson, want)
+	}
 }

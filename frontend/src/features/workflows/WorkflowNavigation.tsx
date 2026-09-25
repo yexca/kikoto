@@ -6,6 +6,7 @@ import type { WorkflowDefinition } from "@/lib/api";
 
 export const builtInWorkflowOrder = [
   "local_library_scan",
+  "local_media_index",
   "metadata_sync",
   "remote_popular_collection",
   "dlsite_popular_collection",
