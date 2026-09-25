@@ -8,6 +8,7 @@ services:
     image: ${KIKOTO_DEMO_IMAGE:-yexca/kikoto:latest}
     pull_policy: always
     restart: unless-stopped
+    stop_grace_period: 30s
     read_only: true
     cap_drop:
       - ALL

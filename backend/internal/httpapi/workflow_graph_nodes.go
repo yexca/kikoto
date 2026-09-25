@@ -76,7 +76,9 @@ func (s *Server) executeGraphCircleCatalog(ctx context.Context, runID int64, nod
 		}
 		if mode != "stored" {
 			if _, err := s.runCircleCatalogRefresh(ctx, partyID, circleID, mode, s.newDLsiteClient()); err != nil {
-				s.recordCircleCatalogRefreshFailure(context.WithoutCancel(ctx), partyID, mode, runID)
+				if !shutdownInterrupted(ctx) {
+					s.recordCircleCatalogRefreshFailure(context.WithoutCancel(ctx), partyID, mode, runID)
+				}
 				return graphNodeExecution{}, err
 			}
 		}

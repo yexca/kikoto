@@ -2,6 +2,9 @@ services:
   kikoto:
     image: ${KIKOTO_IMAGE:-yexca/kikoto:latest}
     restart: unless-stopped
+    # Keep this longer than KIKOTO_SHUTDOWN_TIMEOUT_SECONDS so a stop can
+    # drain requests and release running jobs before Docker sends SIGKILL.
+    stop_grace_period: 30s
     environment:
       KIKOTO_MODE: ${KIKOTO_MODE:-production}
       KIKOTO_ROOT_USERNAME: ${KIKOTO_ROOT_USERNAME:-root}
@@ -16,6 +19,7 @@ services:
       KIKOTO_ALLOWED_ORIGINS: ${KIKOTO_ALLOWED_ORIGINS:-}
       KIKOTO_TRUSTED_PROXIES: ${KIKOTO_TRUSTED_PROXIES:-}
       KIKOTO_LOGIN_CONCURRENCY: ${KIKOTO_LOGIN_CONCURRENCY:-8}
+      KIKOTO_SHUTDOWN_TIMEOUT_SECONDS: ${KIKOTO_SHUTDOWN_TIMEOUT_SECONDS:-20}
       KIKOTO_REMOTE_SOURCES_ENABLED: ${KIKOTO_REMOTE_SOURCES_ENABLED:-false}
     ports:
       - "7655:7659"

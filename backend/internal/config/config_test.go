@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestEnvListNormalizesAndDeduplicatesOrigins(t *testing.T) {
@@ -45,23 +46,25 @@ func TestLoadParsesConfiguredPositiveIntegerAndBooleanValues(t *testing.T) {
 	t.Setenv("KIKOTO_LOCAL_SCAN_DEPTH", "5")
 	t.Setenv("KIKOTO_SESSION_COOKIE_SECURE", "YES")
 	t.Setenv("KIKOTO_LOGIN_CONCURRENCY", "3")
+	t.Setenv("KIKOTO_SHUTDOWN_TIMEOUT_SECONDS", "45")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.LocalScanDepth != 5 || !cfg.SessionCookieSecure || cfg.LoginConcurrency != 3 {
-		t.Fatalf("parsed config = depth %d secure %t login concurrency %d, want 5/true/3", cfg.LocalScanDepth, cfg.SessionCookieSecure, cfg.LoginConcurrency)
+	if cfg.LocalScanDepth != 5 || !cfg.SessionCookieSecure || cfg.LoginConcurrency != 3 || cfg.ShutdownTimeout != 45*time.Second {
+		t.Fatalf("parsed config = depth %d secure %t login concurrency %d shutdown %s, want 5/true/3/45s", cfg.LocalScanDepth, cfg.SessionCookieSecure, cfg.LoginConcurrency, cfg.ShutdownTimeout)
 	}
 
 	t.Setenv("KIKOTO_LOCAL_SCAN_DEPTH", "0")
 	t.Setenv("KIKOTO_SESSION_COOKIE_SECURE", "not-a-boolean")
 	t.Setenv("KIKOTO_LOGIN_CONCURRENCY", "-1")
+	t.Setenv("KIKOTO_SHUTDOWN_TIMEOUT_SECONDS", "0")
 	cfg, err = Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.LocalScanDepth != 3 || cfg.SessionCookieSecure || cfg.LoginConcurrency != 8 {
-		t.Fatalf("invalid config fallback = depth %d secure %t login concurrency %d, want 3/false/8", cfg.LocalScanDepth, cfg.SessionCookieSecure, cfg.LoginConcurrency)
+	if cfg.LocalScanDepth != 3 || cfg.SessionCookieSecure || cfg.LoginConcurrency != 8 || cfg.ShutdownTimeout != 20*time.Second {
+		t.Fatalf("invalid config fallback = depth %d secure %t login concurrency %d shutdown %s, want 3/false/8/20s", cfg.LocalScanDepth, cfg.SessionCookieSecure, cfg.LoginConcurrency, cfg.ShutdownTimeout)
 	}
 }
 

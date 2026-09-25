@@ -266,7 +266,9 @@ func (s *Server) createFileSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if source.Enabled {
-		go s.runSourceChangeAvailabilityChecks(context.Background(), source.ID, "source_created")
+		s.Go(func(ctx context.Context) {
+			s.runSourceChangeAvailabilityChecks(ctx, source.ID, "source_created")
+		})
 	}
 	writeJSON(w, http.StatusCreated, source)
 }
@@ -323,7 +325,9 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if source.Enabled {
-		go s.runSourceChangeAvailabilityChecks(context.Background(), source.ID, "source_updated")
+		s.Go(func(ctx context.Context) {
+			s.runSourceChangeAvailabilityChecks(ctx, source.ID, "source_updated")
+		})
 	}
 	writeJSON(w, http.StatusOK, source)
 }

@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type remoteFetchManifestRecord struct {
@@ -163,6 +164,8 @@ func (s *Server) stageAndPublishRemoteFetch(ctx context.Context, manifest remote
 	}
 	return countPromotedFetchItems(plan.Items), nil
 }
+
+const remoteFetchPublishTimeout = 10 * time.Second
 
 type remoteFetchPublishPaths struct {
 	stageRoot  string
@@ -323,6 +326,15 @@ func (s *Server) verifyRemoteFetchItems(ctx context.Context, manifest remoteFetc
 }
 
 func (s *Server) publishRemoteFetchRoot(ctx context.Context, manifest remoteFetchManifestRecord, paths remoteFetchPublishPaths) error {
+	// Publication swaps directories and then records the result. Cancellation
+	// may prevent it from starting, but once started it must record where the
+	// roots are, so a service stop cannot leave a finished swap marked as still
+	// publishing.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), remoteFetchPublishTimeout)
+	defer cancel()
 	_ = s.updateRemoteFetchPhaseNode(ctx, manifest.WorkflowRunID, "promote", "running", nil)
 	if err := s.updateRemoteFetchManifestState(ctx, manifest.ID, "publishing", ""); err != nil {
 		return err

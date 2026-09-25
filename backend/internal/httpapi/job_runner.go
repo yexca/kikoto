@@ -181,6 +181,9 @@ func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobR
 }
 
 func (s *Server) handleWorkflowJobResult(ctx context.Context, jobCtx context.Context, job workflowJobRecord, runErr error) error {
+	if shutdownInterrupted(jobCtx) && s.releaseShutdownInterruptedJob(ctx, job) {
+		return nil
+	}
 	var originReviewErr remoteOriginReviewError
 	if errors.As(runErr, &originReviewErr) {
 		return nil
@@ -256,6 +259,9 @@ func (s *Server) leaseInlineWorkflowJob(ctx context.Context, job workflowJobReco
 	return jobCtx, func() {
 		s.unregisterActiveWorkflowJob(job.RunID, job.ID)
 		stop()
+		if shutdownInterrupted(jobCtx) {
+			s.releaseShutdownInterruptedJob(jobCtx, job)
+		}
 	}, nil
 }
 

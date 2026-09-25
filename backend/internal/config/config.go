@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Mode is development (root auth bypass), production (normal auth), or demo (restricted demo identity).
@@ -29,6 +30,7 @@ type Config struct {
 	AllowedOrigins      []string
 	TrustedProxies      []netip.Prefix
 	LoginConcurrency    int
+	ShutdownTimeout     time.Duration
 	RootUsername        string
 	RootPassword        string
 	RemoteSourceSeeds   []RemoteSourceSeed
@@ -77,6 +79,7 @@ func Load() (Config, error) {
 		AllowedOrigins:      envList("KIKOTO_ALLOWED_ORIGINS"),
 		TrustedProxies:      trustedProxies,
 		LoginConcurrency:    envInt("KIKOTO_LOGIN_CONCURRENCY", 8),
+		ShutdownTimeout:     time.Duration(envInt("KIKOTO_SHUTDOWN_TIMEOUT_SECONDS", 20)) * time.Second,
 		RootUsername:        env("KIKOTO_ROOT_USERNAME", "root"),
 		RootPassword:        rootPassword,
 		RemoteSourceSeeds:   loadRemoteSourceSeeds(),
