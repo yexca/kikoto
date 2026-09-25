@@ -19,18 +19,26 @@ func TestCancelActiveWorkflowJobCancelsEveryJobInRun(t *testing.T) {
 	server := NewServer(nil, config.Config{})
 	firstContext, cancelFirst := context.WithCancel(context.Background())
 	secondContext, cancelSecond := context.WithCancel(context.Background())
-	server.registerActiveWorkflowJob(10, 101, cancelFirst)
-	server.registerActiveWorkflowJob(10, 102, cancelSecond)
+	otherContext, cancelOther := context.WithCancel(context.Background())
+	defer cancelOther()
+	leases := []string{server.workflowLeases.reserve(), server.workflowLeases.reserve(), server.workflowLeases.reserve()}
+	server.workflowLeases.activate(leases[0], 10, 101, cancelFirst)
+	server.workflowLeases.activate(leases[1], 10, 102, cancelSecond)
+	server.workflowLeases.activate(leases[2], 11, 103, cancelOther)
 
 	server.cancelActiveWorkflowJob(10)
 
 	if firstContext.Err() != context.Canceled || secondContext.Err() != context.Canceled {
 		t.Fatalf("job contexts = %v and %v, want both cancelled", firstContext.Err(), secondContext.Err())
 	}
-	server.unregisterActiveWorkflowJob(10, 101)
-	server.unregisterActiveWorkflowJob(10, 102)
-	if _, exists := server.activeWorkflowCancels[10]; exists {
-		t.Fatal("active workflow registry retained an empty run")
+	if otherContext.Err() != nil {
+		t.Fatalf("job in another run was cancelled: %v", otherContext.Err())
+	}
+	for _, lease := range leases {
+		server.workflowLeases.release(lease)
+	}
+	if live := server.workflowLeases.live(); len(live) != 0 {
+		t.Fatalf("released leases still live: %v", live)
 	}
 }
 

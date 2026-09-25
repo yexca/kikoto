@@ -124,7 +124,7 @@ func TestDemoModeDoesNotDispatchOrRunQueuedJobs(t *testing.T) {
 	if err := server.dispatchDueScheduledWorkflowTrigger(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := server.runNextQueuedWorkflowJob(ctx, "demo-runner"); err != nil {
+	if err := server.runNextQueuedWorkflowJob(ctx); err != nil {
 		t.Fatal(err)
 	}
 }

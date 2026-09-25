@@ -49,7 +49,7 @@ func TestAvailabilityWatchRunRecordsActivityWithoutMaterializingUnknownWork(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := server.runNextQueuedWorkflowJob(context.Background(), "availability-watch-test"); err != nil {
+	if err := server.runNextQueuedWorkflowJob(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -108,7 +108,7 @@ func TestAvailabilityWatchRunKeepsUnavailableTargetsMonitoring(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := server.runNextQueuedWorkflowJob(context.Background(), "availability-watch-not-found-test"); err != nil {
+	if err := server.runNextQueuedWorkflowJob(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -147,7 +147,7 @@ func TestAvailabilityWatchRunRecordsMissingHealthySourceAsPartial(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := server.runNextQueuedWorkflowJob(context.Background(), "availability-watch-no-source-test"); err != nil {
+	if err := server.runNextQueuedWorkflowJob(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 

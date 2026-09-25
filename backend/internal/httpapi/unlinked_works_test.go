@@ -96,7 +96,7 @@ func TestUnlinkedWorkSourceCheckKeepsMissingWorksAndLinksAvailableWorks(t *testi
 	if result.Queued != 2 {
 		t.Fatalf("queued = %d, want 2", result.Queued)
 	}
-	if err := server.runNextQueuedWorkflowJob(context.Background(), "unlinked-test-worker"); err != nil {
+	if err := server.runNextQueuedWorkflowJob(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 

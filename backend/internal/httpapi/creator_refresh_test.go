@@ -177,7 +177,7 @@ func TestCircleRefreshQueuesARefreshOnlyFollowRun(t *testing.T) {
 		t.Fatalf("different refresh status = %d, want %d", response.Code, http.StatusConflict)
 	}
 
-	if err := server.runNextQueuedWorkflowJob(context.Background(), "circle-refresh-test"); err != nil {
+	if err := server.runNextQueuedWorkflowJob(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	var runStatus, metadataStatus string

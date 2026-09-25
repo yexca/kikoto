@@ -113,7 +113,7 @@ func TestStoreLoadsWorkflowViews(t *testing.T) {
 	}
 }
 
-func TestStoreMarksStaleRunGraphFailed(t *testing.T) {
+func TestStoreRequeuesStrandedRunBesideQueuedJob(t *testing.T) {
 	db := openMigratedTestDB(t, "workflow-stale.db")
 	ctx := context.Background()
 	tx, _ := db.BeginTx(ctx, nil)
@@ -136,9 +136,9 @@ func TestStoreMarksStaleRunGraphFailed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	count, err := workflow.NewStore(db).MarkStaleRuns(ctx, "restart")
-	if err != nil || count != 0 {
-		t.Fatalf("MarkStaleRuns() = %d, %v", count, err)
+	result, err := workflow.NewStore(db).SettleOrphans(ctx, workflow.OrphanSweep{Reason: "restart", SettleIdleRuns: true, CanViewAll: true})
+	if err != nil || result != (workflow.OrphanSweepResult{Requeued: 1}) {
+		t.Fatalf("SettleOrphans() = %+v, %v", result, err)
 	}
 	var runStatus, nodeStatus, jobStatus string
 	if err := db.QueryRow("SELECT status FROM workflow_run WHERE id = ?", runID).Scan(&runStatus); err != nil {
@@ -150,8 +150,53 @@ func TestStoreMarksStaleRunGraphFailed(t *testing.T) {
 	if err := db.QueryRow("SELECT status FROM workflow_job WHERE workflow_run_id = ?", runID).Scan(&jobStatus); err != nil {
 		t.Fatal(err)
 	}
-	if runStatus != "failed" || nodeStatus != "failed" || jobStatus != "failed" {
+	if runStatus != "queued" || nodeStatus != "queued" || jobStatus != "queued" {
 		t.Fatalf("statuses = run %s, node %s, job %s", runStatus, nodeStatus, jobStatus)
+	}
+	var eventCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_event WHERE workflow_run_id = ? AND event_type = 'run.requeued_stranded'", runID).Scan(&eventCount); err != nil || eventCount != 1 {
+		t.Fatalf("recovery events = %d, %v", eventCount, err)
+	}
+}
+
+func TestStoreFailsRunWithNoRemainingJob(t *testing.T) {
+	db := openMigratedTestDB(t, "workflow-idle.db")
+	ctx := context.Background()
+	tx, _ := db.BeginTx(ctx, nil)
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "idle_flow", "Idle flow", "Test idle run recovery", map[string]any{"nodes": []any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "idle_flow", "Idle flow", "running", "startup", "test", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{NodeID: "run", NodeType: "sync_metadata", DisplayName: "Run", Position: 1, Status: "running"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{NodeRunID: nodeID, WorkerType: "test", Status: "succeeded"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	store := workflow.NewStore(db)
+	graced, err := store.SettleOrphans(ctx, workflow.OrphanSweep{Reason: "manual recovery", SettleIdleRuns: true, IdleRunGrace: time.Hour, CanViewAll: true})
+	if err != nil || graced != (workflow.OrphanSweepResult{}) {
+		t.Fatalf("SettleOrphans() within grace = %+v, %v", graced, err)
+	}
+	result, err := store.SettleOrphans(ctx, workflow.OrphanSweep{Reason: "restart", SettleIdleRuns: true, CanViewAll: true})
+	if err != nil || result != (workflow.OrphanSweepResult{Failed: 1}) {
+		t.Fatalf("SettleOrphans() = %+v, %v", result, err)
+	}
+	var runStatus, nodeStatus string
+	if err := db.QueryRow("SELECT run.status, node.status FROM workflow_run AS run INNER JOIN workflow_node_run AS node ON node.workflow_run_id = run.id WHERE run.id = ?", runID).Scan(&runStatus, &nodeStatus); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "failed" || nodeStatus != "failed" {
+		t.Fatalf("statuses = run %s, node %s", runStatus, nodeStatus)
 	}
 	var eventCount int
 	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_event WHERE workflow_run_id = ? AND event_type = 'run.recovered_stale'", runID).Scan(&eventCount); err != nil || eventCount != 1 {
@@ -186,9 +231,9 @@ func TestStoreRequeuesRecoverableRunFromCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	count, err := workflow.NewStore(db).MarkStaleRuns(ctx, "restart")
-	if err != nil || count != 1 {
-		t.Fatalf("MarkStaleRuns() = %d, %v", count, err)
+	result, err := workflow.NewStore(db).SettleOrphans(ctx, workflow.OrphanSweep{Reason: "restart", SettleIdleRuns: true, CanViewAll: true})
+	if err != nil || result != (workflow.OrphanSweepResult{Requeued: 1}) {
+		t.Fatalf("SettleOrphans() = %+v, %v", result, err)
 	}
 	var runStatus, nodeStatus, jobStatus, checkpoint string
 	var resumeCount int
@@ -208,12 +253,12 @@ func TestStoreRequeuesRecoverableRunFromCheckpoint(t *testing.T) {
 		t.Fatalf("checkpoint was not preserved: %s", checkpoint)
 	}
 	var eventCount int
-	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_event WHERE workflow_run_id = ? AND event_type = 'run.requeued_after_restart'", runID).Scan(&eventCount); err != nil || eventCount != 1 {
+	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_event WHERE workflow_run_id = ? AND event_type = 'job.orphan_requeued'", runID).Scan(&eventCount); err != nil || eventCount != 1 {
 		t.Fatalf("requeue events = %d, %v", eventCount, err)
 	}
 }
 
-func TestStoreRequeuesExpiredRecoverableLease(t *testing.T) {
+func TestStoreRequeuesOrphanedRecoverableLease(t *testing.T) {
 	db := openMigratedTestDB(t, "workflow-lease.db")
 	ctx := context.Background()
 	tx, _ := db.BeginTx(ctx, nil)
@@ -233,16 +278,18 @@ func TestStoreRequeuesExpiredRecoverableLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tx.Exec(`UPDATE workflow_job SET locked_by = 'expired-runner', locked_at = '2000-01-01 00:00:00', heartbeat_at = '2000-01-01 00:00:00' WHERE id = ?`, jobID); err != nil {
+	if _, err := tx.Exec(`UPDATE workflow_job SET locked_by = 'released-runner', locked_at = '2000-01-01 00:00:00', heartbeat_at = '2000-01-01 00:00:00' WHERE id = ?`, jobID); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
 
-	count, err := workflow.NewStore(db).RequeueExpiredJobs(ctx, time.Second)
-	if err != nil || count != 1 {
-		t.Fatalf("RequeueExpiredJobs() = %d, %v", count, err)
+	result, err := workflow.NewStore(db).SettleOrphans(ctx, workflow.OrphanSweep{
+		LiveLeases: func() map[string]bool { return map[string]bool{"live-runner": true} }, CanViewAll: true,
+	})
+	if err != nil || result != (workflow.OrphanSweepResult{Requeued: 1}) {
+		t.Fatalf("SettleOrphans() = %+v, %v", result, err)
 	}
 	var status, lock string
 	var resumes int
