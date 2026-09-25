@@ -201,18 +201,29 @@ func (s *Server) demoManualAssetEligible(ctx context.Context, filename string) (
 		return false, err
 	}
 	defer rows.Close()
+	matchedWorkID := int64(0)
 	for rows.Next() {
 		var workID int64
 		var assetPath string
 		if err := rows.Scan(&workID, &assetPath); err != nil {
 			return false, err
 		}
-		if filepath.Base(filepath.FromSlash(assetPath)) != filename {
-			continue
+		if filepath.Base(filepath.FromSlash(assetPath)) == filename {
+			matchedWorkID = workID
+			break
 		}
-		return s.demoWorkEligible(ctx, workID)
 	}
-	return false, rows.Err()
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	// Release the cursor's pooled connection before the eligibility query.
+	if err := rows.Close(); err != nil {
+		return false, err
+	}
+	if matchedWorkID == 0 {
+		return false, nil
+	}
+	return s.demoWorkEligible(ctx, matchedWorkID)
 }
 
 func (s *Server) demoContentMiddleware(next http.Handler) http.Handler {

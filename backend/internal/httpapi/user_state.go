@@ -656,13 +656,26 @@ func (s *Server) listFavoriteListWorkIDs(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	defer rows.Close()
-	workIDs := []int64{}
+	listedWorkIDs := []int64{}
 	for rows.Next() {
 		var workID int64
 		if err := rows.Scan(&workID); err != nil {
 			writeError(w, err)
 			return
 		}
+		listedWorkIDs = append(listedWorkIDs, workID)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, err)
+		return
+	}
+	// Release the cursor's pooled connection before demo eligibility queries.
+	if err := rows.Close(); err != nil {
+		writeError(w, err)
+		return
+	}
+	workIDs := make([]int64, 0, len(listedWorkIDs))
+	for _, workID := range listedWorkIDs {
 		if s.cfg.IsDemo() {
 			eligible, err := s.demoWorkEligible(r.Context(), workID)
 			if err != nil {
@@ -674,10 +687,6 @@ func (s *Server) listFavoriteListWorkIDs(w http.ResponseWriter, r *http.Request)
 			}
 		}
 		workIDs = append(workIDs, workID)
-	}
-	if err := rows.Err(); err != nil {
-		writeError(w, err)
-		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"listId": listID, "workIds": workIDs})
 }
