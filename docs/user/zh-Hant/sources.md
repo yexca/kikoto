@@ -73,6 +73,10 @@ Remote downloads wait for configured delay and retry temporary errors with
 DLsite 元資料同步也使用為提供者配置的基本延遲和退避
 產品和封面請求。
 
+來源回傳限流或暫時無法使用的回應時，Kikoto 會依其要求暫停對該來源的請求，
+但暫停時間不會超過 Maintenance 中的最大退避。該來源排隊中的作業會等待暫停結束，
+且不消耗重試次數；其他來源的作業照常執行。
+
 取得計劃使用已經完整的持久性元資料和快取的來源
 可用性。當請求的程式碼沒有DLsite快照或版本時
 關係，準備在之前執行有界目標家庭同步
