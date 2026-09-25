@@ -784,24 +784,18 @@ func (s *Server) loadVoiceCatalogSyncProjections(ctx context.Context, personIDs 
 	if len(personIDs) == 0 {
 		return projections, nil
 	}
-	query, args := int64InQuery(`
+	err := s.queryInt64Batches(ctx, `
 		SELECT person_id, query_json, last_success_at, last_attempt_at, last_status, complete
 		FROM voice_catalog_refresh_state
 		WHERE person_id IN (%s)
-	`, personIDs)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
+	`, personIDs, nil, func(rows *sql.Rows) error {
 		var personID int64
 		var queryJSON string
 		var lastSuccess, lastAttempt sql.NullString
 		var lastStatus string
 		var complete int
 		if err := rows.Scan(&personID, &queryJSON, &lastSuccess, &lastAttempt, &lastStatus, &complete); err != nil {
-			return nil, err
+			return err
 		}
 		projection := voiceCatalogSyncProjection{
 			Exists:        true,
@@ -816,8 +810,9 @@ func (s *Server) loadVoiceCatalogSyncProjections(ctx context.Context, personIDs 
 			projection.Queries = []string{}
 		}
 		projections[personID] = projection
-	}
-	return projections, rows.Err()
+		return nil
+	})
+	return projections, err
 }
 
 func setVoiceCatalogSyncState(item *voiceSummary, projection voiceCatalogSyncProjection, freshnessDays int, now time.Time) {
@@ -1087,7 +1082,7 @@ func (s *Server) loadVoiceLatestWorks(ctx context.Context, personIDs []int64) (m
 			)
 		`
 	}
-	query, args := int64InQuery(`
+	err := s.queryInt64Batches(ctx, `
 		WITH candidates AS (
 			SELECT
 				catalog.person_id,
@@ -1129,23 +1124,18 @@ func (s *Server) loadVoiceLatestWorks(ctx context.Context, personIDs []int64) (m
 		SELECT person_id, primary_code, title, release_date, cover_url
 		FROM ranked
 		WHERE position = 1 AND person_id IN (%s)
-	`, personIDs)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
+	`, personIDs, nil, func(rows *sql.Rows) error {
 		var personID int64
 		var item creatorLatestWork
 		var releaseDate sql.NullString
 		if err := rows.Scan(&personID, &item.PrimaryCode, &item.Title, &releaseDate, &item.CoverURL); err != nil {
-			return nil, err
+			return err
 		}
 		item.ReleaseDate = sqlutil.String(releaseDate)
 		result[personID] = &item
-	}
-	return result, rows.Err()
+		return nil
+	})
+	return result, err
 }
 
 func (s *Server) loadVoiceUserTagsBatch(ctx context.Context, userID int64) (map[int64][]voiceUserTag, error) {

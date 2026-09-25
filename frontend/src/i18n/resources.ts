@@ -548,6 +548,7 @@ export const englishResource = {
         authenticationRequired: "Sign in is required.",
         permissionDenied: "You do not have permission to do that.",
         notFound: "The requested item was not found.",
+        entityNotInDatabase: "This is not in this site's database yet. Contact an administrator to add it.",
         invalidLanguage: "That language is not supported.",
       },
       languageOptions: {

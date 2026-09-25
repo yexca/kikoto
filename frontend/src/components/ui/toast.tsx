@@ -116,6 +116,7 @@ const apiErrorMessageKeys: Record<string, string> = {
   permission_denied: "errors.permissionDenied",
   demo_read_only: "permissions.demoReadOnly",
   not_found: "errors.notFound",
+  entity_not_in_database: "errors.entityNotInDatabase",
   conflict: "errorFeedback.conflict",
   rate_limited: "errorFeedback.rateLimited",
   upstream_unavailable: "errors.unavailable",

@@ -695,6 +695,7 @@ export const zhHansResource = {
         authenticationRequired: "需要登录。",
         permissionDenied: "你没有执行此操作的权限。",
         notFound: "找不到请求的项目。",
+        entityNotInDatabase: "本站数据库中还没有该项目，请联系管理员添加。",
         invalidLanguage: "不支持该语言。",
       },
       languageOptions: {
