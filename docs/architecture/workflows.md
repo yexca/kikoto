@@ -310,6 +310,13 @@ user work such as manual workflows and cleanup uses the middle tier, and
 scheduled/background work uses the default tier. Priority does not preempt a
 job that is already running.
 
+Each executor records its own result, but the runner settles the job when the
+executor returns. A transient source failure within the retry budget is
+requeued with a delay. A job still running under the executor's lease after
+any other exit, including an error or panic that recorded nothing, is marked
+failed and Activity records a `job.result_missing` event, so one faulty exit
+path cannot hold the single-executor queue.
+
 ## Service Stop and Restart
 
 On `SIGTERM` or `SIGINT` the service stops claiming jobs, refuses new
