@@ -115,6 +115,12 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 		},
 	},
 	{
+		Code:        localMediaIndexWorkflowCode,
+		Name:        localMediaIndexDisplayName,
+		Description: localMediaIndexDescription,
+		Nodes:       localMediaIndexNodes,
+	},
+	{
 		Code:        "metadata_sync",
 		Name:        "Sync work metadata",
 		Description: "Select works and sync normalized metadata snapshots. This workflow can be run manually by administrators.",
@@ -1414,6 +1420,12 @@ func (s *Server) dispatchWorkflowRetry(ctx context.Context, actor currentUser, r
 			return workflowRetryDispatchResult{}, errWorkflowRetryPermission
 		}
 		newRunID, err := s.retryLocalLibraryScan(ctx, runID)
+		return workflowRetryDispatchResult{NewRunID: newRunID}, err
+	case localMediaIndexWorkflowCode:
+		if !userHasPermission(actor, "metadata:sync") {
+			return workflowRetryDispatchResult{}, errWorkflowRetryPermission
+		}
+		newRunID, err := s.retryLocalMediaIndex(ctx, runID)
 		return workflowRetryDispatchResult{NewRunID: newRunID}, err
 	case "metadata_sync":
 		if !userHasPermission(actor, "metadata:sync") {

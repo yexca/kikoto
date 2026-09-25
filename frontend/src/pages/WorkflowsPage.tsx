@@ -156,10 +156,12 @@ type WorkflowNode = {
 const automationTriggerTypes: CreatableAutomationTriggerType[] = ["startup", "schedule"];
 const workflowDefinitionStorageBaseKey = "kikoto.workflows.definition:v3";
 
-type SystemRunKind = "local_scan" | "metadata_sync" | "remote_popular" | "dlsite_popular" | "preset";
+type SystemRunKind =
+  "local_scan" | "local_media_index" | "metadata_sync" | "remote_popular" | "dlsite_popular" | "preset";
 
 type SystemRunOptions = {
   followUpRun?: boolean;
+  localMediaIndexMode?: LocalScanMode;
   metadataSync?: MetadataSyncOptions;
 };
 
@@ -221,6 +223,7 @@ type CurrentTriggerRunOptions = {
 const manuallyRunnableSystemWorkflows: Record<string, SystemRunKind[]> = {
   availability_watch: [],
   local_library_scan: ["local_scan"],
+  local_media_index: ["local_media_index"],
   metadata_sync: ["metadata_sync"],
   remote_popular_collection: ["remote_popular"],
   dlsite_popular_collection: ["dlsite_popular"],
@@ -458,6 +461,19 @@ export function WorkflowsPage({
     }
   };
 
+  const runLocalMediaIndex = async (mode: LocalScanMode) => {
+    setRunningSystemAction("local_media_index");
+    try {
+      await api.runLocalMediaIndex({ mode });
+      void refreshRecentRuns("local_media_index");
+      showQueuedRun();
+    } catch (error) {
+      toast.notify(toastFromError(error, workflowCopy("localMediaIndexCreateFailed")));
+    } finally {
+      setRunningSystemAction(null);
+    }
+  };
+
   const runMetadataSync = async (options?: MetadataSyncOptions) => {
     setIsSyncingMetadata(true);
     try {
@@ -513,6 +529,7 @@ export function WorkflowsPage({
 
   const runSystemAction = async (kind: SystemRunKind, options: SystemRunOptions = {}) => {
     if (kind === "local_scan") return runLocalScan(options.followUpRun ?? false);
+    if (kind === "local_media_index") return runLocalMediaIndex(options.localMediaIndexMode ?? "incremental");
     if (kind === "metadata_sync") return runMetadataSync(options.metadataSync);
     if (kind === "remote_popular") return;
     if (kind === "dlsite_popular") return;
@@ -526,7 +543,8 @@ export function WorkflowsPage({
 
   const systemActionAllowed = (kind: SystemRunKind) => {
     if (readOnly) return false;
-    if (kind === "local_scan" || kind === "metadata_sync") return canRun && canSyncMetadata;
+    if (kind === "local_scan" || kind === "local_media_index" || kind === "metadata_sync")
+      return canRun && canSyncMetadata;
     if (kind === "dlsite_popular") return canRun && canSyncMetadata && canTagWorks;
     if (kind === "remote_popular") return canRun && canTagWorks && remoteSourceAvailability !== "unavailable";
     // Follow runs refresh catalogs and sync metadata; the optional tag checks tags:write itself.
@@ -1479,6 +1497,15 @@ function WorkflowDetail({
         allowed={allowed}
         onRun={(followUpRun) => onRunSystemAction("local_scan", { followUpRun })}
       />
+    ) : runKind === "local_media_index" && onRunSystemAction ? (
+      <LocalMediaIndexRunPanel
+        key={definition.code}
+        layout={layout}
+        running={running}
+        allowed={allowed}
+        onRun={(localMediaIndexMode) => onRunSystemAction("local_media_index", { localMediaIndexMode })}
+        onTriggerRunOptionsChange={onTriggerRunOptionsChange}
+      />
     ) : runKind === "dlsite_popular" && onRunDLsitePopular ? (
       <DLsitePopularRunPanel
         key={definition.code}
@@ -1623,6 +1650,72 @@ function LocalScanRunPanel({
       </RunOptionRows>
     ),
   });
+}
+
+function LocalMediaIndexRunPanel({
+  layout,
+  running,
+  allowed,
+  onRun,
+  onTriggerRunOptionsChange,
+}: {
+  layout: RunFormLayout;
+  running: boolean;
+  allowed: boolean;
+  onRun: (mode: LocalScanMode) => Promise<void>;
+  onTriggerRunOptionsChange?: (options: CurrentTriggerRunOptions) => void;
+}) {
+  const [mode, setMode] = useState<LocalScanMode>("incremental");
+  useEffect(() => {
+    onTriggerRunOptionsChange?.({
+      code: "local_media_index",
+      systemConfig: { ...workflowSystemTriggerConfig("local_media_index", null), scanMode: mode },
+    });
+  }, [mode, onTriggerRunOptionsChange]);
+  return layout({
+    run: <WorkflowRunButton running={running} disabled={!allowed} onClick={() => void onRun(mode)} />,
+    options: (
+      <RunOptionRows>
+        <LocalMediaIndexModeField value={mode} onChange={setMode} disabled={running || !allowed} />
+      </RunOptionRows>
+    ),
+  });
+}
+
+/** Incremental indexes only never-scanned work folders; full re-indexes every local work folder. */
+function LocalMediaIndexModeField({
+  value,
+  onChange,
+  disabled = false,
+  stacked = false,
+}: {
+  value: LocalScanMode;
+  onChange: (mode: LocalScanMode) => void;
+  disabled?: boolean;
+  stacked?: boolean;
+}) {
+  return (
+    <OptionField
+      label={workflowCopy("scanMode")}
+      hint={
+        value === "incremental"
+          ? workflowCopy("localMediaIndexIncrementalHint")
+          : workflowCopy("localMediaIndexFullHint")
+      }
+      stacked={stacked}
+    >
+      <SegmentedControl
+        label={workflowCopy("scanMode")}
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        options={[
+          { value: "incremental", label: workflowCopy("incremental") },
+          { value: "full", label: workflowCopy("full") },
+        ]}
+      />
+    </OptionField>
+  );
 }
 
 function metadataSyncBlockerText(blocker: MetadataSyncBlocker) {
@@ -3215,7 +3308,8 @@ function TriggerModal({
     }
   };
 
-  const showSystemOptions = definition.code === "local_library_scan" || customize;
+  const showSystemOptions =
+    definition.code === "local_library_scan" || definition.code === "local_media_index" || customize;
   const showPresetOptions = Boolean(preset && customize);
   const setCustomizeAndReset = (next: boolean) => {
     if (!next) {
@@ -3356,7 +3450,9 @@ function workflowSystemTriggerConfig(
       : REMOTE_POPULAR_TAG_TEMPLATE;
   return {
     followUpRun: record.followUpRun === true,
-    scanMode: record.scanMode === "full" ? "full" : "incremental",
+    // The local media index trigger stores its mode as `mode`.
+    scanMode:
+      (definitionCode === "local_media_index" ? record.mode : record.scanMode) === "full" ? "full" : "incremental",
     sourceId: typeof record.sourceId === "number" ? record.sourceId : 0,
     action: record.action === "fetch" ? "fetch" : "track",
     limit: typeof record.limit === "number" ? record.limit : 25,
@@ -3381,6 +3477,7 @@ function workflowSystemTriggerConfigPayload(
       ? { followUpRun: false, scanMode: value.scanMode }
       : { followUpRun: value.followUpRun };
   }
+  if (definitionCode === "local_media_index") return { mode: value.scanMode };
   if (definitionCode === "remote_popular_collection") {
     return {
       sourceId: value.sourceId,
@@ -3483,6 +3580,16 @@ function SystemWorkflowTriggerFields({
       active = false;
     };
   }, [definitionCode]);
+
+  if (definitionCode === "local_media_index") {
+    return (
+      <LocalMediaIndexModeField
+        value={value.scanMode}
+        onChange={(scanMode) => onChange({ ...value, scanMode })}
+        stacked
+      />
+    );
+  }
 
   if (definitionCode === "local_library_scan") {
     if (triggerType === "filesystem_event") {
@@ -3935,6 +4042,7 @@ function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () =>
       (run.status === "partial" && run.workflowCode === "remote_work_fetch" && run.pendingCandidates > 0)) &&
     [
       "local_library_scan",
+      "local_media_index",
       "metadata_sync",
       "remote_work_fetch",
       "media_cache",

@@ -538,6 +538,11 @@ export const surfaceJapanese = {
         name: "ローカルライブラリをスキャン",
         description: "ローカル作品を検出し、ローカルソースの存在状態を同期します。",
       },
+      local_media_index: {
+        name: "ローカル作品のファイルを更新",
+        description:
+          "検出済みのローカル作品フォルダ内のメディアファイルをインデックスします。増分は未スキャンのフォルダのみ、完全はすべてのローカル作品を再インデックスします。",
+      },
       metadata_sync: {
         name: "作品メタデータを同期",
         description:
@@ -604,6 +609,9 @@ export const surfaceJapanese = {
     activityLoadFailed: "アクティビティを読み込めませんでした。",
     definitionEmpty: "実行可能なワークフロー定義はまだありません。",
     localScanCreateFailed: "ローカルスキャン実行を作成できませんでした。",
+    localMediaIndexCreateFailed: "ローカル作品のファイル更新を作成できませんでした。",
+    localMediaIndexIncrementalHint: "フォルダがまだスキャンされていないローカル作品のみをインデックスします。",
+    localMediaIndexFullHint: "スキャン済みの作品を含め、すべてのローカル作品のファイルを再インデックスします。",
     metadataSyncCreateFailed: "メタデータ同期実行を作成できませんでした。",
     remotePopularQueueFailed: "リモート人気コレクションをキューに追加できませんでした。",
     remotePopularRequiresSource: "リモート人気を使用するには、互換性のあるリモートソースを設定してください。",
@@ -690,6 +698,7 @@ export const surfaceJapanese = {
     },
     shortNames: {
       local_library_scan: "ローカルスキャン",
+      local_media_index: "ローカルファイル",
       metadata_sync: "メタデータ同期",
       remote_popular_collection: "リモート人気",
       dlsite_popular_collection: "DLsite 人気",

@@ -516,6 +516,11 @@ export const surfaceHant = {
         description: "探索 DLsite 聲優排行、同步中繼資料並加入執行標籤。",
       },
       local_library_scan: { name: "掃描本機媒體庫", description: "探索本機作品並同步本機來源存在狀態。" },
+      local_media_index: {
+        name: "重新整理本機作品檔案",
+        description:
+          "為已探索的本機作品資料夾索引其中的媒體檔案。增量只處理尚未掃描的資料夾，完整會重新索引所有本機作品。",
+      },
       metadata_sync: {
         name: "同步作品中繼資料",
         description: "重新整理既有作品的中繼資料：所有作品、某個社團的作品或某位聲優的作品。",
@@ -548,6 +553,9 @@ export const surfaceHant = {
     activityLoadFailed: "活動載入失敗。",
     definitionEmpty: "尚無可執行的工作流程定義。",
     localScanCreateFailed: "無法建立本機掃描執行。",
+    localMediaIndexCreateFailed: "無法建立本機作品檔案重新整理執行。",
+    localMediaIndexIncrementalHint: "只索引資料夾尚未掃描的本機作品。",
+    localMediaIndexFullHint: "重新索引所有本機作品的檔案，包括已經掃描過的作品。",
     metadataSyncCreateFailed: "無法建立中繼資料同步執行。",
     remotePopularQueueFailed: "無法將遠端熱門集合排入佇列。",
     remotePopularRequiresSource: "請先設定相容的遠端來源，才能使用遠端熱門。",
@@ -634,6 +642,7 @@ export const surfaceHant = {
     },
     shortNames: {
       local_library_scan: "本機掃描",
+      local_media_index: "本機檔案",
       metadata_sync: "中繼資料同步",
       remote_popular_collection: "遠端熱門",
       dlsite_popular_collection: "DLsite 熱門",

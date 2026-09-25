@@ -30,6 +30,10 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   in the library, so a release range no longer filters out every new circle or
   series work.
 - Circle and voice actor detail refreshes keep their behavior.
+- The new Refresh local work files workflow, second after Scan local library,
+  indexes the media files inside discovered local work folders ahead of time.
+  Incremental covers folders that were never indexed and Full re-indexes every
+  local work. It runs manually or from a Startup or interval trigger.
 
 ## Tags
 

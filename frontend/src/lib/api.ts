@@ -1246,6 +1246,16 @@ export type HealthStatus = {
   minAndroidClientVersion?: string;
 };
 
+export type LocalMediaIndexMode = "incremental" | "full";
+
+export type LocalMediaIndexResult = {
+  runId: number;
+  jobId: number;
+  status: string;
+  mode: LocalMediaIndexMode;
+  existing: boolean;
+};
+
 export type LocalScanResult = {
   runId: number;
   jobId: number;
@@ -2525,6 +2535,8 @@ export const api = {
   recoverStaleWorkflowRuns: () => postJSON<WorkflowRunActionResult>("/api/workflow-runs/recover-stale"),
   runLocalScan: (payload: { followUpRun: boolean } = { followUpRun: false }) =>
     postJSONBody<LocalScanResult>("/api/workflow-runs/local-scan", payload),
+  runLocalMediaIndex: (payload: { mode: LocalMediaIndexMode }) =>
+    postJSONBody<LocalMediaIndexResult>("/api/workflow-runs/local-media-index", payload),
   runRemotePopularCollection: (payload: {
     action: "track" | "fetch";
     sourceId: number;

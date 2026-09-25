@@ -17,6 +17,7 @@ workflow_definition
 ## Current Built-In Workflows
 
 - Local library scan.
+- Local work file refresh.
 - Metadata sync.
 - Remote source sync.
 - Source availability check.
@@ -297,6 +298,33 @@ queues a separate `metadata_sync` run only after the scan reaches a terminal
 state. The fixed filesystem trigger keeps this option off. Queued automatic
 metadata follow-ups are coalesced so a burst of scans does not create redundant
 provider work.
+
+## Local Work File Refresh
+
+`local_media_index` indexes the media tree of local work folders that a local
+scan has already discovered, the same per-work indexing that otherwise runs
+lazily the first time a work's media is requested. It never discovers new work
+roots; that remains the local scan's job, and the Workflows page lists it second,
+after the scan.
+
+| Mode | Selected folders |
+| --- | --- |
+| `incremental` (default) | Available `local_folder` presences whose `raw_json.file_tree_scanned` is not set |
+| `full` | Every available `local_folder` presence |
+
+The job reads the complete target list before indexing, so no cursor holds a
+pooled connection while folders are walked and written. It then indexes each
+folder through the shared per-work indexer, which coalesces with a concurrent
+lazy request for the same folder, and checkpoints progress at most once a
+second. A folder that fails is recorded (the first 50 failures are kept) and the
+run continues; the run is `partial` when some folders fail and `failed` when
+none succeed. Cancellation stops before the next folder.
+
+One run is queued or running at a time: a manual start, retry, or trigger
+dispatch while one is active returns that run. Manual runs, Startup triggers,
+and interval triggers store `{"mode": ...}`; retry repeats the failed run's
+mode. Starting a run requires `workflows:run` and `metadata:sync`, like the
+local scan. No trigger is seeded.
 
 ## Queue Ordering
 
