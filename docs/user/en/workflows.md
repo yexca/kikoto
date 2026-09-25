@@ -67,6 +67,13 @@ Workflows make backend actions inspectable.
   scans always inspect the complete data tree. Changes during an active run
   produce at most one follow-up scan. Paused events are discarded; offline
   changes rely on the default Startup scan.
+- **Refresh local work files** sits second, after the local scan. It indexes the
+  media files inside local work folders that a scan has already discovered, so
+  opening a work does not index a large folder on demand. **Incremental** (the
+  default) covers only folders whose files were never indexed; **Full**
+  re-indexes every available local work. One run is queued or running at a
+  time, and starting another returns the active run. It supports Startup and
+  interval triggers that store the mode, and ships without a default trigger.
 - Remote and DLsite popular collection surfaces edit tag templates with a
   current-value preview, the complete workflow-specific variable list, and an
   explicit warning when the rendered tag exceeds 40 characters. Manual runs

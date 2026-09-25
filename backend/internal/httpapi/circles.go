@@ -2039,10 +2039,27 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		return nil, err
 	}
 	defer rows.Close()
+	// Enrichment issues further queries, so the cursor must release its pooled
+	// connection first. Concurrent requests that each held a cursor while
+	// waiting for a second connection could otherwise exhaust the pool.
+	catalogRows := []circleCatalogWorkRow{}
+	for rows.Next() {
+		row, err := scanCircleCatalogWorkRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		catalogRows = append(catalogRows, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
 	works := []circleCatalogWork{}
 	seen := map[string]int{}
-	for rows.Next() {
-		item, include, err := s.scanCircleCatalogWork(ctx, rows, userID, partyID)
+	for _, row := range catalogRows {
+		item, include, err := s.buildCircleCatalogWork(ctx, row, userID, partyID)
 		if err != nil {
 			return nil, err
 		}
@@ -2056,12 +2073,6 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		}
 		seen[key] = len(works)
 		works = append(works, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	workIDs := make([]int64, 0, len(works))
 	for _, work := range works {
@@ -2088,8 +2099,8 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 	return works, nil
 }
 
-func (s *Server) scanCircleCatalogWork(ctx context.Context, rows *sql.Rows, userID, partyID int64) (circleCatalogWork, bool, error) {
-	item, metadata, err := s.readCircleCatalogWork(ctx, rows)
+func (s *Server) buildCircleCatalogWork(ctx context.Context, row circleCatalogWorkRow, userID, partyID int64) (circleCatalogWork, bool, error) {
+	item, metadata, err := s.readCircleCatalogWork(ctx, row)
 	if err != nil {
 		return circleCatalogWork{}, false, err
 	}
@@ -2117,20 +2128,27 @@ func (s *Server) scanCircleCatalogWork(ctx context.Context, rows *sql.Rows, user
 	return item, true, nil
 }
 
-func (s *Server) readCircleCatalogWork(ctx context.Context, rows *sql.Rows) (circleCatalogWork, dlsiteSnapshotMetadata, error) {
-	var item circleCatalogWork
+// circleCatalogWorkRow is one scanned catalog row before any enrichment query.
+type circleCatalogWorkRow struct {
+	item            circleCatalogWork
+	workID          sql.NullInt64
+	dlsiteAvailable int
+	favorite        int
+	snapshot        string
+	seriesLink      string
+}
+
+func scanCircleCatalogWorkRow(rows *sql.Rows) (circleCatalogWorkRow, error) {
+	var row circleCatalogWorkRow
+	item := &row.item
 	var release sql.NullString
-	var workID sql.NullInt64
 	var rating sql.NullFloat64
 	var sales, regularPrice, currentPrice sql.NullInt64
 	var permanentlyFree sql.NullBool
-	var dlsiteAvailable int
-	var favorite int
-	var snapshot, seriesLink string
-	if err := rows.Scan(&item.PrimaryCode, &item.Title, &release, &item.DLsiteURL, &item.CatalogStatus, &dlsiteAvailable, &workID, &item.AgeRating,
+	if err := rows.Scan(&item.PrimaryCode, &item.Title, &release, &item.DLsiteURL, &item.CatalogStatus, &row.dlsiteAvailable, &row.workID, &item.AgeRating,
 		&rating, &sales, &regularPrice, &currentPrice, &item.PriceCurrency, &permanentlyFree,
-		&snapshot, &item.ListeningMark, &favorite, &seriesLink); err != nil {
-		return item, dlsiteSnapshotMetadata{}, err
+		&row.snapshot, &item.ListeningMark, &row.favorite, &row.seriesLink); err != nil {
+		return row, err
 	}
 	item.Rating = sqlutil.Float64(rating)
 	item.Sales = sqlutil.Int64(sales)
@@ -2143,6 +2161,11 @@ func (s *Server) readCircleCatalogWork(ctx context.Context, rows *sql.Rows) (cir
 	if item.ReleaseDate != nil {
 		item.UpdatedAt = *item.ReleaseDate
 	}
+	return row, nil
+}
+
+func (s *Server) readCircleCatalogWork(ctx context.Context, row circleCatalogWorkRow) (circleCatalogWork, dlsiteSnapshotMetadata, error) {
+	item := row.item
 	originalCode := item.PrimaryCode
 	ref, err := s.canonicalWorkForCode(ctx, item.PrimaryCode)
 	if err != nil {
@@ -2157,8 +2180,8 @@ func (s *Server) readCircleCatalogWork(ctx context.Context, rows *sql.Rows) (cir
 			item.WorkID = &ref.WorkID
 		}
 	}
-	item.Series, item.SeriesTitleID = parseSeriesLink(seriesLink)
-	metadata := parseDLsiteSnapshot(snapshot)
+	item.Series, item.SeriesTitleID = parseSeriesLink(row.seriesLink)
+	metadata := parseDLsiteSnapshot(row.snapshot)
 	if ref.Known && ref.WorkID > 0 && !strings.EqualFold(originalCode, ref.Code) {
 		if err := s.projectCircleCatalogWorkToCanonical(ctx, &item, &metadata, ref.WorkID); err != nil {
 			return item, dlsiteSnapshotMetadata{}, err
@@ -2169,7 +2192,7 @@ func (s *Server) readCircleCatalogWork(ctx context.Context, rows *sql.Rows) (cir
 		item.Series = metadata.Series
 	}
 	if item.WorkID == nil {
-		item.WorkID = sqlutil.Int64(workID)
+		item.WorkID = sqlutil.Int64(row.workID)
 	}
 	if item.WorkID != nil {
 		if title, tags, projected, err := s.loadProjectedDLsiteMetadata(ctx, *item.WorkID); err != nil {
@@ -2181,8 +2204,8 @@ func (s *Server) readCircleCatalogWork(ctx context.Context, rows *sql.Rows) (cir
 			item.Tags = tags
 		}
 	}
-	item.Favorite = favorite != 0
-	item.DLsiteAvailable = dlsiteAvailable != 0
+	item.Favorite = row.favorite != 0
+	item.DLsiteAvailable = row.dlsiteAvailable != 0
 	return item, metadata, nil
 }
 
@@ -2461,6 +2484,18 @@ func (s *Server) loadCircleSeries(ctx context.Context, partyID int64) ([]circleS
 			return nil, err
 		}
 		item.WorkCodes = splitCatalogCodes(codes.String)
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Demo eligibility queries per code, so release the cursor's pooled
+	// connection before filtering.
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	for index := range items {
+		item := &items[index]
 		if s.cfg.IsDemo() {
 			filteredCodes := make([]string, 0, len(item.WorkCodes))
 			for _, code := range item.WorkCodes {
@@ -2479,9 +2514,8 @@ func (s *Server) loadCircleSeries(ctx context.Context, partyID int64) ([]circleS
 			item.RemoteWorks = min(item.RemoteWorks, item.Works-item.LocalWorks)
 		}
 		item.MissingWorks = maxInt(0, item.Works-item.LocalWorks-item.RemoteWorks)
-		items = append(items, item)
 	}
-	return items, rows.Err()
+	return items, nil
 }
 
 func splitCatalogCodes(raw string) []string {

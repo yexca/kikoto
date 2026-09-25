@@ -45,6 +45,7 @@ func run() error {
 	if err := storage.MigrateFS(db, migrations.Files, buildinfo.Version); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
 	}
+	go storage.MonitorPool(ctx, db, storage.PoolMonitorInterval)
 
 	server := httpapi.NewServer(db, cfg)
 	if err := server.LoadAccessPolicy(ctx); err != nil {

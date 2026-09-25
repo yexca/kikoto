@@ -492,6 +492,9 @@ export const surfaceEnglish = {
     activityLoadFailed: "Activity could not be loaded.",
     definitionEmpty: "No runnable workflow definitions exist yet.",
     localScanCreateFailed: "Local scan run could not be created.",
+    localMediaIndexCreateFailed: "Local work file refresh could not be created.",
+    localMediaIndexIncrementalHint: "Index only local works whose folder has not been scanned yet.",
+    localMediaIndexFullHint: "Re-index the files of every local work, including works that were already scanned.",
     metadataSyncCreateFailed: "Metadata sync run could not be created.",
     remotePopularQueueFailed: "Remote popular collection could not be queued.",
     remotePopularRequiresSource: "Configure a compatible remote source to use Remote popular.",
@@ -578,6 +581,7 @@ export const surfaceEnglish = {
     },
     shortNames: {
       local_library_scan: "Local scan",
+      local_media_index: "Local files",
       metadata_sync: "Metadata sync",
       remote_popular_collection: "Remote popular",
       dlsite_popular_collection: "DLsite popular",
@@ -753,6 +757,11 @@ export const surfaceEnglish = {
       local_library_scan: {
         name: "Scan local library",
         description: "Discover local works and synchronize local source presence.",
+      },
+      local_media_index: {
+        name: "Refresh local work files",
+        description:
+          "Index the media files inside discovered local work folders. Incremental covers folders that were never indexed; full re-indexes every local work.",
       },
       metadata_sync: {
         name: "Sync work metadata",

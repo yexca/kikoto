@@ -180,6 +180,7 @@ func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobR
 		"remote_popular_collection":  s.executeRemotePopularCollectionJob,
 		"dlsite_popular_collection":  s.executeDLsitePopularCollectionJob,
 		"local_library_scan":         s.executeLocalScanJob,
+		localMediaIndexWorkerType:    s.executeLocalMediaIndexJob,
 		"metadata_sync":              s.executeDLsiteMetadataSyncJob,
 		"metadata_family_sync":       s.executeWorkMetadataSyncJob,
 		"media_cache_limit_cleanup":  s.executeMediaCacheLimitCleanupJob,

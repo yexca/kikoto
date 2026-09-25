@@ -515,6 +515,11 @@ export const surfaceHans = {
         description: "发现 DLsite 声优排行、同步元数据并添加运行标签。",
       },
       local_library_scan: { name: "扫描本地媒体库", description: "发现本地作品并同步本地来源存在状态。" },
+      local_media_index: {
+        name: "刷新本地作品文件",
+        description:
+          "为已发现的本地作品文件夹索引其中的媒体文件。增量只处理尚未扫描的文件夹，完整会重新索引所有本地作品。",
+      },
       metadata_sync: {
         name: "同步作品元数据",
         description: "刷新已有作品的元数据：全部作品、某个社团的作品或某位声优的作品。",
@@ -547,6 +552,9 @@ export const surfaceHans = {
     activityLoadFailed: "活动加载失败。",
     definitionEmpty: "尚无可运行的工作流定义。",
     localScanCreateFailed: "无法创建本地扫描运行。",
+    localMediaIndexCreateFailed: "无法创建本地作品文件刷新运行。",
+    localMediaIndexIncrementalHint: "只索引文件夹尚未扫描的本地作品。",
+    localMediaIndexFullHint: "重新索引所有本地作品的文件，包括已经扫描过的作品。",
     metadataSyncCreateFailed: "无法创建元数据同步运行。",
     remotePopularQueueFailed: "无法将远程热门集合加入队列。",
     remotePopularRequiresSource: "请配置兼容的远程来源后再使用远程热门。",
@@ -633,6 +641,7 @@ export const surfaceHans = {
     },
     shortNames: {
       local_library_scan: "本地扫描",
+      local_media_index: "本地文件",
       metadata_sync: "元数据同步",
       remote_popular_collection: "远程热门",
       dlsite_popular_collection: "DLsite 热门",

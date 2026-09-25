@@ -132,6 +132,13 @@ func (s *Server) normalizeSystemWorkflowTriggerConfig(
 		}
 		prepared.ConfigJSON = mustJSON(config)
 		requiredPermissions = append(requiredPermissions, "metadata:sync")
+	case localMediaIndexWorkflowCode:
+		config, err := normalizeLocalMediaIndexTriggerConfig(payload.ConfigJSON)
+		if err != nil {
+			return preparedWorkflowTrigger{}, nil, err
+		}
+		prepared.ConfigJSON = mustJSON(config)
+		requiredPermissions = append(requiredPermissions, "metadata:sync")
 	case "metadata_sync":
 		var options metadataSyncOptions
 		if strings.TrimSpace(payload.ConfigJSON) != "" {
@@ -194,7 +201,7 @@ func normalizeLocalScanTriggerConfig(raw string) (localScanTriggerConfig, error)
 
 func systemWorkflowSupportsConfigurableTriggers(code string) bool {
 	switch code {
-	case "availability_watch", "local_library_scan", "metadata_sync", "remote_popular_collection", "dlsite_popular_collection":
+	case "availability_watch", "local_library_scan", localMediaIndexWorkflowCode, "metadata_sync", "remote_popular_collection", "dlsite_popular_collection":
 		return true
 	default:
 		return isPresetWorkflowCode(code)
@@ -205,7 +212,7 @@ func systemWorkflowSupportsConfigurableTriggers(code string) bool {
 // triggers the coordinator dispatches.
 func scheduledSystemWorkflowCodes() []string {
 	return append([]string{
-		"availability_watch", "local_library_scan", "metadata_sync",
+		"availability_watch", "local_library_scan", localMediaIndexWorkflowCode, "metadata_sync",
 		"remote_popular_collection", "dlsite_popular_collection",
 	}, presetWorkflowCodes()...)
 }
@@ -508,6 +515,8 @@ func (s *Server) dispatchSystemWorkflowTrigger(ctx context.Context, definition w
 		return s.executeAvailabilityWatchSystemTrigger(ctx, trigger, triggerType, triggerReason)
 	case "local_library_scan":
 		return s.executeLocalLibrarySystemTrigger(ctx, trigger, triggerType, triggerReason)
+	case localMediaIndexWorkflowCode:
+		return s.executeLocalMediaIndexSystemTrigger(ctx, trigger, triggerType, triggerReason)
 	case "metadata_sync":
 		return s.executeMetadataSystemTrigger(ctx, trigger, triggerType, triggerReason)
 	case "remote_popular_collection":
@@ -606,7 +615,7 @@ func (s *Server) executeDLsitePopularSystemTrigger(ctx context.Context, trigger 
 
 func systemWorkflowTriggerIsAsync(code string) bool {
 	switch code {
-	case "availability_watch", "local_library_scan", "metadata_sync", "remote_popular_collection", "dlsite_popular_collection":
+	case "availability_watch", "local_library_scan", localMediaIndexWorkflowCode, "metadata_sync", "remote_popular_collection", "dlsite_popular_collection":
 		return true
 	default:
 		return isPresetWorkflowCode(code)
@@ -687,7 +696,7 @@ func (s *Server) dispatchStartupSystemWorkflowTriggers(ctx context.Context) erro
 
 func (s *Server) startupSystemWorkflowTriggerIDs(ctx context.Context) ([]int64, error) {
 	startupCodes := append([]string{
-		"local_library_scan", "remote_popular_collection", "dlsite_popular_collection",
+		"local_library_scan", localMediaIndexWorkflowCode, "remote_popular_collection", "dlsite_popular_collection",
 	}, presetWorkflowCodes()...)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT trigger.id

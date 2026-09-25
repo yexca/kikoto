@@ -43,6 +43,10 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
 - A job whose executor stopped without recording a result, including after a
   transient source error, is now marked failed or retried instead of staying
   running and blocking every other job until a restart.
+- The new Refresh local work files workflow, second after Scan local library,
+  indexes the media files inside discovered local work folders ahead of time.
+  Incremental covers folders that were never indexed and Full re-indexes every
+  local work. It runs manually or from a Startup or interval trigger.
 
 ## Tags
 
@@ -103,6 +107,17 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
 - Concurrent requests for the same work detail share one request.
 - The player's playback clock is published separately, so only progress,
   lyrics, and sleep-timer displays re-render during playback.
+- Circle and voice actor details, voice alias search, the voice remote
+  catalog, and remote Fetch source options no longer query the database while
+  still holding a connection for their own results. A few of these requests at
+  once could take every database connection and stall the whole site,
+  including sign-in and background jobs.
+- An API request that has not started responding within 60 seconds is
+  cancelled with a retryable "service unavailable" error instead of waiting
+  forever for a database connection. Media transcodes, remote-source
+  operations, and filesystem maintenance keep their longer running time, and
+  streams are unaffected once they start. The server log reports a database
+  connection pool that stays exhausted, and when it recovers.
 
 ## Maintenance
 

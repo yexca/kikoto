@@ -20,7 +20,8 @@ func TestDLsitePartyProjectionPrefersProductMakerIdentity(t *testing.T) {
 }
 
 func TestDLsitePartyProjectionSkipsUnchangedSnapshots(t *testing.T) {
-	db := openMigratedTestDB(t)
+	// The final check holds the write lock on a second connection.
+	db := openMigratedTestDBWithProductionPool(t)
 	ctx := context.Background()
 	var providerID int64
 	if err := db.QueryRow("SELECT id FROM metadata_provider WHERE code = 'dlsite'").Scan(&providerID); err != nil {

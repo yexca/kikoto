@@ -1219,13 +1219,25 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 		return nil, err
 	}
 	defer rows.Close()
-	works := []voiceKnownWork{}
-	seen := map[string]int{}
+	// Close the cursor before enrichment queries so this request never holds
+	// one pooled connection while waiting for another.
+	workRows := []voiceWorkRow{}
 	for rows.Next() {
 		row, err := scanVoiceWorkRow(rows)
 		if err != nil {
 			return nil, err
 		}
+		workRows = append(workRows, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	works := []voiceKnownWork{}
+	seen := map[string]int{}
+	for _, row := range workRows {
 		item, include, err := s.buildVoiceKnownWork(ctx, userID, row)
 		if err != nil {
 			return nil, err
@@ -1240,12 +1252,6 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 		}
 		seen[key] = len(works)
 		works = append(works, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	workIDs := make([]int64, 0, len(works))
 	for _, work := range works {
@@ -1799,19 +1805,67 @@ func (s *Server) loadVoiceAliasCandidates(ctx context.Context, personID int64, q
 	}
 	defer rows.Close()
 	candidates := []voiceAliasCandidate{}
+	personIDs := []int64{}
 	for rows.Next() {
 		var item voiceAliasCandidate
 		if err := rows.Scan(&item.PersonID, &item.DisplayName, &item.KnownWorks, &item.LocalWorks, &item.RemoteWorks); err != nil {
 			return nil, err
 		}
-		aliases, err := s.loadVoiceAliases(ctx, item.PersonID)
-		if err != nil {
+		candidates = append(candidates, item)
+		personIDs = append(personIDs, item.PersonID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	aliasesByPerson, err := s.loadVoiceAliasesBatch(ctx, personIDs)
+	if err != nil {
+		return nil, err
+	}
+	for index := range candidates {
+		candidates[index].Aliases = aliasesByPerson[candidates[index].PersonID]
+	}
+	return candidates, nil
+}
+
+// loadVoiceAliasesBatch returns every requested person's aliases, using an
+// empty slice for a person without any, in the same order as loadVoiceAliases.
+func (s *Server) loadVoiceAliasesBatch(ctx context.Context, personIDs []int64) (map[int64][]voiceAlias, error) {
+	result := make(map[int64][]voiceAlias, len(personIDs))
+	placeholders := make([]string, 0, len(personIDs))
+	args := make([]any, 0, len(personIDs))
+	for _, personID := range personIDs {
+		if _, ok := result[personID]; ok {
+			continue
+		}
+		result[personID] = []voiceAlias{}
+		placeholders = append(placeholders, "?")
+		args = append(args, personID)
+	}
+	if len(args) == 0 {
+		return result, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT person_id, id, alias, source, created_at
+		FROM person_alias
+		WHERE person_id IN (`+strings.Join(placeholders, ",")+`)
+		ORDER BY person_id, CASE WHEN source = 'primary_name' THEN 0 ELSE 1 END, alias ASC
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var personID int64
+		var item voiceAlias
+		if err := rows.Scan(&personID, &item.ID, &item.Alias, &item.Source, &item.CreatedAt); err != nil {
 			return nil, err
 		}
-		item.Aliases = aliases
-		candidates = append(candidates, item)
+		result[personID] = append(result[personID], item)
 	}
-	return candidates, rows.Err()
+	return result, rows.Err()
 }
 
 func (s *Server) loadVoiceMergeReviews(ctx context.Context, personID int64) ([]voiceMergeReview, error) {

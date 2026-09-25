@@ -71,19 +71,26 @@ func (s *Server) appendRemoteFetchAlternativeSources(ctx context.Context, result
 			AND source.id <> ?
 		ORDER BY source.priority ASC, source.id ASC
 	`, workCode, primary.ID)
-	if err == nil {
-		defer func() { _ = rows.Close() }()
-		for rows.Next() {
-			var sourceID int64
-			if rows.Scan(&sourceID) != nil {
-				continue
-			}
-			source, remoteWork, tracks, loadErr := s.loadRemoteWorkTracks(ctx, sourceID, workCode)
-			if loadErr != nil || !strings.EqualFold(normalizedRemoteWorkCode(remoteWork), workCode) {
-				continue
-			}
-			appendRemoteFetchSourceOptions(result, source, flattenRemoteSaveFiles(tracks), primaryPathByHash, true)
+	if err != nil {
+		return
+	}
+	// Remote lookups query the database and wait on the network, so collect the
+	// candidates and release the cursor's pooled connection first.
+	sourceIDs := []int64{}
+	for rows.Next() {
+		var sourceID int64
+		if rows.Scan(&sourceID) != nil {
+			continue
 		}
+		sourceIDs = append(sourceIDs, sourceID)
+	}
+	_ = rows.Close()
+	for _, sourceID := range sourceIDs {
+		source, remoteWork, tracks, loadErr := s.loadRemoteWorkTracks(ctx, sourceID, workCode)
+		if loadErr != nil || !strings.EqualFold(normalizedRemoteWorkCode(remoteWork), workCode) {
+			continue
+		}
+		appendRemoteFetchSourceOptions(result, source, flattenRemoteSaveFiles(tracks), primaryPathByHash, true)
 	}
 }
 

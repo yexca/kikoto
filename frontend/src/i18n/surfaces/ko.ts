@@ -539,6 +539,11 @@ export const surfaceKorean = {
         name: "로컬 라이브러리 스캔",
         description: "로컬 작품을 검색하고 로컬 소스 존재 상태를 동기화합니다.",
       },
+      local_media_index: {
+        name: "로컬 작품 파일 새로 고침",
+        description:
+          "발견된 로컬 작품 폴더 안의 미디어 파일을 색인합니다. 증분은 아직 색인하지 않은 폴더만, 전체는 모든 로컬 작품을 다시 색인합니다.",
+      },
       metadata_sync: {
         name: "작품 메타데이터 동기화",
         description:
@@ -602,6 +607,9 @@ export const surfaceKorean = {
     activityLoadFailed: "활동을 불러오지 못했습니다.",
     definitionEmpty: "실행 가능한 워크플로 정의가 아직 없습니다.",
     localScanCreateFailed: "로컬 스캔 실행을 생성하지 못했습니다.",
+    localMediaIndexCreateFailed: "로컬 작품 파일 새로 고침 실행을 생성하지 못했습니다.",
+    localMediaIndexIncrementalHint: "폴더를 아직 스캔하지 않은 로컬 작품만 색인합니다.",
+    localMediaIndexFullHint: "이미 스캔한 작품을 포함해 모든 로컬 작품의 파일을 다시 색인합니다.",
     metadataSyncCreateFailed: "메타데이터 동기화를 생성하지 못했습니다.",
     remotePopularQueueFailed: "원격 인기 모음을 대기열에 추가하지 못했습니다.",
     remotePopularRequiresSource: "원격 인기를 사용하려면 호환되는 원격 소스를 구성하세요.",
@@ -688,6 +696,7 @@ export const surfaceKorean = {
     },
     shortNames: {
       local_library_scan: "로컬 스캔",
+      local_media_index: "로컬 파일",
       metadata_sync: "메타데이터 동기화",
       remote_popular_collection: "원격 인기",
       dlsite_popular_collection: "DLsite 인기",
