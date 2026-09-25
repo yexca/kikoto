@@ -1728,8 +1728,10 @@ export const surfaceEnglish = {
     voiceCatalogRefreshFailed: "Voice catalog refresh failed.",
     voiceMetadataQueued: "Voice metadata refresh queued.",
     firstVoiceCatalogQueued: "First voice catalog pull queued.",
-    voiceActorNotFound: "Voice actor not found",
-    voiceActorUnavailable: "Voice actor {{id}} is not available in the current catalog.",
+    voiceActorNotInDatabase: "Voice actor not in this site's database",
+    voiceActorSyncPrompt:
+      "Voice actor {{id}} is not in this site's database. Sync the metadata of any work by this voice actor to create the page.",
+    voiceActorContactAdmin: "Voice actor {{id}} is not in this site's database. Contact an administrator to add it.",
     circleNotFound: "Circle not found",
     circleUnavailable: "{{id}} is not available in the current catalog.",
     circleNotInDatabase: "Circle not in this site's database",

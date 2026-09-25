@@ -370,7 +370,10 @@ contact an administrator. Only a `circle_catalog` fetch adds the circle: it
 starts as an unfetched placeholder, and a failed first fetch removes that
 placeholder unless it has since gained a name, catalog, relation, or user
 state. A stored-catalog run and the circle metadata and source nodes require
-a circle that already exists.
+a circle that already exists. A voice actor exists only once a synced work
+credits them, so an unknown voice actor page asks a user with
+`metadata:sync` to sync the metadata of any of their works and asks anyone
+else to contact an administrator.
 
 The workflow searches the display name and every confirmed alias against each
 enabled compatible source. It follows the source-reported result count through

@@ -1721,8 +1721,10 @@ export const surfaceKorean = {
     voiceCatalogRefreshFailed: "성우 카탈로그 새로 고침에 실패했습니다.",
     voiceMetadataQueued: "성우 메타데이터 새로 고침을 대기열에 추가했습니다.",
     firstVoiceCatalogQueued: "첫 성우 카탈로그 가져오기를 대기열에 추가했습니다.",
-    voiceActorNotFound: "성우를 찾을 수 없습니다",
-    voiceActorUnavailable: "현재 카탈로그에서 성우 {{id}}을(를) 사용할 수 없습니다.",
+    voiceActorNotInDatabase: "이 사이트 데이터베이스에 없는 성우입니다",
+    voiceActorSyncPrompt:
+      "성우 {{id}}은(는) 이 사이트 데이터베이스에 없습니다. 이 성우의 작품 중 하나의 메타데이터를 동기화하면 페이지가 만들어집니다.",
+    voiceActorContactAdmin: "성우 {{id}}은(는) 이 사이트 데이터베이스에 없습니다. 추가하려면 관리자에게 문의하세요.",
     circleNotFound: "서클을 찾을 수 없습니다",
     circleUnavailable: "현재 카탈로그에서 {{id}}을(를) 사용할 수 없습니다.",
     circleNotInDatabase: "이 사이트 데이터베이스에 없는 서클입니다",

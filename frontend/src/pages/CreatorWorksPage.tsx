@@ -955,8 +955,14 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
   if (notFound) {
     return (
       <NotFoundPage
-        title={t("creatorBrowse.voiceActorNotFound")}
-        message={t("creatorBrowse.voiceActorUnavailable", { id: personId })}
+        title={t("creatorBrowse.voiceActorNotInDatabase")}
+        // A voice actor page is created from a synced work's credits, so a
+        // metadata user is told how to create one.
+        message={
+          canForceRefreshCatalog
+            ? t("creatorBrowse.voiceActorSyncPrompt", { id: personId })
+            : t("creatorBrowse.voiceActorContactAdmin", { id: personId })
+        }
         onBack={navigateToList}
         onOpenLibrary={() => {
           window.history.pushState({}, "", "/");

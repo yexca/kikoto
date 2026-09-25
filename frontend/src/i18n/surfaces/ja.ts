@@ -1724,8 +1724,10 @@ export const surfaceJapanese = {
     voiceCatalogRefreshFailed: "声優カタログの更新に失敗しました。",
     voiceMetadataQueued: "声優メタデータ更新をキューに追加しました。",
     firstVoiceCatalogQueued: "声優カタログの初回取得をキューに追加しました。",
-    voiceActorNotFound: "声優が見つかりません",
-    voiceActorUnavailable: "現在のカタログに声優{{id}}はありません。",
+    voiceActorNotInDatabase: "このサイトのデータベースにない声優です",
+    voiceActorSyncPrompt:
+      "声優{{id}}はこのサイトのデータベースにありません。この声優の作品のメタデータをどれか同期すると、ページが作成されます。",
+    voiceActorContactAdmin: "声優{{id}}はこのサイトのデータベースにありません。追加するには管理者に連絡してください。",
     circleNotFound: "サークルが見つかりません",
     circleUnavailable: "現在のカタログに{{id}}はありません。",
     circleNotInDatabase: "このサイトのデータベースにないサークルです",

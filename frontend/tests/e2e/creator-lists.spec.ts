@@ -593,6 +593,46 @@ for (const role of ["admin", "member"] as const) {
   });
 }
 
+for (const role of ["admin", "member"] as const) {
+  test(`an unknown voice actor ${role === "admin" ? "explains how a metadata sync creates it" : "asks a member to contact an administrator"}`, async ({
+    page,
+  }) => {
+    await page.route("**/api/**", async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/auth/me") {
+        await route.fulfill({
+          json: {
+            authenticated: true,
+            user: {
+              id: 1,
+              username: "listener",
+              displayName: "Listener",
+              role: role === "admin" ? "admin" : "user",
+              permissions:
+                role === "admin"
+                  ? ["library:read", "favorites:write", "tags:write", "metadata:sync", "workflows:run"]
+                  : ["library:read", "favorites:write", "tags:write"],
+              devMode: true,
+            },
+          },
+        });
+        return;
+      }
+      await route.fulfill({ status: 404, json: { error: "voice actor not found" } });
+    });
+
+    await page.goto("/voices/99");
+    await expect(page.getByRole("heading", { name: "Voice actor not in this site's database" })).toBeVisible();
+    await expect(
+      page.getByText(
+        role === "admin"
+          ? "Voice actor 99 is not in this site's database. Sync the metadata of any work by this voice actor to create the page."
+          : "Voice actor 99 is not in this site's database. Contact an administrator to add it.",
+      ),
+    ).toBeVisible();
+  });
+}
+
 test("a one-circle result keeps the initial creator region height", async ({ page }) => {
   let releaseRequest = () => undefined;
   const requestGate = new Promise<void>((resolve) => {
