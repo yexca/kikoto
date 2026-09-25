@@ -30,6 +30,10 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   in the library, so a release range no longer filters out every new circle or
   series work.
 - Circle and voice actor detail refreshes keep their behavior.
+- A trigger popover that stays open while you select another workflow tab now
+  saves to the workflow it was opened for. Before, a new trigger could be
+  created on the other workflow, or an edited one moved there with options in
+  the wrong shape.
 
 ## Tags
 
