@@ -87,6 +87,9 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   The drain is bounded by the new `KIKOTO_SHUTDOWN_TIMEOUT_SECONDS` (default
   20). The bundled Compose files set `stop_grace_period: 30s`; add the same to
   a custom Compose file, because Docker's default 10 seconds can kill the drain.
+- The Docker image now installs the current Debian security updates for
+  `ffmpeg` and `ca-certificates` each time it is built, instead of fixed
+  package versions that had stopped receiving fixes.
 
 ## Accessibility And Translation
 
