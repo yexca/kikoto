@@ -264,7 +264,9 @@ try {
   });
   const work = await waitFor(async () => {
     const { body } = await request("/api/works", { headers });
-    return JSON.parse(body).find((entry) => entry.primaryCode === "RJ00000000");
+    return JSON.parse(body).works.find(
+      (entry) => entry.primaryCode === "RJ00000000",
+    );
   }, "the synthetic local work");
   const findLocalFile = (items, name) => {
     for (const item of items) {
