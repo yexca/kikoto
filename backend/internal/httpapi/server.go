@@ -51,8 +51,7 @@ type Server struct {
 	metadataCoordinator            *metasync.Coordinator
 	jobRunnerMu                    sync.Mutex
 	jobRunnerStarted               bool
-	activeWorkflowMu               sync.Mutex
-	activeWorkflowCancels          map[int64]map[int64]context.CancelFunc
+	workflowLeases                 *workflowLeaseRegistry
 	voiceCatalogRefreshMu          sync.Mutex
 	creatorRefreshMu               sync.Mutex
 	fetchStagingCleanupMu          sync.Mutex
@@ -102,7 +101,7 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 		realtimeProbeCache:             map[string]playbackProbeCacheEntry{},
 		localMediaWriteSlot:            make(chan struct{}, 1),
 		localMediaProbeWake:            make(chan struct{}, 1),
-		activeWorkflowCancels:          map[int64]map[int64]context.CancelFunc{},
+		workflowLeases:                 newWorkflowLeaseRegistry(),
 		sourceGate:                     newSourceRequestGate(),
 		filesystemTriggerConfigChanged: make(chan struct{}, 1),
 		appUpdateEndpoints:             defaultAppUpdateEndpoints(),
@@ -385,7 +384,7 @@ func (s *Server) RunStartupWorkflows(ctx context.Context) error {
 }
 
 func (s *Server) RecoverInterruptedWorkflows(ctx context.Context) error {
-	if _, err := s.markStaleWorkflowRuns(ctx, "startup interrupted before completion"); err != nil {
+	if _, err := s.settleInterruptedWorkflowRuns(ctx, "startup interrupted before completion"); err != nil {
 		return err
 	}
 	if err := s.reconcileRemoteFetchManifests(ctx); err != nil {

@@ -1043,6 +1043,9 @@ export type WorkflowRunActionResult = {
   message: string;
   newRunId?: number;
   recovered?: number;
+  requeued?: number;
+  failed?: number;
+  active?: number;
 };
 
 export type LocalCandidateCleanupResult = {

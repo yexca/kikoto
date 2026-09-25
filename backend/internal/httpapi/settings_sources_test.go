@@ -963,7 +963,7 @@ func TestRemoteWorkTrackQueuesDeduplicatesForksAndNotifiesSubscribers(t *testing
 		t.Fatalf("deduplicated result = %+v, queued = %+v", reused, queued)
 	}
 
-	if err := server.runNextQueuedWorkflowJob(context.Background(), "track-test-runner"); err != nil {
+	if err := server.runNextQueuedWorkflowJob(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	var runStatus string

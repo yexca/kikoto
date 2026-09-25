@@ -1667,12 +1667,24 @@ func (s *Server) recoverStaleWorkflowRuns(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	recovered, err := s.workflowStore.MarkStaleRunsVisibleTo(r.Context(), "manual recovery", actor.ID, canViewAllWorkflowRuns(actor))
+	var result workflow.OrphanSweepResult
+	err := withDatabaseBusyRetry(r.Context(), func() error {
+		var err error
+		result, err = s.workflowStore.SettleOrphans(r.Context(), workflow.OrphanSweep{
+			Reason: "manual recovery", LiveLeases: s.workflowLeases.live,
+			SettleIdleRuns: true, IdleRunGrace: manualRecoveryIdleRunGrace,
+			ViewerUserID: actor.ID, CanViewAll: canViewAllWorkflowRuns(actor),
+		})
+		return err
+	})
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, workflowRunActionResult{Status: "recovered", Message: "recoverable jobs requeued; unsupported stale runs marked failed", Recovered: recovered})
+	writeJSON(w, http.StatusOK, workflowRunActionResult{
+		Status: "recovered", Message: "jobs without a running executor were requeued or marked failed; running jobs were left alone",
+		Recovered: result.Changed(), Requeued: result.Requeued, Failed: result.Failed, Active: result.Active,
+	})
 }
 
 func (s *Server) loadWorkflowRun(ctx context.Context, id int64) (workflowRunRecord, error) {
@@ -1788,6 +1800,12 @@ func mergeJSONObjects(raw string, patch map[string]any) map[string]any {
 	return result
 }
 
-func (s *Server) markStaleWorkflowRuns(ctx context.Context, reason string) (int64, error) {
-	return s.workflowStore.MarkStaleRuns(ctx, reason)
+// manualRecoveryIdleRunGrace keeps manual recovery away from a run whose job
+// changed moments ago and may still be finishing its own result.
+const manualRecoveryIdleRunGrace = time.Minute
+
+// settleInterruptedWorkflowRuns runs at startup, before any executor holds a
+// lease, so every running job was left by an earlier process.
+func (s *Server) settleInterruptedWorkflowRuns(ctx context.Context, reason string) (workflow.OrphanSweepResult, error) {
+	return s.workflowStore.SettleOrphans(ctx, workflow.OrphanSweep{Reason: reason, SettleIdleRuns: true, CanViewAll: true})
 }

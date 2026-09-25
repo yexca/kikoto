@@ -370,7 +370,7 @@ func TestVoiceFollowContinuesOnTheStoredCatalogWhenEverySourceFails(t *testing.T
 	runID := queueVoiceFollowForTest(t, server, presetWorkflowInputs{
 		PersonID: 1, SourceIDs: []int64{11}, CatalogRefresh: "incremental", KnownMetadata: true,
 	})
-	if err := server.runNextQueuedWorkflowJob(context.Background(), "voice-catalog-test"); err != nil {
+	if err := server.runNextQueuedWorkflowJob(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	var runStatus, catalogStatus string
@@ -476,7 +476,7 @@ func TestVoiceCatalogRefreshUsesOnlyRequestedSources(t *testing.T) {
 	queueVoiceFollowForTest(t, server, presetWorkflowInputs{
 		PersonID: 1, SourceIDs: []int64{11}, CatalogRefresh: "full",
 	})
-	if err := server.runNextQueuedWorkflowJob(context.Background(), "voice-catalog-test"); err != nil {
+	if err := server.runNextQueuedWorkflowJob(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	mu.Lock()
@@ -644,7 +644,7 @@ func TestVoiceCatalogMetadataRefreshStaysInOneWorkflowRun(t *testing.T) {
 	runID := queueVoiceFollowForTest(t, server, presetWorkflowInputs{
 		PersonID: 1, CatalogRefresh: "stored", KnownMetadata: true,
 	})
-	if err := server.runNextQueuedWorkflowJob(context.Background(), "voice-catalog-test"); err != nil {
+	if err := server.runNextQueuedWorkflowJob(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	var voiceRuns, metadataRuns int

@@ -17,6 +17,9 @@ type workflowRunActionResult struct {
 	Message   string `json:"message"`
 	NewRunID  *int64 `json:"newRunId,omitempty"`
 	Recovered int64  `json:"recovered,omitempty"`
+	Requeued  int64  `json:"requeued,omitempty"`
+	Failed    int64  `json:"failed,omitempty"`
+	Active    int64  `json:"active,omitempty"`
 }
 
 type localCandidateCleanupResult struct {

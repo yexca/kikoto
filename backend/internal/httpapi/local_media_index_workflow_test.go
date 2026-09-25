@@ -85,7 +85,7 @@ func (f localMediaIndexFixture) localMediaCount(t *testing.T, workID int64) int 
 
 func (f localMediaIndexFixture) runQueued(t *testing.T, runID int64) map[string]any {
 	t.Helper()
-	if err := f.server.runNextQueuedWorkflowJob(context.Background(), "local-media-index-test"); err != nil {
+	if err := f.server.runNextQueuedWorkflowJob(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	var status, summaryJSON string
