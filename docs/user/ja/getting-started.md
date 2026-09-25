@@ -14,11 +14,7 @@
 
 空のディレクトリに `docker-compose.yml` をダウンロードし、Docker Hub の最新公開イメージを取得して起動します。
 
-起動前に、そのディレクトリへ `.env` ファイルを作成します。
-
-```dotenv
-KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password
-```
+起動前にパスワードを設定する必要はありません。
 
 ```sh
 docker compose up -d --pull always
@@ -33,6 +29,8 @@ KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bce
 開く:
 
 - フロントエンド: `http://127.0.0.1:7655`
+
+初回起動時は「Kikoto のセットアップ」画面が表示されます。`docker compose logs kikoto` または `config/setup-token` の一回限りのセットアップトークンを入力し、管理者のユーザー名とパスワードを設定してください。パスワードを忘れた場合は[管理者のセットアップと復旧](../../operations/security.md#administrator-setup-and-recovery)を参照してください。
 
 本番の Compose スタックでは、Web アプリケーションと API をポート `7655` でまとめて公開します。`7659` はコンテナ内部のバックエンドポートで、開発用 Compose スタックでのみ個別に公開されます。
 

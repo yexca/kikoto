@@ -11,13 +11,7 @@
 ## Run With Docker
 
 Download `docker-compose.yml` into an empty directory, then pull and start the
-latest published Docker Hub image:
-
-Create a `.env` file in that directory before startup:
-
-```dotenv
-KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password
-```
+latest published Docker Hub image. No password is needed before startup:
 
 ```sh
 docker compose up -d --pull always
@@ -37,6 +31,11 @@ KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bce
 Open:
 
 - Frontend: `http://127.0.0.1:7655`
+
+On first start the frontend shows **Set up Kikoto**. Enter the one-time setup
+token from `docker compose logs kikoto` or `config/setup-token`, then choose the
+administrator username and password. To reset a forgotten password, see
+[Administrator setup and recovery](../../operations/security.md#administrator-setup-and-recovery).
 
 The production Compose stack publishes the web application and API together on
 port `7655`. Port `7659` is the container's internal backend port; it is

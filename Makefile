@@ -32,7 +32,9 @@ PLAYWRIGHT_INSTALL_ARGS ?= chromium
 # Smoke always runs against disposable mounts, non-development ports, and fixed runtime inputs.
 $(SMOKE_TARGETS): export KIKOTO_MODE := development
 $(SMOKE_TARGETS): export KIKOTO_ROOT_USERNAME := root
-$(SMOKE_TARGETS): export KIKOTO_ROOT_PASSWORD := change-me
+$(SMOKE_TARGETS): export KIKOTO_ROOT_PASSWORD :=
+$(SMOKE_TARGETS): export KIKOTO_ROOT_PASSWORD_RESET := false
+$(SMOKE_TARGETS): export KIKOTO_ROOT_ACCOUNT_MODE := setup
 $(SMOKE_TARGETS): export KIKOTO_HTTP_ADDR := 0.0.0.0:7659
 $(SMOKE_TARGETS): export KIKOTO_DB_PATH := /config/kikoto.db
 $(SMOKE_TARGETS): export KIKOTO_DATA_ROOT := /data

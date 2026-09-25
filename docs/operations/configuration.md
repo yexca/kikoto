@@ -26,8 +26,10 @@ does not update its environment.
 | `KIKOTO_TRUSTED_PROXIES` | Empty | Comma-separated reverse-proxy IP addresses or CIDR prefixes whose `X-Forwarded-For` header identifies the client for sign-in throttling. Empty uses the direct peer address. An invalid entry stops startup. |
 | `KIKOTO_LOGIN_CONCURRENCY` | `8` | Maximum concurrent password checks for sign-ins, password changes, and new passwords. Each check uses about 19 MiB of memory; a missing, invalid, or non-positive value uses the default. |
 | `KIKOTO_SHUTDOWN_TIMEOUT_SECONDS` | `20` | Seconds a stop may spend draining in-flight requests and releasing running workflow jobs. Streaming playback and live transcoding are cancelled after half of this time. Keep it below the container stop grace period; a missing, invalid, or non-positive value uses the default. |
-| `KIKOTO_ROOT_USERNAME` | `root` | Root administrator username. |
-| `KIKOTO_ROOT_PASSWORD` | Required in production | Authoritative root administrator password. A changed value is applied on service startup and revokes existing root sessions. |
+| `KIKOTO_ROOT_ACCOUNT_MODE` | `setup` | `setup` creates the first administrator in the web app with a setup token. `environment` makes `KIKOTO_ROOT_USERNAME` and `KIKOTO_ROOT_PASSWORD` define the root account on every start and locks it in the app. Any other value stops startup. See [Administrator setup and recovery](security.md#administrator-setup-and-recovery). |
+| `KIKOTO_ROOT_USERNAME` | Empty | Root account username (`root` when empty) for environment mode and the account development mode authenticates as. In setup mode it selects the account an environment password reset targets; empty uses the initial administrator, and startup stops when none is recorded. Only `root` is created when missing. |
+| `KIKOTO_ROOT_PASSWORD` | Empty | Required in environment mode, where it is the root password. In setup mode it is used only by `KIKOTO_ROOT_PASSWORD_RESET`. |
+| `KIKOTO_ROOT_PASSWORD_RESET` | `false` | Setup mode only: apply `KIKOTO_ROOT_PASSWORD` to the administrator on startup, once per username and password. Ignored with a warning in environment mode. An unrecognized value stops startup. |
 | `KIKOTO_REMOTE_SOURCES_ENABLED` | `false` | Enable first-run remote source seeding. |
 
 ## Administrator Settings

@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -21,10 +20,8 @@ func postLogin(handler http.Handler, remoteAddr string, username string, passwor
 
 func TestLoginLocksRepeatedFailuresForClientAndUsername(t *testing.T) {
 	db := openMigratedTestDB(t)
-	server := NewServer(db, config.Config{Mode: config.ModeProduction, RootUsername: "root", RootPassword: "synthetic-root-password"})
-	if err := server.BootstrapRoot(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	server := NewServer(db, config.Config{Mode: config.ModeProduction, RootUsername: "root"})
+	createTestAdministrator(t, server, "root", "synthetic-root-password")
 	handler := server.Routes()
 	const attacker = "203.0.113.10:40000"
 

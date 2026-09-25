@@ -27,7 +27,7 @@ func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, users)
 }
 
-const environmentManagedUserError = "the initial administrator is managed by KIKOTO_ROOT_USERNAME and KIKOTO_ROOT_PASSWORD; its role, password, and enabled state cannot be changed"
+const environmentManagedUserError = "this administrator is managed by KIKOTO_ROOT_USERNAME and KIKOTO_ROOT_PASSWORD; its role, password, and enabled state cannot be changed"
 
 func (s *Server) withEnvironmentManagement(user account.ManagedUser) account.ManagedUser {
 	user.EnvironmentManaged = s.isEnvironmentManagedUsername(user.Username)
@@ -35,8 +35,9 @@ func (s *Server) withEnvironmentManagement(user account.ManagedUser) account.Man
 }
 
 // changesEnvironmentManagedFields reports whether an update touches a field the
-// bootstrap root account keeps under environment control. Repeating the current
-// role or enabled state is allowed so full-form saves stay idempotent.
+// environment-managed root account keeps under environment control. Repeating
+// the current role or enabled state is allowed so full-form saves stay
+// idempotent.
 func changesEnvironmentManagedFields(current account.ManagedUser, payload updateUserPayload) bool {
 	if payload.Password != nil && *payload.Password != "" {
 		return true
@@ -220,7 +221,7 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.isEnvironmentManagedUsername(target.Username) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "the initial administrator cannot be deleted"})
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "the environment-managed administrator cannot be deleted"})
 		return
 	}
 	if target.Role == "super_admin" {

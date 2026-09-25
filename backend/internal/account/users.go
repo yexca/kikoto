@@ -3,6 +3,7 @@ package account
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -16,8 +17,8 @@ type ManagedUser struct {
 	Enabled     bool   `json:"enabled"`
 	CreatedAt   string `json:"createdAt"`
 	UpdatedAt   string `json:"updatedAt"`
-	// EnvironmentManaged marks the bootstrap root account, whose password comes
-	// from KIKOTO_ROOT_PASSWORD and whose role and enabled state are fixed.
+	// EnvironmentManaged marks the root account of environment mode, whose
+	// password, role, and enabled state come from the environment.
 	EnvironmentManaged bool `json:"environmentManaged"`
 }
 
@@ -211,7 +212,13 @@ func updateOwnUILocale(ctx context.Context, tx *sql.Tx, userID int64, requestedL
 
 func updateOwnPassword(ctx context.Context, tx *sql.Tx, input UpdateOwnAccountInput) error {
 	var currentHash string
-	if err := tx.QueryRowContext(ctx, `SELECT password_hash FROM user_password_credential WHERE user_id = ?`, input.ID).Scan(&currentHash); err != nil {
+	err := tx.QueryRowContext(ctx, `SELECT password_hash FROM user_password_credential WHERE user_id = ?`, input.ID).Scan(&currentHash)
+	if errors.Is(err, sql.ErrNoRows) {
+		// A passwordless identity, such as the development account, has no
+		// current password to confirm.
+		return ErrInvalidCurrentPassword
+	}
+	if err != nil {
 		return err
 	}
 	if !VerifyPassword(input.CurrentPassword, currentHash) {
@@ -274,16 +281,31 @@ func ValidateUserWrite(actor User, role string, password string, passwordRequire
 	default:
 		return errors.New("role must be super_admin, admin, or user")
 	}
-	if passwordRequired && strings.TrimSpace(password) == "" {
-		return errors.New("password is required")
+	if !passwordRequired && password == "" {
+		return nil
 	}
-	if password != "" && len(password) < 8 {
-		return errors.New("password must be at least 8 characters")
-	}
-	return nil
+	return ValidateNewPassword(password)
 }
 
 func insertAuditLog(ctx context.Context, tx *sql.Tx, actorUserID int64, action string, targetID int64) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO audit_log (actor_user_id, action, target_type, target_id) VALUES (?, ?, 'user', ?)`, actorUserID, action, fmt.Sprintf("%d", targetID))
+	return insertAuditLogDetail(ctx, tx, actorUserID, action, targetID, nil)
+}
+
+// insertAuditLogDetail records a user action. A zero actor is a host-side
+// operation with no signed-in account.
+func insertAuditLogDetail(ctx context.Context, tx *sql.Tx, actorUserID int64, action string, targetID int64, detail map[string]any) error {
+	var actor any
+	if actorUserID > 0 {
+		actor = actorUserID
+	}
+	detailJSON := "{}"
+	if len(detail) > 0 {
+		encoded, err := json.Marshal(detail)
+		if err != nil {
+			return err
+		}
+		detailJSON = string(encoded)
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO audit_log (actor_user_id, action, target_type, target_id, detail_json) VALUES (?, ?, 'user', ?, ?)`, actor, action, fmt.Sprintf("%d", targetID), detailJSON)
 	return err
 }

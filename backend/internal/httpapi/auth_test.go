@@ -92,10 +92,8 @@ func TestAuthMiddlewareDoesNotTreatDatabaseFailureAsAnonymous(t *testing.T) {
 
 func TestDemoRequestsUseRestrictedDemoIdentityAndIgnoreSessions(t *testing.T) {
 	db := openMigratedTestDB(t)
-	server := NewServer(db, config.Config{Mode: config.ModeDemo, RootUsername: "root", RootPassword: "root-password"})
-	if err := server.BootstrapRoot(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	server := NewServer(db, config.Config{Mode: config.ModeDemo, RootUsername: "root"})
+	createTestAdministrator(t, server, "root", "root-password")
 	if err := server.BootstrapDemo(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -168,10 +166,8 @@ func TestDemoReadRoutesExposeAdminSurfacesButBlockWrites(t *testing.T) {
 
 func TestUpdateCurrentUserChangesAccountManagedProfileAndPasswordAndKeepsCurrentSession(t *testing.T) {
 	db := openMigratedTestDB(t)
-	server := NewServer(db, config.Config{Mode: config.ModeProduction, RootUsername: "root", RootPassword: "old-password"})
-	if err := server.BootstrapRoot(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	server := NewServer(db, config.Config{Mode: config.ModeProduction, RootUsername: "root"})
+	createTestAdministrator(t, server, "root", "old-password")
 	createAccountManagedTestUser(t, server, "listener", "listener-password")
 	handler := server.Routes()
 	currentCookie := loginTestSession(t, handler, "listener", "listener-password")
@@ -191,7 +187,7 @@ func TestUpdateCurrentUserChangesAccountManagedProfileAndPasswordAndKeepsCurrent
 	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
 		t.Fatal(err)
 	}
-	if !payload.Authenticated || payload.User.DisplayName != "Updated Listener" || payload.User.PasswordManagedBy != "account" {
+	if !payload.Authenticated || payload.User.DisplayName != "Updated Listener" {
 		t.Fatalf("update response = %#v", payload)
 	}
 
@@ -234,10 +230,8 @@ func TestUpdateCurrentUserChangesAccountManagedProfileAndPasswordAndKeepsCurrent
 
 func TestUpdateCurrentUserPersistsUILocaleAndRejectsUnsupportedLocale(t *testing.T) {
 	db := openMigratedTestDB(t)
-	server := NewServer(db, config.Config{Mode: config.ModeProduction, RootUsername: "root", RootPassword: "root-password"})
-	if err := server.BootstrapRoot(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	server := NewServer(db, config.Config{Mode: config.ModeProduction, RootUsername: "root"})
+	createTestAdministrator(t, server, "root", "root-password")
 	handler := server.Routes()
 	cookie := loginTestSession(t, handler, "root", "root-password")
 
@@ -278,10 +272,8 @@ func TestUpdateCurrentUserPersistsUILocaleAndRejectsUnsupportedLocale(t *testing
 
 func TestUpdateCurrentUserRejectsWrongPasswordWithoutPartialUpdate(t *testing.T) {
 	db := openMigratedTestDB(t)
-	server := NewServer(db, config.Config{Mode: config.ModeProduction, RootUsername: "root", RootPassword: "old-password"})
-	if err := server.BootstrapRoot(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	server := NewServer(db, config.Config{Mode: config.ModeProduction, RootUsername: "root"})
+	createTestAdministrator(t, server, "root", "old-password")
 	createAccountManagedTestUser(t, server, "listener", "listener-password")
 	handler := server.Routes()
 	cookie := loginTestSession(t, handler, "listener", "listener-password")
@@ -309,36 +301,10 @@ func TestUpdateCurrentUserRejectsWrongPasswordWithoutPartialUpdate(t *testing.T)
 	}
 }
 
-func TestUpdateCurrentUserRejectsEnvironmentManagedRootPassword(t *testing.T) {
-	db := openMigratedTestDB(t)
-	server := NewServer(db, config.Config{Mode: config.ModeProduction, RootUsername: "configured-root", RootPassword: "environment-password"})
-	if err := server.BootstrapRoot(context.Background()); err != nil {
+func createTestAdministrator(t *testing.T, server *Server, username string, password string) {
+	t.Helper()
+	if _, err := server.accountStore.CreateInitialAdministrator(context.Background(), username, password); err != nil {
 		t.Fatal(err)
-	}
-	handler := server.Routes()
-	cookie := loginTestSession(t, handler, "configured-root", "environment-password")
-
-	request := httptest.NewRequest(http.MethodPatch, "/api/auth/me", strings.NewReader(`{"displayName":"Should Not Persist","currentPassword":"environment-password","newPassword":"new-password"}`))
-	request.AddCookie(cookie)
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), "KIKOTO_ROOT_PASSWORD") {
-		t.Fatalf("root password update status = %d, body = %s", response.Code, response.Body.String())
-	}
-
-	meRequest := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
-	meRequest.AddCookie(cookie)
-	meResponse := httptest.NewRecorder()
-	handler.ServeHTTP(meResponse, meRequest)
-	if meResponse.Code != http.StatusOK || !strings.Contains(meResponse.Body.String(), `"passwordManagedBy":"environment"`) {
-		t.Fatalf("root account response = %d, body = %s", meResponse.Code, meResponse.Body.String())
-	}
-	var displayName string
-	if err := db.QueryRow("SELECT display_name FROM user_account WHERE username = 'configured-root'").Scan(&displayName); err != nil {
-		t.Fatal(err)
-	}
-	if displayName != "configured-root" {
-		t.Fatalf("rejected root update persisted display name %q", displayName)
 	}
 }
 

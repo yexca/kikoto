@@ -18,6 +18,17 @@ const (
 	ModeDemo        Mode = "demo"
 )
 
+// RootAccountMode selects who owns the root administrator credential. In setup
+// mode the first administrator is created through initial setup and managed in
+// the app. In environment mode KIKOTO_ROOT_USERNAME and KIKOTO_ROOT_PASSWORD
+// define that account on every start and the app cannot change it.
+type RootAccountMode string
+
+const (
+	RootAccountSetup       RootAccountMode = "setup"
+	RootAccountEnvironment RootAccountMode = "environment"
+)
+
 type Config struct {
 	HTTPAddr            string
 	DatabasePath        string
@@ -31,9 +42,16 @@ type Config struct {
 	TrustedProxies      []netip.Prefix
 	LoginConcurrency    int
 	ShutdownTimeout     time.Duration
-	RootUsername        string
-	RootPassword        string
-	RemoteSourceSeeds   []RemoteSourceSeed
+	RootAccountMode     RootAccountMode
+	// RootUsername is the explicitly configured administrator username, or
+	// empty. Development mode authenticates as it, and the environment-managed
+	// account and an environment password reset use it.
+	RootUsername string
+	// RootPassword defines the environment-managed account in environment mode.
+	// In setup mode it is applied only when RootPasswordReset is set.
+	RootPassword      string
+	RootPasswordReset bool
+	RemoteSourceSeeds []RemoteSourceSeed
 }
 
 type RemoteSourceSeed struct {
@@ -53,15 +71,20 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	rootPassword := strings.TrimSpace(os.Getenv("KIKOTO_ROOT_PASSWORD"))
-	if rootPassword == "" {
-		if mode == ModeProduction {
-			return Config{}, fmt.Errorf("KIKOTO_ROOT_PASSWORD is required in production mode")
-		}
-		rootPassword = "change-me"
+	rootMode, err := parseRootAccountMode(os.Getenv("KIKOTO_ROOT_ACCOUNT_MODE"))
+	if err != nil {
+		return Config{}, err
 	}
-	if mode == ModeProduction && rootPassword == "change-me" {
-		return Config{}, fmt.Errorf("KIKOTO_ROOT_PASSWORD must not use the default value in production mode")
+	rootPassword := strings.TrimSpace(os.Getenv("KIKOTO_ROOT_PASSWORD"))
+	reset, err := parseSwitch("KIKOTO_ROOT_PASSWORD_RESET")
+	if err != nil {
+		return Config{}, err
+	}
+	if rootMode == RootAccountEnvironment && rootPassword == "" {
+		return Config{}, fmt.Errorf("KIKOTO_ROOT_ACCOUNT_MODE=environment requires KIKOTO_ROOT_PASSWORD")
+	}
+	if rootMode == RootAccountSetup && reset && rootPassword == "" {
+		return Config{}, fmt.Errorf("KIKOTO_ROOT_PASSWORD_RESET requires KIKOTO_ROOT_PASSWORD")
 	}
 	trustedProxies, err := parseTrustedProxies(os.Getenv("KIKOTO_TRUSTED_PROXIES"))
 	if err != nil {
@@ -80,10 +103,30 @@ func Load() (Config, error) {
 		TrustedProxies:      trustedProxies,
 		LoginConcurrency:    envInt("KIKOTO_LOGIN_CONCURRENCY", 8),
 		ShutdownTimeout:     time.Duration(envInt("KIKOTO_SHUTDOWN_TIMEOUT_SECONDS", 20)) * time.Second,
-		RootUsername:        env("KIKOTO_ROOT_USERNAME", "root"),
+		RootAccountMode:     rootMode,
+		RootUsername:        strings.TrimSpace(os.Getenv("KIKOTO_ROOT_USERNAME")),
 		RootPassword:        rootPassword,
+		RootPasswordReset:   reset,
 		RemoteSourceSeeds:   loadRemoteSourceSeeds(),
 	}, nil
+}
+
+// DevelopmentUsername is the account development mode authenticates every
+// request as.
+func (c Config) DevelopmentUsername() string {
+	if username := strings.TrimSpace(c.RootUsername); username != "" {
+		return username
+	}
+	return "root"
+}
+
+// EnvironmentManagedUsername is the account whose credential, role, and
+// enabled state the environment owns, or empty in setup mode.
+func (c Config) EnvironmentManagedUsername() string {
+	if c.RootAccountMode != RootAccountEnvironment {
+		return ""
+	}
+	return c.DevelopmentUsername()
 }
 
 func (c Config) IsDevelopment() bool {
@@ -109,6 +152,17 @@ func parseMode(value string) (Mode, error) {
 		return mode, nil
 	default:
 		return "", fmt.Errorf("invalid KIKOTO_MODE %q: expected development, production, or demo", value)
+	}
+}
+
+func parseRootAccountMode(value string) (RootAccountMode, error) {
+	switch mode := RootAccountMode(strings.ToLower(strings.TrimSpace(value))); mode {
+	case "", RootAccountSetup:
+		return RootAccountSetup, nil
+	case RootAccountEnvironment:
+		return mode, nil
+	default:
+		return "", fmt.Errorf("invalid KIKOTO_ROOT_ACCOUNT_MODE %q: expected setup or environment", value)
 	}
 }
 
@@ -171,6 +225,20 @@ func envInt(key string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+// parseSwitch reads an opt-in boolean. Unlike envBool, an unrecognized value is
+// an error, so a mistyped value cannot silently leave the switch off.
+func parseSwitch(key string) (bool, error) {
+	value := strings.TrimSpace(os.Getenv(key))
+	switch strings.ToLower(value) {
+	case "", "0", "false", "no", "off":
+		return false, nil
+	case "1", "true", "yes", "on":
+		return true, nil
+	default:
+		return false, fmt.Errorf("invalid %s %q: expected true or false", key, value)
+	}
 }
 
 func envBool(key string, fallback bool) bool {

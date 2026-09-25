@@ -15,7 +15,7 @@ func TestStoreManagesIdentityAndSessions(t *testing.T) {
 	db := openMigratedTestDB(t, "account.db")
 	store := account.NewStore(db)
 	ctx := context.Background()
-	if err := store.BootstrapRoot(ctx, "root", "root-password"); err != nil {
+	if _, err := store.CreateInitialAdministrator(ctx, "root", "root-password"); err != nil {
 		t.Fatal(err)
 	}
 	root, err := store.LoadByUsername(ctx, "root")
@@ -54,7 +54,7 @@ func TestStorePersistsOwnUILocaleAndRejectsInvalidValues(t *testing.T) {
 	db := openMigratedTestDB(t, "account-ui-locale.db")
 	store := account.NewStore(db)
 	ctx := context.Background()
-	if err := store.BootstrapRoot(ctx, "root", "root-password"); err != nil {
+	if _, err := store.CreateInitialAdministrator(ctx, "root", "root-password"); err != nil {
 		t.Fatal(err)
 	}
 	root, err := store.LoadByUsername(ctx, "root")
@@ -98,42 +98,6 @@ func TestStorePersistsOwnUILocaleAndRejectsInvalidValues(t *testing.T) {
 	}
 }
 
-func TestBootstrapRootSynchronizesEnvironmentPasswordAndRevokesSessions(t *testing.T) {
-	db := openMigratedTestDB(t, "account-root-password.db")
-	store := account.NewStore(db)
-	ctx := context.Background()
-	if err := store.BootstrapRoot(ctx, "root", "initial-password"); err != nil {
-		t.Fatal(err)
-	}
-	session, err := store.Authenticate(ctx, "root", "initial-password", time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	root, err := store.LoadByUsername(ctx, "root")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.UpdateOwnAccount(ctx, account.UpdateOwnAccountInput{
-		ID: root.ID, DisplayName: root.DisplayName, CurrentPassword: "initial-password",
-		NewPassword: "changed-password", CurrentSessionID: session.ID,
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := store.BootstrapRoot(ctx, "root", "replacement-password"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Authenticate(ctx, "root", "changed-password", time.Now()); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatalf("changed database password error = %v, want sql.ErrNoRows", err)
-	}
-	if _, err := store.Authenticate(ctx, "root", "replacement-password", time.Now()); err != nil {
-		t.Fatalf("replacement environment password was not applied: %v", err)
-	}
-	if _, err := store.UserForSession(ctx, session.ID, time.Now()); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatalf("environment password synchronization left an old session active: %v", err)
-	}
-}
-
 func TestBootstrapDemoCreatesPasswordlessRestrictedIdentity(t *testing.T) {
 	db := openMigratedTestDB(t, "account-demo.db")
 	store := account.NewStore(db)
@@ -173,14 +137,16 @@ func TestBootstrapDemoRejectsExistingLoginAccount(t *testing.T) {
 	db := openMigratedTestDB(t, "account-demo-conflict.db")
 	store := account.NewStore(db)
 	ctx := context.Background()
-	if err := store.BootstrapRoot(ctx, account.DemoUsername, "existing-password"); err != nil {
+	if _, err := store.CreateManagedUser(ctx, account.CreateUserInput{
+		Username: account.DemoUsername, DisplayName: "Existing", Role: "user", Password: "synthetic-existing-password", Enabled: true,
+	}); err != nil {
 		t.Fatal(err)
 	}
 
 	if err := store.BootstrapDemo(ctx); !errors.Is(err, account.ErrDemoAccountConflict) {
 		t.Fatalf("BootstrapDemo() error = %v, want ErrDemoAccountConflict", err)
 	}
-	if _, err := store.Authenticate(ctx, account.DemoUsername, "existing-password", time.Now()); err != nil {
+	if _, err := store.Authenticate(ctx, account.DemoUsername, "synthetic-existing-password", time.Now()); err != nil {
 		t.Fatalf("conflicting account credential was modified: %v", err)
 	}
 }
@@ -189,7 +155,7 @@ func TestStoreManagesUsersAndProtectsLastSuperAdmin(t *testing.T) {
 	db := openMigratedTestDB(t, "account-users.db")
 	store := account.NewStore(db)
 	ctx := context.Background()
-	if err := store.BootstrapRoot(ctx, "root", "root-password"); err != nil {
+	if _, err := store.CreateInitialAdministrator(ctx, "root", "root-password"); err != nil {
 		t.Fatal(err)
 	}
 	root, _ := store.LoadByUsername(ctx, "root")

@@ -18,6 +18,9 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "admin" {
+		os.Exit(runAdminCommand(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
+	}
 	if err := run(); err != nil {
 		slog.Error("kikoto stopped", "error", err)
 		os.Exit(1)
@@ -63,8 +66,8 @@ func run() error {
 		if err := server.BootstrapDemo(ctx); err != nil {
 			return fmt.Errorf("bootstrap demo user: %w", err)
 		}
-	} else if err := server.BootstrapRoot(ctx); err != nil {
-		return fmt.Errorf("bootstrap root user: %w", err)
+	} else if err := server.PrepareAdministrator(ctx); err != nil {
+		return fmt.Errorf("prepare administrator: %w", err)
 	}
 	if err := server.SeedRemoteSourcesFromConfig(ctx); err != nil {
 		return fmt.Errorf("seed remote sources: %w", err)
@@ -87,7 +90,7 @@ func run() error {
 		return fmt.Errorf("record successful application start: %w", err)
 	}
 	if cfg.IsDevelopment() {
-		slog.Warn("dev mode enabled; requests authenticate as root user", "username", cfg.RootUsername)
+		slog.Warn("dev mode enabled; requests authenticate as root user", "username", cfg.DevelopmentUsername())
 	}
 	if cfg.IsDemo() {
 		slog.Info("demo mode enabled; requests authenticate as the restricted demo user")

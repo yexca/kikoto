@@ -9,11 +9,7 @@
 
 ## Docker로 실행
 
-빈 디렉터리에 `docker-compose.yml`을 내려받고 시작하기 전에 `.env` 파일을 만드세요.
-
-```dotenv
-KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password
-```
+빈 디렉터리에 `docker-compose.yml`을 내려받고 시작하세요. 비밀번호를 미리 설정할 필요는 없습니다.
 
 ```sh
 docker compose up -d --pull always
@@ -25,7 +21,7 @@ docker compose up -d --pull always
 KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d --pull always
 ```
 
-브라우저에서 `http://127.0.0.1:7655`를 여세요. 운영 Compose는 웹 애플리케이션과 API를 호스트의 7655 포트 하나로 공개합니다. 7659는 컨테이너 내부 backend 포트이며 개발 Compose에서만 별도로 공개됩니다.
+브라우저에서 `http://127.0.0.1:7655`를 여세요. 처음 시작하면 "Kikoto 설정" 화면이 표시됩니다. `docker compose logs kikoto` 또는 `config/setup-token`의 일회용 설정 토큰을 입력하고 관리자 사용자 이름과 비밀번호를 정하세요. 비밀번호를 잊은 경우 [관리자 설정 및 복구](../../operations/security.md#administrator-setup-and-recovery)를 참고하세요. 운영 Compose는 웹 애플리케이션과 API를 호스트의 7655 포트 하나로 공개합니다. 7659는 컨테이너 내부 backend 포트이며 개발 Compose에서만 별도로 공개됩니다.
 
 기본 마운트는 `./config:/config`, `./cache:/cache`, `./data:/data`입니다. 공개 읽기 전용 인스턴스에는 `deploy/compose/demo.yml`을 사용하세요. 자세한 내용은 [Docker](../../operations/docker.md#demo-stack)를 참고하세요.
 

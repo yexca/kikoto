@@ -9,11 +9,7 @@
 
 ## 使用 Docker 运行
 
-將 `docker-compose.yml` 下载到空目錄，然后拉取並啟动最新發布的 Docker Hub 镜像。在啟动前於该目錄创建 `.env`：
-
-```dotenv
-KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password
-```
+將 `docker-compose.yml` 下载到空目錄，然後拉取並啟動最新發布的 Docker Hub 映像，啟動前無需設定密碼：
 
 ```sh
 docker compose up -d --pull always
@@ -25,7 +21,7 @@ docker compose up -d --pull always
 KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d --pull always
 ```
 
-打开前端：`http://127.0.0.1:7655`。
+開啟前端：`http://127.0.0.1:7655`。首次啟動時頁面會顯示「設定 Kikoto」：輸入 `docker compose logs kikoto` 或 `config/setup-token` 中的一次性初始化權杖，再設定管理員使用者名稱和密碼。忘記密碼時請參閱[管理員初始化與復原](../../operations/security.md#administrator-setup-and-recovery)。
 
 生产 Compose 會在 `7655` 端口同時發布 Web 应用和 API。`7659` 是容器內部的后端端口，只有開發 Compose 才會单独發布它。
 

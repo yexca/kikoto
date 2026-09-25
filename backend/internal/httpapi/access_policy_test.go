@@ -138,11 +138,9 @@ func TestRuntimeSettingsHideOperationalConfigurationWhenSignInIsRequired(t *test
 func TestAccessPolicyEndpointPersistsAndAppliesProductionPolicy(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{
-		Mode: config.ModeProduction, RootUsername: "root", RootPassword: "synthetic-password",
+		Mode: config.ModeProduction, RootUsername: "root",
 	})
-	if err := server.BootstrapRoot(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	createTestAdministrator(t, server, "root", "synthetic-password")
 	if err := server.LoadAccessPolicy(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -232,11 +230,9 @@ func TestAccessPolicyEndpointRequiresSuperAdminAndSupportsDevelopment(t *testing
 	t.Run("development", func(t *testing.T) {
 		db := openMigratedTestDB(t)
 		server := NewServer(db, config.Config{
-			Mode: config.ModeDevelopment, RootUsername: "root", RootPassword: "synthetic-password",
+			Mode: config.ModeDevelopment, RootUsername: "root",
 		})
-		if err := server.BootstrapRoot(context.Background()); err != nil {
-			t.Fatal(err)
-		}
+		createTestAdministrator(t, server, "root", "synthetic-password")
 		if err := server.LoadAccessPolicy(context.Background()); err != nil {
 			t.Fatal(err)
 		}

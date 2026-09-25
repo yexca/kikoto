@@ -1232,11 +1232,19 @@ export type ManagedUser = {
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
-  /** The bootstrap root account configured through the environment. */
+  /** The root account managed through the environment in environment mode. */
   environmentManaged?: boolean;
 };
 
-export type AuthState = { authenticated: false } | { authenticated: true; user: CurrentUser; sessionToken?: string };
+/** setupRequired marks a production instance that has no administrator yet. */
+export type AuthState =
+  { authenticated: false; setupRequired?: boolean } | { authenticated: true; user: CurrentUser; sessionToken?: string };
+
+export type InitialSetupPayload = {
+  setupToken: string;
+  username: string;
+  password: string;
+};
 
 export type AccessPolicy = {
   anonymousAccessEnabled: boolean;
@@ -2023,6 +2031,12 @@ async function login(username: string, password: string) {
   return state;
 }
 
+async function completeInitialSetup(payload: InitialSetupPayload) {
+  const state = await postJSONBody<AuthState>("/api/auth/setup", payload);
+  if (state.authenticated && state.sessionToken) await setStoredSessionToken(state.sessionToken);
+  return state;
+}
+
 async function logout() {
   try {
     return await postJSON<{ ok: boolean }>("/api/auth/logout");
@@ -2050,6 +2064,7 @@ export const api = {
     newPassword?: string;
   }) => patchJSONBody<AuthState>("/api/auth/me", payload),
   login,
+  completeInitialSetup,
   logout,
   listNotifications: (page = 1, pageSize = 50) =>
     getJSON<WorkflowNotificationsPage>(`/api/notifications?page=${page}&pageSize=${pageSize}`),

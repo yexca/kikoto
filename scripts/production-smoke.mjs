@@ -121,10 +121,6 @@ try {
     "--env",
     "KIKOTO_MODE=production",
     "--env",
-    "KIKOTO_ROOT_USERNAME=synthetic-user",
-    "--env",
-    "KIKOTO_ROOT_PASSWORD=synthetic-password",
-    "--env",
     "KIKOTO_SESSION_COOKIE_SECURE=false",
     "--env",
     "KIKOTO_REMOTE_SOURCES_ENABLED=false",
@@ -240,13 +236,55 @@ try {
   assert.equal(JSON.parse(runtime).mode, "production");
   assert.equal(JSON.parse(runtime).anonymousAccessEnabled, false);
   await request("/api/works", { expected: 401 });
-  const { response: login } = await request("/api/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  // A new instance is claimed with the setup token from the config mount.
+  const { body: anonymousUser } = await request("/api/auth/me");
+  assert.equal(JSON.parse(anonymousUser).setupRequired, true);
+  const setupToken = await command([
+    "exec",
+    container,
+    "cat",
+    "/config/setup-token",
+  ]);
+  const setup = (token) =>
+    JSON.stringify({
+      setupToken: token,
       username: "synthetic-user",
       password: "synthetic-password",
-    }),
+    });
+  const jsonHeaders = { "Content-Type": "application/json" };
+  await request("/api/auth/setup", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: setup("synthetic-wrong-token"),
+    expected: 403,
+  });
+  await request("/api/auth/setup", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: setup(setupToken),
+    expected: 201,
+  });
+  await request("/api/auth/setup", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: setup(setupToken),
+    expected: 409,
+  });
+  // The host-side reset command runs beside the live server.
+  const reset = await command([
+    "exec",
+    container,
+    "/app/kikoto",
+    "admin",
+    "reset-password",
+  ]);
+  assert.match(reset, /^Username: synthetic-user$/m);
+  const password = reset.match(/^Password: (\S+)$/m)?.[1];
+  assert.ok(password, "The reset command must print a new password");
+  const { response: login } = await request("/api/auth/login", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ username: "synthetic-user", password }),
   });
   const cookie = login.headers
     .getSetCookie()
@@ -323,6 +361,7 @@ try {
         aacLocationId: aac.id,
         nextLocationId: next.id,
         videoLocationId: video.id,
+        password,
       },
       controller.signal,
     );

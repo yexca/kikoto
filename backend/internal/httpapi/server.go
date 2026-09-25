@@ -32,6 +32,7 @@ type Server struct {
 	db                             *sql.DB
 	accountStore                   *account.Store
 	accessPolicy                   *accesspolicy.Store
+	initialSetup                   initialSetupState
 	loginThrottle                  *auththrottle.Limiter
 	libraryStore                   *library.Store
 	workflowStore                  *workflow.Store
@@ -135,6 +136,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/auth/me", s.updateCurrentUser)
 	mux.HandleFunc("POST /api/auth/login", s.login)
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
+	mux.HandleFunc("POST /api/auth/setup", s.completeInitialSetup)
 	mux.HandleFunc("PATCH /api/access-policy", s.updateAccessPolicy)
 	mux.HandleFunc("GET /api/notifications", s.listNotifications)
 	mux.HandleFunc("POST /api/notifications/clear-succeeded", s.clearSucceededNotifications)

@@ -30,8 +30,9 @@ firewall or an authentication mechanism for non-browser clients.
 
 ## Runtime Modes
 
-- `production` uses normal session authentication, requires an explicit
-  non-default `KIKOTO_ROOT_PASSWORD`, and starts with anonymous access disabled.
+- `production` uses normal session authentication, creates its first
+  administrator through a one-time setup token unless the root account is
+  environment-managed, and starts with anonymous access disabled.
 - `development` authenticates every request as the configured root user. Use it
   only on a trusted local development machine.
 - `demo` is an isolated read-only showcase. It exposes sanitized read surfaces,
@@ -43,11 +44,97 @@ The Demo container has a read-only root filesystem and data mount. Its isolated
 `/config` and `/cache` mounts remain writable for SQLite state and accepted
 cover assets, so they must contain only sanitized Demo data.
 
-## Authentication and Cookies
+## Administrator Setup and Recovery
 
-Use a long, unique root password. The configured root password is authoritative:
-changing `KIKOTO_ROOT_PASSWORD` and restarting Kikoto replaces the stored root
-credential and revokes existing root sessions.
+`KIKOTO_ROOT_ACCOUNT_MODE` selects who owns the root administrator:
+
+- `setup`, the default, creates the first administrator in the web app and
+  manages it there like any other account. The rest of this section describes
+  this mode.
+- `environment` makes `KIKOTO_ROOT_USERNAME` (default `root`) and
+  `KIKOTO_ROOT_PASSWORD` define the root account on every start. See
+  [Environment-managed root account](#environment-managed-root-account).
+
+A new production instance has no administrator. Until one exists, Kikoto
+writes a one-time setup token to its log at startup and to `setup-token` beside
+the database, which is `config/setup-token` with the default Compose mounts.
+The web app then shows **Set up Kikoto**, and creating the first administrator
+requires that token. A client that can reach the port but cannot read the
+server log or the config directory therefore cannot claim the instance. The
+token changes on every start until setup completes and is deleted afterward;
+later setup requests are rejected. Every new password must have at least 8
+characters and must not be a value from the documentation.
+
+To reset a forgotten administrator password, run the reset command in the
+running container:
+
+```sh
+docker compose exec kikoto /app/kikoto admin reset-password
+```
+
+It prints a new random password for the initial administrator. Pass
+`--username NAME` for another account, or `--password-stdin` to supply the
+password on standard input. The account becomes an enabled super
+administrator and is signed out everywhere, and the reset is recorded in the
+audit log.
+
+The reset never guesses its target. When the initial administrator has been
+deleted, or an upgraded instance has none recorded, it stops, lists the
+existing super administrators, and asks for `--username`. A named account must
+already exist, so a mistyped name cannot create a new super administrator. The
+only exception is `root`, which is created when it does not exist; use
+`--username root` if no usable administrator is left. The account you reset
+becomes the recorded initial administrator when the previous one is gone.
+
+When a shell in the container is unavailable, for example in some NAS
+interfaces, use the one-shot environment reset. Set the switch and a new
+password in `.env`:
+
+```dotenv
+KIKOTO_ROOT_PASSWORD_RESET=true
+# Enter a new password of at least 8 characters after the equals sign.
+KIKOTO_ROOT_PASSWORD=
+```
+
+Run `docker compose up -d` to recreate the service and sign in. Then set
+`KIKOTO_ROOT_PASSWORD_RESET=false`, clear `KIKOTO_ROOT_PASSWORD`, and run
+`docker compose up -d` again. `KIKOTO_ROOT_USERNAME` selects the account and
+follows the same rules as `--username`: when it is empty the initial
+administrator is reset, startup stops if none is recorded, and only `root` is
+created when missing. Each username and password
+pair is applied only once, so a restart with the switch still enabled does not
+undo a password changed later in Settings. Kikoto logs a warning while the
+switch stays enabled, and ignores `KIKOTO_ROOT_PASSWORD` with a warning when the
+switch is off. Anyone who can inspect the container environment can read that
+password, so remove it after use.
+
+### Environment-managed root account
+
+For unattended or scripted deployments, set the root account in `.env`:
+
+```dotenv
+KIKOTO_ROOT_ACCOUNT_MODE=environment
+KIKOTO_ROOT_USERNAME=root
+# Enter a password of at least 8 characters after the equals sign.
+KIKOTO_ROOT_PASSWORD=
+```
+
+Every start makes that account an enabled super administrator with the
+configured password, so no setup token is issued. A changed password replaces
+the stored one and signs the account out everywhere; an unchanged one leaves
+its sessions alone. Kikoto refuses to start when the password is missing,
+shorter than 8 characters, or a documentation value. In the app, that
+account's password, role, and enabled state cannot be changed and it cannot be
+deleted, so the app and the environment never disagree. To change its password,
+edit `KIKOTO_ROOT_PASSWORD` and run `docker compose up -d`.
+
+`KIKOTO_ROOT_PASSWORD_RESET` is ignored with a warning in this mode, and the
+reset command refuses the environment-managed account; other accounts can
+still be reset with `--username`. Switching back to `setup` keeps the account
+and its current password, and the account becomes manageable in the app. The
+password stays readable to anyone who can inspect the container environment.
+
+## Authentication and Cookies
 
 A super administrator can change **Anonymous access** under
 `Maintenance -> Access` in production or development. The setting is stored in
@@ -81,8 +168,7 @@ set `KIKOTO_LOGIN_CONCURRENCY` to change that limit. A sign-in that cannot
 start a check within five seconds receives a retryable `503` instead of
 queueing without bound. A password stored with older, more expensive
 parameters still works and is rehashed with the current parameters after the
-next successful sign-in; the root password is also rehashed when Kikoto
-starts. Until that happens, verifying that password takes longer than
+next successful sign-in. Until that happens, verifying that password takes longer than
 verifying the password of an account that does not exist.
 
 Kikoto identifies the client by its direct peer address and groups IPv6 clients
