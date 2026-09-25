@@ -60,6 +60,11 @@ func run() error {
 		if err := server.EnsureLocalSource(ctx); err != nil {
 			return fmt.Errorf("initialize local source: %w", err)
 		}
+		// Reads the release of the previous start, so it runs before this
+		// start is recorded.
+		if err := server.PrepareLibraryLayout(ctx); err != nil {
+			return fmt.Errorf("prepare library layout: %w", err)
+		}
 		if err := server.RecoverInterruptedWorkflows(ctx); err != nil {
 			return fmt.Errorf("recover interrupted workflows: %w", err)
 		}

@@ -487,6 +487,7 @@ export const surfaceHant = {
       voiceResults: "聲優搜尋結果",
       searching: "正在搜尋",
     },
+    fetchRunTitle: "取得 {{code}}",
     builtInDefinitions: {
       circle_follow: {
         name: "關注社團",
@@ -651,6 +652,7 @@ export const surfaceHant = {
       remote_popular_collection: "遠端熱門",
       dlsite_popular_collection: "DLsite 熱門",
       availability_watch: "到貨監控",
+      remote_work_fetch: "取得",
       circle_follow: "關注社團",
       series_follow: "關注系列",
       voice_follow: "關注聲優",
@@ -1397,6 +1399,13 @@ export const surfaceHant = {
   },
 
   remoteFetch: {
+    destination: {
+      library_not_configured: "請先設定媒體庫，再取得作品。",
+      fetch_pool_required: "請先選擇 Fetch 儲存池，再取得作品。",
+      fetch_pool_offline: "Fetch 儲存池離線。請檢查它的磁碟是否已掛載。",
+      library_offline: "媒體庫資料夾無法使用。請檢查資料目錄是否已掛載。",
+      openSettings: "媒體庫設定",
+    },
     title: "取得選取項目",
     demoPreview: "示範預覽",
     description: "比較確切的語言版本、遠端來源和最終發佈目錄。",

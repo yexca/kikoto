@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/storagepool"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -36,8 +37,10 @@ type remoteFetchManifestRecord struct {
 }
 
 func createRemoteFetchManifest(ctx context.Context, tx *sql.Tx, runID int64, jobID int64, requestID string, workID int64, remoteSourceID int64, localSourceID int64, plan remoteWorkSavePlan) (int64, error) {
-	stagingRoot := filepath.ToSlash(filepath.Join(".kikoto-staging", fmt.Sprintf("%d", runID), "work"))
-	backupRoot := filepath.ToSlash(filepath.Join(".kikoto-backup", fmt.Sprintf("%d", runID), "work"))
+	// Staging and backup live on the target's pool so publication and
+	// rollback are same-filesystem renames.
+	stagingRoot := storagepool.Join(plan.TransactionPool, filepath.ToSlash(filepath.Join(".kikoto-staging", fmt.Sprintf("%d", runID), "work")))
+	backupRoot := storagepool.Join(plan.TransactionPool, filepath.ToSlash(filepath.Join(".kikoto-backup", fmt.Sprintf("%d", runID), "work")))
 	planJSON, err := json.Marshal(plan)
 	if err != nil {
 		return 0, err

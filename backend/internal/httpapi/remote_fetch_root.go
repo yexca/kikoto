@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/localfs"
+	"github.com/yexca/kikoto/backend/internal/storagepool"
 )
 
 const (
@@ -73,6 +74,10 @@ func (s *Server) inspectRemoteFetchRoot(ctx context.Context, source remoteSource
 	if !ok || !fetchPathWithinRoot(managedRoot, saveRoot) {
 		return remoteFetchRootReview{Status: "not_applicable"}, nil
 	}
+	return s.inspectManagedFetchRoot(ctx, source, managedRoot)
+}
+
+func (s *Server) inspectManagedFetchRoot(ctx context.Context, source remoteSourceForUse, managedRoot string) (remoteFetchRootReview, error) {
 	review := remoteFetchRootReview{RootPath: managedRoot, Status: "ready"}
 	absRoot, err := safeDataPath(s.cfg.DataRoot, managedRoot)
 	if err != nil {
@@ -394,12 +399,18 @@ func verifyLegacyRemoteFetchRoot(absRoot string, exactTargets map[string]bool, t
 	return verified, foundTarget, err
 }
 
+// remoteFetchManagedRoot is the source's Fetch-managed folder inside the Fetch
+// pool. Without a usable Fetch pool there is no managed root to review.
 func (s *Server) remoteFetchManagedRoot(ctx context.Context, source remoteSourceForUse) (string, bool) {
-	template := strings.TrimSpace(source.Config.SaveRootTemplate)
-	if template == "" {
-		template = s.settingStringContext(ctx, "remote_save_root_template", defaultRemoteSaveRootTemplate)
+	poolPath, err := s.fetchPoolPath(ctx)
+	if err != nil {
+		return "", false
 	}
-	return remoteFetchManagedRootFromTemplate(template, source.Code)
+	root, ok := remoteFetchManagedRootFromTemplate(s.remoteSaveTemplate(ctx, source), source.Code)
+	if !ok {
+		return "", false
+	}
+	return storagepool.Join(poolPath, root), true
 }
 
 func remoteFetchManagedRootFromTemplate(template string, sourceCode string) (string, bool) {
@@ -492,6 +503,10 @@ func (s *Server) configuredRemoteFetchWatchRoots(ctx context.Context) ([]string,
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
+	layout, err := s.loadLibraryLayout(ctx)
+	if err != nil {
+		return nil, err
+	}
 	roots := []string{}
 	seen := map[string]bool{}
 	for _, configured := range sources {
@@ -501,25 +516,30 @@ func (s *Server) configuredRemoteFetchWatchRoots(ctx context.Context) ([]string,
 		if template == "" {
 			template = defaultTemplate
 		}
-		root, ok := remoteFetchManagedRootFromTemplate(template, configured.code)
+		templateRoot, ok := remoteFetchManagedRootFromTemplate(template, configured.code)
 		if !ok {
 			continue
 		}
-		review, err := s.inspectRemoteFetchRoot(ctx, remoteSourceForUse{ID: configured.id, Code: configured.code, Config: sourceConfig}, root)
-		if err != nil {
-			return nil, err
-		}
-		if review.Conflict || (review.Status != "managed" && review.Status != "legacy_managed") {
-			continue
-		}
-		absolute, err := safeDataPath(s.cfg.DataRoot, root)
-		if err != nil {
-			continue
-		}
-		key := strings.ToLower(filepath.Clean(absolute))
-		if !seen[key] {
-			seen[key] = true
-			roots = append(roots, absolute)
+		// A managed root stays excluded in every pool that holds one, so
+		// changing the Fetch pool does not expose earlier Fetch folders.
+		for _, pool := range layout.Pools {
+			root := storagepool.Join(pool.Path, templateRoot)
+			review, err := s.inspectManagedFetchRoot(ctx, remoteSourceForUse{ID: configured.id, Code: configured.code, Config: sourceConfig}, root)
+			if err != nil {
+				return nil, err
+			}
+			if review.Conflict || (review.Status != "managed" && review.Status != "legacy_managed") {
+				continue
+			}
+			absolute, err := safeDataPath(s.cfg.DataRoot, root)
+			if err != nil {
+				continue
+			}
+			key := strings.ToLower(filepath.Clean(absolute))
+			if !seen[key] {
+				seen[key] = true
+				roots = append(roots, absolute)
+			}
 		}
 	}
 	sort.Slice(roots, func(i, j int) bool { return strings.ToLower(roots[i]) < strings.ToLower(roots[j]) })

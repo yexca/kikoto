@@ -42,9 +42,17 @@ snapshots for that work.
   system until the current product is stable.
 
 Fetch publication directories such as `.kikoto-staging`, `.kikoto-backup`, and
-the reviewable `.kikoto-trash` must remain on the `/data` filesystem so
-publication and rollback can use same-filesystem rename semantics. Do not move
-durable transaction or review state to disposable `/cache` storage.
+the reviewable `.kikoto-trash` must remain on the filesystem of the storage
+pool that holds the target, so publication and rollback can use
+same-filesystem rename semantics: the data root in standard mode,
+`/data/<pool>` in storage pool mode. Do not move durable transaction or review
+state to disposable `/cache` storage, and do not share one transaction
+directory across pools.
+
+A scan must never mark works missing where it cannot see: an unmounted data
+root or offline pool (no `.kikoto-pool` marker), or folders deeper than the
+scan depth. Keep new scan, watcher, and disk-verified cleanup paths behind the
+same pool scope.
 
 ## Remote Request Boundary
 

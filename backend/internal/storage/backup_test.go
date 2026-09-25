@@ -15,7 +15,7 @@ func TestBackupIntoWritesVerifiedCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec("CREATE TABLE note (body TEXT); INSERT INTO note VALUES ('kept')"); err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestBackupIntoWritesVerifiedCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer copyDB.Close()
+	defer func() { _ = copyDB.Close() }()
 	var body string
 	if err := copyDB.QueryRow("SELECT body FROM note").Scan(&body); err != nil || body != "kept" {
 		t.Fatalf("backup body = %q, err = %v", body, err)
@@ -87,7 +87,7 @@ func TestMigrateFSRunsBeforeUpgradeOnlyForExistingDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	calls := [][2]int{}
 	hook := MigrateOptions{BeforeUpgrade: func(from, to int) error {
 		calls = append(calls, [2]int{from, to})
@@ -123,7 +123,7 @@ func TestMigrateFSStopsWhenBeforeUpgradeFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if err := MigrateFS(db, first, "test"); err != nil {
 		t.Fatal(err)
 	}

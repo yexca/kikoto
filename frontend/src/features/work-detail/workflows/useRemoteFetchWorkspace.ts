@@ -16,6 +16,7 @@ import {
   type RemoteFetchDraft,
 } from "@/features/work-detail/workflows/remoteFetchWorkspaceModel";
 import { api, ApiError, type RemoteFetchFileDecision, type RemoteWorkSaveResult } from "@/lib/api";
+import { fetchDestinationCode, librarySettingsPath } from "@/lib/fetchDestination";
 import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
 
 export type { FetchIntent, RemoteFetchDraft } from "@/features/work-detail/workflows/remoteFetchWorkspaceModel";
@@ -68,7 +69,7 @@ export function useRemoteFetchWorkspace({
       setDraft(createRemoteFetchDraft({ intent, detail, paths, plan }));
       return true;
     } catch (error) {
-      toast.notify(toastFromError(error, "Fetch preparation failed."));
+      if (!notifyFetchDestination(toast, error, t)) toast.notify(toastFromError(error, "Fetch preparation failed."));
       return false;
     } finally {
       endOperation();
@@ -188,7 +189,9 @@ export function useRemoteFetchWorkspace({
         });
       }
     } catch (error) {
-      if (!publishing) {
+      if (notifyFetchDestination(toast, error, t)) {
+        // The library setting, not the plan, needs attention.
+      } else if (!publishing) {
         toast.notify(toastFromError(error, t("remoteFetch.planFailed")));
       } else if (error instanceof ApiError && error.status === 401) {
         toast.notify(toastFromError(error, t("remoteFetch.submissionFailed")));
@@ -298,6 +301,20 @@ function notifyFetchQueued(toast: ReturnType<typeof useToast>, result: RemoteWor
     actionLabel: t("remoteFetch.activity"),
     onAction: () => openActivity(`/workflows?activity=1&run=${result.runId}`),
   });
+}
+
+// A Fetch that cannot write into the library points at the setting that
+// fixes it, such as choosing a Fetch storage pool.
+function notifyFetchDestination(toast: ReturnType<typeof useToast>, error: unknown, t: TFunction) {
+  const code = fetchDestinationCode(error);
+  if (!code) return false;
+  toast.notify({
+    kind: "warning",
+    message: t(`remoteFetch.destination.${code}`),
+    actionLabel: t("remoteFetch.destination.openSettings"),
+    onAction: () => openActivity(librarySettingsPath),
+  });
+  return true;
 }
 
 function notifyFetchUnconfirmed(toast: ReturnType<typeof useToast>, t: TFunction) {

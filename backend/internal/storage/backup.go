@@ -93,7 +93,7 @@ func verifyBackupFile(ctx context.Context, path string) error {
 	if err != nil {
 		return fmt.Errorf("open database backup: %w", err)
 	}
-	defer backup.Close()
+	defer func() { _ = backup.Close() }()
 	var result string
 	if err := backup.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&result); err != nil {
 		return fmt.Errorf("verify database backup: %w", err)

@@ -47,6 +47,10 @@ type DuplicateGroup struct {
 type Options struct {
 	ScanDepth       int
 	AudioExtensions []string
+	// SubRoots limits discovery to these slash-separated directories below
+	// the root, such as the online storage pools. Depth, relative paths, and
+	// duplicate detection still refer to the root. Empty walks the root.
+	SubRoots []string
 }
 
 func Discover(root string, options Options) ([]WorkFolder, Summary, error) {
@@ -77,7 +81,7 @@ func DiscoverFolders(root string, options Options) ([]WorkFolder, Summary, error
 
 	var summary Summary
 	var candidates []WorkFolder
-	err = filepath.WalkDir(absRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+	visit := func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -115,9 +119,15 @@ func DiscoverFolders(root string, options Options) ([]WorkFolder, Summary, error
 			Depth:   depth,
 		})
 		return nil
-	})
+	}
+	starts, err := discoveryStarts(absRoot, options.SubRoots)
 	if err != nil {
 		return nil, Summary{}, err
+	}
+	for _, start := range starts {
+		if err := filepath.WalkDir(start, visit); err != nil {
+			return nil, Summary{}, err
+		}
 	}
 
 	summary.CandidateFolders = len(candidates)
@@ -129,6 +139,26 @@ func DiscoverFolders(root string, options Options) ([]WorkFolder, Summary, error
 	})
 	summary.DetectedWorks = len(workFolders)
 	return workFolders, summary, nil
+}
+
+func discoveryStarts(absRoot string, subRoots []string) ([]string, error) {
+	if len(subRoots) == 0 {
+		return []string{absRoot}, nil
+	}
+	starts := make([]string, 0, len(subRoots))
+	for _, subRoot := range subRoots {
+		rel := filepath.Clean(filepath.FromSlash(strings.TrimSpace(subRoot)))
+		if rel == "." {
+			starts = append(starts, absRoot)
+			continue
+		}
+		start := filepath.Join(absRoot, rel)
+		if filepath.IsAbs(rel) || !isAncestorOrSame(absRoot, start) || isKikotoInternalDirectory(filepath.Base(start)) {
+			return nil, invalidChangedPath(subRoot)
+		}
+		starts = append(starts, start)
+	}
+	return starts, nil
 }
 
 // DiscoverChangedFolders resolves work roots touched by a bounded set of

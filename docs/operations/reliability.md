@@ -39,9 +39,14 @@
 - Fetch Activity records transferred bytes, the known byte total, and the
   count of selected downloads whose size is still unknown. It shows a
   percentage only when every remaining transfer has a known total.
+- Fetch staging, backup, and trash live at the root of the pool that holds the
+  target (`/data` in standard mode, `/data/<pool>` in storage pool mode), so
+  publication, rollback, and archiving stay same-filesystem renames. Planning
+  refuses to write into an unconfigured library, a missing Fetch pool, or an
+  offline pool, and the free-space reserve is measured on the target pool.
 - Failed or cancelled Fetch staging is retained for seven days by default,
   then reconciled at startup and every six hours. Cleanup computes only
-  `.kikoto-staging/<run-id>` below `/data`, refuses symbolic links, junctions,
+  `.kikoto-staging/<run-id>` at the data root or a pool root, refuses symbolic links, junctions,
   reparse points, and unexpected file types. A safe cleanup resets the manifest
   so a later retry can rebuild staging; an unsafe tree remains claimed for
   operator review and cannot be retried over a partial cleanup.
@@ -69,6 +74,16 @@
   errors, event overflow, root invalidation, or duplicate roots. Fetch registers
   publication directly, while Startup, interval, and manual scans continue to
   inspect the complete data tree.
+- A scan changes only what it can observe. Every pool root carries a
+  `.kikoto-pool` marker. A standard data root without one is adopted only when
+  it visibly holds media or the library has no local works yet; an empty root
+  of a library with works is an unmounted volume, so the scan fails without
+  marking anything missing. In pool mode an unmarked or foreign-marked pool is
+  offline: its works keep their state, the scan finishes as partial, and the
+  watcher ignores unregistered first-level folders. Works deeper than the scan
+  depth are never marked missing either, and scans always reach at least the
+  deepest Fetch folder level. Disk-verified database cleanup confirms absence
+  only inside online pools.
 - Local scan completion is independent of metadata-provider latency or failure.
   Its optional, disabled-by-default metadata follow-up creates a separate run
   after scan completion, with its own retry and review state.

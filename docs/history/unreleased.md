@@ -97,6 +97,31 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   the next startup, including Fetches left in that state by earlier versions.
   A Fetch that still cannot be recovered is reported in Activity and no longer
   stops the server from starting.
+- Activity names each Fetch after its work, such as `Fetch RJ00000001`, finds
+  it by work code, and records whether it was queued by Availability Watch, a
+  bulk action, a popular collection, or a preset workflow. Workflows lists Fetch
+  as a read-only tab with its history.
+- When Fetch cannot write into the library, it says what to configure and links
+  to Settings -> Library instead of failing the plan.
+
+## Library Storage
+
+- A new instance opens **Set up your library** after the administrator is
+  created: choose the Standard layout or Storage pools, scan, optionally sync
+  metadata, and decide whether scans run on startup or when folders change.
+  Both scan triggers now start off on a new install. Upgraded instances keep
+  the Standard layout and their triggers, and skip the setup.
+- Storage pool mode treats selected first-level folders of the data directory
+  as separate disks or cloud drives. Fetch saves new works to the chosen Fetch
+  pool and keeps its staging, backup, and trash inside the target's pool, so
+  publication stays a rename on one disk.
+- An unmounted data directory or offline pool no longer makes a scan report the
+  whole library missing. Kikoto marks each pool root with `.kikoto-pool`; an
+  empty, unmarked root of a library with works fails the scan without changes,
+  and an offline pool is skipped and named in a partial run.
+- Scans always reach the level where Fetch saves works, and Settings rejects a
+  shallower scan depth, so a shallow depth no longer reports Fetched works
+  missing.
 
 ## Tags
 

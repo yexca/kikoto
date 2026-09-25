@@ -486,6 +486,7 @@ export const surfaceHans = {
       voiceResults: "声优搜索结果",
       searching: "正在搜索",
     },
+    fetchRunTitle: "获取 {{code}}",
     builtInDefinitions: {
       circle_follow: {
         name: "关注社团",
@@ -650,6 +651,7 @@ export const surfaceHans = {
       remote_popular_collection: "远程热门",
       dlsite_popular_collection: "DLsite 热门",
       availability_watch: "到货监控",
+      remote_work_fetch: "获取",
       circle_follow: "关注社团",
       series_follow: "关注系列",
       voice_follow: "关注声优",
@@ -1396,6 +1398,13 @@ export const surfaceHans = {
   },
 
   remoteFetch: {
+    destination: {
+      library_not_configured: "请先设置媒体库，再获取作品。",
+      fetch_pool_required: "请先选择 Fetch 存储池，再获取作品。",
+      fetch_pool_offline: "Fetch 存储池离线。请检查它的磁盘是否已挂载。",
+      library_offline: "媒体库文件夹不可用。请检查数据目录是否已挂载。",
+      openSettings: "媒体库设置",
+    },
     title: "获取选择",
     demoPreview: "演示预览",
     description: "比较确切的语言版本、远程来源和最终发布目录。",

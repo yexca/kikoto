@@ -843,7 +843,7 @@ func (err *archivedFetchRootPathError) Error() string {
 func (s *Server) deleteArchivedFetchRoots(roots []archivedFetchRoot) error {
 	for _, root := range roots {
 		archive := filepath.ToSlash(strings.Trim(root.ArchivePath, "/"))
-		if !strings.HasPrefix(archive, ".kikoto-trash/fetch/") {
+		if !fetchTrashArchiveAllowed(archive) {
 			return &archivedFetchRootPathError{}
 		}
 		if _, err := safeDataPath(s.cfg.DataRoot, archive); err != nil {

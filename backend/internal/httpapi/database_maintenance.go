@@ -10,6 +10,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/storagepool"
 )
 
 const (
@@ -428,10 +430,19 @@ func (s *Server) staleDiskRecords(ctx context.Context, query string) ([]staleDis
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
+	// An offline pool's empty mount point would confirm every path in it as
+	// absent, so only paths in online pools are verified.
+	scope, err := s.localScanScope(ctx, s.cfg.DataRoot, localScanDepthMax)
+	if err != nil {
+		return nil, err
+	}
 	stale := []staleDiskRecord{}
 	for _, record := range candidates {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
+		}
+		if poolPath, _ := storagepool.Split(scope.mode, record.Path); !scope.poolOnline(poolPath) {
+			continue
 		}
 		absolute, err := safeDataPath(s.cfg.DataRoot, strings.TrimSpace(record.Path))
 		if err != nil {

@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { LibraryLayoutSection } from "@/features/library-setup/LibraryLayoutSection";
 import { RemoteSourceDialog } from "@/features/sources/RemoteSourceDialog";
 import { RemoteSourceList } from "@/features/sources/RemoteSourceList";
 import {
@@ -335,6 +336,7 @@ export function MaintenancePage({
           <SettingsSkeleton />
         ) : activeTab === "library" && draft ? (
           <div className="space-y-6">
+            <LibraryLayoutSection readOnly={readOnly} />
             <SettingsSection
               title={t("maintenance.library.local")}
               description={localSource?.displayName ?? t("maintenance.mainLocalLibrary")}
@@ -343,13 +345,17 @@ export function MaintenancePage({
             >
               <SettingsRow
                 title={t("maintenance.library.scanDepth")}
-                description={t("sourceSetup.scanDepthDescription")}
+                description={
+                  (settings?.localScanDepthMinimum ?? 1) > 1
+                    ? `${t("sourceSetup.scanDepthDescription")} ${t("librarySetup.scanDepthMinimum", { count: settings?.localScanDepthMinimum ?? 1 })}`
+                    : t("sourceSetup.scanDepthDescription")
+                }
               >
                 <SettingsNumberInput
                   disabled={readOnly}
                   label={t("maintenance.library.scanDepth")}
                   value={draft.localScanDepth}
-                  min={1}
+                  min={settings?.localScanDepthMinimum ?? 1}
                   max={8}
                   unit={t("sourceSetup.levels")}
                   onChange={(localScanDepth) => patchDraft({ localScanDepth })}

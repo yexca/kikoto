@@ -136,6 +136,18 @@ Workflows make backend actions inspectable.
   transfer rate, and the estimated time remaining. Unknown-size files stay
   explicit and suppress percentage and remaining-time presentation until their
   actual size is known.
+- Each Fetch run is named after its work, such as `Fetch RJ00000001`, and
+  Activity search finds a Fetch by its work code. The **Fetch** tab lists Fetch
+  history and steps but has no Run form: a Fetch always starts from a work.
+  Fetches queued by Availability Watch, bulk actions, popular collections, or
+  preset workflows record that origin as their trigger reason.
+- On a new install, the local scan's Startup trigger and folder watcher start
+  off; library setup offers to turn them on. An upgraded instance keeps its
+  existing triggers.
+- A scan never marks works missing in a place it cannot see: an unmounted data
+  folder or offline storage pool, or folders deeper than the scan depth. A scan
+  of an unmounted standard library fails and changes nothing; a scan that skips
+  an offline pool finishes as partial and names the pool.
 
 ## Current Limits
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/storagepool"
 )
 
 type remoteFetchPlanInputs struct {
@@ -59,15 +60,22 @@ func (s *Server) prepareRemoteFetchPlanInputs(
 }
 
 func (s *Server) resolveRemoteFetchSaveRoot(ctx context.Context, source remoteSourceForUse, workCode string, requested string) (string, error) {
-	saveRoot := s.remoteSaveRoot(source, workCode)
-	if strings.TrimSpace(requested) == "" {
-		return saveRoot, nil
+	if strings.TrimSpace(requested) != "" {
+		requested = filepath.ToSlash(filepath.Clean(filepath.FromSlash(requested)))
+		// An existing folder of the edition keeps its own pool, so the
+		// configured Fetch pool is not needed to add files to it.
+		if root, err := s.validateRemoteFetchTargetRoot(ctx, workCode, requested); err == nil {
+			return root, s.ensureFetchTargetWritable(ctx, root)
+		}
 	}
-	requested = filepath.ToSlash(filepath.Clean(filepath.FromSlash(requested)))
-	if requested == filepath.ToSlash(filepath.Clean(filepath.FromSlash(saveRoot))) {
-		return saveRoot, nil
+	saveRoot, err := s.remoteSaveRoot(ctx, source, workCode)
+	if err != nil {
+		return "", err
 	}
-	return s.validateRemoteFetchTargetRoot(ctx, workCode, requested)
+	if requested != "" && requested != filepath.ToSlash(filepath.Clean(filepath.FromSlash(saveRoot))) {
+		return s.validateRemoteFetchTargetRoot(ctx, workCode, requested)
+	}
+	return saveRoot, s.ensureFetchTargetWritable(ctx, saveRoot)
 }
 
 func (s *Server) buildRemoteFetchPlanItems(ctx context.Context, source remoteSourceForUse, inputs remoteFetchPlanInputs, seenTargets map[string]string) ([]remoteWorkSavePlanItem, error) {
@@ -304,14 +312,17 @@ type remoteFetchSourceOption struct {
 }
 
 type remoteWorkSavePlan struct {
-	SourceID    int64                     `json:"sourceId"`
-	PrimaryCode string                    `json:"primaryCode"`
-	SaveRoot    string                    `json:"saveRoot"`
-	FetchRoot   remoteFetchRootReview     `json:"fetchRoot"`
-	LocalFiles  []remoteWorkSaveLocalFile `json:"localFiles"`
-	Items       []remoteWorkSavePlanItem  `json:"items"`
-	Summary     remoteWorkSaveSummary     `json:"summary"`
-	Preparation remoteFetchPreparation    `json:"preparation"`
+	SourceID    int64  `json:"sourceId"`
+	PrimaryCode string `json:"primaryCode"`
+	SaveRoot    string `json:"saveRoot"`
+	// TransactionPool is the storage pool that holds SaveRoot, and with it
+	// this Fetch's staging, backup, and trash entries. Empty is the data root.
+	TransactionPool string                    `json:"transactionPool,omitempty"`
+	FetchRoot       remoteFetchRootReview     `json:"fetchRoot"`
+	LocalFiles      []remoteWorkSaveLocalFile `json:"localFiles"`
+	Items           []remoteWorkSavePlanItem  `json:"items"`
+	Summary         remoteWorkSaveSummary     `json:"summary"`
+	Preparation     remoteFetchPreparation    `json:"preparation"`
 }
 
 type remoteWorkSaveLocalFile struct {
@@ -407,9 +418,13 @@ func (s *Server) buildRemoteWorkSavePlanFromSnapshot(ctx context.Context, source
 		return remoteWorkSavePlan{}, err
 	}
 	items := append(remoteItems, localItems...)
+	transactionPool, err := s.fetchTransactionPool(ctx, inputs.saveRoot)
+	if err != nil {
+		return remoteWorkSavePlan{}, err
+	}
 	plan := remoteWorkSavePlan{
 		SourceID: source.ID, PrimaryCode: inputs.workCode, SaveRoot: inputs.saveRoot,
-		LocalFiles: inputs.localFiles, Items: items,
+		TransactionPool: transactionPool, LocalFiles: inputs.localFiles, Items: items,
 	}
 	validateResolvedFetchTargets(plan.Items)
 	plan.Summary = summarizeRemoteSavePlan(plan.Items)
@@ -419,16 +434,32 @@ func (s *Server) buildRemoteWorkSavePlanFromSnapshot(ctx context.Context, source
 	return plan, nil
 }
 
-func (s *Server) remoteSaveRoot(source remoteSourceForUse, workCode string) string {
+// remoteSaveRoot is the default Fetch destination of a work, relative to the
+// data root: the source's save template rendered inside the Fetch pool.
+func (s *Server) remoteSaveRoot(ctx context.Context, source remoteSourceForUse, workCode string) (string, error) {
+	poolPath, err := s.fetchPoolPath(ctx)
+	if err != nil {
+		return "", err
+	}
+	return storagepool.Join(poolPath, renderRemoteSaveRoot(s.remoteSaveTemplate(ctx, source), source.Code, workCode)), nil
+}
+
+func (s *Server) remoteSaveTemplate(ctx context.Context, source remoteSourceForUse) string {
 	template := strings.TrimSpace(source.Config.SaveRootTemplate)
 	if template == "" {
-		template = s.settingStringContext(context.Background(), "remote_save_root_template", defaultRemoteSaveRootTemplate)
+		template = s.settingStringContext(ctx, "remote_save_root_template", defaultRemoteSaveRootTemplate)
 	}
 	if template == "" {
 		template = defaultRemoteSaveRootTemplate
 	}
+	return template
+}
+
+// renderRemoteSaveRoot fills a save template. The result is relative to the
+// pool root; a leading /data/ stands for the pool root.
+func renderRemoteSaveRoot(template string, sourceCode string, workCode string) string {
 	prefix, group := workCodeShard(workCode)
-	value := replaceRemoteFetchSourceTokens(template, source.Code)
+	value := replaceRemoteFetchSourceTokens(template, sourceCode)
 	value = strings.ReplaceAll(value, "<work_code>", strings.ToUpper(strings.TrimSpace(workCode)))
 	value = strings.ReplaceAll(value, "<code_prefix>", prefix)
 	value = strings.ReplaceAll(value, "<code_group>", group)

@@ -83,8 +83,12 @@ runtime settings. The production stack uses these deployment defaults:
 | `KIKOTO_STATIC_DIR` | `/app/static` |
 
 Path variables refer to paths **inside the container** and do not change host
-bind mounts. Keep the database under `/config`, durable media and Fetch
-staging/backup/trash under `/data`, and disposable cache under `/cache`. Keep
+bind mounts. Keep the database and its backups under `/config`, durable media
+and Fetch staging/backup/trash under `/data`, and disposable cache under
+`/cache`. In storage pool mode, mount each disk or cloud drive at its own
+first-level folder such as `/data/disk1`; Fetch then keeps its staging, backup,
+and trash inside that pool, so a pool must be one filesystem that supports
+renames. See [Storage pools](../user/en/getting-started.md#storage-pools). Keep
 `KIKOTO_STATIC_DIR=/app/static` to use the bundled frontend; a custom directory
 must contain its replacement assets. If you change a container mount path or
 the HTTP listen port, update `volumes` or `ports` in Compose to match. Changing a

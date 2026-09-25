@@ -40,7 +40,7 @@ func (s *Server) enqueueLocalScan(ctx context.Context, triggerType string, trigg
 }
 
 func (s *Server) enqueueLocalScanWithOptions(ctx context.Context, triggerType string, triggerReason string, triggerID int64, followUpRun bool) (localScanResult, error) {
-	scanDepth := s.configuredLocalScanDepth(ctx)
+	scanDepth := s.effectiveLocalScanDepth(ctx)
 	return s.enqueueLocalScanWithPayload(ctx, triggerType, triggerReason, triggerID, localScanJobPayload{
 		Root: s.cfg.DataRoot, ScanDepth: scanDepth, ScanMode: localScanModeFull, FollowUpRun: followUpRun,
 	})
@@ -51,7 +51,7 @@ func (s *Server) enqueueLocalScanWithPayload(ctx context.Context, triggerType st
 		payload.Root = s.cfg.DataRoot
 	}
 	if payload.ScanDepth <= 0 {
-		payload.ScanDepth = s.configuredLocalScanDepth(ctx)
+		payload.ScanDepth = s.effectiveLocalScanDepth(ctx)
 	}
 	if payload.ScanMode == "" {
 		payload.ScanMode = localScanModeFull
@@ -132,17 +132,29 @@ func (s *Server) executeLocalScanJob(ctx context.Context, job workflowJobRecord)
 
 func (s *Server) executeFullLocalScanJob(ctx context.Context, job workflowJobRecord, payload localScanJobPayload) error {
 	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "discovering", map[string]any{"root": payload.Root, "scan_mode": localScanModeFull}, 0, 0)
-	workFolders, scanSummary, err := localfs.DiscoverFolders(payload.Root, localfs.Options{ScanDepth: payload.ScanDepth})
+	scope, err := s.localScanScope(ctx, payload.Root, payload.ScanDepth)
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
+	if len(scope.online) == 0 {
+		// Nothing can be observed, so nothing may be marked missing.
+		_ = s.failClaimedWorkflowJob(ctx, job, errLibraryUnavailable.Error())
+		return errLibraryUnavailable
+	}
+	workFolders, scanSummary, err := localfs.DiscoverFolders(payload.Root, localfs.Options{ScanDepth: scope.walkDepth(), SubRoots: scope.subRoots()})
+	if err != nil {
+		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		return err
+	}
+	workFolders = scope.filterFolders(workFolders)
+	scanSummary.DetectedWorks = len(workFolders)
 	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, job.RunID)
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
-	result, runSummary, err := s.persistLocalScanResults(ctx, job, payload, workFolders, scanSummary, nodeIDs)
+	result, runSummary, err := s.persistLocalScanResults(ctx, job, payload, scope, workFolders, scanSummary, nodeIDs)
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
@@ -165,7 +177,12 @@ func (s *Server) prepareLocalScanPayload(ctx context.Context, job workflowJobRec
 		return payload, err
 	}
 	if payload.ScanDepth <= 0 {
-		payload.ScanDepth = s.configuredLocalScanDepth(ctx)
+		payload.ScanDepth = s.effectiveLocalScanDepth(ctx)
+	}
+	// A job queued before a Fetch template deepened the library still has to
+	// reach every Fetch destination.
+	if required, err := s.requiredLocalScanDepth(ctx); err == nil {
+		payload.ScanDepth = max(payload.ScanDepth, required)
 	}
 	if strings.TrimSpace(payload.Root) == "" {
 		payload.Root = s.cfg.DataRoot
@@ -184,7 +201,7 @@ func (s *Server) prepareLocalScanPayload(ctx context.Context, job workflowJobRec
 	return payload, nil
 }
 
-func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRecord, payload localScanJobPayload, workFolders []localfs.WorkFolder, scanSummary localfs.Summary, nodeIDs map[string]int64) (localScanResult, map[string]any, error) {
+func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRecord, payload localScanJobPayload, scope localScanScope, workFolders []localfs.WorkFolder, scanSummary localfs.Summary, nodeIDs map[string]int64) (localScanResult, map[string]any, error) {
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -203,10 +220,10 @@ func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRec
 			return localScanResult{}, nil, err
 		}
 	}
-	if err := markMissingExternalWorkFolderLocations(ctx, tx, fileSourceID, seenRoots); err != nil {
+	if err := markMissingExternalWorkFolderLocations(ctx, tx, fileSourceID, seenRoots, scope.contains); err != nil {
 		return localScanResult{}, nil, err
 	}
-	missingWorkIDs, err := markMissingLocalPresence(ctx, tx, fileSourceID, state.seenWorkIDs)
+	missingWorkIDs, err := markMissingLocalPresence(ctx, tx, fileSourceID, state.seenWorkIDs, scope.contains)
 	if err != nil {
 		return localScanResult{}, nil, err
 	}
@@ -229,9 +246,13 @@ func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRec
 		"new_work_codes":      state.newWorkCodes,
 		"follow_up_requested": payload.FollowUpRun,
 		"scan_mode":           localScanModeFull,
+		"scan_depth":          scope.depth,
 	}
 	if payload.FullFallbackReason != "" {
 		runSummary["full_fallback_reason"] = payload.FullFallbackReason
+	}
+	if len(scope.offline) > 0 {
+		runSummary["offline_pools"] = scope.offlinePoolSummaries()
 	}
 	if err := completeLocalScanNodes(ctx, tx, nodeIDs, fileSourceID, scanSummary, state); err != nil {
 		return localScanResult{}, nil, err
@@ -251,6 +272,7 @@ func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRec
 		UpdatedLocations: state.updatedLocations, SkippedLocations: state.skippedLocations,
 		FollowUpRun: payload.FollowUpRun, NewWorkCodes: state.newWorkCodes, Failures: []string{},
 	}
+	scope.applyOfflineResult(&result)
 	return result, runSummary, nil
 }
 

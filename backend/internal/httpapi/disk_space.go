@@ -41,8 +41,14 @@ func (s *Server) ensureRemoteWorkSaveDiskReserve(plan remoteWorkSavePlan, minFre
 	if !ok {
 		return errors.New("fetch disk requirement exceeds supported range")
 	}
+	// Staging and publication happen on the target's pool, which may be a
+	// different disk from the data root.
+	dataFilesystemRoot := s.cfg.DataRoot
+	if poolRoot, err := safeDataPath(s.cfg.DataRoot, plan.TransactionPool); plan.TransactionPool != "" && err == nil {
+		dataFilesystemRoot = poolRoot
+	}
 	requirements := []diskSpaceRequirement{
-		{Label: "data", Root: s.cfg.DataRoot, Required: dataRequired},
+		{Label: "data", Root: dataFilesystemRoot, Required: dataRequired},
 		{Label: "cache", Root: s.cfg.CacheRoot, Required: cacheRequired},
 	}
 	byFilesystem := map[string]diskSpaceRequirement{}

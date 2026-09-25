@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/storagepool"
 )
 
 func (s *Server) quarantineFetchLocalRoots(ctx context.Context, runID int64, workID int64, localSourceID int64, items []remoteWorkSavePlanItem) ([]map[string]any, error) {
@@ -88,7 +90,12 @@ func (s *Server) quarantineFetchRoot(ctx context.Context, runID, workID, localSo
 	if root == "" || fetchRootsOverlap(root, publishedRoot) || targetRoots[root] {
 		return nil, false, nil
 	}
-	archive := filepath.ToSlash(filepath.Join(".kikoto-trash", "fetch", fmt.Sprintf("%d", runID), fmt.Sprintf("%d-%s", record.id, filepath.Base(filepath.FromSlash(root)))))
+	// The archive stays on the old root's pool so archiving is a rename.
+	poolPath, err := s.fetchTransactionPool(ctx, root)
+	if err != nil {
+		return nil, false, err
+	}
+	archive := storagepool.Join(poolPath, filepath.ToSlash(filepath.Join(".kikoto-trash", "fetch", fmt.Sprintf("%d", runID), fmt.Sprintf("%d-%s", record.id, filepath.Base(filepath.FromSlash(root))))))
 	files, totalBytes, ok, err := s.archiveFetchRoot(root, archive)
 	if err != nil || !ok {
 		return nil, false, err

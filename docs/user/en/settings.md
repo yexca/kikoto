@@ -50,7 +50,15 @@ Maintenance uses one horizontal row of tabs, scrolling horizontally on narrow sc
   repeating editable configuration values as summary statistics. Detail tabs
   retain only operational metrics such as source health, recommendation
   and quick enable state.
-- Library combines local scan settings, configured remote sources, and read-only storage paths.
+- Library combines library storage, local scan settings, configured remote sources, and read-only storage paths.
+  **Library storage** shows the library mode (Standard or Storage pools), each
+  pool with an Online or Offline badge, and the Fetch pool. Pools can be added
+  or, while they hold no works, removed; the mode itself is fixed once the
+  library holds local works. **Reconnect** marks an existing folder again
+  after an operator confirmed the right disk is mounted there.
+  **Scan depth** cannot be set below the level where Fetch saves works;
+  scans always reach at least that level, so Fetched works are never reported
+  missing because a scan stopped above them.
 - Instance access settings appear under Users for super administrators in production and development.
   Anonymous Library browsing and playback default to disabled; changing the
   switch applies to the production access boundary and creates an audit entry.

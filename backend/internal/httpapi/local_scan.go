@@ -462,9 +462,12 @@ func markAvailableLocalLocationsMissingForWork(ctx context.Context, tx *sql.Tx, 
 	return int(affected), nil
 }
 
-func markMissingLocalPresence(ctx context.Context, tx *sql.Tx, fileSourceID int64, seenWorkIDs map[int64]bool) ([]int64, error) {
+// markMissingLocalPresence marks works the scan did not find. A work whose
+// recorded root lies outside the scan's reach, in an offline pool or deeper
+// than the scan depth, keeps its state: the scan could not have seen it.
+func markMissingLocalPresence(ctx context.Context, tx *sql.Tx, fileSourceID int64, seenWorkIDs map[int64]bool, inScope func(string) bool) ([]int64, error) {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT work_id
+		SELECT work_id, source_url
 		FROM work_source_presence
 		WHERE file_source_id = ?
 			AND presence_type = 'local'
@@ -475,11 +478,12 @@ func markMissingLocalPresence(ctx context.Context, tx *sql.Tx, fileSourceID int6
 	missingWorkIDs := []int64{}
 	for rows.Next() {
 		var workID int64
-		if err := rows.Scan(&workID); err != nil {
+		var root string
+		if err := rows.Scan(&workID, &root); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
-		if !seenWorkIDs[workID] {
+		if !seenWorkIDs[workID] && (normalizeFolderRootPath(root) == "" || inScope(root)) {
 			missingWorkIDs = append(missingWorkIDs, workID)
 		}
 	}
