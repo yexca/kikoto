@@ -24,15 +24,17 @@ func NewStore(db *sql.DB) *Store {
 }
 
 type User struct {
-	ID                int64    `json:"id"`
-	Username          string   `json:"username"`
-	DisplayName       string   `json:"displayName"`
-	UILocale          string   `json:"uiLocale"`
-	Role              string   `json:"role"`
-	Permissions       []string `json:"permissions"`
-	DevMode           bool     `json:"devMode"`
-	DemoMode          bool     `json:"demoMode"`
-	PasswordManagedBy string   `json:"passwordManagedBy"`
+	ID          int64    `json:"id"`
+	Username    string   `json:"username"`
+	DisplayName string   `json:"displayName"`
+	UILocale    string   `json:"uiLocale"`
+	Role        string   `json:"role"`
+	Permissions []string `json:"permissions"`
+	DevMode     bool     `json:"devMode"`
+	DemoMode    bool     `json:"demoMode"`
+	// PasswordManagedBy is "environment" for the environment-managed root
+	// account and "account" otherwise.
+	PasswordManagedBy string `json:"passwordManagedBy"`
 }
 
 const (
@@ -67,74 +69,6 @@ type Session struct {
 	ID        string
 	ExpiresAt time.Time
 	User      User
-}
-
-func (s *Store) BootstrapRoot(ctx context.Context, username string, password string) error {
-	username = strings.TrimSpace(username)
-	if username == "" {
-		username = "root"
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO user_account (username, display_name, role, enabled)
-		VALUES (?, ?, 'super_admin', 1)
-		ON CONFLICT(username) DO UPDATE SET role = 'super_admin', enabled = 1, updated_at = CURRENT_TIMESTAMP
-	`, username, username); err != nil {
-		return err
-	}
-	var userID int64
-	if err := tx.QueryRowContext(ctx, "SELECT id FROM user_account WHERE username = ?", username).Scan(&userID); err != nil {
-		return err
-	}
-	if err := ensureRootCredential(ctx, tx, userID, password); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO favorite_list (user_id, name, sort_order, kind) VALUES (?, '', -1, 'marked')", userID); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
-func ensureRootCredential(ctx context.Context, tx *sql.Tx, userID int64, password string) error {
-	var currentHash string
-	err := tx.QueryRowContext(ctx, "SELECT password_hash FROM user_password_credential WHERE user_id = ?", userID).Scan(&currentHash)
-	if errors.Is(err, sql.ErrNoRows) {
-		hash, hashErr := HashPassword(password)
-		if hashErr != nil {
-			return hashErr
-		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO user_password_credential (user_id, password_hash) VALUES (?, ?)`, userID, hash)
-		return err
-	}
-	if err != nil {
-		return err
-	}
-	if VerifyPassword(password, currentHash) {
-		// Same password: only move a legacy hash to the current parameters,
-		// without revoking root sessions.
-		if !passwordNeedsRehash(currentHash) {
-			return nil
-		}
-		hash, err := HashPassword(password)
-		if err != nil {
-			return err
-		}
-		_, err = tx.ExecContext(ctx, `UPDATE user_password_credential SET password_hash = ? WHERE user_id = ?`, hash, userID)
-		return err
-	}
-	hash, err := HashPassword(password)
-	if err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE user_password_credential SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`, hash, userID); err != nil {
-		return err
-	}
-	_, err = tx.ExecContext(ctx, "DELETE FROM user_session WHERE user_id = ?", userID)
-	return err
 }
 
 func (s *Store) BootstrapDemo(ctx context.Context) error {
@@ -259,16 +193,22 @@ func (s *Store) Authenticate(ctx context.Context, username string, password stri
 	if passwordNeedsRehash(passwordHash) {
 		s.upgradePasswordHash(ctx, userID, password, passwordHash)
 	}
+	return s.CreateSession(ctx, userID, now)
+}
+
+// CreateSession signs in an enabled account whose credential the caller has
+// already established.
+func (s *Store) CreateSession(ctx context.Context, userID int64, now time.Time) (Session, error) {
+	user, err := s.LoadByID(ctx, userID)
+	if err != nil {
+		return Session{}, err
+	}
 	sessionID, err := newSessionID()
 	if err != nil {
 		return Session{}, err
 	}
 	expiresAt := now.Add(30 * 24 * time.Hour).UTC()
 	if _, err := s.db.ExecContext(ctx, "INSERT INTO user_session (id, user_id, expires_at) VALUES (?, ?, ?)", sessionID, userID, expiresAt.Format("2006-01-02 15:04:05")); err != nil {
-		return Session{}, err
-	}
-	user, err := s.LoadByID(ctx, userID)
-	if err != nil {
 		return Session{}, err
 	}
 	return Session{ID: sessionID, ExpiresAt: expiresAt, User: user}, nil

@@ -39,6 +39,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { LoginPage } from "@/pages/LoginPage";
+import { SetupPage } from "@/pages/SetupPage";
 import { cx } from "@/lib/classNames";
 import { PlayerDock } from "@/player/dock/PlayerDock";
 import { PlayerProvider } from "@/player/PlayerProvider";
@@ -361,6 +362,10 @@ function AuthenticatedApp() {
         {t("app.loading")}
       </div>
     );
+  }
+
+  if (!auth.user && auth.setupRequired) {
+    return <SetupPage />;
   }
 
   if (!auth.user && !auth.anonymousAccessEnabled) {

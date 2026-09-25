@@ -18,6 +18,9 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "admin" {
+		os.Exit(runAdminCommand(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		slog.Error("load configuration", "error", err)
@@ -59,8 +62,8 @@ func main() {
 			slog.Error("bootstrap demo user", "error", err)
 			os.Exit(1)
 		}
-	} else if err := server.BootstrapRoot(ctx); err != nil {
-		slog.Error("bootstrap root user", "error", err)
+	} else if err := server.PrepareAdministrator(ctx); err != nil {
+		slog.Error("prepare administrator", "error", err)
 		os.Exit(1)
 	}
 	if err := server.SeedRemoteSourcesFromConfig(ctx); err != nil {
@@ -87,7 +90,7 @@ func main() {
 		os.Exit(1)
 	}
 	if cfg.IsDevelopment() {
-		slog.Warn("dev mode enabled; requests authenticate as root user", "username", cfg.RootUsername)
+		slog.Warn("dev mode enabled; requests authenticate as root user", "username", cfg.DevelopmentUsername())
 	}
 	if cfg.IsDemo() {
 		slog.Info("demo mode enabled; requests authenticate as the restricted demo user")

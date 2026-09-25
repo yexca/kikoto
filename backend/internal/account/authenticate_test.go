@@ -25,7 +25,7 @@ func openAccountTestStore(t *testing.T) *Store {
 		t.Fatal(err)
 	}
 	store := NewStore(db)
-	if err := store.BootstrapRoot(context.Background(), "root", "synthetic-root-password"); err != nil {
+	if _, err := store.CreateInitialAdministrator(context.Background(), "root", "synthetic-root-password"); err != nil {
 		t.Fatal(err)
 	}
 	return store
@@ -118,25 +118,6 @@ func TestAuthenticateUpgradesLegacyHashAfterSuccessfulSignIn(t *testing.T) {
 	upgraded := rootCredential(t, store)
 	if passwordNeedsRehash(upgraded) || !VerifyPassword("synthetic-root-password", upgraded) {
 		t.Fatalf("stored hash after sign-in = %q, want a current-parameter hash of the same password", upgraded)
-	}
-}
-
-func TestBootstrapRootUpgradesLegacyHashWithoutRevokingSessions(t *testing.T) {
-	store := openAccountTestStore(t)
-	session, err := store.Authenticate(context.Background(), "root", "synthetic-root-password", time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	setRootCredential(t, store, legacyArgon2idHash("synthetic-root-password"))
-
-	if err := store.BootstrapRoot(context.Background(), "root", "synthetic-root-password"); err != nil {
-		t.Fatal(err)
-	}
-	if upgraded := rootCredential(t, store); passwordNeedsRehash(upgraded) || !VerifyPassword("synthetic-root-password", upgraded) {
-		t.Fatalf("stored hash after bootstrap = %q, want a current-parameter hash of the same password", upgraded)
-	}
-	if _, err := store.UserForSession(context.Background(), session.ID, time.Now()); err != nil {
-		t.Fatalf("root session after hash upgrade error = %v, want it kept", err)
 	}
 }
 

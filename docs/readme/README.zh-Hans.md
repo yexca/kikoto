@@ -18,23 +18,19 @@
 
 ## 快速开始
 
-1. 将 [`docker-compose.yml`](../../docker-compose.yml) 放到空目录。
-2. 创建 `.env` 并设置强密码：
-
-```dotenv
-KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password
-```
-
-3. 创建 `config`、`cache`、`data` 目录，将支持的作品文件夹放入 `data/`。
-4. 启动服务：
+1. 将 [`docker-compose.yml`](../../docker-compose.yml) 放到空目录。无需预先设置密码。
+2. 创建 `config`、`cache`、`data` 目录，将支持的作品文件夹放入 `data/`。
+3. 启动服务：
 
 ```sh
 docker compose up -d --pull always
 ```
 
-打开 <http://127.0.0.1:7655>。生产 Compose 会在宿主机 `7655` 同时提供 Web 应用和 API；`7659` 仅是容器内部后端端口，开发 Compose 才会单独发布它。
+打开 <http://127.0.0.1:7655>。首次启动时页面会显示“设置 Kikoto”：输入一次性初始化令牌，再设置管理员用户名和密码。令牌会输出在服务日志中（`docker compose logs kikoto`），也保存在 `config/setup-token`，创建第一个管理员后即失效。如需改为在 `.env` 中定义 root 账户，请设置 `KIKOTO_ROOT_ACCOUNT_MODE=environment` 和 `KIKOTO_ROOT_PASSWORD`。忘记密码时请参阅[管理员初始化与恢复](../operations/security.md#administrator-setup-and-recovery)。
 
-可参考 [`.env.example`](../../.env.example)，通过同目录的 `.env` 调整镜像、管理员账号、扫描深度、Cookie 安全选项和容器内路径。Shell 环境变量优先于 `.env`；修改后执行 `docker compose up -d` 使配置生效。路径变量不会改变宿主机挂载目录，详见 [Compose 配置](../operations/docker.md#configure-with-env)。
+生产 Compose 会在宿主机 `7655` 同时提供 Web 应用和 API；`7659` 仅是容器内部后端端口，开发 Compose 才会单独发布它。
+
+可参考 [`.env.example`](../../.env.example)，通过同目录的 `.env` 调整镜像、扫描深度、Cookie 安全选项和容器内路径。Shell 环境变量优先于 `.env`；修改后执行 `docker compose up -d` 使配置生效。路径变量不会改变宿主机挂载目录，详见 [Compose 配置](../operations/docker.md#configure-with-env)。
 
 `docker compose restart` 会复用当前容器的镜像，也不会应用新的环境变量。`docker compose up -d` 使用 Compose 默认拉取策略：缺少镜像时拉取，`latest` 标签则始终拉取。升级时可使用 `--pull always`；需要可复现部署时，请在 `.env` 中将 `KIKOTO_IMAGE` 固定为经过审核的版本标签或 digest。升级前备份 `config/` 和 `data/`；已有数据库会在启动时迁移，不会从全新安装 baseline 重建。
 

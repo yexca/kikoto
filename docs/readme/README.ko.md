@@ -46,11 +46,7 @@ Kikoto는 DLsite 스타일 메타데이터, 로컬 폴더, 재생성 가능한 C
 
 ### 1. 배포 디렉터리 준비
 
-빈 디렉터리에 [`docker-compose.yml`](../../docker-compose.yml)을 두고 강력하고 고유한 root 비밀번호를 포함한 `.env`를 만드세요.
-
-```dotenv
-KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password
-```
+빈 디렉터리에 [`docker-compose.yml`](../../docker-compose.yml)을 두세요. 비밀번호를 미리 설정할 필요는 없습니다.
 
 ```sh
 mkdir config cache data
@@ -66,11 +62,11 @@ mkdir config cache data
 docker compose up -d --pull always
 ```
 
-[`.env.example`](../../.env.example)을 참고해 같은 디렉터리의 `.env`에서 이미지, 관리자 계정, 스캔 깊이, Cookie 보안 설정, 컨테이너 내부 경로를 변경할 수 있습니다. 셸 환경 변수가 `.env`보다 우선합니다. 변경 후 `docker compose up -d`를 실행하세요. 경로 변수는 호스트 마운트 경로를 변경하지 않습니다. 자세한 내용은 [Compose 설정](../operations/docker.md#configure-with-env)을 참고하세요.
+[`.env.example`](../../.env.example)을 참고해 같은 디렉터리의 `.env`에서 이미지, 스캔 깊이, Cookie 보안 설정, 컨테이너 내부 경로를 변경할 수 있습니다. 셸 환경 변수가 `.env`보다 우선합니다. 변경 후 `docker compose up -d`를 실행하세요. 경로 변수는 호스트 마운트 경로를 변경하지 않습니다. 자세한 내용은 [Compose 설정](../operations/docker.md#configure-with-env)을 참고하세요.
 
 `docker compose restart`는 현재 컨테이너 이미지를 재사용하며 환경 변수 변경을 적용하지 않습니다. `docker compose up -d`는 Compose 기본 정책에 따라 로컬에 없는 이미지를 가져오고, `latest` 태그는 항상 가져옵니다. 업그레이드할 때는 `--pull always`를 사용하세요. 재현 가능한 배포에는 `.env`의 `KIKOTO_IMAGE`를 검토한 릴리스 tag 또는 image digest로 지정합니다. 업그레이드 전에 `config/`와 `data/`를 백업하세요. 기존 데이터베이스는 시작 시 migration되며 fresh-install baseline으로 재구성되지 않습니다.
 
-<http://127.0.0.1:7655>를 엽니다. 설정한 root 사용자와 `KIKOTO_ROOT_PASSWORD`로 로그인하세요. 운영 Compose는 웹 앱과 API를 호스트 7655 포트에서 함께 제공합니다. 7659는 개발 Compose에서만 별도로 공개됩니다.
+<http://127.0.0.1:7655>를 엽니다. 처음 시작하면 "Kikoto 설정" 화면이 표시됩니다. 일회용 설정 토큰을 입력하고 관리자 사용자 이름과 비밀번호를 정하세요. 토큰은 서비스 로그(`docker compose logs kikoto`)에 출력되고 `config/setup-token`에도 저장되며, 첫 관리자를 만들면 더 이상 사용할 수 없습니다. root 계정을 `.env`에서 정의하려면 `KIKOTO_ROOT_ACCOUNT_MODE=environment`와 `KIKOTO_ROOT_PASSWORD`를 설정하세요. 비밀번호를 잊은 경우 [관리자 설정 및 복구](../operations/security.md#administrator-setup-and-recovery)를 참고하세요. 운영 Compose는 웹 앱과 API를 호스트 7655 포트에서 함께 제공합니다. 7659는 개발 Compose에서만 별도로 공개됩니다.
 
 기본 매핑은 모든 호스트 인터페이스에서 수신합니다. 외부 네트워크에 노출하지 않으려면 loopback, 신뢰할 수 있는 VPN 또는 보호된 reverse proxy를 사용하세요. 자세한 내용은 [Docker](../operations/docker.md)와 [Security](../operations/security.md)를 참고하세요.
 

@@ -10,6 +10,43 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
 > works switch, and the metadata refresh choice were removed). Each disabled
 > trigger shows that it needs reconfiguring: open it, check its Run options,
 > save it, and turn it on again. Manual runs are unaffected.
+>
+> By default `KIKOTO_ROOT_PASSWORD` no longer sets the administrator password on
+> every start. Existing accounts keep their current passwords, so the root
+> account still signs in with the last applied value and can now change it in
+> Settings. Remove `KIKOTO_ROOT_PASSWORD` from `.env`; Kikoto logs a warning
+> while it is set. To keep the previous behavior, set
+> `KIKOTO_ROOT_ACCOUNT_MODE=environment` instead. Update `docker-compose.yml`
+> either way, because the previous file neither passes the new variables nor
+> starts without `KIKOTO_ROOT_PASSWORD`.
+
+## Accounts
+
+- A new production instance no longer needs a password in `.env`. The web app
+  shows **Set up Kikoto**, and the first administrator is created with a
+  one-time setup token from the service log or `config/setup-token`, so a
+  client that can only reach the port cannot claim the instance.
+- `docker compose exec kikoto /app/kikoto admin reset-password` resets a
+  forgotten administrator password from the host while Kikoto runs. It prints
+  a new password, restores the account as an enabled super administrator, and
+  signs it out everywhere.
+- A reset targets the initial administrator by default. When it no longer
+  exists, the account must be named with `--username` or
+  `KIKOTO_ROOT_USERNAME`; the error lists the super administrators. A named
+  account must exist, except `root`, which is created so an instance with no
+  usable administrator can still be recovered.
+- Without shell access, `KIKOTO_ROOT_PASSWORD_RESET=true` applies
+  `KIKOTO_ROOT_PASSWORD` once at startup. Restarting with the same values does
+  not undo a password changed later in Settings.
+- `KIKOTO_ROOT_ACCOUNT_MODE=environment` keeps the root account defined by
+  `KIKOTO_ROOT_USERNAME` and `KIKOTO_ROOT_PASSWORD` on every start, as before,
+  and locks its password, role, enabled state, and deletion in the app. The
+  password reset switch and the reset command do not apply to that account.
+- In the default `setup` mode the initial administrator is managed like any
+  other super administrator: it can change its own password, and another super
+  administrator can change its role or delete it.
+- New passwords must have at least 8 characters and must not be a value that
+  appeared in the documentation.
 
 ## Workflows
 

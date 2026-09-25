@@ -1,13 +1,16 @@
 import { USER_PREFERENCES_CHANGED } from "@/lib/recommendationSession";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
-import { api, type AuthState, type CurrentUser, type RuntimeSettings } from "@/lib/api";
+import { api, type AuthState, type CurrentUser, type InitialSetupPayload, type RuntimeSettings } from "@/lib/api";
 
 type AuthContextValue = {
   isLoading: boolean;
   recommendationThreshold: number;
   user: CurrentUser | null;
+  /** A production instance with no administrator; only initial setup can proceed. */
+  setupRequired: boolean;
   login: (username: string, password: string) => Promise<void>;
+  completeSetup: (payload: InitialSetupPayload) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   refreshRuntime: () => Promise<void>;
@@ -71,8 +74,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isLoading,
       recommendationThreshold: recommendationThreshold.userId === userId ? recommendationThreshold.value : 50,
       user: auth?.authenticated ? auth.user : null,
+      setupRequired: auth?.authenticated === false && auth.setupRequired === true,
       login: async (username, password) => {
         const state = await api.login(username, password);
+        setAuth(state);
+      },
+      completeSetup: async (payload) => {
+        const state = await api.completeInitialSetup(payload);
         setAuth(state);
       },
       logout: async () => {

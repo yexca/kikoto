@@ -18,7 +18,6 @@ func TestEnvListNormalizesAndDeduplicatesOrigins(t *testing.T) {
 
 func TestLoadDefaultsToProductionMode(t *testing.T) {
 	t.Setenv("KIKOTO_MODE", "")
-	t.Setenv("KIKOTO_ROOT_PASSWORD", "production-root-password")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -65,16 +64,77 @@ func TestLoadParsesConfiguredPositiveIntegerAndBooleanValues(t *testing.T) {
 	}
 }
 
-func TestLoadRequiresExplicitProductionRootPassword(t *testing.T) {
+func TestLoadStartsProductionWithoutRootPassword(t *testing.T) {
 	t.Setenv("KIKOTO_MODE", "production")
+	t.Setenv("KIKOTO_ROOT_USERNAME", "")
 	t.Setenv("KIKOTO_ROOT_PASSWORD", "")
+	t.Setenv("KIKOTO_ROOT_PASSWORD_RESET", "")
+	t.Setenv("KIKOTO_ROOT_ACCOUNT_MODE", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RootPassword != "" || cfg.RootPasswordReset || cfg.DevelopmentUsername() != "root" {
+		t.Fatalf("root config = password set %t reset %t development user %q", cfg.RootPassword != "", cfg.RootPasswordReset, cfg.DevelopmentUsername())
+	}
+}
+
+func TestLoadValidatesRootPasswordReset(t *testing.T) {
+	t.Setenv("KIKOTO_MODE", "production")
+	t.Setenv("KIKOTO_ROOT_ACCOUNT_MODE", "")
+	t.Setenv("KIKOTO_ROOT_PASSWORD", "")
+	t.Setenv("KIKOTO_ROOT_PASSWORD_RESET", "true")
 	if _, err := Load(); err == nil {
-		t.Fatal("Load() accepted a missing production root password")
+		t.Fatal("Load() accepted a password reset without a password")
 	}
 
-	t.Setenv("KIKOTO_ROOT_PASSWORD", "change-me")
+	t.Setenv("KIKOTO_ROOT_PASSWORD", "synthetic-reset-password")
+	t.Setenv("KIKOTO_ROOT_PASSWORD_RESET", "ture")
 	if _, err := Load(); err == nil {
-		t.Fatal("Load() accepted the default production root password")
+		t.Fatal("Load() accepted a mistyped password reset switch")
+	}
+
+	t.Setenv("KIKOTO_ROOT_PASSWORD_RESET", "ON")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.RootPasswordReset || cfg.RootPassword != "synthetic-reset-password" {
+		t.Fatalf("reset config = reset %t password set %t", cfg.RootPasswordReset, cfg.RootPassword != "")
+	}
+}
+
+func TestLoadValidatesRootAccountMode(t *testing.T) {
+	t.Setenv("KIKOTO_MODE", "production")
+	t.Setenv("KIKOTO_ROOT_USERNAME", "")
+	t.Setenv("KIKOTO_ROOT_PASSWORD", "")
+	t.Setenv("KIKOTO_ROOT_PASSWORD_RESET", "")
+	t.Setenv("KIKOTO_ROOT_ACCOUNT_MODE", "Environment")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted environment mode without a password")
+	}
+	t.Setenv("KIKOTO_ROOT_ACCOUNT_MODE", "env")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted an unknown root account mode")
+	}
+
+	t.Setenv("KIKOTO_ROOT_ACCOUNT_MODE", "environment")
+	t.Setenv("KIKOTO_ROOT_PASSWORD", "synthetic-root-password")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RootAccountMode != RootAccountEnvironment || cfg.EnvironmentManagedUsername() != "root" {
+		t.Fatalf("root account config = mode %q managed user %q", cfg.RootAccountMode, cfg.EnvironmentManagedUsername())
+	}
+
+	t.Setenv("KIKOTO_ROOT_ACCOUNT_MODE", "")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RootAccountMode != RootAccountSetup || cfg.EnvironmentManagedUsername() != "" {
+		t.Fatalf("default root account config = mode %q managed user %q", cfg.RootAccountMode, cfg.EnvironmentManagedUsername())
 	}
 }
 

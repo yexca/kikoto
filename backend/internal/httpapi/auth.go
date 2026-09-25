@@ -21,13 +21,6 @@ const currentUserKey contextKey = "currentUser"
 
 type currentUser = account.User
 
-func (s *Server) BootstrapRoot(ctx context.Context) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	return s.accountStore.BootstrapRoot(ctx, s.cfg.RootUsername, s.cfg.RootPassword)
-}
-
 func (s *Server) BootstrapDemo(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -61,7 +54,7 @@ func (s *Server) currentUserFromRequest(ctx context.Context, r *http.Request) (c
 		return s.withPasswordManagement(user), nil
 	}
 	if s.cfg.IsDevelopment() {
-		user, err := s.accountStore.LoadByUsername(ctx, s.cfg.RootUsername)
+		user, err := s.accountStore.LoadByUsername(ctx, s.cfg.DevelopmentUsername())
 		if err != nil {
 			return currentUser{}, err
 		}
@@ -92,14 +85,12 @@ func (s *Server) credentialManager(username string) string {
 	return "account"
 }
 
-// isEnvironmentManagedUsername reports whether username is the bootstrap root
-// account configured through KIKOTO_ROOT_USERNAME and KIKOTO_ROOT_PASSWORD.
+// isEnvironmentManagedUsername reports whether username is the root account of
+// environment mode, configured through KIKOTO_ROOT_USERNAME and
+// KIKOTO_ROOT_PASSWORD. Setup mode has no environment-managed account.
 func (s *Server) isEnvironmentManagedUsername(username string) bool {
-	rootUsername := strings.TrimSpace(s.cfg.RootUsername)
-	if rootUsername == "" {
-		rootUsername = "root"
-	}
-	return username == rootUsername
+	managed := s.cfg.EnvironmentManagedUsername()
+	return managed != "" && username == managed
 }
 
 func bearerSessionID(r *http.Request) string {
@@ -219,8 +210,8 @@ func (s *Server) updateCurrentUser(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "current password is required"})
 			return
 		}
-		if len(payload.NewPassword) < 8 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "password must be at least 8 characters"})
+		if err := account.ValidateNewPassword(payload.NewPassword); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
 	}
@@ -249,7 +240,11 @@ func (s *Server) updateCurrentUser(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getCurrentUser(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusOK, map[string]any{"authenticated": false})
+		response := map[string]any{"authenticated": false}
+		if s.initialSetupRequired(r.Context()) {
+			response["setupRequired"] = true
+		}
+		writeJSON(w, http.StatusOK, response)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "user": user})

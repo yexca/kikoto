@@ -47,7 +47,7 @@ func isAnonymousBootstrapRequest(r *http.Request) bool {
 		return r.Method == http.MethodGet || r.Method == http.MethodHead
 	case "/api/auth/me", "/api/runtime-settings":
 		return r.Method == http.MethodGet || r.Method == http.MethodHead
-	case "/api/auth/login", "/api/auth/logout":
+	case "/api/auth/login", "/api/auth/logout", "/api/auth/setup":
 		return r.Method == http.MethodPost
 	default:
 		return false

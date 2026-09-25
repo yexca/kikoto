@@ -93,15 +93,11 @@ action restores that host mount for deployments created by older helper versions
 
 ### 1. Prepare the deployment directory
 
-Place [`docker-compose.yml`](docker-compose.yml) in an empty directory. Create a
-`.env` file beside it with a strong, unique root password:
-
-```dotenv
-KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password
-```
+Place [`docker-compose.yml`](docker-compose.yml) in an empty directory. No
+password is set in advance; the first administrator is created in the browser.
 
 Use [`.env.example`](.env.example) for optional settings, including the image,
-root username, scan depth, cookie security, and container paths. Compose reads
+scan depth, cookie security, and container paths. Compose reads
 `.env` automatically; shell environment variables take precedence. See
 [Compose configuration](docs/operations/docker.md#configure-with-env) for defaults
 and how to apply changes.
@@ -133,8 +129,19 @@ migrated on startup and are never rebuilt from the fresh-install baseline.
 
 Open <http://127.0.0.1:7655>.
 
-Sign in with the configured root username (default `root`) and
-`KIKOTO_ROOT_PASSWORD`. Production instances require sign-in by default. A
+On first start Kikoto shows **Set up Kikoto**. Enter the one-time setup token,
+then choose the administrator username and password. The token is printed in
+the service log and saved as `config/setup-token`:
+
+```sh
+docker compose logs kikoto
+```
+
+It works only until the first administrator exists. To define the root account
+in `.env` instead, set `KIKOTO_ROOT_ACCOUNT_MODE=environment` with
+`KIKOTO_ROOT_PASSWORD`. For both options and resetting a forgotten password, see
+[Administrator setup and recovery](docs/operations/security.md#administrator-setup-and-recovery).
+Production instances require sign-in by default. A
 super administrator can optionally enable read-only anonymous Library browsing
 and playback under `Maintenance -> Access`.
 

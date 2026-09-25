@@ -20,11 +20,11 @@ sessions. An administrator password reset from Maintenance revokes every
 session for the target user. Role, enabled state, username, and user lifecycle
 management are not self-service account settings.
 
-The configured root account cannot change its password in Settings. Its
-credential is managed by `KIKOTO_ROOT_PASSWORD`; changing that environment
-value and restarting Kikoto replaces the stored root password and revokes its
-existing sessions. Other super administrators remain account-managed and can
-change their own passwords normally.
+Every account, including the initial administrator, changes its own password
+here. The exception is the root account in environment root account mode,
+whose password comes from `KIKOTO_ROOT_PASSWORD`. A forgotten administrator
+password is reset from the server host; see
+[Administrator setup and recovery](../../operations/security.md#administrator-setup-and-recovery).
 
 Demo mode keeps account-backed Settings read-only. The administration tabs
 (Library, Cache & Fetch, Cleanup, and Users) stay visible for inspection even

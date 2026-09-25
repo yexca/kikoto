@@ -7,16 +7,18 @@ Kikoto is designed to run locally with Docker Compose.
 The production Compose file uses the published Docker Hub image and does not
 require the source tree or a local image build:
 
-Create a `.env` file beside `docker-compose.yml` with an explicit root
-password:
-
-```dotenv
-KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password
-```
+No `.env` file or password is required to start:
 
 ```sh
 docker compose up -d --pull always
 ```
+
+On first start, open the web app and create the administrator with the
+one-time setup token from `docker compose logs kikoto` or
+`config/setup-token`. See
+[Administrator setup and recovery](security.md#administrator-setup-and-recovery),
+which also covers resetting a forgotten password and defining the root account
+in `.env` with `KIKOTO_ROOT_ACCOUNT_MODE=environment` instead.
 
 The production service uses `restart: unless-stopped`, so Docker restarts it
 after process failures and host or daemon restarts unless it was explicitly
@@ -56,17 +58,14 @@ Default mounts:
 ## Configure with `.env`
 
 Copy [`.env.example`](../../.env.example) to `.env` beside `docker-compose.yml`,
-or add only the settings you need to the password-only file above. Run Compose
-from that directory. Every variable in the production service's `environment`
-section supports substitution from `.env`; an exported shell variable takes
-precedence. Unset or empty optional values use the Compose defaults, while an
-unset or empty `KIKOTO_ROOT_PASSWORD` stops Compose with an error.
+or create one with only the settings you need. Run Compose from that directory.
+Every variable in the production service's `environment` section supports
+substitution from `.env`; an exported shell variable takes precedence. Unset or
+empty values use the Compose defaults.
 
 For example:
 
 ```dotenv
-KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password
-KIKOTO_ROOT_USERNAME=admin
 KIKOTO_LOCAL_SCAN_DEPTH=5
 KIKOTO_DB_PATH=/config/library.db
 ```

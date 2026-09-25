@@ -18,23 +18,19 @@
 
 ## クイックスタート
 
-1. 空のディレクトリに [`docker-compose.yml`](../../docker-compose.yml) を置きます。
-2. 強力で一意な root パスワードを `.env` に設定します。
-
-```dotenv
-KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password
-```
-
-3. `config`、`cache`、`data` ディレクトリを作成し、対応する作品フォルダーを `data/` に入れます。
-4. 起動します。
+1. 空のディレクトリに [`docker-compose.yml`](../../docker-compose.yml) を置きます。事前にパスワードを設定する必要はありません。
+2. `config`、`cache`、`data` ディレクトリを作成し、対応する作品フォルダーを `data/` に入れます。
+3. 起動します。
 
 ```sh
 docker compose up -d --pull always
 ```
 
-<http://127.0.0.1:7655> を開きます。Production Compose はホストの `7655` で Web アプリと API を同時に提供します。`7659` はコンテナ内部の Backend ポートで、Development Compose のみ個別に公開します。
+<http://127.0.0.1:7655> を開きます。初回起動時は「Kikoto のセットアップ」画面が表示されます。一回限りのセットアップトークンを入力し、管理者のユーザー名とパスワードを設定してください。トークンはサービスログ（`docker compose logs kikoto`）に出力され、`config/setup-token` にも保存されます。最初の管理者を作成すると無効になります。root アカウントを `.env` で定義する場合は、`KIKOTO_ROOT_ACCOUNT_MODE=environment` と `KIKOTO_ROOT_PASSWORD` を設定してください。パスワードを忘れた場合は[管理者のセットアップと復旧](../operations/security.md#administrator-setup-and-recovery)を参照してください。
 
-[`.env.example`](../../.env.example) を参考に、同じディレクトリの `.env` でイメージ、管理者アカウント、スキャン深度、Cookie のセキュリティ設定、コンテナ内パスを変更できます。シェルの環境変数が `.env` より優先されます。変更後は `docker compose up -d` を実行してください。パス変数はホストのマウント先を変更しません。詳しくは [Compose 設定](../operations/docker.md#configure-with-env) を参照してください。
+Production Compose はホストの `7655` で Web アプリと API を同時に提供します。`7659` はコンテナ内部の Backend ポートで、Development Compose のみ個別に公開します。
+
+[`.env.example`](../../.env.example) を参考に、同じディレクトリの `.env` でイメージ、スキャン深度、Cookie のセキュリティ設定、コンテナ内パスを変更できます。シェルの環境変数が `.env` より優先されます。変更後は `docker compose up -d` を実行してください。パス変数はホストのマウント先を変更しません。詳しくは [Compose 設定](../operations/docker.md#configure-with-env) を参照してください。
 
 `docker compose restart` は現在のコンテナイメージを再利用し、環境変数の変更は適用しません。`docker compose up -d` は Compose の既定ポリシーに従い、未取得のイメージを取得し、`latest` タグは毎回取得します。アップグレード時は `--pull always` を使い、再現可能なデプロイでは `.env` の `KIKOTO_IMAGE` をレビュー済みのタグまたは digest に固定してください。アップグレード前に `config/` と `data/` をバックアップします。既存データベースは起動時に Migration され、Fresh-install baseline から再構築されません。
 

@@ -1567,6 +1567,64 @@ async function themeVisualTokens(page: Page) {
   });
 }
 
+test("initial setup creates the first administrator with the setup token", async ({ page }) => {
+  await mockWorkflows(page);
+  const administrator = {
+    id: 1,
+    username: "synthetic-admin",
+    displayName: "synthetic-admin",
+    role: "super_admin",
+    permissions: ["system:admin"],
+    devMode: false,
+    demoMode: false,
+  };
+  let authenticated = false;
+  const submissions: Array<{ setupToken: string; username: string; password: string }> = [];
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: authenticated
+        ? { authenticated: true, user: administrator }
+        : { authenticated: false, setupRequired: true },
+    }),
+  );
+  await page.route("**/api/auth/setup", async (route) => {
+    const payload = route.request().postDataJSON() as { setupToken: string; username: string; password: string };
+    submissions.push(payload);
+    if (payload.setupToken !== "synthetic-setup-token") {
+      await route.fulfill({
+        status: 403,
+        json: { error: "invalid setup token", code: "invalid_setup_token", retryable: false },
+      });
+      return;
+    }
+    authenticated = true;
+    await route.fulfill({ status: 201, json: { authenticated: true, user: administrator } });
+  });
+
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { name: "Set up Kikoto" })).toBeVisible();
+  await page.getByLabel("Setup token").fill("wrong-token");
+  await page.getByLabel("Administrator username").fill("synthetic-admin");
+  await page.getByLabel("Password", { exact: true }).fill("synthetic-password");
+  await page.getByLabel("Confirm password").fill("different-password");
+  await page.getByRole("button", { name: "Create administrator" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Passwords do not match.");
+  expect(submissions).toHaveLength(0);
+
+  await page.getByLabel("Confirm password").fill("synthetic-password");
+  await page.getByRole("button", { name: "Create administrator" }).click();
+  await expect(page.getByRole("alert")).toContainText("The setup token is incorrect.");
+
+  await page.getByLabel("Setup token").fill(" synthetic-setup-token ");
+  await page.getByRole("button", { name: "Create administrator" }).click();
+  await expect(page.getByLabel("Current password")).toBeVisible();
+  expect(submissions.at(-1)).toEqual({
+    setupToken: "synthetic-setup-token",
+    username: "synthetic-admin",
+    password: "synthetic-password",
+  });
+});
+
 test("settings identifies an environment-managed root password", async ({ page }) => {
   await mockWorkflows(page);
   await page.route("**/api/auth/me", (route) =>

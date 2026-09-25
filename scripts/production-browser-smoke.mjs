@@ -6,7 +6,8 @@ const requireFrontend = createRequire(
 
 export async function verifyProductionBrowser(baseURL, fixtures, signal) {
   const { chromium, expect } = requireFrontend("@playwright/test");
-  const { workCode, aacLocationId, nextLocationId, videoLocationId } = fixtures;
+  const { workCode, aacLocationId, nextLocationId, videoLocationId, password } =
+    fixtures;
   signal.throwIfAborted();
   const started = Date.now();
   const browser = await chromium.launch({ headless: true, timeout: 15_000 });
@@ -33,9 +34,7 @@ export async function verifyProductionBrowser(baseURL, fixtures, signal) {
       page.getByRole("heading", { name: "Sign in to Kikoto", exact: true }),
     ).toBeVisible();
     await page.getByLabel("Username", { exact: true }).fill("synthetic-user");
-    await page
-      .getByLabel("Password", { exact: true })
-      .fill("synthetic-password");
+    await page.getByLabel("Password", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     const card = page.getByTestId("work-card").filter({ hasText: workCode });
     await expect(card).toHaveCount(1);
