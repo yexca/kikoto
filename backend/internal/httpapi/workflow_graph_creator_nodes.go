@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -115,7 +117,10 @@ func (s *Server) executeGraphCircleMetadata(ctx context.Context, node workflowGr
 	synced, skipped := 0, 0
 	failedCodes := []string{}
 	for _, circleID := range splitPresetWorkflowTargets(configString(node.Config, "circleId"), normalizeMakerID) {
-		partyID, err := s.ensurePlaceholderCircle(ctx, circleID)
+		partyID, err := s.findCircle(ctx, circleID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return graphNodeExecution{}, fmt.Errorf("circle %s is not in the database; fetch its catalog to add it", circleID)
+		}
 		if err != nil {
 			return graphNodeExecution{}, err
 		}
@@ -153,7 +158,10 @@ func (s *Server) executeGraphCircleSources(ctx context.Context, node workflowGra
 	mode := configString(node.Config, "mode")
 	matched, failed := 0, 0
 	for _, circleID := range splitPresetWorkflowTargets(configString(node.Config, "circleId"), normalizeMakerID) {
-		partyID, err := s.ensurePlaceholderCircle(ctx, circleID)
+		partyID, err := s.findCircle(ctx, circleID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return graphNodeExecution{}, fmt.Errorf("circle %s is not in the database; fetch its catalog to add it", circleID)
+		}
 		if err != nil {
 			return graphNodeExecution{}, err
 		}

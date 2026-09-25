@@ -310,6 +310,27 @@ user work such as manual workflows and cleanup uses the middle tier, and
 scheduled/background work uses the default tier. Priority does not preempt a
 job that is already running.
 
+## Service Stop and Restart
+
+On `SIGTERM` or `SIGINT` the service stops claiming jobs, refuses new
+connections, and lets in-flight requests finish within
+`KIKOTO_SHUTDOWN_TIMEOUT_SECONDS`. Streaming playback and live transcoding are
+cancelled after half of that time. The database closes only after the job
+executor and other background work have returned.
+
+A running job interrupted by the stop is settled before exit. A recoverable job
+returns to the queue with its checkpoint and does not spend its resume budget,
+because a requested stop is not a failure; a job that cannot resume from a
+checkpoint fails with the stop reason. Activity records a
+`job.interrupted_by_stop` event in both cases. Fetch publication does not start
+once a stop has begun, and a publication that already started finishes its
+directory swap and records it before the job stops.
+
+Startup recovery remains the path for crashes, forced kills, and a stop that
+exceeds its deadline: running jobs left with a lease are requeued from their
+checkpoints and consume one resume, and interrupted Fetch publications are
+reconciled from the staging, target, and backup directories.
+
 ## Source Availability
 
 Source availability is checked by the backend instead of frontend fan-out.
@@ -361,6 +382,22 @@ that resolves a series link. Creator
 catalogs expose Never, Attention, or Synced from their last successful pull and
 the configured freshness window. An authorized user can start an explicit First
 pull or manual refresh through the same follow workflow.
+
+Reading a circle, changing its per-user state, and a detail refresh never
+create one. An unknown maker id returns `404` with `circle_not_in_database`;
+the page offers a user with `metadata:sync` and `workflows:run` the
+`circle_follow` run form with that id filled in, and asks anyone else to
+contact an administrator. Only a `circle_catalog` fetch adds the circle: it
+starts as an unfetched placeholder, and a failed first fetch removes that
+placeholder unless it has since gained a name, catalog, relation, or user
+state. A stored-catalog run and the circle metadata and source nodes require
+a circle that already exists. A voice actor exists only once a synced work
+credits them, so an unknown voice actor page asks a user with
+`metadata:sync` to sync the metadata of any of their works and asks anyone
+else to contact an administrator. A work's circle, series, or voice link
+resolves from stored relationships for any signed-in user; fetching the
+work's metadata or its circle's catalog to find a missing link requires
+`metadata:sync`, and anyone else gets `404` with `entity_not_in_database`.
 
 The workflow searches the display name and every confirmed alias against each
 enabled compatible source. It follows the source-reported result count through

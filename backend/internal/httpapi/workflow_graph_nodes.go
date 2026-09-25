@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"path/filepath"
 	"regexp"
@@ -63,7 +64,18 @@ func (s *Server) executeGraphCircleCatalog(ctx context.Context, runID int64, nod
 	codes := []string{}
 	seen := map[string]bool{}
 	for _, circleID := range circleIDs {
-		partyID, err := s.ensurePlaceholderCircle(ctx, circleID)
+		// Only a catalog fetch may add an unknown circle; stored mode reads
+		// what this site already has.
+		var partyID int64
+		var err error
+		if mode == "stored" {
+			partyID, err = s.findCircle(ctx, circleID)
+		} else {
+			partyID, err = s.ensurePlaceholderCircle(ctx, circleID)
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			return graphNodeExecution{}, fmt.Errorf("circle %s is not in the database; fetch its catalog to add it", circleID)
+		}
 		if err != nil {
 			return graphNodeExecution{}, err
 		}
@@ -76,7 +88,17 @@ func (s *Server) executeGraphCircleCatalog(ctx context.Context, runID int64, nod
 		}
 		if mode != "stored" {
 			if _, err := s.runCircleCatalogRefresh(ctx, partyID, circleID, mode, s.newDLsiteClient()); err != nil {
-				s.recordCircleCatalogRefreshFailure(context.WithoutCancel(ctx), partyID, mode, runID)
+				// A stop interrupts the fetch rather than failing it, so it neither
+				// discards the placeholder nor records a failure.
+				if !shutdownInterrupted(ctx) {
+					cleanupCtx := context.WithoutCancel(ctx)
+					if discarded, discardErr := s.discardUnfetchedCircle(cleanupCtx, partyID); discardErr != nil {
+						slog.Warn("discard unfetched circle", "circle_id", circleID, "error", discardErr)
+					} else if discarded {
+						return graphNodeExecution{}, fmt.Errorf("circle %s was not added: %w", circleID, err)
+					}
+					s.recordCircleCatalogRefreshFailure(cleanupCtx, partyID, mode, runID)
+				}
 				return graphNodeExecution{}, err
 			}
 		}

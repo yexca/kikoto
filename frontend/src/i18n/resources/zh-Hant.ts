@@ -720,6 +720,7 @@ export const zhHantResource = {
         authenticationRequired: "需要登入。",
         permissionDenied: "你沒有執行此操作的權限。",
         notFound: "找不到要求的項目。",
+        entityNotInDatabase: "本站資料庫中還沒有該項目，請聯絡管理員加入。",
         invalidLanguage: "不支援此語言。",
       },
       languageOptions: {

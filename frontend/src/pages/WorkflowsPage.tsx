@@ -87,6 +87,7 @@ import {
   OptionField,
   RunBlockerNote,
   RunOptionRows,
+  RunPrefillNote,
   SegmentedControl,
   SwitchControl,
   WorkflowRunButton,
@@ -142,9 +143,18 @@ function localizedWorkflowDefinition(definition: WorkflowDefinition) {
   };
 }
 
-type ModalMode = "create-trigger" | "edit-trigger" | null;
 type AutomationTriggerType = "startup" | "filesystem_event" | "schedule";
 type CreatableAutomationTriggerType = Exclude<AutomationTriggerType, "filesystem_event">;
+// The editor is bound to the workflow and run options shown when it opened, not to a tab selected later.
+type TriggerEditorState =
+  | {
+      mode: "create";
+      definitionId: number;
+      triggerType: CreatableAutomationTriggerType;
+      runOptions: CurrentTriggerRunOptions | null;
+    }
+  | { mode: "edit"; definitionId: number; trigger: WorkflowTrigger; runOptions: CurrentTriggerRunOptions | null }
+  | null;
 
 type WorkflowNode = {
   id: string;
@@ -256,9 +266,7 @@ export function WorkflowsPage({
   const [selectedDefinitionId, setSelectedDefinitionID] = useState<number | null>(() =>
     storedPositiveInt(workflowDefinitionStorageKey),
   );
-  const [modalMode, setModalMode] = useState<ModalMode>(null);
-  const [editingTrigger, setEditingTrigger] = useState<WorkflowTrigger | null>(null);
-  const [creatingTriggerType, setCreatingTriggerType] = useState<CreatableAutomationTriggerType>("schedule");
+  const [triggerEditor, setTriggerEditor] = useState<TriggerEditorState>(null);
   const triggerAnchorRef = useRef<HTMLElement | null>(null);
   const [currentTriggerRunOptions, setCurrentTriggerRunOptions] = useState<CurrentTriggerRunOptions | null>(null);
   const [isRunningScan, setIsRunningScan] = useState(false);
@@ -535,17 +543,36 @@ export function WorkflowsPage({
   };
 
   const createAutomationTrigger = (triggerType: CreatableAutomationTriggerType, anchor?: HTMLElement | null) => {
-    setCreatingTriggerType(triggerType);
-    setEditingTrigger(null);
+    if (!selectedDefinition) return;
     triggerAnchorRef.current = anchor ?? null;
-    setModalMode("create-trigger");
+    setTriggerEditor({
+      mode: "create",
+      definitionId: selectedDefinition.id,
+      triggerType,
+      runOptions: currentTriggerRunOptions,
+    });
   };
 
   const editAutomationTrigger = (trigger: WorkflowTrigger, anchor?: HTMLElement | null) => {
-    setEditingTrigger(trigger);
     triggerAnchorRef.current = anchor ?? null;
-    setModalMode("edit-trigger");
+    setTriggerEditor({
+      mode: "edit",
+      definitionId: trigger.workflowDefinitionId,
+      trigger,
+      runOptions: currentTriggerRunOptions,
+    });
   };
+
+  const closeTriggerEditor = () => {
+    triggerAnchorRef.current = null;
+    setTriggerEditor(null);
+  };
+  // A definition that disappears after a refresh closes its editor instead of retargeting it.
+  const triggerEditorDefinition = triggerEditor
+    ? (definitions.find((definition) => definition.id === triggerEditor.definitionId) ?? null)
+    : null;
+  const triggerEditorRunOptions =
+    triggerEditor && triggerEditor.runOptions?.code === triggerEditorDefinition?.code ? triggerEditor.runOptions : null;
 
   const toggleAutomationTrigger = async (trigger: WorkflowTrigger, enabled: boolean) => {
     setTriggers((current) => current.map((item) => (item.id === trigger.id ? { ...item, enabled } : item)));
@@ -703,54 +730,32 @@ export function WorkflowsPage({
         </div>
       </WorkflowRunSlotProvider>
 
-      {modalMode === "create-trigger" && selectedDefinition && (
+      {triggerEditor && triggerEditorDefinition && (
         <TriggerModal
-          definition={selectedDefinition}
-          preset={selectedPreset}
-          canTag={canTagWorks}
-          trigger={null}
-          initialTriggerType={creatingTriggerType}
-          currentRunOptions={
-            currentTriggerRunOptions?.code === selectedDefinition.code ? currentTriggerRunOptions : null
+          key={
+            triggerEditor.mode === "edit" ? `edit:${triggerEditor.trigger.id}` : `create:${triggerEditorDefinition.id}`
           }
-          anchorRef={triggerAnchorRef}
-          onClose={() => {
-            triggerAnchorRef.current = null;
-            setModalMode(null);
-          }}
-          onSaved={() => {
-            triggerAnchorRef.current = null;
-            setModalMode(null);
-            refresh();
-          }}
-          onDeleted={() => undefined}
-        />
-      )}
-      {modalMode === "edit-trigger" && selectedDefinition && editingTrigger && (
-        <TriggerModal
-          definition={selectedDefinition}
-          preset={selectedPreset}
+          definition={triggerEditorDefinition}
+          preset={presetByCode.get(triggerEditorDefinition.code) ?? null}
           canTag={canTagWorks}
-          trigger={editingTrigger}
-          readOnly={readOnly}
-          initialTriggerType={editingTrigger.triggerType === "startup" ? "startup" : "schedule"}
-          currentRunOptions={
-            currentTriggerRunOptions?.code === selectedDefinition.code ? currentTriggerRunOptions : null
+          trigger={triggerEditor.mode === "edit" ? triggerEditor.trigger : null}
+          readOnly={triggerEditor.mode === "edit" ? readOnly : undefined}
+          initialTriggerType={
+            triggerEditor.mode === "create"
+              ? triggerEditor.triggerType
+              : triggerEditor.trigger.triggerType === "startup"
+                ? "startup"
+                : "schedule"
           }
+          currentRunOptions={triggerEditorRunOptions}
           anchorRef={triggerAnchorRef}
-          onClose={() => {
-            triggerAnchorRef.current = null;
-            setModalMode(null);
-          }}
+          onClose={closeTriggerEditor}
           onSaved={() => {
-            triggerAnchorRef.current = null;
-            setModalMode(null);
+            closeTriggerEditor();
             refresh();
           }}
           onDeleted={() => {
-            triggerAnchorRef.current = null;
-            setEditingTrigger(null);
-            setModalMode(null);
+            closeTriggerEditor();
             refresh();
           }}
         />
@@ -2264,14 +2269,18 @@ function PresetRunPanel({
   onRun: (inputs: Record<string, unknown>) => Promise<void>;
   onTriggerRunOptionsChange?: (options: CurrentTriggerRunOptions) => void;
 }) {
-  const [values, setValues] = useState<PresetFormValues>(() => {
-    // A detail page's Follow shortcut prefills this preset's target.
-    const prefill = readWorkflowRunPrefill(preset.code);
-    const targets = Object.fromEntries(
-      Object.entries(prefill).filter(([key]) => preset.parameters.some((parameter) => parameter.key === key)),
-    );
-    return Object.keys(targets).length > 0 ? presetValuesFromInputs(preset, targets) : presetDefaultValues(preset);
-  });
+  // A detail page's Follow shortcut prefills this preset's target; the note
+  // keeps saying so after the link's query is cleared.
+  const [prefilledTargets] = useState(() =>
+    Object.entries(readWorkflowRunPrefill(preset.code)).filter(([key]) =>
+      preset.parameters.some((parameter) => parameter.key === key),
+    ),
+  );
+  const [values, setValues] = useState<PresetFormValues>(() =>
+    prefilledTargets.length > 0
+      ? presetValuesFromInputs(preset, Object.fromEntries(prefilledTargets))
+      : presetDefaultValues(preset),
+  );
   useEffect(() => clearWorkflowRunPrefill(), []);
   useEffect(() => {
     onTriggerRunOptionsChange?.({ code: preset.code, presetValues: values });
@@ -2296,6 +2305,18 @@ function PresetRunPanel({
     ),
     options: (
       <div className="grid gap-5">
+        {prefilledTargets.length > 0 && (
+          <RunPrefillNote>
+            {workflowCopy("prefillNotice", {
+              // The voice picker names its target; a circle id is shown as typed.
+              fields: prefilledTargets
+                .map(([key, value]) =>
+                  key === "personId" ? presetParameterLabel(key) : `${presetParameterLabel(key)} ${value}`,
+                )
+                .join(", "),
+            })}
+          </RunPrefillNote>
+        )}
         <PresetParameterFields idPrefix="preset-run" preset={preset} values={values} onChange={setValues} />
         {blockers.length > 0 && <RunBlockerNote>{presetBlockerText(blockers[0])}</RunBlockerNote>}
       </div>
@@ -3180,7 +3201,8 @@ function TriggerModal({
           ? metadataSyncPayload(metadataSyncValues)
           : workflowSystemTriggerConfigPayload(definition.code, triggerType, systemConfig);
       const payload = {
-        workflowDefinitionId: definition.id,
+        // Editing never moves an existing trigger to another workflow.
+        workflowDefinitionId: trigger?.workflowDefinitionId ?? definition.id,
         displayName,
         triggerType,
         enabled,

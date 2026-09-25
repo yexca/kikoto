@@ -351,13 +351,11 @@ func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid circle external id"})
 		return
 	}
-	partyID, err := s.ensurePlaceholderCircle(r.Context(), externalID)
+	// A read never creates a circle; an unknown maker id is fetched only by an
+	// explicit metadata refresh.
+	partyID, err := s.findCircle(r.Context(), externalID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "circle not found"})
-			return
-		}
-		writeError(w, err)
+		writeCircleLookupError(w, err)
 		return
 	}
 	visible, err := s.circlePartyVisible(r.Context(), partyID)
@@ -451,9 +449,9 @@ func (s *Server) updateCircleUserState(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	partyID, err := s.ensurePlaceholderCircle(r.Context(), externalID)
+	partyID, err := s.findCircle(r.Context(), externalID)
 	if err != nil {
-		writeError(w, err)
+		writeCircleLookupError(w, err)
 		return
 	}
 	current, err := s.loadCircleUserState(r.Context(), user.ID, partyID)
@@ -554,9 +552,9 @@ func (s *Server) setCircleUserTags(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	partyID, err := s.ensurePlaceholderCircle(r.Context(), externalID)
+	partyID, err := s.findCircle(r.Context(), externalID)
 	if err != nil {
-		writeError(w, err)
+		writeCircleLookupError(w, err)
 		return
 	}
 	tags, err := s.replaceCircleUserTags(r.Context(), user.ID, partyID, payload.Tags)
@@ -579,9 +577,11 @@ func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid circle external id"})
 		return
 	}
-	partyID, err := s.ensurePlaceholderCircle(r.Context(), externalID)
+	// A detail refresh targets a known circle; an unknown maker id is added by
+	// the circle follow workflow from the Workflows page.
+	partyID, err := s.findCircle(r.Context(), externalID)
 	if err != nil {
-		writeError(w, err)
+		writeCircleLookupError(w, err)
 		return
 	}
 	visible, err := s.circlePartyVisible(r.Context(), partyID)
@@ -635,9 +635,9 @@ func (s *Server) deleteCircleCatalogWork(w http.ResponseWriter, r *http.Request)
 		writeError(w, err)
 		return
 	}
-	partyID, err := s.ensurePlaceholderCircle(r.Context(), externalID)
+	partyID, err := s.findCircle(r.Context(), externalID)
 	if err != nil {
-		writeError(w, err)
+		writeCircleLookupError(w, err)
 		return
 	}
 	visible, err := s.circlePartyVisible(r.Context(), partyID)
@@ -1157,16 +1157,34 @@ func (s *Server) dlsiteCircleOwnershipNeedsRepair(ctx context.Context, workID, p
 	return false, nil
 }
 
+// findCircle resolves a known circle without creating one. It returns
+// sql.ErrNoRows when the maker id is not in this site's database.
+func (s *Server) findCircle(ctx context.Context, externalID string) (int64, error) {
+	var partyID int64
+	err := s.db.QueryRowContext(ctx, `
+		SELECT external.party_id
+		FROM party_external_id AS external
+		INNER JOIN metadata_provider AS provider ON provider.id = external.provider_id
+		WHERE provider.code = 'dlsite' AND external.id_type = 'maker_id' AND external.external_id = ?
+	`, externalID).Scan(&partyID)
+	return partyID, err
+}
+
+// writeCircleLookupError reports an unknown maker id with a distinct code so
+// the page can offer a fetch to users who may run one.
+func writeCircleLookupError(w http.ResponseWriter, err error) {
+	if errors.Is(err, sql.ErrNoRows) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "circle not found", "code": "circle_not_in_database"})
+		return
+	}
+	writeError(w, err)
+}
+
+// ensurePlaceholderCircle creates an unfetched circle for a metadata fetch.
+// Only metadata:sync paths may call it; reads and per-user state use findCircle.
 func (s *Server) ensurePlaceholderCircle(ctx context.Context, externalID string) (int64, error) {
 	if s.cfg.IsDemo() {
-		var partyID int64
-		err := s.db.QueryRowContext(ctx, `
-			SELECT external.party_id
-			FROM party_external_id AS external
-			INNER JOIN metadata_provider AS provider ON provider.id = external.provider_id
-			WHERE provider.code = 'dlsite' AND external.id_type = 'maker_id' AND external.external_id = ?
-		`, externalID).Scan(&partyID)
-		return partyID, err
+		return s.findCircle(ctx, externalID)
 	}
 	providerID, err := s.metadataProviderID(ctx, "dlsite", "DLsite")
 	if err != nil {
@@ -1185,6 +1203,54 @@ func (s *Server) ensurePlaceholderCircle(ctx context.Context, externalID string)
 		return 0, err
 	}
 	return s.upsertDLsiteParty(ctx, externalID, "Unfetched circle "+externalID, "{}")
+}
+
+// discardUnfetchedCircle removes a placeholder whose first fetch failed, so a
+// mistyped or nonexistent maker id does not linger in the circle list. A
+// circle that gained a name, catalog, relation, or any user state is kept.
+func (s *Server) discardUnfetchedCircle(ctx context.Context, partyID int64) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var unfetched bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT
+			party.display_name = 'Unfetched circle ' || external.external_id
+			AND NOT EXISTS (SELECT 1 FROM party_catalog_item WHERE party_id = party.id)
+			AND NOT EXISTS (SELECT 1 FROM party_series WHERE party_id = party.id)
+			AND NOT EXISTS (SELECT 1 FROM work_party WHERE party_id = party.id)
+			AND NOT EXISTS (SELECT 1 FROM user_party_state WHERE party_id = party.id)
+			AND NOT EXISTS (SELECT 1 FROM user_party_tag_assignment WHERE party_id = party.id)
+			AND NOT EXISTS (
+				SELECT 1 FROM party_catalog_refresh_state
+				WHERE party_id = party.id AND last_success_at IS NOT NULL
+			)
+			AND NOT EXISTS (
+				SELECT 1 FROM party_metadata_snapshot
+				WHERE party_id = party.id AND snapshot_json <> '{}'
+			)
+		FROM party
+		INNER JOIN party_external_id AS external ON external.party_id = party.id AND external.id_type = 'maker_id'
+		WHERE party.id = ?
+	`, partyID).Scan(&unfetched); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	if !unfetched {
+		return false, nil
+	}
+	// Snapshots only detach on delete, so the placeholder's empty one goes first.
+	if _, err := tx.ExecContext(ctx, "DELETE FROM party_metadata_snapshot WHERE party_id = ?", partyID); err != nil {
+		return false, err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM party WHERE id = ?", partyID); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
 }
 
 func (s *Server) demoCircleEligible(ctx context.Context, partyID int64) (bool, error) {
@@ -1293,7 +1359,7 @@ func (s *Server) loadCircleAvailableWorkCounts(ctx context.Context, partyIDs []i
 		demoRemoteCatalogWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("remote_work")
 	}
 
-	query, args := int64InQuery(`
+	err := s.queryInt64Batches(ctx, `
 		WITH catalog_codes AS (
 			SELECT DISTINCT catalog.party_id, UPPER(COALESCE(catalog_logical.canonical_code, catalog.primary_code)) AS code
 			FROM `+circleCatalogProjection+` AS catalog
@@ -1345,21 +1411,16 @@ func (s *Server) loadCircleAvailableWorkCounts(ctx context.Context, partyIDs []i
 				WHERE remote.party_id = catalog.party_id AND remote.code = catalog.code
 		)
 		GROUP BY catalog.party_id
-	`, partyIDs)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
+	`, partyIDs, nil, func(rows *sql.Rows) error {
 		var partyID int64
 		var count int
 		if err := rows.Scan(&partyID, &count); err != nil {
-			return nil, err
+			return err
 		}
 		result[partyID] = count
-	}
-	return result, rows.Err()
+		return nil
+	})
+	return result, err
 }
 
 func (s *Server) fillCircleStats(ctx context.Context, userID int64, item *circleSummary) error {
@@ -1546,7 +1607,7 @@ func (s *Server) loadCircleLatestWorks(ctx context.Context, partyIDs []int64) (m
 		catalogDemoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
 		relationDemoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
 	}
-	query, args := int64InQuery(`
+	err := s.queryInt64Batches(ctx, `
 		WITH candidates AS (
 			SELECT
 				catalog.party_id,
@@ -1587,23 +1648,18 @@ func (s *Server) loadCircleLatestWorks(ctx context.Context, partyIDs []int64) (m
 		SELECT party_id, primary_code, title, release_date
 		FROM ranked
 		WHERE position = 1 AND party_id IN (%s)
-	`, partyIDs)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
+	`, partyIDs, nil, func(rows *sql.Rows) error {
 		var partyID int64
 		var item creatorLatestWork
 		var releaseDate sql.NullString
 		if err := rows.Scan(&partyID, &item.PrimaryCode, &item.Title, &releaseDate); err != nil {
-			return nil, err
+			return err
 		}
 		item.ReleaseDate = sqlutil.String(releaseDate)
 		result[partyID] = &item
-	}
-	return result, rows.Err()
+		return nil
+	})
+	return result, err
 }
 
 func (s *Server) loadCircleCatalogCounts(ctx context.Context, partyIDs []int64) (map[int64]int, error) {
@@ -1611,7 +1667,8 @@ func (s *Server) loadCircleCatalogCounts(ctx context.Context, partyIDs []int64) 
 	if s.cfg.IsDemo() {
 		demoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
 	}
-	query, args := int64InQuery(`
+	result := map[int64]int{}
+	err := s.queryInt64Batches(ctx, `
 		SELECT catalog.party_id, COUNT(DISTINCT COALESCE(logical.canonical_code, catalog.primary_code))
 		FROM `+circleCatalogProjection+` AS catalog
 		LEFT JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
@@ -1620,22 +1677,16 @@ func (s *Server) loadCircleCatalogCounts(ctx context.Context, partyIDs []int64) 
 		WHERE catalog.party_id IN (%s)
 			`+demoWhere+`
 		GROUP BY catalog.party_id
-	`, partyIDs)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	result := map[int64]int{}
-	for rows.Next() {
+	`, partyIDs, nil, func(rows *sql.Rows) error {
 		var partyID int64
 		var count int
 		if err := rows.Scan(&partyID, &count); err != nil {
-			return nil, err
+			return err
 		}
 		result[partyID] = count
-	}
-	return result, rows.Err()
+		return nil
+	})
+	return result, err
 }
 
 func (s *Server) loadCircleAvailabilityCounts(ctx context.Context, partyIDs []int64) (map[int64]int, map[int64]int, error) {
@@ -1665,7 +1716,9 @@ func circleAvailabilityDemoWhere(isDemo bool) string {
 }
 
 func (s *Server) loadCircleMediaAvailabilityCounts(ctx context.Context, partyIDs []int64, demoWhere string) (map[int64]int, map[int64]int, error) {
-	query, args := int64InQuery(`
+	localCounts := map[int64]int{}
+	remoteCounts := map[int64]int{}
+	err := s.queryInt64Batches(ctx, `
 		SELECT relation.party_id, location.location_type, COUNT(DISTINCT COALESCE(logical.canonical_code, work.primary_code))
 		FROM work_primary_circle AS relation
 		INNER JOIN work ON work.id = relation.work_id
@@ -1677,35 +1730,29 @@ func (s *Server) loadCircleMediaAvailabilityCounts(ctx context.Context, partyIDs
 			AND location.availability = 'available'
 			`+demoWhere+`
 		GROUP BY relation.party_id, location.location_type
-	`, partyIDs)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer rows.Close()
-	localCounts := map[int64]int{}
-	remoteCounts := map[int64]int{}
-	for rows.Next() {
+	`, partyIDs, nil, func(rows *sql.Rows) error {
 		var partyID int64
 		var locationType string
 		var count int
 		if err := rows.Scan(&partyID, &locationType, &count); err != nil {
-			return nil, nil, err
+			return err
 		}
 		if locationType == "local" {
 			localCounts[partyID] += count
 		} else {
 			remoteCounts[partyID] += count
 		}
-	}
-	if err := rows.Err(); err != nil {
+		return nil
+	})
+	if err != nil {
 		return nil, nil, err
 	}
 	return localCounts, remoteCounts, nil
 }
 
 func (s *Server) loadCircleCatalogAvailabilityCounts(ctx context.Context, partyIDs []int64, demoWhere string) (map[int64]int, error) {
-	query, args := int64InQuery(`
+	counts := map[int64]int{}
+	err := s.queryInt64Batches(ctx, `
 		SELECT catalog.party_id, COUNT(DISTINCT COALESCE(logical.canonical_code, catalog.primary_code))
 		FROM `+circleCatalogProjection+` AS catalog
 		INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id
@@ -1718,29 +1765,24 @@ func (s *Server) loadCircleCatalogAvailabilityCounts(ctx context.Context, partyI
 			AND source.enabled = 1
 			`+demoWhere+`
 		GROUP BY catalog.party_id
-	`, partyIDs)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	counts := map[int64]int{}
-	for rows.Next() {
+	`, partyIDs, nil, func(rows *sql.Rows) error {
 		var partyID int64
 		var count int
 		if err := rows.Scan(&partyID, &count); err != nil {
-			return nil, err
+			return err
 		}
 		counts[partyID] = count
-	}
-	if err := rows.Err(); err != nil {
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 	return counts, nil
 }
 
 func (s *Server) loadCirclePresenceAvailabilityCounts(ctx context.Context, partyIDs []int64, demoWhere string) (map[int64]int, error) {
-	query, args := int64InQuery(`
+	counts := map[int64]int{}
+	err := s.queryInt64Batches(ctx, `
 		SELECT relation.party_id, COUNT(DISTINCT COALESCE(logical.canonical_code, work.primary_code))
 		FROM work_primary_circle AS relation
 		INNER JOIN work ON work.id = relation.work_id
@@ -1754,22 +1796,16 @@ func (s *Server) loadCirclePresenceAvailabilityCounts(ctx context.Context, party
 			AND source.enabled = 1
 			`+demoWhere+`
 		GROUP BY relation.party_id
-	`, partyIDs)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	counts := map[int64]int{}
-	for rows.Next() {
+	`, partyIDs, nil, func(rows *sql.Rows) error {
 		var partyID int64
 		var count int
 		if err := rows.Scan(&partyID, &count); err != nil {
-			return nil, err
+			return err
 		}
 		counts[partyID] = count
-	}
-	if err := rows.Err(); err != nil {
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 	return counts, nil
@@ -1781,16 +1817,6 @@ func mergeCircleAvailabilityCounts(target, candidate map[int64]int) {
 			target[partyID] = count
 		}
 	}
-}
-
-func int64InQuery(template string, values []int64) (string, []any) {
-	placeholders := make([]string, 0, len(values))
-	args := make([]any, 0, len(values))
-	for _, value := range values {
-		placeholders = append(placeholders, "?")
-		args = append(args, value)
-	}
-	return fmt.Sprintf(template, strings.Join(placeholders, ",")), args
 }
 
 func maxInt(left int, right int) int {
@@ -3430,28 +3456,22 @@ func (s *Server) loadCircleUserTagsBatch(ctx context.Context, userID int64, part
 	if len(partyIDs) == 0 {
 		return result, nil
 	}
-	query, args := int64InQuery(`
+	err := s.queryInt64Batches(ctx, `
 		SELECT assignment.party_id, tag.id, tag.name, tag.color
 		FROM user_party_tag_assignment AS assignment
 		INNER JOIN user_party_tag AS tag ON tag.id = assignment.user_party_tag_id
 		WHERE assignment.user_id = ? AND assignment.party_id IN (%s)
 		ORDER BY assignment.party_id, tag.name, tag.id
-	`, partyIDs)
-	args = append([]any{userID}, args...)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
+	`, partyIDs, []any{userID}, func(rows *sql.Rows) error {
 		var partyID int64
 		var tag voiceUserTag
 		if err := rows.Scan(&partyID, &tag.ID, &tag.Name, &tag.Color); err != nil {
-			return nil, err
+			return err
 		}
 		result[partyID] = append(result[partyID], tag)
-	}
-	return result, rows.Err()
+		return nil
+	})
+	return result, err
 }
 
 func (s *Server) metadataProviderID(ctx context.Context, code string, displayName string) (int64, error) {

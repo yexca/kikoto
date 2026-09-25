@@ -76,8 +76,9 @@ Playback is handled by a global browser audio player.
   sent serially; a transient database-busy response receives one short jittered
   retry.
 - Browser queue persistence does not retain per-track progress. Reloaded queue
-  metadata is refreshed from the server, while only explicit Resume applies
-  the durable work cursor's saved position.
+  metadata is refreshed from the server. When the durable work cursor still
+  points at the restored current track and is unfinished, that track continues
+  from the saved position.
 - The player dock supports Mini, Compact, and full Now Playing states, queue
   view, seeking, previous/next, skip controls, and playback mode. The full view
   uses borderless transport glyphs, a thin scrubber with elapsed and remaining
@@ -158,11 +159,17 @@ choice falls back without deleting the preference.
 
 ## Cursor Boundary
 
-Only explicit Resume applies persisted position. It targets the cursor's edition
-and media item, tries the saved location, and then uses current source priority.
-Direct track selection starts at zero. Switching or falling back to another
-location during active playback preserves the current in-memory time without
-rereading the cursor.
+Explicit Resume applies persisted position. It targets the cursor's edition and
+media item, tries the saved location, and then uses current source priority. A
+reloaded queue also continues the cursor for its restored current track when
+that track is the cursor's media item, unless you have already played or sought
+in it. Direct track selection starts at zero. Switching or falling back to
+another location during active playback preserves the current in-memory time
+without rereading the cursor.
+
+A track saves progress only after it has started playing or you have sought in
+it. Hiding the page, locking the device, pausing, or switching tracks before
+that leaves the saved cursor unchanged.
 
 Remote preview playback should not persist a cursor until the remote work has
 been synced into local media records.

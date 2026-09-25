@@ -79,6 +79,7 @@ type Server struct {
 	updateCheck                    *updateCheckCache
 	updateHTTPClient               *http.Client
 	appUpdateEndpoints             appUpdateEndpoints
+	lifetime                       *serverLifetime
 }
 
 type localMediaIndexCall struct {
@@ -106,6 +107,7 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 		sourceGate:                     newSourceRequestGate(),
 		filesystemTriggerConfigChanged: make(chan struct{}, 1),
 		appUpdateEndpoints:             defaultAppUpdateEndpoints(),
+		lifetime:                       newServerLifetime(),
 	}
 }
 

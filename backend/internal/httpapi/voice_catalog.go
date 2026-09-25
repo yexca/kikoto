@@ -687,7 +687,9 @@ func (s *Server) refreshVoiceCatalogRemote(ctx context.Context, progress voiceCa
 	}
 	_, statuses, pages, complete, remoteStatus, err := s.refreshVoiceCatalogSources(ctx, progress, payload, previous)
 	if err != nil {
-		_ = s.markVoiceCatalogRefreshFailed(context.WithoutCancel(ctx), payload, progress.runID)
+		if !shutdownInterrupted(ctx) {
+			_ = s.markVoiceCatalogRefreshFailed(context.WithoutCancel(ctx), payload, progress.runID)
+		}
 		return voiceCatalogRefreshOutcome{}, err
 	}
 	active, err := s.voiceCatalogRefreshRunActive(ctx, payload, progress.runID)
@@ -918,7 +920,9 @@ func (s *Server) discoverVoiceCatalogQuery(sourceCtx context.Context, runID int6
 			result.Err = err
 			result.Status.Status, result.Status.Error = voiceRemoteSourceErrorStatus(err, sourceCtx.Err())
 			result.Status.ElapsedMS = time.Since(started).Milliseconds()
-			_ = s.updateSourceHealth(context.WithoutCancel(sourceCtx), source.ID, "unavailable")
+			if !shutdownInterrupted(sourceCtx) {
+				_ = s.updateSourceHealth(context.WithoutCancel(sourceCtx), source.ID, "unavailable")
+			}
 			return voiceCatalogQueryCursor{}, false, true
 		}
 		result.Status.Pages++

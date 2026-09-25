@@ -50,3 +50,20 @@ in progress, release waits for it; a successful conclusion permits the release
 builds, while a failed, cancelled, or timed-out run stops the release before
 publication work begins. This reuses the commit's existing CI result instead of
 running the full validation suite a second time.
+
+## Publication Order
+
+A release is published as one unit so users are never offered a version whose
+image or APK is missing:
+
+1. The production image and the signed APK are built in parallel. The image is
+   built without pushing, so no registry tag moves yet.
+2. After both builds succeed, the APK is attached to a draft GitHub Release.
+3. The image is then pushed with its version tags and `latest`, reusing the
+   build cache from step 1.
+4. The draft is published last.
+
+A failure in any build leaves registry tags, including `latest`, unchanged. The
+in-app update check reads published GitHub Releases rather than tags, so pushing
+a tag or holding a draft does not announce an update. Rerunning a failed
+release resumes from the same order; an existing Release is updated in place.

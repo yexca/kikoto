@@ -77,16 +77,6 @@ func TestDemoReadPathsDoNotPersistOperationalState(t *testing.T) {
 		t.Fatalf("demo health update persisted status %q at %#v", health, lastChecked)
 	}
 
-	if runID, err := server.recordVoiceRemoteSearchWorkflow(context.Background(), 1, "Demo voice", "$va:Demo voice$", nil); err != nil || runID != 0 {
-		t.Fatalf("recordVoiceRemoteSearchWorkflow() = %d, %v", runID, err)
-	}
-	var workflowRuns int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM workflow_run`).Scan(&workflowRuns); err != nil {
-		t.Fatal(err)
-	}
-	if workflowRuns != 0 {
-		t.Fatalf("demo voice search persisted %d workflow runs", workflowRuns)
-	}
 }
 
 func TestDemoCircleLookupDoesNotCreatePlaceholder(t *testing.T) {

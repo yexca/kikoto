@@ -119,6 +119,14 @@ docker compose pull
 docker compose up -d
 ```
 
+Recreating or stopping the container sends `SIGTERM`. Kikoto then drains
+requests and returns running workflow jobs to the queue before it exits. The
+Compose files set `stop_grace_period: 30s`, longer than the default
+`KIKOTO_SHUTDOWN_TIMEOUT_SECONDS=20`; keep that order if you change either value
+or run the image under another orchestrator. Docker's default 10-second grace
+period can kill the process before the drain finishes, and the interrupted work
+is then recovered at the next start.
+
 ## Development Stack
 
 Use `deploy/compose/dev.yml` when working on local development behavior that

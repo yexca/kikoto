@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Mode is development (root auth bypass), production (normal auth), or demo (restricted demo identity).
@@ -40,6 +41,7 @@ type Config struct {
 	AllowedOrigins      []string
 	TrustedProxies      []netip.Prefix
 	LoginConcurrency    int
+	ShutdownTimeout     time.Duration
 	RootAccountMode     RootAccountMode
 	// RootUsername is the explicitly configured administrator username, or
 	// empty. Development mode authenticates as it, and the environment-managed
@@ -100,6 +102,7 @@ func Load() (Config, error) {
 		AllowedOrigins:      envList("KIKOTO_ALLOWED_ORIGINS"),
 		TrustedProxies:      trustedProxies,
 		LoginConcurrency:    envInt("KIKOTO_LOGIN_CONCURRENCY", 8),
+		ShutdownTimeout:     time.Duration(envInt("KIKOTO_SHUTDOWN_TIMEOUT_SECONDS", 20)) * time.Second,
 		RootAccountMode:     rootMode,
 		RootUsername:        strings.TrimSpace(os.Getenv("KIKOTO_ROOT_USERNAME")),
 		RootPassword:        rootPassword,
