@@ -13,7 +13,7 @@ import {
   seedPlayerQueue,
 } from "./fixtures/player-library";
 
-function servePreparedAudio(route: Route, media: Buffer) {
+function serveSeekableAudio(route: Route, media: Buffer, headers: Record<string, string> = {}) {
   const range = /^bytes=(\d+)-(\d*)$/.exec(route.request().headers().range ?? "");
   const start = range ? Number(range[1]) : 0;
   const end = range?.[2] ? Math.min(Number(range[2]), media.length - 1) : media.length - 1;
@@ -22,11 +22,15 @@ function servePreparedAudio(route: Route, media: Buffer) {
     contentType: "audio/wav",
     headers: {
       "Accept-Ranges": "bytes",
-      "X-Kikoto-Playback-Delivery": "transcoded",
+      ...headers,
       ...(range ? { "Content-Range": `bytes ${start}-${end}/${media.length}` } : {}),
     },
     body: media.subarray(start, end + 1),
   });
+}
+
+function servePreparedAudio(route: Route, media: Buffer) {
+  return serveSeekableAudio(route, media, { "X-Kikoto-Playback-Delivery": "transcoded" });
 }
 
 test("full player collapses from the upper content area and double-tapping its cover opens work detail", async ({
@@ -720,6 +724,59 @@ test("player restores only the current server and authenticated owner's queue", 
   await seedPlayer(page, persistedTrack, 1);
   await page.reload();
   await expect(page.getByText("Test track", { exact: true })).toBeVisible();
+});
+
+test("a restored queue resumes its cursor without overwriting it before the listener plays", async ({ page }) => {
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, { authenticated: true });
+  const cursorTrack = {
+    ...queuedTrackFixture(0, "Test track"),
+    progress: { positionSeconds: 42, durationSeconds: 180, completed: false, lastPlayedAt: "2026-01-01 00:00:00" },
+  };
+  await seedPlayerQueue(page, [cursorTrack, queuedTrackFixture(1, "Second queued track")], 1);
+  const media = silentWav(180);
+  await page.route(/\/api\/media\/1\/stream(?:\?.*)?$/, (route) => serveSeekableAudio(route, media));
+  const saves: { mediaItemId: number; positionSeconds: number }[] = [];
+  await page.route(/\/api\/media-items\/(\d+)\/progress$/, async (route) => {
+    const mediaItemId = Number(/media-items\/(\d+)/.exec(route.request().url())?.[1]);
+    const body = route.request().postDataJSON() as {
+      locationId: number;
+      positionSeconds: number;
+      durationSeconds: number | null;
+      completed: boolean;
+    };
+    saves.push({ mediaItemId, positionSeconds: body.positionSeconds });
+    await route.fulfill({
+      json: {
+        workId: 1,
+        mediaWorkId: 1,
+        mediaItemId,
+        fileSourceId: 1,
+        locationId: body.locationId,
+        locationType: "local",
+        positionSeconds: body.positionSeconds,
+        durationSeconds: body.durationSeconds,
+        completed: body.completed,
+        lastPlayedAt: "2026-01-01 00:00:00",
+      },
+    });
+  });
+  await page.goto("/");
+
+  const audio = page.locator("audio");
+  await expect.poll(() => audio.evaluate((element: HTMLAudioElement) => Math.round(element.currentTime))).toBe(42);
+  expect(await audio.evaluate((element: HTMLAudioElement) => element.paused)).toBe(true);
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("pagehide"));
+    delete (document as { visibilityState?: DocumentVisibilityState }).visibilityState;
+  });
+  await page.getByText("Test track", { exact: true }).click();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+
+  await expect.poll(() => saves.some((save) => save.mediaItemId === 2)).toBe(true);
+  expect(saves.filter((save) => save.mediaItemId === 1)).toEqual([]);
 });
 
 test("@desktop queue rows reorder by dragging the handle or with the arrow keys", async ({ page }) => {

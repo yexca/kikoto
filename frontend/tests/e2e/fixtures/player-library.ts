@@ -1,5 +1,10 @@
 import { type Page } from "@playwright/test";
-import type { WorkMetadataPresentation, WorkMetadataSyncStatus, WorkTranslation } from "../../../src/lib/api";
+import type {
+  MediaProgress,
+  WorkMetadataPresentation,
+  WorkMetadataSyncStatus,
+  WorkTranslation,
+} from "../../../src/lib/api";
 import { syntheticWorkCode } from "../../../src/test-support/workCode";
 
 export const work = {
@@ -56,7 +61,7 @@ export const persistedTrack = {
   workTitle: "Tagged mobile work",
   coverUrl: "",
   circle: "Test circle",
-  progress: null,
+  progress: null as MediaProgress | null,
   progressRecordable: true,
   lyricsLocationId: null,
   lyricsTitle: "",
