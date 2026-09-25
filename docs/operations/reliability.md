@@ -45,6 +45,12 @@
   reparse points, and unexpected file types. A safe cleanup resets the manifest
   so a later retry can rebuild staging; an unsafe tree remains claimed for
   operator review and cannot be retried over a partial cleanup.
+- A Fetch retry or restart first settles an interrupted publication from the
+  target, staging, and backup roots, so it never restages over a published
+  root. Publication refuses to replace an existing backup. The manifest
+  completes in the same transaction that retires the work's `remote_stream`
+  rows, so registration can always be repeated. A Fetch that startup recovery
+  cannot finish is logged and recorded in Activity without stopping startup.
 - A single cache/local deletion and a mixed batch deletion use the same queued
   workflow. Deleting a local location preserves work progress and listening
   marks.

@@ -10,10 +10,13 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 type remoteFetchManifestRecord struct {
@@ -147,6 +150,10 @@ func (s *Server) stageAndPublishRemoteFetch(ctx context.Context, manifest remote
 	if err != nil {
 		return 0, err
 	}
+	manifest, err = s.settleInterruptedRemoteFetchPublication(ctx, manifest)
+	if err != nil {
+		return 0, err
+	}
 	if manifest.State == "published" || manifest.State == "registered" || manifest.State == "completed" {
 		return countPromotedFetchItems(plan.Items), nil
 	}
@@ -166,6 +173,8 @@ func (s *Server) stageAndPublishRemoteFetch(ctx context.Context, manifest remote
 }
 
 const remoteFetchPublishTimeout = 10 * time.Second
+
+var errRemoteFetchBackupPending = errors.New("a previous Fetch publication backup still needs review before publishing again")
 
 type remoteFetchPublishPaths struct {
 	stageRoot  string
@@ -336,13 +345,19 @@ func (s *Server) publishRemoteFetchRoot(ctx context.Context, manifest remoteFetc
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), remoteFetchPublishTimeout)
 	defer cancel()
 	_ = s.updateRemoteFetchPhaseNode(ctx, manifest.WorkflowRunID, "promote", "running", nil)
+	// Once a publication rename has happened, the backup is the only copy of
+	// the previous root. Never replace it; recovery must settle it first.
+	if _, err := os.Lstat(paths.backupRoot); err == nil {
+		return s.recordRemoteFetchManifestError(ctx, manifest.ID, errRemoteFetchBackupPending)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
+	}
 	if err := s.updateRemoteFetchManifestState(ctx, manifest.ID, "publishing", ""); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(paths.backupRoot), 0o755); err != nil {
 		return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 	}
-	_ = os.RemoveAll(paths.backupRoot)
 	targetExisted := false
 	if _, err := os.Stat(paths.targetRoot); err == nil {
 		targetExisted = true
@@ -372,12 +387,18 @@ func (s *Server) publishRemoteFetchRoot(ctx context.Context, manifest remoteFetc
 	return err
 }
 
-func (s *Server) completeRemoteFetchManifest(ctx context.Context, manifest remoteFetchManifestRecord) error {
+// Completion retires the remote_stream rows in the same transaction that marks
+// the manifest completed. Registration resolves media items through those rows,
+// so removing them earlier would leave an interrupted Fetch unrecoverable.
+func (s *Server) completeRemoteFetchManifest(ctx context.Context, manifest remoteFetchManifestRecord, remoteSourceIDs []int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := retireFetchRemoteStreams(ctx, tx, manifest.WorkID, remoteSourceIDs); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO work_folder_location (
 			work_id, file_source_id, root_path, role, origin_source_id,
@@ -529,37 +550,13 @@ func (s *Server) reconcileRemoteFetchManifests(ctx context.Context) error {
 		return err
 	}
 	for _, item := range pending {
-		manifest, err := s.loadRemoteFetchManifest(ctx, item.runID)
-		if err != nil {
-			return err
-		}
-		switch manifest.State {
-		case "published", "registered":
-			if err := s.registerPublishedRemoteFetch(ctx, manifest); err != nil {
-				return err
+		if err := s.reconcileRemoteFetchManifest(ctx, item.runID, item.runStatus); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
 			}
-		case "publishing":
-			if err := s.reconcilePublishingRemoteFetch(ctx, manifest); err != nil {
-				return err
-			}
-			refreshed, err := s.loadRemoteFetchManifest(ctx, item.runID)
-			if err != nil {
-				return err
-			}
-			if refreshed.State == "published" {
-				if err := s.registerPublishedRemoteFetch(ctx, refreshed); err != nil {
-					return err
-				}
-			} else if workflowRunCanResume(item.runStatus) {
-				if err := s.requeueRemoteFetchManifest(ctx, refreshed); err != nil {
-					return err
-				}
-			}
-		default:
-			if !workflowRunCanResume(item.runStatus) {
-				continue
-			}
-			if err := s.requeueRemoteFetchManifest(ctx, manifest); err != nil {
+			// One unrecoverable Fetch must not keep the server from starting.
+			slog.Error("recover interrupted remote Fetch", "run_id", item.runID, "error", err)
+			if err := recordRemoteFetchRecoveryFailure(ctx, s.db, item.runID); err != nil {
 				return err
 			}
 		}
@@ -567,8 +564,67 @@ func (s *Server) reconcileRemoteFetchManifests(ctx context.Context) error {
 	return nil
 }
 
+func (s *Server) reconcileRemoteFetchManifest(ctx context.Context, runID int64, runStatus string) error {
+	manifest, err := s.loadRemoteFetchManifest(ctx, runID)
+	if err != nil {
+		return err
+	}
+	switch manifest.State {
+	case "published", "registered":
+		return s.registerPublishedRemoteFetch(ctx, manifest)
+	case "publishing":
+		refreshed, err := s.settleInterruptedRemoteFetchPublication(ctx, manifest)
+		if err != nil {
+			return err
+		}
+		if refreshed.State == "published" {
+			return s.registerPublishedRemoteFetch(ctx, refreshed)
+		}
+		if workflowRunCanResume(runStatus) {
+			return s.requeueRemoteFetchManifest(ctx, refreshed)
+		}
+		return nil
+	default:
+		if !workflowRunCanResume(runStatus) {
+			return nil
+		}
+		return s.requeueRemoteFetchManifest(ctx, manifest)
+	}
+}
+
+// The detailed cause stays in the server log; Activity only records that the
+// Fetch needs attention, because the cause can include local paths.
+func recordRemoteFetchRecoveryFailure(ctx context.Context, db *sql.DB, runID int64) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := workflow.InsertEvent(ctx, tx, runID, workflow.EventSpec{
+		Level:   "error",
+		Type:    "fetch.recovery_failed",
+		Message: "Startup recovery could not finish this Fetch; see the server log for details",
+	}); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func workflowRunCanResume(status string) bool {
 	return status == "queued" || status == "running"
+}
+
+// A publication interrupted after its renames leaves the staging root already
+// promoted. Settle the manifest from filesystem evidence before any retry
+// stages again, or the retry would publish only the newly selected files.
+func (s *Server) settleInterruptedRemoteFetchPublication(ctx context.Context, manifest remoteFetchManifestRecord) (remoteFetchManifestRecord, error) {
+	if manifest.State != "publishing" {
+		return manifest, nil
+	}
+	if err := s.reconcilePublishingRemoteFetch(ctx, manifest); err != nil {
+		return manifest, err
+	}
+	return s.loadRemoteFetchManifest(ctx, manifest.WorkflowRunID)
 }
 
 func (s *Server) reconcilePublishingRemoteFetch(ctx context.Context, manifest remoteFetchManifestRecord) error {
@@ -589,7 +645,7 @@ func (s *Server) reconcilePublishingRemoteFetch(ctx context.Context, manifest re
 	backupExists := pathExists(backupRoot)
 	switch {
 	case targetExists && !stageExists:
-		_, err = s.db.ExecContext(ctx, "UPDATE remote_fetch_manifest SET state = 'published', published_at = COALESCE(published_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?", manifest.ID)
+		_, err = s.db.ExecContext(ctx, "UPDATE remote_fetch_manifest SET state = 'published', error_message = '', published_at = COALESCE(published_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?", manifest.ID)
 		return err
 	case !targetExists && stageExists:
 		if err := os.MkdirAll(filepath.Dir(targetRoot), 0o755); err != nil {
@@ -598,13 +654,13 @@ func (s *Server) reconcilePublishingRemoteFetch(ctx context.Context, manifest re
 		if err := os.Rename(stageRoot, targetRoot); err != nil {
 			return err
 		}
-		_, err = s.db.ExecContext(ctx, "UPDATE remote_fetch_manifest SET state = 'published', published_at = COALESCE(published_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?", manifest.ID)
+		_, err = s.db.ExecContext(ctx, "UPDATE remote_fetch_manifest SET state = 'published', error_message = '', published_at = COALESCE(published_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?", manifest.ID)
 		return err
 	case !targetExists && !stageExists && backupExists:
 		if err := os.Rename(backupRoot, targetRoot); err != nil {
 			return err
 		}
-		_, err = s.db.ExecContext(ctx, "UPDATE remote_fetch_manifest SET state = 'planned', error_message = 'publication rolled back during startup recovery', updated_at = CURRENT_TIMESTAMP WHERE id = ?", manifest.ID)
+		_, err = s.db.ExecContext(ctx, "UPDATE remote_fetch_manifest SET state = 'planned', error_message = 'publication rolled back during recovery', updated_at = CURRENT_TIMESTAMP WHERE id = ?", manifest.ID)
 		return err
 	default:
 		_, err = s.db.ExecContext(ctx, "UPDATE remote_fetch_manifest SET state = 'verified', updated_at = CURRENT_TIMESTAMP WHERE id = ?", manifest.ID)
@@ -632,14 +688,15 @@ func (s *Server) registerPublishedRemoteFetch(ctx context.Context, manifest remo
 			return err
 		}
 	}
-	if err := s.finishFetchPresence(ctx, manifest.WorkID, remoteFetchPlanSourceIDs(plan, manifest.RemoteSourceID), manifest.LocalSourceID, manifest.EditionCode); err != nil {
+	remoteSourceIDs := remoteFetchPlanSourceIDs(plan, manifest.RemoteSourceID)
+	if err := s.finishFetchPresence(ctx, manifest.WorkID, remoteSourceIDs, manifest.LocalSourceID, manifest.EditionCode); err != nil {
 		return err
 	}
 	removedCache, err := s.cleanupPromotedFetchCache(ctx, plan, manifest.WorkID)
 	if err != nil {
 		return err
 	}
-	if err := s.completeRemoteFetchManifest(ctx, manifest); err != nil {
+	if err := s.completeRemoteFetchManifest(ctx, manifest, remoteSourceIDs); err != nil {
 		return err
 	}
 	summary := mustJSON(map[string]any{"recovered": true, "published": countPromotedFetchItems(plan.Items), "cache_removed": removedCache, "plan": plan.Summary})
