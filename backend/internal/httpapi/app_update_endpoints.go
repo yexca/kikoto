@@ -8,14 +8,17 @@ import (
 // appUpdateEndpoints holds the built-in public release endpoints. It is kept
 // as a value on Server so update checks do not depend on runtime configuration.
 type appUpdateEndpoints struct {
-	tagsURL     string
-	releasesURL string
+	releasesAPIURL string
+	releasesURL    string
 }
 
 func defaultAppUpdateEndpoints() appUpdateEndpoints {
 	return appUpdateEndpoints{
-		tagsURL:     "https://api.github.com/repos/yexca/kikoto/tags?per_page=100",
-		releasesURL: "https://github.com/yexca/kikoto/releases",
+		// Only published releases count: a pushed tag or a draft release whose
+		// image and APK are still being published must not be offered yet.
+		// Release bodies are included, so keep the page within appUpdateMaxBody.
+		releasesAPIURL: "https://api.github.com/repos/yexca/kikoto/releases?per_page=20",
+		releasesURL:    "https://github.com/yexca/kikoto/releases",
 	}
 }
 
