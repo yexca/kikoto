@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -65,13 +65,11 @@ func (s *Server) StartJobRunner(ctx context.Context) {
 		defer workers.Done()
 		s.runFilesystemTriggerCoordinator(ctx)
 	}()
-	for index := 0; index < 1; index++ {
-		workers.Add(1)
-		go func(workerIndex int) {
-			defer workers.Done()
-			s.runWorkflowJobWorker(ctx, workflowJobRunnerID()+":"+strconv.Itoa(workerIndex))
-		}(index)
-	}
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		s.runWorkflowJobWorker(ctx)
+	}()
 	workers.Wait()
 }
 
@@ -86,9 +84,7 @@ func (s *Server) runWorkflowCoordinator(ctx context.Context) {
 		if err := s.dispatchDueScheduledWorkflowTrigger(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("dispatch scheduled custom workflow", "error", err)
 		}
-		if _, err := workflow.NewStore(s.db).RequeueExpiredJobs(ctx, 30*time.Second); err != nil && !errors.Is(err, context.Canceled) {
-			slog.Error("requeue expired workflow jobs", "error", err)
-		}
+		s.settleOrphanedWorkflowJobs(ctx)
 		if _, err := s.backfillSnapshotCardSummaries(ctx, snapshotCardSummaryBackfillBatch); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("backfill snapshot card summaries", "error", err)
 		}
@@ -107,11 +103,32 @@ func (s *Server) runWorkflowCoordinator(ctx context.Context) {
 	}
 }
 
-func (s *Server) runWorkflowJobWorker(ctx context.Context, runnerID string) {
+// settleOrphanedWorkflowJobs settles running jobs whose lease no executor in
+// this process holds, such as a job whose executor exited and whose own
+// settlement write failed. Jobs with a live executor are never touched,
+// however long their heartbeat has been delayed.
+func (s *Server) settleOrphanedWorkflowJobs(ctx context.Context) {
+	result, err := s.workflowStore.SettleOrphans(ctx, workflow.OrphanSweep{
+		Reason: "executor no longer holds the lease", LiveLeases: s.workflowLeases.live, CanViewAll: true,
+	})
+	if err != nil {
+		// A job that settled while the sweep read it makes the sweep's write
+		// conflict with its snapshot; the next tick sees the settled state.
+		if !errors.Is(err, context.Canceled) && !isDatabaseBusyError(err) {
+			slog.Error("settle orphaned workflow jobs", "error", err)
+		}
+		return
+	}
+	if result.Changed() > 0 {
+		slog.Warn("settled orphaned workflow jobs", "requeued", result.Requeued, "failed", result.Failed)
+	}
+}
+
+func (s *Server) runWorkflowJobWorker(ctx context.Context) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
-		if err := s.runNextQueuedWorkflowJob(ctx, runnerID); err != nil && !errors.Is(err, context.Canceled) {
+		if err := s.runNextQueuedWorkflowJob(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("run queued workflow job", "error", err)
 		}
 		select {
@@ -122,31 +139,38 @@ func (s *Server) runWorkflowJobWorker(ctx context.Context, runnerID string) {
 	}
 }
 
-func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) error {
+func (s *Server) runNextQueuedWorkflowJob(ctx context.Context) error {
 	if s.cfg.IsDemo() {
 		return nil
 	}
+	lease := s.workflowLeases.reserve()
+	defer s.workflowLeases.release(lease)
 	var job workflowJobRecord
 	var ok bool
 	err := withDatabaseBusyRetry(ctx, func() error {
 		var err error
-		job, ok, err = s.claimNextQueuedWorkflowJob(ctx, runnerID)
+		job, ok, err = s.claimNextQueuedWorkflowJob(ctx, lease)
 		return err
 	})
 	if err != nil || !ok {
 		return err
 	}
 	jobCtx, stopHeartbeat := s.startWorkflowJobHeartbeat(ctx, job)
-	s.registerActiveWorkflowJob(job.RunID, job.ID, stopHeartbeat)
-	defer func() {
-		s.unregisterActiveWorkflowJob(job.RunID, job.ID)
-		stopHeartbeat()
-	}()
+	defer stopHeartbeat()
+	s.workflowLeases.activate(lease, job.RunID, job.ID, stopHeartbeat)
 	runErr := s.executeClaimedWorkflowJob(jobCtx, job)
 	return s.handleWorkflowJobResult(ctx, jobCtx, job, runErr)
 }
 
-func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobRecord) error {
+func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobRecord) (runErr error) {
+	// A panicking executor becomes a failed job instead of stopping the
+	// service; the runner then settles the lease it left behind.
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			slog.Error("workflow job panicked", "run_id", job.RunID, "job_id", job.ID, "worker_type", job.WorkerType, "panic", recovered, "stack", string(debug.Stack()))
+			runErr = errWorkflowJobPanicked
+		}
+	}()
 	ctx = metasync.WithWorkflowRun(ctx, job.RunID)
 	executors := map[string]func(context.Context, workflowJobRecord) error{
 		"remote_source_track":        s.executeRemoteWorkTrackJob,
@@ -184,18 +208,30 @@ func (s *Server) handleWorkflowJobResult(ctx context.Context, jobCtx context.Con
 	if shutdownInterrupted(jobCtx) && s.releaseShutdownInterruptedJob(ctx, job) {
 		return nil
 	}
+	settleCtx := context.WithoutCancel(ctx)
 	var originReviewErr remoteOriginReviewError
 	if errors.As(runErr, &originReviewErr) {
+		s.settleUnfinishedWorkflowJob(settleCtx, jobCtx, job, runErr)
 		return nil
+	}
+	var backoffErr sourceBackoffError
+	if errors.As(runErr, &backoffErr) {
+		// The job never reached the source, so waiting for the origin's bounded
+		// backoff does not consume a retry. Each block starts from a real
+		// rate-limit response, which is counted against the job that received it.
+		err := s.deferWorkflowJob(settleCtx, job, time.Until(backoffErr.Until), "Waiting for the remote source rate limit")
+		s.settleUnfinishedWorkflowJob(settleCtx, jobCtx, job, runErr)
+		return err
 	}
 	if runErr != nil && isRetryableWorkflowError(runErr) && job.RetryCount < job.MaxRetries {
-		delay := time.Duration(job.RetryCount+1) * 30 * time.Second
-		if err := s.requeueFailedWorkflowJob(jobCtx, job, delay, "Automatic retry after a transient source failure"); err != nil {
-			return err
-		}
-		return nil
+		err := s.requeueFailedWorkflowJob(settleCtx, job, workflowRetryDelay(job, runErr), "Automatic retry after a transient source failure")
+		s.settleUnfinishedWorkflowJob(settleCtx, jobCtx, job, runErr)
+		return err
 	}
-	s.notifyWorkflowJobCompletion(context.WithoutCancel(ctx), job, runErr)
+	if s.settleUnfinishedWorkflowJob(settleCtx, jobCtx, job, runErr) && runErr == nil {
+		runErr = errWorkflowJobResultMissing
+	}
+	s.notifyWorkflowJobCompletion(settleCtx, job, runErr)
 	if runErr != nil {
 		var runStatus string
 		if statusErr := s.db.QueryRowContext(context.WithoutCancel(ctx), "SELECT status FROM workflow_run WHERE id = ?", job.RunID).Scan(&runStatus); statusErr == nil && runStatus == "cancelled" {
@@ -228,12 +264,43 @@ func (s *Server) notifyWorkflowJobCompletion(ctx context.Context, job workflowJo
 	}
 }
 
-var errWorkflowJobQueued = errors.New("workflow job is queued")
+var (
+	errWorkflowJobQueued        = errors.New("workflow job is queued")
+	errWorkflowJobPanicked      = errors.New("workflow job stopped unexpectedly")
+	errWorkflowJobResultMissing = errors.New("workflow job ended without recording its result")
+)
+
+const workflowJobSettleTimeout = 10 * time.Second
+
+// settleUnfinishedWorkflowJob fails a job that its executor left running under
+// this lease. Executors record their own result; an exit path that did not
+// would otherwise hold the single-executor queue indefinitely. A job stopped
+// by a service stop is left for startup recovery, which resumes it from its
+// checkpoint. It reports whether it settled the job.
+func (s *Server) settleUnfinishedWorkflowJob(ctx context.Context, jobCtx context.Context, job workflowJobRecord, runErr error) bool {
+	if shutdownInterrupted(jobCtx) || strings.TrimSpace(job.LockedBy) == "" {
+		return false
+	}
+	message := errWorkflowJobResultMissing.Error()
+	if runErr != nil {
+		message = runErr.Error()
+	}
+	settleCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), workflowJobSettleTimeout)
+	defer cancel()
+	settled, err := s.failLeasedWorkflowJob(settleCtx, job, message)
+	if err != nil {
+		slog.Error("settle unfinished workflow job", "run_id", job.RunID, "job_id", job.ID, "worker_type", job.WorkerType, "error", err)
+		return false
+	}
+	if settled {
+		slog.Warn("workflow job left running by its executor was marked failed", "run_id", job.RunID, "job_id", job.ID, "worker_type", job.WorkerType)
+	}
+	return settled
+}
 
 // Short synchronous API operations may execute only if they are at the head
 // of the same durable queue. Otherwise the background worker owns execution.
 func (s *Server) leaseInlineWorkflowJob(ctx context.Context, job workflowJobRecord) (context.Context, context.CancelFunc, error) {
-	runnerID := workflowJobRunnerID()
 	var headID int64
 	err := s.db.QueryRowContext(ctx, `SELECT job.id FROM workflow_job AS job
 		INNER JOIN workflow_run AS run ON run.id = job.workflow_run_id
@@ -246,65 +313,33 @@ func (s *Server) leaseInlineWorkflowJob(ctx context.Context, job workflowJobReco
 	if err != nil {
 		return ctx, func() {}, err
 	}
-	claimed, ok, err := s.claimQueuedWorkflowJob(ctx, runnerID, job.ID)
-	if err != nil {
+	lease := s.workflowLeases.reserve()
+	claimed, ok, err := s.claimQueuedWorkflowJob(ctx, lease, job.ID)
+	if err != nil || !ok {
+		s.workflowLeases.release(lease)
+		if err == nil {
+			err = errWorkflowJobQueued
+		}
 		return ctx, func() {}, err
-	}
-	if !ok {
-		return ctx, func() {}, errWorkflowJobQueued
 	}
 	job = claimed
 	jobCtx, stop := s.startWorkflowJobHeartbeat(ctx, job)
-	s.registerActiveWorkflowJob(job.RunID, job.ID, stop)
+	s.workflowLeases.activate(lease, job.RunID, job.ID, stop)
 	return jobCtx, func() {
-		s.unregisterActiveWorkflowJob(job.RunID, job.ID)
+		// The lease stays live until the job is settled, so the orphan sweep
+		// never races the caller's own result.
+		defer s.workflowLeases.release(lease)
 		stop()
 		if shutdownInterrupted(jobCtx) {
 			s.releaseShutdownInterruptedJob(jobCtx, job)
+			return
 		}
+		s.settleUnfinishedWorkflowJob(jobCtx, jobCtx, job, nil)
 	}, nil
 }
 
-func (s *Server) registerActiveWorkflowJob(runID int64, jobID int64, cancel context.CancelFunc) {
-	if runID <= 0 || jobID <= 0 || cancel == nil {
-		return
-	}
-	s.activeWorkflowMu.Lock()
-	if s.activeWorkflowCancels == nil {
-		s.activeWorkflowCancels = map[int64]map[int64]context.CancelFunc{}
-	}
-	if s.activeWorkflowCancels[runID] == nil {
-		s.activeWorkflowCancels[runID] = map[int64]context.CancelFunc{}
-	}
-	s.activeWorkflowCancels[runID][jobID] = cancel
-	s.activeWorkflowMu.Unlock()
-}
-
-func (s *Server) unregisterActiveWorkflowJob(runID int64, jobID int64) {
-	if runID <= 0 || jobID <= 0 {
-		return
-	}
-	s.activeWorkflowMu.Lock()
-	if jobs := s.activeWorkflowCancels[runID]; jobs != nil {
-		delete(jobs, jobID)
-		if len(jobs) == 0 {
-			delete(s.activeWorkflowCancels, runID)
-		}
-	}
-	s.activeWorkflowMu.Unlock()
-}
-
 func (s *Server) cancelActiveWorkflowJob(runID int64) {
-	s.activeWorkflowMu.Lock()
-	jobs := s.activeWorkflowCancels[runID]
-	cancels := make([]context.CancelFunc, 0, len(jobs))
-	for _, cancel := range jobs {
-		cancels = append(cancels, cancel)
-	}
-	s.activeWorkflowMu.Unlock()
-	for _, cancel := range cancels {
-		cancel()
-	}
+	s.workflowLeases.cancelRun(runID)
 }
 
 func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string) (workflowJobRecord, bool, error) {
@@ -431,8 +466,29 @@ func isRetryableWorkflowError(runErr error) bool {
 	return err == nil && (status == http.StatusTooManyRequests || status >= 500)
 }
 
+// workflowRetryDelay grows linearly with the retry count and never schedules
+// the retry before a rate-limited origin accepts requests again.
+func workflowRetryDelay(job workflowJobRecord, runErr error) time.Duration {
+	delay := time.Duration(job.RetryCount+1) * 30 * time.Second
+	var downloadErr remoteDownloadError
+	if errors.As(runErr, &downloadErr) && !downloadErr.RetryAt.IsZero() {
+		delay = max(delay, time.Until(downloadErr.RetryAt))
+	}
+	return delay
+}
+
 func (s *Server) requeueFailedWorkflowJob(ctx context.Context, job workflowJobRecord, delay time.Duration, reason string) error {
-	availableAt := time.Now().UTC().Add(delay).Format("2006-01-02 15:04:05")
+	return s.requeueWorkflowJob(ctx, job, delay, reason, true)
+}
+
+// deferWorkflowJob requeues a job that stopped before contacting its source,
+// without counting the attempt as a retry.
+func (s *Server) deferWorkflowJob(ctx context.Context, job workflowJobRecord, delay time.Duration, reason string) error {
+	return s.requeueWorkflowJob(ctx, job, delay, reason, false)
+}
+
+func (s *Server) requeueWorkflowJob(ctx context.Context, job workflowJobRecord, delay time.Duration, reason string, countRetry bool) error {
+	availableAt := time.Now().UTC().Add(max(delay, 0)).Format("2006-01-02 15:04:05")
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -443,7 +499,7 @@ func (s *Server) requeueFailedWorkflowJob(ctx context.Context, job workflowJobRe
 			return err
 		}
 	}
-	if err := requeueWorkflowJobTx(ctx, tx, job, availableAt, reason); err != nil {
+	if err := requeueWorkflowJobTx(ctx, tx, job, availableAt, reason, countRetry); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -480,13 +536,17 @@ func prepareRemoteFetchRetry(ctx context.Context, tx *sql.Tx, job workflowJobRec
 	return err
 }
 
-func requeueWorkflowJobTx(ctx context.Context, tx *sql.Tx, job workflowJobRecord, availableAt, reason string) error {
+func requeueWorkflowJobTx(ctx context.Context, tx *sql.Tx, job workflowJobRecord, availableAt, reason string, countRetry bool) error {
+	retryIncrement, retryCount, eventType := 0, job.RetryCount, "job.deferred"
+	if countRetry {
+		retryIncrement, retryCount, eventType = 1, job.RetryCount+1, "job.retry_scheduled"
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE workflow_job
-		SET status = 'queued', retry_count = retry_count + 1, available_at = ?, error_message = '',
+		SET status = 'queued', retry_count = retry_count + ?, available_at = ?, error_message = '',
 			locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ? AND status = 'failed'
-	`, availableAt, job.ID)
+		WHERE id = ? AND (status = 'failed' OR (status = 'running' AND locked_by = ? AND locked_by <> ''))
+	`, retryIncrement, availableAt, job.ID, job.LockedBy)
 	if err != nil {
 		return err
 	}
@@ -518,8 +578,8 @@ func requeueWorkflowJobTx(ctx context.Context, tx *sql.Tx, job workflowJobRecord
 		return err
 	}
 	if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
-		NodeRunID: job.NodeRunID, JobID: job.ID, Level: "warn", Type: "job.retry_scheduled",
-		Message: reason, Detail: map[string]any{"available_at": availableAt, "retry_count": job.RetryCount + 1},
+		NodeRunID: job.NodeRunID, JobID: job.ID, Level: "warn", Type: eventType,
+		Message: reason, Detail: map[string]any{"available_at": availableAt, "retry_count": retryCount},
 	}); err != nil {
 		return err
 	}
@@ -567,6 +627,55 @@ func (s *Server) failClaimedWorkflowJob(ctx context.Context, job workflowJobReco
 	`, message, job.ID, job.RunID); err != nil {
 		return err
 	}
+	if err := failWorkflowRunTx(ctx, tx, job.RunID, message); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// failLeasedWorkflowJob fails the job and its run only while the job is still
+// running under the lease in job.LockedBy. It reports false without changing
+// anything when the job already left that state.
+func (s *Server) failLeasedWorkflowJob(ctx context.Context, job workflowJobRecord, message string) (bool, error) {
+	settled := false
+	err := withDatabaseBusyRetry(ctx, func() error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback() }()
+		result, err := tx.ExecContext(ctx, `
+			UPDATE workflow_job
+			SET status = 'failed', error_message = ?, locked_by = '', locked_at = NULL, heartbeat_at = NULL,
+				updated_at = CURRENT_TIMESTAMP
+			WHERE id = ? AND status = 'running' AND locked_by = ?
+		`, message, job.ID, job.LockedBy)
+		if err != nil {
+			return err
+		}
+		affected, err := result.RowsAffected()
+		if err != nil || affected == 0 {
+			return err
+		}
+		if err := failWorkflowRunTx(ctx, tx, job.RunID, message); err != nil {
+			return err
+		}
+		if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
+			NodeRunID: job.NodeRunID, JobID: job.ID, Level: "warn", Type: "job.result_missing",
+			Message: "Job ended without recording its result and was marked failed",
+		}); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		settled = true
+		return nil
+	})
+	return settled, err
+}
+
+func failWorkflowRunTx(ctx context.Context, tx *sql.Tx, runID int64, message string) error {
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE workflow_node_run
 		SET status = 'failed',
@@ -575,7 +684,7 @@ func (s *Server) failClaimedWorkflowJob(ctx context.Context, job workflowJobReco
 		WHERE workflow_run_id = ?
 			AND status IN ('queued', 'running')
 			AND NOT EXISTS (SELECT 1 FROM workflow_run AS run WHERE run.id = workflow_node_run.workflow_run_id AND run.status = 'cancelled')
-	`, message, job.RunID); err != nil {
+	`, message, runID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -585,13 +694,10 @@ func (s *Server) failClaimedWorkflowJob(ctx context.Context, job workflowJobReco
 			finished_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 			AND status IN ('queued', 'running')
-	`, mustJSON(map[string]any{"error": message}), job.RunID); err != nil {
+	`, mustJSON(map[string]any{"error": message}), runID); err != nil {
 		return err
 	}
-	if err := updateWorkflowTriggerFailure(ctx, tx, job.RunID, message); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return updateWorkflowTriggerFailure(ctx, tx, runID, message)
 }
 
 func (s *Server) startWorkflowJobHeartbeat(ctx context.Context, job workflowJobRecord) (context.Context, context.CancelFunc) {
@@ -616,15 +722,6 @@ func (s *Server) startWorkflowJobHeartbeat(ctx context.Context, job workflowJobR
 		}
 	}()
 	return jobCtx, cancel
-}
-
-func workflowJobRunnerID() string {
-	hostname, _ := os.Hostname()
-	hostname = strings.TrimSpace(hostname)
-	if hostname == "" {
-		hostname = "unknown-host"
-	}
-	return hostname + ":" + time.Now().UTC().Format("20060102T150405.000000000")
 }
 
 func decodeWorkflowJobPayload[T any](raw string, out *T) error {

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -45,6 +44,7 @@ func (s *Server) downloadToFile(ctx context.Context, source remoteSourceForUse, 
 		options.MaxBytes = s.remoteMediaDownloadLimitBytes(ctx)
 	}
 	var lastErr error
+	var lastStatusErr *remoteDownloadError
 	for attempt := 0; attempt < 3; attempt++ {
 		if err := s.waitRemoteDownloadDelay(ctx); err != nil {
 			return 0, err
@@ -59,6 +59,17 @@ func (s *Server) downloadToFile(ctx context.Context, source remoteSourceForUse, 
 		}
 		response, err := s.sourceDownloadHTTPClient(source, 0).Do(request)
 		if err != nil {
+			var backoffErr sourceBackoffError
+			if errors.As(err, &backoffErr) {
+				// The origin is rate limited beyond what this worker should wait
+				// out in place. Hand the wait to the job scheduler. When this call
+				// caused the block, report that response so the retry is counted.
+				if lastStatusErr != nil {
+					lastStatusErr.RetryAt = backoffErr.Until
+					return 0, *lastStatusErr
+				}
+				return 0, remoteDownloadError{Err: err, Retryable: true}
+			}
 			retryable := !errors.Is(err, outbound.ErrPolicyViolation)
 			downloadErr := remoteDownloadError{Err: err, Retryable: retryable}
 			lastErr = downloadErr
@@ -79,17 +90,17 @@ func (s *Server) downloadToFile(ctx context.Context, source remoteSourceForUse, 
 			_ = response.Body.Close()
 			return written, writeErr
 		}
-		statusErr := remoteDownloadError{StatusCode: response.StatusCode, Retryable: isRetryableRemoteStatus(response.StatusCode)}
-		lastErr = statusErr
 		retryable := isRetryableRemoteStatus(response.StatusCode)
-		backoff := s.remoteBackoffDuration(ctx, response, attempt)
+		statusErr := remoteDownloadError{StatusCode: response.StatusCode, Retryable: retryable}
+		lastErr = statusErr
 		_ = response.Body.Close()
 		if !retryable || attempt >= 2 {
 			return 0, statusErr
 		}
-		if err := sleepContext(ctx, backoff); err != nil {
-			return 0, err
-		}
+		// The source gate has already blocked this origin for the bounded
+		// backoff. The next attempt waits out a short block in place or fails
+		// fast with sourceBackoffError for a long one.
+		lastStatusErr = &statusErr
 	}
 	return 0, lastErr
 }
@@ -98,6 +109,8 @@ type remoteDownloadError struct {
 	Err        error
 	StatusCode int
 	Retryable  bool
+	// RetryAt is when the origin accepts requests again, if it asked to wait.
+	RetryAt time.Time
 }
 
 func (e remoteDownloadError) Error() string {
@@ -124,7 +137,7 @@ func (s *Server) remoteBackoffDuration(ctx context.Context, response *http.Respo
 	}
 	delay := time.Duration(fallback*float64(time.Second)) * time.Duration(attempt+1)
 	if response != nil {
-		if retryAfter := retryAfterDuration(response.Header.Get("Retry-After")); retryAfter > 0 {
+		if retryAfter := outbound.RetryAfter(response.Header.Get("Retry-After"), time.Now()); retryAfter > 0 {
 			delay = retryAfter
 		}
 	}
@@ -133,23 +146,6 @@ func (s *Server) remoteBackoffDuration(ctx context.Context, response *http.Respo
 		delay = maxDelay
 	}
 	return delay
-}
-
-func retryAfterDuration(value string) time.Duration {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return 0
-	}
-	if seconds, err := strconv.ParseFloat(value, 64); err == nil && seconds > 0 {
-		return time.Duration(seconds * float64(time.Second))
-	}
-	if at, err := http.ParseTime(value); err == nil {
-		delay := time.Until(at)
-		if delay > 0 {
-			return delay
-		}
-	}
-	return 0
 }
 
 func isRetryableRemoteStatus(status int) bool {

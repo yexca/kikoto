@@ -46,6 +46,41 @@ func TestListCirclesPagesSummariesWithLatestKnownWork(t *testing.T) {
 	}
 }
 
+// The circle list aggregates every circle at once; its IN lists must stay under
+// SQLite's 32766 bound-parameter limit however many circles exist.
+func TestListCirclesLoadsMoreCirclesThanOneStatementCanBind(t *testing.T) {
+	db := openMigratedTestDB(t)
+	const circles = 32800
+	for _, statement := range []string{
+		"INSERT INTO user_account (id, username, role) VALUES (1, 'listener', 'user')",
+		`WITH RECURSIVE ordinal(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM ordinal WHERE n + 1 < 32800)
+		INSERT INTO party (id, display_name) SELECT n + 1, 'Example Circle ' || n FROM ordinal`,
+		`INSERT INTO party_external_id (party_id, provider_id, id_type, external_id)
+		SELECT party.id, provider.id, 'maker_id', printf('RG%08d', party.id - 1)
+		FROM party CROSS JOIN metadata_provider AS provider WHERE provider.code = 'dlsite'`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	server := &Server{db: db}
+	request := httptest.NewRequest(http.MethodGet, "/api/circles?pageSize=1", nil)
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1}))
+	response := httptest.NewRecorder()
+	server.listCircles(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var page circleSummaryPage
+	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != circles {
+		t.Fatalf("total = %d, want %d", page.Total, circles)
+	}
+}
+
 func TestCircleDetailReadDoesNotQueueARefreshWorkflow(t *testing.T) {
 	db := openMigratedTestDB(t)
 	statements := []string{

@@ -520,7 +520,7 @@ export const zhHantResource = {
         runDLsiteSync: "執行 DLsite 同步",
         runDLsiteSyncDescription: "排入元資料同步",
         recoverStaleRuns: "復原停滯的工作流程執行",
-        recoverStaleRunsDescription: "將停滯的已認領工作標記為可復原",
+        recoverStaleRunsDescription: "將無人執行的工作重新排入佇列或標記為失敗",
         runningRuns: "執行中的工作",
         runningRunsDescription: "開啟目前的工作流程活動",
         reviewRuns: "待審核工作",
@@ -697,6 +697,7 @@ export const zhHantResource = {
         authenticationRequired: "需要登入。",
         permissionDenied: "你沒有執行此操作的權限。",
         notFound: "找不到要求的項目。",
+        entityNotInDatabase: "本站資料庫中還沒有該項目，請聯絡管理員加入。",
         invalidLanguage: "不支援此語言。",
       },
       languageOptions: {

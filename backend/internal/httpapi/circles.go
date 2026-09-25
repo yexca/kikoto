@@ -1359,7 +1359,7 @@ func (s *Server) loadCircleAvailableWorkCounts(ctx context.Context, partyIDs []i
 		demoRemoteCatalogWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("remote_work")
 	}
 
-	query, args := int64InQuery(`
+	err := s.queryInt64Batches(ctx, `
 		WITH catalog_codes AS (
 			SELECT DISTINCT catalog.party_id, UPPER(COALESCE(catalog_logical.canonical_code, catalog.primary_code)) AS code
 			FROM `+circleCatalogProjection+` AS catalog
@@ -1411,21 +1411,16 @@ func (s *Server) loadCircleAvailableWorkCounts(ctx context.Context, partyIDs []i
 				WHERE remote.party_id = catalog.party_id AND remote.code = catalog.code
 		)
 		GROUP BY catalog.party_id
-	`, partyIDs)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
+	`, partyIDs, nil, func(rows *sql.Rows) error {
 		var partyID int64
 		var count int
 		if err := rows.Scan(&partyID, &count); err != nil {
-			return nil, err
+			return err
 		}
 		result[partyID] = count
-	}
-	return result, rows.Err()
+		return nil
+	})
+	return result, err
 }
 
 func (s *Server) fillCircleStats(ctx context.Context, userID int64, item *circleSummary) error {
@@ -1612,7 +1607,7 @@ func (s *Server) loadCircleLatestWorks(ctx context.Context, partyIDs []int64) (m
 		catalogDemoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
 		relationDemoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
 	}
-	query, args := int64InQuery(`
+	err := s.queryInt64Batches(ctx, `
 		WITH candidates AS (
 			SELECT
 				catalog.party_id,
@@ -1653,23 +1648,18 @@ func (s *Server) loadCircleLatestWorks(ctx context.Context, partyIDs []int64) (m
 		SELECT party_id, primary_code, title, release_date
 		FROM ranked
 		WHERE position = 1 AND party_id IN (%s)
-	`, partyIDs)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
+	`, partyIDs, nil, func(rows *sql.Rows) error {
 		var partyID int64
 		var item creatorLatestWork
 		var releaseDate sql.NullString
 		if err := rows.Scan(&partyID, &item.PrimaryCode, &item.Title, &releaseDate); err != nil {
-			return nil, err
+			return err
 		}
 		item.ReleaseDate = sqlutil.String(releaseDate)
 		result[partyID] = &item
-	}
-	return result, rows.Err()
+		return nil
+	})
+	return result, err
 }
 
 func (s *Server) loadCircleCatalogCounts(ctx context.Context, partyIDs []int64) (map[int64]int, error) {
@@ -1677,7 +1667,8 @@ func (s *Server) loadCircleCatalogCounts(ctx context.Context, partyIDs []int64) 
 	if s.cfg.IsDemo() {
 		demoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
 	}
-	query, args := int64InQuery(`
+	result := map[int64]int{}
+	err := s.queryInt64Batches(ctx, `
 		SELECT catalog.party_id, COUNT(DISTINCT COALESCE(logical.canonical_code, catalog.primary_code))
 		FROM `+circleCatalogProjection+` AS catalog
 		LEFT JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
@@ -1686,22 +1677,16 @@ func (s *Server) loadCircleCatalogCounts(ctx context.Context, partyIDs []int64) 
 		WHERE catalog.party_id IN (%s)
 			`+demoWhere+`
 		GROUP BY catalog.party_id
-	`, partyIDs)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	result := map[int64]int{}
-	for rows.Next() {
+	`, partyIDs, nil, func(rows *sql.Rows) error {
 		var partyID int64
 		var count int
 		if err := rows.Scan(&partyID, &count); err != nil {
-			return nil, err
+			return err
 		}
 		result[partyID] = count
-	}
-	return result, rows.Err()
+		return nil
+	})
+	return result, err
 }
 
 func (s *Server) loadCircleAvailabilityCounts(ctx context.Context, partyIDs []int64) (map[int64]int, map[int64]int, error) {
@@ -1731,7 +1716,9 @@ func circleAvailabilityDemoWhere(isDemo bool) string {
 }
 
 func (s *Server) loadCircleMediaAvailabilityCounts(ctx context.Context, partyIDs []int64, demoWhere string) (map[int64]int, map[int64]int, error) {
-	query, args := int64InQuery(`
+	localCounts := map[int64]int{}
+	remoteCounts := map[int64]int{}
+	err := s.queryInt64Batches(ctx, `
 		SELECT relation.party_id, location.location_type, COUNT(DISTINCT COALESCE(logical.canonical_code, work.primary_code))
 		FROM work_primary_circle AS relation
 		INNER JOIN work ON work.id = relation.work_id
@@ -1743,35 +1730,29 @@ func (s *Server) loadCircleMediaAvailabilityCounts(ctx context.Context, partyIDs
 			AND location.availability = 'available'
 			`+demoWhere+`
 		GROUP BY relation.party_id, location.location_type
-	`, partyIDs)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer rows.Close()
-	localCounts := map[int64]int{}
-	remoteCounts := map[int64]int{}
-	for rows.Next() {
+	`, partyIDs, nil, func(rows *sql.Rows) error {
 		var partyID int64
 		var locationType string
 		var count int
 		if err := rows.Scan(&partyID, &locationType, &count); err != nil {
-			return nil, nil, err
+			return err
 		}
 		if locationType == "local" {
 			localCounts[partyID] += count
 		} else {
 			remoteCounts[partyID] += count
 		}
-	}
-	if err := rows.Err(); err != nil {
+		return nil
+	})
+	if err != nil {
 		return nil, nil, err
 	}
 	return localCounts, remoteCounts, nil
 }
 
 func (s *Server) loadCircleCatalogAvailabilityCounts(ctx context.Context, partyIDs []int64, demoWhere string) (map[int64]int, error) {
-	query, args := int64InQuery(`
+	counts := map[int64]int{}
+	err := s.queryInt64Batches(ctx, `
 		SELECT catalog.party_id, COUNT(DISTINCT COALESCE(logical.canonical_code, catalog.primary_code))
 		FROM `+circleCatalogProjection+` AS catalog
 		INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id
@@ -1784,29 +1765,24 @@ func (s *Server) loadCircleCatalogAvailabilityCounts(ctx context.Context, partyI
 			AND source.enabled = 1
 			`+demoWhere+`
 		GROUP BY catalog.party_id
-	`, partyIDs)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	counts := map[int64]int{}
-	for rows.Next() {
+	`, partyIDs, nil, func(rows *sql.Rows) error {
 		var partyID int64
 		var count int
 		if err := rows.Scan(&partyID, &count); err != nil {
-			return nil, err
+			return err
 		}
 		counts[partyID] = count
-	}
-	if err := rows.Err(); err != nil {
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 	return counts, nil
 }
 
 func (s *Server) loadCirclePresenceAvailabilityCounts(ctx context.Context, partyIDs []int64, demoWhere string) (map[int64]int, error) {
-	query, args := int64InQuery(`
+	counts := map[int64]int{}
+	err := s.queryInt64Batches(ctx, `
 		SELECT relation.party_id, COUNT(DISTINCT COALESCE(logical.canonical_code, work.primary_code))
 		FROM work_primary_circle AS relation
 		INNER JOIN work ON work.id = relation.work_id
@@ -1820,22 +1796,16 @@ func (s *Server) loadCirclePresenceAvailabilityCounts(ctx context.Context, party
 			AND source.enabled = 1
 			`+demoWhere+`
 		GROUP BY relation.party_id
-	`, partyIDs)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	counts := map[int64]int{}
-	for rows.Next() {
+	`, partyIDs, nil, func(rows *sql.Rows) error {
 		var partyID int64
 		var count int
 		if err := rows.Scan(&partyID, &count); err != nil {
-			return nil, err
+			return err
 		}
 		counts[partyID] = count
-	}
-	if err := rows.Err(); err != nil {
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 	return counts, nil
@@ -1847,16 +1817,6 @@ func mergeCircleAvailabilityCounts(target, candidate map[int64]int) {
 			target[partyID] = count
 		}
 	}
-}
-
-func int64InQuery(template string, values []int64) (string, []any) {
-	placeholders := make([]string, 0, len(values))
-	args := make([]any, 0, len(values))
-	for _, value := range values {
-		placeholders = append(placeholders, "?")
-		args = append(args, value)
-	}
-	return fmt.Sprintf(template, strings.Join(placeholders, ",")), args
 }
 
 func maxInt(left int, right int) int {
@@ -3496,28 +3456,22 @@ func (s *Server) loadCircleUserTagsBatch(ctx context.Context, userID int64, part
 	if len(partyIDs) == 0 {
 		return result, nil
 	}
-	query, args := int64InQuery(`
+	err := s.queryInt64Batches(ctx, `
 		SELECT assignment.party_id, tag.id, tag.name, tag.color
 		FROM user_party_tag_assignment AS assignment
 		INNER JOIN user_party_tag AS tag ON tag.id = assignment.user_party_tag_id
 		WHERE assignment.user_id = ? AND assignment.party_id IN (%s)
 		ORDER BY assignment.party_id, tag.name, tag.id
-	`, partyIDs)
-	args = append([]any{userID}, args...)
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
+	`, partyIDs, []any{userID}, func(rows *sql.Rows) error {
 		var partyID int64
 		var tag voiceUserTag
 		if err := rows.Scan(&partyID, &tag.ID, &tag.Name, &tag.Color); err != nil {
-			return nil, err
+			return err
 		}
 		result[partyID] = append(result[partyID], tag)
-	}
-	return result, rows.Err()
+		return nil
+	})
+	return result, err
 }
 
 func (s *Server) metadataProviderID(ctx context.Context, code string, displayName string) (int64, error) {

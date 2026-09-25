@@ -250,7 +250,7 @@ export const surfaceHans = {
       initialBackoff: "初始 429 退避",
       initialBackoffDescription: "远程服务限流后的首次重试延迟。",
       maximumBackoff: "最大退避",
-      maximumBackoffDescription: "重复限流重试的延迟上限。",
+      maximumBackoffDescription: "限流等待时间的上限，包括来源要求的 Retry-After。",
       save: "保存配置",
       transcodeCache: "转码缓存",
       onDisk: "磁盘占用",

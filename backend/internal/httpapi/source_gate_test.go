@@ -365,3 +365,88 @@ func TestSourceResourceKeyDoesNotRetainInvalidEndpointDetails(t *testing.T) {
 		t.Fatalf("resource key = %q, want sanitized invalid marker", value)
 	}
 }
+
+func TestSourceGateBoundsRetryAfterAndFailsFastWhileBlocked(t *testing.T) {
+	var requests atomic.Int32
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) == 1 {
+			w.Header().Set("Retry-After", "86400")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer remote.Close()
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('remote_request_delay_base_seconds', '0'), ('remote_request_delay_random_seconds', '0'), ('remote_max_backoff_seconds', '60')`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	source := remoteSourceForUse{Endpoint: fileSourceEndpoint{APIURL: remote.URL}}
+
+	limited, err := server.sourceDownloadHTTPClient(source, 0).Get(remote.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = limited.Body.Close()
+	parsed, _ := url.Parse(remote.URL)
+	blockedUntil := server.sourceGate.origin(canonicalSourceOrigin(parsed)).blockedUntilValue()
+	if remaining := time.Until(blockedUntil); remaining <= 50*time.Second || remaining > 60*time.Second {
+		t.Fatalf("origin blocked for %v, want Retry-After clamped to remote_max_backoff_seconds", remaining)
+	}
+
+	for _, class := range []sourceRequestClass{sourceRequestDownload, sourceRequestCrawl, sourceRequestInteractive, sourceRequestPlayback} {
+		started := time.Now()
+		response, err := server.sourceClient(source, 0, class).Get(remote.URL)
+		if response != nil {
+			_ = response.Body.Close()
+		}
+		var backoffErr sourceBackoffError
+		if !errors.As(err, &backoffErr) || !backoffErr.Until.Equal(blockedUntil) {
+			t.Fatalf("class %d error = %v, want sourceBackoffError until %v", class, err, blockedUntil)
+		}
+		if elapsed := time.Since(started); elapsed > time.Second {
+			t.Fatalf("class %d waited %v on a long origin block", class, elapsed)
+		}
+		if lane := server.sourceGate.lane(canonicalSourceOrigin(parsed), class); len(lane.slots) != 0 {
+			t.Fatalf("class %d kept its lane slot after failing fast", class)
+		}
+	}
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("remote requests = %d, want only the rate-limited request", got)
+	}
+}
+
+func TestSourceGateWaitsOutShortOriginBlockInPlace(t *testing.T) {
+	var requests atomic.Int32
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) == 1 {
+			w.Header().Set("Retry-After", "0.2")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer remote.Close()
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('remote_request_delay_base_seconds', '0'), ('remote_request_delay_random_seconds', '0')`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	source := remoteSourceForUse{Endpoint: fileSourceEndpoint{APIURL: remote.URL}}
+	client := server.sourceDownloadHTTPClient(source, 0)
+	limited, err := client.Get(remote.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = limited.Body.Close()
+	started := time.Now()
+	response, err := client.Get(remote.URL)
+	if err != nil {
+		t.Fatalf("short origin block failed instead of waiting: %v", err)
+	}
+	_ = response.Body.Close()
+	if elapsed := time.Since(started); elapsed < 150*time.Millisecond {
+		t.Fatalf("request waited %v, want the short Retry-After honored", elapsed)
+	}
+}

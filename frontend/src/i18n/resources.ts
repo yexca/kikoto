@@ -366,7 +366,7 @@ export const englishResource = {
         runDLsiteSync: "Run DLsite sync",
         runDLsiteSyncDescription: "Queue metadata synchronization",
         recoverStaleRuns: "Recover stale workflow runs",
-        recoverStaleRunsDescription: "Mark stale claimed jobs recoverable",
+        recoverStaleRunsDescription: "Requeue or fail jobs no executor is running",
         runningRuns: "Running runs",
         runningRunsDescription: "Open current workflow activity",
         reviewRuns: "Review runs",
@@ -548,6 +548,7 @@ export const englishResource = {
         authenticationRequired: "Sign in is required.",
         permissionDenied: "You do not have permission to do that.",
         notFound: "The requested item was not found.",
+        entityNotInDatabase: "This is not in this site's database yet. Contact an administrator to add it.",
         invalidLanguage: "That language is not supported.",
       },
       languageOptions: {

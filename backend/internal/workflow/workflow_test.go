@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/yexca/kikoto/backend/internal/storage"
 )
@@ -97,12 +96,12 @@ func TestWorkflowRecordsPersistJobProgressAndEventDefaults(t *testing.T) {
 	}
 }
 
-func TestRequeueExpiredJobsOnlyResumesEligibleLeases(t *testing.T) {
+func TestSettleOrphansLeavesLiveAndQueuedJobsAlone(t *testing.T) {
 	db := openWorkflowTestDB(t)
 	ctx := context.Background()
 	store := NewStore(db)
 
-	createRunningJob := func(code string, recoverable bool, maxRetries int) (int64, int64, int64) {
+	createJob := func(code, status string, recoverable bool, maxRetries int) (int64, int64) {
 		t.Helper()
 		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
@@ -112,72 +111,83 @@ func TestRequeueExpiredJobsOnlyResumesEligibleLeases(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		runID, err := InsertRun(ctx, tx, definitionID, code, "Example recovery", "running", "manual", "restart", nil, nil)
+		runID, err := InsertRun(ctx, tx, definitionID, code, "Example recovery", status, "manual", "restart", nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		nodeID, err := InsertNodeRun(ctx, tx, runID, NodeRunSpec{NodeID: "recover", NodeType: "example_type", DisplayName: "Recover", Position: 1, Status: "running"})
+		nodeID, err := InsertNodeRun(ctx, tx, runID, NodeRunSpec{NodeID: "recover", NodeType: "example_type", DisplayName: "Recover", Position: 1, Status: status})
 		if err != nil {
 			t.Fatal(err)
 		}
-		jobID, err := InsertJob(ctx, tx, runID, JobSpec{NodeRunID: nodeID, WorkerType: "example_worker", Status: "running", Recoverable: recoverable, MaxRetries: maxRetries, Checkpoint: map[string]any{"phase": "resume"}})
+		jobID, err := InsertJob(ctx, tx, runID, JobSpec{NodeRunID: nodeID, WorkerType: "example_worker", Status: status, Recoverable: recoverable, MaxRetries: maxRetries, Checkpoint: map[string]any{"phase": "resume"}})
 		if err != nil {
+			t.Fatal(err)
+		}
+		// Every running job carries a lease whose heartbeat is long past.
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE workflow_job
+			SET locked_by = CASE WHEN status = 'running' THEN ? ELSE '' END,
+				locked_at = '2000-01-01 00:00:00', heartbeat_at = '2000-01-01 00:00:00'
+			WHERE id = ?
+		`, code+"-lease", jobID); err != nil {
 			t.Fatal(err)
 		}
 		if err := tx.Commit(); err != nil {
 			t.Fatal(err)
 		}
-		return runID, nodeID, jobID
+		return runID, jobID
 	}
 
-	runID, _, eligibleJobID := createRunningJob("example_recoverable", true, 2)
-	_, _, exhaustedJobID := createRunningJob("example_exhausted", true, 1)
-	if _, err := db.ExecContext(ctx, `
-		UPDATE workflow_job
-		SET locked_by = 'synthetic-runner', locked_at = '2000-01-01 00:00:00', heartbeat_at = '2000-01-01 00:00:00'
-		WHERE id IN (?, ?)
-	`, eligibleJobID, exhaustedJobID); err != nil {
-		t.Fatal(err)
-	}
+	liveRunID, liveJobID := createJob("example_live", "running", true, 2)
+	orphanRunID, orphanJobID := createJob("example_orphan", "running", true, 2)
+	exhaustedRunID, exhaustedJobID := createJob("example_exhausted", "running", true, 1)
+	queuedRunID, queuedJobID := createJob("example_queued", "queued", false, 1)
 	if _, err := db.ExecContext(ctx, "UPDATE workflow_job SET resume_count = 1 WHERE id = ?", exhaustedJobID); err != nil {
 		t.Fatal(err)
 	}
 
-	requeued, err := store.RequeueExpiredJobs(ctx, time.Second)
+	result, err := store.SettleOrphans(ctx, OrphanSweep{
+		Reason:     "synthetic sweep",
+		LiveLeases: func() map[string]bool { return map[string]bool{"example_live-lease": true} },
+		CanViewAll: true,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if requeued != 1 {
-		t.Fatalf("requeued = %d, want 1", requeued)
+	if result != (OrphanSweepResult{Requeued: 1, Failed: 1, Active: 1}) {
+		t.Fatalf("sweep result = %+v", result)
 	}
 
-	var runStatus, nodeStatus, jobStatus, lockedBy string
-	var resumeCount int
-	if err := db.QueryRowContext(ctx, `
-		SELECT run.status, node.status, job.status, job.locked_by, job.resume_count
-		FROM workflow_run AS run
-		INNER JOIN workflow_node_run AS node ON node.workflow_run_id = run.id
-		INNER JOIN workflow_job AS job ON job.workflow_run_id = run.id
-		WHERE run.id = ?
-	`, runID).Scan(&runStatus, &nodeStatus, &jobStatus, &lockedBy, &resumeCount); err != nil {
-		t.Fatal(err)
+	for _, want := range []struct {
+		name          string
+		runID, jobID  int64
+		run, job, key string
+		resumes       int
+	}{
+		{name: "live lease", runID: liveRunID, jobID: liveJobID, run: "running", job: "running", key: "example_live-lease"},
+		{name: "orphan with resume budget", runID: orphanRunID, jobID: orphanJobID, run: "queued", job: "queued", resumes: 1},
+		{name: "orphan without resume budget", runID: exhaustedRunID, jobID: exhaustedJobID, run: "failed", job: "failed", resumes: 1},
+		{name: "queued job", runID: queuedRunID, jobID: queuedJobID, run: "queued", job: "queued"},
+	} {
+		var runStatus, jobStatus, lockedBy string
+		var resumeCount int
+		if err := db.QueryRowContext(ctx, `
+			SELECT run.status, job.status, job.locked_by, job.resume_count
+			FROM workflow_run AS run INNER JOIN workflow_job AS job ON job.workflow_run_id = run.id
+			WHERE job.id = ?
+		`, want.jobID).Scan(&runStatus, &jobStatus, &lockedBy, &resumeCount); err != nil {
+			t.Fatal(err)
+		}
+		if runStatus != want.run || jobStatus != want.job || lockedBy != want.key || resumeCount != want.resumes {
+			t.Fatalf("%s: run=%s job=%s lock=%q resumes=%d, want run=%s job=%s lock=%q resumes=%d",
+				want.name, runStatus, jobStatus, lockedBy, resumeCount, want.run, want.job, want.key, want.resumes)
+		}
 	}
-	if runStatus != "queued" || nodeStatus != "queued" || jobStatus != "queued" || lockedBy != "" || resumeCount != 1 {
-		t.Fatalf("requeued state = run:%s node:%s job:%s lock:%q resumes:%d", runStatus, nodeStatus, jobStatus, lockedBy, resumeCount)
-	}
-
-	var exhaustedStatus string
-	if err := db.QueryRowContext(ctx, "SELECT status FROM workflow_job WHERE id = ?", exhaustedJobID).Scan(&exhaustedStatus); err != nil {
-		t.Fatal(err)
-	}
-	if exhaustedStatus != "running" {
-		t.Fatalf("retry-exhausted job status = %q, want running", exhaustedStatus)
-	}
-	events, err := store.ListEvents(ctx, runID)
+	events, err := store.ListEvents(ctx, orphanRunID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if events[len(events)-1].EventType != "job.lease_expired" || events[len(events)-1].JobID == nil || *events[len(events)-1].JobID != eligibleJobID {
-		t.Fatalf("lease event = %+v", events[len(events)-1])
+	if last := events[len(events)-1]; last.EventType != "job.orphan_requeued" || last.JobID == nil || *last.JobID != orphanJobID {
+		t.Fatalf("orphan event = %+v", last)
 	}
 }

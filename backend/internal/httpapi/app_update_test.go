@@ -17,10 +17,17 @@ func (fn updateRoundTripper) RoundTrip(request *http.Request) (*http.Response, e
 	return fn(request)
 }
 
-func TestHighestStableTagIgnoresPreReleasesAndNonVersionTags(t *testing.T) {
-	got := highestStableTag([]githubTag{{Name: "v0.4.1"}, {Name: "v0.5.0-rc.1"}, {Name: "main"}, {Name: "v0.10.0"}})
+func TestHighestStableReleaseIgnoresPreReleasesAndNonVersionTags(t *testing.T) {
+	got := highestStableRelease([]githubRelease{{TagName: "v0.4.1"}, {TagName: "v0.5.0-rc.1"}, {TagName: "main"}, {TagName: "v0.10.0"}})
 	if got != "v0.10.0" {
-		t.Fatalf("highestStableTag() = %q, want v0.10.0", got)
+		t.Fatalf("highestStableRelease() = %q, want v0.10.0", got)
+	}
+}
+
+func TestHighestStableReleaseIgnoresUnpublishedReleases(t *testing.T) {
+	got := highestStableRelease([]githubRelease{{TagName: "v0.4.1"}, {TagName: "v0.6.0", Draft: true}, {TagName: "v0.5.0", Prerelease: true}})
+	if got != "v0.4.1" {
+		t.Fatalf("highestStableRelease() = %q, want v0.4.1", got)
 	}
 }
 
@@ -39,10 +46,10 @@ func TestAppUpdateCachesSuccessfulGitHubResult(t *testing.T) {
 	server := NewServer(nil, config.Config{})
 	server.updateHTTPClient = &http.Client{Transport: updateRoundTripper(func(request *http.Request) (*http.Response, error) {
 		calls.Add(1)
-		if request.URL.String() != server.appUpdateEndpoints.tagsURL {
-			t.Fatalf("URL = %q, want %q", request.URL.String(), server.appUpdateEndpoints.tagsURL)
+		if request.URL.String() != server.appUpdateEndpoints.releasesAPIURL {
+			t.Fatalf("URL = %q, want %q", request.URL.String(), server.appUpdateEndpoints.releasesAPIURL)
 		}
-		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`[{"name":"v99.0.0"}]`))}, nil
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`[{"tag_name":"v99.0.0"}]`))}, nil
 	})}
 	for range 2 {
 		response := httptest.NewRecorder()

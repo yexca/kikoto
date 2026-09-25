@@ -524,7 +524,7 @@ export const japaneseResource = {
         runDLsiteSync: "DLsite 同期を実行",
         runDLsiteSyncDescription: "メタデータ同期をキューに追加",
         recoverStaleRuns: "停止したワークフローを復旧",
-        recoverStaleRunsDescription: "停止した取得済みジョブを復旧可能にする",
+        recoverStaleRunsDescription: "実行者のいないジョブを再キューまたは失敗にする",
         runningRuns: "実行中のワークフロー",
         runningRunsDescription: "現在のワークフローアクティビティを開く",
         reviewRuns: "レビュー待ちのワークフロー",
@@ -707,6 +707,7 @@ export const japaneseResource = {
         authenticationRequired: "ログインが必要です。",
         permissionDenied: "この操作を行う権限がありません。",
         notFound: "要求された項目が見つかりません。",
+        entityNotInDatabase: "まだこのサイトのデータベースにありません。追加するには管理者に連絡してください。",
         invalidLanguage: "その言語はサポートされていません。",
       },
       languageOptions: {

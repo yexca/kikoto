@@ -26,6 +26,10 @@ type workEntityLinkResponse struct {
 }
 
 func (s *Server) resolveWorkEntityLink(w http.ResponseWriter, r *http.Request) {
+	actor, ok := s.requirePermission(w, r, "library:read")
+	if !ok {
+		return
+	}
 	code := normalizeDLsiteCode(r.PathValue("code"))
 	if code == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work code"})
@@ -36,7 +40,10 @@ func (s *Server) resolveWorkEntityLink(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	resolution, stage, err := s.resolveWorkEntityLinkRoute(r.Context(), code, request)
+	// Only a metadata:sync user may fetch from the provider; anyone else
+	// resolves from what this site already stores.
+	canFetch := userHasPermission(actor, "metadata:sync")
+	resolution, stage, err := s.resolveWorkEntityLinkRoute(r.Context(), code, request, canFetch)
 	if err != nil {
 		if stage == "metadata" {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "Could not load entity metadata for this work."})
@@ -51,6 +58,10 @@ func (s *Server) resolveWorkEntityLink(w http.ResponseWriter, r *http.Request) {
 	}
 	if resolution.Route != "" {
 		writeJSON(w, http.StatusOK, workEntityLinkResponse{Kind: request.Kind, Route: resolution.Route, Resolved: true, Fetched: resolution.Fetched})
+		return
+	}
+	if !canFetch {
+		writeAPIError(w, http.StatusNotFound, "entity_not_in_database", fmt.Sprintf("No %s link is stored for this work.", request.Kind), false)
 		return
 	}
 
@@ -111,7 +122,7 @@ type workEntityLinkResolution struct {
 	Fetched bool
 }
 
-func (s *Server) resolveWorkEntityLinkRoute(ctx context.Context, code string, request workEntityLinkRequest) (workEntityLinkResolution, string, error) {
+func (s *Server) resolveWorkEntityLinkRoute(ctx context.Context, code string, request workEntityLinkRequest, canFetch bool) (workEntityLinkResolution, string, error) {
 	if route, err := s.findWorkEntityRoute(ctx, code, request); err != nil {
 		return workEntityLinkResolution{}, "", err
 	} else if route != "" {
@@ -125,7 +136,7 @@ func (s *Server) resolveWorkEntityLinkRoute(ctx context.Context, code string, re
 	}
 	if route, err := s.findWorkEntityRoute(ctx, code, request); err != nil {
 		return workEntityLinkResolution{}, "", err
-	} else if route != "" {
+	} else if route != "" || !canFetch {
 		return workEntityLinkResolution{Route: route}, "", nil
 	}
 	if err := s.syncWorkEntityMetadata(ctx, code); err != nil {

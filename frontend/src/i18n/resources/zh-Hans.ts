@@ -518,7 +518,7 @@ export const zhHansResource = {
         runDLsiteSync: "运行 DLsite 同步",
         runDLsiteSyncDescription: "排队进行元数据同步",
         recoverStaleRuns: "恢复停滞的工作流运行",
-        recoverStaleRunsDescription: "将停滞的已认领任务标记为可恢复",
+        recoverStaleRunsDescription: "将无人执行的任务重新排队或标记为失败",
         runningRuns: "运行中的任务",
         runningRunsDescription: "打开当前工作流活动",
         reviewRuns: "待审核任务",
@@ -695,6 +695,7 @@ export const zhHansResource = {
         authenticationRequired: "需要登录。",
         permissionDenied: "你没有执行此操作的权限。",
         notFound: "找不到请求的项目。",
+        entityNotInDatabase: "本站数据库中还没有该项目，请联系管理员添加。",
         invalidLanguage: "不支持该语言。",
       },
       languageOptions: {

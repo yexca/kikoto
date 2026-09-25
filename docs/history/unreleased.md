@@ -30,6 +30,19 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   in the library, so a release range no longer filters out every new circle or
   series work.
 - Circle and voice actor detail refreshes keep their behavior.
+- A trigger popover that stays open while you select another workflow tab now
+  saves to the workflow it was opened for. Before, a new trigger could be
+  created on the other workflow, or an edited one moved there with options in
+  the wrong shape.
+- Recover stale workflow runs no longer disturbs a job that is still running:
+  it could return that job to the queue so it ran a second time, and it failed
+  queued jobs that could not resume, such as a database optimization. It now
+  requeues or fails only jobs with no running executor.
+- A job whose heartbeat is delayed, for example by a busy database, is no
+  longer returned to the queue while it is still running.
+- A job whose executor stopped without recording a result, including after a
+  transient source error, is now marked failed or retried instead of staying
+  running and blocking every other job until a restart.
 
 ## Tags
 
@@ -39,6 +52,24 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   Enter to create one, and check or uncheck a tag to add or remove it. Each
   change saves immediately, and a tag you uncheck stays listed until the picker
   closes so it can be checked again.
+
+## Circles And Voice Actors
+
+- Opening a circle that is not in the database no longer adds it.
+  Administrators are offered Follow a circle with the circle ID filled in;
+  other users are asked to contact an administrator. When a first fetch fails,
+  the circle it started is removed, so a mistyped circle ID no longer stays in
+  the circle list.
+- A Follow run form opened from a circle or voice actor page notes which
+  target it filled in.
+- A voice actor page that does not exist explains that syncing the metadata of
+  any of their works creates it, or asks you to contact an administrator.
+- Opening a work's circle, series, or voice actor link fetches missing
+  metadata from DLsite only for users who can sync metadata. Other users open
+  links the site already stores and are otherwise asked to contact an
+  administrator.
+- The circle and voice actor lists no longer fail in a library with more than
+  about 32,000 circles or voice actors.
 
 ## Playback
 
@@ -87,6 +118,10 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   The drain is bounded by the new `KIKOTO_SHUTDOWN_TIMEOUT_SECONDS` (default
   20). The bundled Compose files set `stop_grace_period: 30s`; add the same to
   a custom Compose file, because Docker's default 10 seconds can kill the drain.
+- The update check now reports only published GitHub Releases, so a version
+  is no longer announced while its image and APK are still being published.
+- A release pushes the Docker image, including `latest`, only after the
+  Android APK has also built, and publishes the GitHub Release last.
 - The Docker image now installs the current Debian security updates for
   `ffmpeg` and `ca-certificates` each time it is built, instead of fixed
   package versions that had stopped receiving fixes.

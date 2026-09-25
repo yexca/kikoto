@@ -310,6 +310,30 @@ user work such as manual workflows and cleanup uses the middle tier, and
 scheduled/background work uses the default tier. Priority does not preempt a
 job that is already running.
 
+Each executor records its own result, but the runner settles the job when the
+executor returns. A transient source failure within the retry budget is
+requeued with a delay. A job still running under the executor's lease after
+any other exit, including an error or panic that recorded nothing, is marked
+failed and Activity records a `job.result_missing` event, so one faulty exit
+path cannot hold the single-executor queue.
+
+The executor is single-instance, so the process records every job lease it
+holds and that record decides whether a running job still has an executor.
+Heartbeats show recent activity but never expire a lease: a busy database or a
+long `VACUUM` can delay them while the job is still working. A lease is
+recorded before the claim that writes it and released only after its job is
+settled. The coordinator settles any running job whose lease is not held,
+such as a job whose own settlement write failed: a recoverable job with resume
+budget returns to the queue from its checkpoint and spends one resume
+(`job.orphan_requeued`), and any other job fails (`job.orphan_failed`).
+
+The manual **Recover stale workflow runs** command applies the same rule to the
+runs the user can see. It never touches a job whose executor is still running
+or a queued job. It also returns a run left running beside a queued job to the
+queue (`run.requeued_stranded`), and fails a run with no queued or running job
+(`run.recovered_stale`). A run is repaired this way only when its jobs have not
+changed for a minute.
+
 ## Service Stop and Restart
 
 On `SIGTERM` or `SIGINT` the service stops claiming jobs, refuses new
@@ -327,9 +351,13 @@ once a stop has begun, and a publication that already started finishes its
 directory swap and records it before the job stops.
 
 Startup recovery remains the path for crashes, forced kills, and a stop that
-exceeds its deadline: running jobs left with a lease are requeued from their
-checkpoints and consume one resume, and interrupted Fetch publications are
-reconciled from the staging, target, and backup directories.
+exceeds its deadline. No lease from an earlier process is live, so every
+running job is settled by the orphan rule under
+[Queue Ordering](#queue-ordering): it is requeued from its checkpoint and
+spends one resume, or it fails. Queued jobs keep waiting, runs are repaired as
+the manual command repairs them but without its one-minute wait, and
+interrupted Fetch publications are reconciled from the staging, target, and
+backup directories.
 
 ## Source Availability
 
@@ -394,7 +422,10 @@ state. A stored-catalog run and the circle metadata and source nodes require
 a circle that already exists. A voice actor exists only once a synced work
 credits them, so an unknown voice actor page asks a user with
 `metadata:sync` to sync the metadata of any of their works and asks anyone
-else to contact an administrator.
+else to contact an administrator. A work's circle, series, or voice link
+resolves from stored relationships for any signed-in user; fetching the
+work's metadata or its circle's catalog to find a missing link requires
+`metadata:sync`, and anyone else gets `404` with `entity_not_in_database`.
 
 The workflow searches the display name and every confirmed alias against each
 enabled compatible source. It follows the source-reported result count through
