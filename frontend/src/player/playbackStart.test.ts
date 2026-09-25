@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizePlaybackStartPosition, shouldCheckpointPause } from "./playbackStart";
+import {
+  canPersistPlaybackProgress,
+  normalizePlaybackStartPosition,
+  restoredCursorStartPosition,
+  shouldCheckpointPause,
+} from "./playbackStart";
 
 describe("normalizePlaybackStartPosition", () => {
   it("starts ordinary playback at zero", () => {
@@ -13,6 +18,35 @@ describe("normalizePlaybackStartPosition", () => {
     expect(normalizePlaybackStartPosition(-1)).toBe(0);
     expect(normalizePlaybackStartPosition(Number.NaN)).toBe(0);
     expect(normalizePlaybackStartPosition(Number.POSITIVE_INFINITY)).toBe(0);
+  });
+});
+
+describe("restoredCursorStartPosition", () => {
+  const cursor = { positionSeconds: 42, durationSeconds: 180, completed: false, lastPlayedAt: null };
+
+  it("continues an unfinished cursor", () => {
+    expect(restoredCursorStartPosition(cursor)).toBe(42);
+  });
+
+  it("starts at zero without a usable unfinished cursor", () => {
+    expect(restoredCursorStartPosition(null)).toBe(0);
+    expect(restoredCursorStartPosition({ ...cursor, completed: true })).toBe(0);
+    expect(restoredCursorStartPosition({ ...cursor, positionSeconds: Number.NaN })).toBe(0);
+  });
+});
+
+describe("canPersistPlaybackProgress", () => {
+  const instance = "queue:track:1";
+
+  it("waits for the start position and listener intent in the same instance", () => {
+    expect(canPersistPlaybackProgress(instance, instance, instance)).toBe(true);
+    expect(canPersistPlaybackProgress(instance, null, instance)).toBe(false);
+    expect(canPersistPlaybackProgress(instance, instance, null)).toBe(false);
+  });
+
+  it("does not carry listener intent into a different instance", () => {
+    expect(canPersistPlaybackProgress("queue:track:2", "queue:track:2", instance)).toBe(false);
+    expect(canPersistPlaybackProgress(null, null, null)).toBe(false);
   });
 });
 

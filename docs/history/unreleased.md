@@ -40,6 +40,17 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   change saves immediately, and a tag you uncheck stays listed until the picker
   closes so it can be checked again.
 
+## Playback
+
+- Reloading or restarting the app no longer resets Resume progress to 0:00. A
+  restored track saves progress only after it starts playing or you seek in it,
+  so hiding the page, locking the device, or switching tracks before that no
+  longer overwrites the saved cursor.
+- A reloaded queue continues its current track from the saved cursor when that
+  cursor points at the same track and is unfinished.
+- A Resume or reload start position that is still loading carries over when
+  playback falls back to another source, instead of restarting at 0:00.
+
 ## Favorites
 
 - Changing lists for selected works no longer replaces each work's existing
