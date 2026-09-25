@@ -31,8 +31,10 @@ type appUpdateResponse struct {
 	CheckedAt       string `json:"checkedAt"`
 }
 
-type githubTag struct {
-	Name string `json:"name"`
+type githubRelease struct {
+	TagName    string `json:"tag_name"`
+	Draft      bool   `json:"draft"`
+	Prerelease bool   `json:"prerelease"`
 }
 
 func (s *Server) getAppUpdate(w http.ResponseWriter, r *http.Request) {
@@ -54,7 +56,7 @@ func (s *Server) getAppUpdate(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) fetchAppUpdate(ctx context.Context) (appUpdateResponse, error) {
 	current := buildinfo.Version
-	policy, err := outbound.NewPolicy([]outbound.Destination{{URL: s.appUpdateEndpoints.tagsURL}}, outbound.Options{})
+	policy, err := outbound.NewPolicy([]outbound.Destination{{URL: s.appUpdateEndpoints.releasesAPIURL}}, outbound.Options{})
 	if err != nil {
 		return appUpdateResponse{}, err
 	}
@@ -63,7 +65,7 @@ func (s *Server) fetchAppUpdate(ctx context.Context) (appUpdateResponse, error) 
 	if s.updateHTTPClient != nil {
 		client = s.updateHTTPClient
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, s.appUpdateEndpoints.tagsURL, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, s.appUpdateEndpoints.releasesAPIURL, nil)
 	if err != nil {
 		return appUpdateResponse{}, err
 	}
@@ -84,11 +86,11 @@ func (s *Server) fetchAppUpdate(ctx context.Context) (appUpdateResponse, error) 
 	if len(body) > appUpdateMaxBody {
 		return appUpdateResponse{}, fmt.Errorf("github response exceeds limit")
 	}
-	var tags []githubTag
-	if err := json.Unmarshal(body, &tags); err != nil {
+	var releases []githubRelease
+	if err := json.Unmarshal(body, &releases); err != nil {
 		return appUpdateResponse{}, err
 	}
-	latest := highestStableTag(tags)
+	latest := highestStableRelease(releases)
 	result := appUpdateResponse{CurrentVersion: current, LatestVersion: latest, UpdateAvailable: compareAppVersions(current, latest) < 0, CheckedAt: time.Now().UTC().Format(time.RFC3339)}
 	if latest != "" {
 		result.ReleaseURL = s.appUpdateEndpoints.releaseURL(latest)
@@ -96,11 +98,12 @@ func (s *Server) fetchAppUpdate(ctx context.Context) (appUpdateResponse, error) 
 	return result, nil
 }
 
-func highestStableTag(tags []githubTag) string {
-	stable := make([]string, 0, len(tags))
-	for _, tag := range tags {
-		if stableReleaseTag.MatchString(strings.TrimSpace(tag.Name)) {
-			stable = append(stable, strings.TrimSpace(tag.Name))
+func highestStableRelease(releases []githubRelease) string {
+	stable := make([]string, 0, len(releases))
+	for _, release := range releases {
+		tag := strings.TrimSpace(release.TagName)
+		if !release.Draft && !release.Prerelease && stableReleaseTag.MatchString(tag) {
+			stable = append(stable, tag)
 		}
 	}
 	sort.SliceStable(stable, func(i, j int) bool { return compareAppVersions(stable[i], stable[j]) > 0 })

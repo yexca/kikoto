@@ -87,6 +87,10 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   The drain is bounded by the new `KIKOTO_SHUTDOWN_TIMEOUT_SECONDS` (default
   20). The bundled Compose files set `stop_grace_period: 30s`; add the same to
   a custom Compose file, because Docker's default 10 seconds can kill the drain.
+- The update check now reports only published GitHub Releases, so a version
+  is no longer announced while its image and APK are still being published.
+- A release pushes the Docker image, including `latest`, only after the
+  Android APK has also built, and publishes the GitHub Release last.
 
 ## Accessibility And Translation
 

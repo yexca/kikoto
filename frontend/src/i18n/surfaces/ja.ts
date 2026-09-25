@@ -255,7 +255,7 @@ export const surfaceJapanese = {
       initialBackoff: "初回429待機時間",
       initialBackoffDescription: "リモートのレート制限応答後の初回再試行待機時間です。",
       maximumBackoff: "最大待機時間",
-      maximumBackoffDescription: "レート制限が続く場合の再試行待機時間の上限です。",
+      maximumBackoffDescription: "ソースの Retry-After を含む、レート制限時の待機時間の上限です。",
       save: "設定を保存",
       transcodeCache: "変換キャッシュ",
       onDisk: "ディスク使用量",

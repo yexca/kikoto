@@ -254,6 +254,31 @@ test("@desktop player keeps speed and compatibility playback under More", async 
   await expect(page.getByRole("button", { name: "Play", exact: true })).not.toHaveClass(/shadow-primary/);
 });
 
+test("@desktop playback speed carries over to the next track", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockApplication(page);
+  await seedPlayerQueue(page, [queuedTrackFixture(0, "Test track"), queuedTrackFixture(1, "Second queued track")]);
+  await page.goto("/");
+
+  const audio = page.locator("audio");
+  await page.getByRole("button", { name: "More player options" }).click();
+  const speed = page.getByRole("combobox", { name: "Playback speed" });
+  await speed.click();
+  await page.getByRole("option", { name: "1.5×", exact: true }).click();
+  await expect(speed).toHaveText("1.5×");
+  await expect.poll(() => audio.evaluate((element: HTMLAudioElement) => element.playbackRate)).toBe(1.5);
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect
+    .poll(() => audio.evaluate((element: HTMLAudioElement) => new URL(element.src).pathname))
+    .toBe("/api/media/2/stream");
+  await expect.poll(() => audio.evaluate((element: HTMLAudioElement) => element.readyState)).toBeGreaterThan(0);
+  expect(await audio.evaluate((element: HTMLAudioElement) => element.playbackRate)).toBe(1.5);
+  await page.getByRole("button", { name: "More player options" }).click();
+  await expect(page.getByRole("combobox", { name: "Playback speed" })).toHaveText("1.5×");
+});
+
 test("@desktop player scrolls overflowing metadata and closes queue options outside the menu", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockApplication(page);

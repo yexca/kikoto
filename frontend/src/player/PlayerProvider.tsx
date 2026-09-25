@@ -551,6 +551,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    // Each load() resets playbackRate to defaultPlaybackRate, so both carry the choice across tracks.
+    audio.defaultPlaybackRate = playbackRate;
     audio.playbackRate = playbackRate;
   }, [playbackRate]);
 
