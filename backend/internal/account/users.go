@@ -239,7 +239,7 @@ func updateOwnPassword(ctx context.Context, tx *sql.Tx, input UpdateOwnAccountIn
 		if _, err := tx.ExecContext(ctx, `DELETE FROM user_session WHERE user_id = ?`, input.ID); err != nil {
 			return err
 		}
-	} else if _, err := tx.ExecContext(ctx, `DELETE FROM user_session WHERE user_id = ? AND id <> ?`, input.ID, currentSessionID); err != nil {
+	} else if _, err := tx.ExecContext(ctx, `DELETE FROM user_session WHERE user_id = ? AND id <> ?`, input.ID, sessionKey(currentSessionID)); err != nil {
 		return err
 	}
 	return insertAuditLog(ctx, tx, input.ID, "user.password_change", input.ID)

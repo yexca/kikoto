@@ -165,6 +165,11 @@ Important tables:
 - `user_tag`
 - `user_work_tag`
 
+`user_session.id` is the hex SHA-256 digest of the bearer token issued to the
+client, never the token itself, so the database and its backups cannot be
+replayed as a sign-in. The account store hashes every token before a lookup or
+delete.
+
 `favorite_list` distinguishes a system `marked` list from ordinary user lists.
 The system list has no stored items: it derives membership from a non-`none`
 Quick mark. `favorite_list_item` records only explicit user-list membership.

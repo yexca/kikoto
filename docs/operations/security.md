@@ -205,7 +205,9 @@ HTTP. Do not use an open or reflected origin policy at the proxy.
 The Android client permits cleartext HTTP for trusted local-NAS deployments and
 stores a bearer session for the configured server. Use HTTPS or a trusted VPN
 across shared, wireless, or public networks. Clearing the configured server in
-the app also clears its stored session.
+the app also clears its stored session. The app opts out of Android cloud
+backup and device-to-device transfer, so that session stays on the device; a
+restored or transferred install signs in again.
 
 ## Runtime Secrets and Private Data
 
@@ -221,10 +223,10 @@ Do not commit:
 - Session cookies or bearer tokens.
 - Local media.
 
-Treat `/config/kikoto.db` as sensitive. It contains password hashes, active
-session state, user preferences, private source configuration, workflow history,
-and local media metadata. Restrict host permissions and include it in protected
-backups.
+Treat `/config/kikoto.db` as sensitive. It contains password hashes, session
+digests (not usable session tokens), user preferences, private source
+configuration, workflow history, and local media metadata. Restrict host
+permissions and include it in protected backups.
 
 ## Remote Sources and Outbound Requests
 

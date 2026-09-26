@@ -3,8 +3,10 @@ package account
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"log/slog"
 	"strings"
@@ -66,6 +68,8 @@ func NormalizeUILocale(value string) (string, bool) {
 }
 
 type Session struct {
+	// ID is the bearer token returned to the client. Only its sessionKey is
+	// stored, so a copy of the database cannot sign in.
 	ID        string
 	ExpiresAt time.Time
 	User      User
@@ -142,7 +146,7 @@ func (s *Store) load(ctx context.Context, predicate string, value any) (User, er
 func (s *Store) UserForSession(ctx context.Context, sessionID string, now time.Time) (User, error) {
 	var userID int64
 	var expiresAt string
-	if err := s.db.QueryRowContext(ctx, "SELECT user_id, expires_at FROM user_session WHERE id = ?", sessionID).Scan(&userID, &expiresAt); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT user_id, expires_at FROM user_session WHERE id = ?", sessionKey(sessionID)).Scan(&userID, &expiresAt); err != nil {
 		return User{}, err
 	}
 	parsed, err := time.Parse("2006-01-02 15:04:05", expiresAt)
@@ -150,7 +154,7 @@ func (s *Store) UserForSession(ctx context.Context, sessionID string, now time.T
 		parsed, err = time.Parse(time.RFC3339, expiresAt)
 	}
 	if err == nil && now.After(parsed) {
-		if _, err := s.db.ExecContext(ctx, "DELETE FROM user_session WHERE id = ?", sessionID); err != nil && !errors.Is(err, context.Canceled) {
+		if _, err := s.db.ExecContext(ctx, "DELETE FROM user_session WHERE id = ?", sessionKey(sessionID)); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Warn("expired session cleanup failed", "user_id", userID, "error", err)
 		}
 		return User{}, sql.ErrNoRows
@@ -208,7 +212,7 @@ func (s *Store) CreateSession(ctx context.Context, userID int64, now time.Time) 
 		return Session{}, err
 	}
 	expiresAt := now.Add(30 * 24 * time.Hour).UTC()
-	if _, err := s.db.ExecContext(ctx, "INSERT INTO user_session (id, user_id, expires_at) VALUES (?, ?, ?)", sessionID, userID, expiresAt.Format("2006-01-02 15:04:05")); err != nil {
+	if _, err := s.db.ExecContext(ctx, "INSERT INTO user_session (id, user_id, expires_at) VALUES (?, ?, ?)", sessionKey(sessionID), userID, expiresAt.Format("2006-01-02 15:04:05")); err != nil {
 		return Session{}, err
 	}
 	return Session{ID: sessionID, ExpiresAt: expiresAt, User: user}, nil
@@ -231,7 +235,7 @@ func (s *Store) upgradePasswordHash(ctx context.Context, userID int64, password 
 }
 
 func (s *Store) DeleteSession(ctx context.Context, sessionID string) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM user_session WHERE id = ?", sessionID)
+	_, err := s.db.ExecContext(ctx, "DELETE FROM user_session WHERE id = ?", sessionKey(sessionID))
 	return err
 }
 
@@ -257,4 +261,12 @@ func newSessionID() (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(bytes), nil
+}
+
+// sessionKey is the user_session.id stored for a bearer token. The token
+// carries 256 random bits, so an unsalted SHA-256 is enough to keep a leaked
+// database or backup from being replayed as a session.
+func sessionKey(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
