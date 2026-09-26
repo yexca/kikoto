@@ -103,6 +103,23 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   as a read-only tab with its history.
 - When Fetch cannot write into the library, it says what to configure and links
   to Settings -> Library instead of failing the plan.
+- A Fetch run's detail lists its files: the file being downloaded stays on top
+  with its own progress bar, and the expanded list shows which files are done,
+  waiting, or where the run failed or paused.
+- While a dialog is open, the page behind it no longer scrolls, whether the
+  wheel is over a list that reached its end, the dialog header, or the
+  backdrop. The page keeps its position and width.
+- Retrying or resuming a Fetch no longer counts the files it already cached or
+  staged against free space, so a retry after a partial run is not refused for
+  space it already holds.
+- A Fetch that fails while assembling or verifying its staged files marks that
+  step as failed; Publish no longer reports the error while Assemble still
+  shows as running.
+- Fetch stages files in bounded chunks instead of one whole-file copy call, and
+  database writes wait up to 30 seconds for a competing writer instead of 5.
+  On hosts where writing large files briefly stalls the database, such as
+  Docker Desktop bind mounts, a Fetch no longer fails with "database is locked"
+  while it assembles its staging directory.
 
 ## Library Storage
 

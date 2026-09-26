@@ -273,6 +273,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/workflow-runs/{id}/events", s.listWorkflowRunEvents)
 	mux.HandleFunc("GET /api/workflow-runs/{id}/events/stream", s.streamWorkflowRunEvents)
 	mux.HandleFunc("GET /api/workflow-runs/{id}/candidates", s.listWorkflowRunCandidates)
+	mux.HandleFunc("GET /api/workflow-runs/{id}/fetch-files", s.listWorkflowRunFetchFiles)
 	mux.HandleFunc("POST /api/workflow-runs/{id}/cancel", s.cancelWorkflowRun)
 	mux.HandleFunc("POST /api/workflow-runs/{id}/retry", s.retryWorkflowRun)
 	mux.HandleFunc("POST /api/workflow-runs/{id}/review", s.reviewWorkflowRun)

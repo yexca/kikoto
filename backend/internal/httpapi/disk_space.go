@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type diskSpaceSnapshot struct {
@@ -20,27 +21,20 @@ type diskSpaceRequirement struct {
 	Required uint64
 }
 
-func (s *Server) ensureRemoteWorkSaveDiskReserve(plan remoteWorkSavePlan, minFreeBytes int64) error {
+// ensureRemoteWorkSaveDiskReserve checks that the Fetch can finish without
+// dropping below the reserve. stagingRoot is the run's data-relative staging
+// directory when the run already has one, so a restarted Fetch is not charged
+// again for files it already cached or staged.
+func (s *Server) ensureRemoteWorkSaveDiskReserve(plan remoteWorkSavePlan, minFreeBytes int64, stagingRoot string) error {
 	if minFreeBytes <= 0 {
 		return nil
 	}
 	reserve := uint64(minFreeBytes)
-	dataRequired, cacheRequired, err := remoteWorkSaveRequiredBytes(plan)
+	dataRequired, cacheRequired, err := s.remoteWorkSaveDiskNeeds(plan, stagingRoot)
 	if err != nil {
 		return err
 	}
-	targetRoot, err := safeDataPath(s.cfg.DataRoot, plan.SaveRoot)
-	if err != nil {
-		return errors.New("fetch data target is invalid")
-	}
-	existingBytes, err := directoryTreeSize(targetRoot)
-	if err != nil {
-		return errors.New("fetch data usage could not be measured")
-	}
-	dataRequired, ok := checkedAddUint64(dataRequired, existingBytes)
-	if !ok {
-		return errors.New("fetch disk requirement exceeds supported range")
-	}
+	var ok bool
 	// Staging and publication happen on the target's pool, which may be a
 	// different disk from the data root.
 	dataFilesystemRoot := s.cfg.DataRoot
@@ -84,6 +78,66 @@ func (s *Server) ensureRemoteWorkSaveDiskReserve(plan remoteWorkSavePlan, minFre
 		}
 	}
 	return nil
+}
+
+// remoteWorkSaveDiskNeeds returns the bytes the Fetch still has to write to
+// the data and cache filesystems. Staging copies from the cache, so until the
+// promoted cache is cleaned up the work occupies both.
+//
+// Files already on disk are not charged twice: a cached file with the planned
+// size becomes a cache hit, and everything in the run's staging directory is
+// either reused or released before it is copied again. Replacing a staged file
+// briefly keeps the old copy beside the new one, so the largest planned file
+// stays charged as headroom, never more than what is already staged.
+func (s *Server) remoteWorkSaveDiskNeeds(plan remoteWorkSavePlan, stagingRoot string) (uint64, uint64, error) {
+	dataRequired, cacheRequired, err := remoteWorkSaveRequiredBytes(plan)
+	if err != nil {
+		return 0, 0, err
+	}
+	targetRoot, err := safeDataPath(s.cfg.DataRoot, plan.SaveRoot)
+	if err != nil {
+		return 0, 0, errors.New("fetch data target is invalid")
+	}
+	existingBytes, err := directoryTreeSize(targetRoot)
+	if err != nil {
+		return 0, 0, errors.New("fetch data usage could not be measured")
+	}
+	dataRequired, ok := checkedAddUint64(dataRequired, existingBytes)
+	if !ok {
+		return 0, 0, errors.New("fetch disk requirement exceeds supported range")
+	}
+	var largestItem uint64
+	for _, item := range plan.Items {
+		if item.Action == "skip" || item.Action == "exclude" || item.SizeBytes == nil {
+			continue
+		}
+		largestItem = max(largestItem, uint64(*item.SizeBytes))
+		if item.Action != "cache_download" {
+			continue
+		}
+		cachePath, err := safeCachePath(s.cfg.CacheRoot, item.CachePath)
+		if err == nil && existingFileMatches(cachePath, item.SizeBytes) {
+			cacheRequired -= min(cacheRequired, uint64(*item.SizeBytes))
+		}
+	}
+	if strings.TrimSpace(stagingRoot) == "" {
+		return dataRequired, cacheRequired, nil
+	}
+	stageRoot, err := safeDataPath(s.cfg.DataRoot, stagingRoot)
+	if err != nil {
+		return 0, 0, errors.New("fetch staging directory is invalid")
+	}
+	stagedBytes, err := directoryTreeSize(stageRoot)
+	if err != nil {
+		return 0, 0, errors.New("fetch staging usage could not be measured")
+	}
+	if stagedBytes > 0 {
+		dataRequired -= min(dataRequired, stagedBytes)
+		if dataRequired, ok = checkedAddUint64(dataRequired, min(stagedBytes, largestItem)); !ok {
+			return 0, 0, errors.New("fetch disk requirement exceeds supported range")
+		}
+	}
+	return dataRequired, cacheRequired, nil
 }
 
 func remoteWorkSaveRequiredBytes(plan remoteWorkSavePlan) (uint64, uint64, error) {

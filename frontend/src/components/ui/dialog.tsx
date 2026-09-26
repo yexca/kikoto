@@ -3,6 +3,8 @@ import { X } from "lucide-react";
 
 import { cn } from "@/lib/tailwindClassNames";
 
+import { lockPageScroll } from "./pageScrollLock";
+
 type DialogLayer = "overlay" | "overlay-nested" | "sheet" | "overlay-top";
 type DialogSize = "sm" | "md" | "lg" | "xl" | "2xl" | "full";
 
@@ -158,6 +160,8 @@ export function Dialog({
     };
   }, []);
 
+  React.useEffect(() => lockPageScroll(document.documentElement, window.innerWidth), []);
+
   React.useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const panel = panelRef.current;
@@ -262,7 +266,12 @@ export function DialogHeader({
 }
 
 export function DialogBody({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("app-scrollbar min-h-0 flex-1 overflow-y-auto px-5 py-4", className)} {...props} />;
+  return (
+    <div
+      className={cn("app-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4", className)}
+      {...props}
+    />
+  );
 }
 
 export function DialogFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {

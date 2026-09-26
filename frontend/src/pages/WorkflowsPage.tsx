@@ -49,6 +49,7 @@ import {
 } from "@/features/workflows/WorkflowRunSlot";
 import { RunDiagnostics } from "@/features/workflows/RunDiagnostics";
 import { RunFacts, RunStatusBadge, RunSteps } from "@/features/workflows/RunOverview";
+import { RunFetchFiles } from "@/features/workflows/RunFetchFiles";
 import { RunTransferProgress } from "@/features/workflows/RunTransferProgress";
 import { formatBytes, isActiveRunStatus, runTitle } from "@/features/workflows/runPresentation";
 import {
@@ -2592,6 +2593,7 @@ function RunDetail({
         {!readOnly && <RunActions run={run} onRunAction={onRunAction} />}
       </header>
       {!loading && <RunTransferProgress run={run} />}
+      {!loading && run.workflowCode === "remote_work_fetch" && <RunFetchFiles key={run.id} run={run} />}
       <RunFacts run={run} />
       <RunStats run={run} />
       {"metadataIssues" in run && run.metadataIssues && run.metadataIssues.encountered > 0 && (

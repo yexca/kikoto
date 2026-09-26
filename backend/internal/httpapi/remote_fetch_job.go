@@ -97,7 +97,7 @@ func (s *Server) prepareRemoteWorkFetchExecution(
 	if err := validateRemoteFetchDownloadPlan(plan.Items, downloadLimit); err != nil {
 		return execution, err
 	}
-	if err := s.ensureRemoteWorkSaveDiskReserve(plan, payload.MinFreeBytes); err != nil {
+	if err := s.ensureRemoteWorkSaveDiskReserve(plan, payload.MinFreeBytes, manifest.StagingRoot); err != nil {
 		return execution, err
 	}
 	workID, localSourceID, cacheNodeID, promoteNodeID, syncNodeID, cleanupNodeID, err := s.preparePersistedRemoteWorkFetchJob(ctx, runID, manifest)
@@ -348,12 +348,12 @@ func (s *Server) finalizeRemoteWorkFetch(
 		var err error
 		manifest, err = s.loadRemoteFetchManifest(ctx, runID)
 		if err != nil {
-			return remoteWorkSaveResult{}, s.failRemoteWorkFetchPhase(ctx, runID, execution.promoteNodeID, jobID, len(execution.plan.Items), len(execution.plan.Items)*2, execution.plan.Summary, err)
+			return remoteWorkSaveResult{}, s.failRemoteWorkFetchPhase(ctx, runID, s.remoteFetchPublicationFailureNode(ctx, runID, execution.promoteNodeID), jobID, len(execution.plan.Items), len(execution.plan.Items)*2, execution.plan.Summary, err)
 		}
 	}
 	promoted, err := s.stageAndPublishRemoteFetch(ctx, manifest, execution.plan)
 	if err != nil {
-		return remoteWorkSaveResult{}, s.failRemoteWorkFetchPhase(ctx, runID, execution.promoteNodeID, jobID, len(execution.plan.Items), len(execution.plan.Items)*2, execution.plan.Summary, err)
+		return remoteWorkSaveResult{}, s.failRemoteWorkFetchPhase(ctx, runID, s.remoteFetchPublicationFailureNode(ctx, runID, execution.promoteNodeID), jobID, len(execution.plan.Items), len(execution.plan.Items)*2, execution.plan.Summary, err)
 	}
 	_ = s.updateWorkflowJobCheckpoint(ctx, jobID, "published", map[string]any{"targetRoot": execution.plan.SaveRoot, "promoted": promoted}, len(execution.plan.Items), len(execution.plan.Items)*2)
 	_ = updateWorkflowJobProgress(ctx, s.db, jobID, len(execution.plan.Items)*2, len(execution.plan.Items)*2)
@@ -469,6 +469,24 @@ func (s *Server) finishRemoteWorkFetch(
 		return err
 	}
 	return s.insertFetchCleanupCandidate(ctx, runID, execution.workID, execution.localSourceID, execution.workCode, execution.plan.Items)
+}
+
+// remoteFetchPublicationFailureNode names the publication step an error
+// belongs to: the first of Assemble, Verify, and Publish that has not
+// succeeded, so a staging failure no longer leaves Assemble running while
+// Publish reports the error.
+func (s *Server) remoteFetchPublicationFailureNode(ctx context.Context, runID int64, fallback int64) int64 {
+	var nodeRunID int64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT id
+		FROM workflow_node_run
+		WHERE workflow_run_id = ? AND node_id IN ('stage', 'verify', 'promote') AND status <> 'succeeded'
+		ORDER BY position
+		LIMIT 1
+	`, runID).Scan(&nodeRunID); err != nil {
+		return fallback
+	}
+	return nodeRunID
 }
 
 func (s *Server) failRemoteWorkFetchPhase(ctx context.Context, runID, nodeID, jobID int64, current, total int, summary remoteWorkSaveSummary, err error) error {

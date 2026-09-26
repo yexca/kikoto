@@ -50,7 +50,7 @@ func Open(path string) (*sql.DB, error) {
 // resident memory). WAL with synchronous=NORMAL keeps the database consistent
 // after a crash; only the most recent commits may roll back on power loss.
 const (
-	sqliteBusyTimeoutMillis = 5000
+	sqliteBusyTimeoutMillis = 30000
 	sqliteCacheSizeKiB      = 16000
 	sqliteMmapSizeBytes     = 256 << 20
 )

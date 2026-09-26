@@ -50,7 +50,11 @@ traffic.
 Keep network requests and other slow I/O outside database transactions. Read
 endpoints should not reconcile metadata on every request; required indexing or
 sync writes belong at an explicit ingestion boundary. Busy timeouts are a
-fallback, not a substitute for short and intentional write transactions.
+fallback, not a substitute for short and intentional write transactions. The
+timeout is generous because a short commit can still stall for several seconds
+when the host's storage is saturated, for example while Fetch stages large
+files through Docker Desktop bind mounts; a waiting writer should outlast that
+stall rather than fail its workflow.
 
 ## Connection Settings
 
@@ -60,7 +64,7 @@ The file-backed pool opens at most four connections. Every connection applies:
 | --- | --- | --- |
 | `foreign_keys` | `1` | Enforce declared references. |
 | `journal_mode` | `WAL` | Let readers continue while one writer commits. |
-| `busy_timeout` | `5000` ms | Wait briefly for a competing writer. |
+| `busy_timeout` | `30000` ms | Wait for a competing writer, including a commit stalled by slow storage. |
 | `synchronous` | `NORMAL` | Sync at WAL checkpoints rather than every commit. |
 | `cache_size` | `-16000` (about 16 MiB) | Page cache per connection, about 64 MiB in total. |
 | `mmap_size` | 256 MiB | Memory-mapped reads per connection; address space, not resident memory. |
