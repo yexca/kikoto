@@ -46,7 +46,14 @@ func run() error {
 	defer db.Close()
 
 	if err := storage.MigrateFSWithOptions(db, migrations.Files, buildinfo.Version, storage.MigrateOptions{
-		BeforeUpgrade: preMigrationBackup(ctx, db, cfg.DatabaseBackupDir),
+		BeforeUpgrade: func(fromVersion, toVersion int) error {
+			if backup := preMigrationBackup(ctx, db, cfg.DatabaseBackupDir); backup != nil {
+				if err := backup(fromVersion, toVersion); err != nil {
+					return err
+				}
+			}
+			return storage.PreserveLegacyWorkflows(ctx, db, fromVersion)
+		},
 	}); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
 	}
@@ -113,6 +120,7 @@ func run() error {
 	})
 	server.Go(server.RunSearchIndexWorker)
 	if !cfg.IsDemo() {
+		server.Go(server.ResumeLibraryMigration)
 		server.Go(func(ctx context.Context) {
 			if err := server.RunStartupWorkflows(ctx); err != nil && ctx.Err() == nil {
 				slog.Error("run startup workflows", "error", err)

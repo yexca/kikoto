@@ -16,6 +16,8 @@ import (
 
 const (
 	settingLibraryOnboardingCompleted = "library_onboarding_completed"
+	settingLibraryOnboardingRevision  = "library_onboarding_revision"
+	libraryOnboardingRevision         = 2
 	// settingLibraryOnboardingTriggers records that a fresh install turned
 	// its automatic local scan triggers off, so it happens only once.
 	settingLibraryOnboardingTriggers = "library_onboarding_triggers_disabled"
@@ -38,6 +40,7 @@ type libraryLayoutResponse struct {
 	Pools               []libraryPoolResponse `json:"pools"`
 	Candidates          []string              `json:"candidates"`
 	FetchPool           string                `json:"fetchPool"`
+	MigrationScanRunID  int64                 `json:"migrationScanRunId,omitempty"`
 	LocalScanTriggers   libraryScanTriggers   `json:"localScanTriggers"`
 }
 
@@ -61,15 +64,21 @@ type libraryOnboardingCompletion struct {
 	WatchFolders bool `json:"watchFolders"`
 }
 
-// PrepareLibraryLayout settles the library mode at startup. An instance that
-// already ran an earlier release, or already holds local works, keeps the
-// standard layout it has always used and skips onboarding. A fresh install
-// stays unconfigured until onboarding, and its automatic local scans start
-// off: scanning before the library is set up would read the wrong layout.
+// PrepareLibraryLayout retains the earlier standard layout while offering an
+// explicit, once-only upgrade choice. A fresh install stays unconfigured until
+// onboarding and its automatic scans start disabled.
 func (s *Server) PrepareLibraryLayout(ctx context.Context) error {
 	layout, err := s.loadLibraryLayout(ctx)
-	if err != nil || layout.configured() {
+	if err != nil {
 		return err
+	}
+	status, err := s.loadLibraryMigrationStatus(ctx)
+	if err != nil {
+		return err
+	}
+	if status.Status == "running" || status.Status == "failed" {
+		s.layoutMigrationActive.Store(true)
+		s.layoutMigrationScan.Store(status.Phase == "scan")
 	}
 	upgraded, err := s.instanceRanEarlierRelease(ctx)
 	if err != nil {
@@ -81,11 +90,19 @@ func (s *Server) PrepareLibraryLayout(ctx context.Context) error {
 		}
 	}
 	if upgraded {
-		slog.Info("library uses the standard layout of an earlier release")
-		if err := s.saveSettingValue(ctx, settingLibraryMode, storagepool.ModeStandard); err != nil {
-			return err
+		if !layout.configured() {
+			slog.Info("library uses the standard layout of an earlier release")
+			if err := s.saveSettingValue(ctx, settingLibraryMode, storagepool.ModeStandard); err != nil {
+				return err
+			}
 		}
-		return s.saveSettingValue(ctx, settingLibraryOnboardingCompleted, true)
+		if s.settingIntContext(ctx, settingLibraryOnboardingRevision, 0) < libraryOnboardingRevision {
+			return s.saveSettingValue(ctx, settingLibraryOnboardingCompleted, false)
+		}
+		return nil
+	}
+	if layout.configured() {
+		return nil
 	}
 	if s.settingBoolContext(ctx, settingLibraryOnboardingTriggers, false) {
 		return nil
@@ -183,6 +200,12 @@ func (s *Server) libraryLayoutResponse(ctx context.Context) (libraryLayoutRespon
 		Pools:               []libraryPoolResponse{}, Candidates: []string{}, FetchPool: layout.FetchPool,
 		LocalScanTriggers: triggers,
 	}
+	var migrationRunID sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, `SELECT scan_run_id FROM library_layout_migration WHERE id = 1 AND status = 'completed'`).Scan(&migrationRunID); err == nil {
+		response.MigrationScanRunID = migrationRunID.Int64
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return libraryLayoutResponse{}, err
+	}
 	if layout.configured() {
 		states, err := s.libraryPoolStates(ctx, s.cfg.DataRoot, layout)
 		if err != nil {
@@ -195,15 +218,13 @@ func (s *Server) libraryLayoutResponse(ctx context.Context) (libraryLayoutRespon
 			})
 		}
 	}
-	if !layout.configured() || layout.poolsMode() {
-		candidates, err := storagepool.CandidateDirectories(s.cfg.DataRoot)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return libraryLayoutResponse{}, err
-		}
-		for _, name := range candidates {
-			if _, registered := layout.pool(name); !registered || !layout.poolsMode() {
-				response.Candidates = append(response.Candidates, name)
-			}
+	candidates, err := storagepool.CandidateDirectories(s.cfg.DataRoot)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return libraryLayoutResponse{}, err
+	}
+	for _, name := range candidates {
+		if _, registered := layout.pool(name); !registered || !layout.poolsMode() {
+			response.Candidates = append(response.Candidates, name)
 		}
 	}
 	return response, nil
@@ -261,13 +282,10 @@ func (s *Server) applyLibraryLayoutUpdate(ctx context.Context, payload libraryLa
 	if mode != storagepool.ModeStandard && mode != storagepool.ModePools {
 		return invalidLibraryLayout("library_mode_invalid", "Choose the standard or the storage pool library mode.")
 	}
-	hasWorks, err := s.libraryHasLocalWorks(ctx)
-	if err != nil {
-		return err
-	}
-	if current.configured() && hasWorks && mode != current.Mode {
-		return libraryLayoutError{status: http.StatusConflict, code: "library_mode_locked",
-			message: "The library mode cannot change after local works were found."}
+	if current.configured() && (mode != current.Mode ||
+		(mode == storagepool.ModePools && strings.TrimSpace(payload.FetchPool) != current.FetchPool)) {
+		return libraryLayoutError{status: http.StatusConflict, code: "library_migration_required",
+			message: "Review and confirm a storage migration before changing the library or Fetch pool."}
 	}
 	if mode == storagepool.ModeStandard {
 		return s.saveSettingValue(ctx, settingLibraryMode, storagepool.ModeStandard)
@@ -469,6 +487,10 @@ func (s *Server) completeLibraryOnboarding(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := s.saveSettingValue(r.Context(), settingLibraryOnboardingCompleted, true); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := s.saveSettingValue(r.Context(), settingLibraryOnboardingRevision, libraryOnboardingRevision); err != nil {
 		writeError(w, err)
 		return
 	}

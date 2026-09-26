@@ -177,6 +177,7 @@ export type LibraryLayout = {
   pools: LibraryPool[];
   candidates: string[];
   fetchPool: string;
+  migrationScanRunId?: number;
   localScanTriggers: { startupScan: boolean; watchFolders: boolean };
 };
 
@@ -184,6 +185,33 @@ export type LibraryLayoutUpdate = {
   mode: LibraryMode;
   pools?: string[];
   fetchPool?: string;
+};
+
+export type LibraryMigrationPreview = {
+  hash: string;
+  mode: LibraryMode;
+  moveCount: number;
+  bytes: number;
+};
+
+export type LibraryMigrationStatus = {
+  status: "idle" | "running" | "failed" | "completed";
+  phase?: string;
+  progressCurrent?: number;
+  progressTotal?: number;
+  progressBytesCurrent?: number;
+  progressBytesTotal?: number;
+};
+
+export type LegacyWorkflowMigrationItem = {
+  id: number;
+  name: string;
+  reviewStatus: "pending" | "converted" | "skipped";
+  preset?: string;
+  inputs?: Record<string, unknown>;
+  triggerCount: number;
+  canConvert: boolean;
+  reason?: string;
 };
 
 export type DatabaseBackupKind = "scheduled" | "manual" | "pre-migration";
@@ -2567,6 +2595,21 @@ export const api = {
   optimizeDatabase: () => postJSONBody<DatabaseOptimizeResult>("/api/maintenance/database/optimize", {}),
   getLibraryLayout: (signal?: AbortSignal) => getJSON<LibraryLayout>("/api/library/layout", signal),
   updateLibraryLayout: (payload: LibraryLayoutUpdate) => putJSONBody<LibraryLayout>("/api/library/layout", payload),
+  previewLibraryMigration: (layout: LibraryLayoutUpdate) =>
+    postJSONBody<LibraryMigrationPreview>("/api/library/migration/preview", layout),
+  startLibraryMigration: (layout: LibraryLayoutUpdate, hash: string) =>
+    postJSONBody<LibraryMigrationStatus>("/api/library/migration", { layout, hash }),
+  getLibraryMigration: () => getJSON<LibraryMigrationStatus>("/api/library/migration"),
+  getPublicLibraryMigration: () => getJSON<{ maintenance: boolean }>("/api/library/migration/public"),
+  retryLibraryMigration: () => postJSONBody<LibraryMigrationStatus>("/api/library/migration/retry", {}),
+  listLegacyWorkflowMigrations: () => getJSON<LegacyWorkflowMigrationItem[]>("/api/library/legacy-workflows"),
+  convertLegacyWorkflow: (id: number) =>
+    postJSONBody<{ preset: string; triggersCreated: number; enabled: boolean }>(
+      `/api/library/legacy-workflows/${id}/convert`,
+      {},
+    ),
+  skipLegacyWorkflow: (id: number) => postJSONBody<{ ok: boolean }>(`/api/library/legacy-workflows/${id}/skip`, {}),
+  exportLegacyWorkflow: (id: number) => getJSON<unknown>(`/api/library/legacy-workflows/${id}/export`),
   reconnectLibraryPool: (path: string) => postJSONBody<LibraryLayout>("/api/library/pools/reconnect", { path }),
   completeLibraryOnboarding: (payload: { startupScan: boolean; watchFolders: boolean }) =>
     postJSONBody<LibraryLayout>("/api/library/onboarding/complete", payload),

@@ -71,16 +71,22 @@ installing its APK remains an explicit user-confirmed Android system flow.
    - Choose **Standard** (the whole `data/` directory is one library) or
      **Storage pools** (each selected first-level folder of `data/` is its own
      disk or cloud drive), and in pool mode the **Fetch pool** that receives
-     new Fetches. The mode is fixed once local works are found.
+     new Fetches. A later mode or Fetch-pool change asks for confirmation and
+     moves affected files while the site is in maintenance.
    - Scan the library. The scan discovers local works without waiting for
      provider metadata.
+   - Review any earlier custom workflows. Kikoto can convert exact preset
+     matches into disabled triggers; export unmatched definitions for review.
    - Optionally start metadata sync, which runs in the background.
    - Decide whether scans run on startup and when folders change. Both start
      off on a new install; they can be turned on later in Workflows.
 
 **Later** closes the setup until the next visit. An instance upgraded from an
-earlier release keeps the standard layout and its scan triggers, and does not
-show this setup.
+earlier release keeps the standard layout and its scan triggers, but sees this
+setup to choose whether to move into storage pools. Moving into pools runs a
+new local scan before the remaining setup steps. During a move, administrators
+see progress; other users see a maintenance notice. A failed move can be
+retried after checking the disks.
 
 ### Storage Pools
 

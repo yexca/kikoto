@@ -12,10 +12,11 @@ import { api, type LibraryLayout } from "@/lib/api";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 
 import { LibraryLayoutEditor } from "./LibraryLayoutEditor";
+import { LegacyWorkflowMigrationReview } from "./LegacyWorkflowMigrationReview";
 
-type Step = "layout" | "scan" | "metadata" | "finish";
+type Step = "layout" | "scan" | "workflows" | "metadata" | "finish";
 
-const steps: Step[] = ["layout", "scan", "metadata", "finish"];
+const steps: Step[] = ["layout", "scan", "workflows", "metadata", "finish"];
 
 /**
  * First-run library setup for administrators: choose the library mode, scan,
@@ -53,8 +54,8 @@ function LibraryOnboardingDialog({ initial, onClose }: { initial: LibraryLayout;
   const toast = useToast();
   const auth = useAuth();
   const [layout, setLayout] = useState(initial);
-  const [step, setStep] = useState<Step>(initial.configured ? "scan" : "layout");
-  const [scanRunId, setScanRunId] = useState<number | null>(null);
+  const [step, setStep] = useState<Step>("layout");
+  const [scanRunId, setScanRunId] = useState<number | null>(initial.migrationScanRunId ?? null);
   const [startingScan, setStartingScan] = useState(false);
   const [metadataQueued, setMetadataQueued] = useState(false);
   const [startingMetadata, setStartingMetadata] = useState(false);
@@ -126,15 +127,22 @@ function LibraryOnboardingDialog({ initial, onClose }: { initial: LibraryLayout;
         <p className="text-sm text-muted-foreground">{t(`librarySetup.onboarding.steps.${step}.description`)}</p>
 
         {step === "layout" && (
-          <LibraryLayoutEditor
-            layout={layout}
-            readOnly={false}
-            saveLabel={t("librarySetup.onboarding.saveAndContinue")}
-            onSaved={(next) => {
-              setLayout(next);
-              setStep("scan");
-            }}
-          />
+          <>
+            <LibraryLayoutEditor
+              layout={layout}
+              readOnly={false}
+              saveLabel={t("librarySetup.onboarding.saveAndContinue")}
+              onSaved={(next) => {
+                setLayout(next);
+                setStep("scan");
+              }}
+            />
+            {layout.configured && (
+              <Button size="sm" variant="outline" onClick={() => setStep("scan")}>
+                {t("librarySetup.onboarding.keepCurrentLayout")}
+              </Button>
+            )}
+          </>
         )}
 
         {step === "scan" && (
@@ -152,6 +160,8 @@ function LibraryOnboardingDialog({ initial, onClose }: { initial: LibraryLayout;
             </span>
           </div>
         )}
+
+        {step === "workflows" && <LegacyWorkflowMigrationReview />}
 
         {step === "metadata" && (
           <div className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-3">
@@ -204,8 +214,17 @@ function LibraryOnboardingDialog({ initial, onClose }: { initial: LibraryLayout;
           {t("librarySetup.onboarding.later")}
         </Button>
         {step === "scan" && (
-          <Button size="sm" disabled={scanActive} onClick={() => setStep("metadata")}>
+          <Button
+            size="sm"
+            disabled={scanActive || (layout.mode === "pools" && scanRun?.status !== "succeeded")}
+            onClick={() => setStep("workflows")}
+          >
             {scanRunId ? t("librarySetup.onboarding.next") : t("librarySetup.onboarding.skip")}
+          </Button>
+        )}
+        {step === "workflows" && (
+          <Button size="sm" onClick={() => setStep("metadata")}>
+            {t("librarySetup.onboarding.next")}
           </Button>
         )}
         {step === "metadata" && (

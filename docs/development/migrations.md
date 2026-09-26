@@ -82,9 +82,13 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain includes
-`043_personal_listening_history.sql`, with the `043_v0.6.1.sql` baseline
-generated from the `v0.6.1` `VERSION` file; regenerate it after the next
-release bump so the snapshot carries the release that ships schema 043.
+`044_library_upgrade.sql`, with the `044_v0.6.1.sql` baseline generated from
+the current `VERSION` file; regenerate it after the next release bump so the
+snapshot carries the release that ships schema 044. Migration 044 stores the
+preserved legacy workflow snapshot and durable library-layout migration state.
+Before migration 035 removes user definitions, the application's upgrade hook
+copies their definitions and triggers into the snapshot. An instance that
+already passed 035 needs a pre-035 database backup to recover deleted definitions.
 Migration 043 adds account-owned listening sessions, UTC daily totals, imported
 per-work totals and an account generation for clearing history. It preserves remaining play
 events and playback cursor timestamps without inferring historical durations.
@@ -122,7 +126,8 @@ FTS5 shadow tables and virtual-table rows because `CREATE VIRTUAL TABLE`
 recreates them.
 Migration 035 deletes user-authored workflow definitions and their triggers
 because custom workflow editing was removed; runs keep their code and name
-snapshots.
+snapshots. Upgrades that pass through this migration with the current
+application first preserve the removed definitions and triggers for review.
 Migration 033 preserves structured `not_found` observations as pending metadata
 issues. Historical free-text workflow errors are not reinterpreted or copied
 into the shared list. Existing installations apply 033 through the numbered

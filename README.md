@@ -42,11 +42,13 @@ as a self-hosted web application with a responsive player and an Android client.
 > Kikoto is under active development. Back up `config/` and `data/` before an upgrade, and review the [security model](docs/operations/security.md) before exposing an instance to a network.
 
 > [!NOTE]
-> **Custom workflows have been removed.** Workflows are now built-in only. The
-> former custom editor is replaced by preset workflows (Follow a circle, Follow
-> a series, Follow a voice actor) that expose a small validated parameter set.
-> Upgrading deletes user-authored definitions and their triggers; their run
-> history stays readable in Activity.
+> **Custom workflow editing has been removed.** Workflows are now built-in
+> presets (Follow a circle, Follow a series, Follow a voice actor). When an
+> older database upgrades through migration 035, Kikoto saves user-authored
+> definitions and triggers for review. Exact preset matches can be converted
+> to disabled triggers; other definitions can be exported. Run history remains
+> readable in Activity. Instances that already passed migration 035 need an
+> older database backup to recover definitions deleted before this change.
 
 ## Key Features
 

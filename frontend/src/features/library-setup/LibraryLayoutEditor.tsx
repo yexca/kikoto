@@ -5,10 +5,11 @@ import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { api, type LibraryLayout, type LibraryMode } from "@/lib/api";
+import { api, type LibraryLayout, type LibraryMode, type LibraryMigrationPreview } from "@/lib/api";
 
 type Draft = { mode: LibraryMode; pools: string[]; fetchPool: string };
 
@@ -22,7 +23,7 @@ function draftFromLayout(layout: LibraryLayout): Draft {
 
 /**
  * Library mode, storage pools, and the Fetch pool. Shared by Settings and
- * onboarding; the mode locks once the library holds local works.
+ * onboarding; changes that move files require a confirmed migration.
  */
 export function LibraryLayoutEditor({
   layout,
@@ -40,6 +41,7 @@ export function LibraryLayoutEditor({
   const [draft, setDraft] = useState<Draft>(() => draftFromLayout(layout));
   const [saving, setSaving] = useState(false);
   const [reconnecting, setReconnecting] = useState<string | null>(null);
+  const [migrationPreview, setMigrationPreview] = useState<LibraryMigrationPreview | null>(null);
   const saved = useMemo(() => draftFromLayout(layout), [layout]);
 
   const folders = useMemo(() => {
@@ -63,6 +65,19 @@ export function LibraryLayoutEditor({
   const save = async () => {
     setSaving(true);
     try {
+      if (
+        layout.configured &&
+        (draft.mode !== layout.mode || (draft.mode === "pools" && draft.fetchPool !== layout.fetchPool))
+      ) {
+        setMigrationPreview(
+          await api.previewLibraryMigration(
+            draft.mode === "pools"
+              ? { mode: "pools", pools: draft.pools, fetchPool: draft.fetchPool }
+              : { mode: "standard" },
+          ),
+        );
+        return;
+      }
       const next = await api.updateLibraryLayout(
         draft.mode === "pools"
           ? { mode: "pools", pools: draft.pools, fetchPool: draft.fetchPool }
@@ -71,6 +86,24 @@ export function LibraryLayoutEditor({
       setDraft(draftFromLayout(next));
       onSaved(next);
       toast.success(t("librarySetup.saved"));
+    } catch (error) {
+      toast.notify(toastFromError(error, t("librarySetup.saveFailed")));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const confirmMigration = async () => {
+    if (!migrationPreview) return;
+    setSaving(true);
+    try {
+      await api.startLibraryMigration(
+        draft.mode === "pools"
+          ? { mode: "pools", pools: draft.pools, fetchPool: draft.fetchPool }
+          : { mode: "standard" },
+        migrationPreview.hash,
+      );
+      setMigrationPreview(null);
     } catch (error) {
       toast.notify(toastFromError(error, t("librarySetup.saveFailed")));
     } finally {
@@ -118,94 +151,122 @@ export function LibraryLayoutEditor({
   };
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <div role="radiogroup" aria-label={t("librarySetup.mode")} className={segmentedListClassName()}>
-          {(["standard", "pools"] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              role="radio"
-              aria-checked={draft.mode === mode}
-              disabled={readOnly || (layout.locked && layout.mode !== mode)}
-              className={segmentedItemClassName(draft.mode === mode)}
-              onClick={() => setMode(mode)}
-            >
-              {mode === "standard" ? <HardDrive className="h-4 w-4" /> : <Layers className="h-4 w-4" />}
-              {t(`librarySetup.modes.${mode}.name`)}
-            </button>
-          ))}
-        </div>
-        <p className="text-sm text-muted-foreground">{t(`librarySetup.modes.${draft.mode}.description`)}</p>
-        {layout.locked && <p className="text-xs text-muted-foreground">{t("librarySetup.locked")}</p>}
-      </div>
-
-      {draft.mode === "standard" && layout.mode === "standard" && (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2">
-          <span className="text-sm font-medium">{t("librarySetup.dataFolder")}</span>
-          {statusBadge("")}
-          {reconnectButton("")}
-          {layout.pools[0] && !layout.pools[0].online && (
-            <p className="basis-full text-xs text-muted-foreground">{t("librarySetup.offlineHelp")}</p>
-          )}
-        </div>
-      )}
-
-      {draft.mode === "pools" && (
-        <div className="space-y-3">
-          <fieldset className="space-y-1">
-            <legend className="mb-1 text-sm font-medium">{t("librarySetup.pools")}</legend>
-            {folders.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t("librarySetup.noFolders")}</p>
-            ) : (
-              <ul className="divide-y rounded-md border">
-                {folders.map((path) => {
-                  const checked = draft.pools.includes(path);
-                  const id = `library-pool-${path}`;
-                  return (
-                    <li key={path} className="flex min-w-0 flex-wrap items-center gap-2 px-3 py-2">
-                      <Checkbox
-                        id={id}
-                        checked={checked}
-                        disabled={readOnly}
-                        aria-label={t("librarySetup.usePool", { pool: path })}
-                        onCheckedChange={(next) => togglePool(path, next)}
-                      />
-                      <label htmlFor={id} className="min-w-0 flex-1 truncate font-mono text-sm">
-                        /data/{path}
-                      </label>
-                      {statusBadge(path)}
-                      {reconnectButton(path)}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            <p className="text-xs text-muted-foreground">{t("librarySetup.poolsHelp")}</p>
-          </fieldset>
-          <div className="space-y-1">
-            <span className="text-sm font-medium">{t("librarySetup.fetchPool")}</span>
-            <FloatingSelect
-              ariaLabel={t("librarySetup.fetchPool")}
-              disabled={readOnly || draft.pools.length === 0}
-              value={draft.fetchPool}
-              options={[
-                { value: "", label: t("librarySetup.fetchPoolNone") },
-                ...draft.pools.map((path) => ({ value: path, label: `/data/${path}` })),
-              ]}
-              onValueChange={(fetchPool) => setDraft((current) => ({ ...current, fetchPool }))}
-            />
-            <p className="text-xs text-muted-foreground">{t("librarySetup.fetchPoolHelp")}</p>
+    <>
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <div role="radiogroup" aria-label={t("librarySetup.mode")} className={segmentedListClassName()}>
+            {(["standard", "pools"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                role="radio"
+                aria-checked={draft.mode === mode}
+                disabled={readOnly}
+                className={segmentedItemClassName(draft.mode === mode)}
+                onClick={() => setMode(mode)}
+              >
+                {mode === "standard" ? <HardDrive className="h-4 w-4" /> : <Layers className="h-4 w-4" />}
+                {t(`librarySetup.modes.${mode}.name`)}
+              </button>
+            ))}
           </div>
+          <p className="text-sm text-muted-foreground">{t(`librarySetup.modes.${draft.mode}.description`)}</p>
+          {layout.locked && <p className="text-xs text-muted-foreground">{t("librarySetup.locked")}</p>}
         </div>
-      )}
 
-      <div className="flex justify-end">
-        <Button size="sm" disabled={readOnly || saving || !dirty || poolsInvalid} onClick={() => void save()}>
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          {saveLabel ?? t("librarySetup.save")}
-        </Button>
+        {draft.mode === "standard" && layout.mode === "standard" && (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2">
+            <span className="text-sm font-medium">{t("librarySetup.dataFolder")}</span>
+            {statusBadge("")}
+            {reconnectButton("")}
+            {layout.pools[0] && !layout.pools[0].online && (
+              <p className="basis-full text-xs text-muted-foreground">{t("librarySetup.offlineHelp")}</p>
+            )}
+          </div>
+        )}
+
+        {draft.mode === "pools" && (
+          <div className="space-y-3">
+            <fieldset className="space-y-1">
+              <legend className="mb-1 text-sm font-medium">{t("librarySetup.pools")}</legend>
+              {folders.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t("librarySetup.noFolders")}</p>
+              ) : (
+                <ul className="divide-y rounded-md border">
+                  {folders.map((path) => {
+                    const checked = draft.pools.includes(path);
+                    const id = `library-pool-${path}`;
+                    return (
+                      <li key={path} className="flex min-w-0 flex-wrap items-center gap-2 px-3 py-2">
+                        <Checkbox
+                          id={id}
+                          checked={checked}
+                          disabled={readOnly}
+                          aria-label={t("librarySetup.usePool", { pool: path })}
+                          onCheckedChange={(next) => togglePool(path, next)}
+                        />
+                        <label htmlFor={id} className="min-w-0 flex-1 truncate font-mono text-sm">
+                          /data/{path}
+                        </label>
+                        {statusBadge(path)}
+                        {reconnectButton(path)}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <p className="text-xs text-muted-foreground">{t("librarySetup.poolsHelp")}</p>
+            </fieldset>
+            <div className="space-y-1">
+              <span className="text-sm font-medium">{t("librarySetup.fetchPool")}</span>
+              <FloatingSelect
+                ariaLabel={t("librarySetup.fetchPool")}
+                disabled={readOnly || draft.pools.length === 0}
+                value={draft.fetchPool}
+                options={[
+                  { value: "", label: t("librarySetup.fetchPoolNone") },
+                  ...draft.pools.map((path) => ({ value: path, label: `/data/${path}` })),
+                ]}
+                onValueChange={(fetchPool) => setDraft((current) => ({ ...current, fetchPool }))}
+              />
+              <p className="text-xs text-muted-foreground">{t("librarySetup.fetchPoolHelp")}</p>
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end">
+          <Button size="sm" disabled={readOnly || saving || !dirty || poolsInvalid} onClick={() => void save()}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {saveLabel ?? t("librarySetup.save")}
+          </Button>
+        </div>
       </div>
-    </div>
+      {migrationPreview && (
+        <Dialog
+          onClose={() => setMigrationPreview(null)}
+          size="sm"
+          ariaLabel={t("librarySetup.migration.confirmTitle")}
+        >
+          <DialogHeader title={t("librarySetup.migration.confirmTitle")} />
+          <DialogBody className="space-y-3 text-sm">
+            <p>{t("librarySetup.migration.confirmDescription")}</p>
+            <p>
+              {t("librarySetup.migration.moveSummary", {
+                count: migrationPreview.moveCount,
+                size: (migrationPreview.bytes / 1024 ** 3).toFixed(2),
+              })}
+            </p>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMigrationPreview(null)}>
+              {t("librarySetup.migration.cancel")}
+            </Button>
+            <Button disabled={saving} onClick={() => void confirmMigration()}>
+              {t("librarySetup.migration.confirm")}
+            </Button>
+          </DialogFooter>
+        </Dialog>
+      )}
+    </>
   );
 }

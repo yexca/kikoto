@@ -88,15 +88,15 @@ func TestPrepareLibraryLayoutKeepsUpgradedInstanceStandard(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("layout status = %d, body = %s", response.Code, response.Body.String())
 	}
-	if layout.Mode != storagepool.ModeStandard || !layout.OnboardingCompleted {
-		t.Fatalf("upgraded layout = %+v, want standard with onboarding done", layout)
+	if layout.Mode != storagepool.ModeStandard || layout.OnboardingCompleted {
+		t.Fatalf("upgraded layout = %+v, want standard with upgrade onboarding pending", layout)
 	}
 	if triggers := localScanTriggerStates(t, server); !triggers.StartupScan || !triggers.WatchFolders {
 		t.Fatalf("upgrade changed the scan triggers: %+v", triggers)
 	}
 }
 
-func TestLibraryLayoutRegistersPoolsAndLocksModeOnceWorksExist(t *testing.T) {
+func TestLibraryLayoutRegistersPoolsAndRequiresMigrationForModeAndFetch(t *testing.T) {
 	dataRoot := t.TempDir()
 	for _, name := range []string{"disk1", "disk2", ".kikoto-staging"} {
 		if err := os.MkdirAll(filepath.Join(dataRoot, name), 0o755); err != nil {
@@ -133,16 +133,16 @@ func TestLibraryLayoutRegistersPoolsAndLocksModeOnceWorksExist(t *testing.T) {
 	code := "RJ00000040"
 	seedIndexedLocalScanWork(t, db, server, code, "disk2/"+code, "disk2/"+code+"/track.mp3")
 	response, _ = libraryLayoutRequest(t, server, http.MethodPut, "/api/library/layout", `{"mode":"standard"}`)
-	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "library_mode_locked") {
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "library_migration_required") {
 		t.Fatalf("mode change with works = %d %s", response.Code, response.Body.String())
 	}
 	response, _ = libraryLayoutRequest(t, server, http.MethodPut, "/api/library/layout", `{"mode":"pools","pools":["disk1"],"fetchPool":"disk1"}`)
 	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "storage_pool_in_use") {
 		t.Fatalf("removing a pool with works = %d %s", response.Code, response.Body.String())
 	}
-	// The fetch pool can still change after the mode is locked.
+	// A Fetch-pool change must use the same reviewed migration as a mode switch.
 	response, layout = libraryLayoutRequest(t, server, http.MethodPut, "/api/library/layout", `{"mode":"pools","pools":["disk1","disk2"],"fetchPool":"disk2"}`)
-	if response.Code != http.StatusOK || layout.FetchPool != "disk2" || !layout.Locked {
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "library_migration_required") {
 		t.Fatalf("changing the fetch pool = %d %+v", response.Code, layout)
 	}
 }
