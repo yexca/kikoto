@@ -42,6 +42,9 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
       return `/metadata${params.size ? `?${params}` : ""}`;
     }
   }
+  if (path === "/history") return "/settings?tab=history";
+  if (path === "/tags") return "/settings?tab=tags";
+  if (path === "/user-data") return "/settings?tab=data";
   if (path === "/library/all" || path === "/library/remote") {
     return `/${normalizedSearch(search)}`;
   }

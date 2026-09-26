@@ -266,7 +266,7 @@ test("@desktop the history page opens a listed work in work detail", async ({ pa
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockApplication(page, undefined, false, 1, 0, [], undefined, { authenticated: true });
   await mockListeningServer(page);
-  await page.goto("/history");
+  await page.goto("/settings?tab=history");
   await page.evaluate(() => {
     (window as Window & { historyPageMarker?: boolean }).historyPageMarker = true;
   });

@@ -57,6 +57,7 @@ import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { isWorkCodePath } from "@/lib/workCode";
 import { openWorkDetail, workDetailCodeFromLocation, workDetailRoute } from "@/app/workDetailNavigation";
 import type { ListeningHistoryWorkLinkFactory } from "@/features/listening-history/ListeningHistoryPage";
+import { PERSONAL_TAB_PERMISSION, personalTabPath } from "@/pages/personalTabs";
 import { preloadWorkDetail } from "@/features/work-detail/lazyWorkDetail";
 import { LibraryOnboarding } from "@/features/library-setup/LibraryOnboarding";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -116,17 +117,6 @@ const WorkManagementPage = lazy(() =>
 );
 const WorkflowsPage = lazy(() => import("@/pages/WorkflowsPage").then((module) => ({ default: module.WorkflowsPage })));
 const AboutPage = lazy(() => import("@/pages/AboutPage").then((module) => ({ default: module.AboutPage })));
-const ListeningHistoryPage = lazy(() =>
-  import("@/features/listening-history/ListeningHistoryPage").then((module) => ({
-    default: module.ListeningHistoryPage,
-  })),
-);
-const UserTagManagementPage = lazy(() =>
-  import("@/features/user-tags/UserTagManagementPage").then((module) => ({ default: module.UserTagManagementPage })),
-);
-const UserDataPage = lazy(() =>
-  import("@/features/user-data/UserDataPage").then((module) => ({ default: module.UserDataPage })),
-);
 // Preloaded with the browse workspaces so the first Quick actions tap opens at once.
 const commandPalette = preloadableComponent(() =>
   import("@/app/CommandPalette").then((module) => module.CommandPalette),
@@ -244,7 +234,7 @@ function AuthenticatedApp() {
       const intent = { kind: "known" as const, canonicalCode: primaryCode };
       return {
         href: workDetailRoute(intent) ?? undefined,
-        open: () => openWorkDetail(intent, { returnTo: "/history", returnLabel: t("nav.history") }),
+        open: () => openWorkDetail(intent, { returnTo: personalTabPath("history"), returnLabel: t("nav.history") }),
       };
     },
     [t],
@@ -581,6 +571,26 @@ function AuthenticatedApp() {
                   <SettingsPage
                     user={auth.user}
                     readOnly={auth.demoMode}
+                    personal={
+                      navigationHasPermission(PERSONAL_TAB_PERMISSION)
+                        ? {
+                            history: {
+                              canClear: effectiveHasPermission("playback:use"),
+                              demoMode: auth.demoMode,
+                              storageScope: clientStorageScope,
+                              workLink: listeningHistoryWorkLink,
+                            },
+                            tags: { canEdit: effectiveHasPermission("tags:write"), demoMode: auth.demoMode },
+                            data: {
+                              canImportData:
+                                effectiveHasPermission("favorites:write") &&
+                                effectiveHasPermission("tags:write") &&
+                                effectiveHasPermission("playback:use"),
+                              demoMode: auth.demoMode,
+                            },
+                          }
+                        : undefined
+                    }
                     onAccountUpdated={auth.refresh}
                     onAccessPolicyUpdated={auth.refreshRuntime}
                   />
@@ -602,27 +612,6 @@ function AuthenticatedApp() {
                   />
                 )}
                 {canAccessCurrentPage && page === "about" && <AboutPage />}
-                {canAccessCurrentPage && page === "history" && auth.user && (
-                  <ListeningHistoryPage
-                    canClear={effectiveHasPermission("playback:use")}
-                    demoMode={auth.demoMode}
-                    storageScope={clientStorageScope}
-                    workLink={listeningHistoryWorkLink}
-                  />
-                )}
-                {canAccessCurrentPage && page === "tags" && auth.user && (
-                  <UserTagManagementPage canEdit={effectiveHasPermission("tags:write")} demoMode={auth.demoMode} />
-                )}
-                {canAccessCurrentPage && page === "user-data" && auth.user && (
-                  <UserDataPage
-                    canImportData={
-                      effectiveHasPermission("favorites:write") &&
-                      effectiveHasPermission("tags:write") &&
-                      effectiveHasPermission("playback:use")
-                    }
-                    demoMode={auth.demoMode}
-                  />
-                )}
                 {![
                   "library",
                   "favorites",
@@ -632,9 +621,6 @@ function AuthenticatedApp() {
                   "metadata",
                   "workflows",
                   "about",
-                  "history",
-                  "tags",
-                  "user-data",
                 ].includes(page) && (
                   <PlaceholderPage title={activeItem ? navigationLabel(activeItem, t) : t("app.pageReserved")} />
                 )}

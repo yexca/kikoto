@@ -134,20 +134,26 @@ modules.
 - Library.
 - Work detail.
 - Favorites.
-- Personal tags: account-owned work, circle, and voice tag management.
-- Listening history: durable totals, recent works, and daily activity.
-- Data transfer: personal JSON export and previewed Kikoto/Kikoeru import.
 - Circles.
 - Voice actors.
-- Settings.
+- Settings: personal tabs (Account, Playback, Recommendation, listening
+  history, personal tags, and data transfer) and, behind a leading
+  administration toggle, the Library, Cache & Fetch, Cleanup, and Users tabs.
+  Listening history shows durable totals, recent works, and daily activity;
+  personal tags manage account-owned work, circle, and voice tags; data
+  transfer offers personal JSON export and previewed Kikoto/Kikoeru import.
 - Metadata: saved metadata and attention categories below Workflows, plus a Voice aliases view, with a settings dialog and sync workflow shortcut.
 - Workflows: horizontal definition tabs and a right-side Activity summary.
 - Activity run details inside the Workflows panel, also reachable through notifications.
 - Users.
 - Global player dock.
 
-The three personal pages share a sidebar group and are reachable from mobile
-account actions and Quick actions. They load independently of the global player.
+The personal data tabs open at `/settings?tab=history`, `?tab=tags`, and
+`?tab=data`; the former `/history`, `/tags`, and `/user-data` links redirect
+there. They require `library:read`, are reachable from mobile account actions
+and Quick actions, and load their own chunks independently of the global
+player. The administration toggle appears only for administrators and Demo,
+which sees every tab read-only.
 The player records cumulative listening time under an account/server scope;
 history clearing invalidates older reports using a server generation. Sleep
 rewind preferences share that scope and update the resume cursor only when the

@@ -27,7 +27,7 @@ import {
   Zap,
 } from "lucide-react";
 
-import { navigationLabel, navItems, type PageID } from "@/app/navigation";
+import { type PageID } from "@/app/navigation";
 import { AppearanceControls } from "@/app/AppearanceControls";
 import {
   applyThemeMode,
@@ -60,6 +60,7 @@ import { buildMobileDiagnosticsText } from "@/lib/mobileDiagnostics";
 import { useMobileRuntime } from "@/app/MobileRuntime";
 import type { UiLocale } from "@/i18n";
 import { useLocale } from "@/i18n/LocaleProvider";
+import { PERSONAL_TAB_PERMISSION, personalTabPath, personalTabs } from "@/pages/personalTabs";
 
 type HeaderActionsProps = {
   user: CurrentUser | null;
@@ -73,9 +74,8 @@ type HeaderActionsProps = {
   onLocaleChange: (locale: UiLocale) => Promise<void>;
 };
 
-// Personal destinations stay out of the four bottom tabs; the mobile account
-// surface reaches them next to Settings.
-const personalNavItems = navItems.filter((item) => item.group === "personal");
+// Personal tabs stay out of the four bottom tabs; the mobile account surface
+// reaches each one directly next to Settings.
 
 export function HeaderActions({
   user,
@@ -393,17 +393,18 @@ export function HeaderActions({
                       />
                     </>
                   )}
-                  {personalNavItems.map((item) => (
-                    <ActionItem
-                      key={item.id}
-                      icon={<item.icon className="h-4 w-4" />}
-                      label={navigationLabel(item, t)}
-                      onClick={() => {
-                        setMobileAccountOpen(false);
-                        onOpenPage(item.id);
-                      }}
-                    />
-                  ))}
+                  {canView(PERSONAL_TAB_PERMISSION) &&
+                    personalTabs.map((tab) => (
+                      <ActionItem
+                        key={tab.id}
+                        icon={<tab.icon className="h-4 w-4" />}
+                        label={t(tab.labelKey)}
+                        onClick={() => {
+                          setMobileAccountOpen(false);
+                          onOpenPath(personalTabPath(tab.id));
+                        }}
+                      />
+                    ))}
                   <ActionItem
                     icon={<Settings className="h-4 w-4" />}
                     label={t("account.settings")}
