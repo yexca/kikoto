@@ -23,19 +23,19 @@ export function useMaintenanceSearch(onCommit: () => void) {
   const committed = useRef("");
   const notifyCommit = useStableCallback(onCommit);
 
-  const commit = (value: string) => {
+  const commit = useStableCallback((value: string) => {
     const next = value.trim();
     if (next === committed.current) return;
     committed.current = next;
     setQuery(next);
     notifyCommit();
-  };
+  });
 
   useEffect(() => {
     if (draft.trim() === query) return;
     const timer = window.setTimeout(() => commit(draft), SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [draft, query]);
+  }, [commit, draft, query]);
 
   return {
     draft,

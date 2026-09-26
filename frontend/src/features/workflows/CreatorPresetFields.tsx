@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { api, type LibrarySource } from "@/lib/api";
 
 /**
@@ -154,16 +155,18 @@ export function VoiceActorPicker({
   const selectedId = Number(personId);
   const selected = Number.isSafeInteger(selectedId) && selectedId > 0;
   const { results, loading } = useVoiceSearch(query, !selected);
+  // Callers pass an inline handler; its identity must not restart the name lookup.
+  const resolveName = useStableCallback(onChange);
 
   useEffect(() => {
     if (!selected || displayName) return;
     const controller = new AbortController();
     api
       .getVoiceSummary(selectedId, controller.signal)
-      .then((summary) => onChange(String(summary.personId), summary.displayName))
+      .then((summary) => resolveName(String(summary.personId), summary.displayName))
       .catch(() => undefined);
     return () => controller.abort();
-  }, [displayName, selected, selectedId]);
+  }, [displayName, resolveName, selected, selectedId]);
 
   if (selected) {
     return (

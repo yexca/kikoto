@@ -42,11 +42,10 @@ export function LibraryLayoutEditor({
   const [reconnecting, setReconnecting] = useState<string | null>(null);
   const saved = useMemo(() => draftFromLayout(layout), [layout]);
 
-  const registered = layout.mode === "pools" ? layout.pools : [];
-  const folders = useMemo(
-    () => [...new Set([...registered.map((pool) => pool.path), ...layout.candidates])].sort(),
-    [layout.candidates, registered],
-  );
+  const folders = useMemo(() => {
+    const registered = layout.mode === "pools" ? layout.pools : [];
+    return [...new Set([...registered.map((pool) => pool.path), ...layout.candidates])].sort();
+  }, [layout]);
   const dirty =
     !layout.configured ||
     draft.mode !== saved.mode ||

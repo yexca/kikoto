@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { retainVisibleSelection } from "@/components/work-collection/workSelectionModel";
+import { retainVisibleSelection, withSelection } from "@/components/work-collection/workSelectionModel";
 
 const keyOf = (work: { primaryCode: string }) => work.primaryCode;
 
@@ -23,5 +23,15 @@ describe("retainVisibleSelection", () => {
     const current = new Set(["RJ00000001", "RJ00000002"]);
 
     expect(retainVisibleSelection(current, [{ primaryCode: "RJ00000002" }], keyOf)).toEqual(new Set(["RJ00000002"]));
+  });
+});
+
+describe("withSelection", () => {
+  it("adds and removes keys without changing the current set", () => {
+    const current = new Set(["RJ00000001"]);
+
+    expect(withSelection(current, ["RJ00000002"], true)).toEqual(new Set(["RJ00000001", "RJ00000002"]));
+    expect(withSelection(current, ["RJ00000001", "RJ00000003"], false)).toEqual(new Set());
+    expect(current).toEqual(new Set(["RJ00000001"]));
   });
 });

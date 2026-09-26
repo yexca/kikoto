@@ -1,6 +1,15 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import type { LibrarySource, RecentlyPlayedWorksResponse } from "../../src/lib/api";
+import {
+  anonymousAuthState,
+  appUpdateFixture,
+  authenticatedStateFixture,
+  runtimeSettingsFixture,
+  worksPageFixture,
+  type ApiErrorBody,
+} from "./fixtures/api";
 
 const appVersion = readFileSync(resolve(__dirname, "../../../VERSION"), "utf8").trim();
 
@@ -8,47 +17,31 @@ async function mockAppShell(page: Page, anonymousAccessEnabled = true, onLibrary
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
-      await route.fulfill({ json: { authenticated: false } });
+      await route.fulfill({ json: anonymousAuthState });
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
-      await route.fulfill({
-        json: {
-          mode: "production",
-          demoMode: false,
-          anonymousAccessEnabled,
-          cacheEnabled: false,
-          directoryRoutingRules: [],
-        },
-      });
+      await route.fulfill({ json: runtimeSettingsFixture({ mode: "production", anonymousAccessEnabled }) });
       return;
     }
     if (url.pathname === "/api/app-update") {
-      await route.fulfill({
-        json: {
-          currentVersion: appVersion,
-          latestVersion: appVersion,
-          updateAvailable: false,
-          releaseUrl: "",
-          checkedAt: "2026-01-01T00:00:00Z",
-        },
-      });
+      await route.fulfill({ json: appUpdateFixture(appVersion) });
       return;
     }
     if (url.pathname === "/api/works") {
       onLibraryRequest();
-      await route.fulfill({ json: { works: [], page: 1, pageSize: 24, total: 0 } });
+      await route.fulfill({ json: worksPageFixture([]) });
       return;
     }
     if (url.pathname === "/api/library-sources") {
-      await route.fulfill({ json: [] });
+      await route.fulfill({ json: [] satisfies LibrarySource[] });
       return;
     }
     if (url.pathname === "/api/recently-played-works") {
-      await route.fulfill({ json: { works: [] } });
+      await route.fulfill({ json: { works: [] } satisfies RecentlyPlayedWorksResponse });
       return;
     }
-    await route.fulfill({ status: 404, json: { error: "Not mocked" } });
+    await route.fulfill({ status: 404, json: { error: "Not mocked" } satisfies ApiErrorBody });
   });
 }
 
@@ -69,15 +62,10 @@ test("a server outage at startup offers a retry instead of the sign-in page", as
   let serverDown = true;
   await page.route("**/api/auth/me", async (route) => {
     if (!serverDown) {
-      await route.fulfill({
-        json: {
-          authenticated: true,
-          user: { id: 1, username: "listener", displayName: "Listener", permissions: [] },
-        },
-      });
+      await route.fulfill({ json: authenticatedStateFixture() });
       return;
     }
-    await route.fulfill({ status: 503, json: { error: "Service unavailable" } });
+    await route.fulfill({ status: 503, json: { error: "Service unavailable" } satisfies ApiErrorBody });
   });
   await page.goto("/");
 

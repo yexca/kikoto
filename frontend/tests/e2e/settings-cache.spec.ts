@@ -1,6 +1,51 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const recommendationDefaults = {
+import type {
+  AccessPolicy,
+  api,
+  AppSettings,
+  CacheMaintenanceResult,
+  CacheOverview,
+  DatabaseCleanupResult,
+  DatabaseMaintenanceOverview,
+  FileSource,
+  FileSourceDetectResult,
+  FileSourceHealthCheckResult,
+  MaintenanceWorkPage,
+  ManagedUser,
+  RecommendationConfig,
+  RecommendationTelemetrySummary,
+  TranscodeCacheClearResult,
+  UserPreferences,
+} from "../../src/lib/api";
+import {
+  type ApiErrorBody,
+  authenticatedStateFixture,
+  fileSourceFixture,
+  fixtureTimestamp,
+  runtimeSettingsFixture,
+} from "./fixtures/api";
+
+type SettingsUpdate = Parameters<typeof api.updateSettings>[0];
+type PreferencesUpdate = Parameters<typeof api.updateUserPreferences>[0];
+type FileSourceWrite = Parameters<typeof api.updateFileSource>[1];
+
+function managedUserFixture(overrides: Partial<ManagedUser> = {}): ManagedUser {
+  return {
+    id: 1,
+    username: "admin",
+    displayName: "Admin",
+    role: "admin",
+    enabled: true,
+    createdAt: fixtureTimestamp,
+    updatedAt: fixtureTimestamp,
+    ...overrides,
+  };
+}
+
+const forbidden: ApiErrorBody = { error: "Forbidden" };
+
+const recommendationDefaults: RecommendationConfig = {
   affinityBase: 35,
   unmarkedSlots: 12,
   wantSlots: 4,
@@ -37,7 +82,7 @@ async function mockCacheSettings(
 ) {
   const transcodeClearRequests: string[] = [];
   const databaseCleanupRequests: unknown[] = [];
-  let currentSettings = {
+  let currentSettings: AppSettings = {
     anonymousAccessEnabled: false,
     localScanDepth: 3,
     cacheEnabled: initialCacheEnabled,
@@ -52,6 +97,7 @@ async function mockCacheSettings(
     remoteMaxBackoffSeconds: 300,
     catalogFreshnessDays: 30,
     dlsiteMetadataLanguage: "ja-jp",
+    dlsiteMetadataLanguages: ["ja-jp"],
     directoryRoutingRules: [
       { id: "main", label: "Main story", weight: 40, aliases: ["main"], negativeAliases: ["bonus"], enabled: true },
       {
@@ -70,88 +116,70 @@ async function mockCacheSettings(
     dataRoot: "/data",
     cacheRoot: "/cache",
     fileSources: [
-      {
-        id: 1,
-        code: "local",
+      fileSourceFixture({
         displayName: "Main local library",
         sourceType: "local_folder",
         priority: 10,
-        enabled: true,
         config: { scanDepth: 3 },
-        endpoint: {
-          baseUrl: "",
-          apiUrl: "",
-          fallbackUrl: "",
-          workUrlTemplate: "",
-          restrictOutboundHosts: false,
-          allowedHostPatterns: [],
-        },
-        healthStatus: "healthy",
         lastCheckedAt: "2026-07-26T00:00:00Z",
-      },
-      {
+      }),
+      fileSourceFixture({
         id: 8,
         code: "example-remote",
         displayName: "Example Remote",
         sourceType: "kikoeru_compatible",
         priority: 30,
-        enabled: true,
         config: { saveRootTemplate: "/data/<source_name>/<work_code>" },
         endpoint: {
+          ...fileSourceFixture().endpoint,
           baseUrl: "https://remote.example",
           apiUrl: "https://api.remote.example",
-          fallbackUrl: "",
           workUrlTemplate: "/work/{code}",
-          restrictOutboundHosts: false,
-          allowedHostPatterns: [],
         },
         healthStatus: "unknown",
-        lastCheckedAt: null,
-      },
+      }),
     ],
+  };
+  const currentPreferences = (): UserPreferences => ({
+    directoryRoutingRules: currentSettings.directoryRoutingRules,
+    recommendationConfig: currentSettings.recommendationConfig,
+    recommendationThreshold: currentSettings.recommendationThreshold,
+    recommendationDefaults: currentSettings.recommendationDefaults,
+  });
+  const replaceRemoteSource = (source: FileSource) => {
+    currentSettings = { ...currentSettings, fileSources: [currentSettings.fileSources[0], source] };
   };
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
       await route.fulfill({
-        json: {
-          authenticated: true,
-          user: {
-            id: 1,
-            username: "admin",
-            displayName: "Admin",
-            role: "admin",
-            permissions: ["library:read", "sources:write", "downloads:manage", "users:manage"],
-            devMode: true,
-          },
-        },
+        json: authenticatedStateFixture({
+          username: "admin",
+          displayName: "Admin",
+          role: "admin",
+          permissions: ["library:read", "sources:write", "downloads:manage", "users:manage"],
+          devMode: true,
+        }),
       });
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
       await route.fulfill({
-        json: {
-          mode: "development",
-          demoMode: false,
-          anonymousAccessEnabled: false,
-          cacheEnabled: currentSettings.cacheEnabled,
-          directoryRoutingRules: [],
-          recommendationThreshold: 50,
-        },
+        json: runtimeSettingsFixture({ anonymousAccessEnabled: false, cacheEnabled: currentSettings.cacheEnabled }),
       });
       return;
     }
     if (url.pathname === "/api/auth/me/preferences") {
       if (route.request().method() === "PATCH") {
-        const payload = route.request().postDataJSON() as Record<string, unknown>;
+        const payload = route.request().postDataJSON() as PreferencesUpdate;
         onSettings(payload);
         currentSettings = { ...currentSettings, ...payload };
       }
-      await route.fulfill({ json: currentSettings });
+      await route.fulfill({ json: currentPreferences() });
       return;
     }
     if (url.pathname === "/api/settings" && route.request().method() === "PATCH") {
-      const payload = route.request().postDataJSON() as Record<string, unknown>;
+      const payload = route.request().postDataJSON() as SettingsUpdate;
       onSettings(payload);
       currentSettings = { ...currentSettings, ...payload };
       await route.fulfill({ json: currentSettings });
@@ -162,34 +190,44 @@ async function mockCacheSettings(
       return;
     }
     if (url.pathname === "/api/recommendation-telemetry") {
-      await route.fulfill({ json: { windowDays: 30, eventCounts: {}, scoreBuckets: {} } });
+      await route.fulfill({
+        json: {
+          windowDays: 30,
+          totalEvents: 0,
+          eventCounts: {},
+          scoreBuckets: {},
+          generatedAt: fixtureTimestamp,
+        } satisfies RecommendationTelemetrySummary,
+      });
       return;
     }
     if (url.pathname === "/api/file-sources/8/health-check" && route.request().method() === "POST") {
       onHealthCheck();
-      const source = {
+      const source: FileSource = {
         ...currentSettings.fileSources[1],
         healthStatus: "healthy",
         lastCheckedAt: "2026-07-26T01:00:00Z",
       };
-      currentSettings = { ...currentSettings, fileSources: [currentSettings.fileSources[0], source] };
+      replaceRemoteSource(source);
       await route.fulfill({
-        json: { healthy: true, healthStatus: source.healthStatus, lastCheckedAt: source.lastCheckedAt, elapsedMs: 24 },
+        json: {
+          healthy: true,
+          healthStatus: source.healthStatus,
+          lastCheckedAt: source.lastCheckedAt,
+          elapsedMs: 24,
+        } satisfies FileSourceHealthCheckResult,
       });
       return;
     }
     if (url.pathname === "/api/file-sources/8" && route.request().method() === "PATCH") {
-      const payload = route.request().postDataJSON() as Record<string, unknown>;
+      const payload = route.request().postDataJSON() as FileSourceWrite;
       onSourceUpdate(payload);
-      const source = {
+      const source: FileSource = {
         ...currentSettings.fileSources[1],
         ...payload,
-        config: {
-          ...currentSettings.fileSources[1].config,
-          ...(payload.config as Record<string, unknown>),
-        },
+        config: { ...currentSettings.fileSources[1].config, ...payload.config },
       };
-      currentSettings = { ...currentSettings, fileSources: [currentSettings.fileSources[0], source] };
+      replaceRemoteSource(source);
       await route.fulfill({ json: source });
       return;
     }
@@ -204,30 +242,21 @@ async function mockCacheSettings(
           baseUrl: "https://compatible.example.invalid",
           apiUrl: detected ? "https://api.compatible.example.invalid" : "",
           tried: ["https://compatible.example.invalid"],
-        },
+        } satisfies FileSourceDetectResult,
       });
       return;
     }
     if (url.pathname === "/api/file-sources" && route.request().method() === "POST") {
-      const payload = route.request().postDataJSON() as Record<string, unknown>;
+      const payload = route.request().postDataJSON() as FileSourceWrite;
       onSourceUpdate(payload);
-      await route.fulfill({ status: 201, json: { ...currentSettings.fileSources[1], ...payload, id: 9 } });
+      await route.fulfill({
+        status: 201,
+        json: { ...currentSettings.fileSources[1], ...payload, id: 9 } satisfies FileSource,
+      });
       return;
     }
     if (url.pathname === "/api/users") {
-      await route.fulfill({
-        json: [
-          {
-            id: 1,
-            username: "admin",
-            displayName: "Admin",
-            role: "admin",
-            enabled: true,
-            createdAt: "2026-01-01T00:00:00Z",
-            updatedAt: "2026-01-01T00:00:00Z",
-          },
-        ],
-      });
+      await route.fulfill({ json: [managedUserFixture()] });
       return;
     }
     if (url.pathname === "/api/cache/overview") {
@@ -268,18 +297,21 @@ async function mockCacheSettings(
               local: false,
             },
           ],
-        },
+        } satisfies CacheOverview,
       });
       return;
     }
     if (url.pathname === "/api/cache/cleanup" && route.request().method() === "POST") {
       onCleanup(route.request().postDataJSON());
-      await route.fulfill({ status: 202, json: { runId: 52, jobId: 53, status: "queued", queued: 4 } });
+      await route.fulfill({
+        status: 202,
+        json: { runId: 52, jobId: 53, status: "queued", queued: 4 } satisfies CacheMaintenanceResult,
+      });
       return;
     }
     if (url.pathname === "/api/cache/transcodes" && route.request().method() === "DELETE") {
       transcodeClearRequests.push(url.pathname);
-      await route.fulfill({ json: { deletedFiles: 4, freedBytes: 25165824 } });
+      await route.fulfill({ json: { deletedFiles: 4, freedBytes: 25165824 } satisfies TranscodeCacheClearResult });
       return;
     }
     if (url.pathname === "/api/maintenance/database" && route.request().method() === "GET") {
@@ -303,20 +335,20 @@ async function mockCacheSettings(
             { key: "old_recommendation_events", count: 0, available: true },
             { key: "stale_recommendation_generations", count: 0, available: true },
           ],
-        },
+        } satisfies DatabaseMaintenanceOverview,
       });
       return;
     }
     if (url.pathname === "/api/maintenance/database/cleanup" && route.request().method() === "POST") {
       databaseCleanupRequests.push(route.request().postDataJSON());
-      await route.fulfill({ json: { removed: 17, results: [] } });
+      await route.fulfill({ json: { removed: 17, results: [] } satisfies DatabaseCleanupResult });
       return;
     }
     if (url.pathname === "/api/maintenance/works") {
-      await route.fulfill({ json: { works: [], page: 1, pageSize: 25, total: 4 } });
+      await route.fulfill({ json: { works: [], page: 1, pageSize: 25, total: 4 } satisfies MaintenanceWorkPage });
       return;
     }
-    await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } });
+    await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } satisfies ApiErrorBody });
   });
   return { transcodeClearRequests, databaseCleanupRequests };
 }
@@ -511,38 +543,25 @@ test("development super administrator can configure production anonymous access"
   await mockCacheSettings(page, () => undefined);
   await page.route("**/api/auth/me", (route) =>
     route.fulfill({
-      json: {
-        authenticated: true,
-        user: {
-          id: 1,
-          username: "root",
-          displayName: "Root",
-          role: "super_admin",
-          permissions: ["system:admin"],
-          devMode: true,
-          demoMode: false,
-          passwordManagedBy: "environment",
-        },
-      },
+      json: authenticatedStateFixture({
+        username: "root",
+        displayName: "Root",
+        role: "super_admin",
+        permissions: ["system:admin"],
+        devMode: true,
+        passwordManagedBy: "environment",
+      }),
     }),
   );
   await page.route("**/api/runtime-settings", (route) => {
     runtimeRequests += 1;
-    return route.fulfill({
-      json: {
-        mode: "development",
-        demoMode: false,
-        anonymousAccessEnabled,
-        cacheEnabled: true,
-        directoryRoutingRules: [],
-      },
-    });
+    return route.fulfill({ json: runtimeSettingsFixture({ anonymousAccessEnabled, cacheEnabled: true }) });
   });
   await page.route("**/api/access-policy", async (route) => {
-    const payload = route.request().postDataJSON() as { anonymousAccessEnabled: boolean };
+    const payload = route.request().postDataJSON() as AccessPolicy;
     updates.push(payload);
     anonymousAccessEnabled = payload.anonymousAccessEnabled;
-    await route.fulfill({ json: payload });
+    await route.fulfill({ json: payload satisfies AccessPolicy });
   });
 
   await page.goto("/settings?tab=users");
@@ -568,8 +587,8 @@ test("development super administrator can configure production anonymous access"
 });
 
 test("work maintenance mounts once and keeps its result region stable while settings load", async ({ page }) => {
-  let releaseSettings = () => undefined;
-  let releaseWorks = () => undefined;
+  let releaseSettings: () => void = () => undefined;
+  let releaseWorks: () => void = () => undefined;
   const settingsGate = new Promise<void>((resolve) => {
     releaseSettings = resolve;
   });
@@ -587,7 +606,7 @@ test("work maintenance mounts once and keeps its result region stable while sett
   });
   await page.route("**/api/maintenance/works?**", async (route) => {
     await worksGate;
-    await route.fulfill({ json: { works: [], page: 1, pageSize: 25, total: 0 } });
+    await route.fulfill({ json: { works: [], page: 1, pageSize: 25, total: 0 } satisfies MaintenanceWorkPage });
   });
 
   await page.goto("/metadata?reason=no_source");
@@ -609,8 +628,8 @@ test("work maintenance mounts once and keeps its result region stable while sett
 });
 
 test("users mounts before settings and a one-user result does not collapse the page", async ({ page }) => {
-  let releaseSettings = () => undefined;
-  let releaseUsers = () => undefined;
+  let releaseSettings: () => void = () => undefined;
+  let releaseUsers: () => void = () => undefined;
   const settingsGate = new Promise<void>((resolve) => {
     releaseSettings = resolve;
   });
@@ -673,21 +692,15 @@ test("non-admin users cannot open administrator Settings tabs", async ({ page })
   let settingsRequests = 0;
   await page.route("**/api/settings", async (route) => {
     settingsRequests += 1;
-    await route.fulfill({ status: 403, json: { error: "Forbidden" } });
+    await route.fulfill({ status: 403, json: forbidden });
   });
   await page.route("**/api/auth/me", (route) =>
     route.fulfill({
-      json: {
-        authenticated: true,
-        user: {
-          id: 1,
-          username: "synthetic-user",
-          displayName: "Example User",
-          role: "user",
-          permissions: ["users:manage"],
-          devMode: false,
-        },
-      },
+      json: authenticatedStateFixture({
+        username: "synthetic-user",
+        displayName: "Example User",
+        permissions: ["users:manage"],
+      }),
     }),
   );
   await page.goto("/settings?tab=users");
@@ -905,16 +918,12 @@ test("@desktop work management owns metadata settings in a popover", async ({ pa
   );
   await page.route("**/api/auth/me", (route) =>
     route.fulfill({
-      json: {
-        authenticated: true,
-        user: {
-          id: 1,
-          username: "admin",
-          displayName: "Admin",
-          role: "admin",
-          permissions: ["library:read", "sources:write", "metadata:sync", "workflows:run"],
-        },
-      },
+      json: authenticatedStateFixture({
+        username: "admin",
+        displayName: "Admin",
+        role: "admin",
+        permissions: ["library:read", "sources:write", "metadata:sync", "workflows:run"],
+      }),
     }),
   );
   await page.goto("/maintenance?tab=metadata");
@@ -943,22 +952,17 @@ test("ordinary users save folder preferences without instance administration", a
   );
   await page.route("**/api/auth/me", (route) =>
     route.fulfill({
-      json: {
-        authenticated: true,
-        user: {
-          id: 1,
-          username: "synthetic-user",
-          displayName: "Example User",
-          role: "user",
-          permissions: ["library:read"],
-        },
-      },
+      json: authenticatedStateFixture({
+        username: "synthetic-user",
+        displayName: "Example User",
+        permissions: ["library:read"],
+      }),
     }),
   );
   let instanceRequests = 0;
   await page.route("**/api/settings", (route) => {
     instanceRequests++;
-    return route.fulfill({ status: 403, json: { error: "Forbidden" } });
+    return route.fulfill({ status: 403, json: forbidden });
   });
   await page.goto("/settings?tab=playback");
   await expect(page.getByRole("heading", { name: /^Folder preference/ })).toBeVisible();
@@ -988,24 +992,8 @@ test("modal dialogs keep Tab focus inside the top-most dialog", async ({ page })
   await page.route("**/api/users", (route) =>
     route.fulfill({
       json: [
-        {
-          id: 1,
-          username: "admin",
-          displayName: "Admin",
-          role: "admin",
-          enabled: true,
-          createdAt: "2026-01-01T00:00:00Z",
-          updatedAt: "2026-01-01T00:00:00Z",
-        },
-        {
-          id: 2,
-          username: "synthetic-member",
-          displayName: "Example Member",
-          role: "user",
-          enabled: true,
-          createdAt: "2026-01-01T00:00:00Z",
-          updatedAt: "2026-01-01T00:00:00Z",
-        },
+        managedUserFixture(),
+        managedUserFixture({ id: 2, username: "synthetic-member", displayName: "Example Member", role: "user" }),
       ],
     }),
   );

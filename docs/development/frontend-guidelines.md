@@ -12,6 +12,11 @@
 - Prefer accessible roles and labels; use stable semantic markers only for
   complex app-owned surfaces that lack an accessible boundary.
 - Contain page failures inside the app shell so playback continuity survives.
+- Keep hook dependency lists complete; `react-hooks/exhaustive-deps` is an
+  error. When an effect must not re-run for a value, read it through
+  `useStableCallback` or a ref instead of leaving it out of the list.
+- TypeScript rejects unused locals and imports, so remove dead code instead of
+  keeping it beside its replacement.
 
 ## Styling
 

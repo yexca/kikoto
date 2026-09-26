@@ -961,8 +961,6 @@ export const surfaceEnglish = {
   },
   libraryDetail: {
     untrackSource: "Untrack source?",
-    fetchRemoteDirectory: "Fetch remote directory",
-    fetchRemoteDirectoryDescription: "This will download the full remote directory for {{count}} selected work(s).",
     work: "Work",
     cover: "Cover",
     circle: "Circle",

@@ -28,7 +28,6 @@ import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/ui/badge";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
 import { Button } from "@/components/ui/button";
@@ -43,7 +42,6 @@ import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { hasPlaybackHistory } from "@/lib/playbackHistory";
 import {
-  WorkCardActionButton,
   WorkCardDLsiteAction,
   WorkCardFooter,
   WorkCardListButton,
@@ -73,7 +71,6 @@ import {
 } from "@/components/creator/CreatorCard";
 import {
   api,
-  assetURL,
   type CircleSummary,
   type FavoriteList,
   type FavoriteSort,
@@ -83,8 +80,8 @@ import {
   type VoiceSummary,
   type Work,
 } from "@/lib/api";
-import { openCircleRoute, openCircleSeriesRoute } from "@/pages/circleNavigationState";
-import { openVoiceRoute } from "@/pages/voiceNavigationState";
+import { openCircleRoute, openCircleSeriesRoute } from "@/lib/circleNavigationState";
+import { openVoiceRoute } from "@/lib/voiceNavigationState";
 import {
   defaultFavoritesBrowseState,
   favoritesBrowseSearch,
@@ -102,7 +99,7 @@ import {
   FavoriteListMembershipPopover,
   type FavoriteListMembershipChanges,
 } from "@/pages/FavoriteListMembershipPopover";
-import { defaultLibraryBrowseState, libraryLocation } from "@/pages/libraryBrowseState";
+import { defaultLibraryBrowseState, libraryLocation } from "@/lib/libraryBrowseState";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { useStableCallback } from "@/hooks/useStableCallback";
@@ -124,14 +121,6 @@ const statusTabs: { value: ListeningStatus | "all"; label: string; icon: typeof 
   { value: "relisten", label: "Relisten", icon: Heart },
   { value: "paused", label: "Shelved", icon: Pause },
 ];
-
-const availabilityFilters = [
-  { value: "all", label: "Any available" },
-  { value: "local", label: "Local" },
-  { value: "cache", label: "Cached" },
-  { value: "remote", label: "Remote" },
-  { value: "missing", label: "Missing" },
-] as const;
 
 const pageSizeOptions = [24, 48] as const;
 const favoriteSortOptions: { value: FavoriteSort; label: string }[] = [
@@ -165,6 +154,12 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const auth = useAuth();
   const principalID = auth.user?.id ?? null;
   const favoritesStorageScope = currentClientStorageScope(principalID);
+  // Load failures report through a stable callback, so a language change does
+  // not refetch every favorites panel.
+  const notifyUnavailable = useStableCallback((error: unknown, setLoadError?: (message: string) => void) => {
+    setLoadError?.(t("errors.unavailable"));
+    toast.notify(toastFromError(error, t("errors.unavailable")));
+  });
   const initialEntryState = useRef(readFavoritesEntryState(favoritesStorageScope)).current;
   const initialBrowseState = useRef(
     favoritesBrowseStateFromSearch(
@@ -241,7 +236,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
         }
       })
       .catch((error) => {
-        if (!cancelled) toast.notify(toastFromError(error, t("errors.unavailable")));
+        if (!cancelled) notifyUnavailable(error);
       })
       .finally(() => {
         if (!cancelled) setAreFavoriteListsLoading(false);
@@ -250,7 +245,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       cancelled = true;
       controller.abort();
     };
-  }, [active, auth.user, principalID]);
+  }, [active, auth.user, notifyUnavailable, principalID]);
 
   useEffect(() => {
     if (!auth.user) {
@@ -276,7 +271,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
         });
       })
       .catch((error) => {
-        if (!cancelled) toast.notify(toastFromError(error, t("errors.unavailable")));
+        if (!cancelled) notifyUnavailable(error);
       })
       .finally(() => {
         if (!cancelled) setAreFileSourcesLoading(false);
@@ -285,7 +280,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       cancelled = true;
       controller.abort();
     };
-  }, [active, auth.user, principalID]);
+  }, [active, auth.user, notifyUnavailable, principalID]);
 
   useEffect(() => {
     if (!auth.user) {
@@ -316,10 +311,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
         setEntitySnapshotUserID(principalID);
       })
       .catch((error) => {
-        if (!cancelled) {
-          setEntityLoadError(t("errors.unavailable"));
-          toast.notify(toastFromError(error, t("errors.unavailable")));
-        }
+        if (!cancelled) notifyUnavailable(error, setEntityLoadError);
       })
       .finally(() => {
         if (!cancelled) setIsEntitiesLoading(false);
@@ -328,7 +320,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       cancelled = true;
       controller.abort();
     };
-  }, [active, auth.user, entityReloadToken, principalID]);
+  }, [active, auth.user, entityReloadToken, notifyUnavailable, principalID]);
 
   useEffect(() => {
     if (!auth.user) {
@@ -393,8 +385,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       })
       .catch((error) => {
         if (controller.signal.aborted || seq !== requestSeq.current) return;
-        setWorksLoadError(t("errors.unavailable"));
-        toast.notify(toastFromError(error, t("errors.unavailable")));
+        notifyUnavailable(error, setWorksLoadError);
       })
       .finally(() => {
         if (!controller.signal.aborted && seq === requestSeq.current) setIsLoading(false);
@@ -406,6 +397,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     availabilityFilter,
     auth.user,
     favoriteEntity,
+    notifyUnavailable,
     page,
     pageSize,
     principalID,
@@ -453,8 +445,10 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     auth.user,
     availabilityFilter,
     favoriteEntity,
+    favoritesStorageScope,
     page,
     pageSize,
+    principalID,
     query,
     randomSeed,
     selectedWorkIDs,
@@ -1224,6 +1218,12 @@ function FavoriteMobileToolbar({
 }) {
   const { t } = useTranslation();
   const [searchOpen, setSearchOpen] = useState(() => Boolean(query.trim()));
+  // Switching entity reopens search only when the carried-over query is set.
+  const [searchEntity, setSearchEntity] = useState(favoriteEntity);
+  if (searchEntity !== favoriteEntity) {
+    setSearchEntity(favoriteEntity);
+    setSearchOpen(Boolean(query.trim()));
+  }
   const searchAnchorRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const placeholder =
@@ -1242,10 +1242,6 @@ function FavoriteMobileToolbar({
     const frame = window.requestAnimationFrame(() => searchInputRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
   }, [searchOpen]);
-
-  useEffect(() => {
-    setSearchOpen(Boolean(query.trim()));
-  }, [favoriteEntity]);
 
   return (
     <div className="flex items-center gap-2" data-toast-avoid>
@@ -1951,28 +1947,6 @@ const FavoriteWorkCard = memo(function FavoriteWorkCard({
   );
 });
 
-function WorkProgress({ progress }: { progress: Work["progress"] }) {
-  const { t } = useTranslation();
-  if (!progress.mediaItemId || !progress.lastPlayedAt) {
-    return <div className="h-8 text-xs text-muted-foreground">{t("favorites.noPlaybackYet")}</div>;
-  }
-  return (
-    <div className="space-y-1">
-      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-        <div className="h-full rounded-full bg-primary" style={{ width: `${progressPercent(progress)}%` }} />
-      </div>
-      <div className="truncate text-xs text-muted-foreground">
-        {progress.completed
-          ? t("favorites.finished")
-          : t("favorites.resumeAt", {
-              title: progress.title || t("player.track"),
-              time: formatTime(progress.positionSeconds),
-            })}
-      </div>
-    </div>
-  );
-}
-
 function favoriteWorkCardView(
   work: Work,
   onUserTagOpen: ((tag: string) => void) | undefined,
@@ -2645,18 +2619,6 @@ function FavoriteListManagerRow({
 function listeningStatusLabel(status: ListeningStatus, t?: TFunction) {
   if (t) return t(`library.status.${status}`);
   return listeningStatusOptions.find((option) => option.value === status)?.label ?? "Unmarked";
-}
-
-function formatTime(seconds: number) {
-  const safeSeconds = Math.max(0, Math.floor(seconds));
-  const minutes = Math.floor(safeSeconds / 60);
-  const remainingSeconds = safeSeconds % 60;
-  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
-}
-
-function progressPercent(progress: Work["progress"]) {
-  if (!progress.durationSeconds || progress.durationSeconds <= 0) return 0;
-  return Math.min(100, Math.max(0, (progress.positionSeconds / progress.durationSeconds) * 100));
 }
 
 function readFavoritesEntryState(storageScope: string): FavoritesEntryState {

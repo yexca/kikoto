@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { formatByteSize } from "@/features/cleanup/cacheCleanupModel";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { DatabaseBackupSection } from "@/features/cleanup/DatabaseBackupSection";
 import { DatabaseCleanupSection, DatabaseOptimizeSection } from "@/features/cleanup/DatabaseCleanupSection";
 import { ManagedMediaCacheSection, TranscodeCacheSection } from "@/features/cleanup/StorageCachePanels";
@@ -55,11 +56,14 @@ export function CleanupPage({
     }
   }, [canManageDatabase, t, toast]);
 
-  useEffect(() => {
+  // Scans run once per mount; each section offers its own refresh.
+  const scanOnMount = useStableCallback(() => {
     void scanCache();
     void scanDatabase();
-    // Scans run once per mount; each section offers its own refresh.
-  }, []);
+  });
+  useEffect(() => {
+    scanOnMount();
+  }, [scanOnMount]);
 
   const openUnlinkedWorks = () => {
     window.history.pushState({}, "", "/metadata?reason=no_source");

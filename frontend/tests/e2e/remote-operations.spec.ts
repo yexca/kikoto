@@ -1,6 +1,16 @@
 import { expect, test } from "@playwright/test";
 import { syntheticWorkCode } from "../../src/test-support/workCode";
-import { work, RemoteTrackControl, mockApplication, mockRemoteSource } from "./fixtures/player-library";
+import type {
+  LibrarySource,
+  MediaItem,
+  RemoteWorkSaveResult,
+  SourceAvailabilityResponse,
+  SourcePresenceItem,
+  Work,
+  WorkFolderLocation,
+} from "../../src/lib/api";
+import { remoteWorkDetailFixture, type ApiErrorBody } from "./fixtures/api";
+import { work, type RemoteTrackControl, mockApplication, mockRemoteSource } from "./fixtures/player-library";
 
 test("remote source reuses the library grid, source sorting, localized tags, and bottom pagination", async ({
   page,
@@ -143,7 +153,13 @@ test("remote source remembers sorting after transient browse state is cleared", 
 });
 
 test("remote card Fork queues in place and reports a terminal failure without navigation", async ({ page }) => {
-  const trackControl: RemoteTrackControl = { status: "queued", trackRequests: [], statusRequests: 0 };
+  const trackControl: RemoteTrackControl = {
+    status: "queued",
+    trackRequests: [],
+    statusRequests: 0,
+    untracked: false,
+    untrackRequests: [],
+  };
   await mockRemoteSource(page, () => undefined, { trackControl });
   await page.goto("/");
   await page.getByRole("button", { name: "Example Remote", exact: true }).click();
@@ -206,11 +222,28 @@ test("mobile Fetch preserves reviewed choices after an unconfirmed submission an
     if (submissions.length === 1) {
       await route.fulfill({
         status: 503,
-        json: { error: "Submission unavailable", code: "unavailable", retryable: true },
+        json: { error: "Submission unavailable", code: "unavailable", retryable: true } satisfies ApiErrorBody,
       });
       return;
     }
-    await route.fulfill({ status: 202, json: { primaryCode: "RJ00000051", runId: 92, status: "queued" } });
+    await route.fulfill({
+      status: 202,
+      json: {
+        runId: 92,
+        jobId: 93,
+        workId: 11,
+        primaryCode: "RJ00000051",
+        status: "queued",
+        saveRoot: "example_remote/RJ/000/RJ00000051",
+        savedFiles: 0,
+        skippedFiles: 0,
+        cachedFiles: 0,
+        promotedFiles: 0,
+        plan: { total: 1, skipExisting: 0, cacheHit: 0, cacheDownload: 1, promote: 1, conflict: 0 },
+        requestId: String(submissions[submissions.length - 1].requestId ?? ""),
+        deduplicated: false,
+      } satisfies RemoteWorkSaveResult,
+    });
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Example Remote", exact: true }).click();
@@ -260,10 +293,31 @@ test("mobile Fetch reviews an unclaimed destination folder before publishing", a
   await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeDisabled();
 });
 
+const localPresence: SourcePresenceItem = {
+  type: "local",
+  availability: "available",
+  fileSourceId: 1,
+  fileSourceCode: "local",
+  fileSourceName: "Local",
+  sourceUrl: work.primaryCode,
+};
+
+function localRootFolder(id: number): WorkFolderLocation {
+  return {
+    id,
+    workId: work.id,
+    fileSourceId: 1,
+    rootPath: work.primaryCode,
+    role: "external",
+    state: "active",
+    primary: true,
+  };
+}
+
 test("local Delete builds a refreshed preview and requires two confirmations", async ({ page }) => {
   const cleanupBodies: Record<string, unknown>[] = [];
   let localRefreshes = 0;
-  const mediaItems = [
+  const mediaItems: MediaItem[] = [
     {
       id: 1,
       parentId: null,
@@ -310,30 +364,8 @@ test("local Delete builds a refreshed preview and requires two confirmations", a
     },
   ];
   await mockApplication(page, undefined, false, 1, 0, mediaItems, (body) => cleanupBodies.push(body), {
-    work: {
-      ...work,
-      sourcePresence: [
-        {
-          type: "local",
-          availability: "available",
-          fileSourceId: 1,
-          fileSourceCode: "local",
-          fileSourceName: "Local",
-          sourceUrl: work.primaryCode,
-        },
-      ],
-      localFolders: [
-        {
-          id: 101,
-          workId: work.id,
-          fileSourceId: 1,
-          rootPath: work.primaryCode,
-          role: "external",
-          state: "active",
-          primary: true,
-        },
-      ],
-    },
+    work: { ...work, sourcePresence: [localPresence] },
+    detailLocalFolders: [localRootFolder(101)],
     onLocalRefresh: () => {
       localRefreshes += 1;
     },
@@ -375,7 +407,7 @@ test("local Delete enables work forgetting only for a complete root and confirms
   page,
 }) => {
   const cleanupBodies: Record<string, unknown>[] = [];
-  const mediaItems = [
+  const mediaItems: MediaItem[] = [
     {
       id: 1,
       parentId: null,
@@ -409,30 +441,8 @@ test("local Delete enables work forgetting only for a complete root and confirms
   await mockApplication(page, undefined, false, 1, 0, mediaItems, (body) => cleanupBodies.push(body), {
     authenticated: true,
     permissions: ["library:read", "playback:use", "downloads:manage", "sources:write"],
-    work: {
-      ...work,
-      sourcePresence: [
-        {
-          type: "local",
-          availability: "available",
-          fileSourceId: 1,
-          fileSourceCode: "local",
-          fileSourceName: "Local",
-          sourceUrl: work.primaryCode,
-        },
-      ],
-      localFolders: [
-        {
-          id: 102,
-          workId: work.id,
-          fileSourceId: 1,
-          rootPath: work.primaryCode,
-          role: "external",
-          state: "active",
-          primary: true,
-        },
-      ],
-    },
+    work: { ...work, sourcePresence: [localPresence] },
+    detailLocalFolders: [localRootFolder(102)],
   });
 
   await page.goto("/");
@@ -469,7 +479,7 @@ test("local Delete enables work forgetting only for a complete root and confirms
 test("work detail preserves Local and Tracked entry intent while keeping every remote source tab", async ({ page }) => {
   let sourceChecks = 0;
   const cleanupBodies: Record<string, unknown>[] = [];
-  const trackedPresences = [
+  const trackedPresences: SourcePresenceItem[] = [
     {
       type: "tracked",
       availability: "available",
@@ -487,8 +497,8 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
       remoteCode: work.primaryCode,
     },
   ];
-  const trackedWork = { ...work, availability: ["local", "tracked"], sourcePresence: trackedPresences };
-  const mediaItems = [
+  const trackedWork: Work = { ...work, availability: ["local", "tracked"], sourcePresence: trackedPresences };
+  const mediaItems: MediaItem[] = [
     {
       id: 1,
       parentId: null,
@@ -549,10 +559,9 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
       ],
     },
   ];
-  const availability = {
+  const availability: SourceAvailabilityResponse = {
     workCode: work.primaryCode,
     checkedAt: "2026-07-13T00:00:00Z",
-    runId: 9,
     sources: [
       {
         sourceId: 7,
@@ -607,9 +616,9 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
         sourceType: "kikoeru_compatible",
         enabled: true,
       },
-    ],
+    ] satisfies LibrarySource[],
     sourceAvailability: availability,
-    remoteDetail: {
+    remoteDetail: remoteWorkDetailFixture({
       sourceId: 7,
       sourceCode: "remote_a",
       sourceName: "Remote A",
@@ -617,20 +626,14 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
       primaryCode: work.primaryCode,
       remoteCode: work.primaryCode,
       title: work.title,
-      coverUrl: "",
-      sourceUrl: "",
       circle: work.circle,
       rating: 4.5,
       sales: 10,
-      ageRating: "",
-      releaseDate: work.releaseDate,
+      releaseDate: work.releaseDate ?? "",
       durationSeconds: 10,
-      tags: [],
-      voiceActors: [],
       importStatus: "tracked",
       workId: 1,
-      tracks: [],
-    },
+    }),
     onSourceCheck: () => {
       sourceChecks += 1;
     },

@@ -120,7 +120,7 @@ frontend-format: frontend-install
 	cd frontend && $(NPM) run format:check
 
 frontend-lint: frontend-install
-	cd frontend && $(NPM) run lint
+	cd frontend && $(NPM) run lint && $(NPM) run typecheck:e2e
 
 frontend-docs: frontend-install
 	$(NODE) --test scripts/check-doc-links.test.mjs

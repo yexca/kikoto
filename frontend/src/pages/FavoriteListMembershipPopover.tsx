@@ -43,16 +43,20 @@ export function FavoriteListMembershipPopover({
     total: 0,
     byList: new Map(),
   });
-  const [error, setError] = useState("");
+  // A key rather than text, so loading never depends on the current translation.
+  const [errorKey, setErrorKey] = useState<"" | "favorites.listLoadFailed" | "favorites.membershipSaveFailed">("");
+  const error = errorKey ? t(errorKey) : "";
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const workKey = workIDs.join(",");
 
   useEffect(() => {
     let cancelled = false;
     setInitialStates(null);
-    setError("");
+    setErrorKey("");
+    // workKey captures the selection; the array identity changes on every render.
+    const selectedWorkIDs = workKey ? workKey.split(",").map(Number) : [];
     api
-      .summarizeFavoriteListMembership(workIDs)
+      .summarizeFavoriteListMembership(selectedWorkIDs)
       .then((summary) => {
         if (cancelled) return;
         const loaded = membershipStatesFromSummary(summary);
@@ -61,12 +65,11 @@ export function FavoriteListMembershipPopover({
         setCounts({ total: summary.total, byList: new Map(summary.lists.map((list) => [list.listId, list.count])) });
       })
       .catch(() => {
-        if (!cancelled) setError(t("favorites.listLoadFailed"));
+        if (!cancelled) setErrorKey("favorites.listLoadFailed");
       });
     return () => {
       cancelled = true;
     };
-    // workKey captures the selection; the array identity changes on every render.
   }, [workKey]);
 
   useEffect(() => {
@@ -100,11 +103,11 @@ export function FavoriteListMembershipPopover({
   };
 
   const save = async () => {
-    setError("");
+    setErrorKey("");
     try {
       await onSave(changes);
     } catch {
-      setError(t("favorites.membershipSaveFailed"));
+      setErrorKey("favorites.membershipSaveFailed");
     }
   };
 

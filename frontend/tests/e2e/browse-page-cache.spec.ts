@@ -1,97 +1,69 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import type {
+  CircleSummary,
+  FavoriteList,
+  FavoriteWorksPage,
+  LibrarySource,
+  RecentlyPlayedWorksResponse,
+  VoiceMergeReview,
+  Work,
+} from "../../src/lib/api";
 import { syntheticWorkCode } from "../../src/test-support/workCode";
+import {
+  appUpdateFixture,
+  authenticatedStateFixture,
+  circleDetailFixture,
+  circleSummaryFixture,
+  circleSummaryPageFixture,
+  runtimeSettingsFixture,
+  voiceCatalogRefreshFixture,
+  voiceDetailFixture,
+  voiceSummaryFixture,
+  voiceSummaryPageFixture,
+  workDetailFixture,
+  workFixture,
+  workResolveFixture,
+  worksPageFixture,
+  type ApiErrorBody,
+  type ApiResponse,
+} from "./fixtures/api";
 
-const emptyCollection = { works: [], page: 1, pageSize: 24, total: 0 };
-const cachedWork = {
-  id: 1,
+const cachedWork = workFixture({
   primaryCode: "RJ00000000",
   title: "Example Work",
-  ageRating: "",
-  createdAt: "2026-01-01T00:00:00Z",
-  updatedAt: "2026-01-01T00:00:00Z",
   releaseDate: "2026-01-01",
-  coverUrl: "",
-  dlsiteUrl: "",
   circle: "Example Circle",
   circleExternalId: "RG012345",
-  rating: null,
-  sales: null,
-  regularPrice: null,
-  price: null,
   priceCurrency: "JPY",
   permanentlyFree: false,
-  tags: [],
-  userTags: [],
-  voiceActors: [],
-  voiceCredits: [],
-  series: "",
-  seriesTitleId: "",
-  trackCount: 0,
-  availableLocations: 0,
-  availability: [],
-  sourcePresence: [],
-  progress: {
-    mediaItemId: null,
-    title: "",
-    positionSeconds: 0,
-    durationSeconds: null,
-    lastPlayedAt: null,
-    completed: false,
-  },
-  listeningStatus: "none",
-  favorite: false,
-  recommendScore: 0,
-};
+});
 
-const cachedCircle = {
-  id: 1,
+const cachedCircle = circleSummaryFixture({
   externalId: "RG012345",
   displayName: "Example Circle",
-  aliases: [],
-  rating: null,
-  note: "",
-  favorite: false,
-  userTags: [],
   localWorks: 1,
   playableWorks: 1,
-  remoteWorks: 0,
-  missingWorks: 0,
   catalogWorks: 1,
   lastSyncedAt: "2026-01-01T00:00:00Z",
-  syncState: "synced",
-  syncReason: "",
-  sourceSummaries: [],
-  latestWork: null,
-};
+});
 
-const cachedVoice = {
+const cachedVoice = voiceSummaryFixture({
   personId: 7,
   displayName: "Example Voice",
-  aliases: [],
   knownWorks: 1,
   localWorks: 1,
-  remoteWorks: 0,
-  cachedWorks: 0,
   playableWorks: 1,
   lastSeenAt: "2026-01-01T00:00:00Z",
   lastSyncedAt: "2026-01-01T00:00:00Z",
-  syncState: "synced",
-  syncReason: "",
-  rating: null,
-  note: "",
-  favorite: false,
-  userTags: [],
-  sourceSummaries: [],
-  latestWork: null,
-};
+});
 
 type BrowsePageMockOptions = {
   deferAliasResolution?: boolean;
   collectionSize?: number;
 };
 
-function collectionWorks(size: number) {
+function collectionWorks(size: number): Work[] {
   if (size <= 1) return [cachedWork];
   return Array.from({ length: size }, (_, index) => ({
     ...cachedWork,
@@ -101,7 +73,7 @@ function collectionWorks(size: number) {
   }));
 }
 
-function collectionCircles(size: number) {
+function collectionCircles(size: number): CircleSummary[] {
   if (size <= 1) return [cachedCircle];
   return Array.from({ length: size }, (_, index) => ({
     ...cachedCircle,
@@ -131,81 +103,42 @@ async function mockBrowsePages(page: Page, requests: Record<string, number>, opt
     };
     if (url.pathname === "/api/auth/me") {
       await route.fulfill({
-        json: {
-          authenticated: true,
-          user: {
-            id: 1,
-            username: "listener",
-            displayName: "Listener",
-            role: "user",
-            permissions: ["library:read", "favorites:write"],
-            devMode: true,
-          },
-        },
+        json: authenticatedStateFixture({ permissions: ["library:read", "favorites:write"], devMode: true }),
       });
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
-      await route.fulfill({
-        json: {
-          mode: "development",
-          demoMode: false,
-          anonymousAccessEnabled: false,
-          cacheEnabled: false,
-          directoryRoutingRules: [],
-        },
-      });
+      await route.fulfill({ json: runtimeSettingsFixture({ anonymousAccessEnabled: false }) });
       return;
     }
     if (url.pathname === "/api/app-update") {
-      await route.fulfill({
-        json: {
-          currentVersion: "v0.4.1",
-          latestVersion: "v0.4.1",
-          updateAvailable: false,
-          releaseUrl: "",
-          checkedAt: "2026-01-01T00:00:00Z",
-        },
-      });
+      await route.fulfill({ json: appUpdateFixture("v0.4.1") });
       return;
     }
     if (url.pathname === "/api/library-sources") {
       count("library-sources");
-      await route.fulfill({ json: [] });
+      await route.fulfill({ json: [] satisfies LibrarySource[] });
       return;
     }
     if (url.pathname === "/api/recently-played-works") {
       count("recently-played");
-      await route.fulfill({ json: { works: [] } });
+      await route.fulfill({ json: { works: [] } satisfies RecentlyPlayedWorksResponse });
       return;
     }
     if (url.pathname === "/api/works") {
       count("works");
-      const works = collectionWorks(options.collectionSize ?? 1);
-      await route.fulfill({ json: { ...emptyCollection, works, total: works.length } });
+      await route.fulfill({ json: worksPageFixture(collectionWorks(options.collectionSize ?? 1)) });
       return;
     }
     if (url.pathname === "/api/works/1") {
-      await route.fulfill({
-        json: {
-          ...cachedWork,
-          baseCode: "",
-          metadataLanguage: "JPN",
-          workType: "audio",
-          titleKana: "",
-          description: "",
-          durationSeconds: null,
-          dlsiteFetchedAt: "",
-          translations: [],
-          manualOverrides: {},
-          mediaItems: [],
-        },
-      });
+      await route.fulfill({ json: workDetailFixture(cachedWork) });
       return;
     }
     if (url.pathname === "/api/works/1/media") {
       count("work-media");
-      await route.fulfill({ json: { workId: 1, mediaItems: [] } });
+      await route.fulfill({
+        json: { workId: 1, mediaWorkId: 1, mediaItems: [] } satisfies ApiResponse<"getWorkMedia">,
+      });
       return;
     }
     if (url.pathname === "/api/works/RJ00000001/resolve") {
@@ -213,27 +146,7 @@ async function mockBrowsePages(page: Page, requests: Record<string, number>, opt
       await aliasResolution;
       try {
         await route.fulfill({
-          json: {
-            requestedCode: "RJ00000001",
-            resolvedCode: "RJ00000000",
-            workId: 1,
-            baseCode: "",
-            isTranslation: true,
-            title: cachedWork.title,
-            coverUrl: "",
-            circle: cachedWork.circle,
-            circleExternalId: cachedWork.circleExternalId,
-            releaseDate: cachedWork.releaseDate,
-            rating: null,
-            sales: null,
-            regularPrice: null,
-            price: null,
-            priceCurrency: "JPY",
-            permanentlyFree: false,
-            tags: [],
-            voiceActors: [],
-            voiceCredits: [],
-          },
+          json: workResolveFixture(cachedWork, { requestedCode: "RJ00000001", isTranslation: true }),
         });
       } finally {
         settleAliasResolution?.();
@@ -242,27 +155,29 @@ async function mockBrowsePages(page: Page, requests: Record<string, number>, opt
     }
     if (url.pathname === "/api/circles") {
       count("circles");
-      const circles = collectionCircles(options.collectionSize ?? 1);
       await route.fulfill({
-        json: { circles, page: 1, pageSize: 24, total: circles.length, catalogWorks: 1, availableWorks: 1 },
+        json: circleSummaryPageFixture(collectionCircles(options.collectionSize ?? 1), {
+          catalogWorks: 1,
+          availableWorks: 1,
+        }),
       });
       return;
     }
     if (url.pathname === "/api/circles/RG012345") {
-      await route.fulfill({ json: { ...cachedCircle, availableWorks: 1, works: [], series: [] } });
+      await route.fulfill({ json: circleDetailFixture(cachedCircle, { availableWorks: 1 }) });
       return;
     }
     if (url.pathname === "/api/voices") {
       count("voices");
-      await route.fulfill({ json: { voices: [cachedVoice], page: 1, pageSize: 24, total: 1, tagOptions: [] } });
+      await route.fulfill({ json: voiceSummaryPageFixture([cachedVoice]) });
       return;
     }
     if (url.pathname === "/api/voices/7") {
-      await route.fulfill({ json: { ...cachedVoice, aliasRecords: [], works: [], remoteMatches: [] } });
+      await route.fulfill({ json: voiceDetailFixture(cachedVoice) });
       return;
     }
     if (url.pathname === "/api/voices/7/works") {
-      await route.fulfill({ json: { personId: 7, works: [] } });
+      await route.fulfill({ json: { personId: 7, works: [] } satisfies ApiResponse<"getVoiceWorks"> });
       return;
     }
     if (url.pathname === "/api/voices/7/remote-matches") {
@@ -270,40 +185,28 @@ async function mockBrowsePages(page: Page, requests: Record<string, number>, opt
         json: {
           personId: 7,
           remoteMatches: [],
-          refresh: {
-            status: "succeeded",
-            reason: "",
-            lastStatus: "succeeded",
-            generation: 1,
-            lastAttemptAt: "",
-            lastSuccessAt: "",
-            complete: true,
-            pagesFetched: 1,
-            catalogWorks: 0,
-            metadataQueued: 0,
-            queries: [],
-            sources: [],
-            error: "",
-          },
-        },
+          refresh: voiceCatalogRefreshFixture(),
+        } satisfies ApiResponse<"getVoiceRemoteMatches">,
       });
       return;
     }
     if (url.pathname === "/api/voices/7/merges") {
-      await route.fulfill({ json: [] });
+      await route.fulfill({ json: [] satisfies VoiceMergeReview[] });
       return;
     }
     if (url.pathname === "/api/favorite-lists") {
       count("favorite-lists");
-      await route.fulfill({ json: [] });
+      await route.fulfill({ json: [] satisfies FavoriteList[] });
       return;
     }
     if (url.pathname === "/api/favorite-works") {
       count("favorite-works");
-      await route.fulfill({ json: { ...emptyCollection, shelfTotal: 0, listCounts: {}, statusCounts: {} } });
+      await route.fulfill({
+        json: { ...worksPageFixture([]), shelfTotal: 0, listCounts: {}, statusCounts: {} } satisfies FavoriteWorksPage,
+      });
       return;
     }
-    await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } });
+    await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } satisfies ApiErrorBody });
   });
 
   return {

@@ -1,6 +1,24 @@
 import { expect, test } from "@playwright/test";
 import { mockApplication, persistedTrack, seedPlayer, work } from "./fixtures/player-library";
 import { syntheticWorkCode } from "../../src/test-support/workCode";
+import type {
+  MaintenanceWork,
+  MaintenanceWorkPage,
+  MetadataIssueWork,
+  UnlinkedWorkDeleteResult,
+  UnlinkedWorkSourceCheckResult,
+  VoiceAliasCandidate,
+  VoiceMergeReview,
+  VoiceSummaryPage,
+} from "../../src/lib/api";
+import {
+  appSettingsFixture,
+  metadataIssueWorkFixture,
+  voiceDetailFixture,
+  voiceSummaryFixture,
+  type ApiErrorBody,
+  type ApiResponse,
+} from "./fixtures/api";
 
 test("metadata operators retry selected issues without source settings access", async ({ page }) => {
   await mockApplication(page, undefined, false, 1, 0, [], undefined, {
@@ -11,31 +29,37 @@ test("metadata operators retry selected issues without source settings access", 
   let settingsRequests = 0;
   await page.route("**/api/settings", async (route) => {
     settingsRequests++;
-    await route.fulfill({ status: 403, json: { error: "permission denied" } });
+    await route.fulfill({ status: 403, json: { error: "permission denied" } satisfies ApiErrorBody });
   });
   let failList = false;
-  let items = [0, 1].map((index) => ({
-    workId: index + 1,
-    primaryCode: syntheticWorkCode("RJ", index),
-    title: `Synthetic work ${index}`,
-    providerCode: "dlsite",
-    providerName: "DLsite",
-    retrying: false,
-    issues: [
-      {
-        component: "metadata",
-        status: index === 0 ? "unavailable" : "failed",
-        failureCount: 2,
-        firstFailedAt: "2026-01-01 00:00:00",
-        checkedAt: "2026-01-02 00:00:00",
-      },
-    ],
-  }));
+  let items: MetadataIssueWork[] = [0, 1].map((index) =>
+    metadataIssueWorkFixture({
+      workId: index + 1,
+      primaryCode: syntheticWorkCode("RJ", index),
+      title: `Synthetic work ${index}`,
+      issues: [
+        {
+          component: "metadata",
+          status: index === 0 ? "unavailable" : "failed",
+          failureCount: 2,
+          firstFailedAt: "2026-01-01 00:00:00",
+          checkedAt: "2026-01-02 00:00:00",
+        },
+      ],
+    }),
+  );
   await page.route("**/api/maintenance/works?*", async (route) => {
     await route.fulfill(
       failList
-        ? { status: 503, json: { error: "unavailable" } }
-        : { json: { works: items.map(asMaintenanceWork), page: 1, pageSize: 25, total: items.length } },
+        ? { status: 503, json: { error: "unavailable" } satisfies ApiErrorBody }
+        : {
+            json: {
+              works: items.map(asMaintenanceWork),
+              page: 1,
+              pageSize: 25,
+              total: items.length,
+            } satisfies MaintenanceWorkPage,
+          },
     );
   });
   const retries: number[][] = [];
@@ -43,7 +67,10 @@ test("metadata operators retry selected issues without source settings access", 
     const { workIds } = route.request().postDataJSON() as { workIds: number[] };
     retries.push(workIds);
     items = items.map((item) => ({ ...item, retrying: workIds.includes(item.workId) }));
-    await route.fulfill({ status: 202, json: { queued: workIds.length, skipped: 0, failed: 0 } });
+    await route.fulfill({
+      status: 202,
+      json: { queued: workIds.length, skipped: 0, failed: 0 } satisfies ApiResponse<"retryMetadataIssues">,
+    });
   });
   await page.goto("/maintenance?tab=works&reason=metadata");
   const list = page.getByRole("region", { name: "Metadata records" });
@@ -85,23 +112,22 @@ test("@desktop metadata page selection resets when searching or changing pages",
     authenticated: true,
     permissions: ["library:read", "metadata:sync"],
   });
-  const items = Array.from({ length: 26 }, (_, index) => ({
-    workId: index + 1,
-    primaryCode: syntheticWorkCode("RJ", index),
-    title: `Synthetic work ${index}`,
-    providerCode: "dlsite",
-    providerName: "DLsite",
-    retrying: false,
-    issues: [
-      {
-        component: "metadata",
-        status: "failed",
-        failureCount: 1,
-        firstFailedAt: "2026-01-01 00:00:00",
-        checkedAt: "2026-01-01 00:00:00",
-      },
-    ],
-  }));
+  const items = Array.from({ length: 26 }, (_, index) =>
+    metadataIssueWorkFixture({
+      workId: index + 1,
+      primaryCode: syntheticWorkCode("RJ", index),
+      title: `Synthetic work ${index}`,
+      issues: [
+        {
+          component: "metadata",
+          status: "failed",
+          failureCount: 1,
+          firstFailedAt: "2026-01-01 00:00:00",
+          checkedAt: "2026-01-01 00:00:00",
+        },
+      ],
+    }),
+  );
   await page.route("**/api/maintenance/works?*", async (route) => {
     const params = new URL(route.request().url()).searchParams;
     const currentPage = Number(params.get("page") ?? 1);
@@ -113,7 +139,7 @@ test("@desktop metadata page selection resets when searching or changing pages",
         page: currentPage,
         pageSize: 25,
         total: filtered.length,
-      },
+      } satisfies MaintenanceWorkPage,
     });
   });
   await page.goto("/maintenance?tab=works&reason=metadata");
@@ -132,7 +158,7 @@ test("@desktop metadata page selection resets when searching or changing pages",
   await expect(page.getByRole("button", { name: "Previous page", exact: true }).first()).toBeDisabled();
 });
 
-function asMaintenanceWork(item: { workId: number; primaryCode: string; title: string }) {
+function asMaintenanceWork(item: MetadataIssueWork): MaintenanceWork {
   return {
     ...work,
     id: item.workId,
@@ -150,21 +176,18 @@ test("work maintenance keeps source actions scoped and metadata settings separat
   });
   await page.route("**/api/settings", (route) =>
     route.fulfill({
-      json: {
+      json: appSettingsFixture({
         fileSources: [],
         directoryRoutingRules: [],
         catalogFreshnessDays: 30,
         dlsiteMetadataLanguages: ["ja-jp"],
-      },
+      }),
     }),
   );
-  const issue = {
+  const issue = metadataIssueWorkFixture({
     workId: 2,
     primaryCode: syntheticWorkCode("RJ", 1),
     title: "Example edition",
-    providerCode: "dlsite",
-    providerName: "DLsite",
-    retrying: false,
     issues: [
       {
         component: "cover",
@@ -174,8 +197,8 @@ test("work maintenance keeps source actions scoped and metadata settings separat
         checkedAt: "2026-01-01 00:00:00",
       },
     ],
-  };
-  const items = [
+  });
+  const items: MaintenanceWork[] = [
     {
       ...work,
       id: 1,
@@ -196,22 +219,43 @@ test("work maintenance keeps source actions scoped and metadata settings separat
   await page.route("**/api/maintenance/works?*", async (route) => {
     const reason = new URL(route.request().url()).searchParams.get("reason");
     const works = items.filter((item) => reason !== "metadata" || item.metadataIssues.length > 0);
-    await route.fulfill({ json: { works, page: 1, pageSize: 25, total: works.length } });
+    await route.fulfill({ json: { works, page: 1, pageSize: 25, total: works.length } satisfies MaintenanceWorkPage });
   });
   let retried: number[] = [];
   await page.route("**/api/metadata/issues/retry", async (route) => {
     retried = route.request().postDataJSON().workIds;
-    await route.fulfill({ status: 202, json: { queued: retried.length, skipped: 0, failed: 0 } });
+    await route.fulfill({
+      status: 202,
+      json: { queued: retried.length, skipped: 0, failed: 0 } satisfies ApiResponse<"retryMetadataIssues">,
+    });
   });
   let checked: number[] = [];
   await page.route("**/api/maintenance/unlinked-works/source-check", async (route) => {
     checked = route.request().postDataJSON().workIds;
-    await route.fulfill({ status: 202, json: { runId: 1, queued: checked.length } });
+    await route.fulfill({
+      status: 202,
+      json: {
+        runId: 1,
+        jobId: 2,
+        status: "queued",
+        queued: checked.length,
+        skipped: [],
+      } satisfies UnlinkedWorkSourceCheckResult,
+    });
   });
   let deleted: number[] = [];
   await page.route("**/api/maintenance/unlinked-works/delete", async (route) => {
     deleted = route.request().postDataJSON().workIds;
-    await route.fulfill({ json: { deletedFamilyCount: deleted.length, skipped: [] } });
+    await route.fulfill({
+      json: {
+        deletedFamilyCount: deleted.length,
+        deletedWorkCount: deleted.length,
+        deletedWorkIds: deleted,
+        deletedCodes: [],
+        retainedAssetFiles: 0,
+        skipped: [],
+      } satisfies UnlinkedWorkDeleteResult,
+    });
   });
   await page.goto("/maintenance?tab=works");
   const list = page.getByRole("region", { name: "Metadata records", exact: true });
@@ -264,7 +308,7 @@ for (const viewport of ["mobile", "@desktop"]) {
       authenticated: true,
       permissions: ["library:read", "sources:write", "metadata:sync", "workflows:run"],
     });
-    const records = [
+    const records: MaintenanceWork[] = [
       {
         ...work,
         id: 1,
@@ -292,10 +336,14 @@ for (const viewport of ["mobile", "@desktop"]) {
           (reason === "catalog" || (reason !== "metadata" && record.noSource)) &&
           record.title.includes(params.get("q") ?? ""),
       );
-      await route.fulfill({ json: { works, page: 1, pageSize: 25, total: works.length } });
+      await route.fulfill({
+        json: { works, page: 1, pageSize: 25, total: works.length } satisfies MaintenanceWorkPage,
+      });
     });
     await page.route("**/api/settings", (route) =>
-      route.fulfill({ json: { fileSources: [], catalogFreshnessDays: 30, dlsiteMetadataLanguages: ["ja-jp"] } }),
+      route.fulfill({
+        json: appSettingsFixture({ fileSources: [], catalogFreshnessDays: 30, dlsiteMetadataLanguages: ["ja-jp"] }),
+      }),
     );
     await page.goto(viewport === "mobile" ? "/work-management" : "/metadata");
     await expect(page).toHaveURL(/\/metadata$/);
@@ -351,43 +399,31 @@ test("@desktop Metadata voice aliases view lists people and opens alias review",
     authenticated: true,
     permissions: ["library:read", "metadata:sync"],
   });
-  const voice = {
+  const voice = voiceSummaryFixture({
     personId: 7,
     displayName: "Example Voice",
     aliases: ["Example Voice", "Voice alias"],
     knownWorks: 3,
     localWorks: 1,
     remoteWorks: 1,
-    cachedWorks: 0,
     playableWorks: 1,
-    lastSeenAt: null,
-    lastSyncedAt: null,
-    syncState: "synced",
-    syncReason: "",
-    rating: null,
-    note: "",
-    favorite: false,
-    userTags: [],
-    sourceSummaries: [],
-    latestWork: null,
-  };
+  });
   await page.route("**/api/voices?*", (route) =>
-    route.fulfill({ json: { voices: [voice], page: 1, pageSize: 25, total: 1, tagOptions: [] } }),
+    route.fulfill({
+      json: { voices: [voice], page: 1, pageSize: 25, total: 1, tagOptions: [] } satisfies VoiceSummaryPage,
+    }),
   );
   await page.route("**/api/voices/7?*", (route) =>
     route.fulfill({
-      json: {
-        ...voice,
+      json: voiceDetailFixture(voice, {
         aliasRecords: [
           { id: 1, alias: "Example Voice", source: "primary_name", createdAt: "2026-07-01T00:00:00Z" },
           { id: 2, alias: "Voice alias", source: "manual", createdAt: "2026-07-01T00:00:00Z" },
         ],
-        works: [],
-        remoteMatches: [],
-      },
+      }),
     }),
   );
-  await page.route("**/api/voices/7/merges", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/voices/7/merges", (route) => route.fulfill({ json: [] satisfies VoiceMergeReview[] }));
   await page.route("**/api/voices/7/alias-candidates?*", (route) =>
     route.fulfill({
       json: [
@@ -399,7 +435,7 @@ test("@desktop Metadata voice aliases view lists people and opens alias review",
           localWorks: 0,
           remoteWorks: 0,
         },
-      ],
+      ] satisfies VoiceAliasCandidate[],
     }),
   );
   let mergeRequest: unknown = null;
@@ -412,7 +448,7 @@ test("@desktop Metadata voice aliases view lists people and opens alias review",
         sourcePersonId: 8,
         targetName: "Example Voice",
         mergedName: "Example Voice Duplicate",
-      },
+      } satisfies ApiResponse<"mergeVoiceAliasCandidate">,
     });
   });
 

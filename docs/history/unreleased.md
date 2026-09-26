@@ -102,6 +102,9 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   indexes the media files inside discovered local work folders ahead of time.
   Incremental covers folders that were never indexed and Full re-indexes every
   local work. It runs manually or from a Startup or interval trigger.
+- Editing a trigger while its remote sources are still loading no longer loses
+  the action, limit, or tag template you changed; the loaded sources only fill
+  an empty source choice.
 
 ## Fetch
 
@@ -138,6 +141,9 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   On hosts where writing large files briefly stalls the database, such as
   Docker Desktop bind mounts, a Fetch no longer fails with "database is locked"
   while it assembles its staging directory.
+- When a Track finishes, Library refreshes the page, filters, and sort you are
+  viewing. Before, after changing page or filter it could reload the results
+  from when the list was first opened.
 
 ## Library Storage
 
@@ -195,6 +201,9 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   cursor points at the same track and is unfinished.
 - A Resume or reload start position that is still loading carries over when
   playback falls back to another source, instead of restarting at 0:00.
+- In loop mode, Next from the system media controls or the Android
+  notification on the last track wraps to the first track, and those controls
+  always act on the current queue and mode.
 
 ## Favorites
 
@@ -228,6 +237,12 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   operations, and filesystem maintenance keep their longer running time, and
   streams are unaffected once they start. The server log reports a database
   connection pool that stays exhausted, and when it recovers.
+- The web app's framework libraries load from a separate chunk that stays
+  cached across releases, and the circle, voice actor, and work detail pages
+  load the Fetch dialog only when it opens.
+- The header logo uses a small icon instead of the 512-pixel app icon.
+- Each web app build uses its own offline cache, and installing a new build
+  removes the previous build's cached files instead of keeping them forever.
 - Query planner statistics are refreshed at startup, daily, and after each full
   scan and metadata sync, not only by Compact database. A new install's
   Library no longer stays slow until the database is compacted.

@@ -28,6 +28,18 @@ function viewFromLocation(): MetadataView {
   return new URLSearchParams(window.location.search).get("view") === ALIASES_VIEW_PARAM ? "aliases" : "works";
 }
 
+// The requested reason and view fall back to what the viewer may open.
+function availableReasonFromLocation(canSyncMetadata: boolean, canManageSources: boolean) {
+  const requested = reasonFromLocation();
+  if (requested === "metadata" && !canSyncMetadata) return "catalog";
+  if (requested === "no_source" && !canManageSources) return "catalog";
+  return requested;
+}
+
+function availableViewFromLocation(canSyncMetadata: boolean): MetadataView {
+  return canSyncMetadata ? viewFromLocation() : "works";
+}
+
 function settingsFromLocation() {
   return new URLSearchParams(window.location.search).get("tab") === "settings";
 }
@@ -100,16 +112,9 @@ export function WorkManagementPage({
   readOnly?: boolean;
 }) {
   const { t } = useTranslation();
-  const availableReason = () => {
-    const requested = reasonFromLocation();
-    if (requested === "metadata" && !canSyncMetadata) return "catalog";
-    if (requested === "no_source" && !canManageSources) return "catalog";
-    return requested;
-  };
-  const availableView = () => (canSyncMetadata ? viewFromLocation() : "works");
-  const [reason, setReason] = useState(availableReason);
+  const [reason, setReason] = useState(() => availableReasonFromLocation(canSyncMetadata, canManageSources));
   const [runId, setRunId] = useState<number | null>(metadataIssueRunFromLocation);
-  const [view, setView] = useState<MetadataView>(availableView);
+  const [view, setView] = useState<MetadataView>(() => availableViewFromLocation(canSyncMetadata));
   const [settingsOpen, setSettingsOpen] = useState(settingsFromLocation);
   const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
   const [inlineSearchSlot, setInlineSearchSlot] = useState<HTMLDivElement | null>(null);
@@ -122,9 +127,9 @@ export function WorkManagementPage({
 
   useEffect(() => {
     const sync = () => {
-      setReason(availableReason());
+      setReason(availableReasonFromLocation(canSyncMetadata, canManageSources));
       setRunId(metadataIssueRunFromLocation());
-      setView(availableView());
+      setView(availableViewFromLocation(canSyncMetadata));
       setSettingsOpen(settingsFromLocation());
     };
     window.addEventListener("popstate", sync);

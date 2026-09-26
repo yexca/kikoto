@@ -6,7 +6,8 @@ import {
   readScopedPlayerState,
   mediaFixture,
 } from "./fixtures/player-library";
-import type { WorkTranslation } from "../../src/lib/api";
+import type { MaintenanceWorkPage, Work, WorkTranslation } from "../../src/lib/api";
+import { mediaItemFixture, mediaLocationFixture, workflowRunDetailFixture, workflowRunFixture } from "./fixtures/api";
 
 test("unknown routes and missing work codes render not found states", async ({ page }) => {
   await mockApplication(page);
@@ -20,35 +21,7 @@ test("unknown routes and missing work codes render not found states", async ({ p
 
 test("detail quick marks preserve the cached directory tree", async ({ page }) => {
   let mediaRequests = 0;
-  const mediaItems = [
-    {
-      id: 1,
-      parentId: null,
-      kind: "audio",
-      title: "track.mp3",
-      discNo: null,
-      trackNo: 1,
-      durationSeconds: 10,
-      sizeBytes: 12,
-      locations: [
-        {
-          id: 1,
-          fileSourceId: 1,
-          fileSourceCode: "local",
-          fileSourceName: "Local",
-          locationType: "local",
-          path: "RJ00000000/track.mp3",
-          streamUrl: "/api/media/1/stream",
-          downloadUrl: "",
-          remoteHash: "",
-          sizeBytes: 12,
-          durationSeconds: 10,
-          availability: "available",
-          lastCheckedAt: null,
-        },
-      ],
-    },
-  ];
+  const mediaItems = [mediaFixture(1, "track.mp3", "RJ00000000/track.mp3", "audio")];
   await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, {
     authenticated: true,
     onMediaRequest: () => {
@@ -103,60 +76,21 @@ test("directory rows wrap long unbroken file names without horizontal overflow",
   const longTitle = `${"very-long-track-name-".repeat(10)}.mp3`;
   const imageTitle = "cover-image-with-a-complete-name.jpg";
   const mediaItems = [
-    {
-      id: 1,
-      parentId: null,
-      kind: "audio",
-      title: longTitle,
-      discNo: null,
-      trackNo: 1,
-      durationSeconds: 10,
-      sizeBytes: 12,
-      locations: [
-        {
-          id: 1,
-          fileSourceId: 1,
-          fileSourceCode: "local",
-          fileSourceName: "Local",
-          locationType: "local",
-          path: `RJ00000000/${longTitle}`,
-          streamUrl: "/api/media/1/stream",
-          downloadUrl: "",
-          remoteHash: "",
-          sizeBytes: 12,
-          durationSeconds: 10,
-          availability: "available",
-          lastCheckedAt: null,
-        },
-      ],
-    },
-    {
+    mediaFixture(1, longTitle, `RJ00000000/${longTitle}`, "audio"),
+    mediaItemFixture({
       id: 2,
-      parentId: null,
       kind: "image",
       title: imageTitle,
-      discNo: null,
-      trackNo: null,
-      durationSeconds: null,
       sizeBytes: 2048,
       locations: [
-        {
+        mediaLocationFixture({
           id: 2,
-          fileSourceId: 1,
-          fileSourceCode: "local",
-          fileSourceName: "Local",
-          locationType: "local",
           path: `RJ00000000/${imageTitle}`,
-          streamUrl: "",
           downloadUrl: "/api/media/2/download",
-          remoteHash: "",
           sizeBytes: 2048,
-          durationSeconds: null,
-          availability: "available",
-          lastCheckedAt: null,
-        },
+        }),
       ],
-    },
+    }),
   ];
   await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, { authenticated: true });
   await page.goto("/");
@@ -297,33 +231,23 @@ test("mobile directory breadcrumbs collapse long ancestors without losing naviga
 
 test("work detail groups DLsite and active source information", async ({ page }) => {
   const mediaItems = [
-    {
+    mediaItemFixture({
       id: 1,
-      parentId: null,
-      kind: "audio",
       title: "track.mp3",
-      discNo: null,
       trackNo: 1,
       durationSeconds: 90,
       sizeBytes: 2048,
       locations: [
-        {
+        mediaLocationFixture({
           id: 1,
-          fileSourceId: 1,
-          fileSourceCode: "local",
           fileSourceName: "Main local library",
-          locationType: "local",
           path: "RJ00000000/track.mp3",
           streamUrl: "/api/media/1/stream",
-          downloadUrl: "",
-          remoteHash: "",
           sizeBytes: 2048,
           durationSeconds: 90,
-          availability: "available",
-          lastCheckedAt: null,
-        },
+        }),
       ],
-    },
+    }),
   ];
   await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, { authenticated: true });
   await page.goto("/");
@@ -491,8 +415,8 @@ test("local work detail lists Origin first and expands from local to all edition
 });
 
 test("local work detail stays loading while an automatically selected local edition is opening", async ({ page }) => {
-  let releaseEdition = () => undefined;
-  let reportEditionRequest = () => undefined;
+  let releaseEdition: () => void = () => undefined;
+  let reportEditionRequest: () => void = () => undefined;
   const editionGate = new Promise<void>((resolve) => {
     releaseEdition = resolve;
   });
@@ -558,7 +482,7 @@ test("local work detail stays loading while an automatically selected local edit
 });
 
 test("mobile work detail orders Info sections and keeps work-code utilities together", async ({ page }) => {
-  const detailWork = {
+  const detailWork: Work = {
     ...work,
     dlsiteUrl: "https://example.invalid/work/RJ00000000",
     tags: ["Example tag"],
@@ -630,18 +554,19 @@ test("metadata refresh failures open the canonical run-scoped recovery list", as
   });
   await page.route("**/api/workflow-runs/77", (route) =>
     route.fulfill({
-      json: {
-        id: 77,
-        workflowCode: "metadata_family_sync",
-        status: "failed",
-        summaryJson: "{}",
-        nodeRuns: [],
-        metadataIssues: { encountered: 1, pending: 1, resolved: 0 },
-      },
+      json: workflowRunDetailFixture(
+        workflowRunFixture({
+          id: 77,
+          workflowCode: "metadata_family_sync",
+          displayName: "Refresh metadata",
+          status: "failed",
+        }),
+        { metadataIssues: { encountered: 1, pending: 1 } },
+      ),
     }),
   );
   await page.route("**/api/maintenance/works?*", (route) =>
-    route.fulfill({ json: { works: [], page: 1, pageSize: 25, total: 0 } }),
+    route.fulfill({ json: { works: [], page: 1, pageSize: 25, total: 0 } satisfies MaintenanceWorkPage }),
   );
   await page.goto("/");
   await page.getByText(work.title, { exact: true }).click();

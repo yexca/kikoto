@@ -1,4 +1,5 @@
 import { expect, test, type Route } from "@playwright/test";
+import type { MediaProgressUpdate } from "../../src/lib/api";
 import {
   persistedTrack,
   persistedPlayerTracks,
@@ -362,27 +363,27 @@ test("@desktop compact player supports relative drag seeking and global playback
   );
   await page.goto("/");
   const audio = page.locator("audio");
-  await expect.poll(() => audio.evaluate((element) => element.duration)).toBeGreaterThan(99);
+  await expect.poll(() => audio.evaluate((element: HTMLAudioElement) => element.duration)).toBeGreaterThan(99);
   const seek = page.getByRole("slider", { name: "Seek" });
   await seek.fill("60");
   await expect(seek).toHaveValue("60");
-  await audio.evaluate((element) => {
+  await audio.evaluate((element: HTMLAudioElement) => {
     Object.defineProperty(element, "currentTime", { configurable: true, writable: true, value: 40 });
     element.dispatchEvent(new Event("timeupdate"));
     element.dispatchEvent(new Event("seeked"));
   });
   await expect(seek).toHaveValue("60");
-  await audio.evaluate((element) => {
+  await audio.evaluate((element: HTMLAudioElement) => {
     element.currentTime = 60;
     element.dispatchEvent(new Event("seeked"));
   });
 
   await page.getByRole("button", { name: "Collapse player" }).click();
-  await audio.evaluate((element) => {
+  await audio.evaluate((element: HTMLAudioElement) => {
     element.currentTime = 40;
     element.dispatchEvent(new Event("timeupdate"));
   });
-  await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBeGreaterThan(39);
+  await expect.poll(() => audio.evaluate((element: HTMLAudioElement) => element.currentTime)).toBeGreaterThan(39);
   const compact = page
     .getByText("Test track", { exact: true })
     .locator("xpath=ancestor::div[contains(@class, 'touch-pan-y')]");
@@ -397,12 +398,12 @@ test("@desktop compact player supports relative drag seeking and global playback
   const scrubDeltaSeconds = Number(/\+([\d.]+)s/.exec(scrubDeltaText ?? "")?.[1] ?? 0);
   expect(scrubDeltaSeconds).toBeGreaterThan(4.5);
   await page.mouse.up();
-  await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBeGreaterThan(44.5);
+  await expect.poll(() => audio.evaluate((element: HTMLAudioElement) => element.currentTime)).toBeGreaterThan(44.5);
   await expect(page.locator("section.fixed.inset-0")).toBeHidden();
 
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press("ArrowRight");
-  await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBeGreaterThan(53.6);
+  await expect.poll(() => audio.evaluate((element: HTMLAudioElement) => element.currentTime)).toBeGreaterThan(53.6);
   await page.keyboard.press("Space");
   await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
   expect(await readScopedPlayerState(page, playerProgressStorageBaseKey)).toBeNull();
@@ -782,7 +783,7 @@ test("a restored queue resumes its cursor without overwriting it before the list
         durationSeconds: body.durationSeconds,
         completed: body.completed,
         lastPlayedAt: "2026-01-01 00:00:00",
-      },
+      } satisfies MediaProgressUpdate,
     });
   });
   await page.goto("/");

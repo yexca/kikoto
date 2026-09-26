@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -33,16 +33,22 @@ export function useRemoteFetchWorkspace({
   const [draft, setDraft] = useState<RemoteFetchDraft | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const busyRef = useRef(false);
+  // Selection edits replace the draft but keep its detail; rebuild the tree only for a new detail.
+  const draftDetail = draft?.detail;
   const tree = useMemo(
     () =>
-      draft
-        ? buildRemoteTree(draft.detail.tracks, {
-            sourceId: draft.detail.sourceId,
-            workCode: remoteDetailActionCode(draft.detail),
+      draftDetail
+        ? buildRemoteTree(draftDetail.tracks, {
+            sourceId: draftDetail.sourceId,
+            workCode: remoteDetailActionCode(draftDetail),
           })
         : emptyTree(),
-    [draft?.detail],
+    [draftDetail],
   );
+  // Stable so callers can close the workspace from effects keyed on their own identity.
+  const close = useCallback(() => {
+    if (!busyRef.current) setDraft(null);
+  }, []);
   const selectedPaths = useMemo(() => sortedValues(draft?.selectedPaths), [draft?.selectedPaths]);
   const selectedLocalPaths = useMemo(() => sortedValues(draft?.selectedLocalPaths), [draft?.selectedLocalPaths]);
 
@@ -236,9 +242,7 @@ export function useRemoteFetchWorkspace({
     open,
     selectEdition,
     save,
-    close: () => {
-      if (!busyRef.current) setDraft(null);
-    },
+    close,
     setTargetRoot: (targetRoot: string) =>
       setDraft((current) => (current ? { ...current, targetRoot, planDirty: true, message: "" } : current)),
     setSelectedPaths: (paths: Set<string>) =>

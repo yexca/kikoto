@@ -13,3 +13,13 @@ export function retainVisibleSelection<T>(
   const next = new Set(Array.from(current).filter((key) => visible.has(key)));
   return next.size === current.size ? current : next;
 }
+
+/** Returns a new selection with `keys` added or removed. */
+export function withSelection(current: Set<string>, keys: Iterable<string>, selected: boolean): Set<string> {
+  const next = new Set(current);
+  for (const key of keys) {
+    if (selected) next.add(key);
+    else next.delete(key);
+  }
+  return next;
+}

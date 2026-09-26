@@ -50,7 +50,7 @@ import { ServerUnavailablePage } from "@/app/ServerUnavailablePage";
 import { PageActiveProvider, PageHeaderProvider, usePageHeaderBackState } from "@/app/pageHeader";
 import { useScrollRestoration } from "@/app/scrollRestoration";
 import { MobileRuntimeProvider, useMobileRuntime } from "@/app/MobileRuntime";
-import { ANDROID_BACK_EVENT, LOGIN_REQUEST_EVENT } from "@/app/events";
+import { ANDROID_BACK_EVENT, LOGIN_REQUEST_EVENT } from "@/lib/appEvents";
 import { isNativeApp } from "@/lib/serverConfig";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { isWorkCodePath } from "@/lib/workCode";
@@ -69,9 +69,9 @@ import {
   requestHistoryScrollRestoration,
 } from "@/lib/browserHistory";
 import { api, type RemoteTrackRunStatus } from "@/lib/api";
-import { normalizeLibraryBrowseLocation, readLastLibraryLocation } from "@/pages/libraryBrowseState";
-import { isCircleListLocation, readLastCircleListLocation } from "@/pages/circleNavigationState";
-import { isVoiceListLocation, readLastVoiceListLocation } from "@/pages/voiceNavigationState";
+import { normalizeLibraryBrowseLocation, readLastLibraryLocation } from "@/lib/libraryBrowseState";
+import { isCircleListLocation, readLastCircleListLocation } from "@/lib/circleNavigationState";
+import { isVoiceListLocation, readLastVoiceListLocation } from "@/lib/voiceNavigationState";
 import { legacyLibraryRedirect } from "@/app/legacyLibraryRoutes";
 import { readMobileTabSnapshot, writeMobileTabSnapshot } from "@/app/mobileTabState";
 import { isChunkLoadError, reloadApp } from "@/lib/chunkLoadError";
@@ -189,9 +189,11 @@ function AuthenticatedApp() {
     [t, toast],
   );
 
+  const { syncAccountPreference } = locale;
+  const { hasPermission, refresh: refreshAuth } = auth;
   useEffect(() => {
-    locale.syncAccountPreference(auth.user?.id ?? null, auth.user?.uiLocale, auth.user?.demoMode ?? false);
-  }, [auth.user?.demoMode, auth.user?.id, auth.user?.uiLocale, locale.syncAccountPreference]);
+    syncAccountPreference(auth.user?.id ?? null, auth.user?.uiLocale, auth.user?.demoMode ?? false);
+  }, [auth.user?.demoMode, auth.user?.id, auth.user?.uiLocale, syncAccountPreference]);
 
   const updateLocale = useCallback(
     async (next: UiLocale) => {
@@ -202,21 +204,21 @@ function AuthenticatedApp() {
         const state = await api.updateCurrentAccount({ uiLocale: next });
         if (!state.authenticated) throw new Error("Language preference could not be saved.");
         locale.setPreference(state.user.uiLocale);
-        await auth.refresh();
+        await refreshAuth();
       } catch (error) {
         locale.setPreference(previous);
         throw error;
       }
     },
-    [auth.demoMode, auth.refresh, auth.user, locale],
+    [auth.demoMode, auth.user, locale, refreshAuth],
   );
   const effectiveHasPermission = useCallback(
-    (permission: string) => !auth.demoMode && auth.hasPermission(permission),
-    [auth.demoMode, auth.hasPermission],
+    (permission: string) => !auth.demoMode && hasPermission(permission),
+    [auth.demoMode, hasPermission],
   );
   const navigationHasPermission = useCallback(
-    (permission: string) => auth.demoMode || auth.hasPermission(permission),
-    [auth.demoMode, auth.hasPermission],
+    (permission: string) => auth.demoMode || hasPermission(permission),
+    [auth.demoMode, hasPermission],
   );
   const visibleNavItems = useMemo(
     () => visibleNavigationItems({ state: authState, hasPermission: navigationHasPermission }),
@@ -418,7 +420,7 @@ function AuthenticatedApp() {
           >
             <div className="flex min-w-0 items-center gap-2.5">
               <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-[var(--control-radius)] bg-primary/10 ring-1 ring-primary/15">
-                <img src="/kikoto-icon-512.png" alt="" className="h-7 w-7" />
+                <img src="/kikoto-icon-64.png" alt="" className="h-7 w-7" />
               </span>
               {!sidebarCollapsed && (
                 <div className="truncate font-[family-name:var(--font-heading)] text-xl font-semibold tracking-tight">
@@ -686,7 +688,7 @@ function AppHeaderTitle({
   }
   return (
     <div className="flex min-w-0 items-center lg:flex-row lg:items-baseline lg:gap-3">
-      {!showMobileTitle && <img src="/kikoto-icon-512.png" alt="Kikoto" className="h-8 w-8 lg:hidden" />}
+      {!showMobileTitle && <img src="/kikoto-icon-64.png" alt="Kikoto" className="h-8 w-8 lg:hidden" />}
       <h1 className={cx("truncate text-base font-semibold lg:text-2xl", !showMobileTitle && "hidden lg:block")}>
         {title}
       </h1>
@@ -832,6 +834,7 @@ function RemoteTrackWorkflowObserver({
 }) {
   const toast = useToast();
   const auth = useAuth();
+  const { hasPermission } = auth;
   const { t } = useTranslation();
   const [run, setRun] = useState<RemoteTrackRunStatus | null>(null);
   const handled = useRef(false);
@@ -871,7 +874,7 @@ function RemoteTrackWorkflowObserver({
       workId: summary.workId,
       fileSourceId: summary.fileSourceId || detail.sourceId,
     };
-    const canOpenActivity = !auth.demoMode && auth.hasPermission("workflows:run");
+    const canOpenActivity = !auth.demoMode && hasPermission("workflows:run");
     toast.notify({
       kind: succeeded ? "success" : "error",
       message: succeeded
@@ -882,7 +885,7 @@ function RemoteTrackWorkflowObserver({
     });
     window.dispatchEvent(new CustomEvent<RemoteTrackTerminalDetail>(REMOTE_TRACK_TERMINAL_EVENT, { detail: terminal }));
     onDone(detail.runId);
-  }, [auth.demoMode, auth.hasPermission, detail, onDone, run, t, toast]);
+  }, [auth.demoMode, detail, hasPermission, onDone, run, t, toast]);
 
   return null;
 }

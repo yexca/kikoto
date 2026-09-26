@@ -289,12 +289,13 @@ export function useScreenLyricsSync(
     snapshot.playing,
     snapshot.title,
     snapshot.trackKey,
+    nativeSyncRef,
   ]);
 
   useEffect(() => {
     if (!open || backend !== "video-pip" || !videoPipRef.current) return;
     drawLyricsCanvas(videoPipRef.current.canvas, snapshot);
-  }, [backend, open, snapshot]);
+  }, [backend, open, snapshot, videoPipRef]);
 
   return open && pipWindow
     ? createPortal(

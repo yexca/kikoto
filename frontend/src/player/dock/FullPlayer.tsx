@@ -21,7 +21,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ANDROID_BACK_EVENT } from "@/app/events";
+import { ANDROID_BACK_EVENT } from "@/lib/appEvents";
 import { useToast } from "@/components/ui/toast";
 import { assetURL } from "@/lib/api";
 import { historyStateWithReturn, NAVIGATION_EVENT } from "@/lib/browserHistory";
