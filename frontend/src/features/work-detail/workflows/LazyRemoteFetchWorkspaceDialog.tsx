@@ -10,8 +10,8 @@ type RemoteFetchWorkspaceDialogComponent = ComponentType<{ workspace: RemoteFetc
 let loadedDialog: RemoteFetchWorkspaceDialogComponent | null = null;
 let pendingDialog: Promise<RemoteFetchWorkspaceDialogComponent> | null = null;
 
-// The fetch workspace dialog is only needed once a draft opens it, so list
-// surfaces load its chunk on demand. A failed load is forgotten so a later open
+// The fetch workspace dialog is only needed once a draft opens it, so its
+// callers load its chunk on demand. A failed load is forgotten so a later open
 // retries it.
 export function preloadRemoteFetchWorkspaceDialog() {
   if (loadedDialog) return Promise.resolve(loadedDialog);
@@ -33,7 +33,7 @@ export function preloadRemoteFetchWorkspaceDialog() {
  * dialog mounts once its chunk is ready, so its open transition and initial
  * focus behave as for a statically imported dialog. A load failure closes the
  * draft with a toast instead of reaching the page error boundary, keeping the
- * surrounding list state.
+ * surrounding page state.
  */
 export function LazyRemoteFetchWorkspaceDialog({ workspace }: { workspace: RemoteFetchWorkspace }) {
   const { t } = useTranslation();

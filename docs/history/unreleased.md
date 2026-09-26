@@ -222,6 +222,12 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   operations, and filesystem maintenance keep their longer running time, and
   streams are unaffected once they start. The server log reports a database
   connection pool that stays exhausted, and when it recovers.
+- The web app's framework libraries load from a separate chunk that stays
+  cached across releases, and the circle, voice actor, and work detail pages
+  load the Fetch dialog only when it opens.
+- The header logo uses a small icon instead of the 512-pixel app icon.
+- Each web app build uses its own offline cache, and installing a new build
+  removes the previous build's cached files instead of keeping them forever.
 
 ## Maintenance
 

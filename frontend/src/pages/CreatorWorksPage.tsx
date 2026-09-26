@@ -77,7 +77,7 @@ import {
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { circleSourceBadges } from "@/components/work-card/sourceBadges";
-import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
+import { LazyRemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/LazyRemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import {
   WorkCollectionLayoutPicker,
@@ -1275,7 +1275,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
           onConfirm={() => void saveConfirm.run()}
         />
       )}
-      <RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
+      <LazyRemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
       <BrowseLoadingIndicator
         refreshing={isWorksLoading || isRemoteLoading || catalogRefreshActive}
         label={t("creatorBrowse.refreshingVoiceDetails")}

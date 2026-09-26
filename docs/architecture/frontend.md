@@ -83,10 +83,18 @@ through the feature's single lazy entry, `lazyWorkDetail`. The app shell
 recognizes a direct work link with `workDetailCodeFromLocation` from
 `app/workDetailNavigation` and starts the detail chunk beside the Library chunk
 instead of after it; an idle Library also preloads it, so opening a work
-normally renders without suspending. The Library list loads the remote Fetch
-workspace dialog on demand through `LazyRemoteFetchWorkspaceDialog`, which
-mounts it only while a draft is open and closes the draft with a toast if its
-chunk fails to load. Circle and voice route helpers live in their
+normally renders without suspending. Library, circle, voice actor, and work
+detail surfaces load the remote Fetch workspace dialog on demand through
+`LazyRemoteFetchWorkspaceDialog`, which mounts it only while a draft is open
+and closes the draft with a toast if its chunk fails to load. The production
+build keeps React, i18next, and `tailwind-merge` in a separate `vendor` chunk
+so a release that changes only app code leaves it cached; list only libraries
+the entry already loads there, because everything in that chunk loads eagerly.
+
+The production build stamps `public/sw.js` with a build id derived from the
+version and the emitted file names. Each build therefore owns one service
+worker cache, and activating a new worker deletes the previous build's cache
+instead of keeping its hashed assets. Circle and voice route helpers live in their
 navigation-state modules so one page does not import another page's module.
 
 Work detail metadata editing exposes one entry from

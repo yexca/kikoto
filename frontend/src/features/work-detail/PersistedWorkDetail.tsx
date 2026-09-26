@@ -119,7 +119,7 @@ import {
 } from "@/app/remoteTrackWorkflows";
 import { PageHeaderBackAction } from "@/app/pageHeader";
 import { Card, CardContent } from "@/components/ui/card";
-import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
+import { LazyRemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/LazyRemoteFetchWorkspaceDialog";
 import { defaultDirectoryRoutingRules } from "@/features/work-detail/directory/directoryModel";
 
 function persistedFetchTarget(
@@ -1649,7 +1649,7 @@ export function PersistedWorkDetailController({
   const hero = detailHeroModel(code, work, workPreview);
   const activeMetadataVariant = resolveMetadataVariant(work?.metadataPresentation, selectedMetadataVariantKey);
   const personalTags = persistedPersonalTags(work, saveWorkUserTags);
-  const fetchSelectionModal = <RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />;
+  const fetchSelectionModal = <LazyRemoteFetchWorkspaceDialog workspace={fetchWorkspace} />;
   const activeSourceLabel = persistedActiveSourceLabel(selectedTrackedPresence, selectedSource);
   const sourceInfo = persistedSourceInfo({
     label: activeSourceLabel,

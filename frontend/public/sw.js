@@ -1,12 +1,13 @@
-const CACHE_NAME = "kikoto-app-v3";
+// The production build stamps a per-build id here, so activation of a new
+// build drops the previous build's cached assets.
+const CACHE_NAME = "kikoto-app-__KIKOTO_SERVICE_WORKER_BUILD__";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/offline.html",
   "/manifest.webmanifest",
+  "/kikoto-icon-64.png",
   "/kikoto-icon-192.png",
-  "/kikoto-icon-512.png",
-  "/kikoto-maskable-512.png",
 ];
 
 self.addEventListener("install", (event) => {

@@ -77,7 +77,7 @@ import {
   type RemoteTrackTerminalDetail,
 } from "@/app/remoteTrackWorkflows";
 import { NotFoundPage } from "@/app/NotFoundPage";
-import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
+import { LazyRemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/LazyRemoteFetchWorkspaceDialog";
 import { defaultDirectoryRoutingRules } from "@/features/work-detail/directory/directoryModel";
 
 type RemoteOnlyDetailActionsProps = {
@@ -1143,7 +1143,7 @@ export function RemoteOnlyWorkDetailController({
       routeStateKey={autoRouteStateKey}
       remoteAvailability={remoteAvailability}
       hasMaterializedWork={Boolean(trackedWork)}
-      selectionModal={<RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />}
+      selectionModal={<LazyRemoteFetchWorkspaceDialog workspace={fetchWorkspace} />}
       onActiveKeyChange={selectRemoteSourceTab}
       onDirectoryModeChange={setDirectoryMode}
       onRetry={() => setRemoteRetryToken((value) => value + 1)}

@@ -64,7 +64,7 @@ import {
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
 import { retainVisibleSelection } from "@/components/work-collection/workSelectionModel";
-import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
+import { LazyRemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/LazyRemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import { openWorkflowPath, workflowActivityRunPath, workflowRunFormPath } from "@/features/workflows/workflowLinks";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
@@ -1367,7 +1367,7 @@ function CircleDetailPage({
           onConfirm={() => void saveConfirm.run()}
         />
       )}
-      <RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
+      <LazyRemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
       <BrowseLoadingIndicator refreshing={isLoading || queueingRefresh} label={t("creatorBrowse.loadingCircles")} />
     </div>
   );
