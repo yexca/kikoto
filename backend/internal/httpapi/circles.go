@@ -679,61 +679,17 @@ type dlsitePartySnapshotProjection struct {
 	Raw        string
 }
 
-func (s *Server) syncPartiesFromDLsiteSnapshots(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT work.id, snapshot.provider_id, work.primary_code, work.title, work.release_date, snapshot.snapshot_json
-		FROM work
-		INNER JOIN metadata_snapshot AS snapshot ON snapshot.work_id = work.id
-		INNER JOIN metadata_provider AS provider ON provider.id = snapshot.provider_id
-		WHERE provider.code = 'dlsite'
-		ORDER BY snapshot.fetched_at DESC, snapshot.id DESC
-	`)
+// writeDLsitePartyProjection writes one work's circle, catalog row, and
+// authoritative circle relation from its latest DLsite snapshot.
+func (s *Server) writeDLsitePartyProjection(ctx context.Context, snapshot dlsitePartySnapshotProjection, party parsedParty) error {
+	partyID, err := s.upsertDLsiteParty(ctx, party.ExternalID, party.DisplayName, snapshot.Raw)
 	if err != nil {
 		return err
 	}
-	snapshots := []dlsitePartySnapshotProjection{}
-	seenWork := map[int64]bool{}
-	for rows.Next() {
-		var snapshot dlsitePartySnapshotProjection
-		if err := rows.Scan(&snapshot.WorkID, &snapshot.ProviderID, &snapshot.Code, &snapshot.Title, &snapshot.Release, &snapshot.Raw); err != nil {
-			return err
-		}
-		if seenWork[snapshot.WorkID] {
-			continue
-		}
-		seenWork[snapshot.WorkID] = true
-		snapshots = append(snapshots, snapshot)
-	}
-	if err := rows.Close(); err != nil {
+	if err := s.upsertPartyCatalogItem(ctx, partyID, snapshot.Code, snapshot.Title, nullableStringValue(snapshot.Release), s.dlsiteURL(snapshot.Code), "imported", snapshot.Raw); err != nil {
 		return err
 	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	for _, snapshot := range snapshots {
-		party := parsePartyFromDLsiteSnapshot(snapshot.Raw)
-		if !dlsiteMakerIDPattern.MatchString(party.ExternalID) || party.DisplayName == "" {
-			continue
-		}
-		current, err := s.dlsitePartyProjectionCurrent(ctx, snapshot, party)
-		if err != nil {
-			return err
-		}
-		if current {
-			continue
-		}
-		partyID, err := s.upsertDLsiteParty(ctx, party.ExternalID, party.DisplayName, snapshot.Raw)
-		if err != nil {
-			return err
-		}
-		if err := s.upsertPartyCatalogItem(ctx, partyID, snapshot.Code, snapshot.Title, nullableStringValue(snapshot.Release), s.dlsiteURL(snapshot.Code), "imported", snapshot.Raw); err != nil {
-			return err
-		}
-		if err := s.upsertAuthoritativeWorkParty(ctx, snapshot.WorkID, partyID, "dlsite_snapshot"); err != nil {
-			return err
-		}
-	}
-	return s.reconcileDLsiteCircleOwnership(ctx)
+	return s.upsertAuthoritativeWorkParty(ctx, snapshot.WorkID, partyID, "dlsite_snapshot")
 }
 
 func (s *Server) dlsitePartyProjectionCurrent(
@@ -753,7 +709,7 @@ func (s *Server) dlsitePartyProjectionCurrent(
 				WHERE party_snapshot.party_id = party.id
 					AND party_snapshot.provider_id = external.provider_id
 					AND party_snapshot.external_id = external.external_id
-					AND party_snapshot.snapshot_json = ?
+					AND party_snapshot.snapshot_json <> '{}'
 			),
 			EXISTS (
 				SELECT 1
@@ -773,7 +729,7 @@ func (s *Server) dlsitePartyProjectionCurrent(
 		WHERE external.provider_id = ?
 			AND external.id_type = 'maker_id'
 			AND external.external_id = ?
-	`, party.DisplayName, strings.ToLower(party.DisplayName), snapshot.Raw,
+	`, party.DisplayName, strings.ToLower(party.DisplayName),
 		strings.ToUpper(strings.TrimSpace(snapshot.Code)), snapshot.Title, nullableStringValue(snapshot.Release),
 		s.dlsiteURL(snapshot.Code), snapshot.Raw, snapshot.ProviderID, party.ExternalID,
 	).Scan(&partyID, &partyMatches, &snapshotMatches, &catalogMatches)
@@ -851,28 +807,18 @@ func (s *Server) upsertDLsiteParty(ctx context.Context, externalID string, displ
 		WHERE provider_id = ? AND id_type = 'maker_id' AND external_id = ?
 	`, providerID, externalID).Scan(&existingPartyID)
 	if err == nil {
-		if _, err := s.db.ExecContext(ctx, `
-			UPDATE party
-			SET display_name = ?, sort_name = ?, updated_at = CURRENT_TIMESTAMP
-			WHERE id = ?
-		`, displayName, strings.ToLower(displayName), existingPartyID); err != nil {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
 			return 0, err
 		}
-		if _, err := s.db.ExecContext(ctx, `
-			INSERT INTO party_metadata_snapshot (party_id, provider_id, external_id, snapshot_json)
-			SELECT ?, ?, ?, ?
-			WHERE NOT EXISTS (
-				SELECT 1
-				FROM party_metadata_snapshot
-				WHERE party_id = ?
-					AND provider_id = ?
-					AND external_id = ?
-					AND snapshot_json = ?
-			)
-		`, existingPartyID, providerID, externalID, raw, existingPartyID, providerID, externalID, raw); err != nil {
+		defer func() { _ = tx.Rollback() }()
+		if err := renameParty(ctx, tx, existingPartyID, displayName); err != nil {
 			return 0, err
 		}
-		return existingPartyID, nil
+		if err := insertPartyMetadataSnapshot(ctx, tx, existingPartyID, providerID, externalID, raw); err != nil {
+			return 0, err
+		}
+		return existingPartyID, tx.Commit()
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return 0, err
@@ -902,18 +848,7 @@ func (s *Server) upsertDLsiteParty(ctx context.Context, externalID string, displ
 	`, partyID, providerID, externalID, s.dlsiteMakerURL(externalID)); err != nil {
 		return 0, err
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO party_metadata_snapshot (party_id, provider_id, external_id, snapshot_json)
-		SELECT ?, ?, ?, ?
-		WHERE NOT EXISTS (
-			SELECT 1
-			FROM party_metadata_snapshot
-			WHERE party_id = ?
-				AND provider_id = ?
-				AND external_id = ?
-				AND snapshot_json = ?
-		)
-	`, partyID, providerID, externalID, raw, partyID, providerID, externalID, raw); err != nil {
+	if err := insertPartyMetadataSnapshot(ctx, tx, partyID, providerID, externalID, raw); err != nil {
 		return 0, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -1026,12 +961,27 @@ func (s *Server) upsertAuthoritativeWorkParty(ctx context.Context, workID int64,
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `
+	// Only relations that are no longer authoritative are deleted. Deleting
+	// and reinserting an unchanged relation would advance the recommendation
+	// revision for a projection that changed nothing.
+	staleQuery := `
 		DELETE FROM work_party
 		WHERE work_id = ?
 			AND role IN ('circle', 'translator_circle', 'official_translation_brand')
 			AND source IN ('dlsite_snapshot', 'dlsite_product', 'dlsite_edition', 'remote_source', 'circle_refresh', 'remote_source_catalog')
-	`, workID); err != nil {
+	`
+	staleArgs := []any{workID}
+	kept := []string{}
+	for _, relation := range relations {
+		if relation.PartyID > 0 && relation.Role != "" {
+			kept = append(kept, "(party_id = ? AND role = ?)")
+			staleArgs = append(staleArgs, relation.PartyID, relation.Role)
+		}
+	}
+	if len(kept) > 0 {
+		staleQuery += " AND NOT (" + strings.Join(kept, " OR ") + ")"
+	}
+	if _, err := tx.ExecContext(ctx, staleQuery, staleArgs...); err != nil {
 		return err
 	}
 	for _, relation := range relations {
@@ -1054,10 +1004,14 @@ func (s *Server) upsertAuthoritativeWorkParty(ctx context.Context, workID int64,
 	return tx.Commit()
 }
 
-// reconcileDLsiteCircleOwnership repairs relations created before the
-// translation-aware projection existed. It is deliberately driven by the
-// persisted edition maker ids, never by catalog display names.
-func (s *Server) reconcileDLsiteCircleOwnership(ctx context.Context) error {
+// reconcileDLsiteCircleOwnership repairs the circle relations of workIDs,
+// including relations created before the translation-aware projection
+// existed. It is deliberately driven by the persisted edition maker ids, never
+// by catalog display names.
+func (s *Server) reconcileDLsiteCircleOwnership(ctx context.Context, workIDs []int64) error {
+	if len(workIDs) == 0 {
+		return nil
+	}
 	var providerID int64
 	err := s.db.QueryRowContext(ctx, "SELECT id FROM metadata_provider WHERE code = 'dlsite'").Scan(&providerID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -1066,7 +1020,9 @@ func (s *Server) reconcileDLsiteCircleOwnership(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	type workParty struct{ workID, partyID int64 }
+	pairs := []workParty{}
+	if err := s.queryInt64Batches(ctx, `
 		SELECT DISTINCT edition.work_id, external.party_id
 		FROM work_edition AS edition
 		INNER JOIN party_external_id AS external
@@ -1074,24 +1030,15 @@ func (s *Server) reconcileDLsiteCircleOwnership(ctx context.Context) error {
 			AND external.id_type = 'maker_id'
 			AND UPPER(external.external_id) = UPPER(edition.maker_id)
 		WHERE edition.maker_id <> ''
-	`, providerID)
-	if err != nil {
-		return err
-	}
-	type workParty struct{ workID, partyID int64 }
-	pairs := []workParty{}
-	for rows.Next() {
+			AND edition.work_id IN (%s)
+	`, workIDs, []any{providerID}, func(rows *sql.Rows) error {
 		var pair workParty
 		if err := rows.Scan(&pair.workID, &pair.partyID); err != nil {
-			_ = rows.Close()
 			return err
 		}
 		pairs = append(pairs, pair)
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	if err := rows.Err(); err != nil {
+		return nil
+	}); err != nil {
 		return err
 	}
 	for _, pair := range pairs {
@@ -2839,17 +2786,59 @@ func makerProfileSnapshot(profile dlsite.MakerProfile) (string, string, error) {
 }
 
 func updateMakerPartySnapshot(ctx context.Context, tx *sql.Tx, partyID, providerID int64, name, makerID, raw string) error {
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE party
-		SET display_name = ?, sort_name = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, name, strings.ToLower(name), partyID); err != nil {
+	if err := renameParty(ctx, tx, partyID, name); err != nil {
 		return err
 	}
+	return insertPartyMetadataSnapshot(ctx, tx, partyID, providerID, makerID, raw)
+}
+
+// renameParty follows a provider's circle name without rewriting a party
+// whose name already matches.
+func renameParty(ctx context.Context, tx *sql.Tx, partyID int64, name string) error {
 	_, err := tx.ExecContext(ctx, `
+		UPDATE party
+		SET display_name = ?, sort_name = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND (display_name IS NOT ? OR sort_name IS NOT ?)
+	`, name, strings.ToLower(name), partyID, name, strings.ToLower(name))
+	return err
+}
+
+// partyMetadataSnapshotRetention is how many snapshots each circle keeps per
+// provider, matching metadata_snapshot's retention per work. Nothing reads
+// older rows, so keeping every refresh only grew the database.
+const partyMetadataSnapshotRetention = 2
+
+// insertPartyMetadataSnapshot records raw unless the circle already retains
+// the same snapshot, then drops snapshots beyond the retention.
+func insertPartyMetadataSnapshot(ctx context.Context, tx *sql.Tx, partyID, providerID int64, externalID, raw string) error {
+	result, err := tx.ExecContext(ctx, `
 		INSERT INTO party_metadata_snapshot (party_id, provider_id, external_id, snapshot_json)
-		VALUES (?, ?, ?, ?)
-	`, partyID, providerID, makerID, raw)
+		SELECT ?, ?, ?, ?
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM party_metadata_snapshot
+			WHERE party_id = ?
+				AND provider_id = ?
+				AND external_id = ?
+				AND snapshot_json = ?
+		)
+	`, partyID, providerID, externalID, raw, partyID, providerID, externalID, raw)
+	if err != nil {
+		return err
+	}
+	if inserted, err := result.RowsAffected(); err != nil || inserted == 0 {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `
+		DELETE FROM party_metadata_snapshot
+		WHERE id IN (
+			SELECT id
+			FROM party_metadata_snapshot
+			WHERE party_id = ? AND provider_id = ?
+			ORDER BY fetched_at DESC, id DESC
+			LIMIT -1 OFFSET ?
+		)
+	`, partyID, providerID, partyMetadataSnapshotRetention)
 	return err
 }
 

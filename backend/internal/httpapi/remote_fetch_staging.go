@@ -390,61 +390,6 @@ func (s *Server) publishRemoteFetchRoot(ctx context.Context, manifest remoteFetc
 	return err
 }
 
-// Completion retires the remote_stream rows in the same transaction that marks
-// the manifest completed. Registration resolves media items through those rows,
-// so removing them earlier would leave an interrupted Fetch unrecoverable.
-func (s *Server) completeRemoteFetchManifest(ctx context.Context, manifest remoteFetchManifestRecord, remoteSourceIDs []int64) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := retireFetchRemoteStreams(ctx, tx, manifest.WorkID, remoteSourceIDs); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO work_folder_location (
-			work_id, file_source_id, root_path, role, origin_source_id,
-			origin_remote_code, state, is_primary, last_scanned_at, updated_at
-		) VALUES (?, ?, ?, 'managed_fetch', ?, ?, 'active', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		ON CONFLICT(file_source_id, root_path) DO UPDATE SET
-			work_id = excluded.work_id,
-			role = 'managed_fetch',
-			origin_source_id = excluded.origin_source_id,
-			origin_remote_code = excluded.origin_remote_code,
-			state = 'active',
-			cleanup_run_id = NULL,
-			is_primary = 1,
-			last_scanned_at = CURRENT_TIMESTAMP,
-			updated_at = CURRENT_TIMESTAMP
-	`, manifest.WorkID, manifest.LocalSourceID, manifest.TargetRoot, manifest.RemoteSourceID, manifest.EditionCode); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE work_source_presence
-		SET source_url = ?, availability = 'available', updated_at = CURRENT_TIMESTAMP
-		WHERE work_id = ? AND file_source_id = ? AND presence_type = 'local'
-	`, manifest.TargetRoot, manifest.WorkID, manifest.LocalSourceID); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE remote_fetch_manifest
-		SET state = 'completed', registered_at = COALESCE(registered_at, CURRENT_TIMESTAMP),
-			completed_at = CURRENT_TIMESTAMP, error_message = '', updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, manifest.ID); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	backupRoot, err := safeDataPath(s.cfg.DataRoot, manifest.BackupRoot)
-	if err == nil {
-		_ = os.RemoveAll(filepath.Dir(backupRoot))
-	}
-	return nil
-}
-
 func (s *Server) updateRemoteFetchManifestState(ctx context.Context, manifestID int64, state string, message string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE remote_fetch_manifest SET state = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
@@ -531,6 +476,8 @@ func (s *Server) reconcileRemoteFetchManifests(ctx context.Context) error {
 		FROM remote_fetch_manifest AS manifest
 		INNER JOIN workflow_run AS run ON run.id = manifest.workflow_run_id
 		WHERE manifest.state <> 'completed'
+			OR run.status <> 'succeeded'
+			OR EXISTS (SELECT 1 FROM workflow_job AS job WHERE job.id = manifest.workflow_job_id AND job.status <> 'succeeded')
 		ORDER BY manifest.id ASC
 	`)
 	if err != nil {
@@ -572,27 +519,13 @@ func (s *Server) reconcileRemoteFetchManifest(ctx context.Context, runID int64, 
 	if err != nil {
 		return err
 	}
-	switch manifest.State {
-	case "published", "registered":
-		return s.registerPublishedRemoteFetch(ctx, manifest)
-	case "publishing":
-		refreshed, err := s.settleInterruptedRemoteFetchPublication(ctx, manifest)
-		if err != nil {
-			return err
-		}
-		if refreshed.State == "published" {
-			return s.registerPublishedRemoteFetch(ctx, refreshed)
-		}
-		if workflowRunCanResume(runStatus) {
-			return s.requeueRemoteFetchManifest(ctx, refreshed)
-		}
-		return nil
-	default:
-		if !workflowRunCanResume(runStatus) {
-			return nil
-		}
-		return s.requeueRemoteFetchManifest(ctx, manifest)
+	if _, resumed, err := s.resumeRemoteFetchPublication(ctx, manifest); resumed || err != nil {
+		return err
 	}
+	if !workflowRunCanResume(runStatus) {
+		return nil
+	}
+	return s.requeueRemoteFetchManifest(ctx, manifest)
 }
 
 // The detailed cause stays in the server log; Activity only records that the
@@ -669,48 +602,6 @@ func (s *Server) reconcilePublishingRemoteFetch(ctx context.Context, manifest re
 		_, err = s.db.ExecContext(ctx, "UPDATE remote_fetch_manifest SET state = 'verified', updated_at = CURRENT_TIMESTAMP WHERE id = ?", manifest.ID)
 		return err
 	}
-}
-
-func (s *Server) registerPublishedRemoteFetch(ctx context.Context, manifest remoteFetchManifestRecord) error {
-	var plan remoteWorkSavePlan
-	if err := json.Unmarshal([]byte(manifest.PlanJSON), &plan); err != nil {
-		return err
-	}
-	for _, item := range plan.Items {
-		if item.Action == "exclude" {
-			continue
-		}
-		targetPath, err := safeDataPath(s.cfg.DataRoot, item.TargetPath)
-		if err != nil {
-			return err
-		}
-		if _, err := os.Stat(targetPath); err != nil {
-			return err
-		}
-		if err := s.upsertSavedLocalLocation(ctx, manifest.WorkID, manifest.LocalSourceID, item, targetPath); err != nil {
-			return err
-		}
-	}
-	remoteSourceIDs := remoteFetchPlanSourceIDs(plan, manifest.RemoteSourceID)
-	if err := s.finishFetchPresence(ctx, manifest.WorkID, remoteSourceIDs, manifest.LocalSourceID, manifest.EditionCode); err != nil {
-		return err
-	}
-	removedCache, err := s.cleanupPromotedFetchCache(ctx, plan, manifest.WorkID)
-	if err != nil {
-		return err
-	}
-	if err := s.completeRemoteFetchManifest(ctx, manifest, remoteSourceIDs); err != nil {
-		return err
-	}
-	summary := mustJSON(map[string]any{"recovered": true, "published": countPromotedFetchItems(plan.Items), "cache_removed": removedCache, "plan": plan.Summary})
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, error_message = '', finished_at = CURRENT_TIMESTAMP WHERE workflow_run_id = ? AND node_id IN ('stage', 'verify', 'promote', 'sync', 'cleanup')", summary, manifest.WorkflowRunID); err != nil {
-		return err
-	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_job SET status = 'succeeded', error_message = '', locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?", manifest.WorkflowJobID); err != nil {
-		return err
-	}
-	_, err = s.db.ExecContext(ctx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", summary, manifest.WorkflowRunID)
-	return err
 }
 
 func nullablePositiveInt64(value int64) any {

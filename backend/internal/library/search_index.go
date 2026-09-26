@@ -14,8 +14,10 @@ import (
 )
 
 // The work_search FTS5 table holds one folded document per work. Triggers
-// queue changed works in work_search_dirty, and RefreshSearchIndex rebuilds
-// those documents in bounded transactions before a search reads the index.
+// queue changed works in work_search_dirty, and RunSearchIndexWorker rebuilds
+// those documents in bounded background transactions. A search rebuilds a
+// short queue itself, so an edit is searchable at once, and leaves a longer
+// backlog to the worker instead of making the request wait for it.
 
 const (
 	searchIndexBatchSize = 200
@@ -23,10 +25,21 @@ const (
 	// collapses every control character in stored values and query needles,
 	// so a needle can never match across two values.
 	searchIndexFieldSeparator = "\n"
+	// A search rebuilds queued documents itself only while at most this many
+	// are queued. A longer queue, such as after a bulk metadata sync, would
+	// hold the request for seconds, so the search reads the previous index
+	// state and wakes the worker instead.
+	searchIndexInlineLimit = 64
 	// A search that finds queued documents waits only briefly for the write
 	// lock. A long-running writer then leaves the search on the previous index
-	// state instead of stalling the page, and a later search drains the queue.
+	// state instead of stalling the page, and the worker drains the queue.
 	searchIndexOpportunisticBusyTimeout = 250 * time.Millisecond
+	// searchIndexPollInterval bounds how long a queued document waits when no
+	// search wakes the worker.
+	searchIndexPollInterval = 5 * time.Second
+	// searchIndexBatchPause lets other writers take the write lock between
+	// the worker's batches.
+	searchIndexBatchPause = 20 * time.Millisecond
 )
 
 var searchIndexOverrideFields = []string{"title", "circle", "series", "voice_actors"}
@@ -35,23 +48,74 @@ type searchDocument struct {
 	code, title, circle, voiceActor, tag []string
 }
 
-// RefreshSearchIndex rebuilds every queued search document. It waits for the
-// database write lock like any other writer and is intended for startup
-// warm-up and tests.
-func (s *Store) RefreshSearchIndex(ctx context.Context) error {
-	return refreshSearchIndex(ctx, s.db, 0)
+// searchIndexRefresh bounds one refresh. A zero value drains the complete
+// queue and waits for the write lock like any other writer.
+type searchIndexRefresh struct {
+	busyTimeout  time.Duration
+	maxDocuments int
+	batchPause   time.Duration
 }
 
-// PrepareSearch brings the search index up to date before queryText is
-// evaluated. Queries without index-backed clauses skip the work entirely. When
-// the write lock is held elsewhere the search proceeds on the existing index;
-// only works changed since the last refresh may be missing from the result.
+// RefreshSearchIndex rebuilds every queued search document. It waits for the
+// database write lock like any other writer and is intended for tests.
+func (s *Store) RefreshSearchIndex(ctx context.Context) error {
+	return refreshSearchIndex(ctx, s.db, searchIndexRefresh{})
+}
+
+// RunSearchIndexWorker rebuilds queued search documents until ctx is
+// cancelled: at once, then whenever a search finds a long queue, and at least
+// every searchIndexPollInterval. Each batch commits separately, so the worker
+// never holds the write lock for the whole backlog.
+func (s *Store) RunSearchIndexWorker(ctx context.Context) {
+	ticker := time.NewTicker(searchIndexPollInterval)
+	defer ticker.Stop()
+	for {
+		if err := refreshSearchIndex(ctx, s.db, searchIndexRefresh{batchPause: searchIndexBatchPause}); err != nil && ctx.Err() == nil {
+			slog.Warn("refresh search index", "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.searchIndexWake:
+		case <-ticker.C:
+		}
+	}
+}
+
+func (s *Store) wakeSearchIndexWorker() {
+	select {
+	case s.searchIndexWake <- struct{}{}:
+	default:
+	}
+}
+
+// PrepareSearch brings a short search index queue up to date before
+// queryText is evaluated. Queries without index-backed clauses skip the work
+// entirely. A longer queue, or a write lock held elsewhere, leaves the search
+// on the existing index for the worker to update; only works changed since
+// the last refresh may be missing from the result.
 func (s *Store) PrepareSearch(ctx context.Context, queryText string) {
 	if !searchUsesIndex(queryText) {
 		return
 	}
-	if err := refreshSearchIndex(ctx, s.db, searchIndexOpportunisticBusyTimeout); err != nil && ctx.Err() == nil {
+	var pending int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT 1 FROM work_search_dirty LIMIT ?)`, searchIndexInlineLimit+1).Scan(&pending); err != nil {
+		if ctx.Err() == nil {
+			slog.Warn("search index queue check failed", "error", err)
+		}
+		return
+	}
+	if pending == 0 {
+		return
+	}
+	if pending > searchIndexInlineLimit {
+		s.wakeSearchIndexWorker()
+		return
+	}
+	refresh := searchIndexRefresh{busyTimeout: searchIndexOpportunisticBusyTimeout, maxDocuments: searchIndexInlineLimit}
+	if err := refreshSearchIndex(ctx, s.db, refresh); err != nil && ctx.Err() == nil {
 		slog.Warn("search index refresh deferred", "error", err)
+		s.wakeSearchIndexWorker()
 	}
 }
 
@@ -65,34 +129,61 @@ func searchUsesIndex(queryText string) bool {
 	return false
 }
 
-func refreshSearchIndex(ctx context.Context, db *sql.DB, busyTimeout time.Duration) (err error) {
+// txBeginner is a *sql.DB, which returns its connection to the pool after
+// each batch, or a *sql.Conn whose settings a refresh has changed.
+type txBeginner interface {
+	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
+}
+
+func refreshSearchIndex(ctx context.Context, db *sql.DB, options searchIndexRefresh) (err error) {
 	var pending bool
 	if err := db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM work_search_dirty)`).Scan(&pending); err != nil || !pending {
 		return err
 	}
-	conn, err := db.Conn(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if closeErr := conn.Close(); err == nil {
-			err = closeErr
+	var beginner txBeginner = db
+	if options.busyTimeout > 0 {
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			return err
 		}
-	}()
-	if busyTimeout > 0 {
-		restore, err := overrideBusyTimeout(ctx, conn, busyTimeout)
+		defer func() {
+			if closeErr := conn.Close(); err == nil {
+				err = closeErr
+			}
+		}()
+		restore, err := overrideBusyTimeout(ctx, conn, options.busyTimeout)
 		if err != nil {
 			return err
 		}
 		defer restore()
+		beginner = conn
 	}
+	remaining := options.maxDocuments
 	for {
-		refreshed, err := refreshSearchIndexBatch(ctx, conn)
+		limit := searchIndexBatchSize
+		if options.maxDocuments > 0 {
+			limit = min(limit, remaining)
+		}
+		refreshed, err := refreshSearchIndexBatch(ctx, beginner, limit)
 		if err != nil {
 			return err
 		}
-		if refreshed < searchIndexBatchSize {
+		if refreshed < limit {
 			return nil
+		}
+		if options.maxDocuments > 0 {
+			if remaining -= refreshed; remaining <= 0 {
+				return nil
+			}
+		}
+		if options.batchPause > 0 {
+			timer := time.NewTimer(options.batchPause)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
 		}
 	}
 }
@@ -115,16 +206,16 @@ func overrideBusyTimeout(ctx context.Context, conn *sql.Conn, timeout time.Durat
 	}, nil
 }
 
-func refreshSearchIndexBatch(ctx context.Context, conn *sql.Conn) (int, error) {
+func refreshSearchIndexBatch(ctx context.Context, beginner txBeginner, limit int) (int, error) {
 	// Connections use _txlock=immediate, so the write lock is held before the
 	// queue is read and no trigger can queue a work between the read and the
 	// queue deletion below.
-	tx, err := conn.BeginTx(ctx, nil)
+	tx, err := beginner.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	ids, err := queryInt64s(ctx, tx, `SELECT work_id FROM work_search_dirty ORDER BY work_id LIMIT ?`, searchIndexBatchSize)
+	ids, err := queryInt64s(ctx, tx, `SELECT work_id FROM work_search_dirty ORDER BY work_id LIMIT ?`, limit)
 	if err != nil || len(ids) == 0 {
 		return 0, err
 	}

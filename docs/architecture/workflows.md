@@ -291,7 +291,13 @@ available locations become `missing`; the `work`, `media_item`, and location
 history remain. Application-owned deletion updates its known location state
 immediately and may also produce a native event; the later incremental run is an
 idempotent reconciliation. Full scans retain the existing folder-presence and
-lazy-index repair behavior. Duplicate-code groups skip automatic invalidation,
+lazy-index repair behavior. A full scan commits discovered folders in batches
+of 250, so progress saves and other writers are not locked out for the whole
+library, and marks unseen works missing only in its final transaction. An
+interrupted scan therefore records what it found and marks nothing missing,
+and its retry repeats the idempotent folder writes. A folder whose work,
+presence, and folder location already match is not rewritten, so its
+timestamps record its last change. Duplicate-code groups skip automatic invalidation,
 fall back to full discovery, and remain review candidates. Neither mode rewrites
 `managed_fetch` ownership records.
 
@@ -391,6 +397,18 @@ spends one resume, or it fails. Queued jobs keep waiting, runs are repaired as
 the manual command repairs them but without its one-minute wait, and
 interrupted Fetch publications are reconciled from the staging, target, and
 backup directories.
+
+Fetch retries and startup recovery share the same publication reconciliation
+and local registration steps. A published or registered target is completed
+from its persisted plan and files, without re-downloading cache inputs or
+refreshing the remote source. Registration and cleanup remain resumable; an
+archive moved before its review candidate was saved is recovered on retry.
+The completed manifest, retired remote-stream identities, node results, job
+lease release, and run result commit together. Rollback backups are removed
+only after that commit. Startup also repairs legacy completed manifests whose
+job or run result was left unfinished. Simple workflow result writes likewise
+commit their node, job, and run states in one transaction, so an interrupted
+write retains the lease for the runner's existing settlement path.
 
 ## Library Layout and Onboarding
 

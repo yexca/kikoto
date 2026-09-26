@@ -164,6 +164,7 @@ func (s *Server) executeFullLocalScanJob(ctx context.Context, job workflowJobRec
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
+	s.refreshQueryPlannerStatistics(ctx)
 	if payload.FollowUpRun {
 		s.queueLocalScanMetadataFollowUp(ctx, job.RunID)
 	}
@@ -201,25 +202,33 @@ func (s *Server) prepareLocalScanPayload(ctx context.Context, job workflowJobRec
 	return payload, nil
 }
 
-func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRecord, payload localScanJobPayload, scope localScanScope, workFolders []localfs.WorkFolder, scanSummary localfs.Summary, nodeIDs map[string]int64) (localScanResult, map[string]any, error) {
+// localScanFolderCommitBatch bounds how many work folders a full scan writes
+// in one transaction. Other writers, such as playback progress saves, get the
+// write lock between batches instead of waiting for the whole library.
+const localScanFolderCommitBatch = 250
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return localScanResult{}, nil, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	fileSourceID, err := s.upsertLocalFileSource(ctx, tx, payload.ScanDepth)
+// persistLocalScanResults writes discovered folders in bounded transactions
+// and marks unseen works missing only in the final one. An interrupted scan
+// therefore leaves found folders recorded and nothing wrongly missing, and
+// its retry repeats the idempotent folder writes.
+func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRecord, payload localScanJobPayload, scope localScanScope, workFolders []localfs.WorkFolder, scanSummary localfs.Summary, nodeIDs map[string]int64) (localScanResult, map[string]any, error) {
+	fileSourceID, err := s.ensureLocalScanFileSource(ctx, payload.ScanDepth)
 	if err != nil {
 		return localScanResult{}, nil, err
 	}
 	state := localScanPersistState{duplicateCodes: localScanDuplicateCodes(scanSummary.DuplicateGroups), seenWorkIDs: map[int64]bool{}, reconciledWorkIDs: map[int64]bool{}}
 	seenRoots := map[string]bool{}
-	for _, folder := range workFolders {
-		seenRoots[strings.ToLower(normalizeFolderRootPath(folder.RelPath))] = true
-		if _, err := s.persistLocalScanFolder(ctx, tx, fileSourceID, folder, &state); err != nil {
+	for start := 0; start < len(workFolders); start += localScanFolderCommitBatch {
+		batch := workFolders[start:min(start+localScanFolderCommitBatch, len(workFolders))]
+		if err := s.persistLocalScanFolderBatch(ctx, fileSourceID, batch, &state, seenRoots); err != nil {
 			return localScanResult{}, nil, err
 		}
 	}
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
+	if err != nil {
+		return localScanResult{}, nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
 	if err := markMissingExternalWorkFolderLocations(ctx, tx, fileSourceID, seenRoots, scope.contains); err != nil {
 		return localScanResult{}, nil, err
 	}
@@ -274,6 +283,34 @@ func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRec
 	}
 	scope.applyOfflineResult(&result)
 	return result, runSummary, nil
+}
+
+func (s *Server) ensureLocalScanFileSource(ctx context.Context, scanDepth int) (int64, error) {
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	fileSourceID, err := s.upsertLocalFileSource(ctx, tx, scanDepth)
+	if err != nil {
+		return 0, err
+	}
+	return fileSourceID, tx.Commit()
+}
+
+func (s *Server) persistLocalScanFolderBatch(ctx context.Context, fileSourceID int64, folders []localfs.WorkFolder, state *localScanPersistState, seenRoots map[string]bool) error {
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, folder := range folders {
+		seenRoots[strings.ToLower(normalizeFolderRootPath(folder.RelPath))] = true
+		if _, err := s.persistLocalScanFolder(ctx, tx, fileSourceID, folder, state); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 type localScanPersistState struct {
@@ -344,6 +381,7 @@ func (s *Server) persistLocalScanFolder(ctx context.Context, tx *sql.Tx, fileSou
 	if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
 		WorkID: workID, FileSourceID: fileSourceID, PresenceType: "local",
 		SourceURL: currentRoot, Availability: "available", RawJSON: mustJSON(rawPresence),
+		SkipUnchanged: true,
 	}); err != nil {
 		return 0, err
 	}
@@ -599,10 +637,7 @@ func (s *Server) executeDLsiteMetadataSyncJob(ctx context.Context, job workflowJ
 		result, runErr = s.newDLsiteMetadataSyncer(ctx).SyncScopeWithoutWorkflow(ctx, scope)
 	}
 	if runErr == nil {
-		runErr = s.syncPartiesFromDLsiteSnapshots(ctx)
-	}
-	if runErr == nil {
-		runErr = s.syncVoiceCreditsFromSnapshots(ctx)
+		runErr = s.projectChangedSnapshots(ctx)
 	}
 	if result.Status == "" {
 		result.Status = "succeeded"
@@ -615,6 +650,7 @@ func (s *Server) executeDLsiteMetadataSyncJob(ctx context.Context, job workflowJ
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
+	s.refreshQueryPlannerStatistics(ctx)
 	return runErr
 }
 

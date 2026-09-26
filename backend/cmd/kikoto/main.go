@@ -109,10 +109,9 @@ func run() error {
 	}
 	slog.Info("kikoto api listening", "addr", cfg.HTTPAddr)
 	server.Go(func(ctx context.Context) {
-		if err := server.WarmSearchIndex(ctx); err != nil && ctx.Err() == nil {
-			slog.Warn("warm search index", "error", err)
-		}
+		storage.MaintainStatistics(ctx, db, storage.StatisticsMaintenancePeriod)
 	})
+	server.Go(server.RunSearchIndexWorker)
 	if !cfg.IsDemo() {
 		server.Go(func(ctx context.Context) {
 			if err := server.RunStartupWorkflows(ctx); err != nil && ctx.Err() == nil {

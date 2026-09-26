@@ -84,6 +84,36 @@ func TestUnfinishedJobIsSettledAndReleasesTheQueue(t *testing.T) {
 	}
 }
 
+func TestWorkflowResultWriteKeepsNodeJobAndRunAtomic(t *testing.T) {
+	ctx := context.Background()
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	seedQueuedCacheJobs(t, db, 1)
+	job, ok, err := server.claimNextQueuedWorkflowJob(ctx, "result-lease")
+	if err != nil || !ok {
+		t.Fatalf("claim: %v, %v", ok, err)
+	}
+	execFetchTestStatements(t, db, `CREATE TRIGGER fail_result BEFORE UPDATE OF status ON workflow_run
+		WHEN NEW.status = 'succeeded' BEGIN SELECT RAISE(ABORT, 'synthetic result write failure'); END`)
+	runErr := finishWorkflowRunSimple(ctx, db, job.RunID, job.NodeRunID, job.ID, "succeeded", "", 1, 1, remoteWorkSaveSummary{})
+	if runErr == nil {
+		t.Fatal("completion unexpectedly succeeded")
+	}
+	jobStatus, runStatus, lease, _, _ := loadJobState(t, db, 1)
+	var nodeStatus string
+	if err := db.QueryRow(`SELECT status FROM workflow_node_run WHERE id = 1`).Scan(&nodeStatus); err != nil {
+		t.Fatal(err)
+	}
+	if jobStatus != "running" || runStatus != "running" || nodeStatus != "running" || lease != job.LockedBy {
+		t.Fatalf("partial result: job=%s run=%s node=%s lease=%q", jobStatus, runStatus, nodeStatus, lease)
+	}
+	_ = server.handleWorkflowJobResult(ctx, ctx, job, runErr)
+	jobStatus, runStatus, lease, _, _ = loadJobState(t, db, 1)
+	if jobStatus != "failed" || runStatus != "failed" || lease != "" {
+		t.Fatalf("unsettled result: job=%s run=%s lease=%q", jobStatus, runStatus, lease)
+	}
+}
+
 func TestRetryableErrorRequeuesJobItsExecutorLeftRunning(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})

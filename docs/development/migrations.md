@@ -82,9 +82,19 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain includes
-`041_creator_lookup_indexes.sql`, with the `041_v0.6.1.sql` baseline
+`042_snapshot_projection_state.sql`, with the `042_v0.6.1.sql` baseline
 generated from the `v0.6.1` `VERSION` file; regenerate it after the next
-release bump so the snapshot carries the release that ships schema 041.
+release bump so the snapshot carries the release that ships schema 042.
+Migration 042 adds `WHEN` conditions to the recommendation revision triggers on
+`work_tag`, `tag`, `work_credit`, `work_party`, and `user_work_state` updates,
+so an update that changes no scored value no longer advances a revision. It
+adds `work_snapshot_projection` and the triggers that drop a work's record when
+a projected credit, circle relation, or imported catalog row changes, and it
+prunes `party_metadata_snapshot` to the two latest rows per circle and
+provider. The table starts empty, so the first start after the upgrade
+projects every work once in the background.
+Migration 041 adds only indexes: case-insensitive creator lookup expressions
+and the missing foreign-key child indexes used by cleanup cascades.
 Migration 040 changes no schema. `user_session.id` now holds the SHA-256 digest
 of a session token rather than the token, so the migration deletes every
 existing session and each client signs in again once.

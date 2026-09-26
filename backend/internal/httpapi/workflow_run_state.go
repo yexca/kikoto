@@ -52,11 +52,25 @@ func updateWorkflowJobProgress(ctx context.Context, db *sql.DB, jobID int64, cur
 }
 
 func finishWorkflowRunSimple(ctx context.Context, db *sql.DB, runID int64, nodeID int64, jobID int64, status string, errorMessage string, current int, total int, summary remoteWorkSaveSummary) error {
-	output := mustJSON(map[string]any{"plan": summary, "error": errorMessage})
-	if _, err := db.ExecContext(ctx, "UPDATE workflow_node_run SET status = ?, output_json = json_patch(COALESCE(NULLIF(output_json, ''), '{}'), ?), error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, output, errorMessage, nodeID); err != nil {
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, db)
+	if err != nil {
 		return err
 	}
-	if _, err := db.ExecContext(ctx, `
+	defer func() { _ = tx.Rollback() }()
+	output := mustJSON(map[string]any{"plan": summary, "error": errorMessage})
+	if _, err := tx.ExecContext(ctx, "UPDATE workflow_node_run SET status = ?, output_json = json_patch(COALESCE(NULLIF(output_json, ''), '{}'), ?), error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, output, errorMessage, nodeID); err != nil {
+		return err
+	}
+	if err := finishWorkflowRunResultTx(ctx, tx, runID, jobID, status, errorMessage, current, total, output); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// Keep the job's result and lease release atomic with the owning run. Callers
+// include their node and domain state in this same transaction.
+func finishWorkflowRunResultTx(ctx context.Context, tx *sql.Tx, runID, jobID int64, status, errorMessage string, current, total int, summaryJSON string) error {
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE workflow_job
 		SET status = ?,
 			progress_current = ?,
@@ -70,6 +84,6 @@ func finishWorkflowRunSimple(ctx context.Context, db *sql.DB, runID int64, nodeI
 	`, status, current, total, errorMessage, jobID); err != nil {
 		return err
 	}
-	_, err := db.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, output, runID)
+	_, err := tx.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, summaryJSON, runID)
 	return err
 }

@@ -20,11 +20,8 @@ type remoteWorkFetchExecution struct {
 	plan          remoteWorkSavePlan
 	workCode      string
 	workID        int64
-	localSourceID int64
 	cacheNodeID   int64
 	promoteNodeID int64
-	syncNodeID    int64
-	cleanupNodeID int64
 	downloadLimit int64
 	byteProgress  *remoteFetchByteProgress
 }
@@ -100,7 +97,7 @@ func (s *Server) prepareRemoteWorkFetchExecution(
 	if err := s.ensureRemoteWorkSaveDiskReserve(plan, payload.MinFreeBytes, manifest.StagingRoot); err != nil {
 		return execution, err
 	}
-	workID, localSourceID, cacheNodeID, promoteNodeID, syncNodeID, cleanupNodeID, err := s.preparePersistedRemoteWorkFetchJob(ctx, runID, manifest)
+	cacheNodeID, promoteNodeID, err := s.preparePersistedRemoteWorkFetchJob(ctx, runID, manifest)
 	if err != nil {
 		return execution, err
 	}
@@ -110,12 +107,9 @@ func (s *Server) prepareRemoteWorkFetchExecution(
 	}
 	execution.manifest = manifest
 	execution.plan = plan
-	execution.workID = workID
-	execution.localSourceID = localSourceID
+	execution.workID = manifest.WorkID
 	execution.cacheNodeID = cacheNodeID
 	execution.promoteNodeID = promoteNodeID
-	execution.syncNodeID = syncNodeID
-	execution.cleanupNodeID = cleanupNodeID
 	execution.downloadLimit = downloadLimit
 	execution.byteProgress = byteProgress
 	return execution, nil
@@ -360,32 +354,7 @@ func (s *Server) finalizeRemoteWorkFetch(
 	if err := s.markRemoteFetchPublished(ctx, jobID, execution.promoteNodeID, execution.plan, promoted); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
-	syncedLocations, err := s.syncRemoteWorkFetchLocations(ctx, runID, jobID, execution, manifest)
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	removedCache, err := s.cleanupPromotedFetchCache(ctx, execution.plan, execution.workID)
-	if err != nil {
-		failedNodeID := execution.cleanupNodeID
-		if failedNodeID == 0 {
-			failedNodeID = execution.syncNodeID
-		}
-		return remoteWorkSaveResult{}, s.failRemoteWorkFetchPhase(ctx, runID, failedNodeID, jobID, len(execution.plan.Items)*2, len(execution.plan.Items)*2, execution.plan.Summary, err)
-	}
-	_ = s.updateWorkflowJobCheckpoint(ctx, jobID, "cache_cleaned", map[string]any{"removed": removedCache}, len(execution.plan.Items)*2, len(execution.plan.Items)*2)
-	if err := s.finishRemoteWorkFetch(ctx, runID, jobID, execution, manifest, counts, promoted, removedCache, syncedLocations); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	// The Fetch no longer needs its cache inputs after publication and
-	// registration. Enforce the global limit once, after all selected files
-	// have been staged, so an earlier file cannot evict a later Fetch input.
-	_, _ = s.runCacheLimitCleanup(ctx, execution.source.ID, 0)
-	return remoteWorkSaveResult{
-		RunID: runID, JobID: jobID, WorkID: execution.workID, PrimaryCode: execution.workCode,
-		Status: "succeeded", SaveRoot: execution.plan.SaveRoot, SavedFiles: promoted,
-		SkippedFiles: counts.skipped, CachedFiles: counts.cacheHits + counts.cacheDownloads,
-		PromotedFiles: promoted, Plan: execution.plan.Summary,
-	}, nil
+	return s.finishPublishedRemoteFetch(ctx, manifest, execution.plan, &counts)
 }
 
 func (s *Server) markRemoteFetchPublished(ctx context.Context, jobID, nodeID int64, plan remoteWorkSavePlan, promoted int) error {
@@ -394,81 +363,6 @@ func (s *Server) markRemoteFetchPublished(ctx context.Context, jobID, nodeID int
 	}
 	_, err := s.db.ExecContext(ctx, "UPDATE workflow_job SET progress_current = ?, progress_total = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", len(plan.Items)*2, len(plan.Items)*2, jobID)
 	return err
-}
-
-func (s *Server) syncRemoteWorkFetchLocations(
-	ctx context.Context,
-	runID int64,
-	jobID int64,
-	execution remoteWorkFetchExecution,
-	manifest remoteFetchManifestRecord,
-) (int, error) {
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?", execution.syncNodeID); err != nil {
-		return 0, err
-	}
-	syncedLocations := 0
-	for index, item := range execution.plan.Items {
-		if err := s.ensureWorkflowRunActive(ctx, runID); err != nil {
-			return 0, err
-		}
-		if item.Action == "exclude" {
-			continue
-		}
-		targetAbsPath, err := safeDataPath(s.cfg.DataRoot, item.TargetPath)
-		if err != nil {
-			return 0, s.failRemoteWorkFetchPhase(ctx, runID, execution.syncNodeID, jobID, len(execution.plan.Items)+index, len(execution.plan.Items)*2, execution.plan.Summary, err)
-		}
-		if _, err := os.Stat(targetAbsPath); err != nil {
-			if item.Action == "skip" && errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			return 0, s.failRemoteWorkFetchPhase(ctx, runID, execution.syncNodeID, jobID, len(execution.plan.Items)+index, len(execution.plan.Items)*2, execution.plan.Summary, err)
-		}
-		if err := s.upsertSavedLocalLocation(ctx, execution.workID, execution.localSourceID, item, targetAbsPath); err != nil {
-			return 0, s.failRemoteWorkFetchPhase(ctx, runID, execution.syncNodeID, jobID, len(execution.plan.Items)+index, len(execution.plan.Items)*2, execution.plan.Summary, err)
-		}
-		syncedLocations++
-	}
-	if err := s.finishFetchPresence(ctx, execution.workID, remoteFetchPlanSourceIDs(execution.plan, execution.source.ID), execution.localSourceID, execution.workCode); err != nil {
-		return 0, s.failRemoteWorkFetchPhase(ctx, runID, execution.syncNodeID, jobID, len(execution.plan.Items)*2, len(execution.plan.Items)*2, execution.plan.Summary, err)
-	}
-	return syncedLocations, nil
-}
-
-func (s *Server) finishRemoteWorkFetch(
-	ctx context.Context,
-	runID int64,
-	jobID int64,
-	execution remoteWorkFetchExecution,
-	manifest remoteFetchManifestRecord,
-	counts remoteFetchMaterializeCounts,
-	promoted int,
-	removedCache int,
-	syncedLocations int,
-) error {
-	if execution.cleanupNodeID > 0 {
-		if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"removed": removedCache}), execution.cleanupNodeID); err != nil {
-			return err
-		}
-	}
-	if err := s.completeRemoteFetchManifest(ctx, manifest, remoteFetchPlanSourceIDs(execution.plan, execution.source.ID)); err != nil {
-		return s.failRemoteWorkFetchPhase(ctx, runID, execution.syncNodeID, jobID, len(execution.plan.Items)*2, len(execution.plan.Items)*2, execution.plan.Summary, err)
-	}
-	_ = s.updateWorkflowJobCheckpoint(ctx, jobID, "registered", map[string]any{"locations": syncedLocations}, len(execution.plan.Items)*2, len(execution.plan.Items)*2)
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"locations": syncedLocations}), execution.syncNodeID); err != nil {
-		return err
-	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE workflow_job SET status = 'succeeded', progress_current = ?, progress_total = ?, locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, len(execution.plan.Items)*2, len(execution.plan.Items)*2, jobID); err != nil {
-		return err
-	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{
-		"plan": execution.plan.Summary, "skipped": counts.skipped, "cache_hits": counts.cacheHits,
-		"cache_downloads": counts.cacheDownloads, "cache_removed": removedCache, "promoted": promoted,
-		"snapshot_bytes": len(manifest.PlanJSON),
-	}), runID); err != nil {
-		return err
-	}
-	return s.insertFetchCleanupCandidate(ctx, runID, execution.workID, execution.localSourceID, execution.workCode, execution.plan.Items)
 }
 
 // remoteFetchPublicationFailureNode names the publication step an error
@@ -515,6 +409,13 @@ func (s *Server) executeRemoteWorkFetchJob(ctx context.Context, job workflowJobR
 }
 
 func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID int64, payload remoteWorkFetchJobPayload) (remoteWorkSaveResult, error) {
+	manifest, err := s.loadRemoteFetchManifest(ctx, runID)
+	if err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	if result, resumed, err := s.resumeRemoteFetchPublication(ctx, manifest); resumed || err != nil {
+		return result, err
+	}
 	execution, err := s.prepareRemoteWorkFetchExecution(ctx, runID, jobID, payload)
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
@@ -559,19 +460,19 @@ func (s *Server) updateRemoteFetchCacheProgress(ctx context.Context, nodeRunID i
 	return err
 }
 
-func (s *Server) preparePersistedRemoteWorkFetchJob(ctx context.Context, runID int64, manifest remoteFetchManifestRecord) (int64, int64, int64, int64, int64, int64, error) {
+func (s *Server) preparePersistedRemoteWorkFetchJob(ctx context.Context, runID int64, manifest remoteFetchManifestRecord) (int64, int64, error) {
 	if manifest.WorkID <= 0 || manifest.LocalSourceID <= 0 {
-		return 0, 0, 0, 0, 0, 0, fmt.Errorf("remote fetch manifest is missing persisted work locations")
+		return 0, 0, fmt.Errorf("remote fetch manifest is missing persisted work locations")
 	}
 	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, runID)
 	if err != nil {
-		return 0, 0, 0, 0, 0, 0, err
+		return 0, 0, err
 	}
 	cacheNodeID := nodeIDs["cache"]
 	promoteNodeID := nodeIDs["promote"]
 	syncNodeID := nodeIDs["sync"]
 	if cacheNodeID == 0 || promoteNodeID == 0 || syncNodeID == 0 {
-		return 0, 0, 0, 0, 0, 0, fmt.Errorf("remote fetch workflow nodes are incomplete")
+		return 0, 0, fmt.Errorf("remote fetch workflow nodes are incomplete")
 	}
-	return manifest.WorkID, manifest.LocalSourceID, cacheNodeID, promoteNodeID, syncNodeID, nodeIDs["cleanup"], nil
+	return cacheNodeID, promoteNodeID, nil
 }
