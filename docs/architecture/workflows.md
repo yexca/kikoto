@@ -80,6 +80,9 @@ issues encountered by that run. Selecting works queues recoverable family-sync
 jobs, reusing an already queued/running job for that family. Explicit recovery
 can recheck a provider's `not_found` observation without erasing it first.
 Normal bulk and work-detail refreshes retain their unavailable-product skip.
+DLsite records `not_found` only when every candidate site and locale returned
+an empty product list. If any request failed, the attempt is recorded as a
+retryable failure.
 
 The unified `/api/maintenance/works` read composes current metadata failures
 with the Library's live no-source predicate, then deduplicates and pages by

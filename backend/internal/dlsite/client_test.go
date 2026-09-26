@@ -235,6 +235,32 @@ func TestFetchProductReturnsNoProductSentinel(t *testing.T) {
 	}
 }
 
+// Regression: the home site failing transiently while the fallback site
+// reports an empty list was recorded as a permanent "not found", which made
+// routine refreshes skip the work indefinitely.
+func TestFetchProductKeepsTransientFailureOverFallbackAbsence(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/maniax/api/=/product.json":
+			w.WriteHeader(http.StatusServiceUnavailable)
+		case "/pro/api/=/product.json":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(server).FetchProduct(context.Background(), "RJ00000001")
+	if errors.Is(err, ErrNoProduct) {
+		t.Fatalf("err = %v, want the transient failure instead of ErrNoProduct", err)
+	}
+	if !IsRetryableHTTPError(err) {
+		t.Fatalf("err = %v, want a retryable 503 status", err)
+	}
+}
+
 func TestFetchProductWithOptionsSendsLanguage(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

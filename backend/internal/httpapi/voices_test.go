@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"reflect"
 	"strings"
@@ -271,5 +272,115 @@ func TestLoadVoiceAliasCandidatesAttachesAliasesAfterReleasingCursor(t *testing.
 	}
 	if !reflect.DeepEqual(aliasesByPerson, want) {
 		t.Fatalf("candidate aliases = %#v, want %#v", aliasesByPerson, want)
+	}
+}
+
+// Regression: the merged-away name stays a confirmed alias of the target, and
+// the startup snapshot projection must resolve it instead of recreating the
+// source person and splitting its credits again.
+func TestVoiceSnapshotSyncKeepsMergedPersonMerged(t *testing.T) {
+	db := openMigratedTestDB(t)
+	for _, statement := range []string{
+		"INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000001', 'Voice work')",
+		`INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
+			SELECT 1, id, 'RJ00000001', '{"workno":"RJ00000001","creaters":{"voice_by":[{"name":"Source Voice"}]}}'
+			FROM metadata_provider WHERE code = 'dlsite'`,
+		"INSERT INTO person (id, display_name, sort_name) VALUES (1, 'Target Voice', 'target voice')",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server := &Server{db: db}
+	ctx := context.Background()
+	if err := server.syncVoiceCreditsFromSnapshots(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var sourceID int64
+	if err := db.QueryRow("SELECT id FROM person WHERE display_name = 'Source Voice'").Scan(&sourceID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.mergeVoicePeople(ctx, 1, sourceID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := server.syncVoiceCreditsFromSnapshots(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var people int
+	if err := db.QueryRow("SELECT COUNT(*) FROM person WHERE display_name = 'Source Voice'").Scan(&people); err != nil {
+		t.Fatal(err)
+	}
+	var creditedPeople []int64
+	rows, err := db.Query("SELECT person_id FROM work_credit WHERE work_id = 1 AND role = 'voice_actor' ORDER BY person_id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		creditedPeople = append(creditedPeople, id)
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if people != 0 || !reflect.DeepEqual(creditedPeople, []int64{1}) {
+		t.Fatalf("after re-sync: recreated people = %d, credited people = %v, want 0 and [1]", people, creditedPeople)
+	}
+}
+
+// A provider voice actor id moves with the merge, so the next sync reporting
+// it neither recreates the source nor renames the target back to the merged
+// name. Undo returns the id to the restored person.
+func TestVoiceMergeMovesProviderIdentityAndUndoRestoresIt(t *testing.T) {
+	db := openMigratedTestDB(t)
+	for _, statement := range []string{
+		"INSERT INTO metadata_provider (id, code, display_name) VALUES (11, 'kikoeru_source_example_remote', 'Example Remote')",
+		"INSERT INTO person (id, display_name, sort_name) VALUES (1, 'Target Voice', 'target voice'), (2, 'Source Voice', 'source voice')",
+		"INSERT INTO person_alias (person_id, alias, source) VALUES (1, 'Target Voice', 'primary_name'), (2, 'Source Voice', 'primary_name')",
+		"INSERT INTO person_external_id (person_id, provider_id, id_type, external_id, is_primary) VALUES (2, 11, 'voice_actor_id', 'voice-0001', 1)",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server := &Server{db: db}
+	ctx := context.Background()
+	merged, err := server.mergeVoicePeople(ctx, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	personID, err := upsertPersonIdentity(ctx, tx, "Source Voice", sql.NullInt64{Int64: 11, Valid: true}, "voice-0001")
+	if err != nil {
+		_ = tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	var targetName string
+	if err := db.QueryRow("SELECT display_name FROM person WHERE id = 1").Scan(&targetName); err != nil {
+		t.Fatal(err)
+	}
+	if personID != 1 || targetName != "Target Voice" {
+		t.Fatalf("identity resolved to person %d named %q, want person 1 named Target Voice", personID, targetName)
+	}
+
+	if _, err := server.undoVoiceMerge(ctx, 1, merged["mergeId"].(int64)); err != nil {
+		t.Fatal(err)
+	}
+	var owner int64
+	if err := db.QueryRow("SELECT person_id FROM person_external_id WHERE provider_id = 11 AND external_id = 'voice-0001'").Scan(&owner); err != nil {
+		t.Fatal(err)
+	}
+	if owner != 2 {
+		t.Fatalf("external id owner after undo = %d, want restored person 2", owner)
 	}
 }
