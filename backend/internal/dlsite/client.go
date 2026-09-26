@@ -355,7 +355,11 @@ func (c *Client) FetchProductWithOptions(ctx context.Context, workno string, opt
 		return Product{}, fmt.Errorf("empty workno")
 	}
 
-	var lastErr error
+	// ErrNoProduct is a durable observation: callers stop refreshing the work.
+	// Report it only when every candidate site and locale answered with an
+	// empty product list. A failed request proves nothing about the product, so
+	// it outranks absence reported by a candidate that was never its home site.
+	var lastErr, lastFailure error
 	for _, site := range candidateSites(workno) {
 		for _, language := range normalizeLanguages(options.Languages) {
 			product, err := c.fetchProductFromSite(ctx, site, workno, language)
@@ -365,12 +369,18 @@ func (c *Client) FetchProductWithOptions(ctx context.Context, workno string, opt
 				return product, nil
 			}
 			lastErr = err
+			if !errors.Is(err, ErrNoProduct) {
+				lastFailure = err
+			}
 			if ctx.Err() != nil || IsTimeout(err) {
 				return Product{}, err
 			}
 		}
 	}
 
+	if lastFailure != nil {
+		return Product{}, lastFailure
+	}
 	if lastErr == nil {
 		lastErr = fmt.Errorf("no candidate sites for %s", workno)
 	}

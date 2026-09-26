@@ -388,6 +388,33 @@ test("@desktop Metadata voice aliases view lists people and opens alias review",
     }),
   );
   await page.route("**/api/voices/7/merges", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/voices/7/alias-candidates?*", (route) =>
+    route.fulfill({
+      json: [
+        {
+          personId: 8,
+          displayName: "Example Voice Duplicate",
+          aliases: [],
+          knownWorks: 2,
+          localWorks: 0,
+          remoteWorks: 0,
+        },
+      ],
+    }),
+  );
+  let mergeRequest: unknown = null;
+  await page.route("**/api/voices/7/merge", (route) => {
+    mergeRequest = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        mergeId: 1,
+        targetPersonId: 7,
+        sourcePersonId: 8,
+        targetName: "Example Voice",
+        mergedName: "Example Voice Duplicate",
+      },
+    });
+  });
 
   await page.goto("/metadata?view=aliases");
   const tabs = page.getByRole("tablist", { name: "Metadata views" });
@@ -401,6 +428,17 @@ test("@desktop Metadata voice aliases view lists people and opens alias review",
   await expect(dialog.getByPlaceholder("Add alias or search duplicate voice actor")).toBeVisible();
   await expect(dialog.getByText("Voice alias", { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/view=aliases&voice=7$/);
+
+  // One field offers both actions; the duplicate appears once, with its own merge.
+  await dialog.getByPlaceholder("Add alias or search duplicate voice actor").fill("Duplicate");
+  await expect(dialog.getByRole("button", { name: 'Add "Duplicate" as an alias' })).toBeVisible();
+  await dialog.getByRole("button", { name: "Merge Example Voice Duplicate into this voice actor" }).click();
+  const confirm = page.getByRole("dialog", { name: "Merge voice actor" });
+  await expect(confirm).toContainText("Example Voice Duplicate");
+  await expect(confirm).toContainText("Kept");
+  await confirm.getByRole("button", { name: "Merge", exact: true }).click();
+  await expect(confirm).toHaveCount(0);
+  expect(mergeRequest).toEqual({ sourcePersonId: 8 });
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/metadata\?view=aliases$/);

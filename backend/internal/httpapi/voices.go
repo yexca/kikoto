@@ -92,6 +92,7 @@ type personMergeSnapshot struct {
 	TargetStates    []userPersonStateSnapshot   `json:"targetStates"`
 	TargetTagLinks  []userPersonTagLinkSnapshot `json:"targetTagLinks"`
 	AddedAliases    []string                    `json:"addedAliases"`
+	ExternalIDs     []personExternalIDSnapshot  `json:"externalIds,omitempty"`
 	CatalogCaptured bool                        `json:"catalogCaptured,omitempty"`
 	SourceCatalog   voiceCatalogPersonSnapshot  `json:"sourceCatalog,omitempty"`
 	TargetCatalog   voiceCatalogPersonSnapshot  `json:"targetCatalog,omitempty"`
@@ -109,6 +110,13 @@ type personAliasSnapshot struct {
 	Alias     string `json:"alias"`
 	Source    string `json:"source"`
 	CreatedAt string `json:"createdAt"`
+}
+
+type personExternalIDSnapshot struct {
+	ProviderID int64  `json:"providerId"`
+	IDType     string `json:"idType"`
+	ExternalID string `json:"externalId"`
+	IsPrimary  bool   `json:"isPrimary"`
 }
 
 type workCreditSnapshot struct {
@@ -1665,13 +1673,20 @@ func upsertPersonIdentity(ctx context.Context, tx *sql.Tx, name string, provider
 			WHERE provider_id = ? AND id_type = 'voice_actor_id' AND external_id = ?
 		`, providerID.Int64, externalID).Scan(&personID)
 		if err == nil {
+			// Follow a provider rename, but never let a name that an
+			// administrator merged into this person replace the display name
+			// they kept when the merged identity arrives again.
 			if _, err := tx.ExecContext(ctx, `
 				UPDATE person
 				SET display_name = ?, sort_name = ?, updated_at = CURRENT_TIMESTAMP
 				WHERE id = ? AND NOT EXISTS (
 					SELECT 1 FROM person AS other WHERE other.id <> ? AND LOWER(other.display_name) = LOWER(?)
+				) AND NOT EXISTS (
+					SELECT 1 FROM person_alias AS merged
+					WHERE merged.person_id = ? AND merged.alias = ?
+						AND merged.source IN ('merged_name', 'merged_primary_name', 'merged_alias')
 				)
-			`, name, strings.ToLower(name), personID, personID, name); err != nil {
+			`, name, strings.ToLower(name), personID, personID, name, personID, name); err != nil {
 				return 0, err
 			}
 			if _, err := tx.ExecContext(ctx, `
@@ -1709,6 +1724,9 @@ func isUnknownVoiceActorName(value string) bool {
 
 func upsertPerson(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
 	name = strings.TrimSpace(name)
+	if id, found, err := personForConfirmedAlias(ctx, tx, name); err != nil || found {
+		return id, err
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO person (display_name, sort_name)
 		VALUES (?, ?)
@@ -1729,6 +1747,46 @@ func upsertPerson(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
 		return 0, err
 	}
 	return id, nil
+}
+
+// personForConfirmedAlias resolves a credited name that is no longer any
+// person's display name but is still a confirmed alias, such as the former
+// name of a merged or renamed voice actor. Without it, the next metadata
+// projection would recreate the merged-away person and split the credits
+// again. An exact display name always wins, and an alias shared by several
+// people is ambiguous, so both fall through to the normal upsert.
+func personForConfirmedAlias(ctx context.Context, tx *sql.Tx, name string) (int64, bool, error) {
+	if name == "" || isUnknownVoiceActorName(name) {
+		return 0, false, nil
+	}
+	var exact bool
+	if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM person WHERE display_name = ?)", name).Scan(&exact); err != nil || exact {
+		return 0, false, err
+	}
+	rows, err := tx.QueryContext(ctx, `
+		SELECT DISTINCT person_id FROM person_alias
+		WHERE LOWER(alias) = LOWER(?)
+		LIMIT 2
+	`, name)
+	if err != nil {
+		return 0, false, err
+	}
+	defer func() { _ = rows.Close() }()
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return 0, false, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, false, err
+	}
+	if len(ids) != 1 {
+		return 0, false, nil
+	}
+	return ids[0], true, nil
 }
 
 func (s *Server) loadPersonName(ctx context.Context, personID int64) (string, error) {
@@ -1958,6 +2016,23 @@ func mergeVoiceRelations(ctx context.Context, tx *sql.Tx, targetID, sourceID int
 	`, targetID, sourceID); err != nil {
 		return err
 	}
+	// Provider identities follow the merge. Deleting the source person would
+	// otherwise cascade them away, and the next sync that reports the same
+	// remote voice actor id would recreate the merged-away person.
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE person_external_id
+		SET person_id = ?,
+			is_primary = CASE WHEN EXISTS (
+				SELECT 1 FROM person_external_id AS kept
+				WHERE kept.person_id = ?
+					AND kept.provider_id = person_external_id.provider_id
+					AND kept.id_type = person_external_id.id_type
+					AND kept.is_primary = 1
+			) THEN 0 ELSE is_primary END
+		WHERE person_id = ?
+	`, targetID, targetID, sourceID); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO work_credit (work_id, person_id, role, provider_id, source, created_at, updated_at)
 		SELECT work_id, ?, role, provider_id, source, created_at, CURRENT_TIMESTAMP
@@ -2073,6 +2148,9 @@ func restoreVoiceMergeSnapshot(ctx context.Context, tx *sql.Tx, targetID int64, 
 	if err := restoreVoiceMergePerson(ctx, tx, snapshot); err != nil {
 		return err
 	}
+	if err := restoreVoiceMergeExternalIDs(ctx, tx, targetID, snapshot); err != nil {
+		return err
+	}
 	if err := restoreVoiceMergeCredits(ctx, tx, targetID, snapshot); err != nil {
 		return err
 	}
@@ -2116,6 +2194,24 @@ func restoreVoiceMergePerson(ctx context.Context, tx *sql.Tx, snapshot personMer
 			VALUES (?, ?, ?, ?)
 			ON CONFLICT(person_id, alias) DO NOTHING
 		`, person.ID, alias.Alias, alias.Source, alias.CreatedAt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// restoreVoiceMergeExternalIDs returns the provider identities the merge
+// moved. An identity a later sync attached to some other person stays there.
+func restoreVoiceMergeExternalIDs(ctx context.Context, tx *sql.Tx, targetID int64, snapshot personMergeSnapshot) error {
+	for _, item := range snapshot.ExternalIDs {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO person_external_id (person_id, provider_id, id_type, external_id, is_primary)
+			VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT(provider_id, id_type, external_id) DO UPDATE SET
+				person_id = excluded.person_id,
+				is_primary = excluded.is_primary
+			WHERE person_external_id.person_id = ?
+		`, snapshot.SourcePerson.ID, item.ProviderID, item.IDType, item.ExternalID, item.IsPrimary, targetID); err != nil {
 			return err
 		}
 	}
@@ -2245,6 +2341,10 @@ func loadPersonMergeSnapshot(ctx context.Context, tx *sql.Tx, targetID int64, pe
 	if err != nil {
 		return personMergeSnapshot{}, err
 	}
+	externalIDs, err := loadPersonExternalIDSnapshots(ctx, tx, personID)
+	if err != nil {
+		return personMergeSnapshot{}, err
+	}
 	targetCredits, err := loadWorkCreditSnapshots(ctx, tx, targetID)
 	if err != nil {
 		return personMergeSnapshot{}, err
@@ -2271,6 +2371,7 @@ func loadPersonMergeSnapshot(ctx context.Context, tx *sql.Tx, targetID int64, pe
 		Credits:         credits,
 		States:          states,
 		TagLinks:        links,
+		ExternalIDs:     externalIDs,
 		TargetCredits:   targetCredits,
 		TargetStates:    targetStates,
 		TargetTagLinks:  targetLinks,
@@ -2300,6 +2401,23 @@ func loadPersonAliasSnapshots(ctx context.Context, tx *sql.Tx, personID int64) (
 	for rows.Next() {
 		var item personAliasSnapshot
 		if err := rows.Scan(&item.Alias, &item.Source, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func loadPersonExternalIDSnapshots(ctx context.Context, tx *sql.Tx, personID int64) ([]personExternalIDSnapshot, error) {
+	rows, err := tx.QueryContext(ctx, "SELECT provider_id, id_type, external_id, is_primary FROM person_external_id WHERE person_id = ? ORDER BY id ASC", personID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	items := []personExternalIDSnapshot{}
+	for rows.Next() {
+		var item personExternalIDSnapshot
+		if err := rows.Scan(&item.ProviderID, &item.IDType, &item.ExternalID, &item.IsPrimary); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
