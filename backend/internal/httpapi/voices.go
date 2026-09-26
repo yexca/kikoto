@@ -1091,7 +1091,7 @@ func (s *Server) loadVoiceLatestWorks(ctx context.Context, personIDs []int64) (m
 		`
 	}
 	err := s.queryInt64Batches(ctx, `
-		WITH candidates AS (
+		WITH selected_people AS (SELECT id FROM person WHERE id IN (%s)), candidates AS (
 			SELECT
 				catalog.person_id,
 				UPPER(catalog.primary_code) AS primary_code,
@@ -1099,6 +1099,7 @@ func (s *Server) loadVoiceLatestWorks(ctx context.Context, personIDs []int64) (m
 				COALESCE(work.release_date, catalog.release_date) AS release_date,
 				catalog.cover_url
 			FROM voice_catalog_item AS catalog
+			INNER JOIN selected_people ON selected_people.id = catalog.person_id
 			LEFT JOIN work ON work.id = catalog.work_id
 			WHERE 1 = 1
 				`+catalogDemoWhere+`
@@ -1110,6 +1111,7 @@ func (s *Server) loadVoiceLatestWorks(ctx context.Context, personIDs []int64) (m
 				work.release_date,
 				'' AS cover_url
 			FROM work_credit AS credit
+			INNER JOIN selected_people ON selected_people.id = credit.person_id
 			INNER JOIN work ON work.id = credit.work_id
 			LEFT JOIN work_edition AS edition ON edition.work_id = work.id
 			LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
@@ -1131,7 +1133,7 @@ func (s *Server) loadVoiceLatestWorks(ctx context.Context, personIDs []int64) (m
 		)
 		SELECT person_id, primary_code, title, release_date, cover_url
 		FROM ranked
-		WHERE position = 1 AND person_id IN (%s)
+		WHERE position = 1
 	`, personIDs, nil, func(rows *sql.Rows) error {
 		var personID int64
 		var item creatorLatestWork

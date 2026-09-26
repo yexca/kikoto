@@ -1,0 +1,80 @@
+-- Creator directory queries reconcile provider catalog rows with canonical
+-- works and maker identities case-insensitively. Keep those expressions
+-- searchable so the reconciliation joins do not scan every catalog row.
+
+CREATE INDEX idx_party_catalog_primary_code_upper
+  ON party_catalog_item(UPPER(primary_code), party_id, provider_id);
+
+CREATE INDEX idx_voice_catalog_primary_code_upper
+  ON voice_catalog_item(UPPER(primary_code), person_id);
+
+CREATE INDEX idx_party_external_id_maker_upper
+  ON party_external_id(provider_id, id_type, UPPER(external_id), party_id);
+
+CREATE INDEX idx_party_series_work_primary_code_upper
+  ON party_series_work(UPPER(primary_code), series_id);
+
+-- Every remaining foreign-key child column needs a leading index so
+-- parent deletes and cleanup cascades do not scan the whole child table.
+CREATE INDEX idx_fk_audit_log_actor_user_id ON audit_log(actor_user_id);
+CREATE INDEX idx_fk_availability_watch_source_id ON availability_watch(source_id);
+CREATE INDEX idx_fk_availability_watch_configured_by_user_id ON availability_watch(configured_by_user_id);
+CREATE INDEX idx_fk_availability_watch_target_fetch_run_id ON availability_watch_target(fetch_run_id);
+CREATE INDEX idx_fk_availability_watch_target_track_run_id ON availability_watch_target(track_run_id);
+CREATE INDEX idx_fk_availability_watch_target_available_source_id ON availability_watch_target(available_source_id);
+CREATE INDEX idx_fk_filesystem_trigger_state_trigger_id ON filesystem_trigger_state(trigger_id);
+CREATE INDEX idx_fk_logical_work_canonical_work_id ON logical_work(canonical_work_id);
+CREATE INDEX idx_fk_media_item_parent_id ON media_item(parent_id);
+CREATE INDEX idx_fk_metadata_snapshot_card_summary_snapshot_id ON metadata_snapshot_card_summary(snapshot_id);
+CREATE INDEX idx_fk_metadata_snapshot_card_summary_dirty_snapshot_id ON metadata_snapshot_card_summary_dirty(snapshot_id);
+CREATE INDEX idx_fk_metadata_sync_attempt_work_provider_id ON metadata_sync_attempt_work(provider_id);
+CREATE INDEX idx_fk_metadata_sync_attempt_work_work_id ON metadata_sync_attempt_work(work_id);
+CREATE INDEX idx_fk_party_catalog_item_provider_id ON party_catalog_item(provider_id);
+CREATE INDEX idx_fk_party_external_id_party_id ON party_external_id(party_id);
+CREATE INDEX idx_fk_party_metadata_snapshot_provider_id ON party_metadata_snapshot(provider_id);
+CREATE INDEX idx_fk_party_series_provider_id ON party_series(provider_id);
+CREATE INDEX idx_fk_recommendation_event_work_id ON recommendation_event(work_id);
+CREATE INDEX idx_fk_recommendation_snapshot_state_current_generation_id ON recommendation_snapshot_state(current_generation_id);
+CREATE INDEX idx_fk_recommendation_snapshot_state_user_id ON recommendation_snapshot_state(user_id);
+CREATE INDEX idx_fk_recommendation_user_revision_user_id ON recommendation_user_revision(user_id);
+CREATE INDEX idx_fk_remote_fetch_manifest_local_source_id ON remote_fetch_manifest(local_source_id);
+CREATE INDEX idx_fk_remote_fetch_manifest_remote_source_id ON remote_fetch_manifest(remote_source_id);
+CREATE INDEX idx_fk_remote_fetch_manifest_work_id ON remote_fetch_manifest(work_id);
+CREATE INDEX idx_fk_remote_fetch_manifest_workflow_job_id ON remote_fetch_manifest(workflow_job_id);
+CREATE INDEX idx_fk_remote_fetch_manifest_item_remote_source_id ON remote_fetch_manifest_item(remote_source_id);
+CREATE INDEX idx_fk_remote_fetch_request_source_id ON remote_fetch_request(source_id);
+CREATE INDEX idx_fk_user_media_lyrics_preference_audio_media_item_id ON user_media_lyrics_preference(audio_media_item_id);
+CREATE INDEX idx_fk_user_media_progress_media_item_id ON user_media_progress(media_item_id);
+CREATE INDEX idx_fk_user_party_state_party_id ON user_party_state(party_id);
+CREATE INDEX idx_fk_user_party_tag_assignment_user_party_tag_id ON user_party_tag_assignment(user_party_tag_id);
+CREATE INDEX idx_fk_user_party_tag_assignment_party_id ON user_party_tag_assignment(party_id);
+CREATE INDEX idx_fk_user_password_credential_user_id ON user_password_credential(user_id);
+CREATE INDEX idx_fk_user_person_state_person_id ON user_person_state(person_id);
+CREATE INDEX idx_fk_user_person_tag_assignment_user_person_tag_id ON user_person_tag_assignment(user_person_tag_id);
+CREATE INDEX idx_fk_user_person_tag_assignment_person_id ON user_person_tag_assignment(person_id);
+CREATE INDEX idx_fk_user_preference_user_id ON user_preference(user_id);
+CREATE INDEX idx_fk_user_work_playback_cursor_location_id ON user_work_playback_cursor(location_id);
+CREATE INDEX idx_fk_user_work_playback_cursor_file_source_id ON user_work_playback_cursor(file_source_id);
+CREATE INDEX idx_fk_user_work_playback_cursor_work_id ON user_work_playback_cursor(work_id);
+CREATE INDEX idx_fk_user_work_state_work_id ON user_work_state(work_id);
+CREATE INDEX idx_fk_user_work_tag_user_tag_id ON user_work_tag(user_tag_id);
+CREATE INDEX idx_fk_user_work_tag_work_id ON user_work_tag(work_id);
+CREATE INDEX idx_fk_voice_catalog_item_work_id ON voice_catalog_item(work_id);
+CREATE INDEX idx_fk_voice_catalog_refresh_state_last_run_id ON voice_catalog_refresh_state(last_run_id);
+CREATE INDEX idx_fk_voice_catalog_refresh_state_person_id ON voice_catalog_refresh_state(person_id);
+CREATE INDEX idx_fk_work_code_alias_source_work_id ON work_code_alias(source_work_id);
+CREATE INDEX idx_fk_work_credit_provider_id ON work_credit(provider_id);
+CREATE INDEX idx_fk_work_edition_work_id ON work_edition(work_id);
+CREATE INDEX idx_fk_work_folder_location_origin_source_id ON work_folder_location(origin_source_id);
+CREATE INDEX idx_fk_work_manual_override_updated_by_user_id ON work_manual_override(updated_by_user_id);
+CREATE INDEX idx_fk_work_metadata_sync_state_attempt_id ON work_metadata_sync_state(attempt_id);
+CREATE INDEX idx_fk_work_metadata_sync_state_provider_id ON work_metadata_sync_state(provider_id);
+CREATE INDEX idx_fk_work_party_provider_id ON work_party(provider_id);
+CREATE INDEX idx_fk_workflow_candidate_workflow_node_run_id ON workflow_candidate(workflow_node_run_id);
+CREATE INDEX idx_fk_workflow_definition_created_by_user_id ON workflow_definition(created_by_user_id);
+CREATE INDEX idx_fk_workflow_event_workflow_job_id ON workflow_event(workflow_job_id);
+CREATE INDEX idx_fk_workflow_event_workflow_node_run_id ON workflow_event(workflow_node_run_id);
+CREATE INDEX idx_fk_workflow_notification_work_id ON workflow_notification(work_id);
+CREATE INDEX idx_fk_workflow_notification_workflow_run_id ON workflow_notification(workflow_run_id);
+CREATE INDEX idx_fk_workflow_run_trigger_id ON workflow_run(trigger_id);
+CREATE INDEX idx_fk_workflow_run_workflow_definition_id ON workflow_run(workflow_definition_id);

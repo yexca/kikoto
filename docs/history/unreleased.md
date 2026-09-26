@@ -11,6 +11,9 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
 > trigger shows that it needs reconfiguring: open it, check its Run options,
 > save it, and turn it on again. Manual runs are unaffected.
 >
+> Migration 041 adds the creator lookup expression indexes and the missing
+> foreign-key child indexes used by cleanup cascades.
+>
 > By default `KIKOTO_ROOT_PASSWORD` no longer sets the administrator password on
 > every start. Existing accounts keep their current passwords, so the root
 > account still signs in with the last applied value and can now change it in
