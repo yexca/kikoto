@@ -683,6 +683,9 @@ func (p *Policy) resolve(ctx context.Context, host string) ([]netip.Addr, error)
 
 func validateAddress(address netip.Addr, allowPrivate bool) error {
 	address = address.Unmap()
+	if embedded, ok := nat64EmbeddedIPv4(address); ok {
+		address = embedded
+	}
 	if !address.IsValid() || isUnusableAddress(address) {
 		return violation("outbound destination resolved to an unusable address")
 	}
@@ -719,6 +722,19 @@ func isUnusableAddress(address netip.Addr) bool {
 	return false
 }
 
+// nat64WellKnownPrefix is the RFC 6052 prefix DNS64 resolvers use to
+// synthesize addresses for IPv4-only hosts. The gateway forwards to the
+// embedded IPv4 address, so that address is the destination to validate.
+var nat64WellKnownPrefix = netip.MustParsePrefix("64:ff9b::/96")
+
+func nat64EmbeddedIPv4(address netip.Addr) (netip.Addr, bool) {
+	if !address.Is6() || !nat64WellKnownPrefix.Contains(address) {
+		return netip.Addr{}, false
+	}
+	bytes := address.As16()
+	return netip.AddrFrom4([4]byte(bytes[12:])), true
+}
+
 var unusablePrefixes = []netip.Prefix{
 	netip.MustParsePrefix("0.0.0.0/8"),
 	netip.MustParsePrefix("240.0.0.0/4"),
@@ -735,6 +751,8 @@ var nonPublicPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("198.51.100.0/24"),
 	netip.MustParsePrefix("203.0.113.0/24"),
 	netip.MustParsePrefix("240.0.0.0/4"),
+	netip.MustParsePrefix("::/96"),
+	netip.MustParsePrefix("::ffff:0:0:0/96"),
 	netip.MustParsePrefix("64:ff9b:1::/48"),
 	netip.MustParsePrefix("100::/64"),
 	netip.MustParsePrefix("2001::/23"),
