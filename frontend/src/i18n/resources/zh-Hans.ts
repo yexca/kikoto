@@ -513,6 +513,8 @@ export const zhHansResource = {
         dismissVersionNotice: "关闭版本通知",
         remindNextVersion: "下个版本再提醒",
         loadingPage: "正在加载页面",
+        serverUnavailableTitle: "无法连接 Kikoto",
+        serverUnavailableMessage: "服务器没有响应，登录状态没有改变。请检查连接后重试。",
       },
       nav: {
         workManagement: "元数据",
@@ -768,6 +770,9 @@ export const zhHansResource = {
         routeErrorMessage: "Kikoto 无法显示此页面。播放器和导航仍可使用。",
         retryPage: "重试页面",
         openLibrary: "打开媒体库",
+        staleVersionTitle: "Kikoto 已更新",
+        staleVersionMessage: "此页面属于服务器上已不存在的旧版本。请重新加载以使用最新版本。",
+        reloadApp: "重新加载 Kikoto",
       },
       notifications: {
         title: "通知",

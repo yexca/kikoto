@@ -54,8 +54,16 @@ export function useCircleRefreshRun({
 
   useEffect(() => {
     if (!activeRunId || canWatchRuns) return;
-    const timer = window.setInterval(poll, fallbackPollMs);
-    return () => window.clearInterval(timer);
+    // A hidden tab skips ticks and catches up as soon as it is shown again.
+    const pollVisible = () => {
+      if (!document.hidden) poll();
+    };
+    const timer = window.setInterval(pollVisible, fallbackPollMs);
+    document.addEventListener("visibilitychange", pollVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", pollVisible);
+    };
   }, [activeRunId, canWatchRuns, poll]);
 
   return { active: activeRunId !== null };

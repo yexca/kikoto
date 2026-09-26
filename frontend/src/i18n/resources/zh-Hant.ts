@@ -518,6 +518,8 @@ export const zhHantResource = {
         dismissVersionNotice: "關閉版本通知",
         remindNextVersion: "下個版本再提醒",
         loadingPage: "正在載入頁面",
+        serverUnavailableTitle: "無法連線至 Kikoto",
+        serverUnavailableMessage: "伺服器沒有回應，登入狀態沒有改變。請檢查連線後重試。",
       },
       nav: {
         workManagement: "中繼資料",
@@ -773,6 +775,9 @@ export const zhHantResource = {
         routeErrorMessage: "Kikoto 無法顯示此頁面。播放器和導覽仍可使用。",
         retryPage: "重試頁面",
         openLibrary: "開啟媒體庫",
+        staleVersionTitle: "Kikoto 已更新",
+        staleVersionMessage: "此頁面屬於伺服器上已不存在的舊版本。請重新載入以使用最新版本。",
+        reloadApp: "重新載入 Kikoto",
       },
       notifications: {
         title: "通知",

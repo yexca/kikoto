@@ -64,6 +64,33 @@ test("@smoke requires sign-in before mounting the library when anonymous access 
   expect(libraryRequests).toBe(0);
 });
 
+test("a server outage at startup offers a retry instead of the sign-in page", async ({ page }) => {
+  await mockAppShell(page, false);
+  let serverDown = true;
+  await page.route("**/api/auth/me", async (route) => {
+    if (!serverDown) {
+      await route.fulfill({
+        json: {
+          authenticated: true,
+          user: { id: 1, username: "listener", displayName: "Listener", permissions: [] },
+        },
+      });
+      return;
+    }
+    await route.fulfill({ status: 503, json: { error: "Service unavailable" } });
+  });
+  await page.goto("/");
+
+  const notice = page.getByRole("alert");
+  await expect(notice.getByRole("heading", { name: "Can't reach Kikoto" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to Kikoto", exact: true })).toHaveCount(0);
+
+  serverDown = false;
+  await notice.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(page.locator("footer").getByRole("button", { name: "Library", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to Kikoto", exact: true })).toHaveCount(0);
+});
+
 test("@smoke renders the anonymous library shell", async ({ page }) => {
   await mockAppShell(page);
   await page.goto("/");

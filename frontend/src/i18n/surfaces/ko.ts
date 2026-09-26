@@ -655,6 +655,9 @@ export const surfaceKorean = {
     loadingWorkflowData: "워크플로 데이터 로드 중",
     workflowTabs: "워크플로",
     presetQueueFailed: "프리셋 워크플로를 대기열에 추가할 수 없습니다.",
+    runCancelFailed: "워크플로 실행을 취소할 수 없습니다. 다시 시도해 주세요.",
+    runRetryFailed: "워크플로 실행을 다시 시도할 수 없습니다. 다시 시도해 주세요.",
+    candidateActionFailed: "이 검토 항목을 업데이트할 수 없습니다. 다시 시도해 주세요.",
     presetFetchUnavailable: "다운로드 권한 필요",
     presetGroups: {
       input: "입력",
