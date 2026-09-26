@@ -169,6 +169,11 @@ custom workflow editor: `workflow_definition` rows are system-scope only, the
 definition CRUD, preview, node-type, slash-command, subworkflow, and workflow
 input surfaces are gone, and migration 035 deletes any remaining user
 definitions with their triggers while runs keep their code and name snapshots.
+On upgrades from before 035, the upgrade hook saves the definitions and
+triggers first. The onboarding review matches only graphs equivalent to a
+current preset and creates disabled triggers; unmatched graphs remain
+exportable. Databases that passed 035 before this preservation was added need
+an older backup to recover deleted definitions.
 The typed workflow graph runtime (`workflow_graph*.go`; persisted as
 `custom_workflow` jobs with checkpoints and retry) stays and executes the node
 kinds the presets compose. `circle_follow`, `series_follow`, and
@@ -422,11 +427,20 @@ root, so a pool is the first path segment in pool mode and no schema changes.
 
 At startup, before this start is recorded, an unconfigured instance that ran an
 earlier release (`schema_state.last_successful_app_version`) or already holds
-local works becomes `standard` with onboarding complete and keeps its triggers.
+local works becomes `standard` with upgrade onboarding pending and keeps its
+triggers. The administrator may retain standard mode or confirm a move into
+storage pools, then review the local scan and preserved custom workflows.
 A fresh install stays unconfigured and turns the local scan's Startup trigger
 and folder watcher off once; onboarding chooses the layout, runs a scan and
-optional metadata sync, and sets both triggers. The mode can change only while
-the library holds no local works; pools that hold works cannot be removed.
+optional metadata sync, and sets both triggers. A configured mode switch or
+Fetch pool switch requires a preview and confirmation. Kikoto blocks ordinary
+requests during the durable copy, checksum verification, database path update,
+source cleanup, and local scan. Administrators see progress and can retry a
+failed move; other users see maintenance. A pool that still holds unrelated
+works cannot be removed.
+The plan includes indexed local roots and unindexed work folders visible at
+the current scan depth. A folder below that depth remains outside the scan's
+scope until the administrator increases the depth and scans it.
 
 Each scan computes its scope from the online pools and the effective depth.
 Depth counts inside a pool and is at least the deepest Fetch save template or

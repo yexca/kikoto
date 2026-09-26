@@ -60,6 +60,7 @@ import type { ListeningHistoryWorkLinkFactory } from "@/features/listening-histo
 import { PERSONAL_TAB_PERMISSION, personalTabPath } from "@/pages/personalTabs";
 import { preloadWorkDetail } from "@/features/work-detail/lazyWorkDetail";
 import { LibraryOnboarding } from "@/features/library-setup/LibraryOnboarding";
+import { LibraryMigrationGate } from "@/features/library-setup/LibraryMigrationGate";
 import { useLocale } from "@/i18n/LocaleProvider";
 import type { UiLocale } from "@/i18n";
 import {
@@ -132,7 +133,9 @@ export function App() {
     <MobileRuntimeProvider>
       <AuthProvider>
         <PageHeaderProvider>
-          <AuthenticatedApp />
+          <LibraryMigrationGate>
+            <AuthenticatedApp />
+          </LibraryMigrationGate>
         </PageHeaderProvider>
       </AuthProvider>
     </MobileRuntimeProvider>

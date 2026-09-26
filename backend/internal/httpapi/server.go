@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/accesspolicy"
@@ -51,6 +52,9 @@ type Server struct {
 	metadataOnboardingMu           sync.Mutex
 	metadataCoordinator            *metasync.Coordinator
 	jobRunnerMu                    sync.Mutex
+	layoutMigrationMu              sync.Mutex
+	layoutMigrationActive          atomic.Bool
+	layoutMigrationScan            atomic.Bool
 	jobRunnerStarted               bool
 	workflowLeases                 *workflowLeaseRegistry
 	voiceCatalogRefreshMu          sync.Mutex
@@ -236,6 +240,15 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/maintenance/database/optimize", s.optimizeDatabase)
 	mux.HandleFunc("GET /api/library/layout", s.getLibraryLayout)
 	mux.HandleFunc("PUT /api/library/layout", s.updateLibraryLayout)
+	mux.HandleFunc("POST /api/library/migration/preview", s.previewLibraryMigration)
+	mux.HandleFunc("POST /api/library/migration", s.startLibraryMigration)
+	mux.HandleFunc("GET /api/library/migration", s.getLibraryMigration)
+	mux.HandleFunc("GET /api/library/migration/public", s.getPublicLibraryMigration)
+	mux.HandleFunc("POST /api/library/migration/retry", s.retryLibraryMigration)
+	mux.HandleFunc("GET /api/library/legacy-workflows", s.listLegacyWorkflowMigrations)
+	mux.HandleFunc("GET /api/library/legacy-workflows/{id}/export", s.exportLegacyWorkflow)
+	mux.HandleFunc("POST /api/library/legacy-workflows/{id}/convert", s.convertLegacyWorkflow)
+	mux.HandleFunc("POST /api/library/legacy-workflows/{id}/skip", s.skipLegacyWorkflow)
 	mux.HandleFunc("POST /api/library/pools/reconnect", s.reconnectLibraryPool)
 	mux.HandleFunc("POST /api/library/onboarding/complete", s.completeLibraryOnboarding)
 	mux.HandleFunc("GET /api/maintenance/database/backups", s.listDatabaseBackups)
@@ -307,7 +320,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/availability-watch/targets/{id}/track", s.trackAvailabilityWatchTarget)
 	mux.HandleFunc("POST /api/availability-watch/run", s.runAvailabilityWatch)
 	apiHandler := s.withCORS(withFirstResponseDeadline(
-		limitRequestBody(s.authMiddleware(s.anonymousAccessMiddleware(s.demoReadOnlyMiddleware(s.demoContentMiddleware(mux)))), maxJSONRequestBytes),
+		limitRequestBody(s.authMiddleware(s.anonymousAccessMiddleware(s.demoReadOnlyMiddleware(s.demoContentMiddleware(s.libraryMigrationMiddleware(mux))))), maxJSONRequestBytes),
 		mux, apiFirstResponseBudget, slowFirstResponsePatterns,
 	))
 	if strings.TrimSpace(s.cfg.StaticDir) == "" {
@@ -396,6 +409,9 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) RunStartupWorkflows(ctx context.Context) error {
+	if s.layoutMigrationActive.Load() {
+		return nil
+	}
 	if err := s.ensureSystemWorkflowDefinitions(ctx); err != nil {
 		return err
 	}
@@ -406,6 +422,10 @@ func (s *Server) RunStartupWorkflows(ctx context.Context) error {
 }
 
 func (s *Server) RecoverInterruptedWorkflows(ctx context.Context) error {
+	if s.layoutMigrationActive.Load() {
+		_, err := s.settleInterruptedWorkflowRuns(ctx, "startup interrupted before completion")
+		return err
+	}
 	if _, err := s.settleInterruptedWorkflowRuns(ctx, "startup interrupted before completion"); err != nil {
 		return err
 	}

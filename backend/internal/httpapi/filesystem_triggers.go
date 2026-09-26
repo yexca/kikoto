@@ -48,6 +48,12 @@ type filesystemWatcher interface {
 func (s *Server) runFilesystemTriggerCoordinator(ctx context.Context) {
 	recoveryFullScan := false
 	for {
+		if s.layoutMigrationActive.Load() {
+			if !waitForFilesystemTrigger(ctx, filesystemTriggerRetryDelay) {
+				return
+			}
+			continue
+		}
 		watchConfig, err := s.loadFilesystemWatcherConfig(ctx)
 		if err != nil {
 			_ = s.recordFilesystemWatcherError(ctx, err)
@@ -343,6 +349,9 @@ func sameFilesystemWatcherConfig(left filesystemWatcherConfig, right filesystemW
 }
 
 func (s *Server) dispatchFilesystemTriggeredLocalScan(ctx context.Context, watchedDirectories int, eventAt time.Time, changedPaths []string, forceFull bool) (bool, bool, error) {
+	if s.layoutMigrationActive.Load() {
+		return false, false, nil
+	}
 	trigger, ok, err := s.loadFixedFilesystemTrigger(ctx)
 	if err != nil || !ok || !trigger.Enabled {
 		return false, false, err

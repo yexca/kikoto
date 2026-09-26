@@ -83,6 +83,14 @@ func (s *Server) runWorkflowCoordinator(ctx context.Context) {
 	databaseBackupTimer := time.NewTimer(databaseBackupCheckInitialDelay)
 	defer databaseBackupTimer.Stop()
 	for {
+		if s.layoutMigrationActive.Load() {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				continue
+			}
+		}
 		if err := s.dispatchDueScheduledWorkflowTrigger(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("dispatch scheduled custom workflow", "error", err)
 		}
@@ -148,6 +156,11 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context) error {
 	if s.cfg.IsDemo() {
 		return nil
 	}
+	s.layoutMigrationMu.Lock()
+	if s.layoutMigrationActive.Load() && !s.layoutMigrationScan.Load() {
+		s.layoutMigrationMu.Unlock()
+		return nil
+	}
 	lease := s.workflowLeases.reserve()
 	defer s.workflowLeases.release(lease)
 	var job workflowJobRecord
@@ -157,6 +170,7 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context) error {
 		job, ok, err = s.claimNextQueuedWorkflowJob(ctx, lease)
 		return err
 	})
+	s.layoutMigrationMu.Unlock()
 	if err != nil || !ok {
 		return err
 	}
@@ -308,6 +322,11 @@ func (s *Server) settleUnfinishedWorkflowJob(ctx context.Context, jobCtx context
 // Short synchronous API operations may execute only if they are at the head
 // of the same durable queue. Otherwise the background worker owns execution.
 func (s *Server) leaseInlineWorkflowJob(ctx context.Context, job workflowJobRecord) (context.Context, context.CancelFunc, error) {
+	s.layoutMigrationMu.Lock()
+	defer s.layoutMigrationMu.Unlock()
+	if s.layoutMigrationActive.Load() {
+		return ctx, func() {}, errWorkflowJobQueued
+	}
 	var headID int64
 	err := s.db.QueryRowContext(ctx, `SELECT job.id FROM workflow_job AS job
 		INNER JOIN workflow_run AS run ON run.id = job.workflow_run_id
@@ -357,6 +376,8 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string
 		INNER JOIN workflow_run AS run ON run.id = job.workflow_run_id
 		WHERE job.status = 'queued'
 			AND run.status = 'queued'
+			AND (? = 0 OR (job.worker_type = 'local_library_scan' AND
+				job.workflow_run_id = (SELECT scan_run_id FROM library_layout_migration WHERE id = 1)))
 			AND (job.available_at IS NULL OR job.available_at <= CURRENT_TIMESTAMP)
 			AND NOT EXISTS (
 				SELECT 1 FROM workflow_job AS active
@@ -364,7 +385,7 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string
 			)
 		ORDER BY job.priority DESC, job.created_at ASC, job.id ASC
 		LIMIT 1
-	`).Scan(&candidateID)
+	`, s.layoutMigrationActive.Load()).Scan(&candidateID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return workflowJobRecord{}, false, nil
 	}

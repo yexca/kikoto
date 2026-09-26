@@ -188,7 +188,42 @@ export const adminToolsEnglish = {
           "Each selected first-level folder of the data directory is a separate storage pool, such as another disk or a mounted cloud drive. Fetch saves new works to the Fetch pool.",
       },
     },
-    locked: "The mode is fixed because the library already holds local works.",
+    locked: "Changing modes will move local files and run a full scan.",
+    migration: {
+      confirmTitle: "Move library storage?",
+      confirmDescription:
+        "Kikoto will move the affected files, verify them, and scan the library. The site will be unavailable until the move finishes.",
+      moveSummary: "{{count}} folders, about {{size}} GiB to copy and verify.",
+      cancel: "Cancel",
+      confirm: "Start migration",
+      maintenance: "The site is under maintenance. Please return later.",
+      progress: "Moving library storage: {{phase}} ({{current}} / {{total}} folders, {{size}} / {{totalSize}} GiB)",
+      phases: {
+        prepare: "preparing",
+        copy: "copying",
+        commit: "updating records",
+        cleanup: "cleaning up",
+        scan: "scanning",
+        completed: "completed",
+        retry: "retrying",
+      },
+      retry: "Retry migration",
+      failed: "The storage move needs attention. Check the disks and retry.",
+    },
+    workflowMigration: {
+      title: "Earlier custom workflows",
+      notice:
+        "Kikoto attempts an exact match to current presets. Converted schedules are disabled until you review them. The original definitions remain saved for export.",
+      empty: "No earlier custom workflow definitions are available to migrate.",
+      match: "Suggested preset: {{preset}}.",
+      triggers_one: "{{count}} saved trigger",
+      triggers_other: "{{count}} saved triggers",
+      convert: "Convert disabled triggers",
+      export: "Export original",
+      later: "Review later",
+      loadFailed: "Saved workflows could not be loaded.",
+      actionFailed: "The workflow could not be processed.",
+    },
     dataFolder: "Data folder",
     online: "Online",
     offline: "Offline",
@@ -221,6 +256,7 @@ export const adminToolsEnglish = {
       done: "Library setup finished.",
       finishFailed: "Setup could not be finished.",
       saveAndContinue: "Save and continue",
+      keepCurrentLayout: "Keep current mode and continue",
       scan: "Scan library",
       scanAgain: "Scan again",
       scanIdle: "Not scanned yet.",
@@ -238,9 +274,14 @@ export const adminToolsEnglish = {
         layout: {
           title: "Choose how the library is stored",
           description:
-            "Standard keeps the whole data directory as one library. Storage pools treat each first-level folder as its own disk or cloud drive. The mode is fixed once works are found.",
+            "Standard keeps the whole data directory as one library. Storage pools treat each first-level folder as its own disk or cloud drive. A later mode change moves files during maintenance.",
         },
         scan: { title: "Scan the library", description: "Find the works already in your folders." },
+        workflows: {
+          title: "Review earlier custom workflows",
+          description:
+            "Kikoto will try to match older definitions to current presets, but some behavior may need manual reconfiguration.",
+        },
         metadata: {
           title: "Sync metadata",
           description: "Fetch titles, covers, and credits for the works that were found.",

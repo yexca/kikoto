@@ -13,9 +13,9 @@ import (
 	"github.com/yexca/kikoto/backend/internal/storagepool"
 )
 
-// Library layout settings. The mode is chosen once, during onboarding or
-// automatically for an instance upgraded from an earlier release, and is
-// locked once the library holds local works.
+// Library layout settings. The initial mode is chosen during onboarding or
+// inherited as standard for an earlier instance. Later mode and Fetch-pool
+// changes use the durable, confirmed migration path.
 const (
 	settingLibraryMode    = "library_mode"
 	settingStoragePools   = "storage_pools"
