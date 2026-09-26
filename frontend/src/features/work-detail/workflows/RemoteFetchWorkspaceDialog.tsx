@@ -681,7 +681,7 @@ function RemoteFetchLocalPane({
   const plannedRoot = activeEdition?.localRoots.find((candidate) => candidate.rootPath === plan.saveRoot);
   return (
     <div
-      className={`${active ? "block" : "hidden"} app-scroll min-h-0 overflow-auto border-b p-2 md:block md:border-b-0 md:border-r`}
+      className={`${active ? "block" : "hidden"} app-scroll min-h-0 overflow-auto overscroll-contain border-b p-2 md:block md:border-b-0 md:border-r`}
     >
       <div className="mb-2 flex items-center justify-between gap-2 px-1">
         <div className="text-sm font-medium">{t("remoteFetch.localFiles")}</div>
@@ -741,7 +741,7 @@ function RemoteFetchRemotePane({
   const { t } = useTranslation();
   return (
     <div
-      className={`${active ? "block" : "hidden"} app-scroll min-h-0 overflow-auto border-b p-2 md:block md:border-b-0 md:border-r`}
+      className={`${active ? "block" : "hidden"} app-scroll min-h-0 overflow-auto overscroll-contain border-b p-2 md:block md:border-b-0 md:border-r`}
     >
       {showHeader && (
         <div className="mb-2 flex items-center justify-between gap-2 px-1">
@@ -775,7 +775,7 @@ function RemoteFetchResultPane({
 }) {
   const { t } = useTranslation();
   return (
-    <div className={`${active ? "block" : "hidden"} app-scroll min-h-0 overflow-auto p-2 md:block`}>
+    <div className={`${active ? "block" : "hidden"} app-scroll min-h-0 overflow-auto overscroll-contain p-2 md:block`}>
       <div className="mb-2 flex items-center justify-between gap-2 px-1">
         <div className="text-sm font-medium">{t("remoteFetch.afterFetch")}</div>
         <Badge variant="secondary">{t("remoteFetch.files", { count: plan?.items.length ?? 0 })}</Badge>
@@ -794,7 +794,7 @@ function RemoteFetchStatus({ message, conflict }: { message: string; conflict: b
   return (
     <div
       aria-live="polite"
-      className={`app-scroll h-12 shrink-0 overflow-auto border-t px-3 py-2 text-sm ${conflict ? "bg-error-surface text-error-foreground" : "bg-muted text-muted-foreground"}`}
+      className={`app-scroll h-12 shrink-0 overflow-auto overscroll-contain border-t px-3 py-2 text-sm ${conflict ? "bg-error-surface text-error-foreground" : "bg-muted text-muted-foreground"}`}
     >
       {message || (
         <span className="invisible" aria-hidden="true">

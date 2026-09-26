@@ -1028,6 +1028,18 @@ export type WorkflowRunDetail = WorkflowRun & {
   graphJson: string;
 };
 
+export type FetchFileState = "pending" | "active" | "done" | "failed" | "paused" | "stopped";
+
+/** One planned file of a Fetch run; `path` is relative to the work folder. */
+export type FetchFile = {
+  path: string;
+  kind: string;
+  action: string;
+  state: FetchFileState;
+  sizeBytes: number | null;
+  bytesCurrent: number;
+};
+
 export type MetadataIssueWork = {
   workId: number;
   primaryCode: string;
@@ -2582,6 +2594,8 @@ export const api = {
     onMessage: (message: WorkflowRunEventStreamMessage) => void,
   ) => streamWorkflowRunEvents(id, afterId, signal, onMessage),
   listWorkflowRunCandidates: (id: number) => getJSON<WorkflowCandidate[]>(`/api/workflow-runs/${id}/candidates`),
+  listWorkflowRunFetchFiles: (id: number) =>
+    getJSON<{ runId: number; files: FetchFile[] }>(`/api/workflow-runs/${id}/fetch-files`),
   updateWorkflowCandidate: (
     id: number,
     payload: { status: "accepted" | "rejected" | "ignored" | "resolved"; decisionJson?: string },

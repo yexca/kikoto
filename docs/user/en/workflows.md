@@ -136,6 +136,9 @@ Workflows make backend actions inspectable.
   transfer rate, and the estimated time remaining. Unknown-size files stay
   explicit and suppress percentage and remaining-time presentation until their
   actual size is known.
+- A Fetch run's detail lists its files. The file being downloaded stays at the
+  top with its own progress bar, and the full list marks each file as done,
+  waiting, or where the run failed or paused.
 - Each Fetch run is named after its work, such as `Fetch RJ00000001`, and
   Activity search finds a Fetch by its work code. The **Fetch** tab lists Fetch
   history and steps but has no Run form: a Fetch always starts from a work.

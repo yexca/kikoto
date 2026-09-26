@@ -67,7 +67,7 @@ func (s *Server) prepareRemoteWorkSaveEnqueue(
 	if err := validateRemoteFetchDownloadPlan(plan.Items, downloadLimit); err != nil {
 		return remoteWorkSavePreparation{}, err
 	}
-	if err := s.ensureRemoteWorkSaveDiskReserve(plan, minFreeBytes); err != nil {
+	if err := s.ensureRemoteWorkSaveDiskReserve(plan, minFreeBytes, ""); err != nil {
 		return remoteWorkSavePreparation{}, err
 	}
 	claimedRoot, err := s.ensureRemoteFetchRootClaim(ctx, source, plan.SaveRoot)
@@ -286,7 +286,7 @@ func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request
 		}
 		return
 	}
-	if err := s.ensureRemoteWorkSaveDiskReserve(plan, payload.MinFreeBytes); err != nil {
+	if err := s.ensureRemoteWorkSaveDiskReserve(plan, payload.MinFreeBytes, ""); err != nil {
 		writeError(w, err)
 		return
 	}
