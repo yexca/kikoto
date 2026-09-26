@@ -895,8 +895,6 @@ export const surfaceHans = {
   },
   libraryDetail: {
     untrackSource: "取消跟踪来源？",
-    fetchRemoteDirectory: "获取远程目录",
-    fetchRemoteDirectoryDescription: "这将下载所选 {{count}} 个作品的完整远程目录。",
     work: "作品",
     cover: "封面",
     circle: "社团",

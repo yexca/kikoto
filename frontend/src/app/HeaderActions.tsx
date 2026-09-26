@@ -11,7 +11,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Clipboard,
-  Clock3,
   Download,
   GitBranchPlus,
   ListChecks,
@@ -53,6 +52,7 @@ import { Badge } from "@/components/ui/badge";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { api, type CurrentUser, type WorkflowNotification, type WorkflowRun } from "@/lib/api";
 import { clearStoredServerURL, getStoredServerURL, isNativeApp } from "@/lib/serverConfig";
 import { versionLabel } from "@/lib/appInfo";
@@ -169,7 +169,9 @@ export function HeaderActions({
   }, []);
 
   const notificationPageSize = 50;
-  const refreshNotificationCenter = (requestedPage = notificationPage) => {
+  // Stable so the polling effect below re-subscribes only when the viewer,
+  // workflow visibility, or page changes, while each poll reads current state.
+  const refreshNotificationCenter = useStableCallback((requestedPage: number = notificationPage) => {
     if (user) {
       api
         .listNotifications(requestedPage, notificationPageSize)
@@ -209,11 +211,12 @@ export function HeaderActions({
       setReviewRuns([]);
       setReviewCount(0);
     }
-  };
+  });
 
+  const userId = user?.id ?? null;
   useEffect(() => {
     refreshNotificationCenter();
-    if (!user && !canViewWorkflows) return;
+    if (userId === null && !canViewWorkflows) return;
     // Background tabs and a backgrounded native app skip polling and catch up on return.
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") refreshNotificationCenter();
@@ -226,7 +229,7 @@ export function HeaderActions({
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [canViewWorkflows, notificationPage, user?.id]);
+  }, [canViewWorkflows, notificationPage, refreshNotificationCenter, userId]);
 
   const totalNotificationCount = notificationCount + reviewCount;
 

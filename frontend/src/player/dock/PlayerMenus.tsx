@@ -7,6 +7,7 @@ import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { Switch } from "@/components/ui/switch";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { cn } from "@/lib/tailwindClassNames";
 import { isPlaybackCompatibilityScope } from "@/player/playerPersistence";
 import { usePlayerTime, type usePlayer } from "@/player/PlayerProvider";
@@ -49,15 +50,19 @@ export function SleepTimerMenu({
   const [rewindDraft, setRewindDraft] = useState(String(player.sleepRewindMinutes));
   const rewindDraftValid = parseSleepRewindDraft(rewindDraft) !== null;
 
-  useEffect(() => {
-    if (!open) return;
+  // Opening the menu starts from the running timer; later timer changes must not overwrite an edit in progress.
+  const syncFromRunningTimer = useStableCallback(() => {
     setFinishCurrentTrack(Boolean(player.sleepTimer?.finishCurrentTrack));
     if (player.sleepTimer && !player.sleepTimer.waitingForTrackEnd) {
       setCustomMinutes(String(Math.max(1, Math.ceil((player.sleepTimer.deadline - Date.now()) / 60_000))));
     }
     setRewindDraft(String(player.sleepRewindMinutes));
     onCustomOpenChange(false);
-  }, [open]);
+  });
+
+  useEffect(() => {
+    if (open) syncFromRunningTimer();
+  }, [open, syncFromRunningTimer]);
 
   const start = (minutes: number) => {
     player.setSleepTimerMinutes(minutes, finishCurrentTrack);

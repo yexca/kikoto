@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useStableCallback } from "@/hooks/useStableCallback";
+
 import {
   api,
   type LibrarySource,
@@ -11,7 +13,6 @@ import {
   buildSourceTabs,
   buildTrackedPresenceOptions,
   currentRemoteSourceWorkCode,
-  remoteAvailabilityRouteCode,
   remoteSourceCanBrowse,
   remoteSourceForTrackedPresence,
   remoteSourceTabKey,
@@ -248,25 +249,34 @@ export function useWorkSourceContext({
     setActiveSourceKey(intendedSource?.key ?? sourceTabs[0].key);
   }, [activeSourceKey, sourceCheckedAt, sourceTabs, work]);
 
+  const availabilityCode = work?.primaryCode ?? "";
+  // Before the work loads, remote tabs are seeded with the requested code.
+  const seedCode = work?.primaryCode ?? code;
   useEffect(() => {
-    setRemoteSources(seedRemoteSources(sources, work?.primaryCode ?? code));
+    setRemoteSources(seedRemoteSources(sources, seedCode));
     setSourceCheckedAt("");
-    if (!work?.primaryCode || sources.length === 0) return;
+    if (!availabilityCode || sources.length === 0) return;
     let cancelled = false;
     api
-      .getSourceAvailability(work.primaryCode)
+      .getSourceAvailability(availabilityCode)
       .then((result) => {
         if (!cancelled) applyAvailability(result);
       })
       .catch(() => {
-        if (!cancelled) setRemoteSources(seedRemoteSources(sources, work.primaryCode));
+        if (!cancelled) setRemoteSources(seedRemoteSources(sources, availabilityCode));
       });
     return () => {
       cancelled = true;
     };
-  }, [applyAvailability, sources.length, work?.primaryCode]);
+  }, [applyAvailability, availabilityCode, seedCode, sources]);
 
+  // The load below marks the selected source as loading, so it reads the
+  // selection without subscribing to it: re-running on that update would abort
+  // the request it just started. Explicit triggers are the source, the work
+  // code, and remoteLoadVersion (availability refresh or a retry).
+  const readSelectedRemoteSource = useStableCallback(() => selectedRemoteSource);
   useEffect(() => {
+    const selectedRemoteSource = readSelectedRemoteSource();
     const routedRemoteSource = Boolean(
       selectedRemoteSource &&
       initialRemoteCode &&
@@ -377,7 +387,14 @@ export function useWorkSourceContext({
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [initialRemoteCode, initialSourceIntent, remoteLoadVersion, selectedRemoteSourceID, selectedRemoteWorkCode]);
+  }, [
+    initialRemoteCode,
+    initialSourceIntent,
+    readSelectedRemoteSource,
+    remoteLoadVersion,
+    selectedRemoteSourceID,
+    selectedRemoteWorkCode,
+  ]);
 
   useEffect(() => {
     setActiveSourceKey(initialSourceIntent);

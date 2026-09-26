@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { formatDateTime } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type VoiceAlias, type VoiceAliasCandidate, type VoiceMergeReview } from "@/lib/api";
@@ -59,7 +60,11 @@ export function VoiceAliasPanel({
   const candidates = candidateResult?.query === draft ? candidateResult.items : null;
   const existingAlias = aliases.find((alias) => alias.alias.toLowerCase() === draft.toLowerCase());
 
-  const loadMergeReviews = async () => {
+  // Hosts pass an inline onMessage; reporting through a stable callback keeps
+  // a parent re-render from restarting the history load or candidate search.
+  const reportError = useStableCallback((key: string) => onMessage(t(key), "error"));
+
+  const loadMergeReviews = useStableCallback(async () => {
     if (!canManage && !readOnly) {
       setMergeReviews([]);
       return;
@@ -67,13 +72,13 @@ export function VoiceAliasPanel({
     try {
       setMergeReviews(await api.listVoiceMergeReviews(personId));
     } catch {
-      onMessage(t("creatorBrowse.mergeHistoryFailed"), "error");
+      reportError("creatorBrowse.mergeHistoryFailed");
     }
-  };
+  });
 
   useEffect(() => {
     void loadMergeReviews();
-  }, [canManage, personId, readOnly]);
+  }, [canManage, loadMergeReviews, personId, readOnly]);
 
   useEffect(() => {
     if (!searching) return;
@@ -86,7 +91,7 @@ export function VoiceAliasPanel({
         } catch {
           if (controller.signal.aborted) return;
           setCandidateResult({ query: draft, items: [] });
-          onMessage(t("creatorBrowse.aliasCandidateSearchFailed"), "error");
+          reportError("creatorBrowse.aliasCandidateSearchFailed");
         }
       })();
     }, 180);
@@ -94,7 +99,7 @@ export function VoiceAliasPanel({
       controller.abort();
       window.clearTimeout(timeout);
     };
-  }, [draft, personId, searching]);
+  }, [draft, personId, reportError, searching]);
 
   const addAlias = async () => {
     if (!draft || existingAlias || pending) return;

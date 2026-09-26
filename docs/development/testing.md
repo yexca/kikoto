@@ -180,6 +180,12 @@ and client request contracts without claiming to exercise a live backend. The
 suite uses mobile Chromium by default and runs tests tagged `@desktop` in
 Desktop Chrome.
 
+Mocked API responses are typed against `frontend/src/lib/api.ts`, usually
+through the builders in `tests/e2e/fixtures/api.ts`, and `make ci-style` type
+checks the tests with `npm run typecheck:e2e`. There is no generated API
+contract, so this catches a mock that drifts from the frontend's types, not a
+frontend type that drifts from the backend.
+
 Browser fixtures belong to each test's page and context. Tests run with
 `fullyParallel` enabled; do not introduce shared mutable state, a shared page,
 or dependencies on another test's execution order. The player/library suite is

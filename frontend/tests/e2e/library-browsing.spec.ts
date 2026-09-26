@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { work, MockWork, mockApplication, mediaFixture } from "./fixtures/player-library";
+import type { ApiErrorBody } from "./fixtures/api";
+import { work, type MockWork, mockApplication, mediaFixture } from "./fixtures/player-library";
 
 test("column preferences change the rendered collection and remain independent across viewport sizes", async ({
   page,
@@ -229,7 +230,7 @@ test("recommended sorting refreshes its stable seed", async ({ page }) => {
 test("recommendation badge refresh keeps the result grid fixed while the request is pending", async ({ page }) => {
   const requestedURLs: URL[] = [];
   let holdWorksResponse = false;
-  let releaseWorksResponse = () => undefined;
+  let releaseWorksResponse: () => void = () => undefined;
   const worksResponseGate = new Promise<void>((resolve) => {
     releaseWorksResponse = resolve;
   });
@@ -531,7 +532,7 @@ test("@desktop anonymous quick marks open the sign-in flow", async ({ page }) =>
 test("library request failures are not presented as an empty collection", async ({ page }) => {
   await mockApplication(page);
   await page.route("**/api/works?**", (route) =>
-    route.fulfill({ status: 500, json: { error: "database temporarily unavailable" } }),
+    route.fulfill({ status: 500, json: { error: "database temporarily unavailable" } satisfies ApiErrorBody }),
   );
   await page.goto("/");
 

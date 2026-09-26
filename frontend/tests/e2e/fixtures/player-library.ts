@@ -1,52 +1,114 @@
 import { type Page } from "@playwright/test";
 import type {
+  FavoriteList,
+  LibrarySource,
+  LocalMediaRefreshResult,
+  MediaCleanupResult,
+  MediaItem,
   MediaProgress,
+  MediaTextPreview,
+  RecentlyPlayedWorksResponse,
+  RemoteFetchFileDecision,
+  RemoteTrackRunStatus,
+  RemoteWorkDetail,
+  RemoteWorkSavePlan,
+  RemoteWorkTrackResult,
+  SourceAvailabilityResponse,
+  VoiceMergeReview,
+  Work,
+  WorkflowEvent,
+  WorkFolderLocation,
   WorkMetadataPresentation,
+  WorkMetadataSyncRunResult,
   WorkMetadataSyncStatus,
+  WorkSourceUntrackResult,
   WorkTranslation,
 } from "../../../src/lib/api";
 import { syntheticWorkCode } from "../../../src/test-support/workCode";
+import {
+  anonymousAuthState,
+  authenticatedStateFixture,
+  favoriteListFixture,
+  fixtureTimestamp,
+  librarySourceFixture,
+  mediaItemFixture,
+  mediaLocationFixture,
+  remoteTrackFixture,
+  remoteWorkDetailFixture,
+  remoteWorkFixture,
+  remoteWorksResponseFixture,
+  remoteWorkTracksFixture,
+  runtimeSettingsFixture,
+  sourceAvailabilitySourceFixture,
+  voiceCatalogRefreshFixture,
+  voiceDetailFixture,
+  voiceSummaryFixture,
+  workDetailFixture,
+  workflowRunDetailFixture,
+  workflowRunFixture,
+  workFixture,
+  workResolveFixture,
+  worksPageFixture,
+  type ApiErrorBody,
+  type ApiResponse,
+} from "./api";
 
-export const work = {
+export const work: Work = workFixture({
   id: 1,
   primaryCode: syntheticWorkCode("RJ", 0),
   title: "Tagged mobile work",
   ageRating: "R18",
-  createdAt: "2026-01-01T00:00:00Z",
-  updatedAt: "2026-01-01T00:00:00Z",
   releaseDate: "2026-01-01",
-  coverUrl: "",
-  dlsiteUrl: "",
   circle: "Test circle",
   circleExternalId: "RG00000001",
   rating: 4.5,
   ratingCount: 240,
   sales: 10,
   tags: ["ロリ"],
-  userTags: [],
-  voiceActors: [],
-  voiceCredits: [],
-  series: "",
-  seriesTitleId: "",
   trackCount: 1,
   availableLocations: 1,
   availability: ["local"],
-  sourcePresence: [],
-  localFolders: [],
-  progress: {
-    mediaItemId: null,
-    title: "",
-    positionSeconds: 0,
-    durationSeconds: null,
-    lastPlayedAt: null,
-    completed: false,
-  },
-  listeningStatus: "none",
-  favorite: false,
-  recommendScore: 0,
+});
+
+/** A persisted player queue entry. Local storage state, not an API response. */
+export type PersistedPlayerTrack = {
+  queueItemId: string;
+  mediaItemId: number;
+  locationId: number;
+  title: string;
+  folderPath: string;
+  locationType: string;
+  streamUrl: string;
+  sizeBytes: number | null;
+  availability: string;
+  workId: number;
+  workCode: string;
+  workTitle: string;
+  coverUrl: string;
+  circle: string;
+  progress: MediaProgress | null;
+  progressRecordable: boolean;
+  lyricsLocationId: number | null;
+  lyricsTitle: string;
+  autoLyricsLocationId?: number | null;
+  lyricsChoices?: {
+    mediaItemId: number;
+    locationId: number;
+    title: string;
+    path: string;
+    reason: "same_stem" | "shared_folder";
+  }[];
+  locations: {
+    locationId: number;
+    locationType: string;
+    streamUrl: string;
+    sourceId: number;
+    sourceName: string;
+    availability: string;
+  }[];
 };
 
-export const persistedTrack = {
+export const persistedTrack: PersistedPlayerTrack = {
   queueItemId: "e2e-track-1",
   mediaItemId: 1,
   locationId: 1,
@@ -61,7 +123,7 @@ export const persistedTrack = {
   workTitle: "Tagged mobile work",
   coverUrl: "",
   circle: "Test circle",
-  progress: null as MediaProgress | null,
+  progress: null,
   progressRecordable: true,
   lyricsLocationId: null,
   lyricsTitle: "",
@@ -77,23 +139,20 @@ export const persistedTrack = {
   ],
 };
 
-export const persistedPlayerTracks = new WeakMap<Page, (typeof persistedTrack)[]>();
+export const persistedPlayerTracks = new WeakMap<Page, PersistedPlayerTrack[]>();
 
 export const playerQueueStorageBaseKey = "kikoto:player-queue:v2";
 
 export const playerProgressStorageBaseKey = "kikoto:player-progress:v2";
 
-export type MockWork = Omit<typeof work, "voiceActors" | "voiceCredits"> & {
-  voiceActors: string[];
-  voiceCredits: { personId: number; displayName: string }[];
-};
+export type MockWork = Work;
 
 type MockApplicationFixture = {
-  work?: MockWork;
-  recentWorks?: MockWork[];
-  librarySources?: Record<string, unknown>[];
-  sourceAvailability?: Record<string, unknown>;
-  remoteDetail?: Record<string, unknown>;
+  work?: Work;
+  recentWorks?: Work[];
+  librarySources?: LibrarySource[];
+  sourceAvailability?: SourceAvailabilityResponse;
+  remoteDetail?: RemoteWorkDetail;
   onSourceCheck?: () => void;
   onUntrack?: (workId: number, sourceId: number) => void;
   onLocalRefresh?: () => void;
@@ -107,6 +166,7 @@ type MockApplicationFixture = {
   detailTranslations?: WorkTranslation[];
   detailMetadataPresentation?: WorkMetadataPresentation;
   detailMetadataSync?: WorkMetadataSyncStatus;
+  detailLocalFolders?: WorkFolderLocation[];
   metadataSyncControl?: {
     runId: number;
     status: "queued" | "running" | "succeeded" | "partial" | "failed";
@@ -143,13 +203,29 @@ export function silentWav(durationSeconds = 0.1) {
   return body;
 }
 
+const notMocked = { error: "Not mocked" } satisfies ApiErrorBody;
+
+function untrackResult(workId: number, sourceId: number): WorkSourceUntrackResult {
+  return {
+    workId,
+    sourceId,
+    status: "succeeded",
+    clearedCaches: 0,
+    deletedFiles: 0,
+    cachePaths: [],
+    trackedCleared: true,
+    workPreserved: true,
+    localPreserved: true,
+  };
+}
+
 export async function mockApplication(
   page: Page,
   onWorksRequest?: (url: URL) => void,
   failLocalAudio = false,
   workCount = 1,
   mediaDelayMs = 0,
-  mediaItems: Record<string, unknown>[] = [],
+  mediaItems: MediaItem[] = [],
   onCleanup?: (body: Record<string, unknown>) => void,
   fixture: MockApplicationFixture = {},
 ) {
@@ -158,89 +234,69 @@ export async function mockApplication(
     if (url.pathname === "/api/auth/me") {
       await route.fulfill({
         json: fixture.authenticated
-          ? {
-              authenticated: true,
-              user: {
-                id: 1,
-                username: "listener",
-                displayName: "Listener",
-                role: "user",
-                permissions: fixture.permissions ?? ["library:read", "playback:use", "favorites:write"],
-                devMode: true,
-              },
-            }
-          : { authenticated: false },
+          ? authenticatedStateFixture({
+              permissions: fixture.permissions ?? ["library:read", "playback:use", "favorites:write"],
+              devMode: true,
+            })
+          : anonymousAuthState,
       });
       return;
     }
     if (url.pathname === "/api/works/1/user-state" && route.request().method() === "PATCH") {
       await route.fulfill(
         fixture.authenticated
-          ? { json: { workId: 1, listeningStatus: "want_to_listen", favorite: false } }
-          : { status: 401, json: { error: "login required" } },
+          ? {
+              json: {
+                workId: 1,
+                listeningStatus: "want_to_listen",
+                favorite: false,
+              } satisfies ApiResponse<"updateWorkUserState">,
+            }
+          : { status: 401, json: { error: "login required" } satisfies ApiErrorBody },
       );
       return;
     }
     if (url.pathname === "/api/library-sources") {
-      await route.fulfill({ json: fixture.librarySources ?? [] });
+      await route.fulfill({ json: fixture.librarySources ?? ([] satisfies LibrarySource[]) });
       return;
     }
     if (url.pathname === "/api/favorite-lists") {
-      await route.fulfill({ json: [{ id: 1, name: "Marked", description: "", sortOrder: -1, kind: "marked" }] });
+      await route.fulfill({ json: [favoriteListFixture()] satisfies FavoriteList[] });
       return;
     }
     if (url.pathname === "/api/works/1/favorite-lists") {
-      await route.fulfill({
-        json: [{ id: 1, name: "Marked", description: "", sortOrder: -1, kind: "marked", selected: false }],
-      });
+      await route.fulfill({ json: [favoriteListFixture({ selected: false })] satisfies FavoriteList[] });
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
-      await route.fulfill({
-        json: {
-          mode: "development",
-          demoMode: false,
-          anonymousAccessEnabled: true,
-          cacheEnabled: false,
-          directoryRoutingRules: [],
-        },
-      });
+      await route.fulfill({ json: runtimeSettingsFixture() });
       return;
     }
     if (url.pathname === "/api/recently-played-works") {
-      await route.fulfill({ json: { works: fixture.recentWorks ?? [] } });
+      await route.fulfill({ json: { works: fixture.recentWorks ?? [] } satisfies RecentlyPlayedWorksResponse });
       return;
     }
     if (url.pathname === "/api/voices/7") {
       await route.fulfill({
-        json: {
-          personId: 7,
-          displayName: "Example Voice",
-          aliases: ["Example Voice"],
-          aliasRecords: [],
-          knownWorks: 1,
-          localWorks: 1,
-          remoteWorks: 0,
-          cachedWorks: 0,
-          playableWorks: 1,
-          lastSeenAt: "2026-01-01T00:00:00Z",
-          lastSyncedAt: "2026-01-01T00:00:00Z",
-          syncState: "synced",
-          syncReason: "",
-          rating: null,
-          note: "",
-          favorite: false,
-          userTags: [],
-          sourceSummaries: [{ key: "local", sourceId: null, displayName: "Local", status: "available", count: 1 }],
-          latestWork: null,
-          works: [],
-          remoteMatches: [],
-        },
+        json: voiceDetailFixture(
+          voiceSummaryFixture({
+            personId: 7,
+            displayName: "Example Voice",
+            aliases: ["Example Voice"],
+            knownWorks: 1,
+            localWorks: 1,
+            playableWorks: 1,
+            lastSeenAt: fixtureTimestamp,
+            lastSyncedAt: fixtureTimestamp,
+            syncState: "synced",
+            sourceSummaries: [{ key: "local", sourceId: null, displayName: "Local", status: "available", count: 1 }],
+          }),
+        ),
       });
       return;
     }
     if (url.pathname === "/api/voices/7/works") {
-      await route.fulfill({ json: { personId: 7, works: [] } });
+      await route.fulfill({ json: { personId: 7, works: [] } satisfies ApiResponse<"getVoiceWorks"> });
       return;
     }
     if (url.pathname === "/api/voices/7/remote-matches") {
@@ -248,27 +304,13 @@ export async function mockApplication(
         json: {
           personId: 7,
           remoteMatches: [],
-          refresh: {
-            status: "succeeded",
-            reason: "",
-            lastStatus: "succeeded",
-            generation: 1,
-            lastAttemptAt: "",
-            lastSuccessAt: "",
-            complete: true,
-            pagesFetched: 1,
-            catalogWorks: 0,
-            metadataQueued: 0,
-            queries: ["Example Voice"],
-            sources: [],
-            error: "",
-          },
-        },
+          refresh: voiceCatalogRefreshFixture({ queries: ["Example Voice"] }),
+        } satisfies ApiResponse<"getVoiceRemoteMatches">,
       });
       return;
     }
     if (url.pathname === "/api/voices/7/merges") {
-      await route.fulfill({ json: [] });
+      await route.fulfill({ json: [] satisfies VoiceMergeReview[] });
       return;
     }
     if (url.pathname === "/api/works") {
@@ -285,44 +327,25 @@ export async function mockApplication(
               title: `Mobile work ${index + 1}`,
             },
       );
-      await route.fulfill({ json: { works, page: 1, pageSize: 24, total: works.length } });
+      await route.fulfill({ json: worksPageFixture(works) });
       return;
     }
     if (url.pathname === `/api/works/${fixture.work?.primaryCode ?? work.primaryCode}/resolve`) {
-      const fixtureWork = fixture.work ?? work;
       await route.fulfill({
-        json: {
-          requestedCode: fixtureWork.primaryCode,
-          resolvedCode: fixtureWork.primaryCode,
-          workId: fixtureWork.id,
-          baseCode: "",
-          isTranslation: false,
-          title: fixtureWork.title,
-          coverUrl: fixtureWork.coverUrl,
-          circle: fixtureWork.circle,
-          circleExternalId: fixtureWork.circleExternalId,
-          releaseDate: fixtureWork.releaseDate,
-          rating: fixtureWork.rating,
-          sales: fixtureWork.sales,
-          regularPrice: null,
-          price: null,
-          priceCurrency: "JPY",
-          permanentlyFree: false,
-          tags: fixtureWork.tags,
-          voiceActors: fixtureWork.voiceActors,
-          voiceCredits: fixtureWork.voiceCredits,
-        },
+        json: workResolveFixture(fixture.work ?? work, { priceCurrency: "JPY", permanentlyFree: false }),
       });
       return;
     }
     if (url.pathname === `/api/works/${fixture.work?.primaryCode ?? work.primaryCode}/source-availability`) {
       if (route.request().method() === "POST") fixture.onSourceCheck?.();
       await route.fulfill({
-        json: fixture.sourceAvailability ?? {
-          workCode: fixture.work?.primaryCode ?? work.primaryCode,
-          checkedAt: "",
-          sources: [],
-        },
+        json:
+          fixture.sourceAvailability ??
+          ({
+            workCode: fixture.work?.primaryCode ?? work.primaryCode,
+            checkedAt: "",
+            sources: [],
+          } satisfies SourceAvailabilityResponse),
       });
       return;
     }
@@ -330,17 +353,7 @@ export async function mockApplication(
       fixture.remoteDetail &&
       url.pathname === `/api/remote-sources/7/works/${fixture.work?.primaryCode ?? work.primaryCode}/tracks`
     ) {
-      await route.fulfill({
-        json: {
-          sourceId: fixture.remoteDetail.sourceId,
-          sourceCode: fixture.remoteDetail.sourceCode,
-          sourceName: fixture.remoteDetail.sourceName,
-          remoteId: fixture.remoteDetail.remoteId,
-          primaryCode: fixture.remoteDetail.primaryCode,
-          remoteCode: fixture.remoteDetail.remoteCode,
-          tracks: fixture.remoteDetail.tracks,
-        },
-      });
+      await route.fulfill({ json: remoteWorkTracksFixture(fixture.remoteDetail) });
       return;
     }
     if (
@@ -353,7 +366,7 @@ export async function mockApplication(
     if (url.pathname === "/api/works/1/metadata-sync" && route.request().method() === "POST") {
       const control = fixture.metadataSyncControl;
       if (!control) {
-        await route.fulfill({ status: 404, json: { error: "Not mocked" } });
+        await route.fulfill({ status: 404, json: notMocked });
         return;
       }
       control.postRequests += 1;
@@ -368,7 +381,7 @@ export async function mockApplication(
           primaryCode: (fixture.work ?? work).primaryCode,
           status: "queued",
           deduplicated: false,
-        },
+        } satisfies WorkMetadataSyncRunResult,
       });
       return;
     }
@@ -379,40 +392,22 @@ export async function mockApplication(
       Number(metadataRunMatch[1]) === fixture.metadataSyncControl.runId
     ) {
       fixture.metadataSyncControl.statusRequests += 1;
+      const running = fixture.metadataSyncControl.status === "running";
       await route.fulfill({
-        json: {
-          id: fixture.metadataSyncControl.runId,
-          workflowCode: "metadata_family_sync",
-          displayName: "Refresh metadata",
-          status: fixture.metadataSyncControl.status,
-          triggerType: "manual",
-          triggerReason: "work_detail",
-          createdAt: "2026-01-01T00:00:00Z",
-          startedAt: "2026-01-01T00:00:00Z",
-          finishedAt: fixture.metadataSyncControl.status === "running" ? "" : "2026-01-01T00:01:00Z",
-          summaryJson: "{}",
-          nodeRunCount: 1,
-          completedNodeRuns: fixture.metadataSyncControl.status === "running" ? 0 : 1,
-          failedNodeRuns: 0,
-          skippedNodeRuns: 0,
-          jobCount: 1,
-          completedJobs: fixture.metadataSyncControl.status === "running" ? 0 : 1,
-          failedJobs: 0,
-          skippedJobs: 0,
-          progressBytesCurrent: 0,
-          progressBytesTotal: 0,
-          progressBytesUnknownItems: 0,
-          candidateCount: 0,
-          pendingCandidates: 0,
-          acceptedCandidates: 0,
-          rejectedCandidates: 0,
-          reviewedAt: "",
-          reviewedByUserId: null,
-          definitionId: null,
-          triggerId: null,
-          nodeRuns: [],
-          graphJson: "{}",
-        },
+        json: workflowRunDetailFixture(
+          workflowRunFixture({
+            id: fixture.metadataSyncControl.runId,
+            workflowCode: "metadata_family_sync",
+            displayName: "Refresh metadata",
+            status: fixture.metadataSyncControl.status,
+            triggerReason: "work_detail",
+            finishedAt: running ? "" : "2026-01-01T00:01:00Z",
+            nodeRunCount: 1,
+            completedNodeRuns: running ? 0 : 1,
+            jobCount: 1,
+            completedJobs: running ? 0 : 1,
+          }),
+        ),
       });
       return;
     }
@@ -422,7 +417,7 @@ export async function mockApplication(
       fixture.metadataSyncControl &&
       Number(metadataEventsMatch[1]) === fixture.metadataSyncControl.runId
     ) {
-      await route.fulfill({ json: [] });
+      await route.fulfill({ json: [] satisfies WorkflowEvent[] });
       return;
     }
     const metadataStreamMatch = url.pathname.match(/^\/api\/workflow-runs\/(\d+)\/events\/stream$/);
@@ -440,7 +435,7 @@ export async function mockApplication(
       await fixture.beforeWorkDetailResponse?.(id);
       if (id === 1 && fixture.metadataSyncControl) fixture.metadataSyncControl.detailRequests += 1;
       const fixtureWork = fixture.work ?? work;
-      const detailWork =
+      const detailWork: Work =
         id === 1
           ? fixtureWork
           : {
@@ -450,28 +445,20 @@ export async function mockApplication(
               title: `Mobile work ${id}`,
             };
       await route.fulfill({
-        json: {
-          ...detailWork,
-          baseCode: "",
+        json: workDetailFixture(detailWork, {
           metadataLanguage:
             fixture.metadataSyncControl?.detailReady || fixture.detailMetadataSync?.status !== "not_synced"
               ? "JPN"
               : "",
-          workType: "audio",
-          titleKana: "",
-          description: "",
           ageRating: "",
-          durationSeconds: null,
-          dlsiteFetchedAt: "",
-          voiceCredits: detailWork.voiceCredits,
           translations: fixture.detailTranslations ?? [],
+          localFolders: fixture.detailLocalFolders ?? [],
           ...(fixture.detailMetadataPresentation ? { metadataPresentation: fixture.detailMetadataPresentation } : {}),
           metadataSync: fixture.metadataSyncControl?.detailReady
             ? { status: "available", checkedAt: "2026-01-01T00:01:00Z" }
             : (fixture.detailMetadataSync ?? { status: "available", checkedAt: "" }),
-          manualOverrides: {},
           mediaItems: url.searchParams.get("includeMedia") === "false" ? [] : mediaItems,
-        },
+        }),
       });
       return;
     }
@@ -482,45 +469,54 @@ export async function mockApplication(
       if (fixture.mediaBusy) {
         await route.fulfill({
           status: 503,
-          json: { error: "database is busy; please retry", code: "database_busy", retryable: true },
+          json: {
+            error: "database is busy; please retry",
+            code: "database_busy",
+            retryable: true,
+          } satisfies ApiErrorBody,
         });
         return;
       }
       const workId = Number(mediaMatch[1]);
       const restoredTracks =
         mediaItems.length > 0 ? [] : (persistedPlayerTracks.get(page) ?? []).filter((track) => track.workId === workId);
-      const restoredMediaItems = restoredTracks.map((track) => ({
-        id: track.mediaItemId,
-        parentId: null,
-        kind: "audio",
-        title: track.title,
-        discNo: null,
-        trackNo: 1,
-        durationSeconds: null,
-        sizeBytes: track.sizeBytes,
-        progress: track.progress,
-        locations: track.locations.map((location) => ({
-          id: location.locationId,
-          fileSourceId: location.sourceId,
-          fileSourceCode: "test",
-          fileSourceName: location.sourceName,
-          locationType: location.locationType,
-          path: `${track.workCode}/${track.title}`,
-          streamUrl: location.streamUrl,
-          downloadUrl: "",
-          remoteHash: "",
+      const restoredMediaItems = restoredTracks.map((track) =>
+        mediaItemFixture({
+          id: track.mediaItemId,
+          title: track.title,
+          trackNo: 1,
           sizeBytes: track.sizeBytes,
-          durationSeconds: null,
-          availability: location.availability,
-          lastCheckedAt: null,
-        })),
-      }));
-      await route.fulfill({ json: { workId, mediaItems: mediaItems.length > 0 ? mediaItems : restoredMediaItems } });
+          progress: track.progress,
+          locations: track.locations.map((location) =>
+            mediaLocationFixture({
+              id: location.locationId,
+              fileSourceId: location.sourceId,
+              fileSourceCode: "test",
+              fileSourceName: location.sourceName,
+              locationType: location.locationType,
+              path: `${track.workCode}/${track.title}`,
+              streamUrl: location.streamUrl,
+              sizeBytes: track.sizeBytes,
+              availability: location.availability,
+            }),
+          ),
+        }),
+      );
+      await route.fulfill({
+        json: {
+          workId,
+          mediaWorkId: workId,
+          mediaItems: mediaItems.length > 0 ? mediaItems : restoredMediaItems,
+        } satisfies ApiResponse<"getWorkMedia">,
+      });
       return;
     }
     if (url.pathname === "/api/media/cleanup" && route.request().method() === "POST") {
       onCleanup?.(route.request().postDataJSON() as Record<string, unknown>);
-      await route.fulfill({ status: 202, json: { runId: 41, jobId: 42, status: "queued", queued: 2 } });
+      await route.fulfill({
+        status: 202,
+        json: { runId: 41, jobId: 42, status: "queued", queued: 2 } satisfies MediaCleanupResult,
+      });
       return;
     }
     const untrackMatch = url.pathname.match(/^\/api\/works\/(\d+)\/tracked-sources\/(\d+)$/);
@@ -528,30 +524,31 @@ export async function mockApplication(
       const workId = Number(untrackMatch[1]);
       const sourceId = Number(untrackMatch[2]);
       fixture.onUntrack?.(workId, sourceId);
-      await route.fulfill({
-        json: {
-          workId,
-          sourceId,
-          status: "succeeded",
-          clearedCaches: 0,
-          deletedFiles: 0,
-          cachePaths: [],
-          trackedCleared: true,
-          workPreserved: true,
-          localPreserved: true,
-        },
-      });
+      await route.fulfill({ json: untrackResult(workId, sourceId) });
       return;
     }
     if (url.pathname === "/api/works/1/local-files/refresh" && route.request().method() === "POST") {
       fixture.onLocalRefresh?.();
       await route.fulfill({
-        json: { workId: 1, fileSourceId: 1, status: "succeeded", indexedFiles: mediaItems.length },
+        json: {
+          workId: 1,
+          fileSourceId: 1,
+          status: "succeeded",
+          indexedFiles: mediaItems.length,
+        } satisfies LocalMediaRefreshResult,
       });
       return;
     }
     if (url.pathname === "/api/workflow-runs/41") {
-      await route.fulfill({ json: { id: 41, status: "succeeded" } });
+      await route.fulfill({
+        json: workflowRunDetailFixture(
+          workflowRunFixture({ id: 41, workflowCode: "media_cleanup", displayName: "Media cleanup" }),
+        ),
+      });
+      return;
+    }
+    if (url.pathname === "/api/workflow-runs/41/events") {
+      await route.fulfill({ json: [] satisfies WorkflowEvent[] });
       return;
     }
     if (url.pathname === "/api/media/1/stream") {
@@ -569,12 +566,20 @@ export async function mockApplication(
     const lyricsPreferenceMatch = url.pathname.match(/^\/api\/media\/(\d+)\/lyrics-preference$/);
     if (lyricsPreferenceMatch && (route.request().method() === "PUT" || route.request().method() === "DELETE")) {
       const audioMediaItemId = Number(lyricsPreferenceMatch[1]);
-      const lyricsMediaItemId =
-        route.request().method() === "PUT"
-          ? Number((route.request().postDataJSON() as { lyricsMediaItemId?: number }).lyricsMediaItemId ?? 0)
-          : null;
-      fixture.onLyricsPreference?.(route.request().method() as "PUT" | "DELETE", audioMediaItemId, lyricsMediaItemId);
-      await route.fulfill({ json: { audioMediaItemId, lyricsMediaItemId } });
+      if (route.request().method() === "PUT") {
+        const lyricsMediaItemId = Number(
+          (route.request().postDataJSON() as { lyricsMediaItemId?: number }).lyricsMediaItemId ?? 0,
+        );
+        fixture.onLyricsPreference?.("PUT", audioMediaItemId, lyricsMediaItemId);
+        await route.fulfill({
+          json: { audioMediaItemId, lyricsMediaItemId } satisfies ApiResponse<"setMediaLyricsPreference">,
+        });
+        return;
+      }
+      fixture.onLyricsPreference?.("DELETE", audioMediaItemId, null);
+      await route.fulfill({
+        json: { audioMediaItemId, lyricsMediaItemId: null } satisfies ApiResponse<"clearMediaLyricsPreference">,
+      });
       return;
     }
     const textPreviewMatch = url.pathname.match(/^\/api\/media\/(\d+)\/text$/);
@@ -583,16 +588,16 @@ export async function mockApplication(
       await route.fulfill({
         json:
           locationID === 9
-            ? {
+            ? ({
                 path: "lyrics.lrc",
                 content:
                   "[00:00.00]First line\n[00:05.00]Second line\n[00:10.00]Third line\n[00:15.00]Fourth line\n[00:20.00]Fifth line\n[00:25.00]Sixth line\n[00:30.00]Seventh line\n[00:35.00]Eighth line",
-              }
-            : { path: "notes.txt", content: "Synthetic notes" },
+              } satisfies MediaTextPreview)
+            : ({ path: "notes.txt", content: "Synthetic notes" } satisfies MediaTextPreview),
       });
       return;
     }
-    await route.fulfill({ status: 404, json: { error: "Not mocked" } });
+    await route.fulfill({ status: 404, json: notMocked });
   });
 }
 
@@ -600,11 +605,7 @@ export async function seedPlayer(page: Page, track = persistedTrack, principalID
   await seedPlayerQueue(page, [track], principalID);
 }
 
-export async function seedPlayerQueue(
-  page: Page,
-  tracks: (typeof persistedTrack)[],
-  principalID: number | null = null,
-) {
+export async function seedPlayerQueue(page: Page, tracks: PersistedPlayerTrack[], principalID: number | null = null) {
   persistedPlayerTracks.set(page, tracks);
   await page.addInitScript(
     ({ tracks, principalID, baseKey }) => {
@@ -626,7 +627,7 @@ export async function seedPlayerQueue(
   );
 }
 
-export function queuedTrackFixture(index: number, title: string) {
+export function queuedTrackFixture(index: number, title: string): PersistedPlayerTrack {
   const locationId = index + 1;
   const streamUrl = `/api/media/${locationId}/stream`;
   return {
@@ -651,6 +652,35 @@ export async function readScopedPlayerState(page: Page, baseKey: string, princip
   );
 }
 
+const exampleRemoteSource = {
+  sourceId: 1,
+  sourceCode: "example_remote",
+  sourceName: "Example Remote",
+} as const;
+
+function exampleRemoteTrack(title: string, hash: string, suffix = "") {
+  return remoteTrackFixture({
+    title,
+    hash,
+    streamUrl: `/stream${suffix}`,
+    downloadUrl: `/download${suffix}`,
+    durationSeconds: 10,
+    sizeBytes: 12,
+  });
+}
+
+function exampleRemoteDetail(overrides: Partial<RemoteWorkDetail>): RemoteWorkDetail {
+  return remoteWorkDetailFixture({
+    ...exampleRemoteSource,
+    circle: "Remote circle",
+    rating: 4.5,
+    ratingCount: 240,
+    sales: 100,
+    releaseDate: "2026-04-03",
+    ...overrides,
+  });
+}
+
 export async function mockRemoteSource(
   page: Page,
   onRemoteRequest: (url: URL) => void,
@@ -673,49 +703,33 @@ export async function mockRemoteSource(
       await route.fulfill({
         json:
           options.authenticated === false
-            ? { authenticated: false }
-            : {
-                authenticated: true,
-                user: {
-                  id: 1,
-                  username: "listener",
-                  displayName: "Listener",
-                  role: "user",
-                  permissions: options.permissions ?? ["library:read", "playback:use", "downloads:manage"],
-                  devMode: true,
-                },
-              },
+            ? anonymousAuthState
+            : authenticatedStateFixture({
+                permissions: options.permissions ?? ["library:read", "playback:use", "downloads:manage"],
+                devMode: true,
+              }),
       });
       return;
     }
     if (url.pathname === "/api/library-sources") {
       await route.fulfill({
         json: [
-          {
+          librarySourceFixture({
             id: 1,
             code: "example_remote",
             displayName: "Example Remote",
-            sourceType: "kikoeru_compatible",
             enabled: options.remoteStatus !== "disabled",
-          },
-        ],
+          }),
+        ] satisfies LibrarySource[],
       });
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
-      await route.fulfill({
-        json: {
-          mode: "development",
-          demoMode: false,
-          anonymousAccessEnabled: true,
-          cacheEnabled: false,
-          directoryRoutingRules: [],
-        },
-      });
+      await route.fulfill({ json: runtimeSettingsFixture() });
       return;
     }
     if (url.pathname === "/api/works") {
-      await route.fulfill({ json: { works: [work], page: 1, pageSize: 24, total: 1 } });
+      await route.fulfill({ json: worksPageFixture([work]) });
       return;
     }
     if (
@@ -728,7 +742,7 @@ export async function mockRemoteSource(
           workCode: remoteOnlyWork ? "RJ00000051" : work.primaryCode,
           checkedAt: "2026-07-17T00:00:00Z",
           sources: [
-            {
+            sourceAvailabilitySourceFixture({
               sourceId: 1,
               sourceCode: "example_remote",
               displayName: "Example Remote",
@@ -736,75 +750,63 @@ export async function mockRemoteSource(
               remoteId: "1",
               primaryCode: remoteOnlyWork ? "RJ00000051" : work.primaryCode,
               title: remoteOnlyWork ? "Remote Japanese work" : work.title,
-              coverUrl: "",
               workId: remoteOnlyWork ? (workMaterialized ? 91 : null) : 1,
               hasRemote: remoteOnlyWork ? workMaterialized : true,
               hasTracked: remoteOnlyWork ? trackCompleted : false,
               hasCache: false,
               hasLocal: !remoteOnlyWork,
-              error: "",
-              elapsedMs: 1,
-            },
+            }),
           ],
-        },
+        } satisfies SourceAvailabilityResponse,
       });
       return;
     }
     if (url.pathname === "/api/works/91") {
+      const remoteWork: Work = {
+        ...work,
+        id: 91,
+        primaryCode: "RJ00000051",
+        title: "Remote Japanese work",
+        circle: "Remote circle",
+        ratingCount: 240,
+        availability: trackCompleted ? ["tracked", "remote"] : ["remote"],
+        sourcePresence: trackCompleted
+          ? [
+              {
+                type: "tracked",
+                availability: "available",
+                workId: 91,
+                fileSourceId: 1,
+                fileSourceCode: "example_remote",
+                fileSourceName: "Example Remote",
+                remoteCode: "RJ00000051",
+                forked: true,
+              },
+            ]
+          : [
+              {
+                type: "source",
+                availability: "available",
+                workId: 91,
+                fileSourceId: 1,
+                fileSourceCode: "example_remote",
+                fileSourceName: "Example Remote",
+                remoteCode: "RJ00000051",
+              },
+            ],
+      };
       await route.fulfill({
-        json: {
-          ...work,
-          id: 91,
-          primaryCode: "RJ00000051",
-          title: "Remote Japanese work",
-          circle: "Remote circle",
-          ratingCount: 240,
-          availability: trackCompleted ? ["tracked", "remote"] : ["remote"],
-          sourcePresence: trackCompleted
-            ? [
-                {
-                  type: "tracked",
-                  availability: "available",
-                  workId: 91,
-                  fileSourceId: 1,
-                  fileSourceCode: "example_remote",
-                  fileSourceName: "Example Remote",
-                  remoteCode: "RJ00000051",
-                  forked: true,
-                },
-              ]
-            : [
-                {
-                  type: "source",
-                  availability: "available",
-                  workId: 91,
-                  fileSourceId: 1,
-                  fileSourceCode: "example_remote",
-                  fileSourceName: "Example Remote",
-                  remoteCode: "RJ00000051",
-                },
-              ],
-          baseCode: "",
-          metadataLanguage: "JPN",
-          workType: "audio",
-          titleKana: "",
-          description: "",
+        json: workDetailFixture(remoteWork, {
           durationSeconds: 10,
-          dlsiteFetchedAt: "",
-          translations: [],
-          manualOverrides: {},
           mediaItems: [
-            {
+            mediaItemFixture({
               id: 91,
-              parentId: null,
-              kind: "audio",
               title: "track.mp3",
-              discNo: null,
               trackNo: 1,
               durationSeconds: 10,
               sizeBytes: 12,
               locations: [
-                {
+                mediaLocationFixture({
                   id: 91,
                   fileSourceId: 1,
                   fileSourceCode: "example_remote",
@@ -816,56 +818,41 @@ export async function mockRemoteSource(
                   remoteHash: "hash",
                   sizeBytes: 12,
                   durationSeconds: 10,
-                  availability: "available",
-                  lastCheckedAt: null,
-                },
+                }),
               ],
-            },
+            }),
           ],
-        },
+        }),
       });
       return;
     }
     if (url.pathname === "/api/works/1") {
-      await route.fulfill({
-        json: {
-          ...work,
-          baseCode: "",
-          metadataLanguage: "JPN",
-          workType: "audio",
-          titleKana: "",
-          description: "",
-          durationSeconds: null,
-          dlsiteFetchedAt: "",
-          translations: [],
-          manualOverrides: {},
-          mediaItems: [],
-        },
-      });
+      await route.fulfill({ json: workDetailFixture(work) });
       return;
     }
     if (url.pathname === "/api/works/1/media") {
-      await route.fulfill({ json: { workId: 1, mediaItems: [] } });
+      await route.fulfill({
+        json: { workId: 1, mediaWorkId: 1, mediaItems: [] } satisfies ApiResponse<"getWorkMedia">,
+      });
       return;
     }
     if (url.pathname === "/api/favorite-lists") {
-      await route.fulfill({ json: [] });
+      await route.fulfill({ json: [] satisfies FavoriteList[] });
       return;
     }
     if (url.pathname === "/api/recently-played-works") {
-      await route.fulfill({ json: { works: [] } });
+      await route.fulfill({ json: { works: [] } satisfies RecentlyPlayedWorksResponse });
       return;
     }
     if (url.pathname === "/api/remote-sources/1/works") {
       onRemoteRequest(url);
       const pageNumber = Number(url.searchParams.get("page") ?? "1");
-      const sort = url.searchParams.get("sort") ?? "recent";
+      const sort = (url.searchParams.get("sort") ?? "recent") as ApiResponse<"listRemoteSourceWorks">["sort"];
+      const direction = url.searchParams.get("direction") === "asc" ? "asc" : "desc";
       if (options.remoteStatus && options.remoteStatus !== "ok") {
         await route.fulfill({
-          json: {
-            sourceId: 1,
+          json: remoteWorksResponseFixture([], {
             page: pageNumber,
-            pageSize: 24,
             total: 0,
             status: options.remoteStatus,
             error: {
@@ -878,25 +865,16 @@ export async function mockRemoteSource(
               retryable: options.remoteStatus === "unavailable",
             },
             sort,
-            direction: url.searchParams.get("direction") ?? "desc",
+            direction,
             sortApplied: false,
-            works: [],
-          },
+          }),
         });
         return;
       }
       await route.fulfill({
-        json: {
-          sourceId: 1,
-          page: pageNumber,
-          pageSize: 24,
-          total: 30,
-          status: "ok",
-          sort,
-          direction: url.searchParams.get("direction") ?? "desc",
-          sortApplied: true,
-          works: [
-            {
+        json: remoteWorksResponseFixture(
+          [
+            remoteWorkFixture({
               remoteId: String(pageNumber),
               primaryCode:
                 options.persisted && pageNumber === 1
@@ -908,7 +886,6 @@ export async function mockRemoteSource(
               title: pageNumber === 1 ? "Remote Japanese work" : "Remote page two work",
               releaseDate: "2026-04-03",
               updatedAt: "2026-04-03",
-              coverUrl: "",
               circle: "Remote circle",
               ageRating: "R15",
               rating: 4.5,
@@ -918,200 +895,81 @@ export async function mockRemoteSource(
               importStatus: trackCompleted ? "tracked" : workMaterialized ? "synced" : "remote_only",
               remotePlayable: true,
               workId: pageNumber === 1 && workMaterialized ? 91 : options.persisted && pageNumber === 1 ? 1 : null,
-              favorite: false,
-              listeningStatus: "none",
-            },
+            }),
           ],
-        },
+          { page: pageNumber, total: 30, sort, direction },
+        ),
       });
       return;
     }
-    if (url.pathname === "/api/remote-sources/1/works/RJ00000051/tracks" && route.request().method() === "GET") {
-      await route.fulfill({
-        json: {
-          sourceId: 1,
-          sourceCode: "example_remote",
-          sourceName: "Example Remote",
-          remoteId: "1",
-          primaryCode: "RJ00000051",
-          remoteCode: "RJ00000051",
-          tracks: [
-            {
-              type: "audio",
-              title: "track.mp3",
-              hash: "hash",
-              streamUrl: "/stream",
-              downloadUrl: "/download",
-              durationSeconds: 10,
-              sizeBytes: 12,
-              cacheLocationId: null,
-              cachePath: "",
-              cacheAvailable: false,
-              localLocationId: null,
-              localPath: "",
-              localAvailable: false,
-              children: [],
-            },
-          ],
-        },
+    const japaneseDetail = () =>
+      exampleRemoteDetail({
+        remoteId: "1",
+        primaryCode: "RJ00000051",
+        remoteCode: "RJ00000051",
+        title: "Remote Japanese work",
+        importStatus: trackCompleted ? "tracked" : workMaterialized ? "synced" : "remote_only",
+        workId: workMaterialized ? 91 : null,
+        languageEditions: [
+          {
+            remoteCode: "RJ00000051",
+            language: "JPN",
+            label: "Japanese",
+            displayOrder: 1,
+            current: true,
+            origin: true,
+          },
+          {
+            remoteCode: "RJ00000053",
+            language: "ENG",
+            label: "English",
+            displayOrder: 2,
+            current: false,
+            origin: false,
+          },
+        ],
+        tracks: [exampleRemoteTrack("track.mp3", "hash")],
       });
+    const englishDetail = () =>
+      exampleRemoteDetail({
+        remoteId: "3",
+        primaryCode: "RJ00000053",
+        remoteCode: "RJ00000053",
+        title: "Remote English work",
+        languageEditions: [
+          {
+            remoteCode: "RJ00000051",
+            language: "JPN",
+            label: "Japanese",
+            displayOrder: 1,
+            current: false,
+            origin: true,
+          },
+          {
+            remoteCode: "RJ00000053",
+            language: "ENG",
+            label: "English",
+            displayOrder: 2,
+            current: true,
+            origin: false,
+          },
+        ],
+        tracks: [exampleRemoteTrack("english.mp3", "english", "-en")],
+      });
+    if (url.pathname === "/api/remote-sources/1/works/RJ00000051/tracks" && route.request().method() === "GET") {
+      await route.fulfill({ json: remoteWorkTracksFixture(japaneseDetail()) });
       return;
     }
     if (url.pathname === "/api/remote-sources/1/works/RJ00000051" && route.request().method() === "GET") {
-      await route.fulfill({
-        json: {
-          sourceId: 1,
-          sourceCode: "example_remote",
-          sourceName: "Example Remote",
-          remoteId: "1",
-          primaryCode: "RJ00000051",
-          remoteCode: "RJ00000051",
-          title: "Remote Japanese work",
-          coverUrl: "",
-          sourceUrl: "",
-          circle: "Remote circle",
-          rating: 4.5,
-          ratingCount: 240,
-          sales: 100,
-          ageRating: "",
-          releaseDate: "2026-04-03",
-          durationSeconds: null,
-          tags: [],
-          voiceActors: [],
-          importStatus: trackCompleted ? "tracked" : workMaterialized ? "synced" : "remote_only",
-          workId: workMaterialized ? 91 : null,
-          languageEditions: [
-            {
-              remoteCode: "RJ00000051",
-              language: "JPN",
-              label: "Japanese",
-              displayOrder: 1,
-              current: true,
-              origin: true,
-            },
-            {
-              remoteCode: "RJ00000053",
-              language: "ENG",
-              label: "English",
-              displayOrder: 2,
-              current: false,
-              origin: false,
-            },
-          ],
-          tracks: [
-            {
-              type: "audio",
-              title: "track.mp3",
-              hash: "hash",
-              streamUrl: "/stream",
-              downloadUrl: "/download",
-              durationSeconds: 10,
-              sizeBytes: 12,
-              cacheLocationId: null,
-              cachePath: "",
-              cacheAvailable: false,
-              localLocationId: null,
-              localPath: "",
-              localAvailable: false,
-              children: [],
-            },
-          ],
-        },
-      });
+      await route.fulfill({ json: japaneseDetail() });
       return;
     }
     if (url.pathname === "/api/remote-sources/1/works/RJ00000053/tracks" && route.request().method() === "GET") {
-      await route.fulfill({
-        json: {
-          sourceId: 1,
-          sourceCode: "example_remote",
-          sourceName: "Example Remote",
-          remoteId: "3",
-          primaryCode: "RJ00000053",
-          remoteCode: "RJ00000053",
-          tracks: [
-            {
-              type: "audio",
-              title: "english.mp3",
-              hash: "english",
-              streamUrl: "/stream-en",
-              downloadUrl: "/download-en",
-              durationSeconds: 10,
-              sizeBytes: 12,
-              cacheLocationId: null,
-              cachePath: "",
-              cacheAvailable: false,
-              localLocationId: null,
-              localPath: "",
-              localAvailable: false,
-              children: [],
-            },
-          ],
-        },
-      });
+      await route.fulfill({ json: remoteWorkTracksFixture(englishDetail()) });
       return;
     }
     if (url.pathname === "/api/remote-sources/1/works/RJ00000053" && route.request().method() === "GET") {
-      await route.fulfill({
-        json: {
-          sourceId: 1,
-          sourceCode: "example_remote",
-          sourceName: "Example Remote",
-          remoteId: "3",
-          primaryCode: "RJ00000053",
-          remoteCode: "RJ00000053",
-          title: "Remote English work",
-          coverUrl: "",
-          sourceUrl: "",
-          circle: "Remote circle",
-          rating: 4.5,
-          ratingCount: 240,
-          sales: 100,
-          ageRating: "",
-          releaseDate: "2026-04-03",
-          durationSeconds: null,
-          tags: [],
-          voiceActors: [],
-          importStatus: "remote_only",
-          workId: null,
-          languageEditions: [
-            {
-              remoteCode: "RJ00000051",
-              language: "JPN",
-              label: "Japanese",
-              displayOrder: 1,
-              current: false,
-              origin: true,
-            },
-            {
-              remoteCode: "RJ00000053",
-              language: "ENG",
-              label: "English",
-              displayOrder: 2,
-              current: true,
-              origin: false,
-            },
-          ],
-          tracks: [
-            {
-              type: "audio",
-              title: "english.mp3",
-              hash: "english",
-              streamUrl: "/stream-en",
-              downloadUrl: "/download-en",
-              durationSeconds: 10,
-              sizeBytes: 12,
-              cacheLocationId: null,
-              cachePath: "",
-              cacheAvailable: false,
-              localLocationId: null,
-              localPath: "",
-              localAvailable: false,
-              children: [],
-            },
-          ],
-        },
-      });
+      await route.fulfill({ json: englishDetail() });
       return;
     }
     const trackMatch = url.pathname.match(/^\/api\/remote-sources\/1\/works\/([^/]+)\/track$/);
@@ -1129,13 +987,13 @@ export async function mockRemoteSource(
           status: "queued",
           triggerReason: body.triggerReason ?? "manual_track",
           deduplicated: false,
-        },
+        } satisfies RemoteWorkTrackResult,
       });
       return;
     }
     if (url.pathname === "/api/remote-track-runs/91") {
       if (!options.trackControl) {
-        await route.fulfill({ status: 404, json: { error: "Track run not found" } });
+        await route.fulfill({ status: 404, json: { error: "Track run not found" } satisfies ApiErrorBody });
         return;
       }
       options.trackControl.statusRequests += 1;
@@ -1143,7 +1001,9 @@ export async function mockRemoteSource(
         options.trackControl.status === "succeeded"
           ? JSON.stringify({ work_id: 91, primary_code: "RJ00000051", source_id: 1, forked: true })
           : "{}";
-      await route.fulfill({ json: { runId: 91, status: options.trackControl.status, summaryJson } });
+      await route.fulfill({
+        json: { runId: 91, status: options.trackControl.status, summaryJson } satisfies RemoteTrackRunStatus,
+      });
       return;
     }
     if (url.pathname === "/api/works/91/tracked-sources/1" && route.request().method() === "DELETE") {
@@ -1151,25 +1011,11 @@ export async function mockRemoteSource(
         options.trackControl.untracked = true;
         options.trackControl.untrackRequests.push(url.pathname);
       }
-      await route.fulfill({
-        json: {
-          workId: 91,
-          sourceId: 1,
-          status: "succeeded",
-          clearedCaches: 0,
-          deletedFiles: 0,
-          cachePaths: [],
-          trackedCleared: true,
-          workPreserved: true,
-          localPreserved: true,
-        },
-      });
+      await route.fulfill({ json: untrackResult(91, 1) });
       return;
     }
     if (url.pathname === "/api/remote-sources/1/works/RJ00000051/fetch-plan") {
-      const requestBody = route.request().postDataJSON() as {
-        decisions?: Array<{ sourceId?: number; resolution?: string; targetPath?: string }>;
-      };
+      const requestBody = route.request().postDataJSON() as { decisions?: Partial<RemoteFetchFileDecision>[] };
       const decision = requestBody.decisions?.[0];
       const unresolvedConflict = Boolean(options.conflict && (!decision?.resolution || decision.resolution === "auto"));
       const fetchRootConflict = Boolean(options.fetchRootConflict);
@@ -1255,7 +1101,7 @@ export async function mockRemoteSource(
                 origin: true,
                 localRoots: [],
                 sources: [
-                  {
+                  sourceAvailabilitySourceFixture({
                     sourceId: 1,
                     sourceCode: "example_remote",
                     displayName: "Example Remote",
@@ -1263,14 +1109,9 @@ export async function mockRemoteSource(
                     remoteId: "2",
                     primaryCode: "RJ00000050",
                     title: "Origin",
-                    coverUrl: "",
                     workId: 10,
                     hasRemote: true,
-                    hasCache: false,
-                    hasLocal: false,
-                    error: "",
-                    elapsedMs: 1,
-                  },
+                  }),
                 ],
               },
               {
@@ -1295,7 +1136,7 @@ export async function mockRemoteSource(
                   },
                 ],
                 sources: [
-                  {
+                  sourceAvailabilitySourceFixture({
                     sourceId: 1,
                     sourceCode: "example_remote",
                     displayName: "Example Remote",
@@ -1303,54 +1144,40 @@ export async function mockRemoteSource(
                     remoteId: "1",
                     primaryCode: "RJ00000051",
                     title: "Community",
-                    coverUrl: "",
                     workId: 11,
                     hasRemote: true,
-                    hasCache: false,
                     hasLocal: true,
                     error: "stale availability",
-                    elapsedMs: 1,
-                  },
+                  }),
                 ],
               },
             ],
           },
-        },
+        } satisfies RemoteWorkSavePlan,
       });
       return;
     }
-    await route.fulfill({ status: 404, json: { error: "Not mocked" } });
+    await route.fulfill({ status: 404, json: notMocked });
   });
 }
 
-export function mediaFixture(id: number, title: string, path: string, kind: "audio" | "file" | "text") {
-  return {
+export function mediaFixture(id: number, title: string, path: string, kind: "audio" | "file" | "text"): MediaItem {
+  return mediaItemFixture({
     id,
-    parentId: null,
     kind,
     title,
-    discNo: null,
     trackNo: kind === "audio" ? id : null,
     durationSeconds: kind === "audio" ? 10 : null,
     sizeBytes: 12,
-    fingerprint: `fixture-${id}`,
-    progress: null,
     locations: [
-      {
+      mediaLocationFixture({
         id,
-        fileSourceId: 1,
-        fileSourceCode: "local",
-        fileSourceName: "Local",
-        locationType: "local",
         path,
         streamUrl: kind === "audio" ? `/api/media/${id}/stream` : "",
         downloadUrl: kind === "file" ? `/api/media/${id}/download` : "",
-        remoteHash: "",
         sizeBytes: 12,
         durationSeconds: kind === "audio" ? 10 : null,
-        availability: "available",
-        lastCheckedAt: null,
-      },
+      }),
     ],
-  };
+  });
 }

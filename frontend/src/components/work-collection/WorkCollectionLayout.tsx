@@ -34,15 +34,18 @@ export function useWorkCollectionLayout(
   initial: StoredWorkCollectionLayout = { mobileColumns: "auto", desktopColumns: "auto" },
 ) {
   const [layout, setLayout] = useState<StoredWorkCollectionLayout>(() => readStoredLayout(initial));
+  // Callers may pass a fresh default object each render; subscribe on its values.
+  const { mobileColumns: initialMobileColumns, desktopColumns: initialDesktopColumns } = initial;
   useEffect(() => {
-    const sync = () => setLayout(readStoredLayout(initial));
+    const sync = () =>
+      setLayout(readStoredLayout({ mobileColumns: initialMobileColumns, desktopColumns: initialDesktopColumns }));
     window.addEventListener("storage", sync);
     window.addEventListener(layoutChangeEvent, sync);
     return () => {
       window.removeEventListener("storage", sync);
       window.removeEventListener(layoutChangeEvent, sync);
     };
-  }, [initial.desktopColumns, initial.mobileColumns]);
+  }, [initialDesktopColumns, initialMobileColumns]);
   const update = (patch: Partial<StoredWorkCollectionLayout>) => {
     setLayout((current) => {
       const next = { ...current, ...patch };

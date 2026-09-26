@@ -28,9 +28,7 @@ import { dlsiteWorkURL, type RemoteWorkPreview, safeExternalHTTPURL } from "@/fe
 import {
   buildRemoteTree,
   buildTree,
-  countTreeFiles,
   emptyTree,
-  flattenTracks,
   flattenTreeFiles,
   formatTreeStats,
   toPlayerTrack,
@@ -77,7 +75,7 @@ import {
   type RemoteTrackTerminalDetail,
 } from "@/app/remoteTrackWorkflows";
 import { NotFoundPage } from "@/app/NotFoundPage";
-import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
+import { LazyRemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/LazyRemoteFetchWorkspaceDialog";
 import { defaultDirectoryRoutingRules } from "@/features/work-detail/directory/directoryModel";
 
 type RemoteOnlyDetailActionsProps = {
@@ -685,9 +683,8 @@ export function RemoteOnlyWorkDetailController({
     [detail],
   );
   const fetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged });
+  const { close: closeFetchWorkspace } = fetchWorkspace;
   const directoryStats = useMemo(() => treeStats(tree), [tree]);
-  const trackCount = useMemo(() => countTreeFiles(tree), [tree]);
-  const remotePlayableTracks = useMemo(() => flattenTracks(tree), [tree]);
   const remoteFiles = useMemo(() => flattenTreeFiles(tree), [tree]);
   const remoteTabs = useMemo<SourceTabInfo[]>(
     () =>
@@ -827,8 +824,8 @@ export function RemoteOnlyWorkDetailController({
     setMessage("");
     setTreeLoading(false);
     setTreeError("");
-    fetchWorkspace.close();
-  }, [source.id, code]);
+    closeFetchWorkspace();
+  }, [closeFetchWorkspace, source.id, code]);
 
   useEffect(() => {
     setNotFound(false);
@@ -893,7 +890,7 @@ export function RemoteOnlyWorkDetailController({
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [source.id, code, remoteRetryToken]);
+  }, [source.id, code, remoteRetryToken, toast]);
 
   const fetchWork = async (reason: string) => {
     if (!detail?.primaryCode) return;
@@ -1028,7 +1025,7 @@ export function RemoteOnlyWorkDetailController({
     };
     window.addEventListener(REMOTE_TRACK_TERMINAL_EVENT, reconcileTrack);
     return () => window.removeEventListener(REMOTE_TRACK_TERMINAL_EVENT, reconcileTrack);
-  }, [code, detail?.primaryCode, detail?.remoteCode, onWorksChanged, source.id, toast]);
+  }, [code, detail?.primaryCode, detail?.remoteCode, onWorksChanged, source.id, t, toast]);
 
   const playRemoteTracks = (tracks: TreeTrack[], locationId: number) => {
     if (!detail || tracks.length === 0) return;
@@ -1143,7 +1140,7 @@ export function RemoteOnlyWorkDetailController({
       routeStateKey={autoRouteStateKey}
       remoteAvailability={remoteAvailability}
       hasMaterializedWork={Boolean(trackedWork)}
-      selectionModal={<RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />}
+      selectionModal={<LazyRemoteFetchWorkspaceDialog workspace={fetchWorkspace} />}
       onActiveKeyChange={selectRemoteSourceTab}
       onDirectoryModeChange={setDirectoryMode}
       onRetry={() => setRemoteRetryToken((value) => value + 1)}

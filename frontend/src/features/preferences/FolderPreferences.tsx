@@ -1,6 +1,5 @@
 import { ArrowDown, ArrowUp, GripVertical, PlayCircle, Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";

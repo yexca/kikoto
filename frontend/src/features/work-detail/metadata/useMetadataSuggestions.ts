@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { useStableCallback } from "@/hooks/useStableCallback";
 
 import { api, type WorkCoverCandidate } from "@/lib/api";
 
@@ -28,6 +29,8 @@ export function useDebouncedSuggestion<T>(
     key: requestKey,
     result: emptySuggestionResult<T>(),
   }));
+  // Callers pass an inline request; requestKey identifies what it asks for.
+  const runRequest = useStableCallback(request);
 
   useEffect(() => {
     if ([...query].length < 2) {
@@ -36,7 +39,7 @@ export function useDebouncedSuggestion<T>(
     }
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      request()
+      runRequest()
         .then((next) => {
           if (!cancelled) setState({ key: requestKey, result: next });
         })
@@ -48,7 +51,7 @@ export function useDebouncedSuggestion<T>(
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [query, requestKey]);
+  }, [query, requestKey, runRequest]);
 
   const result = state.key === requestKey ? state.result : emptySuggestionResult<T>();
   return {

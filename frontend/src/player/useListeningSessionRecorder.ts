@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useMemo, useRef, type RefObject } from "react";
 
 import { ApiError } from "@/lib/api";
 import { isClientStorageScopeOnCurrentServer } from "@/lib/clientStorageScope";
@@ -11,6 +11,7 @@ import {
   ListeningSessionTracker,
   type ListeningTarget,
 } from "./listeningSession";
+import type { PlayerTrack } from "./playerTypes";
 
 function createSessionID() {
   const cryptoAPI: Crypto = globalThis.crypto;
@@ -39,14 +40,21 @@ const MEDIA_STATE_EVENTS = ["playing", "pause", "waiting", "seeking", "seeked", 
 /**
  * Records durable listening sessions for the global player's media element.
  * `scope` identifies the server and principal and is null when the viewer may
- * not record (anonymous, Demo, or without playback permission); `target` is
- * null for a track without a resolved library work.
+ * not record (anonymous, Demo, or without playback permission). Each queue item
+ * activation is credited to its library work; an unresolved remote preview has
+ * no work and is not recorded.
  */
 export function useListeningSessionRecorder(
   mediaRef: RefObject<HTMLMediaElement | null>,
   scope: string | null,
-  target: ListeningTarget | null,
+  track: Pick<PlayerTrack, "queueItemId" | "workId"> | null,
 ) {
+  const workId = track && track.workId > 0 ? track.workId : 0;
+  const activationKey = track?.queueItemId ?? null;
+  const target = useMemo<ListeningTarget | null>(
+    () => (workId > 0 && activationKey ? { activationKey, workId } : null),
+    [activationKey, workId],
+  );
   const trackerRef = useRef<ListeningSessionTracker | null>(null);
   const stateRef = useRef({ scope, target });
   stateRef.current = { scope, target };
@@ -120,5 +128,5 @@ export function useListeningSessionRecorder(
 
   useEffect(() => {
     trackerRef.current?.update({ scope, target, advancing: isMediaAdvancing(mediaRef.current) }, performance.now());
-  }, [mediaRef, scope, target?.activationKey, target?.workId]);
+  }, [mediaRef, scope, target]);
 }

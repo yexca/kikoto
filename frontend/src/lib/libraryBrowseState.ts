@@ -102,7 +102,7 @@ export function writeLastLibraryLocation(storageScope: string, location: string)
 export function normalizeLibraryBrowseLocation(location: string): string | null {
   const value = location.trim();
   if (!value.startsWith("/") || value.startsWith("//")) return null;
-  const base = "http://kikoto.local";
+  const base = "http://kikoto.invalid";
   try {
     const parsed = new URL(value, base);
     if (parsed.origin !== base || parsed.hash || !isLibraryBrowsePath(parsed.pathname)) return null;

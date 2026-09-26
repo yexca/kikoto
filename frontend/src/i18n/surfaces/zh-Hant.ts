@@ -896,8 +896,6 @@ export const surfaceHant = {
   },
   libraryDetail: {
     untrackSource: "取消追蹤來源？",
-    fetchRemoteDirectory: "取得遠端目錄",
-    fetchRemoteDirectoryDescription: "這將下載所選 {{count}} 個作品的完整遠端目錄。",
     work: "作品",
     cover: "封面",
     circle: "社團",
