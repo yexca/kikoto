@@ -1,66 +1,63 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import type {
+  FavoriteList,
+  FavoriteWorksPage,
+  LibrarySource,
+  ListeningStatus,
+  SourceAvailabilityResponse,
+  UserTag,
+  Work,
+} from "../../src/lib/api";
 import { syntheticWorkCode } from "../../src/test-support/workCode";
+import {
+  type ApiErrorBody,
+  type ApiResponse,
+  authenticatedStateFixture,
+  circleSummaryPageFixture,
+  favoriteListFixture,
+  librarySourceFixture,
+  runtimeSettingsFixture,
+  voiceSummaryPageFixture,
+  workDetailFixture,
+  workFixture,
+  worksPageFixture,
+} from "./fixtures/api";
 
-const baseWork = {
-  id: 1,
-  primaryCode: syntheticWorkCode("RJ", 0),
+const baseWork = workFixture({
   title: "Favorite work 1",
   ageRating: "R18",
-  createdAt: "2026-01-01T00:00:00Z",
-  updatedAt: "2026-01-01T00:00:00Z",
   releaseDate: "2026-01-01",
-  coverUrl: "",
-  dlsiteUrl: "",
   circle: "Example Circle",
   circleExternalId: "RG09998001",
   rating: 4.5,
   sales: 10,
   tags: ["Example metadata tag"],
   userTags: [{ id: 1, name: "Quiet", color: "" }],
-  voiceActors: [],
-  voiceCredits: [],
-  series: "",
-  seriesTitleId: "",
-  trackCount: 0,
   availableLocations: 1,
   availability: ["local"],
-  sourcePresence: [],
-  progress: {
-    mediaItemId: null,
-    title: "",
-    positionSeconds: 0,
-    durationSeconds: null,
-    lastPlayedAt: null,
-    completed: false,
-  },
   listeningStatus: "listening",
   favorite: true,
-  recommendScore: 0,
-};
+});
+
+const exampleRemoteA = librarySourceFixture({ id: 11 });
 
 async function mockFavorites(
   page: Page,
   options: {
     delayedList?: { id: number; started: () => void; gate: Promise<void> };
-    sources?: Array<{
-      id: number;
-      code: string;
-      displayName: string;
-      sourceType: string;
-      enabled: boolean;
-    }>;
+    sources?: LibrarySource[];
     onFavoriteWorksRequest?: (sourceIDs: number[]) => void;
     interactiveQuickMark?: boolean;
   } = {},
 ) {
-  let savedTags = baseWork.userTags;
-  let quickMark = baseWork.listeningStatus;
-  let favoriteLists = [
-    { id: 1, name: "Marked", description: "", sortOrder: -1, kind: "marked" as const },
-    { id: 2, name: "Study", description: "", sortOrder: 0, kind: "user" as const },
+  let savedTags: UserTag[] = baseWork.userTags;
+  let quickMark: ListeningStatus = baseWork.listeningStatus;
+  let favoriteLists: FavoriteList[] = [
+    favoriteListFixture(),
+    favoriteListFixture({ id: 2, name: "Study", sortOrder: 0, kind: "user" }),
   ];
-  const works = Array.from({ length: 24 }, (_, index) => ({
+  const works: Work[] = Array.from({ length: 24 }, (_, index) => ({
     ...baseWork,
     id: index + 1,
     primaryCode: syntheticWorkCode("RJ", index),
@@ -72,17 +69,10 @@ async function mockFavorites(
     const url = new URL(request.url());
     if (url.pathname === "/api/auth/me") {
       await route.fulfill({
-        json: {
-          authenticated: true,
-          user: {
-            id: 1,
-            username: "listener",
-            displayName: "Listener",
-            role: "user",
-            permissions: ["library:read", "playback:use", "favorites:write", "tags:write"],
-            devMode: true,
-          },
-        },
+        json: authenticatedStateFixture({
+          permissions: ["library:read", "playback:use", "favorites:write", "tags:write"],
+          devMode: true,
+        }),
       });
       return;
     }
@@ -92,13 +82,13 @@ async function mockFavorites(
     }
     if (url.pathname === "/api/favorite-lists" && request.method() === "POST") {
       const body = request.postDataJSON() as { name: string; description?: string };
-      const list = {
+      const list = favoriteListFixture({
         id: Math.max(...favoriteLists.map((item) => item.id)) + 1,
         name: body.name,
         description: body.description ?? "",
         sortOrder: favoriteLists.filter((item) => item.kind === "user").length,
-        kind: "user" as const,
-      };
+        kind: "user",
+      });
       favoriteLists = [...favoriteLists, list];
       await route.fulfill({ json: list });
       return;
@@ -108,45 +98,47 @@ async function mockFavorites(
       const id = Number(favoriteListMatch[1]);
       const body = request.postDataJSON() as { name?: string; description?: string; sortOrder?: number };
       favoriteLists = favoriteLists.map((list) => (list.id === id ? { ...list, ...body } : list));
-      await route.fulfill({ json: favoriteLists.find((list) => list.id === id) });
+      const updated = favoriteLists.find((list) => list.id === id);
+      if (!updated) {
+        await route.fulfill({ status: 404, json: { error: "Favorite list not found" } satisfies ApiErrorBody });
+        return;
+      }
+      await route.fulfill({ json: updated });
       return;
     }
     if (favoriteListMatch && request.method() === "DELETE") {
       const id = Number(favoriteListMatch[1]);
       favoriteLists = favoriteLists.filter((list) => list.id !== id);
-      await route.fulfill({ json: { ok: true, deleted: id } });
+      await route.fulfill({ json: { ok: true, deleted: id } satisfies ApiResponse<"deleteFavoriteList"> });
       return;
     }
     if (url.pathname === "/api/favorite-works") {
       options.onFavoriteWorksRequest?.(url.searchParams.getAll("sourceId").map(Number));
-      if (url.searchParams.get("listId") === String(options.delayedList?.id)) {
-        options.delayedList.started();
-        await options.delayedList.gate;
+      const delayedList = options.delayedList;
+      if (delayedList && url.searchParams.get("listId") === String(delayedList.id)) {
+        delayedList.started();
+        await delayedList.gate;
       }
+      const emptied = options.interactiveQuickMark && quickMark === "none";
       await route.fulfill({
         json: {
-          works:
-            options.interactiveQuickMark && quickMark === "none"
-              ? []
-              : works.map((work) => ({ ...work, listeningStatus: quickMark })),
-          page: Number(url.searchParams.get("page") ?? 1),
-          pageSize: 24,
-          total: options.interactiveQuickMark && quickMark === "none" ? 0 : 48,
-          shelfTotal: options.interactiveQuickMark && quickMark === "none" ? 0 : 48,
-          listCounts: { "1": options.interactiveQuickMark && quickMark === "none" ? 0 : 24, "2": 24 },
+          ...worksPageFixture(emptied ? [] : works.map((work) => ({ ...work, listeningStatus: quickMark })), {
+            page: Number(url.searchParams.get("page") ?? 1),
+            total: emptied ? 0 : 48,
+          }),
+          shelfTotal: emptied ? 0 : 48,
+          listCounts: { "1": emptied ? 0 : 24, "2": 24 },
           statusCounts: quickMark === "none" ? {} : { [quickMark]: 48 },
-        },
+        } satisfies FavoriteWorksPage,
       });
       return;
     }
     if (url.pathname === "/api/circles") {
-      await route.fulfill({
-        json: { circles: [], page: 1, pageSize: 100, total: 0, catalogWorks: 0, availableWorks: 0 },
-      });
+      await route.fulfill({ json: circleSummaryPageFixture([], { pageSize: 100 }) });
       return;
     }
     if (url.pathname === "/api/voices") {
-      await route.fulfill({ json: { voices: [], page: 1, pageSize: 100, total: 0, tagOptions: [] } });
+      await route.fulfill({ json: voiceSummaryPageFixture([], { pageSize: 100 }) });
       return;
     }
     if (url.pathname === "/api/library-sources") {
@@ -154,19 +146,11 @@ async function mockFavorites(
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
-      await route.fulfill({
-        json: {
-          mode: "development",
-          demoMode: false,
-          anonymousAccessEnabled: false,
-          cacheEnabled: false,
-          directoryRoutingRules: [],
-        },
-      });
+      await route.fulfill({ json: runtimeSettingsFixture({ anonymousAccessEnabled: false }) });
       return;
     }
     if (url.pathname === "/api/works") {
-      await route.fulfill({ json: { works, page: 1, pageSize: 24, total: works.length } });
+      await route.fulfill({ json: worksPageFixture(works) });
       return;
     }
     const detailMatch = url.pathname.match(/^\/api\/works\/(\d+)$/);
@@ -174,73 +158,64 @@ async function mockFavorites(
       const id = Number(detailMatch[1]);
       const work = works.find((item) => item.id === id) ?? works[0];
       await route.fulfill({
-        json: {
-          ...work,
-          userTags: id === 18 ? savedTags : work.userTags,
-          baseCode: "",
-          metadataLanguage: "JPN",
-          workType: "audio",
-          titleKana: "",
-          description: "",
-          ageRating: "",
-          durationSeconds: null,
-          dlsiteFetchedAt: "",
-          translations: [],
-          manualOverrides: {},
-          mediaItems: [],
-        },
+        json: workDetailFixture(work, { userTags: id === 18 ? savedTags : work.userTags, ageRating: "" }),
       });
       return;
     }
     if (url.pathname === "/api/tags" && url.searchParams.get("scope") === "work") {
-      await route.fulfill({ json: { scope: "work", tags: [{ id: 5, name: "Focus", color: "", usageCount: 3 }] } });
+      await route.fulfill({
+        json: {
+          scope: "work",
+          tags: [{ id: 5, name: "Focus", color: "", usageCount: 3 }],
+        } satisfies ApiResponse<"listUserTags">,
+      });
       return;
     }
     const tagsMatch = url.pathname.match(/^\/api\/works\/(\d+)\/tags$/);
     if (tagsMatch && request.method() === "PUT") {
       const body = request.postDataJSON() as { tags: string[] };
       savedTags = body.tags.map((name, index) => ({ id: index + 10, name, color: "" }));
-      await route.fulfill({ json: { workId: Number(tagsMatch[1]), userTags: savedTags } });
+      await route.fulfill({
+        json: { workId: Number(tagsMatch[1]), userTags: savedTags } satisfies ApiResponse<"setWorkUserTags">,
+      });
       return;
     }
     if (/^\/api\/works\/\d+\/media$/.test(url.pathname)) {
-      await route.fulfill({ json: { workId: 18, mediaItems: [] } });
+      await route.fulfill({
+        json: { workId: 18, mediaWorkId: 18, mediaItems: [] } satisfies ApiResponse<"getWorkMedia">,
+      });
       return;
     }
     if (/^\/api\/works\/\d+\/favorite-lists$/.test(url.pathname)) {
       await route.fulfill({
         json: [
-          { id: 1, name: "Marked", description: "", sortOrder: -1, kind: "marked", selected: true },
-          { id: 2, name: "Study", description: "", sortOrder: 0, kind: "user", selected: true },
+          favoriteListFixture({ selected: true }),
+          favoriteListFixture({ id: 2, name: "Study", sortOrder: 0, kind: "user", selected: true }),
         ],
       });
       return;
     }
     if (/^\/api\/works\/\d+\/user-state$/.test(url.pathname) && request.method() === "PATCH") {
-      const body = request.postDataJSON() as { listeningStatus?: string };
+      const body = request.postDataJSON() as { listeningStatus?: ListeningStatus };
       quickMark = body.listeningStatus ?? quickMark;
-      await route.fulfill({ json: { workId: 1, listeningStatus: quickMark, favorite: false } });
+      await route.fulfill({
+        json: { workId: 1, listeningStatus: quickMark, favorite: false } satisfies ApiResponse<"updateWorkUserState">,
+      });
       return;
     }
     if (/^\/api\/works\/[^/]+\/source-availability$/.test(url.pathname)) {
-      await route.fulfill({ json: { workCode: "RJ00000017", checkedAt: "", sources: [] } });
+      await route.fulfill({
+        json: { workCode: "RJ00000017", checkedAt: "", sources: [] } satisfies SourceAvailabilityResponse,
+      });
       return;
     }
-    await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } });
+    await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } satisfies ApiErrorBody });
   });
 }
 
 test("@desktop favorites keeps type and search left with work controls on the right", async ({ page }) => {
   await mockFavorites(page, {
-    sources: [
-      {
-        id: 11,
-        code: "example_remote_a",
-        displayName: "Example Remote A",
-        sourceType: "kikoeru_compatible",
-        enabled: true,
-      },
-    ],
+    sources: [exampleRemoteA],
   });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/favorites");
@@ -330,15 +305,7 @@ test("@desktop favorites keeps type and search left with work controls on the ri
 
 test("mobile favorites collapses type and search into icon controls", async ({ page }) => {
   await mockFavorites(page, {
-    sources: [
-      {
-        id: 11,
-        code: "example_remote_a",
-        displayName: "Example Remote A",
-        sourceType: "kikoeru_compatible",
-        enabled: true,
-      },
-    ],
+    sources: [exampleRemoteA],
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/favorites");
@@ -478,11 +445,11 @@ test("favorites detail uses Library Up navigation while the Favorites tab restor
 });
 
 test("switching favorite lists keeps the entire playlist row stable while works load", async ({ page }) => {
-  let releaseListRequest = () => undefined;
+  let releaseListRequest: () => void = () => undefined;
   const listRequestGate = new Promise<void>((resolve) => {
     releaseListRequest = resolve;
   });
-  let markListRequestStarted = () => undefined;
+  let markListRequestStarted: () => void = () => undefined;
   const listRequestStarted = new Promise<void>((resolve) => {
     markListRequestStarted = resolve;
   });
@@ -545,20 +512,8 @@ test("filters favorites by any selected file source and keeps the selection out 
   const sourceRequests: number[][] = [];
   await mockFavorites(page, {
     sources: [
-      {
-        id: 11,
-        code: "example_remote_a",
-        displayName: "Example Remote A",
-        sourceType: "kikoeru_compatible",
-        enabled: true,
-      },
-      {
-        id: 12,
-        code: "example_remote_b",
-        displayName: "Example Remote B",
-        sourceType: "kikoeru_compatible",
-        enabled: false,
-      },
+      exampleRemoteA,
+      librarySourceFixture({ id: 12, code: "example_remote_b", displayName: "Example Remote B", enabled: false }),
     ],
     onFavoriteWorksRequest: (sourceIDs) => sourceRequests.push(sourceIDs),
   });

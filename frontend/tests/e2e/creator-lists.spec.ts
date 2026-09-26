@@ -1,19 +1,41 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const latestWork = {
+import type {
+  CatalogSyncState,
+  CircleSeries,
+  CircleSummary,
+  CircleSummaryPage,
+  CreatorLatestWork,
+  CreatorRefreshRun,
+  VoiceMergeReview,
+  VoiceSummary,
+  VoiceSummaryPage,
+} from "../../src/lib/api";
+import {
+  authenticatedStateFixture,
+  circleCatalogWorkFixture,
+  circleDetailFixture,
+  circleSummaryFixture,
+  circleSummaryPageFixture,
+  sourceStatFixture,
+  voiceCatalogRefreshFixture,
+  voiceDetailFixture,
+  voiceSummaryFixture,
+  type ApiErrorBody,
+  type ApiResponse,
+} from "./fixtures/api";
+
+const latestWork: CreatorLatestWork = {
   primaryCode: "RJ00000000",
   title: "Latest known work",
   releaseDate: "2026-07-01",
   coverUrl: "/api/assets/covers/RJ00000000.png",
 };
 
-const circle = {
-  id: 1,
+const circle = circleSummaryFixture({
   externalId: "RG09999",
   displayName: "Example Circle",
   aliases: ["Circle alias"],
-  rating: null,
-  note: "",
   favorite: true,
   userTags: [{ id: 1, name: "Relax", color: "" }],
   localWorks: 2,
@@ -22,89 +44,45 @@ const circle = {
   missingWorks: 2,
   catalogWorks: 5,
   lastSyncedAt: "2026-07-01T00:00:00Z",
-  syncState: "synced",
-  syncReason: "",
   sourceSummaries: [
-    { key: "local", sourceId: null, displayName: "Local", status: "available", count: 2 },
-    { key: "remote", sourceId: null, displayName: "Remote", status: "available", count: 1 },
+    sourceStatFixture({ key: "local", displayName: "Local", count: 2 }),
+    sourceStatFixture({ key: "remote", displayName: "Remote", count: 1 }),
   ],
   latestWork,
+});
+
+const circleCatalogWorkDefaults = {
+  circle: "Example Circle",
+  circleExternalId: "RG09999",
+  ageRating: "R15",
+  priceCurrency: "JPY",
+  permanentlyFree: false,
 };
 
 const circleCatalogWorks = [
-  {
+  circleCatalogWorkFixture({
+    ...circleCatalogWorkDefaults,
     workId: 1,
     primaryCode: "RJ00000003",
-    remoteCode: "RJ00000003",
     title: "Example Circle Work",
     releaseDate: "2026-07-02",
     updatedAt: "2026-07-02T00:00:00Z",
-    coverUrl: "",
-    dlsiteUrl: "",
-    circle: "Example Circle",
-    circleExternalId: "RG09999",
-    ageRating: "R15",
-    tags: [],
-    userTags: [],
-    voiceActors: [],
-    voiceRefs: [],
-    voiceCredits: [],
-    rating: null,
-    ratingCount: null,
-    sales: null,
-    hasAvailableNonOriginEdition: false,
-    regularPrice: null,
-    price: null,
-    priceCurrency: "JPY",
-    permanentlyFree: false,
-    series: "",
-    seriesTitleId: "",
     catalogStatus: "imported",
-    dlsiteAvailable: true,
-    listeningMark: "none",
-    favorite: false,
     local: true,
-    remote: false,
-    sourceTags: [{ key: "local", sourceId: null, displayName: "Local", status: "available", count: 1 }],
-  },
-  {
+    sourceTags: [sourceStatFixture({ key: "local", displayName: "Local", count: 1 })],
+  }),
+  circleCatalogWorkFixture({
+    ...circleCatalogWorkDefaults,
     workId: null,
     primaryCode: "RJ00000004",
-    remoteCode: "RJ00000004",
     title: "Example Catalog-only Work",
     releaseDate: "2026-07-03",
     updatedAt: "2026-07-03T00:00:00Z",
-    coverUrl: "",
-    dlsiteUrl: "",
-    circle: "Example Circle",
-    circleExternalId: "RG09999",
-    ageRating: "R15",
-    tags: [],
-    userTags: [],
-    voiceActors: [],
-    voiceRefs: [],
-    voiceCredits: [],
-    rating: null,
-    ratingCount: null,
-    sales: null,
-    hasAvailableNonOriginEdition: false,
-    regularPrice: null,
-    price: null,
-    priceCurrency: "JPY",
-    permanentlyFree: false,
-    series: "",
-    seriesTitleId: "",
     catalogStatus: "catalog_only",
-    dlsiteAvailable: true,
-    listeningMark: "none",
-    favorite: false,
-    local: false,
-    remote: false,
-    sourceTags: [],
-  },
+  }),
 ];
 
-const circleSeries = [
+const circleSeries: CircleSeries[] = [
   {
     titleId: "SRI0999999999",
     name: "Example Circle Series",
@@ -129,7 +107,7 @@ const circleSeries = [
   },
 ];
 
-const voice = {
+const voice = voiceSummaryFixture({
   personId: 7,
   displayName: "Example Voice",
   aliases: ["Voice alias"],
@@ -140,42 +118,45 @@ const voice = {
   playableWorks: 4,
   lastSeenAt: "2026-07-01T00:00:00Z",
   lastSyncedAt: "2026-07-01T00:00:00Z",
-  syncState: "synced",
-  syncReason: "",
-  rating: null,
-  note: "",
-  favorite: false,
   userTags: [{ id: 2, name: "Soft", color: "" }],
   sourceSummaries: [
-    { key: "local", sourceId: null, displayName: "Local", status: "available", count: 2 },
-    { key: "cache", sourceId: null, displayName: "Cache", status: "available", count: 1 },
-    { key: "remote", sourceId: null, displayName: "Remote", status: "available", count: 1 },
+    sourceStatFixture({ key: "local", displayName: "Local", count: 2 }),
+    sourceStatFixture({ key: "cache", displayName: "Cache", count: 1 }),
+    sourceStatFixture({ key: "remote", displayName: "Remote", count: 1 }),
   ],
   latestWork,
+});
+
+const memberPermissions = ["library:read", "favorites:write", "tags:write"];
+const adminPermissions = [...memberPermissions, "metadata:sync", "workflows:run"];
+
+function roleAuthState(role: "admin" | "member") {
+  return role === "admin"
+    ? authenticatedStateFixture({ role: "admin", permissions: adminPermissions, devMode: true })
+    : authenticatedStateFixture({ role: "user", permissions: memberPermissions, devMode: true });
+}
+
+// Deliberately off-contract: an older server sends a legacy catalog sync state
+// (such as "fresh") or none at all, and src/lib/catalogSyncState.ts normalizes
+// both. Only these two fields leave the current creator summary contract.
+type LegacySyncCreator<T extends CircleSummary | VoiceSummary> = Omit<T, "syncState" | "syncReason"> & {
+  syncState?: string;
+  syncReason?: string;
 };
 
 async function mockCreatorLists(page: Page, options: { circleSyncState?: string; omitVoiceSyncState?: boolean } = {}) {
-  const circleSummary = { ...circle, syncState: options.circleSyncState ?? circle.syncState };
-  const voiceSummary = options.omitVoiceSyncState
+  const circleSummary: LegacySyncCreator<CircleSummary> = {
+    ...circle,
+    syncState: options.circleSyncState ?? circle.syncState,
+  };
+  const voiceSummary: LegacySyncCreator<VoiceSummary> = options.omitVoiceSyncState
     ? withoutCatalogSyncState(voice)
-    : { ...voice, syncState: voice.syncState };
+    : voice;
 
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
-      await route.fulfill({
-        json: {
-          authenticated: true,
-          user: {
-            id: 1,
-            username: "listener",
-            displayName: "Listener",
-            role: "user",
-            permissions: ["library:read", "favorites:write", "tags:write"],
-            devMode: true,
-          },
-        },
-      });
+      await route.fulfill({ json: authenticatedStateFixture({ permissions: memberPermissions, devMode: true }) });
       return;
     }
     if (url.pathname === latestWork.coverUrl) {
@@ -189,130 +170,99 @@ async function mockCreatorLists(page: Page, options: { circleSyncState?: string;
       return;
     }
     if (url.pathname === "/api/circles") {
-      await route.fulfill({
-        json: {
-          circles: [
-            circleSummary,
-            {
-              ...circleSummary,
-              id: 2,
-              externalId: "RG10000",
-              displayName: "No Cover Circle",
-              latestWork: { ...latestWork, primaryCode: "RJ00000001", coverUrl: "" },
-            },
-          ],
-          page: 1,
-          pageSize: 24,
-          total: 30,
-          catalogWorks: 75,
-          availableWorks: 45,
-        },
-      });
+      const circlesPage: Omit<CircleSummaryPage, "circles"> & { circles: LegacySyncCreator<CircleSummary>[] } = {
+        ...circleSummaryPageFixture([], { total: 30, catalogWorks: 75, availableWorks: 45 }),
+        circles: [
+          circleSummary,
+          {
+            ...circleSummary,
+            id: 2,
+            externalId: "RG10000",
+            displayName: "No Cover Circle",
+            latestWork: { ...latestWork, primaryCode: "RJ00000001", coverUrl: "" },
+          },
+        ],
+      };
+      await route.fulfill({ json: circlesPage });
       return;
     }
     if (url.pathname === "/api/voices") {
-      await route.fulfill({
-        json: {
-          voices: [
-            voiceSummary,
-            {
-              ...voiceSummary,
-              personId: 8,
-              displayName: "No Cover Voice",
-              userTags: [
-                { id: 3, name: "Warm", color: "" },
-                { id: 4, name: "Calm", color: "" },
-                { id: 5, name: "Clear", color: "" },
-                { id: 6, name: "Story", color: "" },
-                { id: 7, name: "Drama", color: "" },
-              ],
-              latestWork: { ...latestWork, primaryCode: "RJ00000002", coverUrl: "" },
-            },
-          ],
-          page: 1,
-          pageSize: 24,
-          total: 30,
-          tagOptions: ["Soft"],
-        },
-      });
+      const voicesPage: Omit<VoiceSummaryPage, "voices"> & { voices: LegacySyncCreator<VoiceSummary>[] } = {
+        page: 1,
+        pageSize: 24,
+        total: 30,
+        tagOptions: ["Soft"],
+        voices: [
+          voiceSummary,
+          {
+            ...voiceSummary,
+            personId: 8,
+            displayName: "No Cover Voice",
+            userTags: [
+              { id: 3, name: "Warm", color: "" },
+              { id: 4, name: "Calm", color: "" },
+              { id: 5, name: "Clear", color: "" },
+              { id: 6, name: "Story", color: "" },
+              { id: 7, name: "Drama", color: "" },
+            ],
+            latestWork: { ...latestWork, primaryCode: "RJ00000002", coverUrl: "" },
+          },
+        ],
+      };
+      await route.fulfill({ json: voicesPage });
       return;
     }
-    await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } });
+    await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } satisfies ApiErrorBody });
   });
 }
 
-function withoutCatalogSyncState<T extends { syncState: unknown; syncReason: unknown }>(creator: T) {
-  const legacyCreator: Record<string, unknown> = { ...creator };
-  delete legacyCreator.syncState;
-  delete legacyCreator.syncReason;
-  return legacyCreator as Omit<T, "syncState" | "syncReason">;
+function withoutCatalogSyncState<T extends CircleSummary | VoiceSummary>(creator: T): LegacySyncCreator<T> {
+  const { syncState: _syncState, syncReason: _syncReason, ...legacyCreator } = creator;
+  return legacyCreator;
 }
 
 async function mockCreatorDetails(
   page: Page,
   options: {
-    circleSyncState?: string;
-    voiceSyncState?: string;
-    circleSeries?: typeof circleSeries;
+    circleSyncState?: CatalogSyncState;
+    voiceSyncState?: CatalogSyncState;
+    circleSeries?: CircleSeries[];
     onRefresh?: (path: string, payload: unknown) => void;
   } = {},
 ) {
-  const voiceCatalogRefresh = {
-    status: "succeeded",
-    reason: "",
-    lastStatus: "succeeded",
-    generation: 1,
-    lastAttemptAt: "",
-    lastSuccessAt: "",
-    complete: true,
-    pagesFetched: 1,
-    catalogWorks: 0,
-    metadataQueued: 0,
-    queries: [voice.displayName, "Voice alias"],
-    sources: [],
-    error: "",
-  };
-  const voiceDetail = {
-    ...voice,
-    syncState: options.voiceSyncState ?? voice.syncState,
-    aliases: [voice.displayName, "Voice alias"],
-    aliasRecords: [
-      { id: 1, alias: voice.displayName, source: "primary_name", createdAt: "2026-07-01T00:00:00Z" },
-      { id: 2, alias: "Voice alias", source: "manual", createdAt: "2026-07-01T00:00:00Z" },
-    ],
-    works: [],
-    remoteMatches: [],
-    metadataMissingWorks: 1,
-  };
-  const circleDetail = {
-    ...circle,
-    syncState: options.circleSyncState ?? circle.syncState,
-    aliases: ["Circle alias", "Second alias"],
-    localWorks: 1,
-    playableWorks: 1,
-    remoteWorks: 0,
-    missingWorks: 1,
-    catalogWorks: circleCatalogWorks.length,
-    works: circleCatalogWorks,
-    series: options.circleSeries ?? [],
-  };
+  const voiceCatalogRefresh = voiceCatalogRefreshFixture({ queries: [voice.displayName, "Voice alias"] });
+  const voiceDetail = voiceDetailFixture(
+    {
+      ...voice,
+      syncState: options.voiceSyncState ?? voice.syncState,
+      aliases: [voice.displayName, "Voice alias"],
+    },
+    {
+      aliasRecords: [
+        { id: 1, alias: voice.displayName, source: "primary_name", createdAt: "2026-07-01T00:00:00Z" },
+        { id: 2, alias: "Voice alias", source: "manual", createdAt: "2026-07-01T00:00:00Z" },
+      ],
+      metadataMissingWorks: 1,
+    },
+  );
+  const circleDetail = circleDetailFixture(
+    {
+      ...circle,
+      syncState: options.circleSyncState ?? circle.syncState,
+      aliases: ["Circle alias", "Second alias"],
+      localWorks: 1,
+      playableWorks: 1,
+      remoteWorks: 0,
+      missingWorks: 1,
+      catalogWorks: circleCatalogWorks.length,
+    },
+    { availableWorks: 1, works: circleCatalogWorks, series: options.circleSeries ?? [] },
+  );
 
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
-      await route.fulfill({
-        json: {
-          authenticated: true,
-          user: {
-            id: 1,
-            username: "listener",
-            displayName: "Listener",
-            role: "user",
-            permissions: ["library:read", "favorites:write", "tags:write", "metadata:sync", "workflows:run"],
-            devMode: true,
-          },
-        },
-      });
+      await route.fulfill({ json: authenticatedStateFixture({ permissions: adminPermissions, devMode: true }) });
       return;
     }
     if (url.pathname === "/api/voices/7") {
@@ -320,7 +270,7 @@ async function mockCreatorDetails(
       return;
     }
     if (url.pathname === "/api/voices/7/works") {
-      await route.fulfill({ json: { personId: 7, works: [] } });
+      await route.fulfill({ json: { personId: 7, works: [] } satisfies ApiResponse<"getVoiceWorks"> });
       return;
     }
     if (url.pathname === "/api/voices/7/remote-matches") {
@@ -340,7 +290,7 @@ async function mockCreatorDetails(
             },
           ],
           refresh: voiceCatalogRefresh,
-        },
+        } satisfies ApiResponse<"getVoiceRemoteMatches">,
       });
       return;
     }
@@ -350,7 +300,7 @@ async function mockCreatorDetails(
       return;
     }
     if (url.pathname === "/api/voices/7/merges") {
-      await route.fulfill({ json: [] });
+      await route.fulfill({ json: [] satisfies VoiceMergeReview[] });
       return;
     }
     if (url.pathname === "/api/circles/RG09999") {
@@ -359,26 +309,21 @@ async function mockCreatorDetails(
     }
     if (url.pathname === "/api/circles") {
       await route.fulfill({
-        json: {
-          circles: [circle],
+        json: circleSummaryPageFixture([circle], {
           page: Number(url.searchParams.get("page") ?? "1"),
-          pageSize: 24,
           total: 30,
           catalogWorks: circle.catalogWorks,
           availableWorks: circle.playableWorks,
-        },
+        }),
       });
       return;
     }
     if (url.pathname === "/api/circles/RG09999/refresh" && route.request().method() === "POST") {
       options.onRefresh?.(url.pathname, route.request().postDataJSON());
-      await route.fulfill({
-        status: 202,
-        json: { runId: 1, status: "queued" },
-      });
+      await route.fulfill({ status: 202, json: { runId: 1, status: "queued" } satisfies CreatorRefreshRun });
       return;
     }
-    await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } });
+    await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } satisfies ApiErrorBody });
   });
 }
 
@@ -594,29 +539,17 @@ for (const role of ["admin", "member"] as const) {
     await page.route("**/api/**", async (route) => {
       const url = new URL(route.request().url());
       if (url.pathname === "/api/auth/me") {
-        await route.fulfill({
-          json: {
-            authenticated: true,
-            user: {
-              id: 1,
-              username: "listener",
-              displayName: "Listener",
-              role: role === "admin" ? "admin" : "user",
-              permissions:
-                role === "admin"
-                  ? ["library:read", "favorites:write", "tags:write", "metadata:sync", "workflows:run"]
-                  : ["library:read", "favorites:write", "tags:write"],
-              devMode: true,
-            },
-          },
-        });
+        await route.fulfill({ json: roleAuthState(role) });
         return;
       }
       if (url.pathname === "/api/circles/RG09999") {
-        await route.fulfill({ status: 404, json: { error: "circle not found", code: "circle_not_in_database" } });
+        await route.fulfill({
+          status: 404,
+          json: { error: "circle not found", code: "circle_not_in_database" } satisfies ApiErrorBody,
+        });
         return;
       }
-      await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } });
+      await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } satisfies ApiErrorBody });
     });
 
     await countReactCommits(page);
@@ -642,25 +575,10 @@ for (const role of ["admin", "member"] as const) {
     await page.route("**/api/**", async (route) => {
       const url = new URL(route.request().url());
       if (url.pathname === "/api/auth/me") {
-        await route.fulfill({
-          json: {
-            authenticated: true,
-            user: {
-              id: 1,
-              username: "listener",
-              displayName: "Listener",
-              role: role === "admin" ? "admin" : "user",
-              permissions:
-                role === "admin"
-                  ? ["library:read", "favorites:write", "tags:write", "metadata:sync", "workflows:run"]
-                  : ["library:read", "favorites:write", "tags:write"],
-              devMode: true,
-            },
-          },
-        });
+        await route.fulfill({ json: roleAuthState(role) });
         return;
       }
-      await route.fulfill({ status: 404, json: { error: "voice actor not found" } });
+      await route.fulfill({ status: 404, json: { error: "voice actor not found" } satisfies ApiErrorBody });
     });
 
     await countReactCommits(page);
@@ -678,16 +596,14 @@ for (const role of ["admin", "member"] as const) {
 }
 
 test("a one-circle result keeps the initial creator region height", async ({ page }) => {
-  let releaseRequest = () => undefined;
+  let releaseRequest: () => void = () => undefined;
   const requestGate = new Promise<void>((resolve) => {
     releaseRequest = resolve;
   });
   await mockCreatorLists(page);
   await page.route("**/api/circles?**", async (route) => {
     await requestGate;
-    await route.fulfill({
-      json: { circles: [circle], page: 1, pageSize: 24, total: 1, catalogWorks: 5, availableWorks: 3 },
-    });
+    await route.fulfill({ json: circleSummaryPageFixture([circle], { catalogWorks: 5, availableWorks: 3 }) });
   });
 
   await page.goto("/circles?pageSize=24");
@@ -707,8 +623,8 @@ test("a one-circle result keeps the initial creator region height", async ({ pag
 });
 
 test("voice detail renders one stable work-loading region for local and remote discovery", async ({ page }) => {
-  let releaseWorks = () => undefined;
-  let releaseRemote = () => undefined;
+  let releaseWorks: () => void = () => undefined;
+  let releaseRemote: () => void = () => undefined;
   const worksGate = new Promise<void>((resolve) => {
     releaseWorks = resolve;
   });
@@ -718,7 +634,7 @@ test("voice detail renders one stable work-loading region for local and remote d
   await mockCreatorDetails(page);
   await page.route("**/api/voices/7/works", async (route) => {
     await worksGate;
-    await route.fulfill({ json: { personId: 7, works: [] } });
+    await route.fulfill({ json: { personId: 7, works: [] } satisfies ApiResponse<"getVoiceWorks"> });
   });
   await page.route("**/api/voices/7/remote-matches", async (route) => {
     await remoteGate;
@@ -726,22 +642,8 @@ test("voice detail renders one stable work-loading region for local and remote d
       json: {
         personId: 7,
         remoteMatches: [],
-        refresh: {
-          status: "succeeded",
-          reason: "",
-          lastStatus: "succeeded",
-          generation: 1,
-          lastAttemptAt: "",
-          lastSuccessAt: "",
-          complete: true,
-          pagesFetched: 1,
-          catalogWorks: 0,
-          metadataQueued: 0,
-          queries: ["Example Voice"],
-          sources: [],
-          error: "",
-        },
-      },
+        refresh: voiceCatalogRefreshFixture({ queries: ["Example Voice"] }),
+      } satisfies ApiResponse<"getVoiceRemoteMatches">,
     });
   });
 

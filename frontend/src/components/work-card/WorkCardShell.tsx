@@ -504,8 +504,9 @@ function MeasuredBadgeList({
     const overflowWidth =
       measurement.querySelector<HTMLElement>("[data-measured-overflow]")?.getBoundingClientRect().width ?? 0;
     setVisibleCount(visibleBadgeCountForRows(widths, containerWidth, overflowWidth));
-  }, [badgeLayoutKey]);
+  }, []);
 
+  // badgeLayoutKey is the re-measure trigger; measure itself reads only the DOM.
   useLayoutEffect(() => {
     measure();
     const container = containerRef.current;
@@ -521,7 +522,7 @@ function MeasuredBadgeList({
       observer?.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [measure]);
+  }, [badgeLayoutKey, measure]);
 
   useEffect(() => {
     if (visibleCount >= badges.length) setOpen(false);

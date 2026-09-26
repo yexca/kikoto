@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import type { MaintenanceWorkPage, MetadataOnboarding, WorkflowNotificationsPage } from "../../src/lib/api";
+import { fixtureTimestamp, type ApiErrorBody } from "./fixtures/api";
 import { mockApplication } from "./fixtures/player-library";
 
 for (const layout of ["mobile", "@desktop"]) {
@@ -7,7 +9,7 @@ for (const layout of ["mobile", "@desktop"]) {
       authenticated: true,
       permissions: ["library:read", "metadata:sync", "workflows:run"],
     });
-    let state = { status: "waiting", missingWorks: 0, runId: 0 };
+    let state: MetadataOnboarding = { status: "waiting", missingWorks: 0, runId: 0 };
     let starts = 0;
     let releaseStart!: () => void;
     const startGate = new Promise<void>((resolve) => {
@@ -49,11 +51,13 @@ test("metadata prompt retains a retryable error and Later survives reload", asyn
   let dismissed = false;
   await page.route("**/api/metadata/onboarding**", async (route) => {
     if (route.request().url().endsWith("/start")) {
-      await route.fulfill({ status: 503, json: { error: "unavailable" } });
+      await route.fulfill({ status: 503, json: { error: "unavailable" } satisfies ApiErrorBody });
       return;
     }
     if (route.request().url().endsWith("/dismiss")) dismissed = true;
-    await route.fulfill({ json: { status: dismissed ? "hidden" : "ready", missingWorks: 1, runId: 0 } });
+    await route.fulfill({
+      json: { status: dismissed ? "hidden" : "ready", missingWorks: 1, runId: 0 } satisfies MetadataOnboarding,
+    });
   });
   await page.goto("/");
   const notice = page.getByRole("region", { name: "Metadata setup", exact: true });
@@ -75,7 +79,7 @@ test("read-only users do not request the metadata prompt", async ({ page }) => {
   let requests = 0;
   await page.route("**/api/metadata/onboarding**", async (route) => {
     requests++;
-    await route.fulfill({ status: 403, json: { error: "permission denied" } });
+    await route.fulfill({ status: 403, json: { error: "permission denied" } satisfies ApiErrorBody });
   });
   await page.goto("/");
   await expect(page.getByRole("main")).toBeVisible();
@@ -90,7 +94,7 @@ for (const canViewActivity of [true, false]) {
       permissions: ["library:read", "metadata:sync", ...(canViewActivity ? ["workflows:run"] : [])],
     });
     await page.route("**/api/metadata/onboarding**", (route) =>
-      route.fulfill({ json: { status: "partial", missingWorks: 1, runId: 42 } }),
+      route.fulfill({ json: { status: "partial", missingWorks: 1, runId: 42 } satisfies MetadataOnboarding }),
     );
     await page.route("**/api/notifications?*", (route) =>
       route.fulfill({
@@ -105,19 +109,21 @@ for (const canViewActivity of [true, false]) {
               fileSourceId: null,
               workCode: "",
               message: "",
-              createdAt: "2026-01-01T00:00:00Z",
+              createdAt: fixtureTimestamp,
             },
           ],
           page: 1,
           pageSize: 20,
           total: 1,
-        },
+          totalPages: 1,
+          clearableTotal: 0,
+        } satisfies WorkflowNotificationsPage,
       }),
     );
     let lastRunFilter: string | null = null;
     await page.route("**/api/maintenance/works?*", async (route) => {
       lastRunFilter = new URL(route.request().url()).searchParams.get("runId");
-      await route.fulfill({ json: { works: [], page: 1, pageSize: 25, total: 0 } });
+      await route.fulfill({ json: { works: [], page: 1, pageSize: 25, total: 0 } satisfies MaintenanceWorkPage });
     });
     const expected = canViewActivity ? /\/metadata\?reason=metadata&metadataRun=42$/ : /\/metadata\?reason=metadata$/;
     await page.goto("/");

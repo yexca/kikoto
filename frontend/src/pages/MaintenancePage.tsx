@@ -23,6 +23,7 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { LibraryLayoutSection } from "@/features/library-setup/LibraryLayoutSection";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { RemoteSourceDialog } from "@/features/sources/RemoteSourceDialog";
 import { RemoteSourceList } from "@/features/sources/RemoteSourceList";
 import {
@@ -120,12 +121,14 @@ export function MaintenancePage({
     setAnonymousAccessEnabled(next.anonymousAccessEnabled);
   };
 
-  const reload = () =>
+  // Stable so settings load when access changes, not on every render or language switch.
+  const reload = useStableCallback(() =>
     api
       .getSettings()
       .then(applySettings)
       .catch((error) => toast.notify(toastFromError(error, t("maintenance.settingsApiUnavailable"))))
-      .finally(() => setIsSettingsLoading(false));
+      .finally(() => setIsSettingsLoading(false)),
+  );
 
   useEffect(() => {
     if (!canManageSources && !canManageAccessPolicy) {
@@ -133,7 +136,7 @@ export function MaintenancePage({
       return;
     }
     void reload();
-  }, [canManageSources, canManageAccessPolicy]);
+  }, [canManageSources, canManageAccessPolicy, reload]);
 
   useEffect(() => {
     if (openedLinkedSource.current || !settings) return;

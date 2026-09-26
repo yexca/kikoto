@@ -1,53 +1,34 @@
 import {
   ArrowUpRight,
-  ChevronLeft,
-  ChevronRight,
   CircleAlert,
-  ExternalLink,
-  FileAudio,
   GitFork,
-  GitMerge,
   HardDriveDownload,
   Heart,
-  ListChecks,
   Loader2,
-  Plus,
   RefreshCw,
   Rss,
-  Search,
   SlidersHorizontal,
-  Tags,
-  Trash2,
 } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
-import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { Dialog, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import { NativeSelect } from "@/components/ui/input";
 import { UserTagRow } from "@/components/UserTagRow";
-import { CollectionPagination } from "@/components/collection/CollectionPagination";
-import {
-  CreatorCard,
-  CreatorCollectionSkeleton,
-  creatorCardMinHeightClassName,
-  creatorCollectionClassName,
-} from "@/components/creator/CreatorCard";
+import { CreatorCard } from "@/components/creator/CreatorCard";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
 import { CreatorActionMenu } from "@/components/creator/CreatorActionMenu";
 import { CreatorDetailHeader } from "@/components/creator/CreatorDetailHeader";
-import { CreatorListToolbar } from "@/components/creator/CreatorListToolbar";
 import { CatalogWorkToolbar } from "@/components/creator/CatalogWorkToolbar";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
-import { retainVisibleSelection } from "@/components/work-collection/workSelectionModel";
+import { FetchConfirmDialog } from "@/components/work-collection/FetchConfirmDialog";
+import { retainVisibleSelection, withSelection } from "@/components/work-collection/workSelectionModel";
 import { VoiceWorkOptionsSheet, type VoiceWorkFilter } from "@/pages/VoiceWorkOptionsSheet";
 import { openWorkflowPath, workflowActivityRunPath, workflowRunFormPath } from "@/features/workflows/workflowLinks";
 import { useAuth } from "@/auth/AuthProvider";
@@ -58,7 +39,6 @@ import { openWorkDetail } from "@/app/workDetailNavigation";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import {
-  announceRemoteTrackCreated,
   isMatchingRemoteTrack,
   REMOTE_TRACK_TERMINAL_EVENT,
   type RemoteTrackTerminalDetail,
@@ -80,7 +60,6 @@ import { circleSourceBadges } from "@/components/work-card/sourceBadges";
 import { LazyRemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/LazyRemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import {
-  WorkCollectionLayoutPicker,
   workCollectionClassName,
   workCollectionStyle,
   useWorkCollectionLayout,
@@ -90,29 +69,25 @@ import {
   ApiError,
   type CircleSourceStat,
   type ListeningStatus,
-  type VoiceAlias,
-  type VoiceAliasCandidate,
   type VoiceCatalogRefreshState,
   type CreatorRefreshRequest,
   type VoiceDetail,
   type VoiceKnownWork,
-  type VoiceMergeReview,
   type VoiceRemoteSourceSet,
   type VoiceSummary,
 } from "@/lib/api";
-import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { DLSITE_ENDPOINTS } from "@/lib/official-links";
 import {
   NAVIGATION_EVENT,
   currentInternalLocation,
-  historyStateWithReturn,
   navigateToWorkspaceUp,
   normalizeInternalLocation,
 } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { hasPlaybackHistory } from "@/lib/playbackHistory";
-import { openCircleRoute, openCircleSeriesRoute } from "@/pages/circleNavigationState";
-import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
+import { openCircleRoute, openCircleSeriesRoute } from "@/lib/circleNavigationState";
+import { CreatorListPage } from "@/pages/creator/CreatorListPage";
+import { creatorBulkCopy, useRemoteWorkActions } from "@/pages/useRemoteWorkActions";
 import {
   currentVoiceReturnPath,
   isVoiceListLocation,
@@ -120,7 +95,7 @@ import {
   readLastVoiceListLocation,
   voiceReturnLabelForLocation,
   writeLastVoiceListLocation,
-} from "@/pages/voiceNavigationState";
+} from "@/lib/voiceNavigationState";
 import {
   mergeVoiceWorks,
   voiceWorkHasRemoteAvailability,
@@ -231,33 +206,7 @@ const VoiceCard = memo(function VoiceCard({
 
 function VoiceListPage({ active }: { active: boolean }) {
   const { t } = useTranslation();
-  const auth = useAuth();
-  const toast = useToast();
-  const storageScope = currentClientStorageScope(auth.user?.id ?? null);
-  const initialBrowseState = useMemo(
-    () =>
-      creatorBrowseStateFromSearch(
-        window.location.search,
-        { query: "", filter: "all" as VoiceFilter, tag: "", page: 1, pageSize: 24 },
-        voiceFilters,
-        voicePageSizeOptions,
-      ),
-    [],
-  );
-  const [voices, setVoices] = useState<VoiceSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasLoaded, setHasLoaded] = useState(false);
-  const [loadError, setLoadError] = useState("");
-  const [message, setMessage] = useState("");
-  const [query, setQuery] = useState(initialBrowseState.query);
-  const [requestQuery, setRequestQuery] = useState(initialBrowseState.query);
-  const [filter, setFilter] = useState<VoiceFilter>(initialBrowseState.filter);
-  const [page, setPage] = useState(initialBrowseState.page);
-  const [pageSize, setPageSize] = useState(initialBrowseState.pageSize);
-  const [total, setTotal] = useState(0);
-  const [reloadToken, setReloadToken] = useState(0);
-  const loadedRequestKey = useRef("");
-  const localizedFilterOptions = voiceFilterOptions.map((option) => ({
+  const filterOptions = voiceFilterOptions.map((option) => ({
     ...option,
     label:
       option.value === "all"
@@ -274,163 +223,36 @@ function VoiceListPage({ active }: { active: boolean }) {
                   ? t("detailActions.remote")
                   : t("detailActions.missing"),
   }));
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setRequestQuery(query), 250);
-    return () => window.clearTimeout(timer);
-  }, [query]);
-
-  useEffect(() => {
-    if (!active || !isVoiceListLocation(currentInternalLocation())) return;
-    const search = creatorBrowseSearch({ query, filter, tag: "", page, pageSize });
-    const location = `/voices${search}`;
-    window.history.replaceState(window.history.state ?? {}, "", location);
-    writeLastVoiceListLocation(storageScope, location);
-  }, [active, filter, page, pageSize, query, storageScope]);
-
-  useEffect(() => {
-    if (!active) return;
-    const requestKey = JSON.stringify([page, pageSize, requestQuery, filter, reloadToken]);
-    if (loadedRequestKey.current === requestKey) return;
-    const controller = new AbortController();
-    setIsLoading(true);
-    setLoadError("");
-    api
-      .listVoices({ page, pageSize, query: requestQuery, filter, signal: controller.signal })
-      .then((result) => {
-        loadedRequestKey.current = requestKey;
-        setVoices(result.voices);
-        setTotal(result.total);
-        setHasLoaded(true);
-        setMessage(
-          result.total === 0 && !requestQuery.trim() && filter === "all" ? t("creatorBrowse.noVoiceCredits") : "",
-        );
-        if (result.page !== page) setPage(result.page);
-      })
-      .catch((error) => {
-        if (controller.signal.aborted) return;
-        setLoadError(t("errors.unavailable"));
-        toast.notify(toastFromError(error, t("errors.unavailable")));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setIsLoading(false);
-      });
-    return () => controller.abort();
-  }, [active, filter, page, pageSize, reloadToken, requestQuery]);
-
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const changeFilter = (value: VoiceFilter) => {
-    setFilter(value);
-    setPage(1);
-  };
-  const changePageSize = (value: number) => {
-    setPageSize(value);
-    setPage(1);
-  };
-  const paginationProps = {
-    page,
-    pageSize,
-    totalItems: total,
-    totalPages,
-    itemLabel: t("creatorBrowse.voiceActors"),
-    ariaLabel: t("creatorBrowse.voicePages"),
-    compactMobile: true,
-    compactTop: true,
-    refreshing: isLoading && hasLoaded,
-    refreshingLabel: t("creatorBrowse.refreshingVoices"),
-    onPageChange: setPage,
-  };
-
-  const updateVoice = (next: VoiceSummary) => {
-    setVoices((items) => items.map((item) => (item.personId === next.personId ? { ...item, ...next } : item)));
-    if (filter !== "all" || requestQuery.trim()) setReloadToken((value) => value + 1);
-  };
-
-  const toggleFavorite = async (voice: VoiceSummary) => {
-    try {
-      updateVoice({ ...voice, ...(await api.updateVoiceUserState(voice.personId, { favorite: !voice.favorite })) });
-    } catch (error) {
-      toast.notify(toastFromError(error, t("creatorBrowse.favoriteUpdateFailed")));
-    }
-  };
-
-  const saveTags = async (voice: VoiceSummary, tags: string[]) => {
-    try {
-      const result = await api.setVoiceUserTags(voice.personId, tags);
-      updateVoice({ ...voice, userTags: result.userTags });
-    } catch (error) {
-      toast.notify(toastFromError(error, t("creatorBrowse.tagsUpdateFailed")));
-    }
-  };
-  const toggleCardFavorite = useStableCallback(toggleFavorite);
-  const saveCardTags = useStableCallback(saveTags);
-
   return (
-    <div className="relative space-y-5">
-      {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
-
-      <section className="space-y-3">
-        <CreatorListToolbar
-          label={t("creatorBrowse.voiceActors")}
-          query={query}
-          placeholder={t("creatorBrowse.searchVoices")}
-          filter={filter}
-          defaultFilter="all"
-          filterOptions={localizedFilterOptions}
-          pageSize={pageSize}
-          pageSizeOptions={voicePageSizeOptions}
-          onQueryChange={setQuery}
-          onFilterChange={changeFilter}
-          onPageSizeChange={changePageSize}
-        />
-
-        <CollectionPagination {...paginationProps} placement="top" />
-
-        {isLoading && !hasLoaded ? (
-          <CreatorCollectionSkeleton label={t("creatorBrowse.loadingVoices")} />
-        ) : !hasLoaded && loadError ? (
-          <Card className={creatorCardMinHeightClassName} role="alert">
-            <CardContent
-              className={`grid ${creatorCardMinHeightClassName} place-items-center gap-3 p-5 text-center text-sm text-destructive`}
-            >
-              <span>{loadError}</span>
-              <Button size="sm" variant="outline" onClick={() => setReloadToken((value) => value + 1)}>
-                {t("creatorBrowse.retry")}
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <div
-            className={creatorCollectionClassName}
-            role="region"
-            aria-label={t("creatorBrowse.voiceResults")}
-            aria-busy={isLoading}
-          >
-            {voices.length > 0 ? (
-              voices.map((voice) => (
-                <VoiceCard
-                  key={voice.personId}
-                  voice={voice}
-                  onFavoriteToggle={toggleCardFavorite}
-                  onTagsSave={saveCardTags}
-                />
-              ))
-            ) : (
-              <Card className={creatorCardMinHeightClassName}>
-                <CardContent
-                  className={`grid ${creatorCardMinHeightClassName} place-items-center p-5 text-sm text-muted-foreground`}
-                >
-                  {t("creatorBrowse.noVoices")}
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        )}
-
-        <CollectionPagination {...paginationProps} placement="bottom" />
-      </section>
-      <BrowseLoadingIndicator refreshing={isLoading && hasLoaded} label={t("creatorBrowse.refreshingVoices")} />
-    </div>
+    <CreatorListPage<VoiceSummary, VoiceFilter>
+      active={active}
+      path="/voices"
+      filters={voiceFilters}
+      filterOptions={filterOptions}
+      pageSizeOptions={voicePageSizeOptions}
+      isListLocation={isVoiceListLocation}
+      writeLastListLocation={writeLastVoiceListLocation}
+      load={async (request) => {
+        const result = await api.listVoices(request);
+        return { items: result.voices, total: result.total, page: result.page };
+      }}
+      itemKey={(voice) => voice.personId}
+      toggleFavorite={(voice) => api.updateVoiceUserState(voice.personId, { favorite: !voice.favorite })}
+      saveTags={async (voice, tags) => ({ userTags: (await api.setVoiceUserTags(voice.personId, tags)).userTags })}
+      renderItem={(voice, handlers) => (
+        <VoiceCard voice={voice} onFavoriteToggle={handlers.onFavoriteToggle} onTagsSave={handlers.onTagsSave} />
+      )}
+      unfilteredEmptyMessage={t("creatorBrowse.noVoiceCredits")}
+      copy={{
+        label: t("creatorBrowse.voiceActors"),
+        searchPlaceholder: t("creatorBrowse.searchVoices"),
+        loading: t("creatorBrowse.loadingVoices"),
+        refreshing: t("creatorBrowse.refreshingVoices"),
+        results: t("creatorBrowse.voiceResults"),
+        empty: t("creatorBrowse.noVoices"),
+        pages: t("creatorBrowse.voicePages"),
+      }}
+    />
   );
 }
 
@@ -470,6 +292,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
+  const remoteWorkActions = useRemoteWorkActions();
   const loadedPersonID = useRef<number | null>(null);
   const loadedCatalogPersonID = useRef<number | null>(null);
 
@@ -515,7 +338,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
       }
     })();
     return () => controller.abort();
-  }, [active, personId, t]);
+  }, [active, personId, t, toast]);
 
   const loadRemoteMatches = async (notify = false) => {
     setIsRemoteLoading(true);
@@ -544,8 +367,10 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
 
   const canForceRefreshCatalog = auth.hasPermission("metadata:sync") && !auth.demoMode;
 
+  const hasDetail = Boolean(detail);
   useEffect(() => {
-    if (!active || !detail || loadedCatalogPersonID.current === personId) return;
+    // Loads once per voice; the ref makes re-runs for a new `t` no-ops.
+    if (!active || !hasDetail || loadedCatalogPersonID.current === personId) return;
     const controller = new AbortController();
     let cancelled = false;
     const loadPersistedCatalog = async () => {
@@ -568,7 +393,21 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
       cancelled = true;
       controller.abort();
     };
-  }, [active, detail?.personId, personId]);
+  }, [active, hasDetail, personId, t, toast]);
+
+  const canOpenWorkflows = auth.hasPermission("workflows:run") && !auth.demoMode;
+  const openRefreshRun = (runId: number) => openWorkflowPath(workflowActivityRunPath(runId));
+  const runAction = (runId?: number) =>
+    canOpenWorkflows && runId ? { actionLabel: t("nav.activity"), onAction: () => openRefreshRun(runId) } : {};
+  // Stable so the refresh poll does not restart on every render.
+  const notifyRefreshSettled = useStableCallback((refresh: VoiceCatalogRefreshState) => {
+    const failed = refresh.status === "failed";
+    toast.notify({
+      kind: failed ? "error" : refresh.status === "partial" ? "warning" : "success",
+      message: failed ? t("creatorBrowse.voiceRefreshFailed") : t("creatorBrowse.voiceRefreshFinished"),
+      ...runAction(refresh.runId),
+    });
+  });
 
   const catalogRefreshActive = catalogRefresh?.status === "queued" || catalogRefresh?.status === "running";
   useEffect(() => {
@@ -610,20 +449,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", pollNow);
     };
-  }, [active, catalogRefresh?.runId, catalogRefreshActive, personId]);
-
-  const canOpenWorkflows = auth.hasPermission("workflows:run") && !auth.demoMode;
-  const openRefreshRun = (runId: number) => openWorkflowPath(workflowActivityRunPath(runId));
-  const runAction = (runId?: number) =>
-    canOpenWorkflows && runId ? { actionLabel: t("nav.activity"), onAction: () => openRefreshRun(runId) } : {};
-  const notifyRefreshSettled = (refresh: VoiceCatalogRefreshState) => {
-    const failed = refresh.status === "failed";
-    toast.notify({
-      kind: failed ? "error" : refresh.status === "partial" ? "warning" : "success",
-      message: failed ? t("creatorBrowse.voiceRefreshFailed") : t("creatorBrowse.voiceRefreshFinished"),
-      ...runAction(refresh.runId),
-    });
-  };
+  }, [active, catalogRefresh?.runId, catalogRefreshActive, notifyRefreshSettled, personId]);
 
   const refreshVoiceCatalog = async (request: CreatorRefreshRequest, queuedMessage: string) => {
     if (!canForceRefreshCatalog) {
@@ -739,11 +565,11 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
     }
   };
 
-  const refreshDetail = async () => {
+  const refreshDetail = useStableCallback(async () => {
     const item = await api.getVoice(personId);
     setDetail((current) => (item ? { ...item, remoteMatches: current?.remoteMatches ?? [] } : item));
     void loadRemoteMatches(false);
-  };
+  });
 
   useEffect(() => {
     if (!active) return;
@@ -762,7 +588,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
     };
     window.addEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshTrackedWork);
     return () => window.removeEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshTrackedWork);
-  }, [active, mergedWorks]);
+  }, [active, mergedWorks, refreshDetail]);
   const fetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged: refreshDetail });
 
   const saveVoiceTags = async (tags: string[]) => {
@@ -837,13 +663,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
   };
 
   const toggleWorkSelection = (work: VoiceWorkView, checked: boolean) => {
-    const key = voiceWorkSelectionKey(work);
-    setSelectedWorkKeys((current) => {
-      const next = new Set(current);
-      if (checked) next.add(key);
-      else next.delete(key);
-      return next;
-    });
+    setSelectedWorkKeys((current) => withSelection(current, [voiceWorkSelectionKey(work)], checked));
   };
 
   const toggleSelectionMode = () => {
@@ -854,15 +674,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
   };
 
   const toggleVisibleSelection = (checked: boolean) => {
-    setSelectedWorkKeys((current) => {
-      const next = new Set(current);
-      selectablePageWorks.forEach((work) => {
-        const key = voiceWorkSelectionKey(work);
-        if (checked) next.add(key);
-        else next.delete(key);
-      });
-      return next;
-    });
+    setSelectedWorkKeys((current) => withSelection(current, selectablePageWorks.map(voiceWorkSelectionKey), checked));
   };
 
   const bulkFork = async () => {
@@ -870,16 +682,12 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
     setIsBulkBusy(true);
     setMessage("");
     try {
-      const results = await runVoiceBulkBySource(selectedForkable, "track");
-      const synced = results.reduce((total, result) => total + result.synced, 0);
-      const failed = results.reduce((total, result) => total + result.failed, 0);
-      const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      const message = t("creatorBrowse.bulkForkSummary", { runIds, synced, failed });
-      if (failed > 0) toast.warning(message);
-      else toast.success(message);
-      await refreshDetail();
-    } catch (error) {
-      toast.notify(toastFromError(error, t("creatorBrowse.bulkForkFailed")));
+      await remoteWorkActions.recordBulkRuns(
+        "track",
+        voiceRemoteTargets(selectedForkable),
+        creatorBulkCopy,
+        refreshDetail,
+      );
     } finally {
       setIsBulkBusy(false);
     }
@@ -896,30 +704,16 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
     setIsBulkBusy(true);
     setMessage("");
     try {
-      const results = await runVoiceBulkBySource(selectedSaveable, "fetch");
-      const fetched = results.reduce((total, result) => total + result.fetched, 0);
-      const failed = results.reduce((total, result) => total + result.failed, 0);
-      const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      const message = t("creatorBrowse.bulkFetchSummary", { runIds, fetched, failed });
-      if (failed > 0) toast.warning(message);
-      else toast.success(message);
-      await refreshDetail();
-    } catch (error) {
-      toast.notify(toastFromError(error, t("creatorBrowse.bulkFetchFailed")));
+      await remoteWorkActions.recordBulkRuns(
+        "fetch",
+        voiceRemoteTargets(selectedSaveable),
+        creatorBulkCopy,
+        refreshDetail,
+      );
     } finally {
       setIsBulkBusy(false);
       setSaveConfirm(null);
     }
-  };
-
-  const runVoiceBulkBySource = (works: VoiceWorkView[], action: "fetch" | "track") => {
-    const groups = new Map<number, string[]>();
-    works.forEach((work) => {
-      const target = voiceWorkRemoteTarget(work);
-      if (!target) return;
-      groups.set(target.sourceId, [...(groups.get(target.sourceId) ?? []), target.code]);
-    });
-    return Promise.all(Array.from(groups, ([sourceId, codes]) => api.recordRemoteBulkRun({ action, sourceId, codes })));
   };
 
   const saveSingleWork = async (work: VoiceWorkView) => {
@@ -938,16 +732,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
     if (!target) return;
     setIsBulkBusy(true);
     try {
-      const result = await api.trackRemoteSourceWork(target.sourceId, target.code, "voice_card_fork");
-      announceRemoteTrackCreated(target.sourceId, target.code, result);
-      toast.notify({
-        kind: "info",
-        message: result.deduplicated
-          ? t("libraryDetail.forkAlreadyQueued", { runId: result.runId })
-          : t("libraryDetail.forkQueued", { runId: result.runId }),
-      });
-    } catch (error) {
-      toast.notify(toastFromError(error, t("libraryDetail.forkQueueFailed")));
+      await remoteWorkActions.queueFork(target, "voice_card_fork");
     } finally {
       setIsBulkBusy(false);
     }
@@ -1269,7 +1054,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
         />
       </section>
       {saveConfirm && (
-        <SaveConfirmModal
+        <FetchConfirmDialog
           count={saveConfirm.count}
           onClose={() => setSaveConfirm(null)}
           onConfirm={() => void saveConfirm.run()}
@@ -1309,9 +1094,6 @@ function VoiceWorkCard({
 }) {
   const { t } = useTranslation();
   const isKnown = "local" in work;
-  const local = "local" in work ? work.local : work.hasLocal;
-  const remote = voiceWorkHasRemoteAvailability(work);
-  const cache = "cache" in work ? work.cache : work.hasCache;
   const workId = "workId" in work ? work.workId : null;
   const favorite = "favorite" in work ? work.favorite : false;
   const listeningMark = "listeningMark" in work ? work.listeningMark : "none";
@@ -1377,53 +1159,6 @@ function VoiceWorkCard({
         />
       }
     />
-  );
-}
-
-function SaveConfirmModal({
-  count,
-  onClose,
-  onConfirm,
-}: {
-  count: number;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <Dialog onClose={onClose} size="sm">
-      <DialogHeader
-        title={t("detailActions.fetchRemoteDirectory")}
-        description={t("detailActions.fetchRemoteDirectoryDescription", { count })}
-      />
-      <DialogFooter>
-        <Button variant="outline" size="sm" onClick={onClose}>
-          {t("content.cancel")}
-        </Button>
-        <Button size="sm" onClick={onConfirm}>
-          {t("detailActions.fetch")}
-        </Button>
-      </DialogFooter>
-    </Dialog>
-  );
-}
-
-function WorkProgressLine({ progress }: { progress: NonNullable<VoiceKnownWork["progress"]> }) {
-  const { t } = useTranslation();
-  return (
-    <div className="space-y-1">
-      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-        <div className="h-full rounded-full bg-primary" style={{ width: `${workProgressPercent(progress)}%` }} />
-      </div>
-      <div className="truncate text-xs text-muted-foreground">
-        {progress.completed
-          ? t("favorites.finished")
-          : t("favorites.resumeAt", {
-              title: progress.title || t("player.track"),
-              time: formatTime(progress.positionSeconds),
-            })}
-      </div>
-    </div>
   );
 }
 
@@ -1524,6 +1259,10 @@ function VoiceDetailSkeleton() {
   );
 }
 
+function voiceRemoteTargets(works: readonly VoiceWorkView[]) {
+  return works.flatMap((work) => voiceWorkRemoteTarget(work) ?? []);
+}
+
 function voiceWorkSelectionKey(work: VoiceWorkView) {
   return `${"sourceId" in work ? work.sourceId : "known"}:${work.primaryCode}`;
 }
@@ -1538,50 +1277,12 @@ function voiceWorkHasImportedRemote(work: VoiceWorkView) {
   return work.hasRemote;
 }
 
-function voiceWorkReleaseDate(work: VoiceWorkView) {
-  return "releaseDate" in work ? work.releaseDate || "" : "";
-}
-
-function voiceWorkUpdatedAt(work: VoiceWorkView) {
-  return work.updatedAt || voiceWorkReleaseDate(work);
-}
-
-function voiceWorkSales(work: VoiceWorkView) {
-  return work.sales ?? null;
-}
-
 function voiceWorkDLsiteURL(work: VoiceWorkView) {
   return "dlsiteUrl" in work && work.dlsiteUrl ? work.dlsiteUrl : DLSITE_ENDPOINTS.workURL("maniax", work.primaryCode);
 }
 
-function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (status: ListeningStatus) => void }) {
-  const { t } = useTranslation();
-  return (
-    <div className="absolute bottom-10 left-0 z-20 w-44 overflow-hidden rounded-md border bg-popover p-1 shadow-lg">
-      {listeningStatusOptions.map((option) => (
-        <button
-          key={option.value}
-          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted"
-          onClick={() => onChange(option.value)}
-        >
-          <ListChecks
-            className={value === option.value && value !== "none" ? "h-3.5 w-3.5 text-primary" : "h-3.5 w-3.5"}
-          />
-          {t(`library.status.${option.value}`, { defaultValue: option.label })}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function normalizeListeningStatus(status: string): ListeningStatus {
   return listeningStatusOptions.some((option) => option.value === status) ? (status as ListeningStatus) : "none";
-}
-
-function listeningStatusLabel(status: string, t?: TFunction) {
-  return t
-    ? t(`library.status.${normalizeListeningStatus(status)}`)
-    : (listeningStatusOptions.find((option) => option.value === normalizeListeningStatus(status))?.label ?? "Unmarked");
 }
 
 function voiceObservedStatusBadges(sourceTags: CircleSourceStat[], t: TFunction): WorkCardBadge[] {
@@ -1629,18 +1330,6 @@ function isVoiceWorkspaceLocation(location: string) {
   } catch {
     return false;
   }
-}
-
-function formatTime(seconds: number) {
-  const safeSeconds = Math.max(0, Math.floor(seconds));
-  const minutes = Math.floor(safeSeconds / 60);
-  const remainingSeconds = safeSeconds % 60;
-  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
-}
-
-function workProgressPercent(progress: NonNullable<VoiceKnownWork["progress"]>) {
-  if (!progress.durationSeconds || progress.durationSeconds <= 0) return 0;
-  return Math.min(100, Math.max(0, (progress.positionSeconds / progress.durationSeconds) * 100));
 }
 
 function openVoiceAliasMaintenance(personId: number) {

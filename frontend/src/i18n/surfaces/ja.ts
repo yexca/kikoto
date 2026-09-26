@@ -956,8 +956,6 @@ export const surfaceJapanese = {
   },
   libraryDetail: {
     untrackSource: "ソースの追跡を解除しますか？",
-    fetchRemoteDirectory: "リモートディレクトリを取得",
-    fetchRemoteDirectoryDescription: "選択した {{count}} 件の作品の完全なリモートディレクトリをダウンロードします。",
     work: "作品",
     cover: "カバー",
     circle: "サークル",

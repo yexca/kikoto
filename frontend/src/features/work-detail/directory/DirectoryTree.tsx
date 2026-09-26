@@ -153,9 +153,10 @@ export function DirectoryTree({
     });
   }, [focusPath, focusRequestKey, root]);
   const treeRows = useMemo(() => flattenVisibleTreeRows(root, expandedPaths), [root, expandedPaths]);
+  const isLyricsAttachmentHidden = lyricsAttachments.isHidden;
   const rows = useMemo(
-    () => treeRows.filter((row) => row.type === "folder" || !lyricsAttachments.isHidden(row.file.locationId)),
-    [treeRows, lyricsAttachments.isHidden],
+    () => treeRows.filter((row) => row.type === "folder" || !isLyricsAttachmentHidden(row.file.locationId)),
+    [treeRows, isLyricsAttachmentHidden],
   );
   const playbackTracksByFolder = useMemo(() => {
     const tracks = new Map<TreeNode, TreeTrack[]>();

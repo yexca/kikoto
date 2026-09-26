@@ -54,13 +54,14 @@ export function PlayerQueuePanel({
   const callbacksRef = useRef({ onSelect, onMove, onMoveTo, onRemove });
   callbacksRef.current = { onSelect, onMove, onMoveTo, onRemove };
 
+  // Only center the track that is current when the queue opens.
+  const openedCurrentIdRef = useRef(queue[currentIndex]?.queueItemId);
   useLayoutEffect(() => {
     const scroller = scrollerRef.current;
-    const currentId = queue[currentIndex]?.queueItemId;
+    const currentId = openedCurrentIdRef.current;
     const row = currentId ? rowRefs.current.get(currentId) : null;
     if (!scroller || !row) return;
     scroller.scrollTop = Math.max(0, row.offsetTop - scroller.clientHeight / 2 + row.offsetHeight / 2);
-    // Only center the current track when the queue opens.
   }, []);
 
   useLayoutEffect(() => {

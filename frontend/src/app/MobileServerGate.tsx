@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Input, NativeSelect } from "@/components/ui/input";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { api } from "@/lib/api";
 import { serverFormFromURL, serverURLFromForm, type ServerProtocol } from "./serverConnectionForm";
 import {
@@ -28,6 +29,8 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
   const [version, setVersion] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
   const connectionController = useRef<AbortController | null>(null);
+  // The startup check runs once; it reads the current language when it settles.
+  const translate = useStableCallback((key: string) => t(key));
 
   useEffect(() => {
     if (!isNativeApp()) return;
@@ -53,16 +56,16 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
             setProtocol(form.protocol);
             setAddress(form.address);
             setPort(form.port);
-            setError(t("serverGate.unreachable"));
+            setError(translate("serverGate.unreachable"));
             setState("setup");
           });
       })
       .catch(() => {
-        setError(t("serverGate.settingsUnavailable"));
+        setError(translate("serverGate.settingsUnavailable"));
         setState("setup");
       });
     return () => connectionController.current?.abort();
-  }, []);
+  }, [translate]);
 
   if (state === "ready") return <>{children}</>;
   if (state === "checking") {

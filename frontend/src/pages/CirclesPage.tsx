@@ -1,18 +1,14 @@
 import {
-  ChevronLeft,
   ChevronRight,
   ChevronDown,
   CircleAlert,
   ExternalLink,
-  FileAudio,
   GitFork,
   HardDriveDownload,
   Heart,
-  ListChecks,
   Loader2,
   RefreshCw,
   Rss,
-  Search,
   SlidersHorizontal,
   X,
 } from "lucide-react";
@@ -27,20 +23,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { MobileSheet } from "@/components/ui/mobile-sheet";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { Dialog, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import { Input, NativeSelect } from "@/components/ui/input";
 import { UserTagRow } from "@/components/UserTagRow";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
-import { CollectionPagination } from "@/components/collection/CollectionPagination";
-import {
-  CreatorCard,
-  CreatorCollectionSkeleton,
-  creatorCardMinHeightClassName,
-  creatorCollectionClassName,
-} from "@/components/creator/CreatorCard";
+import { CreatorCard } from "@/components/creator/CreatorCard";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
 import { CreatorActionMenu } from "@/components/creator/CreatorActionMenu";
 import { CreatorDetailHeader } from "@/components/creator/CreatorDetailHeader";
-import { CreatorListToolbar } from "@/components/creator/CreatorListToolbar";
 import { CatalogWorkToolbar } from "@/components/creator/CatalogWorkToolbar";
 import {
   WorkCardActionButton,
@@ -56,23 +44,21 @@ import {
 } from "@/components/work-card/WorkCardShell";
 import { circleSourceBadges } from "@/components/work-card/sourceBadges";
 import {
-  WorkCollectionLayoutPicker,
   workCollectionClassName,
   workCollectionStyle,
   useWorkCollectionLayout,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
-import { retainVisibleSelection } from "@/components/work-collection/workSelectionModel";
+import { FetchConfirmDialog } from "@/components/work-collection/FetchConfirmDialog";
+import { retainVisibleSelection, withSelection } from "@/components/work-collection/workSelectionModel";
 import { LazyRemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/LazyRemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import { openWorkflowPath, workflowActivityRunPath, workflowRunFormPath } from "@/features/workflows/workflowLinks";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
-import { useStableCallback } from "@/hooks/useStableCallback";
 import {
   api,
   ApiError,
-  assetURL,
   type CircleCatalogWork,
   type CircleDetail,
   type CreatorRefreshRequest,
@@ -81,15 +67,8 @@ import {
   type CircleSummary,
   type ListeningStatus,
 } from "@/lib/api";
-import {
-  NAVIGATION_EVENT,
-  currentInternalLocation,
-  historyStateWithReturn,
-  navigateToWorkspaceUp,
-  normalizeInternalLocation,
-} from "@/lib/browserHistory";
+import { currentInternalLocation, navigateToWorkspaceUp, normalizeInternalLocation } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
-import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { coalesceRuns } from "@/lib/inflightRequests";
 import { DLSITE_ENDPOINTS } from "@/lib/official-links";
 import { hasPlaybackHistory } from "@/lib/playbackHistory";
@@ -99,7 +78,6 @@ import { NotFoundPage } from "@/app/NotFoundPage";
 import { usePageHeaderBack } from "@/app/pageHeader";
 import { openWorkDetail, type WorkDetailIntent } from "@/app/workDetailNavigation";
 import {
-  announceRemoteTrackCreated,
   isMatchingRemoteTrack,
   REMOTE_TRACK_TERMINAL_EVENT,
   type RemoteTrackTerminalDetail,
@@ -112,10 +90,12 @@ import {
   isCircleListLocation,
   readLastCircleListLocation,
   writeLastCircleListLocation,
-} from "@/pages/circleNavigationState";
+} from "@/lib/circleNavigationState";
 import { CircleCatalogOptionsSheet, type CircleAvailabilityFilter } from "@/pages/CircleDetailSheets";
 import { circleRefreshSettledMessage, useCircleRefreshRun } from "@/pages/circleRefreshRun";
-import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
+import { CreatorListPage } from "@/pages/creator/CreatorListPage";
+import type { RemoteWorkTarget } from "@/pages/remoteBulkRunModel";
+import { creatorBulkCopy, useRemoteWorkActions } from "@/pages/useRemoteWorkActions";
 
 const circlePageSizeOptions = [24, 48, 96] as const;
 const catalogWorkPageSizeOptions = [24, 48] as const;
@@ -207,32 +187,7 @@ const CircleCard = memo(function CircleCard({
 
 function CircleListPage({ active }: { active: boolean }) {
   const { t } = useTranslation();
-  const auth = useAuth();
-  const toast = useToast();
-  const storageScope = currentClientStorageScope(auth.user?.id ?? null);
-  const initialBrowseState = useMemo(
-    () =>
-      creatorBrowseStateFromSearch(
-        window.location.search,
-        { query: "", filter: "all" as CircleFilter, tag: "", page: 1, pageSize: 24 },
-        circleFilters,
-        circlePageSizeOptions,
-      ),
-    [],
-  );
-  const [circles, setCircles] = useState<CircleSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasLoaded, setHasLoaded] = useState(false);
-  const [loadError, setLoadError] = useState("");
-  const [query, setQuery] = useState(initialBrowseState.query);
-  const [requestQuery, setRequestQuery] = useState(initialBrowseState.query);
-  const [filter, setFilter] = useState<CircleFilter>(initialBrowseState.filter);
-  const [page, setPage] = useState(initialBrowseState.page);
-  const [pageSize, setPageSize] = useState(initialBrowseState.pageSize);
-  const [total, setTotal] = useState(0);
-  const [reloadToken, setReloadToken] = useState(0);
-  const loadedRequestKey = useRef("");
-  const localizedFilterOptions = circleFilterOptions.map((option) => ({
+  const filterOptions = circleFilterOptions.map((option) => ({
     ...option,
     label:
       option.value === "all"
@@ -251,161 +206,40 @@ function CircleListPage({ active }: { active: boolean }) {
                     ? t("detailActions.missing")
                     : t("sync.attention"),
   }));
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setRequestQuery(query), 250);
-    return () => window.clearTimeout(timer);
-  }, [query]);
-
-  useEffect(() => {
-    if (!active || !isCircleListLocation(currentInternalLocation())) return;
-    const search = creatorBrowseSearch({ query, filter, tag: "", page, pageSize });
-    const location = `/circles${search}`;
-    window.history.replaceState(window.history.state ?? {}, "", location);
-    writeLastCircleListLocation(storageScope, location);
-  }, [active, filter, page, pageSize, query, storageScope]);
-
-  useEffect(() => {
-    if (!active) return;
-    const requestKey = JSON.stringify([page, pageSize, requestQuery, filter, reloadToken]);
-    if (loadedRequestKey.current === requestKey) return;
-    const controller = new AbortController();
-    setIsLoading(true);
-    setLoadError("");
-    api
-      .listCircles({ page, pageSize, query: requestQuery, filter, signal: controller.signal })
-      .then((result) => {
-        loadedRequestKey.current = requestKey;
-        setCircles(result.circles);
-        setTotal(result.total);
-        setHasLoaded(true);
-        if (result.page !== page) setPage(result.page);
-      })
-      .catch((error) => {
-        if (controller.signal.aborted) return;
-        setLoadError(t("errors.unavailable"));
-        toast.notify(toastFromError(error, t("errors.unavailable")));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setIsLoading(false);
-      });
-    return () => controller.abort();
-  }, [active, filter, page, pageSize, reloadToken, requestQuery]);
-
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const changeFilter = (value: CircleFilter) => {
-    setFilter(value);
-    setPage(1);
-  };
-  const changePageSize = (value: number) => {
-    setPageSize(value);
-    setPage(1);
-  };
-  const paginationProps = {
-    page,
-    pageSize,
-    totalItems: total,
-    totalPages,
-    itemLabel: t("creatorBrowse.circles"),
-    ariaLabel: t("creatorBrowse.circlePages"),
-    compactMobile: true,
-    compactTop: true,
-    refreshing: isLoading && hasLoaded,
-    refreshingLabel: t("creatorBrowse.refreshingCircles"),
-    onPageChange: setPage,
-  };
-
-  const updateCircle = (next: CircleSummary) => {
-    setCircles((items) => items.map((item) => (item.externalId === next.externalId ? { ...item, ...next } : item)));
-    if (filter !== "all" || requestQuery.trim()) setReloadToken((value) => value + 1);
-  };
-
-  const toggleFavorite = async (circle: CircleSummary) => {
-    try {
-      updateCircle({
-        ...circle,
-        ...(await api.updateCircleUserState(circle.externalId, { favorite: !circle.favorite })),
-      });
-    } catch (error) {
-      toast.notify(toastFromError(error, t("creatorBrowse.favoriteUpdateFailed")));
-    }
-  };
-
-  const saveTags = async (circle: CircleSummary, tags: string[]) => {
-    try {
-      const result = await api.setCircleUserTags(circle.externalId, tags);
-      updateCircle({ ...circle, userTags: result.userTags });
-    } catch (error) {
-      toast.notify(toastFromError(error, t("creatorBrowse.tagsUpdateFailed")));
-    }
-  };
-  const toggleCardFavorite = useStableCallback(toggleFavorite);
-  const saveCardTags = useStableCallback(saveTags);
-
   return (
-    <div className="relative space-y-5">
-      <section className="space-y-3">
-        <CreatorListToolbar
-          label={t("creatorBrowse.circles")}
-          query={query}
-          placeholder={t("creatorBrowse.searchCircles")}
-          filter={filter}
-          defaultFilter="all"
-          filterOptions={localizedFilterOptions}
-          pageSize={pageSize}
-          pageSizeOptions={circlePageSizeOptions}
-          onQueryChange={setQuery}
-          onFilterChange={changeFilter}
-          onPageSizeChange={changePageSize}
-        />
-        <CollectionPagination {...paginationProps} placement="top" />
-
-        {isLoading && !hasLoaded ? (
-          <CreatorCollectionSkeleton label={t("creatorBrowse.loadingCircles")} />
-        ) : !hasLoaded && loadError ? (
-          <Card className={creatorCardMinHeightClassName} role="alert">
-            <CardContent
-              className={`grid ${creatorCardMinHeightClassName} place-items-center gap-3 p-5 text-center text-sm text-destructive`}
-            >
-              <span>{loadError}</span>
-              <Button size="sm" variant="outline" onClick={() => setReloadToken((value) => value + 1)}>
-                {t("creatorBrowse.retry")}
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <div
-            className={creatorCollectionClassName}
-            role="region"
-            aria-label={t("creatorBrowse.circleResults")}
-            aria-busy={isLoading}
-          >
-            {circles.length > 0 ? (
-              circles.map((circle) => (
-                <CircleCard
-                  key={circle.externalId}
-                  circle={circle}
-                  onFavoriteToggle={toggleCardFavorite}
-                  onTagsSave={saveCardTags}
-                />
-              ))
-            ) : (
-              <Card className={creatorCardMinHeightClassName}>
-                <CardContent
-                  className={`grid ${creatorCardMinHeightClassName} place-items-center p-5 text-sm text-muted-foreground`}
-                >
-                  {t("creatorBrowse.noCircles")}
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        )}
-        <CollectionPagination {...paginationProps} placement="bottom" />
-      </section>
-      <BrowseLoadingIndicator refreshing={isLoading && hasLoaded} label={t("creatorBrowse.refreshingCircles")} />
-    </div>
+    <CreatorListPage<CircleSummary, CircleFilter>
+      active={active}
+      path="/circles"
+      filters={circleFilters}
+      filterOptions={filterOptions}
+      pageSizeOptions={circlePageSizeOptions}
+      isListLocation={isCircleListLocation}
+      writeLastListLocation={writeLastCircleListLocation}
+      load={async (request) => {
+        const result = await api.listCircles(request);
+        return { items: result.circles, total: result.total, page: result.page };
+      }}
+      itemKey={(circle) => circle.externalId}
+      toggleFavorite={(circle) => api.updateCircleUserState(circle.externalId, { favorite: !circle.favorite })}
+      saveTags={async (circle, tags) => ({
+        userTags: (await api.setCircleUserTags(circle.externalId, tags)).userTags,
+      })}
+      renderItem={(circle, handlers) => (
+        <CircleCard circle={circle} onFavoriteToggle={handlers.onFavoriteToggle} onTagsSave={handlers.onTagsSave} />
+      )}
+      copy={{
+        label: t("creatorBrowse.circles"),
+        searchPlaceholder: t("creatorBrowse.searchCircles"),
+        loading: t("creatorBrowse.loadingCircles"),
+        refreshing: t("creatorBrowse.refreshingCircles"),
+        results: t("creatorBrowse.circleResults"),
+        empty: t("creatorBrowse.noCircles"),
+        pages: t("creatorBrowse.circlePages"),
+      }}
+    />
   );
 }
+
 function CircleDetailPage({
   externalId,
   seriesCode,
@@ -433,6 +267,7 @@ function CircleDetailPage({
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkSaving, setIsBulkSaving] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
+  const remoteWorkActions = useRemoteWorkActions();
   const [catalogOptionsOpen, setCatalogOptionsOpen] = useState(false);
   const fetchWorkspace = useRemoteFetchWorkspace({
     onWorksChanged: async () => setDetail(await api.getCircle(externalId)),
@@ -471,7 +306,7 @@ function CircleDetailPage({
         }
       }
     },
-    [active, externalId, t],
+    [active, externalId, t, toast],
   );
 
   // Track completions can arrive in bursts; each one only needs the circle's
@@ -796,24 +631,20 @@ function CircleDetailPage({
   };
 
   const toggleWorkSelection = (work: CircleCatalogWork, checked: boolean) => {
-    setSelectedWorkCodes((current) => {
-      const next = new Set(current);
-      if (checked) next.add(work.primaryCode);
-      else next.delete(work.primaryCode);
-      return next;
-    });
+    setSelectedWorkCodes((current) => withSelection(current, [work.primaryCode], checked));
   };
 
   const toggleVisibleSelection = (checked: boolean) => {
-    setSelectedWorkCodes((current) => {
-      const next = new Set(current);
-      selectablePagedWorks.forEach((work) => {
-        if (checked) next.add(work.primaryCode);
-        else next.delete(work.primaryCode);
-      });
-      return next;
-    });
+    setSelectedWorkCodes((current) =>
+      withSelection(
+        current,
+        selectablePagedWorks.map((work) => work.primaryCode),
+        checked,
+      ),
+    );
   };
+
+  const reloadDetail = async () => setDetail(await api.getCircle(externalId));
 
   const bulkSaveSelected = async () => {
     if (selectedWorks.length === 0) return;
@@ -825,17 +656,12 @@ function CircleDetailPage({
     if (!requireDownloadsManage()) return;
     setIsBulkSaving(true);
     try {
-      const results = await runCircleBulkBySource(selectedWorks, "fetch");
-      const fetched = results.reduce((total, result) => total + result.fetched, 0);
-      const failed = results.reduce((total, result) => total + result.failed, 0);
-      const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      const message = t("creatorBrowse.bulkFetchSummary", { runIds, fetched, failed });
-      if (failed > 0) toast.warning(message);
-      else toast.success(message);
-      const next = await api.getCircle(externalId);
-      setDetail(next);
-    } catch (error) {
-      toast.notify(toastFromError(error, t("creatorBrowse.bulkFetchFailed")));
+      await remoteWorkActions.recordBulkRuns(
+        "fetch",
+        circleRemoteTargets(selectedWorks),
+        creatorBulkCopy,
+        reloadDetail,
+      );
     } finally {
       setIsBulkSaving(false);
       setSaveConfirm(null);
@@ -846,30 +672,15 @@ function CircleDetailPage({
     if (selectedForkableWorks.length === 0) return;
     setIsBulkSaving(true);
     try {
-      const results = await runCircleBulkBySource(selectedForkableWorks, "track");
-      const synced = results.reduce((total, result) => total + result.synced, 0);
-      const failed = results.reduce((total, result) => total + result.failed, 0);
-      const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      const message = t("creatorBrowse.bulkForkSummary", { runIds, synced, failed });
-      if (failed > 0) toast.warning(message);
-      else toast.success(message);
-      const next = await api.getCircle(externalId);
-      setDetail(next);
-    } catch (error) {
-      toast.notify(toastFromError(error, t("creatorBrowse.bulkForkFailed")));
+      await remoteWorkActions.recordBulkRuns(
+        "track",
+        circleRemoteTargets(selectedForkableWorks),
+        creatorBulkCopy,
+        reloadDetail,
+      );
     } finally {
       setIsBulkSaving(false);
     }
-  };
-
-  const runCircleBulkBySource = (works: CircleCatalogWork[], action: "fetch" | "track") => {
-    const groups = new Map<number, string[]>();
-    works.forEach((work) => {
-      const target = circleWorkRemoteTarget(work);
-      if (!target) return;
-      groups.set(target.sourceId, [...(groups.get(target.sourceId) ?? []), target.code]);
-    });
-    return Promise.all(Array.from(groups, ([sourceId, codes]) => api.recordRemoteBulkRun({ action, sourceId, codes })));
   };
 
   const saveSingleWork = (work: CircleCatalogWork) => {
@@ -888,16 +699,7 @@ function CircleDetailPage({
     if (!target) return;
     setIsBulkSaving(true);
     try {
-      const result = await api.trackRemoteSourceWork(target.sourceId, target.code, "circle_card_fork");
-      announceRemoteTrackCreated(target.sourceId, target.code, result);
-      toast.notify({
-        kind: "info",
-        message: result.deduplicated
-          ? t("libraryDetail.forkAlreadyQueued", { runId: result.runId })
-          : t("libraryDetail.forkQueued", { runId: result.runId }),
-      });
-    } catch (error) {
-      toast.notify(toastFromError(error, t("libraryDetail.forkQueueFailed")));
+      await remoteWorkActions.queueFork(target, "circle_card_fork");
     } finally {
       setIsBulkSaving(false);
     }
@@ -1361,7 +1163,7 @@ function CircleDetailPage({
         />
       )}
       {saveConfirm && (
-        <SaveConfirmModal
+        <FetchConfirmDialog
           count={saveConfirm.count}
           onClose={() => setSaveConfirm(null)}
           onConfirm={() => void saveConfirm.run()}
@@ -1479,34 +1281,6 @@ function CatalogWorkCard({
   );
 }
 
-function SaveConfirmModal({
-  count,
-  onClose,
-  onConfirm,
-}: {
-  count: number;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <Dialog onClose={onClose} size="sm">
-      <DialogHeader
-        title={t("detailActions.fetchRemoteDirectory")}
-        description={t("detailActions.fetchRemoteDirectoryDescription", { count })}
-      />
-      <DialogFooter>
-        <Button variant="outline" size="sm" onClick={onClose}>
-          {t("content.cancel")}
-        </Button>
-        <Button size="sm" onClick={onConfirm}>
-          {t("detailActions.fetch")}
-        </Button>
-      </DialogFooter>
-    </Dialog>
-  );
-}
-
 function CatalogDeleteConfirmModal({
   work,
   onClose,
@@ -1573,25 +1347,6 @@ function catalogWorkCardView(work: CircleCatalogWork, t: TFunction): WorkCardVie
 function seriesCodeForWork(series: CircleSeries[], workCode: string) {
   const normalizedCode = workCode.toUpperCase();
   return series.find((item) => item.workCodes.some((code) => code.toUpperCase() === normalizedCode))?.titleId ?? null;
-}
-
-function WorkProgressLine({ progress }: { progress: NonNullable<CircleCatalogWork["progress"]> }) {
-  const { t } = useTranslation();
-  return (
-    <div className="space-y-1">
-      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-        <div className="h-full rounded-full bg-primary" style={{ width: `${workProgressPercent(progress)}%` }} />
-      </div>
-      <div className="truncate text-xs text-muted-foreground">
-        {progress.completed
-          ? t("library.status.finished")
-          : t("library.resumeAt", {
-              title: progress.title || t("player.track"),
-              time: formatTime(progress.positionSeconds),
-            })}
-      </div>
-    </div>
-  );
 }
 
 function emptyCircleDetail(externalId: string): CircleDetail {
@@ -1835,39 +1590,8 @@ function CircleSeriesSummaryCard({ externalId, series }: { externalId: string; s
   );
 }
 
-function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (status: ListeningStatus) => void }) {
-  const { t } = useTranslation();
-  return (
-    <div className="absolute bottom-10 left-0 z-20 w-44 overflow-hidden rounded-md border bg-card p-1 shadow-lg">
-      {listeningStatusOptions.map((option) => (
-        <button
-          key={option.value}
-          className={`flex h-8 w-full items-center gap-2 rounded px-2 text-left text-xs hover:bg-muted ${
-            value === option.value ? "font-semibold text-primary" : "text-foreground"
-          }`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onChange(option.value);
-          }}
-        >
-          <ListChecks
-            className={value === option.value && value !== "none" ? "h-3.5 w-3.5 text-primary" : "h-3.5 w-3.5"}
-          />
-          {t(`library.status.${option.value}`, { defaultValue: option.label })}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function normalizeListeningStatus(status: string): ListeningStatus {
   return listeningStatusOptions.some((option) => option.value === status) ? (status as ListeningStatus) : "none";
-}
-
-function listeningStatusLabel(status: string, t?: TFunction) {
-  return t
-    ? t(`library.status.${normalizeListeningStatus(status)}`)
-    : (listeningStatusOptions.find((option) => option.value === normalizeListeningStatus(status))?.label ?? "Unmarked");
 }
 
 function availableSourceTags(sources: CircleSourceStat[] | null | undefined) {
@@ -1910,6 +1634,10 @@ function isCircleBulkSaveSelectable(work: CircleCatalogWork) {
   return circleWorkRemoteTarget(work) !== null;
 }
 
+function circleRemoteTargets(works: readonly CircleCatalogWork[]): RemoteWorkTarget[] {
+  return works.flatMap((work) => circleWorkRemoteTarget(work) ?? []);
+}
+
 function circleWorkRemoteTarget(
   work: CircleCatalogWork,
 ): { sourceId: number; code: string; sourceDisplayName: string } | null {
@@ -1939,18 +1667,6 @@ function dlsiteMakerURL(externalId: string) {
 function dlsiteWorkURL(code: string) {
   const site = code.toUpperCase().startsWith("VJ") ? "pro" : "maniax";
   return DLSITE_ENDPOINTS.workURL(site, code);
-}
-
-function formatTime(seconds: number) {
-  const safeSeconds = Math.max(0, Math.floor(seconds));
-  const minutes = Math.floor(safeSeconds / 60);
-  const remainingSeconds = safeSeconds % 60;
-  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
-}
-
-function workProgressPercent(progress: NonNullable<CircleCatalogWork["progress"]>) {
-  if (!progress.durationSeconds || progress.durationSeconds <= 0) return 0;
-  return Math.min(100, Math.max(0, (progress.positionSeconds / progress.durationSeconds) * 100));
 }
 
 function circleRouteFromPath(path: string) {

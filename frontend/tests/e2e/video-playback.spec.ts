@@ -1,5 +1,7 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
+import type { VideoPlaybackInfo } from "../../src/lib/api";
+import type { ApiErrorBody } from "./fixtures/api";
 import { mediaFixture, mockApplication, silentWav, work } from "./fixtures/player-library";
 
 async function mockLocalVideo(page: Page) {
@@ -65,7 +67,7 @@ test("local video fallback and native HLS retry retain position and playback int
         url: transcode ? "/api/media/1/native-hls.wav" : "/api/media/1/stream",
         durationSeconds: 180,
         seekable: true,
-      },
+      } satisfies VideoPlaybackInfo,
     });
   });
   const video = await openVideo(page);
@@ -119,8 +121,15 @@ test("busy local video preparation stops automatic retries and keeps manual reco
     requests++;
     return route.fulfill(
       busy
-        ? { status: 503, json: { error: "Busy", code: "media_probe_busy", retryable: true } }
-        : { json: { delivery: "direct", url: "/api/media/1/stream", durationSeconds: 180, seekable: true } },
+        ? { status: 503, json: { error: "Busy", code: "media_probe_busy", retryable: true } satisfies ApiErrorBody }
+        : {
+            json: {
+              delivery: "direct",
+              url: "/api/media/1/stream",
+              durationSeconds: 180,
+              seekable: true,
+            } satisfies VideoPlaybackInfo,
+          },
     );
   });
   const video = await openVideo(page);

@@ -1,0 +1,114 @@
+import { useCallback, useEffect, useRef } from "react";
+
+import { PLAYBACK_CURSOR_UPDATED_EVENT } from "@/lib/appEvents";
+import { api, ApiError } from "@/lib/api";
+
+import { canPersistPlaybackProgress } from "./playbackStart";
+import { shouldSaveRemoteProgress, type ProgressSaveMarker } from "./playerProgress";
+import type { PlaybackEngine } from "./usePlaybackEngine";
+
+type ProgressSavePayload = {
+  locationId: number;
+  positionSeconds: number;
+  durationSeconds: number | null;
+  completed: boolean;
+};
+
+async function saveProgressWithBusyRetry(mediaItemId: number, payload: ProgressSavePayload) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const cursor = await api.updateMediaProgress(mediaItemId, payload);
+      window.dispatchEvent(new CustomEvent(PLAYBACK_CURSOR_UPDATED_EVENT, { detail: cursor }));
+      return;
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.code !== "database_busy" || attempt > 0) return;
+      await new Promise((resolve) => window.setTimeout(resolve, 200 + Math.round(Math.random() * 200)));
+    }
+  }
+}
+
+/**
+ * Saves the current item's Resume cursor. Saves are throttled, serialized, and
+ * coalesced per media item; `flushProgress` forces a checkpoint for the item
+ * that is current when it runs, and runs when the page is hidden or closed.
+ */
+export function usePlaybackProgress(engine: PlaybackEngine, canSaveRemotely: boolean) {
+  const { refs, currentTrack, currentPlaybackInstanceKey, duration, durationLocationId } = engine;
+  const lastSavedRef = useRef<ProgressSaveMarker | null>(null);
+  const saveQueueRef = useRef<{ inFlight: boolean; pending: Map<number, ProgressSavePayload> }>({
+    inFlight: false,
+    pending: new Map(),
+  });
+  const latestSaveRef = useRef<(completed: boolean, force?: boolean) => void>(() => {});
+
+  const queueProgressSave = (mediaItemId: number, payload: ProgressSavePayload) => {
+    const queueState = saveQueueRef.current;
+    queueState.pending.set(mediaItemId, payload);
+    if (queueState.inFlight) return;
+    queueState.inFlight = true;
+    void (async () => {
+      while (queueState.pending.size > 0) {
+        const next = queueState.pending.entries().next().value as [number, ProgressSavePayload] | undefined;
+        if (!next) break;
+        queueState.pending.delete(next[0]);
+        await saveProgressWithBusyRetry(next[0], next[1]);
+      }
+      queueState.inFlight = false;
+    })();
+  };
+
+  const saveProgress = (completed: boolean, force = false) => {
+    const audio = refs.audioRef.current;
+    if (!audio || !currentTrack) return;
+    if (!currentTrack.progressRecordable) return;
+    if (currentTrack.mediaItemId <= 0) return;
+    // A save captured by an older render would pair this track's id with another track's audio position.
+    if (currentPlaybackInstanceKey !== refs.currentPlaybackInstanceKeyRef.current) return;
+    // An idle or still-loading element must not replace the persisted cursor with its own 0.
+    if (
+      !canPersistPlaybackProgress(
+        currentPlaybackInstanceKey,
+        refs.restoredMediaItemRef.current,
+        refs.listenerIntentInstanceRef.current,
+      )
+    )
+      return;
+    const durationValue =
+      [
+        audio.duration,
+        durationLocationId === currentTrack.locationId ? duration : null,
+        currentTrack.durationSeconds,
+        currentTrack.progress?.durationSeconds,
+      ].find((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0) ?? null;
+    const position = completed ? (durationValue ?? audio.currentTime) : audio.currentTime;
+    if (!Number.isFinite(position) || position < 0) return;
+    const marker = { mediaItemId: currentTrack.mediaItemId, position, completed, at: Date.now() };
+    if (!canSaveRemotely) return;
+    if (!shouldSaveRemoteProgress(lastSavedRef.current, marker, force)) return;
+    lastSavedRef.current = marker;
+    queueProgressSave(currentTrack.mediaItemId, {
+      locationId: currentTrack.locationId,
+      positionSeconds: position,
+      durationSeconds: durationValue,
+      completed,
+    });
+  };
+  latestSaveRef.current = saveProgress;
+
+  // Callers that outlive a render (timers, queue changes) must save the latest track, not their own.
+  const flushProgress = useCallback(() => latestSaveRef.current(false, true), []);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") flushProgress();
+    };
+    window.addEventListener("pagehide", flushProgress);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("pagehide", flushProgress);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [flushProgress]);
+
+  return { saveProgress, flushProgress };
+}

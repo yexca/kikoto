@@ -32,7 +32,7 @@ import {
   writeLastLibraryLocation,
   writeLibraryBrowseState,
   writeLibrarySortPreference,
-} from "@/pages/libraryBrowseState";
+} from "@/lib/libraryBrowseState";
 import {
   compileLibrarySearchQuery,
   editableSearchClauseKinds,
@@ -43,7 +43,7 @@ import {
   type SearchClause,
   type SearchClauseDraft,
   type SearchClauseKind,
-} from "@/pages/librarySearchClauses";
+} from "@/lib/librarySearchClauses";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { useAuth } from "@/auth/AuthProvider";
 import { useTranslation } from "react-i18next";
@@ -76,15 +76,14 @@ import { isMobileTabResumeHistoryState, navigateToWorkspaceUp } from "@/lib/brow
 import { type DetailSourceIntent, remoteSourceTabKey } from "@/features/work-detail/source/sourceContextModel";
 import { openWorkDetail, REMOTE_SOURCE_WORK_PATTERN, workDetailCodeFromLocation } from "@/app/workDetailNavigation";
 import i18n from "@/i18n";
-import {
-  announceRemoteTrackCreated,
-  REMOTE_TRACK_TERMINAL_EVENT,
-  type RemoteTrackTerminalDetail,
-} from "@/app/remoteTrackWorkflows";
+import { REMOTE_TRACK_TERMINAL_EVENT, type RemoteTrackTerminalDetail } from "@/app/remoteTrackWorkflows";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
+import { FetchConfirmDialog } from "@/components/work-collection/FetchConfirmDialog";
+import { retainVisibleSelection, withSelection } from "@/components/work-collection/workSelectionModel";
+import { libraryBulkCopy, useRemoteWorkActions } from "@/pages/useRemoteWorkActions";
 import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
 import { MetadataOnboardingNotice } from "@/components/MetadataOnboardingNotice";
 import {
@@ -146,7 +145,6 @@ import type { TFunction } from "i18next";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { SaveConfirmDialog } from "@/pages/library/SaveConfirmDialog";
 import { LibrarySourceVisibilityPicker } from "@/pages/library/LibrarySourceVisibilityPicker";
 import { remoteSourceVisibilityKey } from "@/pages/library/librarySourceVisibility";
 import { useLibrarySourceVisibility } from "@/pages/library/useLibrarySourceVisibility";
@@ -162,7 +160,7 @@ import {
   WorkCardShell,
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
-import { openCircleRoute, openCircleSeriesRoute } from "@/pages/circleNavigationState";
+import { openCircleRoute, openCircleSeriesRoute } from "@/lib/circleNavigationState";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { hasPlaybackHistory } from "@/lib/playbackHistory";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
@@ -456,19 +454,40 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     active,
     refreshKey: localScope,
   });
-  const activeBrowseState = activeLibraryBrowseState({
-    activeTab,
-    remoteSourceState: activeRemoteSourceState,
-    searchQuery,
-    workPage,
-    workPageSize,
-    statusFilter,
-    librarySort,
-    sortDirection,
-    randomSeed,
-    mobileColumns,
-    desktopColumns,
-  });
+  const activeBrowseState = useMemo(
+    () =>
+      activeLibraryBrowseState({
+        activeTab,
+        remoteSourceState: activeRemoteSourceState,
+        searchQuery,
+        workPage,
+        workPageSize,
+        statusFilter,
+        librarySort,
+        sortDirection,
+        randomSeed,
+        mobileColumns,
+        desktopColumns,
+      }),
+    [
+      activeTab,
+      activeRemoteSourceState,
+      searchQuery,
+      workPage,
+      workPageSize,
+      statusFilter,
+      librarySort,
+      sortDirection,
+      randomSeed,
+      mobileColumns,
+      desktopColumns,
+    ],
+  );
+  const currentActiveTab = useStableCallback(() => activeTab);
+  const currentRemoteResultSourceId = useStableCallback(() => remoteResult?.sourceId);
+  const libraryLoadErrorMessage = useStableCallback((error: unknown) =>
+    error instanceof Error ? error.message : t("library.couldNotLoad"),
+  );
   const applyBrowseState = (state: LibraryBrowseState, tab: LibraryTab, restoreScroll = true) => {
     setSearchQuery(state.query);
     setDebouncedSearchQuery(state.query);
@@ -669,7 +688,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
         if (requestSeq !== libraryRequestSeq.current) return;
-        setLibraryLoadError(error instanceof Error ? error.message : t("library.couldNotLoad"));
+        setLibraryLoadError(libraryLoadErrorMessage(error));
         setOptimisticLibrarySearchClauses(null);
         pendingResultsScroll.current = false;
       })
@@ -682,6 +701,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     activeTab.kind,
     browseHydrated,
     librarySearchQuery,
+    libraryLoadErrorMessage,
     statusFilter,
     librarySort,
     randomSeed,
@@ -707,7 +727,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         setSources(items);
         setSourceRoutesReady(true);
         if (!knownLibraryRoute(window.location.pathname, window.location.search, items)) return;
-        const resolved = resolveTabFromPath(window.location.pathname, items, activeTab);
+        const resolved = resolveTabFromPath(window.location.pathname, items, currentActiveTab());
         const scope = localScopeFromPath(window.location.pathname);
         const stored = readLibraryBrowseState(libraryBrowseKey(resolved, scope, browseStorageScope));
         const sortPreference = readLibrarySortPreference(libraryBrowseKey(resolved, scope, browseStorageScope));
@@ -736,7 +756,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       cancelled = true;
       controller.abort();
     };
-  }, [active, auth.isLoading, browseStorageScope, sessionDefaultBrowseState, sourceRoutesReady]);
+  }, [active, auth.isLoading, browseStorageScope, currentActiveTab, sessionDefaultBrowseState, sourceRoutesReady]);
 
   useEffect(() => {
     if (!active || settings) return;
@@ -776,7 +796,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     // Switching to a local tab clears the remote result. The request key can
     // still match a previous successful load, so only reuse it while that
     // result is still present for the active source.
-    if (loadedRemoteRequestKey.current === requestKey && remoteResult?.sourceId === activeTab.source.id) return;
+    if (loadedRemoteRequestKey.current === requestKey && currentRemoteResultSourceId() === activeTab.source.id) return;
     const requestSeq = ++remoteRequestSeq.current;
     setRemoteResult((current) => (current?.sourceId === activeTab.source.id ? current : null));
     setIsRemoteLoading(true);
@@ -826,6 +846,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     active,
     activeTab,
     browseHydrated,
+    currentRemoteResultSourceId,
     librarySort,
     randomSeed,
     recommendBadgesEnabled,
@@ -834,9 +855,10 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     sortDirection,
   ]);
 
+  const activeRemoteSourceId = activeTab.kind === "source" ? activeTab.source.id : 0;
   useEffect(() => {
     setRemoteSelectionMode(false);
-  }, [activeTab.kind, activeTab.kind === "source" ? activeTab.source.id : 0]);
+  }, [activeTab.kind, activeRemoteSourceId]);
 
   useEffect(() => {
     if (!active) return;
@@ -912,7 +934,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       controller.signal,
     );
     return () => controller.abort();
-  }, [active, selectedCode, works.length]);
+  }, [active, principalID, selectedCode, works.length]);
 
   useEffect(() => {
     if (!active) {
@@ -983,8 +1005,10 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     );
   }, [
     active,
+    activeBrowseState,
     activeTab,
     browseHydrated,
+    browseStorageScope,
     desktopColumns,
     librarySort,
     localScope,
@@ -1043,7 +1067,9 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     };
   }, [
     active,
+    activeBrowseState,
     activeTab,
+    browseStorageScope,
     localScope,
     selectedCode,
     selectedRemoteTarget,
@@ -1333,7 +1359,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       });
   };
 
-  const refreshCurrentWorksPage = async () => {
+  const refreshCurrentWorksPage = useStableCallback(async () => {
     if (activeTab.kind === "source") return;
     const page = await api.listWorksPage(
       workPage,
@@ -1351,24 +1377,24 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     setWorks(page.works);
     setWorkTotal(page.total);
     setLibraryLoadError("");
-  };
+  });
 
+  const refreshAfterTrack = useStableCallback((event: Event) => {
+    const terminal = (event as CustomEvent<RemoteTrackTerminalDetail>).detail;
+    if (!terminal || (terminal.status !== "succeeded" && terminal.status !== "partial")) return;
+    if (activeTab.kind === "source") {
+      if (activeTab.source.id === terminal.sourceId) {
+        loadRemoteWorksNow(activeTab.source, remoteSearchQuery, activeRemoteSourceState.page, { clearResult: false });
+      }
+      return;
+    }
+    void refreshCurrentWorksPage();
+  });
   useEffect(() => {
     if (!active) return;
-    const refreshAfterTrack = (event: Event) => {
-      const terminal = (event as CustomEvent<RemoteTrackTerminalDetail>).detail;
-      if (!terminal || (terminal.status !== "succeeded" && terminal.status !== "partial")) return;
-      if (activeTab.kind === "source") {
-        if (activeTab.source.id === terminal.sourceId) {
-          loadRemoteWorksNow(activeTab.source, remoteSearchQuery, activeRemoteSourceState.page, { clearResult: false });
-        }
-        return;
-      }
-      void refreshCurrentWorksPage();
-    };
     window.addEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshAfterTrack);
     return () => window.removeEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshAfterTrack);
-  }, [active, activeRemoteSourceState.page, activeTab, remoteSearchQuery]);
+  }, [active, refreshAfterTrack]);
 
   const trackedFetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged: refreshCurrentWorksPage });
   const openTrackedFetchSelection = (work: Work, presence: SourcePresenceItem) => {
@@ -2073,13 +2099,7 @@ function useRemoteSourceSelection({
   const [bulkCodes, setBulkCodes] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    setBulkCodes((current) => {
-      const next = new Set(
-        Array.from(current).filter((code) => visibleWorks.some((work) => work.primaryCode === code)),
-      );
-      if (next.size === current.size && Array.from(next).every((code) => current.has(code))) return current;
-      return next;
-    });
+    setBulkCodes((current) => retainVisibleSelection(current, visibleWorks, (work) => work.primaryCode));
   }, [visibleWorks]);
 
   useEffect(() => {
@@ -2092,12 +2112,7 @@ function useRemoteSourceSelection({
   }, [loading, onPageChange, page, totalPages]);
 
   const toggleBulkCode = (code: string, checked: boolean) => {
-    setBulkCodes((current) => {
-      const next = new Set(current);
-      if (checked) next.add(code);
-      else next.delete(code);
-      return next;
-    });
+    setBulkCodes((current) => withSelection(current, [code], checked));
   };
   const toggleAllVisible = (checked: boolean) => {
     setBulkCodes(checked ? new Set(selectableWorks.map((work) => work.primaryCode)) : new Set());
@@ -2132,6 +2147,9 @@ function useRemoteSourceActions({
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ codes: string[]; run: () => Promise<void> } | null>(null);
   const fetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged: () => onSynced(0) });
+  const remoteWorkActions = useRemoteWorkActions();
+  const remoteTargets = (works: readonly RemoteWork[]) =>
+    works.map((work) => ({ sourceId: source.id, code: remoteWorkActionCode(work) }));
 
   const forkWork = async (work: RemoteWork, reason: string) => {
     if (!work.primaryCode) {
@@ -2140,19 +2158,7 @@ function useRemoteSourceActions({
     }
     setIsSyncingCode(work.primaryCode);
     try {
-      const requestedCode = remoteWorkActionCode(work);
-      const result = await api.trackRemoteSourceWork(source.id, requestedCode, reason);
-      announceRemoteTrackCreated(source.id, requestedCode, result);
-      toast.notify({
-        kind: "info",
-        message: result.deduplicated
-          ? t("libraryDetail.forkAlreadyQueued", { runId: result.runId })
-          : t("libraryDetail.forkQueued", { runId: result.runId }),
-      });
-      return result.runId;
-    } catch (error) {
-      toast.notify(toastFromError(error, t("libraryDetail.forkQueueFailed")));
-      return null;
+      await remoteWorkActions.queueFork({ sourceId: source.id, code: remoteWorkActionCode(work) }, reason);
     } finally {
       setIsSyncingCode(null);
     }
@@ -2162,21 +2168,9 @@ function useRemoteSourceActions({
     if (!requireDownloadsManage()) return;
     setIsBulkBusy(true);
     try {
-      const parent = await api.recordRemoteBulkRun({
-        action: "fetch",
-        sourceId: source.id,
-        codes: selectedSaveable.map(remoteWorkActionCode),
-      });
-      const message = t("library.bulkFetchSummary", {
-        runId: parent.runId,
-        fetched: parent.fetched,
-        failed: parent.failed,
-      });
-      if (parent.failed > 0) toast.warning(message);
-      else toast.success(message);
-      await onSynced(0);
-    } catch (error) {
-      toast.notify(toastFromError(error, t("library.bulkFetchFailed")));
+      await remoteWorkActions.recordBulkRuns("fetch", remoteTargets(selectedSaveable), libraryBulkCopy, () =>
+        onSynced(0),
+      );
     } finally {
       setIsBulkBusy(false);
       setSaveConfirm(null);
@@ -2187,21 +2181,9 @@ function useRemoteSourceActions({
     if (selectedSyncable.length === 0) return;
     setIsBulkBusy(true);
     try {
-      const parent = await api.recordRemoteBulkRun({
-        action: "track",
-        sourceId: source.id,
-        codes: selectedSyncable.map(remoteWorkActionCode),
-      });
-      const message = t("library.bulkForkSummary", {
-        runId: parent.runId,
-        synced: parent.synced,
-        failed: parent.failed,
-      });
-      if (parent.failed > 0) toast.warning(message);
-      else toast.success(message);
-      await onSynced(0);
-    } catch (error) {
-      toast.notify(toastFromError(error, t("library.bulkForkFailed")));
+      await remoteWorkActions.recordBulkRuns("track", remoteTargets(selectedSyncable), libraryBulkCopy, () =>
+        onSynced(0),
+      );
     } finally {
       setIsBulkBusy(false);
     }
@@ -2532,7 +2514,7 @@ function RemoteSourcePanel({
       />
       {!model.remoteError && <WorkCollectionPagination {...remotePaginationProps} placement="bottom" />}
       {saveConfirm && (
-        <SaveConfirmDialog
+        <FetchConfirmDialog
           count={saveConfirm.codes.length}
           onClose={clearSaveConfirm}
           onConfirm={() => void saveConfirm.run()}

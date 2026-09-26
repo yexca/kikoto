@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { PLAYBACK_CURSOR_UPDATED_EVENT } from "@/app/events";
+import { PLAYBACK_CURSOR_UPDATED_EVENT } from "@/lib/appEvents";
 import { api, type MediaProgressUpdate, type WorkProgressSummary } from "@/lib/api";
 import { cursorUpdateAffectsWork } from "./playbackCursorModel";
 

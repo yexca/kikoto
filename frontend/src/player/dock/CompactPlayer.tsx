@@ -3,7 +3,6 @@ import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent a
 import { useTranslation } from "react-i18next";
 
 import { OverflowMarqueeGroup } from "@/components/ui/overflow-marquee";
-import { cn } from "@/lib/tailwindClassNames";
 import { usePlayerTime, type usePlayer } from "@/player/PlayerProvider";
 import type { DockMode, PlayerTrack } from "@/player/playerTypes";
 

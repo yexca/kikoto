@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 
-import { LOGIN_REQUEST_EVENT } from "@/app/events";
+import { LOGIN_REQUEST_EVENT } from "@/lib/appEvents";
 import { useAuth } from "@/auth/AuthProvider";
 import { useToast } from "@/components/ui/toast";
 

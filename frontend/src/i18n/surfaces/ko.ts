@@ -953,8 +953,6 @@ export const surfaceKorean = {
   },
   libraryDetail: {
     untrackSource: "소스 추적을 해제하시겠습니까?",
-    fetchRemoteDirectory: "원격 디렉터리 가져오기",
-    fetchRemoteDirectoryDescription: "선택한 {{count}}개 작품의 전체 원격 디렉터리를 다운로드합니다.",
     work: "작품",
     cover: "표지",
     circle: "서클",

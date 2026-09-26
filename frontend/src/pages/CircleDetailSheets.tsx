@@ -1,10 +1,7 @@
-import { Check, Columns3, ListMusic, RefreshCw, Rows3, Search, X } from "lucide-react";
-import { useEffect, type ReactNode, type RefObject } from "react";
+import { Check, Columns3, ListMusic, Rows3, Search, X } from "lucide-react";
+import { useEffect, type ReactNode } from "react";
 
-import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
-import { MobileSheet, MobileSheetBody, MobileSheetHeader } from "@/components/ui/mobile-sheet";
-import type { CircleDetail } from "@/lib/api";
 import type { WorkCollectionColumnSetting } from "@/components/work-collection/WorkCollectionLayout";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { useTranslation } from "react-i18next";

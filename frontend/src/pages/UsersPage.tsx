@@ -8,6 +8,7 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { Input, NativeSelect } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { formatDateTime } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type ManagedUser } from "@/lib/api";
@@ -88,7 +89,7 @@ export function UsersPage({
   const initialLoading = isLoading && !hasLoaded;
   const permissionContext = { currentUserId, isSuperAdmin, readOnly };
 
-  const refresh = async () => {
+  const refresh = useStableCallback(async () => {
     const seq = ++requestSeq.current;
     setIsLoading(true);
     setLoadError("");
@@ -107,14 +108,14 @@ export function UsersPage({
     } finally {
       if (seq === requestSeq.current) setIsLoading(false);
     }
-  };
+  });
 
   useEffect(() => {
     void refresh();
     return () => {
       requestSeq.current += 1;
     };
-  }, []);
+  }, [refresh]);
 
   const replaceUser = (updated: ManagedUser) =>
     setUsers((items) => items.map((item) => (item.id === updated.id ? updated : item)));

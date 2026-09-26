@@ -1,47 +1,107 @@
 import { expect, test, type Page } from "@playwright/test";
+import type {
+  AuthState,
+  AvailabilityWatch,
+  AvailabilityWatchRunResult,
+  DLsitePopularRunResult,
+  LibrarySource,
+  LocalMediaIndexResult,
+  LocalScanResult,
+  MaintenanceWorkPage,
+  RemoteCollectionRunResult,
+  RemoteWorkTrackResult,
+  WorkflowCandidate,
+  WorkflowDefinition,
+  WorkflowEvent,
+  WorkflowNodeRun,
+  WorkflowNotification,
+  WorkflowNotificationsPage,
+  WorkflowPreset,
+  WorkflowRun,
+  WorkflowRunActionResult,
+  WorkflowRunGraph,
+  WorkflowRunsPage,
+  WorkflowTrigger,
+} from "../../src/lib/api";
+import {
+  authenticatedStateFixture,
+  currentUserFixture,
+  fixtureTimestamp,
+  librarySourceFixture,
+  runtimeSettingsFixture,
+  workflowRunDetailFixture,
+  workflowRunFixture,
+  workflowRunsPageFixture,
+  type ApiErrorBody,
+  type ApiResponse,
+} from "./fixtures/api";
 
-const systemDefinitions = [
-  {
+function workflowDefinitionFixture(
+  overrides: Pick<WorkflowDefinition, "id" | "code" | "displayName" | "description"> & Partial<WorkflowDefinition>,
+): WorkflowDefinition {
+  return {
+    definitionJson: '{"nodes":[]}',
+    scope: "system",
+    editable: false,
+    ownerUserId: null,
+    triggerCount: 0,
+    createdAt: fixtureTimestamp,
+    updatedAt: fixtureTimestamp,
+    ...overrides,
+  };
+}
+
+function workflowTriggerFixture(
+  overrides: Pick<WorkflowTrigger, "id" | "workflowDefinitionId" | "workflowCode" | "displayName" | "triggerType"> &
+    Partial<WorkflowTrigger>,
+): WorkflowTrigger {
+  return {
+    enabled: true,
+    scheduleJson: "{}",
+    configJson: "{}",
+    nextRunAt: null,
+    lastRunAt: null,
+    lastSuccessAt: null,
+    lastErrorMessage: "",
+    createdAt: fixtureTimestamp,
+    updatedAt: fixtureTimestamp,
+    ...overrides,
+  };
+}
+
+function notificationFixture(
+  overrides: Pick<WorkflowNotification, "id" | "workflowRunId" | "type" | "status" | "workCode"> &
+    Partial<WorkflowNotification>,
+): WorkflowNotification {
+  return { workId: null, fileSourceId: null, message: "", createdAt: fixtureTimestamp, ...overrides };
+}
+
+/** A notifications page; omitted paging fields are filled from the request by `mockWorkflows`. */
+type NotificationPageMock = Pick<WorkflowNotificationsPage, "notifications" | "total"> &
+  Partial<WorkflowNotificationsPage>;
+
+const systemDefinitions: WorkflowDefinition[] = [
+  workflowDefinitionFixture({
     id: 1,
     code: "metadata_sync",
     displayName: "Sync work metadata",
     description: "Test metadata workflow.",
-    definitionJson: '{"nodes":[]}',
-    scope: "system",
-    editable: false,
-    ownerUserId: null,
-    triggerCount: 0,
-    createdAt: "2026-01-01T00:00:00Z",
-    updatedAt: "2026-01-01T00:00:00Z",
-  },
-  {
+  }),
+  workflowDefinitionFixture({
     id: 2,
     code: "media_cache",
     displayName: "Cache media",
     description: "Test cache workflow.",
-    definitionJson: '{"nodes":[]}',
-    scope: "system",
-    editable: false,
-    ownerUserId: null,
-    triggerCount: 0,
-    createdAt: "2026-01-01T00:00:00Z",
-    updatedAt: "2026-01-01T00:00:00Z",
-  },
-  {
+  }),
+  workflowDefinitionFixture({
     id: 3,
     code: "dlsite_popular_collection",
     displayName: "Collect DLsite popular voice works",
     description: "Discover ranking works, sync metadata, and add a user tag.",
     definitionJson:
       '{"nodes":[{"id":"configure","type":"select_ranking","displayName":"Configure ranking"},{"id":"discover","type":"discover_provider_ranking","displayName":"Discover ranking"},{"id":"metadata","type":"sync_metadata","displayName":"Sync metadata"},{"id":"tag","type":"assign_user_tags","displayName":"Add user tag"}]}',
-    scope: "system",
-    editable: false,
-    ownerUserId: null,
-    triggerCount: 0,
-    createdAt: "2026-01-01T00:00:00Z",
-    updatedAt: "2026-01-01T00:00:00Z",
-  },
-  {
+  }),
+  workflowDefinitionFixture({
     id: 4,
     code: "remote_popular_collection",
     displayName: "Collect popular remote works",
@@ -49,14 +109,8 @@ const systemDefinitions = [
       "Discover popular works from a selected compatible source, track or fetch them, and append a user tag.",
     definitionJson:
       '{"nodes":[{"id":"configure","type":"select_remote_source","displayName":"Configure remote collection"},{"id":"discover","type":"discover_remote_collection","displayName":"Discover popular works"},{"id":"filter","type":"filter_candidates","displayName":"Filter collection candidates"},{"id":"dispatch","type":"dispatch_child_workflows","displayName":"Dispatch accepted works"},{"id":"tag","type":"assign_user_tags","displayName":"Add user tag"}]}',
-    scope: "system",
-    editable: false,
-    ownerUserId: null,
-    triggerCount: 0,
-    createdAt: "2026-01-01T00:00:00Z",
-    updatedAt: "2026-01-01T00:00:00Z",
-  },
-  {
+  }),
+  workflowDefinitionFixture({
     id: 6,
     code: "availability_watch",
     displayName: "Availability Watch",
@@ -64,79 +118,48 @@ const systemDefinitions = [
       "Monitor a shared pool of work codes and dispatch configured actions when a remote source becomes available.",
     definitionJson:
       '{"nodes":[{"id":"targets","type":"select_works","displayName":"Monitoring pool"},{"id":"check","type":"check_source_availability","displayName":"Check source availability"},{"id":"ready","type":"filter_candidates","displayName":"Ready pool"},{"id":"dispatch","type":"dispatch_child_workflows","displayName":"Dispatch configured action"}]}',
-    scope: "system",
-    editable: false,
-    ownerUserId: null,
-    triggerCount: 0,
-    createdAt: "2026-01-01T00:00:00Z",
-    updatedAt: "2026-01-01T00:00:00Z",
-  },
-  {
+  }),
+  workflowDefinitionFixture({
     id: 7,
     code: "local_library_scan",
     displayName: "Scan local library",
     description: "Discover local works and synchronize local source presence.",
     definitionJson:
       '{"nodes":[{"id":"select","type":"select_local_source","displayName":"Select local source"},{"id":"discover","type":"discover_local_files","displayName":"Discover files"},{"id":"match","type":"match_works","displayName":"Match works"},{"id":"sync","type":"sync_file_locations","displayName":"Sync locations"}]}',
-    scope: "system",
-    editable: false,
-    ownerUserId: null,
     triggerCount: 2,
-    createdAt: "2026-01-01T00:00:00Z",
-    updatedAt: "2026-01-01T00:00:00Z",
-  },
-  {
+  }),
+  workflowDefinitionFixture({
     id: 8,
     code: "local_media_index",
     displayName: "Refresh local work files",
     description: "Index the media files inside discovered local work folders.",
     definitionJson:
       '{"nodes":[{"id":"select","type":"select_local_works","displayName":"Select local works"},{"id":"index","type":"index_local_media","displayName":"Index work files"}]}',
-    scope: "system",
-    editable: false,
-    ownerUserId: null,
-    triggerCount: 0,
-    createdAt: "2026-01-01T00:00:00Z",
-    updatedAt: "2026-01-01T00:00:00Z",
-  },
+  }),
 ];
 
-const workflowTriggers = [
-  {
+const workflowTriggers: WorkflowTrigger[] = [
+  workflowTriggerFixture({
     id: 71,
     workflowDefinitionId: 7,
     workflowCode: "local_library_scan",
     displayName: "Startup local library scan",
     triggerType: "startup",
-    enabled: true,
     scheduleJson: '{"type":"startup"}',
     configJson: '{"followUpRun":false}',
-    nextRunAt: null,
-    lastRunAt: null,
-    lastSuccessAt: null,
-    lastErrorMessage: "",
-    createdAt: "2026-01-01T00:00:00Z",
-    updatedAt: "2026-01-01T00:00:00Z",
-  },
-  {
+  }),
+  workflowTriggerFixture({
     id: 72,
     workflowDefinitionId: 7,
     workflowCode: "local_library_scan",
     displayName: "Watch data folders",
     triggerType: "filesystem_event",
-    enabled: true,
     scheduleJson: '{"type":"filesystem_event"}',
     configJson: '{"followUpRun":false,"scanMode":"incremental"}',
-    nextRunAt: null,
-    lastRunAt: null,
-    lastSuccessAt: null,
-    lastErrorMessage: "",
-    createdAt: "2026-01-01T00:00:00Z",
-    updatedAt: "2026-01-01T00:00:00Z",
-  },
+  }),
 ];
 
-const sampleRun = {
+const sampleRun = workflowRunFixture({
   id: 51,
   workflowCode: "dlsite_popular_collection",
   displayName: "Collect DLsite popular voice works",
@@ -149,26 +172,12 @@ const sampleRun = {
   summaryJson: '{"synced":2,"tagged":2}',
   nodeRunCount: 2,
   completedNodeRuns: 2,
-  failedNodeRuns: 0,
-  skippedNodeRuns: 0,
   jobCount: 1,
   completedJobs: 1,
-  failedJobs: 0,
-  skippedJobs: 0,
-  progressBytesCurrent: 0,
-  progressBytesTotal: 0,
-  progressBytesUnknownItems: 0,
-  candidateCount: 0,
-  pendingCandidates: 0,
-  acceptedCandidates: 0,
-  rejectedCandidates: 0,
-  reviewedAt: "",
-  reviewedByUserId: null,
   definitionId: 3,
-  triggerId: null,
-};
+});
 
-const sampleNodes = [
+const sampleNodes: WorkflowNodeRun[] = [
   {
     id: 501,
     nodeId: "discover",
@@ -229,45 +238,25 @@ const sampleRunGraph = JSON.stringify({
       dataType: "work_candidates",
     },
   ],
-});
+} satisfies WorkflowRunGraph);
 
 async function mockWorkflows(
   page: Page,
   onRemotePopular?: (payload: unknown) => void,
-  runsPage = {
-    runs: [sampleRun],
-    page: 1,
-    pageSize: 10,
-    total: 1,
+  runsPage: WorkflowRunsPage = workflowRunsPageFixture([sampleRun], {
     viewTotals: { running: 0, review: 0, failed: 0, completed: 1 },
+  }),
+  notificationPage: NotificationPageMock | ((page: number, pageSize: number) => NotificationPageMock) = {
+    notifications: [],
+    total: 0,
   },
-  notificationPage:
-    | {
-        notifications: Array<Record<string, unknown>>;
-        page?: number;
-        pageSize?: number;
-        total: number;
-        totalPages?: number;
-        clearableTotal?: number;
-      }
-    | ((
-        page: number,
-        pageSize: number,
-      ) => {
-        notifications: Array<Record<string, unknown>>;
-        page?: number;
-        pageSize?: number;
-        total: number;
-        totalPages?: number;
-        clearableTotal?: number;
-      }) = { notifications: [] as Array<Record<string, unknown>>, total: 0 },
   onAvailabilityWatch?: (payload: unknown) => void,
   onClearSucceeded?: () => void,
 ) {
-  let availabilityWatch = {
+  let availabilityWatch: AvailabilityWatch = {
     id: 1,
     action: "monitor",
-    sourceId: null as number | null,
+    sourceId: null,
     excludeExtensions: ["wav"],
     revision: 2,
     targets: [
@@ -279,9 +268,9 @@ async function mockWorkflows(
         lastCheckedAt: "",
         lastStatus: "",
         lastError: "",
-        availableSourceId: null as number | null,
-        trackRunId: null as number | null,
-        fetchRunId: null as number | null,
+        availableSourceId: null,
+        trackRunId: null,
+        fetchRunId: null,
       },
       {
         id: 2,
@@ -291,9 +280,9 @@ async function mockWorkflows(
         lastCheckedAt: "2026-07-27T00:00:00Z",
         lastStatus: "available",
         lastError: "",
-        availableSourceId: 8 as number | null,
-        trackRunId: null as number | null,
-        fetchRunId: 88 as number | null,
+        availableSourceId: 8,
+        trackRunId: null,
+        fetchRunId: 88,
       },
     ],
   };
@@ -304,19 +293,13 @@ async function mockWorkflows(
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
       await route.fulfill({
-        json: {
-          authenticated: true,
-          user: {
-            id: 1,
-            username: "admin",
-            displayName: "Admin",
-            role: "super_admin",
-            permissions: ["system:admin"],
-            devMode: true,
-            demoMode: false,
-            passwordManagedBy: "account",
-          },
-        },
+        json: authenticatedStateFixture({
+          username: "admin",
+          displayName: "Admin",
+          role: "super_admin",
+          permissions: ["system:admin"],
+          devMode: true,
+        }),
       });
       return;
     }
@@ -339,17 +322,17 @@ async function mockWorkflows(
           totalPages: 1,
           clearableTotal,
           ...response,
-        },
+        } satisfies WorkflowNotificationsPage,
       });
       return;
     }
     if (url.pathname === "/api/notifications/clear-succeeded" && route.request().method() === "POST") {
       onClearSucceeded?.();
-      await route.fulfill({ json: { ok: true, dismissed: 1 } });
+      await route.fulfill({ json: { ok: true, dismissed: 1 } satisfies ApiResponse<"clearSucceededNotifications"> });
       return;
     }
     if (url.pathname.startsWith("/api/notifications/") && route.request().method() === "DELETE") {
-      await route.fulfill({ json: { ok: true } });
+      await route.fulfill({ json: { ok: true } satisfies ApiResponse<"dismissNotification"> });
       return;
     }
     if (url.pathname === "/api/workflow-definitions") {
@@ -357,16 +340,15 @@ async function mockWorkflows(
       return;
     }
     if (url.pathname === "/api/workflow-presets") {
-      await route.fulfill({ json: [] });
+      await route.fulfill({ json: [] satisfies WorkflowPreset[] });
       return;
     }
     if (url.pathname === "/api/availability-watch") {
       if (route.request().method() === "PUT") {
-        const payload = route.request().postDataJSON() as {
-          action: string;
-          sourceId: number | null;
-          excludeExtensions: string[];
-        };
+        const payload = route.request().postDataJSON() as Pick<
+          AvailabilityWatch,
+          "action" | "sourceId" | "excludeExtensions"
+        >;
         onAvailabilityWatch?.(payload);
         availabilityWatch = {
           ...availabilityWatch,
@@ -415,19 +397,30 @@ async function mockWorkflows(
         revision: availabilityWatch.revision + 1,
         targets: availabilityWatch.targets.filter((target) => target.id !== targetID),
       };
-      await route.fulfill({ json: { ok: true } });
+      await route.fulfill({ json: { ok: true } satisfies ApiResponse<"removeAvailabilityWatchTarget"> });
       return;
     }
     if (url.pathname.startsWith("/api/availability-watch/targets/") && route.request().method() === "POST") {
       const targetID = Number(url.pathname.split("/").at(-2));
       onAvailabilityWatch?.({ trackTargetId: targetID });
+      const trackedTarget = availabilityWatch.targets.find((target) => target.id === targetID);
       availabilityWatch = {
         ...availabilityWatch,
         targets: availabilityWatch.targets.map((target) =>
           target.id === targetID ? { ...target, state: "completed", trackRunId: 89 } : target,
         ),
       };
-      await route.fulfill({ json: { runId: 89, status: "queued" } });
+      await route.fulfill({
+        json: {
+          runId: 89,
+          jobId: 90,
+          workId: null,
+          primaryCode: trackedTarget?.workCode ?? "",
+          status: "queued",
+          triggerReason: "",
+          deduplicated: false,
+        } satisfies RemoteWorkTrackResult,
+      });
       return;
     }
     if (url.pathname === "/api/availability-watch/run" && route.request().method() === "POST") {
@@ -445,22 +438,18 @@ async function mockWorkflows(
           newlyAvailableCodes: [],
           readyCodes: [],
           failures: [],
-        },
+        } satisfies AvailabilityWatchRunResult,
       });
       return;
     }
     if (url.pathname === "/api/workflow-triggers") {
       if (route.request().method() === "POST") {
-        const payload = route.request().postDataJSON() as {
-          workflowDefinitionId: number;
-          displayName: string;
-          triggerType: string;
-          enabled: boolean;
-          scheduleJson: string;
-          configJson: string;
-        };
+        const payload = route.request().postDataJSON() as Pick<
+          WorkflowTrigger,
+          "workflowDefinitionId" | "displayName" | "triggerType" | "enabled" | "scheduleJson" | "configJson"
+        >;
         const definition = systemDefinitions.find((item) => item.id === payload.workflowDefinitionId);
-        const saved = {
+        const saved: WorkflowTrigger = {
           id: nextTriggerID++,
           workflowCode: definition?.code ?? "",
           nextRunAt: payload.enabled ? "2026-07-27T03:00:00Z" : null,
@@ -482,19 +471,21 @@ async function mockWorkflows(
       await route.fulfill({
         json:
           url.searchParams.get("workflowCode") === "metadata_sync"
-            ? {
-                runs: [],
-                page: 1,
+            ? workflowRunsPageFixture([], {
                 pageSize: Number(url.searchParams.get("pageSize") ?? 10),
-                total: 0,
                 viewTotals: runsPage.viewTotals,
-              }
-            : { ...runsPage, pageSize: Number(url.searchParams.get("pageSize") ?? runsPage.pageSize) },
+              })
+            : ({
+                ...runsPage,
+                pageSize: Number(url.searchParams.get("pageSize") ?? runsPage.pageSize),
+              } satisfies WorkflowRunsPage),
       });
       return;
     }
     if (url.pathname === "/api/workflow-runs/51") {
-      await route.fulfill({ json: { ...sampleRun, nodeRuns: sampleNodes, graphJson: sampleRunGraph } });
+      await route.fulfill({
+        json: workflowRunDetailFixture(sampleRun, { nodeRuns: sampleNodes, graphJson: sampleRunGraph }),
+      });
       return;
     }
     if (url.pathname === "/api/workflow-runs/51/events") {
@@ -511,54 +502,44 @@ async function mockWorkflows(
             detailJson: '{"current":1,"total":2}',
             createdAt: "2026-07-14T00:00:10Z",
           },
-        ],
+        ] satisfies WorkflowEvent[],
       });
       return;
     }
     if (url.pathname === "/api/workflow-runs/51/candidates") {
-      await route.fulfill({ json: [] });
+      await route.fulfill({ json: [] satisfies WorkflowCandidate[] });
       return;
     }
     if (url.pathname === "/api/workflow-runs/dlsite-popular") {
-      const payload = route.request().postDataJSON() as {
-        period: string;
-        releaseWindow: string;
-        year: number;
-        tagNameTemplate: string;
-      };
+      const payload = route.request().postDataJSON() as Pick<
+        DLsitePopularRunResult,
+        "period" | "releaseWindow" | "year"
+      > & { tagNameTemplate: string };
       await route.fulfill({
         json: {
           runId: 31,
           status: "queued",
-          ...payload,
+          period: payload.period,
+          releaseWindow: payload.releaseWindow,
+          year: payload.year,
           tagName: "resolved-dlsite-popular",
           discovered: 0,
           synced: 0,
           tagged: 0,
           failed: 0,
           failures: [],
-        },
+        } satisfies DLsitePopularRunResult,
       });
       return;
     }
     if (url.pathname === "/api/library-sources") {
       await route.fulfill({
-        json: [
-          {
-            id: 8,
-            code: "remote-test",
-            displayName: "Remote Test",
-            sourceType: "kikoeru_compatible",
-            enabled: true,
-          },
-        ],
+        json: [librarySourceFixture({ id: 8, code: "remote-test", displayName: "Remote Test" })],
       });
       return;
     }
     if (url.pathname === "/api/workflow-runs/remote-popular") {
-      const payload = route.request().postDataJSON() as {
-        sourceId: number;
-        action: "track" | "fetch";
+      const payload = route.request().postDataJSON() as Pick<RemoteCollectionRunResult, "sourceId" | "action"> & {
         limit: number;
         tagNameTemplate: string;
       };
@@ -566,6 +547,8 @@ async function mockWorkflows(
       await route.fulfill({
         json: {
           runId: 41,
+          sourceId: payload.sourceId,
+          action: payload.action,
           status: "queued",
           collectionKind: "popular",
           tagName: "resolved-remote-popular",
@@ -580,24 +563,15 @@ async function mockWorkflows(
           failures: [],
           expectedMaximum: payload.limit,
           returnedCount: 0,
-          ...payload,
-        },
+        } satisfies RemoteCollectionRunResult,
       });
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
-      await route.fulfill({
-        json: {
-          mode: "development",
-          demoMode: false,
-          anonymousAccessEnabled: false,
-          cacheEnabled: false,
-          directoryRoutingRules: [],
-        },
-      });
+      await route.fulfill({ json: runtimeSettingsFixture({ anonymousAccessEnabled: false }) });
       return;
     }
-    await route.fulfill({ status: 404, json: { error: "Not mocked" } });
+    await route.fulfill({ status: 404, json: { error: "Not mocked" } satisfies ApiErrorBody });
   });
 }
 
@@ -605,7 +579,7 @@ test("mobile notification center opens fetched works and dismisses individual re
   await mockWorkflows(page, undefined, undefined, {
     total: 2,
     notifications: [
-      {
+      notificationFixture({
         id: 2,
         workflowRunId: 72,
         type: "remote_fetch",
@@ -614,8 +588,8 @@ test("mobile notification center opens fetched works and dismisses individual re
         workCode: "RJ00000003",
         message: "Fetch failed for RJ00000003.",
         createdAt: "2026-07-27T02:00:00Z",
-      },
-      {
+      }),
+      notificationFixture({
         id: 1,
         workflowRunId: 71,
         type: "remote_fetch",
@@ -624,7 +598,7 @@ test("mobile notification center opens fetched works and dismisses individual re
         workCode: "RJ00000002",
         message: "Fetch completed for RJ00000002.",
         createdAt: "2026-07-27T01:00:00Z",
-      },
+      }),
     ],
   });
   await page.goto("/workflows");
@@ -650,7 +624,7 @@ test("mobile notification center opens fetched works and dismisses individual re
 
 test("notification center paginates and clears only succeeded remote notifications", async ({ page }) => {
   let cleared = false;
-  const futureActionNotification = {
+  const futureActionNotification = notificationFixture({
     id: 3,
     workflowRunId: 73,
     type: "future_review_action",
@@ -659,7 +633,7 @@ test("notification center paginates and clears only succeeded remote notificatio
     workCode: "RJ00000004",
     message: "Review action remains available.",
     createdAt: "2026-07-27T03:00:00Z",
-  };
+  });
   await mockWorkflows(
     page,
     undefined,
@@ -679,7 +653,7 @@ test("notification center paginates and clears only succeeded remote notificatio
       }
       return {
         notifications: [
-          {
+          notificationFixture({
             id: 2,
             workflowRunId: 72,
             type: "remote_track",
@@ -688,8 +662,8 @@ test("notification center paginates and clears only succeeded remote notificatio
             workCode: "RJ00000003",
             message: "Track failed for RJ00000003.",
             createdAt: "2026-07-27T02:00:00Z",
-          },
-          {
+          }),
+          notificationFixture({
             id: 1,
             workflowRunId: 71,
             type: "remote_fetch",
@@ -698,7 +672,7 @@ test("notification center paginates and clears only succeeded remote notificatio
             workCode: "RJ00000002",
             message: "Fetch completed for RJ00000002.",
             createdAt: "2026-07-27T01:00:00Z",
-          },
+          }),
         ],
         page: 1,
         total: 51,
@@ -925,7 +899,7 @@ test("a follow shortcut fills the circle id and says it did", async ({ page }) =
         json: [
           ...systemDefinitions,
           { ...systemDefinitions[0], id: 8, code: "circle_follow", displayName: "Follow a circle", description: "" },
-        ],
+        ] satisfies WorkflowDefinition[],
       });
       return;
     }
@@ -943,7 +917,7 @@ test("a follow shortcut fills the circle id and says it did", async ({ page }) =
               { key: "metadata", kind: "boolean", group: "action", required: false, default: true },
             ],
           },
-        ],
+        ] satisfies WorkflowPreset[],
       });
       return;
     }
@@ -965,9 +939,9 @@ test("local scan folder watcher exposes incremental and full scan modes", async 
   const triggerPayloads: Array<Record<string, unknown>> = [];
   await mockWorkflows(page);
   await page.route("**/api/workflow-triggers/72", async (route) => {
-    const payload = route.request().postDataJSON() as Record<string, unknown>;
+    const payload = route.request().postDataJSON() as Pick<WorkflowTrigger, "configJson">;
     triggerPayloads.push(payload);
-    await route.fulfill({ json: { ...workflowTriggers[1], configJson: payload.configJson } });
+    await route.fulfill({ json: { ...workflowTriggers[1], configJson: payload.configJson } satisfies WorkflowTrigger });
   });
   await page.goto("/workflows");
 
@@ -1012,17 +986,17 @@ test("local scan follow-up is explicit and defaults off for manual and automatic
         followUpRun: (manualPayloads.at(-1) as { followUpRun: boolean }).followUpRun,
         newWorkCodes: [],
         failures: [],
-      },
+      } satisfies LocalScanResult,
     });
   });
   await page.route("**/api/workflow-triggers/71", async (route) => {
-    const payload = route.request().postDataJSON() as Record<string, unknown>;
+    const payload = route.request().postDataJSON() as Pick<WorkflowTrigger, "configJson">;
     triggerPayloads.push(payload);
     await route.fulfill({
       json: {
         ...workflowTriggers[0],
         configJson: payload.configJson,
-      },
+      } satisfies WorkflowTrigger,
     });
   });
 
@@ -1056,7 +1030,7 @@ test("local work file refresh sends the chosen mode for manual and startup runs"
     manualPayloads.push(route.request().postDataJSON());
     await route.fulfill({
       status: 202,
-      json: { runId: 62, jobId: 72, status: "queued", mode: "full", existing: false },
+      json: { runId: 62, jobId: 72, status: "queued", mode: "full", existing: false } satisfies LocalMediaIndexResult,
     });
   });
 
@@ -1170,7 +1144,7 @@ test("availability notifications open the shared ready pool", async ({ page }) =
   await mockWorkflows(page, undefined, undefined, {
     total: 1,
     notifications: [
-      {
+      notificationFixture({
         id: 9,
         workflowRunId: 91,
         type: "availability_watch_ready",
@@ -1179,7 +1153,7 @@ test("availability notifications open the shared ready pool", async ({ page }) =
         workCode: "RJ00000001",
         message: "RJ00000001 is now available.",
         createdAt: "2026-07-27T02:00:00Z",
-      },
+      }),
     ],
   });
   await page.goto("/workflows");
@@ -1201,18 +1175,17 @@ test("activity links metadata failures to a run-filtered Maintenance list", asyn
   await mockWorkflows(page);
   await page.route("**/api/workflow-runs/51", async (route) => {
     await route.fulfill({
-      json: {
-        ...sampleRun,
+      json: workflowRunDetailFixture(sampleRun, {
         nodeRuns: sampleNodes,
         graphJson: sampleRunGraph,
         metadataIssues: { encountered: 1, pending: 1 },
-      },
+      }),
     });
   });
   const runFilters: string[] = [];
   await page.route("**/api/maintenance/works?*", async (route) => {
     runFilters.push(new URL(route.request().url()).searchParams.get("runId") ?? "");
-    await route.fulfill({ json: { works: [], page: 1, pageSize: 25, total: 0 } });
+    await route.fulfill({ json: { works: [], page: 1, pageSize: 25, total: 0 } satisfies MaintenanceWorkPage });
   });
   await page.goto("/activity?view=completed&run=51");
   await page.getByRole("button", { name: "Open metadata issues", exact: true }).click();
@@ -1248,7 +1221,7 @@ test("activity presents a compact run summary without the execution canvas", asy
 test("activity reports Fetch byte progress without guessing unknown totals", async ({ page }) => {
   const knownTotal = 128 * 1024 * 1024;
   const current = 64 * 1024 * 1024;
-  const unknownRun = {
+  const unknownRun: WorkflowRun = {
     ...sampleRun,
     id: 52,
     workflowCode: "remote_work_fetch",
@@ -1260,27 +1233,30 @@ test("activity reports Fetch byte progress without guessing unknown totals", asy
     progressBytesTotal: knownTotal,
     progressBytesUnknownItems: 1,
   };
-  const knownRun = { ...unknownRun, id: 53, progressBytesUnknownItems: 0 };
-  await mockWorkflows(page, undefined, {
-    runs: [unknownRun, knownRun],
-    page: 1,
-    pageSize: 10,
-    total: 2,
-    viewTotals: { running: 2, review: 0, failed: 0, completed: 0 },
-  });
+  const knownRun: WorkflowRun = { ...unknownRun, id: 53, progressBytesUnknownItems: 0 };
+  await mockWorkflows(
+    page,
+    undefined,
+    workflowRunsPageFixture([unknownRun, knownRun], {
+      viewTotals: { running: 2, review: 0, failed: 0, completed: 0 },
+    }),
+  );
   await page.route(/\/api\/workflow-runs\/(52|53)(?:\/.*)?$/, async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith("/events") || url.pathname.endsWith("/candidates")) {
-      await route.fulfill({ json: [] });
+      await route.fulfill({ json: [] satisfies WorkflowEvent[] | WorkflowCandidate[] });
       return;
     }
     if (url.pathname.endsWith("/fetch-files")) {
-      await route.fulfill({ json: { runId: Number(url.pathname.split("/")[3]), files: [] } });
+      await route.fulfill({
+        json: {
+          runId: Number(url.pathname.split("/")[3]),
+          files: [],
+        } satisfies ApiResponse<"listWorkflowRunFetchFiles">,
+      });
       return;
     }
-    await route.fulfill({
-      json: { ...(url.pathname.endsWith("/52") ? unknownRun : knownRun), nodeRuns: [], graphJson: "{}" },
-    });
+    await route.fulfill({ json: workflowRunDetailFixture(url.pathname.endsWith("/52") ? unknownRun : knownRun) });
   });
 
   await page.goto("/activity?view=running&run=52");
@@ -1300,7 +1276,7 @@ test("@desktop blocked Fetch origins stay in Review with source recovery actions
 }) => {
   const blockedOrigin = "https://media.example.invalid:443";
   const longLegacyURL = `https://media.example.invalid/${"nested-path/".repeat(120)}track.mp3?token=synthetic`;
-  const reviewRun = {
+  const reviewRun: WorkflowRun = {
     ...sampleRun,
     workflowCode: "remote_work_fetch",
     displayName: "Fetch remote work",
@@ -1313,19 +1289,14 @@ test("@desktop blocked Fetch origins stay in Review with source recovery actions
     candidateCount: 1,
     pendingCandidates: 1,
   };
-  const runsPage = {
-    runs: [reviewRun],
-    page: 1,
-    pageSize: 10,
-    total: 1,
+  const runsPage = workflowRunsPageFixture([reviewRun], {
     viewTotals: { running: 0, review: 1, failed: 0, completed: 0 },
-  };
+  });
   await mockWorkflows(page, undefined, runsPage);
   let retries = 0;
   await page.route("**/api/workflow-runs/51", async (route) => {
     await route.fulfill({
-      json: {
-        ...reviewRun,
+      json: workflowRunDetailFixture(reviewRun, {
         nodeRuns: [
           {
             ...sampleNodes[0],
@@ -1337,12 +1308,11 @@ test("@desktop blocked Fetch origins stay in Review with source recovery actions
             errorMessage: `Remote download origin is not allowed by the source policy: ${blockedOrigin}`,
           },
         ],
-        graphJson: "{}",
-      },
+      }),
     });
   });
   await page.route("**/api/workflow-runs/51/events", async (route) => {
-    await route.fulfill({ json: [] });
+    await route.fulfill({ json: [] satisfies WorkflowEvent[] });
   });
   await page.route("**/api/workflow-runs/51/candidates", async (route) => {
     await route.fulfill({
@@ -1359,12 +1329,15 @@ test("@desktop blocked Fetch origins stay in Review with source recovery actions
           createdAt: "2026-07-14T00:00:00Z",
           updatedAt: "2026-07-14T00:00:00Z",
         },
-      ],
+      ] satisfies WorkflowCandidate[],
     });
   });
   await page.route("**/api/workflow-runs/51/retry", async (route) => {
     retries += 1;
-    await route.fulfill({ status: 202, json: { runId: 51, status: "retried", message: "retry started" } });
+    await route.fulfill({
+      status: 202,
+      json: { runId: 51, status: "retried", message: "retry started" } satisfies WorkflowRunActionResult,
+    });
   });
 
   await page.setViewportSize({ width: 1265, height: 850 });
@@ -1385,7 +1358,7 @@ test("@desktop blocked Fetch origins stay in Review with source recovery actions
 
 test("run retry shows progress while pending and reports a failure", async ({ page }) => {
   await mockWorkflows(page);
-  const failedRun = {
+  const failedRun: WorkflowRun = {
     ...sampleRun,
     id: 99,
     workflowCode: "local_library_scan",
@@ -1400,15 +1373,15 @@ test("run retry shows progress while pending and reports a failure", async ({ pa
   await page.route("**/api/workflow-runs/99**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith("/events") || url.pathname.endsWith("/candidates")) {
-      await route.fulfill({ json: [] });
+      await route.fulfill({ json: [] satisfies WorkflowEvent[] | WorkflowCandidate[] });
       return;
     }
     if (url.pathname.endsWith("/retry")) {
       await retryResponse;
-      await route.fulfill({ status: 500, json: { error: "internal error" } });
+      await route.fulfill({ status: 500, json: { error: "internal error" } satisfies ApiErrorBody });
       return;
     }
-    await route.fulfill({ json: { ...failedRun, nodeRuns: [] } });
+    await route.fulfill({ json: workflowRunDetailFixture(failedRun) });
   });
 
   await page.goto("/activity?run=99");
@@ -1425,16 +1398,20 @@ test("run retry shows progress while pending and reports a failure", async ({ pa
 
 test("a hidden tab pauses recent-run polling and refreshes when shown again", async ({ page }) => {
   await mockWorkflows(page);
-  const running = { ...sampleRun, id: 63, workflowCode: "local_library_scan", status: "running", finishedAt: "" };
+  const running: WorkflowRun = {
+    ...sampleRun,
+    id: 63,
+    workflowCode: "local_library_scan",
+    status: "running",
+    finishedAt: "",
+  };
   let recentRunRequests = 0;
   await page.route("**/api/workflow-runs?*", async (route) => {
     const params = new URL(route.request().url()).searchParams;
     const recentRuns = params.get("view") === "" && params.get("workflowCode") === "local_library_scan";
     if (recentRuns) recentRunRequests += 1;
     const runs = recentRuns ? [running] : [];
-    await route.fulfill({
-      json: { runs, page: 1, pageSize: Number(params.get("pageSize")), total: runs.length, viewTotals: {} },
-    });
+    await route.fulfill({ json: workflowRunsPageFixture(runs, { pageSize: Number(params.get("pageSize")) }) });
   });
   const setHidden = (hidden: boolean) =>
     page.evaluate((value) => {
@@ -1461,14 +1438,14 @@ test("a hidden tab pauses recent-run polling and refreshes when shown again", as
 
 test("activity deep links load a run outside the visible list page", async ({ page }) => {
   await mockWorkflows(page);
-  const detachedRun = { ...sampleRun, id: 99, displayName: "Detached cleanup run" };
+  const detachedRun: WorkflowRun = { ...sampleRun, id: 99, displayName: "Detached cleanup run" };
   await page.route("**/api/workflow-runs/99**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith("/events") || url.pathname.endsWith("/candidates")) {
-      await route.fulfill({ json: [] });
+      await route.fulfill({ json: [] satisfies WorkflowEvent[] | WorkflowCandidate[] });
       return;
     }
-    await route.fulfill({ json: { ...detachedRun, nodeRuns: [] } });
+    await route.fulfill({ json: workflowRunDetailFixture(detachedRun) });
   });
 
   await page.goto("/activity?run=99");
@@ -1480,13 +1457,13 @@ test("activity deep links load a run outside the visible list page", async ({ pa
 });
 
 test("activity uses two scoped counted tabs and a single empty state", async ({ page }) => {
-  await mockWorkflows(page, undefined, {
-    runs: [],
-    page: 1,
-    pageSize: 10,
-    total: 0,
-    viewTotals: { running: 0, review: 0, failed: 0, completed: 14, attention: 0, history: 14 },
-  });
+  await mockWorkflows(
+    page,
+    undefined,
+    workflowRunsPageFixture([], {
+      viewTotals: { running: 0, review: 0, failed: 0, completed: 14, attention: 0, history: 14 },
+    }),
+  );
   await page.goto("/activity");
   const activity = page.getByRole("dialog", { name: "Activity", exact: true });
   await expect(activity.getByRole("tab", { name: "Needs attention 0", exact: true })).toHaveAttribute(
@@ -1501,7 +1478,7 @@ test("activity uses two scoped counted tabs and a single empty state", async ({ 
 });
 
 test("activity preserves its loading state until the scoped request completes", async ({ page }) => {
-  let releaseRuns = () => undefined;
+  let releaseRuns: () => void = () => undefined;
   const gate = new Promise<void>((resolve) => {
     releaseRuns = resolve;
   });
@@ -1515,7 +1492,10 @@ test("activity preserves its loading state until the scoped request completes", 
     expect(params.get("workflowCode")).toBeTruthy();
     await gate;
     await route.fulfill({
-      json: { runs: [], page: 1, pageSize: 8, total: 0, viewTotals: { running: 0, attention: 0, history: 0 } },
+      json: workflowRunsPageFixture([], {
+        pageSize: 8,
+        viewTotals: { running: 0, review: 0, failed: 0, completed: 0, attention: 0, history: 0 },
+      }),
     });
   });
   await page.goto("/workflows?activity=1");
@@ -1527,7 +1507,7 @@ test("activity preserves its loading state until the scoped request completes", 
 });
 
 test("workflow metadata loads as one snapshot without an interim empty panel", async ({ page }) => {
-  let releaseDefinitions = () => undefined;
+  let releaseDefinitions: () => void = () => undefined;
   const definitionsGate = new Promise<void>((resolve) => {
     releaseDefinitions = resolve;
   });
@@ -1580,7 +1560,7 @@ test("remote popular collection requires an explicit source and queues configure
 
 test("remote popular shows an unavailable overlay without a compatible source", async ({ page }) => {
   await mockWorkflows(page);
-  await page.route("**/api/library-sources", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/library-sources", (route) => route.fulfill({ json: [] satisfies LibrarySource[] }));
   await page.goto("/workflows");
 
   const remoteTab = page.getByRole("tab", { name: /Collect popular remote works/ });
@@ -1769,22 +1749,19 @@ async function themeVisualTokens(page: Page) {
 
 test("initial setup creates the first administrator with the setup token", async ({ page }) => {
   await mockWorkflows(page);
-  const administrator = {
-    id: 1,
+  const administrator = currentUserFixture({
     username: "synthetic-admin",
     displayName: "synthetic-admin",
     role: "super_admin",
     permissions: ["system:admin"],
-    devMode: false,
-    demoMode: false,
-  };
+  });
   let authenticated = false;
   const submissions: Array<{ setupToken: string; username: string; password: string }> = [];
   await page.route("**/api/auth/me", (route) =>
     route.fulfill({
-      json: authenticated
+      json: (authenticated
         ? { authenticated: true, user: administrator }
-        : { authenticated: false, setupRequired: true },
+        : { authenticated: false, setupRequired: true }) satisfies AuthState,
     }),
   );
   await page.route("**/api/auth/setup", async (route) => {
@@ -1793,12 +1770,12 @@ test("initial setup creates the first administrator with the setup token", async
     if (payload.setupToken !== "synthetic-setup-token") {
       await route.fulfill({
         status: 403,
-        json: { error: "invalid setup token", code: "invalid_setup_token", retryable: false },
+        json: { error: "invalid setup token", code: "invalid_setup_token", retryable: false } satisfies ApiErrorBody,
       });
       return;
     }
     authenticated = true;
-    await route.fulfill({ status: 201, json: { authenticated: true, user: administrator } });
+    await route.fulfill({ status: 201, json: { authenticated: true, user: administrator } satisfies AuthState });
   });
 
   await page.goto("/settings");
@@ -1829,19 +1806,13 @@ test("settings identifies an environment-managed root password", async ({ page }
   await mockWorkflows(page);
   await page.route("**/api/auth/me", (route) =>
     route.fulfill({
-      json: {
-        authenticated: true,
-        user: {
-          id: 1,
-          username: "configured-root",
-          displayName: "Configured Root",
-          role: "super_admin",
-          permissions: ["system:admin"],
-          devMode: false,
-          demoMode: false,
-          passwordManagedBy: "environment",
-        },
-      },
+      json: authenticatedStateFixture({
+        username: "configured-root",
+        displayName: "Configured Root",
+        role: "super_admin",
+        permissions: ["system:admin"],
+        passwordManagedBy: "environment",
+      }),
     }),
   );
 
@@ -1855,30 +1826,17 @@ test("demo settings keeps account and workflows read-only while allowing appeara
   const demoNotice = "Demo mode: every feature is visible, but server data cannot be changed.";
   await mockWorkflows(page);
   await page.route("**/api/runtime-settings", (route) =>
-    route.fulfill({
-      json: {
-        mode: "demo",
-        demoMode: true,
-        anonymousAccessEnabled: false,
-        cacheEnabled: false,
-        directoryRoutingRules: [],
-      },
-    }),
+    route.fulfill({ json: runtimeSettingsFixture({ mode: "demo", demoMode: true, anonymousAccessEnabled: false }) }),
   );
   await page.route("**/api/auth/me", (route) =>
     route.fulfill({
-      json: {
-        authenticated: true,
-        user: {
-          id: 1,
-          username: "__demo__",
-          displayName: "Demo",
-          role: "user",
-          permissions: ["library:read", "playback:use"],
-          devMode: false,
-          demoMode: true,
-        },
-      },
+      json: authenticatedStateFixture({
+        username: "__demo__",
+        displayName: "Demo",
+        role: "user",
+        permissions: ["library:read", "playback:use"],
+        demoMode: true,
+      }),
     }),
   );
 
@@ -1953,7 +1911,7 @@ for (const viewport of ["mobile", "@desktop"]) {
   test(`${viewport} workflow Activity separates running, attention, and history`, async ({ page }, testInfo) => {
     await mockWorkflows(page);
     let reviewed = false;
-    const failed = {
+    const failed: WorkflowRun = {
       ...sampleRun,
       id: 61,
       workflowCode: "local_library_scan",
@@ -1961,14 +1919,20 @@ for (const viewport of ["mobile", "@desktop"]) {
       status: "failed",
       pendingMetadata: 0,
     };
-    const metadata = {
+    const metadata: WorkflowRun = {
       ...sampleRun,
       id: 62,
       workflowCode: "local_library_scan",
       status: "partial",
       pendingMetadata: 2,
     };
-    const running = { ...sampleRun, id: 63, workflowCode: "local_library_scan", status: "running", finishedAt: "" };
+    const running: WorkflowRun = {
+      ...sampleRun,
+      id: 63,
+      workflowCode: "local_library_scan",
+      status: "running",
+      finishedAt: "",
+    };
     await page.route("**/api/workflow-runs?*", async (route) => {
       const params = new URL(route.request().url()).searchParams;
       const view = params.get("view");
@@ -1983,11 +1947,8 @@ for (const viewport of ["mobile", "@desktop"]) {
               ? [sampleRun, ...(reviewed ? [failed] : [])]
               : [];
       await route.fulfill({
-        json: {
-          runs,
-          page: 1,
+        json: workflowRunsPageFixture(runs, {
           pageSize: Number(params.get("pageSize")),
-          total: runs.length,
           viewTotals: {
             running: 1,
             attention: reviewed ? 1 : 2,
@@ -1996,12 +1957,12 @@ for (const viewport of ["mobile", "@desktop"]) {
             failed: 1,
             completed: 1,
           },
-        },
+        }),
       });
     });
     await page.route("**/api/workflow-runs/61/review", async (route) => {
       reviewed = true;
-      await route.fulfill({ json: { ...failed, reviewedAt: "2026-01-01 00:00:00" } });
+      await route.fulfill({ json: { ...failed, reviewedAt: "2026-01-01 00:00:00" } satisfies WorkflowRun });
     });
     await page.goto("/workflows");
     await page.getByRole("button", { name: "Activity", exact: true }).click();
@@ -2030,14 +1991,14 @@ for (const viewport of ["mobile", "@desktop"]) {
   }, testInfo) => {
     await mockWorkflows(page);
     const scopes: string[] = [];
-    const local = {
+    const local: WorkflowRun = {
       ...sampleRun,
       id: 71,
       definitionId: 2,
       workflowCode: "local_library_scan",
       displayName: "Example local run",
     };
-    const metadata = {
+    const metadata: WorkflowRun = {
       ...sampleRun,
       id: 72,
       definitionId: 1,
@@ -2050,17 +2011,16 @@ for (const viewport of ["mobile", "@desktop"]) {
       if (params.get("view") !== "review") scopes.push(code);
       const runs = ["attention", "running"].includes(params.get("view") ?? "") ? [] : [local, metadata];
       await route.fulfill({
-        json: {
-          runs,
-          total: runs.length,
-          page: 1,
+        json: workflowRunsPageFixture(runs, {
           pageSize: Number(params.get("pageSize")),
-          viewTotals: { running: 0, attention: 0, history: 2 },
-        },
+          viewTotals: { running: 0, review: 0, failed: 0, completed: 0, attention: 0, history: 2 },
+        }),
       });
     });
-    await page.route("**/api/workflow-runs/72", (route) => route.fulfill({ json: { ...metadata, nodeRuns: [] } }));
-    await page.route("**/api/workflow-runs/72/events*", (route) => route.fulfill({ json: [] }));
+    await page.route("**/api/workflow-runs/72", (route) => route.fulfill({ json: workflowRunDetailFixture(metadata) }));
+    await page.route("**/api/workflow-runs/72/events*", (route) =>
+      route.fulfill({ json: [] satisfies WorkflowEvent[] }),
+    );
     await page.goto("/workflows?workflow=local_library_scan");
     await page.getByRole("button", { name: "Activity", exact: true }).click();
     const panel = page.getByRole("dialog", { name: "Activity", exact: true });
@@ -2091,7 +2051,13 @@ for (const viewport of ["mobile", "@desktop"]) {
 
 test("workflow run monitor lists stages and filters the run log by stage", async ({ page }) => {
   await mockWorkflows(page);
-  const node = (id: number, nodeId: string, displayName: string, status: string, errorMessage = "") => ({
+  const node = (
+    id: number,
+    nodeId: string,
+    displayName: string,
+    status: string,
+    errorMessage = "",
+  ): WorkflowNodeRun => ({
     ...sampleNodes[0],
     id,
     nodeId,
@@ -2103,17 +2069,18 @@ test("workflow run monitor lists stages and filters the run log by stage", async
   });
   await page.route("**/api/workflow-runs/51", (route) =>
     route.fulfill({
-      json: {
-        ...sampleRun,
-        status: "failed",
-        nodeRuns: [
-          node(601, "configure", "Configure ranking", "succeeded"),
-          node(602, "discover", "Discover ranking", "succeeded"),
-          node(603, "metadata", "Sync metadata", "failed", "Provider timed out"),
-          node(604, "tag", "Add user tag", "skipped"),
-        ],
-        graphJson: "",
-      },
+      json: workflowRunDetailFixture(
+        { ...sampleRun, status: "failed" },
+        {
+          nodeRuns: [
+            node(601, "configure", "Configure ranking", "succeeded"),
+            node(602, "discover", "Discover ranking", "succeeded"),
+            node(603, "metadata", "Sync metadata", "failed", "Provider timed out"),
+            node(604, "tag", "Add user tag", "skipped"),
+          ],
+          graphJson: "",
+        },
+      ),
     }),
   );
   await page.goto("/workflows?workflow=dlsite_popular_collection");

@@ -1,4 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import type { LibrarySource, RecentlyPlayedWorksResponse } from "../../src/lib/api";
+import { anonymousAuthState, runtimeSettingsFixture, worksPageFixture, type ApiErrorBody } from "./fixtures/api";
 import { silentWav } from "./fixtures/player-library";
 
 const persistedTrack = {
@@ -46,23 +48,15 @@ async function prepareRouteFailure(page: Page, fulfillAboutModule = fulfillFaili
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
-      await route.fulfill({ json: { authenticated: false } });
+      await route.fulfill({ json: anonymousAuthState });
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
-      await route.fulfill({
-        json: {
-          mode: "production",
-          demoMode: false,
-          anonymousAccessEnabled: true,
-          cacheEnabled: false,
-          directoryRoutingRules: [],
-        },
-      });
+      await route.fulfill({ json: runtimeSettingsFixture({ mode: "production" }) });
       return;
     }
     if (url.pathname === "/api/works/1/media") {
-      await route.fulfill({ status: 503, json: { error: "Temporarily unavailable" } });
+      await route.fulfill({ status: 503, json: { error: "Temporarily unavailable" } satisfies ApiErrorBody });
       return;
     }
     if (url.pathname === "/api/media/1/stream") {
@@ -87,18 +81,18 @@ async function prepareRouteFailure(page: Page, fulfillAboutModule = fulfillFaili
       return;
     }
     if (url.pathname === "/api/library-sources") {
-      await route.fulfill({ json: [] });
+      await route.fulfill({ json: [] satisfies LibrarySource[] });
       return;
     }
     if (url.pathname === "/api/works") {
-      await route.fulfill({ json: { works: [], page: 1, pageSize: 24, total: 0 } });
+      await route.fulfill({ json: worksPageFixture([]) });
       return;
     }
     if (url.pathname === "/api/recently-played-works") {
-      await route.fulfill({ json: { works: [] } });
+      await route.fulfill({ json: { works: [] } satisfies RecentlyPlayedWorksResponse });
       return;
     }
-    await route.fulfill({ status: 404, json: { error: "Not mocked" } });
+    await route.fulfill({ status: 404, json: { error: "Not mocked" } satisfies ApiErrorBody });
   });
 
   await page.route("**/src/pages/AboutPage.tsx*", fulfillAboutModule);
@@ -117,16 +111,18 @@ test("route render failures preserve the app shell and player", async ({ page })
   await page.goto("/");
   await page.getByRole("button", { name: "Play", exact: true }).click();
   const audio = page.locator("audio");
-  await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBeGreaterThan(0);
+  await expect.poll(() => audio.evaluate((element: HTMLAudioElement) => element.currentTime)).toBeGreaterThan(0);
   // Seek the real media element far enough from zero that a rewind cannot
   // accidentally satisfy the subsequent playback-continuity assertions.
-  await audio.evaluate((element) => {
+  await audio.evaluate((element: HTMLAudioElement) => {
     element.currentTime = 20;
   });
-  await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBeGreaterThanOrEqual(20);
+  await expect
+    .poll(() => audio.evaluate((element: HTMLAudioElement) => element.currentTime))
+    .toBeGreaterThanOrEqual(20);
   const playingElement = await audio.elementHandle();
   expect(playingElement).not.toBeNull();
-  const beforeNavigation = await audio.evaluate((element) => element.currentTime);
+  const beforeNavigation = await audio.evaluate((element: HTMLAudioElement) => element.currentTime);
   await page.getByRole("button", { name: "Quick actions", exact: true }).click();
   await page.getByRole("button", { name: "About /about", exact: true }).click();
 
@@ -140,8 +136,10 @@ test("route render failures preserve the app shell and player", async ({ page })
   await expect(page.getByText("Boundary test track", { exact: true })).toBeVisible();
   expect(await audio.evaluate((element, previous) => element === previous, playingElement)).toBe(true);
   await expect(audio).toHaveJSProperty("paused", false);
-  await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBeGreaterThan(beforeNavigation);
-  const beforeRecovery = await audio.evaluate((element) => element.currentTime);
+  await expect
+    .poll(() => audio.evaluate((element: HTMLAudioElement) => element.currentTime))
+    .toBeGreaterThan(beforeNavigation);
+  const beforeRecovery = await audio.evaluate((element: HTMLAudioElement) => element.currentTime);
 
   await fallback.getByRole("button", { name: "Open Library" }).click();
 
@@ -151,7 +149,9 @@ test("route render failures preserve the app shell and player", async ({ page })
   await expect(page.getByText("Boundary test track", { exact: true })).toBeVisible();
   expect(await audio.evaluate((element, previous) => element === previous, playingElement)).toBe(true);
   await expect(audio).toHaveJSProperty("paused", false);
-  await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBeGreaterThan(beforeRecovery);
+  await expect
+    .poll(() => audio.evaluate((element: HTMLAudioElement) => element.currentTime))
+    .toBeGreaterThan(beforeRecovery);
   await expect(audio).toHaveJSProperty("error", null);
 });
 

@@ -94,8 +94,19 @@ the entry already loads there, because everything in that chunk loads eagerly.
 The production build stamps `public/sw.js` with a build id derived from the
 version and the emitted file names. Each build therefore owns one service
 worker cache, and activating a new worker deletes the previous build's cache
-instead of keeping its hashed assets. Circle and voice route helpers live in their
-navigation-state modules so one page does not import another page's module.
+instead of keeping its hashed assets.
+
+Navigation and browse state that pages and features share lives in `lib`:
+circle and voice route helpers, Library browse state, and Library search
+clauses. Work detail and the pages depend on those modules instead of on each
+other, so no feature imports from `pages`. The circle and voice actor lists
+render through one `pages/creator/CreatorListPage`, and the creator detail pages
+and the Library remote source panel record remote Fetch and Fork runs through
+`pages/useRemoteWorkActions`.
+
+The Workflows page keeps routing, selection, and run handlers. Definition
+detail, run forms, the trigger editor, availability watches, run detail, and
+candidate review live in `features/workflows`.
 
 Work detail metadata editing exposes one entry from
 `features/work-detail/metadata`. Its modal owns interaction and save actions,
@@ -105,10 +116,15 @@ to metadata overrides. Library composes that entry instead of owning its interna
 The global player keeps its public track and state types in `playerTypes` so
 media-tree and queue models do not depend on the React provider. `playerPersistence`
 owns browser preference access and queue parsing, including legacy migration.
-`PlayerProvider` composes these functions with playback effects and account-scoped
-storage keys; it remains mounted across navigation. It also warms the next
-auto-advance track in one detached audio element (`useNextTrackPreload`) so the
-player element can reuse the buffered bytes for the identical URL. The dock UI
+`PlayerProvider` builds the player contexts from focused hooks: playback engine
+and source loading, progress saving, recovery, sleep timer, queue actions and
+storage, seeking, system media controls, and keyboard shortcuts. It uses
+account-scoped storage keys and remains mounted across navigation. System media
+controls (Media Session and the Android notification) stay registered and read
+the latest actions through a ref, so they never act on a stale queue or mode.
+Source loading also warms the next auto-advance track in one detached audio
+element (`useNextTrackPreload`) so the player element can reuse the buffered
+bytes for the identical URL. The dock UI
 lives in `player/dock`: `PlayerDock` owns the Mini, Compact, and full surfaces,
 while queue reordering math, lyrics parsing, and formatting stay in pure
 modules.

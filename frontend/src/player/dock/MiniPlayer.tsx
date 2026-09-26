@@ -2,7 +2,7 @@ import { Maximize2, PanelBottom } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ANDROID_BACK_EVENT } from "@/app/events";
+import { ANDROID_BACK_EVENT } from "@/lib/appEvents";
 import { cn } from "@/lib/tailwindClassNames";
 import { usePlayerTime, type usePlayer } from "@/player/PlayerProvider";
 import type { DockMode, PlayerTrack } from "@/player/playerTypes";

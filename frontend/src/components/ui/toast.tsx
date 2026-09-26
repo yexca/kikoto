@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/tailwindClassNames";
 import { ApiError } from "@/lib/api";
-import { LOGIN_REQUEST_EVENT } from "@/app/events";
+import { LOGIN_REQUEST_EVENT } from "@/lib/appEvents";
 import i18n from "@/i18n";
 
 export type ToastKind = "success" | "info" | "warning" | "error";

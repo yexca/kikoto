@@ -44,6 +44,7 @@ import {
   type TreeStats,
   type TreeTrack,
 } from "@/features/work-detail/media/mediaTreeModel";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import i18n from "@/i18n";
 import {
   type ActiveSourceInfoModel,
@@ -952,7 +953,6 @@ export function PersistedWorkDetailController({
   const {
     remoteSources,
     sourceTabs,
-    activeSourceKey,
     setActiveSourceKey,
     selectSource,
     selectTrackedPresence,
@@ -1027,7 +1027,6 @@ export function PersistedWorkDetailController({
       selectedTrackedPresence,
     }),
   );
-  const allTracks = useMemo(() => flattenTracks(tree), [tree]);
   const directoryStats = useMemo(() => treeStats(tree), [tree]);
   const playbackTree = useMemo(
     () =>
@@ -1203,6 +1202,36 @@ export function PersistedWorkDetailController({
     setSelectedMetadataVariantKey("");
   }, [work?.id]);
 
+  const selectEdition = useStableCallback(async (translation: WorkDetail["translations"][number]) => {
+    if (!translation.workId || !work) return;
+    disableAutomaticPlaybackRouting();
+    const requestSeq = ++editionRequestSeq.current;
+    setEditionError("");
+    setEditionErrorCode("");
+    if (translation.workId === work.id) {
+      setEditionLoadingCode("");
+      setActiveEdition(null);
+      setActiveEditionCode(translation.primaryCode);
+      setActiveSourceKey("local");
+      return;
+    }
+    setEditionLoadingCode(translation.primaryCode);
+    try {
+      const detail = await api.getWork(translation.workId);
+      if (requestSeq !== editionRequestSeq.current) return;
+      setCachedWorkMedia(detail.id, principalID, detail.mediaItems);
+      setActiveEdition(detail);
+      setActiveEditionCode(detail.primaryCode);
+      setActiveSourceKey("local");
+    } catch (error) {
+      if (requestSeq !== editionRequestSeq.current) return;
+      setEditionError(directoryLoadErrorMessage(error));
+      setEditionErrorCode(translation.primaryCode);
+    } finally {
+      if (requestSeq === editionRequestSeq.current) setEditionLoadingCode("");
+    }
+  });
+
   useEffect(() => {
     if (!work || activeEditionCode) return;
     const translations = work.translations ?? [];
@@ -1216,7 +1245,7 @@ export function PersistedWorkDetailController({
     if (firstPlayableVersion) {
       void selectEdition(firstPlayableVersion);
     }
-  }, [activeEditionCode, work]);
+  }, [activeEditionCode, selectEdition, work]);
 
   useEffect(() => {
     if (!work?.id) return;
@@ -1401,7 +1430,7 @@ export function PersistedWorkDetailController({
       actionLabel,
       onAction,
     });
-  }, [activeMetadataRunId, metadataRun.run, canViewMetadataActivity, onWorkReload, onWorksChanged, toast, work]);
+  }, [activeMetadataRunId, metadataRun.run, canViewMetadataActivity, onWorkReload, onWorksChanged, t, toast, work]);
 
   useEffect(() => {
     const reconcileTrack = (event: Event) => {
@@ -1431,7 +1460,7 @@ export function PersistedWorkDetailController({
     };
     window.addEventListener(REMOTE_TRACK_TERMINAL_EVENT, reconcileTrack);
     return () => window.removeEventListener(REMOTE_TRACK_TERMINAL_EVENT, reconcileTrack);
-  }, [onWorkReload, onWorksChanged, refreshAvailability, remoteSources, toast, work]);
+  }, [onWorkReload, onWorksChanged, refreshAvailability, remoteSources, t, toast, work]);
 
   const trackSelectedRemoteSource = async () => {
     if (!selectedRemoteSource?.detail?.primaryCode) return;
@@ -1556,36 +1585,6 @@ export function PersistedWorkDetailController({
       return;
     }
     void forkTrackedSource(remote);
-  };
-
-  const selectEdition = async (translation: WorkDetail["translations"][number]) => {
-    if (!translation.workId || !work) return;
-    disableAutomaticPlaybackRouting();
-    const requestSeq = ++editionRequestSeq.current;
-    setEditionError("");
-    setEditionErrorCode("");
-    if (translation.workId === work.id) {
-      setEditionLoadingCode("");
-      setActiveEdition(null);
-      setActiveEditionCode(translation.primaryCode);
-      setActiveSourceKey("local");
-      return;
-    }
-    setEditionLoadingCode(translation.primaryCode);
-    try {
-      const detail = await api.getWork(translation.workId);
-      if (requestSeq !== editionRequestSeq.current) return;
-      setCachedWorkMedia(detail.id, principalID, detail.mediaItems);
-      setActiveEdition(detail);
-      setActiveEditionCode(detail.primaryCode);
-      setActiveSourceKey("local");
-    } catch (error) {
-      if (requestSeq !== editionRequestSeq.current) return;
-      setEditionError(directoryLoadErrorMessage(error));
-      setEditionErrorCode(translation.primaryCode);
-    } finally {
-      if (requestSeq === editionRequestSeq.current) setEditionLoadingCode("");
-    }
   };
 
   const selectDisplayedEdition = async (translation: WorkDetail["translations"][number]) => {

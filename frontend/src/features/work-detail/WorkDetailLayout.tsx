@@ -32,12 +32,12 @@ import {
   Tags,
   UserRound,
 } from "lucide-react";
-import { openVoiceRoute } from "@/pages/voiceNavigationState";
+import { openVoiceRoute } from "@/lib/voiceNavigationState";
 import { useAuth } from "@/auth/AuthProvider";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { openCircleRoute, openCircleSeriesRoute } from "@/pages/circleNavigationState";
+import { openCircleRoute, openCircleSeriesRoute } from "@/lib/circleNavigationState";
 import {
   groupWorkVersions,
   preferredWorkVersion,
@@ -54,12 +54,8 @@ import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { ageRatingPresentation } from "@/lib/ageRating";
 import { formatBytes, formatDuration } from "@/features/work-detail/media/mediaTreeModel";
 import { sourceTabStatusClass } from "@/features/work-detail/source/sourceContextModel";
-import {
-  defaultLibraryBrowseState,
-  libraryBrowseSearch,
-  libraryBrowseStateFromSearch,
-} from "@/pages/libraryBrowseState";
-import { formatSearchClause, parseSearchClauses } from "@/pages/librarySearchClauses";
+import { defaultLibraryBrowseState, libraryBrowseSearch, libraryBrowseStateFromSearch } from "@/lib/libraryBrowseState";
+import { formatSearchClause, parseSearchClauses } from "@/lib/librarySearchClauses";
 import { historyStateWithReturn, NAVIGATION_EVENT } from "@/lib/browserHistory";
 
 export type UnifiedWorkDetailPresentation = {
