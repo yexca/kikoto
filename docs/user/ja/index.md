@@ -25,3 +25,5 @@
 - [コア境界](../../architecture/core-boundaries.md)
 - [ソースの利用状況](../../architecture/source-presence.md)
 - [フロントエンドガイドライン](../../development/frontend-guidelines.md)
+
+- [個人データ](personal-data.md)

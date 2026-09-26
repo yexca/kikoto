@@ -11,6 +11,16 @@ import {
   PLAYER_QUEUE_STORAGE_BASE_KEY,
 } from "./playerPersistence";
 import { moveQueueItemToIndex } from "./queueOrder";
+import {
+  getStoredSleepRewindMinutes,
+  planSleepStop,
+  SLEEP_REWIND_CHANGE_EVENT,
+  sleepRewindStorageKey,
+  storeSleepRewindMinutes,
+  type SleepRewindChangeDetail,
+} from "./sleepRewind";
+import type { ListeningTarget } from "./listeningSession";
+import { useListeningSessionRecorder } from "./useListeningSessionRecorder";
 import { useNextTrackPreload } from "./useNextTrackPreload";
 import type {
   LyricsPreferenceTarget,
@@ -33,7 +43,7 @@ import { PLAYBACK_CURSOR_UPDATED_EVENT } from "@/app/events";
 import { useAuth } from "@/auth/AuthProvider";
 import { useToast } from "@/components/ui/toast";
 import { api, ApiError, assetURL } from "@/lib/api";
-import { currentScopedStorageKey } from "@/lib/clientStorageScope";
+import { currentClientStorageScope, currentScopedStorageKey } from "@/lib/clientStorageScope";
 import { addNativeMediaListeners, stopNativeMedia, supportsNativeMedia, updateNativeMedia } from "@/lib/nativeMedia";
 import { type LyricsChoice } from "@/player/lyricsMatching";
 import { playbackURL, remoteMediaPlaybackURL } from "@/player/mediaPlayback";
@@ -114,6 +124,9 @@ type PlayerContextValue = {
   setSleepTimerMinutes: (minutes: number, finishCurrentTrack: boolean) => void;
   setSleepFinishCurrentTrack: (enabled: boolean) => void;
   clearSleepTimer: () => void;
+  /** Minutes to rewind within the current track when the sleep timer stops playback. */
+  sleepRewindMinutes: number;
+  setSleepRewindMinutes: (minutes: number) => void;
   cycleMode: () => void;
   setMode: (mode: PlayMode) => void;
   lyricsPreferenceOverrides: Record<string, number | null>;
@@ -215,6 +228,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   );
   const playbackCompatibilityStorageKey = currentScopedStorageKey(PLAYBACK_COMPATIBILITY_STORAGE_BASE_KEY, principalID);
   const seekPreferencesStorageKey = playbackSeekPreferencesStorageKey(principalID);
+  const sleepRewindKey = sleepRewindStorageKey(principalID);
   const toast = useToast();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const restoredQueueRef = useRef<ReturnType<typeof loadPersistedQueue> | null>(null);
@@ -241,6 +255,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   );
   const [sleepTimer, setSleepTimer] = useState<SleepTimerState>(restoredQueue.sleepTimer);
   const [sleepRemainingSeconds, setSleepRemainingSeconds] = useState(0);
+  const [sleepRewindMinutes, setSleepRewindMinutesState] = useState(() => getStoredSleepRewindMinutes(principalID));
+  const sleepRewindMinutesRef = useRef(sleepRewindMinutes);
+  sleepRewindMinutesRef.current = sleepRewindMinutes;
+  const sleepStopRef = useRef<(ended: boolean) => void>(() => {});
   const [playbackCompatibilityScope, setPlaybackCompatibilityScopeState] = useState<PlaybackCompatibilityScope>(() =>
     loadPersistedPlaybackCompatibility(playbackCompatibilityStorageKey),
   );
@@ -345,6 +363,21 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   );
   const compatibilityPlaybackEnabledRef = useRef(compatibilityPlaybackEnabled);
   compatibilityPlaybackEnabledRef.current = compatibilityPlaybackEnabled;
+
+  // Listening history belongs to a signed-in principal with playback permission;
+  // an unresolved remote preview has no library work to credit.
+  const listeningScope =
+    auth.user && !auth.demoMode && auth.hasPermission("playback:use") ? currentClientStorageScope(auth.user.id) : null;
+  const listeningWorkID = currentTrack && currentTrack.workId > 0 ? currentTrack.workId : 0;
+  const listeningActivationKey = currentTrack?.queueItemId ?? null;
+  const listeningTarget = useMemo<ListeningTarget | null>(
+    () =>
+      listeningWorkID > 0 && listeningActivationKey
+        ? { activationKey: listeningActivationKey, workId: listeningWorkID }
+        : null,
+    [listeningActivationKey, listeningWorkID],
+  );
+  useListeningSessionRecorder(audioRef, listeningScope, listeningTarget);
 
   const setPlaybackCompatibility = useCallback(
     (scope: PlaybackCompatibilityScope, resume = false) => {
@@ -484,6 +517,25 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("storage", syncStorageEvent);
     };
   }, [principalID, seekPreferencesStorageKey]);
+
+  useEffect(() => {
+    setSleepRewindMinutesState(getStoredSleepRewindMinutes(principalID));
+    const syncCustomEvent = (event: Event) => {
+      const detail = (event as CustomEvent<SleepRewindChangeDetail>).detail;
+      if (!detail || detail.storageKey !== sleepRewindKey) return;
+      setSleepRewindMinutesState(detail.minutes);
+    };
+    const syncStorageEvent = (event: StorageEvent) => {
+      if (event.key !== sleepRewindKey) return;
+      setSleepRewindMinutesState(getStoredSleepRewindMinutes(principalID));
+    };
+    window.addEventListener(SLEEP_REWIND_CHANGE_EVENT, syncCustomEvent);
+    window.addEventListener("storage", syncStorageEvent);
+    return () => {
+      window.removeEventListener(SLEEP_REWIND_CHANGE_EVENT, syncCustomEvent);
+      window.removeEventListener("storage", syncStorageEvent);
+    };
+  }, [principalID, sleepRewindKey]);
 
   useEffect(() => {
     const restored = restoredQueue.queue;
@@ -816,22 +868,20 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     updatePlayingState(true);
   };
 
-  const seekTo = useCallback(
-    (seconds: number) => {
+  // Moves the element and tracks the seek until it is confirmed, so an older
+  // timeupdate cannot briefly show or save the pre-seek position.
+  const applyElementSeek = useCallback(
+    (nextTime: number) => {
       const audio = audioRef.current;
-      if (!audio || !Number.isFinite(seconds)) return;
-      const mediaDuration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : duration;
-      if (!Number.isFinite(mediaDuration) || mediaDuration <= 0) return;
-      const nextTime = Math.max(0, Math.min(seconds, mediaDuration));
+      if (!audio) return false;
       clearPendingSeek();
       pendingSeekTargetRef.current = nextTime;
       try {
         audio.currentTime = nextTime;
       } catch {
         pendingSeekTargetRef.current = null;
-        return;
+        return false;
       }
-      listenerIntentInstanceRef.current = currentPlaybackInstanceKeyRef.current;
       pendingSeekTimerRef.current = window.setTimeout(() => {
         if (pendingSeekTargetRef.current !== nextTime) return;
         clearPendingSeek();
@@ -844,8 +894,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       lastPlayerTimeCommitRef.current = performance.now();
       setCurrentTime(nextTime);
       nativeMediaSyncRef.current();
+      return true;
     },
-    [clearPendingSeek, duration],
+    [clearPendingSeek],
+  );
+
+  const seekTo = useCallback(
+    (seconds: number) => {
+      const audio = audioRef.current;
+      if (!audio || !Number.isFinite(seconds)) return;
+      const mediaDuration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : duration;
+      if (!Number.isFinite(mediaDuration) || mediaDuration <= 0) return;
+      const nextTime = Math.max(0, Math.min(seconds, mediaDuration));
+      if (!applyElementSeek(nextTime)) return;
+      listenerIntentInstanceRef.current = currentPlaybackInstanceKeyRef.current;
+    },
+    [applyElementSeek, duration],
   );
 
   const seekBy = useCallback(
@@ -957,10 +1021,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setSleepTimer((current) => (current ? { ...current, waitingForTrackEnd: true } : null));
         return;
       }
-      // This effect outlives track changes; only the latest save knows the current track.
-      progressSaveRef.current(false, true);
-      updatePlayingState(false);
-      setSleepTimer(null);
+      // This effect outlives track changes; only the latest render knows the current track.
+      sleepStopRef.current(false);
     };
     checkDeadline();
     const interval = window.setInterval(checkDeadline, 1000);
@@ -971,16 +1033,67 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     };
   }, [sleepTimer]);
 
+  // Stops for the sleep timer and rests the current track at the rewound
+  // position. `ended` is the finish-current-track timer at the end of a track,
+  // which stops before the queue can advance.
+  const stopForSleepTimer = (ended: boolean) => {
+    const audio = audioRef.current;
+    const instanceKey = currentPlaybackInstanceKeyRef.current;
+    const unappliedStart = unappliedStartRef.current;
+    const pendingStart = pendingPlaybackStartRef.current;
+    const pendingStartMatches =
+      pendingStart !== null && pendingStart.queueItemId === currentTrackRef.current?.queueItemId;
+    const startNotApplied =
+      instanceKey !== null && restoredMediaItemRef.current !== instanceKey
+        ? pendingStartMatches
+          ? pendingStart.positionSeconds
+          : unappliedStart?.instanceKey === instanceKey
+            ? unappliedStart.positionSeconds
+            : null
+        : null;
+    const plan = planSleepStop({
+      rewindMinutes: sleepRewindMinutesRef.current,
+      wasPlaying: ended || isPlayingRef.current,
+      unappliedStartSeconds: startNotApplied,
+      pendingSeekSeconds: pendingSeekTargetRef.current,
+      elementPositionSeconds: audio?.currentTime ?? 0,
+      ended,
+      durationSeconds: audio?.duration ?? 0,
+    });
+    // Silence the element before moving it, so the rewound position is never
+    // heard and a pending play request cannot resume it afterwards.
+    updatePlayingState(false);
+    invalidatePlaybackRequests();
+    audio?.pause();
+    if (plan.kind === "start" && instanceKey) {
+      // Nothing was heard from this position yet; move where the pending start
+      // will land without writing a cursor for an element that is still loading.
+      if (pendingStartMatches)
+        pendingPlaybackStartRef.current = { ...pendingStart, positionSeconds: plan.positionSeconds };
+      if (unappliedStart?.instanceKey === instanceKey) {
+        unappliedStartRef.current = { instanceKey, positionSeconds: plan.positionSeconds };
+      }
+    } else if (plan.kind === "seek" && applyElementSeek(plan.positionSeconds)) {
+      progressSaveRef.current(false, true);
+    } else if (ended) {
+      completedPlaybackInstanceRef.current = instanceKey;
+      progressSaveRef.current(true, true);
+    } else {
+      progressSaveRef.current(false, true);
+    }
+    setSleepTimer(null);
+  };
+  sleepStopRef.current = stopForSleepTimer;
+
   const handleEnded = () => {
     const audio = audioRef.current;
     setIsBuffering(false);
-    completedPlaybackInstanceRef.current = currentPlaybackInstanceKey;
-    saveProgress(true, true);
     if (sleepTimer?.waitingForTrackEnd) {
-      setSleepTimer(null);
-      updatePlayingState(false);
+      stopForSleepTimer(true);
       return;
     }
+    completedPlaybackInstanceRef.current = currentPlaybackInstanceKey;
+    saveProgress(true, true);
     if (mode === "single" && audio) {
       audio.currentTime = 0;
       sourceLoadingRef.current = false;
@@ -1520,6 +1633,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setSleepFinishCurrentTrack: (enabled) =>
         setSleepTimer((current) => (current ? { ...current, finishCurrentTrack: enabled } : null)),
       clearSleepTimer: () => setSleepTimer(null),
+      sleepRewindMinutes,
+      setSleepRewindMinutes: (minutes) => setSleepRewindMinutesState(storeSleepRewindMinutes(principalID, minutes)),
       cycleMode: () => setMode((value) => (value === "order" ? "loop" : value === "loop" ? "single" : "order")),
       setMode,
       lyricsPreferenceOverrides,
@@ -1534,6 +1649,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       duration,
       playbackRate,
       sleepTimer,
+      sleepRewindMinutes,
+      principalID,
       mode,
       playbackCompatibilityScope,
       compatibilityPlaybackEnabled,
@@ -1637,8 +1754,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             updatePlayingState(true);
           }}
           onPause={() => {
-            if (sourceLoadingRef.current || isPlayingRef.current) return;
+            if (sourceLoadingRef.current) return;
             const audio = audioRef.current;
+            // The player's own pauses follow a paused intent. A pause while
+            // playback is intended comes from outside, such as a headphone
+            // disconnect or system interruption, and becomes the listener's
+            // pause; the pause that precedes `ended`, and one already undone
+            // by a newer play request, are not.
+            if (isPlayingRef.current && (!audio || audio.ended || !audio.paused)) return;
             if (audio) {
               lastPlayerTimeCommitRef.current = performance.now();
               setCurrentTime(audio.currentTime);

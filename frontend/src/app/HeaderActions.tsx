@@ -28,7 +28,7 @@ import {
   Zap,
 } from "lucide-react";
 
-import { type PageID } from "@/app/navigation";
+import { navigationLabel, navItems, type PageID } from "@/app/navigation";
 import { AppearanceControls } from "@/app/AppearanceControls";
 import {
   applyThemeMode,
@@ -72,6 +72,10 @@ type HeaderActionsProps = {
   onOpenCommandPalette: () => void;
   onLocaleChange: (locale: UiLocale) => Promise<void>;
 };
+
+// Personal destinations stay out of the four bottom tabs; the mobile account
+// surface reaches them next to Settings.
+const personalNavItems = navItems.filter((item) => item.group === "personal");
 
 export function HeaderActions({
   user,
@@ -386,6 +390,17 @@ export function HeaderActions({
                       />
                     </>
                   )}
+                  {personalNavItems.map((item) => (
+                    <ActionItem
+                      key={item.id}
+                      icon={<item.icon className="h-4 w-4" />}
+                      label={navigationLabel(item, t)}
+                      onClick={() => {
+                        setMobileAccountOpen(false);
+                        onOpenPage(item.id);
+                      }}
+                    />
+                  ))}
                   <ActionItem
                     icon={<Settings className="h-4 w-4" />}
                     label={t("account.settings")}

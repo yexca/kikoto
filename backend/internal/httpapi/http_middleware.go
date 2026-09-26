@@ -138,11 +138,17 @@ func mustJSON(value any) string {
 func limitRequestBody(next http.Handler, maxBytes int64) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Body != nil {
-			if r.ContentLength > maxBytes {
+			limit := maxBytes
+			// Personal transfers have a separate, explicit 10 MiB file budget.
+			// All other mutation routes retain the standard request limit.
+			if r.Method == http.MethodPost && (r.URL.Path == "/api/user-data/import" || r.URL.Path == "/api/user-data/import/preview") {
+				limit = (10 << 20) + 1024
+			}
+			if r.ContentLength > limit {
 				writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
 				return
 			}
-			r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
 		}
 		next.ServeHTTP(w, r)
 	})

@@ -596,13 +596,15 @@ test("mobile work detail orders Info sections and keeps work-code utilities toge
     .toBe(detailWork.primaryCode);
 
   await page.getByRole("button", { name: "Info", exact: true }).click();
+  // The hidden desktop sidebar also has a Tags destination; only work detail content counts.
+  const detail = page.getByRole("main");
   const sections = [
-    page.getByText("Voice actors", { exact: true }),
-    page.getByText("Tags", { exact: true }),
-    page.getByText("My tags", { exact: true }),
-    page.getByText("Metadata language", { exact: true }),
-    page.getByTestId("dlsite-info"),
-    page.getByTestId("active-source-info"),
+    detail.getByText("Voice actors", { exact: true }),
+    detail.getByText("Tags", { exact: true }),
+    detail.getByText("My tags", { exact: true }),
+    detail.getByText("Metadata language", { exact: true }),
+    detail.getByTestId("dlsite-info"),
+    detail.getByTestId("active-source-info"),
   ];
   const positions = await Promise.all(
     sections.map(async (section) => {

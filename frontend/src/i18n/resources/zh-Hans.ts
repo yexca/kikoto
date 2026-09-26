@@ -1,5 +1,6 @@
 import { libraryEnglish, collectionEnglish, workCardEnglish } from "../resources";
 import { surfaceHans } from "../surfaces/zh-Hans";
+import { personalHans } from "../surfaces/personal/zh-Hans";
 
 export const libraryHans = {
   ...libraryEnglish,
@@ -537,12 +538,19 @@ export const zhHansResource = {
         settingsDescription: "管理账户、播放和推荐偏好",
         maintenanceDescription: "配置来源、缓存和用户",
         aboutDescription: "版本、许可和应用信息",
+        history: "历史",
+        historyDescription: "查看收听时长、统计和最近播放的作品",
+        tags: "标签",
+        tagsDescription: "重命名、合并和删除个人标签",
+        userData: "我的数据",
+        userDataDescription: "导出或导入标记、进度、列表和标签",
       },
       library: libraryHans,
       collection: collectionHans,
       workCard: workCardHans,
       ...surfaceHans,
       ...adminToolsHans,
+      ...personalHans,
       appearance: {
         title: "外观",
         subtitle: "界面语言、模式、样式和颜色",

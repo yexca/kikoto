@@ -25,3 +25,5 @@
 - [핵심 경계](../../architecture/core-boundaries.md)
 - [소스 존재 정보](../../architecture/source-presence.md)
 - [프론트엔드 지침](../../development/frontend-guidelines.md)
+
+- [개인 데이터](personal-data.md)

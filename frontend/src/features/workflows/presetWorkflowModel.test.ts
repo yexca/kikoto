@@ -22,7 +22,7 @@ const circleFollow: WorkflowPreset = {
   displayName: "Follow a circle",
   description: "",
   target: "circle",
-  defaultTagTemplate: "{date}_circle_{target}",
+  defaultTagTemplate: "circle_{target}",
   parameters: [
     { key: "circleId", kind: "circle_id", group: "input", required: true },
     {
@@ -61,7 +61,7 @@ describe("presetWorkflowModel", () => {
     expect(presetTagEnabled(values)).toBe(false);
     expect(presetOptionalEnabled(values, "maxWorks")).toBe(false);
     expect(presetReleaseRange(values).enabled).toBe(false);
-    expect(values.tagNameTemplate).toBe("{date}_circle_{target}");
+    expect(values.tagNameTemplate).toBe("circle_{target}");
     expect(presetRunsUnfiltered(circleFollow, { ...values, circleId: "RG12345" })).toBe(true);
   });
 
@@ -147,7 +147,7 @@ describe("presetWorkflowModel", () => {
     expect(presetInputsPayload(circleFollow, untagged).tagNameTemplate).toBe("");
     expect(presetBlockers(circleFollow, untagged, { ...options, canTag: false })).toEqual([]);
     const tagged = { ...untagged, [PRESET_TAG_ENABLED_KEY]: "true" };
-    expect(presetInputsPayload(circleFollow, tagged).tagNameTemplate).toBe("{date}_circle_{target}");
+    expect(presetInputsPayload(circleFollow, tagged).tagNameTemplate).toBe("circle_{target}");
     expect(presetBlockers(circleFollow, tagged, { ...options, canTag: false })).toEqual([{ kind: "tag_permission" }]);
     expect(presetBlockers(circleFollow, { ...tagged, tagNameTemplate: " " }, options)).toEqual([
       { kind: "required", key: "tagNameTemplate" },
@@ -161,7 +161,7 @@ describe("presetWorkflowModel", () => {
 
     const emptied = presetValuesFromInputs(circleFollow, { circleId: "RG12345", tagNameTemplate: "" });
     expect(presetTagEnabled(emptied)).toBe(false);
-    expect(emptied.tagNameTemplate).toBe("{date}_circle_{target}");
+    expect(emptied.tagNameTemplate).toBe("circle_{target}");
 
     // A detail page prefill carries only the target, so tagging keeps its default.
     expect(presetTagEnabled(presetValuesFromInputs(circleFollow, { circleId: "RG12345" }))).toBe(false);

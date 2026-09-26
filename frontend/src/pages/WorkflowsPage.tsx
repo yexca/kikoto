@@ -210,7 +210,8 @@ type WorkflowTagTemplatePreview = {
 
 const TAG_TEMPLATE_MAX_LENGTH = 160;
 const TAG_NAME_MAX_LENGTH = 40;
-const REMOTE_POPULAR_TAG_TEMPLATE = "{date}_{remote_name}_popular";
+// Defaults omit {date} so repeated runs reuse one tag; saved date templates keep working.
+const REMOTE_POPULAR_TAG_TEMPLATE = "{remote_name}_popular";
 
 type SystemWorkflowTriggerConfig = {
   followUpRun: boolean;
@@ -3983,6 +3984,9 @@ function TagTemplateField({
           </button>
         ))}
       </div>
+      {tokens.some((token) => token.name === "date") && (
+        <p className="text-xs text-muted-foreground">{workflowCopy("tagTemplateDateHint")}</p>
+      )}
 
       <div className="flex min-w-0 items-baseline gap-3 rounded-md bg-muted/50 px-3 py-2 text-xs" aria-live="polite">
         <span className="shrink-0 text-muted-foreground">{workflowCopy("preview")}</span>
@@ -4085,7 +4089,7 @@ function dlsitePopularTagTemplateTokens(
 }
 
 function dlsitePopularDefaultTagTemplate(period: DLsitePopularPeriod) {
-  return period === "year" ? "{date}_DL_year_{year}_popular" : "{date}_DL_{period}_{release_window}_popular";
+  return period === "year" ? "DL_year_{year}_popular" : "DL_{period}_{release_window}_popular";
 }
 
 function workflowTagFragmentPreview(value: string) {

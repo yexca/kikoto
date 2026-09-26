@@ -29,6 +29,15 @@ describe("navigation access and labels", () => {
     expect(visible.map((item) => item.id)).toEqual(["library", "circles", "voice-actors", "about"]);
   });
 
+  it("offers personal history, tags, and data pages only to signed-in viewers, outside the browse tabs", () => {
+    const personal = navItems.filter((item) => item.group === "personal").map((item) => item.id);
+    expect(personal).toEqual(["history", "tags", "user-data"]);
+    for (const id of personal) {
+      expect(canAccessPage(id, "anonymous", () => true)).toBe(false);
+      expect(canAccessPage(id, "authenticated", (permission) => permission === "library:read")).toBe(true);
+    }
+  });
+
   it("requires the declared permission for admin destinations", () => {
     const noWorkflows = visibleNavigationItems({
       state: "authenticated",

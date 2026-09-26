@@ -82,9 +82,13 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain includes
-`042_snapshot_projection_state.sql`, with the `042_v0.6.1.sql` baseline
+`043_personal_listening_history.sql`, with the `043_v0.6.1.sql` baseline
 generated from the `v0.6.1` `VERSION` file; regenerate it after the next
-release bump so the snapshot carries the release that ships schema 042.
+release bump so the snapshot carries the release that ships schema 043.
+Migration 043 adds account-owned listening sessions, UTC daily totals, imported
+per-work totals and an account generation for clearing history. It preserves remaining play
+events and playback cursor timestamps without inferring historical durations.
+Recommendation retention continues to clean only its own event data.
 Migration 042 adds `WHEN` conditions to the recommendation revision triggers on
 `work_tag`, `tag`, `work_credit`, `work_party`, and `user_work_state` updates,
 so an update that changes no scored value no longer advances a revision. It

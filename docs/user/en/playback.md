@@ -185,3 +185,9 @@ local or cached playback.
 - [Work detail](work-detail.md)
 - [Sources](sources.md)
 - [Reliability](../../operations/reliability.md)
+
+## Sleep and headphone privacy
+
+Sleep timers can rewind 0–120 minutes after pausing, clamped to the start of the current track. The same applies when finishing the track; Resume uses the rewound position. The preference is stored per server and account on the device. Android pauses when headphones disconnect, including in the background, and does not resume automatically on reconnection.
+
+See [Personal data](personal-data.md) for durable listening history and transfer.

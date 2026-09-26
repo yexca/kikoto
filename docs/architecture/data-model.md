@@ -181,6 +181,19 @@ Important tables:
 - `favorite_list_item`
 - `user_tag`
 - `user_work_tag`
+- `user_listening_session`
+- `user_listening_day`
+- `user_listening_import`
+- `user_listening_generation`
+
+Migration `043` separates durable listening history from recommendation events.
+Sessions belong to an account and canonical work, accept monotonic cumulative
+seconds, and survive recommendation retention cleanup. UTC daily buckets receive
+only newly reported seconds. Imported totals store positive differences above
+measured totals without fabricating daily activity. Clearing history increments an account generation checked on every report,
+including an unseen first report, to reject delayed retries; marks, lists and cursors stay intact.
+Export/import is a versioned work-code-based personal document, not a database
+or media backup.
 
 `user_session.id` is the hex SHA-256 digest of the bearer token issued to the
 client, never the token itself, so the database and its backups cannot be

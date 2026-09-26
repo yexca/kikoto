@@ -1,5 +1,24 @@
 Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
 
+## Personal listening and data
+
+- Android pauses when headphones disconnect, including in the background, and
+  does not automatically resume on reconnection.
+- Sleep timers can rewind 0–120 minutes within the current track after pausing,
+  including finish-current-track, and preserve the rewound cursor.
+- Personal tag management supports rename, merge, delete and unused-tag cleanup for work,
+  circle and voice tags. New workflow defaults reuse tags without a date;
+  existing saved templates keep their behavior.
+- Listening history persists independently of 90-day recommendation cleanup.
+  Only measured listening contributes duration; remaining legacy play events
+  are preserved without inferred time.
+- Data transfer previews and imports versioned personal JSON and Kikoeru review
+  state, matching existing work codes and offering keep/overwrite choices.
+  Export contains personal work state, playlists and custom tags.
+- Schema `043_personal_listening_history.sql` adds durable history. Development
+  baseline `043_v0.6.1.sql` comes from current `VERSION`; existing databases
+  upgrade through the numbered chain.
+
 > [!IMPORTANT]
 > **Upgrade notes.** Migration 038 adds a derived card-summary cache for
 > metadata snapshots and queues every existing snapshot. The server fills it in

@@ -296,7 +296,7 @@ func (s *Server) normalizeRemotePopularTriggerConfig(ctx context.Context, actor 
 		return config, fmt.Errorf("source has no API endpoint")
 	}
 	if strings.TrimSpace(config.TagNameTemplate) == "" && !config.SkipTag {
-		config.TagNameTemplate = "{date}_{remote_name}_popular"
+		config.TagNameTemplate = "{remote_name}_popular"
 	}
 	if !config.SkipTag {
 		_, err = renderWorkflowTagNameTemplate(config.TagNameTemplate, map[string]string{
@@ -324,9 +324,9 @@ func normalizeDLsitePopularTriggerConfig(actor currentUser, raw string, existing
 	config.Year = normalized.Year
 	if strings.TrimSpace(config.TagNameTemplate) == "" && !config.SkipTag {
 		if config.Period == "year" {
-			config.TagNameTemplate = "{date}_DL_year_{year}_popular"
+			config.TagNameTemplate = "DL_year_{year}_popular"
 		} else {
-			config.TagNameTemplate = "{date}_DL_{period}_{release_window}_popular"
+			config.TagNameTemplate = "DL_{period}_{release_window}_popular"
 		}
 	}
 	if !config.SkipTag {

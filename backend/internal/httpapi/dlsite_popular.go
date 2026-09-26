@@ -129,14 +129,14 @@ func normalizeDLsitePopularRequest(payload dlsitePopularRunRequest, now time.Tim
 	}
 	payload.TagName = strings.TrimSpace(payload.TagName)
 	if payload.TagName == "" {
-		payload.TagName = defaultDLsitePopularTag(payload, now)
+		payload.TagName = defaultDLsitePopularTag(payload)
 	}
 	payload.TagName = clampUserTagName(payload.TagName)
 	return payload, nil
 }
 
-func defaultDLsitePopularTag(payload dlsitePopularRunRequest, now time.Time) string {
-	prefix := now.Format("060102") + "-DL-"
+func defaultDLsitePopularTag(payload dlsitePopularRunRequest) string {
+	prefix := "DL-"
 	if payload.Period == "year" {
 		return fmt.Sprintf("%syear-%d-popular", prefix, payload.Year)
 	}

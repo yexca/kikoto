@@ -1,4 +1,5 @@
 import { USER_PREFERENCES_CHANGED } from "@/lib/recommendationSession";
+import { USER_TAGS_CHANGED_EVENT } from "@/lib/userTagEvents";
 import { App as CapacitorApp } from "@capacitor/app";
 import {
   Fragment,
@@ -54,7 +55,8 @@ import { ANDROID_BACK_EVENT, LOGIN_REQUEST_EVENT } from "@/app/events";
 import { isNativeApp } from "@/lib/serverConfig";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { isWorkCodePath } from "@/lib/workCode";
-import { workDetailCodeFromLocation } from "@/app/workDetailNavigation";
+import { openWorkDetail, workDetailCodeFromLocation, workDetailRoute } from "@/app/workDetailNavigation";
+import type { ListeningHistoryWorkLinkFactory } from "@/features/listening-history/ListeningHistoryPage";
 import { preloadWorkDetail } from "@/features/work-detail/lazyWorkDetail";
 import { LibraryOnboarding } from "@/features/library-setup/LibraryOnboarding";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -114,6 +116,17 @@ const WorkManagementPage = lazy(() =>
 );
 const WorkflowsPage = lazy(() => import("@/pages/WorkflowsPage").then((module) => ({ default: module.WorkflowsPage })));
 const AboutPage = lazy(() => import("@/pages/AboutPage").then((module) => ({ default: module.AboutPage })));
+const ListeningHistoryPage = lazy(() =>
+  import("@/features/listening-history/ListeningHistoryPage").then((module) => ({
+    default: module.ListeningHistoryPage,
+  })),
+);
+const UserTagManagementPage = lazy(() =>
+  import("@/features/user-tags/UserTagManagementPage").then((module) => ({ default: module.UserTagManagementPage })),
+);
+const UserDataPage = lazy(() =>
+  import("@/features/user-data/UserDataPage").then((module) => ({ default: module.UserDataPage })),
+);
 // Preloaded with the browse workspaces so the first Quick actions tap opens at once.
 const commandPalette = preloadableComponent(() =>
   import("@/app/CommandPalette").then((module) => module.CommandPalette),
@@ -160,8 +173,14 @@ function AuthenticatedApp() {
     const refresh = (event: Event) => {
       if ((event as CustomEvent<string>).detail === clientStorageScope) setPreferenceRevision((value) => value + 1);
     };
+    // Renamed, merged, or deleted tags change every retained browse view that shows them.
+    const refreshTags = () => setPreferenceRevision((value) => value + 1);
     window.addEventListener(USER_PREFERENCES_CHANGED, refresh);
-    return () => window.removeEventListener(USER_PREFERENCES_CHANGED, refresh);
+    window.addEventListener(USER_TAGS_CHANGED_EVENT, refreshTags);
+    return () => {
+      window.removeEventListener(USER_PREFERENCES_CHANGED, refresh);
+      window.removeEventListener(USER_TAGS_CHANGED_EVENT, refreshTags);
+    };
   }, [clientStorageScope]);
 
   const openCommandPalette = useCallback(() => {
@@ -217,6 +236,16 @@ function AuthenticatedApp() {
   const navigationHasPermission = useCallback(
     (permission: string) => auth.demoMode || auth.hasPermission(permission),
     [auth.demoMode, auth.hasPermission],
+  );
+  const listeningHistoryWorkLink = useCallback<ListeningHistoryWorkLinkFactory>(
+    (primaryCode) => {
+      const intent = { kind: "known" as const, canonicalCode: primaryCode };
+      return {
+        href: workDetailRoute(intent) ?? undefined,
+        open: () => openWorkDetail(intent, { returnTo: "/history", returnLabel: t("nav.history") }),
+      };
+    },
+    [t],
   );
   const visibleNavItems = useMemo(
     () => visibleNavigationItems({ state: authState, hasPermission: navigationHasPermission }),
@@ -571,6 +600,27 @@ function AuthenticatedApp() {
                   />
                 )}
                 {canAccessCurrentPage && page === "about" && <AboutPage />}
+                {canAccessCurrentPage && page === "history" && auth.user && (
+                  <ListeningHistoryPage
+                    canClear={effectiveHasPermission("playback:use")}
+                    demoMode={auth.demoMode}
+                    storageScope={clientStorageScope}
+                    workLink={listeningHistoryWorkLink}
+                  />
+                )}
+                {canAccessCurrentPage && page === "tags" && auth.user && (
+                  <UserTagManagementPage canEdit={effectiveHasPermission("tags:write")} demoMode={auth.demoMode} />
+                )}
+                {canAccessCurrentPage && page === "user-data" && auth.user && (
+                  <UserDataPage
+                    canImportData={
+                      effectiveHasPermission("favorites:write") &&
+                      effectiveHasPermission("tags:write") &&
+                      effectiveHasPermission("playback:use")
+                    }
+                    demoMode={auth.demoMode}
+                  />
+                )}
                 {![
                   "library",
                   "favorites",
@@ -580,6 +630,9 @@ function AuthenticatedApp() {
                   "metadata",
                   "workflows",
                   "about",
+                  "history",
+                  "tags",
+                  "user-data",
                 ].includes(page) && (
                   <PlaceholderPage title={activeItem ? navigationLabel(activeItem, t) : t("app.pageReserved")} />
                 )}

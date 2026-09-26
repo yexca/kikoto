@@ -184,7 +184,7 @@ var presetWorkflowSpecs = []presetWorkflowSpec{
 		DisplayName:        "Follow a circle",
 		Description:        "Refresh a circle catalog, then sync metadata for the catalog works that lack it, tag them, and optionally check remote sources.",
 		Target:             "circle",
-		DefaultTagTemplate: "{date}_circle_{target}",
+		DefaultTagTemplate: "circle_{target}",
 		Parameters: presetParameters(
 			[]presetWorkflowParameter{{Key: "circleId", Kind: "circle_id", Group: "input", Required: true}, presetCatalogRefreshParameter()},
 			presetFilterParameters(),
@@ -203,7 +203,7 @@ var presetWorkflowSpecs = []presetWorkflowSpec{
 		DisplayName:        "Follow a series",
 		Description:        "Read the stored works of a provider series, then sync metadata for the works that lack it and tag them.",
 		Target:             "series",
-		DefaultTagTemplate: "{date}_series_{target}",
+		DefaultTagTemplate: "series_{target}",
 		Parameters: presetParameters(
 			[]presetWorkflowParameter{{Key: "seriesId", Kind: "series_id", Group: "input", Required: true}},
 			presetFilterParameters(),
@@ -221,7 +221,7 @@ var presetWorkflowSpecs = []presetWorkflowSpec{
 		DisplayName:        "Follow a voice actor",
 		Description:        "Refresh a voice actor catalog on the selected remote sources, then sync metadata for the catalog works that lack it and tag them.",
 		Target:             "voice",
-		DefaultTagTemplate: "{date}_voice_{target}",
+		DefaultTagTemplate: "voice_{target}",
 		Parameters: presetParameters(
 			[]presetWorkflowParameter{
 				{Key: "personId", Kind: "voice_person", Group: "input", Required: true},

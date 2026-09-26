@@ -1,6 +1,7 @@
 // Traditional Chinese starts from the Simplified Chinese copy and overrides what differs.
 import { collectionHans, libraryHans, workCardHans } from "./zh-Hans";
 import { surfaceHant } from "../surfaces/zh-Hant";
+import { personalHant } from "../surfaces/personal/zh-Hant";
 
 const libraryHant = {
   ...libraryHans,
@@ -542,12 +543,19 @@ export const zhHantResource = {
         settingsDescription: "管理帳戶、播放和推薦偏好",
         maintenanceDescription: "設定來源、快取和使用者",
         aboutDescription: "版本、授權和應用程式資訊",
+        history: "歷史",
+        historyDescription: "查看收聽時長、統計和最近播放的作品",
+        tags: "標籤",
+        tagsDescription: "重新命名、合併和刪除個人標籤",
+        userData: "我的資料",
+        userDataDescription: "匯出或匯入標記、進度、清單和標籤",
       },
       library: libraryHant,
       collection: collectionHant,
       workCard: workCardHant,
       ...surfaceHant,
       ...adminToolsHant,
+      ...personalHant,
       appearance: {
         title: "外觀",
         subtitle: "介面語言、模式、樣式和色彩",

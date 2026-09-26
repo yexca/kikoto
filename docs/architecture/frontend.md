@@ -110,6 +110,9 @@ modules.
 - Library.
 - Work detail.
 - Favorites.
+- Personal tags: account-owned work, circle, and voice tag management.
+- Listening history: durable totals, recent works, and daily activity.
+- Data transfer: personal JSON export and previewed Kikoto/Kikoeru import.
 - Circles.
 - Voice actors.
 - Settings.
@@ -118,6 +121,14 @@ modules.
 - Activity run details inside the Workflows panel, also reachable through notifications.
 - Users.
 - Global player dock.
+
+The three personal pages share a sidebar group and are reachable from mobile
+account actions and Quick actions. They load independently of the global player.
+The player records cumulative listening time under an account/server scope;
+history clearing invalidates older reports using a server generation. Sleep
+rewind preferences share that scope and update the resume cursor only when the
+timer stops playback. Android output-disconnect events pause the media element
+and player intent, including pending play requests.
 
 ## Interaction Principles
 

@@ -1,5 +1,6 @@
 import { surfaceEnglish } from "./surfaces/en";
 import { adminToolsEnglish } from "./surfaces/adminTools";
+import { personalEnglish } from "./surfaces/personal/en";
 
 export const libraryEnglish = {
   workNotFound: "Work not found",
@@ -285,12 +286,19 @@ export const englishResource = {
         settingsDescription: "Manage your account, playback, and recommendation preferences",
         maintenanceDescription: "Configure sources, caching, and users",
         aboutDescription: "Version, licensing, and application information",
+        history: "History",
+        historyDescription: "Review your listening time, statistics, and recently played works",
+        tags: "Tags",
+        tagsDescription: "Rename, merge, and delete your personal tags",
+        userData: "Your data",
+        userDataDescription: "Export or import your marks, progress, lists, and tags",
       },
       library: libraryEnglish,
       collection: collectionEnglish,
       workCard: workCardEnglish,
       ...surfaceEnglish,
       ...adminToolsEnglish,
+      ...personalEnglish,
       appearance: {
         title: "Appearance",
         subtitle: "UI language, mode, style, and color",

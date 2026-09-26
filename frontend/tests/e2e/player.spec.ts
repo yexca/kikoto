@@ -679,6 +679,12 @@ test("failed direct playback offers compatibility before source fallback and the
     .getByRole("button", { name: "30 min" })
     .locator("xpath=ancestor::div[contains(@class, 'fixed')]");
   expect((await sleepPopover.boundingBox())!.width).toBeLessThanOrEqual(230);
+  const rewindMinutes = page.getByRole("spinbutton", { name: "Minutes to rewind when the sleep timer stops playback" });
+  await expect(rewindMinutes).toHaveValue("0");
+  await expect(rewindMinutes).toHaveAccessibleDescription("Off");
+  await rewindMinutes.fill("10");
+  await expect(rewindMinutes).toHaveAccessibleDescription("Rewinds 10 min in the current track");
+  await expect.poll(async () => (await readScopedPlayerState(page, "kikoto:player-sleep-rewind:v1"))?.minutes).toBe(10);
   await page.getByRole("button", { name: "Custom" }).click();
   const customMinutes = page.getByRole("spinbutton", { name: "Custom sleep minutes" });
   await expect(customMinutes).toBeVisible();

@@ -7,6 +7,7 @@
     { "id": "library", "source": "en/library.md" },
     { "id": "sources", "source": "en/sources.md" },
     { "id": "playback", "source": "en/playback.md" },
+    { "id": "personal-data", "source": "en/personal-data.md" },
     { "id": "settings", "source": "en/settings.md" },
     { "id": "work-detail", "source": "en/work-detail.md" },
     { "id": "workflows", "source": "en/workflows.md" },

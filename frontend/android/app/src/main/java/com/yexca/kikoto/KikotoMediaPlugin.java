@@ -25,6 +25,7 @@ import org.json.JSONObject;
 @CapacitorPlugin(name = "KikotoMedia")
 public class KikotoMediaPlugin extends Plugin {
     private BroadcastReceiver controlReceiver;
+    private BroadcastReceiver noisyAudioReceiver;
     private AudioManager audioManager;
     private AudioFocusRequest audioFocusRequest;
     private boolean hasAudioFocus = false;
@@ -46,10 +47,36 @@ public class KikotoMediaPlugin extends Plugin {
         };
         IntentFilter filter = new IntentFilter(KikotoMediaService.BROADCAST_CONTROL);
         ContextCompat.registerReceiver(getContext(), controlReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
+        // Android sends this before a wired/Bluetooth output is replaced by the
+        // speaker. Keep listening while the activity is in the background.
+        noisyAudioReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (!AudioManager.ACTION_AUDIO_BECOMING_NOISY.equals(intent.getAction())) return;
+                getActivity().runOnUiThread(() -> {
+                    // Stop the actual WebView media immediately, including when
+                    // the asynchronous Capacitor listener has not run yet.
+                    getBridge().getWebView().evaluateJavascript(
+                        "document.querySelectorAll('audio,video').forEach(function(media){media.pause();});",
+                        null
+                    );
+                    JSObject payload = new JSObject();
+                    payload.put("command", "pause");
+                    notifyListeners("mediaControl", payload, true);
+                    abandonAudioFocusInternal();
+                });
+            }
+        };
+        ContextCompat.registerReceiver(getContext(), noisyAudioReceiver,
+            new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), ContextCompat.RECEIVER_NOT_EXPORTED);
     }
 
     @Override
     protected void handleOnDestroy() {
+        if (noisyAudioReceiver != null) {
+            getContext().unregisterReceiver(noisyAudioReceiver);
+            noisyAudioReceiver = null;
+        }
         if (controlReceiver != null) {
             try {
                 getContext().unregisterReceiver(controlReceiver);

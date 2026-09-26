@@ -1,4 +1,16 @@
-import { Database, Heart, Info, Library, MicVocal, Settings, Users, Workflow } from "lucide-react";
+import {
+  ArchiveRestore,
+  Database,
+  Heart,
+  History,
+  Info,
+  Library,
+  MicVocal,
+  Settings,
+  Tags,
+  Users,
+  Workflow,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 type NavItem = {
@@ -11,8 +23,8 @@ type NavItem = {
   icon: LucideIcon;
   audience: "public" | "authenticated" | "admin";
   permission?: string;
-  /** Visual grouping in the sidebar: listening, administration, and app-level pages. */
-  group: "browse" | "manage" | "app";
+  /** Visual grouping in the sidebar: listening, personal data, administration, and app-level pages. */
+  group: "browse" | "personal" | "manage" | "app";
 };
 
 export const navItems = [
@@ -63,6 +75,42 @@ export const navItems = [
     audience: "public",
     permission: undefined,
     group: "browse",
+  },
+  {
+    id: "history",
+    label: "History",
+    labelKey: "nav.history",
+    description: "Review your listening time, statistics, and recently played works",
+    descriptionKey: "nav.historyDescription",
+    path: "/history",
+    icon: History,
+    audience: "authenticated",
+    permission: "library:read",
+    group: "personal",
+  },
+  {
+    id: "tags",
+    label: "Tags",
+    labelKey: "nav.tags",
+    description: "Rename, merge, and delete your personal tags",
+    descriptionKey: "nav.tagsDescription",
+    path: "/tags",
+    icon: Tags,
+    audience: "authenticated",
+    permission: "library:read",
+    group: "personal",
+  },
+  {
+    id: "user-data",
+    label: "Your data",
+    labelKey: "nav.userData",
+    description: "Export or import your marks, progress, lists, and tags",
+    descriptionKey: "nav.userDataDescription",
+    path: "/user-data",
+    icon: ArchiveRestore,
+    audience: "authenticated",
+    permission: "library:read",
+    group: "personal",
   },
   {
     id: "workflows",

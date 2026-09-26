@@ -61,7 +61,12 @@ describe("translation resources", () => {
     // The English fallback ships in the initial bundle, so a module it imports
     // must not also define deferred locales. Only the picker's native labels remain.
     const nativeLabels = /简体中文|正體中文|日本語|한국어/gu;
-    for (const module of ["./resources.ts", "./surfaces/en.ts", "./surfaces/adminTools.ts"]) {
+    for (const module of [
+      "./resources.ts",
+      "./surfaces/en.ts",
+      "./surfaces/adminTools.ts",
+      "./surfaces/personal/en.ts",
+    ]) {
       const source = readFileSync(new URL(module, import.meta.url), "utf8").replace(nativeLabels, "");
       expect(
         source.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu),

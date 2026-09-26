@@ -30,3 +30,5 @@ the English page first, then mark translations for review.
 - [Core boundaries](../../architecture/core-boundaries.md)
 - [Source presence](../../architecture/source-presence.md)
 - [Frontend guidelines](../../development/frontend-guidelines.md)
+
+- [Personal data](personal-data.md)

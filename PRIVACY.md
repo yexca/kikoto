@@ -29,6 +29,15 @@ The `/config/kikoto.db` SQLite database may contain:
 - Local media metadata and paths below configured roots.
 - Workflow definitions, inputs, events, errors, and review history.
 - Local recommendation events and settings.
+- Account-owned listening sessions, lifetime totals, and daily listening time.
+
+Personal listening history is retained until cleared or its account/work is
+deleted; recommendation-event retention does not remove it. Clearing history
+keeps only an account counter to reject delayed retries. Data transfer exports work
+codes, personal marks/notes/ratings, portable resume targets, listening totals,
+playlists and custom tags. It excludes media, source settings, credentials,
+local paths, provider metadata and raw sessions. Treat an exported personal
+document as private collection data.
 
 The `/cache` mount may contain derived covers, media cache entries, playback
 derivatives, and other rebuildable assets. The `/data` mount contains operator

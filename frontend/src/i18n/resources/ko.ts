@@ -1,5 +1,6 @@
 import { libraryEnglish, collectionEnglish, workCardEnglish } from "../resources";
 import { surfaceKorean } from "../surfaces/ko";
+import { personalKorean } from "../surfaces/personal/ko";
 
 const libraryKorean = {
   ...libraryEnglish,
@@ -553,12 +554,19 @@ export const koreanResource = {
         settingsDescription: "계정, 재생 및 추천 환경설정을 관리합니다",
         maintenanceDescription: "소스, 캐시와 사용자를 설정합니다",
         aboutDescription: "버전, 라이선스 및 앱 정보",
+        history: "기록",
+        historyDescription: "청취 시간, 통계, 최근 재생한 작품을 확인합니다",
+        tags: "태그",
+        tagsDescription: "개인 태그 이름 변경, 병합, 삭제",
+        userData: "내 데이터",
+        userDataDescription: "표시, 진행 상황, 목록, 태그를 내보내거나 가져옵니다",
       },
       library: libraryKorean,
       collection: collectionKorean,
       workCard: workCardKorean,
       ...surfaceKorean,
       ...adminToolsKorean,
+      ...personalKorean,
       appearance: {
         title: "외관",
         subtitle: "UI 언어, 모드, 스타일 및 색상",

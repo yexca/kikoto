@@ -1,5 +1,6 @@
 import { libraryEnglish, collectionEnglish, workCardEnglish } from "../resources";
 import { surfaceJapanese } from "../surfaces/ja";
+import { personalJapanese } from "../surfaces/personal/ja";
 
 const libraryJapanese = {
   ...libraryEnglish,
@@ -560,12 +561,19 @@ export const japaneseResource = {
         settingsDescription: "アカウント、再生、推薦の設定を管理",
         maintenanceDescription: "ソース、キャッシュ、ユーザーを設定",
         aboutDescription: "バージョン、ライセンス、アプリ情報",
+        history: "履歴",
+        historyDescription: "聴取時間、統計、最近再生した作品を確認します",
+        tags: "タグ",
+        tagsDescription: "個人タグの名前変更、統合、削除",
+        userData: "データ",
+        userDataDescription: "マーク、進捗、リスト、タグのエクスポートとインポート",
       },
       library: libraryJapanese,
       collection: collectionJapanese,
       workCard: workCardJapanese,
       ...surfaceJapanese,
       ...adminToolsJapanese,
+      ...personalJapanese,
       appearance: {
         title: "外観",
         subtitle: "UI 言語、モード、スタイル、カラー",

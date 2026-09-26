@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(android.os.Bundle savedInstanceState) {
         registerPlugin(KikotoMediaPlugin.class);
         registerPlugin(KikotoAssetTransportPlugin.class);
+        registerPlugin(KikotoPersonalDataPlugin.class);
         SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
         bridge.setWebViewClient(new KikotoWebViewClient(bridge));

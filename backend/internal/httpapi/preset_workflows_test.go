@@ -435,7 +435,7 @@ func TestPresetWorkflowScheduleStoresOwnerAndDispatchesWithCurrentPermissions(t 
 	if err := json.Unmarshal([]byte(trigger.ConfigJSON), &storedConfig); err != nil {
 		t.Fatal(err)
 	}
-	if storedConfig.UserID != ownerID || storedConfig.Inputs["personId"] != float64(7) || storedConfig.Inputs["tagNameTemplate"] != "{date}_voice_{target}" {
+	if storedConfig.UserID != ownerID || storedConfig.Inputs["personId"] != float64(7) || storedConfig.Inputs["tagNameTemplate"] != "voice_{target}" {
 		t.Fatalf("stored preset config = %+v", storedConfig)
 	}
 	definition, err := server.loadWorkflowDefinition(context.Background(), definitionID)

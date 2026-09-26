@@ -21,6 +21,11 @@ export function currentClientStorageScope(principalID: ClientPrincipalID) {
   return clientStorageScope(currentClientServerIdentity(), principalID);
 }
 
+/** True while `scope` still names the configured server, whatever its principal. */
+export function isClientStorageScopeOnCurrentServer(scope: string) {
+  return scope.startsWith(`${encodeURIComponent(currentClientServerIdentity())}:`);
+}
+
 export function currentScopedStorageKey(baseKey: string, principalID: ClientPrincipalID) {
   return `${baseKey}:${currentClientStorageScope(principalID)}`;
 }

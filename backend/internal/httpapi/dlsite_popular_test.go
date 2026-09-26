@@ -41,7 +41,7 @@ func TestNormalizeDLsitePopularRequestUsesAnnualRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.ReleaseWindow != "" || result.TagName != "260714-DL-year-2025-popular" {
+	if result.ReleaseWindow != "" || result.TagName != "DL-year-2025-popular" {
 		t.Fatalf("result = %+v", result)
 	}
 	templated, err := normalizeDLsitePopularRequest(dlsitePopularRunRequest{

@@ -1,6 +1,6 @@
 import { Check, Gauge, RefreshCw, X } from "lucide-react";
 import type { TFunction } from "i18next";
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useId, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/tailwindClassNames";
 import { isPlaybackCompatibilityScope } from "@/player/playerPersistence";
 import { usePlayerTime, type usePlayer } from "@/player/PlayerProvider";
 import type { PlayerTrack, PlayerTrackLocation } from "@/player/playerTypes";
+import { parseSleepRewindDraft, SLEEP_REWIND_MINUTES_MAX, SLEEP_REWIND_MINUTES_MIN } from "@/player/sleepRewind";
 
 import { formatSleepRemaining, validSleepMinutes } from "./playerFormat";
 
@@ -42,8 +43,11 @@ export function SleepTimerMenu({
   onCustomOpenChange: (open: boolean) => void;
 }) {
   const { t } = useTranslation();
+  const rewindInputId = useId();
   const [finishCurrentTrack, setFinishCurrentTrack] = useState(false);
   const [customMinutes, setCustomMinutes] = useState("90");
+  const [rewindDraft, setRewindDraft] = useState(String(player.sleepRewindMinutes));
+  const rewindDraftValid = parseSleepRewindDraft(rewindDraft) !== null;
 
   useEffect(() => {
     if (!open) return;
@@ -51,6 +55,7 @@ export function SleepTimerMenu({
     if (player.sleepTimer && !player.sleepTimer.waitingForTrackEnd) {
       setCustomMinutes(String(Math.max(1, Math.ceil((player.sleepTimer.deadline - Date.now()) / 60_000))));
     }
+    setRewindDraft(String(player.sleepRewindMinutes));
     onCustomOpenChange(false);
   }, [open]);
 
@@ -88,6 +93,46 @@ export function SleepTimerMenu({
           aria-label={t("player.finishTrack")}
         />
       </label>
+      <div className="flex min-h-10 w-full items-center justify-between gap-3 rounded-xl px-2.5 py-1.5 text-sm">
+        <label htmlFor={rewindInputId} className="min-w-0">
+          <span className="block font-medium">{t("player.sleepRewind")}</span>
+          <span id={`${rewindInputId}-state`} className="block text-xs text-muted-foreground">
+            {player.sleepRewindMinutes > 0
+              ? t("player.sleepRewindActive", { count: player.sleepRewindMinutes })
+              : t("player.sleepRewindOff")}
+          </span>
+        </label>
+        <span
+          className={cn(
+            "flex h-9 w-[4.75rem] shrink-0 overflow-hidden rounded-xl border bg-background focus-within:ring-2 focus-within:ring-ring",
+            !rewindDraftValid && "border-error-border",
+          )}
+        >
+          <input
+            id={rewindInputId}
+            className="min-w-0 flex-1 bg-transparent px-2 text-right text-sm tabular-nums text-foreground outline-none"
+            type="number"
+            min={SLEEP_REWIND_MINUTES_MIN}
+            max={SLEEP_REWIND_MINUTES_MAX}
+            step={1}
+            inputMode="numeric"
+            value={rewindDraft}
+            aria-label={t("player.sleepRewindMinutes")}
+            aria-describedby={`${rewindInputId}-state`}
+            aria-invalid={!rewindDraftValid}
+            onChange={(event) => {
+              const draft = event.currentTarget.value;
+              setRewindDraft(draft);
+              const minutes = parseSleepRewindDraft(draft);
+              if (minutes !== null && minutes !== player.sleepRewindMinutes) player.setSleepRewindMinutes(minutes);
+            }}
+            onBlur={() => setRewindDraft(String(player.sleepRewindMinutes))}
+          />
+          <span className="flex items-center border-l bg-muted/60 px-2 text-xs text-muted-foreground">
+            {t("player.minutesUnit")}
+          </span>
+        </span>
+      </div>
       <div className="mx-2.5 my-1 h-px bg-border/70" />
       {[30, 60].map((minutes) => (
         <button key={minutes} type="button" className={menuRow} onClick={() => start(minutes)}>

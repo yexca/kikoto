@@ -20,6 +20,8 @@ The backend is a Go HTTP API with SQLite persistence.
 - `backend/internal/storage`: database opening and migrations.
 - `backend/internal/sqlutil`: shared `database/sql` helpers with no application imports.
 - `backend/internal/workflow`: workflow persistence helpers.
+- `backend/internal/personal`: account-owned tag changes, durable listening
+  history, and transactional personal data transfer.
 
 ## Runtime Responsibilities
 

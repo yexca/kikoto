@@ -16,6 +16,7 @@ import {
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { api, type UserTagScope, type UserTagSuggestion } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
+import { USER_TAGS_CHANGED_EVENT, type UserTagsChangedDetail } from "@/lib/userTagEvents";
 
 export type UserTag = {
   id: number;
@@ -33,8 +34,14 @@ type UserTagRowProps = {
 };
 
 // Last loaded vocabulary per scope, so a reopened editor lists suggestions
-// immediately while it refreshes.
+// immediately while it refreshes. Tag management invalidates a changed scope.
 const suggestionCache = new Map<UserTagScope, UserTagSuggestion[]>();
+if (typeof window !== "undefined") {
+  window.addEventListener(USER_TAGS_CHANGED_EVENT, (event) => {
+    const scope = (event as CustomEvent<UserTagsChangedDetail>).detail?.scope;
+    if (scope) suggestionCache.delete(scope);
+  });
+}
 
 export function UserTagRow({ tags, scope, onSave, className = "", compact = false }: UserTagRowProps) {
   const { t } = useTranslation();

@@ -2049,6 +2049,35 @@ async function deleteJSON<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+// A write that may outlive the page (a pagehide flush) opts into keepalive.
+async function sendJSONBody<T>(
+  method: "POST" | "PATCH" | "PUT",
+  path: string,
+  body: unknown,
+  init: Pick<RequestInit, "signal" | "keepalive"> = {},
+): Promise<T> {
+  const response = await fetchAPI(path, {
+    ...init,
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw await responseError(response, `${method} ${path} failed with ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
+/**
+ * The authenticated JSON transport for focused feature API modules. It carries
+ * the same browser cookie or native bearer credentials and error mapping as `api`.
+ */
+export const apiTransport = {
+  getJSON,
+  sendJSONBody,
+  deleteJSON,
+};
+
 function requestInit(init: RequestInit = {}, authenticate = true): RequestInit {
   const headers = new Headers(init.headers);
   if (isNativeApp()) {

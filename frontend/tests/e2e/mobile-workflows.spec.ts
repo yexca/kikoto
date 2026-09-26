@@ -772,9 +772,9 @@ test("definitions foreground runnable presets and show DLsite popular run option
   );
   const dlsiteTagField = runOptions.getByTestId("dlsite-popular-tag-template-field");
   await expect(dlsiteTagField.getByLabel("Tag template", { exact: true })).toHaveValue(
-    "{date}_DL_{period}_{release_window}_popular",
+    "DL_{period}_{release_window}_popular",
   );
-  await expect(dlsiteTagField).toContainText(/Preview.*_DL_24h_r30d_popular/);
+  await expect(dlsiteTagField).toContainText(/Preview.*DL_24h_r30d_popular/);
   await expect(dlsiteTagField.getByText("{release_window}", { exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "Workflow run" })).toBeVisible();
   await expect(page.getByText("Recent runs", { exact: true })).toBeVisible();
@@ -793,10 +793,10 @@ test("definitions foreground runnable presets and show DLsite popular run option
   await expect(scheduleDialog.getByLabel("Ranking period")).toHaveValue("day");
   await expect(scheduleDialog.getByLabel("Release window")).toHaveValue("30d");
   await expect(scheduleDialog.getByLabel("Tag template", { exact: true })).toHaveValue(
-    "{date}_DL_{period}_{release_window}_popular",
+    "DL_{period}_{release_window}_popular",
   );
   await expect(scheduleDialog.getByTestId("dlsite-trigger-tag-template-field")).toContainText(
-    /Preview.*_DL_24h_r30d_popular/,
+    /Preview.*DL_24h_r30d_popular/,
   );
   await page.mouse.click(2, 2);
   await expect(scheduleDialog).toBeVisible();
@@ -805,15 +805,15 @@ test("definitions foreground runnable presets and show DLsite popular run option
   await runOptions.getByRole("button", { name: "Annual", exact: true }).click();
   await expect(runOptions.getByRole("switch", { name: "Only works released within 30 days" })).toHaveCount(0);
   await runOptions.getByLabel("Ranking year").selectOption("2025");
-  await expect(dlsiteTagField.getByLabel("Tag template", { exact: true })).toHaveValue("{date}_DL_year_{year}_popular");
-  await expect(dlsiteTagField).toContainText(/Preview.*_DL_year_2025_popular/);
+  await expect(dlsiteTagField.getByLabel("Tag template", { exact: true })).toHaveValue("DL_year_{year}_popular");
+  await expect(dlsiteTagField).toContainText(/Preview.*DL_year_2025_popular/);
   const dlsiteRequest = page.waitForRequest((request) => request.url().endsWith("/api/workflow-runs/dlsite-popular"));
   await page.getByRole("button", { name: "Run", exact: true }).click();
   expect((await dlsiteRequest).postDataJSON()).toEqual({
     period: "year",
     releaseWindow: "",
     year: 2025,
-    tagNameTemplate: "{date}_DL_year_{year}_popular",
+    tagNameTemplate: "DL_year_{year}_popular",
     skipTag: false,
   });
   const queuedActivity = page.getByRole("dialog", { name: "Activity", exact: true });
@@ -850,7 +850,7 @@ test("popular trigger popovers save the run options shown above", async ({ page 
     period: "week",
     releaseWindow: "30d",
     year: 0,
-    tagNameTemplate: "{date}_DL_{period}_{release_window}_popular",
+    tagNameTemplate: "DL_{period}_{release_window}_popular",
     skipTag: false,
   });
 
@@ -937,7 +937,7 @@ test("a follow shortcut fills the circle id and says it did", async ({ page }) =
             displayName: "Follow a circle",
             description: "",
             target: "circle",
-            defaultTagTemplate: "{date}_circle_{target}",
+            defaultTagTemplate: "circle_{target}",
             parameters: [
               { key: "circleId", kind: "circle_id", group: "input", required: true },
               { key: "metadata", kind: "boolean", group: "action", required: false, default: true },

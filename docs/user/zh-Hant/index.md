@@ -25,3 +25,5 @@
 - [核心边界](../../architecture/core-boundaries.md)
 - [來源存在状态](../../architecture/source-presence.md)
 - [前端指南](../../development/frontend-guidelines.md)
+
+- [個人資料](personal-data.md)
