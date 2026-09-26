@@ -1379,6 +1379,82 @@ test("@desktop blocked Fetch origins stay in Review with source recovery actions
   await expect(page).toHaveURL(/\/settings\?tab=library&source=8$/);
 });
 
+test("run retry shows progress while pending and reports a failure", async ({ page }) => {
+  await mockWorkflows(page);
+  const failedRun = {
+    ...sampleRun,
+    id: 99,
+    workflowCode: "local_library_scan",
+    displayName: "Failed library scan",
+    status: "failed",
+  };
+  // The retry request stays pending until the test has seen the busy state.
+  let answerRetry = () => {};
+  const retryResponse = new Promise<void>((resolve) => {
+    answerRetry = resolve;
+  });
+  await page.route("**/api/workflow-runs/99**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/events") || url.pathname.endsWith("/candidates")) {
+      await route.fulfill({ json: [] });
+      return;
+    }
+    if (url.pathname.endsWith("/retry")) {
+      await retryResponse;
+      await route.fulfill({ status: 500, json: { error: "internal error" } });
+      return;
+    }
+    await route.fulfill({ json: { ...failedRun, nodeRuns: [] } });
+  });
+
+  await page.goto("/activity?run=99");
+  const activity = page.getByRole("dialog", { name: "Activity", exact: true });
+  await expect(activity.getByText("Failed library scan", { exact: true })).toBeVisible();
+  const retry = activity.getByRole("button", { name: "Retry", exact: true });
+  await retry.click();
+  await expect(retry).toBeDisabled();
+
+  answerRetry();
+  await expect(page.getByText("Workflow run could not be retried. Please try again.")).toBeVisible();
+  await expect(retry).toBeEnabled();
+});
+
+test("a hidden tab pauses recent-run polling and refreshes when shown again", async ({ page }) => {
+  await mockWorkflows(page);
+  const running = { ...sampleRun, id: 63, workflowCode: "local_library_scan", status: "running", finishedAt: "" };
+  let recentRunRequests = 0;
+  await page.route("**/api/workflow-runs?*", async (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const recentRuns = params.get("view") === "" && params.get("workflowCode") === "local_library_scan";
+    if (recentRuns) recentRunRequests += 1;
+    const runs = recentRuns ? [running] : [];
+    await route.fulfill({
+      json: { runs, page: 1, pageSize: Number(params.get("pageSize")), total: runs.length, viewTotals: {} },
+    });
+  });
+  const setHidden = (hidden: boolean) =>
+    page.evaluate((value) => {
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => value });
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => (value ? "hidden" : "visible"),
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+    }, hidden);
+
+  await page.goto("/workflows?workflow=local_library_scan");
+  // Polling runs while the tab is visible.
+  await expect.poll(() => recentRunRequests, { timeout: 6_000 }).toBeGreaterThanOrEqual(2);
+
+  await setHidden(true);
+  const hiddenCount = recentRunRequests;
+  await page.waitForTimeout(4_500);
+  expect(recentRunRequests).toBe(hiddenCount);
+
+  await setHidden(false);
+  await expect.poll(() => recentRunRequests, { timeout: 1_000 }).toBeGreaterThan(hiddenCount);
+});
+
 test("activity deep links load a run outside the visible list page", async ({ page }) => {
   await mockWorkflows(page);
   const detachedRun = { ...sampleRun, id: 99, displayName: "Detached cleanup run" };

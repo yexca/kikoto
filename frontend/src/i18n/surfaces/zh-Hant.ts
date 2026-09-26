@@ -601,6 +601,9 @@ export const surfaceHant = {
     loadingWorkflowData: "正在載入工作流程資料",
     workflowTabs: "工作流程",
     presetQueueFailed: "預製工作流程無法排入佇列。",
+    runCancelFailed: "無法取消工作流程執行，請重試。",
+    runRetryFailed: "無法重試工作流程執行，請重試。",
+    candidateActionFailed: "無法更新此審核項目，請重試。",
     presetFetchUnavailable: "需要下載權限",
     presetGroups: {
       input: "輸入",

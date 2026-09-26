@@ -1,10 +1,24 @@
 import { USER_PREFERENCES_CHANGED } from "@/lib/recommendationSession";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
-import { api, type AuthState, type CurrentUser, type InitialSetupPayload, type RuntimeSettings } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  type AuthState,
+  type CurrentUser,
+  type InitialSetupPayload,
+  type RuntimeSettings,
+} from "@/lib/api";
 
 type AuthContextValue = {
   isLoading: boolean;
+  /**
+   * The server could not answer who the viewer is (network failure or a
+   * server error). This is not a signed-out state; only `retryBootstrap`
+   * or a later successful refresh can resolve it.
+   */
+  bootstrapFailed: boolean;
+  retryBootstrap: () => Promise<void>;
   recommendationThreshold: number;
   user: CurrentUser | null;
   /** A production instance with no administrator; only initial setup can proceed. */
@@ -22,9 +36,16 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// A request that never got an answer, or a server error, says nothing about
+// the viewer's session. Other rejections keep the signed-out fallback.
+function isServerUnavailable(error: unknown) {
+  return !(error instanceof ApiError) || error.status >= 500;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [auth, setAuth] = useState<AuthState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [bootstrapFailed, setBootstrapFailed] = useState(false);
   const [runtimeMode, setRuntimeMode] = useState<RuntimeSettings["mode"]>("production");
   const [anonymousAccessEnabled, setAnonymousAccessEnabled] = useState(false);
 
@@ -51,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(async () => {
     const state = await api.me();
     setAuth(state);
+    setBootstrapFailed(false);
   }, []);
 
   const refreshRuntime = useCallback(async () => {
@@ -59,19 +81,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAnonymousAccessEnabled(settings.anonymousAccessEnabled ?? false);
   }, []);
 
-  useEffect(() => {
-    Promise.all([
-      refresh().catch(() => setAuth({ authenticated: false })),
-      refreshRuntime().catch(() => {
-        setRuntimeMode("production");
-        setAnonymousAccessEnabled(false);
-      }),
-    ]).finally(() => setIsLoading(false));
+  // A network failure or server error keeps the viewer's state unknown rather
+  // than presenting it as signed out, so a restart during an outage does not
+  // send a signed-in viewer to the login page.
+  const bootstrap = useCallback(async () => {
+    const [authResult, runtimeResult] = await Promise.allSettled([refresh(), refreshRuntime()]);
+    let failed = false;
+    if (authResult.status === "rejected") {
+      if (isServerUnavailable(authResult.reason)) failed = true;
+      else setAuth({ authenticated: false });
+    }
+    if (runtimeResult.status === "rejected" && isServerUnavailable(runtimeResult.reason)) failed = true;
+    setBootstrapFailed(failed);
   }, [refresh, refreshRuntime]);
+
+  useEffect(() => {
+    void bootstrap().finally(() => setIsLoading(false));
+  }, [bootstrap]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       isLoading,
+      bootstrapFailed,
+      retryBootstrap: bootstrap,
       recommendationThreshold: recommendationThreshold.userId === userId ? recommendationThreshold.value : 50,
       user: auth?.authenticated ? auth.user : null,
       setupRequired: auth?.authenticated === false && auth.setupRequired === true,
@@ -100,7 +132,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       demoMode: runtimeMode === "demo",
       anonymousAccessEnabled,
     }),
-    [anonymousAccessEnabled, auth, isLoading, refresh, refreshRuntime, runtimeMode, recommendationThreshold, userId],
+    [
+      anonymousAccessEnabled,
+      auth,
+      bootstrap,
+      bootstrapFailed,
+      isLoading,
+      refresh,
+      refreshRuntime,
+      runtimeMode,
+      recommendationThreshold,
+      userId,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

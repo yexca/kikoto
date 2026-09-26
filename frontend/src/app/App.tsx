@@ -45,7 +45,8 @@ import { PlayerDock } from "@/player/dock/PlayerDock";
 import { PlayerProvider } from "@/player/PlayerProvider";
 import { HeaderActions } from "@/app/HeaderActions";
 import { NotFoundPage } from "@/app/NotFoundPage";
-import { RouteErrorBoundary } from "@/app/RouteErrorBoundary";
+import { OverlayErrorBoundary, RouteErrorBoundary } from "@/app/RouteErrorBoundary";
+import { ServerUnavailablePage } from "@/app/ServerUnavailablePage";
 import { PageActiveProvider, PageHeaderProvider, usePageHeaderBackState } from "@/app/pageHeader";
 import { useScrollRestoration } from "@/app/scrollRestoration";
 import { MobileRuntimeProvider, useMobileRuntime } from "@/app/MobileRuntime";
@@ -73,6 +74,7 @@ import { isCircleListLocation, readLastCircleListLocation } from "@/pages/circle
 import { isVoiceListLocation, readLastVoiceListLocation } from "@/pages/voiceNavigationState";
 import { legacyLibraryRedirect } from "@/app/legacyLibraryRoutes";
 import { readMobileTabSnapshot, writeMobileTabSnapshot } from "@/app/mobileTabState";
+import { isChunkLoadError, reloadApp } from "@/lib/chunkLoadError";
 import { preloadableComponent } from "@/lib/preloadableComponent";
 import {
   REMOTE_TRACK_CREATED_EVENT,
@@ -166,6 +168,26 @@ function AuthenticatedApp() {
     setCommandPaletteRequested(true);
     setCommandPaletteOpen(true);
   }, []);
+
+  // A palette that cannot load closes with a notice; the next open tries again.
+  const handleCommandPaletteError = useCallback(
+    (error: unknown) => {
+      setCommandPaletteOpen(false);
+      setCommandPaletteBusy(false);
+      setCommandPaletteRequested(false);
+      toast.notify(
+        isChunkLoadError(error)
+          ? {
+              kind: "warning",
+              message: t("notFound.staleVersionMessage"),
+              actionLabel: t("notFound.reloadApp"),
+              onAction: reloadApp,
+            }
+          : { kind: "error", message: t("errors.unavailable") },
+      );
+    },
+    [t, toast],
+  );
 
   useEffect(() => {
     locale.syncAccountPreference(auth.user?.id ?? null, auth.user?.uiLocale, auth.user?.demoMode ?? false);
@@ -365,6 +387,10 @@ function AuthenticatedApp() {
     );
   }
 
+  if (auth.bootstrapFailed) {
+    return <ServerUnavailablePage onRetry={auth.retryBootstrap} />;
+  }
+
   if (!auth.user && auth.setupRequired) {
     return <SetupPage />;
   }
@@ -501,6 +527,9 @@ function AuthenticatedApp() {
             message={t("notFound.routeErrorMessage")}
             retryLabel={t("notFound.retryPage")}
             libraryLabel={t("notFound.openLibrary")}
+            staleVersionTitle={t("notFound.staleVersionTitle")}
+            staleVersionMessage={t("notFound.staleVersionMessage")}
+            reloadLabel={t("notFound.reloadApp")}
           >
             <Suspense fallback={<PageLoading />}>
               <div className="py-[var(--page-padding-y)] pl-[max(1rem,var(--safe-area-left))] pr-[max(1rem,var(--safe-area-right))] lg:px-6">
@@ -597,18 +626,20 @@ function AuthenticatedApp() {
         )}
         {!mobileRuntime.keyboardOpen && <PlayerDock />}
         {commandPaletteRequested && (
-          <Suspense fallback={null}>
-            <CommandPalette
-              open={commandPaletteOpen}
-              onOpenChange={setCommandPaletteOpen}
-              hasPermission={effectiveHasPermission}
-              canView={navigationHasPermission}
-              visibleNavItems={visibleNavItems}
-              onBusyChange={setCommandPaletteBusy}
-              onOpenPage={openPage}
-              onOpenPath={openPath}
-            />
-          </Suspense>
+          <OverlayErrorBoundary onError={handleCommandPaletteError}>
+            <Suspense fallback={null}>
+              <CommandPalette
+                open={commandPaletteOpen}
+                onOpenChange={setCommandPaletteOpen}
+                hasPermission={effectiveHasPermission}
+                canView={navigationHasPermission}
+                visibleNavItems={visibleNavItems}
+                onBusyChange={setCommandPaletteBusy}
+                onOpenPage={openPage}
+                onOpenPath={openPath}
+              />
+            </Suspense>
+          </OverlayErrorBoundary>
         )}
         {loginOpen && <LoginOverlay onClose={() => setLoginOpen(false)} />}
       </div>

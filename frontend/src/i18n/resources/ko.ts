@@ -528,6 +528,9 @@ export const koreanResource = {
         dismissVersionNotice: "버전 알림 닫기",
         remindNextVersion: "다음 버전에서 다시 알림",
         loadingPage: "페이지 로드 중",
+        serverUnavailableTitle: "Kikoto에 연결할 수 없음",
+        serverUnavailableMessage:
+          "서버가 응답하지 않았습니다. 로그인 상태는 바뀌지 않았습니다. 연결을 확인하고 다시 시도해 주세요.",
       },
       nav: {
         workManagement: "메타데이터",
@@ -786,6 +789,9 @@ export const koreanResource = {
           "Kikoto에서 이 페이지를 표시하지 못했습니다. 플레이어와 탐색 기능은 계속 사용할 수 있습니다.",
         retryPage: "페이지 다시 시도",
         openLibrary: "라이브러리 열기",
+        staleVersionTitle: "Kikoto가 업데이트됨",
+        staleVersionMessage: "이 페이지는 서버에 더 이상 없는 이전 버전입니다. 최신 버전을 사용하려면 새로 고치세요.",
+        reloadApp: "Kikoto 새로 고침",
       },
       notifications: {
         title: "알림",

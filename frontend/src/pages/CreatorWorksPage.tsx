@@ -576,7 +576,8 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
     let cancelled = false;
     let requestRunning = false;
     const poll = async () => {
-      if (requestRunning) return;
+      // A hidden tab skips ticks and catches up as soon as it is shown again.
+      if (requestRunning || document.hidden) return;
       requestRunning = true;
       try {
         const result = await api.getVoiceRemoteMatches(personId);
@@ -601,10 +602,13 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
         requestRunning = false;
       }
     };
-    const timer = window.setInterval(() => void poll(), 2_000);
+    const pollNow = () => void poll();
+    const timer = window.setInterval(pollNow, 2_000);
+    document.addEventListener("visibilitychange", pollNow);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", pollNow);
     };
   }, [active, catalogRefresh?.runId, catalogRefreshActive, personId]);
 

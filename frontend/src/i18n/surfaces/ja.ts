@@ -657,6 +657,9 @@ export const surfaceJapanese = {
     loadingWorkflowData: "ワークフローデータを読み込み中",
     workflowTabs: "ワークフロー",
     presetQueueFailed: "プリセットワークフローをキューに追加できませんでした。",
+    runCancelFailed: "ワークフローの実行をキャンセルできませんでした。もう一度お試しください。",
+    runRetryFailed: "ワークフローの実行を再試行できませんでした。もう一度お試しください。",
+    candidateActionFailed: "このレビュー項目を更新できませんでした。もう一度お試しください。",
     presetFetchUnavailable: "ダウンロード権限が必要",
     presetGroups: {
       input: "入力",

@@ -112,6 +112,7 @@ import {
 } from "@/features/workflows/metadataSyncModel";
 import { clearWorkflowRunPrefill, readWorkflowRunPrefill } from "@/features/workflows/workflowLinks";
 import { workflowStages } from "@/features/workflows/workflowStageModel";
+import { usePendingAction } from "@/hooks/usePendingAction";
 import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import {
   api,
@@ -419,8 +420,16 @@ export function WorkflowsPage({
   const hasActiveRecentRun = recentDefinitionRuns.some((run) => run.status === "queued" || run.status === "running");
   useEffect(() => {
     if (!selectedDefinition || !hasActiveRecentRun) return;
-    const timer = window.setInterval(() => void refreshRecentRuns(selectedDefinition.code), 2000);
-    return () => window.clearInterval(timer);
+    // A hidden tab skips ticks and catches up as soon as it is shown again.
+    const poll = () => {
+      if (!document.hidden) void refreshRecentRuns(selectedDefinition.code);
+    };
+    const timer = window.setInterval(poll, 2000);
+    document.addEventListener("visibilitychange", poll);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", poll);
+    };
   }, [hasActiveRecentRun, selectedDefinition?.code]);
 
   const selectedPreset = selectedDefinition ? (presetByCode.get(selectedDefinition.code) ?? null) : null;
@@ -871,8 +880,15 @@ function AvailabilityWatchPanel({
 
   useEffect(() => {
     if (!watch) return;
-    const timer = window.setInterval(() => void refreshWatch().catch(() => undefined), 5000);
-    return () => window.clearInterval(timer);
+    const poll = () => {
+      if (!document.hidden) void refreshWatch().catch(() => undefined);
+    };
+    const timer = window.setInterval(poll, 5000);
+    document.addEventListener("visibilitychange", poll);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", poll);
+    };
   }, [watch?.id]);
 
   const openReady = () => {
@@ -2704,6 +2720,9 @@ function RunItems({
   );
 }
 
+type CandidateAction =
+  "retry_fetch" | "mark_unavailable" | "delete_files" | "keep_archived" | "delete_archived" | "resolved" | "ignored";
+
 function CandidateReviewCard({
   candidate,
   onCandidateUpdate,
@@ -2713,8 +2732,11 @@ function CandidateReviewCard({
   onCandidateUpdate: () => Promise<void>;
   readOnly: boolean;
 }) {
+  const toast = useToast();
   const [confirmDeleteOldFiles, setConfirmDeleteOldFiles] = useState(false);
   const [archiveDeleteStep, setArchiveDeleteStep] = useState<0 | 1 | 2>(0);
+  const { pending, run: runAction } = usePendingAction<CandidateAction>();
+  const busy = pending !== null;
   const payload = parseJSONRecord(candidate.payloadJson);
   const cleanupLocations = candidate.type === "local_fetch_merge_cleanup" ? localCleanupLocations(payload) : [];
   const archivedRoots = candidate.type === "local_fetch_merge_cleanup" ? localArchivedRoots(payload) : [];
@@ -2723,20 +2745,52 @@ function CandidateReviewCard({
   const blockedOrigin = originBlocked ? stringValue(payload.origin) : "";
   const blockedSourceID = originBlocked ? numberValue(payload.source_id) : null;
   const needsReview = candidateNeedsReview(candidate);
-  const cleanup = async (action: "mark_unavailable" | "delete_files") => {
+  const reportFailure = (error: unknown) => toast.notify(toastFromError(error, workflowCopy("candidateActionFailed")));
+  const cleanup = (action: "mark_unavailable" | "delete_files") => {
     if (cleanupLocations.length === 0) return;
-    await api.cleanupLocalWorkflowCandidate(candidate.id, {
+    void runAction(
       action,
-      locationIds: cleanupLocations.map((location) => location.locationId),
-    });
-    setConfirmDeleteOldFiles(false);
-    await onCandidateUpdate();
+      async () => {
+        await api.cleanupLocalWorkflowCandidate(candidate.id, {
+          action,
+          locationIds: cleanupLocations.map((location) => location.locationId),
+        });
+        setConfirmDeleteOldFiles(false);
+        await onCandidateUpdate();
+      },
+      reportFailure,
+    );
   };
-  const reviewArchive = async (action: "keep_archived" | "delete_archived") => {
-    await api.reviewArchivedFetchRoots(candidate.id, action, action === "delete_archived" ? "DELETE" : "");
-    setArchiveDeleteStep(0);
-    await onCandidateUpdate();
-  };
+  const reviewArchive = (action: "keep_archived" | "delete_archived") =>
+    void runAction(
+      action,
+      async () => {
+        await api.reviewArchivedFetchRoots(candidate.id, action, action === "delete_archived" ? "DELETE" : "");
+        setArchiveDeleteStep(0);
+        await onCandidateUpdate();
+      },
+      reportFailure,
+    );
+  const setStatus = (status: "resolved" | "ignored") =>
+    void runAction(
+      status,
+      async () => {
+        await api.updateWorkflowCandidate(candidate.id, { status });
+        await onCandidateUpdate();
+      },
+      reportFailure,
+    );
+  const retryFetch = () =>
+    void runAction(
+      "retry_fetch",
+      async () => {
+        await api.retryWorkflowRun(candidate.runId);
+        await onCandidateUpdate();
+      },
+      (error) => toast.notify(toastFromError(error, workflowCopy("runRetryFailed"))),
+    );
+  const spinner = (action: CandidateAction) =>
+    pending === action ? <Loader2 className="h-4 w-4 animate-spin" /> : null;
   return (
     <div className="grid min-w-0 gap-2 p-3">
       <div className="flex items-start justify-between gap-3">
@@ -2846,25 +2900,32 @@ function CandidateReviewCard({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={async () => {
-                  await api.retryWorkflowRun(candidate.runId);
-                  await onCandidateUpdate();
-                }}
+                disabled={busy}
+                aria-busy={pending === "retry_fetch"}
+                onClick={retryFetch}
               >
-                <RotateCcw className="h-4 w-4" />
+                {spinner("retry_fetch") ?? <RotateCcw className="h-4 w-4" />}
                 {workflowCopy("retryFetch")}
               </Button>
             </>
           )}
           {candidate.type === "local_fetch_merge_cleanup" && cleanupLocations.length > 0 && (
             <>
-              <Button size="sm" variant="outline" onClick={() => void cleanup("mark_unavailable")}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                aria-busy={pending === "mark_unavailable"}
+                onClick={() => cleanup("mark_unavailable")}
+              >
+                {spinner("mark_unavailable")}
                 {workflowCopy("hideOldLocations")}
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 className="border-destructive/40 text-destructive hover:text-destructive"
+                disabled={busy}
                 onClick={() => setConfirmDeleteOldFiles(true)}
               >
                 {workflowCopy("deleteOldFiles")}
@@ -2873,13 +2934,21 @@ function CandidateReviewCard({
           )}
           {candidate.type === "local_fetch_merge_cleanup" && archivedRoots.length > 0 && (
             <>
-              <Button size="sm" variant="outline" onClick={() => void reviewArchive("keep_archived")}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                aria-busy={pending === "keep_archived"}
+                onClick={() => reviewArchive("keep_archived")}
+              >
+                {spinner("keep_archived")}
                 {workflowCopy("keepArchived")}
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 className="border-destructive/40 text-destructive hover:text-destructive"
+                disabled={busy}
                 onClick={() => setArchiveDeleteStep(1)}
               >
                 {workflowCopy("deleteArchive")}
@@ -2891,21 +2960,21 @@ function CandidateReviewCard({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={async () => {
-                  await api.updateWorkflowCandidate(candidate.id, { status: "resolved" });
-                  await onCandidateUpdate();
-                }}
+                disabled={busy}
+                aria-busy={pending === "resolved"}
+                onClick={() => setStatus("resolved")}
               >
+                {spinner("resolved")}
                 {workflowCopy("markResolved")}
               </Button>
               <Button
                 size="sm"
                 variant="outline"
-                onClick={async () => {
-                  await api.updateWorkflowCandidate(candidate.id, { status: "ignored" });
-                  await onCandidateUpdate();
-                }}
+                disabled={busy}
+                aria-busy={pending === "ignored"}
+                onClick={() => setStatus("ignored")}
               >
+                {spinner("ignored")}
                 {workflowCopy("ignore")}
               </Button>
             </>
@@ -2917,10 +2986,17 @@ function CandidateReviewCard({
           <div className="text-sm font-semibold text-error-foreground">{workflowCopy("deleteOldLocalFilesTitle")}</div>
           <div className="mt-1 text-sm text-muted-foreground">{workflowCopy("deleteOldLocalFilesDescription")}</div>
           <div className="mt-3 flex flex-wrap justify-end gap-2">
-            <Button size="sm" variant="outline" onClick={() => setConfirmDeleteOldFiles(false)}>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirmDeleteOldFiles(false)}>
               {workflowCopy("cancel")}
             </Button>
-            <Button size="sm" variant="destructive" onClick={() => void cleanup("delete_files")}>
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={busy}
+              aria-busy={pending === "delete_files"}
+              onClick={() => cleanup("delete_files")}
+            >
+              {spinner("delete_files")}
               {workflowCopy("deleteFiles")}
             </Button>
           </div>
@@ -2942,15 +3018,22 @@ function CandidateReviewCard({
             ))}
           </div>
           <div className="mt-3 flex flex-wrap justify-end gap-2">
-            <Button size="sm" variant="outline" onClick={() => setArchiveDeleteStep(0)}>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => setArchiveDeleteStep(0)}>
               {workflowCopy("cancel")}
             </Button>
             {archiveDeleteStep === 1 ? (
-              <Button size="sm" variant="outline" onClick={() => setArchiveDeleteStep(2)}>
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => setArchiveDeleteStep(2)}>
                 {workflowCopy("continue")}
               </Button>
             ) : (
-              <Button size="sm" variant="destructive" onClick={() => void reviewArchive("delete_archived")}>
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={busy}
+                aria-busy={pending === "delete_archived"}
+                onClick={() => reviewArchive("delete_archived")}
+              >
+                {spinner("delete_archived")}
                 {workflowCopy("permanentlyDelete")}
               </Button>
             )}
@@ -4058,7 +4141,9 @@ function Modal({
 }
 
 function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () => Promise<void> }) {
+  const toast = useToast();
   const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const { pending, run: runAction } = usePendingAction<"cancel" | "retry">();
   const cancellable = ["queued", "running"].includes(run.status);
   const destructiveCleanup = [
     "media_location_cleanup",
@@ -4088,10 +4173,27 @@ function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () =>
   if (!cancellable && !retryable) {
     return null;
   }
-  const cancel = async () => {
-    await api.cancelWorkflowRun(run.id);
-    setConfirmingCancel(false);
-    await onRunAction();
+  const cancel = () =>
+    runAction(
+      "cancel",
+      async () => {
+        await api.cancelWorkflowRun(run.id);
+        setConfirmingCancel(false);
+        await onRunAction();
+      },
+      (error) => toast.notify(toastFromError(error, workflowCopy("runCancelFailed"))),
+    );
+  const retry = () =>
+    runAction(
+      "retry",
+      async () => {
+        await api.retryWorkflowRun(run.id);
+        await onRunAction();
+      },
+      (error) => toast.notify(toastFromError(error, workflowCopy("runRetryFailed"))),
+    );
+  const closeConfirmation = () => {
+    if (!pending) setConfirmingCancel(false);
   };
   return (
     <>
@@ -4100,11 +4202,14 @@ function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () =>
           <Button
             size="sm"
             variant="outline"
+            disabled={pending !== null}
+            aria-busy={pending === "cancel"}
             onClick={() => {
               if (destructiveCleanup) setConfirmingCancel(true);
               else void cancel();
             }}
           >
+            {pending === "cancel" && !confirmingCancel && <Loader2 className="h-4 w-4 animate-spin" />}
             {workflowCopy("cancel")}
           </Button>
         )}
@@ -4112,11 +4217,11 @@ function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () =>
           <Button
             size="sm"
             variant="outline"
-            onClick={async () => {
-              await api.retryWorkflowRun(run.id);
-              await onRunAction();
-            }}
+            disabled={pending !== null}
+            aria-busy={pending === "retry"}
+            onClick={() => void retry()}
           >
+            {pending === "retry" && <Loader2 className="h-4 w-4 animate-spin" />}
             {workflowCopy("retry")}
           </Button>
         )}
@@ -4124,10 +4229,10 @@ function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () =>
       {confirmingCancel &&
         // Portaled: the Activity popover's backdrop-filter would otherwise contain this fixed overlay.
         createPortal(
-          <Dialog onClose={() => setConfirmingCancel(false)} size="md" dismissible={false}>
+          <Dialog onClose={closeConfirmation} size="md" dismissible={false}>
             <DialogHeader
               title={workflowCopy("cancelDeletionTitle")}
-              onClose={() => setConfirmingCancel(false)}
+              onClose={closeConfirmation}
               closeLabel={workflowCopy("close")}
             >
               <p className="mt-2 text-sm text-muted-foreground">{workflowCopy("cancelDeletionDescription")}</p>
@@ -4136,10 +4241,16 @@ function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () =>
               )}
             </DialogHeader>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setConfirmingCancel(false)}>
+              <Button variant="outline" disabled={pending !== null} onClick={closeConfirmation}>
                 {workflowCopy("keepRunning")}
               </Button>
-              <Button variant="destructive" onClick={() => void cancel()}>
+              <Button
+                variant="destructive"
+                disabled={pending !== null}
+                aria-busy={pending === "cancel"}
+                onClick={() => void cancel()}
+              >
+                {pending === "cancel" && <Loader2 className="h-4 w-4 animate-spin" />}
                 {workflowCopy("cancelWorkflow")}
               </Button>
             </DialogFooter>

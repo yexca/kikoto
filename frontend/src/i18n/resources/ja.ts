@@ -535,6 +535,9 @@ export const japaneseResource = {
         dismissVersionNotice: "バージョン通知を閉じる",
         remindNextVersion: "次のバージョンで再通知",
         loadingPage: "ページを読み込み中",
+        serverUnavailableTitle: "Kikoto に接続できません",
+        serverUnavailableMessage:
+          "サーバーが応答しませんでした。サインイン状態は変わっていません。接続を確認して、もう一度お試しください。",
       },
       nav: {
         workManagement: "メタデータ",
@@ -796,6 +799,10 @@ export const japaneseResource = {
           "Kikoto はこのページを表示できませんでした。プレイヤーとナビゲーションは引き続き使用できます。",
         retryPage: "ページを再試行",
         openLibrary: "ライブラリを開く",
+        staleVersionTitle: "Kikoto が更新されました",
+        staleVersionMessage:
+          "このページはサーバーから削除された旧バージョンのものです。再読み込みして最新バージョンを使用してください。",
+        reloadApp: "Kikoto を再読み込み",
       },
       notifications: {
         title: "通知",

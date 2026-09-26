@@ -417,7 +417,9 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const [randomSeed, setRandomSeed] = useState(initialBrowseState.randomSeed);
   const [workPage, setWorkPage] = useState(initialBrowseState.page);
   const [workPageSize, setWorkPageSize] = useState<LocalWorkPageSize>(localPageSize(initialBrowseState.pageSize));
-  const [workTotal, setWorkTotal] = useState(0);
+  // Null until a page response reports the total, so a restored page is not
+  // clamped against an empty result before the library has loaded.
+  const [workTotal, setWorkTotal] = useState<number | null>(null);
   const [isLibraryLoading, setIsLibraryLoading] = useState(false);
   const [isUntracking, setIsUntracking] = useState(false);
   const libraryRequestSeq = useRef(0);
@@ -1001,7 +1003,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   ]);
 
   useEffect(() => {
-    if (activeTab.kind === "source" || isLibraryLoading) return;
+    if (activeTab.kind === "source" || isLibraryLoading || workTotal === null) return;
     const lastPage = Math.max(1, Math.ceil(workTotal / workPageSize));
     if (workPage > lastPage) setWorkPage(lastPage);
   }, [activeTab.kind, isLibraryLoading, workPage, workPageSize, workTotal]);
@@ -1555,7 +1557,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   } = libraryBrowseSurfaceState({
     works,
     optimisticSearchClauses: optimisticLibrarySearchClauses,
-    workTotal,
+    workTotal: workTotal ?? 0,
     workPage,
     workPageSize,
     statusFilter,
@@ -1620,7 +1622,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const localPaginationProps = {
     page: currentWorkPage,
     pageSize: workPageSize,
-    totalItems: workTotal,
+    totalItems: workTotal ?? 0,
     totalPages: totalWorkPages,
     onPageChange: changeWorkPage,
   };
