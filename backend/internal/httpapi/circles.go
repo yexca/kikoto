@@ -839,6 +839,7 @@ func parsePartyFromDLsiteSnapshot(raw string) parsedParty {
 }
 
 func (s *Server) upsertDLsiteParty(ctx context.Context, externalID string, displayName string, raw string) (int64, error) {
+	externalID = normalizeMakerID(externalID)
 	providerID, err := s.metadataProviderID(ctx, "dlsite", "DLsite")
 	if err != nil {
 		return 0, err
@@ -1608,13 +1609,14 @@ func (s *Server) loadCircleLatestWorks(ctx context.Context, partyIDs []int64) (m
 		relationDemoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
 	}
 	err := s.queryInt64Batches(ctx, `
-		WITH candidates AS (
+		WITH selected_parties AS (SELECT id FROM party WHERE id IN (%s)), candidates AS (
 			SELECT
 				catalog.party_id,
 				UPPER(COALESCE(logical.canonical_code, catalog.primary_code)) AS primary_code,
 				COALESCE(NULLIF(canonical_work.title, ''), NULLIF(work.title, ''), NULLIF(catalog.title, ''), UPPER(catalog.primary_code)) AS title,
 				COALESCE(canonical_work.release_date, work.release_date, catalog.release_date) AS release_date
 			FROM `+circleCatalogProjection+` AS catalog
+			INNER JOIN selected_parties ON selected_parties.id = catalog.party_id
 			INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id AND provider.code = 'dlsite'
 			LEFT JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
 			LEFT JOIN work_edition AS edition ON edition.work_id = work.id
@@ -1629,6 +1631,7 @@ func (s *Server) loadCircleLatestWorks(ctx context.Context, partyIDs []int64) (m
 				work.title,
 				work.release_date
 			FROM work_primary_circle AS relation
+			INNER JOIN selected_parties ON selected_parties.id = relation.party_id
 			INNER JOIN work ON work.id = relation.work_id
 			WHERE relation.role = 'circle'
 				`+relationDemoWhere+`
@@ -1647,7 +1650,7 @@ func (s *Server) loadCircleLatestWorks(ctx context.Context, partyIDs []int64) (m
 		)
 		SELECT party_id, primary_code, title, release_date
 		FROM ranked
-		WHERE position = 1 AND party_id IN (%s)
+		WHERE position = 1
 	`, partyIDs, nil, func(rows *sql.Rows) error {
 		var partyID int64
 		var item creatorLatestWork

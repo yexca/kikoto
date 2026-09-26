@@ -135,7 +135,7 @@ survive a drive failure.
 To restore, stop Kikoto, move `kikoto.db`, `kikoto.db-wal`, and
 `kikoto.db-shm` aside, copy the chosen backup to `kikoto.db`, and start the
 application image whose schema matches it. A pre-migration backup matches the
-release before the upgrade named in its file name (`v038-to-v039`, for
+release before the upgrade named in its file name (`v040-to-v041`, for
 example). Back up the cache and data directories separately if they are
 important for your deployment.
 

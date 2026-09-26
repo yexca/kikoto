@@ -82,9 +82,9 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain includes
-`040_hash_session_tokens.sql`, with the `040_v0.6.1.sql` baseline
+`041_creator_lookup_indexes.sql`, with the `041_v0.6.1.sql` baseline
 generated from the `v0.6.1` `VERSION` file; regenerate it after the next
-release bump so the snapshot carries the release that ships schema 040.
+release bump so the snapshot carries the release that ships schema 041.
 Migration 040 changes no schema. `user_session.id` now holds the SHA-256 digest
 of a session token rather than the token, so the migration deletes every
 existing session and each client signs in again once.
