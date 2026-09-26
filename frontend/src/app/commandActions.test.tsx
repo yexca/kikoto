@@ -43,6 +43,24 @@ describe("commandActions", () => {
     ]);
   });
 
+  it("offers each personal Settings tab as its own destination to library readers", () => {
+    const onOpenPath = vi.fn();
+    const settings = navItems.filter((item) => item.id === "settings");
+    const actions = commandActions({
+      hasPermission: (permission) => permission === "library:read",
+      visibleNavItems: settings,
+      onOpenPage: vi.fn(),
+      onOpenPath,
+    });
+
+    expect(actions.map((action) => action.label)).toEqual(["Settings", "History", "Tags", "Your data"]);
+    actions[2].run();
+    expect(onOpenPath).toHaveBeenCalledWith("/settings?tab=tags");
+    expect(
+      commandActions({ hasPermission: () => false, visibleNavItems: settings, onOpenPage: vi.fn(), onOpenPath }),
+    ).toHaveLength(1);
+  });
+
   it("puts maintenance commands before navigation and runs a local scan through the shared command", async () => {
     const onOpenPath = vi.fn();
     vi.mocked(api.runLocalScan).mockResolvedValue({

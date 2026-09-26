@@ -2,6 +2,7 @@ import { Activity, Clock3, ListChecks, Play, RotateCcw, ScanLine } from "lucide-
 
 import { type NavigationItem, type PageID } from "@/app/navigation";
 import { api } from "@/lib/api";
+import { PERSONAL_TAB_PERMISSION, personalTabPath, personalTabs } from "@/pages/personalTabs";
 
 export type CommandAction = {
   id: string;
@@ -110,13 +111,25 @@ export function commandActions({
 
   return [
     ...maintenanceActions,
-    ...visibleNavItems.map<CommandAction>((item) => ({
-      id: `page:${item.id}`,
-      label: text(item.labelKey, item.label),
-      description: item.path,
-      icon: <item.icon className="h-4 w-4" />,
-      run: () => onOpenPage(item.id),
-    })),
+    ...visibleNavItems.flatMap<CommandAction>((item) => [
+      {
+        id: `page:${item.id}`,
+        label: text(item.labelKey, item.label),
+        description: item.path,
+        icon: <item.icon className="h-4 w-4" />,
+        run: () => onOpenPage(item.id),
+      },
+      // Personal Settings tabs stay direct Quick actions destinations.
+      ...(item.id === "settings" && canView(PERSONAL_TAB_PERMISSION)
+        ? personalTabs.map((tab) => ({
+            id: `settings:${tab.id}`,
+            label: text(tab.labelKey, tab.label),
+            description: personalTabPath(tab.id),
+            icon: <tab.icon className="h-4 w-4" />,
+            run: () => onOpenPath(personalTabPath(tab.id)),
+          }))
+        : []),
+    ]),
     ...activityActions,
   ];
 }

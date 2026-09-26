@@ -2,8 +2,10 @@
 
 [English](../en/personal-data.md) · [简体中文](../zh-Hans/personal-data.md) · [繁體中文](../zh-Hant/personal-data.md) · [日本語](../ja/personal-data.md) · [한국어](../ko/personal-data.md)
 
-Sign in to open **Tags**, **History**, and **Your data** from the sidebar,
-mobile account menu, or Quick actions. Each page shows only your account's data.
+Sign in and open **Settings** to find the **History**, **Tags**, and **Your
+data** tabs next to Account, Playback, and Recommendation. The mobile account
+menu and Quick actions open each tab directly. Each tab shows only your
+account's data.
 
 ## Personal tags
 

@@ -158,8 +158,8 @@ test("mobile reaches personal pages from the account menu without adding bottom 
   await page.getByRole("button", { name: "Account menu" }).click();
   const account = page.getByRole("dialog", { name: "Account" });
   await account.getByRole("button", { name: "History", exact: true }).click();
-  await expect(page).toHaveURL(/\/history$/);
-  await expect(page.getByRole("heading", { name: "History", exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/settings\?tab=history$/);
+  await expect(page.getByRole("tab", { name: "History", selected: true })).toBeVisible();
   await expect(page.getByText("1 h 30 min").first()).toBeVisible();
   await expect(page.getByRole("link", { name: /Example Work 1/ })).toHaveAttribute(
     "href",
@@ -168,29 +168,49 @@ test("mobile reaches personal pages from the account menu without adding bottom 
 
   await page.getByRole("button", { name: "Account menu" }).click();
   await account.getByRole("button", { name: "Tags", exact: true }).click();
-  await expect(page).toHaveURL(/\/tags$/);
+  await expect(page).toHaveURL(/\/settings\?tab=tags$/);
   await expect(page.getByRole("list", { name: "Personal tags" }).getByText("Unused")).toBeVisible();
 
   await page.getByRole("button", { name: "Account menu" }).click();
   await account.getByRole("button", { name: "Your data", exact: true }).click();
-  await expect(page).toHaveURL(/\/user-data$/);
+  await expect(page).toHaveURL(/\/settings\?tab=data$/);
   await expect(page.getByRole("button", { name: "Download export" })).toBeVisible();
 });
 
-test("@desktop personal pages sit in their own sidebar group", async ({ page }) => {
+test("@desktop personal pages are Settings tabs instead of sidebar entries", async ({ page }) => {
   await mockPersonalData(page);
   await page.goto("/about");
   const sidebar = page.locator("aside nav");
-  for (const name of ["History", "Tags", "Your data"]) {
-    await expect(sidebar.getByRole("button", { name, exact: true })).toBeVisible();
+  for (const name of ["History", "Tags", "Your data", "Personal"]) {
+    await expect(sidebar.getByRole("button", { name, exact: true })).toHaveCount(0);
   }
-  await sidebar.getByRole("button", { name: "Tags", exact: true }).click();
-  await expect(sidebar.getByRole("button", { name: "Tags", exact: true })).toHaveAttribute("aria-current", "page");
+
+  await sidebar.getByRole("button", { name: "Settings", exact: true }).click();
+  const tabs = page.getByRole("tablist", { name: "Settings", exact: true });
+  await expect(tabs.getByRole("tab")).toHaveText([
+    "Account",
+    "Playback",
+    "Recommendation",
+    "History",
+    "Tags",
+    "Your data",
+  ]);
+  // A listener has no administration options to switch to.
+  await expect(page.getByRole("button", { name: "Administration options" })).toHaveCount(0);
+
+  await tabs.getByRole("tab", { name: "Tags" }).click();
+  await expect(page).toHaveURL(/\/settings\?tab=tags$/);
+  await expect(page.getByRole("list", { name: "Personal tags" })).toBeVisible();
+
+  // Links to the former standalone pages open the matching tab.
+  await page.goto("/user-data");
+  await expect(page).toHaveURL(/\/settings\?tab=data$/);
+  await expect(tabs.getByRole("tab", { name: "Your data" })).toHaveAttribute("aria-selected", "true");
 });
 
 test("merging a tag into a selected existing tag updates the list", async ({ page }) => {
   const log = await mockPersonalData(page);
-  await page.goto("/tags");
+  await page.goto("/settings?tab=tags");
 
   const list = page.getByRole("list", { name: "Personal tags" });
   await expect(list.getByRole("listitem")).toHaveCount(3);
@@ -219,7 +239,7 @@ test("merging a tag into a selected existing tag updates the list", async ({ pag
 
 test("a read-only account sees tags without rename, merge, or delete actions", async ({ page }) => {
   await mockPersonalData(page, { permissions: ["library:read", "playback:use"] });
-  await page.goto("/tags");
+  await page.goto("/settings?tab=tags");
   await expect(page.getByRole("list", { name: "Personal tags" }).getByRole("listitem")).toHaveCount(3);
   await expect(page.getByRole("button", { name: /^Merge / })).toHaveCount(0);
   await expect(page.getByText("Your account can view this page but cannot change it.")).toBeVisible();
@@ -229,7 +249,7 @@ test("import previews the chosen file, recovers from a failed preview, and impor
   page,
 }) => {
   const log = await mockPersonalData(page, { failFirstPreview: true });
-  await page.goto("/user-data");
+  await page.goto("/settings?tab=data");
 
   const importButton = page.getByRole("button", { name: "Import", exact: true });
   await expect(importButton).toBeDisabled();
@@ -265,7 +285,7 @@ test("import previews the chosen file, recovers from a failed preview, and impor
 
 test("an invalid file never reaches the server", async ({ page }) => {
   const log = await mockPersonalData(page);
-  await page.goto("/user-data");
+  await page.goto("/settings?tab=data");
   await page.getByLabel("JSON file").setInputFiles({
     name: "broken.json",
     mimeType: "application/json",

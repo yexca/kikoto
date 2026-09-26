@@ -515,6 +515,28 @@ test("personal settings expose administrator tabs only to administrators", async
   await expect(page.getByRole("button", { name: "Users", exact: true })).toHaveCount(0);
 });
 
+test("administrators switch between personal and administration tabs from the leading icon", async ({ page }) => {
+  await mockCacheSettings(page, () => undefined);
+  await page.goto("/settings?tab=playback");
+  const tabs = page.getByRole("tablist", { name: "Settings", exact: true });
+  const toggle = page.getByRole("button", { name: "Administration options", exact: true });
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(tabs.getByRole("tab", { name: "Users", exact: true })).toHaveCount(0);
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect(tabs.getByRole("tab")).toHaveText(["Library", "Cache & Fetch", "Cleanup", "Users"]);
+  await expect(page).toHaveURL(/\/settings\?tab=library$/);
+  await tabs.getByRole("tab", { name: "Users", exact: true }).click();
+
+  // Each side reopens the tab that was last selected there.
+  await toggle.click();
+  await expect(page).toHaveURL(/\/settings\?tab=playback$/);
+  await expect(tabs.getByRole("tab", { name: "Playback", exact: true })).toHaveAttribute("aria-selected", "true");
+  await toggle.click();
+  await expect(page).toHaveURL(/\/settings\?tab=users$/);
+});
+
 test("personal playback seek intervals use the requested defaults and persist locally", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
   await page.goto("/settings");
@@ -673,7 +695,7 @@ for (const layout of ["mobile", "@desktop"]) {
       "aria-selected",
       "true",
     );
-    await expect(navigation.getByRole("tab")).toHaveCount(7);
+    await expect(navigation.getByRole("tab")).toHaveCount(4);
     const rows = await navigation
       .getByRole("tab")
       .evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().top));
@@ -706,6 +728,7 @@ test("non-admin users cannot open administrator Settings tabs", async ({ page })
   await page.goto("/settings?tab=users");
   await expect(page).toHaveURL(/\/settings$/);
   await expect(page.getByRole("tab", { name: "Users", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Administration options", exact: true })).toHaveCount(0);
   expect(settingsRequests).toBe(0);
   await expect(page.getByRole("switch", { name: "Anonymous access", exact: true })).toHaveCount(0);
 });

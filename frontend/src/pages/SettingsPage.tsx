@@ -13,10 +13,11 @@ import {
   Rewind,
   Save,
   Shield,
+  ShieldCheck,
   Sparkles,
   UserRound,
 } from "lucide-react";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,8 @@ import { api, type CurrentUser } from "@/lib/api";
 import { validatePasswordChange, type PasswordChangeDraft } from "@/pages/accountSettings";
 import { CleanupPage } from "@/pages/CleanupPage";
 import { MaintenancePage } from "@/pages/MaintenancePage";
+import { PersonalTabPanel, type PersonalTabProps } from "@/pages/PersonalTabPanel";
+import { isPersonalTab, personalTabs, type PersonalTab } from "@/pages/personalTabs";
 import {
   getStoredPlaybackSeekPreferences,
   normalizeSeekSeconds,
@@ -44,9 +47,16 @@ const emptyPasswordDraft: PasswordChangeDraft = {
   confirmPassword: "",
 };
 
-type SettingsTab = "account" | "playback" | "recommendation" | "library" | "cache" | "cleanup" | "users";
+type SettingsTab = "account" | "playback" | "recommendation" | PersonalTab | "library" | "cache" | "cleanup" | "users";
 
 const adminSettingsTabs: SettingsTab[] = ["library", "cache", "cleanup", "users"];
+const allSettingsTabs: SettingsTab[] = [
+  "account",
+  "playback",
+  "recommendation",
+  ...personalTabs.map((tab) => tab.id),
+  ...adminSettingsTabs,
+];
 
 // Every tab shares one content width so switching tabs never shifts the layout.
 const settingsPanelClassName = "w-full max-w-4xl space-y-6";
@@ -55,6 +65,7 @@ const settingsTabs: Array<{ id: SettingsTab; labelKey: string; icon: ReactNode }
   { id: "account", labelKey: "settings.account", icon: <UserRound className="h-4 w-4" /> },
   { id: "playback", labelKey: "settings.playback", icon: <FastForward className="h-4 w-4" /> },
   { id: "recommendation", labelKey: "maintenance.tabs.recommendation", icon: <Sparkles className="h-4 w-4" /> },
+  ...personalTabs.map((tab) => ({ id: tab.id, labelKey: tab.labelKey, icon: <tab.icon className="h-4 w-4" /> })),
   { id: "library", labelKey: "maintenance.tabs.library", icon: <Folder className="h-4 w-4" /> },
   { id: "cache", labelKey: "maintenance.tabs.cache", icon: <Download className="h-4 w-4" /> },
   { id: "cleanup", labelKey: "cleanup.tab", icon: <Eraser className="h-4 w-4" /> },
@@ -64,11 +75,14 @@ const settingsTabs: Array<{ id: SettingsTab; labelKey: string; icon: ReactNode }
 export function SettingsPage({
   user,
   readOnly = false,
+  personal,
   onAccountUpdated,
   onAccessPolicyUpdated,
 }: {
   user: CurrentUser;
   readOnly?: boolean;
+  /** Omitted when the account cannot read the library, which hides the personal tabs. */
+  personal?: PersonalTabProps;
   onAccountUpdated: () => Promise<void>;
   onAccessPolicyUpdated: () => Promise<void>;
 }) {
@@ -112,13 +126,22 @@ export function SettingsPage({
     };
   }, []);
 
+  const adminView = canViewAdministration && adminSettingsTabs.includes(activeTab);
+  // The administration toggle returns to the last tab viewed on the other side.
+  const lastTabRef = useRef<{ personal: SettingsTab; admin: SettingsTab }>({ personal: "account", admin: "library" });
   useEffect(() => {
-    if (canViewAdministration || !adminSettingsTabs.includes(activeTab)) return;
+    lastTabRef.current[adminView ? "admin" : "personal"] = activeTab;
+  }, [activeTab, adminView]);
+
+  useEffect(() => {
+    const unavailable =
+      (!canViewAdministration && adminSettingsTabs.includes(activeTab)) || (!personal && isPersonalTab(activeTab));
+    if (!unavailable) return;
     setActiveTab("account");
     const url = new URL(window.location.href);
     url.searchParams.delete("tab");
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
-  }, [activeTab, canViewAdministration]);
+  }, [activeTab, canViewAdministration, personal]);
 
   useEffect(() => {
     setDisplayName(user.displayName || user.username);
@@ -242,6 +265,12 @@ export function SettingsPage({
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
   };
 
+  const toggleAdminView = () => selectTab(lastTabRef.current[adminView ? "personal" : "admin"]);
+
+  const visibleTabs = settingsTabs.filter((tab) =>
+    adminSettingsTabs.includes(tab.id) ? adminView : !adminView && (personal || !isPersonalTab(tab.id)),
+  );
+
   const savedDisplayName = user.displayName || user.username;
   const normalizedDisplayName = displayName.trim() || user.username;
   const passwordManagedByEnvironment = user.passwordManagedBy === "environment";
@@ -249,10 +278,24 @@ export function SettingsPage({
   return (
     <div className="space-y-6">
       {readOnly && <DemoReadOnlyNotice />}
-      <div className={segmentedListClassName()} role="tablist" aria-label={t("nav.settings")}>
-        {settingsTabs
-          .filter((tab) => canViewAdministration || !adminSettingsTabs.includes(tab.id))
-          .map((tab) => (
+      <div className={segmentedListClassName("items-center")}>
+        {canViewAdministration && (
+          <>
+            <button
+              className={segmentedItemClassName(adminView, "w-8 justify-center px-0")}
+              type="button"
+              aria-pressed={adminView}
+              aria-label={t("settings.administration")}
+              title={t("settings.administration")}
+              onClick={toggleAdminView}
+            >
+              <ShieldCheck className="h-4 w-4" />
+            </button>
+            <span aria-hidden="true" className="mx-0.5 h-5 w-px shrink-0 bg-border" />
+          </>
+        )}
+        <div className="flex gap-1" role="tablist" aria-label={t("nav.settings")}>
+          {visibleTabs.map((tab) => (
             <SettingsTabButton
               key={tab.id}
               tab={tab.id}
@@ -263,6 +306,7 @@ export function SettingsPage({
               {t(tab.labelKey)}
             </SettingsTabButton>
           ))}
+        </div>
       </div>
 
       {activeTab === "account" && (
@@ -458,6 +502,16 @@ export function SettingsPage({
           <RecommendationActivity userId={user.id} />
         </div>
       )}
+      {personal && isPersonalTab(activeTab) && (
+        <div
+          className={settingsPanelClassName}
+          role="tabpanel"
+          id={`settings-panel-${activeTab}`}
+          aria-labelledby={`settings-tab-${activeTab}`}
+        >
+          <PersonalTabPanel tab={activeTab} {...personal} />
+        </div>
+      )}
       {canViewAdministration && activeTab === "cleanup" && (
         <div
           className={settingsPanelClassName}
@@ -523,9 +577,7 @@ function SettingsTabButton({
 
 function settingsTabFromLocation(): SettingsTab {
   const tab = new URLSearchParams(window.location.search).get("tab");
-  return ["playback", "recommendation", "library", "cache", "cleanup", "users"].includes(tab ?? "")
-    ? (tab as SettingsTab)
-    : "account";
+  return allSettingsTabs.includes(tab as SettingsTab) ? (tab as SettingsTab) : "account";
 }
 
 function passwordErrorKey(message: string) {

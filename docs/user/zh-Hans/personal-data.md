@@ -2,7 +2,7 @@
 
 [English](../en/personal-data.md) · [简体中文](../zh-Hans/personal-data.md) · [繁體中文](../zh-Hant/personal-data.md) · [日本語](../ja/personal-data.md) · [한국어](../ko/personal-data.md)
 
-登录后可从侧栏、移动端账号菜单或快捷操作进入「标签」「历史」和「我的数据」。数据仅属于当前账号。
+登录后在「设置」中找到「历史」「标签」和「我的数据」标签页；移动端账号菜单和快捷操作可直接打开各标签页。数据仅属于当前账号。
 
 ## 个人标签
 

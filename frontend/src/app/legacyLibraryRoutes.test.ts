@@ -54,6 +54,12 @@ describe("legacyLibraryRedirect", () => {
     expect(legacyLibraryRedirect("/cleanup")).toBe("/settings?tab=cleanup");
   });
 
+  it("opens former personal pages as Settings tabs", () => {
+    expect(legacyLibraryRedirect("/history")).toBe("/settings?tab=history");
+    expect(legacyLibraryRedirect("/tags/")).toBe("/settings?tab=tags");
+    expect(legacyLibraryRedirect("/user-data")).toBe("/settings?tab=data");
+  });
+
   it("preserves metadata run filters and maps legacy settings links", () => {
     expect(legacyLibraryRedirect("/maintenance", "?tab=works&reason=metadata&metadataRun=7")).toBe(
       "/metadata?reason=metadata&metadataRun=7",
