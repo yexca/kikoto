@@ -398,6 +398,18 @@ the manual command repairs them but without its one-minute wait, and
 interrupted Fetch publications are reconciled from the staging, target, and
 backup directories.
 
+Fetch retries and startup recovery share the same publication reconciliation
+and local registration steps. A published or registered target is completed
+from its persisted plan and files, without re-downloading cache inputs or
+refreshing the remote source. Registration and cleanup remain resumable; an
+archive moved before its review candidate was saved is recovered on retry.
+The completed manifest, retired remote-stream identities, node results, job
+lease release, and run result commit together. Rollback backups are removed
+only after that commit. Startup also repairs legacy completed manifests whose
+job or run result was left unfinished. Simple workflow result writes likewise
+commit their node, job, and run states in one transaction, so an interrupted
+write retains the lease for the runner's existing settlement path.
+
 ## Library Layout and Onboarding
 
 The library is either one standard pool (the data root) or registered storage

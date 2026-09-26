@@ -226,7 +226,11 @@ func (s *Server) insertFetchCleanupCandidate(ctx context.Context, runID int64, w
 	}
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO workflow_candidate (workflow_run_id, candidate_type, external_key, status, payload_json)
-		VALUES (?, 'local_fetch_merge_cleanup', ?, 'pending', ?)
+		SELECT ?, 'local_fetch_merge_cleanup', ?, 'pending', ?
+		WHERE NOT EXISTS (
+			SELECT 1 FROM workflow_candidate
+			WHERE workflow_run_id = ? AND candidate_type = 'local_fetch_merge_cleanup'
+		)
 	`, runID, workCode, mustJSON(map[string]any{
 		"work_id":                workID,
 		"work_code":              workCode,
@@ -235,6 +239,6 @@ func (s *Server) insertFetchCleanupCandidate(ctx context.Context, runID int64, w
 		"candidate_location_ids": locationIDs,
 		"fetched_targets":        sortedStringKeys(targets),
 		"message":                "Fetch completed while other local files for this work still exist. Review before deleting or hiding old local files.",
-	}))
+	}), runID)
 	return err
 }

@@ -13,7 +13,7 @@ import (
 )
 
 func (s *Server) quarantineFetchLocalRoots(ctx context.Context, runID int64, workID int64, localSourceID int64, items []remoteWorkSavePlanItem) ([]map[string]any, error) {
-	publishedRoot, records, err := s.loadFetchRootsForQuarantine(ctx, workID, localSourceID)
+	publishedRoot, records, err := s.loadFetchRootsForQuarantine(ctx, runID, workID, localSourceID)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +51,7 @@ func fetchPlanTargetRoots(items []remoteWorkSavePlanItem) map[string]bool {
 	return targets
 }
 
-func (s *Server) loadFetchRootsForQuarantine(ctx context.Context, workID, localSourceID int64) (string, []fetchRootRecord, error) {
+func (s *Server) loadFetchRootsForQuarantine(ctx context.Context, runID, workID, localSourceID int64) (string, []fetchRootRecord, error) {
 	var publishedRoot string
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT root_path FROM work_folder_location
@@ -64,9 +64,10 @@ func (s *Server) loadFetchRootsForQuarantine(ctx context.Context, workID, localS
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, root_path, role
 		FROM work_folder_location
-		WHERE work_id = ? AND file_source_id = ? AND state = 'active' AND root_path <> ?
+		WHERE work_id = ? AND file_source_id = ? AND root_path <> ?
+			AND (state = 'active' OR (state = 'pending_cleanup' AND cleanup_run_id = ?))
 		ORDER BY id ASC
-	`, workID, localSourceID, publishedRoot)
+	`, workID, localSourceID, publishedRoot, runID)
 	if err != nil {
 		return "", nil, err
 	}
