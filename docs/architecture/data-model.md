@@ -24,9 +24,22 @@ Important tables:
 - `party`
 - `person`
 - `work_credit`
+- `work_snapshot_projection`
 
 DLsite metadata sync stores raw snapshots and updates normalized fields used by
 library and detail views.
+
+Voice credits and DLsite circle relations are projected from each work's
+latest snapshot. `work_snapshot_projection` records, per work and projection,
+the snapshot and a hash of the projection input it last produced. Startup and
+each metadata sync project only works whose latest snapshot changed since that
+record, in bounded batches; a new snapshot whose projection input is unchanged,
+such as a new sales count, writes nothing but the record. Triggers drop a
+record when a credit or circle relation is removed or reassigned, or when the
+work's imported circle catalog row changes, so the next pass restores what the
+snapshot still declares. A projection never removes a credit its snapshot no
+longer names. `party_metadata_snapshot` keeps the two latest snapshots per
+circle and provider, as `metadata_snapshot` does per work.
 
 `metadata_snapshot_card_summary` holds one compact, versioned card summary per
 snapshot (circle, base and edition codes, release date, rating count, series,
@@ -205,7 +218,11 @@ global input revision, and user-state revision. Client sessions bind to an
 immutable generation so ordinary browsing and card mutations do not repeat the
 affinity calculation. Current favorite and listening state still comes from
 `user_work_state` for card rendering; a later client session builds a new
-generation only when an input revision changed. Existing sessions retain their
+generation only when an input revision changed. The revision triggers fire
+only when a value the scorer reads changes (the work, tag, person, circle, or
+role of a relation, a tag namespace, or a user's listening status or
+favorite), so a metadata refresh that rewrites provenance or timestamps does
+not rebuild recommendations. Existing sessions retain their
 generation until they expire, so a refresh cannot change another open tab's
 ordering. A released recommendation algorithm version invalidates its older
 generation binding and rebuilds it before the session is reused.
@@ -225,8 +242,10 @@ generation binding and rebuilds it before the session is reused.
   (`rowid = work.id`) holding folded code/alias, title, circle, voice actor,
   and tag text, including relevant manual overrides. Folding applies NFKC,
   Unicode lowercase, and katakana-to-hiragana mapping. Triggers queue changed
-  works in `work_search_dirty`; the Library drains that queue before a search
-  and at startup. Edition-family matching is applied at query time, so the
+  works in `work_search_dirty`; a background worker rebuilds queued documents
+  in bounded batches. A search rebuilds a queue of at most 64 works itself, so
+  an edit is searchable at once; a longer queue leaves the search on the
+  previous index state and wakes the worker instead of holding the request. Edition-family matching is applied at query time, so the
   index never duplicates a sibling's text or creates another work identity.
 - User state should survive metadata refresh and source replacement.
 - Playback is a work cursor, not a set of independent per-track bookmarks.

@@ -99,7 +99,7 @@ func (s *Server) RunDemoLibraryScan(ctx context.Context) (DemoLibraryScanResult,
 	}
 
 	if result.EligibleWorks > 0 {
-		if err := s.syncPartiesFromDLsiteSnapshots(ctx); err != nil {
+		if err := s.projectChangedDLsiteParties(ctx); err != nil {
 			result.Failures = append(result.Failures, fmt.Sprintf("sync demo creator metadata: %s", err.Error()))
 		}
 	}

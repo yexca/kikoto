@@ -23,6 +23,12 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
 > Migration 040 signs everyone out once, in browsers and in the Android app,
 > because sessions are now stored as digests and the existing plaintext
 > sessions are deleted. Sign in again after upgrading.
+>
+> Migration 041 keeps only the two latest stored snapshots of each circle,
+> which may make the database noticeably smaller after the next Compact
+> database. The first start after upgrading re-derives voice credits and
+> circles from every work's metadata once in the background; later starts and
+> metadata syncs only process works whose metadata changed.
 
 ## Accounts
 
@@ -219,6 +225,21 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   operations, and filesystem maintenance keep their longer running time, and
   streams are unaffected once they start. The server log reports a database
   connection pool that stays exhausted, and when it recovers.
+- Query planner statistics are refreshed at startup, daily, and after each full
+  scan and metadata sync, not only by Compact database. A new install's
+  Library no longer stays slow until the database is compacted.
+- A full library scan commits every 250 folders instead of holding the
+  database for the whole library, so saving playback progress during a large
+  scan no longer fails as busy. Folders that did not change are not rewritten.
+- Startup and metadata sync no longer re-derive voice credits and circles for
+  the whole library. Only works whose metadata changed are processed, and a
+  change that leaves voice actors and circles as they were, such as a new
+  sales count, does not rebuild everyone's recommendations.
+- Circle refreshes no longer store a new circle snapshot every time; each
+  circle keeps its two latest.
+- Searching no longer waits while a large backlog of changed works is
+  re-indexed, such as after a bulk metadata sync. The index catches up in the
+  background, and a small number of changes is still searchable immediately.
 
 ## Maintenance
 

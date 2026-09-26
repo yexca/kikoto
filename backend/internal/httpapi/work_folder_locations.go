@@ -10,7 +10,9 @@ import (
 
 // upsertWorkFolderLocation keeps the concrete local root separate from the
 // aggregated source-presence row. Cleanup and the directory UI can therefore
-// bind to one stable folder identity.
+// bind to one stable folder identity. An upsert that would change no stored
+// value leaves the row and its timestamps untouched, so a full scan of an
+// unchanged library does not rewrite every folder.
 func upsertWorkFolderLocation(ctx context.Context, tx *sql.Tx, workID int64, fileSourceID int64, rootPath string, role string, state string, primary bool) error {
 	rootPath = normalizeFolderRootPath(rootPath)
 	if workID <= 0 || fileSourceID <= 0 || rootPath == "" {
@@ -41,6 +43,18 @@ func upsertWorkFolderLocation(ctx context.Context, tx *sql.Tx, workID int64, fil
 			cleanup_run_id = work_folder_location.cleanup_run_id,
 			last_scanned_at = CURRENT_TIMESTAMP,
 			updated_at = CURRENT_TIMESTAMP
+		WHERE work_folder_location.work_id IS NOT excluded.work_id
+			OR (
+				work_folder_location.role <> 'managed_fetch'
+				AND (
+					work_folder_location.role IS NOT excluded.role
+					OR work_folder_location.is_primary IS NOT excluded.is_primary
+				)
+			)
+			OR (
+				work_folder_location.cleanup_run_id IS NULL
+				AND work_folder_location.state IS NOT excluded.state
+			)
 	`, workID, fileSourceID, rootPath, role, state, primaryValue)
 	return err
 }

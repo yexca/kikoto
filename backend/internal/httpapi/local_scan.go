@@ -197,11 +197,10 @@ func upsertDetectedWork(ctx context.Context, tx *sql.Tx, folder localfs.WorkFold
 		INSERT INTO work (primary_code, work_type, title, description)
 		VALUES (?, 'audio', ?, ?)
 		ON CONFLICT(primary_code) DO UPDATE SET
-			description = CASE
-				WHEN work.description = '' OR work.description LIKE 'Detected from local folder %' THEN excluded.description
-				ELSE work.description
-			END,
+			description = excluded.description,
 			updated_at = CURRENT_TIMESTAMP
+		WHERE (work.description = '' OR work.description LIKE 'Detected from local folder %')
+			AND work.description IS NOT excluded.description
 	`, folder.Code, folder.Title, fmt.Sprintf("Detected from local folder %s.", filepath.ToSlash(folder.RelPath))); err != nil {
 		return 0, err
 	}

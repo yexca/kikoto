@@ -112,10 +112,11 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 
 func (s *Server) newDLsiteClient() *dlsite.Client { return s.dlsiteEndpoints.NewClient(nil) }
 
-// WarmSearchIndex builds queued Library search documents, including the full
-// backlog queued when the index is first created, before users search.
-func (s *Server) WarmSearchIndex(ctx context.Context) error {
-	return s.libraryStore.RefreshSearchIndex(ctx)
+// RunSearchIndexWorker keeps Library search documents current in the
+// background, starting with the backlog queued when the index is first
+// created, until ctx is cancelled.
+func (s *Server) RunSearchIndexWorker(ctx context.Context) {
+	s.libraryStore.RunSearchIndexWorker(ctx)
 }
 
 func (s *Server) Routes() http.Handler {
@@ -389,7 +390,7 @@ func (s *Server) RunStartupWorkflows(ctx context.Context) error {
 	if err := s.dispatchStartupSystemWorkflowTriggers(ctx); err != nil {
 		return err
 	}
-	return s.syncVoiceCreditsFromSnapshots(ctx)
+	return s.projectChangedSnapshots(ctx)
 }
 
 func (s *Server) RecoverInterruptedWorkflows(ctx context.Context) error {

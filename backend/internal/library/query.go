@@ -13,10 +13,12 @@ import (
 
 type Store struct {
 	db *sql.DB
+	// searchIndexWake asks RunSearchIndexWorker for an immediate pass.
+	searchIndexWake chan struct{}
 }
 
 func NewStore(db *sql.DB) *Store {
-	return &Store{db: db}
+	return &Store{db: db, searchIndexWake: make(chan struct{}, 1)}
 }
 
 type ListOptions struct {

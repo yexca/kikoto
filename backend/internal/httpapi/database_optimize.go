@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"net/http"
 
+	"github.com/yexca/kikoto/backend/internal/storage"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -132,10 +134,11 @@ func (s *Server) compactDatabase(ctx context.Context) (databaseOptimizeResult, e
 	if err != nil {
 		return databaseOptimizeResult{}, err
 	}
-	for _, statement := range []string{"VACUUM", "PRAGMA optimize"} {
-		if _, err := s.db.ExecContext(ctx, statement); err != nil {
-			return databaseOptimizeResult{}, err
-		}
+	if _, err := s.db.ExecContext(ctx, "VACUUM"); err != nil {
+		return databaseOptimizeResult{}, err
+	}
+	if err := storage.OptimizeStatistics(ctx, s.db); err != nil {
+		return databaseOptimizeResult{}, err
 	}
 	var busy, logPages, checkpointed int
 	_ = s.db.QueryRowContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &logPages, &checkpointed)
@@ -174,4 +177,14 @@ func (s *Server) finishDatabaseOptimizeJob(ctx context.Context, job workflowJobR
 		}
 	}
 	return tx.Commit()
+}
+
+// refreshQueryPlannerStatistics analyzes tables a bulk job has filled, such as
+// a new install's first scan or metadata sync, instead of leaving the planner
+// without statistics until the next daily pass. A failure only costs query
+// speed, so it is logged rather than failing the job.
+func (s *Server) refreshQueryPlannerStatistics(ctx context.Context) {
+	if err := storage.OptimizeStatistics(ctx, s.db); err != nil && ctx.Err() == nil {
+		slog.Warn("refresh query planner statistics", "error", err)
+	}
 }

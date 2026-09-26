@@ -291,7 +291,13 @@ available locations become `missing`; the `work`, `media_item`, and location
 history remain. Application-owned deletion updates its known location state
 immediately and may also produce a native event; the later incremental run is an
 idempotent reconciliation. Full scans retain the existing folder-presence and
-lazy-index repair behavior. Duplicate-code groups skip automatic invalidation,
+lazy-index repair behavior. A full scan commits discovered folders in batches
+of 250, so progress saves and other writers are not locked out for the whole
+library, and marks unseen works missing only in its final transaction. An
+interrupted scan therefore records what it found and marks nothing missing,
+and its retry repeats the idempotent folder writes. A folder whose work,
+presence, and folder location already match is not rewritten, so its
+timestamps record its last change. Duplicate-code groups skip automatic invalidation,
 fall back to full discovery, and remain review candidates. Neither mode rewrites
 `managed_fetch` ownership records.
 

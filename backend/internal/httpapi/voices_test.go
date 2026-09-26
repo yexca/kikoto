@@ -293,7 +293,7 @@ func TestVoiceSnapshotSyncKeepsMergedPersonMerged(t *testing.T) {
 	}
 	server := &Server{db: db}
 	ctx := context.Background()
-	if err := server.syncVoiceCreditsFromSnapshots(ctx); err != nil {
+	if err := server.projectChangedVoiceCredits(ctx); err != nil {
 		t.Fatal(err)
 	}
 	var sourceID int64
@@ -304,7 +304,7 @@ func TestVoiceSnapshotSyncKeepsMergedPersonMerged(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := server.syncVoiceCreditsFromSnapshots(ctx); err != nil {
+	if err := server.projectChangedVoiceCredits(ctx); err != nil {
 		t.Fatal(err)
 	}
 	var people int

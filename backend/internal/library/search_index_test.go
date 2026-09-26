@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/storage"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
@@ -202,4 +203,50 @@ func TestSearchIndexMigrationIndexesExistingWorks(t *testing.T) {
 	}
 	assertSearchCodes(t, store, 0, "tag:癒し", 8)
 	assertSearchCodes(t, store, 0, "existing", 8)
+}
+
+func TestSearchLeavesLongQueueToBackgroundWorker(t *testing.T) {
+	db := openSearchTestDB(t, "../../migrations")
+	backlog := searchIndexInlineLimit + 1
+	ordinals := make([]int, 0, backlog)
+	for ordinal := range backlog {
+		insertSearchWork(t, db, ordinal, "Backlog Example")
+		ordinals = append(ordinals, ordinal)
+	}
+	store := NewStore(db)
+	pending := func() int {
+		t.Helper()
+		var count int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM work_search_dirty`).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+
+	// The request reads the previous index state instead of rebuilding the
+	// backlog, and asks the worker for a pass.
+	assertSearchCodes(t, store, 0, "backlog")
+	if got := pending(); got != backlog {
+		t.Fatalf("pending search documents after search = %d, want %d", got, backlog)
+	}
+	if len(store.searchIndexWake) != 1 {
+		t.Fatal("search did not wake the search index worker")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		store.RunSearchIndexWorker(ctx)
+	}()
+	deadline := time.Now().Add(10 * time.Second)
+	for pending() > 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("search index worker did not drain the queue")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	<-done
+	assertSearchCodes(t, store, 0, "backlog", ordinals...)
 }

@@ -38,7 +38,7 @@ func TestDLsitePartyProjectionSkipsUnchangedSnapshots(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := &Server{db: db}
-	if err := server.syncPartiesFromDLsiteSnapshots(ctx); err != nil {
+	if err := server.projectChangedDLsiteParties(ctx); err != nil {
 		t.Fatal(err)
 	}
 
@@ -50,7 +50,7 @@ func TestDLsitePartyProjectionSkipsUnchangedSnapshots(t *testing.T) {
 	`, sentinel, sentinel, sentinel); err != nil {
 		t.Fatal(err)
 	}
-	if err := server.syncPartiesFromDLsiteSnapshots(ctx); err != nil {
+	if err := server.projectChangedDLsiteParties(ctx); err != nil {
 		t.Fatal(err)
 	}
 
@@ -73,7 +73,7 @@ func TestDLsitePartyProjectionSkipsUnchangedSnapshots(t *testing.T) {
 	}
 	readCtx, cancelRead := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancelRead()
-	if err := server.syncPartiesFromDLsiteSnapshots(readCtx); err != nil {
+	if err := server.projectChangedDLsiteParties(readCtx); err != nil {
 		_ = blocker.Rollback()
 		t.Fatalf("unchanged projection waited for the active writer: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestDLsitePartyProjectionSkipsUnchangedSnapshots(t *testing.T) {
 	if _, err := db.Exec(`UPDATE party_catalog_item SET title = 'Stale title' WHERE primary_code = 'RJ00000000'`); err != nil {
 		t.Fatal(err)
 	}
-	if err := server.syncPartiesFromDLsiteSnapshots(ctx); err != nil {
+	if err := server.projectChangedDLsiteParties(ctx); err != nil {
 		t.Fatal(err)
 	}
 	var title string
