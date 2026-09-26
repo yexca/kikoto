@@ -600,6 +600,9 @@ export const surfaceHans = {
     loadingWorkflowData: "正在加载工作流数据",
     workflowTabs: "工作流",
     presetQueueFailed: "预制工作流无法排队。",
+    runCancelFailed: "无法取消工作流运行，请重试。",
+    runRetryFailed: "无法重试工作流运行，请重试。",
+    candidateActionFailed: "无法更新此审核项，请重试。",
     presetFetchUnavailable: "需要下载权限",
     presetGroups: {
       input: "输入",

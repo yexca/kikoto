@@ -260,6 +260,9 @@ export const englishResource = {
         dismissVersionNotice: "Dismiss version notice",
         remindNextVersion: "Remind me for the next version",
         loadingPage: "Loading page",
+        serverUnavailableTitle: "Can't reach Kikoto",
+        serverUnavailableMessage:
+          "The server did not respond. Your sign-in has not changed. Check the connection and try again.",
       },
       nav: {
         workManagement: "Metadata",
@@ -525,6 +528,10 @@ export const englishResource = {
         routeErrorMessage: "Kikoto could not display this page. The player and navigation are still available.",
         retryPage: "Retry page",
         openLibrary: "Open Library",
+        staleVersionTitle: "Kikoto was updated",
+        staleVersionMessage:
+          "This page belongs to an older version that is no longer on the server. Reload to use the latest version.",
+        reloadApp: "Reload Kikoto",
       },
       notifications: {
         title: "Notifications",

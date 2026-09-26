@@ -135,6 +135,28 @@ test("mobile library pagination returns to the page top after detail return", as
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(10);
 });
 
+test("library keeps its page across a reload", async ({ page }) => {
+  const requestedPages: string[] = [];
+  await mockApplication(
+    page,
+    (url) => {
+      if (url.searchParams.get("scope") === "local") requestedPages.push(url.searchParams.get("page") ?? "");
+    },
+    false,
+    48,
+  );
+  await page.goto("/");
+  await expect(page.getByText("Mobile work 2", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Next page" }).last().click();
+  await expect(page.getByText(/^Page 2 of 2/).first()).toBeVisible();
+
+  requestedPages.length = 0;
+  await page.reload();
+  await expect(page.getByText(/^Page 2 of 2/).first()).toBeVisible();
+  await expect(page.getByText("Mobile work 2", { exact: true })).toBeVisible();
+  expect(requestedPages).toEqual(["2"]);
+});
+
 test("tag clicks send a structured Unicode tag search and retain the matching work", async ({ page }) => {
   const requests: string[] = [];
   await mockApplication(page, (url) => requests.push(url.searchParams.get("q") ?? ""));

@@ -5,10 +5,12 @@ import { MobileServerGate } from "@/app/MobileServerGate";
 import { ToastProvider } from "@/components/ui/toast";
 import { PWAServiceWorker } from "@/app/PWAServiceWorker";
 import { initializeStoredTheme } from "@/app/theme";
+import { trackChunkLoadErrors } from "@/lib/chunkLoadError";
 import { LocaleProvider } from "@/i18n/LocaleProvider";
 import "./styles.css";
 
 initializeStoredTheme();
+trackChunkLoadErrors();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

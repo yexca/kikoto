@@ -33,7 +33,7 @@ const persistedTrack = {
   ],
 };
 
-async function prepareRouteFailure(page: Page) {
+async function prepareRouteFailure(page: Page, fulfillAboutModule = fulfillFailingAboutModule) {
   const audioBody = silentWav(60);
   await page.addInitScript((track) => {
     const key = `kikoto:player-queue:v2:${encodeURIComponent(window.location.origin)}:anonymous`;
@@ -101,8 +101,8 @@ async function prepareRouteFailure(page: Page) {
     await route.fulfill({ status: 404, json: { error: "Not mocked" } });
   });
 
-  await page.route("**/src/pages/AboutPage.tsx*", fulfillFailingAboutModule);
-  await page.route(/\/assets\/AboutPage-[^/]+\.js(?:\?.*)?$/, fulfillFailingAboutModule);
+  await page.route("**/src/pages/AboutPage.tsx*", fulfillAboutModule);
+  await page.route(/\/assets\/AboutPage-[^/]+\.js(?:\?.*)?$/, fulfillAboutModule);
 }
 
 async function fulfillFailingAboutModule(route: Route) {
@@ -153,4 +153,27 @@ test("route render failures preserve the app shell and player", async ({ page })
   await expect(audio).toHaveJSProperty("paused", false);
   await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBeGreaterThan(beforeRecovery);
   await expect(audio).toHaveJSProperty("error", null);
+});
+
+test("a page chunk removed by an update offers a reload that loads the current version", async ({ page }) => {
+  // Until the reload, the page's chunk is missing as after a deploy replaced it.
+  let chunkMissing = true;
+  await prepareRouteFailure(page, async (route) => {
+    if (chunkMissing) await route.fulfill({ status: 404, body: "Not found" });
+    else await route.fallback();
+  });
+  await page.goto("/");
+  await expect(page.locator("footer").getByRole("button", { name: "Library", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Quick actions", exact: true }).click();
+  await page.getByRole("button", { name: "About /about", exact: true }).click();
+
+  const fallback = page.getByRole("alert");
+  await expect(fallback.getByRole("heading", { name: "Kikoto was updated" })).toBeVisible();
+  await expect(fallback.getByRole("button", { name: "Retry page" })).toHaveCount(0);
+
+  chunkMissing = false;
+  await fallback.getByRole("button", { name: "Reload Kikoto" }).click();
+  await expect(page).toHaveURL(/\/about$/);
+  await expect(fallback).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "About", exact: true })).toBeVisible();
 });
