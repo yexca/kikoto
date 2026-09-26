@@ -19,6 +19,10 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
 > `KIKOTO_ROOT_ACCOUNT_MODE=environment` instead. Update `docker-compose.yml`
 > either way, because the previous file neither passes the new variables nor
 > starts without `KIKOTO_ROOT_PASSWORD`.
+>
+> Migration 040 signs everyone out once, in browsers and in the Android app,
+> because sessions are now stored as digests and the existing plaintext
+> sessions are deleted. Sign in again after upgrading.
 
 ## Accounts
 
@@ -47,6 +51,11 @@ Changes through v0.6.1 are summarized in [v0.6.1](v0.6.1.md).
   administrator can change its role or delete it.
 - New passwords must have at least 8 characters and must not be a value that
   appeared in the documentation.
+- The database and its backups store only a SHA-256 digest of each session
+  token, so a copied database or backup can no longer be used to sign in.
+- The Android app is excluded from Android cloud backup and device-to-device
+  transfer, so its stored session no longer leaves the device in a backup. A
+  restored or transferred app asks for the server and sign-in again.
 
 ## Workflows
 

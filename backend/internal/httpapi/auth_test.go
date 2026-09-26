@@ -198,15 +198,12 @@ func TestUpdateCurrentUserChangesAccountManagedProfileAndPasswordAndKeepsCurrent
 	if verifyPassword("listener-password", passwordHash) || !verifyPassword("new-password", passwordHash) {
 		t.Fatal("password credential was not replaced")
 	}
-	var currentSessions, otherSessions int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM user_session WHERE id = ?`, currentCookie.Value).Scan(&currentSessions); err != nil {
-		t.Fatal(err)
+	sessions := account.NewStore(db)
+	if _, err := sessions.UserForSession(context.Background(), currentCookie.Value, time.Now()); err != nil {
+		t.Fatalf("current session after password change: %v", err)
 	}
-	if err := db.QueryRow(`SELECT COUNT(*) FROM user_session WHERE id = ?`, otherCookie.Value).Scan(&otherSessions); err != nil {
-		t.Fatal(err)
-	}
-	if currentSessions != 1 || otherSessions != 0 {
-		t.Fatalf("session counts = current %d other %d", currentSessions, otherSessions)
+	if _, err := sessions.UserForSession(context.Background(), otherCookie.Value, time.Now()); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("other session after password change error = %v, want sql.ErrNoRows", err)
 	}
 
 	meRequest := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
@@ -292,12 +289,8 @@ func TestUpdateCurrentUserRejectsWrongPasswordWithoutPartialUpdate(t *testing.T)
 	if displayName != "listener" || !verifyPassword("listener-password", passwordHash) {
 		t.Fatalf("failed update persisted display %q or changed password", displayName)
 	}
-	var sessionCount int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM user_session WHERE id = ?`, cookie.Value).Scan(&sessionCount); err != nil {
-		t.Fatal(err)
-	}
-	if sessionCount != 1 {
-		t.Fatalf("current session count = %d", sessionCount)
+	if _, err := account.NewStore(db).UserForSession(context.Background(), cookie.Value, time.Now()); err != nil {
+		t.Fatalf("current session after rejected update: %v", err)
 	}
 }
 

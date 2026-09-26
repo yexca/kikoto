@@ -127,7 +127,8 @@ be queued or running. Settings lists backup names, kinds, sizes, and times
 without revealing the backup directory. An in-memory or URI-configured
 database has no backup directory and is not backed up.
 
-Backups contain password hashes and sessions; protect them like the database.
+Backups contain password hashes and session digests; protect them like the
+database.
 They share the database's disk, so copy them to another disk or host to
 survive a drive failure.
 
