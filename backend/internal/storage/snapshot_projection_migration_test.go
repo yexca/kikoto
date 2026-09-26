@@ -5,12 +5,12 @@ import (
 	"testing"
 )
 
-// Migration 041 keeps only the latest circle snapshots and stops rewrites of
+// Migration 042 keeps only the latest circle snapshots and stops rewrites of
 // unchanged rows from advancing the recommendation revision.
 func TestSnapshotProjectionMigrationPrunesCircleSnapshotsAndIgnoresNoOpUpdates(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
 	db := openMigrationManagerDB(t)
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 40)); err != nil {
+	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 41)); err != nil {
 		t.Fatal(err)
 	}
 	for _, statement := range []string{
@@ -27,7 +27,7 @@ func TestSnapshotProjectionMigrationPrunesCircleSnapshotsAndIgnoresNoOpUpdates(t
 			t.Fatal(err)
 		}
 	}
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 41)); err != nil {
+	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 42)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -36,7 +36,7 @@ func TestSnapshotProjectionMigrationPrunesCircleSnapshotsAndIgnoresNoOpUpdates(t
 		t.Fatal(err)
 	}
 	if kept != "3,4" {
-		t.Fatalf("circle snapshots after migration 041 = %s, want the latest two 3,4", kept)
+		t.Fatalf("circle snapshots after migration 042 = %s, want the latest two 3,4", kept)
 	}
 
 	revision := func() int {
