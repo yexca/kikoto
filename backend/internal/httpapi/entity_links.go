@@ -226,39 +226,6 @@ func (s *Server) syncWorkMetadataFamily(ctx context.Context, code string) (metas
 	return family, nil
 }
 
-func (s *Server) syncPartyForWorkFromSnapshot(ctx context.Context, code string) error {
-	var workID int64
-	var primaryCode, title, raw string
-	var release sql.NullString
-	err := s.db.QueryRowContext(ctx, `
-		SELECT work.id, work.primary_code, work.title, work.release_date, snapshot.snapshot_json
-		FROM work
-		INNER JOIN metadata_snapshot AS snapshot ON snapshot.work_id = work.id
-		INNER JOIN metadata_provider AS provider ON provider.id = snapshot.provider_id
-		WHERE UPPER(work.primary_code) = UPPER(?) AND provider.code = 'dlsite'
-		ORDER BY snapshot.fetched_at DESC, snapshot.id DESC
-		LIMIT 1
-	`, code).Scan(&workID, &primaryCode, &title, &release, &raw)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	party := parsePartyFromDLsiteSnapshot(raw)
-	if !dlsiteMakerIDPattern.MatchString(party.ExternalID) || party.DisplayName == "" {
-		return nil
-	}
-	partyID, err := s.upsertDLsiteParty(ctx, party.ExternalID, party.DisplayName, raw)
-	if err != nil {
-		return err
-	}
-	if err := s.upsertPartyCatalogItem(ctx, partyID, primaryCode, title, nullableStringValue(release), s.dlsiteURL(primaryCode), "imported", raw); err != nil {
-		return err
-	}
-	return s.upsertAuthoritativeWorkParty(ctx, workID, partyID, "dlsite_snapshot")
-}
-
 func (s *Server) findWorkEntityRoute(ctx context.Context, code string, request workEntityLinkRequest) (string, error) {
 	switch request.Kind {
 	case "circle":

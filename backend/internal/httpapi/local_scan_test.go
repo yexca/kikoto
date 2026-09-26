@@ -17,6 +17,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/localfs"
 	"github.com/yexca/kikoto/backend/internal/storagepool"
+	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
 func TestDetectedMediaUpsertsReuseExistingRowsWithoutReturningClauses(t *testing.T) {
@@ -422,6 +423,69 @@ func TestLocalLibraryScanPreservesCompletedIndexForUnchangedFolder(t *testing.T)
 	}
 	if err := server.ensureLocalMediaIndexed(context.Background(), workID); err != nil {
 		t.Fatalf("completed empty index was refreshed: %v", err)
+	}
+}
+
+func TestFullLocalScanAcrossCommitBatchesSkipsUnchangedRows(t *testing.T) {
+	dataRoot := t.TempDir()
+	folders := localScanFolderCommitBatch + 1
+	folderName := func(index int) string { return testfixture.WorkCodeAt(index) + " Example Work" }
+	for index := range folders {
+		if err := os.MkdirAll(filepath.Join(dataRoot, folderName(index)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := storagepool.WriteMarker(dataRoot, "synthetic-library"); err != nil {
+		t.Fatal(err)
+	}
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 2})
+	executeLocalScanForTest(t, server)
+
+	const earlier = "2000-01-01 00:00:00"
+	for _, statement := range []string{
+		`UPDATE work SET updated_at = ?`,
+		`UPDATE work_source_presence SET updated_at = ?, last_checked_at = ?, last_seen_at = ?`,
+		`UPDATE work_folder_location SET updated_at = ?, last_scanned_at = ?`,
+	} {
+		args := []any{earlier, earlier, earlier}[:strings.Count(statement, "?")]
+		if _, err := db.Exec(statement, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The first batch loses a folder, so marking it missing depends on every
+	// later batch having recorded the works it saw.
+	if err := os.RemoveAll(filepath.Join(dataRoot, folderName(0))); err != nil {
+		t.Fatal(err)
+	}
+	executeLocalScanForTest(t, server)
+
+	var missing, available, rewritten int
+	if err := db.QueryRow(`
+		SELECT
+			COALESCE(SUM(presence.availability = 'missing' AND work.primary_code = ?), 0),
+			COALESCE(SUM(presence.availability = 'available'), 0)
+		FROM work_source_presence AS presence
+		INNER JOIN work ON work.id = presence.work_id
+		WHERE presence.presence_type = 'local'
+	`, testfixture.WorkCodeAt(0)).Scan(&missing, &available); err != nil {
+		t.Fatal(err)
+	}
+	if missing != 1 || available != folders-1 {
+		t.Fatalf("presence after rescan = %d missing removed work, %d available, want 1 and %d", missing, available, folders-1)
+	}
+	if err := db.QueryRow(`
+		SELECT
+			(SELECT COUNT(*) FROM work WHERE updated_at <> ?)
+			+ (SELECT COUNT(*) FROM work_source_presence WHERE availability = 'available' AND (updated_at <> ? OR last_checked_at <> ?))
+			+ (SELECT COUNT(*) FROM work_folder_location AS location
+				INNER JOIN work ON work.id = location.work_id
+				WHERE work.primary_code <> ? AND (location.updated_at <> ? OR location.last_scanned_at <> ?))
+	`, earlier, earlier, earlier, testfixture.WorkCodeAt(0), earlier, earlier).Scan(&rewritten); err != nil {
+		t.Fatal(err)
+	}
+	if rewritten != 0 {
+		t.Fatalf("rescan of unchanged folders rewrote %d rows, want 0", rewritten)
 	}
 }
 

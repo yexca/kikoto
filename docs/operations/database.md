@@ -92,9 +92,17 @@ presented.
 **Compact database** queues a `database_optimize` workflow run and returns
 `202 Accepted` with its run ID. Only one optimization can be queued or running;
 a repeated request returns the active run. The workflow executor then runs
-`VACUUM`, `PRAGMA optimize`, and a truncating WAL checkpoint. The run appears in
+`VACUUM`, a query planner statistics refresh, and a truncating WAL checkpoint. The run appears in
 Activity. On completion, the run summary and a `database.optimize` audit entry
 record the database size before and after compaction.
+
+Query planner statistics are also refreshed without compaction: at startup,
+every 24 hours, and after each full local scan and metadata sync. A refresh
+runs `PRAGMA optimize=0x10002` with `analysis_limit=400`, which analyzes only
+tables whose statistics are missing or whose size changed substantially, so it
+is short on an unchanged library. Without statistics SQLite can pick a full
+table scan over an index, which made a new install's Library slow until it was
+compacted by hand.
 
 `VACUUM` still holds the write lock while it rewrites the file. Other writes
 wait for the busy timeout and may fail during a long compaction, so run it

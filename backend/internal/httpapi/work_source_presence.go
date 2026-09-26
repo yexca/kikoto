@@ -19,6 +19,10 @@ type workSourcePresence struct {
 	SourceURL    string
 	Availability string
 	RawJSON      string
+	// SkipUnchanged leaves an existing row, including its check timestamps,
+	// untouched when no stored value would change. A full local scan uses it
+	// so an unchanged library is not rewritten on every pass.
+	SkipUnchanged bool
 }
 
 const sourcePresenceTypeRemoteSource = "source"
@@ -67,7 +71,13 @@ func upsertWorkSourcePresence(ctx context.Context, tx *sql.Tx, presence workSour
 			END,
 			last_checked_at = excluded.last_checked_at,
 			updated_at = CURRENT_TIMESTAMP
-	`, presence.WorkID, presence.FileSourceID, presence.PresenceType, presence.RemoteID, presence.RemoteCode, presence.SourceURL, presence.Availability, presence.RawJSON)
+		WHERE NOT ?
+			OR work_source_presence.remote_id IS NOT excluded.remote_id
+			OR work_source_presence.remote_code IS NOT excluded.remote_code
+			OR work_source_presence.source_url IS NOT excluded.source_url
+			OR work_source_presence.availability IS NOT excluded.availability
+			OR work_source_presence.raw_json IS NOT excluded.raw_json
+	`, presence.WorkID, presence.FileSourceID, presence.PresenceType, presence.RemoteID, presence.RemoteCode, presence.SourceURL, presence.Availability, presence.RawJSON, presence.SkipUnchanged)
 	return err
 }
 

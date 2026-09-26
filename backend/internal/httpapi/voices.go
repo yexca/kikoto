@@ -1554,98 +1554,51 @@ type voiceCreditSnapshotRow struct {
 	Raw        string
 }
 
-func (s *Server) syncVoiceCreditsFromSnapshots(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT work.id, snapshot.provider_id, snapshot.snapshot_json
-		FROM work
-		INNER JOIN metadata_snapshot AS snapshot ON snapshot.work_id = work.id
-		ORDER BY snapshot.fetched_at DESC, snapshot.id DESC
-	`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	snapshots := []voiceCreditSnapshotRow{}
-	seen := map[int64]bool{}
-	for rows.Next() {
-		var item voiceCreditSnapshotRow
-		if err := rows.Scan(&item.WorkID, &item.ProviderID, &item.Raw); err != nil {
-			return err
-		}
-		if seen[item.WorkID] {
-			continue
-		}
-		seen[item.WorkID] = true
-		snapshots = append(snapshots, item)
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	for _, snapshot := range snapshots {
-		if err := syncVoiceCreditSnapshot(ctx, tx, snapshot); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
-
-func (s *Server) syncVoiceCreditsForWorkFromSnapshots(ctx context.Context, workID int64) error {
-	var snapshot voiceCreditSnapshotRow
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT work.id, snapshot.provider_id, snapshot.snapshot_json
-		FROM work
-		INNER JOIN metadata_snapshot AS snapshot ON snapshot.work_id = work.id
-		WHERE work.id = ?
-		ORDER BY snapshot.fetched_at DESC, snapshot.id DESC
-		LIMIT 1
-	`, workID).Scan(&snapshot.WorkID, &snapshot.ProviderID, &snapshot.Raw); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil
-		}
-		return err
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := syncVoiceCreditSnapshot(ctx, tx, snapshot); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
+// syncVoiceCreditSnapshot projects a snapshot's voice credits inside a
+// caller's transaction, such as a remote work being persisted.
 func syncVoiceCreditSnapshot(ctx context.Context, tx *sql.Tx, snapshot voiceCreditSnapshotRow) error {
-	metadata := parseDLsiteSnapshot(snapshot.Raw)
+	return writeVoiceCredits(ctx, tx, snapshot.WorkID, snapshot.ProviderID, voiceCreditActors(snapshot.Raw))
+}
+
+// voiceCreditActors returns the distinct voice actors a snapshot credits, or
+// the unknown voice actor when it names none.
+func voiceCreditActors(raw string) []voiceActorIdentity {
+	metadata := parseDLsiteSnapshot(raw)
 	actors := make([]voiceActorIdentity, 0, len(metadata.VoiceActors))
 	for _, name := range metadata.VoiceActors {
 		actors = append(actors, voiceActorIdentity{Name: name})
 	}
 	if len(actors) == 0 {
-		actors = parseKikoeruVoiceActorIdentities(snapshot.Raw)
+		actors = parseKikoeruVoiceActorIdentities(raw)
 	}
 	if len(actors) == 0 {
 		actors = []voiceActorIdentity{{Name: unknownVoiceActorName}}
 	}
+	distinct := make([]voiceActorIdentity, 0, len(actors))
 	seenActor := map[string]bool{}
 	for _, actor := range actors {
-		name := strings.TrimSpace(actor.Name)
-		if name == "" || seenActor[voiceNameKey(name)] {
+		actor.Name = strings.TrimSpace(actor.Name)
+		if actor.Name == "" || seenActor[voiceNameKey(actor.Name)] {
 			continue
 		}
-		seenActor[voiceNameKey(name)] = true
-		personID, err := upsertPersonIdentity(ctx, tx, name, snapshot.ProviderID, actor.ExternalID)
+		seenActor[voiceNameKey(actor.Name)] = true
+		distinct = append(distinct, actor)
+	}
+	return distinct
+}
+
+// writeVoiceCredits adds the credits without removing ones the snapshot no
+// longer names. A credit that already matches is left untouched, so it does
+// not advance the recommendation revision.
+func writeVoiceCredits(ctx context.Context, tx *sql.Tx, workID int64, providerID sql.NullInt64, actors []voiceActorIdentity) error {
+	var provider any
+	if providerID.Valid {
+		provider = providerID.Int64
+	}
+	for _, actor := range actors {
+		personID, err := upsertPersonIdentity(ctx, tx, actor.Name, providerID, actor.ExternalID)
 		if err != nil {
 			return err
-		}
-		var provider any
-		if snapshot.ProviderID.Valid {
-			provider = snapshot.ProviderID.Int64
 		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO work_credit (work_id, person_id, role, provider_id, source, updated_at)
@@ -1654,7 +1607,9 @@ func syncVoiceCreditSnapshot(ctx context.Context, tx *sql.Tx, snapshot voiceCred
 				provider_id = excluded.provider_id,
 				source = excluded.source,
 				updated_at = CURRENT_TIMESTAMP
-		`, snapshot.WorkID, personID, provider); err != nil {
+			WHERE work_credit.provider_id IS NOT excluded.provider_id
+				OR work_credit.source IS NOT excluded.source
+		`, workID, personID, provider); err != nil {
 			return err
 		}
 	}
@@ -1681,14 +1636,14 @@ func upsertPersonIdentity(ctx context.Context, tx *sql.Tx, name string, provider
 			if _, err := tx.ExecContext(ctx, `
 				UPDATE person
 				SET display_name = ?, sort_name = ?, updated_at = CURRENT_TIMESTAMP
-				WHERE id = ? AND NOT EXISTS (
+				WHERE id = ? AND (display_name IS NOT ? OR sort_name IS NOT ?) AND NOT EXISTS (
 					SELECT 1 FROM person AS other WHERE other.id <> ? AND LOWER(other.display_name) = LOWER(?)
 				) AND NOT EXISTS (
 					SELECT 1 FROM person_alias AS merged
 					WHERE merged.person_id = ? AND merged.alias = ?
 						AND merged.source IN ('merged_name', 'merged_primary_name', 'merged_alias')
 				)
-			`, name, strings.ToLower(name), personID, personID, name, personID, name); err != nil {
+			`, name, strings.ToLower(name), personID, name, strings.ToLower(name), personID, name, personID, name); err != nil {
 				return 0, err
 			}
 			if _, err := tx.ExecContext(ctx, `
