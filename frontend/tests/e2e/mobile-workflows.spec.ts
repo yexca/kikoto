@@ -1274,6 +1274,10 @@ test("activity reports Fetch byte progress without guessing unknown totals", asy
       await route.fulfill({ json: [] });
       return;
     }
+    if (url.pathname.endsWith("/fetch-files")) {
+      await route.fulfill({ json: { runId: Number(url.pathname.split("/")[3]), files: [] } });
+      return;
+    }
     await route.fulfill({
       json: { ...(url.pathname.endsWith("/52") ? unknownRun : knownRun), nodeRuns: [], graphJson: "{}" },
     });

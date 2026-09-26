@@ -32,7 +32,8 @@ export const adminToolsEnglish = {
     saveFailed: "Source could not be saved.",
     enabledToast: "{{name}} enabled.",
     disabledToast: "{{name}} disabled.",
-    scanDepthDescription: "How many folder levels below the data root, or below each storage pool, are searched for works.",
+    scanDepthDescription:
+      "How many folder levels below the data root, or below each storage pool, are searched for works.",
     levels: "levels",
     days: "days",
     seconds: "sec",

@@ -294,12 +294,25 @@ try {
   const headers = { Cookie: cookie, "Content-Type": "application/json" };
   const { body: currentUser } = await request("/api/auth/me", { headers });
   assert.equal(JSON.parse(currentUser).authenticated, true);
+  // A fresh install asks the first administrator to set up the library; finish
+  // that setup through the API so the browser check reaches the Library.
+  await request("/api/library/layout", {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({ mode: "standard" }),
+  });
   await request("/api/workflow-runs/local-scan", {
     method: "POST",
     headers,
     body: JSON.stringify({ followUpRun: false }),
     expected: 202,
   });
+  const { body: layout } = await request("/api/library/onboarding/complete", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ startupScan: false, watchFolders: false }),
+  });
+  assert.equal(JSON.parse(layout).onboardingCompleted, true);
   const work = await waitFor(async () => {
     const { body } = await request("/api/works", { headers });
     return JSON.parse(body).works.find(
