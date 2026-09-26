@@ -103,7 +103,11 @@ identities from a source-provided recent-added order; it never derives ordering
 from a release date or primary code. Person merge review snapshots include both
 sides' voice catalogs. A merge retains their canonical union and invalidates the
 target refresh state because the confirmed alias set changed; Undo restores both
-captured catalogs and refresh states.
+captured catalogs and refresh states. A merge also moves the source's provider
+voice actor ids to the target. Credit projection resolves a name that is no
+person's display name through a confirmed alias held by exactly one person, so
+metadata sync keeps a merge instead of recreating the merged-away person. A
+merged name never replaces the target's display name.
 
 ## File Availability
 

@@ -369,6 +369,7 @@ function VoiceAliasDialog({
         ) : (
           <VoiceAliasPanel
             personId={personId}
+            personName={name}
             aliases={aliases}
             canManage={canManage}
             readOnly={readOnly}
