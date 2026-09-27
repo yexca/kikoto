@@ -75,8 +75,10 @@ installing its APK remains an explicit user-confirmed Android system flow.
      moves affected files while the site is in maintenance.
    - Scan the library. The scan discovers local works without waiting for
      provider metadata.
-   - Review any earlier custom workflows. Kikoto can convert exact preset
-     matches into disabled triggers; export unmatched definitions for review.
+   - If an upgrade preserved earlier custom workflows, review them. Kikoto can
+     convert exact preset matches into disabled triggers; unmatched definitions
+     can be exported. Fresh installs and upgrades without custom workflows skip
+     this step.
    - Optionally start metadata sync, which runs in the background.
    - Decide whether scans run on startup and when folders change. Both start
      off on a new install; they can be turned on later in Workflows.

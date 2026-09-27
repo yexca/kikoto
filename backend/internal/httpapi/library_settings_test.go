@@ -74,6 +74,38 @@ func TestPrepareLibraryLayoutLeavesFreshInstallUnconfiguredWithScansOff(t *testi
 	}
 }
 
+func TestLibraryLayoutOffersLegacyWorkflowReviewOnlyForPreservedDefinitions(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: t.TempDir()})
+	checkReview := func(want bool) {
+		t.Helper()
+		layout, err := server.libraryLayoutResponse(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if layout.HasLegacyWorkflows != want {
+			t.Fatalf("legacy workflow review = %t, want %t", layout.HasLegacyWorkflows, want)
+		}
+	}
+
+	checkReview(false) // A fresh schema contains the table but no old workflows.
+	if _, err := db.Exec("UPDATE schema_state SET last_successful_app_version = 'v0.6.1'"); err != nil {
+		t.Fatal(err)
+	}
+	checkReview(false) // Upgrading alone does not create a review task.
+	if _, err := db.Exec(`
+		INSERT INTO legacy_workflow_snapshot (original_id, code, display_name, definition_json)
+		VALUES (9001, 'example_custom', 'Example workflow', '{"schemaVersion":2,"nodes":[],"edges":[]}')
+	`); err != nil {
+		t.Fatal(err)
+	}
+	checkReview(true)
+	if _, err := db.Exec("UPDATE schema_state SET last_successful_app_version = 'v0.7.0'"); err != nil {
+		t.Fatal(err)
+	}
+	checkReview(true) // Preserved definitions remain reviewable across later releases.
+}
+
 func TestPrepareLibraryLayoutKeepsUpgradedInstanceStandard(t *testing.T) {
 	db := openMigratedTestDB(t)
 	clearLibraryMode(t, db)

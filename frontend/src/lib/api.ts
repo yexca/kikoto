@@ -174,6 +174,7 @@ export type LibraryLayout = {
   configured: boolean;
   locked: boolean;
   onboardingCompleted: boolean;
+  hasLegacyWorkflows: boolean;
   pools: LibraryPool[];
   candidates: string[];
   fetchPool: string;

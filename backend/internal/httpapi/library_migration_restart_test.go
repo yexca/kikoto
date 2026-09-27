@@ -236,7 +236,7 @@ func TestV061DatabaseBootsIntoPoolMigrationWithLegacyWorkflowReview(t *testing.T
 		t.Fatal(err)
 	}
 	layout, err := server.libraryLayoutResponse(context.Background())
-	if err != nil || layout.Mode != storagepool.ModeStandard || layout.OnboardingCompleted {
+	if err != nil || layout.Mode != storagepool.ModeStandard || layout.OnboardingCompleted || !layout.HasLegacyWorkflows {
 		t.Fatalf("upgraded library layout = %+v, %v", layout, err)
 	}
 	var snapshotStatus, triggers string

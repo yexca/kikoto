@@ -37,6 +37,7 @@ type libraryLayoutResponse struct {
 	Configured          bool                  `json:"configured"`
 	Locked              bool                  `json:"locked"`
 	OnboardingCompleted bool                  `json:"onboardingCompleted"`
+	HasLegacyWorkflows  bool                  `json:"hasLegacyWorkflows"`
 	Pools               []libraryPoolResponse `json:"pools"`
 	Candidates          []string              `json:"candidates"`
 	FetchPool           string                `json:"fetchPool"`
@@ -194,9 +195,14 @@ func (s *Server) libraryLayoutResponse(ctx context.Context) (libraryLayoutRespon
 	if err != nil {
 		return libraryLayoutResponse{}, err
 	}
+	var hasLegacyWorkflows int
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM legacy_workflow_snapshot)`).Scan(&hasLegacyWorkflows); err != nil {
+		return libraryLayoutResponse{}, err
+	}
 	response := libraryLayoutResponse{
 		Mode: layout.Mode, Configured: layout.configured(), Locked: locked && layout.configured(),
 		OnboardingCompleted: s.settingBoolContext(ctx, settingLibraryOnboardingCompleted, false),
+		HasLegacyWorkflows:  hasLegacyWorkflows != 0,
 		Pools:               []libraryPoolResponse{}, Candidates: []string{}, FetchPool: layout.FetchPool,
 		LocalScanTriggers: triggers,
 	}

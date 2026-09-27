@@ -34,7 +34,7 @@ export function LibraryLayoutSection({ readOnly }: { readOnly: boolean }) {
         {layout ? (
           <div className="space-y-7">
             <LibraryLayoutEditor key={layoutKey(layout)} layout={layout} readOnly={readOnly} onSaved={setLayout} />
-            {!readOnly && (
+            {!readOnly && layout.hasLegacyWorkflows && (
               <section className="space-y-3 border-t pt-5">
                 <h3 className="text-sm font-semibold">{t("librarySetup.workflowMigration.title")}</h3>
                 <LegacyWorkflowMigrationReview />

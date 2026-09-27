@@ -16,8 +16,6 @@ import { LegacyWorkflowMigrationReview } from "./LegacyWorkflowMigrationReview";
 
 type Step = "layout" | "scan" | "workflows" | "metadata" | "finish";
 
-const steps: Step[] = ["layout", "scan", "workflows", "metadata", "finish"];
-
 /**
  * First-run library setup for administrators: choose the library mode, scan,
  * synchronize metadata, and decide whether scans run automatically. It stays
@@ -64,6 +62,9 @@ function LibraryOnboardingDialog({ initial, onClose }: { initial: LibraryLayout;
   const scanRun = useWorkflowRunWatcher(scanRunId).run;
   const scanActive = scanRunId !== null && (!scanRun || isActiveWorkflowStatus(scanRun.status));
   const canSyncMetadata = auth.hasPermission("metadata:sync");
+  const steps: Step[] = initial.hasLegacyWorkflows
+    ? ["layout", "scan", "workflows", "metadata", "finish"]
+    : ["layout", "scan", "metadata", "finish"];
 
   const startScan = async () => {
     setStartingScan(true);
@@ -217,7 +218,7 @@ function LibraryOnboardingDialog({ initial, onClose }: { initial: LibraryLayout;
           <Button
             size="sm"
             disabled={scanActive || (layout.mode === "pools" && scanRun?.status !== "succeeded")}
-            onClick={() => setStep("workflows")}
+            onClick={() => setStep(initial.hasLegacyWorkflows ? "workflows" : "metadata")}
           >
             {scanRunId ? t("librarySetup.onboarding.next") : t("librarySetup.onboarding.skip")}
           </Button>
