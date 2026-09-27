@@ -1,6 +1,6 @@
 @echo off
 setlocal
-set "HELPER_VERSION=v0.1.1"
+set "HELPER_VERSION=v0.2.0"
 chcp 65001 >nul
 cd /d "%~dp0"
 echo 1. English (will download if missing)

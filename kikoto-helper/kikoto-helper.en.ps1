@@ -1,4 +1,4 @@
-﻿param([ValidateSet('en','zh')][string]$Language = 'en', [string]$LauncherVersion = 'v0.1.1')
+﻿param([ValidateSet('en','zh')][string]$Language = 'en', [string]$LauncherVersion = 'v0.2.0')
 $ErrorActionPreference = 'Stop'
 # Windows PowerShell's progress repaint can corrupt wide-character console output.
 $ProgressPreference = 'SilentlyContinue'
@@ -9,7 +9,7 @@ $HelperDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = $HelperDir
 Set-Location $Root
 $Repo = 'yexca/kikoto'
-$Version = 'v0.6.0'
+$Version = 'main'
 $Raw = ('https://' + 'raw.githubusercontent.com/' + $Repo + '/' + $Version)
 $HelperVersion = $LauncherVersion
 $HelperRaw = ('https://' + 'raw.githubusercontent.com/' + $Repo + '/main/kikoto-helper')
@@ -52,6 +52,24 @@ function Set-EnvValue([string]$name, [string]$value) {
   })
   if (-not $found) { $lines += $replacement }
   Set-Content -LiteralPath $path -Value $lines -Encoding UTF8
+}
+function Get-EnvValue([string]$name) {
+  $environmentValue = [Environment]::GetEnvironmentVariable($name, 'Process')
+  if (-not [string]::IsNullOrWhiteSpace($environmentValue)) { return $environmentValue.Trim() }
+  $path = Join-Path $Root '.env'
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $value = $null
+  foreach ($line in Get-Content -LiteralPath $path -Encoding UTF8) {
+    if ($line -match "^\s*$([regex]::Escape($name))\s*=(.*)$") {
+      $value = $Matches[1].Trim().Trim([char]39, [char]34).Trim()
+    }
+  }
+  return $value
+}
+function Get-RootAccountMode {
+  $mode = Get-EnvValue 'KIKOTO_ROOT_ACCOUNT_MODE'
+  if ([string]::IsNullOrWhiteSpace($mode)) { return 'setup' }
+  return $mode.ToLowerInvariant()
 }
 function Docker-Available {
   if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { return $false }
@@ -112,6 +130,46 @@ function Ensure-Project {
   Write-Host (T 'Deployment files ready. Existing settings and data are preserved.' '部署文件已就绪，已有配置和数据均保留。') -ForegroundColor Green
   return $true
 }
+function Upgrade-LegacyCompose {
+  $path = Join-Path $Root 'docker-compose.yml'
+  $oldPassword = 'KIKOTO_ROOT_PASSWORD: ${KIKOTO_ROOT_PASSWORD:?KIKOTO_ROOT_PASSWORD must be set}'
+  $raw = Get-Content -LiteralPath $path -Raw -Encoding UTF8
+  if (-not $raw.Contains($oldPassword)) { return $true }
+
+  $backup = Join-Path (Split-Path -Parent $Root) ('kikoto-helper-config-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0,8))
+  New-Item -ItemType Directory -Path $backup | Out-Null
+  Copy-Item -LiteralPath $path -Destination (Join-Path $backup 'docker-compose.yml')
+  $envPath = Join-Path $Root '.env'
+  if (Test-Path -LiteralPath $envPath) { Copy-Item -LiteralPath $envPath -Destination (Join-Path $backup '.env') }
+  try {
+    if (-not (Get-EnvValue 'KIKOTO_ROOT_ACCOUNT_MODE') -and (Test-AdminConfigured)) {
+      Set-EnvValue 'KIKOTO_ROOT_ACCOUNT_MODE' 'environment'
+    }
+    $newline = if ($raw.Contains("`r`n")) { "`r`n" } else { "`n" }
+    $replacement = 'KIKOTO_ROOT_PASSWORD: ${KIKOTO_ROOT_PASSWORD:-}'
+    if ($raw -notmatch 'KIKOTO_ROOT_ACCOUNT_MODE:') {
+      $replacement += $newline + '      KIKOTO_ROOT_ACCOUNT_MODE: ${KIKOTO_ROOT_ACCOUNT_MODE:-setup}'
+    }
+    if ($raw -notmatch 'KIKOTO_ROOT_PASSWORD_RESET:') {
+      $replacement += $newline + '      KIKOTO_ROOT_PASSWORD_RESET: ${KIKOTO_ROOT_PASSWORD_RESET:-false}'
+    }
+    $updated = $raw.Replace($oldPassword, $replacement)
+    $temporary = "$path.tmp"
+    [IO.File]::WriteAllText($temporary, $updated, (New-Object Text.UTF8Encoding($false)))
+    Move-Item -LiteralPath $temporary -Destination $path -Force
+    docker compose config --quiet
+    if ($LASTEXITCODE -ne 0) { throw 'Compose validation failed' }
+  } catch {
+    Copy-Item -LiteralPath (Join-Path $backup 'docker-compose.yml') -Destination $path -Force
+    if (Test-Path -LiteralPath (Join-Path $backup '.env')) {
+      Copy-Item -LiteralPath (Join-Path $backup '.env') -Destination $envPath -Force
+    }
+    Write-Host (T 'Could not update the legacy Compose file; original files were restored.' '无法更新旧版 Compose 文件；原文件已恢复。') -ForegroundColor Red
+    return $false
+  }
+  Write-Host (T "Legacy Compose settings updated. Previous files: $backup" "旧版 Compose 配置已更新。原文件位于：$backup") -ForegroundColor Green
+  return $true
+}
 function Show-FolderList($state) {
   Write-Host (T 'Mapped folders (F = folder number)' '已映射目录（F 表示文件夹编号）') -ForegroundColor Cyan
   $line = '+------------------------------------------------------------+'
@@ -131,14 +189,7 @@ function Show-FolderList($state) {
   Write-Host '--------------------------------------------------------------'
 }
 function Test-AdminConfigured {
-  $path = Join-Path $Root '.env'
-  if (-not (Test-Path -LiteralPath $path)) { return $false }
-  $value = ''
-  foreach ($line in Get-Content -LiteralPath $path -Encoding UTF8) {
-    if ($line -match '^\s*KIKOTO_ROOT_PASSWORD\s*=(.*)$') { $value = $Matches[1].Trim() }
-  }
-  # Handles the template and the helper's quoted output without displaying credentials.
-  $value = $value.Trim([char]39, [char]34).Trim()
+  $value = [string](Get-EnvValue 'KIKOTO_ROOT_PASSWORD')
   return $value -notin @('', 'change-me', 'replace-with-a-long-random-password')
 }
 function Read-NewAdminPassword([switch]$InitialSetup) {
@@ -167,8 +218,9 @@ function Read-NewAdminPassword([switch]$InitialSetup) {
   }
 }
 function Ensure-Admin {
+  if ((Get-RootAccountMode) -ne 'environment') { return $true }
   if (Test-AdminConfigured) { return $true }
-  Write-Section (T 'Initial administrator setup' '首次设置管理员账户')
+  Write-Section (T 'Environment-managed administrator' '环境变量管理的管理员账户')
   # Existing database state must not cause creation of a different root identity.
   $existingDatabase = @(Get-ChildItem -LiteralPath (Join-Path $Root 'config') -Filter '*.db' -File -ErrorAction SilentlyContinue).Count -gt 0
   $username = $null
@@ -200,6 +252,11 @@ function Recreate-Service {
 }
 function Change-AdminPassword {
   Write-Section (T 'Change administrator password' '修改管理员密码')
+  if ((Get-RootAccountMode) -ne 'environment') {
+    Write-Host (T 'This administrator is managed in Kikoto. Sign in and change the password in Account settings. If you cannot sign in, use the administrator reset command in the container.' '此管理员账户由 Kikoto 管理。请登录后在账户设置中修改密码；如果无法登录，请使用容器中的管理员密码重置命令。')
+    Pause-Helper
+    return
+  }
   $password = Read-NewAdminPassword
   if ($null -eq $password) { return }
   Set-EnvValue 'KIKOTO_ROOT_PASSWORD' $password
@@ -437,6 +494,38 @@ function Show-ServiceVersion {
   Write-Host (Get-ServiceVersionText) -ForegroundColor Cyan
   Write-Host ''
 }
+function Copy-DeploymentConfig {
+  $destination = Join-Path (Split-Path -Parent $Root) ('kikoto-config-backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0,8))
+  New-Item -ItemType Directory -Path $destination | Out-Null
+  Copy-Item -LiteralPath (Join-Path $Root 'config') -Destination (Join-Path $destination 'config') -Recurse -ErrorAction Stop
+  foreach ($name in @('.env','docker-compose.yml','docker-compose.override.yml')) {
+    $source = Join-Path $Root $name
+    if (Test-Path -LiteralPath $source) { Copy-Item -LiteralPath $source -Destination (Join-Path $destination $name) -ErrorAction Stop }
+  }
+  return $destination
+}
+function Test-ServiceRunning {
+  $services = @(docker compose ps --status running --services kikoto 2>$null)
+  if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the Kikoto service' }
+  return ($services -contains 'kikoto')
+}
+function Backup-Configuration {
+  $wasRunning = Test-ServiceRunning
+  if ($wasRunning) {
+    Write-Host (T 'Stopping the service briefly for a consistent config backup...' '将短暂停止服务，以便一致地备份 config……')
+    docker compose stop kikoto
+    if ($LASTEXITCODE -ne 0) { throw 'Could not stop the service' }
+  }
+  try {
+    $destination = Copy-DeploymentConfig
+    Write-Host (T "Config backup saved to $destination" "Config 备份已保存到 $destination") -ForegroundColor Green
+  } finally {
+    if ($wasRunning) {
+      docker compose start kikoto
+      if ($LASTEXITCODE -ne 0) { Write-Host (T 'Backup finished, but the service did not restart.' '备份已完成，但服务未能重新启动。') -ForegroundColor Red }
+    }
+  }
+}
 function Service-Menu {
   while ($true) {
     Write-Section (T 'Service management' '服务管理')
@@ -449,7 +538,24 @@ function Service-Menu {
     elseif ($c -eq '3') {
       Write-Host (T 'Pulling the new image before stopping the current service...' '先拉取新镜像，成功后再停止当前服务……')
       docker compose pull
-      if ($LASTEXITCODE -eq 0) { docker compose up -d --force-recreate } else { Write-Host (T 'Pull failed; current service was left running.' '拉取失败，当前服务保持运行。') -ForegroundColor Red }
+      if ($LASTEXITCODE -eq 0) {
+        try { $wasRunning = Test-ServiceRunning }
+        catch { Write-Host (T 'Could not inspect the service; upgrade cancelled.' '无法检查服务状态，升级已取消。') -ForegroundColor Red; Pause-Helper; continue }
+        if ($wasRunning) {
+          docker compose stop kikoto
+          if ($LASTEXITCODE -ne 0) { Write-Host (T 'Could not stop the service; upgrade cancelled.' '无法停止服务，升级已取消。') -ForegroundColor Red; Pause-Helper; continue }
+        }
+        try {
+          $destination = Copy-DeploymentConfig
+          Write-Host (T "Pre-upgrade config backup: $destination" "升级前 config 备份：$destination") -ForegroundColor Green
+        } catch {
+          Write-Host (T 'Config backup failed; upgrade cancelled.' 'Config 备份失败，升级已取消。') -ForegroundColor Red
+          if ($wasRunning) { docker compose start kikoto }
+          Pause-Helper
+          continue
+        }
+        docker compose up -d --force-recreate --pull never
+      } else { Write-Host (T 'Pull failed; current service was left running.' '拉取失败，当前服务保持运行。') -ForegroundColor Red }
       Pause-Helper
     } elseif ($c -eq '4') { docker compose ps; Pause-Helper }
     elseif ($c -eq '5') { docker compose logs --tail 100; Pause-Helper }
@@ -475,9 +581,8 @@ function Main-Menu {
     elseif ($c -eq '2') { Update-Compose-Mappings }
     elseif ($c -eq '3') { if (Ensure-Docker) { Service-Menu } else { Pause-Helper } }
     elseif ($c -eq '4') {
-      $dest = Join-Path $Root ("backup-" + (Get-Date -Format 'yyyyMMdd-HHmmss')); New-Item -ItemType Directory -Force $dest | Out-Null
-      foreach ($n in @('.env','docker-compose.yml','docker-compose.override.yml')) { if (Test-Path $n) { Copy-Item $n $dest -Force } }
-      Write-Host (T "Configuration backup saved to $dest" "配置备份已保存到 $dest") -ForegroundColor Green; Pause-Helper
+      try { Backup-Configuration } catch { Write-Host (T 'Config backup failed. Check the Docker and filesystem errors.' 'Config 备份失败，请检查 Docker 和文件系统错误。') -ForegroundColor Red }
+      Pause-Helper
     }
     elseif ($c -eq '5') { Other-Menu
     }
@@ -487,5 +592,6 @@ function Main-Menu {
 
 if (-not (Ensure-Docker)) { Pause-Helper; exit 0 }
 if (-not (Ensure-Project)) { Pause-Helper; exit 1 }
+if (-not (Upgrade-LegacyCompose)) { Pause-Helper; exit 1 }
 if (-not (Ensure-Admin)) { Pause-Helper; exit 1 }
 Main-Menu

@@ -69,15 +69,24 @@ foreach ($language in @('en', 'zh-Hans', 'core')) {
   Assert ($script:downloads.Count -eq 2) 'Repeated preparation must not download again'
   Assert ([Convert]::ToBase64String($before) -eq [Convert]::ToBase64String([IO.File]::ReadAllBytes($envPath))) 'Existing settings changed'
 
-  # First setup must finish before entering the menu, and must not repeat once saved.
-  Set-Content -LiteralPath $envPath -Value 'KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password'
+  # Setup-mode deployments never ask for an environment password, including
+  # after the administrator has been created in the browser.
+  Set-Content -LiteralPath $envPath -Value @('KIKOTO_ROOT_ACCOUNT_MODE=setup', 'KIKOTO_ROOT_PASSWORD=')
   $script:answers = New-Object 'System.Collections.Generic.Queue[string]'
-  $script:answers.Enqueue('synthetic-user')
   function Ask { return $script:answers.Dequeue() }
   $script:secrets = New-Object 'System.Collections.Generic.Queue[string]'
-  $script:secrets.Enqueue('synthetic-password'); $script:secrets.Enqueue('synthetic-password')
   function Read-Secret { return $script:secrets.Dequeue() }
-  Assert (Ensure-Admin) 'Initial account setup should succeed'
+  $setupBefore = [IO.File]::ReadAllBytes($envPath)
+  Assert (Ensure-Admin) 'Setup mode should defer administrator creation to the browser'
+  function Pause-Helper {}
+  Change-AdminPassword
+  Assert ([Convert]::ToBase64String($setupBefore) -eq [Convert]::ToBase64String([IO.File]::ReadAllBytes($envPath))) 'Setup mode changed environment credentials'
+
+  # Explicit environment mode retains the helper-managed administrator.
+  Set-Content -LiteralPath $envPath -Value @('KIKOTO_ROOT_ACCOUNT_MODE=environment', 'KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password')
+  $script:answers.Enqueue('synthetic-user')
+  $script:secrets.Enqueue('synthetic-password'); $script:secrets.Enqueue('synthetic-password')
+  Assert (Ensure-Admin) 'Environment-managed account setup should succeed'
   $accountBefore = Get-Content -LiteralPath $envPath -Raw
   Assert ($accountBefore.Contains("KIKOTO_ROOT_USERNAME='synthetic-user'")) 'Initial username was not saved'
   Assert (Ensure-Admin) 'Existing account must not prompt again'
@@ -104,15 +113,15 @@ foreach ($language in @('en', 'zh-Hans', 'core')) {
   Recreate-Service
   Assert ($script:commands.Count -eq 1) 'Failed validation must not recreate'
 
-  # First setup requires a password: empty and whitespace inputs retry without cancelling.
-  Set-Content -LiteralPath $envPath -Value 'KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password'
+  # Environment mode requires a password: empty inputs retry without cancelling.
+  Set-Content -LiteralPath $envPath -Value @('KIKOTO_ROOT_ACCOUNT_MODE=environment', 'KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password')
   $script:answers.Enqueue('synthetic-user')
   $script:secrets.Enqueue('')
   $script:secrets.Enqueue('   ')
   $script:secrets.Enqueue('synthetic-password'); $script:secrets.Enqueue('synthetic-password')
   $script:prompts = @()
   function Read-Secret($prompt) { $script:prompts += $prompt; return $script:secrets.Dequeue() }
-  Assert (Ensure-Admin) 'Initial setup should retry until a password is entered'
+  Assert (Ensure-Admin) 'Environment account setup should retry until a password is entered'
   Assert (Test-AdminConfigured) 'Retried initial setup should save the password'
   Assert ($script:prompts[0] -eq 'Set administrator password') 'First setup must use a setup prompt'
   Assert (-not (($script:prompts -join ' ').Contains('cancels'))) 'First setup must not advertise cancellation'
@@ -120,6 +129,55 @@ foreach ($language in @('en', 'zh-Hans', 'core')) {
   $script:secrets.Enqueue('')
   Change-AdminPassword
   Assert ($before -eq (Get-Content -LiteralPath $envPath -Raw)) 'Cancelling a later password change must keep credentials'
+
+  # A legacy helper deployment keeps its environment-managed account, while
+  # its Compose file gains the v0.7 account-mode switches without losing mounts.
+  $Root = Join-Path $testRoot ($language + '-legacy')
+  New-Item -ItemType Directory -Path (Join-Path $Root 'config') -Force | Out-Null
+  New-Item -ItemType Directory -Path (Join-Path $Root 'data') -Force | Out-Null
+  Set-Content -LiteralPath (Join-Path $Root 'config/kikoto.db') -Value 'synthetic database'
+  Set-Content -LiteralPath (Join-Path $Root 'data/media.txt') -Value 'mounted media'
+  Set-Content -LiteralPath (Join-Path $Root '.env') -Value @('KIKOTO_ROOT_USERNAME=synthetic-user', 'KIKOTO_ROOT_PASSWORD=synthetic-password')
+  Set-Content -LiteralPath (Join-Path $Root 'docker-compose.yml') -Value @'
+services:
+  kikoto:
+    image: example/kikoto:latest
+    environment:
+      KIKOTO_ROOT_USERNAME: ${KIKOTO_ROOT_USERNAME:-root}
+      KIKOTO_ROOT_PASSWORD: ${KIKOTO_ROOT_PASSWORD:?KIKOTO_ROOT_PASSWORD must be set}
+    volumes:
+      - ./config:/config
+      - ./data:/data
+'@
+  $script:commands = @()
+  function docker { $script:commands += ($args -join ' '); $global:LASTEXITCODE = 0 }
+  Assert (Upgrade-LegacyCompose) 'Legacy Compose update should succeed'
+  Assert ((Get-RootAccountMode) -eq 'environment') 'Legacy password mode was not preserved'
+  $modernCompose = Get-Content -LiteralPath (Join-Path $Root 'docker-compose.yml') -Raw
+  Assert ($modernCompose.Contains('KIKOTO_ROOT_ACCOUNT_MODE: ${KIKOTO_ROOT_ACCOUNT_MODE:-setup}')) 'Compose does not pass account mode'
+  Assert ($modernCompose.Contains('KIKOTO_ROOT_PASSWORD_RESET: ${KIKOTO_ROOT_PASSWORD_RESET:-false}')) 'Compose does not pass reset mode'
+  Assert ($modernCompose.Contains('./data:/data')) 'Legacy mount was lost'
+  Assert ($script:commands -contains 'compose config --quiet') 'Updated Compose was not validated'
+  $composeBefore = [IO.File]::ReadAllBytes((Join-Path $Root 'docker-compose.yml'))
+  Assert (Upgrade-LegacyCompose) 'Repeating the legacy check should succeed'
+  Assert ([Convert]::ToBase64String($composeBefore) -eq [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $Root 'docker-compose.yml')))) 'Repeating legacy migration changed Compose'
+  $backup = Copy-DeploymentConfig
+  Assert (Test-Path -LiteralPath (Join-Path $backup 'config/kikoto.db')) 'Config backup omitted the database'
+  Assert (Test-Path -LiteralPath (Join-Path $backup '.env')) 'Config backup omitted deployment settings'
+  Assert (-not (Test-Path -LiteralPath (Join-Path $backup 'data'))) 'Config backup copied mounted media'
+
+  $script:commands = @()
+  function docker {
+    $script:commands += ($args -join ' ')
+    $global:LASTEXITCODE = 0
+    if ($args[0] -eq 'compose' -and $args[1] -eq 'ps') { return 'kikoto' }
+  }
+  Backup-Configuration
+  Assert (($script:commands -join '|') -eq 'compose ps --status running --services kikoto|compose stop kikoto|compose start kikoto') 'Live config backup must stop and resume the service'
+  $script:commands = @()
+  $script:answers.Enqueue('3'); $script:answers.Enqueue('0')
+  Service-Menu
+  Assert (($script:commands -join '|') -eq 'compose pull|compose ps --status running --services kikoto|compose stop kikoto|compose up -d --force-recreate --pull never') 'Upgrade must pull, stop, back up config, and recreate'
 
   $Root = Join-Path $testRoot ($language + '-failure')
   New-Item -ItemType Directory -Path $Root | Out-Null

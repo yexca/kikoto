@@ -75,15 +75,19 @@ as a self-hosted web application with a responsive player and an Android client.
 On Windows, beginners can place [`kikoto-helper.cmd`](kikoto-helper/kikoto-helper.cmd)
 in a deployment folder and run it. The first screen selects English or
 Simplified Chinese and downloads only the selected language helper beside the
-command file. It then checks Docker Desktop, downloads the versioned Compose
-files, creates the runtime directories, configures the administrator password,
+command file. It then checks Docker Desktop, downloads the current Compose
+files, creates the runtime directories, supports browser administrator setup,
 manages additional media-folder mappings, and provides start, stop, upgrade,
 status, logs, and configuration-backup actions. Existing `.env` and Compose
-files are kept; the helper does not overwrite them during re-runs.
+files are kept on re-runs; legacy Compose account settings are updated with
+copies of the original files saved first.
 
-The helper automatically prepares missing deployment files and requires an
-administrator password on first setup. Later password changes can recreate the
-service to apply the new configuration; restarting alone does not reload `.env`.
+The helper automatically prepares missing deployment files. New installations
+create the administrator in the browser without an `.env` password. Existing
+helper-managed accounts retain environment mode; their password changes can
+recreate the service to apply the new configuration. Restarting alone does not
+reload `.env`. Upgrade and Backup save `config/` and deployment settings outside
+the deployment directory; mounted `data/` is not copied.
 Service management also offers explicit recreation, container removal, and the
 local image version. Removing containers keeps host-mounted files.
 
