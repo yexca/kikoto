@@ -11,6 +11,7 @@ import {
   formatDuration,
   formatTimestamp,
   isActiveRunStatus,
+  isDemoShowcaseActiveRun,
   parseWorkflowTimestamp,
   runDurationMs,
   runStatusTone,
@@ -88,13 +89,16 @@ export function RunFacts({ run }: { run: WorkflowRun }) {
   const labels = useRunLabels();
   const { resolvedLocale } = useLocale();
   const active = isActiveRunStatus(run.status);
-  const now = useNow(active);
+  const staticExample = isDemoShowcaseActiveRun(run);
+  const now = useNow(active && !staticExample);
   const duration = runDurationMs(run, now);
   const facts: Array<{ key: string; label: string; value: ReactNode }> = [
     {
       key: "started",
       label: t("workflowActivity.facts.started"),
-      value: (
+      value: staticExample ? (
+        <span className="text-muted-foreground">{t("workflowActivity.facts.none")}</span>
+      ) : (
         <Timestamp
           value={run.startedAt}
           fallback={run.status === "queued" ? t("workflowActivity.status.queued") : t("workflowActivity.facts.none")}
@@ -148,10 +152,10 @@ function nodeDurationMs(node: WorkflowNodeRun, now: number) {
 }
 
 /** Compact ordered list of executed steps with per-step status and elapsed time. */
-export function RunSteps({ nodeRuns }: { nodeRuns: WorkflowNodeRun[] }) {
+export function RunSteps({ nodeRuns, demoShowcase = false }: { nodeRuns: WorkflowNodeRun[]; demoShowcase?: boolean }) {
   const { t } = useTranslation();
   const { resolvedLocale } = useLocale();
-  const now = useNow(nodeRuns.some((node) => isActiveRunStatus(node.status)));
+  const now = useNow(!demoShowcase && nodeRuns.some((node) => isActiveRunStatus(node.status)));
   if (nodeRuns.length === 0) return null;
   const ordered = [...nodeRuns].sort((left, right) => left.position - right.position || left.id - right.id);
   return (
@@ -159,7 +163,7 @@ export function RunSteps({ nodeRuns }: { nodeRuns: WorkflowNodeRun[] }) {
       <h4 className="text-xs font-medium text-muted-foreground">{t("workflowActivity.steps")}</h4>
       <ol className="min-w-0">
         {ordered.map((node, index) => {
-          const duration = nodeDurationMs(node, now);
+          const duration = demoShowcase && isActiveRunStatus(node.status) ? null : nodeDurationMs(node, now);
           const last = index === ordered.length - 1;
           return (
             <li key={node.id} className="relative flex min-w-0 gap-3 pb-2.5 last:pb-0">

@@ -1436,6 +1436,82 @@ test("a hidden tab pauses recent-run polling and refreshes when shown again", as
   await expect.poll(() => recentRunRequests, { timeout: 1_000 }).toBeGreaterThan(hiddenCount);
 });
 
+test("demo running activity stays untimed while real running work keeps its elapsed time", async ({ page }) => {
+  await mockWorkflows(page);
+  await page.route("**/api/runtime-settings", (route) =>
+    route.fulfill({ json: runtimeSettingsFixture({ mode: "demo", demoMode: true }) }),
+  );
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: authenticatedStateFixture({
+        username: "__demo__",
+        displayName: "Demo",
+        role: "user",
+        permissions: ["library:read", "playback:use"],
+        demoMode: true,
+      }),
+    }),
+  );
+  const startedAt = new Date(Date.now() - 70_000).toISOString();
+  const demoRun = workflowRunFixture({
+    id: 64,
+    workflowCode: "local_library_scan",
+    displayName: "Example: Index local media",
+    status: "running",
+    triggerReason: "Demo example",
+    startedAt,
+    finishedAt: "",
+    jobCount: 1,
+  });
+  const realRun = workflowRunFixture({
+    id: 65,
+    displayName: "Index local media",
+    status: "running",
+    startedAt,
+    finishedAt: "",
+    jobCount: 1,
+  });
+  let runningListRequests = 0;
+  let recentRunRequests = 0;
+  let eventStreams = 0;
+  await page.route("**/api/workflow-runs/64**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/events/stream")) eventStreams += 1;
+    if (path.endsWith("/events")) return route.fulfill({ json: [] satisfies WorkflowEvent[] });
+    return route.fulfill({ json: workflowRunDetailFixture(demoRun) });
+  });
+  await page.route("**/api/workflow-runs?*", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    if (params.get("view") === "running") runningListRequests += 1;
+    const recentRuns = params.get("view") === "" && params.get("workflowCode") === "local_library_scan";
+    if (recentRuns) recentRunRequests += 1;
+    const runs = params.get("view") === "running" ? [demoRun, realRun] : recentRuns ? [demoRun] : [];
+    return route.fulfill({
+      json: workflowRunsPageFixture(runs, {
+        viewTotals: { running: 2, attention: 0, history: 0, review: 0, failed: 0, completed: 0 },
+      }),
+    });
+  });
+
+  await page.goto("/workflows?workflow=local_library_scan&activity=1");
+  const running = page.getByRole("region", { name: "Running", exact: true });
+  const demoItem = running.getByRole("listitem").filter({ hasText: "#64" });
+  const realItem = running.getByRole("listitem").filter({ hasText: "#65" });
+  await expect(demoItem).toBeVisible();
+  await expect(realItem).toContainText(/1m \d+s/);
+  await expect(demoItem).not.toContainText(/1m \d+s/);
+  await demoItem.getByRole("button").click();
+  await expect(
+    page.getByRole("dialog", { name: "Activity", exact: true }).getByText("#64", { exact: true }),
+  ).toBeVisible();
+  const initialRequests = runningListRequests;
+  const initialRecentRequests = recentRunRequests;
+  await page.waitForTimeout(5_500);
+  expect(runningListRequests).toBe(initialRequests);
+  expect(recentRunRequests).toBe(initialRecentRequests);
+  expect(eventStreams).toBe(0);
+});
+
 test("activity deep links load a run outside the visible list page", async ({ page }) => {
   await mockWorkflows(page);
   const detachedRun: WorkflowRun = { ...sampleRun, id: 99, displayName: "Detached cleanup run" };
@@ -1846,6 +1922,13 @@ test("demo settings keeps account and workflows read-only while allowing appeara
   for (const name of ["Account", "Playback", "Recommendation", "History", "Tags", "Your data"]) {
     await expect(settingsTabs.getByRole("tab", { name, exact: true })).toBeVisible();
   }
+  const noticeBackground = await page
+    .getByRole("status")
+    .evaluate((element) => getComputedStyle(element).backgroundColor);
+  for (const name of ["History", "Tags", "Your data"]) {
+    await settingsTabs.getByRole("tab", { name, exact: true }).click();
+    await expect(page.getByText(demoNotice, { exact: true })).toHaveCount(1);
+  }
   // Demo shows every administration tab read-only behind the same toggle administrators use.
   await page.getByRole("button", { name: "Administration options", exact: true }).click();
   for (const name of ["Library", "Cache & Fetch", "Cleanup", "Users"]) {
@@ -1861,6 +1944,9 @@ test("demo settings keeps account and workflows read-only while allowing appeara
   await page.getByRole("button", { name: "Apple", exact: true }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
   await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");
+  await expect
+    .poll(() => page.getByRole("status").evaluate((element) => getComputedStyle(element).backgroundColor))
+    .not.toBe(noticeBackground);
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/dark/);
   await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");

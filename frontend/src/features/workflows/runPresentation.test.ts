@@ -45,6 +45,12 @@ describe("workflow run timestamps", () => {
       runDurationMs({ status: "succeeded", startedAt: "2026-09-22 10:44:12", finishedAt: "2026-09-22 10:46:14" }, now),
     ).toBe(122_000);
     expect(runDurationMs({ status: "running", startedAt: "2026-09-22 10:49:00", finishedAt: "" }, now)).toBe(60_000);
+    expect(
+      runDurationMs(
+        { status: "running", startedAt: "2026-09-22 10:49:00", finishedAt: "", triggerReason: "Demo example" },
+        now,
+      ),
+    ).toBeNull();
     expect(runDurationMs({ status: "failed", startedAt: "2026-09-22 10:49:00", finishedAt: "" }, now)).toBeNull();
     expect(runDurationMs({ status: "queued", startedAt: "", finishedAt: "" }, now)).toBeNull();
   });

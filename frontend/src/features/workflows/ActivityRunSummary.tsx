@@ -12,6 +12,7 @@ import {
   formatTimestamp,
   hasTransferProgress,
   isActiveRunStatus,
+  isDemoShowcaseActiveRun,
   parseWorkflowTimestamp,
   runDurationMs,
   runStatusTone,
@@ -34,11 +35,13 @@ export function ActivityRunSummary({ run }: { run: WorkflowRun }) {
   const { resolvedLocale } = useLocale();
   const locale = intlLocaleFor(resolvedLocale);
   const active = isActiveRunStatus(run.status);
-  const now = useNow(true, active ? 1000 : 30_000);
+  const staticExample = isDemoShowcaseActiveRun(run);
+  const now = useNow(!staticExample, active ? 1000 : 30_000);
   const duration = runDurationMs(run, now);
-  const moment =
-    parseWorkflowTimestamp(active ? run.startedAt || run.createdAt : run.finishedAt || run.startedAt) ??
-    parseWorkflowTimestamp(run.createdAt);
+  const moment = staticExample
+    ? null
+    : (parseWorkflowTimestamp(active ? run.startedAt || run.createdAt : run.finishedAt || run.startedAt) ??
+      parseWorkflowTimestamp(run.createdAt));
   const jobPercent = run.jobCount > 0 ? Math.min(100, (run.completedJobs / run.jobCount) * 100) : 0;
 
   return (

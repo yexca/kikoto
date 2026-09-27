@@ -141,6 +141,7 @@ export function buildTrackedPresenceOptions(
     .map((presence) => {
       const sourceID = trackedPresenceSourceID(presence);
       const matchingRemote = remoteSources.find((remote) => remote.source.id === sourceID);
+      const showcase = presence.fileSourceType === "demo_showcase";
       const canFork = matchingRemote?.summary.status === "available" || availableRemotes.length > 0;
       const forked = trackedPresenceForked(presence, items);
       return {
@@ -148,12 +149,14 @@ export function buildTrackedPresenceOptions(
         presence,
         label: presence.fileSourceName || presence.fileSourceCode || "Tracked source",
         forked,
-        status: forked ? "available" : canFork ? "degraded" : "unavailable",
-        statusLabel: forked
-          ? "Forked directory available"
-          : canFork
-            ? "Tracked, ready to fork"
-            : "Tracked directory unavailable",
+        status: showcase ? "degraded" : forked ? "available" : canFork ? "degraded" : "unavailable",
+        statusLabel: showcase
+          ? "Demo Track example; play from Local"
+          : forked
+            ? "Forked directory available"
+            : canFork
+              ? "Tracked, ready to fork"
+              : "Tracked directory unavailable",
       };
     });
 }

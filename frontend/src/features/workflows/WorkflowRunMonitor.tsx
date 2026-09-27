@@ -11,6 +11,7 @@ import {
   formatClockTime,
   formatDuration,
   isActiveRunStatus,
+  isDemoShowcaseActiveRun,
   parseWorkflowTimestamp,
   runDurationMs,
   runStatusTone,
@@ -47,7 +48,8 @@ export function WorkflowRunMonitor({
   const { t } = useTranslation();
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
   const active = run ? isActiveRunStatus(run.status) : false;
-  const now = useNow(active || stages.some((stage) => stage.state === "running"));
+  const staticExample = run ? isDemoShowcaseActiveRun(run) : false;
+  const now = useNow(!staticExample && (active || stages.some((stage) => stage.state === "running")));
   const lines = useMemo(() => workflowRunLog(events, nodeRuns), [events, nodeRuns]);
   if (stages.length === 0) return null;
   const selected = stages.find((stage) => stage.id === selectedStage) ?? null;
@@ -67,6 +69,7 @@ export function WorkflowRunMonitor({
                 stage={stage}
                 last={index === stages.length - 1}
                 hasRun={Boolean(run)}
+                demoShowcase={staticExample}
                 selected={stage.id === selectedStage}
                 now={now}
                 onSelect={() => setSelectedStage((current) => (current === stage.id ? null : stage.id))}
@@ -167,6 +170,7 @@ function StepRow({
   stage,
   last,
   hasRun,
+  demoShowcase,
   selected,
   now,
   onSelect,
@@ -174,6 +178,7 @@ function StepRow({
   stage: WorkflowStage;
   last: boolean;
   hasRun: boolean;
+  demoShowcase: boolean;
   selected: boolean;
   now: number;
   onSelect: () => void;
@@ -181,7 +186,10 @@ function StepRow({
   const { t } = useTranslation();
   const labels = useRunLabels();
   const { resolvedLocale } = useLocale();
-  const duration = stage.state === "idle" ? null : runDurationMs({ ...stage, status: stage.state }, now);
+  const duration =
+    stage.state === "idle" || (demoShowcase && stage.state === "running")
+      ? null
+      : runDurationMs({ ...stage, status: stage.state }, now);
   const stateLabel = stage.state === "idle" ? t("workflowMonitor.notRun") : labels.status(stage.state);
   return (
     <li className="relative">

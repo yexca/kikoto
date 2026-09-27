@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { CollectionPagination } from "@/components/collection/CollectionPagination";
-import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -42,12 +41,10 @@ function useDurationFormatter() {
 
 export function ListeningHistoryPage({
   canClear,
-  demoMode,
   storageScope,
   workLink,
 }: {
   canClear: boolean;
-  demoMode: boolean;
   /** Server and principal scope; players in this scope drop unreported pre-clear sessions. */
   storageScope: string;
   workLink: ListeningHistoryWorkLinkFactory;
@@ -125,7 +122,6 @@ export function ListeningHistoryPage({
 
   return (
     <div className="w-full max-w-4xl space-y-6">
-      {demoMode && <DemoReadOnlyNotice />}
       <section aria-labelledby="listening-summary-heading" className="space-y-3">
         <div className="flex items-end justify-between gap-3 px-1">
           <div className="min-w-0">

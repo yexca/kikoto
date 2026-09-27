@@ -11,9 +11,9 @@ export function DemoReadOnlyNotice() {
   return (
     <div
       role="status"
-      className="flex items-start gap-2 rounded-lg border border-info-border bg-info-surface px-3 py-2 text-sm text-info-foreground"
+      className="flex items-start gap-2 rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground"
     >
-      <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
       <span>{t("permissions.demoReadOnlyNotice")}</span>
     </div>
   );

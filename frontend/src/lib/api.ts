@@ -234,6 +234,7 @@ export type SourcePresenceItem = {
   workId?: number;
   fileSourceId?: number;
   fileSourceCode?: string;
+  fileSourceType?: string;
   fileSourceName?: string;
   remoteId?: string;
   remoteCode?: string;

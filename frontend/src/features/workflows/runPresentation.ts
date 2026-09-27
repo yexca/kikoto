@@ -17,6 +17,13 @@ export function isActiveRunStatus(status: string) {
   return status === "queued" || status === "running";
 }
 
+/** Showcase activity is a static example, not a task whose elapsed time advances. */
+export function isDemoShowcaseActiveRun(
+  run: Pick<WorkflowRun, "status"> & Partial<Pick<WorkflowRun, "triggerReason">>,
+) {
+  return isActiveRunStatus(run.status) && run.triggerReason === "Demo example";
+}
+
 export function runStatusTone(status: string): RunTone {
   if (isActiveRunStatus(status)) return "info";
   if (status === "succeeded") return "success";
@@ -27,9 +34,10 @@ export function runStatusTone(status: string): RunTone {
 
 /** Elapsed run time; active runs measure against `now`, terminal runs need both endpoints. */
 export function runDurationMs(
-  run: Pick<WorkflowRun, "status" | "startedAt" | "finishedAt">,
+  run: Pick<WorkflowRun, "status" | "startedAt" | "finishedAt"> & Partial<Pick<WorkflowRun, "triggerReason">>,
   now = Date.now(),
 ): number | null {
+  if (isDemoShowcaseActiveRun(run)) return null;
   const started = parseWorkflowTimestamp(run.startedAt);
   if (!started) return null;
   const finished = parseWorkflowTimestamp(run.finishedAt);

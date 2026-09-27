@@ -17,6 +17,7 @@ func (s *Server) listWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 		View: strings.TrimSpace(r.URL.Query().Get("view")), Status: strings.TrimSpace(r.URL.Query().Get("status")),
 		WorkflowCode: strings.TrimSpace(r.URL.Query().Get("workflowCode")), Query: strings.TrimSpace(r.URL.Query().Get("q")),
 		ViewerUserID: actor.ID, CanViewAll: canViewAllWorkflowRuns(actor),
+		DemoShowcase: s.cfg.IsDemo(),
 	})
 	if err != nil {
 		writeError(w, err)

@@ -182,6 +182,20 @@ response. Adult, paid, temporary-free, unknown, duplicate, and
 metadata-fetch-failed candidates or language editions are not admitted or
 indexed. Restart the container after changing `./demo/data`; live filesystem
 watching remains disabled.
+Provider eligibility is verified at startup; a continuously running Demo does
+not automatically revalidate a provider's later age or price changes.
+
+After that scan, Demo selects up to four admitted local works with a stable
+code-based shuffle for the Library's Tracked tab. The disabled Example Track
+source is illustrative: it does not contact a remote service, and playback
+continues from the admitted local files. Demo also refreshes a completed example
+for each workflow, plus one running and three attention-needed examples with
+illustrative jobs. These Activity details are synthetic; no example job is
+executed. The running example has no live elapsed-time clock or job event
+stream, so it can remain visible during a long-lived Demo deployment. Actual
+`demo_library_scan` runs stay in the isolated database
+but are not exposed through the public workflow-run API. Repeated starts replace
+the examples and remove Tracked examples that no longer pass admission.
 
 `./demo/config` contains the isolated Demo SQLite database and optional source
 seed file. `./demo/cache` contains only isolated or sanitized assets; startup

@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { CollectionPagination } from "@/components/collection/CollectionPagination";
-import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
@@ -123,11 +122,7 @@ export function UserTagManagementPage({ canEdit, demoMode }: { canEdit: boolean;
 
   return (
     <div className="w-full max-w-4xl space-y-4">
-      {demoMode ? (
-        <DemoReadOnlyNotice />
-      ) : (
-        !canEdit && <p className="text-sm text-muted-foreground">{t("personal.readOnlyAccount")}</p>
-      )}
+      {!demoMode && !canEdit && <p className="text-sm text-muted-foreground">{t("personal.readOnlyAccount")}</p>}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div role="radiogroup" aria-label={t("personal.tags.scope")} className={segmentedListClassName()}>
           {scopes.map((value) => (

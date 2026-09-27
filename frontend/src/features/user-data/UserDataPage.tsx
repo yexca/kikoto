@@ -2,7 +2,6 @@ import { AlertTriangle, CheckCircle2, Download, FileJson, Loader2, Upload, X } f
 import { useEffect, useId, useReducer, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/input";
@@ -33,11 +32,7 @@ export function UserDataPage({ canImportData, demoMode }: { canImportData: boole
   const { t } = useTranslation();
   return (
     <div className="w-full max-w-4xl space-y-6">
-      {demoMode ? (
-        <DemoReadOnlyNotice />
-      ) : (
-        !canImportData && <p className="text-sm text-muted-foreground">{t("personal.readOnlyAccount")}</p>
-      )}
+      {!demoMode && !canImportData && <p className="text-sm text-muted-foreground">{t("personal.readOnlyAccount")}</p>}
       <ExportSection />
       <ImportSection enabled={canImportData} />
     </div>

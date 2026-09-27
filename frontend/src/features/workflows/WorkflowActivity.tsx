@@ -22,6 +22,7 @@ export function WorkflowActivity({
   detail,
   refreshKey,
   readOnly,
+  staticDemo,
   canSyncMetadata,
 }: {
   workflowCode: string;
@@ -34,6 +35,7 @@ export function WorkflowActivity({
   detail?: ReactNode;
   refreshKey: number;
   readOnly: boolean;
+  staticDemo: boolean;
   canSyncMetadata: boolean;
 }) {
   const { t } = useTranslation();
@@ -97,14 +99,14 @@ export function WorkflowActivity({
       }
     };
     void load();
-    const timer = window.setInterval(() => void load(), open ? 5000 : 15000);
-    document.addEventListener("visibilitychange", load);
+    const timer = staticDemo ? null : window.setInterval(() => void load(), open ? 5000 : 15000);
+    if (!staticDemo) document.addEventListener("visibilitychange", load);
     return () => {
       controller.abort();
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", load);
+      if (timer !== null) window.clearInterval(timer);
+      if (!staticDemo) document.removeEventListener("visibilitychange", load);
     };
-  }, [open, view, page, revision, workflowCode, activePage, refreshKey]);
+  }, [open, view, page, revision, workflowCode, activePage, refreshKey, staticDemo]);
 
   const changeOpen = (value: boolean) => {
     onOpenChange(value);

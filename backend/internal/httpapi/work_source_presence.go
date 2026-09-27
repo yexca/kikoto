@@ -107,6 +107,7 @@ type sourcePresenceItem struct {
 	FileSourceID   int64  `json:"fileSourceId"`
 	FileSourceCode string `json:"fileSourceCode"`
 	FileSourceName string `json:"fileSourceName"`
+	FileSourceType string `json:"fileSourceType,omitempty"`
 	RemoteID       string `json:"remoteId"`
 	RemoteCode     string `json:"remoteCode"`
 	SourceURL      string `json:"sourceUrl"`
@@ -124,7 +125,8 @@ func (s *Server) sourcePresenceForCode(ctx context.Context, code string) []sourc
 			COALESCE(source.display_name, ''),
 			COALESCE(presence.remote_id, ''),
 			COALESCE(presence.source_url, ''),
-			COALESCE(presence.remote_code, '')
+			COALESCE(presence.remote_code, ''),
+			COALESCE(source.source_type, '')
 		FROM work_source_presence AS presence
 		LEFT JOIN file_source AS source ON source.id = presence.file_source_id
 		WHERE presence.work_id IN (
@@ -228,6 +230,9 @@ func parseDelimitedSourcePresenceItem(fields []string) sourcePresenceItem {
 	if len(fields) > 8 {
 		item.WorkID, _ = strconv.ParseInt(strings.TrimSpace(fields[8]), 10, 64)
 	}
+	if len(fields) > 9 {
+		item.FileSourceType = strings.TrimSpace(fields[9])
+	}
 	return item
 }
 
@@ -262,6 +267,7 @@ func scanSourcePresenceRows(rows *sql.Rows) ([]sourcePresenceItem, error) {
 			&item.RemoteID,
 			&item.SourceURL,
 			&item.RemoteCode,
+			&item.FileSourceType,
 		); err != nil {
 			return nil, err
 		}

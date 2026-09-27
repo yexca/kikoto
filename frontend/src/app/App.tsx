@@ -579,7 +579,6 @@ function AuthenticatedApp() {
                         ? {
                             history: {
                               canClear: effectiveHasPermission("playback:use"),
-                              demoMode: auth.demoMode,
                               storageScope: clientStorageScope,
                               workLink: listeningHistoryWorkLink,
                             },

@@ -56,8 +56,8 @@ func TestRunDemoStartupWorkflowsInitializesVisibleDefinitions(t *testing.T) {
 	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code <> ?", demoLibraryScanWorkflowCode).Scan(&otherRuns); err != nil {
 		t.Fatal(err)
 	}
-	if demoRuns != 1 || otherRuns != 0 {
-		t.Fatalf("Demo startup runs = demo %d, other %d; want demo 1 and other 0", demoRuns, otherRuns)
+	if demoRuns != 1 || otherRuns != len(demoShowcaseWorkflowCodes)+len(demoShowcaseActivityExamples) {
+		t.Fatalf("Demo startup runs = demo %d, examples %d", demoRuns, otherRuns)
 	}
 }
 

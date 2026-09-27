@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { AvailabilityWatchPanel } from "@/features/workflows/availability-watch/AvailabilityWatchPanel";
 import { RunDetail } from "@/features/workflows/RunDetail";
+import { isDemoShowcaseActiveRun } from "@/features/workflows/runPresentation";
 import { TriggerModal } from "@/features/workflows/triggers/TriggerModal";
 import { useWorkflowActivityLocation } from "@/features/workflows/useWorkflowActivityLocation";
 import { WorkflowActivity } from "@/features/workflows/WorkflowActivity";
@@ -70,7 +71,7 @@ export function WorkflowsPage({
   const auth = useAuth();
   const workflowDefinitionStorageKey = currentScopedStorageKey(workflowDefinitionStorageBaseKey, auth.user?.id ?? null);
   const activityLocation = useWorkflowActivityLocation();
-  const activityRun = useWorkflowRunWatcher(activityLocation.open ? activityLocation.runId : null);
+  const activityRun = useWorkflowRunWatcher(activityLocation.open ? activityLocation.runId : null, !auth.demoMode);
   const linkedRun = activityRun.run?.id === activityLocation.runId ? activityRun.run : null;
   const linkedCode = linkedRun?.workflowCode || activityLocation.workflowCode || "";
   const [activityRevision, setActivityRevision] = useState(0);
@@ -225,7 +226,9 @@ export function WorkflowsPage({
     };
   }, [refreshRecentRuns, selectedCode]);
 
-  const hasActiveRecentRun = recentDefinitionRuns.some((run) => run.status === "queued" || run.status === "running");
+  const hasActiveRecentRun = recentDefinitionRuns.some(
+    (run) => (run.status === "queued" || run.status === "running") && !isDemoShowcaseActiveRun(run),
+  );
   useEffect(() => {
     if (!selectedCode || !hasActiveRecentRun) return;
     // A hidden tab skips ticks and catches up as soon as it is shown again.
@@ -479,6 +482,7 @@ export function WorkflowsPage({
                   onBack={activityLocation.backToList}
                   refreshKey={activityRevision}
                   readOnly={readOnly}
+                  staticDemo={auth.demoMode}
                   canSyncMetadata={canSyncMetadata}
                   detail={
                     activityLocation.runId ? (

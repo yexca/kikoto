@@ -24,7 +24,14 @@ func (s *Server) RunDemoStartupWorkflows(ctx context.Context) (DemoLibraryScanRe
 	if err := s.ensureSystemWorkflowDefinitions(ctx); err != nil {
 		return DemoLibraryScanResult{}, fmt.Errorf("initialize demo workflow definitions: %w", err)
 	}
-	return s.RunDemoLibraryScan(ctx)
+	result, err := s.RunDemoLibraryScan(ctx)
+	if err != nil {
+		return result, err
+	}
+	if err := s.SeedDemoShowcase(ctx); err != nil {
+		return result, fmt.Errorf("seed demo showcase: %w", err)
+	}
+	return result, nil
 }
 
 type DemoLibraryScanResult struct {

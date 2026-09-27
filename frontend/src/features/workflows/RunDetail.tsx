@@ -10,7 +10,7 @@ import { CandidateReviewCard } from "@/features/workflows/RunCandidateReview";
 import { RunDiagnostics } from "@/features/workflows/RunDiagnostics";
 import { RunFetchFiles } from "@/features/workflows/RunFetchFiles";
 import { RunFacts, RunStatusBadge, RunSteps } from "@/features/workflows/RunOverview";
-import { runTitle } from "@/features/workflows/runPresentation";
+import { isDemoShowcaseActiveRun, runTitle } from "@/features/workflows/runPresentation";
 import { RunTransferProgress } from "@/features/workflows/RunTransferProgress";
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
 import { SkeletonLine } from "@/features/workflows/WorkflowPanelParts";
@@ -82,7 +82,7 @@ export function RunDetail({
       {!loading && candidates.length > 0 && (
         <RunItems candidates={candidates} onCandidateUpdate={onCandidateUpdate} readOnly={readOnly} />
       )}
-      {!loading && <RunSteps nodeRuns={nodeRuns} />}
+      {!loading && <RunSteps nodeRuns={nodeRuns} demoShowcase={isDemoShowcaseActiveRun(run)} />}
       {!loading && <RunDiagnostics events={events} nodeRuns={nodeRuns} summaryJson={run.summaryJson} />}
     </div>
   );

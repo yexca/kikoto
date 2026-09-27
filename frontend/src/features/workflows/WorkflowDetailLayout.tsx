@@ -10,6 +10,7 @@ import {
   formatRelativeTime,
   formatTimestamp,
   isActiveRunStatus,
+  isDemoShowcaseActiveRun,
   parseWorkflowTimestamp,
   runDurationMs,
   runStatusTone,
@@ -91,7 +92,10 @@ export function RecentRunList({
   const labels = useRunLabels();
   const { resolvedLocale } = useLocale();
   const locale = intlLocaleFor(resolvedLocale);
-  const now = useNow(true, runs.some((run) => isActiveRunStatus(run.status)) ? 1000 : 30_000);
+  const now = useNow(
+    true,
+    runs.some((run) => isActiveRunStatus(run.status) && !isDemoShowcaseActiveRun(run)) ? 1000 : 30_000,
+  );
   if (runs.length === 0) return <p className="py-2 text-sm text-muted-foreground">{empty}</p>;
   return (
     <ol className="-mx-2">
@@ -119,7 +123,7 @@ export function RecentRunList({
                 {labels.status(run.status)}
               </span>
               <span className="w-20 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-                <RelativeTime value={moment} fallback="" now={now} />
+                {!isDemoShowcaseActiveRun(run) && <RelativeTime value={moment} fallback="" now={now} />}
               </span>
             </button>
           </li>

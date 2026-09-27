@@ -11,7 +11,7 @@ import {
 import { DLsitePopularRunPanel, RemotePopularRunPanel } from "@/features/workflows/run-forms/PopularRunPanels";
 import { PresetRunPanel } from "@/features/workflows/run-forms/PresetRunPanel";
 import type { RunFormLayout } from "@/features/workflows/RunOptionControls";
-import { isActiveRunStatus } from "@/features/workflows/runPresentation";
+import { isActiveRunStatus, isDemoShowcaseActiveRun } from "@/features/workflows/runPresentation";
 import { WorkflowAutomationPanel } from "@/features/workflows/triggers/WorkflowAutomationPanel";
 import { RecentRunList, WorkflowHeader, WorkflowSection } from "@/features/workflows/WorkflowDetailLayout";
 import {
@@ -259,7 +259,10 @@ export function DefinitionRunMonitor({
     () => recentRuns.reduce<WorkflowRun | null>((latest, run) => (!latest || run.id > latest.id ? run : latest), null),
     [recentRuns],
   );
-  const watched = useWorkflowRunWatcher(latestRun?.id ?? null, isActiveRunStatus(latestRun?.status ?? ""));
+  const watched = useWorkflowRunWatcher(
+    latestRun?.id ?? null,
+    isActiveRunStatus(latestRun?.status ?? "") && (!latestRun || !isDemoShowcaseActiveRun(latestRun)),
+  );
   const detail = latestRun && watched.run?.id === latestRun.id ? watched.run : null;
   const nodeRuns = detail?.nodeRuns;
   const stages = useMemo(() => workflowStages(nodes, nodeRuns), [nodeRuns, nodes]);

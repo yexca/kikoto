@@ -1488,6 +1488,18 @@ func canViewAllWorkflowRuns(actor currentUser) bool {
 }
 
 func (s *Server) requireWorkflowRunAccess(w http.ResponseWriter, r *http.Request, actor currentUser, runID int64) bool {
+	if s.cfg.IsDemo() {
+		var showcase bool
+		err := s.db.QueryRowContext(r.Context(), "SELECT trigger_reason = ? FROM workflow_run WHERE id = ?", workflow.DemoShowcaseTriggerReason, runID).Scan(&showcase)
+		if errors.Is(err, sql.ErrNoRows) || err == nil && !showcase {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow run not found"})
+			return false
+		}
+		if err != nil {
+			writeError(w, err)
+			return false
+		}
+	}
 	return requireWorkflowRunAccessFrom(w, r, s.db, actor, runID)
 }
 

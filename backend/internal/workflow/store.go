@@ -13,6 +13,8 @@ type Store struct {
 	db *sql.DB
 }
 
+const DemoShowcaseTriggerReason = "Demo example"
+
 func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
 }
@@ -26,6 +28,7 @@ type ListRunsOptions struct {
 	Query        string
 	ViewerUserID int64
 	CanViewAll   bool
+	DemoShowcase bool
 }
 
 func (s *Store) ListRuns(ctx context.Context, options ListRunsOptions) (RunsPage, error) {
@@ -70,6 +73,10 @@ func (s *Store) ListRuns(ctx context.Context, options ListRunsOptions) (RunsPage
 func buildRunListConditions(options ListRunsOptions) (string, string, []any) {
 	conditions := []string{"1 = 1"}
 	args := []any{}
+	if options.DemoShowcase {
+		conditions = append(conditions, "run.trigger_reason = ?")
+		args = append(args, DemoShowcaseTriggerReason)
+	}
 	if options.Status != "" && options.Status != "all" {
 		conditions = append(conditions, "run.status = ?")
 		args = append(args, options.Status)
