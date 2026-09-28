@@ -192,8 +192,13 @@ export const adminToolsEnglish = {
     migration: {
       confirmTitle: "Move library storage?",
       confirmDescription:
-        "Kikoto will move the affected files, verify them, and scan the library. The site will be unavailable until the move finishes.",
-      moveSummary: "{{count}} folders, about {{size}} GiB to copy and verify.",
+        "Kikoto will copy and verify the affected files, update library records, then remove the originals and rescan. The site will be unavailable until migration finishes.",
+      selectedPoolsStay: "Works already inside the selected storage pools stay in place.",
+      outsidePoolsMove:
+        "Works outside the selected pools move into the Fetch pool {{pool}}, keeping their paths relative to the data directory. Related Fetch recovery files move with them.",
+      otherFilesStay:
+        "Unrelated files and folders stay where they are. After the switch, only the selected pools are scanned; the data directory may still contain other folders.",
+      moveSummary: "{{count}} folders to move; their files total about {{size}} GiB.",
       cancel: "Cancel",
       confirm: "Start migration",
       maintenance: "The site is under maintenance. Please return later.",
@@ -240,6 +245,12 @@ export const adminToolsEnglish = {
     save: "Save library storage",
     saved: "Library storage saved.",
     saveFailed: "Library storage could not be saved.",
+    errors: {
+      transactionUnresolved:
+        "Unresolved Fetch files are blocking the storage change. Ask the administrator to review unfinished Fetch data and its database records, especially after restoring a backup, then try again.",
+      fetchPoolRequired:
+        "Choose a Fetch pool to receive works currently outside the selected storage pools, then try again.",
+    },
     reconnect: "Reconnect",
     reconnected: "Folder reconnected.",
     reconnectFailed: "The folder could not be reconnected.",
@@ -256,7 +267,6 @@ export const adminToolsEnglish = {
       done: "Library setup finished.",
       finishFailed: "Setup could not be finished.",
       saveAndContinue: "Save and continue",
-      keepCurrentLayout: "Keep current mode and continue",
       scan: "Scan library",
       scanAgain: "Scan again",
       scanIdle: "Not scanned yet.",

@@ -147,6 +147,12 @@ release before the upgrade named in its file name (`v040-to-v041`, for
 example). Back up the cache and data directories separately if they are
 important for your deployment.
 
+Restoring only the database does not roll back Fetch staging, backup, or trash
+directories in the media storage. A storage-mode change stops when those
+directories have no corresponding Fetch record in the restored database. Stop
+the service and review the unmatched data before retrying; preserve any files
+for recovery rather than deleting transaction directories blindly.
+
 If startup reports a dirty or checksum-mismatch state, do not delete
 `schema_migration` or `schema_state` to force progress: restore the backup or
 use the compatible binary, then inspect the protected logs and retry the

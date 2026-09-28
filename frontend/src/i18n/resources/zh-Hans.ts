@@ -429,8 +429,13 @@ const adminToolsHans = {
     locked: "切换模式会移动本地文件并重新完整扫描。",
     migration: {
       confirmTitle: "迁移媒体库存储？",
-      confirmDescription: "Kikoto 将移动并校验相关文件，然后重新扫描媒体库。迁移完成前站点暂不可用。",
-      moveSummary: "需迁移 {{count}} 个文件夹，约 {{size}} GiB。",
+      confirmDescription:
+        "Kikoto 会先复制并校验相关文件，更新媒体库记录后再清理原位置，最后重新扫描。迁移完成前站点暂不可用。",
+      selectedPoolsStay: "已经位于所选存储池内的作品保持原位。",
+      outsidePoolsMove:
+        "所选存储池之外的作品将移入 Fetch 存储池 {{pool}}，保留其相对于 data 目录的路径。相关的 Fetch 恢复文件也会一同迁移。",
+      otherFilesStay: "无关文件和文件夹保持原位。切换后只扫描所选存储池，data 目录下仍可能保留其他文件夹。",
+      moveSummary: "需迁移 {{count}} 个文件夹，其中的文件总计约 {{size}} GiB。",
       cancel: "取消",
       confirm: "开始迁移",
       maintenance: "站点维护中，请稍后再来看看吧。",
@@ -475,6 +480,11 @@ const adminToolsHans = {
     save: "保存媒体库存储",
     saved: "媒体库存储已保存。",
     saveFailed: "无法保存媒体库存储。",
+    errors: {
+      transactionUnresolved:
+        "有待处理的 Fetch 文件阻止了存储切换。请管理员核查未完成的 Fetch 数据及其数据库记录，尤其是恢复备份之后，然后重试。",
+      fetchPoolRequired: "请选择一个 Fetch 存储池，用于接收当前位于所选存储池之外的作品，然后重试。",
+    },
     reconnect: "重新连接",
     reconnected: "文件夹已重新连接。",
     reconnectFailed: "无法重新连接文件夹。",
@@ -491,7 +501,6 @@ const adminToolsHans = {
       done: "媒体库设置已完成。",
       finishFailed: "无法完成设置。",
       saveAndContinue: "保存并继续",
-      keepCurrentLayout: "保持当前模式并继续",
       scan: "扫描媒体库",
       scanAgain: "重新扫描",
       scanIdle: "尚未扫描。",

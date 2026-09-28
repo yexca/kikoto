@@ -430,6 +430,15 @@ earlier release (`schema_state.last_successful_app_version`) or already holds
 local works becomes `standard` with upgrade onboarding pending and keeps its
 triggers. The administrator may retain standard mode or confirm a move into
 storage pools, then review the local scan and preserved custom workflows.
+The layout step uses one primary action: Next for an unchanged configuration,
+or Save and continue for changes. After a confirmed migration finishes, Next
+continues with the saved layout and its migration scan.
+The standard-to-pools confirmation explains that works already inside selected
+pools stay in place, while works outside them move into the chosen Fetch pool
+with their data-root-relative paths preserved. Unrelated files remain in place;
+the switch does not empty every unselected folder. The summary counts moved
+directories and the total size of their files. Copy and verification complete
+before library records are updated and original files are removed.
 A fresh install stays unconfigured and turns the local scan's Startup trigger
 and folder watcher off once; onboarding chooses the layout, runs a scan and
 optional metadata sync, and sets both triggers. A configured mode switch or

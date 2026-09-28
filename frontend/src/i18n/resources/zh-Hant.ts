@@ -431,8 +431,13 @@ const adminToolsHant = {
     locked: "切換模式會移動本機檔案並重新完整掃描。",
     migration: {
       confirmTitle: "遷移媒體庫儲存？",
-      confirmDescription: "Kikoto 會移動並驗證相關檔案，再重新掃描媒體庫。完成前網站暫時無法使用。",
-      moveSummary: "需遷移 {{count}} 個資料夾，約 {{size}} GiB。",
+      confirmDescription:
+        "Kikoto 會先複製並驗證相關檔案，更新媒體庫紀錄後再清理原位置，最後重新掃描。遷移完成前網站暫時無法使用。",
+      selectedPoolsStay: "已經位於所選儲存池內的作品保持原位。",
+      outsidePoolsMove:
+        "所選儲存池之外的作品將移入 Fetch 儲存池 {{pool}}，保留其相對於 data 目錄的路徑。相關的 Fetch 復原檔案也會一同遷移。",
+      otherFilesStay: "無關檔案和資料夾保持原位。切換後只掃描所選儲存池，data 目錄下仍可能保留其他資料夾。",
+      moveSummary: "需遷移 {{count}} 個資料夾，其中的檔案總計約 {{size}} GiB。",
       cancel: "取消",
       confirm: "開始遷移",
       maintenance: "網站維護中，請稍後再來看看吧。",
@@ -477,6 +482,11 @@ const adminToolsHant = {
     save: "儲存媒體庫設定",
     saved: "媒體庫儲存已儲存。",
     saveFailed: "無法儲存媒體庫儲存。",
+    errors: {
+      transactionUnresolved:
+        "有待處理的 Fetch 檔案阻止了儲存切換。請管理員核查未完成的 Fetch 資料及其資料庫紀錄，尤其是還原備份之後，然後重試。",
+      fetchPoolRequired: "請選擇一個 Fetch 儲存池，用於接收目前位於所選儲存池之外的作品，然後重試。",
+    },
     reconnect: "重新連線",
     reconnected: "資料夾已重新連線。",
     reconnectFailed: "無法重新連線資料夾。",
@@ -493,7 +503,6 @@ const adminToolsHant = {
       done: "媒體庫設定已完成。",
       finishFailed: "無法完成設定。",
       saveAndContinue: "儲存並繼續",
-      keepCurrentLayout: "保留目前模式並繼續",
       scan: "掃描媒體庫",
       scanAgain: "重新掃描",
       scanIdle: "尚未掃描。",

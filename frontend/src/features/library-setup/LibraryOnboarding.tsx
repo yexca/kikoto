@@ -128,22 +128,16 @@ function LibraryOnboardingDialog({ initial, onClose }: { initial: LibraryLayout;
         <p className="text-sm text-muted-foreground">{t(`librarySetup.onboarding.steps.${step}.description`)}</p>
 
         {step === "layout" && (
-          <>
-            <LibraryLayoutEditor
-              layout={layout}
-              readOnly={false}
-              saveLabel={t("librarySetup.onboarding.saveAndContinue")}
-              onSaved={(next) => {
-                setLayout(next);
-                setStep("scan");
-              }}
-            />
-            {layout.configured && (
-              <Button size="sm" variant="outline" onClick={() => setStep("scan")}>
-                {t("librarySetup.onboarding.keepCurrentLayout")}
-              </Button>
-            )}
-          </>
+          <LibraryLayoutEditor
+            layout={layout}
+            readOnly={false}
+            saveLabel={t("librarySetup.onboarding.saveAndContinue")}
+            onSaved={(next) => {
+              setLayout(next);
+              setStep("scan");
+            }}
+            onContinue={() => setStep("scan")}
+          />
         )}
 
         {step === "scan" && (

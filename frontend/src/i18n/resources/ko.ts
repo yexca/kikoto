@@ -436,8 +436,13 @@ const adminToolsKorean = {
     migration: {
       confirmTitle: "라이브러리 저장소를 이동할까요?",
       confirmDescription:
-        "Kikoto가 관련 파일을 옮기고 확인한 뒤 다시 스캔합니다. 완료될 때까지 사이트를 사용할 수 없습니다.",
-      moveSummary: "폴더 {{count}}개, 약 {{size}} GiB를 복사하고 확인합니다.",
+        "Kikoto가 관련 파일을 복사하고 검증한 후 라이브러리 기록을 갱신하고 원본을 제거한 다음 다시 스캔합니다. 마이그레이션이 완료될 때까지 사이트를 사용할 수 없습니다.",
+      selectedPoolsStay: "선택한 스토리지 풀 안에 있는 작품은 현재 위치에 유지됩니다.",
+      outsidePoolsMove:
+        "선택한 풀 밖의 작품은 data 디렉터리 기준 상대 경로를 유지하며 Fetch 풀 {{pool}}로 이동합니다. 관련 Fetch 복구 파일도 함께 이동합니다.",
+      otherFilesStay:
+        "관련 없는 파일과 폴더는 현재 위치에 유지됩니다. 전환 후에는 선택한 풀만 스캔하며, data 디렉터리에 다른 폴더가 남을 수 있습니다.",
+      moveSummary: "이동할 폴더는 {{count}}개이며, 내부 파일의 총 크기는 약 {{size}} GiB입니다.",
       cancel: "취소",
       confirm: "마이그레이션 시작",
       maintenance: "사이트 점검 중입니다. 잠시 후 다시 방문해 주세요.",
@@ -484,6 +489,11 @@ const adminToolsKorean = {
     save: "저장소 저장",
     saved: "라이브러리 저장소를 저장했습니다.",
     saveFailed: "라이브러리 저장소를 저장하지 못했습니다.",
+    errors: {
+      transactionUnresolved:
+        "미해결 Fetch 파일로 인해 저장소를 변경할 수 없습니다. 특히 백업을 복원한 경우 관리자에게 미완료 Fetch 데이터와 데이터베이스 기록을 확인하도록 요청한 후 다시 시도하세요.",
+      fetchPoolRequired: "선택한 스토리지 풀 밖에 있는 작품을 옮길 Fetch 풀을 선택한 후 다시 시도하세요.",
+    },
     reconnect: "다시 연결",
     reconnected: "폴더를 다시 연결했습니다.",
     reconnectFailed: "폴더를 다시 연결하지 못했습니다.",
@@ -500,7 +510,6 @@ const adminToolsKorean = {
       done: "라이브러리 설정을 마쳤습니다.",
       finishFailed: "설정을 완료하지 못했습니다.",
       saveAndContinue: "저장하고 계속",
-      keepCurrentLayout: "현재 모드로 계속",
       scan: "라이브러리 스캔",
       scanAgain: "다시 스캔",
       scanIdle: "아직 스캔하지 않았습니다.",

@@ -438,8 +438,14 @@ const adminToolsJapanese = {
     locked: "モードを変更するとローカルファイルを移動し、全体を再スキャンします。",
     migration: {
       confirmTitle: "ライブラリの保存先を移動しますか？",
-      confirmDescription: "Kikoto は対象ファイルを移動・検証してから再スキャンします。完了までサイトを利用できません。",
-      moveSummary: "{{count}} 個のフォルダー、約 {{size}} GiB をコピーして検証します。",
+      confirmDescription:
+        "Kikoto は対象ファイルをコピー・検証し、ライブラリの記録を更新してから元のファイルを削除し、再スキャンします。移行完了までサイトを利用できません。",
+      selectedPoolsStay: "選択したストレージプール内の作品は、そのままの場所に残ります。",
+      outsidePoolsMove:
+        "選択したプールの外にある作品は、data ディレクトリからの相対パスを保ったまま Fetch プール {{pool}} に移動します。関連する Fetch 復旧ファイルも移動します。",
+      otherFilesStay:
+        "無関係なファイルやフォルダーはそのまま残ります。切り替え後は選択したプールだけをスキャンするため、data ディレクトリに他のフォルダーが残る場合があります。",
+      moveSummary: "移動するフォルダーは {{count}} 個、内部のファイルは合計約 {{size}} GiB です。",
       cancel: "キャンセル",
       confirm: "移行を開始",
       maintenance: "サイトはメンテナンス中です。しばらくしてからお越しください。",
@@ -488,6 +494,12 @@ const adminToolsJapanese = {
     save: "保存先を保存",
     saved: "ライブラリの保存先を保存しました。",
     saveFailed: "ライブラリの保存先を保存できませんでした。",
+    errors: {
+      transactionUnresolved:
+        "未解決の Fetch ファイルが保存先の変更を妨げています。管理者に未完了の Fetch データとデータベースの記録を確認してもらい、再試行してください。特にバックアップの復元後は確認が必要です。",
+      fetchPoolRequired:
+        "選択したストレージプールの外にある作品の移動先として Fetch プールを選択し、再試行してください。",
+    },
     reconnect: "再接続",
     reconnected: "フォルダーを再接続しました。",
     reconnectFailed: "フォルダーを再接続できませんでした。",
@@ -504,7 +516,6 @@ const adminToolsJapanese = {
       done: "ライブラリの設定が完了しました。",
       finishFailed: "設定を完了できませんでした。",
       saveAndContinue: "保存して続行",
-      keepCurrentLayout: "現在のモードで続行",
       scan: "ライブラリをスキャン",
       scanAgain: "再スキャン",
       scanIdle: "まだスキャンしていません。",

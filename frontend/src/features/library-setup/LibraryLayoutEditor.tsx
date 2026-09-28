@@ -1,4 +1,4 @@
-import { HardDrive, Layers, Loader2, PlugZap, Save } from "lucide-react";
+import { ArrowRight, HardDrive, Layers, Loader2, PlugZap, Save } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -9,9 +9,14 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { api, type LibraryLayout, type LibraryMode, type LibraryMigrationPreview } from "@/lib/api";
+import { api, ApiError, type LibraryLayout, type LibraryMode, type LibraryMigrationPreview } from "@/lib/api";
 
 type Draft = { mode: LibraryMode; pools: string[]; fetchPool: string };
+
+const layoutErrorKeys: Record<string, string> = {
+  transaction_unresolved: "librarySetup.errors.transactionUnresolved",
+  fetch_pool_required: "librarySetup.errors.fetchPoolRequired",
+};
 
 function draftFromLayout(layout: LibraryLayout): Draft {
   return {
@@ -30,16 +35,19 @@ export function LibraryLayoutEditor({
   readOnly,
   saveLabel,
   onSaved,
+  onContinue,
 }: {
   layout: LibraryLayout;
   readOnly: boolean;
   saveLabel?: string;
   onSaved: (layout: LibraryLayout) => void;
+  onContinue?: () => void;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
   const [draft, setDraft] = useState<Draft>(() => draftFromLayout(layout));
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [reconnecting, setReconnecting] = useState<string | null>(null);
   const [migrationPreview, setMigrationPreview] = useState<LibraryMigrationPreview | null>(null);
   const saved = useMemo(() => draftFromLayout(layout), [layout]);
@@ -62,8 +70,16 @@ export function LibraryLayoutEditor({
       return { ...current, pools, fetchPool: pools.includes(current.fetchPool) ? current.fetchPool : "" };
     });
 
+  const reportSaveError = (error: unknown) => {
+    const key = error instanceof ApiError ? layoutErrorKeys[error.code] : undefined;
+    const feedback = toastFromError(error, t(key ?? "librarySetup.saveFailed"));
+    setSaveError(feedback.message);
+    if (feedback.onAction) toast.notify(feedback);
+  };
+
   const save = async () => {
     setSaving(true);
+    setSaveError("");
     try {
       if (
         layout.configured &&
@@ -87,7 +103,7 @@ export function LibraryLayoutEditor({
       onSaved(next);
       toast.success(t("librarySetup.saved"));
     } catch (error) {
-      toast.notify(toastFromError(error, t("librarySetup.saveFailed")));
+      reportSaveError(error);
     } finally {
       setSaving(false);
     }
@@ -96,6 +112,7 @@ export function LibraryLayoutEditor({
   const confirmMigration = async () => {
     if (!migrationPreview) return;
     setSaving(true);
+    setSaveError("");
     try {
       await api.startLibraryMigration(
         draft.mode === "pools"
@@ -105,7 +122,7 @@ export function LibraryLayoutEditor({
       );
       setMigrationPreview(null);
     } catch (error) {
-      toast.notify(toastFromError(error, t("librarySetup.saveFailed")));
+      reportSaveError(error);
     } finally {
       setSaving(false);
     }
@@ -234,10 +251,25 @@ export function LibraryLayoutEditor({
           </div>
         )}
 
+        {saveError && !migrationPreview && (
+          <p role="alert" className="text-sm text-error-foreground">
+            {saveError}
+          </p>
+        )}
         <div className="flex justify-end">
-          <Button size="sm" disabled={readOnly || saving || !dirty || poolsInvalid} onClick={() => void save()}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {saveLabel ?? t("librarySetup.save")}
+          <Button
+            size="sm"
+            disabled={readOnly || saving || (!dirty && !onContinue) || poolsInvalid}
+            onClick={() => (dirty ? void save() : onContinue?.())}
+          >
+            {saving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : !dirty && onContinue ? (
+              <ArrowRight className="h-4 w-4" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            {!dirty && onContinue ? t("librarySetup.onboarding.next") : (saveLabel ?? t("librarySetup.save"))}
           </Button>
         </div>
       </div>
@@ -249,7 +281,21 @@ export function LibraryLayoutEditor({
         >
           <DialogHeader title={t("librarySetup.migration.confirmTitle")} />
           <DialogBody className="space-y-3 text-sm">
+            {saveError && (
+              <p role="alert" className="text-error-foreground">
+                {saveError}
+              </p>
+            )}
             <p>{t("librarySetup.migration.confirmDescription")}</p>
+            {layout.mode === "standard" && draft.mode === "pools" && (
+              <div className="space-y-2 break-words text-muted-foreground">
+                <p>{t("librarySetup.migration.selectedPoolsStay")}</p>
+                {draft.fetchPool && (
+                  <p>{t("librarySetup.migration.outsidePoolsMove", { pool: `/data/${draft.fetchPool}` })}</p>
+                )}
+                <p>{t("librarySetup.migration.otherFilesStay")}</p>
+              </div>
+            )}
             <p>
               {t("librarySetup.migration.moveSummary", {
                 count: migrationPreview.moveCount,
