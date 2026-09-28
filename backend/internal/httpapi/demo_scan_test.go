@@ -24,6 +24,9 @@ func TestRunDemoStartupWorkflowsInitializesVisibleDefinitions(t *testing.T) {
 		CacheRoot:      t.TempDir(),
 		LocalScanDepth: 2,
 	})
+	if err := server.BootstrapDemo(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 
 	result, err := server.RunDemoStartupWorkflows(context.Background())
 	if err != nil {

@@ -97,6 +97,9 @@ func (s *Server) SeedDemoShowcase(ctx context.Context) error {
 			return err
 		}
 	}
+	if err := seedDemoFavorites(ctx, tx); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 

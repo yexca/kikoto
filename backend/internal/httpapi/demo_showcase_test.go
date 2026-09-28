@@ -16,6 +16,9 @@ import (
 func TestDemoShowcaseKeepsEligibleTrackedWorksStable(t *testing.T) {
 	db := openMigratedTestDB(t)
 	s := NewServer(db, config.Config{Mode: config.ModeDemo})
+	if err := s.BootstrapDemo(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -111,6 +114,75 @@ func TestDemoShowcaseKeepsEligibleTrackedWorksStable(t *testing.T) {
 		if code == first[0] {
 			t.Fatalf("stale tracked work %s survived eligibility loss", code)
 		}
+	}
+}
+
+func TestDemoFavoritesRefreshOnlyEligibleLocalAssociations(t *testing.T) {
+	db := openMigratedTestDB(t)
+	s := NewServer(db, config.Config{Mode: config.ModeDemo})
+	ctx := context.Background()
+	if err := s.BootstrapDemo(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ensureSystemWorkflowDefinitions(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'example_local', 'Example Local', 'local_folder');
+		INSERT INTO work (id, primary_code, title, age_rating, is_permanently_free) VALUES
+			(1, 'RJ00000001', 'Example One', 'general', 1),
+			(2, 'RJ00000002', 'Example Two', 'general', 1),
+			(3, 'RJ00000003', 'Example Three', 'adult', 1),
+			(4, 'RJ00000004', 'Example Four', 'general', 0),
+			(5, 'RJ00000005', 'Example Five', 'general', 1);
+		INSERT INTO work_source_presence (work_id, file_source_id, presence_type, availability) VALUES
+			(1, 1, 'local', 'available'), (2, 1, 'local', 'available'),
+			(3, 1, 'local', 'available'), (4, 1, 'local', 'available');
+		INSERT INTO person (id, display_name) VALUES (1, 'Example Voice One'), (2, 'Example Voice Two');
+		INSERT INTO work_credit (work_id, person_id, role) VALUES (1, 1, 'voice_actor'), (3, 2, 'voice_actor');
+		INSERT INTO party (id, display_name) VALUES (1, 'Example Circle One'), (2, 'Example Circle Two');
+		INSERT INTO work_party (work_id, party_id, role) VALUES (2, 1, 'circle'), (4, 2, 'circle');
+	`); err != nil {
+		t.Fatal(err)
+	}
+	for run := 0; run < 2; run++ {
+		if err := s.SeedDemoShowcase(ctx); err != nil {
+			t.Fatal(err)
+		}
+		for _, check := range []struct {
+			query string
+			want  int
+		}{
+			{`SELECT COUNT(*) FROM user_work_state WHERE listening_status <> 'none'`, 2},
+			{`SELECT COUNT(*) FROM favorite_list WHERE kind = 'user'`, 1},
+			{`SELECT COUNT(*) FROM favorite_list_item`, 2},
+			{`SELECT COUNT(*) FROM user_work_state WHERE favorite = 1`, 2},
+			{`SELECT COUNT(*) FROM user_person_state WHERE favorite = 1 AND person_id = 1`, 1},
+			{`SELECT COUNT(*) FROM user_party_state WHERE favorite = 1 AND party_id = 1`, 1},
+			{`SELECT COUNT(*) FROM user_person_state WHERE person_id = 2`, 0},
+			{`SELECT COUNT(*) FROM user_party_state WHERE party_id = 2`, 0},
+		} {
+			var got int
+			if err := db.QueryRow(check.query).Scan(&got); err != nil {
+				t.Fatal(err)
+			}
+			if got != check.want {
+				t.Fatalf("run %d: %s = %d, want %d", run, check.query, got, check.want)
+			}
+		}
+	}
+	if _, err := db.Exec("UPDATE work SET is_permanently_free = 0 WHERE id = 1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeedDemoShowcase(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var stale int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM user_work_state WHERE work_id = 1`).Scan(&stale); err != nil {
+		t.Fatal(err)
+	}
+	if stale != 0 {
+		t.Fatal("ineligible work remained on Demo shelf")
 	}
 }
 
