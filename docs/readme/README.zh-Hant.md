@@ -11,7 +11,7 @@
 本地优先的个人音频媒體庫、來源浏览器和播放器。Kikoto 将 DLsite 风格元数据、本地文件夹、可重建快取以及兼容 Kikoeru 的远程文件來源统一到一个作品模型中，并提供自托管 Web 应用和 Android 客户端。
 
 > [!IMPORTANT]
-> Kikoto 仍在积极开发中。升级前請备份 `config/` 和 `data/`，并在将实例暴露到网络前阅读[安全文档](../security/index.md)。
+> Kikoto 仍在积极开发中。升级前請備份 `config/`，并在将实例暴露到网络前阅读[安全文档](../security/index.md)。
 
 > [!NOTE]
 > **自訂工作流程已移除。** 工作流程現在全部為內建。原自訂編輯器由預製工作流程（關注社團、關注系列、關注聲優）取代，它們只提供少量經過驗證的參數。升級時會刪除使用者自建的定義及其觸發器，執行歷史仍可在 Activity 中查看。
@@ -23,7 +23,7 @@
 3. 啟動服務：
 
 ```sh
-docker compose up -d --pull always
+docker compose up -d
 ```
 
 開啟 <http://127.0.0.1:7655>。首次啟動時頁面會顯示「設定 Kikoto」：輸入一次性初始化權杖，再設定管理員使用者名稱和密碼。權杖會輸出在服務日誌中（`docker compose logs kikoto`），也儲存在 `config/setup-token`，建立第一個管理員後即失效。如需改為在 `.env` 中定義 root 帳戶，請設定 `KIKOTO_ROOT_ACCOUNT_MODE=environment` 與 `KIKOTO_ROOT_PASSWORD`。忘記密碼時請參閱[管理員初始化與復原](../operations/security.md#administrator-setup-and-recovery)。
@@ -32,7 +32,7 @@ docker compose up -d --pull always
 
 可參考 [`.env.example`](../../.env.example)，透過同目錄的 `.env` 調整映像、掃描深度、Cookie 安全選項和容器內路徑。Shell 環境變數優先於 `.env`；修改後執行 `docker compose up -d` 使設定生效。路徑變數不會改變主機掛載目錄，詳見 [Compose 設定](../operations/docker.md#configure-with-env)。
 
-`docker compose restart` 會重用目前容器的映像，也不會套用新的環境變數。`docker compose up -d` 使用 Compose 預設拉取策略：缺少映像時拉取，`latest` 標籤則一律拉取。升級時可使用 `--pull always`；需要可重現部署時，請在 `.env` 中將 `KIKOTO_IMAGE` 固定為經過審核的版本標籤或 digest。升級前備份 `config/` 和 `data/`；既有資料庫會在啟動時遷移，不會從全新安裝 baseline 重建。
+`docker compose restart` 會重用目前容器的映像，也不會套用新的環境變數。`docker compose up -d` 使用 Compose 預設拉取策略：缺少映像時拉取，`latest` 標籤則一律拉取。升級固定版本時，先將 `.env` 中的 `KIKOTO_IMAGE` 改為目標標籤或 digest，再執行 `docker compose up -d`。升級前備份 `config/`，保留現有的 `data/` 掛載；既有資料庫會在啟動時遷移，不會從全新安裝 baseline 重建。
 
 ## 使用者文件
 

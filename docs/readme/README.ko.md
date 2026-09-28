@@ -28,7 +28,7 @@
 Kikoto는 DLsite 스타일 메타데이터, 로컬 폴더, 재생성 가능한 Cache, Kikoeru 호환 원격 파일 소스를 하나의 통합 work 모델로 묶습니다. 반응형 플레이어를 갖춘 self-hosted 웹 애플리케이션과 Android 클라이언트를 제공합니다.
 
 > [!IMPORTANT]
-> Kikoto는 활발히 개발 중입니다. 업그레이드 전에 `config/`와 `data/`를 백업하고, 네트워크에 인스턴스를 공개하기 전에 [보안 모델](../operations/security.md)을 검토하세요.
+> Kikoto는 활발히 개발 중입니다. 업그레이드 전에 `config/`를 백업하고, 네트워크에 인스턴스를 공개하기 전에 [보안 모델](../operations/security.md)을 검토하세요.
 
 > [!NOTE]
 > **사용자 정의 워크플로 변경 예정.** 다음 버전에서는 사용자 정의 워크플로 기능을 제거하고 모든 워크플로를 사전 구성된 형태로 제공할 수 있습니다. 현재 사용자 정의 워크플로는 문제가 많고 자유도도 크지 않아 유지 비용이 높기 때문입니다.
@@ -59,12 +59,12 @@ mkdir config cache data
 ### 3. Kikoto 시작
 
 ```sh
-docker compose up -d --pull always
+docker compose up -d
 ```
 
 [`.env.example`](../../.env.example)을 참고해 같은 디렉터리의 `.env`에서 이미지, 스캔 깊이, Cookie 보안 설정, 컨테이너 내부 경로를 변경할 수 있습니다. 셸 환경 변수가 `.env`보다 우선합니다. 변경 후 `docker compose up -d`를 실행하세요. 경로 변수는 호스트 마운트 경로를 변경하지 않습니다. 자세한 내용은 [Compose 설정](../operations/docker.md#configure-with-env)을 참고하세요.
 
-`docker compose restart`는 현재 컨테이너 이미지를 재사용하며 환경 변수 변경을 적용하지 않습니다. `docker compose up -d`는 Compose 기본 정책에 따라 로컬에 없는 이미지를 가져오고, `latest` 태그는 항상 가져옵니다. 업그레이드할 때는 `--pull always`를 사용하세요. 재현 가능한 배포에는 `.env`의 `KIKOTO_IMAGE`를 검토한 릴리스 tag 또는 image digest로 지정합니다. 업그레이드 전에 `config/`와 `data/`를 백업하세요. 기존 데이터베이스는 시작 시 migration되며 fresh-install baseline으로 재구성되지 않습니다.
+`docker compose restart`는 현재 컨테이너 이미지를 재사용하며 환경 변수 변경을 적용하지 않습니다. `docker compose up -d`는 Compose 기본 정책에 따라 로컬에 없는 이미지를 가져오고, `latest` 태그는 항상 가져옵니다. 고정 버전을 업그레이드할 때는 `.env`의 `KIKOTO_IMAGE`를 대상 태그 또는 digest로 변경한 다음 `docker compose up -d`를 실행하세요. 업그레이드 전에 `config/`를 백업하고 기존 `data/` 마운트를 유지하세요. 기존 데이터베이스는 시작 시 migration되며 fresh-install baseline으로 재구성되지 않습니다.
 
 <http://127.0.0.1:7655>를 엽니다. 처음 시작하면 "Kikoto 설정" 화면이 표시됩니다. 일회용 설정 토큰을 입력하고 관리자 사용자 이름과 비밀번호를 정하세요. 토큰은 서비스 로그(`docker compose logs kikoto`)에 출력되고 `config/setup-token`에도 저장되며, 첫 관리자를 만들면 더 이상 사용할 수 없습니다. root 계정을 `.env`에서 정의하려면 `KIKOTO_ROOT_ACCOUNT_MODE=environment`와 `KIKOTO_ROOT_PASSWORD`를 설정하세요. 비밀번호를 잊은 경우 [관리자 설정 및 복구](../operations/security.md#administrator-setup-and-recovery)를 참고하세요. 운영 Compose는 웹 앱과 API를 호스트 7655 포트에서 함께 제공합니다. 7659는 개발 Compose에서만 별도로 공개됩니다.
 

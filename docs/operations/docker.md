@@ -10,7 +10,7 @@ require the source tree or a local image build:
 No `.env` file or password is required to start:
 
 ```sh
-docker compose up -d --pull always
+docker compose up -d
 ```
 
 On first start, open the web app and create the administrator with the
@@ -26,16 +26,17 @@ stopped. These automatic restarts and `docker compose restart` reuse the current
 container image. The stack leaves `pull_policy` unset, so `docker compose up -d`
 uses Compose's default `missing` policy: it pulls images absent from the local
 cache, and the `latest` tag is always pulled.
-Run `docker compose up -d --pull always` to refresh a fixed tag as well.
+To upgrade a fixed version, change `KIKOTO_IMAGE` to the new tag or digest,
+then run `docker compose up -d`.
 
 It defaults to `yexca/kikoto:latest`, which is updated by the public release
-workflow. The explicit install and upgrade command above therefore selects the
+workflow. The install and upgrade command above therefore selects the
 latest public release. Override `KIKOTO_IMAGE` with a reviewed version or digest
 when reproducible deployment is required:
 
 ```sh
-KIKOTO_IMAGE=yexca/kikoto:0.1.1 docker compose up -d --pull always
-KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d --pull always
+KIKOTO_IMAGE=yexca/kikoto:0.1.1 docker compose up -d
+KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d
 ```
 
 Default ports:
@@ -107,16 +108,18 @@ configuration while reusing an already installed image, use
 
 ## Upgrade
 
-Back up `config/` and `data/` before upgrading. For a live SQLite database,
+Back up `config/` before upgrading. Keep the existing `data/` mount in place;
+the version upgrade does not require copying it. For a live SQLite database,
 follow the consistent backup guidance in [Database](database.md#backups).
 Then refresh the configured image and recreate the service:
 
 ```sh
-docker compose up -d --pull always
+docker compose up -d
 ```
 
-For tags other than `latest`, an ordinary `up` reuses a cached image. To pull and
-recreate as separate steps:
+For a fixed version, update `KIKOTO_IMAGE` before running `up`. If you
+intentionally reuse a mutable non-`latest` tag, pull and recreate as separate
+steps:
 
 ```sh
 docker compose pull

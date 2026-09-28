@@ -12,13 +12,13 @@
 將 `docker-compose.yml` 下载到空目錄，然後拉取並啟動最新發布的 Docker Hub 映像，啟動前無需設定密碼：
 
 ```sh
-docker compose up -d --pull always
+docker compose up -d
 ```
 
-預設映像為 `yexca/kikoto:latest`，發布流程會在每次公開發布時更新它。`docker compose up -d` 會拉取缺少的映像，並一律拉取 `latest`；`docker compose restart` 會重用目前容器的映像。升級固定標籤時也可使用 `--pull always`。如需可重現部署，請在 `.env` 中將 `KIKOTO_IMAGE` 固定為經過審核的版本或 digest：
+預設映像為 `yexca/kikoto:latest`，發布流程會在每次公開發布時更新它。`docker compose up -d` 會拉取缺少的映像，並一律拉取 `latest`；`docker compose restart` 會重用目前容器的映像。升級固定版本時，先將 `KIKOTO_IMAGE` 改為目標標籤或 digest，再執行 `docker compose up -d`。如需可重現部署，請在 `.env` 中將 `KIKOTO_IMAGE` 固定為經過審核的版本或 digest：
 
 ```sh
-KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d --pull always
+KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d
 ```
 
 開啟前端：`http://127.0.0.1:7655`。首次啟動時頁面會顯示「設定 Kikoto」：輸入 `docker compose logs kikoto` 或 `config/setup-token` 中的一次性初始化權杖，再設定管理員使用者名稱和密碼。忘記密碼時請參閱[管理員初始化與復原](../../operations/security.md#administrator-setup-and-recovery)。

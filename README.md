@@ -9,13 +9,6 @@
 </p>
 
 <p align="center">
-  <a href="docs/README.md">Documentation</a> ·
-  <a href="https://github.com/yexca/kikoto/releases">Releases</a> ·
-  <a href="SECURITY.md">Security</a> ·
-  <a href="PRIVACY.md">Privacy</a>
-</p>
-
-<p align="center">
   <a href="README.md">English</a> ·
   <a href="docs/readme/README.zh-Hans.md">简体中文</a> ·
   <a href="docs/readme/README.zh-Hant.md">繁體中文</a> ·
@@ -39,7 +32,7 @@ Kikoeru-compatible remote file sources under one unified work model. It ships
 as a self-hosted web application with a responsive player and an Android client.
 
 > [!IMPORTANT]
-> Kikoto is under active development. Back up `config/` and `data/` before an upgrade, and review the [security model](docs/operations/security.md) before exposing an instance to a network.
+> Kikoto is under active development. Back up `config/` before an upgrade, and review the [security model](docs/operations/security.md) before exposing an instance to a network.
 
 > [!NOTE]
 > **Custom workflow editing has been removed.** Workflows are now built-in
@@ -122,16 +115,18 @@ Place supported work folders under the host `data/` directory. See the
 ### 3. Start Kikoto
 
 ```sh
-docker compose up -d --pull always
+docker compose up -d
 ```
 
 `docker compose restart` reuses the current container image.
 `docker compose up -d` uses Compose's default pull policy, which pulls missing
-images and always pulls the `latest` tag. Use `--pull always` when upgrading a fixed tag too.
+images and always pulls the `latest` tag. For a fixed version, update
+`KIKOTO_IMAGE` to the desired tag or digest before running it.
 For a reproducible deployment, set `KIKOTO_IMAGE` in `.env` to a
 reviewed release tag or image digest and update it deliberately during an
-upgrade. Back up `config/` and `data/` before upgrading; existing databases are
-migrated on startup and are never rebuilt from the fresh-install baseline.
+upgrade. Back up `config/` before upgrading and keep the existing `data/` mount.
+Existing databases are migrated on startup and are never rebuilt from the
+fresh-install baseline.
 
 Open <http://127.0.0.1:7655>.
 

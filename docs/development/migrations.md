@@ -82,9 +82,8 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain includes
-`044_library_upgrade.sql`, with the `044_v0.6.1.sql` baseline generated from
-the current `VERSION` file; regenerate it after the next release bump so the
-snapshot carries the release that ships schema 044. Migration 044 stores the
+`044_library_upgrade.sql`, with the `044_v0.7.0.sql` baseline generated from
+the current `VERSION` file. Migration 044 stores the
 preserved legacy workflow snapshot and durable library-layout migration state.
 Before migration 035 removes user definitions, the application's upgrade hook
 copies their definitions and triggers into the snapshot. An instance that
@@ -204,3 +203,19 @@ the remaining numbered migrations.
 v0.6.1 adds no numbered SQL and remains on schema 034. Existing databases start
 without applying migrations, and fresh installs continue to use
 `034_v0.6.0.sql`.
+
+## v0.7.0 Upgrade
+
+Existing v0.6.1 databases advance from schema 034 through numbered migrations
+035–044. The upgrade hook preserves user-authored workflow definitions and
+triggers for review before migration 035 removes their active copies. A
+database that already passed 035 under an earlier build needs a pre-035 backup
+to recover definitions that were deleted before the preservation hook existed.
+New installations use `044_v0.7.0.sql`; existing installations never apply a
+baseline during upgrade.
+
+The released v0.6.1 baseline remains `034_v0.6.0.sql`. Baselines 035–044 that
+were generated during v0.7.0 development with a v0.6.1 suffix were not part of
+the v0.6.1 release. Their files have been removed, while checksum-only ledger
+entries allow development databases created from those snapshots to continue
+through the numbered chain.

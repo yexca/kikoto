@@ -27,12 +27,13 @@ const referenceProjects = [
   },
 ] as const;
 
-// Ordered oldest first. A null bound means the range is open-ended.
+// Stored oldest first, displayed newest first. A null bound means an open-ended range.
 const aiModelHistory = [
   { from: null, to: "v0.1.0", models: ["GPT-5.5"] },
   { from: "v0.1.1", to: "v0.5.4", models: ["GPT-5.6-Sol"] },
   { from: "v0.5.5", to: "v0.6.0", models: ["GPT-6-Astra"] },
-  { from: "v0.6.1", to: null, models: ["GPT-6-Astra", "Claude Opus 5", "Claude Fable 5.1"] },
+  { from: "v0.6.1", to: "v0.6.1", models: ["GPT-6-Astra", "Claude Opus 5", "Claude Fable 5.1"] },
+  { from: "v0.7.0", to: null, models: ["Claude Opus 5.5", "GPT-6-Astra", "GPT-6-Sol"] },
 ] as const;
 
 const currentAiModels = aiModelHistory[aiModelHistory.length - 1];
@@ -127,15 +128,13 @@ export function AboutPage() {
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
             <p>{t("about.aiCredit")}</p>
-            <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
-              <p className="min-w-0 flex-1">
-                {t("about.currentModels", {
-                  version: currentAiModels.from,
-                  models: currentAiModels.models.join(", "),
-                })}
-              </p>
+            <p className="leading-5">
+              {t("about.currentModels", {
+                version: currentAiModels.from,
+                models: currentAiModels.models.join(", "),
+              })}{" "}
               <ModelHistoryPopover />
-            </div>
+            </p>
           </CardContent>
         </Card>
 
@@ -239,16 +238,23 @@ export function AboutPage() {
 function ModelHistoryPopover() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
   return (
-    <div ref={anchorRef} className="shrink-0">
-      <Button size="sm" variant="outline" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
-        <History className="h-4 w-4" />
+    <span ref={anchorRef} className="inline-flex align-text-bottom">
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-5 gap-1 px-1.5 leading-none"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <History className="h-3.5 w-3.5" aria-hidden="true" />
         {t("about.viewModelHistory")}
       </Button>
       <AnchoredPopover
         open={open}
         anchorRef={anchorRef}
+        align="start"
         onOpenChange={setOpen}
         ariaLabel={t("about.modelHistoryTitle")}
         className="w-[min(26rem,calc(100vw-1.5rem))] text-sm"
@@ -272,7 +278,7 @@ function ModelHistoryPopover() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {aiModelHistory.map((entry) => (
+            {[...aiModelHistory].reverse().map((entry) => (
               <tr key={entry.from ?? "start"}>
                 <td className="whitespace-nowrap px-4 py-2.5 align-top tabular-nums">
                   {`${entry.from ?? t("about.firstRelease")} – ${entry.to ?? t("about.present")}`}
@@ -291,6 +297,6 @@ function ModelHistoryPopover() {
           </tbody>
         </table>
       </AnchoredPopover>
-    </div>
+    </span>
   );
 }

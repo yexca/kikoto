@@ -4,8 +4,8 @@
 
 - Confirm Docker Compose is running.
 - Check that port `7655` is not already in use.
-- Refresh the published image and restart the stack with
-  `docker compose up -d --pull always`.
+- Refresh the published `latest` image and recreate the stack with
+  `docker compose up -d`.
 
 ## The Backend Is Unhealthy
 

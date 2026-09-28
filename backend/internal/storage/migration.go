@@ -61,6 +61,19 @@ var retiredBaselineLedgerAssets = []migrationAsset{
 		checksum: "36d96d1c03566f8a0939254871647d2f323ecb5c668544741e9ab92b9915564d",
 		baseline: true,
 	},
+	// These v0.6.1-suffixed snapshots were generated during v0.7.0 development.
+	// v0.6.1 actually shipped schema 034. Keep only their ledger checksums so
+	// databases created from a development build can still upgrade in place.
+	{version: 35, filename: "baseline/035_v0.6.1.sql", checksum: "c537ff972b8730dc7349da87279ff927a962ff653614c228f61a40d50b621496", baseline: true},
+	{version: 36, filename: "baseline/036_v0.6.1.sql", checksum: "ef11bfd1dee23aa222a5bacfd7500e8cb0ddf74d0201b2ad3f12c1777435df4b", baseline: true},
+	{version: 37, filename: "baseline/037_v0.6.1.sql", checksum: "0a24eeec35c77b40f33d3bd4fc20a9b1f6d5c34c16c5126848096fb68c17e474", baseline: true},
+	{version: 38, filename: "baseline/038_v0.6.1.sql", checksum: "7066d3b4177f750e803ff7c2b04e52c3aafe1f565ee045e49d59f26a4983ed25", baseline: true},
+	{version: 39, filename: "baseline/039_v0.6.1.sql", checksum: "e8c0ae3c6fa7bd6ce26dd642ec421dd3722ee694873adfe7a9fa6b6e1253e608", baseline: true},
+	{version: 40, filename: "baseline/040_v0.6.1.sql", checksum: "b0d0af30bff83326decf83c22f6f55207c2ee57cb4171c7dc6c76b826506b843", baseline: true},
+	{version: 41, filename: "baseline/041_v0.6.1.sql", checksum: "52911c0dab8723e4e989b7921971f12a788567368507606e62575336abd1460f", baseline: true},
+	{version: 42, filename: "baseline/042_v0.6.1.sql", checksum: "b94bee22b8c68dfa3acaf5660b96efebe618abbeeee6cfd2d23383025e48f837", baseline: true},
+	{version: 43, filename: "baseline/043_v0.6.1.sql", checksum: "39ad107287fc6f61070cae0d022edf91f664bc23836f93bd7a6692a79f8c09e4", baseline: true},
+	{version: 44, filename: "baseline/044_v0.6.1.sql", checksum: "3840257494821213e3125a9f400dcbbbabad4336a898981943dbf42f5b6204c6", baseline: true},
 }
 
 type migrationCatalog struct {

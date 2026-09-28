@@ -14,18 +14,19 @@ Download `docker-compose.yml` into an empty directory, then pull and start the
 latest published Docker Hub image. No password is needed before startup:
 
 ```sh
-docker compose up -d --pull always
+docker compose up -d
 ```
 
 The default image is `yexca/kikoto:latest`, which the release workflow updates
 for each public release. `docker compose up -d` pulls missing images and always
 pulls `latest`; `docker compose restart` reuses the current container image.
-Use `--pull always` when upgrading a fixed tag too. For a reproducible
+When upgrading a fixed version, update `KIKOTO_IMAGE` to the desired tag or
+digest before running `docker compose up -d`. For a reproducible
 deployment, set `KIKOTO_IMAGE` in `.env` to a reviewed version or
 digest:
 
 ```sh
-KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d --pull always
+KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d
 ```
 
 Open:

@@ -12,13 +12,13 @@
 빈 디렉터리에 `docker-compose.yml`을 내려받고 시작하세요. 비밀번호를 미리 설정할 필요는 없습니다.
 
 ```sh
-docker compose up -d --pull always
+docker compose up -d
 ```
 
-기본 이미지는 `yexca/kikoto:latest`이며 공개 릴리스마다 갱신됩니다. `docker compose up -d`는 로컬에 없는 이미지를 가져오고 `latest`는 항상 가져옵니다. `docker compose restart`는 현재 컨테이너 이미지를 재사용합니다. 고정 태그를 업데이트할 때도 `--pull always`를 사용하세요. 재현 가능한 배포에는 `.env`의 `KIKOTO_IMAGE`를 검토한 버전 태그 또는 digest로 지정합니다.
+기본 이미지는 `yexca/kikoto:latest`이며 공개 릴리스마다 갱신됩니다. `docker compose up -d`는 로컬에 없는 이미지를 가져오고 `latest`는 항상 가져옵니다. `docker compose restart`는 현재 컨테이너 이미지를 재사용합니다. 고정 버전을 업그레이드할 때는 `KIKOTO_IMAGE`를 대상 태그 또는 digest로 변경한 다음 `docker compose up -d`를 실행하세요. 재현 가능한 배포에는 `.env`의 `KIKOTO_IMAGE`를 검토한 버전 태그 또는 digest로 지정합니다.
 
 ```sh
-KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d --pull always
+KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d
 ```
 
 브라우저에서 `http://127.0.0.1:7655`를 여세요. 처음 시작하면 "Kikoto 설정" 화면이 표시됩니다. `docker compose logs kikoto` 또는 `config/setup-token`의 일회용 설정 토큰을 입력하고 관리자 사용자 이름과 비밀번호를 정하세요. 비밀번호를 잊은 경우 [관리자 설정 및 복구](../../operations/security.md#administrator-setup-and-recovery)를 참고하세요. 운영 Compose는 웹 애플리케이션과 API를 호스트의 7655 포트 하나로 공개합니다. 7659는 컨테이너 내부 backend 포트이며 개발 Compose에서만 별도로 공개됩니다.
