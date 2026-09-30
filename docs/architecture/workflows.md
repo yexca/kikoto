@@ -112,6 +112,17 @@ Database attempt ordering prevents late failures from replacing newer outcomes
 and late successes from replacing newer successful metadata. This is not a
 distributed request lock between separate application processes.
 
+## Workflow Categories
+
+The Workflows page groups definitions by a frontend-owned category keyed by
+workflow code: Basic (local scan, local files, metadata sync), Collect
+(popular collections), Follow (preset follow workflows), and Remote
+(Availability Watch and Fetch history). A code without a category, such as a
+read-only run context, stays with Basic. Wide layouts select a category from a
+vertical icon rail and a workflow from the horizontal tabs; the mobile
+navigation layout shows categories as an icon row above the tabs. The selected
+workflow remains the persisted and linked state, so the category follows it.
+
 ## Activity Summary
 
 Workflows exposes Activity at the right end of its horizontal definition bar.

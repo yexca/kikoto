@@ -600,6 +600,13 @@ export const surfaceHant = {
     removeFromWatchAria: "從監視移除 {{workCode}}",
     loadingWorkflowData: "正在載入工作流程資料",
     workflowTabs: "工作流程",
+    workflowCategories: "工作流程分類",
+    categories: {
+      basic: "基礎",
+      collect: "收集",
+      follow: "關注",
+      remote: "遠端",
+    },
     presetQueueFailed: "預製工作流程無法排入佇列。",
     runCancelFailed: "無法取消工作流程執行，請重試。",
     runRetryFailed: "無法重試工作流程執行，請重試。",

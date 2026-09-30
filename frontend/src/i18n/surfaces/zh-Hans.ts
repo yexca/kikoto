@@ -599,6 +599,13 @@ export const surfaceHans = {
     removeFromWatchAria: "从监视中移除 {{workCode}}",
     loadingWorkflowData: "正在加载工作流数据",
     workflowTabs: "工作流",
+    workflowCategories: "工作流分类",
+    categories: {
+      basic: "基础",
+      collect: "收集",
+      follow: "关注",
+      remote: "远程",
+    },
     presetQueueFailed: "预制工作流无法排队。",
     runCancelFailed: "无法取消工作流运行，请重试。",
     runRetryFailed: "无法重试工作流运行，请重试。",

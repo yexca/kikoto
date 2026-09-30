@@ -654,6 +654,13 @@ export const surfaceKorean = {
     removeFromWatchAria: "감시에서 {{workCode}} 제거",
     loadingWorkflowData: "워크플로 데이터 로드 중",
     workflowTabs: "워크플로",
+    workflowCategories: "워크플로 분류",
+    categories: {
+      basic: "기본",
+      collect: "수집",
+      follow: "팔로우",
+      remote: "원격",
+    },
     presetQueueFailed: "프리셋 워크플로를 대기열에 추가할 수 없습니다.",
     runCancelFailed: "워크플로 실행을 취소할 수 없습니다. 다시 시도해 주세요.",
     runRetryFailed: "워크플로 실행을 다시 시도할 수 없습니다. 다시 시도해 주세요.",

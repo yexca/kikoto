@@ -534,6 +534,13 @@ export const surfaceEnglish = {
     removeFromWatchAria: "Remove {{workCode}} from watch",
     loadingWorkflowData: "Loading workflow data",
     workflowTabs: "Workflows",
+    workflowCategories: "Workflow categories",
+    categories: {
+      basic: "Basic",
+      collect: "Collect",
+      follow: "Follow",
+      remote: "Remote",
+    },
     presetQueueFailed: "Preset workflow could not be queued.",
     runCancelFailed: "Workflow run could not be cancelled. Please try again.",
     runRetryFailed: "Workflow run could not be retried. Please try again.",

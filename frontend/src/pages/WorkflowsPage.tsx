@@ -12,6 +12,16 @@ import { TriggerModal } from "@/features/workflows/triggers/TriggerModal";
 import { useWorkflowActivityLocation } from "@/features/workflows/useWorkflowActivityLocation";
 import { WorkflowActivity } from "@/features/workflows/WorkflowActivity";
 import { WorkflowDetail } from "@/features/workflows/WorkflowDetail";
+import {
+  WorkflowCategoryRail,
+  workflowCategoryPanelId,
+  workflowCategoryTabId,
+} from "@/features/workflows/WorkflowCategoryRail";
+import {
+  groupWorkflowDefinitions,
+  workflowCategory,
+  type WorkflowCategory,
+} from "@/features/workflows/workflowCategories";
 import { WorkflowNavigation, builtInWorkflowOrder } from "@/features/workflows/WorkflowNavigation";
 import {
   configurableSystemWorkflowCodes,
@@ -193,6 +203,18 @@ export function WorkflowsPage({
     );
   }, [linkedCode, selectedDefinitionId, visibleDefinitions]);
 
+  const categoryGroups = useMemo(() => groupWorkflowDefinitions(visibleDefinitions), [visibleDefinitions]);
+  const selectedCategory = selectedDefinition ? workflowCategory(selectedDefinition.code) : null;
+  const categoryDefinitions =
+    categoryGroups.find((group) => group.category === selectedCategory)?.definitions ?? visibleDefinitions;
+  // Returning to a category reopens the workflow last selected in it during this visit.
+  const lastDefinitionByCategory = useRef(new Map<WorkflowCategory, number>());
+  useEffect(() => {
+    if (selectedDefinition && selectedCategory) {
+      lastDefinitionByCategory.current.set(selectedCategory, selectedDefinition.id);
+    }
+  }, [selectedCategory, selectedDefinition]);
+
   useEffect(() => {
     if (!linkedCode) return;
     const linked = visibleDefinitions.find((definition) => definition.code === linkedCode);
@@ -274,6 +296,12 @@ export function WorkflowsPage({
     setSelectedDefinitionID(definition.id);
     storePositiveInt(workflowDefinitionStorageKey, definition.id);
     activityLocation.selectWorkflow(definition.code);
+  };
+  const selectCategory = (category: WorkflowCategory) => {
+    const group = categoryGroups.find((item) => item.category === category);
+    if (!group) return;
+    const rememberedId = lastDefinitionByCategory.current.get(category);
+    selectDefinition(group.definitions.find((definition) => definition.id === rememberedId) ?? group.definitions[0]);
   };
 
   // Activity replaces a success toast: the new run is visible there with the rest of the queue.
@@ -466,111 +494,121 @@ export function WorkflowsPage({
         </div>
       )}
       <WorkflowRunSlotProvider>
-        <div className="min-w-0 space-y-4">
-          <WorkflowNavigation
-            actions={
-              <>
-                <WorkflowRunSlotTarget />
-                <WorkflowActivity
-                  key="global-activity"
-                  workflowCode="all"
-                  workflowName=""
-                  open={activityLocation.open}
-                  onOpenChange={activityLocation.setOpen}
-                  selectedRunId={activityLocation.runId}
-                  onSelectRun={openActivityRun}
-                  onBack={activityLocation.backToList}
-                  refreshKey={activityRevision}
-                  readOnly={readOnly}
-                  staticDemo={auth.demoMode}
-                  canSyncMetadata={canSyncMetadata}
-                  detail={
-                    activityLocation.runId ? (
-                      <>
-                        {activityRun.error && (
-                          <div role="alert" className="rounded-md border p-3 text-sm">
-                            {workflowCopy("activityLoadFailed")}{" "}
-                            <Button variant="outline" onClick={() => void activityRun.refresh(true)}>
-                              {t("common.retry")}
-                            </Button>
-                          </div>
-                        )}
-                        <RunDetail
-                          key={activityLocation.runId}
-                          run={linkedRun}
-                          candidates={linkedRun ? activityRun.candidates : []}
-                          events={linkedRun ? activityRun.events : []}
-                          loading={!linkedRun && !activityRun.error}
-                          onCandidateUpdate={refreshSelectedRunReview}
-                          onRunAction={refreshSelectedRunReview}
-                          canSyncMetadata={canSyncMetadata}
-                          readOnly={readOnly}
-                        />
-                      </>
-                    ) : undefined
-                  }
-                />
-              </>
-            }
-            definitions={visibleDefinitions}
-            selectedId={selectedDefinition?.id ?? null}
-            onSelect={selectDefinition}
-          />
+        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:gap-4">
+          {categoryGroups.length > 0 && (
+            <WorkflowCategoryRail groups={categoryGroups} selected={selectedCategory} onSelect={selectCategory} />
+          )}
           <div
-            id="workflow-definition-panel"
-            role="tabpanel"
-            aria-labelledby={selectedDefinition ? `workflow-tab-${selectedDefinition.id}` : undefined}
-            tabIndex={0}
+            id={workflowCategoryPanelId}
+            role={selectedCategory ? "tabpanel" : undefined}
+            aria-labelledby={selectedCategory ? workflowCategoryTabId(selectedCategory) : undefined}
+            className="min-w-0 flex-1 space-y-4"
           >
-            {!hasWorkflowMetaSnapshot && isWorkflowMetaLoading ? (
-              <WorkflowMetadataLoadingState />
-            ) : !hasWorkflowMetaSnapshot && workflowMetaError ? (
-              <WorkflowMetadataErrorState message={workflowMetaError} onRetry={refresh} />
-            ) : selectedDefinition?.code === "availability_watch" ? (
-              <AvailabilityWatchPanel
-                definition={selectedDefinition}
-                triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition.id)}
-                recentRuns={recentDefinitionRuns}
-                readOnly={readOnly}
-                canManageDownloads={canManageDownloads}
-                onCreateTrigger={createAutomationTrigger}
-                onEditTrigger={editAutomationTrigger}
-                onToggleTrigger={toggleAutomationTrigger}
-                onOpenRun={openActivityRun}
-                onRunQueued={() => {
-                  void refreshRecentRuns("availability_watch");
-                  showQueuedRun();
-                }}
-              />
-            ) : (
-              <WorkflowDetail
-                definition={selectedDefinition}
-                definitionTriggers={triggers.filter(
-                  (trigger) => trigger.workflowDefinitionId === selectedDefinition?.id,
-                )}
-                canManageTriggers={!readOnly && (selectedDefinition?.id ?? 0) > 0}
-                readOnly={readOnly}
-                systemRunKinds={selectedSystemRunKinds}
-                isSystemActionRunning={systemActionBusy}
-                canRunSystemAction={systemActionAllowed}
-                onRunSystemAction={runSystemAction}
-                onRunRemotePopular={runPopularCollection}
-                canFetchRemotePopular={canManageDownloads}
-                canTag={canTagWorks}
-                remoteSourceUnavailable={remoteSourceAvailability === "unavailable"}
-                onOpenRemoteSourceSettings={openRemoteSourcesSettings}
-                onRunDLsitePopular={runDLsitePopularCollection}
-                preset={selectedPreset}
-                onRunPreset={runPreset}
-                onTriggerRunOptionsChange={setCurrentTriggerRunOptions}
-                recentRuns={recentDefinitionRuns}
-                onOpenRun={openActivityRun}
-                onCreateTrigger={createAutomationTrigger}
-                onEditTrigger={editAutomationTrigger}
-                onToggleTrigger={toggleAutomationTrigger}
-                emptyText={definitionEmptyText}
-              />
-            )}
+            <WorkflowNavigation
+              actions={
+                <>
+                  <WorkflowRunSlotTarget />
+                  <WorkflowActivity
+                    key="global-activity"
+                    workflowCode="all"
+                    workflowName=""
+                    open={activityLocation.open}
+                    onOpenChange={activityLocation.setOpen}
+                    selectedRunId={activityLocation.runId}
+                    onSelectRun={openActivityRun}
+                    onBack={activityLocation.backToList}
+                    refreshKey={activityRevision}
+                    readOnly={readOnly}
+                    staticDemo={auth.demoMode}
+                    canSyncMetadata={canSyncMetadata}
+                    detail={
+                      activityLocation.runId ? (
+                        <>
+                          {activityRun.error && (
+                            <div role="alert" className="rounded-md border p-3 text-sm">
+                              {workflowCopy("activityLoadFailed")}{" "}
+                              <Button variant="outline" onClick={() => void activityRun.refresh(true)}>
+                                {t("common.retry")}
+                              </Button>
+                            </div>
+                          )}
+                          <RunDetail
+                            key={activityLocation.runId}
+                            run={linkedRun}
+                            candidates={linkedRun ? activityRun.candidates : []}
+                            events={linkedRun ? activityRun.events : []}
+                            loading={!linkedRun && !activityRun.error}
+                            onCandidateUpdate={refreshSelectedRunReview}
+                            onRunAction={refreshSelectedRunReview}
+                            canSyncMetadata={canSyncMetadata}
+                            readOnly={readOnly}
+                          />
+                        </>
+                      ) : undefined
+                    }
+                  />
+                </>
+              }
+              definitions={categoryDefinitions}
+              selectedId={selectedDefinition?.id ?? null}
+              onSelect={selectDefinition}
+            />
+            <div
+              id="workflow-definition-panel"
+              role="tabpanel"
+              aria-labelledby={selectedDefinition ? `workflow-tab-${selectedDefinition.id}` : undefined}
+              tabIndex={0}
+            >
+              {!hasWorkflowMetaSnapshot && isWorkflowMetaLoading ? (
+                <WorkflowMetadataLoadingState />
+              ) : !hasWorkflowMetaSnapshot && workflowMetaError ? (
+                <WorkflowMetadataErrorState message={workflowMetaError} onRetry={refresh} />
+              ) : selectedDefinition?.code === "availability_watch" ? (
+                <AvailabilityWatchPanel
+                  definition={selectedDefinition}
+                  triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition.id)}
+                  recentRuns={recentDefinitionRuns}
+                  readOnly={readOnly}
+                  canManageDownloads={canManageDownloads}
+                  onCreateTrigger={createAutomationTrigger}
+                  onEditTrigger={editAutomationTrigger}
+                  onToggleTrigger={toggleAutomationTrigger}
+                  onOpenRun={openActivityRun}
+                  onRunQueued={() => {
+                    void refreshRecentRuns("availability_watch");
+                    showQueuedRun();
+                  }}
+                />
+              ) : (
+                <WorkflowDetail
+                  definition={selectedDefinition}
+                  definitionTriggers={triggers.filter(
+                    (trigger) => trigger.workflowDefinitionId === selectedDefinition?.id,
+                  )}
+                  canManageTriggers={!readOnly && (selectedDefinition?.id ?? 0) > 0}
+                  readOnly={readOnly}
+                  systemRunKinds={selectedSystemRunKinds}
+                  isSystemActionRunning={systemActionBusy}
+                  canRunSystemAction={systemActionAllowed}
+                  onRunSystemAction={runSystemAction}
+                  onRunRemotePopular={runPopularCollection}
+                  canFetchRemotePopular={canManageDownloads}
+                  canTag={canTagWorks}
+                  remoteSourceUnavailable={remoteSourceAvailability === "unavailable"}
+                  onOpenRemoteSourceSettings={openRemoteSourcesSettings}
+                  onRunDLsitePopular={runDLsitePopularCollection}
+                  preset={selectedPreset}
+                  onRunPreset={runPreset}
+                  onTriggerRunOptionsChange={setCurrentTriggerRunOptions}
+                  recentRuns={recentDefinitionRuns}
+                  onOpenRun={openActivityRun}
+                  onCreateTrigger={createAutomationTrigger}
+                  onEditTrigger={editAutomationTrigger}
+                  onToggleTrigger={toggleAutomationTrigger}
+                  emptyText={definitionEmptyText}
+                />
+              )}
+            </div>
           </div>
         </div>
       </WorkflowRunSlotProvider>

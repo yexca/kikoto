@@ -35,9 +35,14 @@ Workflows make backend actions inspectable.
 - The header notification center combines Review items with completed or failed
   Fetch results. Fetch notifications open the local work detail and can be
   dismissed independently for the signed-in user.
-- The horizontal definition bar lists the built-in workflows in a fixed order,
-  with the preset follow workflows after the collectors. Definitions cannot be
-  created, edited, or deleted from the page.
+- Workflows are grouped into categories: Basic (local scan, local files, and
+  metadata sync), Collect (popular collections), Follow (the preset follow
+  workflows), and Remote (Availability Watch and Fetch history). Wide layouts
+  choose a category from a vertical icon rail beside the horizontal workflow
+  tabs; the mobile layout shows the categories as an icon row above the tabs,
+  labelling the active one. Each category lists its workflows in a fixed order,
+  and returning to a category reopens the workflow last selected there.
+  Definitions cannot be created, edited, or deleted from the page.
 - Needs attention collects unresolved candidates, metadata issues, and
   unacknowledged failures. Resolving recorded issues clears the corresponding
   dedicated metadata-run notice. Other failures can be marked reviewed once

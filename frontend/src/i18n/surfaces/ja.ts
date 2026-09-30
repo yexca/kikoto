@@ -656,6 +656,13 @@ export const surfaceJapanese = {
     removeFromWatchAria: "{{workCode}} をウォッチから削除",
     loadingWorkflowData: "ワークフローデータを読み込み中",
     workflowTabs: "ワークフロー",
+    workflowCategories: "ワークフローの分類",
+    categories: {
+      basic: "基本",
+      collect: "収集",
+      follow: "フォロー",
+      remote: "リモート",
+    },
     presetQueueFailed: "プリセットワークフローをキューに追加できませんでした。",
     runCancelFailed: "ワークフローの実行をキャンセルできませんでした。もう一度お試しください。",
     runRetryFailed: "ワークフローの実行を再試行できませんでした。もう一度お試しください。",

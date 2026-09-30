@@ -722,11 +722,21 @@ test("notification center paginates and clears only succeeded remote notificatio
   await expect(dialog.getByRole("button", { name: "Clear succeeded", exact: true })).toBeDisabled();
 });
 
+async function selectWorkflowCategory(page: Page, name: "Basic" | "Collect" | "Follow" | "Remote") {
+  await page
+    .getByRole("tablist", { name: "Workflow categories", exact: true })
+    .getByRole("tab", { name, exact: true })
+    .click();
+}
+
 test("definitions foreground runnable presets and show DLsite popular run options inline", async ({ page }) => {
   await mockWorkflows(page);
   await page.goto("/workflows");
 
-  await expect(page.getByRole("tablist", { name: "Workflows", exact: true }).getByRole("tab")).toHaveCount(6);
+  const categories = page.getByRole("tablist", { name: "Workflow categories", exact: true });
+  await expect(categories.getByRole("tab")).toHaveText(["Basic", "Collect", "Remote"]);
+  await expect(categories.getByRole("tab", { name: "Basic", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tablist", { name: "Workflows", exact: true }).getByRole("tab")).toHaveCount(3);
   await expect(page.getByRole("button", { name: "New workflow", exact: true })).toHaveCount(0);
   const dlsiteDefinition = page.getByRole("tab", { name: /Collect DLsite popular voice works/ });
   await expect(dlsiteDefinition.getByText("Built-in", { exact: true })).toHaveCount(0);
@@ -735,6 +745,7 @@ test("definitions foreground runnable presets and show DLsite popular run option
   await expect(page.getByRole("tab", { name: /Cache media/ })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Scan local library", exact: true })).toBeVisible();
 
+  await selectWorkflowCategory(page, "Collect");
   await page.getByRole("tab", { name: /Collect DLsite popular voice works/ }).click();
   await expect(page.getByRole("heading", { name: "Collect DLsite popular voice works", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Configure", exact: true })).toHaveCount(0);
@@ -806,6 +817,7 @@ test("popular trigger popovers save the run options shown above", async ({ page 
   await mockWorkflows(page);
   await page.goto("/workflows");
 
+  await selectWorkflowCategory(page, "Collect");
   await page.getByRole("tab", { name: /Collect DLsite popular voice works/ }).click();
   const dlsiteOptions = page.getByRole("region", { name: "Run options", exact: true });
   await dlsiteOptions.getByRole("button", { name: "7 days", exact: true }).click();
@@ -856,6 +868,7 @@ test("an open trigger editor keeps its workflow when another tab is selected", a
   await mockWorkflows(page);
   await page.goto("/workflows");
 
+  await selectWorkflowCategory(page, "Collect");
   await page.getByRole("tab", { name: /Collect DLsite popular voice works/ }).click();
   await page.getByRole("button", { name: "Add schedule", exact: true }).click();
   const popover = page.getByRole("dialog", { name: "New schedule" });
@@ -881,6 +894,7 @@ test("workflow deep links do not override a later definition tab selection", asy
   await page.goto("/workflows?workflow=availability_watch");
 
   await expect(page.getByRole("heading", { name: "Availability Watch", exact: true })).toBeVisible();
+  await selectWorkflowCategory(page, "Basic");
   await page.getByRole("tab", { name: "Sync work metadata", exact: true }).click();
   await expect(page.getByRole("tab", { name: "Sync work metadata", exact: true })).toHaveAttribute(
     "aria-selected",
@@ -1065,6 +1079,7 @@ test("availability watch shares pools, schedules checks, and handles ready works
   await mockWorkflows(page, undefined, undefined, undefined, (payload) => updates.push(payload));
   await page.goto("/workflows");
 
+  await selectWorkflowCategory(page, "Remote");
   await page.getByRole("tab", { name: /Availability Watch/ }).click();
   await expect(page.getByRole("heading", { name: "Availability Watch", exact: true })).toBeVisible();
   const pools = page.getByLabel("Availability pools");
@@ -1606,6 +1621,7 @@ test("remote popular collection requires an explicit source and queues configure
   const payloads: unknown[] = [];
   await mockWorkflows(page, (payload) => payloads.push(payload));
   await page.goto("/workflows");
+  await selectWorkflowCategory(page, "Collect");
   await page.getByRole("tab", { name: /Collect popular remote works/ }).click();
 
   const runOptions = page.getByRole("region", { name: "Run options", exact: true });
@@ -1639,6 +1655,7 @@ test("remote popular shows an unavailable overlay without a compatible source", 
   await page.route("**/api/library-sources", (route) => route.fulfill({ json: [] satisfies LibrarySource[] }));
   await page.goto("/workflows");
 
+  await selectWorkflowCategory(page, "Collect");
   const remoteTab = page.getByRole("tab", { name: /Collect popular remote works/ });
   await expect(remoteTab).toBeEnabled();
   await remoteTab.click();
@@ -1964,20 +1981,16 @@ test("demo settings keeps account and workflows read-only while allowing appeara
 test("workflow tabs retain selection, stay reachable on mobile, and support keyboard navigation", async ({ page }) => {
   await mockWorkflows(page);
   await page.goto("/workflows");
+  const categories = page.getByRole("tablist", { name: "Workflow categories", exact: true });
   const tabs = page.getByRole("tablist", { name: "Workflows", exact: true });
-  await expect(tabs.getByRole("tab")).toHaveCount(6);
+  await expect(tabs.getByRole("tab")).toHaveCount(3);
   await tabs.getByRole("tab", { name: "Scan local library", exact: true }).focus();
   await page.keyboard.press("ArrowRight");
   // The local work file refresh follows the local scan that discovers its folders.
   await expect(page.getByRole("heading", { name: "Refresh local work files", exact: true })).toBeVisible();
-  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("End");
   await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toBeVisible();
   await expect(tabs.getByRole("tab", { name: "Sync work metadata", exact: true })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
-  await page.keyboard.press("End");
-  await expect(tabs.getByRole("tab", { name: "Availability Watch", exact: true })).toHaveAttribute(
     "aria-selected",
     "true",
   );
@@ -1986,12 +1999,30 @@ test("workflow tabs retain selection, stay reachable on mobile, and support keyb
     "aria-selected",
     "true",
   );
+
+  // Categories switch the workflow tab set and open that category's first workflow.
+  await categories.getByRole("tab", { name: "Basic", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(categories.getByRole("tab", { name: "Collect", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: "Collect popular remote works", exact: true })).toBeVisible();
+  await expect(tabs.getByRole("tab")).toHaveCount(2);
+  await page.keyboard.press("End");
+  await expect(page.getByRole("heading", { name: "Availability Watch", exact: true })).toBeVisible();
+  await expect(tabs.getByRole("tab", { name: "Availability Watch", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  // Returning to a category restores the workflow last selected there.
+  await categories.getByRole("tab", { name: "Basic", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Scan local library", exact: true })).toBeVisible();
+
   await tabs.getByRole("tab", { name: "Sync work metadata", exact: true }).click();
   await page.reload();
   await expect(tabs.getByRole("tab", { name: "Sync work metadata", exact: true })).toHaveAttribute(
     "aria-selected",
     "true",
   );
+  await expect(categories.getByRole("tab", { name: "Basic", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Filter workflows", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Activity", exact: true })).toBeInViewport();
