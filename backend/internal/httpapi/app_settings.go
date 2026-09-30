@@ -22,28 +22,31 @@ type appSettingsResponse struct {
 	LocalScanDepth         int  `json:"localScanDepth"`
 	// LocalScanDepthMinimum is the shallowest depth that still reaches every
 	// Fetch folder; scans use at least this depth.
-	LocalScanDepthMinimum     int                          `json:"localScanDepthMinimum"`
-	CacheEnabled              bool                         `json:"cacheEnabled"`
-	CacheLimitGB              int                          `json:"cacheLimitGb"`
-	TranscodeCacheLimitGB     int                          `json:"transcodeCacheLimitGb"`
-	RemoteDownloadLimitGB     int                          `json:"remoteDownloadLimitGb"`
-	FetchStagingRetentionDays int                          `json:"fetchStagingRetentionDays"`
-	RemoteSaveTemplate        string                       `json:"remoteSaveTemplate"`
-	RemoteDelayBase           float64                      `json:"remoteDelayBaseSeconds"`
-	RemoteDelayRandom         float64                      `json:"remoteDelayRandomSeconds"`
-	RemoteBackoff             float64                      `json:"remoteBackoffSeconds"`
-	RemoteMaxBackoff          float64                      `json:"remoteMaxBackoffSeconds"`
-	CatalogFreshnessDays      int                          `json:"catalogFreshnessDays"`
-	DLsiteMetadataLanguage    string                       `json:"dlsiteMetadataLanguage"`
-	DLsiteMetadataLanguages   []string                     `json:"dlsiteMetadataLanguages"`
-	MetadataProxyURL          string                       `json:"metadataProxyUrl"`
-	DirectoryRoutingRules     []directoryRule              `json:"directoryRoutingRules"`
-	RecommendationThreshold   int                          `json:"recommendationThreshold"`
-	RecommendationConfig      library.RecommendationConfig `json:"recommendationConfig"`
-	RecommendationDefaults    library.RecommendationConfig `json:"recommendationDefaults"`
-	DataRoot                  string                       `json:"dataRoot"`
-	CacheRoot                 string                       `json:"cacheRoot"`
-	FileSources               []fileSourceSummary          `json:"fileSources"`
+	LocalScanDepthMinimum     int      `json:"localScanDepthMinimum"`
+	CacheEnabled              bool     `json:"cacheEnabled"`
+	CacheLimitGB              int      `json:"cacheLimitGb"`
+	TranscodeCacheLimitGB     int      `json:"transcodeCacheLimitGb"`
+	RemoteDownloadLimitGB     int      `json:"remoteDownloadLimitGb"`
+	FetchStagingRetentionDays int      `json:"fetchStagingRetentionDays"`
+	RemoteSaveTemplate        string   `json:"remoteSaveTemplate"`
+	RemoteDelayBase           float64  `json:"remoteDelayBaseSeconds"`
+	RemoteDelayRandom         float64  `json:"remoteDelayRandomSeconds"`
+	RemoteBackoff             float64  `json:"remoteBackoffSeconds"`
+	RemoteMaxBackoff          float64  `json:"remoteMaxBackoffSeconds"`
+	CatalogFreshnessDays      int      `json:"catalogFreshnessDays"`
+	DLsiteMetadataLanguage    string   `json:"dlsiteMetadataLanguage"`
+	DLsiteMetadataLanguages   []string `json:"dlsiteMetadataLanguages"`
+	MetadataProxyURL          string   `json:"metadataProxyUrl"`
+	// KikoeruImportPrivateAddresses lets every account enter a private or LAN
+	// address for a Kikoeru account import; administrators always can.
+	KikoeruImportPrivateAddresses bool                         `json:"kikoeruImportPrivateAddresses"`
+	DirectoryRoutingRules         []directoryRule              `json:"directoryRoutingRules"`
+	RecommendationThreshold       int                          `json:"recommendationThreshold"`
+	RecommendationConfig          library.RecommendationConfig `json:"recommendationConfig"`
+	RecommendationDefaults        library.RecommendationConfig `json:"recommendationDefaults"`
+	DataRoot                      string                       `json:"dataRoot"`
+	CacheRoot                     string                       `json:"cacheRoot"`
+	FileSources                   []fileSourceSummary          `json:"fileSources"`
 }
 
 type directoryRule struct {
@@ -56,24 +59,25 @@ type directoryRule struct {
 }
 
 type settingsUpdatePayload struct {
-	LocalScanDepth            *int             `json:"localScanDepth"`
-	CacheEnabled              *bool            `json:"cacheEnabled"`
-	CacheLimitGB              *int             `json:"cacheLimitGb"`
-	TranscodeCacheLimitGB     *int             `json:"transcodeCacheLimitGb"`
-	RemoteDownloadLimitGB     *int             `json:"remoteDownloadLimitGb"`
-	FetchStagingRetentionDays *int             `json:"fetchStagingRetentionDays"`
-	RemoteSaveTemplate        *string          `json:"remoteSaveTemplate"`
-	RemoteDelayBase           *float64         `json:"remoteDelayBaseSeconds"`
-	RemoteDelayRandom         *float64         `json:"remoteDelayRandomSeconds"`
-	RemoteBackoff             *float64         `json:"remoteBackoffSeconds"`
-	RemoteMaxBackoff          *float64         `json:"remoteMaxBackoffSeconds"`
-	CatalogFreshnessDays      *int             `json:"catalogFreshnessDays"`
-	DLsiteMetadataLanguage    *string          `json:"dlsiteMetadataLanguage"`
-	DLsiteMetadataLanguages   *[]string        `json:"dlsiteMetadataLanguages"`
-	MetadataProxyURL          *string          `json:"metadataProxyUrl"`
-	DirectoryRoutingRules     *[]directoryRule `json:"directoryRoutingRules"`
-	RecommendationThreshold   *int             `json:"recommendationThreshold"`
-	RecommendationConfig      json.RawMessage  `json:"recommendationConfig"`
+	LocalScanDepth                *int             `json:"localScanDepth"`
+	CacheEnabled                  *bool            `json:"cacheEnabled"`
+	CacheLimitGB                  *int             `json:"cacheLimitGb"`
+	TranscodeCacheLimitGB         *int             `json:"transcodeCacheLimitGb"`
+	RemoteDownloadLimitGB         *int             `json:"remoteDownloadLimitGb"`
+	FetchStagingRetentionDays     *int             `json:"fetchStagingRetentionDays"`
+	RemoteSaveTemplate            *string          `json:"remoteSaveTemplate"`
+	RemoteDelayBase               *float64         `json:"remoteDelayBaseSeconds"`
+	RemoteDelayRandom             *float64         `json:"remoteDelayRandomSeconds"`
+	RemoteBackoff                 *float64         `json:"remoteBackoffSeconds"`
+	RemoteMaxBackoff              *float64         `json:"remoteMaxBackoffSeconds"`
+	CatalogFreshnessDays          *int             `json:"catalogFreshnessDays"`
+	DLsiteMetadataLanguage        *string          `json:"dlsiteMetadataLanguage"`
+	DLsiteMetadataLanguages       *[]string        `json:"dlsiteMetadataLanguages"`
+	MetadataProxyURL              *string          `json:"metadataProxyUrl"`
+	KikoeruImportPrivateAddresses *bool            `json:"kikoeruImportPrivateAddresses"`
+	DirectoryRoutingRules         *[]directoryRule `json:"directoryRoutingRules"`
+	RecommendationThreshold       *int             `json:"recommendationThreshold"`
+	RecommendationConfig          json.RawMessage  `json:"recommendationConfig"`
 }
 
 type settingsValidationError struct{ message string }
@@ -251,6 +255,9 @@ func applyGeneralSettings(r *http.Request, tx *sql.Tx, payload settingsUpdatePay
 	if err := upsertOptionalBoolSetting(r, tx, payload.CacheEnabled, "remote_cache_enabled"); err != nil {
 		return err
 	}
+	if err := upsertOptionalBoolSetting(r, tx, payload.KikoeruImportPrivateAddresses, kikoeruImportPrivateAddressesSetting); err != nil {
+		return err
+	}
 	if payload.RemoteSaveTemplate != nil {
 		value := strings.TrimSpace(*payload.RemoteSaveTemplate)
 		if value == "" {
@@ -389,30 +396,31 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		return appSettingsResponse{}, err
 	}
 	return appSettingsResponse{
-		AnonymousAccessEnabled:    s.configuredAnonymousAccessEnabled(),
-		LocalScanDepth:            s.settingInt(r, "local_scan_depth", s.cfg.LocalScanDepth),
-		LocalScanDepthMinimum:     minimumScanDepth,
-		CacheEnabled:              s.settingBool(r, "remote_cache_enabled", false),
-		CacheLimitGB:              s.settingInt(r, "remote_cache_limit_gb", 20),
-		TranscodeCacheLimitGB:     s.settingInt(r, transcodeCacheLimitSetting, defaultTranscodeCacheLimitGB),
-		RemoteDownloadLimitGB:     int(s.remoteMediaDownloadLimitBytes(r.Context()) >> 30),
-		FetchStagingRetentionDays: s.configuredFetchStagingRetentionDays(r.Context()),
-		RemoteSaveTemplate:        s.settingString(r, "remote_save_root_template", defaultRemoteSaveRootTemplate),
-		RemoteDelayBase:           s.settingFloat(r, "remote_request_delay_base_seconds", 0.5),
-		RemoteDelayRandom:         s.settingFloat(r, "remote_request_delay_random_seconds", 1.5),
-		RemoteBackoff:             s.settingFloat(r, "remote_rate_limit_backoff_seconds", 30),
-		RemoteMaxBackoff:          s.settingFloat(r, "remote_max_backoff_seconds", 300),
-		CatalogFreshnessDays:      s.catalogFreshnessDays(r.Context()),
-		DLsiteMetadataLanguage:    metadataLanguages[0],
-		DLsiteMetadataLanguages:   metadataLanguages,
-		MetadataProxyURL:          metadataProxy,
-		DirectoryRoutingRules:     s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
-		RecommendationThreshold:   s.settingInt(r, "recommendation_threshold", 50),
-		RecommendationConfig:      s.libraryStore.LoadRecommendationConfig(r.Context()),
-		RecommendationDefaults:    library.DefaultRecommendationConfig(),
-		DataRoot:                  s.cfg.DataRoot,
-		CacheRoot:                 s.cfg.CacheRoot,
-		FileSources:               sources,
+		AnonymousAccessEnabled:        s.configuredAnonymousAccessEnabled(),
+		LocalScanDepth:                s.settingInt(r, "local_scan_depth", s.cfg.LocalScanDepth),
+		LocalScanDepthMinimum:         minimumScanDepth,
+		CacheEnabled:                  s.settingBool(r, "remote_cache_enabled", false),
+		CacheLimitGB:                  s.settingInt(r, "remote_cache_limit_gb", 20),
+		TranscodeCacheLimitGB:         s.settingInt(r, transcodeCacheLimitSetting, defaultTranscodeCacheLimitGB),
+		RemoteDownloadLimitGB:         int(s.remoteMediaDownloadLimitBytes(r.Context()) >> 30),
+		FetchStagingRetentionDays:     s.configuredFetchStagingRetentionDays(r.Context()),
+		RemoteSaveTemplate:            s.settingString(r, "remote_save_root_template", defaultRemoteSaveRootTemplate),
+		RemoteDelayBase:               s.settingFloat(r, "remote_request_delay_base_seconds", 0.5),
+		RemoteDelayRandom:             s.settingFloat(r, "remote_request_delay_random_seconds", 1.5),
+		RemoteBackoff:                 s.settingFloat(r, "remote_rate_limit_backoff_seconds", 30),
+		RemoteMaxBackoff:              s.settingFloat(r, "remote_max_backoff_seconds", 300),
+		CatalogFreshnessDays:          s.catalogFreshnessDays(r.Context()),
+		DLsiteMetadataLanguage:        metadataLanguages[0],
+		DLsiteMetadataLanguages:       metadataLanguages,
+		MetadataProxyURL:              metadataProxy,
+		KikoeruImportPrivateAddresses: s.settingBool(r, kikoeruImportPrivateAddressesSetting, false),
+		DirectoryRoutingRules:         s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
+		RecommendationThreshold:       s.settingInt(r, "recommendation_threshold", 50),
+		RecommendationConfig:          s.libraryStore.LoadRecommendationConfig(r.Context()),
+		RecommendationDefaults:        library.DefaultRecommendationConfig(),
+		DataRoot:                      s.cfg.DataRoot,
+		CacheRoot:                     s.cfg.CacheRoot,
+		FileSources:                   sources,
 	}, nil
 }
 

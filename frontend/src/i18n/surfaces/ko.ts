@@ -442,6 +442,16 @@ export const surfaceKorean = {
       remoteSources: "원격 소스",
       remoteSourcesDescription: "소스를 별도의 작품 라이브러리로 만들지 않고 엔드포인트를 구성합니다.",
       addSource: "소스 추가",
+      kikoeruImport: "Kikoeru 계정 가져오기",
+      kikoeruImportDescription: "각 계정은 개인 데이터에서 Kikoeru 서버의 자기 리뷰와 재생목록을 읽을 수 있습니다.",
+      kikoeruPrivateAddresses: "모든 계정에 LAN 주소 허용",
+      kikoeruPrivateAddressesDescription:
+        "관리자는 항상 LAN 및 사설 주소를 입력할 수 있습니다. 켜면 모든 계정이 이 서버를 로컬 네트워크의 기기에 연결하게 할 수 있습니다.",
+      kikoeruPrivateEnableTitle: "모든 계정에 LAN 주소를 허용할까요?",
+      kikoeruPrivateEnableDescription:
+        "로그인한 모든 계정이 이 서버를 라우터나 NAS 같은 로컬 네트워크 기기에 연결하게 하고 응답 여부를 알 수 있게 됩니다. 모든 계정을 신뢰할 때만 켜세요.",
+      kikoeruPrivateEnable: "허용",
+      saveKikoeruImport: "가져오기 설정 저장",
       configure: "구성",
       deleteSource: "소스 삭제",
       checkHealth: "상태 확인",

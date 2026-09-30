@@ -441,6 +441,17 @@ export const surfaceJapanese = {
       remoteSources: "リモートソース",
       remoteSourcesDescription: "ソースを独立した作品ライブラリにせず、エンドポイントを設定します。",
       addSource: "ソースを追加",
+      kikoeruImport: "Kikoeru アカウントの取り込み",
+      kikoeruImportDescription:
+        "各アカウントは個人データから、Kikoeru サーバー上の自分のレビューとプレイリストを読み取れます。",
+      kikoeruPrivateAddresses: "すべてのアカウントに LAN アドレスを許可",
+      kikoeruPrivateAddressesDescription:
+        "管理者は常に LAN やプライベートアドレスを入力できます。オンにすると、すべてのアカウントがこのサーバーからローカルネットワーク上の機器へ接続させられます。",
+      kikoeruPrivateEnableTitle: "すべてのアカウントに LAN アドレスを許可しますか？",
+      kikoeruPrivateEnableDescription:
+        "サインインしたどのアカウントでも、このサーバーからルーターや NAS などローカルネットワーク上の機器に接続させ、応答の有無を知ることができるようになります。すべてのアカウントを信頼できる場合のみオンにしてください。",
+      kikoeruPrivateEnable: "許可",
+      saveKikoeruImport: "取り込み設定を保存",
       configure: "設定",
       deleteSource: "ソースを削除",
       checkHealth: "状態を確認",

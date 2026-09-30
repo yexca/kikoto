@@ -99,6 +99,7 @@ async function mockCacheSettings(
     dlsiteMetadataLanguage: "ja-jp",
     dlsiteMetadataLanguages: ["ja-jp"],
     metadataProxyUrl: "",
+    kikoeruImportPrivateAddresses: false,
     directoryRoutingRules: [
       { id: "main", label: "Main story", weight: 40, aliases: ["main"], negativeAliases: ["bonus"], enabled: true },
       {

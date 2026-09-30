@@ -100,14 +100,113 @@ export const personalJapanese = {
       importTitle: "インポート",
       importDescription:
         "作品はライブラリの既存作品と既知の別名に作品コードで照合されます。インポートでメタデータを取得したり、ライブラリにない作品を追加したりすることはありません。",
-      format: "形式",
-      formats: {
-        kikoto: "Kikoto エクスポート",
-        kikoeru: "Kikoeru エクスポート",
+      source: "取り込み元",
+      sources: {
+        kikoto: "Kikoto エクスポートファイル",
+        kikoeru: "Kikoeru JSON ファイル",
+        kikoeruAccount: "Kikoeru アカウント",
+        kikoeruDatabase: "Kikoeru データベースファイル",
       },
-      kikoeruShapes:
-        "1 アカウント分のレビュー配列、reviews 配列、または API の works 配列を読み込めます。コードは primaryCode または source_id から取得し、数値の work_id は RJ の作品番号として扱います。",
+      sourceHints: {
+        kikoeru:
+          "1 つのアカウントのレビュー配列、reviews 配列、または API の works 配列に対応します。コードは primaryCode または source_id から取得し、数値の work_id は一部のフォークが使う型付きの BJ・VJ・CC ID を含めて作品番号として扱います。",
+        kikoeruAccount:
+          "このサーバーが Kikoeru サーバーにサインインし、レビュー、進捗、プレイリストを読み取ります。読み取りのみで、Kikoeru 側のデータは変更しません。",
+        kikoeruDatabase:
+          "オープンソース版 Kikoeru の SQLite データベースから 1 つのアカウントのレビューと進捗を読み取ります。このデータベースにプレイリストは含まれません。",
+      },
       kikoeruMapping: "Kikoeru の進捗は次の聴取マークに対応します：",
+      kikoeru: {
+        server: "サーバー",
+        loadingOptions: "読み込み中...",
+        manual: "アドレスを入力",
+        url: "API アドレス",
+        urlHint:
+          "Kikoeru の API アドレスです。Web のアドレスと異なる場合があります。ページのパスやクエリは含めないでください。",
+        privateAllowed: "このアカウントは LAN やプライベートアドレスも入力できます。",
+        privateBlocked: "公開アドレスのみ使用できます。管理者は LAN アドレスを許可できます。",
+        auth: "サインイン",
+        authModes: {
+          none: "なし",
+          bearer: "トークン",
+          signIn: "ユーザー名とパスワード",
+        },
+        authHints: {
+          none: "サインインを無効にしているサーバー専用です。",
+          bearer: "Kikoeru の Web アプリがサインイン後に保持するトークンです。一度だけ送信し、保存しません。",
+          signIn: "ユーザー名とパスワードはサインイン時に一度だけ送信し、保存しません。",
+        },
+        fields: {
+          bearer: "トークン",
+          user: "ユーザー名",
+          passphrase: "パスワード",
+        },
+        read: "アカウントのデータを読み取る",
+        reading: "アカウントのデータを読み取り中...",
+        databaseUser: "Kikoeru のユーザー名",
+        databaseUserHint: "このアカウントのレビューのみ読み取ります。サインインを無効にしたサーバーでは admin です。",
+        databaseFile: "データベースファイル",
+        databaseFileHint:
+          "オープンソース版 Kikoeru の SQLite ファイル（最大 512 MiB）。Kikoeru の停止中またはアイドル時にコピーしてください。",
+        chooseDatabase: "データベースを選択",
+        readDatabase: "アップロードして読み取る",
+        uploading: "アップロードして読み取り中...",
+        databaseTooLarge: "ファイルが 512 MiB を超えています。",
+        loaded:
+          "{{works}} 作品と {{playlists}} 件のリストを読み取りました。プレビューを確認してから取り込んでください。",
+        skipped:
+          "使用できる作品番号がない {{skippedWorks}} 作品と {{skippedPlaylistItems}} 件のリスト項目をスキップしました。",
+        playlistsUnsupported: "この取り込み元にはプレイリストがないため、レビューと進捗のみ取り込みます。",
+        clearLoaded: "読み取ったデータを破棄",
+        playlistNames: {
+          liked: "Kikoeru お気に入り",
+          marked: "Kikoeru マーク",
+        },
+        readErrors: {
+          invalid: "アドレスとサインイン情報を確認してください。",
+          risk: "先にリスクの説明を確認してください。",
+          unauthorized: "Kikoeru サーバーがサインインまたはトークンを拒否しました。",
+          destination: "このアカウントではこのアドレスに接続できません。",
+          source_missing: "選択した取り込み元は利用できなくなりました。",
+          unsupported: "このアドレスは Kikoeru API として応答しませんでした。API アドレスか確認してください。",
+          user_not_found: "データベースにそのユーザー名のアカウントがありません。",
+          database_invalid: "このファイルは読み取れる Kikoeru の SQLite データベースではありません。",
+          too_large: "アカウントのデータまたはファイルが取り込みの上限を超えています。",
+          busy: "別の取り込みを実行中です。しばらくしてから再試行してください。",
+          timeout: "Kikoeru サーバーの応答がタイムアウトしました。",
+          permission: "このアカウントは個人データを取り込めません。",
+          read_only: "このインスタンスは読み取り専用です。",
+          unavailable: "Kikoeru サーバーに接続できませんでした。再試行してください。",
+        },
+        risk: {
+          accountTitle: "Kikoeru サーバーに接続する前に",
+          databaseTitle: "Kikoeru データベースをアップロードする前に",
+          description: "以下を読み、同意できる場合のみ続行してください。",
+          accountPoints: {
+            credentials:
+              "トークンまたはパスワードはこの Kikoto サーバーに送信され、サーバーが代わりに Kikoeru に接続します。この読み取りにのみ使い、保存やログへの記録はしませんが、このサーバーの運営者は技術的に取得できます。",
+            serverSeesKikoto:
+              "Kikoeru サーバーには、このサーバーのネットワークアドレスからのサインインとして見えます。第三者のサイトではアカウントが警告や制限の対象になる場合があります。サイトの規約に従ってください。",
+            longLived:
+              "トークンはアカウントそのものとして機能し、長期間有効な場合があります。自分のアカウントのトークンのみ入力してください。",
+            manualAddress:
+              "手入力したアドレスにはこのサーバーが直接接続します。LAN アドレスの場合、サーバーが置かれたネットワーク内の機器にアクセスします。信頼でき、Kikoeru だと確認したアドレスのみ入力してください。",
+            readOnly: "レビュー、進捗、プレイリストを読み取るだけで、Kikoeru 側のデータは変更しません。",
+          },
+          databasePoints: {
+            allAccounts:
+              "Kikoeru のデータベースには、ユーザー名やパスワードハッシュを含むそのサーバーの全アカウントが入っています。ファイル全体がこの Kikoto サーバーにアップロードされます。",
+            temporary:
+              "指定したユーザー名のレビューのみ読み取ります。ファイルは読み取り中だけ一時フォルダーに置かれ、読み取り後すぐに削除されます。",
+            administrator:
+              "アップロード中、このサーバーの運営者は技術的にファイルにアクセスできます。取り扱いを許可されたデータベースのみアップロードしてください。",
+            openSourceOnly:
+              "オープンソース版 Kikoeru の SQLite データベースのみ対応します。大きなファイルはアップロードに時間がかかる場合があります。",
+          },
+          acknowledge: "上記のリスクを理解しました",
+          confirm: "続行",
+        },
+      },
       file: "JSON ファイル",
       chooseFile: "ファイルを選択",
       fileHint: "JSON、最大 10 MiB。",

@@ -143,7 +143,8 @@ modules.
   administration tabs.
   Listening history shows durable totals, recent works, and daily activity;
   personal tags manage account-owned work, circle, and voice tags; data
-  transfer offers personal JSON export and previewed Kikoto/Kikoeru import.
+  transfer offers personal JSON export and previewed import from a Kikoto or
+  Kikoeru file, a Kikoeru account, or an open-source Kikoeru database.
 - Metadata: saved metadata and attention categories below Workflows, plus a Voice aliases view, with a settings dialog and sync workflow shortcut.
 - Workflows: horizontal definition tabs and a right-side Activity summary.
 - Activity run details inside the Workflows panel, also reachable through notifications.

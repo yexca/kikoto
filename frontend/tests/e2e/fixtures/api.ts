@@ -333,6 +333,7 @@ export function appSettingsFixture(overrides: Partial<AppSettings> = {}): AppSet
     dlsiteMetadataLanguage: "ja-jp",
     dlsiteMetadataLanguages: ["ja-jp"],
     metadataProxyUrl: "",
+    kikoeruImportPrivateAddresses: false,
     directoryRoutingRules: [],
     recommendationThreshold: 50,
     recommendationConfig: recommendationConfigFixture(),
