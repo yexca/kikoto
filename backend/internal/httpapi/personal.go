@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/personal"
 )
@@ -134,6 +135,7 @@ func (s *Server) getListeningHistory(w http.ResponseWriter, r *http.Request) {
 		writePersonalError(w, err)
 		return
 	}
+	s.attachListeningCovers(result.Items)
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -143,12 +145,25 @@ func (s *Server) getListeningStatistics(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	result, err := (personal.Store{DB: s.db}).Statistics(r.Context(), user.ID)
+	period, err := personal.ParseStatisticsRange(r.URL.Query().Get("range"))
 	if err != nil {
 		writePersonalError(w, err)
 		return
 	}
+	result, err := (personal.Store{DB: s.db}).StatisticsFor(r.Context(), user.ID, period, time.Now())
+	if err != nil {
+		writePersonalError(w, err)
+		return
+	}
+	s.attachListeningCovers(result.TopWorks)
 	writeJSON(w, http.StatusOK, result)
+}
+
+// History records store the canonical work, so its own cached cover applies.
+func (s *Server) attachListeningCovers(items []personal.HistoryItem) {
+	for index := range items {
+		items[index].CoverURL = s.coverURL(items[index].PrimaryCode)
+	}
 }
 
 func (s *Server) clearListeningHistory(w http.ResponseWriter, r *http.Request) {

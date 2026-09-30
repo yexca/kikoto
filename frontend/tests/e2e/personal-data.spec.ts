@@ -91,7 +91,9 @@ async function mockPersonalData(
           listenCount: 3,
           workCount: 1,
           activeDays: 2,
-          daily: [],
+          range: url.searchParams.get("range") ?? "all",
+          granularity: "day",
+          series: [],
           topWorks: [],
         },
       });
@@ -108,6 +110,7 @@ async function mockPersonalData(
               listenedSeconds: 5_400,
               listenCount: 3,
               lastPlayedAt: "2026-01-02T00:00:00Z",
+              coverUrl: "",
             },
           ],
           total: 1,
@@ -161,6 +164,7 @@ test("mobile reaches personal pages from the account menu without adding bottom 
   await expect(page).toHaveURL(/\/settings\?tab=history$/);
   await expect(page.getByRole("tab", { name: "History & recommendations", selected: true })).toBeVisible();
   await expect(page.getByText("1 h 30 min").first()).toBeVisible();
+  await page.getByText("Listening history", { exact: true }).click();
   await expect(page.getByRole("link", { name: /Example Work 1/ })).toHaveAttribute(
     "href",
     `/${syntheticWorkCode("RJ", 1)}`,

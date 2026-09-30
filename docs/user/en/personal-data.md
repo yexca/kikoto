@@ -20,8 +20,13 @@ should stop creating dated tags. Explicit date templates remain supported.
 
 ## Listening history
 
-History lists works by last listening time, with lifetime listening time and
-playback session counts. Statistics include top works and the last 30 UTC days.
+The listening report covers the last 30 days, the last 12 months, or all
+time. For the chosen range it shows listening time, plays, works, and active
+days; a chart by UTC day, month, or year (all time switches to years after
+three years) with the average and busiest period; and the most listened works
+as cover cards ranked by listening time. Imported totals have no dates, so they
+count only in All time. The full history, cover cards ordered by last listening
+time, is collapsed below the report and loads when opened.
 Time measures actual listening, excluding paused, buffering, and seek time;
 speed changes do not multiply it. Concurrent players count independently.
 Client interruptions or disconnection may leave some time unreported.

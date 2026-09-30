@@ -555,6 +555,10 @@ const adminToolsKorean = {
   recommendationActivity: {
     title: "내 추천 활동",
     description: "최근 {{count}}일 동안 추천과 상호작용한 기록",
+    engagement: "노출에서 재생까지",
+    ofImpressions: "노출의 {{percent}}",
+    feedback: "내 피드백",
+    empty: "최근 {{count}}일 동안 추천 활동이 없습니다.",
   },
 } as const;
 

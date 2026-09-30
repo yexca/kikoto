@@ -141,7 +141,9 @@ modules.
   above recommendation tuning; and personal tags) followed, after a divider and
   in the warning tone, by the Library, Cache & Fetch, Cleanup, and Users
   administration tabs.
-  Listening history shows durable totals, recent works, and daily activity;
+  Listening history shows a 30-day, 12-month, or all-time report of totals,
+  activity, and most listened works as cover cards, with the full per-work
+  history collapsed until opened;
   personal tags manage account-owned work, circle, and voice tags; data
   transfer offers personal JSON export and previewed Kikoto/Kikoeru import.
 - Metadata: saved metadata and attention categories below Workflows, plus a Voice aliases view, with a settings dialog and sync workflow shortcut.

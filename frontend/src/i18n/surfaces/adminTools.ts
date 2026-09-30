@@ -313,5 +313,9 @@ export const adminToolsEnglish = {
   recommendationActivity: {
     title: "Your recommendation activity",
     description: "How you interacted with recommendations over the last {{count}} days",
+    engagement: "From shown to played",
+    ofImpressions: "{{percent}} of impressions",
+    feedback: "Your feedback",
+    empty: "No recommendation activity in the last {{count}} days.",
   },
 } as const;

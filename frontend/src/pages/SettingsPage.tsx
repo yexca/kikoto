@@ -536,8 +536,8 @@ export function SettingsPage({
           aria-labelledby="settings-tab-history"
         >
           {personal && <PersonalTabPanel tab="history" {...personal} />}
-          <UserPreferencePanels userId={user.id} section="recommendation" readOnly={readOnly} />
           <RecommendationActivity userId={user.id} />
+          <UserPreferencePanels userId={user.id} section="recommendation" readOnly={readOnly} />
         </div>
       )}
       {personal && activeTab === "tags" && (

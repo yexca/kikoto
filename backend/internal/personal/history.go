@@ -93,6 +93,8 @@ type HistoryItem struct {
 	ListenedSeconds float64 `json:"listenedSeconds"`
 	ListenCount     int64   `json:"listenCount"`
 	LastPlayedAt    string  `json:"lastPlayedAt"`
+	// CoverURL is filled by the HTTP layer, which owns the cover cache.
+	CoverURL string `json:"coverUrl"`
 }
 
 type HistoryPage struct {
@@ -131,55 +133,6 @@ func (s Store) History(ctx context.Context, user int64, query string, page, size
 		return result, err
 	}
 	result.Items, err = historyItems(rows)
-	return result, err
-}
-
-type ListeningDay struct {
-	Date            string  `json:"date"`
-	ListenedSeconds float64 `json:"listenedSeconds"`
-	ListenCount     int64   `json:"listenCount"`
-}
-
-type Statistics struct {
-	ListenedSeconds float64        `json:"listenedSeconds"`
-	ListenCount     int64          `json:"listenCount"`
-	WorkCount       int            `json:"workCount"`
-	ActiveDays      int            `json:"activeDays"`
-	Daily           []ListeningDay `json:"daily"`
-	TopWorks        []HistoryItem  `json:"topWorks"`
-}
-
-func (s Store) Statistics(ctx context.Context, user int64) (Statistics, error) {
-	result := Statistics{Daily: []ListeningDay{}, TopWorks: []HistoryItem{}}
-	err := s.DB.QueryRowContext(ctx, historyCTE+`SELECT COALESCE(SUM(listened_seconds),0),COALESCE(SUM(listen_count),0),COUNT(*) FROM history`, user, user).Scan(&result.ListenedSeconds, &result.ListenCount, &result.WorkCount)
-	if err != nil {
-		return result, err
-	}
-	if err = s.DB.QueryRowContext(ctx, `SELECT COUNT(DISTINCT day) FROM user_listening_day WHERE user_id = ?`, user).Scan(&result.ActiveDays); err != nil {
-		return result, err
-	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT day,SUM(listened_seconds),SUM(listen_count) FROM user_listening_day WHERE user_id = ? AND day >= date('now','-29 days') GROUP BY day ORDER BY day`, user)
-	if err != nil {
-		return result, err
-	}
-	for rows.Next() {
-		var day ListeningDay
-		if err = rows.Scan(&day.Date, &day.ListenedSeconds, &day.ListenCount); err != nil {
-			_ = rows.Close()
-			return result, err
-		}
-		result.Daily = append(result.Daily, day)
-	}
-	err = rows.Err()
-	_ = rows.Close()
-	if err != nil {
-		return result, err
-	}
-	rows, err = s.DB.QueryContext(ctx, historyCTE+`SELECT w.id,w.primary_code,w.title,h.listened_seconds,h.listen_count,h.last_played_at FROM history h JOIN work w ON w.id = h.work_id ORDER BY h.listened_seconds DESC,w.id LIMIT 10`, user, user)
-	if err != nil {
-		return result, err
-	}
-	result.TopWorks, err = historyItems(rows)
 	return result, err
 }
 

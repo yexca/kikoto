@@ -543,6 +543,10 @@ const adminToolsHant = {
   recommendationActivity: {
     title: "我的推薦活動",
     description: "過去 {{count}} 天內你與推薦內容的互動",
+    engagement: "從展示到播放",
+    ofImpressions: "佔展示的 {{percent}}",
+    feedback: "你的回饋",
+    empty: "過去 {{count}} 天內沒有推薦活動。",
   },
 } as const;
 
