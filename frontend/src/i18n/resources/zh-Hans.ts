@@ -538,6 +538,10 @@ const adminToolsHans = {
   recommendationActivity: {
     title: "我的推荐活动",
     description: "过去 {{count}} 天内你与推荐内容的互动",
+    engagement: "从展示到播放",
+    ofImpressions: "占展示的 {{percent}}",
+    feedback: "你的反馈",
+    empty: "过去 {{count}} 天内没有推荐活动。",
   },
 } as const;
 

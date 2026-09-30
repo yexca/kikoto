@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/storage"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
@@ -282,5 +283,54 @@ func TestImportBoundsTotalTagAssignments(t *testing.T) {
 	}
 	if err := validateBackup(&b); !errors.Is(err, ErrLimit) {
 		t.Fatalf("excess tag assignments = %v", err)
+	}
+}
+
+func TestListeningStatisticsRangesFillSeriesAndScopeTotals(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, time.March, 2, 18, 0, 0, 0, time.FixedZone("synthetic", -5*3600)) // 23:00 UTC
+	execFixture(t, s.DB, `INSERT INTO user_listening_day (user_id,work_id,day,listened_seconds,listen_count) VALUES
+	 (1,1,'2026-03-02',600,2),(1,2,'2026-02-10',1800,1),(1,1,'2025-06-15',3600,3),(1,3,'2023-01-05',7200,1),(2,1,'2025-12-20',60,1)`)
+	execFixture(t, s.DB, `INSERT INTO user_listening_import (user_id,work_id,listened_seconds,listen_count) VALUES (1,3,100,1)`)
+
+	stats, err := s.StatisticsFor(ctx, 1, RangeLast30Days, now)
+	if err != nil || stats.Granularity != GranularityDay || len(stats.Series) != 30 || stats.Series[0].Period != "2026-02-01" || stats.Series[29].Period != "2026-03-02" {
+		t.Fatalf("30d series = %+v, %v", stats, err)
+	}
+	if stats.ListenedSeconds != 2400 || stats.ListenCount != 3 || stats.WorkCount != 2 || stats.ActiveDays != 2 || stats.Series[29].ListenedSeconds != 600 || stats.Series[1].ListenedSeconds != 0 {
+		t.Fatalf("30d totals = %+v", stats)
+	}
+	if len(stats.TopWorks) != 2 || stats.TopWorks[0].WorkID != 2 || stats.TopWorks[1].WorkID != 1 {
+		t.Fatalf("30d top works = %+v", stats.TopWorks)
+	}
+
+	stats, err = s.StatisticsFor(ctx, 1, RangeLast12Months, now)
+	if err != nil || stats.Granularity != GranularityMonth || len(stats.Series) != 12 || stats.Series[0].Period != "2025-04" || stats.Series[11].Period != "2026-03" {
+		t.Fatalf("12m series = %+v, %v", stats, err)
+	}
+	if stats.ListenedSeconds != 6000 || stats.Series[2].ListenedSeconds != 3600 || stats.TopWorks[0].WorkID != 1 || stats.TopWorks[0].ListenedSeconds != 4200 {
+		t.Fatalf("12m totals = %+v", stats)
+	}
+
+	// All time spans more than three years, so it is charted by year, and its
+	// totals include imported history that has no dates.
+	stats, err = s.StatisticsFor(ctx, 1, RangeAll, now)
+	if err != nil || stats.Granularity != GranularityYear || len(stats.Series) != 4 || stats.Series[0].Period != "2023" || stats.Series[0].ListenedSeconds != 7200 {
+		t.Fatalf("all series = %+v, %v", stats, err)
+	}
+	if stats.ListenedSeconds != 100 || stats.ActiveDays != 4 || len(stats.TopWorks) != 1 || stats.TopWorks[0].WorkID != 3 {
+		t.Fatalf("all totals = %+v", stats)
+	}
+	stats, err = s.StatisticsFor(ctx, 2, RangeAll, now)
+	if err != nil || stats.Granularity != GranularityMonth || len(stats.Series) != 4 || stats.Series[0].Period != "2025-12" {
+		t.Fatalf("short all-time series = %+v, %v", stats, err)
+	}
+
+	if _, err = ParseStatisticsRange("7d"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("unknown range = %v", err)
+	}
+	if period, err := ParseStatisticsRange(""); err != nil || period != RangeAll {
+		t.Fatalf("default range = %q, %v", period, err)
 	}
 }

@@ -19,6 +19,8 @@ export type ListeningHistoryItem = {
   listenedSeconds: number;
   listenCount: number;
   lastPlayedAt: string;
+  /** Cached cover, or empty when none is cached. */
+  coverUrl: string;
 };
 
 export type ListeningHistoryPage = {
@@ -28,19 +30,30 @@ export type ListeningHistoryPage = {
   pageSize: number;
 };
 
-export type ListeningDailyStatistic = {
-  /** UTC calendar date, YYYY-MM-DD. */
-  date: string;
+export type ListeningStatisticsRange = "30d" | "12m" | "all";
+
+export type ListeningGranularity = "day" | "month" | "year";
+
+export type ListeningPeriodStatistic = {
+  /** UTC period: YYYY-MM-DD for a day, YYYY-MM for a month, or YYYY for a year. */
+  period: string;
   listenedSeconds: number;
   listenCount: number;
 };
 
+/**
+ * One range of the listening report. Bounded ranges count only dated
+ * listening; all time also includes imported totals, which have no dates.
+ */
 export type ListeningStatistics = {
+  range: ListeningStatisticsRange;
   listenedSeconds: number;
   listenCount: number;
   workCount: number;
   activeDays: number;
-  daily: ListeningDailyStatistic[];
+  granularity: ListeningGranularity;
+  /** Every period of the range, oldest first; periods without listening are zero. */
+  series: ListeningPeriodStatistic[];
   topWorks: ListeningHistoryItem[];
 };
 
@@ -73,6 +86,7 @@ export const listeningApi = {
     if (query) search.set("q", query);
     return apiTransport.getJSON<ListeningHistoryPage>(`/api/listening-history?${search}`, signal);
   },
-  statistics: (signal?: AbortSignal) => apiTransport.getJSON<ListeningStatistics>("/api/listening-statistics", signal),
+  statistics: (range: ListeningStatisticsRange, signal?: AbortSignal) =>
+    apiTransport.getJSON<ListeningStatistics>(`/api/listening-statistics?range=${range}`, signal),
   clearHistory: () => apiTransport.deleteJSON<unknown>("/api/listening-history"),
 };

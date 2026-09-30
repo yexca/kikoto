@@ -1,24 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { dailyBarPercent, dailyListeningSeries, listeningDurationParts } from "./listeningHistoryModel";
+import { barPercent, listeningDurationParts, listeningPeriodInsights, periodStart } from "./listeningHistoryModel";
 
 describe("listening history presentation", () => {
-  it("fills the last 30 UTC days ending today, oldest first", () => {
-    const now = new Date("2026-03-01T23:30:00-05:00"); // 04:30 UTC on March 2
-    const series = dailyListeningSeries(
-      [
-        { date: "2026-03-02", listenedSeconds: 600, listenCount: 2 },
-        { date: "2026-02-01", listenedSeconds: 60, listenCount: 1 },
-        { date: "2026-01-01", listenedSeconds: 999, listenCount: 9 },
-      ],
-      now,
-    );
-    expect(series).toHaveLength(30);
-    expect(series[0]).toEqual({ date: "2026-02-01", listenedSeconds: 60, listenCount: 1 });
-    expect(series[29]).toEqual({ date: "2026-03-02", listenedSeconds: 600, listenCount: 2 });
-    expect(series[1]).toEqual({ date: "2026-02-02", listenedSeconds: 0, listenCount: 0 });
-  });
-
   it("formats totals as hours and minutes and short sessions in seconds", () => {
     expect(listeningDurationParts(42)).toEqual({ key: "seconds", values: { seconds: 42 } });
     expect(listeningDurationParts(59 * 60 + 59)).toEqual({ key: "minutes", values: { minutes: 59 } });
@@ -29,9 +13,36 @@ describe("listening history presentation", () => {
     expect(listeningDurationParts(Number.NaN)).toEqual({ key: "seconds", values: { seconds: 0 } });
   });
 
-  it("keeps a listened day visible and an empty day flat", () => {
-    expect(dailyBarPercent(0, 3600)).toBe(0);
-    expect(dailyBarPercent(1, 3600)).toBe(4);
-    expect(dailyBarPercent(3600, 3600)).toBe(100);
+  it("reads day, month, and year periods as UTC starts", () => {
+    expect(periodStart("2026-03-02").toISOString()).toBe("2026-03-02T00:00:00.000Z");
+    expect(periodStart("2026-03").toISOString()).toBe("2026-03-01T00:00:00.000Z");
+    expect(periodStart("2026").toISOString()).toBe("2026-01-01T00:00:00.000Z");
+  });
+
+  it("keeps a listened period visible and an empty period flat", () => {
+    expect(barPercent(0, 3600)).toBe(0);
+    expect(barPercent(1, 3600)).toBe(4);
+    expect(barPercent(3600, 3600)).toBe(100);
+  });
+
+  it("averages over periods with listening and reports the latest busiest period", () => {
+    const series = [
+      { period: "2026-01", listenedSeconds: 1800, listenCount: 1 },
+      { period: "2026-02", listenedSeconds: 0, listenCount: 0 },
+      { period: "2026-03", listenedSeconds: 600, listenCount: 2 },
+      { period: "2026-04", listenedSeconds: 1800, listenCount: 3 },
+    ];
+    expect(listeningPeriodInsights(series)).toEqual({
+      totalSeconds: 4200,
+      activePeriods: 3,
+      averageSeconds: 1400,
+      peak: { period: "2026-04", listenedSeconds: 1800, listenCount: 3 },
+    });
+    expect(listeningPeriodInsights(series.map((entry) => ({ ...entry, listenedSeconds: 0 })))).toEqual({
+      totalSeconds: 0,
+      activePeriods: 0,
+      averageSeconds: 0,
+      peak: null,
+    });
   });
 });

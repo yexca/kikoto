@@ -1,7 +1,9 @@
-import type { ListeningDailyStatistic } from "@/lib/listeningApi";
+import type { ListeningPeriodStatistic, ListeningStatisticsRange } from "@/lib/listeningApi";
 
 export const LISTENING_HISTORY_PAGE_SIZE = 30;
-export const LISTENING_DAILY_DAYS = 30;
+
+/** Report ranges in switcher order; the first is the default. */
+export const LISTENING_REPORT_RANGES: readonly ListeningStatisticsRange[] = ["30d", "12m", "all"];
 
 export type ListeningDurationParts =
   | { key: "hoursMinutes"; values: { hours: number; minutes: number } }
@@ -17,30 +19,33 @@ export function listeningDurationParts(totalSeconds: number): ListeningDurationP
   return { key: "hoursMinutes", values: { hours: Math.floor(totalMinutes / 60), minutes: totalMinutes % 60 } };
 }
 
-function utcDateKey(date: Date) {
-  return date.toISOString().slice(0, 10);
+/** The UTC start of a series period: YYYY, YYYY-MM, or YYYY-MM-DD. */
+export function periodStart(period: string) {
+  const [year, month = "01", day = "01"] = period.split("-");
+  return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+}
+
+/** Bar length as a share of the largest value; a nonzero value never renders invisible. */
+export function barPercent(value: number, maxValue: number) {
+  if (value <= 0 || maxValue <= 0) return 0;
+  return Math.max(4, Math.round((value / maxValue) * 100));
 }
 
 /**
- * The last 30 UTC calendar days ending today, oldest first. Days the server
- * omits are listening-free days, not missing data, so they render as zero.
+ * Totals for the charted periods: periods with listening, their mean, and the
+ * busiest period (the latest one on a tie).
  */
-export function dailyListeningSeries(daily: readonly ListeningDailyStatistic[], now = new Date()) {
-  const byDate = new Map(daily.map((entry) => [entry.date, entry]));
-  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  return Array.from({ length: LISTENING_DAILY_DAYS }, (_, index) => {
-    const date = utcDateKey(new Date(today - (LISTENING_DAILY_DAYS - 1 - index) * 86_400_000));
-    const entry = byDate.get(date);
-    return {
-      date,
-      listenedSeconds: Math.max(0, entry?.listenedSeconds ?? 0),
-      listenCount: Math.max(0, entry?.listenCount ?? 0),
-    };
-  });
-}
-
-/** Bar height as a share of the busiest day; a listened day never renders invisible. */
-export function dailyBarPercent(listenedSeconds: number, maxSeconds: number) {
-  if (listenedSeconds <= 0 || maxSeconds <= 0) return 0;
-  return Math.max(4, Math.round((listenedSeconds / maxSeconds) * 100));
+export function listeningPeriodInsights(series: readonly ListeningPeriodStatistic[]) {
+  const listened = series.filter((entry) => entry.listenedSeconds > 0);
+  const totalSeconds = listened.reduce((sum, entry) => sum + entry.listenedSeconds, 0);
+  const peak = listened.reduce<ListeningPeriodStatistic | null>(
+    (best, entry) => (best === null || entry.listenedSeconds >= best.listenedSeconds ? entry : best),
+    null,
+  );
+  return {
+    totalSeconds,
+    activePeriods: listened.length,
+    averageSeconds: listened.length > 0 ? Math.round(totalSeconds / listened.length) : 0,
+    peak,
+  };
 }

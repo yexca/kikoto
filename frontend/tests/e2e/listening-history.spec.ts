@@ -62,10 +62,8 @@ async function mockListeningServer(page: Page, options: { failFirstReport?: bool
     server.events.push({ kind: "report", report, accepted: true });
     await route.fulfill({ json: { recorded: true } });
   });
-  await page.route("**/api/listening-statistics", (route) =>
-    route.fulfill({
-      json: { listenedSeconds: 16, listenCount: 1, workCount: 1, activeDays: 1, daily: [], topWorks: [] },
-    }),
+  await page.route("**/api/listening-statistics*", (route) =>
+    route.fulfill({ json: statisticsFixture(new URL(route.request().url()).searchParams.get("range") ?? "all") }),
   );
   await page.route("**/api/listening-history*", async (route) => {
     if (route.request().method() === "DELETE") {
@@ -84,6 +82,7 @@ async function mockListeningServer(page: Page, options: { failFirstReport?: bool
             listenedSeconds: 16,
             listenCount: 1,
             lastPlayedAt: "2026-01-01T00:00:00Z",
+            coverUrl: "",
           },
         ],
         total: 1,
@@ -95,6 +94,22 @@ async function mockListeningServer(page: Page, options: { failFirstReport?: bool
   const reports = () =>
     server.events.flatMap((event) => (event.kind === "report" ? [{ ...event.report, accepted: event.accepted }] : []));
   return { server, reports };
+}
+
+/** A listening report with one listened period, shaped like the server's for the requested range. */
+function statisticsFixture(range: string) {
+  const granularity = range === "30d" ? "day" : "month";
+  const periods = range === "30d" ? ["2026-01-01", "2026-01-02"] : ["2025-12", "2026-01"];
+  return {
+    range,
+    listenedSeconds: 16,
+    listenCount: 1,
+    workCount: 1,
+    activeDays: 1,
+    granularity,
+    series: periods.map((period, index) => ({ period, listenedSeconds: index * 16, listenCount: index })),
+    topWorks: [],
+  };
 }
 
 async function openPlayableQueue(page: Page) {
@@ -271,6 +286,9 @@ test("@desktop the history page opens a listed work in work detail", async ({ pa
     (window as Window & { historyPageMarker?: boolean }).historyPageMarker = true;
   });
 
+  // The full history is collapsed below the listening report until opened.
+  await expect(page.getByRole("list", { name: "Listening history" })).toHaveCount(0);
+  await page.getByText("Listening history", { exact: true }).click();
   await page
     .getByRole("list", { name: "Listening history" })
     .getByRole("link", { name: /Example Work/ })
@@ -279,4 +297,24 @@ test("@desktop the history page opens a listed work in work detail", async ({ pa
   await expect(page.getByRole("button", { name: `Copy work code ${syntheticWorkCode("RJ", 0)}` })).toBeVisible();
   // The app shell navigated in place rather than reloading the document.
   expect(await page.evaluate(() => (window as Window & { historyPageMarker?: boolean }).historyPageMarker)).toBe(true);
+});
+
+test("@desktop the listening report switches between its ranges", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, { authenticated: true });
+  await mockListeningServer(page);
+  const requestedRanges: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/listening-statistics") requestedRanges.push(url.searchParams.get("range") ?? "");
+  });
+  await page.goto("/settings?tab=history");
+
+  const ranges = page.getByRole("group", { name: "Report period" });
+  await expect(ranges.getByRole("button", { name: "30 days" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("table", { name: "Daily listening time (UTC)" })).toBeAttached();
+  await ranges.getByRole("button", { name: "12 months" }).click();
+  await expect(ranges.getByRole("button", { name: "12 months" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("table", { name: "Monthly listening time (UTC)" })).toBeAttached();
+  expect(requestedRanges.at(-1)).toBe("12m");
 });
