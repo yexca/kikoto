@@ -8,6 +8,7 @@ import { syntheticWorkCode } from "@/test-support/workCode";
 import type { UserDataImportPreview } from "./userDataApi";
 import {
   canImport,
+  classifyKikoeruReadError,
   classifyUserDataRequestError,
   importRequest,
   initialUserDataImportState,
@@ -54,7 +55,7 @@ function previewedState(): UserDataImportState {
 describe("personal data import state", () => {
   it("defaults to the Kikoto format and keeping existing data", () => {
     const state = initialUserDataImportState();
-    expect(state.format).toBe("kikoto");
+    expect(state.source).toBe("kikoto");
     expect(state.conflict).toBe("keep");
     expect(canImport(state)).toBe(false);
   });
@@ -88,7 +89,7 @@ describe("personal data import state", () => {
   });
 
   it.each([
-    { type: "formatChanged", format: "kikoeru" },
+    { type: "sourceChanged", source: "kikoeru" },
     { type: "conflictChanged", conflict: "overwrite" },
     { type: "fileSelected", file: { name: "other.json", size: 10 } },
   ] as UserDataImportAction[])("invalidates the preview when the input changes: $type", (change) => {
@@ -147,6 +148,45 @@ describe("personal data import state", () => {
     );
     expect(failed.importing).toEqual({ status: "error", error: "unavailable" });
     expect(canImport(failed)).toBe(true);
+  });
+
+  it("keeps a selected file across file formats but not into an account read", () => {
+    const kikoeru = reduce([{ type: "sourceChanged", source: "kikoeru" }], parsedState());
+    expect(kikoeru.data).toEqual({ value: exportData });
+    expect(shouldRequestPreview(kikoeru)).toBe(true);
+    expect(importRequest(kikoeru)?.format).toBe("kikoeru");
+
+    const account = reduce([{ type: "sourceChanged", source: "kikoeruAccount" }], kikoeru);
+    expect(account.data).toBeNull();
+    expect(account.file).toBeNull();
+    expect(reduce([{ type: "fileSelected", file: { name: "export.json", size: 10 } }], account).file).toBeNull();
+  });
+
+  it("previews account data as a Kikoto backup and forgets it when the source changes", () => {
+    const summary = { works: 1, skippedWorks: 0, playlists: 0, skippedPlaylistItems: 0 };
+    const response = { data: exportData, summary, playlistsSupported: false };
+    const database = reduce([{ type: "sourceChanged", source: "kikoeruDatabase" }]);
+    const loaded = reduce([{ type: "remoteLoaded", response }], database);
+    expect(loaded.remote).toEqual({ summary, playlistsSupported: false });
+    expect(shouldRequestPreview(loaded)).toBe(true);
+    expect(importRequest(loaded)).toEqual({ format: "kikoto", data: exportData, conflict: "keep" });
+
+    const switched = reduce([{ type: "sourceChanged", source: "kikoeruAccount" }], loaded);
+    expect(switched.data).toBeNull();
+    expect(switched.remote).toBeNull();
+    // A late account read cannot replace a file chosen in the meantime.
+    expect(reduce([{ type: "remoteLoaded", response }], parsedState()).remote).toBeNull();
+  });
+
+  it("maps Kikoeru read failures to sanitized classes", () => {
+    const detail = "upstream detail near synthetic-token";
+    expect(classifyKikoeruReadError(new ApiError(detail, 422, "kikoeru_unauthorized"))).toBe("unauthorized");
+    expect(classifyKikoeruReadError(new ApiError(detail, 403, "kikoeru_destination_not_allowed"))).toBe("destination");
+    expect(classifyKikoeruReadError(new ApiError(detail, 404, "kikoeru_user_not_found"))).toBe("user_not_found");
+    expect(classifyKikoeruReadError(new ApiError(detail, 403))).toBe("permission");
+    expect(classifyKikoeruReadError(new ApiError(detail, 413, "personal_data_limit"))).toBe("too_large");
+    expect(classifyKikoeruReadError(new ApiError(detail, 502, "kikoeru_unavailable"))).toBe("unavailable");
+    expect(classifyKikoeruReadError(new TypeError(detail))).toBe("unavailable");
   });
 
   it("accepts only JSON objects or arrays from the file", () => {

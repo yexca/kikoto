@@ -52,6 +52,32 @@ Do not apply a blanket "block every private IP" rule: that would break the
 intentional local-NAS use case. Model the explicitly configured private origin
 separately from source-returned or redirected destinations.
 
+### Kikoeru account import
+
+`POST /api/user-data/kikoeru/account` sends a user's Kikoeru token or password
+to one destination and reads that user's reviews and playlists:
+
+- The destination is either a configured Kikoeru-compatible source's API URL,
+  which keeps the operator's private-address exception, or a URL the user
+  enters. A user-entered URL is untrusted: it may resolve to a private or
+  reserved address only for accounts with `sources:write` or when the
+  administrator enables `kikoeru_import_private_addresses`.
+- The policy allows only that origin, and the account client refuses every
+  redirect, so the login body and bearer token cannot reach another origin.
+- Credentials, a manual URL, or a database upload require an explicit risk
+  acknowledgement in the request. Credentials are held only for the request and
+  never persisted or logged; the page and API report only sanitized error
+  classes, and an upstream 401 becomes 422 so it cannot end the Kikoto session.
+- Each response is limited to 8 MiB, each request to 30 seconds, the whole read
+  to 3 minutes, and page and item counts to the transfer limits. At most two
+  account or database reads run at once.
+
+`POST /api/user-data/kikoeru/database` streams an uploaded Kikoeru SQLite file,
+up to 512 MiB, to a temporary file that is deleted when the request ends. The
+file is opened read-only and immutable with `trusted_schema` off, only the base
+`t_review` table is queried (a view of that name is rejected), and text length
+and row count are bounded. The user table's password hashes are never read.
+
 ## Authentication and Mutations
 
 - Enforce permissions in the backend; a hidden or disabled frontend control is

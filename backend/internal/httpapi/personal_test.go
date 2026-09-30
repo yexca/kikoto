@@ -33,6 +33,9 @@ func TestPersonalRoutesRequireAuthenticationAndPermissions(t *testing.T) {
 		{"GET", "/api/user-data/export", s.exportPersonalData, "library:read"},
 		{"POST", "/api/user-data/import", s.importPersonalData, "favorites:write"},
 		{"POST", "/api/user-data/import/preview", s.importPersonalData, "favorites:write"},
+		{"GET", "/api/user-data/kikoeru/options", s.getKikoeruImportOptions, "favorites:write"},
+		{"POST", "/api/user-data/kikoeru/account", s.importKikoeruAccount, "favorites:write"},
+		{"POST", kikoeruDatabaseImportPath, s.importKikoeruDatabase, "favorites:write"},
 	} {
 		t.Run(tc.method+tc.path, func(t *testing.T) {
 			r := httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{}`))
@@ -77,6 +80,8 @@ func TestDemoRejectsEveryPersonalMutation(t *testing.T) {
 		{"DELETE", "/api/listening-history"},
 		{"POST", "/api/user-data/import/preview"},
 		{"POST", "/api/user-data/import"},
+		{"POST", "/api/user-data/kikoeru/account"},
+		{"POST", kikoeruDatabaseImportPath},
 	} {
 		response := httptest.NewRecorder()
 		routes.ServeHTTP(response, httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{}`)))

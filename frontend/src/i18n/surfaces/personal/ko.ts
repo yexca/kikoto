@@ -123,14 +123,110 @@ export const personalKorean = {
       importTitle: "가져오기",
       importDescription:
         "작품은 작품 코드로 라이브러리의 기존 작품과 알려진 별칭에 대조합니다. 가져오기는 메타데이터를 가져오거나 라이브러리에 없는 작품을 추가하지 않습니다.",
-      format: "형식",
-      formats: {
-        kikoto: "Kikoto 내보내기",
-        kikoeru: "Kikoeru 내보내기",
+      source: "가져올 곳",
+      sources: {
+        kikoto: "Kikoto 내보내기 파일",
+        kikoeru: "Kikoeru JSON 파일",
+        kikoeruAccount: "Kikoeru 계정",
+        kikoeruDatabase: "Kikoeru 데이터베이스 파일",
       },
-      kikoeruShapes:
-        "한 계정의 리뷰 배열, reviews 배열 또는 API works 배열을 받습니다. 코드는 primaryCode 또는 source_id에서 가져오며, 숫자 work_id는 RJ 작품 번호로 처리합니다.",
+      sourceHints: {
+        kikoeru:
+          "한 계정의 리뷰 배열, reviews 배열 또는 API works 배열을 지원합니다. 코드는 primaryCode 또는 source_id에서 가져오며, 숫자 work_id는 일부 포크가 쓰는 유형별 BJ, VJ, CC ID를 포함해 작품 번호로 처리합니다.",
+        kikoeruAccount:
+          "이 서버가 Kikoeru 서버에 로그인해 리뷰, 진행 상태, 재생목록을 읽습니다. 읽기만 하며 Kikoeru의 데이터는 바꾸지 않습니다.",
+        kikoeruDatabase:
+          "오픈 소스 Kikoeru의 SQLite 데이터베이스에서 한 계정의 리뷰와 진행 상태를 읽습니다. 이 데이터베이스에는 재생목록이 없습니다.",
+      },
       kikoeruMapping: "Kikoeru 진행 상태는 다음 청취 표시로 변환됩니다:",
+      kikoeru: {
+        server: "서버",
+        loadingOptions: "불러오는 중...",
+        manual: "주소 직접 입력",
+        url: "API 주소",
+        urlHint: "Kikoeru API 주소로, 웹 주소와 다를 수 있습니다. 페이지 경로나 쿼리는 넣지 마세요.",
+        privateAllowed: "이 계정은 LAN 및 사설 주소도 입력할 수 있습니다.",
+        privateBlocked: "공개 주소만 사용할 수 있습니다. 관리자가 LAN 주소를 허용할 수 있습니다.",
+        auth: "로그인",
+        authModes: {
+          none: "없음",
+          bearer: "토큰",
+          signIn: "사용자 이름과 비밀번호",
+        },
+        authHints: {
+          none: "로그인을 끈 서버에서만 사용합니다.",
+          bearer: "Kikoeru 웹 앱이 로그인 후 보관하는 토큰입니다. 한 번만 보내며 저장하지 않습니다.",
+          signIn: "사용자 이름과 비밀번호는 로그인할 때 한 번만 보내며 저장하지 않습니다.",
+        },
+        fields: {
+          bearer: "토큰",
+          user: "사용자 이름",
+          passphrase: "비밀번호",
+        },
+        read: "계정 데이터 읽기",
+        reading: "계정 데이터를 읽는 중...",
+        databaseUser: "Kikoeru 사용자 이름",
+        databaseUserHint: "이 계정의 리뷰만 읽습니다. 로그인을 끈 서버는 admin을 사용합니다.",
+        databaseFile: "데이터베이스 파일",
+        databaseFileHint:
+          "오픈 소스 Kikoeru의 SQLite 파일(최대 512 MiB)입니다. Kikoeru가 멈췄거나 유휴 상태일 때 복사하세요.",
+        chooseDatabase: "데이터베이스 선택",
+        readDatabase: "업로드하고 읽기",
+        uploading: "업로드하고 읽는 중...",
+        databaseTooLarge: "파일이 512 MiB보다 큽니다.",
+        loaded: "작품 {{works}}개와 목록 {{playlists}}개를 읽었습니다. 미리 보기를 확인한 뒤 가져오세요.",
+        skipped:
+          "사용할 수 있는 작품 번호가 없는 작품 {{skippedWorks}}개와 목록 항목 {{skippedPlaylistItems}}개를 건너뛰었습니다.",
+        playlistsUnsupported: "이 가져올 곳에는 재생목록이 없어 리뷰와 진행 상태만 가져옵니다.",
+        clearLoaded: "읽은 데이터 버리기",
+        playlistNames: {
+          liked: "Kikoeru 좋아요",
+          marked: "Kikoeru 표시",
+        },
+        readErrors: {
+          invalid: "주소와 로그인 정보를 확인하세요.",
+          risk: "먼저 위험 안내를 확인하세요.",
+          unauthorized: "Kikoeru 서버가 로그인 또는 토큰을 거부했습니다.",
+          destination: "이 계정은 이 주소에 연결할 수 없습니다.",
+          source_missing: "선택한 가져올 곳을 더 이상 사용할 수 없습니다.",
+          unsupported: "이 주소가 Kikoeru API처럼 응답하지 않았습니다. API 주소인지 확인하세요.",
+          user_not_found: "데이터베이스에 그 사용자 이름의 계정이 없습니다.",
+          database_invalid: "이 파일은 읽을 수 있는 Kikoeru SQLite 데이터베이스가 아닙니다.",
+          too_large: "계정 데이터나 파일이 가져오기 한도를 넘습니다.",
+          busy: "다른 가져오기가 진행 중입니다. 잠시 후 다시 시도하세요.",
+          timeout: "Kikoeru 서버 응답 시간이 초과되었습니다.",
+          permission: "이 계정은 개인 데이터를 가져올 수 없습니다.",
+          read_only: "이 인스턴스는 읽기 전용입니다.",
+          unavailable: "Kikoeru 서버에 연결할 수 없습니다. 다시 시도하세요.",
+        },
+        risk: {
+          accountTitle: "Kikoeru 서버에 연결하기 전에",
+          databaseTitle: "Kikoeru 데이터베이스를 업로드하기 전에",
+          description: "아래 내용을 읽고 동의하는 경우에만 계속하세요.",
+          accountPoints: {
+            credentials:
+              "토큰이나 비밀번호는 이 Kikoto 서버로 보내지고, 서버가 대신 Kikoeru에 연결합니다. 이번 읽기에만 쓰이며 저장하거나 로그에 남기지 않지만, 이 서버의 운영자는 기술적으로 가로챌 수 있습니다.",
+            serverSeesKikoto:
+              "Kikoeru 서버에는 이 서버의 네트워크 주소에서 로그인한 것으로 보입니다. 제3자 사이트에서는 계정이 경고나 제한을 받을 수 있으니 사이트 규칙을 따르세요.",
+            longLived: "토큰은 계정 자체처럼 작동하며 오래 유효할 수 있습니다. 본인 계정의 토큰만 입력하세요.",
+            manualAddress:
+              "직접 입력한 주소에는 이 서버가 바로 연결합니다. LAN 주소라면 서버가 있는 네트워크의 기기에 접근합니다. 신뢰하고 Kikoeru임을 확인한 주소만 입력하세요.",
+            readOnly: "리뷰, 진행 상태, 재생목록만 읽으며 Kikoeru의 데이터는 바꾸지 않습니다.",
+          },
+          databasePoints: {
+            allAccounts:
+              "Kikoeru 데이터베이스에는 사용자 이름과 비밀번호 해시를 포함해 그 서버의 모든 계정이 들어 있습니다. 파일 전체가 이 Kikoto 서버로 업로드됩니다.",
+            temporary:
+              "입력한 사용자 이름의 리뷰만 읽습니다. 파일은 읽는 동안만 임시 폴더에 두며 읽은 직후 삭제합니다.",
+            administrator:
+              "업로드하는 동안 이 서버의 운영자는 기술적으로 파일에 접근할 수 있습니다. 다룰 권한이 있는 데이터베이스만 업로드하세요.",
+            openSourceOnly:
+              "오픈 소스 Kikoeru의 SQLite 데이터베이스만 지원합니다. 큰 파일은 업로드에 시간이 걸릴 수 있습니다.",
+          },
+          acknowledge: "위 위험을 이해했습니다",
+          confirm: "계속",
+        },
+      },
       file: "JSON 파일",
       chooseFile: "파일 선택",
       fileHint: "JSON, 최대 10MiB.",

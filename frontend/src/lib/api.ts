@@ -659,6 +659,8 @@ export type AppSettings = {
   dlsiteMetadataLanguages: string[];
   /** Forward proxy for built-in metadata requests; empty connects directly. */
   metadataProxyUrl: string;
+  /** Lets every account enter a private or LAN address for a Kikoeru account import. */
+  kikoeruImportPrivateAddresses: boolean;
   directoryRoutingRules: DirectoryRoutingRule[];
   recommendationThreshold: number;
   recommendationConfig: RecommendationConfig;
@@ -2113,6 +2115,15 @@ async function sendJSONBody<T>(
   return response.json() as Promise<T>;
 }
 
+/** A multipart upload; the browser sets the boundary, so no content type is forced. */
+async function sendFormData<T>(path: string, body: FormData, init: Pick<RequestInit, "signal"> = {}): Promise<T> {
+  const response = await fetchAPI(path, { ...init, method: "POST", body });
+  if (!response.ok) {
+    throw await responseError(response, `POST ${path} failed with ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
 /**
  * The authenticated JSON transport for focused feature API modules. It carries
  * the same browser cookie or native bearer credentials and error mapping as `api`.
@@ -2120,6 +2131,7 @@ async function sendJSONBody<T>(
 export const apiTransport = {
   getJSON,
   sendJSONBody,
+  sendFormData,
   deleteJSON,
 };
 
@@ -2583,6 +2595,7 @@ export const api = {
     dlsiteMetadataLanguage?: string;
     dlsiteMetadataLanguages?: string[];
     metadataProxyUrl?: string;
+    kikoeruImportPrivateAddresses?: boolean;
     directoryRoutingRules?: DirectoryRoutingRule[];
     recommendationThreshold?: number;
     recommendationConfig?: RecommendationConfig;

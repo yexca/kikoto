@@ -123,14 +123,112 @@ export const personalEnglish = {
       importTitle: "Import",
       importDescription:
         "Works match existing library works and known aliases by product code. Import never fetches metadata or adds works that are not already in the library.",
-      format: "Format",
-      formats: {
-        kikoto: "Kikoto export",
-        kikoeru: "Kikoeru export",
+      source: "Source",
+      sources: {
+        kikoto: "Kikoto export file",
+        kikoeru: "Kikoeru JSON file",
+        kikoeruAccount: "Kikoeru account",
+        kikoeruDatabase: "Kikoeru database file",
       },
-      kikoeruShapes:
-        "Accepts a review array, a reviews array, or an API works array from one account. Codes come from primaryCode or source_id; a numeric work_id is the RJ product number.",
+      sourceHints: {
+        kikoeru:
+          "Accepts a review array, a reviews array, or an API works array from one account. Codes come from primaryCode or source_id; a numeric work_id is the product number, including the typed BJ, VJ, and CC ids some forks use.",
+        kikoeruAccount:
+          "This server signs in to a Kikoeru server and reads your reviews, progress, and playlists. It only reads; nothing on the Kikoeru server changes.",
+        kikoeruDatabase:
+          "Reads one account's reviews and progress from the SQLite database of the open-source Kikoeru. Playlists are not part of that database.",
+      },
       kikoeruMapping: "Kikoeru progress maps to listening marks:",
+      kikoeru: {
+        server: "Server",
+        loadingOptions: "Loading...",
+        manual: "Enter an address",
+        url: "API address",
+        urlHint:
+          "The address of the Kikoeru API, which can differ from the web address. Do not include a path to a page or a query.",
+        privateAllowed: "Your account may also enter LAN and private addresses.",
+        privateBlocked: "Only public addresses are allowed. An administrator can allow LAN addresses.",
+        auth: "Sign-in",
+        authModes: {
+          none: "None",
+          bearer: "Token",
+          signIn: "Name and password",
+        },
+        authHints: {
+          none: "Only for a server with sign-in turned off.",
+          bearer: "The token the Kikoeru web app keeps after you sign in. It is sent once and not stored.",
+          signIn: "The name and password are sent once to sign in and are not stored.",
+        },
+        fields: {
+          bearer: "Token",
+          user: "User name",
+          passphrase: "Password",
+        },
+        read: "Read account data",
+        reading: "Reading account data...",
+        databaseUser: "Kikoeru user name",
+        databaseUserHint: "Only this account's reviews are read. A server with sign-in turned off uses admin.",
+        databaseFile: "Database file",
+        databaseFileHint:
+          "The SQLite file of the open-source Kikoeru, up to 512 MiB. Copy it while Kikoeru is stopped or idle.",
+        chooseDatabase: "Choose database",
+        readDatabase: "Upload and read",
+        uploading: "Uploading and reading...",
+        databaseTooLarge: "The file is larger than 512 MiB.",
+        loaded: "Read {{works}} works and {{playlists}} lists. Check the preview, then import.",
+        skipped:
+          "Skipped {{skippedWorks}} works and {{skippedPlaylistItems}} list entries without a usable product code.",
+        playlistsUnsupported: "This source has no playlists, so only reviews and progress are imported.",
+        clearLoaded: "Discard read data",
+        playlistNames: {
+          liked: "Kikoeru Liked",
+          marked: "Kikoeru Marked",
+        },
+        readErrors: {
+          invalid: "Check the address and sign-in details.",
+          risk: "Confirm the risk notice first.",
+          unauthorized: "The Kikoeru server rejected the sign-in or token.",
+          destination: "This address is not allowed for your account.",
+          source_missing: "The selected source is no longer available.",
+          unsupported: "The address did not answer like a Kikoeru API. Check that it is the API address.",
+          user_not_found: "The database has no account with that name.",
+          database_invalid: "The file is not a readable Kikoeru SQLite database.",
+          too_large: "The account or file exceeds the import limits.",
+          busy: "Another import is running. Try again shortly.",
+          timeout: "The Kikoeru server took too long to answer.",
+          permission: "Your account cannot import personal data.",
+          read_only: "This instance is read-only.",
+          unavailable: "The Kikoeru server could not be reached. Try again.",
+        },
+        risk: {
+          accountTitle: "Before connecting to a Kikoeru server",
+          databaseTitle: "Before uploading a Kikoeru database",
+          description: "Read these points. Continue only if you accept them.",
+          accountPoints: {
+            credentials:
+              "Your token or password is sent to this Kikoto server, which connects to Kikoeru for you. It is used for this read only and is not stored or logged, but whoever operates this server could technically capture it.",
+            serverSeesKikoto:
+              "The Kikoeru server sees a sign-in from this server's network address. A third-party site may flag or limit the account; follow that site's rules.",
+            longLived:
+              "A token acts as your account and can stay valid for a long time. Enter only a token for your own account.",
+            manualAddress:
+              "A manually entered address is connected to directly by this server. A LAN address makes it reach a device on the network it runs in; enter only an address you trust and know to be Kikoeru.",
+            readOnly: "Only reviews, progress, and playlists are read. Nothing on the Kikoeru server changes.",
+          },
+          databasePoints: {
+            allAccounts:
+              "A Kikoeru database holds every account on that server, including user names and password hashes. The whole file is uploaded to this Kikoto server.",
+            temporary:
+              "Only the reviews of the account you name are read. The file is kept in a temporary folder while it is read and deleted right after.",
+            administrator:
+              "Whoever operates this server could technically access the file during the upload. Upload only a database you are allowed to handle.",
+            openSourceOnly:
+              "Only the SQLite database of the open-source Kikoeru is supported. A large file can take a while to upload.",
+          },
+          acknowledge: "I understand these risks",
+          confirm: "Continue",
+        },
+      },
       file: "JSON file",
       chooseFile: "Choose file",
       fileHint: "JSON, up to 10 MiB.",

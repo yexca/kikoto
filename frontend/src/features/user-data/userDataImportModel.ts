@@ -1,6 +1,7 @@
 import { ApiError } from "@/lib/api";
 
 import type {
+  KikoeruImportResponse,
   UserDataConflictPolicy,
   UserDataImportFormat,
   UserDataImportPreview,
@@ -10,7 +11,23 @@ import type {
 
 export const USER_DATA_IMPORT_MAX_BYTES = 10 * 1024 * 1024;
 
-export const userDataImportFormats: readonly UserDataImportFormat[] = ["kikoto", "kikoeru"];
+/**
+ * Where imported data comes from: a JSON file in either format, a Kikoeru
+ * account read by the server, or an uploaded Kikoeru database. The last two
+ * arrive as a Kikoto backup and use the same preview and import.
+ */
+export type UserDataImportSource = UserDataImportFormat | "kikoeruAccount" | "kikoeruDatabase";
+
+export const userDataImportSources: readonly UserDataImportSource[] = [
+  "kikoto",
+  "kikoeru",
+  "kikoeruAccount",
+  "kikoeruDatabase",
+];
+
+export function isFileImportSource(source: UserDataImportSource): source is UserDataImportFormat {
+  return source === "kikoto" || source === "kikoeru";
+}
 export const userDataConflictPolicies: readonly UserDataConflictPolicy[] = ["keep", "overwrite"];
 
 /**
@@ -33,12 +50,31 @@ export type UserDataRequestError = "invalid" | "too_large" | "permission" | "rea
 
 export type UserDataFile = { name: string; size: number };
 
+/** Sanitized failure classes for reading a Kikoeru account or database. */
+export type KikoeruReadError =
+  | "invalid"
+  | "risk"
+  | "unauthorized"
+  | "destination"
+  | "source_missing"
+  | "unsupported"
+  | "user_not_found"
+  | "database_invalid"
+  | "too_large"
+  | "busy"
+  | "timeout"
+  | "permission"
+  | "read_only"
+  | "unavailable";
+
 export type UserDataImportState = {
-  format: UserDataImportFormat;
+  source: UserDataImportSource;
   conflict: UserDataConflictPolicy;
   file: UserDataFile | null;
   /** Parsed JSON, present only once the whole file was read and parsed. */
   data: { value: unknown } | null;
+  /** What a Kikoeru account or database read returned, when data came from one. */
+  remote: Omit<KikoeruImportResponse, "data"> | null;
   reading: boolean;
   fileError: UserDataFileError | null;
   /** Bumped by every file, format, or policy change; older responses are ignored. */
@@ -57,7 +93,8 @@ export type UserDataImportAction =
   | { type: "fileSelected"; file: UserDataFile }
   | { type: "fileRejected"; revision: number; error: UserDataFileError }
   | { type: "fileParsed"; revision: number; value: unknown }
-  | { type: "formatChanged"; format: UserDataImportFormat }
+  | { type: "sourceChanged"; source: UserDataImportSource }
+  | { type: "remoteLoaded"; response: KikoeruImportResponse }
   | { type: "conflictChanged"; conflict: UserDataConflictPolicy }
   | { type: "previewStarted"; revision: number }
   | { type: "previewSucceeded"; revision: number; result: UserDataImportPreview }
@@ -69,10 +106,11 @@ export type UserDataImportAction =
 
 export function initialUserDataImportState(): UserDataImportState {
   return {
-    format: "kikoto",
+    source: "kikoto",
     conflict: "keep",
     file: null,
     data: null,
+    remote: null,
     reading: false,
     fileError: null,
     revision: 0,
@@ -96,7 +134,7 @@ function invalidated(state: UserDataImportState, changes: Partial<UserDataImport
 export function userDataImportReducer(state: UserDataImportState, action: UserDataImportAction): UserDataImportState {
   switch (action.type) {
     case "fileSelected":
-      if (state.importing.status === "running") return state;
+      if (state.importing.status === "running" || !isFileImportSource(state.source)) return state;
       if (action.file.size > USER_DATA_IMPORT_MAX_BYTES) {
         return invalidated(state, { file: action.file, data: null, reading: false, fileError: "too_large" });
       }
@@ -107,9 +145,21 @@ export function userDataImportReducer(state: UserDataImportState, action: UserDa
     case "fileParsed":
       if (action.revision !== state.revision) return state;
       return { ...state, data: { value: action.value }, reading: false, fileError: null };
-    case "formatChanged":
-      if (state.importing.status === "running" || action.format === state.format) return state;
-      return invalidated(state, { format: action.format });
+    case "sourceChanged": {
+      if (state.importing.status === "running" || action.source === state.source) return state;
+      // A file can be read in either file format; account data belongs to its reader.
+      const keepFile = isFileImportSource(state.source) && isFileImportSource(action.source);
+      return invalidated(state, {
+        source: action.source,
+        ...(keepFile ? {} : { file: null, data: null, reading: false, fileError: null }),
+        remote: null,
+      });
+    }
+    case "remoteLoaded": {
+      if (state.importing.status === "running" || isFileImportSource(state.source)) return state;
+      const { data, ...remote } = action.response;
+      return invalidated(state, { file: null, data: { value: data }, reading: false, fileError: null, remote });
+    }
     case "conflictChanged":
       if (state.importing.status === "running" || action.conflict === state.conflict) return state;
       return invalidated(state, { conflict: action.conflict });
@@ -134,7 +184,7 @@ export function userDataImportReducer(state: UserDataImportState, action: UserDa
       return { ...state, importing: { status: "error", error: action.error } };
     case "cleared":
       if (state.importing.status === "running") return state;
-      return invalidated(state, { file: null, data: null, reading: false, fileError: null });
+      return invalidated(state, { file: null, data: null, reading: false, fileError: null, remote: null });
   }
 }
 
@@ -160,7 +210,8 @@ export function canImport(state: UserDataImportState) {
 
 export function importRequest(state: UserDataImportState): UserDataImportRequest | null {
   if (!state.data) return null;
-  return { format: state.format, data: state.data.value, conflict: state.conflict };
+  const format = isFileImportSource(state.source) ? state.source : "kikoto";
+  return { format, data: state.data.value, conflict: state.conflict };
 }
 
 export function parseUserDataFileText(text: string): { ok: true; value: unknown } | { ok: false } {
@@ -178,6 +229,30 @@ export function classifyUserDataRequestError(error: unknown): UserDataRequestErr
   if (error.status === 401 || error.status === 403) return "permission";
   if (error.status === 413) return "too_large";
   if (error.status === 400 || error.status === 409 || error.status === 422) return "invalid";
+  return "unavailable";
+}
+
+const kikoeruErrorCodes: Record<string, KikoeruReadError> = {
+  kikoeru_invalid_request: "invalid",
+  kikoeru_risk_not_acknowledged: "risk",
+  kikoeru_unauthorized: "unauthorized",
+  kikoeru_destination_not_allowed: "destination",
+  kikoeru_source_not_found: "source_missing",
+  kikoeru_unsupported: "unsupported",
+  kikoeru_user_not_found: "user_not_found",
+  kikoeru_database_invalid: "database_invalid",
+  kikoeru_import_busy: "busy",
+  kikoeru_timeout: "timeout",
+  demo_read_only: "read_only",
+};
+
+export function classifyKikoeruReadError(error: unknown): KikoeruReadError {
+  if (!(error instanceof ApiError)) return "unavailable";
+  const known = kikoeruErrorCodes[error.code];
+  if (known) return known;
+  if (error.status === 401 || error.status === 403) return "permission";
+  if (error.status === 413) return "too_large";
+  if (error.status === 400) return "invalid";
   return "unavailable";
 }
 
