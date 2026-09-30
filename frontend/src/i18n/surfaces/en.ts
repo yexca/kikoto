@@ -119,6 +119,12 @@ export const surfaceEnglish = {
     search: "Search metadata",
     loading: "Loading work maintenance",
     checkSources: "Check sources ({{count}})",
+    workColumn: "Work",
+    circleColumn: "Circle",
+    statusColumn: "Status",
+    statusOk: "OK",
+    editFor: "Edit metadata for {{code}}",
+    editLoadFailed: "Work details could not be loaded.",
   },
   metadataIssues: {
     title: "Metadata needing attention",
@@ -537,6 +543,7 @@ export const surfaceEnglish = {
     workflowTabs: "Workflows",
     workflowCategories: "Workflow categories",
     categories: {
+      all: "All",
       basic: "Basic",
       collect: "Collect",
       follow: "Follow",

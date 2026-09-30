@@ -96,7 +96,11 @@ Metadata reasons and retries require `metadata:sync`. No-source reasons, source
 checks, and confirmed deletion require `sources:write`; the UI exposes deletion
 only in the no-source view and the server still revalidates family availability.
 Each permission grants only its corresponding maintenance actions, without
-exposing settings to metadata-only operators. Metadata management presents All and attention categories horizontally.
+exposing settings to metadata-only operators. Metadata management chooses All, the attention categories, and Voice aliases
+from the shared page icon rail. Work records use a management table (code and
+title, circle, status, actions); the action column opens the work metadata
+editor, gated by `library:write`. The list loads on navigation, filter
+changes, recovery actions, saves, and manual refresh, never on a timer.
 Metadata settings open in a popover anchored to the header, with the current list retained underneath.
 Activity links use `/metadata?reason=metadata&metadataRun=<id>`;
 legacy Maintenance work and metadata links redirect to Metadata management. Filtering by a run additionally
@@ -122,6 +126,8 @@ read-only run context, stays with Basic. Wide layouts select a category from a
 vertical icon rail and a workflow from the horizontal tabs; the mobile
 navigation layout shows categories as an icon row above the tabs. The selected
 workflow remains the persisted and linked state, so the category follows it.
+An All entry leads the rail; it lists every visible workflow and is kept in
+session storage without changing the selected workflow.
 
 ## Activity Summary
 

@@ -40,8 +40,10 @@ Workflows make backend actions inspectable.
   workflows), and Remote (Availability Watch and Fetch history). Wide layouts
   choose a category from a vertical icon rail beside the horizontal workflow
   tabs; the mobile layout shows the categories as an icon row above the tabs,
-  labelling the active one. Each category lists its workflows in a fixed order,
-  and returning to a category reopens the workflow last selected there.
+  labelling the active one. **All**, at the top of the rail, lists every
+  workflow in the same fixed order and stays selected for the browser session.
+  Each category lists its workflows in a fixed order, and returning to a
+  category reopens the workflow last selected there.
   Definitions cannot be created, edited, or deleted from the page.
 - Needs attention collects unresolved candidates, metadata issues, and
   unacknowledged failures. Resolving recorded issues clears the corresponding
