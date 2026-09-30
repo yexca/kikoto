@@ -440,11 +440,15 @@ test("library search conditions use accessible select menus", async ({ page }) =
   await page.goto("/");
 
   await page.getByRole("button", { name: "Search library" }).click();
+  const searchBox = page.getByPlaceholder("Search title, code, circle, tag, or creator");
+  const searchBoundsBeforeEditor = await searchBox.boundingBox();
   await page.getByRole("button", { name: "Add search condition" }).click();
 
-  const clauseType = page.getByRole("combobox", { name: "Search clause type" });
+  const clauseDialog = page.getByRole("dialog", { name: "Add search condition" });
+  await expect(clauseDialog).toBeVisible();
+  const clauseType = clauseDialog.getByRole("combobox", { name: "Search clause type" });
   await expect(clauseType).toHaveText("Text");
-  const searchBox = page.getByPlaceholder("Search title, code, circle, tag, or creator");
+  await expect(clauseDialog.getByPlaceholder("Value")).toBeFocused();
   const toolbar = page.locator("section[data-toast-avoid]").filter({ has: searchBox });
   await expect(toolbar.getByRole("button", { name: /Items per page:/ })).toBeVisible();
   await expect(toolbar.getByRole("button", { name: "Sort: Recommended" })).toBeVisible();
@@ -461,9 +465,16 @@ test("library search conditions use accessible select menus", async ({ page }) =
   expect(actionBoxes.every((box) => box !== null)).toBe(true);
   expect(searchBoxBounds).not.toBeNull();
   expect(searchBoxBounds!.y).toBeGreaterThanOrEqual(Math.max(...actionBoxes.map((box) => box!.y + box!.height)));
+  // The editor floats below the search field instead of inserting a page row.
+  expect(searchBoxBounds).toEqual(searchBoundsBeforeEditor);
+  const dialogBox = await clauseDialog.boundingBox();
+  expect(dialogBox).not.toBeNull();
+  expect(dialogBox!.y).toBeGreaterThanOrEqual(searchBoxBounds!.y + searchBoxBounds!.height);
+  expect(dialogBox!.x).toBeGreaterThanOrEqual(0);
+  expect(dialogBox!.x + dialogBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 
   await toolbar.getByRole("button", { name: "Hide library search" }).click();
-  await expect(clauseType).toHaveCount(0);
+  await expect(clauseDialog).toHaveCount(0);
   await expect(searchBox).toBeHidden();
   await expect(toolbar.getByRole("button", { name: /^Columns:/ })).toBeVisible();
   await toolbar.getByRole("button", { name: "Search library" }).click();
@@ -471,18 +482,16 @@ test("library search conditions use accessible select menus", async ({ page }) =
   await expect(clauseType).toHaveText("Text");
 
   const clauseTypeBox = await clauseType.boundingBox();
-  const clauseValueBox = await page.getByPlaceholder("Value").boundingBox();
+  const clauseValueBox = await clauseDialog.getByPlaceholder("Value").boundingBox();
   expect(clauseTypeBox).not.toBeNull();
   expect(clauseValueBox).not.toBeNull();
   expect(Math.abs(clauseTypeBox!.y - clauseValueBox!.y)).toBeLessThan(1);
   expect(Math.abs(clauseTypeBox!.height - clauseValueBox!.height)).toBeLessThan(1);
-  const mobileCancelBox = await page.getByRole("button", { name: "Cancel", exact: true }).boundingBox();
-  expect(mobileCancelBox).not.toBeNull();
-  expect(mobileCancelBox!.x + mobileCancelBox!.width).toBeGreaterThanOrEqual(page.viewportSize()!.width - 32);
   await clauseType.click();
   await page.getByRole("listbox").getByRole("option", { name: "On shelf", exact: true }).click();
+  await expect(clauseDialog).toBeVisible();
 
-  const shelfMembership = page.getByRole("combobox", { name: "Shelf membership" });
+  const shelfMembership = clauseDialog.getByRole("combobox", { name: "Shelf membership" });
   await expect(shelfMembership).toHaveText("Included");
   await shelfMembership.click();
   const membershipOptions = page.getByRole("listbox");
@@ -491,18 +500,20 @@ test("library search conditions use accessible select menus", async ({ page }) =
   await membershipOptions.getByRole("option", { name: "Not included", exact: true }).click();
   await expect(shelfMembership).toHaveText("Not included");
 
-  await page.setViewportSize({ width: 700, height: page.viewportSize()!.height });
-  const wideClauseTypeBox = await clauseType.boundingBox();
-  const wideClauseValueBox = await shelfMembership.boundingBox();
-  const wideCancelBox = await page.getByRole("button", { name: "Cancel", exact: true }).boundingBox();
-  expect(wideClauseTypeBox).not.toBeNull();
-  expect(wideClauseValueBox).not.toBeNull();
-  expect(wideCancelBox).not.toBeNull();
-  expect(Math.abs(wideClauseTypeBox!.y - wideCancelBox!.y)).toBeLessThan(3);
-  expect(Math.abs(wideClauseValueBox!.y - wideCancelBox!.y)).toBeLessThan(3);
+  await clauseDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(clauseDialog).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(clauseType).toHaveCount(0);
+  await page.getByRole("button", { name: "Add search condition" }).click();
+  await clauseDialog.getByPlaceholder("Value").fill("rain");
+  await clauseDialog.getByPlaceholder("Value").press("Enter");
+  await expect(clauseDialog).toHaveCount(0);
+  await expect(searchBox).toHaveValue("rain");
+
+  await page.getByRole("button", { name: "Text: rain", exact: true }).click();
+  const editDialog = page.getByRole("dialog", { name: "Edit search condition" });
+  await expect(editDialog.getByPlaceholder("Value")).toHaveValue("rain");
+  await page.keyboard.press("Escape");
+  await expect(editDialog).toHaveCount(0);
 });
 
 test("anonymous quick marks open the sign-in flow from mobile controls", async ({ page }) => {

@@ -20,6 +20,7 @@ const libraryHant = {
   searchPlaceholder: "搜尋標題、代碼、社團、標籤或創作者（例：tag: 癒し）",
   clearSearch: "清除搜尋",
   addSearchCondition: "新增搜尋條件",
+  editSearchCondition: "編輯搜尋條件",
   removeSearchClause: "移除 {{clause}}",
   searchActive: "媒體庫搜尋已啟用",
   hideSearch: "隱藏媒體庫搜尋",

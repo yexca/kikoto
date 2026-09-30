@@ -19,6 +19,7 @@ const libraryKorean = {
   searchPlaceholder: "제목, 코드, 서클, 태그 또는 제작자 검색 (예: tag: 癒し)",
   clearSearch: "검색 지우기",
   addSearchCondition: "검색 조건 추가",
+  editSearchCondition: "검색 조건 편집",
   removeSearchClause: "{{clause}} 제거",
   searchActive: "라이브러리 검색이 활성화됨",
   hideSearch: "라이브러리 검색 숨기기",

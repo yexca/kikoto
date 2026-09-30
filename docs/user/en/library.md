@@ -15,6 +15,9 @@ The Library is the main browsing surface for works.
   script: `100%` and `a_b` are not wildcards, full-width `ＡＢＣ` finds `abc`, and
   katakana finds the same word written in hiragana. Prefix a term with a
   clause such as `tag: 癒し`, `circle:`, `va:`, or `mytag:` to search one field.
+- The `+` button in the search field opens a floating editor for a
+  structured search condition. Selecting a condition badge edits it in the same
+  popover without moving the results.
 - Shows cover, title, code, Circle / Series on one ellipsized line, voice
   metadata, local availability, source tags, and quick listening marks when
   available.

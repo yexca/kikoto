@@ -19,6 +19,7 @@ const libraryJapanese = {
   searchPlaceholder: "タイトル、コード、サークル、タグ、制作者を検索（例: tag: 癒し）",
   clearSearch: "検索をクリア",
   addSearchCondition: "検索条件を追加",
+  editSearchCondition: "検索条件を編集",
   removeSearchClause: "{{clause}}を削除",
   searchActive: "ライブラリ検索が有効です",
   hideSearch: "ライブラリ検索を隠す",

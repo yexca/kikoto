@@ -403,6 +403,9 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     index: number | null;
     draft: SearchClauseDraft;
   } | null>(null);
+  // The clause editor floats next to whichever control opened it: the add
+  // button in the search field or the edited clause badge.
+  const clauseEditorAnchorRef = useRef<HTMLElement | null>(null);
   const { mobileColumns, desktopColumns, setMobileColumns, setDesktopColumns } = useWorkCollectionLayout({
     mobileColumns: initialBrowseState.mobileColumns,
     desktopColumns: initialBrowseState.desktopColumns,
@@ -1455,7 +1458,12 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     setClauseEditor(null);
   };
 
-  const openAddClauseEditor = () => {
+  const openAddClauseEditor = (anchor: HTMLElement) => {
+    if (clauseEditor?.mode === "add") {
+      setClauseEditor(null);
+      return;
+    }
+    clauseEditorAnchorRef.current = anchor;
     setClauseEditor({ mode: "add", index: null, draft: { kind: "text", value: "" } });
   };
 
@@ -1464,9 +1472,17 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     setClauseEditor(null);
   };
 
-  const openEditClauseEditor = (clause: SearchClause, index: number) => {
+  const openEditClauseEditor = (clause: SearchClause, index: number, anchor: HTMLElement) => {
+    if (clauseEditor?.mode === "edit" && clauseEditor.index === index) {
+      setClauseEditor(null);
+      return;
+    }
+    clauseEditorAnchorRef.current = anchor;
     setClauseEditor({ mode: "edit", index, draft: { kind: clause.kind, value: clause.value } });
   };
+  const closeClauseEditor = useCallback((open: boolean) => {
+    if (!open) setClauseEditor(null);
+  }, []);
 
   const saveClauseEditor = () => {
     if (!clauseEditor) return;
@@ -1703,8 +1719,10 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
           )}
           <button
             className="rounded-sm text-muted-foreground hover:text-foreground"
-            onClick={openAddClauseEditor}
+            onClick={(event) => openAddClauseEditor(event.currentTarget)}
             aria-label={t("library.addSearchCondition")}
+            aria-haspopup="dialog"
+            aria-expanded={clauseEditor?.mode === "add"}
           >
             <Plus className="h-4 w-4" />
           </button>
@@ -1803,7 +1821,9 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             >
               <button
                 className="inline-flex items-center gap-1 hover:text-foreground"
-                onClick={() => openEditClauseEditor(clause, index)}
+                onClick={(event) => openEditClauseEditor(clause, index, event.currentTarget)}
+                aria-haspopup="dialog"
+                aria-expanded={clauseEditor?.mode === "edit" && clauseEditor.index === index}
               >
                 <Edit3 className="h-3 w-3" />
                 {searchClauseLabel(clause, t)}
@@ -1819,14 +1839,23 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
           ))}
         </div>
       )}
-      {clauseEditor && (
-        <SearchClauseEditor
-          editor={clauseEditor}
-          onChange={(draft) => setClauseEditor((current) => (current ? { ...current, draft } : current))}
-          onCancel={() => setClauseEditor(null)}
-          onSave={saveClauseEditor}
-        />
-      )}
+      <AnchoredPopover
+        open={clauseEditor !== null}
+        anchorRef={clauseEditorAnchorRef}
+        align="start"
+        ariaLabel={clauseEditor?.mode === "edit" ? t("library.editSearchCondition") : t("library.addSearchCondition")}
+        onOpenChange={closeClauseEditor}
+        className="w-[min(24rem,calc(100vw-1.5rem))] p-3"
+      >
+        {clauseEditor && (
+          <SearchClauseEditor
+            editor={clauseEditor}
+            onChange={(draft) => setClauseEditor((current) => (current ? { ...current, draft } : current))}
+            onCancel={() => setClauseEditor(null)}
+            onSave={saveClauseEditor}
+          />
+        )}
+      </AnchoredPopover>
       <div ref={resultsAnchorRef} className="scroll-mt-24" />
 
       {activeTab.kind === "source" ? (
@@ -3124,9 +3153,17 @@ function SearchClauseEditor({
 }) {
   const { t } = useTranslation();
   const value = editor.draft.value;
+  const title = editor.mode === "add" ? t("library.addSearchCondition") : t("library.editSearchCondition");
+  const valueInputRef = useRef<HTMLInputElement>(null);
+  // The popover stays hidden until it is positioned, so focus after that first layout.
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => valueInputRef.current?.focus({ preventScroll: true }));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
   return (
-    <div className="grid gap-2 rounded-lg border bg-card p-2 text-sm shadow-sm sm:flex sm:items-center">
-      <div className="grid min-w-0 grid-cols-[minmax(8rem,auto)_minmax(0,1fr)] items-center gap-2 sm:contents">
+    <div className="grid gap-3 text-sm">
+      <p className="font-medium">{title}</p>
+      <div className="grid min-w-0 grid-cols-[minmax(7rem,9rem)_minmax(0,1fr)] items-center gap-2">
         <FloatingSelect
           value={editor.draft.kind}
           onValueChange={(nextValue) => {
@@ -3137,7 +3174,7 @@ function SearchClauseEditor({
             });
           }}
           ariaLabel={t("library.searchClauseType")}
-          className="w-full sm:w-40"
+          className="w-full"
           options={editableSearchClauseKinds.map((kind) => ({
             value: kind.value,
             label: t(`library.searchClauseKinds.${kind.value}`, { defaultValue: kind.label }),
@@ -3148,7 +3185,7 @@ function SearchClauseEditor({
             value={value === "false" ? "false" : "true"}
             onValueChange={(nextValue) => onChange({ ...editor.draft, value: nextValue })}
             ariaLabel={t("library.shelfMembership")}
-            className="w-full min-w-0 sm:flex-1"
+            className="w-full min-w-0"
             options={[
               { value: "true", label: t("library.included") },
               { value: "false", label: t("library.notIncluded") },
@@ -3156,25 +3193,25 @@ function SearchClauseEditor({
           />
         ) : (
           <Input
-            className="w-full min-w-0 sm:flex-1"
+            ref={valueInputRef}
+            className="w-full min-w-0"
             value={value}
             onChange={(event) => onChange({ ...editor.draft, value: event.target.value })}
             onKeyDown={(event) => {
               if (event.key === "Enter") onSave();
-              if (event.key === "Escape") onCancel();
             }}
             placeholder={t("library.value")}
           />
         )}
       </div>
-      <div className="flex justify-end gap-2 sm:shrink-0">
-        <Button size="sm" disabled={!value.trim()} onClick={onSave}>
-          <Check className="h-4 w-4" />
-          {editor.mode === "add" ? t("library.add") : t("common.save")}
-        </Button>
+      <div className="flex justify-end gap-2">
         <Button size="sm" variant="outline" onClick={onCancel}>
           <X className="h-4 w-4" />
           {t("common.cancel")}
+        </Button>
+        <Button size="sm" disabled={!value.trim()} onClick={onSave}>
+          <Check className="h-4 w-4" />
+          {editor.mode === "add" ? t("library.add") : t("common.save")}
         </Button>
       </div>
     </div>

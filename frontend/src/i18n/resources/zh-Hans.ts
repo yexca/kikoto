@@ -19,6 +19,7 @@ export const libraryHans = {
   searchPlaceholder: "搜索标题、代码、社团、标签或创作者（例：tag: 癒し）",
   clearSearch: "清除搜索",
   addSearchCondition: "添加搜索条件",
+  editSearchCondition: "编辑搜索条件",
   removeSearchClause: "移除 {{clause}}",
   searchActive: "媒体库搜索已启用",
   hideSearch: "隐藏媒体库搜索",

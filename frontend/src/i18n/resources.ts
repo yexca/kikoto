@@ -18,6 +18,7 @@ export const libraryEnglish = {
   searchPlaceholder: "Search title, code, circle, tag, or creator (e.g. tag: healing)",
   clearSearch: "Clear search",
   addSearchCondition: "Add search condition",
+  editSearchCondition: "Edit search condition",
   removeSearchClause: "Remove {{clause}}",
   searchActive: "Library search is active",
   hideSearch: "Hide library search",
