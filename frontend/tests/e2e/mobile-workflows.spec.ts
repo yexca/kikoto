@@ -722,7 +722,7 @@ test("notification center paginates and clears only succeeded remote notificatio
   await expect(dialog.getByRole("button", { name: "Clear succeeded", exact: true })).toBeDisabled();
 });
 
-async function selectWorkflowCategory(page: Page, name: "Basic" | "Collect" | "Follow" | "Remote") {
+async function selectWorkflowCategory(page: Page, name: "All" | "Basic" | "Collect" | "Follow" | "Remote") {
   await page
     .getByRole("tablist", { name: "Workflow categories", exact: true })
     .getByRole("tab", { name, exact: true })
@@ -734,7 +734,7 @@ test("definitions foreground runnable presets and show DLsite popular run option
   await page.goto("/workflows");
 
   const categories = page.getByRole("tablist", { name: "Workflow categories", exact: true });
-  await expect(categories.getByRole("tab")).toHaveText(["Basic", "Collect", "Remote"]);
+  await expect(categories.getByRole("tab")).toHaveText(["All", "Basic", "Collect", "Remote"]);
   await expect(categories.getByRole("tab", { name: "Basic", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("tablist", { name: "Workflows", exact: true }).getByRole("tab")).toHaveCount(3);
   await expect(page.getByRole("button", { name: "New workflow", exact: true })).toHaveCount(0);
@@ -2028,6 +2028,17 @@ test("workflow tabs retain selection, stay reachable on mobile, and support keyb
   );
   await expect(categories.getByRole("tab", { name: "Basic", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toBeVisible();
+
+  // All lists every workflow, keeps the open one, and survives a reload in this session.
+  await selectWorkflowCategory(page, "All");
+  await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toBeVisible();
+  await expect(tabs.getByRole("tab", { name: "Scan local library", exact: true })).toHaveCount(1);
+  await expect(tabs.getByRole("tab", { name: "Availability Watch", exact: true })).toHaveCount(1);
+  await page.reload();
+  await expect(categories.getByRole("tab", { name: "All", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(tabs.getByRole("tab", { name: "Availability Watch", exact: true })).toHaveCount(1);
+  await selectWorkflowCategory(page, "Basic");
+  await expect(tabs.getByRole("tab")).toHaveCount(3);
   await expect(page.getByRole("button", { name: "Filter workflows", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Activity", exact: true })).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

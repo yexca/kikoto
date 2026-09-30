@@ -4,6 +4,9 @@ export const workflowCategories = ["basic", "collect", "follow", "remote"] as co
 
 export type WorkflowCategory = (typeof workflowCategories)[number];
 
+/** A rail choice: one category, or every visible workflow. */
+export type WorkflowCategoryView = WorkflowCategory | "all";
+
 const workflowCategoryByCode: Record<string, WorkflowCategory> = {
   local_library_scan: "basic",
   local_media_index: "basic",

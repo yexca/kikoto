@@ -1,20 +1,32 @@
-import { Settings } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { CircleAlert, FileWarning, LayoutGrid, MicVocal, Settings, Unlink, type LucideIcon } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
-import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
+import { IconRail, type IconRailItem } from "@/components/ui/icon-rail";
+import { toastFromError, useToast } from "@/components/ui/toast";
 import type { MaintenanceToolbarSlots } from "@/features/maintenance/MaintenanceControls";
 import { WorkMaintenance } from "@/features/maintenance/WorkMaintenance";
 import { MetadataSettingsPanel } from "@/features/maintenance/MetadataSettingsPanel";
 import { VoiceAliasMaintenance } from "@/features/maintenance/VoiceAliasMaintenance";
+import { WorkMetadataEditorModal } from "@/features/work-detail/metadata";
+import { api, type MaintenanceWork, type WorkDetail } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { metadataIssueRunFromLocation } from "@/lib/metadataMaintenance";
 
 type MetadataView = "works" | "aliases";
+type MetadataRailValue = "catalog" | "all" | "metadata" | "no_source" | "aliases";
 
 const ALIASES_VIEW_PARAM = "aliases";
+
+const railIcons: Record<MetadataRailValue, LucideIcon> = {
+  catalog: LayoutGrid,
+  all: CircleAlert,
+  metadata: FileWarning,
+  no_source: Unlink,
+  aliases: MicVocal,
+};
 
 function reasonFromLocation() {
   const params = new URLSearchParams(window.location.search);
@@ -49,69 +61,55 @@ const INLINE_SEARCH_MIN_WIDTH = 224;
 const HEADER_GAP = 8;
 
 /**
- * Whether the header row has room for an inline search field between the tabs
- * and the actions. Widths come from content (`scrollWidth`) and exclude the
- * collapsed-search toggle, so switching modes does not change the answer.
+ * Whether the header row has room for an inline search field between the view
+ * title and the actions. Widths come from content (`scrollWidth`) and exclude
+ * the collapsed-search toggle, so switching modes does not change the answer.
  */
 function useInlineSearchFits(
   header: RefObject<HTMLElement | null>,
-  tabs: RefObject<HTMLElement | null>,
+  title: RefObject<HTMLElement | null>,
   actions: RefObject<HTMLElement | null>,
 ) {
   const [fits, setFits] = useState(true);
   useLayoutEffect(() => {
     const measure = () => {
-      if (!header.current || !tabs.current || !actions.current) return;
+      if (!header.current || !actions.current) return;
       const toggle = actions.current.querySelector<HTMLElement>("[data-search-toggle]");
       const actionsWidth = actions.current.scrollWidth - (toggle ? toggle.offsetWidth + HEADER_GAP : 0);
-      const required = tabs.current.scrollWidth + actionsWidth + INLINE_SEARCH_MIN_WIDTH + HEADER_GAP * 2;
-      setFits(header.current.clientWidth >= required);
+      // A title hidden in compact layouts measures zero and needs no gap.
+      const titleWidth = title.current?.offsetWidth ? title.current.scrollWidth + HEADER_GAP : 0;
+      setFits(header.current.clientWidth >= titleWidth + actionsWidth + INLINE_SEARCH_MIN_WIDTH + HEADER_GAP);
     };
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
-    for (const element of [header.current, tabs.current, actions.current]) if (element) observer.observe(element);
+    for (const element of [header.current, title.current, actions.current]) if (element) observer.observe(element);
     return () => observer.disconnect();
-  }, [header, tabs, actions]);
+  }, [header, title, actions]);
   return fits;
 }
 
-function moveTabFocus(event: KeyboardEvent<HTMLButtonElement>) {
-  const tabs = Array.from(event.currentTarget.parentElement!.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
-  const current = tabs.indexOf(event.currentTarget);
-  const next =
-    event.key === "ArrowRight"
-      ? (current + 1) % tabs.length
-      : event.key === "ArrowLeft"
-        ? (current + tabs.length - 1) % tabs.length
-        : event.key === "Home"
-          ? 0
-          : event.key === "End"
-            ? tabs.length - 1
-            : -1;
-  if (next < 0) return;
-  event.preventDefault();
-  tabs[next].focus();
-  tabs[next].click();
-}
-
 /**
- * Metadata page shell: one tab strip that switches between the saved-work
- * attention views and the voice actor alias view, plus the settings popover.
- * The header is one row: tabs, then the active view's search, list controls,
- * and selection actions rendered into slots. Views own their own tables; this
- * page owns the URL state and decides whether search fits inline.
+ * Metadata page shell: an icon rail that switches between the saved-work
+ * views and the voice actor alias view, beside a header holding the active
+ * view's search, list controls, and selection actions (rendered into slots)
+ * and the settings popover. Views own their own tables; this page owns the
+ * URL state, decides whether search fits inline, and composes the metadata
+ * editor that the work table opens from its action column.
  */
 export function WorkManagementPage({
   canSyncMetadata,
   canManageSources,
+  canEditMetadata = false,
   readOnly = false,
 }: {
   canSyncMetadata: boolean;
   canManageSources: boolean;
+  canEditMetadata?: boolean;
   readOnly?: boolean;
 }) {
   const { t } = useTranslation();
+  const toast = useToast();
   const [reason, setReason] = useState(() => availableReasonFromLocation(canSyncMetadata, canManageSources));
   const [runId, setRunId] = useState<number | null>(metadataIssueRunFromLocation);
   const [view, setView] = useState<MetadataView>(() => availableViewFromLocation(canSyncMetadata));
@@ -119,7 +117,10 @@ export function WorkManagementPage({
   const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
   const [inlineSearchSlot, setInlineSearchSlot] = useState<HTMLDivElement | null>(null);
   const [searchRowSlot, setSearchRowSlot] = useState<HTMLDivElement | null>(null);
+  const [editor, setEditor] = useState<{ work: WorkDetail; onSaved: () => void } | null>(null);
+  const [editingWorkId, setEditingWorkId] = useState<number | null>(null);
   const headerRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
   const headerActionsRef = useRef<HTMLDivElement>(null);
   const settingsAnchorRef = useRef<HTMLDivElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
@@ -140,18 +141,12 @@ export function WorkManagementPage({
     };
   }, [canManageSources, canSyncMetadata]);
 
-  const tabListRef = useRef<HTMLDivElement>(null);
-  const inlineSearch = useInlineSearchFits(headerRef, tabListRef, headerActionsRef);
+  const inlineSearch = useInlineSearchFits(headerRef, titleRef, headerActionsRef);
   const toolbar: MaintenanceToolbarSlots = {
     actions: actionsSlot,
     search: inlineSearch ? inlineSearchSlot : searchRowSlot,
     compactSearch: !inlineSearch,
   };
-  useEffect(() => {
-    tabListRef.current
-      ?.querySelector<HTMLElement>('[aria-selected="true"]')
-      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [reason, view]);
 
   const showWorks = (nextReason: string, nextRun: number | null = null) => {
     const params = new URLSearchParams({ reason: nextReason });
@@ -183,106 +178,111 @@ export function WorkManagementPage({
     if (focusInside) settingsButtonRef.current?.focus({ preventScroll: true });
   };
 
-  const reasonTabs = [
-    ["catalog", "workManagement.all"],
-    ["all", "workMaintenance.all"],
-    ...(canSyncMetadata ? [["metadata", "workMaintenance.metadata"]] : []),
-    ...(canManageSources ? [["no_source", "workMaintenance.noSource"]] : []),
+  // The editor changes one work's overrides or metadata link; the list reloads after either.
+  const editWork = async (work: MaintenanceWork, onSaved: () => void) => {
+    setEditingWorkId(work.id);
+    try {
+      setEditor({ work: await api.getWorkSummary(work.id), onSaved });
+    } catch (error) {
+      toast.notify(toastFromError(error, t("workMaintenance.editLoadFailed")));
+    } finally {
+      setEditingWorkId(null);
+    }
+  };
+
+  const railEntries: Array<[MetadataRailValue, string, boolean]> = [
+    ["catalog", t("workManagement.all"), true],
+    ["all", t("workMaintenance.all"), true],
+    ["metadata", t("workMaintenance.metadata"), canSyncMetadata],
+    ["no_source", t("workMaintenance.noSource"), canManageSources],
+    ["aliases", t("workManagement.voiceAliases"), canSyncMetadata],
   ];
+  const railItems: IconRailItem<MetadataRailValue>[] = railEntries
+    .filter(([, , available]) => available)
+    .map(([value, label]) => ({
+      value,
+      label,
+      icon: railIcons[value],
+      id: `metadata-tab-${value}`,
+      controls: value === "aliases" ? "metadata-aliases" : "metadata-records",
+      separated: value === "aliases",
+    }));
+  const railSelected = (view === "aliases" ? "aliases" : reason) as MetadataRailValue;
 
   return (
     <div className="min-w-0 space-y-3">
       {readOnly && <DemoReadOnlyNotice />}
-      <div ref={headerRef} className="flex items-center gap-2 max-sm:flex-wrap">
-        <div
-          ref={tabListRef}
-          role="tablist"
-          aria-label={t("workMaintenance.reason")}
-          className={segmentedListClassName("min-w-0")}
-        >
-          {reasonTabs.map(([value, label]) => {
-            const selected = view === "works" && reason === value;
-            return (
-              <button
-                key={value}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                aria-controls="metadata-records"
-                id={`metadata-tab-${value}`}
-                className={segmentedItemClassName(selected)}
-                onClick={() => showWorks(value)}
-                onKeyDown={moveTabFocus}
-                tabIndex={selected ? 0 : -1}
-              >
-                {t(label)}
-              </button>
-            );
-          })}
-          {canSyncMetadata && (
-            <>
-              <span className="my-1.5 w-px shrink-0 bg-border" aria-hidden="true" />
-              <button
-                type="button"
-                role="tab"
-                aria-selected={view === "aliases"}
-                aria-controls="metadata-aliases"
-                id="metadata-tab-aliases"
-                className={segmentedItemClassName(view === "aliases")}
-                onClick={showAliases}
-                onKeyDown={moveTabFocus}
-                tabIndex={view === "aliases" ? 0 : -1}
-              >
-                {t("workManagement.voiceAliases")}
-              </button>
-            </>
-          )}
-        </div>
-        <div ref={setInlineSearchSlot} className="contents" />
-        <div ref={headerActionsRef} className="ml-auto flex shrink-0 items-center gap-2">
-          <div ref={setActionsSlot} className="contents" />
-          {canManageSources && (
-            <div ref={settingsAnchorRef} className="relative">
-              <Button
-                ref={settingsButtonRef}
-                variant="toolbar"
-                size="icon-sm"
-                aria-label={t("workManagement.settings")}
-                aria-expanded={settingsOpen}
-                aria-haspopup="dialog"
-                title={t("workManagement.settings")}
-                onClick={() => showSettings(!settingsOpen)}
-              >
-                <Settings className="h-4 w-4" />
-              </Button>
-              <AnchoredPopover
-                open={settingsOpen}
-                anchorRef={settingsAnchorRef}
-                ariaLabel={t("workManagement.settings")}
-                preserveOnNestedLayers
-                className="w-[min(24rem,calc(100vw-1.5rem))]"
-                onOpenChange={(open) => (open ? showSettings(true) : closeSettings())}
-              >
-                <div ref={settingsPanelRef} tabIndex={-1} className="outline-none">
-                  <MetadataSettingsPanel readOnly={readOnly} onClose={closeSettings} />
+      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:gap-4">
+        <IconRail
+          label={t("workMaintenance.reason")}
+          items={railItems}
+          selected={railSelected}
+          onSelect={(value) => (value === "aliases" ? showAliases() : showWorks(value))}
+        />
+        <div className="min-w-0 flex-1 space-y-3">
+          <div ref={headerRef} className="flex min-h-10 items-center gap-2">
+            {/* Wide layouts name the current view here; the compact rail already labels it. */}
+            <h2 ref={titleRef} className="shrink-0 whitespace-nowrap text-base font-semibold max-lg:hidden">
+              {railItems.find((item) => item.value === railSelected)?.label}
+            </h2>
+            <div ref={setInlineSearchSlot} className="contents" />
+            <div ref={headerActionsRef} className="ml-auto flex shrink-0 items-center gap-2">
+              <div ref={setActionsSlot} className="contents" />
+              {canManageSources && (
+                <div ref={settingsAnchorRef} className="relative">
+                  <Button
+                    ref={settingsButtonRef}
+                    variant="toolbar"
+                    size="icon-sm"
+                    aria-label={t("workManagement.settings")}
+                    aria-expanded={settingsOpen}
+                    aria-haspopup="dialog"
+                    title={t("workManagement.settings")}
+                    onClick={() => showSettings(!settingsOpen)}
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                  <AnchoredPopover
+                    open={settingsOpen}
+                    anchorRef={settingsAnchorRef}
+                    ariaLabel={t("workManagement.settings")}
+                    preserveOnNestedLayers
+                    className="w-[min(24rem,calc(100vw-1.5rem))]"
+                    onOpenChange={(open) => (open ? showSettings(true) : closeSettings())}
+                  >
+                    <div ref={settingsPanelRef} tabIndex={-1} className="outline-none">
+                      <MetadataSettingsPanel readOnly={readOnly} onClose={closeSettings} />
+                    </div>
+                  </AnchoredPopover>
                 </div>
-              </AnchoredPopover>
+              )}
             </div>
+          </div>
+          <div ref={setSearchRowSlot} className="empty:hidden" />
+          {view === "aliases" ? (
+            <VoiceAliasMaintenance canManage={canSyncMetadata && !readOnly} readOnly={readOnly} toolbar={toolbar} />
+          ) : (
+            <WorkMaintenance
+              canManageSources={canManageSources}
+              canSyncMetadata={canSyncMetadata}
+              readOnly={readOnly}
+              reason={reason}
+              runId={runId}
+              toolbar={toolbar}
+              onFilterChange={showWorks}
+              editingWorkId={editingWorkId}
+              onEditWork={canEditMetadata ? (work, onSaved) => void editWork(work, onSaved) : undefined}
+            />
           )}
         </div>
       </div>
-      <div ref={setSearchRowSlot} className="empty:hidden" />
-      {view === "aliases" ? (
-        <VoiceAliasMaintenance canManage={canSyncMetadata && !readOnly} readOnly={readOnly} toolbar={toolbar} />
-      ) : (
-        <WorkMaintenance
-          canManageSources={canManageSources}
-          canSyncMetadata={canSyncMetadata}
+      {editor && (
+        <WorkMetadataEditorModal
+          work={editor.work}
           readOnly={readOnly}
-          reason={reason}
-          runId={runId}
-          toolbar={toolbar}
-          onFilterChange={showWorks}
+          onClose={() => setEditor(null)}
+          onSaved={editor.onSaved}
+          onLinkChanged={editor.onSaved}
         />
       )}
     </div>
