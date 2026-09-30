@@ -21,6 +21,7 @@ import {
   groupWorkflowDefinitions,
   workflowCategory,
   type WorkflowCategory,
+  type WorkflowCategoryView,
 } from "@/features/workflows/workflowCategories";
 import { WorkflowNavigation, builtInWorkflowOrder } from "@/features/workflows/WorkflowNavigation";
 import {
@@ -62,6 +63,7 @@ type TriggerEditorState =
   | null;
 
 const workflowDefinitionStorageBaseKey = "kikoto.workflows.definition:v3";
+const workflowAllCategoriesStorageBaseKey = "kikoto.workflows.all-categories:v1";
 
 export function WorkflowsPage({
   canRun,
@@ -90,6 +92,13 @@ export function WorkflowsPage({
   const [presets, setPresets] = useState<WorkflowPreset[]>([]);
   const [selectedDefinitionId, setSelectedDefinitionID] = useState<number | null>(() =>
     storedPositiveInt(workflowDefinitionStorageKey),
+  );
+  const workflowAllCategoriesStorageKey = currentScopedStorageKey(
+    workflowAllCategoriesStorageBaseKey,
+    auth.user?.id ?? null,
+  );
+  const [showAllCategories, setShowAllCategories] = useState(
+    () => readSessionValue(workflowAllCategoriesStorageKey) === "1",
   );
   const [triggerEditor, setTriggerEditor] = useState<TriggerEditorState>(null);
   const triggerAnchorRef = useRef<HTMLElement | null>(null);
@@ -205,8 +214,11 @@ export function WorkflowsPage({
 
   const categoryGroups = useMemo(() => groupWorkflowDefinitions(visibleDefinitions), [visibleDefinitions]);
   const selectedCategory = selectedDefinition ? workflowCategory(selectedDefinition.code) : null;
-  const categoryDefinitions =
-    categoryGroups.find((group) => group.category === selectedCategory)?.definitions ?? visibleDefinitions;
+  // All lists every visible workflow; otherwise the category follows the selected workflow.
+  const selectedCategoryView: WorkflowCategoryView | null = showAllCategories ? "all" : selectedCategory;
+  const categoryDefinitions = showAllCategories
+    ? visibleDefinitions
+    : (categoryGroups.find((group) => group.category === selectedCategory)?.definitions ?? visibleDefinitions);
   // Returning to a category reopens the workflow last selected in it during this visit.
   const lastDefinitionByCategory = useRef(new Map<WorkflowCategory, number>());
   useEffect(() => {
@@ -297,7 +309,11 @@ export function WorkflowsPage({
     storePositiveInt(workflowDefinitionStorageKey, definition.id);
     activityLocation.selectWorkflow(definition.code);
   };
-  const selectCategory = (category: WorkflowCategory) => {
+  const selectCategory = (category: WorkflowCategoryView) => {
+    const all = category === "all";
+    setShowAllCategories(all);
+    storeSessionValue(workflowAllCategoriesStorageKey, all ? "1" : null);
+    if (all) return;
     const group = categoryGroups.find((item) => item.category === category);
     if (!group) return;
     const rememberedId = lastDefinitionByCategory.current.get(category);
@@ -496,12 +512,12 @@ export function WorkflowsPage({
       <WorkflowRunSlotProvider>
         <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:gap-4">
           {categoryGroups.length > 0 && (
-            <WorkflowCategoryRail groups={categoryGroups} selected={selectedCategory} onSelect={selectCategory} />
+            <WorkflowCategoryRail groups={categoryGroups} selected={selectedCategoryView} onSelect={selectCategory} />
           )}
           <div
             id={workflowCategoryPanelId}
-            role={selectedCategory ? "tabpanel" : undefined}
-            aria-labelledby={selectedCategory ? workflowCategoryTabId(selectedCategory) : undefined}
+            role={selectedCategoryView ? "tabpanel" : undefined}
+            aria-labelledby={selectedCategoryView ? workflowCategoryTabId(selectedCategoryView) : undefined}
             className="min-w-0 flex-1 space-y-4"
           >
             <WorkflowNavigation

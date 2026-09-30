@@ -114,6 +114,12 @@ export const surfaceHant = {
     search: "搜尋中繼資料",
     loading: "正在載入作品維護",
     checkSources: "檢查來源（{{count}}）",
+    workColumn: "作品",
+    circleColumn: "社團",
+    statusColumn: "狀態",
+    statusOk: "正常",
+    editFor: "編輯 {{code}} 的中繼資料",
+    editLoadFailed: "無法載入作品詳情。",
   },
   metadataIssues: {
     title: "待處理中繼資料",
@@ -613,6 +619,7 @@ export const surfaceHant = {
     workflowTabs: "工作流程",
     workflowCategories: "工作流程分類",
     categories: {
+      all: "全部",
       basic: "基礎",
       collect: "收集",
       follow: "關注",

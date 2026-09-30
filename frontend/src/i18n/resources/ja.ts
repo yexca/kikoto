@@ -563,6 +563,10 @@ const adminToolsJapanese = {
   recommendationActivity: {
     title: "あなたのおすすめアクティビティ",
     description: "過去 {{count}} 日間のおすすめとのやり取り",
+    engagement: "表示から再生まで",
+    ofImpressions: "表示の {{percent}}",
+    feedback: "あなたのフィードバック",
+    empty: "過去 {{count}} 日間のおすすめアクティビティはありません。",
   },
 } as const;
 

@@ -113,6 +113,12 @@ export const surfaceHans = {
     search: "搜索元数据",
     loading: "正在加载作品维护",
     checkSources: "检查来源（{{count}}）",
+    workColumn: "作品",
+    circleColumn: "社团",
+    statusColumn: "状态",
+    statusOk: "正常",
+    editFor: "编辑 {{code}} 的元数据",
+    editLoadFailed: "无法加载作品详情。",
   },
   metadataIssues: {
     title: "待处理元数据",
@@ -612,6 +618,7 @@ export const surfaceHans = {
     workflowTabs: "工作流",
     workflowCategories: "工作流分类",
     categories: {
+      all: "全部",
       basic: "基础",
       collect: "收集",
       follow: "关注",
