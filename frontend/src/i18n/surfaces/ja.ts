@@ -115,6 +115,12 @@ export const surfaceJapanese = {
     search: "メタデータを検索",
     loading: "作品メンテナンスを読み込み中",
     checkSources: "ソースを確認（{{count}}）",
+    workColumn: "作品",
+    circleColumn: "サークル",
+    statusColumn: "ステータス",
+    statusOk: "正常",
+    editFor: "{{code}} のメタデータを編集",
+    editLoadFailed: "作品の詳細を読み込めませんでした。",
   },
   metadataIssues: {
     title: "要対応のメタデータ",
@@ -659,6 +665,7 @@ export const surfaceJapanese = {
     workflowTabs: "ワークフロー",
     workflowCategories: "ワークフローの分類",
     categories: {
+      all: "すべて",
       basic: "基本",
       collect: "収集",
       follow: "フォロー",

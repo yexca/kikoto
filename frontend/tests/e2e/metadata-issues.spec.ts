@@ -14,6 +14,7 @@ import type {
 import {
   appSettingsFixture,
   metadataIssueWorkFixture,
+  workDetailFixture,
   voiceDetailFixture,
   voiceSummaryFixture,
   type ApiErrorBody,
@@ -367,11 +368,17 @@ for (const viewport of ["mobile", "@desktop"]) {
     );
     await expect(list.getByRole("link", { name: "Example healthy work", exact: true })).toHaveCount(0);
     await expect(list.getByRole("link", { name: "Example missing-source work", exact: true })).toBeVisible();
-    // Five tabs leave no room for an inline field at these widths, so search starts behind its icon.
-    const searchToggle = page.getByRole("button", { name: "Search metadata", exact: true });
-    await expect(searchToggle).toHaveAttribute("aria-expanded", "false");
-    await searchToggle.click();
-    await expect(page.getByRole("searchbox", { name: "Search metadata", exact: true })).toBeFocused();
+    // The view rail sits beside the header, so wide layouts keep search inline; phones start behind its icon.
+    if (viewport === "mobile") {
+      const searchToggle = page.getByRole("button", { name: "Search metadata", exact: true });
+      await expect(searchToggle).toHaveAttribute("aria-expanded", "false");
+      await searchToggle.click();
+      await expect(page.getByRole("searchbox", { name: "Search metadata", exact: true })).toBeFocused();
+    } else {
+      await expect(page.getByRole("button", { name: "Search metadata", exact: true })).toHaveCount(0);
+      // Wide layouts name the current view beside the search field.
+      await expect(page.getByRole("heading", { level: 2, name: "Needs attention", exact: true })).toBeVisible();
+    }
     await page.getByRole("searchbox", { name: "Search metadata", exact: true }).fill("Example");
     await page.getByRole("searchbox", { name: "Search metadata", exact: true }).press("Enter");
     await page.getByRole("button", { name: "Metadata settings", exact: true }).click();
@@ -393,6 +400,61 @@ for (const viewport of ["mobile", "@desktop"]) {
     await expect(page.getByRole("button", { name: "Metadata sync", exact: true })).toHaveCount(0);
   });
 }
+
+test("@desktop Metadata table shows management columns, edits a work in place, and does not poll", async ({ page }) => {
+  await page.clock.install();
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    authenticated: true,
+    permissions: ["library:read", "library:write", "metadata:sync"],
+  });
+  const code = syntheticWorkCode("RJ", 0);
+  const record: MaintenanceWork = {
+    ...work,
+    id: 1,
+    primaryCode: code,
+    title: "Example healthy work",
+    circle: "Example Circle",
+    noSource: false,
+    metadataIssues: [],
+  };
+  let listRequests = 0;
+  await page.route("**/api/maintenance/works?*", async (route) => {
+    listRequests++;
+    await route.fulfill({ json: { works: [record], page: 1, pageSize: 25, total: 1 } satisfies MaintenanceWorkPage });
+  });
+  await page.route("**/api/works/1?includeMedia=false", (route) =>
+    route.fulfill({ json: workDetailFixture({ ...work, id: 1, primaryCode: code, title: record.title }) }),
+  );
+  await page.route("**/api/works/1/cover-candidates", (route) => route.fulfill({ json: { candidates: [] } }));
+  const saves: unknown[] = [];
+  await page.route("**/api/works/1/manual-overrides", async (route) => {
+    saves.push(route.request().postDataJSON());
+    await route.fulfill({ json: {} });
+  });
+
+  await page.goto("/metadata");
+  const list = page.getByRole("region", { name: "Metadata records", exact: true });
+  await expect(list.getByRole("columnheader")).toHaveText(["", "Work", "Circle", "Status", "Actions"]);
+  const row = list.getByRole("row").filter({ hasText: "Example healthy work" });
+  await expect(row.getByRole("cell")).toHaveText([
+    /^$/,
+    new RegExp(`${code}Example healthy work`),
+    "Example Circle",
+    "OK",
+    "",
+  ]);
+  // The list loads on demand; time passing alone must not refetch it, so only the save below adds a request.
+  const loadedRequests = listRequests;
+  await page.clock.fastForward(30_000);
+
+  await row.getByRole("button", { name: `Edit metadata for ${code}`, exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit metadata" });
+  await dialog.getByLabel("Title", { exact: true }).fill("Example edited title");
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(saves).toEqual([expect.objectContaining({ title: "Example edited title" })]);
+  await expect.poll(() => listRequests).toBe(loadedRequests + 1);
+});
 
 test("@desktop Metadata voice aliases view lists people and opens alias review", async ({ page }) => {
   await mockApplication(page, undefined, false, 1, 0, [], undefined, {

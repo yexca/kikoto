@@ -115,6 +115,12 @@ export const surfaceKorean = {
     search: "메타데이터 검색",
     loading: "작품 유지 관리 불러오는 중",
     checkSources: "소스 확인 ({{count}})",
+    workColumn: "작품",
+    circleColumn: "서클",
+    statusColumn: "상태",
+    statusOk: "정상",
+    editFor: "{{code}} 메타데이터 편집",
+    editLoadFailed: "작품 정보를 불러오지 못했습니다.",
   },
   metadataIssues: {
     title: "처리가 필요한 메타데이터",
@@ -657,6 +663,7 @@ export const surfaceKorean = {
     workflowTabs: "워크플로",
     workflowCategories: "워크플로 분류",
     categories: {
+      all: "전체",
       basic: "기본",
       collect: "수집",
       follow: "팔로우",
