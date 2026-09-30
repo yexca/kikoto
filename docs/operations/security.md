@@ -262,17 +262,36 @@ subdomains only and does not permit `media.example.invalid` itself. Additional
 allowed hosts never receive the private-LAN exception.
 
 The hardened outbound transport does not inherit ambient `HTTP_PROXY`,
-`HTTPS_PROXY`, or `NO_PROXY` settings. Built-in DLsite metadata and cover
-requests can instead use the **Metadata proxy** configured under
-`Metadata -> Metadata settings`. It accepts `http`, `https`, `socks5`, or
-`socks5h` URLs with an explicit host and port and rejects credentials, paths,
-and queries. The proxy is trusted administrator configuration and may be a
-private LAN address. With a proxy configured every metadata connection goes to
-that proxy: destination URLs and every redirect hop still must match the
-built-in DLsite origins, but the proxy resolves destination hostnames, so
-destination address checks become the proxy's responsibility. An unusable
-stored proxy fails closed rather than connecting directly. Remote-source
-requests never use this proxy.
+`HTTPS_PROXY`, or `NO_PROXY` settings. Administrators instead configure
+forward proxies under `Settings -> Proxy`: an ordered list of up to
+eight `http`, `https`, `socks5`, or `socks5h` proxies with an explicit host and
+port and an optional username and password. **Proxy scope** routes built-in
+DLsite requests, remote-source requests (with per-source direct or proxy
+overrides), and other built-in requests such as the update check. Personal
+Kikoeru account imports never use a proxy: their address comes from the
+signed-in user, and a proxy would resolve it outside the private-address
+checks that bound those requests. A request
+tries its proxies in priority order and moves to the next one only when a
+proxy produced no response, the failure was not a policy rejection, the
+request is still live, and its body can be replayed; a proxy that failed stays
+behind the others for 30 seconds. If every proxy fails, the request fails
+closed rather than connecting directly unless **Direct connection fallback** is
+enabled. That opt-in switch, off by default, retries the request once without a
+proxy after every proxy was tried, under the same destination policy and its
+public-address checks; enable it only when reaching the destination directly
+is acceptable. An unusable stored proxy configuration always fails closed.
+
+A proxy is trusted administrator configuration and may be a private LAN
+address. A **Local machine** proxy connects to the host that runs Kikoto: inside
+a container that is `host.docker.internal`, which the Compose files map to
+Docker's `host-gateway`; outside a container it is `127.0.0.1`. Set
+`KIKOTO_HOST_PROXY_HOST` to override that address; the settings API cannot
+change it. With a proxy in use every connection goes to that proxy:
+destination URLs and every redirect hop still must match the request's
+destination policy, but the proxy resolves destination hostnames, so
+destination address checks become the proxy's responsibility. Proxy passwords
+are stored in the SQLite settings table, are write-only through the settings
+API, and are never returned or included in validation errors.
 
 Container or host egress rules remain useful defense in depth, especially on a
 host that can reach cloud metadata endpoints or unrelated private services. Do

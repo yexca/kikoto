@@ -21,6 +21,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/library"
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/proxyconfig"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -40,6 +41,7 @@ type Server struct {
 	cfg                            config.Config
 	dlsiteEndpoints                dlsite.Endpoints
 	dlsiteClient                   metasync.DLsiteClient
+	proxyConfig                    *proxyConfigStore
 	metadataTransport              *metadataTransport
 	metadataHTTPClient             *http.Client
 	remoteWorkCacheMu              sync.Mutex
@@ -113,7 +115,10 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 		appUpdateEndpoints:             defaultAppUpdateEndpoints(),
 		lifetime:                       newServerLifetime(),
 	}
-	server.metadataTransport = newMetadataTransport(dlsiteEndpoints, server.loadMetadataProxyURL)
+	server.proxyConfig = &proxyConfigStore{load: server.loadProxyConfig}
+	server.metadataTransport = newMetadataTransport(dlsiteEndpoints, func(ctx context.Context) (proxyRoute, error) {
+		return server.resolveProxyRoute(ctx, proxyconfig.ScopeDLsite, 0)
+	})
 	server.metadataHTTPClient = newMetadataHTTPClient(dlsiteEndpoints, server.metadataTransport)
 	server.dlsiteClient = dlsiteEndpoints.NewClient(server.metadataHTTPClient)
 	return server

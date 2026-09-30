@@ -137,7 +137,7 @@ func remoteTextTrackURL(nodes []kikoeru.Track, targetPath string, basePath strin
 }
 
 func remotePreviewURLAllowed(value *url.URL, source remoteSourceForUse) bool {
-	policy, err := sourceOutboundPolicy(source)
+	policy, err := sourceOutboundPolicy(source, nil)
 	return err == nil && policy.ValidateURL(value) == nil
 }
 

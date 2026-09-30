@@ -23,6 +23,7 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { LibraryLayoutSection } from "@/features/library-setup/LibraryLayoutSection";
+import { ProxySettingsSection } from "@/features/proxy";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { RemoteSourceDialog } from "@/features/sources/RemoteSourceDialog";
 import { RemoteSourceList } from "@/features/sources/RemoteSourceList";
@@ -40,7 +41,7 @@ import { api, type AppSettings, type FileSource } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { UsersPage } from "@/pages/UsersPage";
 
-type MaintenanceTab = "library" | "cache" | "users";
+type MaintenanceTab = "library" | "cache" | "proxy" | "users";
 
 type RuntimeDraft = {
   localScanDepth: number;
@@ -411,6 +412,15 @@ export function MaintenancePage({
               t("maintenance.cache.save"),
             )}
           />
+        ) : activeTab === "proxy" && settings ? (
+          <div className="space-y-6">
+            <ProxySettingsSection
+              proxy={settings.proxy}
+              remoteSources={remoteSources}
+              readOnly={readOnly}
+              onSaved={setSettings}
+            />
+          </div>
         ) : activeTab === "users" ? (
           <div className="space-y-6">
             {canManageUsers && (

@@ -51,6 +51,8 @@ type Options struct {
 	// proxy parsed by ParseProxyURL. The proxy endpoint keeps the configured
 	// private-address exception; destination URLs and redirects are still
 	// validated here, while the proxy resolves destination hostnames.
+	// Credentials set programmatically in Proxy.User authenticate to the
+	// proxy; the endpoint itself must still pass ParseProxyURL.
 	Proxy *url.URL
 }
 
@@ -183,10 +185,13 @@ func NewPolicy(destinations []Destination, options Options) (*Policy, error) {
 		policy.endpoints[endpoint] = endpointRule{allowPrivate: destination.AllowPrivate}
 	}
 	if options.Proxy != nil {
-		proxy, err := ParseProxyURL(options.Proxy.String())
+		endpoint := *options.Proxy
+		endpoint.User = nil
+		proxy, err := ParseProxyURL(endpoint.String())
 		if err != nil {
 			return nil, err
 		}
+		proxy.User = options.Proxy.User
 		policy.proxy = proxy
 		policy.proxyEndpoint, err = canonicalEndpoint(proxy.Hostname(), proxy.Port())
 		if err != nil {

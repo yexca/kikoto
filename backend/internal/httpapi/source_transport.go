@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -24,12 +25,16 @@ type sourceTransportEntry struct {
 	usedAt   time.Time
 }
 
-func (cache *sourceTransportCache) load(source remoteSourceForUse) (*outbound.Policy, http.RoundTripper, error) {
+// load returns the source's destination policy, for URL and redirect checks,
+// and a pooled transport that dials directly or through proxies in priority
+// order.
+func (cache *sourceTransportCache) load(source remoteSourceForUse, route proxyRoute) (*outbound.Policy, http.RoundTripper, error) {
 	boundary, err := json.Marshal(struct {
 		API, Base, Fallback string
 		Restricted          bool
 		Hosts               []string
-	}{source.Endpoint.APIURL, source.Endpoint.BaseURL, source.Endpoint.FallbackURL, source.Endpoint.RestrictOutboundHosts, source.Endpoint.AllowedHostPatterns})
+		Proxies             string
+	}{source.Endpoint.APIURL, source.Endpoint.BaseURL, source.Endpoint.FallbackURL, source.Endpoint.RestrictOutboundHosts, source.Endpoint.AllowedHostPatterns, route.key()})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -48,7 +53,13 @@ func (cache *sourceTransportCache) load(source remoteSourceForUse) (*outbound.Po
 		closeSourceIdleConnections(entry.base)
 		delete(cache.entries, key)
 	}
-	policy, err := sourceOutboundPolicy(source)
+	policy, err := sourceOutboundPolicy(source, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	base, err := proxiedTransport(route, func(proxy *url.URL) (*outbound.Policy, error) {
+		return sourceOutboundPolicy(source, proxy)
+	})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -63,7 +74,7 @@ func (cache *sourceTransportCache) load(source remoteSourceForUse) (*outbound.Po
 		closeSourceIdleConnections(cache.entries[oldestKey].base)
 		delete(cache.entries, oldestKey)
 	}
-	entry := sourceTransportEntry{boundary: string(boundary), policy: policy, base: policy.Transport(), usedAt: time.Now()}
+	entry := sourceTransportEntry{boundary: string(boundary), policy: policy, base: base, usedAt: time.Now()}
 	cache.entries[key] = entry
 	return policy, entry.base, nil
 }

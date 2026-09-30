@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
 	"github.com/yexca/kikoto/backend/internal/outbound"
+	"github.com/yexca/kikoto/backend/internal/proxyconfig"
 )
 
 const (
@@ -54,16 +56,39 @@ func (s *Server) getAppUpdate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+// newAppUpdateClient builds a client limited to the releases endpoint that
+// never follows redirects and uses the other-traffic proxy route.
+func (s *Server) newAppUpdateClient(ctx context.Context) (*http.Client, error) {
+	policyFor := func(proxy *url.URL) (*outbound.Policy, error) {
+		return outbound.NewPolicy([]outbound.Destination{{URL: s.appUpdateEndpoints.releasesAPIURL}}, outbound.Options{Proxy: proxy})
+	}
+	policy, err := policyFor(nil)
+	if err != nil {
+		return nil, err
+	}
+	route, err := s.resolveProxyRoute(ctx, proxyconfig.ScopeOther, 0)
+	if err != nil {
+		return nil, err
+	}
+	transport, err := proxiedTransport(route, policyFor)
+	if err != nil {
+		return nil, err
+	}
+	client := policy.Client(transport, 20*time.Second)
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	return client, nil
+}
+
 func (s *Server) fetchAppUpdate(ctx context.Context) (appUpdateResponse, error) {
 	current := buildinfo.Version
-	policy, err := outbound.NewPolicy([]outbound.Destination{{URL: s.appUpdateEndpoints.releasesAPIURL}}, outbound.Options{})
-	if err != nil {
-		return appUpdateResponse{}, err
-	}
-	client := policy.Client(nil, 20*time.Second)
-	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
-	if s.updateHTTPClient != nil {
-		client = s.updateHTTPClient
+	client := s.updateHTTPClient
+	if client == nil {
+		var err error
+		client, err = s.newAppUpdateClient(ctx)
+		if err != nil {
+			return appUpdateResponse{}, err
+		}
+		defer client.CloseIdleConnections()
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, s.appUpdateEndpoints.releasesAPIURL, nil)
 	if err != nil {

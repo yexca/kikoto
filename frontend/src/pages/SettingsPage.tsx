@@ -11,6 +11,7 @@ import {
   History,
   KeyRound,
   LoaderCircle,
+  Network,
   Rewind,
   Save,
   Shield,
@@ -47,11 +48,11 @@ const emptyPasswordDraft: PasswordChangeDraft = {
   confirmPassword: "",
 };
 
-type SettingsTab = "account" | "playback" | "history" | "tags" | "library" | "cache" | "cleanup" | "users";
+type SettingsTab = "account" | "playback" | "history" | "tags" | "library" | "cache" | "proxy" | "cleanup" | "users";
 type SettingsSectionTarget = "data";
 type SettingsLocation = { tab: SettingsTab; section?: SettingsSectionTarget };
 
-const adminSettingsTabs: SettingsTab[] = ["library", "cache", "cleanup", "users"];
+const adminSettingsTabs: SettingsTab[] = ["library", "cache", "proxy", "cleanup", "users"];
 const allSettingsTabs: SettingsTab[] = ["account", "playback", "history", "tags", ...adminSettingsTabs];
 // Former tab ids stay valid links; each opens the tab that now holds its content.
 const settingsTabAliases: Record<string, SettingsLocation> = {
@@ -69,6 +70,7 @@ const settingsTabs: Array<{ id: SettingsTab; labelKey: string; icon: ReactNode }
   { id: "tags", labelKey: "nav.tags", icon: <Tags className="h-4 w-4" /> },
   { id: "library", labelKey: "maintenance.tabs.library", icon: <Folder className="h-4 w-4" /> },
   { id: "cache", labelKey: "maintenance.tabs.cache", icon: <Download className="h-4 w-4" /> },
+  { id: "proxy", labelKey: "maintenance.tabs.proxy", icon: <Network className="h-4 w-4" /> },
   { id: "cleanup", labelKey: "cleanup.tab", icon: <Eraser className="h-4 w-4" /> },
   { id: "users", labelKey: "maintenance.tabs.users", icon: <Shield className="h-4 w-4" /> },
 ];
@@ -575,7 +577,7 @@ export function SettingsPage({
             isSuperAdmin={user.role === "super_admin"}
             canManageAccessPolicy={canManageAccessPolicy}
             readOnly={readOnly}
-            activeTab={activeTab as "library" | "cache" | "users"}
+            activeTab={activeTab as "library" | "cache" | "proxy" | "users"}
             onAccessPolicyUpdated={onAccessPolicyUpdated}
           />
         </div>

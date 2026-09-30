@@ -346,7 +346,7 @@ func TestSourceClientRejectsURLOutsideConfiguredOrigins(t *testing.T) {
 
 func TestSourcePolicyCompatibilityAllowsNewPublicOrigin(t *testing.T) {
 	source := remoteSourceForUse{Endpoint: fileSourceEndpoint{APIURL: "https://api.source.example.invalid"}}
-	policy, err := sourceOutboundPolicy(source)
+	policy, err := sourceOutboundPolicy(source, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
