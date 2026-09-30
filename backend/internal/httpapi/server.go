@@ -171,6 +171,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/works/{id}/manual-overrides/{field}", s.deleteWorkManualOverride)
 	mux.HandleFunc("GET /api/works/{id}/cover-candidates", s.listWorkCoverCandidates)
 	mux.HandleFunc("POST /api/works/{id}/cover-override", s.setWorkCoverOverride)
+	mux.HandleFunc("PUT /api/works/{id}/metadata-link", s.setWorkMetadataLink)
+	mux.HandleFunc("DELETE /api/works/{id}/metadata-link", s.deleteWorkMetadataLink)
 	mux.HandleFunc("GET /api/metadata-suggestions/circles", s.suggestCircles)
 	mux.HandleFunc("GET /api/metadata-suggestions/voices", s.suggestVoices)
 	mux.HandleFunc("GET /api/metadata-suggestions/series", s.suggestSeries)

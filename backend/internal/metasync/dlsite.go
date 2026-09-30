@@ -440,6 +440,11 @@ func (s *DLsiteSyncer) syncFamily(ctx context.Context, requestedCode string) (DL
 	if !dlsiteWorkNoPattern.MatchString(requestedCode) {
 		return DLsiteFamilySyncResult{}, fmt.Errorf("invalid DLsite work code %q", requestedCode)
 	}
+	if sourceCode, linked, err := s.metadataLinkSourceCode(ctx, requestedCode); err != nil {
+		return DLsiteFamilySyncResult{}, err
+	} else if linked {
+		return s.syncLinkedWork(ctx, requestedCode, sourceCode)
+	}
 	result := DLsiteFamilySyncResult{RequestedCode: requestedCode, Codes: []string{}, SyncedCodes: []string{}, SkippedCodes: []string{}, Failures: []string{}}
 	queue := []string{requestedCode}
 	seen := map[string]bool{}
@@ -1117,13 +1122,17 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 	}
 	contentHash := hashSnapshot(baseRaw)
 	variantKey := metadataVariantKey(editionLanguage, editionToken)
-	raw := snapshotWithKikotoMeta(baseRaw, map[string]any{
+	kikotoMeta := map[string]any{
 		"response_language": product.Language,
 		"request_locale":    requestLocale,
 		"edition_language":  editionLanguage,
 		"variant_key":       variantKey,
 		"content_hash":      contentHash,
-	})
+	}
+	if product.MetadataSourceCode != "" {
+		kikotoMeta["metadata_source_code"] = product.MetadataSourceCode
+	}
+	raw := snapshotWithKikotoMeta(baseRaw, kikotoMeta)
 	if err := upsertDLsiteMetadataSnapshot(ctx, tx, workID, providerID, product.WorkNo, raw, variantKey, editionLanguage, requestLocale, contentHash); err != nil {
 		return err
 	}

@@ -82,8 +82,10 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain includes
-`044_library_upgrade.sql`, with the `044_v0.7.0.sql` baseline generated from
-the current `VERSION` file. Migration 044 stores the
+`045_work_metadata_link.sql`, with the `045_v0.7.0.sql` baseline generated from
+the current `VERSION` file. Migration 045 adds `work_metadata_link`, a
+user-declared DLsite product whose metadata is stored on the linked work; it
+changes no existing rows. Migration 044 stores the
 preserved legacy workflow snapshot and durable library-layout migration state.
 Before migration 035 removes user definitions, the application's upgrade hook
 copies their definitions and triggers into the snapshot. An instance that

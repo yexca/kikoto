@@ -100,6 +100,9 @@ type Product struct {
 	// RequestLocale records the locale sent to DLsite. It is deliberately
 	// separate from the edition language, which is provider metadata.
 	RequestLocale string `json:"-"`
+	// MetadataSourceCode is set when Kikoto stores this product's metadata on
+	// another work through a user-declared metadata link.
+	MetadataSourceCode string `json:"-"`
 }
 
 func (product Product) IsPermanentlyFree() *bool {

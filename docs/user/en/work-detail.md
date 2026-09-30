@@ -109,6 +109,12 @@ playback actions for one work.
   corresponding source inside the aggregated Tracked context without requiring
   a second Fork.
 - Edit manual overrides when available.
+- Link the work's metadata to another DLsite code from the metadata editor,
+  for example when a bonus edition is no longer sold and the regular edition
+  has a different code. Metadata refreshes then read the linked code and store
+  its metadata, tags, and cover on this work; the linked code does not become
+  a separate work. When the work's own code has no record, the unavailable
+  metadata notice opens the editor directly.
 
 ## Detail Loading Model
 

@@ -86,6 +86,17 @@ Demo mode.
 alias may reference a persisted edition work, but metadata-only aliases do not
 create works and do not imply local or remote file availability.
 
+`work_metadata_link` (migration `045`) records a user-declared DLsite product
+whose metadata a work uses, for example when a bonus edition is no longer
+published and the regular edition is sold under another code. Metadata sync
+for a linked work requests only the linked code and stores the result on the
+linked work under its own code: the snapshot's product codes are rewritten to
+the work, its translation and language-edition relationships are removed, and
+`_kikoto.metadata_source_code` keeps the source for traceability. The linked
+code never becomes a work, edition, or alias, and its family is not walked.
+Saving a link rechecks a work previously recorded as `not_found`; removing it
+keeps the stored metadata until the work's own code is synchronized again.
+
 ## Voice Catalog Discovery
 
 Important tables:

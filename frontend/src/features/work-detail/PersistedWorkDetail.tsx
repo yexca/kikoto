@@ -20,6 +20,7 @@ import {
   type VoiceCredit,
   type WorkDetail,
   type WorkMetadataPresentation,
+  type WorkMetadataLinkResult,
   type WorkMetadataSyncStatus,
 } from "@/lib/api";
 import {
@@ -717,6 +718,7 @@ function persistedWorkDetailPresentation({
   canSyncMetadata,
   metadataSyncBusy,
   onSyncMetadata,
+  onLinkMetadata,
   onMetadataVariantSelect,
   onVersionSelect,
 }: {
@@ -733,6 +735,7 @@ function persistedWorkDetailPresentation({
   canSyncMetadata: boolean;
   metadataSyncBusy: boolean;
   onSyncMetadata: () => void;
+  onLinkMetadata: () => void;
   onMetadataVariantSelect: (key: string) => void;
   onVersionSelect: (translation: WorkDetail["translations"][number]) => void;
 }): UnifiedWorkDetailPresentation {
@@ -759,6 +762,7 @@ function persistedWorkDetailPresentation({
     canSyncMetadata,
     metadataSyncBusy,
     onSyncMetadata,
+    onLinkMetadata,
     activeMetadataVariantKey: fields.activeMetadataVariantKey,
     onMetadataVariantSelect,
     translations: displayTranslations,
@@ -867,15 +871,25 @@ function PersistedMetadataEditorOverlay({
   work,
   onClose,
   onSaved,
+  onLinkChanged,
 }: {
   open: boolean;
   work: WorkDetail | null;
   onClose: () => void;
   onSaved: () => void;
+  onLinkChanged: (result: WorkMetadataLinkResult) => void;
 }) {
   const { demoMode } = useAuth();
   if (!open || !work) return null;
-  return <WorkMetadataEditorModal work={work} readOnly={demoMode} onClose={onClose} onSaved={onSaved} />;
+  return (
+    <WorkMetadataEditorModal
+      work={work}
+      readOnly={demoMode}
+      onClose={onClose}
+      onSaved={onSaved}
+      onLinkChanged={onLinkChanged}
+    />
+  );
 }
 
 function PersistedReforkOverlay({
@@ -1507,6 +1521,15 @@ export function PersistedWorkDetailController({
     await onWorksChanged();
   };
 
+  const metadataLinkChanged = async (result: WorkMetadataLinkResult) => {
+    // A new link queues a refresh from the linked code; the run watcher reloads
+    // the detail again when that refresh finishes.
+    if (result.sync && result.sync.runId > 0 && result.sync.status !== "unavailable") {
+      setActiveMetadataRunId(result.sync.runId);
+    }
+    await metadataSaved();
+  };
+
   const refreshSourceAvailability = async () => {
     if (!work?.primaryCode) return;
     // Checking sources probes remotes and persists availability, so Demo answers locally instead.
@@ -1775,6 +1798,7 @@ export function PersistedWorkDetailController({
     canSyncMetadata,
     metadataSyncBusy: isSyncingDetail || Boolean(activeMetadataRunId),
     onSyncMetadata: () => void syncDetailMetadata(),
+    onLinkMetadata: () => setIsMetadataEditorOpen(true),
     onMetadataVariantSelect: setSelectedMetadataVariantKey,
     onVersionSelect: (translation) => void selectDisplayedEdition(translation),
   });
@@ -1814,6 +1838,7 @@ export function PersistedWorkDetailController({
         work={work}
         onClose={() => setIsMetadataEditorOpen(false)}
         onSaved={() => void metadataSaved()}
+        onLinkChanged={(result) => void metadataLinkChanged(result)}
       />
       <PersistedReforkOverlay
         target={reforkTarget}

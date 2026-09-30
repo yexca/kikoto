@@ -83,3 +83,12 @@ function nullableSeries(name: string, titleId: string, circleExternalId: string)
     ? { name: nextName, titleId: nextTitleId, circleExternalId: nextCircleExternalId }
     : null;
 }
+
+const metadataLinkCodePattern = /^(RJ|BJ|VJ)[0-9]{5,8}$/;
+
+/** Returns the DLsite code a work may take its metadata from, or null when the input is not one. */
+export function normalizedMetadataLinkCode(value: string, primaryCode: string): string | null {
+  const code = value.trim().toUpperCase();
+  if (!metadataLinkCodePattern.test(code) || code === primaryCode.trim().toUpperCase()) return null;
+  return code;
+}

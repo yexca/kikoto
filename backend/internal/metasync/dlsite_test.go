@@ -547,5 +547,12 @@ func openTestDB(t *testing.T) *sql.DB {
 	if _, err := db.Exec(string(issueSchema)); err != nil {
 		t.Fatal(err)
 	}
+	linkSchema, err := migrations.Files.ReadFile("045_work_metadata_link.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(string(linkSchema)); err != nil {
+		t.Fatal(err)
+	}
 	return db
 }

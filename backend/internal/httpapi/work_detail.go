@@ -52,6 +52,7 @@ type workDetail struct {
 	MetadataSync     workMetadataSyncStatus     `json:"metadataSync"`
 	Translations     []workTranslation          `json:"translations"`
 	ManualOverrides  workManualOverrides        `json:"manualOverrides"`
+	MetadataLink     *workMetadataLink          `json:"metadataLink"`
 	SourcePresence   []sourcePresenceItem       `json:"sourcePresence"`
 	LocalFolders     []workFolderLocationDetail `json:"localFolders"`
 	MediaItems       []mediaItemDetail          `json:"mediaItems"`
@@ -238,6 +239,9 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 		return workDetail{}, err
 	}
 	if err := s.applyManualOverridesToDetail(ctx, &work); err != nil {
+		return workDetail{}, err
+	}
+	if work.MetadataLink, err = s.loadWorkMetadataLink(ctx, id); err != nil {
 		return workDetail{}, err
 	}
 	if !includeMedia {

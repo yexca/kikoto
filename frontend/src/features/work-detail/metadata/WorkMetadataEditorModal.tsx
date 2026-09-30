@@ -1,5 +1,9 @@
-import { Check, Plus, X } from "lucide-react";
-import { metadataEditorInitialState, workMetadataOverridePayload } from "./metadataEditorModel";
+import { Check, ExternalLink, Link2, Plus, X } from "lucide-react";
+import {
+  metadataEditorInitialState,
+  normalizedMetadataLinkCode,
+  workMetadataOverridePayload,
+} from "./metadataEditorModel";
 import { DebouncedSuggestionResult, useDebouncedSuggestion, useWorkCoverCandidates } from "./useMetadataSuggestions";
 
 import { useState, type ReactNode } from "react";
@@ -19,6 +23,8 @@ import {
   type VoiceSuggestion,
   type WorkCoverCandidate,
   type WorkDetail,
+  type WorkMetadataLink,
+  type WorkMetadataLinkResult,
 } from "@/lib/api";
 
 import i18n from "@/i18n";
@@ -88,6 +94,75 @@ function MetadataEditorCoverSection({
       <div className="flex justify-end">
         <Button variant="outline" size="sm" disabled={saving || !manualCover} onClick={onReset}>
           {i18n.t("libraryDetail.resetCover")}
+        </Button>
+      </div>
+    </>
+  );
+}
+
+function MetadataEditorLinkSection({
+  link,
+  primaryCode,
+  saving,
+  onLink,
+  onUnlink,
+}: {
+  link?: WorkMetadataLink | null;
+  primaryCode: string;
+  saving: boolean;
+  onLink: (sourceCode: string) => void;
+  onUnlink: () => void;
+}) {
+  const [code, setCode] = useState(link?.sourceCode ?? "");
+  const sourceCode = normalizedMetadataLinkCode(code, primaryCode);
+  return (
+    <>
+      <p className="text-xs text-muted-foreground">{i18n.t("libraryDetail.metadataLinkDescription")}</p>
+      {link && (
+        <div className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2 text-sm">
+          <span className="min-w-0 truncate">
+            {i18n.t("libraryDetail.metadataLinkCurrent", { code: link.sourceCode })}
+          </span>
+          {link.url && (
+            <a
+              href={link.url}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+              aria-label={i18n.t("libraryDetail.openMetadataLinkSource", { code: link.sourceCode })}
+              title={i18n.t("libraryDetail.openMetadataLinkSource", { code: link.sourceCode })}
+            >
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          )}
+        </div>
+      )}
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="block min-w-[12rem] flex-1 text-xs font-medium text-muted-foreground">
+          {i18n.t("libraryDetail.metadataLinkCode")}
+          <Input
+            fieldSize="sm"
+            className="mt-1 w-full"
+            value={code}
+            placeholder={i18n.t("libraryDetail.metadataLinkCodePlaceholder")}
+            autoCapitalize="characters"
+            spellCheck={false}
+            onChange={(event) => setCode(event.target.value)}
+          />
+        </label>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={saving || !sourceCode || sourceCode === link?.sourceCode}
+          onClick={() => sourceCode && onLink(sourceCode)}
+        >
+          <Link2 className="h-4 w-4" />
+          {i18n.t("libraryDetail.linkMetadata")}
+        </Button>
+      </div>
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" disabled={saving || !link} onClick={onUnlink}>
+          {i18n.t("libraryDetail.removeMetadataLink")}
         </Button>
       </div>
     </>
@@ -285,6 +360,7 @@ function useMetadataEditorActions({
   voiceActors,
   selectedCoverId,
   onSaved,
+  onLinkChanged,
   onClose,
 }: {
   work: WorkDetail;
@@ -298,6 +374,7 @@ function useMetadataEditorActions({
   voiceActors: ManualOverridePerson[];
   selectedCoverId: number | null;
   onSaved: () => void;
+  onLinkChanged: (result: WorkMetadataLinkResult) => void;
   onClose: () => void;
 }) {
   const [saving, setSaving] = useState(false);
@@ -342,7 +419,40 @@ function useMetadataEditorActions({
     }
   };
 
-  return { saving, save, resetField };
+  const linkMetadata = async (sourceCode: string) => {
+    setSaving(true);
+    try {
+      const result = await api.setWorkMetadataLink(work.id, sourceCode);
+      const refreshing = Boolean(result.sync && result.sync.runId > 0);
+      toast.success(
+        i18n.t(refreshing ? "libraryDetail.metadataLinkSavedRefreshing" : "libraryDetail.metadataLinkSaved", {
+          code: sourceCode,
+        }),
+      );
+      onLinkChanged(result);
+      onClose();
+    } catch (error) {
+      toast.notify(toastFromError(error, i18n.t("libraryDetail.metadataLinkFailed")));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const unlinkMetadata = async () => {
+    setSaving(true);
+    try {
+      const result = await api.deleteWorkMetadataLink(work.id);
+      toast.success(i18n.t("libraryDetail.metadataLinkRemoved"));
+      onLinkChanged(result);
+      onClose();
+    } catch (error) {
+      toast.notify(toastFromError(error, i18n.t("libraryDetail.metadataLinkFailed")));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return { saving, save, resetField, linkMetadata, unlinkMetadata };
 }
 
 export function WorkMetadataEditorModal({
@@ -350,11 +460,13 @@ export function WorkMetadataEditorModal({
   readOnly = false,
   onClose,
   onSaved,
+  onLinkChanged,
 }: {
   work: WorkDetail;
   readOnly?: boolean;
   onClose: () => void;
   onSaved: () => void;
+  onLinkChanged: (result: WorkMetadataLinkResult) => void;
 }) {
   const toast = useToast();
   const initialState = metadataEditorInitialState(work);
@@ -379,7 +491,7 @@ export function WorkMetadataEditorModal({
   const voiceSuggestions = useDebouncedSuggestion(voiceQuery, `${focusedVoiceIndex}:${focusedVoice?.name ?? ""}`, () =>
     api.suggestVoices(voiceQuery),
   );
-  const { saving, save, resetField } = useMetadataEditorActions({
+  const { saving, save, resetField, linkMetadata, unlinkMetadata } = useMetadataEditorActions({
     work,
     toast,
     title,
@@ -391,6 +503,7 @@ export function WorkMetadataEditorModal({
     voiceActors,
     selectedCoverId: coverState.selectedCoverId,
     onSaved,
+    onLinkChanged,
     onClose,
   });
 
@@ -413,6 +526,16 @@ export function WorkMetadataEditorModal({
       <DialogBody>
         {/* Demo opens the editor for inspection; every field stays visible but cannot be changed. */}
         <fieldset disabled={readOnly} className="m-0 min-w-0 space-y-5 border-0 p-0">
+          <EditorSection title={i18n.t("libraryDetail.metadataLink")}>
+            <MetadataEditorLinkSection
+              link={work.metadataLink}
+              primaryCode={work.primaryCode}
+              saving={saving}
+              onLink={(sourceCode) => void linkMetadata(sourceCode)}
+              onUnlink={() => void unlinkMetadata()}
+            />
+          </EditorSection>
+
           <EditorSection title={i18n.t("libraryDetail.work")}>
             <LabeledInput label={i18n.t("libraryDetail.title")} value={title} onChange={setTitle} />
             <div className="flex justify-end">

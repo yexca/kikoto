@@ -28,6 +28,7 @@ import {
   GitBranchPlus,
   HardDrive,
   Languages,
+  Link2,
   RefreshCw,
   Tags,
   UserRound,
@@ -80,6 +81,7 @@ export type UnifiedWorkDetailPresentation = {
   canSyncMetadata?: boolean;
   metadataSyncBusy?: boolean;
   onSyncMetadata?: () => void;
+  onLinkMetadata?: () => void;
   activeMetadataVariantKey?: string;
   onMetadataVariantSelect?: (key: string) => void;
   translations?: WorkDetail["translations"];
@@ -166,6 +168,7 @@ function DetailHero({
   canSyncMetadata = false,
   metadataSyncBusy = false,
   onSyncMetadata,
+  onLinkMetadata,
   activeMetadataVariantKey,
   onMetadataVariantSelect,
   translations,
@@ -204,6 +207,7 @@ function DetailHero({
   canSyncMetadata?: boolean;
   metadataSyncBusy?: boolean;
   onSyncMetadata?: () => void;
+  onLinkMetadata?: () => void;
   activeMetadataVariantKey?: string;
   onMetadataVariantSelect?: (key: string) => void;
   translations?: WorkDetail["translations"];
@@ -268,6 +272,7 @@ function DetailHero({
         canSyncMetadata={canSyncMetadata}
         metadataSyncBusy={metadataSyncBusy}
         onSyncMetadata={onSyncMetadata}
+        onLinkMetadata={onLinkMetadata}
         activeMetadataVariantKey={activeMetadataVariantKey}
         onMetadataVariantSelect={onMetadataVariantSelect}
         baseCode={baseCode}
@@ -310,6 +315,7 @@ function MobileWorkDetailLayout({
   canSyncMetadata = false,
   metadataSyncBusy = false,
   onSyncMetadata,
+  onLinkMetadata,
   activeMetadataVariantKey,
   onMetadataVariantSelect,
   translations,
@@ -351,6 +357,7 @@ function MobileWorkDetailLayout({
   canSyncMetadata?: boolean;
   metadataSyncBusy?: boolean;
   onSyncMetadata?: () => void;
+  onLinkMetadata?: () => void;
   activeMetadataVariantKey?: string;
   onMetadataVariantSelect?: (key: string) => void;
   translations?: WorkDetail["translations"];
@@ -440,6 +447,7 @@ function MobileWorkDetailLayout({
             canSyncMetadata={canSyncMetadata}
             metadataSyncBusy={metadataSyncBusy}
             onSyncMetadata={onSyncMetadata}
+            onLinkMetadata={onLinkMetadata}
             activeMetadataVariantKey={activeMetadataVariantKey}
             onMetadataVariantSelect={onMetadataVariantSelect}
             baseCode={baseCode}
@@ -669,6 +677,7 @@ function DetailMetadataContent({
   canSyncMetadata,
   metadataSyncBusy,
   onSyncMetadata,
+  onLinkMetadata,
   activeMetadataVariantKey,
   onMetadataVariantSelect,
   baseCode,
@@ -701,6 +710,7 @@ function DetailMetadataContent({
   canSyncMetadata?: boolean;
   metadataSyncBusy?: boolean;
   onSyncMetadata?: () => void;
+  onLinkMetadata?: () => void;
   activeMetadataVariantKey?: string;
   onMetadataVariantSelect?: (key: string) => void;
   baseCode?: string;
@@ -745,6 +755,7 @@ function DetailMetadataContent({
       canSync={Boolean(canSyncMetadata && onSyncMetadata)}
       busy={metadataSyncBusy ?? false}
       onSync={onSyncMetadata}
+      onLink={onLinkMetadata}
     />
   );
   const showMetadataNotice = metadataSync?.status === "not_synced" || metadataSync?.status === "not_found";
@@ -860,12 +871,14 @@ function MetadataSyncNotice({
   canSync,
   busy,
   onSync,
+  onLink,
 }: {
   status?: string;
   checkedAt: string;
   canSync: boolean;
   busy: boolean;
   onSync?: () => void;
+  onLink?: () => void;
 }) {
   if (status !== "not_synced" && status !== "not_found") return null;
   const unavailable = status === "not_found";
@@ -883,7 +896,7 @@ function MetadataSyncNotice({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="font-medium">
-            {unavailable ? i18n.t("metadata.sourceUnavailable") : i18n.t("libraryDetail.metadataNotSynced")}
+            {unavailable ? i18n.t("libraryDetail.metadataUnavailable") : i18n.t("libraryDetail.metadataNotSynced")}
           </div>
           <p className="mt-1 text-xs opacity-80">
             {unavailable ? i18n.t("libraryDetail.metadataNotRecorded") : i18n.t("libraryDetail.metadataNotSynced")}
@@ -894,6 +907,12 @@ function MetadataSyncNotice({
             </div>
           )}
         </div>
+        {unavailable && onLink && (
+          <Button variant="outline" size="sm" onClick={onLink}>
+            <Link2 className="h-4 w-4" />
+            {i18n.t("libraryDetail.useOtherWorkMetadata")}
+          </Button>
+        )}
         {!unavailable && canSync && onSync && (
           <Button variant="outline" size="sm" onClick={onSync} disabled={busy}>
             <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />

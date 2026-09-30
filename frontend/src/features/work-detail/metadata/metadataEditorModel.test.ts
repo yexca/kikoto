@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { metadataEditorInitialState, workMetadataOverridePayload } from "./metadataEditorModel";
+import {
+  metadataEditorInitialState,
+  normalizedMetadataLinkCode,
+  workMetadataOverridePayload,
+} from "./metadataEditorModel";
 
 describe("metadata editor model", () => {
   it("prefers authored overrides and retains canonical credit identities", () => {
@@ -43,5 +47,12 @@ describe("metadata editor model", () => {
       series: null,
       voiceActors: [{ name: "Example Voice", personId: 7 }],
     });
+  });
+
+  it("accepts only another DLsite code as a metadata link", () => {
+    expect(normalizedMetadataLinkCode(" rj00000001 ", "RJ00000000")).toBe("RJ00000001");
+    expect(normalizedMetadataLinkCode("rj00000000", "RJ00000000")).toBeNull();
+    expect(normalizedMetadataLinkCode("RJ0000", "RJ00000000")).toBeNull();
+    expect(normalizedMetadataLinkCode("https://example.test/RJ00000001", "RJ00000000")).toBeNull();
   });
 });

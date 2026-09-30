@@ -357,9 +357,22 @@ export type WorkDetail = {
   metadataSync: WorkMetadataSyncStatus;
   translations: WorkTranslation[];
   manualOverrides: WorkManualOverrides;
+  metadataLink?: WorkMetadataLink | null;
   sourcePresence: SourcePresenceItem[] | null;
   localFolders: WorkFolderLocation[];
   mediaItems: MediaItem[];
+};
+
+/** A user-declared DLsite product whose metadata is stored on this work. */
+export type WorkMetadataLink = {
+  sourceCode: string;
+  url: string;
+  updatedAt: string;
+};
+
+export type WorkMetadataLinkResult = {
+  link: WorkMetadataLink | null;
+  sync?: WorkMetadataSyncRunResult;
 };
 
 export type WorkMetadataPresentation = {
@@ -2385,6 +2398,9 @@ export const api = {
     patchJSONBody<WorkManualOverrides>(`/api/works/${id}/manual-overrides`, payload),
   deleteWorkManualOverride: (id: number, field: string) =>
     deleteJSON<{ ok: boolean; deleted: number }>(`/api/works/${id}/manual-overrides/${encodeURIComponent(field)}`),
+  setWorkMetadataLink: (id: number, sourceCode: string) =>
+    putJSONBody<WorkMetadataLinkResult>(`/api/works/${id}/metadata-link`, { sourceCode }),
+  deleteWorkMetadataLink: (id: number) => deleteJSON<WorkMetadataLinkResult>(`/api/works/${id}/metadata-link`),
   listWorkCoverCandidates: (id: number) =>
     getJSON<{ candidates: WorkCoverCandidate[] }>(`/api/works/${id}/cover-candidates`),
   setWorkCoverOverride: (id: number, locationId: number) =>
