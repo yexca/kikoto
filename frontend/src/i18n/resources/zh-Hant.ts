@@ -794,6 +794,7 @@ export const zhHantResource = {
         folderPreference: "目錄偏好",
         account: "帳戶",
         administration: "管理員選項",
+        historyAndRecommendations: "歷史與推薦",
         playback: "播放",
         playbackDescription: "選擇播放器快退或快進時移動的時間。",
         seekForward: "快進時間",

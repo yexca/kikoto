@@ -809,6 +809,7 @@ export const koreanResource = {
         folderPreference: "폴더 환경설정",
         account: "계정",
         administration: "관리자 옵션",
+        historyAndRecommendations: "기록 및 추천",
         playback: "재생",
         playbackDescription: "되감기 또는 빨리감기할 때 이동할 시간을 선택합니다.",
         seekForward: "빨리감기 시간",

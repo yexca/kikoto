@@ -39,7 +39,7 @@ describe("legacyLibraryRedirect", () => {
     expect(legacyLibraryRedirect("/maintenance/", "?tab=security")).toBe("/settings?tab=users");
     expect(legacyLibraryRedirect("/maintenance", "?tab=users")).toBe("/settings?tab=users");
     expect(legacyLibraryRedirect("/maintenance", "?tab=routing")).toBe("/settings?tab=playback");
-    expect(legacyLibraryRedirect("/maintenance", "?tab=recommendation")).toBe("/settings?tab=recommendation");
+    expect(legacyLibraryRedirect("/maintenance", "?tab=recommendation")).toBe("/settings?tab=history");
     expect(legacyLibraryRedirect("/settings", "?tab=appearance")).toBe("/settings");
   });
 

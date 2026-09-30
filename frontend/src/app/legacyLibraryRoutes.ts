@@ -25,7 +25,7 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
       return `/settings?${params}`;
     }
     if (tab === "routing" || tab === "recommendation") {
-      params.set("tab", tab === "routing" ? "playback" : "recommendation");
+      params.set("tab", tab === "routing" ? "playback" : "history");
       return `/settings?${params}`;
     }
     if (tab && ["overview", "paths", "system", "local", "remote", "security"].includes(tab)) {

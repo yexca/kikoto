@@ -27,8 +27,8 @@ password is reset from the server host; see
 [Administrator setup and recovery](../../operations/security.md#administrator-setup-and-recovery).
 
 Demo mode keeps account-backed Settings read-only. The administration tabs
-(Library, Cache & Fetch, Cleanup, and Users) and the personal History, Tags,
-and Your data tabs stay visible for inspection even though the Demo identity is
+(Library, Cache & Fetch, Cleanup, and Users), the personal History &
+recommendations and Tags tabs, and the Your data section of Account stay visible for inspection even though the Demo identity is
 not an administrator, and every change in them is disabled. Appearance and playback controls remain available because theme mode, style, color, and seek intervals
 are browser-local preferences and do not modify Demo server data. Playback
 preferences are isolated by server identity and authenticated user, or by the
@@ -36,7 +36,7 @@ anonymous principal when anonymous access is enabled.
 
 ## Personal Playback And Recommendations
 
-Settings uses Account, Playback, Recommendation, History, Tags, and Your data tabs; see [Personal data](personal-data.md) for the last three. Administrators, and Demo, also see a shield icon at the left of the tab row: it switches the row to the administration tabs (Library, Cache & Fetch, Cleanup, and Users) and back, reopening the tab last used on each side. Playback contains local seek intervals and **Folder preference**: ordered folder matching and exclusion rules. Recommendation contains presets, badge threshold, variation, discovery boost, and advanced scoring, plus a collapsed **Your recommendation activity** summary of the signed-in user's own impressions, opens, plays, marks, and score distribution over the last 30 days. These two migrated preferences are stored per authenticated account on the server; changing them never changes another account. An account without overrides and anonymous browsing retain the existing instance defaults. Old Maintenance Routing and Recommendation links open the corresponding Settings tab.
+Settings uses Account, Playback, History & recommendations, and Tags tabs. Account ends with the **Your data** export and import section; see [Personal data](personal-data.md) for listening history, tags, and data transfer. Administrators, and Demo, also see the administration tabs (Library, Cache & Fetch, Cleanup, and Users) at the end of the same row, after a divider and in the warning color so the elevated scope stays recognizable. Playback contains local seek intervals and **Folder preference**: ordered folder matching and exclusion rules. History & recommendations shows listening history first, followed by recommendation presets, badge threshold, variation, discovery boost, and advanced scoring, plus a collapsed **Your recommendation activity** summary of the signed-in user's own impressions, opens, plays, marks, and score distribution over the last 30 days. These two migrated preferences are stored per authenticated account on the server; changing them never changes another account. An account without overrides and anonymous browsing retain the existing instance defaults. Old Maintenance Routing and Recommendation links open the corresponding Settings tab, and older `?tab=recommendation` and `?tab=data` Settings links open History & recommendations and the Your data section of Account.
 
 Saving recommendation settings creates a new recommendation session for the current tab. Other open tabs keep their existing snapshots until a new session is created. Saving folder preferences updates subsequent directory selection without stopping the player. Failed saves retain the draft and the previous persisted values. Demo mode keeps these server-backed preferences read-only.
 

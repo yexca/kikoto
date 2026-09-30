@@ -2,7 +2,7 @@
 
 [English](../en/personal-data.md) · [简体中文](../zh-Hans/personal-data.md) · [繁體中文](../zh-Hant/personal-data.md) · [日本語](../ja/personal-data.md) · [한국어](../ko/personal-data.md)
 
-登录后在「设置」中找到「历史」「标签」和「我的数据」标签页；移动端账号菜单和快捷操作可直接打开各标签页。数据仅属于当前账号。
+登录后在「设置」中，收听历史位于「历史与推荐」标签页，个人标签位于「标签」标签页，「我的数据」位于 Account 底部；移动端账号菜单和快捷操作可直接打开它们。数据仅属于当前账号。
 
 ## 个人标签
 

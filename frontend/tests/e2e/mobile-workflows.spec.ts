@@ -1936,20 +1936,24 @@ test("demo settings keeps account and workflows read-only while allowing appeara
   await page.goto("/settings");
   await expect(page.getByRole("status")).toHaveText(demoNotice);
   const settingsTabs = page.getByRole("tablist", { name: "Settings", exact: true });
-  for (const name of ["Account", "Playback", "Recommendation", "History", "Tags", "Your data"]) {
-    await expect(settingsTabs.getByRole("tab", { name, exact: true })).toBeVisible();
-  }
+  // Demo shows every administration tab read-only in the same row administrators use.
+  await expect(settingsTabs.getByRole("tab")).toHaveText([
+    "Account",
+    "Playback",
+    "History & recommendations",
+    "Tags",
+    "Library",
+    "Cache & Fetch",
+    "Cleanup",
+    "Users",
+  ]);
+  await expect(page.getByRole("button", { name: "Download export", exact: true })).toBeVisible();
   const noticeBackground = await page
     .getByRole("status")
     .evaluate((element) => getComputedStyle(element).backgroundColor);
-  for (const name of ["History", "Tags", "Your data"]) {
+  for (const name of ["History & recommendations", "Tags"]) {
     await settingsTabs.getByRole("tab", { name, exact: true }).click();
     await expect(page.getByText(demoNotice, { exact: true })).toHaveCount(1);
-  }
-  // Demo shows every administration tab read-only behind the same toggle administrators use.
-  await page.getByRole("button", { name: "Administration options", exact: true }).click();
-  for (const name of ["Library", "Cache & Fetch", "Cleanup", "Users"]) {
-    await expect(settingsTabs.getByRole("tab", { name, exact: true })).toBeVisible();
   }
   await expect(page.getByRole("tab", { name: "Appearance", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Open appearance settings", exact: true }).click();

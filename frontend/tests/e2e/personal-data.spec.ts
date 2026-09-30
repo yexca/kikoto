@@ -159,7 +159,7 @@ test("mobile reaches personal pages from the account menu without adding bottom 
   const account = page.getByRole("dialog", { name: "Account" });
   await account.getByRole("button", { name: "History", exact: true }).click();
   await expect(page).toHaveURL(/\/settings\?tab=history$/);
-  await expect(page.getByRole("tab", { name: "History", selected: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "History & recommendations", selected: true })).toBeVisible();
   await expect(page.getByText("1 h 30 min").first()).toBeVisible();
   await expect(page.getByRole("link", { name: /Example Work 1/ })).toHaveAttribute(
     "href",
@@ -174,7 +174,8 @@ test("mobile reaches personal pages from the account menu without adding bottom 
   await page.getByRole("button", { name: "Account menu" }).click();
   await account.getByRole("button", { name: "Your data", exact: true }).click();
   await expect(page).toHaveURL(/\/settings\?tab=data$/);
-  await expect(page.getByRole("button", { name: "Download export" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Account", selected: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Download export" })).toBeInViewport();
 });
 
 test("@desktop personal pages are Settings tabs instead of sidebar entries", async ({ page }) => {
@@ -187,16 +188,9 @@ test("@desktop personal pages are Settings tabs instead of sidebar entries", asy
 
   await sidebar.getByRole("button", { name: "Settings", exact: true }).click();
   const tabs = page.getByRole("tablist", { name: "Settings", exact: true });
-  await expect(tabs.getByRole("tab")).toHaveText([
-    "Account",
-    "Playback",
-    "Recommendation",
-    "History",
-    "Tags",
-    "Your data",
-  ]);
-  // A listener has no administration options to switch to.
-  await expect(page.getByRole("button", { name: "Administration options" })).toHaveCount(0);
+  // Your data is a section of Account, and a listener sees no administration tabs.
+  await expect(tabs.getByRole("tab")).toHaveText(["Account", "Playback", "History & recommendations", "Tags"]);
+  await expect(page.getByRole("button", { name: "Download export" })).toBeVisible();
 
   await tabs.getByRole("tab", { name: "Tags" }).click();
   await expect(page).toHaveURL(/\/settings\?tab=tags$/);
@@ -205,7 +199,8 @@ test("@desktop personal pages are Settings tabs instead of sidebar entries", asy
   // Links to the former standalone pages open the matching tab.
   await page.goto("/user-data");
   await expect(page).toHaveURL(/\/settings\?tab=data$/);
-  await expect(tabs.getByRole("tab", { name: "Your data" })).toHaveAttribute("aria-selected", "true");
+  await expect(tabs.getByRole("tab", { name: "Account" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("button", { name: "Download export" })).toBeInViewport();
 });
 
 test("merging a tag into a selected existing tag updates the list", async ({ page }) => {

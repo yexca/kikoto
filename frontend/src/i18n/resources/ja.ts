@@ -820,6 +820,7 @@ export const japaneseResource = {
         folderPreference: "フォルダーの優先設定",
         account: "アカウント",
         administration: "管理者オプション",
+        historyAndRecommendations: "履歴とおすすめ",
         playback: "再生",
         playbackDescription: "早送りまたは巻き戻しで移動する秒数を選択します。",
         seekForward: "早送り時間",

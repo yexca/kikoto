@@ -500,6 +500,7 @@ export const englishResource = {
         folderPreference: "Folder preference",
         account: "Account",
         administration: "Administration options",
+        historyAndRecommendations: "History & recommendations",
         playback: "Playback",
         playbackDescription: "Choose how far the player moves when you seek backward or forward.",
         seekForward: "Forward seek",

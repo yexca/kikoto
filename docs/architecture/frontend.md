@@ -136,9 +136,11 @@ modules.
 - Favorites.
 - Circles.
 - Voice actors.
-- Settings: personal tabs (Account, Playback, Recommendation, listening
-  history, personal tags, and data transfer) and, behind a leading
-  administration toggle, the Library, Cache & Fetch, Cleanup, and Users tabs.
+- Settings: one tab row with the personal tabs (Account, which ends with data
+  transfer; Playback; History & recommendations, which shows listening history
+  above recommendation tuning; and personal tags) followed, after a divider and
+  in the warning tone, by the Library, Cache & Fetch, Cleanup, and Users
+  administration tabs.
   Listening history shows durable totals, recent works, and daily activity;
   personal tags manage account-owned work, circle, and voice tags; data
   transfer offers personal JSON export and previewed Kikoto/Kikoeru import.
@@ -148,11 +150,12 @@ modules.
 - Users.
 - Global player dock.
 
-The personal data tabs open at `/settings?tab=history`, `?tab=tags`, and
-`?tab=data`; the former `/history`, `/tags`, and `/user-data` links redirect
-there. They require `library:read`, are reachable from mobile account actions
+The personal destinations open at `/settings?tab=history`, `?tab=tags`, and
+`?tab=data`; `data` and the former `recommendation` tab id are aliases that open
+the Account data section and History & recommendations. The former `/history`,
+`/tags`, and `/user-data` links redirect there. They require `library:read`, are reachable from mobile account actions
 and Quick actions, and load their own chunks independently of the global
-player. The administration toggle appears only for administrators and Demo,
+player. The administration tabs appear only for administrators and Demo,
 which sees every tab read-only.
 The player records cumulative listening time under an account/server scope;
 history clearing invalidates older reports using a server generation. Sleep

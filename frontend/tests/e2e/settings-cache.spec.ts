@@ -510,32 +510,37 @@ test("personal settings expose administrator tabs only to administrators", async
   await expect(page.getByText("Manage your account and appearance preferences", { exact: true })).toBeHidden();
   await expect(page.getByRole("heading", { name: "Account", exact: true })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Appearance", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("tab", { name: "Recommendation", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "History & recommendations", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Cache & Fetch", exact: true })).toHaveCount(0);
 
   await expect(page.getByRole("button", { name: "Users", exact: true })).toHaveCount(0);
 });
 
-test("administrators switch between personal and administration tabs from the leading icon", async ({ page }) => {
+test("administrators see administration tabs after the personal tabs in one row", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
   await page.goto("/settings?tab=playback");
   const tabs = page.getByRole("tablist", { name: "Settings", exact: true });
-  const toggle = page.getByRole("button", { name: "Administration options", exact: true });
-  await expect(toggle).toHaveAttribute("aria-pressed", "false");
-  await expect(tabs.getByRole("tab", { name: "Users", exact: true })).toHaveCount(0);
+  await expect(tabs.getByRole("tab")).toHaveText([
+    "Account",
+    "Playback",
+    "History & recommendations",
+    "Tags",
+    "Library",
+    "Cache & Fetch",
+    "Cleanup",
+    "Users",
+  ]);
+  await expect(tabs.getByRole("tab", { name: "Users", exact: true })).toHaveAccessibleDescription(
+    "Administration options",
+  );
+  await expect(tabs.getByRole("tab", { name: "Playback", exact: true })).not.toHaveAccessibleDescription(
+    "Administration options",
+  );
 
-  await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
-  await expect(tabs.getByRole("tab")).toHaveText(["Library", "Cache & Fetch", "Cleanup", "Users"]);
-  await expect(page).toHaveURL(/\/settings\?tab=library$/);
   await tabs.getByRole("tab", { name: "Users", exact: true }).click();
-
-  // Each side reopens the tab that was last selected there.
-  await toggle.click();
-  await expect(page).toHaveURL(/\/settings\?tab=playback$/);
-  await expect(tabs.getByRole("tab", { name: "Playback", exact: true })).toHaveAttribute("aria-selected", "true");
-  await toggle.click();
   await expect(page).toHaveURL(/\/settings\?tab=users$/);
+  await tabs.getByRole("tab", { name: "Account", exact: true }).click();
+  await expect(page).toHaveURL(/\/settings$/);
 });
 
 test("personal playback seek intervals use the requested defaults and persist locally", async ({ page }) => {
@@ -696,7 +701,7 @@ for (const layout of ["mobile", "@desktop"]) {
       "aria-selected",
       "true",
     );
-    await expect(navigation.getByRole("tab")).toHaveCount(4);
+    await expect(navigation.getByRole("tab")).toHaveCount(8);
     const rows = await navigation
       .getByRole("tab")
       .evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().top));
@@ -729,7 +734,6 @@ test("non-admin users cannot open administrator Settings tabs", async ({ page })
   await page.goto("/settings?tab=users");
   await expect(page).toHaveURL(/\/settings$/);
   await expect(page.getByRole("tab", { name: "Users", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Administration options", exact: true })).toHaveCount(0);
   expect(settingsRequests).toBe(0);
   await expect(page.getByRole("switch", { name: "Anonymous access", exact: true })).toHaveCount(0);
 });
@@ -881,7 +885,7 @@ test("recommendation keeps common controls visible and advanced scoring collapse
     (payload) => settingsPayloads.push(payload),
   );
   await page.goto("/maintenance?tab=recommendation");
-  await expect(page).toHaveURL(/\/settings\?tab=recommendation$/);
+  await expect(page).toHaveURL(/\/settings\?tab=history$/);
 
   await expect(page.getByRole("button", { name: /Balanced/ })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByLabel("Badge threshold")).toBeVisible();
@@ -910,7 +914,9 @@ test("recommendation restores all default weights and threshold before saving", 
     () => undefined,
     (payload) => settingsPayloads.push(payload),
   );
+  // The former Recommendation tab id opens the merged History & recommendations tab.
   await page.goto("/settings?tab=recommendation");
+  await expect(page.getByRole("tab", { name: "History & recommendations", selected: true })).toBeVisible();
   await page.getByRole("button", { name: /Exploratory/ }).click();
   await page.getByLabel("Badge threshold").focus();
   await page.getByLabel("Badge threshold").press("End");
