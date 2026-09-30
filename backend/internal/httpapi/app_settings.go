@@ -13,6 +13,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/library"
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/proxyconfig"
 )
 
 var defaultDLsiteMetadataLanguages = []string{dlsite.OriginMetadataLanguage}
@@ -36,7 +37,7 @@ type appSettingsResponse struct {
 	CatalogFreshnessDays      int                          `json:"catalogFreshnessDays"`
 	DLsiteMetadataLanguage    string                       `json:"dlsiteMetadataLanguage"`
 	DLsiteMetadataLanguages   []string                     `json:"dlsiteMetadataLanguages"`
-	MetadataProxyURL          string                       `json:"metadataProxyUrl"`
+	Proxy                     proxySettingsResponse        `json:"proxy"`
 	DirectoryRoutingRules     []directoryRule              `json:"directoryRoutingRules"`
 	RecommendationThreshold   int                          `json:"recommendationThreshold"`
 	RecommendationConfig      library.RecommendationConfig `json:"recommendationConfig"`
@@ -56,24 +57,24 @@ type directoryRule struct {
 }
 
 type settingsUpdatePayload struct {
-	LocalScanDepth            *int             `json:"localScanDepth"`
-	CacheEnabled              *bool            `json:"cacheEnabled"`
-	CacheLimitGB              *int             `json:"cacheLimitGb"`
-	TranscodeCacheLimitGB     *int             `json:"transcodeCacheLimitGb"`
-	RemoteDownloadLimitGB     *int             `json:"remoteDownloadLimitGb"`
-	FetchStagingRetentionDays *int             `json:"fetchStagingRetentionDays"`
-	RemoteSaveTemplate        *string          `json:"remoteSaveTemplate"`
-	RemoteDelayBase           *float64         `json:"remoteDelayBaseSeconds"`
-	RemoteDelayRandom         *float64         `json:"remoteDelayRandomSeconds"`
-	RemoteBackoff             *float64         `json:"remoteBackoffSeconds"`
-	RemoteMaxBackoff          *float64         `json:"remoteMaxBackoffSeconds"`
-	CatalogFreshnessDays      *int             `json:"catalogFreshnessDays"`
-	DLsiteMetadataLanguage    *string          `json:"dlsiteMetadataLanguage"`
-	DLsiteMetadataLanguages   *[]string        `json:"dlsiteMetadataLanguages"`
-	MetadataProxyURL          *string          `json:"metadataProxyUrl"`
-	DirectoryRoutingRules     *[]directoryRule `json:"directoryRoutingRules"`
-	RecommendationThreshold   *int             `json:"recommendationThreshold"`
-	RecommendationConfig      json.RawMessage  `json:"recommendationConfig"`
+	LocalScanDepth            *int                  `json:"localScanDepth"`
+	CacheEnabled              *bool                 `json:"cacheEnabled"`
+	CacheLimitGB              *int                  `json:"cacheLimitGb"`
+	TranscodeCacheLimitGB     *int                  `json:"transcodeCacheLimitGb"`
+	RemoteDownloadLimitGB     *int                  `json:"remoteDownloadLimitGb"`
+	FetchStagingRetentionDays *int                  `json:"fetchStagingRetentionDays"`
+	RemoteSaveTemplate        *string               `json:"remoteSaveTemplate"`
+	RemoteDelayBase           *float64              `json:"remoteDelayBaseSeconds"`
+	RemoteDelayRandom         *float64              `json:"remoteDelayRandomSeconds"`
+	RemoteBackoff             *float64              `json:"remoteBackoffSeconds"`
+	RemoteMaxBackoff          *float64              `json:"remoteMaxBackoffSeconds"`
+	CatalogFreshnessDays      *int                  `json:"catalogFreshnessDays"`
+	DLsiteMetadataLanguage    *string               `json:"dlsiteMetadataLanguage"`
+	DLsiteMetadataLanguages   *[]string             `json:"dlsiteMetadataLanguages"`
+	Proxy                     *proxySettingsPayload `json:"proxy"`
+	DirectoryRoutingRules     *[]directoryRule      `json:"directoryRoutingRules"`
+	RecommendationThreshold   *int                  `json:"recommendationThreshold"`
+	RecommendationConfig      json.RawMessage       `json:"recommendationConfig"`
 }
 
 type settingsValidationError struct{ message string }
@@ -146,6 +147,10 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		writeSettingsUpdateError(w, err)
 		return
 	}
+	if payload.Proxy != nil {
+		s.proxyConfig.writeMu.Lock()
+		defer s.proxyConfig.writeMu.Unlock()
+	}
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeError(w, err)
@@ -156,17 +161,23 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		writeSettingsUpdateError(w, err)
 		return
 	}
+	var proxyConfig proxyconfig.Config
+	if payload.Proxy != nil {
+		proxyConfig, err = applyProxySettings(r.Context(), tx, *payload.Proxy)
+		if err != nil {
+			writeSettingsUpdateError(w, err)
+			return
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		writeError(w, err)
 		return
 	}
+	if payload.Proxy != nil {
+		s.proxyConfig.set(proxyConfig)
+	}
 	if payload.LocalScanDepth != nil || payload.RemoteSaveTemplate != nil {
 		s.notifyFilesystemTriggerConfigChanged()
-	}
-	if payload.MetadataProxyURL != nil {
-		// Validated before the transaction was applied.
-		proxy, _ := normalizeMetadataProxyURL(*payload.MetadataProxyURL)
-		s.metadataTransport.setProxy(proxy)
 	}
 	if payload.DLsiteMetadataLanguages != nil || payload.DLsiteMetadataLanguage != nil {
 		if err := metasync.ProjectDLsiteMetadata(r.Context(), s.db, s.preferredMetadataLanguages(r.Context())); err != nil {
@@ -293,15 +304,6 @@ func applyMetadataSettings(r *http.Request, tx *sql.Tx, payload settingsUpdatePa
 			return err
 		}
 	}
-	if payload.MetadataProxyURL != nil {
-		proxy, err := normalizeMetadataProxyURL(*payload.MetadataProxyURL)
-		if err != nil {
-			return err
-		}
-		if err := upsertSetting(r, tx, metadataProxySetting, proxy); err != nil {
-			return err
-		}
-	}
 	if payload.DirectoryRoutingRules != nil {
 		rules := normalizeDirectoryRoutingRules(*payload.DirectoryRoutingRules)
 		if len(rules) > 20 {
@@ -384,7 +386,7 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 	if err != nil {
 		return appSettingsResponse{}, err
 	}
-	metadataProxy, err := s.loadMetadataProxyURL(r.Context())
+	proxyConfig, err := s.proxyConfig.get(r.Context())
 	if err != nil {
 		return appSettingsResponse{}, err
 	}
@@ -405,7 +407,7 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		CatalogFreshnessDays:      s.catalogFreshnessDays(r.Context()),
 		DLsiteMetadataLanguage:    metadataLanguages[0],
 		DLsiteMetadataLanguages:   metadataLanguages,
-		MetadataProxyURL:          metadataProxy,
+		Proxy:                     s.proxySettingsResponse(proxyConfig),
 		DirectoryRoutingRules:     s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
 		RecommendationThreshold:   s.settingInt(r, "recommendation_threshold", 50),
 		RecommendationConfig:      s.libraryStore.LoadRecommendationConfig(r.Context()),

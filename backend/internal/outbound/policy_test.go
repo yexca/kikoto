@@ -2,6 +2,7 @@ package outbound
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -495,5 +496,37 @@ func TestProxyPolicyRejectsDirectDials(t *testing.T) {
 	}
 	if _, err := policy.dial(context.Background(), "tcp", "metadata.test:80"); !errors.Is(err, ErrPolicyViolation) {
 		t.Fatalf("direct dial with a proxy configured error = %v, want policy violation", err)
+	}
+}
+
+func TestProxyTransportAuthenticatesToProxy(t *testing.T) {
+	var authorization atomic.Value
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		authorization.Store(request.Header.Get("Proxy-Authorization"))
+		_, _ = io.WriteString(w, "proxied")
+	}))
+	defer proxy.Close()
+	proxyURL, err := ParseProxyURL(proxy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxyURL.User = url.UserPassword("synthetic-user", "synthetic-password")
+	policy, err := NewPolicy([]Destination{{URL: "http://metadata.test"}}, Options{Proxy: proxyURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := policy.Client(nil, 5*time.Second).Get("http://metadata.test/work")
+	if err != nil {
+		t.Fatalf("authenticated proxied request failed: %v", err)
+	}
+	_ = response.Body.Close()
+	want := "Basic " + base64.StdEncoding.EncodeToString([]byte("synthetic-user:synthetic-password"))
+	if authorization.Load() != want {
+		t.Fatalf("proxy saw Proxy-Authorization %v", authorization.Load())
+	}
+
+	invalid := &url.URL{Scheme: "http", Host: "192.0.2.10:8080", Path: "/path", User: url.User("synthetic-user")}
+	if _, err := NewPolicy([]Destination{{URL: "http://metadata.test"}}, Options{Proxy: invalid}); !errors.Is(err, ErrPolicyViolation) {
+		t.Fatalf("credentialed proxy with a path error = %v, want policy violation", err)
 	}
 }

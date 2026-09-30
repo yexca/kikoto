@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/outbound"
 )
 
 // Mode is development (root auth bypass), production (normal auth), or demo (restricted demo identity).
@@ -56,6 +58,10 @@ type Config struct {
 	RootPassword      string
 	RootPasswordReset bool
 	RemoteSourceSeeds []RemoteSourceSeed
+	// HostProxyHost is the address at which this process reaches a proxy on
+	// the machine that runs it: the container host gateway inside a
+	// container, or loopback otherwise. Empty means loopback.
+	HostProxyHost string
 }
 
 type RemoteSourceSeed struct {
@@ -94,6 +100,10 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	hostProxyHost, err := parseHostProxyHost(os.Getenv("KIKOTO_HOST_PROXY_HOST"))
+	if err != nil {
+		return Config{}, err
+	}
 	databasePath := env("KIKOTO_DB_PATH", "../config/kikoto.db")
 	return Config{
 		HTTPAddr:            env("KIKOTO_HTTP_ADDR", "127.0.0.1:7659"),
@@ -114,6 +124,7 @@ func Load() (Config, error) {
 		RootPassword:        rootPassword,
 		RootPasswordReset:   reset,
 		RemoteSourceSeeds:   loadRemoteSourceSeeds(),
+		HostProxyHost:       hostProxyHost,
 	}, nil
 }
 
@@ -158,6 +169,45 @@ func (c Config) RuntimeMode() Mode {
 		return ModeProduction
 	}
 	return c.Mode
+}
+
+// HostProxyAddress is the host that a "local machine" proxy resolves to.
+func (c Config) HostProxyAddress() string {
+	if host := strings.TrimSpace(c.HostProxyHost); host != "" {
+		return host
+	}
+	return loopbackProxyHost
+}
+
+const (
+	loopbackProxyHost = "127.0.0.1"
+	// containerProxyHost reaches the container host. Docker Desktop provides
+	// it; the Compose files map it to host-gateway for Linux engines.
+	containerProxyHost = "host.docker.internal"
+)
+
+var containerMarkers = []string{"/.dockerenv", "/run/.containerenv"}
+
+// parseHostProxyHost reads an explicit host-proxy address, or detects
+// whether the process runs in a container. An invalid value stops startup.
+func parseHostProxyHost(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		for _, marker := range containerMarkers {
+			if _, err := os.Stat(marker); err == nil {
+				return containerProxyHost, nil
+			}
+		}
+		return loopbackProxyHost, nil
+	}
+	host := value
+	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+		host = "[" + host + "]"
+	}
+	if _, err := outbound.ParseProxyURL("http://" + host + ":1"); err != nil {
+		return "", fmt.Errorf("invalid KIKOTO_HOST_PROXY_HOST %q: expected a hostname or IP address", value)
+	}
+	return value, nil
 }
 
 func parseMode(value string) (Mode, error) {

@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { api, type AppSettings, type FileSource } from "@/lib/api";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { Input, NativeSelect } from "@/components/ui/input";
+import { DLsiteProxyQuickSwitch } from "@/features/proxy";
+import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { InfoHint } from "./InfoHint";
 import i18n from "@/i18n";
 const maintenanceCopy = (key: string, options?: Record<string, unknown>) => i18n.t(`maintenance.${key}`, options);
@@ -24,7 +26,6 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
   const toast = useToast();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [days, setDays] = useState(30);
-  const [proxyURL, setProxyURL] = useState("");
   const [error, setError] = useState(false);
   const [revision, setRevision] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -38,7 +39,6 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
         if (!active) return;
         setSettings(next);
         setDays(next.catalogFreshnessDays);
-        setProxyURL(next.metadataProxyUrl ?? "");
       })
       .catch(() => {
         if (active) setError(true);
@@ -51,9 +51,8 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
     if (readOnly || saving) return;
     setSaving(true);
     try {
-      const next = await api.updateSettings({ catalogFreshnessDays: days, metadataProxyUrl: proxyURL.trim() });
+      const next = await api.updateSettings({ catalogFreshnessDays: days });
       setSettings(next);
-      setProxyURL(next.metadataProxyUrl ?? "");
       toast.success(maintenanceCopy("settingsSaved"));
     } catch (cause) {
       toast.notify(toastFromError(cause, t("errors.unavailable")));
@@ -84,6 +83,11 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
     } finally {
       setUpdatingSourceId(null);
     }
+  };
+  const manageProxies = () => {
+    onClose();
+    window.history.pushState({}, "", "/settings?tab=proxy");
+    window.dispatchEvent(new Event(NAVIGATION_EVENT));
   };
   const header = (
     <div className="flex items-center justify-between gap-2 border-b px-4 py-2">
@@ -137,14 +141,20 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
       <MetadataSettings
         disabled={readOnly || saving}
         catalogFreshnessDays={days}
-        proxyURL={proxyURL}
+        proxy={
+          <DLsiteProxyQuickSwitch
+            proxy={settings.proxy}
+            readOnly={readOnly}
+            onSaved={setSettings}
+            onManage={manageProxies}
+          />
+        }
         remoteSources={settings.fileSources.filter(
           (source) =>
             source.sourceType === "kikoeru_compatible" || source.sourceType === "kikoeru_compatible_number178",
         )}
         updatingSourceId={updatingSourceId}
         onCatalogFreshnessDaysChange={setDays}
-        onProxyURLChange={setProxyURL}
         onRequestLanguageChange={updateLanguage}
       />
       <div className="sticky bottom-0 flex justify-end border-t bg-popover px-4 py-2">
@@ -172,20 +182,19 @@ function SettingsGroup({ title, hint, children }: { title: string; hint: string;
 function MetadataSettings({
   disabled,
   catalogFreshnessDays,
-  proxyURL,
+  proxy,
   remoteSources,
   updatingSourceId,
   onCatalogFreshnessDaysChange,
-  onProxyURLChange,
   onRequestLanguageChange,
 }: {
   disabled: boolean;
   catalogFreshnessDays: number;
-  proxyURL: string;
+  /** DLsite proxy shortcut; it saves on its own, outside this form. */
+  proxy: ReactNode;
   remoteSources: FileSource[];
   updatingSourceId: number | null;
   onCatalogFreshnessDaysChange: (value: number) => void;
-  onProxyURLChange: (value: string) => void;
   onRequestLanguageChange: (source: FileSource, language: string) => Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -193,18 +202,7 @@ function MetadataSettings({
   return (
     <fieldset disabled={disabled} className="min-w-0 space-y-4 border-0 px-4 py-3">
       <SettingsGroup title={maintenanceCopy("metadata.proxy")} hint={maintenanceCopy("metadata.proxyDescription")}>
-        <Input
-          type="text"
-          inputMode="url"
-          autoComplete="off"
-          spellCheck={false}
-          fieldSize="sm"
-          className="w-full font-mono"
-          aria-label={maintenanceCopy("metadata.proxy")}
-          placeholder="http://192.0.2.10:8080"
-          value={proxyURL}
-          onChange={(event) => onProxyURLChange(event.target.value)}
-        />
+        {proxy}
       </SettingsGroup>
 
       {remoteSources.length > 0 && (

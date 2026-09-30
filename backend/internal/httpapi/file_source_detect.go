@@ -12,6 +12,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/outbound"
+	"github.com/yexca/kikoto/backend/internal/proxyconfig"
 )
 
 const (
@@ -78,13 +79,26 @@ func (s *Server) probeKikoeruAPI(ctx context.Context, apiURL string) bool {
 		Enabled:    true,
 		Endpoint:   fileSourceEndpoint{APIURL: apiURL, RestrictOutboundHosts: true},
 	}
-	policy, err := sourceOutboundPolicy(source)
+	policy, err := sourceOutboundPolicy(source, nil)
 	if err != nil {
 		return false
 	}
+	// A source being added has no override yet, so it follows the
+	// remote-source proxy route.
+	route, err := s.resolveProxyRoute(ctx, proxyconfig.ScopeRemote, 0)
+	if err != nil {
+		return false
+	}
+	transport, err := proxiedTransport(route, func(proxy *url.URL) (*outbound.Policy, error) {
+		return sourceOutboundPolicy(source, proxy)
+	})
+	if err != nil {
+		return false
+	}
+	defer closeIdleConnections(transport)
 	probeCtx, cancel := context.WithTimeout(ctx, fileSourceDetectProbeTimeout)
 	defer cancel()
-	client := kikoeru.NewClient(apiURL, policy.Client(nil, fileSourceDetectProbeTimeout))
+	client := kikoeru.NewClient(apiURL, policy.Client(transport, fileSourceDetectProbeTimeout))
 	page, err := client.ListWorks(probeCtx, 1, 1, "")
 	// A single-page application commonly answers every path with HTML or an
 	// unrelated JSON object; only a real works payload counts as detected.

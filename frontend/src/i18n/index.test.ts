@@ -111,6 +111,8 @@ describe("translation resources", () => {
       // Interpolation-only format.
       "collection.filterValue",
       "maintenance.library.apiUrl",
+      // Product name.
+      "maintenance.proxy.scopes.dlsite",
       // Synthetic identifier examples.
       "workflowPage.presetTargetPlaceholders.circleId",
       "workflowPage.presetTargetPlaceholders.seriesId",

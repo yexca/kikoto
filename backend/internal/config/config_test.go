@@ -174,6 +174,27 @@ func TestLoadParsesTrustedProxiesAndRejectsInvalidEntries(t *testing.T) {
 	}
 }
 
+func TestLoadParsesHostProxyHostAndRejectsInvalidValues(t *testing.T) {
+	t.Setenv("KIKOTO_HOST_PROXY_HOST", " host.containers.internal ")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HostProxyAddress() != "host.containers.internal" {
+		t.Fatalf("host proxy address = %q", cfg.HostProxyAddress())
+	}
+	if (Config{}).HostProxyAddress() != "127.0.0.1" {
+		t.Fatal("an unset host proxy address did not fall back to loopback")
+	}
+
+	for _, value := range []string{"http://host.example.invalid", "host.example.invalid:8080", "synthetic-user@host.example.invalid"} {
+		t.Setenv("KIKOTO_HOST_PROXY_HOST", value)
+		if _, err := Load(); err == nil {
+			t.Fatalf("Load() accepted host proxy address %q", value)
+		}
+	}
+}
+
 func TestLoadRejectsUnknownMode(t *testing.T) {
 	t.Setenv("KIKOTO_MODE", "staging")
 	if _, err := Load(); err == nil {

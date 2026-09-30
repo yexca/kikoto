@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -410,6 +411,9 @@ func (s *Server) deleteFileSource(w http.ResponseWriter, r *http.Request) {
 	}
 	s.notifyFilesystemTriggerConfigChanged()
 	s.invalidateRemoteWorkCache(id)
+	if err := s.forgetSourceProxyRoute(r.Context(), id); err != nil {
+		slog.Warn("remote source proxy override cleanup failed", "source_id", id, "error", err)
+	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

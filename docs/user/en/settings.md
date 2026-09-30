@@ -27,7 +27,7 @@ password is reset from the server host; see
 [Administrator setup and recovery](../../operations/security.md#administrator-setup-and-recovery).
 
 Demo mode keeps account-backed Settings read-only. The administration tabs
-(Library, Cache & Fetch, Cleanup, and Users), the personal History &
+(Library, Cache & Fetch, Proxy, Cleanup, and Users), the personal History &
 recommendations and Tags tabs, and the Your data section of Account stay visible for inspection even though the Demo identity is
 not an administrator, and every change in them is disabled. Appearance and playback controls remain available because theme mode, style, color, and seek intervals
 are browser-local preferences and do not modify Demo server data. Playback
@@ -36,7 +36,7 @@ anonymous principal when anonymous access is enabled.
 
 ## Personal Playback And Recommendations
 
-Settings uses Account, Playback, History & recommendations, and Tags tabs. Account ends with the **Your data** export and import section; see [Personal data](personal-data.md) for listening history, tags, and data transfer. Administrators, and Demo, also see the administration tabs (Library, Cache & Fetch, Cleanup, and Users) at the end of the same row, after a divider and in the warning color so the elevated scope stays recognizable. Playback contains local seek intervals and **Folder preference**: ordered folder matching and exclusion rules. History & recommendations starts with the listening report (30 days, 12 months, or all time) and a collapsed full listening history, then the **Your recommendation activity** report of the signed-in user's own last 30 days (how impressions turned into opens and plays, the marks and reshuffles given, and the affinity score distribution), followed by recommendation presets, badge threshold, variation, discovery boost, and advanced scoring. These two migrated preferences are stored per authenticated account on the server; changing them never changes another account. An account without overrides and anonymous browsing retain the existing instance defaults. Old Maintenance Routing and Recommendation links open the corresponding Settings tab, and older `?tab=recommendation` and `?tab=data` Settings links open History & recommendations and the Your data section of Account.
+Settings uses Account, Playback, History & recommendations, and Tags tabs. Account ends with the **Your data** export and import section; see [Personal data](personal-data.md) for listening history, tags, and data transfer. Administrators, and Demo, also see the administration tabs (Library, Cache & Fetch, Proxy, Cleanup, and Users) at the end of the same row, after a divider and in the warning color so the elevated scope stays recognizable. Playback contains local seek intervals and **Folder preference**: ordered folder matching and exclusion rules. History & recommendations starts with the listening report (30 days, 12 months, or all time) and a collapsed full listening history, then the **Your recommendation activity** report of the signed-in user's own last 30 days (how impressions turned into opens and plays, the marks and reshuffles given, and the affinity score distribution), followed by recommendation presets, badge threshold, variation, discovery boost, and advanced scoring. These two migrated preferences are stored per authenticated account on the server; changing them never changes another account. An account without overrides and anonymous browsing retain the existing instance defaults. Old Maintenance Routing and Recommendation links open the corresponding Settings tab, and older `?tab=recommendation` and `?tab=data` Settings links open History & recommendations and the Your data section of Account.
 
 Saving recommendation settings creates a new recommendation session for the current tab. Other open tabs keep their existing snapshots until a new session is created. Saving folder preferences updates subsequent directory selection without stopping the player. Failed saves retain the draft and the previous persisted values. Demo mode keeps these server-backed preferences read-only.
 
@@ -76,7 +76,7 @@ Maintenance uses one horizontal row of tabs, scrolling horizontally on narrow sc
   configuration can enable **Restrict outbound hosts** to allow only the API,
   Public site, Fallback, and an editable list of exact or `*.example.invalid`
   public host patterns.
-- Maintenance contains Library, Cache & Fetch, Cleanup, and Users.
+- Maintenance contains Library, Cache & Fetch, Proxy, Cleanup, and Users.
 - Cache & Fetch contains configuration only: playback cache policy, transfer
   safety, and collapsed download pacing, with one save action that is enabled
   after a change. Cache contents are managed in the Cleanup tab.
@@ -86,13 +86,31 @@ Maintenance uses one horizontal row of tabs, scrolling horizontally on narrow sc
 - Cache & Fetch exposes an independent transcode cache limit from 1 to
   4096 GB. It defaults to 5 GB. This rebuildable cache lives under
   `/cache/transcodes` and does not change the managed remote-media cache limit.
+- The **Proxy** tab lists outbound proxies in priority order. Requests try them from
+  the top and use the first one that connects. **Add proxy** chooses **Local
+  machine** or **Other address**. A local-machine proxy runs where Kikoto is
+  hosted: the dialog shows the address the server reaches it at (for example
+  `host.docker.internal` in a container) but does not let you edit it, so only
+  the protocol, port, and optional username and password are set. Other
+  proxies also take an address. Protocols are HTTP, HTTPS, SOCKS5, and
+  SOCKS5h. Saved passwords are never shown again; leave the field empty to keep
+  one. Every change saves immediately.
+- **Proxy scope** chooses where proxies apply: **DLsite** (metadata, covers,
+  and creator catalogs), **Remote sources** (browsing, playback, and
+  downloads), and **Other** (update checks and other outbound requests). **All**
+  switches the three together. Each scope uses every proxy by priority or one
+  chosen proxy. Every remote source can follow the remote-source scope, connect
+  directly, or use its own proxy choice.
+- **Direct connection fallback** is off by default. When off, a request whose
+  proxies all fail to connect fails rather than connecting directly. When on,
+  that request is retried once without a proxy, after every proxy was tried.
 - Storage paths in Library are collapsed by default, read-only, and show the resolved data root, cache root, default
   cache/save previews, and per-source save previews. Remote Source configuration
   shows the same resolved example instead of exposing a path-template editor.
 
 ## Cleanup
 
-**Cleanup** is an administrator tab in Settings, after Cache & Fetch
+**Cleanup** is an administrator tab in Settings, after Proxy
 (`/settings?tab=cleanup`). Cache sections need `downloads:manage` and database
 sections need `sources:write`.
 
@@ -130,11 +148,10 @@ Select families and choose **Retry metadata**; its count includes only eligible 
 
 **Open metadata issues** in Activity opens Metadata filtered to that run's unresolved metadata issues; **Show all pending works** removes the run filter. Recovery never changes another user's Activity review. Metadata recovery requires `metadata:sync`, while source checks, deletion, and source/language settings require `sources:write`. The **Metadata settings** popover contains settings only; this page does not duplicate the sync workflow's configuration or run controls. Old Maintenance links redirect here.
 
-Metadata settings let administrators set a **Metadata proxy** for DLsite
-  metadata and cover requests. Enter an `http://`, `https://`, `socks5://`, or
-  `socks5h://` address with a host and port, such as
-  `socks5://192.0.2.10:1080`; credentials are not supported, and an empty value
-  connects directly. Each compatible remote source also has its request-language
+Metadata settings have a **DLsite proxy** shortcut: the same switch and proxy
+  choice as the DLsite scope under `Settings -> Proxy -> Proxy scope`, saved
+  immediately. **Manage proxies** opens that section to add or reorder proxies.
+  Each compatible remote source also has its request-language
   hint in this popover; the upstream may ignore it, fall back, or return
   mixed-language metadata. The preferred metadata language is in the header
   Appearance menu.

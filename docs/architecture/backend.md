@@ -159,12 +159,19 @@ the parent hostname, and additional hosts never inherit the private-address
 exception.
 
 The hardened transport never inherits ambient HTTP proxy variables. A policy
-may instead name one operator-configured forward proxy; it then dials only that
-proxy endpoint, with the configured private-address exception, while URL,
-origin, and redirect checks still apply to each request and the proxy resolves
-destination hostnames. Only built-in DLsite metadata requests use this, through
-the `metadata_proxy_url` setting; the transport follows setting changes and
-closes the previous proxy's idle connections. Connection, response-header, response-read idle,
+may instead name one operator-configured forward proxy, optionally with
+credentials; it then dials only that proxy endpoint, with the configured
+private-address exception, while URL, origin, and redirect checks still apply
+to each request and the proxy resolves destination hostnames. The
+`outbound_proxy_config` setting holds an ordered proxy list and routes for the
+DLsite, remote-source, and other scopes, with per-source overrides;
+`internal/proxyconfig` validates it and resolves a scope to proxies. Each
+request path builds one policy transport per resolved proxy behind a priority
+failover transport; the opt-in direct fallback adds a direct policy transport
+that the failover always tries last. The DLsite transport and the pooled remote-source
+transports rebuild when their resolved proxies change and close the previous
+idle connections. A legacy `metadata_proxy_url` value is read as a DLsite route
+until the proxy configuration is first saved. Connection, response-header, response-read idle,
 buffered-body, streamed-file, concurrency, and retry bounds remain specific to
 the request class. See
 [Secure development](../development/security.md) and

@@ -657,8 +657,7 @@ export type AppSettings = {
   catalogFreshnessDays: number;
   dlsiteMetadataLanguage: string;
   dlsiteMetadataLanguages: string[];
-  /** Forward proxy for built-in metadata requests; empty connects directly. */
-  metadataProxyUrl: string;
+  proxy: ProxySettings;
   directoryRoutingRules: DirectoryRoutingRule[];
   recommendationThreshold: number;
   recommendationConfig: RecommendationConfig;
@@ -666,6 +665,50 @@ export type AppSettings = {
   dataRoot: string;
   cacheRoot: string;
   fileSources: FileSource[];
+};
+
+export type ProxyScheme = "http" | "https" | "socks5" | "socks5h";
+
+/** A forward proxy. Host is empty for a proxy on the machine that runs Kikoto. */
+export type OutboundProxy = {
+  id: string;
+  name: string;
+  kind: "host" | "custom";
+  scheme: ProxyScheme;
+  host: string;
+  port: number;
+  username: string;
+  /** The server never returns a stored password. */
+  hasPassword: boolean;
+};
+
+/** Enables proxies for a scope; empty proxyIds selects every proxy. */
+export type ProxyRoute = { enabled: boolean; proxyIds: string[] };
+
+export type SourceProxyRoute = { mode: "inherit" | "direct" | "proxy"; proxyIds: string[] };
+
+export type ProxyRoutes = {
+  dlsite: ProxyRoute;
+  remote: ProxyRoute;
+  other: ProxyRoute;
+  /** Overrides keyed by remote file source id. */
+  sources: Record<string, SourceProxyRoute>;
+};
+
+export type ProxySettings = {
+  /** Where a local-machine proxy is reached from the server; not editable. */
+  hostAddress: string;
+  proxies: OutboundProxy[];
+  routes: ProxyRoutes;
+  /** Retry directly after every proxy of a route failed to connect. */
+  directFallback: boolean;
+};
+
+/** Omitting password keeps the stored one for that id; an empty string clears it. */
+export type ProxySettingsPayload = {
+  proxies: Array<Omit<OutboundProxy, "hasPassword"> & { password?: string }>;
+  routes: ProxyRoutes;
+  directFallback: boolean;
 };
 
 export type DirectoryRoutingRule = {
@@ -2582,7 +2625,7 @@ export const api = {
     catalogFreshnessDays?: number;
     dlsiteMetadataLanguage?: string;
     dlsiteMetadataLanguages?: string[];
-    metadataProxyUrl?: string;
+    proxy?: ProxySettingsPayload;
     directoryRoutingRules?: DirectoryRoutingRule[];
     recommendationThreshold?: number;
     recommendationConfig?: RecommendationConfig;

@@ -20,9 +20,13 @@ services:
       KIKOTO_SESSION_COOKIE_SECURE: ${KIKOTO_SESSION_COOKIE_SECURE:-false}
       KIKOTO_ALLOWED_ORIGINS: ${KIKOTO_ALLOWED_ORIGINS:-}
       KIKOTO_TRUSTED_PROXIES: ${KIKOTO_TRUSTED_PROXIES:-}
+      KIKOTO_HOST_PROXY_HOST: ${KIKOTO_HOST_PROXY_HOST:-}
       KIKOTO_LOGIN_CONCURRENCY: ${KIKOTO_LOGIN_CONCURRENCY:-8}
       KIKOTO_SHUTDOWN_TIMEOUT_SECONDS: ${KIKOTO_SHUTDOWN_TIMEOUT_SECONDS:-20}
       KIKOTO_REMOTE_SOURCES_ENABLED: ${KIKOTO_REMOTE_SOURCES_ENABLED:-false}
+    # Lets a Local machine proxy reach the Docker host on Linux engines too.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "7655:7659"
     volumes:

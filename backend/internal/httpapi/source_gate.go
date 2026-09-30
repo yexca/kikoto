@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/outbound"
+	"github.com/yexca/kikoto/backend/internal/proxyconfig"
 )
 
 type sourceRequestGate struct {
@@ -252,7 +253,13 @@ func (s *Server) sourcePlaybackHTTPClient(source remoteSourceForUse, timeout tim
 }
 
 func (s *Server) sourceClient(source remoteSourceForUse, timeout time.Duration, class sourceRequestClass) *http.Client {
-	policy, base, err := s.sourceTransports.load(source)
+	// The stored proxy configuration is cached after its first load, so this
+	// resolves without a request context in practice.
+	route, err := s.resolveProxyRoute(context.Background(), proxyconfig.ScopeRemote, source.ID)
+	if err != nil {
+		return &http.Client{Transport: sourcePolicyErrorTransport{err: err}, Timeout: timeout}
+	}
+	policy, base, err := s.sourceTransports.load(source, route)
 	if err != nil {
 		return &http.Client{Transport: sourcePolicyErrorTransport{err: err}, Timeout: timeout}
 	}
@@ -260,7 +267,9 @@ func (s *Server) sourceClient(source remoteSourceForUse, timeout time.Duration, 
 	return policy.Client(transport, timeout)
 }
 
-func sourceOutboundPolicy(source remoteSourceForUse) (*outbound.Policy, error) {
+// sourceOutboundPolicy constrains a source's requests to its configured
+// origins and host rules. A non-nil proxy routes them through that proxy.
+func sourceOutboundPolicy(source remoteSourceForUse, proxy *url.URL) (*outbound.Policy, error) {
 	destinations := make([]outbound.Destination, 0, 3)
 	for _, candidate := range []string{source.Endpoint.APIURL, source.Endpoint.BaseURL, source.Endpoint.FallbackURL} {
 		if strings.TrimSpace(candidate) == "" {
@@ -271,6 +280,7 @@ func sourceOutboundPolicy(source remoteSourceForUse) (*outbound.Policy, error) {
 	return outbound.NewPolicy(destinations, outbound.Options{
 		AllowPublicOrigins:  !source.Endpoint.RestrictOutboundHosts,
 		AllowedHostPatterns: source.Endpoint.AllowedHostPatterns,
+		Proxy:               proxy,
 	})
 }
 

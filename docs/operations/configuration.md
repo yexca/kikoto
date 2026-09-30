@@ -25,6 +25,7 @@ does not update its environment.
 | `KIKOTO_SESSION_COOKIE_SECURE` | `false` | Add the Secure attribute to session cookies. |
 | `KIKOTO_ALLOWED_ORIGINS` | Empty | Comma-separated exact browser origins allowed to call a separately hosted API. Same-origin deployments should leave this empty. |
 | `KIKOTO_TRUSTED_PROXIES` | Empty | Comma-separated reverse-proxy IP addresses or CIDR prefixes whose `X-Forwarded-For` header identifies the client for sign-in throttling. Empty uses the direct peer address. An invalid entry stops startup. |
+| `KIKOTO_HOST_PROXY_HOST` | Detected | Hostname or IP address a **Local machine** outbound proxy connects to. Empty uses `host.docker.internal` inside a container, which the Compose files map to the Docker host gateway, and `127.0.0.1` otherwise. The settings page shows this address but cannot change it. An invalid value stops startup. |
 | `KIKOTO_LOGIN_CONCURRENCY` | `8` | Maximum concurrent password checks for sign-ins, password changes, and new passwords. Each check uses about 19 MiB of memory; a missing, invalid, or non-positive value uses the default. |
 | `KIKOTO_SHUTDOWN_TIMEOUT_SECONDS` | `20` | Seconds a stop may spend draining in-flight requests and releasing running workflow jobs. Streaming playback and live transcoding are cancelled after half of this time. Keep it below the container stop grace period; a missing, invalid, or non-positive value uses the default. |
 | `KIKOTO_ROOT_ACCOUNT_MODE` | `setup` | `setup` creates the first administrator in the web app with a setup token. `environment` makes `KIKOTO_ROOT_USERNAME` and `KIKOTO_ROOT_PASSWORD` define the root account on every start and locks it in the app. Any other value stops startup. See [Administrator setup and recovery](security.md#administrator-setup-and-recovery). |
@@ -37,8 +38,8 @@ does not update its environment.
 
 Maintenance manages local scan depth, cache behavior, the remote per-file
 download limit, failed Fetch staging retention, remote request pacing, the
-preferred DLsite metadata language (in the header Appearance menu), the
-metadata proxy, file sources and their request-language hints, creator catalog
+preferred DLsite metadata language (in the header Appearance menu), outbound
+proxies and their scopes, file sources and their request-language hints, creator catalog
 freshness, and production instance access. A remote source
 request language is configured under `Maintenance -> Metadata` and sent as a
 hint only; the upstream service may ignore it, fall back, or return

@@ -332,7 +332,17 @@ export function appSettingsFixture(overrides: Partial<AppSettings> = {}): AppSet
     catalogFreshnessDays: 30,
     dlsiteMetadataLanguage: "ja-jp",
     dlsiteMetadataLanguages: ["ja-jp"],
-    metadataProxyUrl: "",
+    proxy: {
+      hostAddress: "host.docker.internal",
+      proxies: [],
+      routes: {
+        dlsite: { enabled: false, proxyIds: [] },
+        remote: { enabled: false, proxyIds: [] },
+        other: { enabled: false, proxyIds: [] },
+        sources: {},
+      },
+      directFallback: false,
+    },
     directoryRoutingRules: [],
     recommendationThreshold: 50,
     recommendationConfig: recommendationConfigFixture(),

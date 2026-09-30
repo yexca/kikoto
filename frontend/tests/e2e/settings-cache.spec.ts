@@ -27,6 +27,7 @@ import {
 } from "./fixtures/api";
 
 type SettingsUpdate = Parameters<typeof api.updateSettings>[0];
+type ProxyPayload = NonNullable<SettingsUpdate["proxy"]>;
 type PreferencesUpdate = Parameters<typeof api.updateUserPreferences>[0];
 type FileSourceWrite = Parameters<typeof api.updateFileSource>[1];
 
@@ -98,7 +99,28 @@ async function mockCacheSettings(
     catalogFreshnessDays: 30,
     dlsiteMetadataLanguage: "ja-jp",
     dlsiteMetadataLanguages: ["ja-jp"],
-    metadataProxyUrl: "",
+    proxy: {
+      hostAddress: "host.docker.internal",
+      proxies: [
+        {
+          id: "lan",
+          name: "",
+          kind: "custom",
+          scheme: "http",
+          host: "192.0.2.10",
+          port: 8080,
+          username: "",
+          hasPassword: false,
+        },
+      ],
+      routes: {
+        dlsite: { enabled: false, proxyIds: [] },
+        remote: { enabled: false, proxyIds: [] },
+        other: { enabled: false, proxyIds: [] },
+        sources: {},
+      },
+      directFallback: false,
+    },
     directoryRoutingRules: [
       { id: "main", label: "Main story", weight: 40, aliases: ["main"], negativeAliases: ["bonus"], enabled: true },
       {
@@ -180,9 +202,31 @@ async function mockCacheSettings(
       return;
     }
     if (url.pathname === "/api/settings" && route.request().method() === "PATCH") {
-      const payload = route.request().postDataJSON() as SettingsUpdate;
-      onSettings(payload);
+      const { proxy, ...payload } = route.request().postDataJSON() as SettingsUpdate;
+      onSettings(proxy ? { ...payload, proxy } : payload);
       currentSettings = { ...currentSettings, ...payload };
+      if (proxy) {
+        // Like the server: passwords are write-only and an omitted one is kept.
+        const previous = new Map(currentSettings.proxy.proxies.map((candidate) => [candidate.id, candidate]));
+        currentSettings.proxy = {
+          hostAddress: currentSettings.proxy.hostAddress,
+          routes: proxy.routes,
+          directFallback: proxy.directFallback,
+          proxies: proxy.proxies.map((candidate) => ({
+            id: candidate.id,
+            name: candidate.name,
+            kind: candidate.kind,
+            scheme: candidate.scheme,
+            host: candidate.host,
+            port: candidate.port,
+            username: candidate.username,
+            hasPassword:
+              candidate.password === undefined
+                ? Boolean(previous.get(candidate.id)?.hasPassword)
+                : candidate.password !== "",
+          })),
+        };
+      }
       await route.fulfill({ json: currentSettings });
       return;
     }
@@ -527,6 +571,7 @@ test("administrators see administration tabs after the personal tabs in one row"
     "Tags",
     "Library",
     "Cache & Fetch",
+    "Proxy",
     "Cleanup",
     "Users",
   ]);
@@ -701,7 +746,7 @@ for (const layout of ["mobile", "@desktop"]) {
       "aria-selected",
       "true",
     );
-    await expect(navigation.getByRole("tab")).toHaveCount(8);
+    await expect(navigation.getByRole("tab")).toHaveCount(9);
     const rows = await navigation
       .getByRole("tab")
       .evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().top));
@@ -753,7 +798,7 @@ test("maintenance combines library sources and exposes read-only paths with heal
   await page.goto("/settings?tab=library");
 
   await expect(page.getByText("Local library", { exact: true })).toBeVisible();
-  await expect(page.getByText("Remote sources", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Remote sources", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sources", exact: true })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: "Cache & Fetch", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Check health", exact: true }).click();
@@ -959,21 +1004,130 @@ test("@desktop work management owns metadata settings in a popover", async ({ pa
   await page.goto("/maintenance?tab=metadata");
   await expect(page).toHaveURL(/metadata\?tab=settings/);
   await expect(page.getByRole("dialog", { name: "Metadata settings", exact: true })).toBeVisible();
+  const settingsDialog = page.getByRole("dialog", { name: "Metadata settings", exact: true });
   await page.getByRole("spinbutton", { name: "Catalog freshness days", exact: true }).fill("14");
-  await page.getByRole("textbox", { name: "Metadata proxy", exact: true }).fill(" socks5://192.0.2.10:1080 ");
   await page.getByRole("button", { name: "Save metadata settings", exact: true }).click();
   await expect.poll(() => saves.length).toBe(1);
   // The display language moved to Appearance, so this save must not overwrite it.
-  expect(Object.keys(saves[0]).sort()).toEqual(["catalogFreshnessDays", "metadataProxyUrl"]);
+  expect(Object.keys(saves[0]).sort()).toEqual(["catalogFreshnessDays"]);
   expect(saves[0].catalogFreshnessDays).toBe(14);
-  expect(saves[0].metadataProxyUrl).toBe("socks5://192.0.2.10:1080");
+
+  // The DLsite proxy is a shortcut to the DLsite scope in Settings and saves at once.
+  const dlsiteProxy = settingsDialog.getByRole("switch", { name: "Use proxy for DLsite", exact: true });
+  await expect(dlsiteProxy).toHaveAttribute("aria-checked", "false");
+  await dlsiteProxy.click();
+  await expect.poll(() => saves.length).toBe(2);
+  expect(saves[1]).toEqual({
+    proxy: {
+      proxies: [{ id: "lan", name: "", kind: "custom", scheme: "http", host: "192.0.2.10", port: 8080, username: "" }],
+      routes: expect.objectContaining({ dlsite: { enabled: true, proxyIds: [] } }),
+      directFallback: false,
+    },
+  });
+  await expect(dlsiteProxy).toHaveAttribute("aria-checked", "true");
+  await expect(settingsDialog.getByRole("combobox", { name: "Proxy for DLsite", exact: true })).toHaveValue("all");
   await page.screenshot({ path: testInfo.outputPath("work-management-settings.png") });
+  await settingsDialog.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(settingsDialog).toHaveCount(0);
+  await expect(page).not.toHaveURL(/tab=settings/);
+});
+
+test("@desktop the metadata DLsite proxy shortcut opens proxy management in Settings", async ({ page }) => {
+  await mockCacheSettings(page, () => undefined);
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: authenticatedStateFixture({
+        username: "admin",
+        displayName: "Admin",
+        role: "admin",
+        permissions: ["library:read", "sources:write", "metadata:sync", "workflows:run"],
+      }),
+    }),
+  );
+  await page.goto("/metadata?tab=settings");
   await page
     .getByRole("dialog", { name: "Metadata settings", exact: true })
-    .getByRole("button", { name: "Close", exact: true })
+    .getByRole("button", { name: "Manage proxies", exact: true })
     .click();
-  await expect(page.getByRole("dialog", { name: "Metadata settings", exact: true })).toHaveCount(0);
-  await expect(page).not.toHaveURL(/tab=settings/);
+  await expect(page).toHaveURL(/\/settings\?tab=proxy$/);
+  await expect(page.getByRole("heading", { name: "Proxy", exact: true })).toBeInViewport();
+});
+
+test("administrators add proxies by priority and choose where they apply", async ({ page }) => {
+  const saves: Record<string, unknown>[] = [];
+  await mockCacheSettings(
+    page,
+    () => undefined,
+    (payload) => saves.push(payload),
+  );
+  await page.goto("/settings?tab=proxy");
+  const proxySaves = () =>
+    saves.filter((payload) => "proxy" in payload).map((payload) => payload.proxy as ProxyPayload);
+
+  await page.getByRole("button", { name: "Add proxy", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Add proxy", exact: true });
+  // A local-machine proxy shows where the container reaches its host and cannot change it.
+  await expect(dialog.getByRole("radio", { name: "Local machine", exact: true })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  const address = dialog.getByRole("textbox", { name: "Address", exact: true });
+  await expect(address).toHaveValue("host.docker.internal");
+  await expect(address).not.toBeEditable();
+  await dialog.getByRole("combobox", { name: "Protocol", exact: true }).selectOption("socks5");
+  await expect(dialog.getByRole("spinbutton", { name: "Port", exact: true })).toHaveValue("1080");
+  await dialog.getByRole("textbox", { name: "Username", exact: true }).fill("synthetic-user");
+  await dialog.getByLabel("Password", { exact: true }).fill("synthetic-password");
+  await dialog.getByRole("button", { name: "Save proxy", exact: true }).click();
+  await expect.poll(() => proxySaves().length).toBe(1);
+  expect(proxySaves()[0].proxies[1]).toEqual(
+    expect.objectContaining({
+      kind: "host",
+      scheme: "socks5",
+      host: "",
+      port: 1080,
+      username: "synthetic-user",
+      password: "synthetic-password",
+    }),
+  );
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText("SOCKS5 · host.docker.internal:1080 · Authenticated", { exact: true })).toBeVisible();
+
+  // Other proxies take an address.
+  await page.getByRole("button", { name: "Add proxy", exact: true }).click();
+  await dialog.getByRole("radio", { name: "Other address", exact: true }).click();
+  await expect(dialog.getByRole("textbox", { name: "Address", exact: true })).toBeEditable();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+
+  await page.getByRole("button", { name: "Move Local machine up", exact: true }).click();
+  await expect.poll(() => proxySaves().length).toBe(2);
+  expect(proxySaves()[1].proxies.map((candidate) => candidate.kind)).toEqual(["host", "custom"]);
+  // A saved password is never sent back unless it is replaced.
+  expect(proxySaves()[1].proxies[0]).not.toHaveProperty("password");
+
+  await page.getByRole("switch", { name: "Use proxy for All", exact: true }).click();
+  await expect.poll(() => proxySaves().length).toBe(3);
+  expect(proxySaves()[2].routes).toEqual(
+    expect.objectContaining({
+      dlsite: { enabled: true, proxyIds: [] },
+      remote: { enabled: true, proxyIds: [] },
+      other: { enabled: true, proxyIds: [] },
+    }),
+  );
+
+  await page.getByRole("combobox", { name: "Proxy for Example Remote", exact: true }).selectOption("direct");
+  await expect.poll(() => proxySaves().length).toBe(4);
+  expect(proxySaves()[3].routes.sources).toEqual({ "8": { mode: "direct", proxyIds: [] } });
+  await page.getByRole("combobox", { name: "Proxy for DLsite", exact: true }).selectOption("proxy:lan");
+  await expect.poll(() => proxySaves().length).toBe(5);
+  expect(proxySaves()[4].routes.dlsite).toEqual({ enabled: true, proxyIds: ["lan"] });
+
+  const fallback = page.getByRole("switch", { name: "Direct connection fallback", exact: true });
+  await expect(fallback).toHaveAttribute("aria-checked", "false");
+  await fallback.click();
+  await expect.poll(() => proxySaves().length).toBe(6);
+  expect(proxySaves()[5].directFallback).toBe(true);
+  await expect(fallback).toHaveAttribute("aria-checked", "true");
 });
 
 test("@desktop appearance saves the preferred metadata language for source administrators", async ({

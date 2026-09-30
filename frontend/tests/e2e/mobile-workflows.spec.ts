@@ -1944,6 +1944,7 @@ test("demo settings keeps account and workflows read-only while allowing appeara
     "Tags",
     "Library",
     "Cache & Fetch",
+    "Proxy",
     "Cleanup",
     "Users",
   ]);
