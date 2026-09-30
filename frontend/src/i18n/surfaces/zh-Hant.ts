@@ -444,6 +444,16 @@ export const surfaceHant = {
       remoteSources: "遠端來源",
       remoteSourcesDescription: "設定來源端點，不將其變成獨立的作品庫。",
       addSource: "新增來源",
+      kikoeruImport: "Kikoeru 帳戶匯入",
+      kikoeruImportDescription: "使用者可以在個人資料中，從 Kikoeru 伺服器讀取自己的評價和播放清單。",
+      kikoeruPrivateAddresses: "允許所有帳戶使用區域網路位址",
+      kikoeruPrivateAddressesDescription:
+        "管理員始終可以輸入區域網路和私有位址。開啟後，所有帳戶都能讓本伺服器連線到其所在區域網路中的裝置。",
+      kikoeruPrivateEnableTitle: "允許所有帳戶使用區域網路位址？",
+      kikoeruPrivateEnableDescription:
+        "開啟後，任何已登入帳戶都能讓本伺服器連線到所在區域網路中的裝置（例如路由器或 NAS），並得知它們是否回應。只有在信任所有帳戶時才開啟。",
+      kikoeruPrivateEnable: "允許",
+      saveKikoeruImport: "儲存匯入設定",
       configure: "設定",
       deleteSource: "刪除來源",
       checkHealth: "檢查健康狀態",
@@ -512,7 +522,7 @@ export const surfaceHant = {
         remote: "遠端來源",
         remoteDescription: "瀏覽、播放與下載。可在下方為每個來源個別設定。",
         other: "其他",
-        otherDescription: "更新檢查等其他外部要求",
+        otherDescription: "更新檢查。個人 Kikoeru 匯入一律直接連線。",
       },
       directFallback: "保底直連",
       directFallbackDescription:

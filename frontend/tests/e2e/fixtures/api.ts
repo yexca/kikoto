@@ -343,6 +343,7 @@ export function appSettingsFixture(overrides: Partial<AppSettings> = {}): AppSet
       },
       directFallback: false,
     },
+    kikoeruImportPrivateAddresses: false,
     directoryRoutingRules: [],
     recommendationThreshold: 50,
     recommendationConfig: recommendationConfigFixture(),

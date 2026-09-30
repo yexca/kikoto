@@ -9,6 +9,7 @@ type PersonalDataMock = {
   mergeRequests: Array<{ url: URL; body: unknown }>;
   previewBodies: Array<Record<string, unknown>>;
   importBodies: Array<Record<string, unknown>>;
+  kikoeruBodies: Array<Record<string, unknown>>;
 };
 
 const exportFile = {
@@ -24,7 +25,13 @@ async function mockPersonalData(
   page: Page,
   options: { failFirstPreview?: boolean; permissions?: string[] } = {},
 ): Promise<PersonalDataMock> {
-  const log: PersonalDataMock = { tagRequests: [], mergeRequests: [], previewBodies: [], importBodies: [] };
+  const log: PersonalDataMock = {
+    tagRequests: [],
+    mergeRequests: [],
+    previewBodies: [],
+    importBodies: [],
+    kikoeruBodies: [],
+  };
   let workTags: ManagedTag[] = [
     { id: 1, name: "Example Tag 1", color: "", usageCount: 4 },
     { id: 2, name: "Example Tag 2", color: "", usageCount: 2 },
@@ -144,6 +151,23 @@ async function mockPersonalData(
     if (url.pathname === "/api/user-data/import") {
       log.importBodies.push(request.postDataJSON() as Record<string, unknown>);
       await route.fulfill({ json: { importedWorks: 1, skippedWorks: 1, playlists: 1, tags: 2, skippedProgress: 1 } });
+      return;
+    }
+    if (url.pathname === "/api/user-data/kikoeru/options") {
+      await route.fulfill({
+        json: { sources: [{ id: 1, displayName: "Example Remote A" }], privateAddressesAllowed: false },
+      });
+      return;
+    }
+    if (url.pathname === "/api/user-data/kikoeru/account") {
+      log.kikoeruBodies.push(request.postDataJSON() as Record<string, unknown>);
+      await route.fulfill({
+        json: {
+          data: exportFile,
+          summary: { works: 2, skippedWorks: 0, playlists: 1, skippedPlaylistItems: 0 },
+          playlistsSupported: true,
+        },
+      });
       return;
     }
     await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } });
@@ -280,6 +304,41 @@ test("import previews the chosen file, recovers from a failed preview, and impor
   await expect(page.getByRole("status").filter({ hasText: "Imported 1 works" }).first()).toBeVisible();
   expect(log.importBodies).toEqual([{ format: "kikoto", data: exportFile, conflict: "overwrite" }]);
   await expect(importButton).toBeDisabled();
+});
+
+test("Kikoeru credentials leave the browser only after the risk notice is confirmed", async ({ page }) => {
+  const log = await mockPersonalData(page);
+  await page.goto("/settings?tab=data");
+  await page.getByLabel("Source", { exact: true }).selectOption({ label: "Kikoeru account" });
+  await expect(page.getByLabel("Server", { exact: true })).toHaveValue("1");
+
+  const passwordMode = page.getByRole("radio", { name: "Name and password" });
+  await passwordMode.click();
+  const notice = page.getByRole("alertdialog", { name: "Before connecting to a Kikoeru server" });
+  await expect(notice.getByRole("button", { name: "Continue" })).toBeDisabled();
+  await notice.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("radio", { name: "None" })).toBeChecked();
+  await expect(page.getByRole("textbox", { name: "Password", exact: true })).toHaveCount(0);
+
+  await passwordMode.click();
+  await notice.getByRole("checkbox", { name: "I understand these risks" }).click();
+  await notice.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("textbox", { name: "User name", exact: true }).fill("synthetic-user");
+  await page.getByRole("textbox", { name: "Password", exact: true }).fill("synthetic-password");
+  await page.getByRole("button", { name: "Read account data" }).click();
+
+  await expect(page.getByText("Read 2 works and 1 lists.")).toBeVisible();
+  expect(log.kikoeruBodies).toEqual([
+    {
+      sourceId: 1,
+      auth: { mode: "password", name: "synthetic-user", password: "synthetic-password" },
+      acknowledgedRisk: true,
+      playlistNames: { liked: "Kikoeru Liked", marked: "Kikoeru Marked" },
+    },
+  ]);
+  await expect(page.getByRole("textbox", { name: "Password", exact: true })).toHaveValue("");
+  await expect(page.getByRole("region", { name: "Preview" })).toContainText("Matched in library");
+  expect(log.previewBodies.at(-1)).toEqual({ format: "kikoto", data: exportFile, conflict: "keep" });
 });
 
 test("an invalid file never reaches the server", async ({ page }) => {

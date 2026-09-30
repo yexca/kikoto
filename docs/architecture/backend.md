@@ -15,7 +15,8 @@ The backend is a Go HTTP API with SQLite persistence.
 - `backend/internal/httpapi`: HTTP handlers and feature orchestration.
 - `backend/internal/localfs`: local folder discovery.
 - `backend/internal/dlsite`: DLsite client and parsing.
-- `backend/internal/kikoeru`: Kikoeru-compatible client.
+- `backend/internal/kikoeru`: Kikoeru-compatible client, including the
+  account and SQLite readers used by personal data import.
 - `backend/internal/metasync`: metadata sync.
 - `backend/internal/storage`: database opening and migrations.
 - `backend/internal/sqlutil`: shared `database/sql` helpers with no application imports.

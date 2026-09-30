@@ -368,6 +368,17 @@ export const surfaceEnglish = {
       remoteSources: "Remote sources",
       remoteSourcesDescription: "Configure source endpoints without making them separate work libraries.",
       addSource: "Add source",
+      kikoeruImport: "Kikoeru account import",
+      kikoeruImportDescription:
+        "Accounts can read their own reviews and playlists from a Kikoeru server in Personal data.",
+      kikoeruPrivateAddresses: "Allow LAN addresses for every account",
+      kikoeruPrivateAddressesDescription:
+        "Administrators can always enter LAN and private addresses. When on, every account can make this server connect to a device on its local network.",
+      kikoeruPrivateEnableTitle: "Allow LAN addresses for every account?",
+      kikoeruPrivateEnableDescription:
+        "Any signed-in account could then make this server connect to devices on its local network, such as a router or NAS, and learn whether they answer. Turn this on only when you trust every account.",
+      kikoeruPrivateEnable: "Allow",
+      saveKikoeruImport: "Save import settings",
       configure: "Configure",
       deleteSource: "Delete source",
       checkHealth: "Check health",
@@ -430,7 +441,7 @@ export const surfaceEnglish = {
         remote: "Remote sources",
         remoteDescription: "Browsing, playback, and downloads. Each source can override this below.",
         other: "Other",
-        otherDescription: "Update checks and other outbound requests",
+        otherDescription: "Update checks. Personal Kikoeru imports always connect directly.",
       },
       directFallback: "Direct connection fallback",
       directFallbackDescription:

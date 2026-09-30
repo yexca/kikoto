@@ -50,7 +50,8 @@ Media, source settings, endpoints, credentials, provider metadata, raw sessions,
 and daily statistics are excluded. Track titles and track/disc numbers identify
 resume targets; local paths and source-local ids are not exported.
 
-Choose a JSON file and format, then Preview before Import. Keep existing skips
+Choose a source (a JSON file, a Kikoeru account, or a Kikoeru database), then
+Preview before Import. Keep existing skips
 works with personal state and preserves existing playlists. Overwrite replaces
 marks, notes, work tags, matching progress and same-name playlists from the file.
 Listening totals merge by maximum so repeated imports cannot double count or
@@ -62,12 +63,49 @@ Missing or ambiguous tracks leave existing progress intact. Import commits
 atomically. Limits: 10 MiB, 20,000 works, 5,000 tag definitions, 1,000 playlists
 and 50,000 playlist items or work tag assignments.
 
-Kikoeru accepts review arrays, a `reviews` array, or an API `works` array. Use one
-account's data and include every desired page. Codes use `primaryCode` or
-`source_id`; legacy numeric `work_id`/`id` means the RJ product number. A fork's
-unrelated database ids must first be converted to product codes. Personal
-`userRating`/`user_rating` and `review_text` are supported; provider ratings are
-not imported.
+## Kikoeru
+
+A Kikoeru JSON file accepts review arrays, a `reviews` array, or an API `works`
+array. Use one account's data and include every desired page. Codes use
+`primaryCode` or `source_id`; a numeric `work_id`/`id` is the product number.
+Forks that encode the product type in the id (type × 10¹² + digits, with RJ, BJ,
+VJ, and CC as types 0–3) are decoded. Ids unrelated to product codes must first
+be converted. Personal `userRating`/`user_rating` and `review_text` are
+supported; provider ratings are not imported.
+
+**Kikoeru account** reads the data for you. Pick a configured Kikoeru-compatible
+source or enter the server's API address, then sign in with nothing (for a
+server with sign-in turned off), a token, or a name and password. The server
+signs in through `POST /api/auth/me`, pages through `GET /api/review`, and, when
+the Kikoeru server offers them, reads the playlists you own, including its liked
+and marked lists. A server without playlists imports reviews only. The result
+goes through the same preview and import as a file.
+
+**Kikoeru database file** uploads the SQLite database of the open-source
+Kikoeru, up to 512 MiB, and reads only the named account's reviews. Copy the
+file while Kikoeru is stopped or idle so recent writes are included. That
+database has no playlists.
+
+Before a token, password, manual address, or database leaves the browser,
+Kikoto explains the risks and asks for confirmation:
+
+- Credentials pass through the Kikoto server. They are used for that request
+  only and are never stored or logged, but whoever operates the server could
+  capture them.
+- The Kikoeru server sees a sign-in from the Kikoto server's network address. A
+  third-party site may flag or limit the account.
+- A token acts as your account and can stay valid for a long time.
+- A Kikoeru database holds every account on that server, including password
+  hashes. The upload stays in a temporary file while it is read and is deleted
+  right after.
+
+These requests never follow a redirect, so credentials reach only the address
+you chose. A manually entered address must be public unless you are an
+administrator or an administrator turns on **Settings → Library → Kikoeru
+account import → Allow LAN addresses for every account**. That switch lets any
+signed-in account make the server connect to devices on its local network.
+Rows without a usable product code are skipped and counted, and at most two
+account or database reads run at a time.
 
 | Kikoeru progress | Kikoto mark |
 | --- | --- |

@@ -3,10 +3,8 @@ package personal
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -245,94 +243,4 @@ func validateBackup(b *Backup) error {
 		}
 	}
 	return nil
-}
-
-// Kikoeru review exports and /api/review pages carry per-work progress strings.
-// Numeric legacy work_id/id is a product number (RJ), never a Kikoto database id.
-func parseKikoeru(data []byte) (Backup, error) {
-	type review struct {
-		ID              json.RawMessage `json:"id"`
-		WorkID          json.RawMessage `json:"work_id"`
-		SourceID        string          `json:"source_id"`
-		PrimaryCode     string          `json:"primaryCode"`
-		Progress        *string         `json:"progress"`
-		Rating          json.RawMessage `json:"rating"`
-		UserRating      *int            `json:"userRating"`
-		UserRatingSnake *int            `json:"user_rating"`
-		ReviewText      string          `json:"review_text"`
-	}
-	var reviews []review
-	if len(bytes.TrimSpace(data)) == 0 {
-		return Backup{}, ErrInvalid
-	}
-	if bytes.TrimSpace(data)[0] == '[' {
-		if err := DecodeJSON(data, &reviews, false); err != nil {
-			return Backup{}, err
-		}
-	} else {
-		var envelope struct {
-			Works   []review `json:"works"`
-			Reviews []review `json:"reviews"`
-		}
-		if err := DecodeJSON(data, &envelope, false); err != nil {
-			return Backup{}, err
-		}
-		if envelope.Works != nil && envelope.Reviews != nil {
-			return Backup{}, ErrInvalid
-		}
-		reviews = envelope.Works
-		if reviews == nil {
-			reviews = envelope.Reviews
-		}
-		if reviews == nil {
-			return Backup{}, ErrInvalid
-		}
-	}
-	statuses := map[string]string{"": "none", "marked": "want_to_listen", "listening": "listening", "listened": "finished", "replay": "relisten", "postponed": "paused"}
-	b := Backup{Format: "kikoto-user-data", Version: 1, Works: []BackupWork{}, Playlists: []BackupPlaylist{}, Tags: []BackupTag{}}
-	for _, r := range reviews {
-		code := r.PrimaryCode
-		if code == "" {
-			code = r.SourceID
-		}
-		if code == "" {
-			raw := r.WorkID
-			if len(raw) == 0 || string(raw) == "null" {
-				raw = r.ID
-			}
-			var text string
-			if json.Unmarshal(raw, &text) != nil {
-				text = string(raw)
-			}
-			if number, err := strconv.ParseInt(text, 10, 64); err == nil && number >= 0 && number <= 99999999 {
-				width := 6
-				if number >= 1000000 {
-					width = 8
-				}
-				code = fmt.Sprintf("RJ%0*d", width, number)
-			} else {
-				code = text
-			}
-		}
-		progress := ""
-		if r.Progress != nil {
-			progress = *r.Progress
-		}
-		status, ok := statuses[progress]
-		if !ok {
-			return Backup{}, ErrInvalid
-		}
-		rating := r.UserRating
-		if rating == nil {
-			rating = r.UserRatingSnake
-		}
-		// Review rows expose rating; full work rows use rating for provider metadata.
-		if rating == nil && len(r.WorkID) > 0 {
-			if len(r.Rating) > 0 && json.Unmarshal(r.Rating, &rating) != nil {
-				return Backup{}, ErrInvalid
-			}
-		}
-		b.Works = append(b.Works, BackupWork{PrimaryCode: code, ListeningStatus: status, Rating: rating, Note: r.ReviewText, Tags: []string{}})
-	}
-	return b, nil
 }

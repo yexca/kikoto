@@ -27,6 +27,7 @@ import { ProxySettingsSection } from "@/features/proxy";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { RemoteSourceDialog } from "@/features/sources/RemoteSourceDialog";
 import { RemoteSourceList } from "@/features/sources/RemoteSourceList";
+import { KikoeruImportAccessSection } from "@/features/user-data/KikoeruImportAccessSection";
 import {
   DATA_PREFIX,
   DEFAULT_CACHE_SUFFIX,
@@ -53,6 +54,7 @@ type RuntimeDraft = {
   remoteDelayRandomSeconds: number;
   remoteBackoffSeconds: number;
   remoteMaxBackoffSeconds: number;
+  kikoeruImportPrivateAddresses: boolean;
 };
 
 function runtimeDraftFromSettings(settings: AppSettings): RuntimeDraft {
@@ -67,6 +69,7 @@ function runtimeDraftFromSettings(settings: AppSettings): RuntimeDraft {
     remoteDelayRandomSeconds: settings.remoteDelayRandomSeconds,
     remoteBackoffSeconds: settings.remoteBackoffSeconds,
     remoteMaxBackoffSeconds: settings.remoteMaxBackoffSeconds,
+    kikoeruImportPrivateAddresses: settings.kikoeruImportPrivateAddresses ?? false,
   };
 }
 
@@ -377,6 +380,13 @@ export function MaintenancePage({
               onDelete={setSourcePendingDelete}
               onCheck={checkSourceHealth}
               onToggleEnabled={toggleSourceEnabled}
+            />
+
+            <KikoeruImportAccessSection
+              privateAddresses={draft.kikoeruImportPrivateAddresses}
+              readOnly={readOnly}
+              onChange={(kikoeruImportPrivateAddresses) => patchDraft({ kikoeruImportPrivateAddresses })}
+              saveButton={saveButton(["kikoeruImportPrivateAddresses"], t("maintenance.library.saveKikoeruImport"))}
             />
 
             <StoragePaths settings={settings} remoteSources={remoteSources} />

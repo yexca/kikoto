@@ -97,7 +97,8 @@ Maintenance uses one horizontal row of tabs, scrolling horizontally on narrow sc
   one. Every change saves immediately.
 - **Proxy scope** chooses where proxies apply: **DLsite** (metadata, covers,
   and creator catalogs), **Remote sources** (browsing, playback, and
-  downloads), and **Other** (update checks and other outbound requests). **All**
+  downloads), and **Other** (update checks; personal Kikoeru account imports
+  always connect directly). **All**
   switches the three together. Each scope uses every proxy by priority or one
   chosen proxy. Every remote source can follow the remote-source scope, connect
   directly, or use its own proxy choice.

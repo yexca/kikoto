@@ -267,7 +267,10 @@ forward proxies under `Settings -> Proxy`: an ordered list of up to
 eight `http`, `https`, `socks5`, or `socks5h` proxies with an explicit host and
 port and an optional username and password. **Proxy scope** routes built-in
 DLsite requests, remote-source requests (with per-source direct or proxy
-overrides), and other outbound requests such as the update check. A request
+overrides), and other built-in requests such as the update check. Personal
+Kikoeru account imports never use a proxy: their address comes from the
+signed-in user, and a proxy would resolve it outside the private-address
+checks that bound those requests. A request
 tries its proxies in priority order and moves to the next one only when a
 proxy produced no response, the failure was not a policy rejection, the
 request is still live, and its body can be replayed; a proxy that failed stays

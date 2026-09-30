@@ -144,6 +144,11 @@ func limitRequestBody(next http.Handler, maxBytes int64) http.Handler {
 			if r.Method == http.MethodPost && (r.URL.Path == "/api/user-data/import" || r.URL.Path == "/api/user-data/import/preview") {
 				limit = (10 << 20) + 1024
 			}
+			// A Kikoeru database upload streams to a temporary file under its
+			// own bound; multipart framing adds a little to the file size.
+			if r.Method == http.MethodPost && r.URL.Path == kikoeruDatabaseImportPath {
+				limit = maxKikoeruDatabaseBytes + (64 << 10)
+			}
 			if r.ContentLength > limit {
 				writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
 				return

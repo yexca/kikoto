@@ -443,6 +443,16 @@ export const surfaceHans = {
       remoteSources: "远程来源",
       remoteSourcesDescription: "配置来源端点，不将其变成独立的作品库。",
       addSource: "添加来源",
+      kikoeruImport: "Kikoeru 账户导入",
+      kikoeruImportDescription: "用户可以在个人数据中，从 Kikoeru 服务器读取自己的评价和歌单。",
+      kikoeruPrivateAddresses: "允许所有账户使用局域网地址",
+      kikoeruPrivateAddressesDescription:
+        "管理员始终可以输入局域网和私有地址。开启后，所有账户都能让本服务器连接其所在局域网中的设备。",
+      kikoeruPrivateEnableTitle: "允许所有账户使用局域网地址？",
+      kikoeruPrivateEnableDescription:
+        "开启后，任何已登录账户都能让本服务器连接所在局域网中的设备（例如路由器或 NAS），并得知它们是否响应。只有在信任所有账户时才开启。",
+      kikoeruPrivateEnable: "允许",
+      saveKikoeruImport: "保存导入设置",
       configure: "配置",
       deleteSource: "删除来源",
       checkHealth: "检查健康状态",
@@ -511,7 +521,7 @@ export const surfaceHans = {
         remote: "远程来源",
         remoteDescription: "浏览、播放和下载。可在下方为每个来源单独设置。",
         other: "其他",
-        otherDescription: "更新检查等其他外部请求",
+        otherDescription: "更新检查。个人 Kikoeru 导入始终直接连接。",
       },
       directFallback: "保底直连",
       directFallbackDescription:
