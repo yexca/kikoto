@@ -615,6 +615,9 @@ export const zhHansResource = {
         dark: "深色",
         system: "跟随系统",
         saveFailed: "无法保存语言偏好。",
+        metadataLanguage: "优先展示 metadata 语言",
+        metadataLanguageSaveFailed: "无法保存 metadata 语言。",
+        metadataLanguageLoadFailed: "无法读取 metadata 语言。",
       },
       account: {
         account: "账户",

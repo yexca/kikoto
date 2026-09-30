@@ -641,6 +641,9 @@ export const japaneseResource = {
         dark: "ダーク",
         system: "システム",
         saveFailed: "言語設定を保存できませんでした。",
+        metadataLanguage: "優先表示するメタデータ言語",
+        metadataLanguageSaveFailed: "メタデータ言語を保存できませんでした。",
+        metadataLanguageLoadFailed: "メタデータ言語を読み込めませんでした。",
       },
       account: {
         account: "アカウント",

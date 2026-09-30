@@ -620,6 +620,9 @@ export const zhHantResource = {
         dark: "深色",
         system: "跟隨系統",
         saveFailed: "無法儲存語言偏好。",
+        metadataLanguage: "優先展示 metadata 語言",
+        metadataLanguageSaveFailed: "無法儲存 metadata 語言。",
+        metadataLanguageLoadFailed: "無法讀取 metadata 語言。",
       },
       account: {
         account: "帳戶",

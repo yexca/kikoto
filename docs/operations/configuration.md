@@ -36,9 +36,10 @@ does not update its environment.
 ## Administrator Settings
 
 Maintenance manages local scan depth, cache behavior, the remote per-file
-download limit, failed Fetch staging retention, remote request pacing, DLsite
-metadata language priority, file sources and their request-language hints,
-creator catalog freshness, and production instance access. A remote source
+download limit, failed Fetch staging retention, remote request pacing, the
+preferred DLsite metadata language (in the header Appearance menu), the
+metadata proxy, file sources and their request-language hints, creator catalog
+freshness, and production instance access. A remote source
 request language is configured under `Maintenance -> Metadata` and sent as a
 hint only; the upstream service may ignore it, fall back, or return
 mixed-language metadata.

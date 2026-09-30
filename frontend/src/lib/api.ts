@@ -657,6 +657,8 @@ export type AppSettings = {
   catalogFreshnessDays: number;
   dlsiteMetadataLanguage: string;
   dlsiteMetadataLanguages: string[];
+  /** Forward proxy for built-in metadata requests; empty connects directly. */
+  metadataProxyUrl: string;
   directoryRoutingRules: DirectoryRoutingRule[];
   recommendationThreshold: number;
   recommendationConfig: RecommendationConfig;
@@ -2580,6 +2582,7 @@ export const api = {
     catalogFreshnessDays?: number;
     dlsiteMetadataLanguage?: string;
     dlsiteMetadataLanguages?: string[];
+    metadataProxyUrl?: string;
     directoryRoutingRules?: DirectoryRoutingRule[];
     recommendationThreshold?: number;
     recommendationConfig?: RecommendationConfig;

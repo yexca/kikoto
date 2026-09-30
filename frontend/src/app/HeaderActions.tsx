@@ -48,6 +48,7 @@ import {
   watchSystemTheme,
 } from "@/app/theme";
 import { ThemeTrigger } from "@/app/ThemeTrigger";
+import { useMetadataDisplayLanguage } from "@/features/maintenance/useMetadataDisplayLanguage";
 import { Badge } from "@/components/ui/badge";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
@@ -92,6 +93,7 @@ export function HeaderActions({
   const canViewWorkflows = canView("workflows:run");
   const canViewMetadataIssues = canView("metadata:sync");
   const canViewUsers = canView("users:manage");
+  const canViewMetadataLanguage = canView("sources:write");
   const readOnly = user?.demoMode ?? false;
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredThemeMode());
   const [themePreset, setThemePreset] = useState<ThemePreset>(() => getStoredThemePreset());
@@ -116,6 +118,18 @@ export function HeaderActions({
   const [clearingSucceeded, setClearingSucceeded] = useState(false);
   const mobileRuntime = useMobileRuntime();
   const locale = useLocale();
+  const metadataDisplayLanguage = useMetadataDisplayLanguage(
+    canViewMetadataLanguage && (themeOpen || mobileAppearanceOpen),
+  );
+  const metadataLanguageControl = canViewMetadataLanguage
+    ? {
+        value: metadataDisplayLanguage.value,
+        busy: metadataDisplayLanguage.busy,
+        failed: metadataDisplayLanguage.failed,
+        readOnly,
+        onChange: metadataDisplayLanguage.change,
+      }
+    : undefined;
 
   const changeLocale = async (next: UiLocale) => {
     if (localeBusy || next === locale.preference) return;
@@ -327,6 +341,7 @@ export function HeaderActions({
                 onLocaleChange={changeLocale}
                 localeBusy={localeBusy}
                 localeError={localeError}
+                metadataLanguage={metadataLanguageControl}
               />
             </div>
           </div>
@@ -812,6 +827,7 @@ export function HeaderActions({
                 onLocaleChange={changeLocale}
                 localeBusy={localeBusy}
                 localeError={localeError}
+                metadataLanguage={metadataLanguageControl}
               />
             </div>
           </div>

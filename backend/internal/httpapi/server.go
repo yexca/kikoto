@@ -40,6 +40,8 @@ type Server struct {
 	cfg                            config.Config
 	dlsiteEndpoints                dlsite.Endpoints
 	dlsiteClient                   metasync.DLsiteClient
+	metadataTransport              *metadataTransport
+	metadataHTTPClient             *http.Client
 	remoteWorkCacheMu              sync.Mutex
 	remoteWorkCache                map[string]remoteWorkSnapshot
 	remoteWorkCacheCalls           map[string]*remoteWorkCall
@@ -92,11 +94,10 @@ type localMediaIndexCall struct {
 
 func NewServer(db *sql.DB, cfg config.Config) *Server {
 	dlsiteEndpoints := dlsite.DefaultEndpoints()
-	return &Server{
+	server := &Server{
 		db: db, accountStore: account.NewStore(db), accessPolicy: accesspolicy.NewStore(db), libraryStore: library.NewStore(db), workflowStore: workflow.NewStore(db), cfg: cfg,
 		loginThrottle:                  auththrottle.New(),
 		dlsiteEndpoints:                dlsiteEndpoints,
-		dlsiteClient:                   dlsiteEndpoints.NewClient(nil),
 		metadataCoordinator:            metasync.NewCoordinator(),
 		remoteWorkCache:                map[string]remoteWorkSnapshot{},
 		remoteWorkCacheCalls:           map[string]*remoteWorkCall{},
@@ -112,9 +113,15 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 		appUpdateEndpoints:             defaultAppUpdateEndpoints(),
 		lifetime:                       newServerLifetime(),
 	}
+	server.metadataTransport = newMetadataTransport(dlsiteEndpoints, server.loadMetadataProxyURL)
+	server.metadataHTTPClient = newMetadataHTTPClient(dlsiteEndpoints, server.metadataTransport)
+	server.dlsiteClient = dlsiteEndpoints.NewClient(server.metadataHTTPClient)
+	return server
 }
 
-func (s *Server) newDLsiteClient() *dlsite.Client { return s.dlsiteEndpoints.NewClient(nil) }
+func (s *Server) newDLsiteClient() *dlsite.Client {
+	return s.dlsiteEndpoints.NewClient(s.metadataHTTPClient)
+}
 
 // RunSearchIndexWorker keeps Library search documents current in the
 // background, starting with the backlog queued when the index is first

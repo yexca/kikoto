@@ -1,10 +1,10 @@
 export const dlsiteMetadataLanguageOptions = [
+  { value: "origin", labelKey: "metadata.origin" },
   { value: "ja-jp", labelKey: "metadata.japanese" },
   { value: "en-us", labelKey: "metadata.english" },
   { value: "zh-cn", labelKey: "metadata.simplifiedChinese" },
   { value: "zh-tw", labelKey: "metadata.traditionalChinese" },
   { value: "ko-kr", labelKey: "metadata.korean" },
-  { value: "origin", labelKey: "metadata.origin" },
 ] as const;
 
 export type DlsiteMetadataLanguage = (typeof dlsiteMetadataLanguageOptions)[number]["value"];
@@ -30,27 +30,12 @@ export function normalizeDlsiteMetadataLanguages(
   return result;
 }
 
-export function moveDlsiteMetadataLanguage(
-  values: readonly DlsiteMetadataLanguage[],
-  index: number,
-  direction: -1 | 1,
-): DlsiteMetadataLanguage[] {
-  return moveDlsiteMetadataLanguageTo(values, index, index + direction);
+/** The language shown first; origin when no edition language is preferred. */
+export function preferredDlsiteMetadataLanguage(values: readonly string[] | null | undefined): DlsiteMetadataLanguage {
+  return normalizeDlsiteMetadataLanguages(values)[0];
 }
 
-export function moveDlsiteMetadataLanguageTo(
-  values: readonly DlsiteMetadataLanguage[],
-  index: number,
-  nextIndex: number,
-): DlsiteMetadataLanguage[] {
-  if (index < 0 || index >= values.length || nextIndex < 0 || nextIndex >= values.length) {
-    return [...values];
-  }
-  if (values[index] === originLanguage || values[nextIndex] === originLanguage) {
-    return [...values];
-  }
-  const next = [...values];
-  const [value] = next.splice(index, 1);
-  next.splice(nextIndex, 0, value);
-  return next;
+/** The stored priority for one preferred language, with origin as the final fallback. */
+export function dlsiteMetadataLanguagesFor(language: DlsiteMetadataLanguage): DlsiteMetadataLanguage[] {
+  return normalizeDlsiteMetadataLanguages([language]);
 }

@@ -332,6 +332,7 @@ export function appSettingsFixture(overrides: Partial<AppSettings> = {}): AppSet
     catalogFreshnessDays: 30,
     dlsiteMetadataLanguage: "ja-jp",
     dlsiteMetadataLanguages: ["ja-jp"],
+    metadataProxyUrl: "",
     directoryRoutingRules: [],
     recommendationThreshold: 50,
     recommendationConfig: recommendationConfigFixture(),

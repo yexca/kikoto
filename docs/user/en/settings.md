@@ -40,7 +40,7 @@ Settings uses Account, Playback, Recommendation, History, Tags, and Your data ta
 
 Saving recommendation settings creates a new recommendation session for the current tab. Other open tabs keep their existing snapshots until a new session is created. Saving folder preferences updates subsequent directory selection without stopping the player. Failed saves retain the draft and the previous persisted values. Demo mode keeps these server-backed preferences read-only.
 
-Appearance is available only from the header menu. The globe option follows the browser or device language; its tooltip and accessible name identify automatic selection.
+Appearance is available only from the header menu. The globe option follows the browser or device language; its tooltip and accessible name identify automatic selection. Administrators with `sources:write` also see **Preferred metadata language** directly below the UI language. It chooses which DLsite edition language supplies titles and tags for the whole instance and defaults to `Origin`; an edition without the chosen language falls back to `Origin`.
 
 ## Maintenance Organization
 
@@ -130,10 +130,14 @@ Select families and choose **Retry metadata**; its count includes only eligible 
 
 **Open metadata issues** in Activity opens Metadata filtered to that run's unresolved metadata issues; **Show all pending works** removes the run filter. Recovery never changes another user's Activity review. Metadata recovery requires `metadata:sync`, while source checks, deletion, and source/language settings require `sources:write`. The **Metadata settings** popover contains settings only; this page does not duplicate the sync workflow's configuration or run controls. Old Maintenance links redirect here.
 
-Metadata settings let administrators choose and reorder the supported DLsite
-  title/tag languages. `Origin` is always retained as the final fallback. Each
-  compatible remote source also has its request-language hint in this popover; the
-  upstream may ignore it, fall back, or return mixed-language metadata.
+Metadata settings let administrators set a **Metadata proxy** for DLsite
+  metadata and cover requests. Enter an `http://`, `https://`, `socks5://`, or
+  `socks5h://` address with a host and port, such as
+  `socks5://192.0.2.10:1080`; credentials are not supported, and an empty value
+  connects directly. Each compatible remote source also has its request-language
+  hint in this popover; the upstream may ignore it, fall back, or return
+  mixed-language metadata. The preferred metadata language is in the header
+  Appearance menu.
 
 ## Related Docs
 

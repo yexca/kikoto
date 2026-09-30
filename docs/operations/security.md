@@ -262,9 +262,17 @@ subdomains only and does not permit `media.example.invalid` itself. Additional
 allowed hosts never receive the private-LAN exception.
 
 The hardened outbound transport does not inherit ambient `HTTP_PROXY`,
-`HTTPS_PROXY`, or `NO_PROXY` settings. Supporting a proxy would require an
-explicitly configured proxy trust boundary that preserves destination and DNS
-validation.
+`HTTPS_PROXY`, or `NO_PROXY` settings. Built-in DLsite metadata and cover
+requests can instead use the **Metadata proxy** configured under
+`Metadata -> Metadata settings`. It accepts `http`, `https`, `socks5`, or
+`socks5h` URLs with an explicit host and port and rejects credentials, paths,
+and queries. The proxy is trusted administrator configuration and may be a
+private LAN address. With a proxy configured every metadata connection goes to
+that proxy: destination URLs and every redirect hop still must match the
+built-in DLsite origins, but the proxy resolves destination hostnames, so
+destination address checks become the proxy's responsibility. An unusable
+stored proxy fails closed rather than connecting directly. Remote-source
+requests never use this proxy.
 
 Container or host egress rules remain useful defense in depth, especially on a
 host that can reach cloud metadata endpoints or unrelated private services. Do

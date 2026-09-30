@@ -321,6 +321,9 @@ export const englishResource = {
         dark: "Dark",
         system: "System",
         saveFailed: "Language preference could not be saved.",
+        metadataLanguage: "Preferred metadata language",
+        metadataLanguageSaveFailed: "Metadata language could not be saved.",
+        metadataLanguageLoadFailed: "Metadata language could not be loaded.",
       },
       account: {
         account: "Account",

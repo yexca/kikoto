@@ -361,8 +361,9 @@ export const surfaceHant = {
       edit: "編輯",
     },
     metadata: {
-      languagePriority: "DLsite 中繼資料語言優先順序",
-      priority: "優先順序 {{count}}",
+      proxy: "中繼資料代理",
+      proxyDescription:
+        "透過此代理傳送 DLsite 中繼資料與封面要求。請填寫包含主機與連接埠的 HTTP、HTTPS、SOCKS5 或 SOCKS5h 代理位址；不支援帳號密碼。留空則直接連線。",
       remoteRequests: "遠端要求語言",
       remoteRequestsDescription: "作為 Accept-Language 提示傳送。來源可能忽略它或回傳混合語言。",
       catalogFreshnessDays: "目錄新鮮度天數",
@@ -1352,13 +1353,6 @@ export const surfaceHant = {
     traditionalChinese: "繁體中文",
     korean: "韓文",
     origin: "原版",
-    prefer: "優先使用 {{language}} 中繼資料",
-    drag: "拖曳 {{language}}",
-    moveEarlier: "將 {{language}} 上移",
-    moveLater: "將 {{language}} 下移",
-    priorityTitle: "標題與標籤語言",
-    priorityDescription: "依由上至下的順序比對 DLsite 版本。原版始終作為最後的備援。同步要求語言另行設定。",
-    preferredLanguages: "偏好語言",
   },
   detailActions: {
     resume: "繼續播放",

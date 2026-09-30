@@ -98,6 +98,7 @@ async function mockCacheSettings(
     catalogFreshnessDays: 30,
     dlsiteMetadataLanguage: "ja-jp",
     dlsiteMetadataLanguages: ["ja-jp"],
+    metadataProxyUrl: "",
     directoryRoutingRules: [
       { id: "main", label: "Main story", weight: 40, aliases: ["main"], negativeAliases: ["bonus"], enabled: true },
       {
@@ -953,10 +954,13 @@ test("@desktop work management owns metadata settings in a popover", async ({ pa
   await expect(page).toHaveURL(/metadata\?tab=settings/);
   await expect(page.getByRole("dialog", { name: "Metadata settings", exact: true })).toBeVisible();
   await page.getByRole("spinbutton", { name: "Catalog freshness days", exact: true }).fill("14");
+  await page.getByRole("textbox", { name: "Metadata proxy", exact: true }).fill(" socks5://192.0.2.10:1080 ");
   await page.getByRole("button", { name: "Save metadata settings", exact: true }).click();
   await expect.poll(() => saves.length).toBe(1);
-  expect(Object.keys(saves[0]).sort()).toEqual(["catalogFreshnessDays", "dlsiteMetadataLanguages"]);
+  // The display language moved to Appearance, so this save must not overwrite it.
+  expect(Object.keys(saves[0]).sort()).toEqual(["catalogFreshnessDays", "metadataProxyUrl"]);
   expect(saves[0].catalogFreshnessDays).toBe(14);
+  expect(saves[0].metadataProxyUrl).toBe("socks5://192.0.2.10:1080");
   await page.screenshot({ path: testInfo.outputPath("work-management-settings.png") });
   await page
     .getByRole("dialog", { name: "Metadata settings", exact: true })
@@ -964,6 +968,63 @@ test("@desktop work management owns metadata settings in a popover", async ({ pa
     .click();
   await expect(page.getByRole("dialog", { name: "Metadata settings", exact: true })).toHaveCount(0);
   await expect(page).not.toHaveURL(/tab=settings/);
+});
+
+test("@desktop appearance saves the preferred metadata language for source administrators", async ({
+  page,
+}, testInfo) => {
+  const saves: Record<string, unknown>[] = [];
+  await mockCacheSettings(
+    page,
+    () => undefined,
+    (payload) => saves.push(payload),
+  );
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: authenticatedStateFixture({
+        username: "admin",
+        displayName: "Admin",
+        role: "admin",
+        permissions: ["library:read", "sources:write"],
+      }),
+    }),
+  );
+  await page.goto("/metadata");
+  await page.getByRole("button", { name: "Open appearance settings" }).click();
+  const groups = page.getByRole("group");
+  await expect(groups.nth(0)).toHaveAccessibleName("UI language");
+  await expect(groups.nth(1)).toHaveAccessibleName("Preferred metadata language");
+  const metadataLanguage = page.getByRole("combobox", { name: "Preferred metadata language" });
+  await expect(metadataLanguage).toHaveText("Japanese");
+  await page.screenshot({ path: testInfo.outputPath("appearance-metadata-language.png") });
+  await metadataLanguage.click();
+  await page.getByRole("listbox").getByRole("option", { name: "Origin", exact: true }).click();
+  await expect.poll(() => saves.length).toBe(1);
+  expect(saves[0]).toEqual({ dlsiteMetadataLanguages: ["origin"] });
+  await expect(metadataLanguage).toHaveText("Origin");
+});
+
+test("@desktop appearance hides the metadata language without source administration", async ({ page }) => {
+  await mockCacheSettings(page, () => undefined);
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: authenticatedStateFixture({
+        username: "synthetic-user",
+        displayName: "Example User",
+        permissions: ["library:read"],
+      }),
+    }),
+  );
+  let instanceRequests = 0;
+  await page.route("**/api/settings", (route) => {
+    instanceRequests++;
+    return route.fulfill({ status: 403, json: forbidden });
+  });
+  await page.goto("/settings?tab=playback");
+  await page.getByRole("button", { name: "Open appearance settings" }).click();
+  await expect(page.getByRole("combobox", { name: "UI language" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Preferred metadata language" })).toHaveCount(0);
+  expect(instanceRequests).toBe(0);
 });
 
 test("ordinary users save folder preferences without instance administration", async ({ page }) => {

@@ -6,7 +6,20 @@ import { ThemePalettePicker } from "@/app/ThemePalettePicker";
 import { ThemePresetPicker } from "@/app/ThemePresetPicker";
 import type { ThemeMode, ThemePalette, ThemePreset } from "@/app/theme";
 import { FloatingSelect } from "@/components/ui/floating-select";
+import {
+  dlsiteMetadataLanguageOptions,
+  type DlsiteMetadataLanguage,
+} from "@/features/maintenance/metadataLanguageModel";
 import { UI_LOCALE_OPTIONS, type UiLocale } from "@/i18n";
+
+/** Instance-wide metadata display language; shown only to source administrators. */
+export type MetadataLanguageControl = {
+  value: DlsiteMetadataLanguage | null;
+  busy: boolean;
+  failed: boolean;
+  readOnly: boolean;
+  onChange: (value: DlsiteMetadataLanguage) => void | Promise<void>;
+};
 
 export function AppearanceControls({
   mode,
@@ -19,6 +32,7 @@ export function AppearanceControls({
   onLocaleChange = () => undefined,
   localeBusy = false,
   localeError = "",
+  metadataLanguage,
 }: {
   mode: ThemeMode;
   preset: ThemePreset;
@@ -30,6 +44,7 @@ export function AppearanceControls({
   onLocaleChange?: (locale: UiLocale) => void | Promise<void>;
   localeBusy?: boolean;
   localeError?: string;
+  metadataLanguage?: MetadataLanguageControl;
 }) {
   const { t } = useTranslation();
   return (
@@ -58,6 +73,32 @@ export function AppearanceControls({
         />
         {localeError && <p className="mt-2 text-xs text-destructive">{localeError}</p>}
       </AppearanceGroup>
+      {metadataLanguage && (
+        <AppearanceGroup label={t("appearance.metadataLanguage")}>
+          <FloatingSelect
+            value={metadataLanguage.value ?? "origin"}
+            disabled={metadataLanguage.readOnly || metadataLanguage.busy || metadataLanguage.value === null}
+            ariaBusy={metadataLanguage.busy || (metadataLanguage.value === null && !metadataLanguage.failed)}
+            ariaInvalid={metadataLanguage.failed}
+            ariaLabel={t("appearance.metadataLanguage")}
+            onValueChange={(value) => void metadataLanguage.onChange(value as DlsiteMetadataLanguage)}
+            className={metadataLanguage.busy ? "disabled:cursor-wait" : undefined}
+            options={dlsiteMetadataLanguageOptions.map((option) => ({
+              value: option.value,
+              label: t(option.labelKey),
+            }))}
+          />
+          {metadataLanguage.failed && (
+            <p className="mt-2 text-xs text-destructive">
+              {t(
+                metadataLanguage.value === null
+                  ? "appearance.metadataLanguageLoadFailed"
+                  : "appearance.metadataLanguageSaveFailed",
+              )}
+            </p>
+          )}
+        </AppearanceGroup>
+      )}
       <AppearanceGroup label={t("appearance.mode")}>
         <FloatingSelect
           value={mode}

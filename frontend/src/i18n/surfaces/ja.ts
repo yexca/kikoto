@@ -367,8 +367,9 @@ export const surfaceJapanese = {
       edit: "編集",
     },
     metadata: {
-      languagePriority: "DLsiteメタデータの言語優先順位",
-      priority: "優先順位 {{count}}",
+      proxy: "メタデータ用プロキシ",
+      proxyDescription:
+        "DLsite のメタデータとカバー画像のリクエストをこのプロキシ経由で送信します。ホストとポートを含む HTTP、HTTPS、SOCKS5、SOCKS5h のプロキシアドレスを指定してください。認証情報は使用できません。空欄の場合は直接接続します。",
       remoteRequests: "リモートのリクエスト言語",
       remoteRequestsDescription:
         "Accept-Language ヒントとして送信します。ソースによっては無視されたり、言語が混在したりします。",
@@ -1425,14 +1426,6 @@ export const surfaceJapanese = {
     traditionalChinese: "繁体字中国語",
     korean: "韓国語",
     origin: "原版",
-    prefer: "{{language}}のメタデータを優先",
-    drag: "{{language}}をドラッグ",
-    moveEarlier: "{{language}}を上へ移動",
-    moveLater: "{{language}}を下へ移動",
-    priorityTitle: "タイトルとタグの言語",
-    priorityDescription:
-      "DLsite の版を上から順に照合します。原版は常に最後のフォールバックです。同期時のリクエスト言語は別に設定します。",
-    preferredLanguages: "優先する言語",
   },
   detailActions: {
     resume: "再生を再開",

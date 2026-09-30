@@ -397,3 +397,103 @@ func TestTransportBoundsResponseBodyReadIdleTime(t *testing.T) {
 		t.Fatalf("read idle timeout took %s", elapsed)
 	}
 }
+
+func TestParseProxyURLAcceptsOnlyExplicitProxyEndpoints(t *testing.T) {
+	for value, want := range map[string]string{
+		"http://192.0.2.10:8080":          "http://192.0.2.10:8080",
+		"HTTPS://Proxy.Example.test:443/": "https://proxy.example.test:443",
+		"socks5://127.0.0.1:1080":         "socks5://127.0.0.1:1080",
+		"socks5h://[::1]:1080":            "socks5h://[::1]:1080",
+	} {
+		parsed, err := ParseProxyURL(value)
+		if err != nil {
+			t.Fatalf("ParseProxyURL(%q) error = %v", value, err)
+		}
+		if parsed.String() != want {
+			t.Fatalf("ParseProxyURL(%q) = %q, want %q", value, parsed.String(), want)
+		}
+	}
+	for _, value := range []string{
+		"",
+		"192.0.2.10:8080",
+		"ftp://192.0.2.10:21",
+		"http://192.0.2.10",
+		"http://synthetic-user:synthetic-password@192.0.2.10:8080",
+		"http://192.0.2.10:8080/path",
+		"http://192.0.2.10:8080?query=1",
+		"http://192.0.2.10:8080#fragment",
+		"http://192.0.2.10:70000",
+	} {
+		if _, err := ParseProxyURL(value); err == nil {
+			t.Fatalf("ParseProxyURL(%q) unexpectedly succeeded", value)
+		} else if !errors.Is(err, ErrPolicyViolation) {
+			t.Fatalf("ParseProxyURL(%q) error = %v, want policy violation", value, err)
+		}
+	}
+}
+
+func TestProxyTransportRoutesThroughConfiguredPrivateProxy(t *testing.T) {
+	var proxiedHost atomic.Value
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		proxiedHost.Store(request.URL.Host)
+		_, _ = io.WriteString(w, "proxied")
+	}))
+	defer proxy.Close()
+	proxyURL, err := ParseProxyURL(proxy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := NewPolicy([]Destination{{URL: "http://metadata.test"}}, Options{
+		Proxy: proxyURL,
+		Resolver: resolverFunc(func(_ context.Context, host string) ([]net.IPAddr, error) {
+			return nil, fmt.Errorf("destination %q must be resolved by the proxy", host)
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := policy.Client(nil, 5*time.Second).Get("http://metadata.test/work")
+	if err != nil {
+		t.Fatalf("proxied request failed: %v", err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	_ = response.Body.Close()
+	if string(body) != "proxied" || proxiedHost.Load() != "metadata.test" {
+		t.Fatalf("proxy saw host %v and returned %q", proxiedHost.Load(), body)
+	}
+	if _, err := policy.Client(nil, 5*time.Second).Get("http://other.test/work"); !errors.Is(err, ErrPolicyViolation) {
+		t.Fatalf("destination outside the allowlist error = %v, want policy violation", err)
+	}
+}
+
+func TestProxyTransportRevalidatesRedirects(t *testing.T) {
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		http.Redirect(w, request, "http://other.test/work", http.StatusFound)
+	}))
+	defer proxy.Close()
+	proxyURL, err := ParseProxyURL(proxy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := NewPolicy([]Destination{{URL: "http://metadata.test"}}, Options{Proxy: proxyURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := policy.Client(nil, 5*time.Second).Get("http://metadata.test/work"); !errors.Is(err, ErrPolicyViolation) {
+		t.Fatalf("redirect through proxy error = %v, want policy violation", err)
+	}
+}
+
+func TestProxyPolicyRejectsDirectDials(t *testing.T) {
+	proxyURL, err := ParseProxyURL("http://127.0.0.1:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := NewPolicy([]Destination{{URL: "http://metadata.test"}}, Options{Proxy: proxyURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := policy.dial(context.Background(), "tcp", "metadata.test:80"); !errors.Is(err, ErrPolicyViolation) {
+		t.Fatalf("direct dial with a proxy configured error = %v, want policy violation", err)
+	}
+}

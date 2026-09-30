@@ -47,6 +47,11 @@ type Options struct {
 	ResponseReadTimeout time.Duration
 	AllowPublicOrigins  bool
 	AllowedHostPatterns []string
+	// Proxy routes every request through an operator-configured forward
+	// proxy parsed by ParseProxyURL. The proxy endpoint keeps the configured
+	// private-address exception; destination URLs and redirects are still
+	// validated here, while the proxy resolves destination hostnames.
+	Proxy *url.URL
 }
 
 type Policy struct {
@@ -58,6 +63,8 @@ type Policy struct {
 	dialContext         DialContextFunc
 	connectTimeout      time.Duration
 	readTimeout         time.Duration
+	proxy               *url.URL
+	proxyEndpoint       string
 }
 
 type originRule struct {
@@ -175,6 +182,17 @@ func NewPolicy(destinations []Destination, options Options) (*Policy, error) {
 		policy.origins[origin] = originRule{allowPrivate: destination.AllowPrivate}
 		policy.endpoints[endpoint] = endpointRule{allowPrivate: destination.AllowPrivate}
 	}
+	if options.Proxy != nil {
+		proxy, err := ParseProxyURL(options.Proxy.String())
+		if err != nil {
+			return nil, err
+		}
+		policy.proxy = proxy
+		policy.proxyEndpoint, err = canonicalEndpoint(proxy.Hostname(), proxy.Port())
+		if err != nil {
+			return nil, err
+		}
+	}
 	if len(options.AllowedHostPatterns) > maxAllowedHostPatterns {
 		return nil, violation("outbound host allowlist has too many entries")
 	}
@@ -199,6 +217,43 @@ func NewPolicy(destinations []Destination, options Options) (*Policy, error) {
 		return nil, violation("outbound destination allowlist is empty")
 	}
 	return policy, nil
+}
+
+// ParseProxyURL accepts an operator-configured forward proxy: an HTTP, HTTPS,
+// SOCKS5, or SOCKS5h URL with an explicit host and port and without
+// credentials, a path, a query, or a fragment. The result is normalized.
+func ParseProxyURL(value string) (*url.URL, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, violation("outbound proxy URL is empty")
+	}
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return nil, violation("outbound proxy URL is invalid")
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	switch scheme {
+	case "http", "https", "socks5", "socks5h":
+	default:
+		return nil, violation("outbound proxy URL must use HTTP, HTTPS, SOCKS5, or SOCKS5h")
+	}
+	if parsed.Opaque != "" || parsed.Host == "" {
+		return nil, violation("outbound proxy URL must be absolute")
+	}
+	if parsed.User != nil {
+		return nil, violation("outbound proxy URL must not contain credentials")
+	}
+	if (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return nil, violation("outbound proxy URL must not contain a path, query, or fragment")
+	}
+	if parsed.Port() == "" {
+		return nil, violation("outbound proxy URL must include a port")
+	}
+	endpoint, err := canonicalEndpoint(parsed.Hostname(), parsed.Port())
+	if err != nil {
+		return nil, err
+	}
+	return &url.URL{Scheme: scheme, Host: endpoint}, nil
 }
 
 // NormalizeHostPattern validates and canonicalizes an administrator-provided
@@ -299,8 +354,12 @@ func (p *Policy) ValidateURL(value *url.URL) error {
 // hostname once per connection, validates the complete answer set, and dials a
 // validated numeric address rather than resolving the hostname again.
 func (p *Policy) Transport() http.RoundTripper {
+	var proxy func(*http.Request) (*url.URL, error)
+	if p.proxy != nil {
+		proxy = http.ProxyURL(p.proxy)
+	}
 	base := &http.Transport{
-		Proxy:                  nil,
+		Proxy:                  proxy,
 		DialContext:            p.dial,
 		ForceAttemptHTTP2:      true,
 		MaxIdleConns:           32,
@@ -459,6 +518,14 @@ func (p *Policy) dial(ctx context.Context, network string, address string) (net.
 	if err != nil {
 		return nil, err
 	}
+	if p.proxy != nil {
+		// With a proxy every connection goes to the proxy; a direct dial would
+		// silently bypass the operator's routing choice.
+		if endpoint != p.proxyEndpoint {
+			return nil, violation("outbound connection endpoint is not the configured proxy")
+		}
+		return p.dialValidated(ctx, network, host, port, endpointRule{allowPrivate: true})
+	}
 	rule, ok := p.endpoints[endpoint]
 	if !ok {
 		normalizedHost, hostErr := canonicalHost(host)
@@ -470,7 +537,10 @@ func (p *Policy) dial(ctx context.Context, network string, address string) (net.
 		}
 		rule = endpointRule{allowPrivate: false}
 	}
+	return p.dialValidated(ctx, network, host, port, rule)
+}
 
+func (p *Policy) dialValidated(ctx context.Context, network string, host string, port string, rule endpointRule) (net.Conn, error) {
 	dialCtx, cancel := context.WithTimeout(ctx, p.connectTimeout)
 	defer cancel()
 	addresses, err := p.resolve(dialCtx, host)

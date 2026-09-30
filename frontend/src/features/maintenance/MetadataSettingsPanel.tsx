@@ -1,18 +1,10 @@
-import { ArrowDown, ArrowUp, GripVertical, Save, X } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Save, X } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { api, type AppSettings, type FileSource } from "@/lib/api";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { Input, NativeSelect } from "@/components/ui/input";
-import {
-  dlsiteMetadataLanguageOptions,
-  moveDlsiteMetadataLanguage,
-  moveDlsiteMetadataLanguageTo,
-  normalizeDlsiteMetadataLanguages,
-  type DlsiteMetadataLanguage,
-} from "./metadataLanguageModel";
 import { InfoHint } from "./InfoHint";
 import i18n from "@/i18n";
 const maintenanceCopy = (key: string, options?: Record<string, unknown>) => i18n.t(`maintenance.${key}`, options);
@@ -31,8 +23,8 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
   const { t } = useTranslation();
   const toast = useToast();
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [languages, setLanguages] = useState<DlsiteMetadataLanguage[]>([]);
   const [days, setDays] = useState(30);
+  const [proxyURL, setProxyURL] = useState("");
   const [error, setError] = useState(false);
   const [revision, setRevision] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -45,8 +37,8 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
       .then((next) => {
         if (!active) return;
         setSettings(next);
-        setLanguages(normalizeDlsiteMetadataLanguages(next.dlsiteMetadataLanguages ?? [next.dlsiteMetadataLanguage]));
         setDays(next.catalogFreshnessDays);
+        setProxyURL(next.metadataProxyUrl ?? "");
       })
       .catch(() => {
         if (active) setError(true);
@@ -59,8 +51,9 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
     if (readOnly || saving) return;
     setSaving(true);
     try {
-      const next = await api.updateSettings({ dlsiteMetadataLanguages: languages, catalogFreshnessDays: days });
+      const next = await api.updateSettings({ catalogFreshnessDays: days, metadataProxyUrl: proxyURL.trim() });
       setSettings(next);
+      setProxyURL(next.metadataProxyUrl ?? "");
       toast.success(maintenanceCopy("settingsSaved"));
     } catch (cause) {
       toast.notify(toastFromError(cause, t("errors.unavailable")));
@@ -144,14 +137,14 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
       <MetadataSettings
         disabled={readOnly || saving}
         catalogFreshnessDays={days}
-        languages={languages}
+        proxyURL={proxyURL}
         remoteSources={settings.fileSources.filter(
           (source) =>
             source.sourceType === "kikoeru_compatible" || source.sourceType === "kikoeru_compatible_number178",
         )}
         updatingSourceId={updatingSourceId}
         onCatalogFreshnessDaysChange={setDays}
-        onLanguagesChange={setLanguages}
+        onProxyURLChange={setProxyURL}
         onRequestLanguageChange={updateLanguage}
       />
       <div className="sticky bottom-0 flex justify-end border-t bg-popover px-4 py-2">
@@ -176,182 +169,42 @@ function SettingsGroup({ title, hint, children }: { title: string; hint: string;
   );
 }
 
-const orderButtonClassName =
-  "grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30 max-sm:h-11 max-sm:w-11";
-
 function MetadataSettings({
   disabled,
   catalogFreshnessDays,
-  languages,
+  proxyURL,
   remoteSources,
   updatingSourceId,
   onCatalogFreshnessDaysChange,
-  onLanguagesChange,
+  onProxyURLChange,
   onRequestLanguageChange,
 }: {
   disabled: boolean;
   catalogFreshnessDays: number;
-  languages: DlsiteMetadataLanguage[];
+  proxyURL: string;
   remoteSources: FileSource[];
   updatingSourceId: number | null;
   onCatalogFreshnessDaysChange: (value: number) => void;
-  onLanguagesChange: (value: DlsiteMetadataLanguage[]) => void;
+  onProxyURLChange: (value: string) => void;
   onRequestLanguageChange: (source: FileSource, language: string) => Promise<void>;
 }) {
   const { t } = useTranslation();
-  const [draggedLanguage, setDraggedLanguage] = useState<DlsiteMetadataLanguage | null>(null);
-  const draggedLanguageRef = useRef<DlsiteMetadataLanguage | null>(null);
-  const finishDrag = () => {
-    draggedLanguageRef.current = null;
-    setDraggedLanguage(null);
-  };
-
-  useEffect(() => {
-    if (draggedLanguage === null) return;
-    const finish = () => {
-      draggedLanguageRef.current = null;
-      setDraggedLanguage(null);
-    };
-    window.addEventListener("pointerup", finish);
-    window.addEventListener("pointercancel", finish);
-    window.addEventListener("blur", finish);
-    return () => {
-      window.removeEventListener("pointerup", finish);
-      window.removeEventListener("pointercancel", finish);
-      window.removeEventListener("blur", finish);
-    };
-  }, [draggedLanguage]);
-
-  const moveLanguage = (index: number, direction: -1 | 1) => {
-    onLanguagesChange(moveDlsiteMetadataLanguage(languages, index, direction));
-  };
-
-  const setLanguageIncluded = (language: DlsiteMetadataLanguage, included: boolean) => {
-    if (language === "origin") return;
-    const next = included
-      ? [...languages.filter((candidate) => candidate !== "origin"), language, "origin"]
-      : languages.filter((candidate) => candidate !== language);
-    onLanguagesChange(normalizeDlsiteMetadataLanguages(next));
-  };
 
   return (
     <fieldset disabled={disabled} className="min-w-0 space-y-4 border-0 px-4 py-3">
-      <SettingsGroup title={t("metadata.priorityTitle")} hint={t("metadata.priorityDescription")}>
-        <fieldset className="min-w-0">
-          <legend className="sr-only">{t("metadata.preferredLanguages")}</legend>
-          <div className="flex flex-wrap gap-1.5">
-            {dlsiteMetadataLanguageOptions
-              .filter((option) => option.value !== "origin")
-              .map((option) => {
-                const included = languages.includes(option.value);
-                return (
-                  <label
-                    key={option.value}
-                    className={`inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 text-xs transition-colors max-sm:min-h-11 ${
-                      included
-                        ? "border-primary/40 bg-primary/10 text-foreground"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    }`}
-                  >
-                    <Checkbox
-                      checked={included}
-                      onCheckedChange={(checked) => setLanguageIncluded(option.value, checked)}
-                      aria-label={t("metadata.prefer", { language: t(option.labelKey) })}
-                    />
-                    <span>{t(option.labelKey)}</span>
-                  </label>
-                );
-              })}
-          </div>
-        </fieldset>
-        <ol
-          className="divide-y overflow-hidden rounded-lg border bg-card"
-          aria-label={maintenanceCopy("metadata.languagePriority")}
-        >
-          {languages.map((language, index) => {
-            const option = dlsiteMetadataLanguageOptions.find((candidate) => candidate.value === language);
-            if (!option) return null;
-            const label = t(option.labelKey);
-            const locked = language === "origin";
-            return (
-              <li
-                key={language}
-                data-metadata-language-index={index}
-                className={`flex min-h-10 items-center gap-1.5 px-1.5 py-1 transition-opacity ${
-                  draggedLanguage === language ? "bg-muted/60 opacity-60" : ""
-                }`}
-              >
-                <button
-                  type="button"
-                  className="grid h-7 w-7 shrink-0 touch-none cursor-grab place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing disabled:cursor-default disabled:opacity-30 disabled:hover:bg-transparent max-sm:h-11 max-sm:w-11"
-                  aria-label={t("metadata.drag", { language: label })}
-                  disabled={locked}
-                  onPointerDown={(event) => {
-                    if (!event.isPrimary || event.button !== 0) return;
-                    event.preventDefault();
-                    event.currentTarget.setPointerCapture(event.pointerId);
-                    draggedLanguageRef.current = language;
-                    setDraggedLanguage(language);
-                  }}
-                  onPointerMove={(event) => {
-                    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-                    const sourceLanguage = draggedLanguageRef.current;
-                    const source = sourceLanguage ? languages.indexOf(sourceLanguage) : -1;
-                    const target = Number(
-                      document
-                        .elementFromPoint(event.clientX, event.clientY)
-                        ?.closest<HTMLElement>("[data-metadata-language-index]")?.dataset.metadataLanguageIndex,
-                    );
-                    if (source >= 0 && Number.isInteger(target) && source !== target) {
-                      onLanguagesChange(moveDlsiteMetadataLanguageTo(languages, source, target));
-                    }
-                  }}
-                  onPointerUp={(event) => {
-                    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                      event.currentTarget.releasePointerCapture(event.pointerId);
-                    }
-                    finishDrag();
-                  }}
-                  onPointerCancel={finishDrag}
-                  onLostPointerCapture={finishDrag}
-                >
-                  <GripVertical className="h-4 w-4" />
-                </button>
-                <span
-                  className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-semibold tabular-nums ${
-                    index === 0 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                  }`}
-                  aria-hidden="true"
-                >
-                  {index + 1}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span>
-                <span className="flex shrink-0">
-                  <button
-                    type="button"
-                    className={orderButtonClassName}
-                    aria-label={t("metadata.moveEarlier", { language: label })}
-                    title={t("metadata.moveEarlier", { language: label })}
-                    disabled={index === 0 || locked}
-                    onClick={() => moveLanguage(index, -1)}
-                  >
-                    <ArrowUp className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    className={orderButtonClassName}
-                    aria-label={t("metadata.moveLater", { language: label })}
-                    title={t("metadata.moveLater", { language: label })}
-                    disabled={index === languages.length - 1 || locked}
-                    onClick={() => moveLanguage(index, 1)}
-                  >
-                    <ArrowDown className="h-4 w-4" />
-                  </button>
-                </span>
-              </li>
-            );
-          })}
-        </ol>
+      <SettingsGroup title={maintenanceCopy("metadata.proxy")} hint={maintenanceCopy("metadata.proxyDescription")}>
+        <Input
+          type="text"
+          inputMode="url"
+          autoComplete="off"
+          spellCheck={false}
+          fieldSize="sm"
+          className="w-full font-mono"
+          aria-label={maintenanceCopy("metadata.proxy")}
+          placeholder="http://192.0.2.10:8080"
+          value={proxyURL}
+          onChange={(event) => onProxyURLChange(event.target.value)}
+        />
       </SettingsGroup>
 
       {remoteSources.length > 0 && (

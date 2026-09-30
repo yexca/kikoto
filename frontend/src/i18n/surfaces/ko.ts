@@ -368,8 +368,9 @@ export const surfaceKorean = {
       edit: "편집",
     },
     metadata: {
-      languagePriority: "DLsite 메타데이터 언어 우선순위",
-      priority: "우선순위 {{count}}",
+      proxy: "메타데이터 프록시",
+      proxyDescription:
+        "DLsite 메타데이터와 커버 요청을 이 프록시를 통해 보냅니다. 호스트와 포트를 포함한 HTTP, HTTPS, SOCKS5, SOCKS5h 프록시 주소를 입력하세요. 인증 정보는 지원하지 않습니다. 비워 두면 직접 연결합니다.",
       remoteRequests: "원격 요청 언어",
       remoteRequestsDescription:
         "Accept-Language 힌트로 전송됩니다. 소스가 무시하거나 여러 언어를 섞어 반환할 수 있습니다.",
@@ -1423,14 +1424,6 @@ export const surfaceKorean = {
     traditionalChinese: "중국어 번체",
     korean: "한국어",
     origin: "원본",
-    prefer: "{{language}} 메타데이터 우선",
-    drag: "{{language}} 끌기",
-    moveEarlier: "{{language}} 위로 이동",
-    moveLater: "{{language}} 아래로 이동",
-    priorityTitle: "제목 및 태그 언어",
-    priorityDescription:
-      "DLsite 에디션을 위에서부터 순서대로 일치시킵니다. 원본은 항상 마지막 대체 항목입니다. 동기화 요청 언어는 별도로 설정합니다.",
-    preferredLanguages: "선호 언어",
   },
   detailActions: {
     resume: "재생 재개",

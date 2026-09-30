@@ -285,8 +285,9 @@ export const surfaceEnglish = {
       edit: "Edit",
     },
     metadata: {
-      languagePriority: "DLsite metadata language priority",
-      priority: "Priority {{count}}",
+      proxy: "Metadata proxy",
+      proxyDescription:
+        "Routes DLsite metadata and cover requests through this proxy. Enter an HTTP, HTTPS, SOCKS5, or SOCKS5h proxy address with a host and port; credentials are not supported. Leave empty to connect directly.",
       remoteRequests: "Remote request language",
       remoteRequestsDescription: "Sent as an Accept-Language hint. A source may ignore it or return mixed languages.",
       catalogFreshnessDays: "Catalog freshness days",
@@ -1387,14 +1388,6 @@ export const surfaceEnglish = {
     traditionalChinese: "Traditional Chinese",
     korean: "Korean",
     origin: "Origin",
-    prefer: "Prefer {{language}} metadata",
-    drag: "Drag {{language}}",
-    moveEarlier: "Move {{language}} earlier",
-    moveLater: "Move {{language}} later",
-    priorityTitle: "Title and tag language",
-    priorityDescription:
-      "DLsite editions are matched from top to bottom. Origin is always the last fallback. The sync request language is set separately.",
-    preferredLanguages: "Preferred languages",
   },
   detailActions: {
     resume: "Resume",

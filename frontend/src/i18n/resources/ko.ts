@@ -633,6 +633,9 @@ export const koreanResource = {
         dark: "다크",
         system: "시스템",
         saveFailed: "언어 설정을 저장하지 못했습니다.",
+        metadataLanguage: "우선 표시할 메타데이터 언어",
+        metadataLanguageSaveFailed: "메타데이터 언어를 저장하지 못했습니다.",
+        metadataLanguageLoadFailed: "메타데이터 언어를 불러오지 못했습니다.",
       },
       account: {
         account: "계정",

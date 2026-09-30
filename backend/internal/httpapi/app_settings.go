@@ -36,6 +36,7 @@ type appSettingsResponse struct {
 	CatalogFreshnessDays      int                          `json:"catalogFreshnessDays"`
 	DLsiteMetadataLanguage    string                       `json:"dlsiteMetadataLanguage"`
 	DLsiteMetadataLanguages   []string                     `json:"dlsiteMetadataLanguages"`
+	MetadataProxyURL          string                       `json:"metadataProxyUrl"`
 	DirectoryRoutingRules     []directoryRule              `json:"directoryRoutingRules"`
 	RecommendationThreshold   int                          `json:"recommendationThreshold"`
 	RecommendationConfig      library.RecommendationConfig `json:"recommendationConfig"`
@@ -69,6 +70,7 @@ type settingsUpdatePayload struct {
 	CatalogFreshnessDays      *int             `json:"catalogFreshnessDays"`
 	DLsiteMetadataLanguage    *string          `json:"dlsiteMetadataLanguage"`
 	DLsiteMetadataLanguages   *[]string        `json:"dlsiteMetadataLanguages"`
+	MetadataProxyURL          *string          `json:"metadataProxyUrl"`
 	DirectoryRoutingRules     *[]directoryRule `json:"directoryRoutingRules"`
 	RecommendationThreshold   *int             `json:"recommendationThreshold"`
 	RecommendationConfig      json.RawMessage  `json:"recommendationConfig"`
@@ -160,6 +162,11 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if payload.LocalScanDepth != nil || payload.RemoteSaveTemplate != nil {
 		s.notifyFilesystemTriggerConfigChanged()
+	}
+	if payload.MetadataProxyURL != nil {
+		// Validated before the transaction was applied.
+		proxy, _ := normalizeMetadataProxyURL(*payload.MetadataProxyURL)
+		s.metadataTransport.setProxy(proxy)
 	}
 	if payload.DLsiteMetadataLanguages != nil || payload.DLsiteMetadataLanguage != nil {
 		if err := metasync.ProjectDLsiteMetadata(r.Context(), s.db, s.preferredMetadataLanguages(r.Context())); err != nil {
@@ -286,6 +293,15 @@ func applyMetadataSettings(r *http.Request, tx *sql.Tx, payload settingsUpdatePa
 			return err
 		}
 	}
+	if payload.MetadataProxyURL != nil {
+		proxy, err := normalizeMetadataProxyURL(*payload.MetadataProxyURL)
+		if err != nil {
+			return err
+		}
+		if err := upsertSetting(r, tx, metadataProxySetting, proxy); err != nil {
+			return err
+		}
+	}
 	if payload.DirectoryRoutingRules != nil {
 		rules := normalizeDirectoryRoutingRules(*payload.DirectoryRoutingRules)
 		if len(rules) > 20 {
@@ -368,6 +384,10 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 	if err != nil {
 		return appSettingsResponse{}, err
 	}
+	metadataProxy, err := s.loadMetadataProxyURL(r.Context())
+	if err != nil {
+		return appSettingsResponse{}, err
+	}
 	return appSettingsResponse{
 		AnonymousAccessEnabled:    s.configuredAnonymousAccessEnabled(),
 		LocalScanDepth:            s.settingInt(r, "local_scan_depth", s.cfg.LocalScanDepth),
@@ -385,6 +405,7 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		CatalogFreshnessDays:      s.catalogFreshnessDays(r.Context()),
 		DLsiteMetadataLanguage:    metadataLanguages[0],
 		DLsiteMetadataLanguages:   metadataLanguages,
+		MetadataProxyURL:          metadataProxy,
 		DirectoryRoutingRules:     s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
 		RecommendationThreshold:   s.settingInt(r, "recommendation_threshold", 50),
 		RecommendationConfig:      s.libraryStore.LoadRecommendationConfig(r.Context()),

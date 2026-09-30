@@ -360,8 +360,9 @@ export const surfaceHans = {
       edit: "编辑",
     },
     metadata: {
-      languagePriority: "DLsite 元数据语言优先级",
-      priority: "优先级 {{count}}",
+      proxy: "元数据代理",
+      proxyDescription:
+        "通过此代理发送 DLsite 元数据和封面请求。请填写包含主机和端口的 HTTP、HTTPS、SOCKS5 或 SOCKS5h 代理地址；不支持账号密码。留空则直接连接。",
       remoteRequests: "远程请求语言",
       remoteRequestsDescription: "作为 Accept-Language 提示发送。来源可能忽略它或返回混合语言。",
       catalogFreshnessDays: "目录新鲜度天数",
@@ -1351,13 +1352,6 @@ export const surfaceHans = {
     traditionalChinese: "繁体中文",
     korean: "韩语",
     origin: "原版",
-    prefer: "优先使用 {{language}} 元数据",
-    drag: "拖动 {{language}}",
-    moveEarlier: "将 {{language}} 上移",
-    moveLater: "将 {{language}} 下移",
-    priorityTitle: "标题和标签语言",
-    priorityDescription: "按从上到下的顺序匹配 DLsite 版本。原版始终作为最后的回退。同步请求语言单独设置。",
-    preferredLanguages: "首选语言",
   },
   detailActions: {
     resume: "继续播放",

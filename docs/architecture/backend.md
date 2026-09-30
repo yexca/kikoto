@@ -158,9 +158,13 @@ wildcards such as `*.media.example.invalid`. A wildcard matches subdomains, not
 the parent hostname, and additional hosts never inherit the private-address
 exception.
 
-The hardened transport connects directly rather than inheriting ambient HTTP
-proxy variables, because a proxy would require its own explicit DNS and
-destination trust boundary. Connection, response-header, response-read idle,
+The hardened transport never inherits ambient HTTP proxy variables. A policy
+may instead name one operator-configured forward proxy; it then dials only that
+proxy endpoint, with the configured private-address exception, while URL,
+origin, and redirect checks still apply to each request and the proxy resolves
+destination hostnames. Only built-in DLsite metadata requests use this, through
+the `metadata_proxy_url` setting; the transport follows setting changes and
+closes the previous proxy's idle connections. Connection, response-header, response-read idle,
 buffered-body, streamed-file, concurrency, and retry bounds remain specific to
 the request class. See
 [Secure development](../development/security.md) and

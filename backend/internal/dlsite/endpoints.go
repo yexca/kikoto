@@ -15,6 +15,8 @@ import (
 const (
 	defaultDLsiteWebBaseURL   = "https://www.dlsite.com"
 	defaultDLsiteImageBaseURL = "https://img.dlsite.jp"
+	// RequestTimeout bounds one complete DLsite metadata or image request.
+	RequestTimeout = 20 * time.Second
 )
 
 // Endpoints defines the built-in public destinations for DLsite metadata.
@@ -33,18 +35,24 @@ func DefaultEndpoints() Endpoints {
 	}
 }
 
+// Policy constrains requests to these endpoint origins. A non-nil proxy
+// routes them through that operator-configured forward proxy.
+func (e Endpoints) Policy(proxy *url.URL) (*outbound.Policy, error) {
+	return outbound.NewPolicy([]outbound.Destination{
+		{URL: e.webBaseURL},
+		{URL: e.imageBaseURL},
+	}, outbound.Options{Proxy: proxy})
+}
+
 // NewClient creates a client constrained to these endpoint origins when the
 // caller does not supply an HTTP client.
 func (e Endpoints) NewClient(httpClient *http.Client) *Client {
 	if httpClient == nil {
-		policy, err := outbound.NewPolicy([]outbound.Destination{
-			{URL: e.webBaseURL},
-			{URL: e.imageBaseURL},
-		}, outbound.Options{})
+		policy, err := e.Policy(nil)
 		if err != nil {
 			panic("invalid built-in metadata destination policy")
 		}
-		httpClient = policy.Client(nil, 20*time.Second)
+		httpClient = policy.Client(nil, RequestTimeout)
 	}
 	return &Client{
 		httpClient: httpClient,
