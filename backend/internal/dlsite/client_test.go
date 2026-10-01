@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -34,6 +35,30 @@ func TestTranslationStatusesAcceptsProviderEmptyArray(t *testing.T) {
 	}
 	if info.StatusForTranslatorByLang == nil || len(info.StatusForTranslatorByLang) != 0 {
 		t.Fatalf("translation statuses = %#v, want an empty map", info.StatusForTranslatorByLang)
+	}
+}
+
+func TestGenreIDAcceptsPositiveIntegersAndIgnoresOtherValues(t *testing.T) {
+	var genres []Genre
+	if err := json.Unmarshal([]byte(`[
+		{"id":206,"name":"Girl","name_base":"少女"},
+		{"id":"7","name":"Comedy"},
+		{"id":1.5,"name":"Fractional"},
+		{"id":-3,"name":"Negative"},
+		{"id":{"value":1},"name":"Object"},
+		{"name":"Missing"}
+	]`), &genres); err != nil {
+		t.Fatalf("Unmarshal() error = %v, want unexpected ids ignored", err)
+	}
+	got := []GenreID{}
+	for _, genre := range genres {
+		got = append(got, genre.ID)
+	}
+	if want := []GenreID{206, 7, 0, 0, 0, 0}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("genre ids = %v, want %v", got, want)
+	}
+	if genres[0].NameBase != "少女" || genres[5].Name != "Missing" {
+		t.Fatalf("genre names = %#v", genres)
 	}
 }
 

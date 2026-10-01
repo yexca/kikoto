@@ -21,6 +21,8 @@ Important tables:
 - `metadata_sync_attempt_run`
 - `tag`
 - `work_tag`
+- `work_dlsite_genre`
+- `dlsite_genre_name`
 - `party`
 - `person`
 - `work_credit`
@@ -73,6 +75,15 @@ provider-declared language edition in a logical work family. The `origin`
 display token refers to the canonical edition even when its source language is
 not Japanese. The configured priority only changes the normalized title/tag
 projection; the request locale and the raw snapshot remain provenance data.
+
+DLsite genre ids are stable across request locales. `work_dlsite_genre`
+(migration `047`) records the ids each edition carries, and
+`dlsite_genre_name` learns one name per id and request locale from fetched
+products: `name_base` is the Japanese name and `name` is the name for the
+locale that was requested. Names are keyed by request locale rather than
+edition language because an edition without its own locale is requested in
+`ja-jp` and reports Japanese names. Both tables only feed search: they do not
+create works or tags, and learned names never appear in tag lists.
 
 `work.rating_average`, `work.sales_count`, and the current commercial fields are
 normalized projections maintained by metadata sync. Interactive rating/sales
@@ -264,7 +275,14 @@ generation binding and rebuilds it before the session is reused.
   than scanning raw provider snapshot JSON.
 - `work_search` is a derived FTS5 trigram index with one row per work
   (`rowid = work.id`) holding folded code/alias, title, circle, voice actor,
-  and tag text, including relevant manual overrides. Folding applies NFKC,
+  and tag text, including relevant manual overrides. The title column also
+  holds the work's own DLsite variant title, so an origin title stays
+  searchable after the priority projection rewrites `work.title`. The tag
+  column also holds every learned `dlsite_genre_name` for the work's genre
+  ids, so a tag matches in each language the library has fetched. Matching
+  remains a substring test; a Library page orders works whose indexed value
+  equals a text, circle, voice, or tag needle exactly ahead of partial
+  matches, then applies the selected sort. Folding applies NFKC,
   Unicode lowercase, and katakana-to-hiragana mapping. Triggers queue changed
   works in `work_search_dirty`; a background worker rebuilds queued documents
   in bounded batches. A search rebuilds a queue of at most 64 works itself, so
