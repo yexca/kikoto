@@ -433,7 +433,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const resultsAnchorRef = useRef<HTMLDivElement | null>(null);
   const pendingResultsScroll = useRef(false);
   const pendingScrollRestore = useRef<number | null>(null);
-  const mobileSearchInputRef = useRef<HTMLInputElement | null>(null);
   const wasActive = useRef(active);
   const browseSurfaceActive = useRef(true);
   browseSurfaceActive.current = selectedCode === null && selectedRemoteTarget === null;
@@ -588,12 +587,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   useEffect(() => {
     if (searchQuery.trim()) setMobileSearchOpen(true);
   }, [searchQuery]);
-
-  useEffect(() => {
-    if (!mobileNavigationLayout || !mobileSearchOpen) return;
-    const frame = window.requestAnimationFrame(() => mobileSearchInputRef.current?.focus());
-    return () => window.cancelAnimationFrame(frame);
-  }, [mobileNavigationLayout, mobileSearchOpen]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -1275,8 +1268,11 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     }));
   };
 
+  // An immediate load replaces the displayed results without going through the
+  // request effect, so the effect's last loaded key no longer describes them.
   const loadLibraryWorksNow = (query: string, page = 1) => {
     const requestSeq = ++libraryRequestSeq.current;
+    loadedLibraryRequestKey.current = "";
     setLibraryLoadError("");
     setIsLibraryLoading(true);
     api
@@ -1320,6 +1316,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   ) => {
     const sourceState = remoteSourceStates[source.id] ?? defaultRemoteSourceViewState;
     const requestSeq = ++remoteRequestSeq.current;
+    loadedRemoteRequestKey.current = "";
     setIsRemoteLoading(true);
     if (options.clearResult !== false && remoteResult?.sourceId !== source.id) setRemoteResult(null);
     api
@@ -1695,7 +1692,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         >
           <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
           <input
-            ref={mobileSearchInputRef}
             className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
             value={searchQuery}
             onKeyDown={dismissKeyboardOnEnter}

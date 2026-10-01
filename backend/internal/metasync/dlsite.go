@@ -1142,6 +1142,9 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 	if err := replaceDLsiteWorkTags(ctx, tx, workID, product.Genres, editionToken, requestLocale); err != nil {
 		return err
 	}
+	if err := replaceDLsiteWorkGenres(ctx, tx, workID, product.Genres, requestLocale); err != nil {
+		return err
+	}
 	if err := recordSyncOutcome(ctx, tx, workID, providerID, "metadata", "succeeded"); err != nil {
 		return err
 	}
@@ -1198,6 +1201,52 @@ func replaceDLsiteWorkTags(ctx context.Context, tx *sql.Tx, workID int64, genres
 			ON CONFLICT(work_id, tag_id, source) DO NOTHING
 		`, workID, tagID); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// replaceDLsiteWorkGenres records the genre ids of one edition and learns
+// their names: NameBase is the Japanese name, and Name is the name for the
+// locale DLsite was asked for. Names are keyed by that request locale, not by
+// the edition language, because an edition without its own locale is
+// requested in ja-jp and reports Japanese names. The search index expands
+// each id to every learned name, so a tag matches in any known language.
+func replaceDLsiteWorkGenres(ctx context.Context, tx *sql.Tx, workID int64, genres []dlsite.Genre, requestLocale string) error {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM work_dlsite_genre WHERE work_id = ?", workID); err != nil {
+		return err
+	}
+	requestLocale = normalizeRequestLocale(requestLocale)
+	for _, genre := range genres {
+		if genre.ID <= 0 {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO work_dlsite_genre (work_id, genre_id)
+			VALUES (?, ?)
+			ON CONFLICT(work_id, genre_id) DO NOTHING
+		`, workID, int64(genre.ID)); err != nil {
+			return err
+		}
+		names := []struct{ language, name string }{{"ja-jp", genre.NameBase}}
+		if requestLocale != "" {
+			names = append(names, struct{ language, name string }{requestLocale, genre.Name})
+		}
+		for _, entry := range names {
+			name := strings.TrimSpace(entry.name)
+			if name == "" {
+				continue
+			}
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO dlsite_genre_name (genre_id, language, name)
+				VALUES (?, ?, ?)
+				ON CONFLICT(genre_id, language) DO UPDATE SET
+					name = excluded.name,
+					updated_at = CURRENT_TIMESTAMP
+				WHERE dlsite_genre_name.name <> excluded.name
+			`, int64(genre.ID), entry.language, name); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

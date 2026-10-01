@@ -15,6 +15,11 @@ The Library is the main browsing surface for works.
   script: `100%` and `a_b` are not wildcards, full-width `ＡＢＣ` finds `abc`, and
   katakana finds the same word written in hiragana. Prefix a term with a
   clause such as `tag: 癒し`, `circle:`, `va:`, or `mytag:` to search one field.
+- A DLsite tag also matches its name in every language Kikoto has fetched for
+  that tag: when an edition requested in English reports `Healing` for the tag
+  shown as `癒し`, `tag: healing` finds both. Results whose tag, title, circle,
+  or voice credit equals the search term exactly appear before partial matches,
+  and the selected sort orders each group.
 - The `+` button in the search field opens a floating editor for a
   structured search condition. Selecting a condition badge edits it in the same
   popover without moving the results.
