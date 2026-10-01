@@ -74,6 +74,10 @@ var retiredBaselineLedgerAssets = []migrationAsset{
 	{version: 42, filename: "baseline/042_v0.6.1.sql", checksum: "b94bee22b8c68dfa3acaf5660b96efebe618abbeeee6cfd2d23383025e48f837", baseline: true},
 	{version: 43, filename: "baseline/043_v0.6.1.sql", checksum: "39ad107287fc6f61070cae0d022edf91f664bc23836f93bd7a6692a79f8c09e4", baseline: true},
 	{version: 44, filename: "baseline/044_v0.6.1.sql", checksum: "3840257494821213e3125a9f400dcbbbabad4336a898981943dbf42f5b6204c6", baseline: true},
+	// These v0.7.0-suffixed snapshots were generated during v0.7.1 development.
+	// v0.7.0 actually shipped schema 044.
+	{version: 45, filename: "baseline/045_v0.7.0.sql", checksum: "a9ae584adc2627a0f00a00824255d54c90d96d5f6b0e3725f7c1ff798e1bfced", baseline: true},
+	{version: 47, filename: "baseline/047_v0.7.0.sql", checksum: "b014f409c569319b47148b54e19b9049acdc2c74a68e76b72bb3290a1ac7f866", baseline: true},
 }
 
 type migrationCatalog struct {

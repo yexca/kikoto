@@ -82,7 +82,7 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain includes
-`047_dlsite_genre_dictionary.sql`, with the `047_v0.7.0.sql` baseline generated
+`047_dlsite_genre_dictionary.sql`, with the `047_v0.7.1.sql` baseline generated
 from the current `VERSION` file. Migration 047 adds `work_dlsite_genre` and
 `dlsite_genre_name`, backfills them from each work's latest DLsite snapshot
 (genres with a positive integer id only, newest name first), adds triggers that
@@ -228,3 +228,18 @@ were generated during v0.7.0 development with a v0.6.1 suffix were not part of
 the v0.6.1 release. Their files have been removed, while checksum-only ledger
 entries allow development databases created from those snapshots to continue
 through the numbered chain.
+
+## v0.7.1 Upgrade
+
+Existing v0.7.0 databases advance from schema 044 through numbered migrations
+045–047. Migration 045 adds `work_metadata_link` without changing existing
+rows. Migrations 046 and 047 queue works with DLsite variant titles or genres
+for the search index, which catches up in the background after startup. New
+installations use `047_v0.7.1.sql`; existing installations never apply a
+baseline during upgrade.
+
+The released v0.7.0 baseline remains `044_v0.7.0.sql`. Baselines 045 and 047
+that were generated during v0.7.1 development with a v0.7.0 suffix were not
+part of the v0.7.0 release. Their files have been removed, while
+checksum-only ledger entries allow development databases created from those
+snapshots to continue through the numbered chain.

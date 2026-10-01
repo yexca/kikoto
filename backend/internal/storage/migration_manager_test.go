@@ -28,7 +28,7 @@ func TestMigrationChecksumNormalizesLineEndings(t *testing.T) {
 
 func TestMigrateFreshDatabaseReusesBaselineAcrossAppReleases(t *testing.T) {
 	db := openMigrationManagerDB(t)
-	if err := MigrateFS(db, migrations.Files, "v0.7.0"); err != nil {
+	if err := MigrateFS(db, migrations.Files, "v0.7.1"); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
 
@@ -55,7 +55,7 @@ func TestMigrateFreshDatabaseReusesBaselineAcrossAppReleases(t *testing.T) {
 	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = ?", latestNumberedMigrationVersion).Scan(&filename); err != nil {
 		t.Fatal(err)
 	}
-	if filename != "baseline/047_v0.7.0.sql" {
+	if filename != "baseline/047_v0.7.1.sql" {
 		t.Fatalf("baseline history filename = %q", filename)
 	}
 }
@@ -226,18 +226,21 @@ func TestMigrateUpgradesRetiredBaselineLedger(t *testing.T) {
 	}
 }
 
-func TestMigrateUpgradesRetiredV070DevelopmentBaselines(t *testing.T) {
+func TestMigrateUpgradesRetiredDevelopmentBaselines(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	// v0.7.0 development produced v0.6.1-suffixed baselines for schemas 035-044.
-	const lastRetiredDevelopmentBaseline = 44
-	for version := 35; version <= lastRetiredDevelopmentBaseline; version++ {
-		t.Run(fmt.Sprintf("schema %03d", version), func(t *testing.T) {
+	// v0.7.0 development produced v0.6.1-suffixed baselines for schemas 035-044,
+	// and v0.7.1 development produced v0.7.0-suffixed ones for 045 and 047.
+	for _, retired := range retiredBaselineLedgerAssets {
+		if retired.version < 35 {
+			continue
+		}
+		version, filename := retired.version, retired.filename
+		t.Run(filename, func(t *testing.T) {
 			previousCatalog := copyNumberedMigrationsThrough(t, sourceDir, version)
 			db := openMigrationManagerDB(t)
 			if err := Migrate(db, previousCatalog); err != nil {
 				t.Fatalf("create schema version %03d database: %v", version, err)
 			}
-			filename := fmt.Sprintf("baseline/%03d_v0.6.1.sql", version)
 			replaceMigrationHistoryWithRetiredBaseline(t, db, filename)
 			if err := Migrate(db, sourceDir); err != nil {
 				t.Fatalf("upgrade retired development baseline: %v", err)
