@@ -442,10 +442,13 @@ root, so a pool is the first path segment in pool mode and no schema changes.
 `GET/PUT /api/library/layout`, `POST /api/library/pools/reconnect`, and
 `POST /api/library/onboarding/complete` require `sources:write`.
 
-At startup, before this start is recorded, an unconfigured instance that ran an
-earlier release (`schema_state.last_successful_app_version`) or already holds
-local works becomes `standard` with upgrade onboarding pending and keeps its
-triggers. The administrator may retain standard mode or confirm a move into
+At startup, before this start is recorded, an instance whose previous start
+(`schema_state.last_successful_app_version`) was a release before v0.7.0, or
+that has no recorded start but already holds local works, has upgrade
+onboarding pending; if unconfigured it becomes `standard`, and it keeps its
+triggers. An upgraded instance whose previous start was v0.7.0 or later (or a
+development build) already had onboarding offered, so a configured layout is
+marked onboarded without changing triggers. The administrator may retain standard mode or confirm a move into
 storage pools, then review the local scan and preserved custom workflows.
 The layout step uses one primary action: Next for an unchanged configuration,
 or Save and continue for changes. After a confirmed migration finishes, Next
@@ -458,7 +461,8 @@ directories and the total size of their files. Copy and verification complete
 before library records are updated and original files are removed.
 A fresh install stays unconfigured and turns the local scan's Startup trigger
 and folder watcher off once; onboarding chooses the layout, runs a scan and
-optional metadata sync, and sets both triggers. A configured mode switch or
+optional metadata sync, and sets both triggers. Its onboarding stays pending
+across restarts until finished. A configured mode switch or
 Fetch pool switch requires a preview and confirmation. Kikoto blocks ordinary
 requests during the durable copy, checksum verification, database path update,
 source cleanup, and local scan. Administrators see progress and can retry a
