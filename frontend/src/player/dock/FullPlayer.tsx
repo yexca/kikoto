@@ -40,6 +40,9 @@ import type { TimedLyricLine } from "./timedLyrics";
 import { useActiveLyricIndex, type PlayerLyricsState } from "./usePlayerLyrics";
 
 type PlayerSidePanel = "lyrics" | "queue";
+
+const sourceLabelClassName =
+  "inline-flex min-w-0 max-w-[55%] items-center gap-1 rounded-full bg-foreground/[0.06] px-2 py-0.5 font-semibold text-muted-foreground";
 type FullDrag = { pointerId: number; startY: number; startedAt: number; moved: boolean };
 
 export function FullPlayer({
@@ -78,6 +81,7 @@ export function FullPlayer({
   const availableLocations = orderedTrackLocations(track);
   const currentLocation =
     availableLocations.find((location) => location.locationId === track.locationId) ?? availableLocations[0];
+  const canSwitchSource = player.sourceSwitchingEnabled && availableLocations.length > 1;
   const modeLabel = t(`player.modes.${player.mode}`, { defaultValue: player.mode });
   const atQueueStart = player.currentIndex <= 0 && player.mode !== "loop";
   const atQueueEnd = player.currentIndex >= player.queue.length - 1 && player.mode !== "loop";
@@ -85,6 +89,10 @@ export function FullPlayer({
   useEffect(() => {
     setIsMoreOpen(false);
   }, [track.queueItemId]);
+
+  useEffect(() => {
+    if (!canSwitchSource) setIsSourceOpen(false);
+  }, [canSwitchSource]);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -367,18 +375,28 @@ export function FullPlayer({
             )}
 
             <PlayerTimeline duration={player.duration} onSeek={player.seekTo}>
-              <button
-                ref={sourceButtonRef}
-                type="button"
-                className="touch-target relative inline-flex min-w-0 max-w-[55%] items-center gap-1 rounded-full bg-foreground/[0.06] px-2 py-0.5 font-semibold text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
-                onClick={() => setIsSourceOpen((value) => !value)}
-                aria-label={t("player.chooseSource")}
-                aria-haspopup="dialog"
-                aria-expanded={isSourceOpen}
-              >
-                <HardDrive className="h-3 w-3 shrink-0" />
-                <span className="truncate">{locationLabel(currentLocation, t)}</span>
-              </button>
+              {canSwitchSource ? (
+                <button
+                  ref={sourceButtonRef}
+                  type="button"
+                  className={cn(
+                    sourceLabelClassName,
+                    "touch-target relative transition-colors hover:bg-foreground/10 hover:text-foreground",
+                  )}
+                  onClick={() => setIsSourceOpen((value) => !value)}
+                  aria-label={t("player.chooseSource")}
+                  aria-haspopup="dialog"
+                  aria-expanded={isSourceOpen}
+                >
+                  <HardDrive className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{locationLabel(currentLocation, t)}</span>
+                </button>
+              ) : (
+                <span className={sourceLabelClassName} title={t("player.playbackSource")}>
+                  <HardDrive className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  <span className="truncate">{locationLabel(currentLocation, t)}</span>
+                </span>
+              )}
             </PlayerTimeline>
 
             <div className="mt-3 flex items-center justify-between lg:mt-2">
@@ -522,7 +540,7 @@ export function FullPlayer({
         track={track}
       />
       <SourceMenu
-        open={isSourceOpen}
+        open={canSwitchSource && isSourceOpen}
         anchorRef={sourceButtonRef}
         onOpenChange={setIsSourceOpen}
         locations={availableLocations}

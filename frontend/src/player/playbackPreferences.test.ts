@@ -7,10 +7,13 @@ import {
   DEFAULT_SEEK_BACKWARD_SECONDS,
   DEFAULT_SEEK_FORWARD_SECONDS,
   getStoredPlaybackSeekPreferences,
+  getStoredPlaybackSourcePreferences,
   normalizePlaybackSeekPreferences,
   PLAYER_SEEK_PREFERENCES_CHANGE_EVENT,
   playbackSeekPreferencesStorageKey,
+  playbackSourcePreferencesStorageKey,
   storePlaybackSeekPreferences,
+  storePlaybackSourcePreferences,
 } from "./playbackPreferences";
 
 function memoryStorage(values: Record<string, string> = {}): Storage {
@@ -82,5 +85,32 @@ describe("playback seek preferences", () => {
         detail: { storageKey: playbackSeekPreferencesStorageKey(7), preferences },
       }),
     );
+  });
+});
+
+describe("playback source preferences", () => {
+  beforeEach(() => {
+    isNativeApp.mockReturnValue(false);
+    vi.stubGlobal("localStorage", memoryStorage());
+    vi.stubGlobal("window", { location: { origin: "https://player.example.invalid" }, dispatchEvent: vi.fn() });
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("keeps switching and fallback off unless explicitly enabled", () => {
+    expect(getStoredPlaybackSourcePreferences(7)).toEqual({ sourceSwitching: false, sourceFallback: false });
+
+    localStorage.setItem(
+      playbackSourcePreferencesStorageKey(7),
+      JSON.stringify({ sourceSwitching: "true", sourceFallback: 1 }),
+    );
+    expect(getStoredPlaybackSourcePreferences(7)).toEqual({ sourceSwitching: false, sourceFallback: false });
+  });
+
+  it("stores each account's choice separately", () => {
+    storePlaybackSourcePreferences(7, { sourceSwitching: true, sourceFallback: false });
+
+    expect(getStoredPlaybackSourcePreferences(7)).toEqual({ sourceSwitching: true, sourceFallback: false });
+    expect(getStoredPlaybackSourcePreferences(8)).toEqual({ sourceSwitching: false, sourceFallback: false });
   });
 });

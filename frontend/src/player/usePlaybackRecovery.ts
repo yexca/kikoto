@@ -15,8 +15,8 @@ import {
 import type { PlaybackEngine } from "./usePlaybackEngine";
 
 /**
- * Handles a failed source: a missing file moves to the item's next location,
- * a local file the browser cannot decode offers compatibility playback, and a
+ * Handles a failed source: when source fallback is enabled a missing file
+ * moves to the item's next location, a local file the browser cannot decode offers compatibility playback, and a
  * track with no usable location stops with a retry action.
  */
 export function usePlaybackRecovery(
@@ -25,10 +25,12 @@ export function usePlaybackRecovery(
     setQueue,
     flushProgress,
     setPlaybackCompatibility,
+    sourceFallback,
   }: {
     setQueue: Dispatch<SetStateAction<PlayerTrack[]>>;
     flushProgress: () => void;
     setPlaybackCompatibility: (scope: PlaybackCompatibilityScope, resume?: boolean) => void;
+    sourceFallback: boolean;
   },
 ) {
   const { t } = useTranslation();
@@ -56,7 +58,7 @@ export function usePlaybackRecovery(
           positionSeconds: carriedPlaybackPosition(),
         };
       };
-      const result = recordTrackLocationFailure(activeTrack, locationFailures);
+      const result = recordTrackLocationFailure(activeTrack, locationFailures, { allowFallback: sourceFallback });
       if (result.kind === "ignored") {
         refs.sourceLoadingRef.current = false;
         updatePlayingState(false);
@@ -113,6 +115,7 @@ export function usePlaybackRecovery(
       refs,
       reloadPlayback,
       setQueue,
+      sourceFallback,
       t,
       toast,
       updatePlayingState,

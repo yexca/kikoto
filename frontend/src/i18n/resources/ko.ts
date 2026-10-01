@@ -823,6 +823,15 @@ export const koreanResource = {
         seekInvalid: "{{min}}초에서 {{max}}초 사이의 정수를 입력하세요.",
         savePlayback: "재생 설정 저장",
         seekUpdated: "재생 빨리감기/되감기 설정이 업데이트되었습니다.",
+        playbackSources: "재생 소스",
+        playbackSourcesDescription:
+          "로컬 파일과 원격 스트림처럼 위치가 여러 개인 트랙에 적용됩니다. 기본값은 꺼짐입니다.",
+        sourceSwitching: "빠른 소스 전환",
+        sourceSwitchingDescription:
+          "재생 화면의 탐색 막대 아래 소스 표시에서 현재 트랙의 재생 위치를 전환할 수 있습니다.",
+        sourceFallback: "실패 시 다른 소스로 전환",
+        sourceFallbackDescription:
+          "현재 위치에서 재생에 실패하면 멈추지 않고 트랙의 다음 사용 가능한 위치에서 계속 재생합니다.",
         displayName: "표시 이름",
         username: "사용자 이름",
         role: "역할",

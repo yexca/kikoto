@@ -24,6 +24,7 @@ import { usePlaybackCompatibility } from "./usePlaybackCompatibility";
 import { usePlaybackEngine } from "./usePlaybackEngine";
 import { usePlaybackProgress } from "./usePlaybackProgress";
 import { usePlaybackRecovery } from "./usePlaybackRecovery";
+import { usePlaybackSourcePreferences } from "./usePlaybackSourcePreferences";
 import { usePlaybackSource } from "./usePlaybackSource";
 import { usePlayerKeyboardShortcuts } from "./usePlayerKeyboardShortcuts";
 import { usePlayerQueueActions } from "./usePlayerQueueActions";
@@ -79,6 +80,8 @@ type PlayerContextValue = {
   removeQueueItem: (queueItemId: string) => void;
   clearQueue: () => void;
   selectLocation: (locationId: number) => void;
+  /** Whether this account lets the Now Playing source label switch locations. */
+  sourceSwitchingEnabled: boolean;
   setSleepTimerMinutes: (minutes: number, finishCurrentTrack: boolean) => void;
   setSleepFinishCurrentTrack: (enabled: boolean) => void;
   clearSleepTimer: () => void;
@@ -134,6 +137,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [playbackRate, setPlaybackRateState] = useState(restoredQueue.playbackRate);
   const [mode, setMode] = useState<PlayMode>(restoredQueue.mode);
   const seekPreferences = usePlaybackSeekPreferences(principalID);
+  const sourcePreferences = usePlaybackSourcePreferences(principalID);
 
   const engine = usePlaybackEngine(queue, currentIndex);
   const {
@@ -198,6 +202,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const { handlePlaybackError, resetLocationFailures } = usePlaybackRecovery(engine, {
     setQueue,
     flushProgress,
+    sourceFallback: sourcePreferences.sourceFallback,
     setPlaybackCompatibility,
   });
   const { seekTo, seekBy, seekBackward, seekForward } = usePlayerSeeking(engine, seekPreferences);
@@ -290,6 +295,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   });
 
   const { seekBackwardSeconds, seekForwardSeconds } = seekPreferences;
+  const sourceSwitchingEnabled = sourcePreferences.sourceSwitching;
   const value = useMemo<PlayerContextValue>(
     () => ({
       queue,
@@ -325,6 +331,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       removeQueueItem,
       clearQueue,
       selectLocation,
+      sourceSwitchingEnabled,
       setSleepTimerMinutes,
       setSleepFinishCurrentTrack,
       clearSleepTimer,
@@ -369,6 +376,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       removeQueueItem,
       clearQueue,
       selectLocation,
+      sourceSwitchingEnabled,
       setSleepTimerMinutes,
       setSleepFinishCurrentTrack,
       clearSleepTimer,

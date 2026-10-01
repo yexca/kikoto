@@ -51,18 +51,20 @@ const track: PlayerTrack = {
 };
 
 describe("track location fallback", () => {
+  const fallback = { allowFallback: true };
+
   it("attempts each location once and emits one terminal result", () => {
     const state = createTrackLocationFailureState();
     const results = [];
 
-    const first = recordTrackLocationFailure(track, state);
+    const first = recordTrackLocationFailure(track, state, fallback);
     results.push(first.kind);
     expect(first).toMatchObject({ kind: "switch", location: { locationId: 12 } });
-    expect(recordTrackLocationFailure(track, state)).toEqual({ kind: "ignored" });
+    expect(recordTrackLocationFailure(track, state, fallback)).toEqual({ kind: "ignored" });
 
     const secondTrack = first.kind === "switch" ? applyTrackLocation(track, first.location) : track;
-    results.push(recordTrackLocationFailure(secondTrack, state).kind);
-    results.push(recordTrackLocationFailure(secondTrack, state).kind);
+    results.push(recordTrackLocationFailure(secondTrack, state, fallback).kind);
+    results.push(recordTrackLocationFailure(secondTrack, state, fallback).kind);
 
     expect([...state.failedLocationIds]).toEqual([11, 12]);
     expect(results).toEqual(["switch", "terminal", "ignored"]);
@@ -70,11 +72,21 @@ describe("track location fallback", () => {
 
   it("allows a manual source selection to reset prior failures", () => {
     const state = createTrackLocationFailureState();
-    recordTrackLocationFailure(track, state);
-    recordTrackLocationFailure(applyTrackLocation(track, locations[1]), state);
+    recordTrackLocationFailure(track, state, fallback);
+    recordTrackLocationFailure(applyTrackLocation(track, locations[1]), state, fallback);
 
     resetTrackLocationFailures(state);
 
-    expect(recordTrackLocationFailure(track, state)).toMatchObject({ kind: "switch", location: { locationId: 12 } });
+    expect(recordTrackLocationFailure(track, state, fallback)).toMatchObject({
+      kind: "switch",
+      location: { locationId: 12 },
+    });
+  });
+
+  it("stops at the first failure when fallback is disabled", () => {
+    const state = createTrackLocationFailureState();
+
+    expect(recordTrackLocationFailure(track, state, { allowFallback: false })).toEqual({ kind: "terminal" });
+    expect(recordTrackLocationFailure(track, state, { allowFallback: false })).toEqual({ kind: "ignored" });
   });
 });

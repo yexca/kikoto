@@ -72,3 +72,63 @@ export type PlaybackSeekPreferencesChangeDetail = {
   storageKey: string;
   preferences: PlaybackSeekPreferences;
 };
+
+/** Source controls are opt-in per account; both default off. */
+export type PlaybackSourcePreferences = {
+  /** The Now Playing source label opens a menu for switching the track's location. */
+  sourceSwitching: boolean;
+  /** A failed location moves to the track's next usable location instead of stopping. */
+  sourceFallback: boolean;
+};
+
+export const PLAYER_SOURCE_PREFERENCES_CHANGE_EVENT = "kikoto:player-source-preferences-change";
+
+const PLAYBACK_SOURCE_PREFERENCES_STORAGE_BASE_KEY = "kikoto:player-source-preferences:v1";
+
+export function defaultPlaybackSourcePreferences(): PlaybackSourcePreferences {
+  return { sourceSwitching: false, sourceFallback: false };
+}
+
+export function playbackSourcePreferencesStorageKey(principalID: ClientPrincipalID) {
+  return currentScopedStorageKey(PLAYBACK_SOURCE_PREFERENCES_STORAGE_BASE_KEY, principalID);
+}
+
+export function normalizePlaybackSourcePreferences(value: unknown): PlaybackSourcePreferences {
+  const defaults = defaultPlaybackSourcePreferences();
+  if (!value || typeof value !== "object" || Array.isArray(value)) return defaults;
+  const candidate = value as Partial<Record<keyof PlaybackSourcePreferences, unknown>>;
+  return {
+    sourceSwitching: candidate.sourceSwitching === true,
+    sourceFallback: candidate.sourceFallback === true,
+  };
+}
+
+export function getStoredPlaybackSourcePreferences(principalID: ClientPrincipalID): PlaybackSourcePreferences {
+  try {
+    const raw = localStorage.getItem(playbackSourcePreferencesStorageKey(principalID));
+    return normalizePlaybackSourcePreferences(raw ? JSON.parse(raw) : null);
+  } catch {
+    return defaultPlaybackSourcePreferences();
+  }
+}
+
+export function storePlaybackSourcePreferences(principalID: ClientPrincipalID, value: PlaybackSourcePreferences) {
+  const preferences = normalizePlaybackSourcePreferences(value);
+  const storageKey = playbackSourcePreferencesStorageKey(principalID);
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(preferences));
+  } catch {
+    // The choice still applies to this page when browser storage is unavailable or full.
+  }
+  window.dispatchEvent(
+    new CustomEvent<PlaybackSourcePreferencesChangeDetail>(PLAYER_SOURCE_PREFERENCES_CHANGE_EVENT, {
+      detail: { storageKey, preferences },
+    }),
+  );
+  return preferences;
+}
+
+export type PlaybackSourcePreferencesChangeDetail = {
+  storageKey: string;
+  preferences: PlaybackSourcePreferences;
+};

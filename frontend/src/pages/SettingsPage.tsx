@@ -1,4 +1,4 @@
-import { RecommendationActivity, UserPreferencePanels } from "@/features/preferences";
+import { PlaybackSourcePreferences, RecommendationActivity, UserPreferencePanels } from "@/features/preferences";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
 import { Badge } from "@/components/ui/badge";
@@ -527,6 +527,7 @@ export function SettingsPage({
               />
             </SettingsSection>
           </form>
+          <PlaybackSourcePreferences userId={user.id} />
           <UserPreferencePanels userId={user.id} section="playback" readOnly={readOnly} />
         </div>
       )}
