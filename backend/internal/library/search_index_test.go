@@ -28,6 +28,30 @@ func openSearchTestDB(t *testing.T, migrationDir string) *sql.DB {
 	return db
 }
 
+// migrationsBefore copies the numbered migrations that sort before filename
+// into a temporary directory, so a test can build the previous schema.
+func migrationsBefore(t *testing.T, migrationDir string, filename string) string {
+	t.Helper()
+	previousDir := t.TempDir()
+	entries, err := os.ReadDir(migrationDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Name() >= filename {
+			continue
+		}
+		contents, err := os.ReadFile(filepath.Join(migrationDir, entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(previousDir, entry.Name()), contents, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return previousDir
+}
+
 func execSearchFixture(t *testing.T, db *sql.DB, query string, args ...any) int64 {
 	t.Helper()
 	result, err := db.Exec(query, args...)
@@ -55,9 +79,14 @@ func tagSearchWork(t *testing.T, db *sql.DB, workID int64, name string) int64 {
 
 func searchCodes(t *testing.T, store *Store, userID int64, query string) []string {
 	t.Helper()
-	page, err := store.ListPage(context.Background(), ListOptions{UserID: userID, Query: query, Sort: "code", Direction: "asc", PageSize: 100})
+	return searchCodesSorted(t, store, userID, query, "code", "asc")
+}
+
+func searchCodesSorted(t *testing.T, store *Store, userID int64, query string, sort string, direction string) []string {
+	t.Helper()
+	page, err := store.ListPage(context.Background(), ListOptions{UserID: userID, Query: query, Sort: sort, Direction: direction, PageSize: 100})
 	if err != nil {
-		t.Fatalf("ListPage(%q): %v", query, err)
+		t.Fatalf("ListPage(%q, %s %s): %v", query, sort, direction, err)
 	}
 	codes := []string{}
 	for _, work := range page.Works {
@@ -166,24 +195,7 @@ func TestSearchIndexFollowsMetadataChangesAcrossEditionFamily(t *testing.T) {
 
 func TestSearchIndexMigrationIndexesExistingWorks(t *testing.T) {
 	migrationDir := filepath.Join("..", "..", "migrations")
-	previousDir := t.TempDir()
-	entries, err := os.ReadDir(migrationDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, entry := range entries {
-		if entry.IsDir() || entry.Name() >= searchIndexMigration {
-			continue
-		}
-		contents, err := os.ReadFile(filepath.Join(migrationDir, entry.Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(previousDir, entry.Name()), contents, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	db := openSearchTestDB(t, previousDir)
+	db := openSearchTestDB(t, migrationsBefore(t, migrationDir, searchIndexMigration))
 	workID := insertSearchWork(t, db, 8, "Existing Example")
 	tagSearchWork(t, db, workID, "癒し")
 

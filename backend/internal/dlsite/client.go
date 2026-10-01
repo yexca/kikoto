@@ -251,9 +251,43 @@ type Image struct {
 	RelativeURL string `json:"relative_url"`
 }
 
+// Genre is one DLsite genre tag. ID is stable across request locales, Name is
+// localized for the request locale, and NameBase is the Japanese name.
 type Genre struct {
-	Name     string `json:"name"`
-	NameBase string `json:"name_base"`
+	ID       GenreID `json:"id"`
+	Name     string  `json:"name"`
+	NameBase string  `json:"name_base"`
+}
+
+// GenreID is a positive DLsite genre id, or zero when the provider omits it or
+// sends a value that is not a positive integer. An unexpected id must not fail
+// decoding of the whole product.
+type GenreID int64
+
+func (id *GenreID) UnmarshalJSON(data []byte) error {
+	*id = 0
+	var value any
+	if err := json.Unmarshal(data, &value); err != nil {
+		return nil
+	}
+	var parsed int64
+	switch typed := value.(type) {
+	case float64:
+		if typed != float64(int64(typed)) {
+			return nil
+		}
+		parsed = int64(typed)
+	case string:
+		number, err := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
+		if err != nil {
+			return nil
+		}
+		parsed = number
+	}
+	if parsed > 0 {
+		*id = GenreID(parsed)
+	}
+	return nil
 }
 
 type Creator struct {

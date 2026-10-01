@@ -82,8 +82,15 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain includes
-`045_work_metadata_link.sql`, with the `045_v0.7.0.sql` baseline generated from
-the current `VERSION` file. Migration 045 adds `work_metadata_link`, a
+`047_dlsite_genre_dictionary.sql`, with the `047_v0.7.0.sql` baseline generated
+from the current `VERSION` file. Migration 047 adds `work_dlsite_genre` and
+`dlsite_genre_name`, backfills them from each work's latest DLsite snapshot
+(genres with a positive integer id only, newest name first), adds triggers that
+queue affected works for the search index, and queues every work that has a
+genre. Migration 046 adds triggers that queue a work when its
+`dlsite_metadata_variant` row changes and queues every work that has a variant,
+so the search index picks up variant titles. Neither changes existing rows.
+Migration 045 adds `work_metadata_link`, a
 user-declared DLsite product whose metadata is stored on the linked work; it
 changes no existing rows. Migration 044 stores the
 preserved legacy workflow snapshot and durable library-layout migration state.

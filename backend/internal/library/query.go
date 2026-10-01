@@ -104,11 +104,13 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 	if includeRecommendation && recommendationGenerationID == 0 {
 		queryArgs = append(queryArgs, recommendationUserArgs(options.UserID)...)
 	}
+	searchRank, searchRankArgs := searchExactRankSQL(options.Query)
+	queryArgs = append(queryArgs, searchRankArgs...)
 	queryArgs = append(queryArgs, options.UserID)
 	queryArgs = append(queryArgs, args...)
 	queryArgs = append(queryArgs, options.PageSize, (options.Page-1)*options.PageSize)
-	rows, err := s.db.QueryContext(ctx, listPageSelectSQL(
-		where, options.Sort, options.Direction, options.RandomSeed, config, includeRecommendation, recommendationGenerationID,
+	rows, err := s.db.QueryContext(ctx, listPageSelectSQLWithSearchRank(
+		where, options.Sort, options.Direction, options.RandomSeed, config, includeRecommendation, recommendationGenerationID, searchRank,
 	), queryArgs...)
 	if err != nil {
 		return RawPage{}, err
@@ -602,6 +604,54 @@ func familySearchIndexClause(column string, folded string, negated bool) (string
 		INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
 		WHERE search_sibling_edition.work_id IN (SELECT work_id FROM search_hit)
 	)`, args
+}
+
+// searchExactRankSQL returns an expression counting the query's index-backed
+// text, circle, voice, and tag clauses whose needle equals one whole indexed
+// value of the work or a sibling edition, such as a tag name in any learned
+// language. Matching itself stays a substring test; the rank only moves exact
+// matches ahead of partial ones. Without such clauses it returns "".
+func searchExactRankSQL(queryText string) (string, []any) {
+	terms := []string{}
+	args := []any{}
+	for _, clause := range ParseSearchClauses(queryText) {
+		column := ""
+		switch clause.Kind {
+		case "text":
+		case "circle", "voice_actor", "tag":
+			column = clause.Kind
+		default:
+			continue
+		}
+		folded := searchtext.Fold(strings.TrimSpace(clause.Value))
+		if folded == "" {
+			continue
+		}
+		target := `work_search.code || char(10) || work_search.title || char(10) || work_search.circle || char(10) || work_search.voice_actor || char(10) || work_search.tag`
+		if column != "" {
+			target = `work_search.` + searchIndexColumn(column)
+		}
+		// Values in one column are separated by newlines, and Fold removes
+		// newlines from both values and needles, so a delimited needle matches
+		// exactly one whole value.
+		terms = append(terms, `EXISTS (
+			SELECT 1 FROM work_search
+			WHERE work_search.rowid IN (
+				SELECT work.id
+				UNION
+				SELECT search_rank_sibling.work_id
+				FROM work_edition AS search_rank_current
+				INNER JOIN work_edition AS search_rank_sibling ON search_rank_sibling.logical_work_id = search_rank_current.logical_work_id
+				WHERE search_rank_current.work_id = work.id
+			)
+			AND instr(char(10) || `+target+` || char(10), char(10) || ? || char(10)) > 0
+		)`)
+		args = append(args, folded)
+	}
+	if len(terms) == 0 {
+		return "", nil
+	}
+	return "(" + strings.Join(terms, " + ") + ")", args
 }
 
 func searchIndexColumn(kind string) string {

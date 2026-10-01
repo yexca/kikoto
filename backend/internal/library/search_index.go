@@ -298,10 +298,21 @@ func loadSearchDocuments(ctx context.Context, tx *sql.Tx, ids []int64) (map[int6
 			FROM work_credit AS credit
 			INNER JOIN person ON person.id = credit.person_id
 			WHERE credit.role = 'voice_actor' AND credit.work_id IN (%s)`, func(d *searchDocument) *[]string { return &d.voiceActor }},
+		// The priority projection may rewrite work.title into another language;
+		// the edition's own variant keeps its title searchable.
+		{`SELECT variant.work_id, variant.title
+			FROM dlsite_metadata_variant AS variant
+			WHERE variant.work_id IN (%s)`, func(d *searchDocument) *[]string { return &d.title }},
 		{`SELECT link.work_id, tag.display_name
 			FROM work_tag AS link
 			INNER JOIN tag ON tag.id = link.tag_id
 			WHERE tag.namespace = 'dlsite' AND link.work_id IN (%s)`, func(d *searchDocument) *[]string { return &d.tag }},
+		// Every learned name of the edition's DLsite genre ids, so a tag is
+		// found in each language the library has requested.
+		{`SELECT genre.work_id, name.name
+			FROM work_dlsite_genre AS genre
+			INNER JOIN dlsite_genre_name AS name ON name.genre_id = genre.genre_id
+			WHERE genre.work_id IN (%s)`, func(d *searchDocument) *[]string { return &d.tag }},
 	}
 	for _, field := range fields {
 		if err := appendSearchValues(ctx, tx, fmt.Sprintf(field.query, placeholders), idArgs, documents, field.field); err != nil {

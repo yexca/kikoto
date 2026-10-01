@@ -167,6 +167,16 @@ test("tag clicks send a structured Unicode tag search and retain the matching wo
   await page.getByRole("button", { name: "ロリ", exact: true }).click();
   await expect.poll(() => requests.some((query) => query === "$tag:ロリ$")).toBe(true);
   await expect(page.getByText("Tagged mobile work", { exact: true })).toBeVisible();
+  // The tag opens the mobile search without raising the keyboard.
+  const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
+  await expect(search).toBeVisible();
+  await expect(search).not.toBeFocused();
+
+  // Clearing the tag search reloads the unfiltered library, even though the
+  // tag results were loaded without the regular request effect.
+  const requestsBeforeClear = requests.length;
+  await page.getByRole("button", { name: "Clear search" }).click();
+  await expect.poll(() => requests.slice(requestsBeforeClear)).toContain("");
 });
 
 test("toolbar popovers stay anchored below their trigger and inside the mobile viewport", async ({ page }) => {
@@ -416,6 +426,8 @@ test("library search follows the user across scopes and survives navigation", as
 
   await page.getByRole("button", { name: "Search library" }).click();
   const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
+  await expect(search).toBeVisible();
+  await expect(search).not.toBeFocused();
   await search.fill("local term");
   await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("local term");
   await page.getByRole("button", { name: "Hide library search" }).click();
