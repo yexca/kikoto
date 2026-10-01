@@ -128,6 +128,57 @@ func TestPrepareLibraryLayoutKeepsUpgradedInstanceStandard(t *testing.T) {
 	}
 }
 
+func TestPrepareLibraryLayoutSkipsOnboardingAfterReleaseThatOfferedIt(t *testing.T) {
+	for _, previous := range []string{"v0.7.0", "v0.8.2", "v0.0.0-dev"} {
+		t.Run(previous, func(t *testing.T) {
+			db := openMigratedTestDB(t)
+			if _, err := db.Exec("UPDATE schema_state SET last_successful_app_version = ?", previous); err != nil {
+				t.Fatal(err)
+			}
+			server := NewServer(db, config.Config{DataRoot: t.TempDir()})
+			if err := server.PrepareLibraryLayout(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			_, layout := libraryLayoutRequest(t, server, http.MethodGet, "/api/library/layout", "")
+			if !layout.OnboardingCompleted {
+				t.Fatalf("upgrade from %s = %+v, want onboarding completed", previous, layout)
+			}
+			if triggers := localScanTriggerStates(t, server); !triggers.StartupScan || !triggers.WatchFolders {
+				t.Fatalf("upgrade changed the scan triggers: %+v", triggers)
+			}
+		})
+	}
+}
+
+func TestPrepareLibraryLayoutKeepsFreshInstallOnboardingAcrossRestarts(t *testing.T) {
+	db := openMigratedTestDB(t)
+	clearLibraryMode(t, db)
+	server := NewServer(db, config.Config{DataRoot: t.TempDir()})
+	restart := func() libraryLayoutResponse {
+		t.Helper()
+		if err := server.PrepareLibraryLayout(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec("UPDATE schema_state SET last_successful_app_version = ?", libraryOnboardingRelease); err != nil {
+			t.Fatal(err)
+		}
+		_, layout := libraryLayoutRequest(t, server, http.MethodGet, "/api/library/layout", "")
+		return layout
+	}
+
+	restart()
+	if layout := restart(); layout.Configured || layout.OnboardingCompleted {
+		t.Fatalf("restarted fresh install = %+v, want unconfigured with onboarding pending", layout)
+	}
+	// Choosing a layout without finishing keeps onboarding pending.
+	if response, _ := libraryLayoutRequest(t, server, http.MethodPut, "/api/library/layout", `{"mode":"standard"}`); response.Code != http.StatusOK {
+		t.Fatalf("save layout = %d %s", response.Code, response.Body.String())
+	}
+	if layout := restart(); !layout.Configured || layout.OnboardingCompleted {
+		t.Fatalf("postponed fresh install = %+v, want onboarding pending", layout)
+	}
+}
+
 func TestLibraryLayoutRegistersPoolsAndRequiresMigrationForModeAndFetch(t *testing.T) {
 	dataRoot := t.TempDir()
 	for _, name := range []string{"disk1", "disk2", ".kikoto-staging"} {

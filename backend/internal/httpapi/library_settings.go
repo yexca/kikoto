@@ -21,6 +21,9 @@ const (
 	// settingLibraryOnboardingTriggers records that a fresh install turned
 	// its automatic local scan triggers off, so it happens only once.
 	settingLibraryOnboardingTriggers = "library_onboarding_triggers_disabled"
+	// libraryOnboardingRelease is the first release that offered library
+	// onboarding. Upgrades from it or later do not ask again.
+	libraryOnboardingRelease = "v0.7.0"
 )
 
 type libraryPoolResponse struct {
@@ -66,8 +69,9 @@ type libraryOnboardingCompletion struct {
 }
 
 // PrepareLibraryLayout retains the earlier standard layout while offering an
-// explicit, once-only upgrade choice. A fresh install stays unconfigured until
-// onboarding and its automatic scans start disabled.
+// explicit, once-only upgrade choice to instances from before onboarding
+// existed. A fresh install stays unconfigured until onboarding and its
+// automatic scans start disabled.
 func (s *Server) PrepareLibraryLayout(ctx context.Context) error {
 	layout, err := s.loadLibraryLayout(ctx)
 	if err != nil {
@@ -81,14 +85,23 @@ func (s *Server) PrepareLibraryLayout(ctx context.Context) error {
 		s.layoutMigrationActive.Store(true)
 		s.layoutMigrationScan.Store(status.Phase == "scan")
 	}
-	upgraded, err := s.instanceRanEarlierRelease(ctx)
+	previous, err := s.previousStartRelease(ctx)
 	if err != nil {
 		return err
 	}
-	if !upgraded {
+	// A development build records no stable release and counts as current.
+	upgraded := stableReleaseTag.MatchString(previous) && compareAppVersions(previous, libraryOnboardingRelease) < 0
+	if previous == "" {
 		if upgraded, err = s.libraryHasLocalWorks(ctx); err != nil {
 			return err
 		}
+	}
+	if !upgraded && previous != "" && layout.configured() &&
+		!s.settingBoolContext(ctx, settingLibraryOnboardingCompleted, false) &&
+		!s.settingBoolContext(ctx, settingLibraryOnboardingTriggers, false) {
+		// This instance already ran a release that offered onboarding, so a
+		// later upgrade keeps its setup instead of asking again.
+		return s.markLibraryOnboardingCompleted(ctx)
 	}
 	if upgraded {
 		if !layout.configured() {
@@ -114,15 +127,23 @@ func (s *Server) PrepareLibraryLayout(ctx context.Context) error {
 	return s.saveSettingValue(ctx, settingLibraryOnboardingTriggers, true)
 }
 
-// instanceRanEarlierRelease reads the release recorded by the previous
-// successful start. It must run before this start records its own.
-func (s *Server) instanceRanEarlierRelease(ctx context.Context) (bool, error) {
+// previousStartRelease reads the release recorded by the previous successful
+// start, or "" for a database that has never started. It must run before this
+// start records its own.
+func (s *Server) previousStartRelease(ctx context.Context) (string, error) {
 	var version string
 	err := s.db.QueryRowContext(ctx, "SELECT last_successful_app_version FROM schema_state WHERE id = 1").Scan(&version)
 	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
+		return "", nil
 	}
-	return strings.TrimSpace(version) != "", err
+	return strings.TrimSpace(version), err
+}
+
+func (s *Server) markLibraryOnboardingCompleted(ctx context.Context) error {
+	if err := s.saveSettingValue(ctx, settingLibraryOnboardingCompleted, true); err != nil {
+		return err
+	}
+	return s.saveSettingValue(ctx, settingLibraryOnboardingRevision, libraryOnboardingRevision)
 }
 
 func (s *Server) setLocalScanTriggers(ctx context.Context, triggers libraryScanTriggers) error {
@@ -492,11 +513,7 @@ func (s *Server) completeLibraryOnboarding(w http.ResponseWriter, r *http.Reques
 		writeError(w, err)
 		return
 	}
-	if err := s.saveSettingValue(r.Context(), settingLibraryOnboardingCompleted, true); err != nil {
-		writeError(w, err)
-		return
-	}
-	if err := s.saveSettingValue(r.Context(), settingLibraryOnboardingRevision, libraryOnboardingRevision); err != nil {
+	if err := s.markLibraryOnboardingCompleted(r.Context()); err != nil {
 		writeError(w, err)
 		return
 	}
