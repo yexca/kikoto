@@ -627,6 +627,21 @@ export async function seedPlayerQueue(page: Page, tracks: PersistedPlayerTrack[]
   );
 }
 
+export async function seedPlaybackSourcePreferences(
+  page: Page,
+  preferences: { sourceSwitching: boolean; sourceFallback: boolean },
+  principalID: number | null = null,
+) {
+  await page.addInitScript(
+    ({ preferences, principalID }) => {
+      const principal = principalID === null ? "anonymous" : `user-${principalID}`;
+      const key = `kikoto:player-source-preferences:v1:${encodeURIComponent(window.location.origin)}:${principal}`;
+      localStorage.setItem(key, JSON.stringify(preferences));
+    },
+    { preferences, principalID },
+  );
+}
+
 export function queuedTrackFixture(index: number, title: string): PersistedPlayerTrack {
   const locationId = index + 1;
   const streamUrl = `/api/media/${locationId}/stream`;

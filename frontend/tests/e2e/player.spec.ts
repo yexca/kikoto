@@ -12,6 +12,7 @@ import {
   mediaFixture,
   queuedTrackFixture,
   seedPlayerQueue,
+  seedPlaybackSourcePreferences,
 } from "./fixtures/player-library";
 
 function serveSeekableAudio(route: Route, media: Buffer, headers: Record<string, string> = {}) {
@@ -636,6 +637,33 @@ test("replaying the same audio cancels stale failure diagnostics", async ({ page
   }
 });
 
+test("source switching and fallback stay off until the listener enables them", async ({ page }) => {
+  await mockApplication(page, undefined, true);
+  await seedPlayer(page, {
+    ...persistedTrack,
+    locations: [
+      ...persistedTrack.locations,
+      {
+        locationId: 2,
+        locationType: "remote_stream",
+        streamUrl: "/api/media/2/stream",
+        sourceId: 2,
+        sourceName: "Remote",
+        availability: "remote",
+      },
+    ],
+  });
+  await page.goto("/");
+
+  await expect(page.getByText("Playback failed for Test track.")).toBeVisible();
+  await page.getByRole("button", { name: "Compatibility playback", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
+  await expect(page.getByText("Playback source failed. Switched to Remote.")).toHaveCount(0);
+  await page.getByText("Test track", { exact: true }).click();
+  await expect(page.getByTitle("Playback source", { exact: true })).not.toHaveText("Remote");
+  await expect(page.getByRole("button", { name: "Choose playback source" })).toHaveCount(0);
+});
+
 test("failed direct playback offers compatibility before source fallback and the sleep timer survives a reload", async ({
   page,
 }) => {
@@ -645,6 +673,7 @@ test("failed direct playback offers compatibility before source fallback and the
     if (url.pathname === "/api/media/1/stream") mediaRequests.push(request.url());
   });
   await mockApplication(page, undefined, true);
+  await seedPlaybackSourcePreferences(page, { sourceSwitching: true, sourceFallback: true });
   await seedPlayer(page, {
     ...persistedTrack,
     locations: [

@@ -510,6 +510,15 @@ export const englishResource = {
         seekInvalid: "Enter whole numbers from {{min}} to {{max}} seconds.",
         savePlayback: "Save playback",
         seekUpdated: "Playback seek settings updated.",
+        playbackSources: "Playback sources",
+        playbackSourcesDescription:
+          "Applies to tracks with more than one location, such as a local file and a remote stream. Both are off by default.",
+        sourceSwitching: "Quick source switching",
+        sourceSwitchingDescription:
+          "The source label under the Now Playing scrubber opens a menu for switching the current track's location.",
+        sourceFallback: "Switch sources on failure",
+        sourceFallbackDescription:
+          "When the current location fails, continue from the track's next available location instead of stopping.",
         displayName: "Display name",
         username: "Username",
         role: "Role",

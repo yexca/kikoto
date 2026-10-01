@@ -248,7 +248,7 @@ and player intent, including pending play requests.
   item. After a reload, that item continues the work cursor when it still points
   at the same media item and is unfinished, unless the listener has already
   played or sought in it. Ordinary track selection starts at zero, while an
-  active source fallback carries the current in-memory time, or a start position
+  active source fallback (only when the account enabled it) carries the current in-memory time, or a start position
   still waiting for metadata, to the replacement location.
 - A playback instance writes the work cursor only after its start position is
   applied and the listener has played or sought in it. Page hide, pause, track

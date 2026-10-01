@@ -834,6 +834,15 @@ export const japaneseResource = {
         seekInvalid: "{{min}} 秒から {{max}} 秒までの整数を入力してください。",
         savePlayback: "再生設定を保存",
         seekUpdated: "再生の早送り／巻き戻し設定を更新しました。",
+        playbackSources: "再生ソース",
+        playbackSourcesDescription:
+          "ローカルファイルとリモートストリームなど、複数の場所があるトラックに適用されます。既定ではオフです。",
+        sourceSwitching: "ソースのクイック切り替え",
+        sourceSwitchingDescription:
+          "再生画面のシークバー下にあるソース表示から、現在のトラックの再生場所を切り替えられます。",
+        sourceFallback: "失敗時に別のソースへ切り替え",
+        sourceFallbackDescription:
+          "現在の場所で再生に失敗したとき、停止せずにトラックの次に利用できる場所で再生を続けます。",
         displayName: "表示名",
         username: "ユーザー名",
         role: "ロール",

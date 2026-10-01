@@ -14,8 +14,10 @@ Playback is handled by a global browser audio player.
   unsupported extension are converted by FFmpeg to a complete MP3 cache file
   with duration and seeking information. First playback waits for preparation;
   later requests reuse the result and support HTTP Range, seeking, Resume, and
-  normal end-of-track queue advancement. A confirmed missing file continues
-  through the normal source fallback order instead of offering conversion.
+  normal end-of-track queue advancement. A confirmed missing file does not
+  offer conversion: with **Switch sources on failure** enabled in Settings it
+  continues through the normal source fallback order, and otherwise playback
+  stops with a Retry action.
 - Local and cached video is inspected before playback. Incompatible video first
   returns its probed total duration and a complete HLS VOD playlist. Six-second
   H.264/AAC segments are generated independently on
@@ -82,7 +84,9 @@ Playback is handled by a global browser audio player.
 - The player dock supports Mini, Compact, and full Now Playing states, queue
   view, seeking, previous/next, skip controls, and playback mode. The full view
   uses borderless transport glyphs, a thin scrubber with elapsed and remaining
-  time, and the playback source between them. Its secondary row holds lyrics,
+  time, and the playback source between them. The source is a plain label
+  unless **Quick source switching** is enabled in Settings and the track has
+  more than one location; then it opens a menu of locations. Its secondary row holds lyrics,
   screen lyrics, playback mode, sleep timer, and queue; playback speed and
   compatibility scope share the More menu beside the title. The Compact bar
   adds a Next control.

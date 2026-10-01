@@ -72,18 +72,22 @@ export function resetTrackLocationFailures(state: TrackLocationFailureState) {
   state.terminal = false;
 }
 
+/** Without `allowFallback`, the first failure is terminal even when another location exists. */
 export function recordTrackLocationFailure(
   track: PlayerTrack,
   state: TrackLocationFailureState,
+  { allowFallback }: { allowFallback: boolean },
 ): TrackLocationFailureResult {
   if (state.terminal || state.failedLocationIds.has(track.locationId)) return { kind: "ignored" };
   state.failedLocationIds.add(track.locationId);
-  const nextLocation = orderedTrackLocations(track).find(
-    (location) =>
-      location.locationId !== track.locationId &&
-      !state.failedLocationIds.has(location.locationId) &&
-      (location.availability === "available" || location.availability === "remote"),
-  );
+  const nextLocation = allowFallback
+    ? orderedTrackLocations(track).find(
+        (location) =>
+          location.locationId !== track.locationId &&
+          !state.failedLocationIds.has(location.locationId) &&
+          (location.availability === "available" || location.availability === "remote"),
+      )
+    : undefined;
   if (nextLocation) return { kind: "switch", location: nextLocation };
   state.terminal = true;
   return { kind: "terminal" };
