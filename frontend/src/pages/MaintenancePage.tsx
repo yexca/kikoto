@@ -1,14 +1,4 @@
-import {
-  ArrowRight,
-  Eraser,
-  FolderOpen,
-  Gauge,
-  HardDriveDownload,
-  Loader2,
-  LockKeyhole,
-  Save,
-  Timer,
-} from "lucide-react";
+import { ArrowRight, Eraser, HardDriveDownload, Loader2, Save } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -347,7 +337,6 @@ export function MaintenancePage({
             <SettingsSection
               title={t("maintenance.library.local")}
               description={localSource?.displayName ?? t("maintenance.mainLocalLibrary")}
-              icon={<FolderOpen />}
               footer={saveButton(["localScanDepth"], t("maintenance.library.save"))}
             >
               <SettingsRow
@@ -432,7 +421,6 @@ export function MaintenancePage({
               ) : (
                 <SettingsSection
                   title={t("maintenance.access.instance")}
-                  icon={<LockKeyhole />}
                   footer={
                     <Button
                       size="sm"
@@ -534,7 +522,7 @@ function CacheFetchSettings({
   };
   return (
     <div className="space-y-6" data-testid="cache-configuration-card">
-      <SettingsSection title={t("maintenance.cache.policy")} icon={<HardDriveDownload />}>
+      <SettingsSection title={t("maintenance.cache.policy")}>
         <SettingsRow
           title={t("maintenance.cache.remotePlayback")}
           description={t("maintenance.cache.remotePlaybackDescription")}
@@ -584,7 +572,7 @@ function CacheFetchSettings({
         )}
       </SettingsSection>
 
-      <SettingsSection title={t("maintenance.cache.transferSafety")} icon={<Gauge />}>
+      <SettingsSection title={t("maintenance.cache.transferSafety")}>
         <SettingsRow
           title={t("maintenance.cache.downloadLimit")}
           description={t("maintenance.cache.downloadLimitDescription")}
@@ -615,7 +603,7 @@ function CacheFetchSettings({
         </SettingsRow>
       </SettingsSection>
 
-      <SettingsSection title={t("maintenance.cache.downloadPacing")} icon={<Timer />}>
+      <SettingsSection title={t("maintenance.cache.downloadPacing")}>
         <SettingsDisclosure
           title={t("sourceSetup.pacingSummary", {
             base: draft.remoteDelayBaseSeconds,

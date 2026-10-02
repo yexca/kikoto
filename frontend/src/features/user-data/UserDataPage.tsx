@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Download, FileJson, Loader2, Upload, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, FileJson, Loader2, X } from "lucide-react";
 import { useEffect, useId, useReducer, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -63,11 +63,7 @@ function ExportSection() {
   };
 
   return (
-    <SettingsSection
-      title={t("personal.userData.exportTitle")}
-      description={t("personal.userData.exportDescription")}
-      icon={<Download />}
-    >
+    <SettingsSection title={t("personal.userData.exportTitle")} description={t("personal.userData.exportDescription")}>
       <SettingsRow title={t("personal.userData.exportAction")} description={t("personal.userData.exportExcludes")}>
         <Button variant="outline" onClick={() => void download()} disabled={status === "running"}>
           {status === "running" ? (
@@ -170,7 +166,6 @@ function ImportSection({ enabled }: { enabled: boolean }) {
     <SettingsSection
       title={t("personal.userData.importTitle")}
       description={t("personal.userData.importDescription")}
-      icon={<Upload />}
       footer={
         <Button onClick={() => void runImport()} disabled={!enabled || !canImport(state)}>
           {importing && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}

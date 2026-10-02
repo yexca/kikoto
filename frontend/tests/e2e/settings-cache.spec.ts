@@ -555,20 +555,22 @@ test("personal settings expose administrator tabs only to administrators", async
   await expect(page.getByText("Manage your account and appearance preferences", { exact: true })).toBeHidden();
   await expect(page.getByRole("heading", { name: "Account", exact: true })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Appearance", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("tab", { name: "History & recommendations", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "History", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Recommendations", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Cache & Fetch", exact: true })).toHaveCount(0);
 
   await expect(page.getByRole("button", { name: "Users", exact: true })).toHaveCount(0);
 });
 
-test("administrators see administration tabs after the personal tabs in one row", async ({ page }) => {
+test("administrators see administration tabs after the personal tabs in one list", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
   await page.goto("/settings?tab=playback");
   const tabs = page.getByRole("tablist", { name: "Settings", exact: true });
   await expect(tabs.getByRole("tab")).toHaveText([
     "Account",
     "Playback",
-    "History & recommendations",
+    "History",
+    "Recommendations",
     "Tags",
     "Library",
     "Cache & Fetch",
@@ -576,12 +578,17 @@ test("administrators see administration tabs after the personal tabs in one row"
     "Cleanup",
     "Users",
   ]);
-  await expect(tabs.getByRole("tab", { name: "Users", exact: true })).toHaveAccessibleDescription(
-    "Administration options",
-  );
+  await expect(tabs.getByRole("tab", { name: "Users", exact: true })).toHaveAccessibleDescription("Administration");
   await expect(tabs.getByRole("tab", { name: "Playback", exact: true })).not.toHaveAccessibleDescription(
-    "Administration options",
+    "Administration",
   );
+
+  // Arrow keys select across the group boundary.
+  await tabs.getByRole("tab", { name: "Playback", exact: true }).focus();
+  for (let step = 0; step < 4; step += 1) await page.keyboard.press("ArrowRight");
+  await expect(tabs.getByRole("tab", { name: "Library", exact: true })).toBeFocused();
+  await expect(tabs.getByRole("tab", { name: "Library", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page).toHaveURL(/\/settings\?tab=library$/);
 
   await tabs.getByRole("tab", { name: "Users", exact: true }).click();
   await expect(page).toHaveURL(/\/settings\?tab=users$/);
@@ -739,7 +746,9 @@ test("users mounts before settings and a one-user result does not collapse the p
 });
 
 for (const layout of ["mobile", "@desktop"]) {
-  test(`${layout} Settings sections stay in one scrollable row`, async ({ page }) => {
+  // Compact layouts keep every section in one scrollable row; wide layouts stack them in a column.
+  const orientation = layout === "mobile" ? "horizontal" : "vertical";
+  test(`${layout} Settings sections stay in one ${orientation} list`, async ({ page }) => {
     await mockCacheSettings(page, () => undefined);
     await page.goto("/settings?tab=library");
     const navigation = page.getByRole("tablist", { name: "Settings", exact: true });
@@ -747,11 +756,20 @@ for (const layout of ["mobile", "@desktop"]) {
       "aria-selected",
       "true",
     );
-    await expect(navigation.getByRole("tab")).toHaveCount(9);
-    const rows = await navigation
-      .getByRole("tab")
-      .evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().top));
-    expect(Math.max(...rows) - Math.min(...rows)).toBeLessThanOrEqual(1);
+    await expect(navigation).toHaveAttribute("aria-orientation", orientation);
+    // A deep link to a later tab scrolls the compact row so the selected tab shows.
+    await expect(navigation.getByRole("tab", { name: "Library", exact: true })).toBeInViewport({ ratio: 1 });
+    await expect(navigation.getByRole("tab")).toHaveCount(10);
+    const boxes = await navigation.getByRole("tab").evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const box = button.getBoundingClientRect();
+        return { top: box.top, left: box.left };
+      }),
+    );
+    const sharedEdge = boxes.map((box) => (orientation === "horizontal" ? box.top : box.left));
+    expect(Math.max(...sharedEdge) - Math.min(...sharedEdge)).toBeLessThanOrEqual(1);
+    const flow = boxes.map((box) => (orientation === "horizontal" ? box.left : box.top));
+    expect(flow).toEqual([...flow].sort((a, b) => a - b));
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await expect(page.getByText("Storage paths", { exact: true })).toBeVisible();
     await navigation.getByRole("tab", { name: "Users", exact: true }).click();
@@ -931,7 +949,7 @@ test("recommendation keeps common controls visible and advanced scoring collapse
     (payload) => settingsPayloads.push(payload),
   );
   await page.goto("/maintenance?tab=recommendation");
-  await expect(page).toHaveURL(/\/settings\?tab=history$/);
+  await expect(page).toHaveURL(/\/settings\?tab=recommendation$/);
 
   await expect(page.getByRole("button", { name: /Balanced/ })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByLabel("Badge threshold")).toBeVisible();
@@ -960,9 +978,8 @@ test("recommendation restores all default weights and threshold before saving", 
     () => undefined,
     (payload) => settingsPayloads.push(payload),
   );
-  // The former Recommendation tab id opens the merged History & recommendations tab.
   await page.goto("/settings?tab=recommendation");
-  await expect(page.getByRole("tab", { name: "History & recommendations", selected: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Recommendations", selected: true })).toBeVisible();
   await page.getByRole("button", { name: /Exploratory/ }).click();
   await page.getByLabel("Badge threshold").focus();
   await page.getByLabel("Badge threshold").press("End");

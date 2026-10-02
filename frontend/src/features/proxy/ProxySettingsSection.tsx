@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Network, Plus, Route, Settings2, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Network, Plus, Settings2, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -116,7 +116,6 @@ export function ProxySettingsSection({
         id="proxy"
         title={t("maintenance.proxy.title")}
         description={t("maintenance.proxy.description")}
-        icon={<Network />}
         action={
           <Button
             variant="outline"
@@ -206,7 +205,6 @@ export function ProxySettingsSection({
         id="proxy-scope"
         title={t("maintenance.proxy.scopeTitle")}
         description={hasProxies ? t("maintenance.proxy.scopeDescription") : t("maintenance.proxy.scopeNeedsProxy")}
-        icon={<Route />}
       >
         <SettingsRow
           title={t("maintenance.proxy.scopes.all")}

@@ -792,8 +792,8 @@ export const zhHansResource = {
 
         folderPreference: "目录偏好",
         account: "账户",
-        administration: "管理员选项",
-        historyAndRecommendations: "历史与推荐",
+        administration: "管理",
+        recommendations: "推荐",
         playback: "播放",
         playbackDescription: "选择播放器快退或快进时移动的时间。",
         seekForward: "快进时间",

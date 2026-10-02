@@ -136,11 +136,16 @@ modules.
 - Favorites.
 - Circles.
 - Voice actors.
-- Settings: one tab row with the personal tabs (Account, which ends with data
-  transfer; Playback; History & recommendations, which shows listening history
-  above recommendation tuning; and personal tags) followed, after a divider and
-  in the warning tone, by the Library, Cache & Fetch, Cleanup, and Users
-  administration tabs.
+- Settings: one shared `IconRail` with the personal tabs (Account, which opens
+  with the profile and ends with data transfer; Playback; History;
+  Recommendations, which shows recommendation activity above recommendation
+  tuning; and personal tags) followed, after a divider, by the Library,
+  Cache & Fetch, Proxy, Cleanup, and Users administration tabs, which share an
+  Administration accessible description. Wide layouts show a sticky vertical
+  rail of icons; compact layouts show one scrollable row of icons with only the
+  active tab labelled, and keep the active tab in view. Every tab keeps its
+  label as the accessible name and tooltip. Section headings are plain text,
+  and a switch or number field stays beside its label even on a phone.
   Listening history shows a 30-day, 12-month, or all-time report of totals,
   activity, and most listened works as cover cards, with the full per-work
   history collapsed until opened;
@@ -154,8 +159,8 @@ modules.
 - Global player dock.
 
 The personal destinations open at `/settings?tab=history`, `?tab=tags`, and
-`?tab=data`; `data` and the former `recommendation` tab id are aliases that open
-the Account data section and History & recommendations. The former `/history`,
+`?tab=data`; `data` is an alias that opens the Account data section, and
+`?tab=recommendation` opens Recommendations. The former `/history`,
 `/tags`, and `/user-data` links redirect there. They require `library:read`, are reachable from mobile account actions
 and Quick actions, and load their own chunks independently of the global
 player. The administration tabs appear only for administrators and Demo,

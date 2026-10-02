@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, BarChart3, Shuffle } from "lucide-react";
+import { ArrowDown, ArrowUp, Shuffle } from "lucide-react";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -47,13 +47,12 @@ export function RecommendationActivity({ userId }: { userId: number }) {
   const bucketMax = Math.max(0, ...scoreBuckets.map((bucket) => telemetry?.scoreBuckets[bucket] ?? 0));
 
   return (
-    <section aria-labelledby={headingId} className="min-w-0 space-y-2.5">
+    <section aria-labelledby={headingId} className="min-w-0 space-y-3">
       <div className="px-1">
-        <h2 id={headingId} className="flex items-center gap-2 text-sm font-semibold">
-          <BarChart3 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <h2 id={headingId} className="text-sm font-semibold">
           {t("recommendationActivity.title")}
         </h2>
-        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
           {t("recommendationActivity.description", { count: windowDays })}
         </p>
       </div>

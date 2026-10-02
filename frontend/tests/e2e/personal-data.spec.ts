@@ -186,7 +186,7 @@ test("mobile reaches personal pages from the account menu without adding bottom 
   const account = page.getByRole("dialog", { name: "Account" });
   await account.getByRole("button", { name: "History", exact: true }).click();
   await expect(page).toHaveURL(/\/settings\?tab=history$/);
-  await expect(page.getByRole("tab", { name: "History & recommendations", selected: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "History", selected: true })).toBeVisible();
   await expect(page.getByText("1 h 30 min").first()).toBeVisible();
   await page.getByText("Listening history", { exact: true }).click();
   await expect(page.getByRole("link", { name: /Example Work 1/ })).toHaveAttribute(
@@ -217,7 +217,7 @@ test("@desktop personal pages are Settings tabs instead of sidebar entries", asy
   await sidebar.getByRole("button", { name: "Settings", exact: true }).click();
   const tabs = page.getByRole("tablist", { name: "Settings", exact: true });
   // Your data is a section of Account, and a listener sees no administration tabs.
-  await expect(tabs.getByRole("tab")).toHaveText(["Account", "Playback", "History & recommendations", "Tags"]);
+  await expect(tabs.getByRole("tab")).toHaveText(["Account", "Playback", "History", "Recommendations", "Tags"]);
   await expect(page.getByRole("button", { name: "Download export" })).toBeVisible();
 
   await tabs.getByRole("tab", { name: "Tags" }).click();

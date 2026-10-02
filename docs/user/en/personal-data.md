@@ -2,8 +2,8 @@
 
 [English](../en/personal-data.md) · [简体中文](../zh-Hans/personal-data.md) · [繁體中文](../zh-Hant/personal-data.md) · [日本語](../ja/personal-data.md) · [한국어](../ko/personal-data.md)
 
-Sign in and open **Settings**: listening history is in the **History &
-recommendations** tab, personal tags are in **Tags**, and **Your data** is the
+Sign in and open **Settings**: listening history is in the **History** tab,
+personal tags are in **Tags**, and **Your data** is the
 last section of **Account**. The mobile account menu and Quick actions open
 each one directly. They show only your account's data.
 

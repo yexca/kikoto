@@ -48,7 +48,6 @@ export function RemoteSourceList({
           ? t("sourceSetup.summary", { enabled: enabledCount, total: sources.length })
           : t("maintenance.library.remoteSourcesDescription")
       }
-      icon={<Globe />}
       action={
         <Button variant="outline" size="sm" onClick={onCreate} disabled={readOnly}>
           <Plus className="h-4 w-4" />
