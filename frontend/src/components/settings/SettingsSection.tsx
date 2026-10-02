@@ -4,13 +4,12 @@ import { useId, type ReactNode } from "react";
 import { cn } from "@/lib/tailwindClassNames";
 
 /**
- * Grouped settings list: a quiet heading outside a single card whose rows are
+ * Grouped settings list: a plain heading outside a single card whose rows are
  * separated by hairlines. Pages compose sections instead of nesting cards.
  */
 export function SettingsSection({
   title,
   description,
-  icon,
   action,
   footer,
   children,
@@ -19,7 +18,6 @@ export function SettingsSection({
 }: {
   title: ReactNode;
   description?: ReactNode;
-  icon?: ReactNode;
   action?: ReactNode;
   footer?: ReactNode;
   children: ReactNode;
@@ -28,22 +26,19 @@ export function SettingsSection({
 }) {
   const headingId = useId();
   return (
-    <section id={id} aria-labelledby={headingId} className={cn("min-w-0 space-y-2.5", className)}>
+    <section id={id} aria-labelledby={headingId} className={cn("min-w-0 space-y-3", className)}>
       <div className="flex min-w-0 items-end justify-between gap-3 px-1">
         <div className="min-w-0">
-          <h2 id={headingId} className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            {icon && <span className="text-muted-foreground [&>svg]:h-4 [&>svg]:w-4">{icon}</span>}
+          <h2 id={headingId} className="text-sm font-semibold text-foreground">
             {title}
           </h2>
-          {description && <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{description}</p>}
+          {description && <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>}
         </div>
         {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
       </div>
       <div className="theme-card-surface min-w-0 overflow-hidden rounded-xl border bg-card text-card-foreground">
         <div className="divide-y">{children}</div>
-        {footer && (
-          <div className="flex flex-wrap items-center justify-end gap-2 border-t bg-muted/25 px-4 py-2.5">{footer}</div>
-        )}
+        {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t px-4 py-3">{footer}</div>}
       </div>
     </section>
   );
@@ -69,8 +64,10 @@ export function SettingsRow({
   return (
     <div
       className={cn(
-        "flex min-w-0 flex-col gap-2.5 px-4 py-3",
+        "flex min-w-0 flex-col gap-2.5 px-4 py-3.5",
         !stack && "sm:flex-row sm:items-center sm:justify-between sm:gap-6",
+        // A switch or number field fits beside its label even on a phone, so those rows never stack.
+        !stack && compactControlRowClassName,
         className,
       )}
     >
@@ -86,6 +83,9 @@ export function SettingsRow({
     </div>
   );
 }
+
+const compactControlRowClassName =
+  "has-[>div>[role=switch]]:flex-row has-[>div>[role=switch]]:items-center has-[>div>[role=switch]]:gap-4 has-[>div>[data-settings-number]]:flex-row has-[>div>[data-settings-number]]:items-center has-[>div>[data-settings-number]]:gap-4";
 
 /** Collapsible group for rarely changed settings; closed by default. */
 export function SettingsDisclosure({
@@ -111,7 +111,7 @@ export function SettingsDisclosure({
       open={open ?? defaultOpen}
       onToggle={(event) => onToggle?.((event.currentTarget as HTMLDetailsElement).open)}
     >
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3.5 text-sm font-medium hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
         <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open/disclosure:rotate-90" />
         <span className="min-w-0 flex-1">
           <span className="block">{title}</span>
@@ -136,30 +136,37 @@ export function SettingsNumberInput({
   unit,
   onChange,
   disabled = false,
+  describedBy,
   className,
 }: {
   id?: string;
   label: string;
-  value: number;
+  /** A string value keeps a partly typed or empty field as typed until the owner validates it. */
+  value: number | string;
   min?: number;
   max?: number;
   step?: number;
   unit?: string;
-  onChange: (value: number) => void;
+  onChange: (value: number, text: string) => void;
   disabled?: boolean;
+  describedBy?: string;
   className?: string;
 }) {
   return (
     <div
+      data-settings-number=""
       className={cn(
-        "flex h-[var(--control-height)] w-full overflow-hidden rounded-[var(--control-radius)] border border-input bg-background focus-within:ring-2 focus-within:ring-ring sm:w-40",
+        "flex h-[var(--control-height)] w-32 overflow-hidden rounded-[var(--control-radius)] border border-input bg-background focus-within:ring-2 focus-within:ring-ring sm:w-36",
         className,
       )}
     >
       <input
         id={id}
         aria-label={label}
-        className="min-w-0 flex-1 bg-transparent px-3 text-right text-sm tabular-nums outline-none"
+        className={cn(
+          "min-w-0 flex-1 bg-transparent pl-3 text-right text-sm tabular-nums outline-none",
+          unit ? "pr-1.5" : "pr-3",
+        )}
         type="number"
         inputMode="decimal"
         min={min}
@@ -167,11 +174,10 @@ export function SettingsNumberInput({
         step={step}
         value={value}
         disabled={disabled}
-        onChange={(event) => onChange(Number(event.target.value))}
+        aria-describedby={describedBy}
+        onChange={(event) => onChange(Number(event.target.value), event.target.value)}
       />
-      {unit && (
-        <span className="flex items-center border-l bg-muted/60 px-3 text-xs text-muted-foreground">{unit}</span>
-      )}
+      {unit && <span className="flex items-center pr-3 text-xs text-muted-foreground">{unit}</span>}
     </div>
   );
 }

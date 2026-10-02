@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Fragment, useRef } from "react";
+import { Fragment, useEffect, useId, useRef } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
@@ -14,6 +14,8 @@ export type IconRailItem<T extends string> = {
   controls: string;
   /** Draws a divider before this item to separate a different kind of view. */
   separated?: boolean;
+  /** Accessible description, such as the elevated scope that a separated group shares. */
+  description?: string;
 };
 
 /**
@@ -21,7 +23,7 @@ export type IconRailItem<T extends string> = {
  * beside the page content; the mobile navigation layout shows a row of icons
  * above it with only the active item labelled. Every item keeps its label as
  * the accessible name and tooltip. Arrow keys move and select, as in the
- * other tab strips.
+ * other tab strips, and a scrolled compact row keeps the active item in view.
  */
 export function IconRail<T extends string>({
   label,
@@ -36,6 +38,21 @@ export function IconRail<T extends string>({
 }) {
   const mobile = useMobileNavigationLayout();
   const listRef = useRef<HTMLDivElement>(null);
+  const descriptionIdBase = useId();
+  const descriptions = [...new Set(items.flatMap((item) => (item.description ? [item.description] : [])))];
+  const descriptionId = (description: string) => `${descriptionIdBase}-${descriptions.indexOf(description)}`;
+
+  // Only the row scrolls, e.g. after a deep link to a later item; the page keeps its position.
+  useEffect(() => {
+    const list = listRef.current;
+    const tab = list?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    if (!list || !tab || list.scrollWidth <= list.clientWidth) return;
+    const row = list.getBoundingClientRect();
+    const box = tab.getBoundingClientRect();
+    // Round away from the edge so a fractional layout still reveals the whole item.
+    if (box.left < row.left) list.scrollLeft -= Math.ceil(row.left - box.left);
+    else if (box.right > row.right) list.scrollLeft += Math.ceil(box.right - row.right);
+  }, [selected, mobile]);
 
   return (
     <div
@@ -43,8 +60,14 @@ export function IconRail<T extends string>({
       role="tablist"
       aria-label={label}
       aria-orientation={mobile ? "horizontal" : "vertical"}
-      className="app-scrollbar flex min-w-0 shrink-0 gap-1 overflow-x-auto lg:sticky lg:top-20 lg:flex-col lg:self-start lg:overflow-visible lg:border-r lg:pr-2"
+      // relative contains the visually hidden descriptions, which would otherwise widen a scrolled mobile page.
+      className="app-scrollbar relative flex min-w-0 shrink-0 gap-1 overflow-x-auto lg:sticky lg:top-20 lg:flex-col lg:self-start lg:overflow-visible lg:border-r lg:pr-2"
     >
+      {descriptions.map((description) => (
+        <span key={description} id={descriptionId(description)} className="sr-only">
+          {description}
+        </span>
+      ))}
       {items.map((item, index) => {
         const Icon = item.icon;
         const active = selected === item.value;
@@ -61,6 +84,7 @@ export function IconRail<T extends string>({
               role="tab"
               aria-selected={active}
               aria-controls={item.controls}
+              aria-describedby={item.description ? descriptionId(item.description) : undefined}
               tabIndex={active ? 0 : -1}
               title={item.label}
               variant="ghost"

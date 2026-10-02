@@ -1,4 +1,3 @@
-import { HardDrive } from "lucide-react";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -18,11 +17,7 @@ export function PlaybackSourcePreferences({ userId }: { userId: ClientPrincipalI
     storePlaybackSourcePreferences(userId, { ...preferences, ...change });
 
   return (
-    <SettingsSection
-      title={t("settings.playbackSources")}
-      description={t("settings.playbackSourcesDescription")}
-      icon={<HardDrive />}
-    >
+    <SettingsSection title={t("settings.playbackSources")} description={t("settings.playbackSourcesDescription")}>
       <SettingsRow
         htmlFor={switchingId}
         title={t("settings.sourceSwitching")}

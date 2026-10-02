@@ -499,8 +499,8 @@ export const englishResource = {
 
         folderPreference: "Folder preference",
         account: "Account",
-        administration: "Administration options",
-        historyAndRecommendations: "History & recommendations",
+        administration: "Administration",
+        recommendations: "Recommendations",
         playback: "Playback",
         playbackDescription: "Choose how far the player moves when you seek backward or forward.",
         seekForward: "Forward seek",

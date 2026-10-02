@@ -1,4 +1,3 @@
-import { Database } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -29,7 +28,7 @@ export function LibraryLayoutSection({ readOnly }: { readOnly: boolean }) {
   }, []);
 
   return (
-    <SettingsSection title={t("librarySetup.title")} description={t("librarySetup.description")} icon={<Database />}>
+    <SettingsSection title={t("librarySetup.title")} description={t("librarySetup.description")}>
       <div className="px-4 py-3">
         {layout ? (
           <div className="space-y-7">

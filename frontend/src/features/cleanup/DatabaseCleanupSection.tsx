@@ -1,14 +1,4 @@
-import {
-  AlertTriangle,
-  ArrowRight,
-  ChevronDown,
-  Database,
-  Gauge,
-  Loader2,
-  RefreshCw,
-  Sparkles,
-  Trash2,
-} from "lucide-react";
+import { AlertTriangle, ArrowRight, ChevronDown, Loader2, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -123,7 +113,6 @@ export function DatabaseCleanupSection({
     <SettingsSection
       title={t("cleanup.database.title")}
       description={t("cleanup.database.description")}
-      icon={<Database />}
       action={
         <Button
           variant="ghost"
@@ -391,7 +380,7 @@ export function DatabaseOptimizeSection({
   };
 
   return (
-    <SettingsSection title={t("cleanup.optimize.title")} icon={<Gauge />}>
+    <SettingsSection title={t("cleanup.optimize.title")}>
       <SettingsRow
         title={t("cleanup.optimize.compact")}
         description={

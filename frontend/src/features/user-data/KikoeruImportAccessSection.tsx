@@ -1,4 +1,3 @@
-import { Network } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -28,7 +27,6 @@ export function KikoeruImportAccessSection({
     <SettingsSection
       title={t("maintenance.library.kikoeruImport")}
       description={t("maintenance.library.kikoeruImportDescription")}
-      icon={<Network />}
       footer={saveButton}
     >
       <SettingsRow

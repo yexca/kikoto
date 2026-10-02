@@ -1940,7 +1940,8 @@ test("demo settings keeps account and workflows read-only while allowing appeara
   await expect(settingsTabs.getByRole("tab")).toHaveText([
     "Account",
     "Playback",
-    "History & recommendations",
+    "History",
+    "Recommendations",
     "Tags",
     "Library",
     "Cache & Fetch",
@@ -1952,7 +1953,7 @@ test("demo settings keeps account and workflows read-only while allowing appeara
   const noticeBackground = await page
     .getByRole("status")
     .evaluate((element) => getComputedStyle(element).backgroundColor);
-  for (const name of ["History & recommendations", "Tags"]) {
+  for (const name of ["History", "Recommendations", "Tags"]) {
     await settingsTabs.getByRole("tab", { name, exact: true }).click();
     await expect(page.getByText(demoNotice, { exact: true })).toHaveCount(1);
   }

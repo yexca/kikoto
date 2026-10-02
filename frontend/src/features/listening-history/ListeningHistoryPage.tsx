@@ -255,12 +255,7 @@ export function ListeningHistoryPage({
         className="theme-card-surface overflow-hidden rounded-xl border bg-card"
       >
         <SettingsDisclosure
-          title={
-            <span id="listening-history-heading" className="flex items-center gap-2">
-              <History className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-              {t("personal.history.recent")}
-            </span>
-          }
+          title={<span id="listening-history-heading">{t("personal.history.recent")}</span>}
           description={t("personal.history.recentHint")}
           open={recordsOpen}
           onToggle={setRecordsOpen}

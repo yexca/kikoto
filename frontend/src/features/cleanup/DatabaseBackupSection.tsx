@@ -87,7 +87,7 @@ export function DatabaseBackupSection({ readOnly }: { readOnly: boolean }) {
     });
 
   return (
-    <SettingsSection title={t("cleanup.backup.title")} icon={<ArchiveRestore />}>
+    <SettingsSection title={t("cleanup.backup.title")}>
       <SettingsRow title={t("cleanup.backup.backUp")} description={description}>
         <Button
           variant="outline"

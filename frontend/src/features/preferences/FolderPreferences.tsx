@@ -1,7 +1,7 @@
-import { ArrowDown, ArrowUp, GripVertical, PlayCircle, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, GripVertical, Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import { Input, Textarea } from "@/components/ui/input";
 import type { DirectoryRoutingRule } from "@/lib/api";
 import i18n from "@/i18n";
@@ -66,68 +66,60 @@ export function FolderPreferences({
   }, [draggedRuleId]);
 
   return (
-    <div className="space-y-4">
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between gap-3">
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
-                <PlayCircle className="h-4 w-4" />
-              </span>
-              <span className="truncate">{i18n.t("settings.folderPreference")}</span>
-            </span>
-            <Button variant="outline" size="sm" onClick={addRule}>
-              <Plus className="h-4 w-4" />
-              {maintenanceCopy("routing.addRule")}
-            </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="relative space-y-2 before:absolute before:bottom-5 before:left-5 before:top-5 before:w-px before:bg-border">
-            {rules.map((rule, index) => (
-              <DirectoryRuleEditor
-                key={rule.id || index}
-                rule={rule}
-                index={index}
-                canMoveUp={index > 0}
-                canMoveDown={index < rules.length - 1}
-                onPatch={(patch) => patchRule(index, patch)}
-                onMove={moveRule}
-                onDragStart={() => {
-                  draggedRuleIdRef.current = rule.id;
-                  setDraggedRuleId(rule.id);
-                }}
-                onDragMove={(clientX, clientY) => {
-                  const sourceId = draggedRuleIdRef.current;
-                  const source = rules.findIndex((candidate) => candidate.id === sourceId);
-                  const target = Number(
-                    document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-routing-rule-index]")
-                      ?.dataset.routingRuleIndex,
-                  );
-                  if (source >= 0 && Number.isInteger(target) && source !== target) {
-                    moveRuleTo(source, target);
-                  }
-                }}
-                onDragEnd={finishDrag}
-                dragging={draggedRuleId === rule.id}
-                onRemove={() => removeRule(index)}
-              />
-            ))}
-            {rules.length === 0 && (
-              <div className="rounded-lg border bg-background p-4 text-sm text-muted-foreground">
-                {i18n.t("settings.folderEmpty")}
-              </div>
-            )}
-          </div>
-          <div className="flex justify-end">
-            <Button size="sm" onClick={() => void onSave()}>
-              <Save className="h-4 w-4" />
-              {i18n.t("settings.saveFolderPreferences")}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+    <SettingsSection
+      title={i18n.t("settings.folderPreference")}
+      action={
+        <Button variant="outline" size="sm" onClick={addRule}>
+          <Plus className="h-4 w-4" />
+          {maintenanceCopy("routing.addRule")}
+        </Button>
+      }
+      footer={
+        <Button size="sm" onClick={() => void onSave()}>
+          <Save className="h-4 w-4" />
+          {i18n.t("settings.saveFolderPreferences")}
+        </Button>
+      }
+    >
+      <div className="p-4">
+        <div className="relative space-y-2 before:absolute before:bottom-5 before:left-5 before:top-5 before:w-px before:bg-border">
+          {rules.map((rule, index) => (
+            <DirectoryRuleEditor
+              key={rule.id || index}
+              rule={rule}
+              index={index}
+              canMoveUp={index > 0}
+              canMoveDown={index < rules.length - 1}
+              onPatch={(patch) => patchRule(index, patch)}
+              onMove={moveRule}
+              onDragStart={() => {
+                draggedRuleIdRef.current = rule.id;
+                setDraggedRuleId(rule.id);
+              }}
+              onDragMove={(clientX, clientY) => {
+                const sourceId = draggedRuleIdRef.current;
+                const source = rules.findIndex((candidate) => candidate.id === sourceId);
+                const target = Number(
+                  document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-routing-rule-index]")
+                    ?.dataset.routingRuleIndex,
+                );
+                if (source >= 0 && Number.isInteger(target) && source !== target) {
+                  moveRuleTo(source, target);
+                }
+              }}
+              onDragEnd={finishDrag}
+              dragging={draggedRuleId === rule.id}
+              onRemove={() => removeRule(index)}
+            />
+          ))}
+          {rules.length === 0 && (
+            <div className="rounded-lg border bg-background p-4 text-sm text-muted-foreground">
+              {i18n.t("settings.folderEmpty")}
+            </div>
+          )}
+        </div>
+      </div>
+    </SettingsSection>
   );
 }
 

@@ -24,10 +24,11 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
       params.set("tab", "library");
       return `/settings?${params}`;
     }
-    if (tab === "routing" || tab === "recommendation") {
-      params.set("tab", tab === "routing" ? "playback" : "history");
+    if (tab === "routing") {
+      params.set("tab", "playback");
       return `/settings?${params}`;
     }
+    if (tab === "recommendation") return `/settings?${params}`;
     if (tab && ["overview", "paths", "system", "local", "remote", "security"].includes(tab)) {
       params.set("tab", tab === "security" ? "users" : "library");
       return `/settings?${params}`;

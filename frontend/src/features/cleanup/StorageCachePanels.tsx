@@ -1,4 +1,4 @@
-import { ChevronDown, Film, HardDrive, Loader2, RefreshCw, Trash2 } from "lucide-react";
+import { ChevronDown, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -88,11 +88,7 @@ export function TranscodeCacheSection({
   };
 
   return (
-    <SettingsSection
-      title={t("maintenance.cache.transcodeCache")}
-      description={t("cleanup.transcodeDescription")}
-      icon={<Film />}
-    >
+    <SettingsSection title={t("maintenance.cache.transcodeCache")} description={t("cleanup.transcodeDescription")}>
       <div className="space-y-3 px-4 py-4">
         <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
           <div className="min-w-0">
@@ -254,7 +250,6 @@ export function ManagedMediaCacheSection({
     <SettingsSection
       title={t("maintenance.cache.managedCache")}
       description={t("cleanup.managedDescription")}
-      icon={<HardDrive />}
       action={
         <Button
           variant="ghost"
