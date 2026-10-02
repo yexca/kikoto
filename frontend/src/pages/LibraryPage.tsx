@@ -1087,7 +1087,16 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   }, [active, showBrowse, activeTab.kind, isLibraryLoading, libraryRequestKey, workPage, workPageSize, workTotal]);
 
   useEffect(() => {
-    if (!active || !showBrowse) return;
+    // Initial local defaults must not become a remote route's history snapshot
+    // before its source and saved browse controls have been restored.
+    if (
+      !active ||
+      !browseHydrated ||
+      hasPendingBrowseRestore() ||
+      !showBrowse ||
+      !knownLibraryRoute(window.location.pathname, window.location.search, sources)
+    )
+      return;
     let pendingWrite: number | null = null;
     // Cleanup runs after another workspace has replaced this one in the shared
     // window scroll, so persist the last offset observed while this list was visible.
@@ -1125,7 +1134,9 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     active,
     activeBrowseState,
     activeTab,
+    browseHydrated,
     browseStorageScope,
+    hasPendingBrowseRestore,
     localScope,
     showBrowse,
     searchQuery,
@@ -1138,6 +1149,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     workPage,
     workPageSize,
     remoteSourceStates,
+    sources,
   ]);
 
   const openWork = (work: Work, sourceIntent: DetailSourceIntent = localScope === "tracked" ? "tracked" : "local") => {

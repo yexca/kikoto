@@ -1774,11 +1774,12 @@ test("@desktop header popovers render above page content", async ({ page }) => {
   await mockWorkflows(page);
   await page.goto("/workflows");
 
-  await page.getByRole("button", { name: "Open appearance settings" }).click();
+  const appearanceButton = page.getByRole("button", { name: "Open appearance settings" });
+  await appearanceButton.click();
   await expect(page.getByText("UI language, mode, style, and color", { exact: true })).toBeVisible();
   const modeGroup = page.getByRole("group", { name: "Mode" });
   await expect(modeGroup).toBeVisible();
-  const headerBox = await page.locator("header").boundingBox();
+  const headerBox = await page.locator("header").filter({ has: appearanceButton }).boundingBox();
   const popoverBox = await modeGroup.boundingBox();
   expect(headerBox).not.toBeNull();
   expect(popoverBox).not.toBeNull();
