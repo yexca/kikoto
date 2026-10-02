@@ -14,6 +14,7 @@ import {
   seedPlayerQueue,
   seedPlaybackSourcePreferences,
 } from "./fixtures/player-library";
+import { runtimeSettingsFixture } from "./fixtures/api";
 
 function serveSeekableAudio(route: Route, media: Buffer, headers: Record<string, string> = {}) {
   const range = /^bytes=(\d+)-(\d*)$/.exec(route.request().headers().range ?? "");
@@ -86,6 +87,20 @@ test("entering a playing work opens the current track folder", async ({ page }) 
     };
   });
   await mockApplication(page, undefined, false, 1, 0, mediaItems);
+  // Directory routing rules can load after the work; their arrival must not discard the playback folder.
+  let holdRuntimeSettings = false;
+  let releaseRuntimeSettings = () => {};
+  const runtimeSettingsReleased = new Promise<void>((resolve) => {
+    releaseRuntimeSettings = resolve;
+  });
+  let heldRuntimeSettingsRequests = 0;
+  await page.route("**/api/runtime-settings", async (route) => {
+    if (holdRuntimeSettings) {
+      heldRuntimeSettingsRequests += 1;
+      await runtimeSettingsReleased;
+    }
+    await route.fulfill({ json: runtimeSettingsFixture() });
+  });
   await seedPlayer(page, playingTrack);
   await page.goto("/");
 
@@ -94,11 +109,19 @@ test("entering a playing work opens the current track folder", async ({ page }) 
   await fullPlayer.getByRole("button", { name: "Play", exact: true }).click();
   await expect(fullPlayer.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
   const cover = fullPlayer.getByRole("button", { name: "Open work detail" });
+  holdRuntimeSettings = true;
   await cover.tap();
   await cover.tap();
 
   await expect(page).toHaveURL(/\/RJ00000000$/);
-  await expect(page.getByTestId("directory-breadcrumb-current")).toHaveText("Playing");
+  const breadcrumb = page.getByTestId("directory-breadcrumb-current");
+  await expect(breadcrumb).toHaveText("Playing");
+  await expect.poll(() => heldRuntimeSettingsRequests).toBeGreaterThan(0);
+  const settingsResponse = page.waitForResponse("**/api/runtime-settings");
+  releaseRuntimeSettings();
+  await settingsResponse;
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(breadcrumb).toHaveText("Playing");
 });
 
 test("mobile full player gives artwork room and does not latch transport feedback", async ({ page }) => {
