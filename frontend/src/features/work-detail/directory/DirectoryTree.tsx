@@ -11,17 +11,17 @@ import {
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
+  AudioLines,
   Captions,
   Check,
-  ChevronDown,
-  ChevronLeft,
   ChevronRight,
+  CornerLeftUp,
   ExternalLink,
   FileText,
   Folder,
   Headphones,
   MoreHorizontal,
-  Pause,
+  Play,
 } from "lucide-react";
 import i18n from "@/i18n";
 import { type DirectoryRoutingRule, mediaDownloadURL } from "@/lib/api";
@@ -87,18 +87,44 @@ function LyricsAttachmentsToggle({
   onToggle: () => void;
 }) {
   if (count === 0) return null;
+  const label = showingAll
+    ? i18n.t("libraryDetail.hideAttachedLyrics")
+    : i18n.t("libraryDetail.showAttachedLyrics", { count });
   return (
     <Button
-      variant="outline"
+      variant="ghost"
       size="sm"
-      className="h-11 w-full justify-center text-xs sm:h-8 sm:w-auto"
+      className={`h-8 gap-1.5 px-2 text-xs ${showingAll ? "text-primary" : "text-muted-foreground"}`}
       onClick={onToggle}
       aria-pressed={showingAll}
+      aria-label={label}
+      title={label}
     >
       <Captions className="h-4 w-4" />
-      {showingAll ? i18n.t("libraryDetail.hideAttachedLyrics") : i18n.t("libraryDetail.showAttachedLyrics", { count })}
+      <span className="tabular-nums">{count}</span>
     </Button>
   );
+}
+
+function PlayAllButton({ tracks, onPlayFolder }: { tracks: TreeTrack[]; onPlayFolder: DirectoryPlayFolder }) {
+  if (tracks.length === 0) return null;
+  return (
+    <Button size="sm" className="h-8 gap-1.5 px-3 text-xs" onClick={() => onPlayFolder(tracks, tracks[0].locationId)}>
+      <Play className="h-3.5 w-3.5 fill-current" />
+      {i18n.t("libraryDetail.playAll")}
+      <span className="tabular-nums opacity-80">{tracks.length}</span>
+    </Button>
+  );
+}
+
+type DirectoryPlayFolder = (tracks: TreeTrack[], locationId: number) => void;
+
+/** One-based position of a file among the folder's playable tracks, or 0 when it is not playable. */
+function trackNumber(file: TreeTrack, tracks: TreeTrack[]) {
+  const index = tracks.findIndex((track) =>
+    file.playbackKey ? track.playbackKey === file.playbackKey : track.locationId === file.locationId,
+  );
+  return index + 1;
 }
 
 export function DirectoryTree({
@@ -179,12 +205,16 @@ export function DirectoryTree({
   }
   return (
     <div className="space-y-2">
-      <LyricsAttachmentsToggle
-        count={lyricsAttachments.total}
-        showingAll={lyricsAttachments.showingAll}
-        onToggle={lyricsAttachments.toggleAll}
-      />
-      <div className="space-y-1">
+      {lyricsAttachments.total > 0 && (
+        <div className="flex justify-end px-1">
+          <LyricsAttachmentsToggle
+            count={lyricsAttachments.total}
+            showingAll={lyricsAttachments.showingAll}
+            onToggle={lyricsAttachments.toggleAll}
+          />
+        </div>
+      )}
+      <div className="space-y-0.5">
         {visibleRows.map((row) =>
           row.type === "folder" ? (
             <TreeFolderRow
@@ -279,32 +309,33 @@ export function DirectoryBrowser({
   }
 
   return (
-    <div className="space-y-3">
-      <DirectoryBreadcrumb path={path} onChange={setPath} />
-      <LyricsAttachmentsToggle
-        count={currentLyricsAttachmentCount}
-        showingAll={lyricsAttachments.showingAll}
-        onToggle={lyricsAttachments.toggleAll}
-      />
-      <div className="space-y-1">
-        {path.length > 0 && (
-          <button
-            className="flex min-h-11 w-full items-start gap-2 rounded-md border bg-background px-3 py-2 text-left text-sm hover:bg-muted"
-            onClick={() => setPath(path.slice(0, -1))}
-          >
-            <ChevronLeft className="h-4 w-4 text-muted-foreground" />
-            <span>{i18n.t("libraryDetail.parentFolder")}</span>
-          </button>
-        )}
+    <div className="space-y-2">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <DirectoryBreadcrumb path={path} onChange={setPath} />
+        <LyricsAttachmentsToggle
+          count={currentLyricsAttachmentCount}
+          showingAll={lyricsAttachments.showingAll}
+          onToggle={lyricsAttachments.toggleAll}
+        />
+        {onPlayFolder && <PlayAllButton tracks={playbackTracks} onPlayFolder={onPlayFolder} />}
+      </div>
+      <div className="space-y-0.5">
         {folders.map((folder) => (
           <button
             key={folder.path || folder.name}
-            className="flex min-h-11 w-full items-start gap-2 rounded-md border bg-background px-3 py-2 text-left text-sm hover:bg-muted"
+            className="group flex min-h-12 w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted"
             onClick={() => setPath([...path, folder.name])}
           >
-            <Folder className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-            <span className="min-w-0 flex-1 whitespace-normal break-words [overflow-wrap:anywhere]">{folder.name}</span>
-            <span className="shrink-0 pt-0.5 text-xs text-muted-foreground">{folderSummary(folder)}</span>
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+              <Folder className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block whitespace-normal break-words font-medium [overflow-wrap:anywhere]">
+                {folder.name}
+              </span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">{folderSummary(folder)}</span>
+            </span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
           </button>
         ))}
         {files.map((file) => (
@@ -340,11 +371,21 @@ function DirectoryBreadcrumb({ path, onChange }: { path: string[]; onChange: (pa
   return (
     <nav
       data-testid="directory-breadcrumb"
-      className="min-h-9 min-w-0 rounded-md border bg-background px-2 text-sm"
+      className="flex min-h-9 min-w-0 flex-1 items-center gap-0.5 rounded-md bg-muted/50 px-1 text-sm"
       aria-label={i18n.t("libraryDetail.parentFolder")}
     >
-      <div className="flex min-h-9 min-w-0 items-center gap-1 overflow-hidden lg:hidden">
-        <button className="shrink-0 rounded px-2 py-1 font-medium hover:bg-muted" onClick={() => onChange([])}>
+      <button
+        type="button"
+        className="grid h-7 w-7 shrink-0 place-items-center rounded text-muted-foreground hover:bg-background hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent"
+        aria-label={i18n.t("libraryDetail.parentFolder")}
+        title={i18n.t("libraryDetail.parentFolder")}
+        disabled={path.length === 0}
+        onClick={() => onChange(path.slice(0, -1))}
+      >
+        <CornerLeftUp className="h-4 w-4" />
+      </button>
+      <div className="flex min-h-9 min-w-0 flex-1 items-center gap-1 overflow-hidden lg:hidden">
+        <button className="shrink-0 rounded px-2 py-1 font-medium hover:bg-background" onClick={() => onChange([])}>
           {i18n.t("libraryDetail.root")}
         </button>
         {path.length > 0 && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
@@ -397,8 +438,8 @@ function DirectoryBreadcrumb({ path, onChange }: { path: string[]; onChange: (pa
         )}
       </div>
 
-      <div className="app-scrollbar hidden min-h-9 min-w-0 items-center gap-1 overflow-x-auto whitespace-nowrap lg:flex">
-        <button className="shrink-0 rounded px-2 py-1 font-medium hover:bg-muted" onClick={() => onChange([])}>
+      <div className="app-scrollbar hidden min-h-9 min-w-0 flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap lg:flex">
+        <button className="shrink-0 rounded px-2 py-1 font-medium hover:bg-background" onClick={() => onChange([])}>
           {i18n.t("libraryDetail.root")}
         </button>
         {path.map((part, index) => {
@@ -416,7 +457,7 @@ function DirectoryBreadcrumb({ path, onChange }: { path: string[]; onChange: (pa
                 </span>
               ) : (
                 <button
-                  className="block max-w-[18rem] truncate rounded px-2 py-1 text-left font-medium hover:bg-muted"
+                  className="block max-w-[18rem] truncate rounded px-2 py-1 text-left font-medium hover:bg-background"
                   title={part}
                   onClick={() => onChange(path.slice(0, index + 1))}
                 >
@@ -447,18 +488,19 @@ function TreeFolderRow({
   const filesLabel = formatFolderStats(stats, playable.length);
   return (
     <button
-      className="flex min-h-11 w-full items-start gap-2 rounded-md px-2 py-2 text-left text-sm font-medium hover:bg-muted"
-      style={{ paddingLeft: Math.min(depth, 8) * 14 + 8 }}
+      className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium hover:bg-muted"
+      style={{ paddingLeft: Math.min(depth, 8) * 16 + 8 }}
+      aria-expanded={expanded}
       onClick={onToggle}
     >
-      {expanded ? (
-        <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-      ) : (
-        <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-      )}
-      <Folder className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+      <ChevronRight
+        className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${expanded ? "rotate-90" : ""}`}
+      />
+      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+        <Folder className="h-3.5 w-3.5" />
+      </span>
       <span className="min-w-0 flex-1 whitespace-normal break-words [overflow-wrap:anywhere]">{node.name}</span>
-      {filesLabel && <span className="ml-auto shrink-0 pt-0.5 text-xs text-muted-foreground">{filesLabel}</span>}
+      {filesLabel && <span className="ml-auto shrink-0 text-xs font-normal text-muted-foreground">{filesLabel}</span>}
     </button>
   );
 }
@@ -821,6 +863,35 @@ function TreeFileMoreActions({
   );
 }
 
+function TreeFileLeading({
+  file,
+  number,
+  active,
+  canPlay,
+}: {
+  file: TreeTrack;
+  number: number;
+  active: boolean;
+  canPlay: boolean;
+}) {
+  if (active) {
+    return (
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary/15 text-primary">
+        <AudioLines className="h-4 w-4 motion-safe:animate-pulse" />
+      </span>
+    );
+  }
+  if (canPlay && number > 0) {
+    return (
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground" aria-hidden="true">
+        <span className="text-xs tabular-nums group-hover:hidden">{number}</span>
+        <Play className="hidden h-3.5 w-3.5 fill-current text-foreground group-hover:block" />
+      </span>
+    );
+  }
+  return <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted/60">{fileIcon(file)}</span>;
+}
+
 function TreeFile({
   file,
   files,
@@ -875,10 +946,11 @@ function TreeFile({
       data-file-kind={file.kind}
       role={actionState.canOpen ? "button" : undefined}
       tabIndex={actionState.canOpen ? 0 : undefined}
-      className={`flex min-h-14 items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm ${
-        isActive ? "border-primary bg-secondary" : "bg-background hover:bg-muted"
+      aria-current={isActive ? "true" : undefined}
+      className={`group flex min-h-14 items-center justify-between gap-3 rounded-md px-2 py-2 text-left text-sm ${
+        isActive ? "bg-primary/10" : "hover:bg-muted"
       } ${actionState.canOpen ? "cursor-pointer" : "cursor-default"}`}
-      style={{ marginLeft: Math.min(depth, 8) * 14, width: `calc(100% - ${Math.min(depth, 8) * 14}px)` }}
+      style={{ marginLeft: Math.min(depth, 8) * 16, width: `calc(100% - ${Math.min(depth, 8) * 16}px)` }}
       onClick={() => {
         if (actionState.canOpen) openFile();
       }}
@@ -888,12 +960,19 @@ function TreeFile({
         openFile();
       }}
     >
-      <span className="flex min-w-0 flex-1 items-start gap-2">
-        <span className="mt-0.5 shrink-0">
-          {isActive ? <Pause className="h-4 w-4 text-primary" /> : fileIcon(file)}
-        </span>
+      <span className="flex min-w-0 flex-1 items-center gap-3">
+        <TreeFileLeading
+          file={file}
+          number={trackNumber(file, files)}
+          active={isActive}
+          canPlay={actionState.canPlay}
+        />
         <span className="min-w-0 flex-1">
-          <span className="block whitespace-normal break-words [overflow-wrap:anywhere]">{file.title}</span>
+          <span
+            className={`block whitespace-normal break-words [overflow-wrap:anywhere] ${isActive ? "font-medium text-primary" : ""}`}
+          >
+            {file.title}
+          </span>
           <span className="mt-0.5 block break-words text-xs text-muted-foreground">{actionState.fileMeta}</span>
         </span>
       </span>
