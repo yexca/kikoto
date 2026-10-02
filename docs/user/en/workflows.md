@@ -8,8 +8,11 @@ Workflows make backend actions inspectable.
 - Workflows: built-in definitions, including the preset follow workflows, with
   their triggers managed in the selected definition. There is no custom
   workflow editor.
-- Activity at the right end of the workflow tabs opens a desktop panel or mobile
-  sheet for the selected workflow only. Active runs appear above **Needs attention**
+- A status strip at the top shows what is running now with its progress, how
+  many runs need attention, and the next scheduled run. Its first two cells and
+  **Activity** at its right end open a desktop panel or mobile sheet covering
+  every workflow; the next-scheduled cell selects that workflow. Active runs
+  appear above **Needs attention**
   and **History**. Each row shows the status, run number, trigger, and elapsed
   time. List rows and **Recent runs** open details inside the same panel: start
   and finish times, duration, trigger, steps, candidates, run actions, and a
@@ -35,16 +38,21 @@ Workflows make backend actions inspectable.
 - The header notification center combines Review items with completed or failed
   Fetch results. Fetch notifications open the local work detail and can be
   dismissed independently for the signed-in user.
-- Workflows are grouped into categories: Basic (local scan, local files, and
-  metadata sync), Collect (popular collections), Follow (the preset follow
-  workflows), and Remote (Availability Watch and Fetch history). Wide layouts
-  choose a category from a vertical icon rail beside the horizontal workflow
-  tabs; the mobile layout shows the categories as an icon row above the tabs,
-  labelling the active one. **All**, at the top of the rail, lists every
-  workflow in the same fixed order and stays selected for the browser session.
-  Each category lists its workflows in a fixed order, and returning to a
-  category reopens the workflow last selected there.
+- The workflow list groups every workflow by category: Basic (local scan, local
+  files, and metadata sync), Collect (popular collections), Follow (the preset
+  follow workflows), and Remote (Availability Watch and Fetch history), each in
+  a fixed order. Every entry shows its latest run's status and time, and small
+  icons mark an enabled Startup trigger, schedule, or folder watcher. Wide
+  layouts keep the list beside the selected workflow. On phones the list is the
+  landing view: tapping a workflow opens it, and the header back button or the
+  browser's Back returns to the list.
   Definitions cannot be created, edited, or deleted from the page.
+- The selected workflow summarizes its latest 20 runs: the last run, the share
+  of finished runs that succeeded, their typical (median) duration, and when it
+  starts next on its own (a schedule, the next service start, folder changes, or
+  manual only). A bar chart of those runs' durations, oldest first, keeps
+  ordinary successes neutral so failures and partial runs stand out; hover a
+  bar for its details and select it to open the run.
 - Needs attention collects unresolved candidates, metadata issues, and
   unacknowledged failures. Resolving recorded issues clears the corresponding
   dedicated metadata-run notice. Other failures can be marked reviewed once
@@ -88,24 +96,26 @@ Workflows make backend actions inspectable.
   expand it at dispatch. A manual run can turn tagging off; its tag step is
   then recorded as skipped. Remote automatic collection is Track-only so it
   cannot bypass Fetch size and disk-reserve safeguards.
-- Every workflow exposes `Run` in its header. Workflows with run parameters show
-  them in a Run options section directly below the header, with each label
-  beside its control, so the inputs, tag preview, and run action stay visible
-  without opening a dialog. Options apply to the next manual run only and reset
-  when another workflow is selected.
+- Workflows with run parameters show them in a **Run options** form below the
+  summary. The form ends in a bar with `Run` and, when `Run` is unavailable,
+  the reason, such as a missing required input. While a long form scrolls, the
+  bar stays at the bottom of the screen, above the phone navigation and the
+  player. Options apply to the next manual run only and reset when another
+  workflow is selected.
   Local scan shows its follow-up option there; built-in workflows without run
-  parameters show only the run action.
-- Availability Watch keeps a saved configuration. `Configure` beside `Run`
+  parameters show `Run` in their header instead. The latest run's stages and
+  log follow the form, then the triggers and recent runs.
+- Availability Watch keeps a saved configuration. Its **Configuration** form
+  summarizes the saved values that `Run` uses, and `Configure` beside `Run`
   opens a panel for the remote source, the action on availability, and optional
-  Fetch extension exclusions, which are off until enabled; the section below
-  the header summarizes the saved values that `Run` uses.
+  Fetch extension exclusions, which are off until enabled.
 - Follow a circle, Follow a series, and Follow a voice actor (tab **VAs
   follow**) are preset workflows. Their Run options have three sections:
   **Input** (the target and the catalog refresh, Incremental or Full),
   **Filter** (a release date range and a work limit), and **Actions** (Sync
-  metadata, the tag template, and for circles Check remote sources). Trigger
-  popovers use these values by default; enable Customize run options to
-  override them.
+  metadata, the tag template, and for circles Check remote sources). On a wide
+  screen the three sections sit side by side as columns. Trigger popovers use
+  these values by default; enable Customize run options to override them.
   Circle and series targets accept up to 20 comma-separated IDs, whose catalogs
   are combined before filtering. The voice actor target is one picked voice
   actor; its catalog is refreshed on the checked remote sources with the

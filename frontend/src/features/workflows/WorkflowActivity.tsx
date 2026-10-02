@@ -24,6 +24,7 @@ export function WorkflowActivity({
   readOnly,
   staticDemo,
   canSyncMetadata,
+  showCounts = true,
 }: {
   workflowCode: string;
   workflowName: string;
@@ -37,6 +38,8 @@ export function WorkflowActivity({
   readOnly: boolean;
   staticDemo: boolean;
   canSyncMetadata: boolean;
+  /** Off when a surrounding status strip already shows the running and attention counts. */
+  showCounts?: boolean;
 }) {
   const { t } = useTranslation();
   const mobile = useMobileNavigationLayout();
@@ -346,7 +349,7 @@ export function WorkflowActivity({
       >
         {totals.running > 0 ? <Loader2 className="h-4 w-4 animate-spin" /> : <Activity className="h-4 w-4" />}
         <span className="hidden lg:inline">{t("nav.activity")}</span>
-        {totals.running > 0 && (
+        {showCounts && totals.running > 0 && (
           <Badge variant="info" className="px-2 tabular-nums">
             {totals.running}
           </Badge>
@@ -356,7 +359,7 @@ export function WorkflowActivity({
             {runningCount}
           </span>
         )}
-        {totals.attention > 0 && <Badge variant="warning">{totals.attention}</Badge>}
+        {showCounts && totals.attention > 0 && <Badge variant="warning">{totals.attention}</Badge>}
       </Button>
       {mobile ? (
         <MobileSheet

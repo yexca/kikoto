@@ -32,7 +32,7 @@ export function OptionField({
     <div
       className={cn(
         "grid min-w-0 gap-1.5",
-        !stacked && "sm:grid-cols-[11rem_minmax(0,1fr)] sm:items-start sm:gap-x-8",
+        !stacked && "option-field-row sm:grid-cols-[11rem_minmax(0,1fr)] sm:items-start sm:gap-x-8",
         className,
       )}
     >
@@ -115,12 +115,14 @@ export function SwitchControl({
   );
 }
 
-/** Places a workflow's run action in the page toolbar and its run options below the header. */
+/** Places a workflow's run options with its run action, and why Run is unavailable beside it. */
 export type RunFormLayout = (parts: {
   run: ReactNode;
   actions?: ReactNode;
   options: ReactNode;
   optionsActions?: ReactNode;
+  /** Why Run is disabled, shown next to the run action. */
+  blocker?: ReactNode;
 }) => ReactNode;
 
 export function WorkflowRunButton({
@@ -135,9 +137,9 @@ export function WorkflowRunButton({
   const { t } = useTranslation();
   const label = running ? t("workflowPage.queueing") : t("workflowPage.run");
   return (
-    <Button className="h-9 px-3 sm:min-w-24" aria-label={label} disabled={running || disabled} onClick={onClick}>
+    <Button className="h-9 min-w-24 px-3" aria-label={label} disabled={running || disabled} onClick={onClick}>
       {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}
-      <span className="hidden sm:inline">{label}</span>
+      <span>{label}</span>
     </Button>
   );
 }

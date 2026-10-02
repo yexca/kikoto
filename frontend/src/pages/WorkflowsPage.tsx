@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { usePageHeaderBack } from "@/app/pageHeader";
 import { useAuth } from "@/auth/AuthProvider";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { Button } from "@/components/ui/button";
@@ -11,19 +12,11 @@ import { isDemoShowcaseActiveRun } from "@/features/workflows/runPresentation";
 import { TriggerModal } from "@/features/workflows/triggers/TriggerModal";
 import { useWorkflowActivityLocation } from "@/features/workflows/useWorkflowActivityLocation";
 import { WorkflowActivity } from "@/features/workflows/WorkflowActivity";
+import { useWorkflowOverview } from "@/features/workflows/useWorkflowOverview";
 import { WorkflowDetail } from "@/features/workflows/WorkflowDetail";
-import {
-  WorkflowCategoryRail,
-  workflowCategoryPanelId,
-  workflowCategoryTabId,
-} from "@/features/workflows/WorkflowCategoryRail";
-import {
-  groupWorkflowDefinitions,
-  workflowCategory,
-  type WorkflowCategory,
-  type WorkflowCategoryView,
-} from "@/features/workflows/workflowCategories";
-import { WorkflowNavigation, builtInWorkflowOrder } from "@/features/workflows/WorkflowNavigation";
+import { workflowHistorySize } from "@/features/workflows/WorkflowDetailFrame";
+import { builtInWorkflowOrder, groupWorkflowDefinitions } from "@/features/workflows/workflowCategories";
+import { WorkflowNavigator } from "@/features/workflows/WorkflowNavigator";
 import {
   configurableSystemWorkflowCodes,
   manuallyRunnableSystemWorkflows,
@@ -37,8 +30,10 @@ import {
   type SystemRunOptions,
 } from "@/features/workflows/workflowPageModel";
 import { WorkflowMetadataErrorState, WorkflowMetadataLoadingState } from "@/features/workflows/WorkflowPanelParts";
-import { WorkflowRunSlotProvider, WorkflowRunSlotTarget } from "@/features/workflows/WorkflowRunSlot";
+import { WorkflowPulse } from "@/features/workflows/WorkflowPulse";
+import { WorkflowRunSlotProvider } from "@/features/workflows/WorkflowRunSlot";
 import type { CreatableAutomationTriggerType } from "@/features/workflows/workflowTriggerModel";
+import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import {
@@ -63,7 +58,6 @@ type TriggerEditorState =
   | null;
 
 const workflowDefinitionStorageBaseKey = "kikoto.workflows.definition:v3";
-const workflowAllCategoriesStorageBaseKey = "kikoto.workflows.all-categories:v1";
 
 export function WorkflowsPage({
   canRun,
@@ -92,13 +86,6 @@ export function WorkflowsPage({
   const [presets, setPresets] = useState<WorkflowPreset[]>([]);
   const [selectedDefinitionId, setSelectedDefinitionID] = useState<number | null>(() =>
     storedPositiveInt(workflowDefinitionStorageKey),
-  );
-  const workflowAllCategoriesStorageKey = currentScopedStorageKey(
-    workflowAllCategoriesStorageBaseKey,
-    auth.user?.id ?? null,
-  );
-  const [showAllCategories, setShowAllCategories] = useState(
-    () => readSessionValue(workflowAllCategoriesStorageKey) === "1",
   );
   const [triggerEditor, setTriggerEditor] = useState<TriggerEditorState>(null);
   const triggerAnchorRef = useRef<HTMLElement | null>(null);
@@ -213,19 +200,20 @@ export function WorkflowsPage({
   }, [linkedCode, selectedDefinitionId, visibleDefinitions]);
 
   const categoryGroups = useMemo(() => groupWorkflowDefinitions(visibleDefinitions), [visibleDefinitions]);
-  const selectedCategory = selectedDefinition ? workflowCategory(selectedDefinition.code) : null;
-  // All lists every visible workflow; otherwise the category follows the selected workflow.
-  const selectedCategoryView: WorkflowCategoryView | null = showAllCategories ? "all" : selectedCategory;
-  const categoryDefinitions = showAllCategories
-    ? visibleDefinitions
-    : (categoryGroups.find((group) => group.category === selectedCategory)?.definitions ?? visibleDefinitions);
-  // Returning to a category reopens the workflow last selected in it during this visit.
-  const lastDefinitionByCategory = useRef(new Map<WorkflowCategory, number>());
-  useEffect(() => {
-    if (selectedDefinition && selectedCategory) {
-      lastDefinitionByCategory.current.set(selectedCategory, selectedDefinition.id);
-    }
-  }, [selectedCategory, selectedDefinition]);
+  const visibleCodes = useMemo(() => visibleDefinitions.map((definition) => definition.code), [visibleDefinitions]);
+  const overview = useWorkflowOverview({
+    codes: visibleCodes,
+    refreshKey: activityRevision,
+    staticDemo: auth.demoMode,
+  });
+  // The mobile layout lands on the workflow list and opens one workflow at a time.
+  const mobile = useMobileNavigationLayout();
+  const mobileDetailOpen = mobile && Boolean(activityLocation.workflowCode);
+  usePageHeaderBack({
+    label: t("workflowPage.console.backToWorkflows"),
+    onBack: activityLocation.clearWorkflow,
+    enabled: mobileDetailOpen,
+  });
 
   useEffect(() => {
     if (!linkedCode) return;
@@ -242,7 +230,7 @@ export function WorkflowsPage({
     }
     const seq = ++recentRunsRequestSeq.current;
     return api
-      .listWorkflowRuns(1, 5, "", "", workflowCode)
+      .listWorkflowRuns(1, workflowHistorySize, "", "", workflowCode)
       .then((page) => {
         if (seq === recentRunsRequestSeq.current) setRecentDefinitionRuns(page.runs);
       })
@@ -307,17 +295,8 @@ export function WorkflowsPage({
   const selectDefinition = (definition: WorkflowDefinition) => {
     setSelectedDefinitionID(definition.id);
     storePositiveInt(workflowDefinitionStorageKey, definition.id);
-    activityLocation.selectWorkflow(definition.code);
-  };
-  const selectCategory = (category: WorkflowCategoryView) => {
-    const all = category === "all";
-    setShowAllCategories(all);
-    storeSessionValue(workflowAllCategoriesStorageKey, all ? "1" : null);
-    if (all) return;
-    const group = categoryGroups.find((item) => item.category === category);
-    if (!group) return;
-    const rememberedId = lastDefinitionByCategory.current.get(category);
-    selectDefinition(group.definitions.find((definition) => definition.id === rememberedId) ?? group.definitions[0]);
+    // Opening a workflow from the mobile list is a history step that Back returns from.
+    activityLocation.selectWorkflow(definition.code, mobile && !mobileDetailOpen);
   };
 
   // Activity replaces a success toast: the new run is visible there with the rest of the queue.
@@ -509,124 +488,128 @@ export function WorkflowsPage({
           </Button>
         </div>
       )}
-      <WorkflowRunSlotProvider>
-        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:gap-4">
-          {categoryGroups.length > 0 && (
-            <WorkflowCategoryRail groups={categoryGroups} selected={selectedCategoryView} onSelect={selectCategory} />
-          )}
-          <div
-            id={workflowCategoryPanelId}
-            role={selectedCategoryView ? "tabpanel" : undefined}
-            aria-labelledby={selectedCategoryView ? workflowCategoryTabId(selectedCategoryView) : undefined}
-            className="min-w-0 flex-1 space-y-4"
-          >
-            <WorkflowNavigation
-              actions={
+      <WorkflowPulse
+        pulse={overview.pulse}
+        definitions={visibleDefinitions}
+        triggers={triggers}
+        onOpenActivity={() => activityLocation.setOpen(true)}
+        onSelectWorkflow={selectDefinition}
+        activity={
+          <WorkflowActivity
+            key="global-activity"
+            workflowCode="all"
+            workflowName=""
+            open={activityLocation.open}
+            onOpenChange={activityLocation.setOpen}
+            selectedRunId={activityLocation.runId}
+            onSelectRun={openActivityRun}
+            onBack={activityLocation.backToList}
+            refreshKey={activityRevision}
+            readOnly={readOnly}
+            staticDemo={auth.demoMode}
+            canSyncMetadata={canSyncMetadata}
+            showCounts={false}
+            detail={
+              activityLocation.runId ? (
                 <>
-                  <WorkflowRunSlotTarget />
-                  <WorkflowActivity
-                    key="global-activity"
-                    workflowCode="all"
-                    workflowName=""
-                    open={activityLocation.open}
-                    onOpenChange={activityLocation.setOpen}
-                    selectedRunId={activityLocation.runId}
-                    onSelectRun={openActivityRun}
-                    onBack={activityLocation.backToList}
-                    refreshKey={activityRevision}
-                    readOnly={readOnly}
-                    staticDemo={auth.demoMode}
+                  {activityRun.error && (
+                    <div role="alert" className="rounded-md border p-3 text-sm">
+                      {workflowCopy("activityLoadFailed")}{" "}
+                      <Button variant="outline" onClick={() => void activityRun.refresh(true)}>
+                        {t("common.retry")}
+                      </Button>
+                    </div>
+                  )}
+                  <RunDetail
+                    key={activityLocation.runId}
+                    run={linkedRun}
+                    candidates={linkedRun ? activityRun.candidates : []}
+                    events={linkedRun ? activityRun.events : []}
+                    loading={!linkedRun && !activityRun.error}
+                    onCandidateUpdate={refreshSelectedRunReview}
+                    onRunAction={refreshSelectedRunReview}
                     canSyncMetadata={canSyncMetadata}
-                    detail={
-                      activityLocation.runId ? (
-                        <>
-                          {activityRun.error && (
-                            <div role="alert" className="rounded-md border p-3 text-sm">
-                              {workflowCopy("activityLoadFailed")}{" "}
-                              <Button variant="outline" onClick={() => void activityRun.refresh(true)}>
-                                {t("common.retry")}
-                              </Button>
-                            </div>
-                          )}
-                          <RunDetail
-                            key={activityLocation.runId}
-                            run={linkedRun}
-                            candidates={linkedRun ? activityRun.candidates : []}
-                            events={linkedRun ? activityRun.events : []}
-                            loading={!linkedRun && !activityRun.error}
-                            onCandidateUpdate={refreshSelectedRunReview}
-                            onRunAction={refreshSelectedRunReview}
-                            canSyncMetadata={canSyncMetadata}
-                            readOnly={readOnly}
-                          />
-                        </>
-                      ) : undefined
-                    }
+                    readOnly={readOnly}
                   />
                 </>
-              }
-              definitions={categoryDefinitions}
-              selectedId={selectedDefinition?.id ?? null}
-              onSelect={selectDefinition}
-            />
-            <div
-              id="workflow-definition-panel"
-              role="tabpanel"
-              aria-labelledby={selectedDefinition ? `workflow-tab-${selectedDefinition.id}` : undefined}
-              tabIndex={0}
-            >
-              {!hasWorkflowMetaSnapshot && isWorkflowMetaLoading ? (
-                <WorkflowMetadataLoadingState />
-              ) : !hasWorkflowMetaSnapshot && workflowMetaError ? (
-                <WorkflowMetadataErrorState message={workflowMetaError} onRetry={refresh} />
-              ) : selectedDefinition?.code === "availability_watch" ? (
-                <AvailabilityWatchPanel
-                  definition={selectedDefinition}
-                  triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition.id)}
-                  recentRuns={recentDefinitionRuns}
-                  readOnly={readOnly}
-                  canManageDownloads={canManageDownloads}
-                  onCreateTrigger={createAutomationTrigger}
-                  onEditTrigger={editAutomationTrigger}
-                  onToggleTrigger={toggleAutomationTrigger}
-                  onOpenRun={openActivityRun}
-                  onRunQueued={() => {
-                    void refreshRecentRuns("availability_watch");
-                    showQueuedRun();
-                  }}
-                />
-              ) : (
-                <WorkflowDetail
-                  definition={selectedDefinition}
-                  definitionTriggers={triggers.filter(
-                    (trigger) => trigger.workflowDefinitionId === selectedDefinition?.id,
-                  )}
-                  canManageTriggers={!readOnly && (selectedDefinition?.id ?? 0) > 0}
-                  readOnly={readOnly}
-                  systemRunKinds={selectedSystemRunKinds}
-                  isSystemActionRunning={systemActionBusy}
-                  canRunSystemAction={systemActionAllowed}
-                  onRunSystemAction={runSystemAction}
-                  onRunRemotePopular={runPopularCollection}
-                  canFetchRemotePopular={canManageDownloads}
-                  canTag={canTagWorks}
-                  remoteSourceUnavailable={remoteSourceAvailability === "unavailable"}
-                  onOpenRemoteSourceSettings={openRemoteSourcesSettings}
-                  onRunDLsitePopular={runDLsitePopularCollection}
-                  preset={selectedPreset}
-                  onRunPreset={runPreset}
-                  onTriggerRunOptionsChange={setCurrentTriggerRunOptions}
-                  recentRuns={recentDefinitionRuns}
-                  onOpenRun={openActivityRun}
-                  onCreateTrigger={createAutomationTrigger}
-                  onEditTrigger={editAutomationTrigger}
-                  onToggleTrigger={toggleAutomationTrigger}
-                  emptyText={definitionEmptyText}
-                />
-              )}
-            </div>
+              ) : undefined
+            }
+          />
+        }
+      />
+      <WorkflowRunSlotProvider>
+        {!hasWorkflowMetaSnapshot && isWorkflowMetaLoading ? (
+          <WorkflowMetadataLoadingState />
+        ) : !hasWorkflowMetaSnapshot && workflowMetaError ? (
+          <WorkflowMetadataErrorState message={workflowMetaError} onRetry={refresh} />
+        ) : (
+          <div className="flex min-w-0 flex-col gap-6 lg:flex-row">
+            {(!mobile || !mobileDetailOpen) && categoryGroups.length > 0 && (
+              <WorkflowNavigator
+                groups={categoryGroups}
+                selectedId={selectedDefinition?.id ?? null}
+                latestRun={overview.latestRun}
+                triggers={triggers}
+                mobile={mobile}
+                onSelect={selectDefinition}
+              />
+            )}
+            {(!mobile || mobileDetailOpen) && (
+              <div
+                id="workflow-definition-panel"
+                role="region"
+                aria-label={selectedDefinition ? workflowName(selectedDefinition, t) : undefined}
+                className="min-w-0 flex-1"
+              >
+                {selectedDefinition?.code === "availability_watch" ? (
+                  <AvailabilityWatchPanel
+                    definition={selectedDefinition}
+                    triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition.id)}
+                    recentRuns={recentDefinitionRuns}
+                    readOnly={readOnly}
+                    canManageDownloads={canManageDownloads}
+                    onCreateTrigger={createAutomationTrigger}
+                    onEditTrigger={editAutomationTrigger}
+                    onToggleTrigger={toggleAutomationTrigger}
+                    onOpenRun={openActivityRun}
+                    onRunQueued={() => {
+                      void refreshRecentRuns("availability_watch");
+                      showQueuedRun();
+                    }}
+                  />
+                ) : (
+                  <WorkflowDetail
+                    definition={selectedDefinition}
+                    definitionTriggers={triggers.filter(
+                      (trigger) => trigger.workflowDefinitionId === selectedDefinition?.id,
+                    )}
+                    canManageTriggers={!readOnly && (selectedDefinition?.id ?? 0) > 0}
+                    readOnly={readOnly}
+                    systemRunKinds={selectedSystemRunKinds}
+                    isSystemActionRunning={systemActionBusy}
+                    canRunSystemAction={systemActionAllowed}
+                    onRunSystemAction={runSystemAction}
+                    onRunRemotePopular={runPopularCollection}
+                    canFetchRemotePopular={canManageDownloads}
+                    canTag={canTagWorks}
+                    remoteSourceUnavailable={remoteSourceAvailability === "unavailable"}
+                    onOpenRemoteSourceSettings={openRemoteSourcesSettings}
+                    onRunDLsitePopular={runDLsitePopularCollection}
+                    preset={selectedPreset}
+                    onRunPreset={runPreset}
+                    onTriggerRunOptionsChange={setCurrentTriggerRunOptions}
+                    recentRuns={recentDefinitionRuns}
+                    onOpenRun={openActivityRun}
+                    onCreateTrigger={createAutomationTrigger}
+                    onEditTrigger={editAutomationTrigger}
+                    onToggleTrigger={toggleAutomationTrigger}
+                    emptyText={definitionEmptyText}
+                  />
+                )}
+              </div>
+            )}
           </div>
-        </div>
+        )}
       </WorkflowRunSlotProvider>
 
       {triggerEditor && triggerEditorDefinition && (
@@ -661,6 +644,10 @@ export function WorkflowsPage({
       )}
     </div>
   );
+}
+
+function workflowName(definition: WorkflowDefinition, t: (key: string, options?: Record<string, unknown>) => string) {
+  return t(`workflowPage.builtInDefinitions.${definition.code}.name`, { defaultValue: definition.displayName });
 }
 
 function storedPositiveInt(key: string) {

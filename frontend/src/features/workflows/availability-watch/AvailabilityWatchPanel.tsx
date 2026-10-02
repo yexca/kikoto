@@ -18,8 +18,14 @@ import {
   type RunFormLayout,
 } from "@/features/workflows/RunOptionControls";
 import { WorkflowAutomationPanel } from "@/features/workflows/triggers/WorkflowAutomationPanel";
-import { DefinitionRunMonitor, RecentWorkflowRuns, runFormLayout } from "@/features/workflows/WorkflowDetail";
-import { localizedWorkflowDefinition, parseNodes, workflowCopy } from "@/features/workflows/workflowPageModel";
+import {
+  DefinitionRunMonitor,
+  RecentWorkflowRuns,
+  runFormLayout,
+  WorkflowPanel,
+} from "@/features/workflows/WorkflowDetail";
+import { WorkflowDetailFrame } from "@/features/workflows/WorkflowDetailFrame";
+import { parseNodes, workflowCopy } from "@/features/workflows/workflowPageModel";
 import { ErrorPanel, SkeletonLine, WorkflowMetadataErrorState } from "@/features/workflows/WorkflowPanelParts";
 import type { CreatableAutomationTriggerType } from "@/features/workflows/workflowTriggerModel";
 import {
@@ -170,17 +176,11 @@ export function AvailabilityWatchPanel({
     (target) => target.state !== "monitoring" && target.state !== "error" && target.state !== "disabled",
   );
   const nodes = parseNodes(definition.definitionJson);
-  const displayDefinition = localizedWorkflowDefinition(definition);
-
-  const layout = runFormLayout({
-    title: displayDefinition.displayName,
-    description: displayDefinition.description,
-    optionsTitle: workflowCopy("configuration"),
-  });
+  const layout = runFormLayout({ optionsTitle: workflowCopy("configuration") });
 
   return (
-    <Card className="min-w-0">
-      <CardContent className="min-w-0 space-y-5 p-5">
+    <WorkflowDetailFrame definition={definition} recentRuns={recentRuns} triggers={triggers} onOpenRun={onOpenRun}>
+      <div className="workflow-detail grid min-w-0 gap-5">
         <AvailabilityWatchRunForm
           layout={layout}
           watch={watch}
@@ -191,7 +191,10 @@ export function AvailabilityWatchPanel({
           onRunQueued={onRunQueued}
         />
 
-        <section className="grid rounded-lg bg-muted/35 sm:grid-cols-2" aria-label={workflowCopy("availabilityPools")}>
+        <section
+          className="grid overflow-hidden rounded-lg border bg-card sm:grid-cols-2"
+          aria-label={workflowCopy("availabilityPools")}
+        >
           <div className="flex min-w-0 items-center justify-between gap-3 px-4 py-3.5">
             <div className="min-w-0">
               <div className="text-sm font-semibold">{workflowCopy("monitoring")}</div>
@@ -215,19 +218,23 @@ export function AvailabilityWatchPanel({
         </section>
 
         <DefinitionRunMonitor nodes={nodes} recentRuns={recentRuns} onOpenRun={onOpenRun} />
-        <div className="grid min-w-0 gap-x-10 gap-y-5 lg:grid-cols-2">
-          <WorkflowAutomationPanel
-            definition={definition}
-            triggers={triggers}
-            canManage={!readOnly}
-            readOnly={readOnly}
-            onCreate={onCreateTrigger}
-            onEdit={onEditTrigger}
-            onToggle={onToggleTrigger}
-          />
-          <RecentWorkflowRuns runs={recentRuns} onOpen={onOpenRun} />
+        <div className="workflow-detail-pair">
+          <WorkflowPanel>
+            <WorkflowAutomationPanel
+              definition={definition}
+              triggers={triggers}
+              canManage={!readOnly}
+              readOnly={readOnly}
+              onCreate={onCreateTrigger}
+              onEdit={onEditTrigger}
+              onToggle={onToggleTrigger}
+            />
+          </WorkflowPanel>
+          <WorkflowPanel>
+            <RecentWorkflowRuns runs={recentRuns} onOpen={onOpenRun} />
+          </WorkflowPanel>
         </div>
-      </CardContent>
+      </div>
 
       {dialog === "monitoring" && (
         <AvailabilityWatchMonitoringDialog watch={watch} readOnly={readOnly} onClose={closeDialog} onSaved={setWatch} />
@@ -244,7 +251,7 @@ export function AvailabilityWatchPanel({
           }
         />
       )}
-    </Card>
+    </WorkflowDetailFrame>
   );
 }
 
