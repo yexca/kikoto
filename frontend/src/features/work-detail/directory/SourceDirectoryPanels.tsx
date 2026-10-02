@@ -1,6 +1,6 @@
 import i18n from "@/i18n";
 import { Button } from "@/components/ui/button";
-import { Check, ChevronDown, Folder, FolderTree, MoreHorizontal, RefreshCw } from "lucide-react";
+import { Check, ChevronDown, Folder, FolderTree, MoreHorizontal, RefreshCw, Sparkles } from "lucide-react";
 import type { DirectoryRoutingRule, WorkDetail } from "@/lib/api";
 import {
   type RemoteSourceAvailability,
@@ -18,7 +18,6 @@ import type { FilePreviewState } from "@/features/work-detail/dialogs/FilePrevie
 import { DirectoryBrowser, DirectoryTree } from "@/features/work-detail/directory/DirectoryTree";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   type DirectoryRouteMatch,
   directoryRouteSummary,
@@ -320,114 +319,28 @@ export function SourceDirectoryPanel({
     />
   );
   const routeSummary = useMemo(() => directoryRouteSummary(root, directoryRoutingRules), [root, directoryRoutingRules]);
+  const tabClassName = (active: boolean) =>
+    `relative inline-flex h-10 shrink-0 items-center gap-2 px-3 text-sm font-medium transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full ${
+      active ? "text-foreground after:bg-primary" : "text-muted-foreground after:bg-transparent hover:text-foreground"
+    }`;
   return (
-    <section className="space-y-3 pb-4 lg:pb-8">
-      <div className="space-y-3">
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,auto)] lg:items-end">
-          <div>
-            <h3 className="text-lg font-semibold">
+    <section className="pb-4 lg:pb-8" data-testid="directory-panel">
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="flex min-w-0 items-center gap-3 px-4 pt-3 lg:pt-4">
+          <div className="min-w-0 flex-1">
+            <h3 className="flex min-w-0 items-baseline gap-2 text-base font-semibold">
               <span className="sr-only lg:not-sr-only">{title}</span>
-            </h3>
-            {statsLabel && <p className="mt-1 text-xs text-muted-foreground">{statsLabel}</p>}
-          </div>
-          <p className="text-sm text-muted-foreground lg:text-right">
-            <span className="sr-only lg:not-sr-only">{description}</span>
-          </p>
-        </div>
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="hidden shrink-0 lg:block">
-            <DirectoryModeSwitch mode={directoryMode} onChange={onDirectoryModeChange} />
-          </div>
-          <div className="flex min-w-0 flex-1 items-center overflow-hidden rounded-md border bg-card p-1">
-            <div className="app-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-              {tabs.map((source) =>
-                source.kind === "tracked" && trackedPresenceOptions.length > 1 ? (
-                  <div
-                    key={source.key}
-                    ref={trackedMenuRef}
-                    className={`relative flex h-7 shrink-0 overflow-hidden rounded ${source.key === activeKey ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-                  >
-                    <button
-                      className="inline-flex min-w-0 items-center gap-2 px-2.5 text-xs font-medium"
-                      onClick={() => onActiveKeyChange(source.key)}
-                      title={`${source.label}: ${source.statusLabel}`}
-                    >
-                      <span
-                        className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(source.status)}`}
-                        aria-hidden="true"
-                      />
-                      <span>{source.label}</span>
-                      <span className="sr-only">{source.statusLabel}</span>
-                    </button>
-                    <button
-                      className={`grid w-7 place-items-center border-l ${source.key === activeKey ? "border-primary-foreground/25 hover:bg-primary-foreground/10" : "border-border hover:bg-muted"}`}
-                      aria-label={i18n.t("detailActions.switchFork")}
-                      aria-haspopup="menu"
-                      aria-expanded={trackedMenuOpen}
-                      title={i18n.t("detailActions.switchFork")}
-                      onClick={() => setTrackedMenuOpen((open) => !open)}
-                    >
-                      <ChevronDown className="h-3.5 w-3.5" />
-                    </button>
-                    <AnchoredPopover
-                      open={trackedMenuOpen}
-                      anchorRef={trackedMenuRef}
-                      onOpenChange={setTrackedMenuOpen}
-                      className="w-56 p-1 text-sm"
-                      zIndex={70}
-                    >
-                      <div role="menu" aria-label={i18n.t("libraryDetail.trackedSources")}>
-                        {trackedPresenceOptions.map((option) => (
-                          <button
-                            key={option.key}
-                            role="menuitemradio"
-                            aria-checked={option.key === selectedTrackedPresenceKey}
-                            className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
-                            onClick={() => {
-                              onTrackedPresenceChange?.(option.key);
-                              setTrackedMenuOpen(false);
-                            }}
-                          >
-                            <span
-                              className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(option.status)}`}
-                              aria-hidden="true"
-                            />
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate">{option.label}</span>
-                              <span className="block text-2xs text-muted-foreground">
-                                {option.forked ? i18n.t("libraryDetail.forked") : i18n.t("libraryDetail.unforked")}
-                              </span>
-                            </span>
-                            {option.key === selectedTrackedPresenceKey && (
-                              <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    </AnchoredPopover>
-                  </div>
-                ) : (
-                  <button
-                    key={source.key}
-                    className={`inline-flex h-7 shrink-0 items-center gap-2 rounded px-2.5 text-xs font-medium ${
-                      source.key === activeKey
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:bg-muted"
-                    }`}
-                    onClick={() => onActiveKeyChange(source.key)}
-                    title={`${source.label}: ${source.statusLabel}`}
-                  >
-                    <span
-                      className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(source.status)}`}
-                      aria-hidden="true"
-                    />
-                    <span>{source.label}</span>
-                    <span className="sr-only">{source.statusLabel}</span>
-                  </button>
-                ),
+              {statsLabel && (
+                <span className="truncate text-xs font-normal text-muted-foreground lg:text-sm">{statsLabel}</span>
               )}
-            </div>
-            {onCheckSources && !mobileNavigationLayout && (
+            </h3>
+            <p className="sr-only lg:not-sr-only lg:mt-0.5 lg:truncate lg:text-xs lg:text-muted-foreground">
+              {description}
+            </p>
+          </div>
+          <div className="hidden shrink-0 items-center gap-1 lg:flex">
+            <DirectoryModeSwitch mode={directoryMode} onChange={onDirectoryModeChange} />
+            {onCheckSources && (
               <IconButton
                 title={
                   checkingSources
@@ -442,94 +355,177 @@ export function SourceDirectoryPanel({
                 <RefreshCw className={`h-3.5 w-3.5 ${checkingSources ? "animate-spin" : ""}`} />
               </IconButton>
             )}
-            {mobileNavigationLayout && (
-              <>
+          </div>
+          {mobileNavigationLayout && (
+            <>
+              <button
+                ref={mobileActionsRef}
+                type="button"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label={i18n.t("libraryDetail.directoryActions")}
+                aria-haspopup="menu"
+                aria-expanded={mobileActionsOpen}
+                title={i18n.t("libraryDetail.directoryActions")}
+                onClick={() => setMobileActionsOpen((open) => !open)}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+              <AnchoredPopover
+                open={mobileActionsOpen}
+                anchorRef={mobileActionsRef}
+                onOpenChange={setMobileActionsOpen}
+                className="w-52 p-1 text-sm"
+                bottomCollisionPadding={96}
+                zIndex={70}
+              >
+                <div role="menu" aria-label={i18n.t("libraryDetail.directoryActions")}>
+                  {onCheckSources && (
+                    <button
+                      role="menuitem"
+                      className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
+                      disabled={checkingSources}
+                      onClick={() => {
+                        setMobileActionsOpen(false);
+                        onCheckSources();
+                      }}
+                    >
+                      <RefreshCw className={`h-4 w-4 shrink-0 ${checkingSources ? "animate-spin" : ""}`} />
+                      <span>
+                        {checkingSources
+                          ? i18n.t("libraryDetail.checkingSources")
+                          : i18n.t("libraryDetail.checkSources")}
+                      </span>
+                    </button>
+                  )}
+                  <div className="my-1 border-t" />
+                  <div className="px-2 py-1 text-2xs font-semibold uppercase text-muted-foreground">
+                    {i18n.t("libraryDetail.view")}
+                  </div>
+                  {(["browse", "tree"] as DirectoryMode[]).map((mode) => (
+                    <button
+                      key={mode}
+                      role="menuitemradio"
+                      aria-checked={directoryMode === mode}
+                      className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
+                      onClick={() => {
+                        onDirectoryModeChange(mode);
+                        setMobileActionsOpen(false);
+                      }}
+                    >
+                      {mode === "browse" ? <Folder className="h-4 w-4" /> : <FolderTree className="h-4 w-4" />}
+                      <span className="flex-1">
+                        {mode === "browse" ? i18n.t("libraryDetail.browse") : i18n.t("libraryDetail.tree")}
+                      </span>
+                      {directoryMode === mode && <Check className="h-4 w-4 text-primary" />}
+                    </button>
+                  ))}
+                </div>
+              </AnchoredPopover>
+            </>
+          )}
+        </div>
+
+        <div className="app-scrollbar mt-1 flex min-w-0 items-center overflow-x-auto border-b px-2">
+          {tabs.map((source) =>
+            source.kind === "tracked" && trackedPresenceOptions.length > 1 ? (
+              <div key={source.key} ref={trackedMenuRef} className="relative flex shrink-0 items-center">
                 <button
-                  ref={mobileActionsRef}
-                  type="button"
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                  aria-label={i18n.t("libraryDetail.directoryActions")}
-                  aria-haspopup="menu"
-                  aria-expanded={mobileActionsOpen}
-                  title={i18n.t("libraryDetail.directoryActions")}
-                  onClick={() => setMobileActionsOpen((open) => !open)}
+                  className={tabClassName(source.key === activeKey)}
+                  aria-pressed={source.key === activeKey}
+                  onClick={() => onActiveKeyChange(source.key)}
+                  title={`${source.label}: ${source.statusLabel}`}
                 >
-                  <MoreHorizontal className="h-4 w-4" />
+                  <span
+                    className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(source.status)}`}
+                    aria-hidden="true"
+                  />
+                  <span>{source.label}</span>
+                  <span className="sr-only">{source.statusLabel}</span>
+                </button>
+                <button
+                  className="-ml-2 grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label={i18n.t("detailActions.switchFork")}
+                  aria-haspopup="menu"
+                  aria-expanded={trackedMenuOpen}
+                  title={i18n.t("detailActions.switchFork")}
+                  onClick={() => setTrackedMenuOpen((open) => !open)}
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
                 </button>
                 <AnchoredPopover
-                  open={mobileActionsOpen}
-                  anchorRef={mobileActionsRef}
-                  onOpenChange={setMobileActionsOpen}
-                  className="w-52 p-1 text-sm"
-                  bottomCollisionPadding={96}
+                  open={trackedMenuOpen}
+                  anchorRef={trackedMenuRef}
+                  onOpenChange={setTrackedMenuOpen}
+                  className="w-56 p-1 text-sm"
                   zIndex={70}
                 >
-                  <div role="menu" aria-label={i18n.t("libraryDetail.directoryActions")}>
-                    {onCheckSources && (
+                  <div role="menu" aria-label={i18n.t("libraryDetail.trackedSources")}>
+                    {trackedPresenceOptions.map((option) => (
                       <button
-                        role="menuitem"
-                        className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
-                        disabled={checkingSources}
-                        onClick={() => {
-                          setMobileActionsOpen(false);
-                          onCheckSources();
-                        }}
-                      >
-                        <RefreshCw className={`h-4 w-4 shrink-0 ${checkingSources ? "animate-spin" : ""}`} />
-                        <span>
-                          {checkingSources
-                            ? i18n.t("libraryDetail.checkingSources")
-                            : i18n.t("libraryDetail.checkSources")}
-                        </span>
-                      </button>
-                    )}
-                    <div className="my-1 border-t" />
-                    <div className="px-2 py-1 text-2xs font-semibold uppercase text-muted-foreground">
-                      {i18n.t("libraryDetail.view")}
-                    </div>
-                    {(["browse", "tree"] as DirectoryMode[]).map((mode) => (
-                      <button
-                        key={mode}
+                        key={option.key}
                         role="menuitemradio"
-                        aria-checked={directoryMode === mode}
-                        className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
+                        aria-checked={option.key === selectedTrackedPresenceKey}
+                        className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
                         onClick={() => {
-                          onDirectoryModeChange(mode);
-                          setMobileActionsOpen(false);
+                          onTrackedPresenceChange?.(option.key);
+                          setTrackedMenuOpen(false);
                         }}
                       >
-                        {mode === "browse" ? <Folder className="h-4 w-4" /> : <FolderTree className="h-4 w-4" />}
-                        <span className="flex-1">
-                          {mode === "browse" ? i18n.t("libraryDetail.browse") : i18n.t("libraryDetail.tree")}
+                        <span
+                          className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(option.status)}`}
+                          aria-hidden="true"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate">{option.label}</span>
+                          <span className="block text-2xs text-muted-foreground">
+                            {option.forked ? i18n.t("libraryDetail.forked") : i18n.t("libraryDetail.unforked")}
+                          </span>
                         </span>
-                        {directoryMode === mode && <Check className="h-4 w-4 text-primary" />}
+                        {option.key === selectedTrackedPresenceKey && (
+                          <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
+                        )}
                       </button>
                     ))}
                   </div>
                 </AnchoredPopover>
-              </>
-            )}
-          </div>
+              </div>
+            ) : (
+              <button
+                key={source.key}
+                className={tabClassName(source.key === activeKey)}
+                aria-pressed={source.key === activeKey}
+                onClick={() => onActiveKeyChange(source.key)}
+                title={`${source.label}: ${source.statusLabel}`}
+              >
+                <span
+                  className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(source.status)}`}
+                  aria-hidden="true"
+                />
+                <span>{source.label}</span>
+                <span className="sr-only">{source.statusLabel}</span>
+              </button>
+            ),
+          )}
         </div>
+
         {routeSummary && (
           <DirectoryRouteSummary
             summary={routeSummary}
             onSelect={() => setRequestedRoutePath([...routeSummary.path])}
           />
         )}
-      </div>
-      <Card>
-        <CardContent className="p-4">
+
+        <div className="p-2 sm:p-3">
           {toolbar}
           {loadingMessage && (
-            <div className="mb-4 rounded-md border bg-background p-3 text-sm text-muted-foreground">
+            <div className="mb-3 rounded-md border bg-background p-3 text-sm text-muted-foreground">
               {loadingMessage}
             </div>
           )}
           {selectionPanel}
           {content}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
       {selectionModal}
     </section>
   );
@@ -562,51 +558,39 @@ function DirectoryModeSwitch({ mode, onChange }: { mode: DirectoryMode; onChange
 
 function DirectoryRouteSummary({ summary, onSelect }: { summary: DirectoryRouteMatch; onSelect: () => void }) {
   const hasMatch = summary.positiveMatches.length > 0;
+  const pathButton = (
+    <button
+      type="button"
+      className="inline-flex min-w-0 max-w-full items-center gap-1 truncate rounded-md bg-primary/10 px-2 py-0.5 font-medium text-primary hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      title={i18n.t("libraryDetail.openPath", { path: summary.pathLabel })}
+      aria-label={hasMatch ? i18n.t("libraryDetail.matchedPath", { path: summary.pathLabel }) : undefined}
+      onClick={onSelect}
+    >
+      <Sparkles className="h-3 w-3 shrink-0" aria-hidden="true" />
+      <span className="truncate">{summary.pathLabel}</span>
+    </button>
+  );
 
   return (
-    <>
-      <div className="flex min-w-0 items-center rounded-md border bg-card px-3 py-2 text-xs lg:hidden">
-        {hasMatch ? (
-          <>
-            <span className="shrink-0 font-medium text-muted-foreground">{i18n.t("libraryDetail.matched")}</span>
-            <button
-              type="button"
-              className="ml-2 min-w-0 max-w-full truncate rounded-md border bg-secondary px-2 py-0.5 text-left font-medium text-secondary-foreground hover:bg-secondary/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              title={i18n.t("libraryDetail.openPath", { path: summary.pathLabel })}
-              aria-label={i18n.t("libraryDetail.matchedPath", { path: summary.pathLabel })}
-              onClick={onSelect}
-            >
-              {summary.pathLabel}
-            </button>
-          </>
-        ) : (
-          <span className="truncate font-medium text-muted-foreground">{i18n.t("libraryDetail.noMatchingFolder")}</span>
-        )}
-      </div>
-      <div className="hidden flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2 text-xs lg:flex">
-        <span className="font-medium text-muted-foreground">{i18n.t("libraryDetail.defaultFolder")}</span>
-        <button
-          type="button"
-          className="max-w-full truncate rounded-md border bg-secondary px-2 py-0.5 font-medium text-secondary-foreground hover:bg-secondary/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          title={i18n.t("libraryDetail.openPath", { path: summary.pathLabel })}
-          onClick={onSelect}
-        >
-          {summary.pathLabel}
-        </button>
-        {hasMatch ? (
-          <span className="min-w-0 text-muted-foreground">
-            {i18n.t("libraryDetail.matchedRules", { rules: summary.positiveMatches.join(" + ") })}
-          </span>
-        ) : (
-          <span className="text-muted-foreground">{i18n.t("libraryDetail.fallbackPlayableMedia")}</span>
-        )}
-        {summary.negativeMatches.length > 0 && (
-          <span className="text-muted-foreground">
-            {i18n.t("libraryDetail.excludedRules", { rules: summary.negativeMatches.join(" + ") })}
-          </span>
-        )}
-      </div>
-    </>
+    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 border-b bg-muted/30 px-4 py-2 text-xs">
+      <span className="shrink-0 font-medium text-muted-foreground">
+        <span className="lg:hidden">
+          {hasMatch ? i18n.t("libraryDetail.matched") : i18n.t("libraryDetail.noMatchingFolder")}
+        </span>
+        <span className="hidden lg:inline">{i18n.t("libraryDetail.defaultFolder")}</span>
+      </span>
+      <span className={`min-w-0 max-w-full ${hasMatch ? "" : "hidden lg:inline"}`}>{pathButton}</span>
+      <span className="hidden min-w-0 text-muted-foreground lg:inline">
+        {hasMatch
+          ? i18n.t("libraryDetail.matchedRules", { rules: summary.positiveMatches.join(" + ") })
+          : i18n.t("libraryDetail.fallbackPlayableMedia")}
+      </span>
+      {summary.negativeMatches.length > 0 && (
+        <span className="hidden text-muted-foreground lg:inline">
+          {i18n.t("libraryDetail.excludedRules", { rules: summary.negativeMatches.join(" + ") })}
+        </span>
+      )}
+    </div>
   );
 }
 

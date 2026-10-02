@@ -1236,6 +1236,7 @@ export const surfaceEnglish = {
     auto: "Auto",
     noAvailableMatch: "No available match",
     playAsAudio: "Play as audio",
+    playAll: "Play all",
     playNext: "Play next",
     cachedOnly: "Cached only",
     deletePreview: "Delete preview",

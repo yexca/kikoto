@@ -645,7 +645,7 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   const localTab = page.locator('button[title="Local: Local files available"]');
   const trackedTab = page.locator('button[title^="Tracked:"]');
   const remoteTab = page.locator('button[title="Remote A: Available"]');
-  await expect(localTab).toHaveClass(/bg-primary/);
+  await expect(localTab).toHaveAttribute("aria-pressed", "true");
   await expect(trackedTab).toBeVisible();
   await expect(page.locator('button[title^="Tracked:"]')).toHaveCount(1);
   await expect(remoteTab).toBeVisible();
@@ -698,7 +698,7 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await page.getByRole("button", { name: "Tracked", exact: true }).click();
   await page.getByText(work.title, { exact: true }).click();
   await expect(page).toHaveURL(/view=tracked/);
-  await expect(page.locator('button[title^="Tracked:"]').locator("..")).toHaveClass(/bg-primary/);
+  await expect(page.locator('button[title^="Tracked:"]')).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator('button[title="Remote A: Available"]')).toBeVisible();
   await page.getByRole("button", { name: /Source actions for/ }).click();
   await page.getByRole("menuitem", { name: /Manage cache/ }).click();
@@ -857,7 +857,7 @@ test("persisted remote result opens the canonical detail with its remote source 
   await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBe("remote");
   expect(new URL(page.url()).searchParams.get("source")).toBe("1");
   expect(new URL(page.url()).searchParams.get("remoteCode")).toBe("RJ00000051");
-  await expect(page.locator('button[title="Example Remote: Available"]')).toHaveClass(/bg-primary/);
+  await expect(page.locator('button[title="Example Remote: Available"]')).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("Previewing remote files from Example Remote.", { exact: true })).toBeVisible();
   expect(trackRequests).toEqual([]);
 });

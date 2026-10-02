@@ -1233,6 +1233,7 @@ export const surfaceJapanese = {
     auto: "自動",
     noAvailableMatch: "利用できる一致なし",
     playAsAudio: "音声として再生",
+    playAll: "すべて再生",
     playNext: "次に再生",
     cachedOnly: "キャッシュのみ",
     deletePreview: "削除プレビュー",
