@@ -103,6 +103,7 @@ import { defaultLibraryBrowseState, libraryLocation } from "@/lib/libraryBrowseS
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { useStableCallback } from "@/hooks/useStableCallback";
+import { useBrowseHistoryState } from "@/hooks/useBrowseHistoryState";
 
 const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "none", label: "Unmarked" },
@@ -215,6 +216,69 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const entitiesLoadedRequestKey = useRef("");
   const worksLoadedRequestKey = useRef("");
   const mobileNavigationLayout = useMobileNavigationLayout();
+  const browseState: FavoritesBrowseState = {
+    entity: favoriteEntity,
+    query,
+    status: statusFilter,
+    availability: availabilityFilter,
+    sourceIDs,
+    list: activeList,
+    page,
+    pageSize,
+    sort,
+    direction: sortDirection,
+    randomSeed,
+  };
+  const worksRequestKey = JSON.stringify([
+    principalID,
+    page,
+    pageSize,
+    query,
+    activeList,
+    statusFilter,
+    availabilityFilter,
+    sourceIDs,
+    sort,
+    sortDirection,
+    randomSeed,
+    worksReloadToken,
+  ]);
+  const hasPendingRestoration = useBrowseHistoryState({
+    active,
+    stateKey: JSON.stringify(browseState),
+    keyOf: (state) => JSON.stringify(state.browse),
+    isCurrentLocation: () => window.location.pathname === "/favorites",
+    read: () => {
+      const entry = readFavoritesEntryState(favoritesStorageScope);
+      return {
+        entry,
+        browse: favoritesBrowseStateFromSearch(
+          window.location.search,
+          entry.favoritesBrowseState ?? readFavoritesBrowseState(principalID) ?? defaultFavoritesBrowseState,
+        ),
+      };
+    },
+    restore: ({ browse, entry }) => {
+      setFavoriteEntity(browse.entity);
+      setQuery(browse.query);
+      setStatusFilter(browse.status);
+      setAvailabilityFilter(browse.availability);
+      setSourceIDs((current) =>
+        current.length === browse.sourceIDs.length && current.every((id, index) => id === browse.sourceIDs[index])
+          ? current
+          : browse.sourceIDs,
+      );
+      setActiveList(browse.list);
+      setPage(browse.page);
+      setPageSize(browse.pageSize);
+      setSort(browse.sort);
+      setSortDirection(browse.direction);
+      setRandomSeed(browse.randomSeed);
+      setSelectionMode(Boolean(entry.favoritesSelection?.active));
+      setSelectedWorkIDs(new Set(entry.favoritesSelection?.workIDs ?? []));
+      pendingAnchor.current = entry.favoritesAnchor ?? null;
+    },
+  });
 
   useEffect(() => {
     if (!auth.user) {
@@ -339,22 +403,12 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       setIsLoading(false);
       return;
     }
-    if (!active) return;
-    const requestKey = JSON.stringify([
-      principalID,
-      page,
-      pageSize,
-      query,
-      activeList,
-      statusFilter,
-      availabilityFilter,
-      sourceIDs,
-      sort,
-      sortDirection,
-      randomSeed,
-      worksReloadToken,
-    ]);
-    if (worksLoadedRequestKey.current === requestKey) return;
+    if (!active || hasPendingRestoration()) return;
+    const requestKey = worksRequestKey;
+    if (worksLoadedRequestKey.current === requestKey) {
+      setIsLoading(false);
+      return;
+    }
     const controller = new AbortController();
     const seq = ++requestSeq.current;
     setIsLoading(true);
@@ -397,6 +451,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     availabilityFilter,
     auth.user,
     favoriteEntity,
+    hasPendingRestoration,
     notifyUnavailable,
     page,
     pageSize,
@@ -408,15 +463,16 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     sourceIDs,
     statusFilter,
     worksReloadToken,
+    worksRequestKey,
   ]);
 
   useEffect(() => {
-    if (isLoading) return;
+    if (!active || isLoading || worksLoadedRequestKey.current !== worksRequestKey) return;
     setSelectedWorkIDs((ids) => new Set(Array.from(ids).filter((id) => works.some((work) => work.id === id))));
-  }, [isLoading, works]);
+  }, [active, isLoading, works, worksRequestKey]);
 
   useEffect(() => {
-    if (!active || window.location.pathname !== "/favorites") return;
+    if (!active || hasPendingRestoration() || window.location.pathname !== "/favorites") return;
     const browseState: FavoritesBrowseState = {
       entity: favoriteEntity,
       query,
@@ -446,6 +502,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     availabilityFilter,
     favoriteEntity,
     favoritesStorageScope,
+    hasPendingRestoration,
     page,
     pageSize,
     principalID,
@@ -461,18 +518,12 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
 
   useEffect(() => {
     const anchor = pendingAnchor.current;
-    if (isLoading || favoriteEntity !== "works" || !anchor) return;
+    if (!active || hasPendingRestoration() || isLoading || favoriteEntity !== "works" || !anchor) return;
     const target = document.querySelector<HTMLElement>(`[data-favorite-work-id="${anchor.workID}"]`);
     pendingAnchor.current = null;
     if (!target) return;
-    window.requestAnimationFrame(() =>
-      window.requestAnimationFrame(() => {
-        const top = window.scrollY + target.getBoundingClientRect().top - anchor.viewportOffset;
-        window.scrollTo({ top: Math.max(0, top), behavior: "auto" });
-        target.focus({ preventScroll: true });
-      }),
-    );
-  }, [favoriteEntity, isLoading, works]);
+    target.focus({ preventScroll: true });
+  }, [active, favoriteEntity, hasPendingRestoration, isLoading, works]);
 
   const totalPages = Math.max(1, Math.ceil(totalWorks / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -493,8 +544,9 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const hasWorksSnapshot = worksSnapshotUserID === principalID;
 
   useEffect(() => {
-    if (!isLoading && page > totalPages) setPage(totalPages);
-  }, [isLoading, page, totalPages]);
+    if (active && !isLoading && worksLoadedRequestKey.current === worksRequestKey && page > totalPages)
+      setPage(totalPages);
+  }, [active, isLoading, page, totalPages, worksRequestKey]);
 
   const openWork = (work: Work) => {
     const browseState = {
@@ -517,6 +569,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       {
         ...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
         favoritesBrowseScope: favoritesStorageScope,
+        favoritesBrowseState: browseState,
         favoritesSelection: { active: selectionMode, workIDs: Array.from(selectedWorkIDs) },
         favoritesAnchor: anchor,
       },

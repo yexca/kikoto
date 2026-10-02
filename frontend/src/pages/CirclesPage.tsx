@@ -55,7 +55,6 @@ import { retainVisibleSelection, withSelection } from "@/components/work-collect
 import { LazyRemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/LazyRemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import { openWorkflowPath, workflowActivityRunPath, workflowRunFormPath } from "@/features/workflows/workflowLinks";
-import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import {
   api,
   ApiError,
@@ -67,7 +66,7 @@ import {
   type CircleSummary,
   type ListeningStatus,
 } from "@/lib/api";
-import { currentInternalLocation, navigateToWorkspaceUp, normalizeInternalLocation } from "@/lib/browserHistory";
+import { currentInternalLocation, navigateToHistoryReturn, normalizeInternalLocation } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { coalesceRuns } from "@/lib/inflightRequests";
 import { DLSITE_ENDPOINTS } from "@/lib/official-links";
@@ -148,10 +147,21 @@ export function CirclesPage({ active = true }: { active?: boolean }) {
     };
   }, [active]);
   const route = circleRouteFromPath(path);
-  if (route) {
-    return <CircleDetailPage externalId={route.externalId} seriesCode={route.seriesCode} active={active} />;
-  }
-  return <CircleListPage active={active} />;
+  const [listVisited, setListVisited] = useState(route === null);
+  const showList = route === null;
+  useEffect(() => {
+    if (showList) setListVisited(true);
+  }, [showList]);
+  return (
+    <>
+      {route && <CircleDetailPage externalId={route.externalId} seriesCode={route.seriesCode} active={active} />}
+      {(listVisited || showList) && (
+        <div hidden={route !== null}>
+          <CircleListPage active={active && route === null} />
+        </div>
+      )}
+    </>
+  );
 }
 
 const CircleCard = memo(function CircleCard({
@@ -254,7 +264,6 @@ function CircleDetailPage({
   const toast = useToast();
   const requireDownloadsManage = usePermissionGate("downloads:manage");
   const canRefreshCatalog = auth.hasPermission("metadata:sync") && !auth.demoMode;
-  const compactLayout = useMobileNavigationLayout();
   const [detail, setDetail] = useState<CircleDetail | null>(null);
   // "missing" means the maker id is not in this site's database, which a
   // metadata:sync user may fetch; "hidden" is a known circle this page does not show.
@@ -388,9 +397,9 @@ function CircleDetailPage({
   const selectedWorks = circle.works.filter((work) => selectedWorkCodes.has(work.primaryCode));
   const selectedForkableWorks = selectedWorks.filter((work) => work.workId === null);
   const circleListStorageScope = currentClientStorageScope(auth.user?.id ?? null);
-  const navigateToList = () => navigateToCirclesList(circleListStorageScope, compactLayout);
+  const navigateToList = () => navigateToCirclesList(circleListStorageScope);
   usePageHeaderBack({
-    label: compactLayout ? t("creatorBrowse.backToCircles") : circleReturnLabel(),
+    label: circleReturnLabel(),
     title: detail?.displayName,
     onBack: navigateToList,
     enabled: notFound === null,
@@ -1689,11 +1698,9 @@ function isCircleWorkspaceLocation(location: string) {
   }
 }
 
-function navigateToCirclesList(storageScope: string, mobile: boolean) {
-  navigateToWorkspaceUp({
-    mobile,
+function navigateToCirclesList(storageScope: string) {
+  navigateToHistoryReturn({
     fallbackLocation: readLastCircleListLocation(storageScope) ?? "/circles",
-    isWorkspaceListLocation: isCircleListLocation,
   });
 }
 

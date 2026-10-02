@@ -36,7 +36,6 @@ import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { usePageHeaderBack } from "@/app/pageHeader";
 import { openWorkDetail } from "@/app/workDetailNavigation";
-import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import {
   isMatchingRemoteTrack,
@@ -80,7 +79,7 @@ import { DLSITE_ENDPOINTS } from "@/lib/official-links";
 import {
   NAVIGATION_EVENT,
   currentInternalLocation,
-  navigateToWorkspaceUp,
+  navigateToHistoryReturn,
   normalizeInternalLocation,
 } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
@@ -169,8 +168,20 @@ function VoiceCreatorWorksPage({ active }: { active: boolean }) {
     };
   }, [active]);
   const personId = voicePersonIdFromPath(path);
-  if (personId) return <VoiceDetailPage personId={personId} active={active} />;
-  return <VoiceListPage active={active} />;
+  const [listVisited, setListVisited] = useState(personId === 0);
+  useEffect(() => {
+    if (!personId) setListVisited(true);
+  }, [personId]);
+  return (
+    <>
+      {personId > 0 && <VoiceDetailPage personId={personId} active={active} />}
+      {(listVisited || personId === 0) && (
+        <div hidden={personId > 0}>
+          <VoiceListPage active={active && personId === 0} />
+        </div>
+      )}
+    </>
+  );
 }
 
 const VoiceCard = memo(function VoiceCard({
@@ -265,9 +276,8 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
   const auth = useAuth();
   const toast = useToast();
   const requireDownloadsManage = usePermissionGate("downloads:manage");
-  const mobileNavigationLayout = useMobileNavigationLayout();
   const voiceListStorageScope = currentClientStorageScope(auth.user?.id ?? null);
-  const navigateToList = () => navigateToVoicesList(voiceListStorageScope, mobileNavigationLayout);
+  const navigateToList = () => navigateToVoicesList(voiceListStorageScope);
   const [detail, setDetail] = useState<VoiceDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -276,7 +286,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
   const [catalogRefresh, setCatalogRefresh] = useState<VoiceCatalogRefreshState | null>(null);
   const [isRemoteLoading, setIsRemoteLoading] = useState(false);
   usePageHeaderBack({
-    label: voiceReturnLabel(mobileNavigationLayout),
+    label: voiceReturnLabel(),
     title: detail?.displayName,
     onBack: navigateToList,
     enabled: !notFound,
@@ -1337,11 +1347,9 @@ function openVoiceAliasMaintenance(personId: number) {
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 
-function navigateToVoicesList(storageScope: string, mobile: boolean) {
-  navigateToWorkspaceUp({
-    mobile,
+function navigateToVoicesList(storageScope: string) {
+  navigateToHistoryReturn({
     fallbackLocation: readLastVoiceListLocation(storageScope) ?? "/voices",
-    isWorkspaceListLocation: isVoiceListLocation,
   });
 }
 
@@ -1364,8 +1372,7 @@ function openWorkRoute(work: VoiceWorkView) {
   }
 }
 
-function voiceReturnLabel(mobile: boolean) {
-  if (mobile) return "Back to voices";
+function voiceReturnLabel() {
   const state = window.history.state as { returnTo?: unknown } | null;
   return typeof state?.returnTo === "string" ? voiceReturnLabelForLocation(state.returnTo) : "Back to voices";
 }

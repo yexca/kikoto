@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { mobileTabSnapshotFromValue, readMobileTabSnapshot, writeMobileTabSnapshot } from "./mobileTabState";
+import { historyStateWithReturn } from "../lib/browserHistory";
 
 function memoryStorage(): Storage {
   const values = new Map<string, string>();
@@ -71,6 +72,53 @@ describe("mobile tab state", () => {
       scrollY: 240,
     });
     expect(readMobileTabSnapshot("example-server:user-1", "favorites")).toBeNull();
+  });
+
+  it.each(["/circles/RG00000001", "/circles/RG00000001/series/example", "/voices/7", "/favorites"])(
+    "keeps the Library snapshot when a work is opened from %s and rejects an already saved foreign detail",
+    (returnTo) => {
+      const sessionStorage = memoryStorage();
+      vi.stubGlobal("window", { sessionStorage });
+      writeMobileTabSnapshot(
+        "example-server:user-1",
+        "library",
+        "/?q=Example",
+        { libraryBrowseState: { page: 2 } },
+        480,
+      );
+      writeMobileTabSnapshot("example-server:user-1", "library", "/RJ00000000", { returnTo }, 0);
+      expect(readMobileTabSnapshot("example-server:user-1", "library")).toEqual({
+        page: "library",
+        location: "/?q=Example",
+        state: { libraryBrowseState: { page: 2 } },
+        scrollY: 480,
+      });
+      const key = sessionStorage.key(0)!;
+      sessionStorage.setItem(
+        key,
+        JSON.stringify({ page: "library", location: "/RJ00000000", state: { returnTo }, scrollY: 0 }),
+      );
+      expect(readMobileTabSnapshot("example-server:user-1", "library")).toBeNull();
+    },
+  );
+
+  it("keeps the originating workspace through a nested work return entry", () => {
+    vi.stubGlobal("window", {
+      location: { pathname: "/RJ00000000", search: "", hash: "" },
+      history: { state: { returnTo: "/voices/7" } },
+      scrollY: 120,
+    });
+    expect(
+      mobileTabSnapshotFromValue(
+        {
+          page: "library",
+          location: "/RJ00000001",
+          state: historyStateWithReturn("/RJ00000000", "Back to work"),
+          scrollY: 0,
+        },
+        "library",
+      ),
+    ).toBeNull();
   });
 
   it("drops oversized state and tolerates unavailable session storage", () => {

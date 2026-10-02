@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { useStableCallback } from "@/hooks/useStableCallback";
+import { useBrowseHistoryState } from "@/hooks/useBrowseHistoryState";
 import { currentInternalLocation } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
@@ -82,15 +83,14 @@ export function CreatorListPage<Item extends CreatorListItem, Filter extends str
   const auth = useAuth();
   const toast = useToast();
   const storageScope = currentClientStorageScope(auth.user?.id ?? null);
-  // The URL seeds the list once; later changes flow from state to the URL.
-  const [initialBrowseState] = useState(() =>
+  const readBrowseState = () =>
     creatorBrowseStateFromSearch(
       window.location.search,
       { query: "", filter: "all" as Filter, tag: "", page: 1, pageSize: 24 },
       filters,
       pageSizeOptions,
-    ),
-  );
+    );
+  const [initialBrowseState] = useState(() => readBrowseState());
   const [items, setItems] = useState<Item[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -110,6 +110,20 @@ export function CreatorListPage<Item extends CreatorListItem, Filter extends str
     setLoadError(t("errors.unavailable"));
     toast.notify(toastFromError(error, t("errors.unavailable")));
   });
+  const hasPendingRestoration = useBrowseHistoryState({
+    active,
+    stateKey: creatorBrowseSearch({ query, filter, tag: "", page, pageSize }),
+    read: readBrowseState,
+    keyOf: (state) => creatorBrowseSearch({ ...state, tag: "" }),
+    isCurrentLocation: () => isListLocation(currentInternalLocation()),
+    restore: (state) => {
+      setQuery(state.query);
+      setRequestQuery(state.query);
+      setFilter(state.filter);
+      setPage(state.page);
+      setPageSize(state.pageSize);
+    },
+  });
 
   useEffect(() => {
     const timer = window.setTimeout(() => setRequestQuery(query), 250);
@@ -117,21 +131,36 @@ export function CreatorListPage<Item extends CreatorListItem, Filter extends str
   }, [query]);
 
   useEffect(() => {
-    if (!active || !isListLocation(currentInternalLocation())) return;
+    if (!active || hasPendingRestoration() || !isListLocation(currentInternalLocation())) return;
     const location = `${path}${creatorBrowseSearch({ query, filter, tag: "", page, pageSize })}`;
     window.history.replaceState(window.history.state ?? {}, "", location);
     writeLastListLocation(storageScope, location);
-  }, [active, filter, isListLocation, page, pageSize, path, query, storageScope, writeLastListLocation]);
+  }, [
+    active,
+    filter,
+    hasPendingRestoration,
+    isListLocation,
+    page,
+    pageSize,
+    path,
+    query,
+    storageScope,
+    writeLastListLocation,
+  ]);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || hasPendingRestoration()) return;
     const requestKey = JSON.stringify([page, pageSize, requestQuery, filter, reloadToken]);
-    if (loadedRequestKey.current === requestKey) return;
+    if (loadedRequestKey.current === requestKey) {
+      setIsLoading(false);
+      return;
+    }
     const controller = new AbortController();
     setIsLoading(true);
     setLoadError("");
     loadItems({ page, pageSize, query: requestQuery, filter, signal: controller.signal })
       .then((result) => {
+        if (controller.signal.aborted) return;
         loadedRequestKey.current = requestKey;
         setItems(result.items);
         setTotal(result.total);
@@ -147,7 +176,18 @@ export function CreatorListPage<Item extends CreatorListItem, Filter extends str
         if (!controller.signal.aborted) setIsLoading(false);
       });
     return () => controller.abort();
-  }, [active, emptyMessage, filter, loadItems, notifyLoadFailure, page, pageSize, reloadToken, requestQuery]);
+  }, [
+    active,
+    emptyMessage,
+    filter,
+    hasPendingRestoration,
+    loadItems,
+    notifyLoadFailure,
+    page,
+    pageSize,
+    reloadToken,
+    requestQuery,
+  ]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const changeFilter = (value: Filter) => {

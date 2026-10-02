@@ -382,7 +382,7 @@ test("mobile favorites collapses type and search into icon controls", async ({ p
   await expect(page.getByRole("button", { name: "Search library" })).toBeVisible();
 });
 
-test("favorites detail uses Library Up navigation while the Favorites tab restores browse state", async ({ page }) => {
+test("favorites detail Back and mobile tab switches preserve filters, selection, and scroll", async ({ page }) => {
   await mockFavorites(page);
   await page.goto(
     "/favorites?entity=works&status=listening&availability=local&list=2&page=2&pageSize=24&sort=sales&direction=asc&seed=314159",
@@ -419,8 +419,11 @@ test("favorites detail uses Library Up navigation while the Favorites tab restor
     "Focus",
   ]);
 
-  await page.getByRole("main").getByRole("button", { name: "Library", exact: true }).click();
-  await expect(page).toHaveURL(/^http:\/\/[^/]+\/(?:\?.*)?$/);
+  await page.getByRole("main").getByRole("button", { name: "Back to favorites", exact: true }).click();
+  await expect(page).toHaveURL(/\/favorites$/);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(savedScroll - 100);
+  await page.locator("footer").getByRole("button", { name: "Library", exact: true }).click();
+  await expect(page).toHaveURL((url) => url.pathname === "/");
   await page.locator("footer").getByRole("button", { name: "Favorites", exact: true }).click();
   await expect(page).toHaveURL(/\/favorites$/);
   await expect(page.getByRole("button", { name: "Sort: Sales" })).toBeVisible();
