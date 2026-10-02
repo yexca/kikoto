@@ -116,22 +116,44 @@ Database attempt ordering prevents late failures from replacing newer outcomes
 and late successes from replacing newer successful metadata. This is not a
 distributed request lock between separate application processes.
 
-## Workflow Categories
+## Workflows Page
 
-The Workflows page groups definitions by a frontend-owned category keyed by
-workflow code: Basic (local scan, local files, metadata sync), Collect
-(popular collections), Follow (preset follow workflows), and Remote
-(Availability Watch and Fetch history). A code without a category, such as a
-read-only run context, stays with Basic. Wide layouts select a category from a
-vertical icon rail and a workflow from the horizontal tabs; the mobile
-navigation layout shows categories as an icon row above the tabs. The selected
-workflow remains the persisted and linked state, so the category follows it.
-An All entry leads the rail; it lists every visible workflow and is kept in
-session storage without changing the selected workflow.
+The Workflows page lists every visible definition in one workflow list, grouped
+by a frontend-owned category keyed by workflow code: Basic (local scan, local
+files, metadata sync), Collect (popular collections), Follow (preset follow
+workflows), and Remote (Availability Watch and Fetch history). A code without a
+category, such as a read-only run context, stays with Basic. Each entry shows
+its latest run's status and time and the enabled automation that starts it
+(Startup, schedule, or folder watch). The page reads each listed workflow's
+latest run when it loads and again when the active queue or attention count
+changes; the per-workflow summaries have no timer of their own.
+
+Wide layouts keep the list beside the selected workflow. The mobile navigation
+layout lands on the list and opens one workflow at a time: opening a workflow
+adds a history entry, and the header back action returns to the list. The
+selected workflow remains the persisted and linked state (`?workflow=<code>`).
+
+A status strip above the list shows the newest active run with its progress,
+the Needs attention count, and the next enabled schedule. It reads the global
+queue every few seconds while work is active and every 15 seconds otherwise;
+Demo reads it once. Its cells open Activity or select the scheduled workflow.
+
+The selected workflow shows its category, stage count, and description, then a
+health summary of its latest 20 runs: the last run, the success rate of finished
+runs, their median duration, and the next automatic start. A duration strip
+plots those runs oldest first; ordinary successes stay neutral so failures,
+partial results, and active runs stand out.
+
+Run options form a run form that ends in a run bar holding Run, any workflow
+action such as Availability Watch Configure, and the first reason Run is
+unavailable. The bar sticks above the page's fixed bottom controls while a long
+form scrolls. Preset option groups (Input, Filter, Actions) become columns once
+the form is wide enough. A workflow without run options keeps Run in its header.
+The latest run's monitor follows the form, then triggers and recent runs.
 
 ## Activity Summary
 
-Workflows exposes Activity at the right end of its horizontal definition bar.
+Workflows exposes Activity at the right end of its status strip.
 The desktop popover and mobile sheet show active runs above two server-paged
 views: Needs attention and History. The active list and both views are global
 across workflow definitions, so a job
@@ -225,8 +247,8 @@ Metadata sync with a circle or voice actor [scope](#metadata-sync-scope).
 Track and Fetch are no longer follow actions.
 
 `GET /api/workflow-presets` publishes each preset's parameter schema; the
-Workflows page renders it as the inline Run options below the workflow header and
-as the startup or interval trigger form. `POST /api/workflow-presets/{code}/runs` validates the inputs,
+Workflows page renders it as the selected workflow's run form and as the
+startup or interval trigger form. `POST /api/workflow-presets/{code}/runs` validates the inputs,
 checks that a selected source is an enabled compatible remote source, renders
 the tag template for this dispatch (`{date}`, `{target}`), builds
 the graph, validates it with the typed workflow graph validator, and enqueues

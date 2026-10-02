@@ -4,8 +4,19 @@ export const workflowCategories = ["basic", "collect", "follow", "remote"] as co
 
 export type WorkflowCategory = (typeof workflowCategories)[number];
 
-/** A rail choice: one category, or every visible workflow. */
-export type WorkflowCategoryView = WorkflowCategory | "all";
+/** Built-in workflows in the order the page lists them; other visible codes follow. */
+export const builtInWorkflowOrder = [
+  "local_library_scan",
+  "local_media_index",
+  "metadata_sync",
+  "remote_popular_collection",
+  "dlsite_popular_collection",
+  "availability_watch",
+  "remote_work_fetch",
+  "circle_follow",
+  "series_follow",
+  "voice_follow",
+];
 
 const workflowCategoryByCode: Record<string, WorkflowCategory> = {
   local_library_scan: "basic",

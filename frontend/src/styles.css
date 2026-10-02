@@ -740,6 +740,121 @@
     background-clip: content-box;
   }
 
+  /* Selected workflow health: two stat columns and a stacked history in a narrow column, one row when wide. */
+  .workflow-frame {
+    container-type: inline-size;
+  }
+
+  .workflow-health-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workflow-history-strip {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  @container (min-width: 44rem) {
+    .workflow-health-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .workflow-history-strip {
+      flex-direction: row;
+      align-items: flex-end;
+      gap: 1.5rem;
+    }
+
+    .workflow-history-label {
+      width: 14rem;
+      flex-shrink: 0;
+    }
+
+    .workflow-history-bars {
+      flex: 1 1 0%;
+    }
+  }
+
+  /* Selected workflow: automation and recent runs share a row once the detail column has room. */
+  .workflow-detail {
+    container-type: inline-size;
+  }
+
+  .workflow-detail-pair {
+    display: grid;
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  @container (min-width: 50rem) {
+    .workflow-detail-pair:has(> :nth-child(2)) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  /* Run form: a narrow panel stacks each label above its control instead of beside it. */
+  .workflow-options {
+    container-type: inline-size;
+  }
+
+  @container (max-width: 36rem) {
+    .workflow-options .option-field-row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  /* Preset option groups stack with dividers, and become columns once the form is wide. */
+  .preset-groups > section + section {
+    border-top: 1px solid hsl(var(--border));
+  }
+
+  @container (min-width: 50rem) {
+    .workflow-options .preset-groups {
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(0, 1fr);
+    }
+
+    .workflow-options .preset-groups > section {
+      padding: 0 1.5rem;
+    }
+
+    .workflow-options .preset-groups > section:first-child {
+      padding-left: 0;
+    }
+
+    .workflow-options .preset-groups > section:last-child {
+      padding-right: 0;
+    }
+
+    .workflow-options .preset-groups > section + section {
+      border-top: 0;
+      border-left: 1px solid hsl(var(--border));
+    }
+
+    .workflow-options .preset-groups .option-field-row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  /*
+   * The run bar ends the run form and sticks above the page's fixed bottom
+   * controls (mobile navigation, player) while a long form scrolls past.
+   */
+  .workflow-run-bar {
+    position: sticky;
+    /* The clearance keeps a margin for page content; the bar sits flush on the fixed controls instead. */
+    bottom: max(0px, calc(var(--app-content-bottom-clearance) - 1rem));
+    z-index: 5;
+    background: hsl(var(--card) / 0.94);
+    backdrop-filter: blur(10px);
+    transition: box-shadow calc(150ms * var(--motion-scale)) ease-out;
+  }
+
+  .workflow-run-bar[data-stuck] {
+    box-shadow: 0 -12px 24px -18px hsl(var(--foreground) / 0.45);
+  }
+
   /* Workflow run monitor: stage list beside a streaming run log. */
   .workflow-monitor {
     container-type: inline-size;
