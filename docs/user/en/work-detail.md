@@ -77,8 +77,15 @@ playback actions for one work.
   On compact screens, the Hero keeps the same credit line, tag row, stat
   strip, and actions above the Info and Directory tabs, Info shows the source
   panel, and Mark, List, DLsite, Metadata, and Source collapse to icons.
+- Presents Directory as one panel: a header with the file summary, the
+  Browse/Tree switch, and source checking; underline source tabs with status
+  dots; a slim default-folder line; and the file list. Browse adds a toolbar
+  with an up control and breadcrumb, the folded-lyrics count, and a Play all
+  command for the current folder's playable files.
 - Uses one two-line row for every directory file type on mobile and desktop,
   placing the complete name above type, precise audio duration, and size.
+  Playable rows are numbered in folder playback order, show a play cue on
+  hover, and mark the current track with an accent row and a live icon.
 - Folds matched same-folder lyrics sidecars out of the default Browse and Tree
   rows while keeping unmatched text visible. Audio rows expose lyrics choice,
   preview, and reveal actions, and a directory control can show all folded

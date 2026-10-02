@@ -1264,6 +1264,7 @@ export const surfaceKorean = {
     auto: "자동",
     noAvailableMatch: "사용 가능한 일치 항목 없음",
     playAsAudio: "오디오로 재생",
+    playAll: "모두 재생",
     playNext: "다음에 재생",
     cachedOnly: "캐시만",
     deletePreview: "삭제 미리보기",

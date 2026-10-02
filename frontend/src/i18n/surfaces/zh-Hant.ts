@@ -1165,6 +1165,7 @@ export const surfaceHant = {
     auto: "自動",
     noAvailableMatch: "沒有可用符合項目",
     playAsAudio: "以音訊播放",
+    playAll: "全部播放",
     playNext: "下一首播放",
     cachedOnly: "僅快取",
     deletePreview: "刪除預覽",

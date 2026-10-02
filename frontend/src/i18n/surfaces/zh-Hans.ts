@@ -1164,6 +1164,7 @@ export const surfaceHans = {
     auto: "自动",
     noAvailableMatch: "没有可用匹配",
     playAsAudio: "作为音频播放",
+    playAll: "全部播放",
     playNext: "下一首播放",
     cachedOnly: "仅缓存",
     deletePreview: "删除预览",
