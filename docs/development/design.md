@@ -174,8 +174,9 @@ structural APIs. Add markers selectively instead of annotating every wrapper.
 Desktop:
 
 - Sidebar navigation.
-- Source-aware work detail with cover, metadata matrix, and bottom-aligned Hero
-  actions.
+- Source-aware work detail with a cover-tinted Hero (cover, identity, tags with
+  inline personal tags, a compact stat strip, and bottom-aligned Hero actions),
+  the Directory as the main column, and a sticky source panel on wide screens.
 - Persistent lower-right player dock with full, compact, and draggable mini
   modes.
 

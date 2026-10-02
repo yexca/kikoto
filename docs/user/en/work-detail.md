@@ -10,7 +10,10 @@ playback actions for one work.
 - Shows cover, title, code, circle, tags, rating, voice metadata, and DLsite
   link.
 - Shows known language editions for a logical work family.
-- Separates the metadata-language selector from the directory-edition selector.
+- Keeps the metadata-language and directory-edition selectors as two separate
+  compact chips beside the work code. Each chip names its current choice and
+  opens its own list; an Origin directory edition reads `Origin · <language>`.
+  The metadata chip becomes a read-only label when there is only one variant.
   Metadata defaults to the configured language priority for local works and the
   source request-language hint for remote-only works; a user's temporary switch
   changes the displayed title and provider tags without being persisted. The
@@ -59,19 +62,21 @@ playback actions for one work.
   active tracked directory without adding source names to the tab row.
 - Uses the selected tracked source name in the Directory description and keeps
   the selection in the detail URL.
-- Places the work code and DLsite link, title, circle, and series in a
-  full-width desktop heading above the cover and metadata. Medium-width detail
-  pages use two independent columns, with Voices, Tags, and personal tags
-  flowing directly below the cover and source facts, version controls, and Hero
-  actions flowing from the top of the second column.
-  Wide detail pages use three columns for the cover, identity metadata, and
-  source metadata. Notices and version controls span the two metadata columns
-  immediately below their content, with Hero actions directly beneath them;
-  the cover height does not push these controls downward. Source info reports
-  file/audio counts, size and duration coverage, and labels a metadata-duration
-  fallback instead of silently replacing source duration. On compact screens,
-  voice credits remain visible above the primary actions while Mark, List,
-  DLsite, Metadata, and Source collapse to icons.
+- Opens with a Hero whose background is tinted from the cover. Beside the
+  cover it shows the work code with the DLsite link and language chips, the
+  title, circle, and series, a CV credit line, one tag row, a compact stat
+  strip (rating, age rating, sales, release date, and playable duration; one
+  row on phones), any metadata notice, and bottom-aligned Hero actions. The
+  tag row lists provider tags first and then the user's personal tags in a
+  distinct accent style, ending with the add or edit icon; long provider tag
+  lists collapse behind a `+N` control. The Directory fills the main column
+  below. Source info and the metadata update time share one panel that stays
+  beside the Directory on wide pages and follows it on narrower ones. Source
+  info reports file/audio counts, size and duration coverage, and labels a
+  metadata-duration fallback instead of silently replacing source duration.
+  On compact screens, the Hero keeps the same credit line, tag row, stat
+  strip, and actions above the Info and Directory tabs, Info shows the source
+  panel, and Mark, List, DLsite, Metadata, and Source collapse to icons.
 - Uses one two-line row for every directory file type on mobile and desktop,
   placing the complete name above type, precise audio duration, and size.
 - Folds matched same-folder lyrics sidecars out of the default Browse and Tree

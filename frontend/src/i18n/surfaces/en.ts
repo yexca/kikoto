@@ -1111,6 +1111,7 @@ export const surfaceEnglish = {
     directoryEdition: "Directory edition",
     metadataOnly: "Metadata only",
     dlsiteInfo: "DLsite info",
+    metadataUpdatedAt: "Metadata updated {{time}}",
     sourceInfo: "Source info",
     trackedSourceUnforkedDescription: "{{source}} is tracked, but its directory has not been forked.",
     workNotTrackedDescription:
@@ -1222,6 +1223,7 @@ export const surfaceEnglish = {
     unmarkedDiscovery: "Unmarked discovery",
     noMeasuredFileSize: "No measured file size",
     playableDuration: "Playable duration",
+    durationShort: "Duration",
     metadataDuration: "Metadata duration",
     noMeasuredSourceDuration: "No measured source duration",
     noKnownDuration: "No known duration",
