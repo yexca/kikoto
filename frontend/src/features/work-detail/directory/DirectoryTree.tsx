@@ -106,6 +106,18 @@ function LyricsAttachmentsToggle({
   );
 }
 
+type DirectoryRouteBaseline = { root: TreeNode; directoryRoutingRules: DirectoryRoutingRule[] };
+
+function directoryRouteBaselineChanged(
+  baselineRef: RefObject<DirectoryRouteBaseline | null>,
+  root: TreeNode,
+  directoryRoutingRules: DirectoryRoutingRule[],
+) {
+  const baseline = baselineRef.current;
+  baselineRef.current = { root, directoryRoutingRules };
+  return !baseline || baseline.root !== root || baseline.directoryRoutingRules !== directoryRoutingRules;
+}
+
 function PlayAllButton({ tracks, onPlayFolder }: { tracks: TreeTrack[]; onPlayFolder: DirectoryPlayFolder }) {
   if (tracks.length === 0) return null;
   return (
@@ -157,27 +169,28 @@ export function DirectoryTree({
   );
   const [visibleLimit, setVisibleLimit] = useState(160);
   const appliedFocusRequestKeyRef = useRef<string | null>(null);
+  const expansionBaselineRef = useRef<DirectoryRouteBaseline | null>(null);
   const lyricsAttachments = useDirectoryLyricsAttachmentVisibility(root);
   useEffect(() => {
-    setExpandedPaths(initialExpandedTreePaths(root, directoryRoutingRules));
-    setVisibleLimit(160);
-  }, [root, directoryRoutingRules]);
-  useEffect(() => {
-    if (!focusPath || !nodeAtPath(root, focusPath)) return;
-    const requestKey = focusRequestKey ?? focusPath.join("\u0000");
-    if (appliedFocusRequestKeyRef.current === requestKey) return;
-    appliedFocusRequestKeyRef.current = requestKey;
+    // Routing rules can arrive after the focus request; a reset must keep it.
+    const baselineChanged = directoryRouteBaselineChanged(expansionBaselineRef, root, directoryRoutingRules);
+    const requestedPath = focusPath && nodeAtPath(root, focusPath) ? focusPath : null;
+    const requestKey = requestedPath ? (focusRequestKey ?? requestedPath.join("\u0000")) : null;
+    const requestPending = requestKey !== null && appliedFocusRequestKeyRef.current !== requestKey;
+    if (!baselineChanged && !requestPending) return;
+    if (requestKey) appliedFocusRequestKeyRef.current = requestKey;
+    if (baselineChanged) setVisibleLimit(160);
     setExpandedPaths((current) => {
-      const next = new Set(current);
+      const next = new Set(baselineChanged ? initialExpandedTreePaths(root, directoryRoutingRules) : current);
       let cursor: TreeNode | null = root;
-      for (const part of focusPath) {
+      for (const part of requestedPath ?? []) {
         cursor = cursor?.children.get(part) ?? null;
         if (!cursor) break;
         next.add(cursor.path);
       }
       return next;
     });
-  }, [focusPath, focusRequestKey, root]);
+  }, [directoryRoutingRules, focusPath, focusRequestKey, root]);
   const treeRows = useMemo(() => flattenVisibleTreeRows(root, expandedPaths), [root, expandedPaths]);
   const isLyricsAttachmentHidden = lyricsAttachments.isHidden;
   const rows = useMemo(
@@ -280,6 +293,7 @@ export function DirectoryBrowser({
 }) {
   const [path, setPath] = useState<string[]>(() => recommendedDirectoryPath(root, directoryRoutingRules));
   const appliedRouteRequestKeyRef = useRef<string | null>(null);
+  const pathBaselineRef = useRef<DirectoryRouteBaseline | null>(null);
   const lyricsAttachments = useDirectoryLyricsAttachmentVisibility(root);
   const current = useMemo(() => nodeAtPath(root, path) ?? root, [root, path]);
   const folders = useMemo(() => sortedFolders(current), [current]);
@@ -294,15 +308,15 @@ export function DirectoryBrowser({
   }, [root, path, directoryRoutingRules]);
 
   useEffect(() => {
-    setPath(recommendedDirectoryPath(root, directoryRoutingRules));
-  }, [root, directoryRoutingRules]);
-  useEffect(() => {
-    if (!routePath || !nodeAtPath(root, routePath)) return;
-    const requestKey = routeRequestKey ?? routePath.join("\u0000");
-    if (appliedRouteRequestKeyRef.current === requestKey) return;
-    appliedRouteRequestKeyRef.current = requestKey;
-    setPath(routePath);
-  }, [routePath, routeRequestKey, root]);
+    // Routing rules can arrive after the route request; a reset must keep it.
+    const baselineChanged = directoryRouteBaselineChanged(pathBaselineRef, root, directoryRoutingRules);
+    const requestedPath = routePath && nodeAtPath(root, routePath) ? routePath : null;
+    const requestKey = requestedPath ? (routeRequestKey ?? requestedPath.join("\u0000")) : null;
+    const requestPending = requestKey !== null && appliedRouteRequestKeyRef.current !== requestKey;
+    if (!baselineChanged && !requestPending) return;
+    if (requestKey) appliedRouteRequestKeyRef.current = requestKey;
+    setPath(requestedPath ?? recommendedDirectoryPath(root, directoryRoutingRules));
+  }, [directoryRoutingRules, root, routePath, routeRequestKey]);
 
   if (folders.length === 0 && files.length === 0) {
     return <div className="text-sm text-muted-foreground">{emptyLabel}</div>;
