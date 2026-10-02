@@ -596,9 +596,9 @@ function PersistedDirectoryPanel(props: PersistedDirectoryPanelProps) {
 function persistedPersonalTags(work: WorkDetail | null, onSave: (tags: string[]) => Promise<void>) {
   if (!work) return undefined;
   return (
-    <div className="space-y-2 rounded-lg border bg-card p-3">
+    <div className="space-y-2.5">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-        <Tags className="h-4 w-4" />
+        <Tags className="h-3.5 w-3.5" />
         {i18n.t("libraryDetail.myTags")}
       </div>
       <UserTagRow tags={work.userTags ?? []} scope="work" onSave={onSave} />
