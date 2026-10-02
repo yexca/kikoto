@@ -18,6 +18,7 @@ import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { usePageHeaderBack } from "@/app/pageHeader";
 import i18n from "@/i18n";
 import {
+  Check,
   ChevronDown,
   CircleUserRound,
   Clock3,
@@ -30,8 +31,7 @@ import {
   Languages,
   Link2,
   RefreshCw,
-  Tags,
-  UserRound,
+  Star,
 } from "lucide-react";
 import { openVoiceRoute } from "@/lib/voiceNavigationState";
 import { useAuth } from "@/auth/AuthProvider";
@@ -41,16 +41,13 @@ import { Button } from "@/components/ui/button";
 import { openCircleRoute, openCircleSeriesRoute } from "@/lib/circleNavigationState";
 import {
   groupWorkVersions,
-  preferredWorkVersion,
   type WorkVersionAvailabilityScope,
   workVersionAvailableForScope,
-  type WorkVersionGroup,
   workVersionKindLabel,
   workVersionMediaState,
 } from "@/features/work-detail/workVersionModel";
 import { openWorkCodeRoute, type WorkPreview } from "@/features/work-detail/workDetailShared";
 import { orderedMetadataVariants, resolveMetadataVariant } from "@/features/work-detail/metadataPresentationModel";
-import { FloatingSelect } from "@/components/ui/floating-select";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { ageRatingPresentation } from "@/lib/ageRating";
 import { formatBytes, formatDuration } from "@/features/work-detail/media/mediaTreeModel";
@@ -136,160 +133,356 @@ export function UnifiedWorkDetailPage({
           directory={directory}
         />
       ) : (
-        <>
-          <DetailHero {...presentation} actions={actions} />
-          {directory}
-        </>
+        <DesktopWorkDetailLayout {...presentation} actions={actions} directory={directory} />
       )}
       {children}
     </div>
   );
 }
 
-function DetailHero({
-  coverUrl,
-  fallbackCode,
+function DesktopWorkDetailLayout({
+  actions,
+  directory,
+  ...presentation
+}: UnifiedWorkDetailPresentation & { actions: ReactNode; directory: ReactNode }) {
+  const {
+    coverUrl,
+    fallbackCode,
+    code,
+    dlsiteUrl,
+    title,
+    circle,
+    circleExternalId,
+    series,
+    seriesTitleId,
+    seriesCircleExternalId,
+    loading = false,
+    metadataSync,
+    canSyncMetadata = false,
+    metadataSyncBusy = false,
+    onSyncMetadata,
+    onLinkMetadata,
+    sourceInfo,
+    voiceActors,
+    voiceCredits,
+    tags,
+    personalTags,
+    dlsiteFetchedAt,
+  } = presentation;
+  const entityResolver = useDetailEntityResolver(code);
+  const versionMenu = detailVersionMenu(presentation);
+
+  return (
+    <div className="space-y-6">
+      <section
+        className="relative isolate overflow-clip rounded-xl border bg-card"
+        data-testid="detail-hero"
+        aria-label={title}
+      >
+        {coverUrl && (
+          <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
+            <img
+              src={assetURL(coverUrl)}
+              alt=""
+              className="h-full w-full scale-125 object-cover opacity-30 blur-3xl saturate-150"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-card/30 via-card/75 to-card" />
+          </div>
+        )}
+        <div className="grid gap-6 p-5 md:grid-cols-[minmax(13rem,0.9fr)_minmax(0,1.6fr)] lg:p-6 xl:grid-cols-[minmax(18rem,26rem)_minmax(0,1fr)]">
+          <div
+            className="self-start overflow-hidden rounded-lg bg-muted shadow-xl ring-1 ring-border"
+            data-testid="detail-cover"
+          >
+            <div className="aspect-[4/3]">
+              {coverUrl ? (
+                <img src={assetURL(coverUrl)} alt="" className="h-full w-full object-contain" />
+              ) : (
+                <div className="grid h-full place-items-center text-4xl font-bold">{fallbackCode.slice(0, 2)}</div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex min-w-0 flex-col gap-4">
+            <DetailTitleBlock
+              fallbackCode={fallbackCode}
+              code={code}
+              dlsiteUrl={dlsiteUrl}
+              title={title}
+              circle={circle}
+              circleExternalId={circleExternalId}
+              series={series}
+              seriesTitleId={seriesTitleId}
+              seriesCircleExternalId={seriesCircleExternalId}
+              loading={loading}
+              entityResolver={entityResolver}
+              versionMenu={versionMenu}
+            />
+            <DetailCreditLine voiceActors={voiceActors} voiceCredits={voiceCredits} entityResolver={entityResolver} />
+            <DetailTagLine tags={tags} personalTags={personalTags} />
+            <DetailStatStrip {...presentation} />
+            <MetadataSyncNotice
+              status={metadataSync?.status}
+              checkedAt={metadataSync?.checkedAt ?? ""}
+              canSync={Boolean(canSyncMetadata && onSyncMetadata)}
+              busy={metadataSyncBusy}
+              onSync={onSyncMetadata}
+              onLink={onLinkMetadata}
+            />
+            <div data-testid="hero-actions" className="mt-auto flex min-w-0 flex-wrap gap-2 pt-1">
+              {actions}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_19rem]">
+        <div className="min-w-0 space-y-4">{directory}</div>
+        <DetailInfoPanel sourceInfo={sourceInfo} dlsiteFetchedAt={dlsiteFetchedAt} className="xl:sticky xl:top-20" />
+      </div>
+    </div>
+  );
+}
+
+function DetailInfoPanel({
+  sourceInfo,
+  dlsiteFetchedAt,
+  className,
+}: Pick<UnifiedWorkDetailPresentation, "sourceInfo" | "dlsiteFetchedAt"> & {
+  className: string;
+}) {
+  return (
+    <aside
+      className={`min-w-0 divide-y overflow-hidden rounded-xl border bg-card ${className}`}
+      aria-label={i18n.t("libraryDetail.sourceInfo")}
+      data-testid="detail-source-metadata"
+    >
+      <ActiveSourceInfo info={sourceInfo} />
+      {dlsiteFetchedAt && (
+        <div className="flex items-center gap-2 px-4 py-3 text-2xs text-muted-foreground">
+          <Clock3 className="h-3.5 w-3.5 shrink-0" />
+          <span className="min-w-0 truncate tabular-nums">
+            {i18n.t("libraryDetail.metadataUpdatedAt", { time: dlsiteFetchedAt })}
+          </span>
+        </div>
+      )}
+    </aside>
+  );
+}
+
+function DetailTagLine({ tags, personalTags }: Pick<UnifiedWorkDetailPresentation, "tags" | "personalTags">) {
+  const [expanded, setExpanded] = useState(false);
+  const collapsedCount = 12;
+  const visibleTags = expanded ? tags : tags.slice(0, collapsedCount);
+  const hiddenCount = tags.length - visibleTags.length;
+  if (tags.length === 0 && !personalTags) return null;
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5" data-testid="detail-identity-metadata">
+      {tags.length > 0 && (
+        <ul className="contents" aria-label={i18n.t("libraryDetail.tags")}>
+          {visibleTags.map((tag) => (
+            <li key={tag} className="contents">
+              <button
+                type="button"
+                className="inline-flex h-[26px] max-w-48 items-center rounded-full border bg-background/60 px-2.5 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                title={tag}
+                onClick={() => openDetailTagSearch(tag)}
+              >
+                <span className="truncate">{tag}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          className="inline-flex h-[26px] items-center rounded-full px-2 text-xs font-medium text-muted-foreground hover:text-primary"
+          aria-expanded={false}
+          aria-label={`${i18n.t("libraryDetail.tags")} +${hiddenCount}`}
+          onClick={() => setExpanded(true)}
+        >
+          +{hiddenCount}
+        </button>
+      )}
+      {personalTags}
+    </div>
+  );
+}
+
+function detailVersionMenu({
   code,
-  dlsiteUrl,
-  title,
-  circle,
-  circleExternalId,
+  baseCode,
+  metadataLanguage,
+  metadataPresentation,
+  activeMetadataVariantKey,
+  onMetadataVariantSelect,
+  translations = [],
+  activeVersionCode,
+  onVersionSelect,
+  remoteVersions,
+}: Pick<
+  UnifiedWorkDetailPresentation,
+  | "code"
+  | "baseCode"
+  | "metadataLanguage"
+  | "metadataPresentation"
+  | "activeMetadataVariantKey"
+  | "onMetadataVariantSelect"
+  | "translations"
+  | "activeVersionCode"
+  | "onVersionSelect"
+  | "remoteVersions"
+>) {
+  const hasVersionControls =
+    metadataLanguage || (metadataPresentation?.variants.length ?? 0) > 0 || baseCode || translations.length > 0;
+  if (!hasVersionControls) return null;
+  const availabilityScope: WorkVersionAvailabilityScope = remoteVersions ? "source" : "local";
+  const baseTranslation = translations.find(
+    (translation) => translation.primaryCode.toUpperCase() === (baseCode ?? "").toUpperCase(),
+  );
+  return (
+    <WorkVersionMenus
+      metadataLanguage={metadataLanguage ?? ""}
+      metadataPresentation={metadataPresentation}
+      activeMetadataVariantKey={activeMetadataVariantKey ?? ""}
+      onMetadataVariantSelect={onMetadataVariantSelect}
+      baseCode={baseCode ?? ""}
+      baseAvailable={Boolean(baseTranslation && workVersionAvailableForScope(baseTranslation, availabilityScope))}
+      translations={translations}
+      activeVersionCode={activeVersionCode ?? code}
+      onVersionSelect={onVersionSelect}
+      remoteVersions={remoteVersions}
+    />
+  );
+}
+
+function DetailCreditLine({
+  voiceActors,
+  voiceCredits,
+  entityResolver,
+}: {
+  voiceActors: string[];
+  voiceCredits: VoiceCredit[];
+  entityResolver: DetailEntityResolver;
+}) {
+  const credits =
+    voiceCredits.length > 0 ? voiceCredits : voiceActors.map((displayName) => ({ personId: 0, displayName }));
+  return (
+    <div className="flex min-w-0 items-baseline gap-3 text-sm" aria-label={i18n.t("libraryDetail.voiceActors")}>
+      <span className="shrink-0 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">CV</span>
+      {credits.length > 0 ? (
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-1 gap-y-1">
+          {credits.map((credit, index) => (
+            <span key={`${credit.personId}:${credit.displayName}`} className="inline-flex items-baseline">
+              <button
+                type="button"
+                className="rounded-sm font-medium text-foreground underline-offset-4 hover:text-primary hover:underline"
+                onClick={() =>
+                  credit.personId > 0
+                    ? openVoiceRoute(credit.personId)
+                    : entityResolver.resolveEntity("voice", credit.displayName)
+                }
+              >
+                {credit.displayName}
+              </button>
+              {index < credits.length - 1 && <span className="ml-1 text-muted-foreground">·</span>}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <span className="text-muted-foreground">{i18n.t("libraryDetail.noVoiceActorMetadata")}</span>
+      )}
+    </div>
+  );
+}
+
+function DetailStatStrip({
   ratingLabel,
   rating,
   ratingCount,
   sales,
-  series,
-  seriesTitleId,
-  seriesCircleExternalId,
-  baseCode,
-  metadataLanguage,
-  metadataPresentation,
-  metadataSync,
-  canSyncMetadata = false,
-  metadataSyncBusy = false,
-  onSyncMetadata,
-  onLinkMetadata,
-  activeMetadataVariantKey,
-  onMetadataVariantSelect,
-  translations,
-  activeVersionCode,
-  onVersionSelect,
-  remoteVersions,
-  dlsiteFetchedAt,
   releaseDate,
   ageRating,
   sourceInfo,
-  voiceActors,
-  voiceCredits,
-  tags,
-  personalTags,
-  loading = false,
-  actions,
-}: {
-  coverUrl: string;
-  fallbackCode: string;
-  code: string;
-  dlsiteUrl: string;
-  title: string;
-  circle: string;
-  circleExternalId: string;
-  ratingLabel: string;
-  rating: number | null;
-  ratingCount: number | null;
-  sales: number | null;
-  series: string;
-  seriesTitleId: string;
-  seriesCircleExternalId: string;
-  baseCode?: string;
-  metadataLanguage?: string;
-  metadataPresentation?: WorkMetadataPresentation;
-  metadataSync?: WorkMetadataSyncStatus;
-  canSyncMetadata?: boolean;
-  metadataSyncBusy?: boolean;
-  onSyncMetadata?: () => void;
-  onLinkMetadata?: () => void;
-  activeMetadataVariantKey?: string;
-  onMetadataVariantSelect?: (key: string) => void;
-  translations?: WorkDetail["translations"];
-  activeVersionCode?: string;
-  onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
-  remoteVersions?: boolean;
-  dlsiteFetchedAt: string;
-  releaseDate: string;
-  ageRating: string;
-  sourceInfo: ActiveSourceInfoModel;
-  voiceActors: string[];
-  voiceCredits: VoiceCredit[];
-  tags: string[];
-  personalTags?: ReactNode;
-  loading?: boolean;
-  actions?: ReactNode;
-}) {
-  const entityResolver = useDetailEntityResolver(code);
-  const wideLayout = useWideDetailLayout();
-  const cover = (
-    <div className="overflow-hidden rounded-lg border bg-muted" data-testid="detail-cover">
-      <div className="aspect-[4/3]">
-        {coverUrl ? (
-          <img src={assetURL(coverUrl)} alt="" className="h-full w-full object-contain" />
+  compact = false,
+}: Pick<
+  UnifiedWorkDetailPresentation,
+  "ratingLabel" | "rating" | "ratingCount" | "sales" | "releaseDate" | "ageRating" | "sourceInfo"
+> & { compact?: boolean }) {
+  const normalizedRatingLabel = ratingLabel.toLowerCase().includes("dl") ? i18n.t("workCard.ratingShort") : ratingLabel;
+  const age = ageRatingPresentation(ageRating);
+  const hasMeasuredDuration = sourceInfo.stats.knownDurationMedia > 0;
+  const durationSeconds = hasMeasuredDuration ? sourceInfo.stats.durationSeconds : sourceInfo.metadataDurationSeconds;
+  const releaseDay = /^\d{4}-\d{2}-\d{2}/.test(releaseDate) ? releaseDate.slice(0, 10) : releaseDate;
+  const stats: { key: string; label: string; value: ReactNode; detail?: string; valueClassName?: string }[] = [
+    {
+      key: "rating",
+      label: normalizedRatingLabel,
+      value:
+        rating === null ? (
+          "—"
         ) : (
-          <div className="grid h-full place-items-center text-4xl font-bold">{fallbackCode.slice(0, 2)}</div>
-        )}
-      </div>
-    </div>
-  );
-
+          <span className="inline-flex items-baseline gap-1">
+            <Star className="h-3 w-3 self-center fill-current text-warning" aria-hidden="true" />
+            {rating.toFixed(2)}
+          </span>
+        ),
+      detail: ratingCount ? ratingCount.toLocaleString() : undefined,
+    },
+    {
+      key: "age",
+      label: i18n.t("library.searchClauseKinds.age"),
+      value: age.label === "Unknown" ? "—" : age.label,
+      valueClassName: age.textClassName,
+    },
+    {
+      key: "sales",
+      label: i18n.t("library.sortOptions.sales"),
+      value: sales === null ? "—" : sales.toLocaleString(),
+    },
+    {
+      key: "released",
+      label: i18n.t("libraryDetail.released"),
+      value: releaseDay || "—",
+    },
+    {
+      key: "duration",
+      label: compact
+        ? i18n.t("libraryDetail.durationShort")
+        : hasMeasuredDuration
+          ? i18n.t("libraryDetail.playableDuration")
+          : i18n.t("libraryDetail.metadataDuration"),
+      value: durationSeconds ? formatDuration(durationSeconds) : sourceInfo.loading ? "…" : "—",
+    },
+  ];
   return (
-    <section className="space-y-4">
-      <DetailTitleBlock
-        fallbackCode={fallbackCode}
-        code={code}
-        dlsiteUrl={dlsiteUrl}
-        title={title}
-        circle={circle}
-        circleExternalId={circleExternalId}
-        series={series}
-        seriesTitleId={seriesTitleId}
-        seriesCircleExternalId={seriesCircleExternalId}
-        loading={loading}
-        entityResolver={entityResolver}
-      />
-
-      <DetailMetadataContent
-        layout="matrix"
-        matrixCover={cover}
-        wideMatrix={wideLayout}
-        ratingLabel={ratingLabel}
-        rating={rating}
-        ratingCount={ratingCount}
-        sales={sales}
-        releaseDate={releaseDate}
-        dlsiteFetchedAt={dlsiteFetchedAt}
-        ageRating={ageRating}
-        metadataLanguage={metadataLanguage}
-        metadataPresentation={metadataPresentation}
-        metadataSync={metadataSync}
-        canSyncMetadata={canSyncMetadata}
-        metadataSyncBusy={metadataSyncBusy}
-        onSyncMetadata={onSyncMetadata}
-        onLinkMetadata={onLinkMetadata}
-        activeMetadataVariantKey={activeMetadataVariantKey}
-        onMetadataVariantSelect={onMetadataVariantSelect}
-        baseCode={baseCode}
-        translations={translations}
-        activeVersionCode={activeVersionCode}
-        onVersionSelect={onVersionSelect}
-        remoteVersions={remoteVersions}
-        sourceInfo={sourceInfo}
-        voiceActors={voiceActors}
-        voiceCredits={voiceCredits}
-        tags={tags}
-        code={code}
-        entityResolver={entityResolver}
-        supplementary={personalTags}
-        matrixFooter={actions}
-      />
-    </section>
+    <dl
+      data-testid="dlsite-info"
+      className={
+        compact
+          ? "flex justify-between gap-x-2 overflow-x-auto min-[360px]:gap-x-3 rounded-lg border bg-background/60 px-3 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          : "flex flex-wrap gap-x-6 gap-y-2 rounded-lg border bg-background/60 px-3.5 py-2 backdrop-blur-sm"
+      }
+    >
+      {stats.map((stat) => (
+        <div key={stat.key} className="min-w-0 shrink-0">
+          <dt className="whitespace-nowrap text-2xs font-medium text-muted-foreground">{stat.label}</dt>
+          <dd
+            className={`mt-0.5 whitespace-nowrap font-semibold tabular-nums text-sm ${stat.valueClassName || "text-foreground"}`}
+          >
+            {stat.value}
+            {stat.detail && (
+              <span
+                className={`ml-1 text-2xs font-normal text-muted-foreground ${compact ? "max-[359px]:hidden" : ""}`}
+              >
+                ({stat.detail})
+              </span>
+            )}
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -381,13 +574,23 @@ function MobileWorkDetailLayout({
   const entityResolver = useDetailEntityResolver(code);
   return (
     <section className="space-y-4">
-      <div className="overflow-hidden rounded-lg border bg-muted">
-        <div className="aspect-[4/3] max-h-[58vh]">
-          {coverUrl ? (
-            <img src={assetURL(coverUrl)} alt="" className="h-full w-full object-contain" />
-          ) : (
-            <div className="grid h-full place-items-center text-4xl font-bold">{fallbackCode.slice(0, 2)}</div>
-          )}
+      <div className="relative isolate">
+        {coverUrl && (
+          <img
+            src={assetURL(coverUrl)}
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 -z-10 h-full w-full scale-y-110 object-cover opacity-40 blur-2xl saturate-150"
+          />
+        )}
+        <div className="overflow-hidden rounded-lg bg-muted shadow-lg ring-1 ring-border">
+          <div className="aspect-[4/3] max-h-[58vh]">
+            {coverUrl ? (
+              <img src={assetURL(coverUrl)} alt="" className="h-full w-full object-contain" />
+            ) : (
+              <div className="grid h-full place-items-center text-4xl font-bold">{fallbackCode.slice(0, 2)}</div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -403,16 +606,45 @@ function MobileWorkDetailLayout({
         seriesCircleExternalId={seriesCircleExternalId}
         loading={loading}
         entityResolver={entityResolver}
+        versionMenu={detailVersionMenu({
+          code,
+          baseCode,
+          metadataLanguage,
+          metadataPresentation,
+          activeMetadataVariantKey,
+          onMetadataVariantSelect,
+          translations,
+          activeVersionCode,
+          onVersionSelect,
+          remoteVersions,
+        })}
       />
 
-      <MobileVoiceSummary
-        voiceActors={voiceActors}
-        voiceCredits={voiceCredits}
-        entityResolver={entityResolver}
-        onShowAll={() => onActiveTabChange("info")}
+      <DetailCreditLine voiceActors={voiceActors} voiceCredits={voiceCredits} entityResolver={entityResolver} />
+
+      <DetailTagLine tags={tags} personalTags={personalTags} />
+
+      <DetailStatStrip
+        ratingLabel={ratingLabel}
+        rating={rating}
+        ratingCount={ratingCount}
+        sales={sales}
+        releaseDate={releaseDate}
+        ageRating={ageRating}
+        sourceInfo={sourceInfo}
+        compact
       />
 
-      <div data-testid="hero-actions" className="flex flex-wrap gap-2 rounded-lg border bg-card p-3">
+      <MetadataSyncNotice
+        status={metadataSync?.status}
+        checkedAt={metadataSync?.checkedAt ?? ""}
+        canSync={Boolean(canSyncMetadata && onSyncMetadata)}
+        busy={metadataSyncBusy}
+        onSync={onSyncMetadata}
+        onLink={onLinkMetadata}
+      />
+
+      <div data-testid="hero-actions" className="flex flex-wrap gap-2">
         {actions}
       </div>
 
@@ -432,83 +664,13 @@ function MobileWorkDetailLayout({
       </div>
 
       {activeTab === "info" ? (
-        <div className="space-y-4">
-          <DetailMetadataContent
-            ratingLabel={ratingLabel}
-            rating={rating}
-            ratingCount={ratingCount}
-            sales={sales}
-            releaseDate={releaseDate}
-            dlsiteFetchedAt={dlsiteFetchedAt}
-            ageRating={ageRating}
-            metadataLanguage={metadataLanguage}
-            metadataPresentation={metadataPresentation}
-            metadataSync={metadataSync}
-            canSyncMetadata={canSyncMetadata}
-            metadataSyncBusy={metadataSyncBusy}
-            onSyncMetadata={onSyncMetadata}
-            onLinkMetadata={onLinkMetadata}
-            activeMetadataVariantKey={activeMetadataVariantKey}
-            onMetadataVariantSelect={onMetadataVariantSelect}
-            baseCode={baseCode}
-            translations={translations}
-            activeVersionCode={activeVersionCode}
-            onVersionSelect={onVersionSelect}
-            remoteVersions={remoteVersions}
-            sourceInfo={sourceInfo}
-            voiceActors={voiceActors}
-            voiceCredits={voiceCredits}
-            tags={tags}
-            code={code}
-            entityResolver={entityResolver}
-            supplementary={personalTags}
-          />
+        <div>
+          <DetailInfoPanel sourceInfo={sourceInfo} dlsiteFetchedAt={dlsiteFetchedAt} className="" />
         </div>
       ) : (
         directory
       )}
     </section>
-  );
-}
-
-function MobileVoiceSummary({
-  voiceActors,
-  voiceCredits,
-  entityResolver,
-  onShowAll,
-}: {
-  voiceActors: string[];
-  voiceCredits: VoiceCredit[];
-  entityResolver: DetailEntityResolver;
-  onShowAll: () => void;
-}) {
-  const credits =
-    voiceCredits.length > 0 ? voiceCredits : voiceActors.map((displayName) => ({ personId: 0, displayName }));
-  if (credits.length === 0) return null;
-  return (
-    <div className="flex min-w-0 items-center gap-2" aria-label={i18n.t("libraryDetail.voiceActors")}>
-      <UserRound className="h-4 w-4 shrink-0 text-muted-foreground" />
-      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-        {credits.slice(0, 2).map((credit) => (
-          <button
-            key={`${credit.personId}:${credit.displayName}`}
-            className="min-w-0 truncate rounded-md border bg-card px-2 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
-            onClick={() =>
-              credit.personId > 0
-                ? openVoiceRoute(credit.personId)
-                : entityResolver.resolveEntity("voice", credit.displayName)
-            }
-          >
-            {credit.displayName}
-          </button>
-        ))}
-        {credits.length > 2 && (
-          <button className="shrink-0 text-xs font-medium text-muted-foreground hover:text-primary" onClick={onShowAll}>
-            +{credits.length - 2}
-          </button>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -559,6 +721,7 @@ function DetailTitleBlock({
   seriesCircleExternalId,
   loading,
   entityResolver,
+  versionMenu,
 }: {
   fallbackCode: string;
   code: string;
@@ -571,6 +734,7 @@ function DetailTitleBlock({
   seriesCircleExternalId: string;
   loading?: boolean;
   entityResolver: DetailEntityResolver;
+  versionMenu?: ReactNode;
 }) {
   const toast = useToast();
   const codeLabel = code || fallbackCode || i18n.t("libraryDetail.remoteOnly");
@@ -587,40 +751,39 @@ function DetailTitleBlock({
   return (
     <div className="space-y-2">
       <div className="space-y-1.5">
-        <div
-          className="flex flex-wrap items-center gap-1.5"
-          role="group"
-          aria-label={i18n.t("libraryDetail.workCodeActions")}
-        >
-          <button
-            type="button"
-            className={badgeVariants({ variant: "secondary", className: "w-fit cursor-copy" })}
-            aria-label={i18n.t("libraryDetail.copyWorkCodeFor", { code: codeLabel })}
-            title={i18n.t("libraryDetail.work")}
-            onClick={() => void copyWorkCode()}
-          >
-            {codeLabel}
-          </button>
-          {dlsiteUrl && (
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-[22px] w-[22px] shrink-0 p-0"
-              asChild
-              title={i18n.t("workCard.openDLsite")}
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <div className="flex items-center gap-1.5" role="group" aria-label={i18n.t("libraryDetail.workCodeActions")}>
+            <button
+              type="button"
+              className={badgeVariants({ variant: "secondary", className: "w-fit cursor-copy" })}
+              aria-label={i18n.t("libraryDetail.copyWorkCodeFor", { code: codeLabel })}
+              title={i18n.t("libraryDetail.work")}
+              onClick={() => void copyWorkCode()}
             >
-              <a
-                href={dlsiteUrl}
-                target="_blank"
-                rel="noreferrer"
-                aria-label={i18n.t("libraryDetail.openDlsiteFor", { code: codeLabel })}
+              {codeLabel}
+            </button>
+            {dlsiteUrl && (
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-[22px] w-[22px] shrink-0 p-0"
+                asChild
+                title={i18n.t("workCard.openDLsite")}
               >
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            </Button>
-          )}
+                <a
+                  href={dlsiteUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={i18n.t("libraryDetail.openDlsiteFor", { code: codeLabel })}
+                >
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </Button>
+            )}
+          </div>
+          {versionMenu}
         </div>
-        <h2 className="min-w-0 text-2xl font-semibold leading-tight lg:text-3xl">{title}</h2>
+        <h2 className="min-w-0 text-2xl font-semibold leading-tight xl:text-3xl">{title}</h2>
         {loading && <div className="h-2 w-40 animate-pulse rounded bg-muted" />}
       </div>
       <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
@@ -657,211 +820,6 @@ function DetailTitleBlock({
         )}
       </div>
     </div>
-  );
-}
-
-function DetailMetadataContent({
-  layout = "stacked",
-  matrixCover,
-  wideMatrix = false,
-  ratingLabel,
-  rating,
-  ratingCount,
-  sales,
-  releaseDate,
-  dlsiteFetchedAt,
-  ageRating,
-  metadataLanguage,
-  metadataPresentation,
-  metadataSync,
-  canSyncMetadata,
-  metadataSyncBusy,
-  onSyncMetadata,
-  onLinkMetadata,
-  activeMetadataVariantKey,
-  onMetadataVariantSelect,
-  baseCode,
-  translations = [],
-  activeVersionCode,
-  onVersionSelect,
-  remoteVersions,
-  sourceInfo,
-  voiceActors,
-  voiceCredits,
-  tags,
-  code,
-  entityResolver,
-  supplementary,
-  matrixFooter,
-}: {
-  layout?: "stacked" | "matrix";
-  matrixCover?: ReactNode;
-  wideMatrix?: boolean;
-  ratingLabel: string;
-  rating: number | null;
-  ratingCount: number | null;
-  sales: number | null;
-  releaseDate: string;
-  dlsiteFetchedAt: string;
-  ageRating: string;
-  metadataLanguage?: string;
-  metadataPresentation?: WorkMetadataPresentation;
-  metadataSync?: WorkMetadataSyncStatus;
-  canSyncMetadata?: boolean;
-  metadataSyncBusy?: boolean;
-  onSyncMetadata?: () => void;
-  onLinkMetadata?: () => void;
-  activeMetadataVariantKey?: string;
-  onMetadataVariantSelect?: (key: string) => void;
-  baseCode?: string;
-  translations?: WorkDetail["translations"];
-  activeVersionCode?: string;
-  onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
-  remoteVersions?: boolean;
-  sourceInfo: ActiveSourceInfoModel;
-  voiceActors: string[];
-  voiceCredits: VoiceCredit[];
-  tags: string[];
-  code: string;
-  entityResolver: DetailEntityResolver;
-  supplementary?: ReactNode;
-  matrixFooter?: ReactNode;
-}) {
-  const displayVoiceCredits =
-    voiceCredits.length > 0 ? voiceCredits : voiceActors.map((name) => ({ personId: 0, displayName: name }));
-  const baseTranslation = translations.find(
-    (translation) => translation.primaryCode.toUpperCase() === (baseCode ?? "").toUpperCase(),
-  );
-  const availabilityScope: WorkVersionAvailabilityScope = remoteVersions ? "source" : "local";
-  const versionSelector =
-    metadataLanguage || (metadataPresentation?.variants.length ?? 0) > 0 || baseCode || translations.length > 0 ? (
-      <WorkVersionSelector
-        metadataLanguage={metadataLanguage ?? ""}
-        metadataPresentation={metadataPresentation}
-        activeMetadataVariantKey={activeMetadataVariantKey ?? ""}
-        onMetadataVariantSelect={onMetadataVariantSelect}
-        baseCode={baseCode ?? ""}
-        baseAvailable={Boolean(baseTranslation && workVersionAvailableForScope(baseTranslation, availabilityScope))}
-        translations={translations}
-        activeVersionCode={activeVersionCode ?? code}
-        onVersionSelect={onVersionSelect}
-        remoteVersions={remoteVersions}
-      />
-    ) : null;
-  const metadataNotice = (
-    <MetadataSyncNotice
-      status={metadataSync?.status}
-      checkedAt={metadataSync?.checkedAt ?? ""}
-      canSync={Boolean(canSyncMetadata && onSyncMetadata)}
-      busy={metadataSyncBusy ?? false}
-      onSync={onSyncMetadata}
-      onLink={onLinkMetadata}
-    />
-  );
-  const showMetadataNotice = metadataSync?.status === "not_synced" || metadataSync?.status === "not_found";
-  const voiceCard = (
-    <div className="rounded-lg border bg-card p-3">
-      <DetailChipRow
-        icon={<UserRound className="h-4 w-4" />}
-        label={i18n.t("libraryDetail.voiceActors")}
-        emptyLabel={i18n.t("libraryDetail.noVoiceActorMetadata")}
-        items={displayVoiceCredits.map((credit) => ({
-          key: `${credit.personId}:${credit.displayName}`,
-          label: credit.displayName,
-          onClick:
-            credit.personId > 0
-              ? () => openVoiceRoute(credit.personId)
-              : () => entityResolver.resolveEntity("voice", credit.displayName),
-        }))}
-      />
-    </div>
-  );
-  const tagsCard = (
-    <div className="rounded-lg border bg-card p-3">
-      <DetailChipRow
-        icon={<Tags className="h-4 w-4" />}
-        label={i18n.t("libraryDetail.tags")}
-        emptyLabel={i18n.t("libraryDetail.noTagMetadata")}
-        items={tags.map((tag) => ({ key: tag, label: tag, onClick: () => openDetailTagSearch(tag) }))}
-      />
-    </div>
-  );
-  const dlsiteCard = (
-    <DlsiteMetrics
-      ratingLabel={ratingLabel}
-      rating={rating}
-      ratingCount={ratingCount}
-      sales={sales}
-      releaseDate={releaseDate}
-      dlsiteFetchedAt={dlsiteFetchedAt}
-      ageRating={ageRating}
-    />
-  );
-  const identityMetadata = (
-    <div className="min-w-0 space-y-3" data-testid="detail-identity-metadata">
-      {voiceCard}
-      {tagsCard}
-      {supplementary}
-    </div>
-  );
-  const sourceMetadata = (
-    <div className="min-w-0 space-y-3" data-testid="detail-source-metadata">
-      {dlsiteCard}
-      <ActiveSourceInfo info={sourceInfo} />
-    </div>
-  );
-  const matrixTrailing =
-    showMetadataNotice || versionSelector || matrixFooter ? (
-      <div className="min-w-0 space-y-3">
-        {metadataNotice}
-        {versionSelector}
-        {matrixFooter && (
-          <div data-testid="hero-actions" className="flex min-w-0 flex-wrap gap-2 rounded-lg border bg-card p-3">
-            {matrixFooter}
-          </div>
-        )}
-      </div>
-    ) : null;
-  if (layout === "matrix") {
-    if (wideMatrix) {
-      return (
-        <div className="grid grid-cols-[minmax(18rem,1.15fr)_minmax(0,2fr)] items-start gap-5">
-          {matrixCover}
-          <div className="min-w-0 space-y-3">
-            <div className="grid grid-cols-[minmax(15rem,1fr)_minmax(15rem,1fr)] items-start gap-3">
-              {identityMetadata}
-              {sourceMetadata}
-            </div>
-            {matrixTrailing}
-          </div>
-        </div>
-      );
-    }
-    return (
-      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start gap-5">
-        <div className="min-w-0 space-y-5">
-          {matrixCover}
-          {identityMetadata}
-        </div>
-        <div className="min-w-0 space-y-3">
-          {sourceMetadata}
-          {matrixTrailing}
-        </div>
-      </div>
-    );
-  }
-  return (
-    <>
-      <div className="space-y-3">
-        {voiceCard}
-        {tagsCard}
-      </div>
-      {supplementary}
-      {metadataNotice}
-      {versionSelector}
-      {dlsiteCard}
-      <ActiveSourceInfo info={sourceInfo} />
-    </>
   );
 }
 
@@ -999,20 +957,7 @@ export function useCompactDetailLayout() {
   return compact;
 }
 
-function useWideDetailLayout() {
-  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1280px)").matches);
-  useEffect(() => {
-    const media = window.matchMedia("(min-width: 1280px)");
-    const update = () => setWide(media.matches);
-    update();
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
-
-  return wide;
-}
-
-function WorkVersionSelector({
+function WorkVersionMenus({
   metadataLanguage,
   metadataPresentation,
   activeMetadataVariantKey,
@@ -1035,8 +980,160 @@ function WorkVersionSelector({
   onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
   remoteVersions?: boolean;
 }) {
-  const availabilityScope: WorkVersionAvailabilityScope = remoteVersions ? "source" : "local";
+  return (
+    <>
+      <MetadataLanguageMenu
+        metadataLanguage={metadataLanguage}
+        metadataPresentation={metadataPresentation}
+        activeMetadataVariantKey={activeMetadataVariantKey}
+        onMetadataVariantSelect={onMetadataVariantSelect}
+      />
+      {(baseCode || translations.length > 0) && (
+        <DirectoryEditionMenu
+          baseCode={baseCode}
+          baseAvailable={baseAvailable}
+          translations={translations}
+          activeVersionCode={activeVersionCode}
+          onVersionSelect={onVersionSelect}
+          remoteVersions={remoteVersions}
+        />
+      )}
+    </>
+  );
+}
+
+const versionChipClassName =
+  "inline-flex h-[22px] max-w-full items-center gap-1 rounded-md border px-2 text-xs text-muted-foreground";
+
+function VersionChipMenu({
+  icon,
+  label,
+  menuLabel,
+  interactive,
+  children,
+}: {
+  icon: ReactNode;
+  label: string;
+  menuLabel: string;
+  interactive: boolean;
+  children: (close: () => void) => ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+  if (!interactive) {
+    return (
+      <div role="group" aria-label={menuLabel} title={menuLabel} className={versionChipClassName}>
+        {icon}
+        <span className="truncate">{label}</span>
+      </div>
+    );
+  }
+  return (
+    <div ref={anchorRef} className="min-w-0 max-w-full">
+      <button
+        type="button"
+        className={`${versionChipClassName} bg-background/60 font-medium transition-colors hover:border-primary hover:text-primary aria-expanded:border-primary aria-expanded:text-primary`}
+        aria-label={menuLabel}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        title={menuLabel}
+        onClick={() => setOpen((current) => !current)}
+      >
+        {icon}
+        <span className="truncate">{label}</span>
+        <ChevronDown className="h-3 w-3 shrink-0" />
+      </button>
+      <AnchoredPopover
+        open={open}
+        anchorRef={anchorRef}
+        onOpenChange={setOpen}
+        align="start"
+        className="w-[min(21rem,calc(100vw-1.5rem))] p-0 text-sm"
+      >
+        <div role="dialog" aria-label={menuLabel} className="app-scroll max-h-[min(28rem,70vh)] overflow-y-auto p-2">
+          <h4 className="flex items-center gap-2 px-2 pb-1.5 pt-0.5 text-xs font-medium text-muted-foreground">
+            {icon}
+            {menuLabel}
+          </h4>
+          {children(() => setOpen(false))}
+        </div>
+      </AnchoredPopover>
+    </div>
+  );
+}
+
+function MetadataLanguageMenu({
+  metadataLanguage,
+  metadataPresentation,
+  activeMetadataVariantKey,
+  onMetadataVariantSelect,
+}: {
+  metadataLanguage: string;
+  metadataPresentation?: WorkMetadataPresentation;
+  activeMetadataVariantKey: string;
+  onMetadataVariantSelect?: (key: string) => void;
+}) {
+  const metadataVariants = orderedMetadataVariants(metadataPresentation?.variants ?? []);
+  const activeMetadataVariant = resolveMetadataVariant(metadataPresentation, activeMetadataVariantKey);
+  const label = activeMetadataVariant
+    ? metadataVariantLabel(activeMetadataVariant, metadataVariants)
+    : metadataLanguage
+      ? languageLabel(metadataLanguage)
+      : "";
+  if (!label) return null;
+  return (
+    <VersionChipMenu
+      icon={<Languages className="h-3 w-3 shrink-0" />}
+      label={label}
+      menuLabel={i18n.t("libraryDetail.metadataLanguage")}
+      interactive={metadataVariants.length > 1}
+    >
+      {(close) => (
+        <div role="menu" aria-label={i18n.t("libraryDetail.metadataLanguage")}>
+          {metadataVariants.map((variant) => {
+            const active = variant.key === activeMetadataVariant?.key;
+            return (
+              <button
+                key={variant.key}
+                type="button"
+                role="menuitemradio"
+                aria-checked={active}
+                className={`flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left ${
+                  active ? "bg-primary/10 font-medium text-primary" : "hover:bg-accent hover:text-accent-foreground"
+                }`}
+                onClick={() => {
+                  if (!active) onMetadataVariantSelect?.(variant.key);
+                  close();
+                }}
+              >
+                <span className="truncate">{metadataVariantLabel(variant, metadataVariants)}</span>
+                {active && <Check className="h-4 w-4 shrink-0" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </VersionChipMenu>
+  );
+}
+
+function DirectoryEditionMenu({
+  baseCode,
+  baseAvailable,
+  translations,
+  activeVersionCode,
+  onVersionSelect,
+  remoteVersions,
+}: {
+  baseCode: string;
+  baseAvailable: boolean;
+  translations: WorkDetail["translations"];
+  activeVersionCode: string;
+  onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
+  remoteVersions: boolean;
+}) {
   const [showAllEditions, setShowAllEditions] = useState(false);
+  const availabilityScope: WorkVersionAvailabilityScope = remoteVersions ? "source" : "local";
   const collapsedGroups = groupWorkVersions(translations, {
     activeCode: activeVersionCode,
     remoteVersions,
@@ -1056,87 +1153,123 @@ function WorkVersionSelector({
     (version) => !collapsedCodes.has(version.primaryCode.toUpperCase()),
   ).length;
   const groups = showAllEditions ? expandedGroups : collapsedGroups;
-  const metadataVariants = orderedMetadataVariants(metadataPresentation?.variants ?? []);
-  const activeMetadataVariant = resolveMetadataVariant(metadataPresentation, activeMetadataVariantKey);
-  const hasEditionControls = Boolean(baseCode || translations.length > 0);
+  const activeCode = activeVersionCode.trim().toUpperCase();
+  const activeGroup = expandedGroups.find((group) =>
+    group.versions.some((version) => version.primaryCode.trim().toUpperCase() === activeCode),
+  );
+  const activeVersion = activeGroup?.versions.find(
+    (version) => version.primaryCode.trim().toUpperCase() === activeCode,
+  );
+  const activeLanguage = activeGroup?.language ? languageLabel(activeGroup.language) : "";
+  const label =
+    activeVersion?.translationKind === "origin" && activeLanguage
+      ? `${workVersionKindLabel(activeVersion)} · ${activeLanguage}`
+      : activeLanguage || activeVersionCode;
+
+  const selectVersion = (translation: WorkDetail["translations"][number], close: () => void) => {
+    const active = translation.primaryCode.trim().toUpperCase() === activeCode;
+    if (active || !workVersionAvailableForScope(translation, availabilityScope)) return;
+    close();
+    if (onVersionSelect) {
+      onVersionSelect(translation);
+    } else {
+      openWorkCodeRoute(translation.primaryCode);
+    }
+  };
 
   return (
-    <div className="rounded-lg border bg-card text-xs">
-      {(activeMetadataVariant || metadataLanguage) && (
-        <div className="flex min-h-11 flex-wrap items-center gap-2 px-3 py-2">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Languages className="h-3.5 w-3.5" />
-            <span className="font-medium text-foreground">{i18n.t("libraryDetail.metadataLanguage")}</span>
-          </div>
-          {metadataVariants.length > 1 ? (
-            <FloatingSelect
-              value={activeMetadataVariant?.key ?? ""}
-              onValueChange={(value) => onMetadataVariantSelect?.(value)}
-              ariaLabel={i18n.t("libraryDetail.metadataLanguage")}
-              className="w-auto min-w-40 max-w-full px-2 text-xs font-medium"
-              options={metadataVariants.map((variant) => ({
-                value: variant.key,
-                label: metadataVariantLabel(variant, metadataVariants),
-              }))}
-            />
-          ) : (
-            <span className="font-semibold text-foreground">
-              {activeMetadataVariant
-                ? metadataVariantLabel(activeMetadataVariant, metadataVariants)
-                : languageLabel(metadataLanguage)}
-            </span>
-          )}
-        </div>
-      )}
-      {hasEditionControls && (
-        <div className="space-y-2 border-t px-3 py-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-              <FolderTree className="h-3.5 w-3.5" />
-              <span className="font-medium text-foreground">{i18n.t("libraryDetail.directoryEdition")}</span>
-              {baseCode &&
-                (baseAvailable ? (
-                  <button
-                    className="font-semibold text-primary hover:underline"
-                    onClick={() => openWorkCodeRoute(baseCode)}
-                  >
-                    {i18n.t("libraryDetail.baseCode", { code: baseCode })}
-                  </button>
-                ) : (
-                  <span className="font-semibold text-foreground">
-                    {i18n.t("libraryDetail.baseCode", { code: baseCode })}
-                  </span>
-                ))}
+    <VersionChipMenu
+      icon={<FolderTree className="h-3 w-3 shrink-0" />}
+      label={label}
+      menuLabel={i18n.t("libraryDetail.directoryEdition")}
+      interactive
+    >
+      {(close) => (
+        <div className="space-y-1">
+          {baseCode && (
+            <div className="px-2 text-xs">
+              {baseAvailable ? (
+                <button
+                  type="button"
+                  className="font-semibold text-primary hover:underline"
+                  onClick={() => {
+                    close();
+                    openWorkCodeRoute(baseCode);
+                  }}
+                >
+                  {i18n.t("libraryDetail.baseCode", { code: baseCode })}
+                </button>
+              ) : (
+                <span className="font-semibold text-muted-foreground">
+                  {i18n.t("libraryDetail.baseCode", { code: baseCode })}
+                </span>
+              )}
             </div>
-            {hiddenEditionCount > 0 && (
-              <button
-                type="button"
-                className="font-medium text-primary hover:underline"
-                aria-expanded={showAllEditions}
-                onClick={() => setShowAllEditions((shown) => !shown)}
+          )}
+          {groups.map((group) => {
+            const language = group.language ? languageLabel(group.language) : i18n.t("libraryDetail.unknownLanguage");
+            return (
+              <div
+                key={group.key}
+                role="group"
+                aria-label={i18n.t("libraryDetail.languageVersions", { language })}
+                className="pt-1"
               >
-                {showAllEditions
-                  ? i18n.t("libraryDetail.hideAllEditions")
-                  : i18n.t("libraryDetail.showAllEditions", { count: hiddenEditionCount })}
-              </button>
-            )}
-          </div>
-          {groups.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              {groups.map((group) => (
-                <WorkLanguageVersionPicker
-                  key={group.key}
-                  group={group}
-                  activeVersionCode={activeVersionCode}
-                  onVersionSelect={onVersionSelect}
-                  availabilityScope={availabilityScope}
-                />
-              ))}
-            </div>
+                <div className="px-2 pb-0.5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {language}
+                </div>
+                <div role="menu" aria-label={i18n.t("libraryDetail.languageCodes", { language })}>
+                  {group.versions.map((translation) => {
+                    const available = workVersionAvailableForScope(translation, availabilityScope);
+                    const active = translation.primaryCode.trim().toUpperCase() === activeCode;
+                    const stateLabel = workVersionStateLabel(translation, availabilityScope);
+                    return (
+                      <button
+                        key={translation.primaryCode}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={active}
+                        aria-label={`${translation.primaryCode} ${workVersionKindLabel(translation)} ${stateLabel}`}
+                        disabled={!active && !available}
+                        className={`flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left ${
+                          active
+                            ? "bg-primary/10 text-primary"
+                            : available
+                              ? "hover:bg-accent hover:text-accent-foreground"
+                              : "text-muted-foreground opacity-70"
+                        }`}
+                        onClick={() => selectVersion(translation, close)}
+                      >
+                        <span className="min-w-0 truncate">
+                          <span className="font-semibold tabular-nums">{translation.primaryCode}</span>
+                          <span className="ml-2 text-xs opacity-80">{workVersionKindLabel(translation)}</span>
+                        </span>
+                        <span className="flex shrink-0 items-center gap-1.5 text-xs opacity-80">
+                          {stateLabel}
+                          {active && <Check className="h-4 w-4" />}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+          {hiddenEditionCount > 0 && (
+            <button
+              type="button"
+              className="w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-primary hover:bg-accent"
+              aria-expanded={showAllEditions}
+              onClick={() => setShowAllEditions((shown) => !shown)}
+            >
+              {showAllEditions
+                ? i18n.t("libraryDetail.hideAllEditions")
+                : i18n.t("libraryDetail.showAllEditions", { count: hiddenEditionCount })}
+            </button>
           )}
         </div>
       )}
-    </div>
+    </VersionChipMenu>
   );
 }
 
@@ -1150,110 +1283,6 @@ function metadataVariantLabel(
   ).length;
   const prefix = variant.origin ? `${i18n.t("libraryDetail.original")} · ${language}` : language;
   return sameLanguageCount > 1 ? `${prefix} · ${variant.key}` : prefix;
-}
-
-function WorkLanguageVersionPicker({
-  group,
-  activeVersionCode,
-  onVersionSelect,
-  availabilityScope,
-}: {
-  group: WorkVersionGroup;
-  activeVersionCode: string;
-  onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
-  availabilityScope: WorkVersionAvailabilityScope;
-}) {
-  const [open, setOpen] = useState(false);
-  const anchorRef = useRef<HTMLDivElement | null>(null);
-  const language = group.language ? languageLabel(group.language) : i18n.t("libraryDetail.unknownLanguage");
-  const preferred = preferredWorkVersion(group.versions, activeVersionCode, availabilityScope);
-  const activeCode = activeVersionCode.trim().toUpperCase();
-  const groupActive = group.versions.some((version) => version.primaryCode.trim().toUpperCase() === activeCode);
-  const preferredActive = preferred?.primaryCode.trim().toUpperCase() === activeCode;
-  const preferredAvailable = Boolean(preferred && workVersionAvailableForScope(preferred, availabilityScope));
-  const selectVersion = (translation: WorkDetail["translations"][number]) => {
-    const active = translation.primaryCode.trim().toUpperCase() === activeCode;
-    if (active || !workVersionAvailableForScope(translation, availabilityScope)) return;
-    setOpen(false);
-    if (onVersionSelect) {
-      onVersionSelect(translation);
-    } else {
-      openWorkCodeRoute(translation.primaryCode);
-    }
-  };
-
-  return (
-    <div ref={anchorRef} role="group" aria-label={i18n.t("libraryDetail.languageVersions", { language })}>
-      <div
-        className={`inline-flex overflow-hidden rounded-md border ${
-          groupActive
-            ? "border-primary bg-primary text-primary-foreground"
-            : preferredAvailable
-              ? "border-primary/30 text-primary"
-              : "border-muted bg-muted text-muted-foreground"
-        }`}
-      >
-        <button
-          type="button"
-          className={`px-2.5 py-1 font-semibold ${!groupActive && preferredAvailable ? "hover:bg-primary/10" : ""}`}
-          disabled={!preferredAvailable || preferredActive}
-          onClick={() => {
-            if (preferred) selectVersion(preferred);
-          }}
-        >
-          {language}
-        </button>
-        <button
-          type="button"
-          className={`border-l px-1.5 ${groupActive ? "border-primary-foreground/30" : "border-current/20"} hover:bg-black/10`}
-          aria-label={i18n.t("libraryDetail.chooseLanguageCode", { language })}
-          aria-expanded={open}
-          onClick={() => setOpen((current) => !current)}
-        >
-          <ChevronDown className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      <AnchoredPopover
-        open={open}
-        anchorRef={anchorRef}
-        onOpenChange={setOpen}
-        align="start"
-        className="w-[min(19rem,calc(100vw-1.5rem))] p-1 text-sm"
-      >
-        <div role="menu" aria-label={i18n.t("libraryDetail.languageCodes", { language })} className="space-y-1">
-          {group.versions.map((translation) => {
-            const available = workVersionAvailableForScope(translation, availabilityScope);
-            const active = translation.primaryCode.trim().toUpperCase() === activeCode;
-            const stateLabel = workVersionStateLabel(translation, availabilityScope);
-            return (
-              <button
-                key={translation.primaryCode}
-                type="button"
-                role="menuitemradio"
-                aria-checked={active}
-                aria-label={`${translation.primaryCode} ${workVersionKindLabel(translation)} ${stateLabel}`}
-                disabled={active || !available}
-                className={`flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left ${
-                  active
-                    ? "bg-primary text-primary-foreground"
-                    : available
-                      ? "hover:bg-accent hover:text-accent-foreground"
-                      : "text-muted-foreground"
-                }`}
-                onClick={() => selectVersion(translation)}
-              >
-                <span>
-                  <span className="font-semibold">{translation.primaryCode}</span>
-                  <span className="ml-2 text-xs">{workVersionKindLabel(translation)}</span>
-                </span>
-                <span className="shrink-0 text-xs opacity-80">{stateLabel}</span>
-              </button>
-            );
-          })}
-        </div>
-      </AnchoredPopover>
-    </div>
-  );
 }
 
 function workVersionStateLabel(version: WorkDetail["translations"][number], scope: WorkVersionAvailabilityScope) {
@@ -1273,58 +1302,6 @@ function workVersionStateLabel(version: WorkDetail["translations"][number], scop
     default:
       return i18n.t("detailActions.unavailable");
   }
-}
-
-function DlsiteMetrics({
-  ratingLabel,
-  rating,
-  ratingCount,
-  sales,
-  releaseDate,
-  dlsiteFetchedAt,
-  ageRating,
-}: {
-  ratingLabel: string;
-  rating: number | null;
-  ratingCount: number | null;
-  sales: number | null;
-  releaseDate: string;
-  dlsiteFetchedAt: string;
-  ageRating: string;
-}) {
-  const normalizedRatingLabel = ratingLabel.toLowerCase().includes("dl") ? i18n.t("workCard.ratingShort") : ratingLabel;
-  const rateValue =
-    rating === null ? "—" : `${rating.toFixed(2)}${ratingCount ? ` (${ratingCount.toLocaleString()})` : ""}`;
-  const age = ageRatingPresentation(ageRating);
-  const ageValue = age.label === "Unknown" ? "—" : age.label;
-  const dateValue = dlsiteFetchedAt ? `${releaseDate} / ${dlsiteFetchedAt}` : releaseDate;
-  return (
-    <div data-testid="dlsite-info" className="w-full rounded-lg border bg-card p-3 text-sm">
-      <div className="mb-2 text-xs font-medium text-muted-foreground">{i18n.t("libraryDetail.dlsiteInfo")}</div>
-      <div className="space-y-2">
-        <div
-          data-testid="dlsite-primary-metrics"
-          className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-2xs leading-4"
-        >
-          <InlineDlsiteMetric label={normalizedRatingLabel} value={rateValue} />
-          <InlineDlsiteMetric
-            label={i18n.t("library.searchClauseKinds.age")}
-            value={ageValue}
-            valueClassName={age.textClassName}
-          />
-          <InlineDlsiteMetric
-            label={i18n.t("library.sortOptions.sales")}
-            value={sales === null ? "—" : sales.toLocaleString()}
-          />
-        </div>
-        <MetricLine
-          icon={<Clock3 className="h-3.5 w-3.5" />}
-          label={dlsiteFetchedAt ? i18n.t("libraryDetail.releasedUpdated") : i18n.t("libraryDetail.released")}
-          value={dateValue}
-        />
-      </div>
-    </div>
-  );
 }
 
 function ActiveSourceInfo({ info }: { info: ActiveSourceInfoModel }) {
@@ -1365,7 +1342,7 @@ function ActiveSourceInfo({ info }: { info: ActiveSourceInfoModel }) {
       : i18n.t("libraryDetail.noKnownDuration");
 
   return (
-    <div data-testid="active-source-info" className="w-full rounded-lg border bg-card p-3 text-sm">
+    <div data-testid="active-source-info" className="w-full min-w-0 p-4 text-sm">
       <div className="mb-3 min-w-0">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
           <SourceIcon className="h-4 w-4 shrink-0" />
@@ -1434,88 +1411,6 @@ function InlineSourceMetric({ label, value }: { label: string; value: string }) 
       <span className="text-muted-foreground">{label}</span>
       <span className="font-semibold text-foreground">{value}</span>
     </span>
-  );
-}
-
-function InlineDlsiteMetric({
-  label,
-  value,
-  valueClassName = "",
-}: {
-  label: string;
-  value: string;
-  valueClassName?: string;
-}) {
-  return (
-    <span className="inline-flex shrink-0 items-baseline gap-1">
-      <span className="text-muted-foreground">{label}</span>
-      <span className={`font-semibold ${valueClassName || "text-foreground"}`}>{value}</span>
-    </span>
-  );
-}
-
-function MetricLine({
-  icon,
-  label,
-  value,
-  valueClassName = "",
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-  valueClassName?: string;
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-2">
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
-      <span className={`min-w-0 truncate text-xs font-semibold ${valueClassName || "text-foreground"}`}>{value}</span>
-    </div>
-  );
-}
-
-function DetailChipRow({
-  icon,
-  label,
-  emptyLabel,
-  items,
-}: {
-  icon: ReactNode;
-  label: string;
-  emptyLabel: string;
-  items: { key: string; label: string; onClick?: () => void }[];
-}) {
-  return (
-    <div className="flex gap-2 text-sm">
-      <div className="mt-1 text-muted-foreground">{icon}</div>
-      <div className="min-w-0 flex-1">
-        <div className="font-medium">{label}</div>
-        {items.length > 0 ? (
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            {items.map((item) =>
-              item.onClick ? (
-                <button
-                  key={item.key}
-                  className="rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
-                  onClick={item.onClick}
-                >
-                  {item.label}
-                </button>
-              ) : (
-                <span
-                  key={item.key}
-                  className="rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground"
-                >
-                  {item.label}
-                </span>
-              ),
-            )}
-          </div>
-        ) : (
-          <div className="mt-1 text-muted-foreground">{emptyLabel}</div>
-        )}
-      </div>
-    </div>
   );
 }
 

@@ -229,7 +229,7 @@ test("mobile directory breadcrumbs collapse long ancestors without losing naviga
   await expect(page.getByTestId("directory-breadcrumb-current")).toHaveAttribute("title", second);
 });
 
-test("work detail groups DLsite and active source information", async ({ page }) => {
+test("work detail summarizes DLsite stats in the hero and groups active source information", async ({ page }) => {
   const mediaItems = [
     mediaItemFixture({
       id: 1,
@@ -254,14 +254,17 @@ test("work detail groups DLsite and active source information", async ({ page })
   await page.getByText("Tagged mobile work", { exact: true }).click();
   await page.getByRole("button", { name: "Info", exact: true }).click();
 
-  await expect(page.getByText("DLsite info", { exact: true })).toHaveCount(1);
   const dlsiteInfo = page.getByTestId("dlsite-info");
   await expect(dlsiteInfo.getByText("Rate", { exact: true })).toBeVisible();
   await expect(dlsiteInfo.getByText("Age", { exact: true })).toBeVisible();
   await expect(dlsiteInfo.getByText("Sales", { exact: true })).toBeVisible();
-  expect(
-    await page.getByTestId("dlsite-primary-metrics").evaluate((element) => element.getBoundingClientRect().height),
-  ).toBeLessThanOrEqual(18);
+  await expect(dlsiteInfo.getByText("Released", { exact: true })).toBeVisible();
+  await expect(dlsiteInfo.getByText("Duration", { exact: true })).toBeVisible();
+  // Mobile keeps every hero stat on one row.
+  const statTops = await dlsiteInfo
+    .locator("dt")
+    .evaluateAll((labels) => labels.map((label) => Math.round(label.getBoundingClientRect().top)));
+  expect(new Set(statTops).size).toBe(1);
   const sourceInfo = page.getByTestId("active-source-info");
   await expect(sourceInfo.getByText("Source info", { exact: true })).toBeVisible();
   await expect(sourceInfo.getByText("Main local library", { exact: true })).toBeVisible();
@@ -312,8 +315,7 @@ test("work detail prompts for missing metadata and refreshes after sync complete
 
   await expect.poll(() => metadataSyncControl.statusRequests).toBeGreaterThan(0);
   await expect.poll(() => metadataSyncControl.detailRequests).toBeGreaterThan(initialDetailRequests);
-  await expect(page.getByText("Metadata language", { exact: true })).toBeVisible();
-  await expect(page.getByText("Japanese", { exact: true })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Metadata language", exact: true })).toContainText("Japanese");
   await expect(page.getByTestId("metadata-sync-notice")).toHaveCount(0);
 });
 
@@ -388,27 +390,34 @@ test("local work detail lists Origin first and expands from local to all edition
   });
   await page.goto("/");
   await page.getByText(work.title, { exact: true }).click();
-  await page.getByRole("button", { name: "Info", exact: true }).click();
 
-  const metadataSelect = page.getByRole("combobox", { name: "Metadata language" });
-  await expect(metadataSelect).toHaveText("English");
-  await metadataSelect.click();
-  const metadataListbox = page.getByRole("listbox");
-  await expect(metadataListbox.getByRole("option").first()).toHaveText("Original · Japanese");
+  const metadataTrigger = page.getByRole("button", { name: "Metadata language", exact: true });
+  await expect(metadataTrigger).toContainText("English");
+  await metadataTrigger.click();
+  const metadataLanguages = page
+    .getByRole("dialog", { name: "Metadata language", exact: true })
+    .getByRole("menu", { name: "Metadata language", exact: true });
+  await expect(metadataLanguages.getByRole("menuitemradio").first()).toHaveText("Original · Japanese");
+  await expect(metadataLanguages.getByRole("menuitemradio", { name: "English", exact: true })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
   await page.keyboard.press("Escape");
 
-  await expect(page.getByRole("group", { name: "Japanese versions" })).toBeVisible();
-  await expect(page.getByRole("group", { name: "English versions" })).toBeVisible();
-  await expect(page.getByRole("group", { name: "Simplified Chinese versions" })).toHaveCount(0);
-  await expect(page.getByRole("group", { name: "Korean versions" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Show all 2 editions", exact: true }).click();
-  await expect(page.getByRole("group", { name: "Simplified Chinese versions" })).toBeVisible();
-  await expect(page.getByRole("group", { name: "Korean versions" })).toBeVisible();
+  const editionTrigger = page.getByRole("button", { name: "Directory edition", exact: true });
+  await expect(editionTrigger).toHaveText("Origin · Japanese");
+  await editionTrigger.click();
+  const versionMenu = page.getByRole("dialog", { name: "Directory edition", exact: true });
+  await expect(versionMenu.getByRole("group", { name: "Japanese versions" })).toBeVisible();
+  await expect(versionMenu.getByRole("group", { name: "English versions" })).toBeVisible();
+  await expect(versionMenu.getByRole("group", { name: "Simplified Chinese versions" })).toHaveCount(0);
+  await expect(versionMenu.getByRole("group", { name: "Korean versions" })).toHaveCount(0);
+  await versionMenu.getByRole("button", { name: "Show all 2 editions", exact: true }).click();
+  await expect(versionMenu.getByRole("group", { name: "Simplified Chinese versions" })).toBeVisible();
+  await expect(versionMenu.getByRole("group", { name: "Korean versions" })).toBeVisible();
 
-  const chineseVersions = page.getByRole("group", { name: "Simplified Chinese versions" });
-  await chineseVersions.getByRole("button", { name: "Choose Simplified Chinese DLsite code", exact: true }).click();
   await expect(
-    page
+    versionMenu
       .getByRole("menu", { name: "Simplified Chinese DLsite codes", exact: true })
       .getByRole("menuitemradio", { name: /RJ00000002 Official Remote only/ }),
   ).toBeDisabled();
@@ -481,7 +490,7 @@ test("local work detail stays loading while an automatically selected local edit
   await expect(page.getByText("translated.mp3", { exact: true })).toBeVisible();
 });
 
-test("mobile work detail orders Info sections and keeps work-code utilities together", async ({ page }) => {
+test("mobile work detail keeps tags in the hero and work-code utilities together", async ({ page }) => {
   const detailWork: Work = {
     ...work,
     dlsiteUrl: "https://example.invalid/work/RJ00000000",
@@ -519,24 +528,32 @@ test("mobile work detail orders Info sections and keeps work-code utilities toge
     .poll(() => page.evaluate(() => localStorage.getItem("kikoto:e2e-copied-work-code")))
     .toBe(detailWork.primaryCode);
 
-  await page.getByRole("button", { name: "Info", exact: true }).click();
-  // The hidden desktop sidebar also has a Tags destination; only work detail content counts.
   const detail = page.getByRole("main");
-  const sections = [
-    detail.getByText("Voice actors", { exact: true }),
-    detail.getByText("Tags", { exact: true }),
-    detail.getByText("My tags", { exact: true }),
-    detail.getByText("Metadata language", { exact: true }),
-    detail.getByTestId("dlsite-info"),
-    detail.getByTestId("active-source-info"),
-  ];
-  const positions = await Promise.all(
-    sections.map(async (section) => {
-      await expect(section).toHaveCount(1);
-      return (await section.boundingBox())?.y ?? -1;
-    }),
-  );
-  expect(positions.every((position, index) => index === 0 || positions[index - 1] < position)).toBe(true);
+  await expect(detail.getByRole("button", { name: "Example Voice", exact: true })).toBeVisible();
+  // Provider tags and personal tags share one hero row, with personal tags after provider tags.
+  const providerTag = detail
+    .getByRole("list", { name: "Tags", exact: true })
+    .getByRole("button", { name: "Example tag" });
+  const personalTag = detail.getByRole("list", { name: "My tags", exact: true }).getByText("Personal tag");
+  await expect(providerTag).toBeVisible();
+  await expect(personalTag).toBeVisible();
+  await expect(detail.getByRole("button", { name: "Edit tags", exact: true })).toBeVisible();
+  const [providerTagBox, personalTagBox, statsBox] = await Promise.all([
+    providerTag.boundingBox(),
+    personalTag.boundingBox(),
+    detail.getByTestId("dlsite-info").boundingBox(),
+  ]);
+  expect(providerTagBox).not.toBeNull();
+  expect(personalTagBox).not.toBeNull();
+  expect(statsBox).not.toBeNull();
+  expect(
+    personalTagBox!.y > providerTagBox!.y ||
+      (personalTagBox!.y === providerTagBox!.y && personalTagBox!.x > providerTagBox!.x),
+  ).toBe(true);
+  expect(statsBox!.y).toBeGreaterThan(personalTagBox!.y);
+
+  await page.getByRole("button", { name: "Info", exact: true }).click();
+  await expect(detail.getByTestId("active-source-info")).toBeVisible();
 });
 
 test("metadata refresh failures open the canonical run-scoped recovery list", async ({ page }) => {

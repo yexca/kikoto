@@ -401,8 +401,8 @@ test("favorites detail uses Library Up navigation while the Favorites tab restor
   await target.click();
 
   await expect(page).toHaveURL(/RJ00000017/);
-  await page.getByRole("button", { name: "Info", exact: true }).click();
-  await expect(page.getByText("My tags", { exact: true })).toBeVisible();
+  // Personal tags are edited from the hero tag row, without opening Info.
+  await expect(page.getByRole("list", { name: "My tags", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Edit tags" }).click();
   const tagEditor = page.getByRole("dialog", { name: "Edit tags" });
   await tagEditor.getByRole("combobox", { name: "Search or create a tag" }).fill("Night");
@@ -414,7 +414,7 @@ test("favorites detail uses Library Up navigation while the Favorites tab restor
   await expect(tagEditor.getByRole("option", { name: /Night/ })).toHaveAttribute("aria-selected", "false");
   await page.keyboard.press("Escape");
   await expect(tagEditor).toBeHidden();
-  await expect(page.getByRole("list", { name: "Tags", exact: true }).getByRole("listitem")).toHaveText([
+  await expect(page.getByRole("list", { name: "My tags", exact: true }).getByRole("listitem")).toHaveText([
     "Quiet",
     "Focus",
   ]);

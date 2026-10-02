@@ -1103,6 +1103,7 @@ export const surfaceKorean = {
     directoryEdition: "디렉터리 버전",
     metadataOnly: "메타데이터만",
     dlsiteInfo: "DLsite 정보",
+    metadataUpdatedAt: "메타데이터 업데이트 {{time}}",
     sourceInfo: "소스 정보",
     trackedSourceUnforkedDescription: "{{source}}이(가) 추적 중이지만 디렉터리가 아직 분기되지 않았습니다.",
     workNotTrackedDescription:
@@ -1214,6 +1215,7 @@ export const surfaceKorean = {
     unmarkedDiscovery: "표시 없는 탐색",
     noMeasuredFileSize: "측정된 파일 크기 없음",
     playableDuration: "재생 가능한 시간",
+    durationShort: "재생 시간",
     metadataDuration: "메타데이터 시간",
     noMeasuredSourceDuration: "측정된 소스 시간 없음",
     noKnownDuration: "알 수 없는 시간",

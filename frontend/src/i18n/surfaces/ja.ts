@@ -1107,6 +1107,7 @@ export const surfaceJapanese = {
     directoryEdition: "ディレクトリ版",
     metadataOnly: "メタデータのみ",
     dlsiteInfo: "DLsite 情報",
+    metadataUpdatedAt: "メタデータ更新 {{time}}",
     sourceInfo: "ソース情報",
     trackedSourceUnforkedDescription: "{{source}} は追跡済みですが、ディレクトリはまだフォークされていません。",
     workNotTrackedDescription:
@@ -1219,6 +1220,7 @@ export const surfaceJapanese = {
     unmarkedDiscovery: "未マークの探索",
     noMeasuredFileSize: "測定されたファイルサイズなし",
     playableDuration: "再生可能時間",
+    durationShort: "再生時間",
     metadataDuration: "メタデータの時間",
     noMeasuredSourceDuration: "測定されたソース時間なし",
     noKnownDuration: "時間不明",

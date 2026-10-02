@@ -1,4 +1,4 @@
-import { Check, Loader2, Plus, X } from "lucide-react";
+import { Bookmark, Check, Loader2, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -31,6 +31,10 @@ type UserTagRowProps = {
   onSave: (tags: string[]) => Promise<void> | void;
   className?: string;
   compact?: boolean;
+  /** "chip" renders rounded personal-tag chips that sit inline after other chips. */
+  variant?: "badge" | "chip";
+  /** Accessible name for the tag list; defaults to the generic tag title. */
+  listLabel?: string;
 };
 
 // Last loaded vocabulary per scope, so a reopened editor lists suggestions
@@ -43,7 +47,15 @@ if (typeof window !== "undefined") {
   });
 }
 
-export function UserTagRow({ tags, scope, onSave, className = "", compact = false }: UserTagRowProps) {
+export function UserTagRow({
+  tags,
+  scope,
+  onSave,
+  className = "",
+  compact = false,
+  variant = "badge",
+  listLabel,
+}: UserTagRowProps) {
   const { t } = useTranslation();
   const mobile = useMobileNavigationLayout();
   const anchorRef = useRef<HTMLSpanElement | null>(null);
@@ -109,12 +121,22 @@ export function UserTagRow({ tags, scope, onSave, className = "", compact = fals
   return (
     <div className={`flex min-w-0 flex-wrap items-center gap-1 ${className}`}>
       {selected.length > 0 && (
-        <ul className="contents" aria-label={t("tags.title")}>
+        <ul className="contents" aria-label={listLabel ?? t("tags.title")}>
           {visibleTags.map((name) => (
             <li key={name.toLowerCase()} className="contents">
-              <Badge variant="outline" className="max-w-32 truncate" title={name}>
-                {name}
-              </Badge>
+              {variant === "chip" ? (
+                <span
+                  className="inline-flex h-[26px] max-w-40 items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 text-xs font-medium text-primary"
+                  title={name}
+                >
+                  <Bookmark className="h-3 w-3 shrink-0 fill-current" aria-hidden="true" />
+                  <span className="truncate">{name}</span>
+                </span>
+              ) : (
+                <Badge variant="outline" className="max-w-32 truncate" title={name}>
+                  {name}
+                </Badge>
+              )}
             </li>
           ))}
           {hiddenCount > 0 && (
@@ -127,9 +149,13 @@ export function UserTagRow({ tags, scope, onSave, className = "", compact = fals
       <span ref={anchorRef} className="inline-flex">
         <Button
           type="button"
-          variant={selected.length > 0 ? "ghost" : "outline"}
+          variant={selected.length > 0 && variant !== "chip" ? "ghost" : "outline"}
           size="icon"
-          className={`h-7 w-7 ${selected.length > 0 ? "text-muted-foreground" : "border-dashed text-muted-foreground"}`}
+          className={cn(
+            variant === "chip" ? "h-[26px] w-[26px] rounded-full" : "h-7 w-7",
+            selected.length > 0 && variant !== "chip" ? "text-muted-foreground" : "border-dashed text-muted-foreground",
+            variant === "chip" && "border hover:border-primary hover:text-primary",
+          )}
           aria-label={selected.length > 0 ? title : t("tags.add")}
           title={selected.length > 0 ? title : t("tags.add")}
           aria-haspopup="dialog"
