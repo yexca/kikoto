@@ -14,7 +14,6 @@ import {
   isInternalReturnPath,
   languageLabel,
 } from "@/features/work-detail/workDetailHelpers";
-import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { usePageHeaderBack } from "@/app/pageHeader";
 import i18n from "@/i18n";
 import {
@@ -115,9 +114,8 @@ export function UnifiedWorkDetailPage({
   onBack: () => void;
   children?: ReactNode;
 }) {
-  const mobileNavigationLayout = useMobileNavigationLayout();
   usePageHeaderBack({
-    label: mobileNavigationLayout ? i18n.t("nav.library") : detailReturnTarget("library").label,
+    label: detailReturnTarget("library").label,
     title: presentation.title,
     onBack,
   });

@@ -202,6 +202,10 @@ and player intent, including pending play requests.
   suspending: React holds a shown Suspense fallback for at least 300ms, which
   would otherwise delay the page and the requests its effects start. An inactive
   workspace is hidden, cancels unfinished detail/list work, and pauses polling.
+- Retain a visited Library, Circle, or Voice actor list when opening its detail
+  route. Detail URLs do not reinitialize list controls or fetch a replacement
+  collection. Returning reveals the loaded cards and restores the originating
+  history entry's filters and page before list effects may write or fetch.
 - Keep destination switches proportional to the workspaces that change. A
   workspace that stays hidden skips shell-driven renders, and browse list items
   are memoized with stable item handlers (`useStableCallback`) so a page render
@@ -211,16 +215,19 @@ and player intent, including pending play requests.
   first paint; a resumed workspace does not replay its own stored list offset.
 - Tapping the active Library, Circles, or Voice Actors destination from its
   detail route returns to that workspace's last list state. Work detail routes
-  remain part of Library regardless of the workspace that opened them.
+  use the Library renderer, but a work opened from another workspace does not
+  replace Library's saved destination. Only Library-origin details and direct
+  work links are resumed by its tab; existing cross-workspace detail snapshots
+  are ignored so Library remains reachable after returning to a creator.
 - Distinguish Android client-old, server-old, and network-disconnected states;
   version actions open signed GitHub Releases and never imply silent install.
 - Use the shared work-collection layout and work-card view model whenever a
   surface presents works. Page-specific filters and statistics may differ, but
   grid behavior and responsive column choices should remain aligned.
-- Treat a compact detail-page back control as Up navigation. Work, Circle, and
-  Voice actor detail use the current server-and-user-scoped list location for
-  their own bottom-navigation destination instead of returning to another
-  destination; wide layouts retain the source-aware browser-history return.
+- Detail-page Back returns to the entry that opened the detail on both layouts,
+  including Favorites and nested creator routes. A resumed mobile detail uses
+  its captured return entry; a direct link falls back to its workspace list.
+  Tapping the active bottom-navigation destination remains workspace Up.
 - Keep provider tags to two measured card rows with an overflow popover. Card
   summaries use Circle / Series, DL sales, segmented rating, known available
   alternate-language state, and a compact playback-history indicator when a
@@ -239,9 +246,11 @@ and player intent, including pending play requests.
   Manual reshuffle changes the browse seed without replacing the session id.
 - Keep scroll state per browser history entry. A push navigation starts at the
   top, while browser back/forward restores the originating entry after its
-  content has rendered. Retry only deep history restoration, and cancel pending
-  retries as soon as the user expresses scroll intent. Page-level cleanup must
-  not overwrite another entry's saved position.
+  content has rendered. The shell observes content height for up to ten seconds
+  for deep restoration and cancels all pending frames and observers on user
+  scroll intent or navigation. Scroll writes belong to a unique history entry;
+  delayed writes and page-level cleanup must not overwrite another entry's
+  saved position, even when both entries share a URL.
 - For collection-to-detail navigation, keep only shareable semantic filters in
   the URL. Store complete browse state plus selection/focus anchors in the
   originating history entry and use session state as a refresh/new-entry

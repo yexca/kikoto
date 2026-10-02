@@ -13,12 +13,14 @@ import { syntheticWorkCode } from "../../src/test-support/workCode";
 import {
   appUpdateFixture,
   authenticatedStateFixture,
+  circleCatalogWorkFixture,
   circleDetailFixture,
   circleSummaryFixture,
   circleSummaryPageFixture,
   runtimeSettingsFixture,
   voiceCatalogRefreshFixture,
   voiceDetailFixture,
+  voiceKnownWorkFixture,
   voiceSummaryFixture,
   voiceSummaryPageFixture,
   workDetailFixture,
@@ -60,7 +62,9 @@ const cachedVoice = voiceSummaryFixture({
 
 type BrowsePageMockOptions = {
   deferAliasResolution?: boolean;
+  deferWorks?: boolean;
   collectionSize?: number;
+  favoriteWorks?: boolean;
 };
 
 function collectionWorks(size: number): Work[] {
@@ -84,6 +88,12 @@ function collectionCircles(size: number): CircleSummary[] {
 }
 
 async function mockBrowsePages(page: Page, requests: Record<string, number>, options: BrowsePageMockOptions = {}) {
+  let releaseWorks: (() => void) | null = null;
+  const worksGate = options.deferWorks
+    ? new Promise<void>((resolve) => {
+        releaseWorks = resolve;
+      })
+    : null;
   let releaseAliasResolution: (() => void) | null = null;
   let settleAliasResolution: (() => void) | null = null;
   const aliasResolution = options.deferAliasResolution
@@ -127,7 +137,17 @@ async function mockBrowsePages(page: Page, requests: Record<string, number>, opt
     }
     if (url.pathname === "/api/works") {
       count("works");
-      await route.fulfill({ json: worksPageFixture(collectionWorks(options.collectionSize ?? 1)) });
+      await worksGate;
+      const works = collectionWorks(options.collectionSize ?? 1);
+      const workPage = Number(url.searchParams.get("page")) || 1;
+      const pageSize = Number(url.searchParams.get("pageSize")) || 24;
+      await route.fulfill({
+        json: worksPageFixture(works.slice((workPage - 1) * pageSize, workPage * pageSize), {
+          page: workPage,
+          pageSize,
+          total: works.length,
+        }),
+      });
       return;
     }
     if (url.pathname === "/api/works/1") {
@@ -139,6 +159,10 @@ async function mockBrowsePages(page: Page, requests: Record<string, number>, opt
       await route.fulfill({
         json: { workId: 1, mediaWorkId: 1, mediaItems: [] } satisfies ApiResponse<"getWorkMedia">,
       });
+      return;
+    }
+    if (url.pathname === "/api/works/RJ00000000/resolve") {
+      await route.fulfill({ json: workResolveFixture(cachedWork) });
       return;
     }
     if (url.pathname === "/api/works/RJ00000001/resolve") {
@@ -164,7 +188,22 @@ async function mockBrowsePages(page: Page, requests: Record<string, number>, opt
       return;
     }
     if (url.pathname === "/api/circles/RG012345") {
-      await route.fulfill({ json: circleDetailFixture(cachedCircle, { availableWorks: 1 }) });
+      await route.fulfill({
+        json: circleDetailFixture(cachedCircle, {
+          availableWorks: 1,
+          works: [
+            circleCatalogWorkFixture({
+              primaryCode: cachedWork.primaryCode,
+              workId: cachedWork.id,
+              title: cachedWork.title,
+              circle: cachedWork.circle,
+              circleExternalId: cachedCircle.externalId,
+              local: true,
+              catalogStatus: "imported",
+            }),
+          ],
+        }),
+      });
       return;
     }
     if (url.pathname === "/api/voices") {
@@ -177,7 +216,21 @@ async function mockBrowsePages(page: Page, requests: Record<string, number>, opt
       return;
     }
     if (url.pathname === "/api/voices/7/works") {
-      await route.fulfill({ json: { personId: 7, works: [] } satisfies ApiResponse<"getVoiceWorks"> });
+      await route.fulfill({
+        json: {
+          personId: 7,
+          works: [
+            voiceKnownWorkFixture({
+              primaryCode: cachedWork.primaryCode,
+              workId: cachedWork.id,
+              title: cachedWork.title,
+              circle: cachedWork.circle,
+              circleExternalId: cachedCircle.externalId,
+              local: true,
+            }),
+          ],
+        } satisfies ApiResponse<"getVoiceWorks">,
+      });
       return;
     }
     if (url.pathname === "/api/voices/7/remote-matches") {
@@ -201,8 +254,20 @@ async function mockBrowsePages(page: Page, requests: Record<string, number>, opt
     }
     if (url.pathname === "/api/favorite-works") {
       count("favorite-works");
+      const works = options.favoriteWorks ? collectionWorks(options.collectionSize ?? 1) : [];
+      const workPage = Number(url.searchParams.get("page")) || 1;
+      const pageSize = Number(url.searchParams.get("pageSize")) || 24;
       await route.fulfill({
-        json: { ...worksPageFixture([]), shelfTotal: 0, listCounts: {}, statusCounts: {} } satisfies FavoriteWorksPage,
+        json: {
+          ...worksPageFixture(works.slice((workPage - 1) * pageSize, workPage * pageSize), {
+            page: workPage,
+            pageSize,
+            total: works.length,
+          }),
+          shelfTotal: works.length,
+          listCounts: {},
+          statusCounts: {},
+        } satisfies FavoriteWorksPage,
       });
       return;
     }
@@ -210,6 +275,7 @@ async function mockBrowsePages(page: Page, requests: Record<string, number>, opt
   });
 
   return {
+    releaseWorks: () => releaseWorks?.(),
     releaseAliasResolution: () => releaseAliasResolution?.(),
     waitForAliasResolution: () => aliasResolutionSettled,
   };
@@ -245,6 +311,182 @@ test("@desktop keeps visited browse workspaces mounted for the current user and 
     voices: initialRequests.voices,
     "favorite-works": initialRequests["favorite-works"],
   });
+});
+
+test("opening a library detail preserves its search, rendered cards, and loaded results", async ({ page }) => {
+  const requests: Record<string, number> = {};
+  await mockBrowsePages(page, requests);
+  await page.goto("/?q=Example");
+  const card = page.getByTestId("work-card").first();
+  await expect(card).toBeVisible();
+  await card.evaluate((element) => element.setAttribute("data-retention-probe", "library-detail"));
+  const initialRequests = { ...requests };
+
+  await card.click();
+  await expect(page.getByRole("heading", { name: "Example Work", exact: true })).toBeVisible();
+  await expect(page.locator('[data-retention-probe="library-detail"]')).toHaveCount(1);
+  await expect(page.getByPlaceholder("Search title, code, circle, tag, or creator")).toHaveValue("Example");
+  await page.goBack();
+
+  await expect(page).toHaveURL(/\/\?q=Example$/);
+  await expect(card).toBeVisible();
+  expect(requests.works).toBe(initialRequests.works);
+});
+
+for (const creator of [
+  { path: "/circles", name: "Example Circle", back: "Back to circles", request: "circles" },
+  { path: "/voices", name: "Example Voice", back: "Back to voices", request: "voices" },
+]) {
+  test(`returning from ${creator.path} detail reuses the filtered list and its rendered cards`, async ({ page }) => {
+    const requests: Record<string, number> = {};
+    await mockBrowsePages(page, requests);
+    await page.goto(`${creator.path}?q=Example&filter=favorite`);
+    const open = page.getByRole("button", { name: `Open ${creator.name}`, exact: true });
+    await expect(open).toBeVisible();
+    await open.evaluate((element) => element.setAttribute("data-retention-probe", "creator-detail"));
+    const initialRequests = requests[creator.request];
+    await open.click();
+    await expect(page.getByRole("heading", { name: creator.name, exact: true })).toBeVisible();
+    await expect(page.locator('[data-retention-probe="creator-detail"]')).toHaveCount(1);
+    await page.getByRole("button", { name: creator.back, exact: true }).click();
+
+    await expect(page).toHaveURL(
+      (url) =>
+        url.pathname === creator.path &&
+        url.searchParams.get("q") === "Example" &&
+        url.searchParams.get("filter") === "favorite",
+    );
+    await expect(open).toBeVisible();
+    expect(requests[creator.request]).toBe(initialRequests);
+  });
+}
+
+test("mobile detail Back restores the favorites entry that opened it", async ({ page }) => {
+  const requests: Record<string, number> = {};
+  await mockBrowsePages(page, requests, { favoriteWorks: true });
+  await page.goto("/favorites?q=Example");
+  await expect(page.getByTestId("work-card").first()).toBeVisible();
+  const initialRequests = requests["favorite-works"];
+  await page.getByTestId("work-card").first().click();
+  await expect(page.getByRole("heading", { name: "Example Work", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Back to favorites", exact: true }).click();
+  await expect(page).toHaveURL(/\/favorites\?q=Example$/);
+  await expect(page.getByTestId("work-card").first()).toBeVisible();
+  expect(requests["favorite-works"]).toBe(initialRequests);
+});
+
+for (const workspace of [
+  { path: "/", field: "libraryBrowseState" },
+  { path: "/favorites", field: "favoritesBrowseState" },
+]) {
+  test(`browser history restores ${workspace.field} instead of newer session controls`, async ({ page }) => {
+    const requests: Record<string, number> = {};
+    await mockBrowsePages(page, requests, { collectionSize: 48, favoriteWorks: true });
+    await page.goto(`${workspace.path}?q=Example`);
+    await expect(page.getByTestId("work-card")).toHaveCount(24);
+    const original = await page.evaluate((field) => window.history.state[field], workspace.field);
+    await page.evaluate(({ path, field }) => {
+      window.history.pushState(
+        {
+          ...window.history.state,
+          [field]: {
+            ...window.history.state[field],
+            query: "Later",
+            page: 2,
+            status: "finished",
+            sort: "title",
+            direction: "asc",
+          },
+        },
+        "",
+        `${path}?q=Later`,
+      );
+      window.dispatchEvent(new Event("kikoto:navigation"));
+    }, workspace);
+    await expect.poll(() => page.evaluate((field) => window.history.state[field]?.page, workspace.field)).toBe(2);
+    await expect(page.getByTestId("work-card").first()).toContainText("Example Work 25");
+    await page.goBack();
+    await expect(page).toHaveURL((url) => url.pathname === workspace.path && url.searchParams.get("q") === "Example");
+    await expect
+      .poll(() => page.evaluate((field) => window.history.state[field], workspace.field))
+      .toEqual(
+        expect.objectContaining({
+          query: "Example",
+          page: 1,
+          status: original.status,
+          sort: original.sort,
+          direction: original.direction,
+          randomSeed: original.randomSeed,
+        }),
+      );
+    await expect(page.getByTestId("work-card").first()).toContainText("Example Work 1");
+    await page.goForward();
+    await expect
+      .poll(() => page.evaluate((field) => window.history.state[field], workspace.field))
+      .toEqual(
+        expect.objectContaining({ query: "Later", page: 2, status: "finished", sort: "title", direction: "asc" }),
+      );
+    await expect(page.getByTestId("work-card").first()).toContainText("Example Work 25");
+  });
+}
+
+for (const cancel of [false, true]) {
+  test(`slow list restoration ${cancel ? "yields to user scrolling" : "waits for loaded content"}`, async ({
+    page,
+  }) => {
+    const requests: Record<string, number> = {};
+    await page.addInitScript(() => {
+      window.history.replaceState({ __kikotoScrollY: 1800 }, "", window.location.href);
+    });
+    const mocks = await mockBrowsePages(page, requests, { collectionSize: 24, deferWorks: true });
+    await page.goto("/");
+    await expect.poll(() => requests.works ?? 0).toBeGreaterThan(0);
+    // Keep the response pending beyond the former 500 ms retry window.
+    await page.waitForTimeout(800);
+    await expect.poll(() => page.evaluate(() => window.history.state.__kikotoScrollY)).toBe(1800);
+    if (cancel) await page.mouse.wheel(0, -300);
+    const userScroll = await page.evaluate(() => window.scrollY);
+    mocks.releaseWorks();
+    await expect(page.getByTestId("work-card")).toHaveCount(24);
+    if (cancel) {
+      const samples = await page.evaluate(async () => {
+        const positions: number[] = [];
+        for (let frame = 0; frame < 35; frame += 1) {
+          await new Promise((resolve) => window.requestAnimationFrame(resolve));
+          positions.push(window.scrollY);
+        }
+        return positions;
+      });
+      expect(Math.max(...samples)).toBeLessThanOrEqual(userScroll + 1);
+    } else {
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(1800);
+    }
+  });
+}
+
+test("same-URL history entries keep independent positions when a scroll write is pending", async ({ page }) => {
+  const requests: Record<string, number> = {};
+  await page.addInitScript(() => {
+    Reflect.deleteProperty(Object.getPrototypeOf(window.crypto), "randomUUID");
+  });
+  await mockBrowsePages(page, requests, { collectionSize: 24 });
+  await page.goto("/");
+  await expect(page.getByTestId("work-card")).toHaveCount(24);
+  const initialRequests = requests.works;
+  await page.evaluate(async () => {
+    window.scrollTo({ top: 1800, behavior: "auto" });
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
+    window.history.pushState({}, "", "/");
+    window.dispatchEvent(new Event("kikoto:navigation"));
+  });
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  // Let any trailing scroll write run before traversing identical locations.
+  await page.waitForTimeout(200);
+  await page.goBack();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(1800);
+  await page.goForward();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  expect(requests.works).toBe(initialRequests);
 });
 
 test("keeps every visited browse workspace mounted on mobile", async ({ page }) => {
@@ -394,6 +636,68 @@ test("active mobile tabs return entity details to their browse lists", async ({ 
   await expect(page).toHaveURL((url) => url.pathname === "/voices" && url.searchParams.get("q") === "Example");
   await expect(page.getByRole("button", { name: "Back to voices", exact: true })).toHaveCount(0);
 });
+
+for (const creator of [
+  { path: "/circles", tab: "Circles", name: "Example Circle", detail: "/circles/RG012345", back: "Back to circle" },
+  { path: "/voices", tab: "Voice Actors", name: "Example Voice", detail: "/voices/7", back: "Back to voices" },
+]) {
+  for (const desktop of [false, true]) {
+    test(`${desktop ? "@desktop " : ""}nested creator works keep Library reachable from ${creator.path}`, async ({
+      page,
+    }) => {
+      if (desktop) await page.setViewportSize({ width: 1280, height: 800 });
+      const requests: Record<string, number> = {};
+      await mockBrowsePages(page, requests);
+      await page.goto("/?q=Example");
+      await expect(page.getByTestId("work-card").first()).toBeVisible();
+      const libraryRequests = requests.works;
+      const navigation = desktop ? page.getByRole("complementary") : page.locator("footer");
+      await navigation.getByRole("button", { name: creator.tab, exact: true }).click();
+      await page.getByRole("button", { name: `Open ${creator.name}`, exact: true }).click();
+      await expect(page).toHaveURL((url) => url.pathname === creator.detail);
+      await page.getByRole("heading", { name: "Example Work", exact: true }).click();
+      await expect(page).toHaveURL((url) => url.pathname === "/RJ00000000" && !url.searchParams.has("q"));
+      if (!desktop) {
+        await navigation.getByRole("button", { name: "Library", exact: true }).click();
+        await expect(page).toHaveURL((url) => url.pathname === "/" && url.searchParams.get("q") === "Example");
+        await navigation.getByRole("button", { name: creator.tab, exact: true }).click();
+        await expect(page).toHaveURL((url) => url.pathname === creator.detail);
+        await page.getByRole("heading", { name: "Example Work", exact: true }).click();
+        await expect(page).toHaveURL((url) => url.pathname === "/RJ00000000" && !url.searchParams.has("q"));
+      }
+      await page.getByRole("main").getByRole("button", { name: creator.back, exact: true }).click();
+      await expect(page).toHaveURL((url) => url.pathname === creator.detail);
+
+      await navigation.getByRole("button", { name: "Library", exact: true }).click();
+      await expect(page).toHaveURL((url) => url.pathname === "/" && url.searchParams.get("q") === "Example");
+      await expect(page.getByTestId("work-card").first()).toBeVisible();
+      expect(requests.works).toBe(libraryRequests);
+    });
+  }
+
+  test(`nested creator works preserve Library's own open detail from ${creator.path}`, async ({ page }) => {
+    const requests: Record<string, number> = {};
+    await mockBrowsePages(page, requests);
+    await page.goto("/?q=Example");
+    await page.getByTestId("work-card").first().click();
+    await expect(page).toHaveURL((url) => url.pathname === "/RJ00000000" && url.searchParams.get("view") === "local");
+    const libraryRequests = requests.works;
+    const navigation = page.locator("footer");
+    await navigation.getByRole("button", { name: creator.tab, exact: true }).click();
+    await page.getByRole("button", { name: `Open ${creator.name}`, exact: true }).click();
+    await page.getByRole("heading", { name: "Example Work", exact: true }).click();
+    await expect(page).toHaveURL((url) => url.pathname === "/RJ00000000" && url.searchParams.size === 0);
+    await page.getByRole("main").getByRole("button", { name: creator.back, exact: true }).click();
+    await expect(page).toHaveURL((url) => url.pathname === creator.detail);
+
+    await navigation.getByRole("button", { name: "Library", exact: true }).click();
+    await expect(page).toHaveURL((url) => url.pathname === "/RJ00000000" && url.searchParams.get("view") === "local");
+    await page.getByRole("main").getByRole("button", { name: "Library", exact: true }).click();
+    await expect(page).toHaveURL((url) => url.pathname === "/" && url.searchParams.get("q") === "Example");
+    await expect(page.getByTestId("work-card").first()).toBeVisible();
+    expect(requests.works).toBe(libraryRequests);
+  });
+}
 
 test("does not let an inactive Library detail redirect replace another mobile workspace route", async ({ page }) => {
   const requests: Record<string, number> = {};

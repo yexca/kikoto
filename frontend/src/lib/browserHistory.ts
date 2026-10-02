@@ -1,10 +1,12 @@
 export const NAVIGATION_EVENT = "kikoto:navigation";
 export const HISTORY_ENTRY_UPDATED_EVENT = "kikoto:history-entry-updated";
+export const SCROLL_RESTORATION_EVENT = "kikoto:restore-scroll";
 
 const scrollStateKey = "__kikotoScrollY";
 const requestedScrollStateKey = "__kikotoRequestedScrollY";
 const returnEntryStateKey = "__kikotoReturnEntry";
 const mobileTabResumeStateKey = "__kikotoMobileTabResume";
+const entryKeyStateKey = "__kikotoEntryKey";
 const maxHistoryStateLength = 128 * 1024;
 
 type HistoryStateRecord = Record<string, unknown>;
@@ -30,6 +32,21 @@ export function normalizeInternalLocation(location: string): string | null {
 
 export function currentInternalLocation() {
   return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+export function historyEntryKey(state: unknown): string | null {
+  const key = historyStateRecord(state)[entryKeyStateKey];
+  return typeof key === "string" ? key : null;
+}
+
+export function historyStateWithEntryKey(state: unknown, key: string): HistoryStateRecord {
+  return { ...historyStateRecord(state), [entryKeyStateKey]: key };
+}
+
+/** Ask the shell to restore this entry after a retained list becomes visible. */
+export function restoreCurrentHistoryScroll(scrollY: number) {
+  window.history.replaceState(historyStateWithScroll(window.history.state, scrollY), "");
+  window.dispatchEvent(new Event(SCROLL_RESTORATION_EVENT));
 }
 
 export function historyScrollY(state: unknown, fallback = 0) {
@@ -77,6 +94,15 @@ export function isMobileTabResumeHistoryState(state: unknown) {
   return historyStateRecord(state)[mobileTabResumeStateKey] === true;
 }
 
+export function historyReturnLocation(state: unknown): string | null {
+  const returnTo = historyStateRecord(state).returnTo;
+  return typeof returnTo === "string" ? normalizeInternalLocation(returnTo) : null;
+}
+
+export function historyReturnEntry(state: unknown): HistoryEntrySnapshot | null {
+  return historyEntrySnapshotFromValue(historyStateRecord(state)[returnEntryStateKey]);
+}
+
 export function navigateToHistoryReturn({
   fallbackLocation,
   fallbackState = {},
@@ -85,8 +111,7 @@ export function navigateToHistoryReturn({
   fallbackState?: unknown;
 }) {
   const currentState = historyStateRecord(window.history.state);
-  const declaredReturn =
-    typeof currentState.returnTo === "string" ? normalizeInternalLocation(currentState.returnTo) : null;
+  const declaredReturn = historyReturnLocation(currentState);
   const fallback = normalizeInternalLocation(fallbackLocation) ?? "/";
 
   if (declaredReturn && currentState[mobileTabResumeStateKey] !== true) {
@@ -94,7 +119,7 @@ export function navigateToHistoryReturn({
     return;
   }
 
-  const returnEntry = historyEntrySnapshotFromValue(currentState[returnEntryStateKey]);
+  const returnEntry = historyReturnEntry(currentState);
   if (declaredReturn && returnEntry?.location === declaredReturn) {
     window.history.pushState(
       requestHistoryScrollRestoration(mobileTabResumeHistoryState(returnEntry.state), returnEntry.scrollY),
@@ -124,8 +149,7 @@ export function navigateToWorkspaceUp({
   }
 
   const currentState = historyStateRecord(window.history.state);
-  const declaredReturn =
-    typeof currentState.returnTo === "string" ? normalizeInternalLocation(currentState.returnTo) : null;
+  const declaredReturn = historyReturnLocation(currentState);
   if (declaredReturn && isWorkspaceListLocation(declaredReturn)) {
     navigateToHistoryReturn({ fallbackLocation, fallbackState });
     return;

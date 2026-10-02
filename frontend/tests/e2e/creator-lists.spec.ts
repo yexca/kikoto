@@ -944,7 +944,9 @@ test("mobile circle detail returns to the circle list entry that opened it", asy
   await expect(page.locator("footer").getByRole("button", { name: "Circles", exact: true })).toBeVisible();
 });
 
-test("mobile circle navigation does not resume a detail route after returning from Library", async ({ page }) => {
+test("mobile circle Back returns to its source and the active tab returns to the retained circle list", async ({
+  page,
+}) => {
   await mockCreatorDetails(page);
   await page.goto("/circles?q=Example&page=2&pageSize=24");
   await expect(page.getByRole("button", { name: "Open Example Circle" })).toBeVisible();
@@ -959,7 +961,12 @@ test("mobile circle navigation does not resume a detail route after returning fr
   });
   await expect(page.getByRole("heading", { name: "Example Circle", exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Back to circles", exact: true }).click();
+  await page.getByRole("button", { name: "Back to library", exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  const circlesTab = page.locator("footer").getByRole("button", { name: "Circles", exact: true });
+  await circlesTab.click();
+  await expect(page.getByRole("heading", { name: "Example Circle", exact: true })).toBeVisible();
+  await circlesTab.click();
   await expect(page).toHaveURL(/\/circles\?q=Example&page=2&pageSize=24$/);
 
   await libraryTab.click();

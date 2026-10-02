@@ -71,6 +71,7 @@ import {
   mobileTabResumeHistoryState,
   navigateToWorkspaceUp,
   requestHistoryScrollRestoration,
+  restoreCurrentHistoryScroll,
 } from "@/lib/browserHistory";
 import { api, type RemoteTrackRunStatus } from "@/lib/api";
 import { normalizeLibraryBrowseLocation, readLastLibraryLocation } from "@/lib/libraryBrowseState";
@@ -779,7 +780,7 @@ function CachedBrowsePages({ activePage }: { activePage: AppPage | null }) {
     const previous = previousActivePage.current;
     previousActivePage.current = activePage;
     if (!pageToMount || previous === activePage || !visitedPages.includes(pageToMount)) return;
-    window.scrollTo({ top: historyScrollY(window.history.state), behavior: "auto" });
+    restoreCurrentHistoryScroll(historyScrollY(window.history.state));
   }, [activePage, pageToMount, visitedPages]);
 
   useEffect(() => {
