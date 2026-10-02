@@ -51,13 +51,14 @@ export function useWorkflowActivityLocation() {
       update((params) => {
         for (const key of ["workflow", "run", "activity", "view", "dialog"]) params.delete(key);
       }),
-    selectWorkflow: (code: string) =>
+    /** Selects a workflow; `push` makes the selection a history step, as when a mobile list opens one. */
+    selectWorkflow: (code: string, push = false) =>
       update((params) => {
         params.set("workflow", code);
         params.delete("run");
         params.delete("view");
         params.delete("dialog");
-      }),
+      }, push),
     /** Opens the Activity list, where a newly queued run appears with the active runs. */
     openList: () =>
       update((params) => {

@@ -353,8 +353,9 @@ export function PresetParameterFields({
   // the actions sync, tag, or check them. Without metadata the filter has
   // nothing to narrow, so it stays hidden.
   const metadataEnabled = presetMetadataEnabled(values);
+  // The page's run form lays the groups out as columns when it has room; dialogs keep stacked groups.
   return (
-    <div className="grid divide-y">
+    <div className={compact ? "grid divide-y" : "preset-groups grid"}>
       {PRESET_GROUPS.map((group) => {
         const parameters = visible.filter((parameter) => parameter.group === group);
         if (parameters.length === 0) return null;
@@ -447,8 +448,8 @@ export function PresetRunPanel({
           </RunPrefillNote>
         )}
         <PresetParameterFields idPrefix="preset-run" preset={preset} values={values} onChange={setValues} />
-        {blockers.length > 0 && <RunBlockerNote>{presetBlockerText(blockers[0])}</RunBlockerNote>}
       </div>
     ),
+    blocker: blockers.length > 0 ? <RunBlockerNote>{presetBlockerText(blockers[0])}</RunBlockerNote> : null,
   });
 }

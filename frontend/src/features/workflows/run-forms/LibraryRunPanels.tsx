@@ -237,11 +237,7 @@ export function MetadataSyncRunPanel({
         onClick={() => void onRun(metadataSyncPayload(values))}
       />
     ),
-    options: (
-      <div className="grid gap-5">
-        <MetadataSyncFields idPrefix="metadata-sync-run" values={values} onChange={setValues} />
-        {blockers.length > 0 && <RunBlockerNote>{metadataSyncBlockerText(blockers[0])}</RunBlockerNote>}
-      </div>
-    ),
+    options: <MetadataSyncFields idPrefix="metadata-sync-run" values={values} onChange={setValues} />,
+    blocker: blockers.length > 0 ? <RunBlockerNote>{metadataSyncBlockerText(blockers[0])}</RunBlockerNote> : null,
   });
 }
