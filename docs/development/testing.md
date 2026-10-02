@@ -230,6 +230,17 @@ gate policy. It compares the PR base with the checked-out merge result, includin
 both sides of renames and deleted paths. `scripts/ci-plan.mjs` owns the job plan;
 its tests guard against accidental validation skips.
 
+The separate `PR Description` workflow checks the contribution template's
+change, validation, and upgrade-impact sections for PRs targeting `main` on
+creation, description edits, commit updates, reopening, and draft-state changes.
+Drafts and Dependabot updates pass without requiring the template. It uses
+`pull_request_target` with
+read-only contents permission, checks out only the trusted base commit, and
+never executes PR code or interpolates PR text into commands. Its policy tests
+run in Style through `make pr-description-test`. To check a saved synthetic event
+locally, set `GITHUB_EVENT_PATH` to its JSON file and run
+`make pr-description-check`.
+
 | PR changes | Additional required jobs |
 | --- | --- |
 | Only public documentation | None beyond Style and Core |

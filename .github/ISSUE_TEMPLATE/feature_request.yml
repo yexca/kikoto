@@ -1,0 +1,43 @@
+name: Feature request
+description: Suggest a focused improvement to Kikoto.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Explain the task you want to complete and the behavior that would help.
+        Use synthetic examples; omit private sources, credentials, media, and personal library records.
+        Report suspected vulnerabilities through [private security reporting](https://github.com/yexca/kikoto/security/advisories/new).
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues for the same request.
+          required: true
+        - label: My examples and attachments contain no private data.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Describe the current task, the limitation, and who is affected.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Desired behavior
+      description: Explain what the user should be able to do and how they would know it worked.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe any current workaround or other approach you considered.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Optional sanitized mockups or examples, including web or Android needs.

@@ -46,6 +46,30 @@ Do not disclose suspected vulnerabilities in public issues, discussions, or
 pull requests. Follow the private reporting process in the
 [Security Policy](SECURITY.md).
 
+## Issues And Pull Requests
+
+Use the Bug report or Feature request form when it matches your report. Bug
+reports should include the server/client version, relevant deployment and device
+details, reproduction steps, and expected and actual behavior. Redact diagnostics;
+never attach a real database, private configuration, or personal media.
+
+The [PR template](.github/pull_request_template.md) asks for:
+
+- The change and its motivation, including before/after behavior for a fix.
+- Relevant Makefile validation targets and results, with an explanation for
+  checks that were not run.
+- Upgrade impact: migrations, configuration, compatibility, or required operator
+  actions. Write `None` when there is no upgrade impact.
+
+Keep the template's `kikoto` section markers; headings and prose may use any
+language. For PRs targeting `main`, the PR Description check rejects sections
+containing only comments, headings, or empty checkboxes. Draft PRs and Dependabot
+dependency updates are exempt. Editing the description or marking a draft ready
+reruns the check.
+The check reads PR metadata with read-only repository permissions and executes
+only the base branch's code. It reports missing sections in the Actions summary
+without posting comments or logging the submitted description.
+
 ## Validation
 
 The Makefile is the canonical validation entry point. Use the smallest target

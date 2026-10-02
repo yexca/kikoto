@@ -1,0 +1,77 @@
+name: Bug report
+description: Report a reproducible problem with Kikoto.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe one reproducible problem using synthetic data and redacted diagnostics.
+        Do not attach real databases, media, source URLs, credentials, or personal paths.
+        Report suspected vulnerabilities through [private security reporting](https://github.com/yexca/kikoto/security/advisories/new).
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues for the same problem.
+          required: true
+        - label: I removed private data from the report and attachments.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: Kikoto version
+      description: Include the server version or commit, and the Android client version when relevant.
+      placeholder: "Server version or commit; Android version if applicable"
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      multiple: true
+      options:
+        - Web application
+        - Android client
+        - Backend or background workflow
+        - Docker deployment
+        - Windows installation helper
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include the host OS, browser or Android version, Docker/Compose versions, and runtime mode as relevant. Omit private addresses and paths.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include the starting state and exact actions. Use synthetic examples such as RJ00000000 if a work code is needed.
+      placeholder: |
+        1. Start with ...
+        2. Open ...
+        3. Run ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include sanitized error codes or screenshots when helpful.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Redacted diagnostics
+      description: Optional relevant log excerpts or Activity statuses. Review them for credentials, private endpoints, paths, and work records before posting.
+      render: text

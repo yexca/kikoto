@@ -2,6 +2,15 @@
   "version": 1,
   "endpoints": [
     {
+      "url": "https://github.com/yexca/kikoto/security/advisories/new",
+      "files": [
+        ".github/ISSUE_TEMPLATE/bug_report.yml",
+        ".github/ISSUE_TEMPLATE/feature_request.yml",
+        ".github/ISSUE_TEMPLATE/config.yml"
+      ],
+      "reason": "Kikoto's public private-vulnerability-reporting entry point shown in the issue forms and chooser."
+    },
+    {
       "url": "https://github.com/yexca/kikoto/**",
       "files": [
         "backend/internal/httpapi/app_update_endpoints.go",
