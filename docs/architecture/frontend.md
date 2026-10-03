@@ -45,9 +45,13 @@ the new server configuration. Re-selecting the same server retains its session.
 - React.
 - TypeScript.
 - Vite.
-- Tailwind CSS.
+- Tailwind CSS 4 with PostCSS and matching `tailwind-merge` utilities.
 - Local shadcn-style primitives.
 - lucide-react icons.
+
+The web app and Android WebView require modern CSS support (Chrome 111+,
+Safari 16.4+, or Firefox 128+), following the
+[Tailwind browser requirements](https://tailwindcss.com/docs/compatibility).
 
 Non-English translation resources and their surface labels live in separate
 language modules loaded on demand. The English fallback must not synchronously

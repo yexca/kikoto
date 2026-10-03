@@ -6,8 +6,14 @@ const requireFrontend = createRequire(
 
 export async function verifyProductionBrowser(baseURL, fixtures, signal) {
   const { chromium, expect } = requireFrontend("@playwright/test");
-  const { workCode, aacLocationId, nextLocationId, videoLocationId, password } =
-    fixtures;
+  const {
+    workCode,
+    aacLocationId,
+    nextLocationId,
+    videoLocationId,
+    activeFileLocationId,
+    password,
+  } = fixtures;
   signal.throwIfAborted();
   const started = Date.now();
   const browser = await chromium.launch({ headless: true, timeout: 15_000 });
@@ -30,6 +36,13 @@ export async function verifyProductionBrowser(baseURL, fixtures, signal) {
     page.setDefaultTimeout(10_000);
     page.setDefaultNavigationTimeout(15_000);
     await page.goto("/");
+    const inlineScriptRan = await page.evaluate(() => {
+      const script = document.createElement("script");
+      script.textContent = "window.__kikotoInlineScriptRan=true";
+      document.body.append(script);
+      return window.__kikotoInlineScriptRan === true;
+    });
+    expect(inlineScriptRan).toBe(false);
     await expect(
       page.getByRole("heading", { name: "Sign in to Kikoto", exact: true }),
     ).toBeVisible();
@@ -201,6 +214,20 @@ export async function verifyProductionBrowser(baseURL, fixtures, signal) {
     await reopened.dialog
       .getByRole("button", { name: "Close", exact: true })
       .click();
+    const currentURL = page.url();
+    const downloaded = page.waitForEvent("download");
+    await page
+      .goto(`/api/media/${activeFileLocationId}/asset`)
+      .catch((error) => {
+        expect(error.message).toMatch(/Download is starting|ERR_ABORTED/);
+      });
+    const download = await downloaded;
+    expect(download.suggestedFilename()).toBe("notes.html");
+    expect(page.url()).toBe(currentURL);
+    expect(
+      await page.evaluate(() => window.__kikotoUntrustedScriptRan === true),
+    ).toBe(false);
+    await download.delete();
     console.log(
       "Production browser smoke passed: login, WAV playback, AAC duration/seeks/ended queue advancement, and AVI HLS decoding/seeking/reopening.",
     );

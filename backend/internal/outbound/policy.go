@@ -50,7 +50,8 @@ type Options struct {
 	// Proxy routes every request through an operator-configured forward
 	// proxy parsed by ParseProxyURL. The proxy endpoint keeps the configured
 	// private-address exception; destination URLs and redirects are still
-	// validated here, while the proxy resolves destination hostnames.
+	// validated here. Destination DNS is validated locally and proxies receive
+	// numeric addresses, preserving the address boundary and DNS pinning.
 	// Credentials set programmatically in Proxy.User authenticate to the
 	// proxy; the endpoint itself must still pass ParseProxyURL.
 	Proxy *url.URL
@@ -75,6 +76,14 @@ type originRule struct {
 
 type endpointRule struct {
 	allowPrivate bool
+}
+
+type requestDestinationKey struct{}
+
+type requestDestination struct {
+	endpoint string
+	rule     endpointRule
+	context  context.Context
 }
 
 type hostPattern struct {
@@ -359,13 +368,8 @@ func (p *Policy) ValidateURL(value *url.URL) error {
 // hostname once per connection, validates the complete answer set, and dials a
 // validated numeric address rather than resolving the hostname again.
 func (p *Policy) Transport() http.RoundTripper {
-	var proxy func(*http.Request) (*url.URL, error)
-	if p.proxy != nil {
-		proxy = http.ProxyURL(p.proxy)
-	}
 	base := &http.Transport{
-		Proxy:                  proxy,
-		DialContext:            p.dial,
+		DialContext:            p.dialDestination,
 		ForceAttemptHTTP2:      true,
 		MaxIdleConns:           32,
 		MaxIdleConnsPerHost:    4,
@@ -410,6 +414,18 @@ func (t *policyTransport) RoundTrip(request *http.Request) (*http.Response, erro
 			return nil, violation("outbound request Host does not match its URL origin")
 		}
 	}
+	origin, endpoint, err := canonicalDestination(request.URL)
+	if err != nil {
+		return nil, err
+	}
+	// The private-address exception belongs to the exact configured origin,
+	// including its scheme. A public URL sharing its host/port cannot inherit it.
+	destination := requestDestination{
+		endpoint: endpoint,
+		rule:     endpointRule{allowPrivate: t.policy.origins[origin].allowPrivate},
+		context:  request.Context(),
+	}
+	request = request.WithContext(context.WithValue(request.Context(), requestDestinationKey{}, destination))
 	response, err := t.base.RoundTrip(request)
 	if err != nil {
 		return nil, err
@@ -496,7 +512,7 @@ func (p *Policy) checkRedirect(request *http.Request, via []*http.Request) error
 	if len(via) == 0 {
 		return nil
 	}
-	previousOrigin, _, err := canonicalDestination(via[len(via)-1].URL)
+	initialOrigin, _, err := canonicalDestination(via[0].URL)
 	if err != nil {
 		return err
 	}
@@ -504,7 +520,18 @@ func (p *Policy) checkRedirect(request *http.Request, via []*http.Request) error
 	if err != nil {
 		return err
 	}
-	if previousOrigin != redirectOrigin {
+	// net/http rebuilds each redirect's headers from the initial request.
+	// Once any hop changes origin, strip credentials throughout the chain,
+	// including later same-origin hops and a redirect back to the first origin.
+	crossedOrigin := initialOrigin != redirectOrigin
+	for _, previous := range via[1:] {
+		previousOrigin, _, err := canonicalDestination(previous.URL)
+		if err != nil {
+			return err
+		}
+		crossedOrigin = crossedOrigin || previousOrigin != initialOrigin
+	}
+	if crossedOrigin {
 		request.Header.Del("Authorization")
 		request.Header.Del("Cookie")
 		request.Header.Del("Proxy-Authorization")
@@ -531,37 +558,49 @@ func (p *Policy) dial(ctx context.Context, network string, address string) (net.
 		}
 		return p.dialValidated(ctx, network, host, port, endpointRule{allowPrivate: true})
 	}
+	rule, err := p.requestDestinationRule(ctx, host, port)
+	if err != nil {
+		return nil, err
+	}
+	return p.dialValidated(ctx, network, host, port, rule)
+}
+
+func (p *Policy) requestDestinationRule(ctx context.Context, host string, port string) (endpointRule, error) {
+	if destination, ok := ctx.Value(requestDestinationKey{}).(requestDestination); ok {
+		endpoint, err := canonicalEndpoint(host, port)
+		if err != nil || endpoint != destination.endpoint {
+			return endpointRule{}, violation("outbound connection does not match the request destination")
+		}
+		return destination.rule, nil
+	}
+	return p.destinationRule(host, port)
+}
+
+func (p *Policy) destinationRule(host string, port string) (endpointRule, error) {
+	endpoint, err := canonicalEndpoint(host, port)
+	if err != nil {
+		return endpointRule{}, err
+	}
 	rule, ok := p.endpoints[endpoint]
 	if !ok {
 		normalizedHost, hostErr := canonicalHost(host)
 		if hostErr != nil {
-			return nil, hostErr
+			return endpointRule{}, hostErr
 		}
 		if !p.allowsPublicHost(normalizedHost) {
-			return nil, violation("outbound connection endpoint is not allowed")
+			return endpointRule{}, violation("outbound connection endpoint is not allowed")
 		}
 		rule = endpointRule{allowPrivate: false}
 	}
-	return p.dialValidated(ctx, network, host, port, rule)
+	return rule, nil
 }
 
 func (p *Policy) dialValidated(ctx context.Context, network string, host string, port string, rule endpointRule) (net.Conn, error) {
 	dialCtx, cancel := context.WithTimeout(ctx, p.connectTimeout)
 	defer cancel()
-	addresses, err := p.resolve(dialCtx, host)
+	addresses, err := p.validatedAddresses(dialCtx, host, rule)
 	if err != nil {
 		return nil, err
-	}
-	if len(addresses) == 0 {
-		return nil, errors.New("outbound hostname resolved to no addresses")
-	}
-	if len(addresses) > maxResolvedAddresses {
-		return nil, violation("outbound hostname resolved to too many addresses")
-	}
-	for _, resolved := range addresses {
-		if err := validateAddress(resolved, rule.allowPrivate); err != nil {
-			return nil, err
-		}
 	}
 
 	var lastErr error
@@ -579,6 +618,25 @@ func (p *Policy) dialValidated(ctx context.Context, network string, host string,
 		lastErr = errors.New("outbound hostname has no compatible address")
 	}
 	return nil, lastErr
+}
+
+func (p *Policy) validatedAddresses(ctx context.Context, host string, rule endpointRule) ([]netip.Addr, error) {
+	addresses, err := p.resolve(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	if len(addresses) == 0 {
+		return nil, errors.New("outbound hostname resolved to no addresses")
+	}
+	if len(addresses) > maxResolvedAddresses {
+		return nil, violation("outbound hostname resolved to too many addresses")
+	}
+	for _, address := range addresses {
+		if err := validateAddress(address, rule.allowPrivate); err != nil {
+			return nil, err
+		}
+	}
+	return addresses, nil
 }
 
 func (p *Policy) allowsPublicHost(host string) bool {

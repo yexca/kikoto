@@ -56,6 +56,15 @@ Default mounts:
 - `./cache:/cache`
 - `./data:/data`
 
+## Container Isolation
+
+The production image runs as the container root user. Production and Demo
+Compose drop all Linux capabilities, enable `no-new-privileges`, and use a
+read-only root filesystem with a bounded writable `/tmp`. `/config`, `/cache`,
+and the production `/data` mount remain writable; durable Fetch transaction
+directories stay on the target storage filesystem. Demo keeps its data mount
+read-only. Limit host access to the dedicated runtime mounts described above.
+
 ## Configure with `.env`
 
 Copy [`.env.example`](../../.env.example) to `.env` beside `docker-compose.yml`,

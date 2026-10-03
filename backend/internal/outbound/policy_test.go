@@ -15,6 +15,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
 type resolverFunc func(ctx context.Context, host string) ([]net.IPAddr, error)
@@ -435,8 +437,8 @@ func TestParseProxyURLAcceptsOnlyExplicitProxyEndpoints(t *testing.T) {
 
 func TestProxyTransportRoutesThroughConfiguredPrivateProxy(t *testing.T) {
 	var proxiedHost atomic.Value
-	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		proxiedHost.Store(request.URL.Host)
+	proxy := newRespondingProxy(t, nil, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		proxiedHost.Store(request.Host)
 		_, _ = io.WriteString(w, "proxied")
 	}))
 	defer proxy.Close()
@@ -447,7 +449,10 @@ func TestProxyTransportRoutesThroughConfiguredPrivateProxy(t *testing.T) {
 	policy, err := NewPolicy([]Destination{{URL: "http://metadata.test"}}, Options{
 		Proxy: proxyURL,
 		Resolver: resolverFunc(func(_ context.Context, host string) ([]net.IPAddr, error) {
-			return nil, fmt.Errorf("destination %q must be resolved by the proxy", host)
+			if host != "metadata.test" {
+				return nil, fmt.Errorf("unexpected destination %q", host)
+			}
+			return []net.IPAddr{{IP: testfixture.PublicIPv4()}}, nil
 		}),
 	})
 	if err != nil {
@@ -468,7 +473,7 @@ func TestProxyTransportRoutesThroughConfiguredPrivateProxy(t *testing.T) {
 }
 
 func TestProxyTransportRevalidatesRedirects(t *testing.T) {
-	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+	proxy := newRespondingProxy(t, nil, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		http.Redirect(w, request, "http://other.test/work", http.StatusFound)
 	}))
 	defer proxy.Close()
@@ -476,7 +481,7 @@ func TestProxyTransportRevalidatesRedirects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy, err := NewPolicy([]Destination{{URL: "http://metadata.test"}}, Options{Proxy: proxyURL})
+	policy, err := NewPolicy([]Destination{{URL: "http://metadata.test"}}, Options{Proxy: proxyURL, Resolver: publicTestResolver()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -490,7 +495,7 @@ func TestProxyPolicyRejectsDirectDials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy, err := NewPolicy([]Destination{{URL: "http://metadata.test"}}, Options{Proxy: proxyURL})
+	policy, err := NewPolicy([]Destination{{URL: "http://metadata.test"}}, Options{Proxy: proxyURL, Resolver: publicTestResolver()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -501,8 +506,12 @@ func TestProxyPolicyRejectsDirectDials(t *testing.T) {
 
 func TestProxyTransportAuthenticatesToProxy(t *testing.T) {
 	var authorization atomic.Value
-	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+	proxy := newRespondingProxy(t, func(request *http.Request) {
 		authorization.Store(request.Header.Get("Proxy-Authorization"))
+	}, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("Proxy-Authorization") != "" {
+			t.Error("proxy credentials reached the destination")
+		}
 		_, _ = io.WriteString(w, "proxied")
 	}))
 	defer proxy.Close()
@@ -511,7 +520,7 @@ func TestProxyTransportAuthenticatesToProxy(t *testing.T) {
 		t.Fatal(err)
 	}
 	proxyURL.User = url.UserPassword("synthetic-user", "synthetic-password")
-	policy, err := NewPolicy([]Destination{{URL: "http://metadata.test"}}, Options{Proxy: proxyURL})
+	policy, err := NewPolicy([]Destination{{URL: "http://metadata.test"}}, Options{Proxy: proxyURL, Resolver: publicTestResolver()})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -403,7 +403,7 @@ func proxiedTransport(route proxyRoute, policyFor func(*url.URL) (*outbound.Poli
 // address checks come from the same DLsite outbound policy with or without a
 // proxy.
 type metadataTransport struct {
-	endpoints dlsite.Endpoints
+	policyFor func(*url.URL) (*outbound.Policy, error)
 	resolve   func(context.Context) (proxyRoute, error)
 
 	mu        sync.Mutex
@@ -412,7 +412,7 @@ type metadataTransport struct {
 }
 
 func newMetadataTransport(endpoints dlsite.Endpoints, resolve func(context.Context) (proxyRoute, error)) *metadataTransport {
-	return &metadataTransport{endpoints: endpoints, resolve: resolve}
+	return &metadataTransport{policyFor: endpoints.Policy, resolve: resolve}
 }
 
 func (t *metadataTransport) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -437,7 +437,7 @@ func (t *metadataTransport) current(ctx context.Context) (http.RoundTripper, err
 	if t.transport != nil && t.key == key {
 		return t.transport, nil
 	}
-	transport, err := proxiedTransport(route, t.endpoints.Policy)
+	transport, err := proxiedTransport(route, t.policyFor)
 	if err != nil {
 		return nil, errProxyConfigUnavailable
 	}

@@ -103,6 +103,10 @@ try {
   await mkdir(join(fixtureRoot, "RJ00000000"));
   await writeFile(join(fixtureRoot, "RJ00000000", "example.wav"), wav);
   await writeFile(join(fixtureRoot, "RJ00000000", "02-next.wav"), silentWav(5));
+  await writeFile(
+    join(fixtureRoot, "RJ00000000", "notes.html"),
+    "<!doctype html><script>window.__kikotoUntrustedScriptRan=true;fetch('/api/auth/me')</script>",
+  );
 
   created = true;
   await command([
@@ -110,6 +114,11 @@ try {
     "--pull=never",
     "--name",
     container,
+    "--read-only",
+    "--cap-drop=ALL",
+    "--security-opt=no-new-privileges:true",
+    "--tmpfs",
+    "/tmp:rw,noexec,nosuid,size=64m",
     "--publish",
     "127.0.0.1::7659",
     "--mount",
@@ -128,6 +137,13 @@ try {
   ]);
   await command(["cp", `${fixtureRoot}/.`, `${container}:/data`]);
   await command(["start", container]);
+  assert.equal(await command(["exec", container, "id", "-u"]), "0");
+  const { HostConfig: hostConfig } = JSON.parse(
+    await command(["inspect", "--format={{json .}}", container]),
+  );
+  assert.equal(hostConfig.ReadonlyRootfs, true);
+  assert.ok(hostConfig.CapDrop.includes("ALL"));
+  assert.ok(hostConfig.SecurityOpt.includes("no-new-privileges:true"));
   // Use the shipped codecs and publish complete fixtures on the data filesystem.
   const staging = "/data/.kikoto-staging/production-smoke";
   await command(["exec", container, "mkdir", "-p", staging]);
@@ -197,7 +213,17 @@ try {
   baseURL = origin.origin;
   await waitFor(() => request("/health"), "production readiness");
 
-  const { body: index } = await request("/");
+  const { body: index, response: indexResponse } = await request("/");
+  assert.equal(indexResponse.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(indexResponse.headers.get("x-frame-options"), "DENY");
+  assert.match(
+    indexResponse.headers.get("content-security-policy"),
+    /script-src 'self'/,
+  );
+  assert.match(
+    indexResponse.headers.get("content-security-policy"),
+    /frame-ancestors 'none'/,
+  );
   assert.match(index.toString(), /<div id="root"/);
   assert.match(index.toString(), /viewport-fit=cover/);
   const { body: manifestBody } = await request("/manifest.webmanifest");
@@ -348,6 +374,15 @@ try {
   const aac = localLocation("01-example.aac", "audio");
   const next = localLocation("02-next.wav", "audio");
   const video = localLocation("example.avi", "video");
+  const activeFile = localLocation("notes.html", "file");
+  const { response: asset } = await request(
+    `/api/media/${activeFile.id}/asset`,
+    { headers },
+  );
+  assert.equal(asset.headers.get("content-type"), "application/octet-stream");
+  assert.match(asset.headers.get("content-disposition"), /^attachment;/);
+  assert.equal(asset.headers.get("x-content-type-options"), "nosniff");
+  assert.match(asset.headers.get("content-security-policy"), /sandbox/);
   assert.ok(location, "Local scan must expose a playable audio location");
   const stream = `/api/media/${location.id}/stream?forceDirect=1`;
   await request(stream, { expected: 401 });
@@ -374,6 +409,7 @@ try {
         aacLocationId: aac.id,
         nextLocationId: next.id,
         videoLocationId: video.id,
+        activeFileLocationId: activeFile.id,
         password,
       },
       controller.signal,

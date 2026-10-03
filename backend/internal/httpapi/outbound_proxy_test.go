@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -15,7 +16,9 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/outbound"
 	"github.com/yexca/kikoto/backend/internal/proxyconfig"
+	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
 func patchSettingsAsSourceWriter(t *testing.T, server *Server, body string) *httptest.ResponseRecorder {
@@ -214,6 +217,7 @@ func closedProxyURL(t *testing.T) string {
 func TestMetadataClientFollowsProxyRouteChanges(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
+	useSyntheticMetadataDNS(t, server)
 	var firstTarget, secondTarget atomic.Value
 	var firstCount, secondCount atomic.Int32
 	first := newConnectRecordingProxy(t, &firstTarget, &firstCount)
@@ -224,7 +228,7 @@ func TestMetadataClientFollowsProxyRouteChanges(t *testing.T) {
 	if _, err := server.metadataHTTPClient.Get(server.dlsiteEndpoints.WorkURL("RJ00000001")); err == nil {
 		t.Fatal("request through refusing proxy unexpectedly succeeded")
 	}
-	if firstCount.Load() != 1 || firstTarget.Load() != "www.dlsite.com:443" {
+	if firstCount.Load() != 1 || firstTarget.Load() != net.JoinHostPort(testfixture.PublicIPv4().String(), "443") {
 		t.Fatalf("first proxy saw %d CONNECT requests to %v", firstCount.Load(), firstTarget.Load())
 	}
 
@@ -240,6 +244,7 @@ func TestMetadataClientFollowsProxyRouteChanges(t *testing.T) {
 func TestMetadataClientFailsOverToNextProxyByPriority(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
+	useSyntheticMetadataDNS(t, server)
 	var target atomic.Value
 	var count atomic.Int32
 	reachable := newConnectRecordingProxy(t, &target, &count)
@@ -247,7 +252,7 @@ func TestMetadataClientFailsOverToNextProxyByPriority(t *testing.T) {
 
 	decodeProxySettings(t, patchSettingsAsSourceWriter(t, server, proxySettingsBody(t, proxies, map[string]any{"dlsite": routeTo()})))
 	_, _ = server.metadataHTTPClient.Get(server.dlsiteEndpoints.WorkURL("RJ00000001"))
-	if count.Load() != 1 || target.Load() != "www.dlsite.com:443" {
+	if count.Load() != 1 || target.Load() != net.JoinHostPort(testfixture.PublicIPv4().String(), "443") {
 		t.Fatalf("second proxy saw %d CONNECT requests to %v after the first was unreachable", count.Load(), target.Load())
 	}
 }
@@ -264,16 +269,34 @@ func TestMetadataClientFailsClosedForUnusableStoredProxy(t *testing.T) {
 	}
 }
 
-// newForwardRecordingProxy answers plain HTTP proxy requests itself and
+// newForwardRecordingProxy answers tunneled HTTP requests itself and
 // records the requested destination host and proxy credentials.
 func newForwardRecordingProxy(t *testing.T, hosts *atomic.Value, authorization *atomic.Value) *httptest.Server {
 	t.Helper()
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		hosts.Store(request.URL.Host)
+		if request.Method != http.MethodConnect {
+			http.Error(w, "CONNECT required", http.StatusBadRequest)
+			return
+		}
 		if authorization != nil {
 			authorization.Store(request.Header.Get("Proxy-Authorization"))
 		}
-		_, _ = io.WriteString(w, "proxied")
+		connection, buffered, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			return
+		}
+		defer func() { _ = connection.Close() }()
+		_ = connection.SetDeadline(time.Now().Add(5 * time.Second))
+		_, _ = buffered.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n")
+		_ = buffered.Flush()
+		inner, err := http.ReadRequest(buffered.Reader)
+		if err != nil {
+			t.Errorf("read tunneled request: %v", err)
+			return
+		}
+		defer func() { _ = inner.Body.Close() }()
+		hosts.Store(inner.Host)
+		_, _ = io.WriteString(connection, "HTTP/1.1 200 OK\r\nContent-Length: 7\r\nConnection: close\r\n\r\nproxied")
 	}))
 	t.Cleanup(proxy.Close)
 	return proxy
@@ -355,6 +378,23 @@ func TestAppUpdateCheckFollowsOtherProxyRoute(t *testing.T) {
 	decodeProxySettings(t, patchSettingsAsSourceWriter(t, server, proxySettingsBody(t,
 		[]map[string]any{customProxy("lan", proxy.URL)}, map[string]any{"other": routeTo()},
 	)))
+	route, err := server.resolveProxyRoute(context.Background(), proxyconfig.ScopeOther, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policyFor := func(proxy *url.URL) (*outbound.Policy, error) {
+		return outbound.NewPolicy([]outbound.Destination{{URL: server.appUpdateEndpoints.releasesAPIURL}}, outbound.Options{Proxy: proxy, Resolver: syntheticPublicResolver{}})
+	}
+	policy, err := policyFor(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport, err := proxiedTransport(route, policyFor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.updateHTTPClient = policy.Client(transport, time.Second)
+	t.Cleanup(server.updateHTTPClient.CloseIdleConnections)
 	_, _ = server.fetchAppUpdate(context.Background())
 	if proxiedHost.Load() != "updates.example.test" {
 		t.Fatalf("update check reached proxy for %v, want the configured release host", proxiedHost.Load())

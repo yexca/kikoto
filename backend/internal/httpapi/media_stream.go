@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -81,10 +83,53 @@ func (s *Server) serveMediaAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 func serveRevalidatedFile(w http.ResponseWriter, r *http.Request, filePath string, identity string) {
-	if info, err := os.Stat(filePath); err == nil {
-		setAssetRevisionHeaders(w, info, identity)
+	file, err := os.Open(filePath)
+	if err != nil {
+		http.NotFound(w, r)
+		return
 	}
-	http.ServeFile(w, r, filePath)
+	defer func() { _ = file.Close() }()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		http.NotFound(w, r)
+		return
+	}
+	// Source filenames and file contents are untrusted. Only passive raster
+	// formats may render inline on the authenticated application origin.
+	var prefix [512]byte
+	n, err := file.Read(prefix[:])
+	if err != nil && !errors.Is(err, io.EOF) {
+		http.NotFound(w, r)
+		return
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	contentType := http.DetectContentType(prefix[:n])
+	setUntrustedFileHeaders(w)
+	switch contentType {
+	case "image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp", "image/x-icon":
+		w.Header().Set("Content-Type", contentType)
+	default:
+		setAttachmentHeaders(w, identity)
+	}
+	setAssetRevisionHeaders(w, info, identity)
+	http.ServeContent(w, r, info.Name(), info.ModTime(), file)
+}
+
+func setUntrustedFileHeaders(w http.ResponseWriter) {
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+}
+
+func setAttachmentHeaders(w http.ResponseWriter, identity string) {
+	filename := filepath.Base(filepath.FromSlash(identity))
+	if filename == "." || filename == string(filepath.Separator) || strings.TrimSpace(filename) == "" {
+		filename = "media-file"
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
 }
 
 func setAssetRevisionHeaders(w http.ResponseWriter, info os.FileInfo, identity string) {
@@ -133,11 +178,8 @@ func (s *Server) downloadMedia(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "not_found", "media file was not found", false)
 		return
 	}
-	filename := filepath.Base(filepath.FromSlash(relPath))
-	if filename == "." || filename == string(filepath.Separator) || strings.TrimSpace(filename) == "" {
-		filename = "media-file"
-	}
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	setUntrustedFileHeaders(w)
+	setAttachmentHeaders(w, relPath)
 	http.ServeFile(w, r, path)
 }
 

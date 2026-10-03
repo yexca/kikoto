@@ -368,6 +368,7 @@ func (s *Server) runBoundedFFprobe(ctx context.Context, path string, showEntries
 		ffprobePath,
 		"-v", "error",
 		"-threads", "1",
+		"-protocol_whitelist", "file,pipe",
 		"-probesize", "32M",
 		"-analyzeduration", "10M",
 		"-show_entries", showEntries,

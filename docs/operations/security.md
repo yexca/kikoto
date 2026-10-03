@@ -246,8 +246,9 @@ trust levels:
   itself is trusted.
 
 The outbound transport accepts only HTTP(S) URLs without embedded credentials.
-Every redirect hop is checked and credentials are removed on an allowed origin
-change. DNS answers are validated as a complete set and the connection is made
+Every redirect hop is checked and credentials remain removed throughout the
+chain after an allowed origin change, including a later return to the original
+origin. DNS answers are validated as a complete set and the connection is made
 to one of those same validated addresses. Built-in public metadata destinations
 reject private and reserved addresses, while administrator-configured source
 origins retain the intentional private-LAN exception.
@@ -267,10 +268,16 @@ forward proxies under `Settings -> Proxy`: an ordered list of up to
 eight `http`, `https`, `socks5`, or `socks5h` proxies with an explicit host and
 port and an optional username and password. **Proxy scope** routes built-in
 DLsite requests, remote-source requests (with per-source direct or proxy
-overrides), and other built-in requests such as the update check. Personal
-Kikoeru account imports never use a proxy: their address comes from the
-signed-in user, and a proxy would resolve it outside the private-address
-checks that bound those requests. A request
+overrides), and other built-in requests such as the update check.
+Destination names are resolved and validated locally, including for `socks5h`.
+HTTP(S) proxies use CONNECT tunnels to a validated numeric address for both
+HTTP and HTTPS destinations; SOCKS proxies also receive a numeric destination.
+The original HTTP Host and HTTPS certificate verification remain intact. A
+proxy must support CONNECT to the required destination ports, and the container
+must be able to resolve source hostnames. A refusing proxy fails closed.
+The proxy's configured private-address exception does not extend to
+source-returned URLs. Personal Kikoeru account imports keep their separate
+direct-only route. A request
 tries its proxies in priority order and moves to the next one only when a
 proxy produced no response, the failure was not a policy rejection, the
 request is still live, and its body can be replayed; a proxy that failed stays
@@ -288,8 +295,8 @@ Docker's `host-gateway`; outside a container it is `127.0.0.1`. Set
 `KIKOTO_HOST_PROXY_HOST` to override that address; the settings API cannot
 change it. With a proxy in use every connection goes to that proxy:
 destination URLs and every redirect hop still must match the request's
-destination policy, but the proxy resolves destination hostnames, so
-destination address checks become the proxy's responsibility. Proxy passwords
+destination policy. Local DNS validation and numeric tunnels preserve the
+destination address boundary even when using a proxy. Proxy passwords
 are stored in the SQLite settings table, are write-only through the settings
 API, and are never returned or included in validation errors.
 
@@ -308,10 +315,19 @@ Do not mount a host root, home directory, Docker socket, or unrelated sensitive
 tree into those locations. Avoid symbolic links that leave the configured data
 or cache roots.
 
-The production image currently runs as the container root user. Limit the
-container's host access through narrow bind mounts and host filesystem
-permissions. The Demo stack additionally drops Linux capabilities, enables
-`no-new-privileges`, and uses a read-only root filesystem.
+The production image runs as the container root user. Production and Demo
+Compose drop Linux capabilities, enable `no-new-privileges`, and use a read-only
+root filesystem. Limit the container's host access through narrow bind mounts
+and host filesystem permissions. See [container isolation](docker.md#container-isolation)
+for the writable runtime mounts.
+
+Media assets only render recognized passive raster images inline. Other files,
+including HTML, SVG, or an HTML file named as an image, are served as downloads
+with `nosniff` and a sandbox CSP. Text previews remain JSON data rendered as
+text by the application. The application shell loads packaged scripts under a
+CSP that blocks inline scripts, frames, and plugins. FFprobe and FFmpeg accept
+only local file and pipe protocols for local media processing, so embedded
+network URLs cannot bypass the shared outbound policy.
 
 ## Logs and Diagnostics
 

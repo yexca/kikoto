@@ -163,7 +163,10 @@ The hardened transport never inherits ambient HTTP proxy variables. A policy
 may instead name one operator-configured forward proxy, optionally with
 credentials; it then dials only that proxy endpoint, with the configured
 private-address exception, while URL, origin, and redirect checks still apply
-to each request and the proxy resolves destination hostnames. The
+to each request. Destination DNS is validated locally, and HTTP(S) CONNECT or
+SOCKS tunnels target the same validated numeric address. Original Host and TLS
+certificate checks are preserved; a configured proxy does not expand a
+destination's private-address permission. The
 `outbound_proxy_config` setting holds an ordered proxy list and routes for the
 DLsite, remote-source, and other scopes, with per-source overrides;
 `internal/proxyconfig` validates it and resolves a scope to proxies. Each

@@ -39,10 +39,15 @@ boundary and include tests for it.
 - Reject redirects by default. When redirects are required, apply the complete
   URL, origin, DNS, and address checks again at every hop.
 - Never forward authorization, cookies, or proxy authorization to a different
-  origin.
+  origin. Once a redirect changes origin, keep them removed for the rest of
+  the chain; the HTTP client may otherwise restore initial headers.
 - When an untrusted hostname is allowed, validate all resolved addresses and
   connect to the same validated address to close DNS-rebinding time-of-check /
   time-of-use gaps.
+- Preserve these checks when a proxy is configured. Resolve locally and send
+  only the validated numeric destination through CONNECT or SOCKS, retaining
+  the original HTTP Host and HTTPS certificate verification. A proxy's private
+  endpoint exception grants no additional destination permission.
 - Bound connection and response time, metadata body size, media destination
   size, concurrency, and retry count. Stream large bodies instead of buffering
   them.
@@ -91,6 +96,12 @@ and row count are bounded. The user table's password hashes are never read.
   write. Add an explicit Demo regression test for every new mutation surface.
 
 ## Filesystem Operations
+
+Serve untrusted library files with an explicit passive inline type or as an
+attachment with `nosniff` and a sandbox CSP. Do not infer safe content from an
+extension or expose HTML/SVG on the authenticated application origin. Media
+subprocesses must restrict their protocol whitelist to `file,pipe` so playlists
+cannot create an unchecked outbound path.
 
 - Resolve paths below the intended root and reject absolute paths, volume
   changes, traversal, and containment failures.

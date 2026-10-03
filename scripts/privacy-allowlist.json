@@ -2,6 +2,26 @@
   "version": 1,
   "endpoints": [
     {
+      "url": "https://tailwindcss.com/docs/compatibility",
+      "files": ["docs/architecture/frontend.md"],
+      "reason": "Official public Tailwind CSS browser compatibility documentation for the frontend build upgrade."
+    },
+    {
+      "url": "http://www.w3.org/2000/svg",
+      "files": ["backend/internal/httpapi/media_asset_security_test.go"],
+      "reason": "Standard SVG XML namespace used in an authored active-file security fixture; it is not fetched."
+    },
+    {
+      "url": "https://opencollective.com/parcel",
+      "files": ["frontend/package-lock.json"],
+      "reason": "Public upstream funding metadata for the Lightning CSS packages resolved by Tailwind's PostCSS integration."
+    },
+    {
+      "url": "https://opencollective.com/webpack",
+      "files": ["frontend/package-lock.json"],
+      "reason": "Public upstream funding metadata for enhanced-resolve, resolved by Tailwind's Node integration."
+    },
+    {
       "url": "https://github.com/yexca/kikoto/security/advisories/new",
       "files": [
         ".github/ISSUE_TEMPLATE/bug_report.yml",

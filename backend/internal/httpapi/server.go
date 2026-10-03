@@ -341,9 +341,9 @@ func (s *Server) Routes() http.Handler {
 		mux, apiFirstResponseBudget, slowFirstResponsePatterns,
 	))
 	if strings.TrimSpace(s.cfg.StaticDir) == "" {
-		return withGzip(apiHandler)
+		return withBrowserSecurityHeaders(withGzip(apiHandler))
 	}
-	return withGzip(s.staticAppHandler(apiHandler))
+	return withBrowserSecurityHeaders(withGzip(s.staticAppHandler(apiHandler)))
 }
 
 const (
@@ -360,7 +360,7 @@ func staticCacheControl(requestPath string) string {
 	switch {
 	case strings.HasPrefix(requestPath, "/assets/"):
 		return staticImmutableCacheControl
-	case requestPath == "/sw.js", requestPath == "/manifest.webmanifest", strings.HasSuffix(requestPath, ".html"):
+	case requestPath == "/sw.js", requestPath == "/theme-bootstrap.js", requestPath == "/manifest.webmanifest", strings.HasSuffix(requestPath, ".html"):
 		return staticRevalidateCacheControl
 	default:
 		return staticDefaultCacheControl
@@ -375,6 +375,7 @@ func (s *Server) staticAppHandler(apiHandler http.Handler) http.Handler {
 			apiHandler.ServeHTTP(w, r)
 			return
 		}
+		w.Header().Set("Content-Security-Policy", appContentSecurityPolicy)
 
 		requestPath := path.Clean("/" + strings.TrimPrefix(r.URL.Path, "/"))
 		relPath := strings.TrimPrefix(requestPath, "/")
