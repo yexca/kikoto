@@ -1,17 +1,10 @@
 import type { WorkflowRun } from "@/lib/api";
+import { parseServerTimestamp } from "@/lib/serverTimestamp";
 
 export type RunTone = "info" | "success" | "warning" | "error" | "neutral";
 
-const zonelessTimestamp = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)$/;
-
 /** Workflow timestamps are stored as UTC; SQLite values arrive without a zone designator. */
-export function parseWorkflowTimestamp(value: string | null | undefined): Date | null {
-  const trimmed = value?.trim();
-  if (!trimmed) return null;
-  const zoneless = zonelessTimestamp.exec(trimmed);
-  const date = new Date(zoneless ? `${zoneless[1]}T${zoneless[2]}Z` : trimmed);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
+export const parseWorkflowTimestamp = parseServerTimestamp;
 
 export function isActiveRunStatus(status: string) {
   return status === "queued" || status === "running";

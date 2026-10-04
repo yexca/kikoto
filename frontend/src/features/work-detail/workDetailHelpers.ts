@@ -3,6 +3,7 @@ import type { SourceTabInfo } from "@/features/work-detail/source/sourceContextM
 import type { TreeStats } from "@/features/work-detail/media/mediaTreeModel";
 import type { ListeningStatus, MediaItem, RemoteWorkDetail, SourcePresenceItem, WorkDetail } from "@/lib/api";
 import { openLibraryTagSearch, type LibraryTagSearchKind } from "@/lib/libraryTagSearch";
+import { parseServerTimestamp } from "@/lib/serverTimestamp";
 import i18n from "@/i18n";
 import type { TFunction } from "i18next";
 
@@ -67,9 +68,7 @@ export function workHasNoSource(work: {
 }
 
 export function formatDateTime(value: string) {
-  const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) return value;
-  return new Date(timestamp).toLocaleString();
+  return parseServerTimestamp(value)?.toLocaleString() ?? value;
 }
 
 const languageLabels: Record<string, string> = {

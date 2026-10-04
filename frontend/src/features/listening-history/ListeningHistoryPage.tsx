@@ -18,6 +18,7 @@ import {
   type ListeningStatistics,
   type ListeningStatisticsRange,
 } from "@/lib/listeningApi";
+import { parseServerTimestamp } from "@/lib/serverTimestamp";
 
 import { ListeningActivityChart } from "./ListeningActivityChart";
 import { LISTENING_HISTORY_PAGE_SIZE, LISTENING_REPORT_RANGES, listeningDurationParts } from "./listeningHistoryModel";
@@ -135,8 +136,8 @@ export function ListeningHistoryPage({
   const topWorks = stats?.topWorks.slice(0, TOP_WORK_COUNT) ?? [];
   const historyCardDetail = (listenedSeconds: number, lastPlayedAt: string) => {
     const duration = formatDuration(listenedSeconds);
-    const lastPlayed = new Date(lastPlayedAt);
-    if (Number.isNaN(lastPlayed.getTime())) return duration;
+    const lastPlayed = parseServerTimestamp(lastPlayedAt);
+    if (!lastPlayed) return duration;
     const date = dateTimeFormat(resolvedLocale, { month: "short", day: "numeric" }).format(lastPlayed);
     return t("personal.history.cardDetail", { duration, date });
   };
