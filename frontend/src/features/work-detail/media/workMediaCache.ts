@@ -1,3 +1,4 @@
+import { PLAYBACK_CURSOR_UPDATED_EVENT, type PlaybackCursorUpdatedDetail } from "@/lib/appEvents";
 import type { MediaItem } from "@/lib/api";
 import { currentClientStorageScope, type ClientPrincipalID } from "@/lib/clientStorageScope";
 
@@ -25,6 +26,7 @@ export function getCachedWorkMedia(workId: number, principalID: ClientPrincipalI
 }
 
 export function setCachedWorkMedia(workId: number, principalID: ClientPrincipalID, mediaItems: MediaItem[]) {
+  listenForProgressUpdates();
   const key = workMediaCacheKey(workId, principalID);
   workMediaCache.delete(key);
   if (mediaItems.length === 0) return;
@@ -34,6 +36,49 @@ export function setCachedWorkMedia(workId: number, principalID: ClientPrincipalI
 
 export function invalidateCachedWorkMedia(workId: number, principalID: ClientPrincipalID) {
   workMediaCache.delete(workMediaCacheKey(workId, principalID));
+}
+
+/**
+ * Moves the work's resume cursor in the cached media of the account that saved
+ * it, as the server does, so a detail reopened from the cache marks the track
+ * playback actually stopped on.
+ */
+export function applyCachedWorkMediaProgress(update: PlaybackCursorUpdatedDetail) {
+  if (update.mediaItemId <= 0) return;
+  const progress = {
+    positionSeconds: update.positionSeconds,
+    durationSeconds: update.durationSeconds,
+    completed: update.completed,
+    lastPlayedAt: update.lastPlayedAt,
+  };
+  for (const workId of new Set([update.workId, update.mediaWorkId])) {
+    const entry = workMediaCache.get(workMediaCacheKey(workId, update.principalID));
+    if (!entry) continue;
+    let changed = false;
+    const mediaItems = entry.mediaItems.map((item) => {
+      if (item.id === update.mediaItemId) {
+        changed = true;
+        return { ...item, progress };
+      }
+      if (!item.progress) return item;
+      changed = true;
+      return { ...item, progress: null };
+    });
+    if (changed) entry.mediaItems = mediaItems;
+  }
+}
+
+let listeningForProgressUpdates = false;
+
+// Playback continues while no detail is open, so the cache follows saves itself
+// once it holds anything to update.
+function listenForProgressUpdates() {
+  if (listeningForProgressUpdates || typeof window === "undefined") return;
+  listeningForProgressUpdates = true;
+  window.addEventListener(PLAYBACK_CURSOR_UPDATED_EVENT, (event) => {
+    const update = (event as CustomEvent<PlaybackCursorUpdatedDetail>).detail;
+    if (update) applyCachedWorkMediaProgress(update);
+  });
 }
 
 function workMediaCacheKey(workId: number, principalID: ClientPrincipalID) {

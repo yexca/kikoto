@@ -3,8 +3,10 @@ import {
   work,
   playerQueueStorageBaseKey,
   mockApplication,
+  persistedTrack,
   readScopedPlayerState,
   mediaFixture,
+  seedPlayer,
 } from "./fixtures/player-library";
 import type { MaintenanceWorkPage, Work, WorkTranslation } from "../../src/lib/api";
 import { mediaItemFixture, mediaLocationFixture, workflowRunDetailFixture, workflowRunFixture } from "./fixtures/api";
@@ -106,11 +108,11 @@ test("directory rows wrap long unbroken file names without horizontal overflow",
   ).toEqual({ fits: true, whiteSpace: "normal" });
   const audioRow = page.getByTestId("directory-file-row").filter({ hasText: longTitle });
   const imageRow = page.getByTestId("directory-file-row").filter({ hasText: imageTitle });
-  await expect(audioRow.getByText("Audio · 0:10 · 12 B", { exact: true })).toBeVisible();
-  await expect(imageRow.getByText("Image · 2.0 KB", { exact: true })).toBeVisible();
+  await expect(audioRow.getByText("0:10", { exact: true })).toBeVisible();
+  await expect(imageRow.getByText("2.0 KB", { exact: true })).toBeVisible();
   const [audioTitleBox, audioMetaBox] = await Promise.all([
     fileName.boundingBox(),
-    audioRow.getByText("Audio · 0:10 · 12 B", { exact: true }).boundingBox(),
+    audioRow.getByText("12 B", { exact: true }).boundingBox(),
   ]);
   expect(audioTitleBox).not.toBeNull();
   expect(audioMetaBox).not.toBeNull();
@@ -153,8 +155,13 @@ test("directory folds matched lyrics into the audio row while preserving text pr
   await expect.poll(() => preferenceRequest).toEqual({ method: "PUT", audioMediaItemId: 1, lyricsMediaItemId: 9 });
 
   await lyricsDialog.getByRole("button", { name: "Preview" }).click();
-  await expect(page.getByText("First line", { exact: false })).toBeVisible();
-  await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
+  const lyricsViewer = page.getByRole("dialog", { name: "01.lrc" });
+  // Timed lyrics open as time-stamped lines, with the file text one toggle away.
+  await expect(lyricsViewer.getByText("0:05", { exact: true })).toBeVisible();
+  await expect(lyricsViewer.getByText("Second line", { exact: true })).toBeVisible();
+  await lyricsViewer.getByRole("button", { name: "Raw text" }).click();
+  await expect(lyricsViewer.getByText("[00:05.00]Second line", { exact: false })).toBeVisible();
+  await lyricsViewer.getByRole("button", { name: "Close", exact: true }).click();
 
   await audioRow.click();
   await expect
@@ -194,6 +201,75 @@ test("directory folds matched lyrics into the audio row while preserving text pr
   await expect(page.getByText("Synthetic notes", { exact: true })).toBeVisible();
 });
 
+const imageFixture = (id: number, title: string, folder = "Images") =>
+  mediaItemFixture({
+    id,
+    kind: "image",
+    title,
+    sizeBytes: 2048,
+    locations: [mediaLocationFixture({ id, path: `RJ00000000/${folder}/${title}`, sizeBytes: 2048 })],
+  });
+
+test("image viewer steps through the folder's images and confirms a cover change", async ({ page }) => {
+  const mediaItems = [
+    mediaFixture(1, "01.mp3", "RJ00000000/Main/01.mp3", "audio"),
+    imageFixture(2, "cover.jpg"),
+    imageFixture(3, "variant.png"),
+  ];
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, { authenticated: true });
+  const coverOverrides: unknown[] = [];
+  await page.route("**/api/works/*/cover-override", (route) => {
+    coverOverrides.push(route.request().postDataJSON());
+    return route.fulfill({ json: {} });
+  });
+  await page.goto("/RJ00000000");
+  await page.getByRole("button", { name: "Show folders" }).click();
+  await page
+    .getByRole("dialog", { name: "Folders" })
+    .getByRole("button", { name: /^Images/ })
+    .click();
+  await page.getByTestId("directory-file-row").filter({ hasText: "cover.jpg" }).click();
+
+  const viewer = page.getByRole("dialog", { name: "cover.jpg" });
+  await expect(viewer.getByText("1 / 2", { exact: true })).toBeVisible();
+  await page.keyboard.press("ArrowRight");
+  const nextViewer = page.getByRole("dialog", { name: "variant.png" });
+  await expect(nextViewer.getByText("2 / 2", { exact: true })).toBeVisible();
+  await nextViewer.getByRole("button", { name: "cover.jpg", exact: true }).click();
+  const coverViewer = page.getByRole("dialog", { name: "cover.jpg" });
+
+  // Replacing the cover takes a second click, and stepping away withdraws the first.
+  await coverViewer.getByRole("button", { name: "Set cover", exact: true }).click();
+  await expect(coverViewer.getByRole("button", { name: "Confirm cover", exact: true })).toBeVisible();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowLeft");
+  await coverViewer.getByRole("button", { name: "Set cover", exact: true }).click();
+  expect(coverOverrides).toEqual([]);
+  await coverViewer.getByRole("button", { name: "Confirm cover", exact: true }).click();
+  await expect.poll(() => coverOverrides).toEqual([{ locationId: 2 }]);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("@desktop file viewer opens above the floating full player", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const mediaItems = [mediaFixture(1, "track.mp3", "RJ00000000/track.mp3", "audio"), imageFixture(2, "cover.jpg", "")];
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, { authenticated: true });
+  await seedPlayer(page, persistedTrack, 1);
+  await page.goto("/RJ00000000");
+
+  const fullPlayer = page.locator('[data-player-surface="full"]');
+  await expect(fullPlayer).toBeVisible();
+  await page.getByTestId("directory-file-row").filter({ hasText: "cover.jpg" }).click();
+  await expect(page.getByRole("dialog", { name: "cover.jpg" })).toBeVisible();
+  const box = await fullPlayer.boundingBox();
+  expect(box).not.toBeNull();
+  const viewerOnTop = await page.evaluate(
+    ({ x, y }) => Boolean(document.elementFromPoint(x, y)?.closest("[role='dialog']")),
+    { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 },
+  );
+  expect(viewerOnTop).toBe(true);
+});
+
 test("mobile directory breadcrumbs collapse long ancestors without losing navigation", async ({ page }) => {
   const first = "First folder with a deliberately long descriptive name";
   const second = "Second folder with another deliberately long descriptive name";
@@ -227,6 +303,64 @@ test("mobile directory breadcrumbs collapse long ancestors without losing naviga
   await expect(parentMenu.getByRole("menuitem", { name: first, exact: true })).toBeVisible();
   await parentMenu.getByRole("menuitem", { name: second, exact: true }).click();
   await expect(page.getByTestId("directory-breadcrumb-current")).toHaveAttribute("title", second);
+});
+
+const folderNavigatorMedia = () => [
+  mediaFixture(1, "01.mp3", "RJ00000000/Main/With SE/01.mp3", "audio"),
+  mediaFixture(2, "02.mp3", "RJ00000000/Main/With SE/02.mp3", "audio"),
+  mediaFixture(3, "01.mp3", "RJ00000000/Main/Without SE/01.mp3", "audio"),
+  mediaFixture(4, "bonus.mp3", "RJ00000000/Bonus/bonus.mp3", "audio"),
+  mediaFixture(5, "notes.txt", "RJ00000000/notes.txt", "text"),
+];
+
+test("mobile folder sheet switches folders and returns to the recommended folder", async ({ page }) => {
+  await mockApplication(page, undefined, false, 1, 0, folderNavigatorMedia(), undefined, { authenticated: true });
+  await page.goto("/");
+  await page.getByText("Tagged mobile work", { exact: true }).click();
+
+  const currentFolder = page.getByTestId("directory-breadcrumb-current");
+  await expect(currentFolder).toHaveText("With SE");
+  await expect(page.getByText("Recommended", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Show folders" }).click();
+  const sheet = page.getByRole("dialog", { name: "Folders" });
+  await expect(sheet.getByRole("button", { name: /^With SE/ })).toHaveAttribute("aria-current", "location");
+  await sheet.getByRole("button", { name: /^Bonus/ }).click();
+  await expect(sheet).toBeHidden();
+  await expect(currentFolder).toHaveText("Bonus");
+  await expect(page.getByText("bonus.mp3", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Go to recommended folder" }).click();
+  await expect(currentFolder).toHaveText("With SE");
+});
+
+test("@desktop folder rail navigates the work and marks the resume track", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const mediaItems = folderNavigatorMedia();
+  mediaItems[1] = {
+    ...mediaItems[1],
+    progress: { positionSeconds: 6, durationSeconds: 10, completed: false, lastPlayedAt: "2026-01-01 00:00:00" },
+  };
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, { authenticated: true });
+  await page.goto("/RJ00000000");
+
+  const rail = page.getByRole("navigation", { name: "Folders" });
+  await expect(rail.getByRole("button", { name: /^With SE/ })).toHaveAttribute("aria-current", "location");
+  const resumeRow = page.getByTestId("directory-file-row").filter({ hasText: "02.mp3" });
+  await expect(resumeRow.getByText("0:04 left", { exact: true })).toBeVisible();
+
+  await rail.getByRole("button", { name: "Collapse Main" }).click();
+  await expect(rail.getByRole("button", { name: /^With SE/ })).toHaveCount(0);
+
+  await rail.getByRole("button", { name: "Work root", exact: true }).click();
+  await expect(page.getByText("notes.txt", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Play Bonus", exact: true }).click();
+  await expect
+    .poll(async () => {
+      const state = await readScopedPlayerState(page, playerQueueStorageBaseKey, 1);
+      return state?.queue?.map((track: { mediaItemId: number }) => track.mediaItemId);
+    })
+    .toEqual([4]);
 });
 
 test("work detail summarizes DLsite stats in the hero and groups active source information", async ({ page }) => {

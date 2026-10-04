@@ -7,7 +7,12 @@ const currentClientStorageScope = vi.hoisted(() =>
 vi.mock("@/lib/clientStorageScope", () => ({ currentClientStorageScope }));
 
 import type { MediaItem } from "@/lib/api";
-import { getCachedWorkMedia, invalidateCachedWorkMedia, setCachedWorkMedia } from "./workMediaCache";
+import {
+  applyCachedWorkMediaProgress,
+  getCachedWorkMedia,
+  invalidateCachedWorkMedia,
+  setCachedWorkMedia,
+} from "./workMediaCache";
 
 function mediaItems(count = 1) {
   return Array.from({ length: count }, () => ({}) as MediaItem);
@@ -57,6 +62,30 @@ describe("work media cache", () => {
     expect(getCachedWorkMedia(0, 103)).not.toBeNull();
     expect(getCachedWorkMedia(1, 103)).toBeNull();
     expect(getCachedWorkMedia(20, 103)).not.toBeNull();
+  });
+
+  it("moves the cached resume cursor only for the account that saved it", () => {
+    const loaded = { positionSeconds: 120, durationSeconds: 600, completed: false, lastPlayedAt: null };
+    const media = (ids: number[]) => ids.map((id) => ({ id, progress: id === 1 ? loaded : null }) as MediaItem);
+    setCachedWorkMedia(5, 105, media([1, 2]));
+    setCachedWorkMedia(5, 106, media([1, 2]));
+
+    applyCachedWorkMediaProgress({
+      workId: 5,
+      mediaWorkId: 5,
+      mediaItemId: 2,
+      fileSourceId: 1,
+      locationId: 2,
+      locationType: "local",
+      positionSeconds: 30,
+      durationSeconds: 600,
+      completed: false,
+      lastPlayedAt: "2026-01-01 00:00:00",
+      principalID: 105,
+    });
+
+    expect(getCachedWorkMedia(5, 105)?.map((item) => item.progress?.positionSeconds ?? null)).toEqual([null, 30]);
+    expect(getCachedWorkMedia(5, 106)?.map((item) => item.progress?.positionSeconds ?? null)).toEqual([120, null]);
   });
 
   it("drops an entry that alone exceeds the media item budget", () => {

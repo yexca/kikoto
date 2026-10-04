@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { api, assetURL } from "@/lib/api";
+import { activeTimedLyricIndex, parseTimedLyrics, type TimedLyricLine } from "@/lib/timedLyrics";
 import type { LyricsChoice } from "@/player/lyricsMatching";
 import { preferredLyricsMediaItemID, usePlayerTime } from "@/player/PlayerProvider";
 import type { LyricsPreferenceTarget, PlayerTrack } from "@/player/playerTypes";
-
-import { activeTimedLyricIndex, parseTimedLyrics, type TimedLyricLine } from "./timedLyrics";
 
 const MAX_LYRICS_BYTES = 512 * 1024;
 

@@ -26,6 +26,7 @@ import { useToast } from "@/components/ui/toast";
 import { assetURL } from "@/lib/api";
 import { historyStateWithReturn, NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { cn } from "@/lib/tailwindClassNames";
+import type { TimedLyricLine } from "@/lib/timedLyrics";
 import { usePlayerTime, type usePlayer } from "@/player/PlayerProvider";
 import type { useScreenLyrics } from "@/player/screenLyrics";
 import type { DockMode, PlayerTrack } from "@/player/playerTypes";
@@ -36,7 +37,6 @@ import { CoverImage, GlyphButton, PlayPauseGlyph, SeekBar, SeekIcon } from "./pl
 import { LyricsLoadingSkeleton, LyricsPanel } from "./PlayerLyricsPanel";
 import { locationLabel, MoreOptionsMenu, SleepRemaining, SleepTimerMenu, SourceMenu } from "./PlayerMenus";
 import { PlayerQueuePanel } from "./PlayerQueuePanel";
-import type { TimedLyricLine } from "./timedLyrics";
 import { useActiveLyricIndex, type PlayerLyricsState } from "./usePlayerLyrics";
 
 type PlayerSidePanel = "lyrics" | "queue";
@@ -201,11 +201,12 @@ export function FullPlayer({
     <div className="p-5 text-sm text-muted-foreground">{t("player.noLyrics")}</div>
   );
 
+  // Phones cover the page; the desktop panel floats with the compact dock, below dialogs.
   return (
     <section
       data-player-surface="full"
       aria-label={t("player.nowPlaying")}
-      className="fixed inset-0 z-50 h-[100dvh] animate-player-enter overflow-hidden bg-background text-foreground transition-[transform,opacity] duration-200 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:h-[min(640px,calc(100dvh-3rem))] lg:w-[400px] lg:rounded-[var(--player-radius-panel)] lg:bg-card/85 lg:shadow-2xl lg:ring-1 lg:ring-foreground/[0.08] lg:backdrop-blur-2xl dark:lg:bg-card/80"
+      className="fixed inset-0 z-50 h-[100dvh] animate-player-enter overflow-hidden lg:z-40 bg-background text-foreground transition-[transform,opacity] duration-200 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:h-[min(640px,calc(100dvh-3rem))] lg:w-[400px] lg:rounded-[var(--player-radius-panel)] lg:bg-card/85 lg:shadow-2xl lg:ring-1 lg:ring-foreground/[0.08] lg:backdrop-blur-2xl dark:lg:bg-card/80"
       style={
         isMobile && dragOffset > 0
           ? { transform: `translateY(${dragOffset}px)`, opacity: Math.max(0.55, 1 - dragOffset / 500) }

@@ -3,9 +3,8 @@ import { useTranslation } from "react-i18next";
 
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { cn } from "@/lib/tailwindClassNames";
+import type { ParsedLyrics } from "@/lib/timedLyrics";
 import { lyricsChoiceDisplayLabel, type LyricsChoice } from "@/player/lyricsMatching";
-
-import type { ParsedLyrics } from "./timedLyrics";
 
 export function LyricsLoadingSkeleton() {
   const { t } = useTranslation();

@@ -52,8 +52,8 @@ function MetadataEditorCoverSection({
     <>
       {manualCover?.url && (
         <div className="flex items-center gap-3 rounded-md border bg-background p-2">
-          <img src={assetURL(manualCover.url)} alt="" className="h-16 w-16 rounded object-contain" />
-          <div className="min-w-0 text-xs text-muted-foreground">
+          <img src={assetURL(manualCover.url)} alt="" className="h-16 w-16 shrink-0 rounded object-contain" />
+          <div className="min-w-0 flex-1 text-xs text-muted-foreground">
             <div className="truncate text-foreground">{manualCover.assetPath}</div>
             {manualCover.originalPath && <div className="truncate">{manualCover.originalPath}</div>}
           </div>
@@ -72,7 +72,8 @@ function MetadataEditorCoverSection({
           {coverCandidates.map((candidate) => (
             <button
               key={candidate.locationId}
-              className={`flex items-center gap-3 rounded-md border bg-background p-2 text-left hover:border-primary ${selectedCoverId === candidate.locationId ? "border-primary ring-1 ring-primary" : ""}`}
+              className={`flex w-full min-w-0 items-center gap-3 rounded-md border bg-background p-2 text-left hover:border-primary ${selectedCoverId === candidate.locationId ? "border-primary ring-1 ring-primary" : ""}`}
+              title={candidate.path}
               onClick={() => onSelectCover(candidate.locationId)}
             >
               <img
@@ -86,7 +87,7 @@ function MetadataEditorCoverSection({
                 <span className="block truncate text-muted-foreground">{candidate.path}</span>
                 <span className="block text-muted-foreground">{formatBytes(candidate.sizeBytes)}</span>
               </span>
-              {selectedCoverId === candidate.locationId && <Check className="h-4 w-4 text-primary" />}
+              {selectedCoverId === candidate.locationId && <Check className="h-4 w-4 shrink-0 text-primary" />}
             </button>
           ))}
         </div>
@@ -664,7 +665,7 @@ function SuggestionList({
           onClick={item.onSelect}
         >
           <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
-          {item.detail && <span className="shrink-0 truncate text-muted-foreground">{item.detail}</span>}
+          {item.detail && <span className="min-w-0 max-w-[45%] truncate text-muted-foreground">{item.detail}</span>}
         </button>
       ))}
       {truncated && (
