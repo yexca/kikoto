@@ -558,6 +558,8 @@ export const zhHansResource = {
         expandSidebar: "展开侧边栏",
         collapseSidebar: "收起侧边栏",
         collapse: "收起",
+        showTabNames: "展开标签页名称",
+        hideTabNames: "收起标签页名称",
         thisPage: "此页面",
         workflowSubmitting: "工作流请求仍在提交中。",
         pressBackAgain: "再次按返回键退出 Kikoto。",

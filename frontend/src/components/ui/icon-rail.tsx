@@ -2,7 +2,9 @@ import type { LucideIcon } from "lucide-react";
 import { Fragment, useEffect, useId, useRef } from "react";
 
 import { Button } from "@/components/ui/button";
+import { RailLabelsToggle, useRailLabelsShown } from "@/components/ui/rail-labels";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
+import { cx } from "@/lib/classNames";
 
 export type IconRailItem<T extends string> = {
   value: T;
@@ -24,19 +26,27 @@ export type IconRailItem<T extends string> = {
  * above it with only the active item labelled. Every item keeps its label as
  * the accessible name and tooltip. Arrow keys move and select, as in the
  * other tab strips, and a scrolled compact row keeps the active item in view.
+ * A toggle below the wide rail shows every label beside its icon; the choice
+ * is remembered separately for each rail.
  */
 export function IconRail<T extends string>({
   label,
+  labelsStorageKey,
   items,
   selected,
   onSelect,
 }: {
   label: string;
+  /** Local storage key that remembers whether this rail names its items. */
+  labelsStorageKey: string;
   items: IconRailItem<T>[];
   selected: T | null;
   onSelect: (value: T) => void;
 }) {
   const mobile = useMobileNavigationLayout();
+  const [labelsShown, toggleLabels] = useRailLabelsShown(labelsStorageKey, false);
+  // Only the wide rail expands; the compact row keeps naming just the active item.
+  const expanded = labelsShown && !mobile;
   const listRef = useRef<HTMLDivElement>(null);
   const descriptionIdBase = useId();
   const descriptions = [...new Set(items.flatMap((item) => (item.description ? [item.description] : [])))];
@@ -55,75 +65,94 @@ export function IconRail<T extends string>({
   }, [selected, mobile]);
 
   return (
-    <div
-      ref={listRef}
-      role="tablist"
-      aria-label={label}
-      aria-orientation={mobile ? "horizontal" : "vertical"}
-      // relative contains the visually hidden descriptions, which would otherwise widen a scrolled mobile page.
-      className="app-scrollbar relative flex min-w-0 shrink-0 gap-1 overflow-x-auto lg:sticky lg:top-20 lg:flex-col lg:self-start lg:overflow-visible lg:border-r lg:pr-2"
-    >
-      {descriptions.map((description) => (
-        <span key={description} id={descriptionId(description)} className="sr-only">
-          {description}
-        </span>
-      ))}
-      {items.map((item, index) => {
-        const Icon = item.icon;
-        const active = selected === item.value;
-        return (
-          <Fragment key={item.value}>
-            {item.separated && (
-              <span
-                aria-hidden="true"
-                className="mx-1 my-2 w-px shrink-0 bg-border lg:mx-2 lg:my-1 lg:h-px lg:w-auto"
-              />
-            )}
-            <Button
-              id={item.id}
-              role="tab"
-              aria-selected={active}
-              aria-controls={item.controls}
-              aria-describedby={item.description ? descriptionId(item.description) : undefined}
-              tabIndex={active ? 0 : -1}
-              title={item.label}
-              variant="ghost"
-              className={`relative h-10 min-w-11 shrink-0 justify-center gap-2 px-3 lg:h-11 lg:w-11 lg:px-0 ${
-                active ? "bg-primary/10 text-foreground [&>svg]:text-primary" : "text-muted-foreground"
-              }`}
-              onClick={() => onSelect(item.value)}
-              onKeyDown={(event) => {
-                const previous = event.key === "ArrowUp" || event.key === "ArrowLeft";
-                const next = event.key === "ArrowDown" || event.key === "ArrowRight";
-                const target = next
-                  ? (index + 1) % items.length
-                  : previous
-                    ? (index - 1 + items.length) % items.length
-                    : event.key === "Home"
-                      ? 0
-                      : event.key === "End"
-                        ? items.length - 1
-                        : -1;
-                if (target < 0) return;
-                event.preventDefault();
-                onSelect(items[target].value);
-                const tabs = listRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]');
-                tabs?.[target]?.focus({ preventScroll: true });
-              }}
-            >
-              {active && (
+    <div className="min-w-0 shrink-0 lg:sticky lg:top-20 lg:flex lg:flex-col lg:gap-1 lg:self-start lg:border-r lg:pr-2">
+      <div
+        ref={listRef}
+        role="tablist"
+        aria-label={label}
+        aria-orientation={mobile ? "horizontal" : "vertical"}
+        // relative contains the visually hidden descriptions, which would otherwise widen a scrolled mobile page.
+        className="app-scrollbar relative flex min-w-0 gap-1 overflow-x-auto lg:flex-col lg:overflow-visible"
+      >
+        {descriptions.map((description) => (
+          <span key={description} id={descriptionId(description)} className="sr-only">
+            {description}
+          </span>
+        ))}
+        {items.map((item, index) => {
+          const Icon = item.icon;
+          const active = selected === item.value;
+          return (
+            <Fragment key={item.value}>
+              {item.separated && (
                 <span
                   aria-hidden="true"
-                  className="absolute inset-x-2 bottom-0 h-[3px] rounded-full bg-primary lg:inset-x-auto lg:inset-y-2 lg:left-0 lg:h-auto lg:w-[3px]"
+                  className="mx-1 my-2 w-px shrink-0 bg-border lg:mx-2 lg:my-1 lg:h-px lg:w-auto"
                 />
               )}
-              <Icon className="h-5 w-5" />
-              {/* Compact layouts name only the active item; the rest keep an accessible name and tooltip. */}
-              <span className={`whitespace-nowrap text-sm lg:sr-only ${active ? "" : "sr-only"}`}>{item.label}</span>
-            </Button>
-          </Fragment>
-        );
-      })}
+              <Button
+                id={item.id}
+                role="tab"
+                aria-selected={active}
+                aria-controls={item.controls}
+                aria-describedby={item.description ? descriptionId(item.description) : undefined}
+                tabIndex={active ? 0 : -1}
+                title={expanded ? undefined : item.label}
+                variant="ghost"
+                className={cx(
+                  "relative h-10 min-w-11 shrink-0 gap-2 px-3 lg:h-11",
+                  expanded ? "w-full justify-start font-normal" : "justify-center lg:w-11 lg:px-0",
+                  active ? "bg-primary/10 text-foreground [&>svg]:text-primary" : "text-muted-foreground",
+                )}
+                onClick={() => onSelect(item.value)}
+                onKeyDown={(event) => {
+                  const previous = event.key === "ArrowUp" || event.key === "ArrowLeft";
+                  const next = event.key === "ArrowDown" || event.key === "ArrowRight";
+                  const target = next
+                    ? (index + 1) % items.length
+                    : previous
+                      ? (index - 1 + items.length) % items.length
+                      : event.key === "Home"
+                        ? 0
+                        : event.key === "End"
+                          ? items.length - 1
+                          : -1;
+                  if (target < 0) return;
+                  event.preventDefault();
+                  onSelect(items[target].value);
+                  const tabs = listRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+                  tabs?.[target]?.focus({ preventScroll: true });
+                }}
+              >
+                {active && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-x-2 bottom-0 h-[3px] rounded-full bg-primary lg:inset-x-auto lg:inset-y-2 lg:left-0 lg:h-auto lg:w-[3px]"
+                  />
+                )}
+                <Icon className="h-5 w-5" />
+                {/* Compact layouts name only the active item; the rest keep an accessible name and tooltip. */}
+                <span
+                  className={cx(
+                    "whitespace-nowrap text-sm",
+                    !expanded && "lg:sr-only",
+                    !expanded && !active && "sr-only",
+                    expanded && active && "font-medium",
+                  )}
+                >
+                  {item.label}
+                </span>
+              </Button>
+            </Fragment>
+          );
+        })}
+      </div>
+      {!mobile && (
+        <>
+          <span aria-hidden="true" className="mx-2 my-1 h-px bg-border" />
+          <RailLabelsToggle expanded={expanded} onToggle={toggleLabels} />
+        </>
+      )}
     </div>
   );
 }

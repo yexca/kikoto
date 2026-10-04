@@ -149,7 +149,9 @@ viewer read LRC, WebVTT, and SRT files the same way.
   Administration accessible description. Wide layouts show a sticky vertical
   rail of icons; compact layouts show one scrollable row of icons with only the
   active tab labelled, and keep the active tab in view. Every tab keeps its
-  label as the accessible name and tooltip. Section headings are plain text,
+  label as the accessible name and tooltip. A toggle below the wide rail shows
+  every label beside its icon; Settings, Metadata, and the Workflows list each
+  store their own choice locally. Section headings are plain text,
   and a switch or number field stays beside its label even on a phone.
   Listening history shows a 30-day, 12-month, or all-time report of totals,
   activity, and most listened works as cover cards, with the full per-work
