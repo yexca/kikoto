@@ -98,6 +98,7 @@ test("@smoke opens About without an update icon when current", async ({ page }) 
   await page.goto("/about");
 
   await expect(page.getByRole("heading", { name: "About", exact: true })).toBeVisible();
-  await expect(page.getByText(new RegExp(`About Kikoto.*${appVersion.replaceAll(".", "\\.")}`))).toBeVisible();
-  await expect(page.getByLabel(/Update available/)).toHaveCount(0);
+  const identity = page.getByRole("region", { name: "About Kikoto", exact: true });
+  await expect(identity.getByText(appVersion, { exact: true })).toBeVisible();
+  await expect(identity.getByRole("link", { name: /Update available/ })).toHaveCount(0);
 });
