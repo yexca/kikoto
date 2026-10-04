@@ -1,4 +1,5 @@
 import {
+  AudioLines,
   BookmarkPlus,
   Check,
   CheckCircle2,
@@ -11,7 +12,6 @@ import {
   MicVocal,
   PauseCircle,
   Repeat2,
-  ShoppingBag,
   Star,
   X,
 } from "lucide-react";
@@ -19,7 +19,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
-import { Badge } from "@/components/ui/badge";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -148,6 +147,7 @@ export function WorkCardShell({
         regularPrice={work.regularPrice ?? null}
         price={work.price ?? null}
         priceCurrency={work.priceCurrency}
+        sourceBadges={work.sourceBadges}
         selection={selection}
         recommended={work.recommended}
         recommendationScore={work.recommendationScore}
@@ -165,13 +165,16 @@ export function WorkCardShell({
 
   return (
     <Card
-      className="group h-full transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg focus-within:border-primary/40 motion-reduce:hover:translate-y-0"
+      className="group h-full transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus-within:border-primary/40 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
       data-testid="work-card"
     >
-      <CardContent className="flex h-full flex-col p-0">
+      <CardContent className="flex h-full flex-col rounded-[inherit] p-0">
         {onOpen ? (
           <div
-            className={`flex flex-1 flex-col text-left ${canOpen ? "cursor-pointer" : "cursor-default"}`}
+            className={cn(
+              "flex flex-1 flex-col rounded-t-[inherit] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+              canOpen ? "cursor-pointer" : "cursor-default",
+            )}
             role={canOpen ? "button" : undefined}
             tabIndex={canOpen ? 0 : undefined}
             onClick={canOpen ? onOpen : undefined}
@@ -204,6 +207,7 @@ export function WorkCardMedia({
   regularPrice,
   price,
   priceCurrency,
+  sourceBadges = [],
   selection,
   recommended = false,
   recommendationScore,
@@ -214,6 +218,7 @@ export function WorkCardMedia({
   regularPrice: number | null;
   price: number | null;
   priceCurrency?: string;
+  sourceBadges?: WorkCardBadge[];
   selection?: ReactNode;
   recommended?: boolean;
   recommendationScore?: number;
@@ -222,66 +227,127 @@ export function WorkCardMedia({
   const { t } = useTranslation();
   const { resolvedLocale } = useLocale();
   const codeText = code || t("workCard.source");
+  const discountedFrom =
+    price !== null && price > 0 && regularPrice !== null && regularPrice > price ? regularPrice : null;
+  const recommendationContent = (
+    <>
+      <Star className="h-3.5 w-3.5 fill-primary text-primary" aria-hidden="true" />
+      {Number.isFinite(recommendationScore) && <span>{recommendationScore}</span>}
+    </>
+  );
   return (
-    <div className="relative aspect-[4/3] overflow-hidden rounded-t-[calc(var(--radius)-1px)] bg-muted">
-      {selection}
-      {coverUrl ? (
-        <img
-          src={assetURL(coverUrl)}
-          alt=""
-          className="h-full w-full object-contain transition-transform duration-300 ease-out group-hover:scale-[1.03] motion-reduce:group-hover:scale-100"
-          loading="lazy"
-          decoding="async"
-        />
-      ) : (
-        <div className="grid h-full place-items-center bg-secondary text-2xl font-bold text-secondary-foreground">
-          {codeText.slice(0, 2)}
-        </div>
-      )}
-      <div className="absolute left-2.5 top-2.5 rounded-[var(--badge-radius)] bg-background/85 px-2 py-0.5 text-xs font-semibold tabular-nums shadow-sm ring-1 ring-foreground/5 backdrop-blur-sm">
-        {codeText}
-      </div>
-      {recommended &&
-        (onRecommendationOpen ? (
-          <button
-            type="button"
-            className="absolute right-2.5 top-2.5 inline-flex h-7 items-center gap-1 rounded-[var(--badge-radius)] bg-primary px-2 text-xs font-semibold tabular-nums text-primary-foreground shadow-md"
-            title={t("workCard.explainRecommendationScore")}
-            aria-label={`${t("workCard.explainRecommendationScore")} ${recommendationScore ?? 0}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              onRecommendationOpen();
-            }}
-          >
-            <Star className="h-3.5 w-3.5 fill-current" />
-            {Number.isFinite(recommendationScore) && <span>{recommendationScore}</span>}
-          </button>
+    <div className="p-1.5 pb-0">
+      <div className="relative aspect-[4/3] overflow-hidden rounded-[calc(var(--radius)-4px)] bg-muted after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-1 after:ring-inset after:ring-foreground/5">
+        {coverUrl ? (
+          <img
+            src={assetURL(coverUrl)}
+            alt=""
+            className="h-full w-full object-contain transition-transform duration-300 ease-out group-hover:scale-[1.03] motion-reduce:group-hover:scale-100"
+            loading="lazy"
+            decoding="async"
+          />
         ) : (
-          <div
-            className="absolute right-2.5 top-2.5 inline-flex h-7 items-center gap-1 rounded-[var(--badge-radius)] bg-primary px-2 text-xs font-semibold tabular-nums text-primary-foreground shadow-md"
-            title={t("workCard.recommendedForYou")}
-            aria-label={t("workCard.recommendedForYou")}
-          >
-            <Star className="h-3.5 w-3.5 fill-current" />
-            {Number.isFinite(recommendationScore) && <span>{recommendationScore}</span>}
+          <div className="flex h-full flex-col items-center justify-center gap-2 bg-secondary text-secondary-foreground">
+            <AudioLines className="h-8 w-8 opacity-50" aria-hidden="true" />
+            <span className="max-w-full truncate px-3 font-mono text-xs opacity-70">{codeText}</span>
           </div>
-        ))}
-      {price !== null && (
-        <div
-          className="absolute bottom-2.5 left-2.5 rounded-[var(--badge-radius)] bg-background/85 px-2 py-0.5 text-xs font-semibold tabular-nums shadow-sm ring-1 ring-foreground/5 backdrop-blur-sm"
-          title={
-            regularPrice !== null && regularPrice > price
-              ? t("workCard.regularPrice", {
-                  price: formatPrice(regularPrice, priceCurrency, resolvedLocale),
-                })
-              : undefined
-          }
-        >
-          {price === 0 ? t("workCard.free") : formatPrice(price, priceCurrency, resolvedLocale)}
+        )}
+        {recommended &&
+          (onRecommendationOpen ? (
+            <button
+              type="button"
+              className={cn(coverChipClassName, "absolute left-1.5 top-1.5 h-7 tabular-nums hover:bg-background")}
+              title={t("workCard.explainRecommendationScore")}
+              aria-label={`${t("workCard.explainRecommendationScore")} ${recommendationScore ?? 0}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onRecommendationOpen();
+              }}
+            >
+              {recommendationContent}
+            </button>
+          ) : (
+            <div
+              className={cn(coverChipClassName, "absolute left-1.5 top-1.5 h-7 tabular-nums")}
+              title={t("workCard.recommendedForYou")}
+              aria-label={t("workCard.recommendedForYou")}
+            >
+              {recommendationContent}
+            </div>
+          ))}
+        {selection}
+        <div className="absolute inset-x-1.5 bottom-1.5 flex items-end gap-1.5">
+          <CoverAvailability badges={sourceBadges} />
+          {price !== null && (
+            <span
+              className={cn(coverChipClassName, "ml-auto shrink-0 tabular-nums")}
+              title={
+                discountedFrom !== null
+                  ? t("workCard.regularPrice", {
+                      price: formatPrice(discountedFrom, priceCurrency, resolvedLocale),
+                    })
+                  : undefined
+              }
+            >
+              {price === 0 ? t("workCard.free") : formatPrice(price, priceCurrency, resolvedLocale)}
+              {discountedFrom !== null && (
+                <span className="font-medium text-primary">
+                  {formatDiscount(price, discountedFrom, resolvedLocale)}
+                </span>
+              )}
+            </span>
+          )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+const coverChipClassName =
+  "inline-flex h-6 items-center gap-1 rounded-[var(--badge-radius)] bg-background/85 px-2 text-xs font-semibold text-foreground shadow-sm ring-1 ring-foreground/10 backdrop-blur-sm";
+
+// File availability rides on the cover so it reads at a glance without a
+// dedicated row. Only availability badges get a status dot; other badges a
+// view model adds (catalog state, for example) stay neutral.
+function CoverAvailability({ badges }: { badges: WorkCardBadge[] }) {
+  const { t } = useTranslation();
+  const items: WorkCardBadge[] =
+    badges.length > 0
+      ? badges
+      : [{ key: "source:unavailable", label: t("workCard.sourceUnavailable"), variant: "warning" }];
+  const visible = items.slice(0, 2);
+  const hidden = items.slice(2);
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-1">
+      {visible.map((badge) => (
+        <span
+          key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`}
+          className={cn(coverChipClassName, "min-w-0 font-medium")}
+          title={badge.title ?? badge.label}
+        >
+          <span
+            className={cn("h-1.5 w-1.5 shrink-0 rounded-full", availabilityDotClassName(badge))}
+            aria-hidden="true"
+          />
+          <span className="truncate">{badge.label}</span>
+        </span>
+      ))}
+      {hidden.length > 0 && (
+        <span
+          className={cn(coverChipClassName, "shrink-0 font-medium")}
+          title={hidden.map((badge) => badge.label).join(", ")}
+        >
+          +{hidden.length}
+        </span>
       )}
     </div>
   );
+}
+
+function availabilityDotClassName(badge: WorkCardBadge) {
+  if (badge.variant === "warning") return "bg-warning";
+  if (badge.key?.startsWith("source:")) return "bg-success";
+  return "bg-muted-foreground";
 }
 
 function WorkCardBody({
@@ -300,56 +366,71 @@ function WorkCardBody({
   const { t } = useTranslation();
   const ageRating = ageRatingPresentation(work.ageRating ?? "");
   const circleLabel = !work.circle || work.circle === "Unknown circle" ? t("workCard.unknownCircle") : work.circle;
+  const codeText = work.code || t("workCard.source");
   return (
-    <div className="flex min-h-52 flex-1 flex-col gap-3 p-4">
+    <div className="flex flex-1 flex-col gap-2.5 px-3 pb-3 pt-2.5">
       <div className="space-y-1">
-        <h3 className="line-clamp-2 min-h-10 text-base font-semibold leading-snug">{work.title}</h3>
-        <div className="flex min-w-0 items-center gap-2">
-          <div
-            className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left text-sm text-muted-foreground"
-            title={[circleLabel, work.series].filter(Boolean).join(" / ")}
+        <div className="flex min-h-4 min-w-0 items-center gap-2">
+          <span
+            className="min-w-0 flex-1 truncate font-mono text-2xs font-medium tracking-wide text-muted-foreground"
+            title={codeText}
           >
-            {onCircleOpen ? (
-              <button
-                className="hover:text-primary"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onCircleOpen();
-                }}
-              >
-                {circleLabel}
-              </button>
-            ) : (
-              <span>{circleLabel}</span>
-            )}
-            {work.series && (
-              <>
-                <span aria-hidden="true"> / </span>
-                {onSeriesOpen ? (
-                  <button
-                    className="font-medium text-foreground hover:text-primary"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onSeriesOpen();
-                    }}
-                  >
-                    {work.series}
-                  </button>
-                ) : (
-                  <span className="font-medium text-foreground">{work.series}</span>
-                )}
-              </>
-            )}
-          </div>
+            {codeText}
+          </span>
+          <WorkCardIndicators
+            hasAvailableNonOriginEdition={work.hasAvailableNonOriginEdition === true}
+            hasPlaybackHistory={work.hasPlaybackHistory === true}
+          />
           {ageRating.known && (
             <span
               className={cn(
-                "shrink-0 rounded-full border px-2 py-0.5 text-3xs font-semibold leading-none",
+                "shrink-0 rounded-full border px-1.5 py-0.5 text-3xs font-semibold leading-none",
                 ageRating.badgeClassName,
               )}
             >
               {ageRating.label}
             </span>
+          )}
+        </div>
+        <h3 className="line-clamp-2 min-h-10 text-[0.9375rem] font-semibold leading-5" title={work.title}>
+          {work.title}
+        </h3>
+        <div
+          className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-left text-[0.8125rem] text-muted-foreground"
+          title={[circleLabel, work.series].filter(Boolean).join(" / ")}
+        >
+          {onCircleOpen ? (
+            <button
+              className="hover:text-primary"
+              onClick={(event) => {
+                event.stopPropagation();
+                onCircleOpen();
+              }}
+            >
+              {circleLabel}
+            </button>
+          ) : (
+            <span>{circleLabel}</span>
+          )}
+          {work.series && (
+            <>
+              <span className="px-1 opacity-60" aria-hidden="true">
+                /
+              </span>
+              {onSeriesOpen ? (
+                <button
+                  className="text-foreground/80 hover:text-primary"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSeriesOpen();
+                  }}
+                >
+                  {work.series}
+                </button>
+              ) : (
+                <span className="text-foreground/80">{work.series}</span>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -383,97 +464,51 @@ function WorkCardBody({
         </div>
       )}
       <MeasuredBadgeList badges={work.dlsiteTags} emptyLabel={t("workCard.noDlsiteTags")} onBadgeClick={onTagOpen} />
-      <WorkCardMetrics
-        rating={work.rating ?? null}
-        ratingCount={work.ratingCount ?? null}
-        sales={work.sales ?? null}
-        hasAvailableNonOriginEdition={work.hasAvailableNonOriginEdition === true}
-        hasPlaybackHistory={work.hasPlaybackHistory === true}
-      />
       {work.userTags && work.userTags.length > 0 && (
         <div className="flex min-h-6 flex-wrap gap-1.5">
           {work.userTags.map((tag) => {
-            const badge = (
-              <Badge
-                variant={tag.variant ?? "secondary"}
+            const chip = (
+              <span
+                className={cn(
+                  tagChipClassName,
+                  "bg-primary/10 text-primary ring-1 ring-inset ring-primary/20",
+                  tag.onClick && "hover:bg-primary/15",
+                )}
                 title={tag.title}
-                className="border-primary/30 bg-primary/10 text-primary"
               >
                 {tag.label}
-              </Badge>
+              </span>
             );
             return tag.onClick ? (
               <button
                 key={tag.key ?? tag.label}
-                className="rounded-full hover:brightness-95"
+                type="button"
+                className={tagButtonClassName}
                 onClick={(event) => {
                   event.stopPropagation();
                   tag.onClick?.();
                 }}
               >
-                {badge}
+                {chip}
               </button>
             ) : (
-              <span key={tag.key ?? tag.label}>{badge}</span>
+              <span key={tag.key ?? tag.label} className="max-w-full">
+                {chip}
+              </span>
             );
           })}
         </div>
       )}
-      <div className="mt-auto">
-        <BadgeList badges={work.sourceBadges} emptyLabel={t("workCard.sourceUnavailable")} emptyVariant="warning" />
-      </div>
+      <WorkCardMetrics rating={work.rating ?? null} ratingCount={work.ratingCount ?? null} sales={work.sales ?? null} />
     </div>
   );
 }
 
-function BadgeList({
-  badges,
-  emptyLabel,
-  emptyVariant = "outline",
-  onBadgeClick,
-}: {
-  badges: WorkCardBadge[];
-  emptyLabel: string;
-  emptyVariant?: WorkCardBadge["variant"];
-  onBadgeClick?: (label: string) => void;
-}) {
-  return (
-    <div className="flex min-h-6 flex-wrap gap-1.5">
-      {badges.length > 0 ? (
-        badges.map((badge) =>
-          badge.onClick || onBadgeClick ? (
-            <button
-              key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                (badge.onClick ?? (() => onBadgeClick?.(badge.label)))();
-              }}
-              className="rounded-full"
-            >
-              <Badge
-                variant={badge.variant ?? "secondary"}
-                title={badge.title}
-                className="cursor-pointer hover:border-primary hover:text-primary"
-              >
-                {badge.label}
-              </Badge>
-            </button>
-          ) : (
-            <Badge
-              key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`}
-              variant={badge.variant ?? "secondary"}
-              title={badge.title}
-            >
-              {badge.label}
-            </Badge>
-          ),
-        )
-      ) : (
-        <Badge variant={emptyVariant}>{emptyLabel}</Badge>
-      )}
-    </div>
-  );
-}
+const tagChipClassName =
+  "inline-block h-6 max-w-full truncate rounded-[var(--badge-radius)] bg-muted px-2 align-top text-xs leading-6 text-muted-foreground transition-colors";
+
+const tagButtonClassName =
+  "max-w-full rounded-[var(--badge-radius)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function MeasuredBadgeList({
   badges,
@@ -530,8 +565,8 @@ function MeasuredBadgeList({
 
   if (badges.length === 0) {
     return (
-      <div className="flex min-h-6">
-        <Badge variant="outline">{emptyLabel}</Badge>
+      <div className="flex min-h-6 items-center">
+        <span className="text-xs text-muted-foreground/70">{emptyLabel}</span>
       </div>
     );
   }
@@ -553,7 +588,7 @@ function MeasuredBadgeList({
           <button
             ref={overflowRef}
             type="button"
-            className="max-w-full rounded-full"
+            className={tagButtonClassName}
             aria-label={t("workCard.showMoreTags", { count: hiddenBadges.length })}
             aria-expanded={open}
             onClick={(event) => {
@@ -561,9 +596,7 @@ function MeasuredBadgeList({
               setOpen((current) => !current);
             }}
           >
-            <Badge variant="secondary" className="cursor-pointer hover:border-primary hover:text-primary">
-              +{hiddenBadges.length}
-            </Badge>
+            <span className={cn(tagChipClassName, tagOverflowClassName)}>+{hiddenBadges.length}</span>
           </button>
         )}
       </div>
@@ -573,18 +606,17 @@ function MeasuredBadgeList({
         aria-hidden="true"
       >
         {badges.map((badge) => (
-          <Badge
+          <span
             key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`}
             data-measured-badge
-            variant={badge.variant ?? "secondary"}
-            className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap"
+            className={tagChipClassName}
           >
             {badge.label}
-          </Badge>
+          </span>
         ))}
-        <Badge data-measured-overflow variant="secondary">
+        <span data-measured-overflow className={cn(tagChipClassName, tagOverflowClassName)}>
           +{badges.length}
-        </Badge>
+        </span>
       </div>
       <AnchoredPopover
         open={open}
@@ -608,6 +640,9 @@ function MeasuredBadgeList({
   );
 }
 
+const tagOverflowClassName =
+  "bg-transparent font-medium text-foreground ring-1 ring-inset ring-border hover:text-primary";
+
 function CardBadge({
   badge,
   onBadgeClick,
@@ -617,32 +652,68 @@ function CardBadge({
   onBadgeClick?: (label: string) => void;
   onSelected?: () => void;
 }) {
-  const badgeElement = (
-    <Badge
-      variant={badge.variant ?? "secondary"}
-      title={badge.title}
+  const clickable = Boolean(badge.onClick || onBadgeClick);
+  const chip = (
+    <span
       className={cn(
-        "max-w-full overflow-hidden text-ellipsis whitespace-nowrap",
-        (badge.onClick || onBadgeClick) && "cursor-pointer hover:border-primary hover:text-primary",
+        tagChipClassName,
+        badge.variant === "warning" && "bg-warning-surface text-warning-foreground",
+        clickable && "hover:bg-primary/10 hover:text-primary",
       )}
+      title={badge.title}
     >
       {badge.label}
-    </Badge>
+    </span>
   );
-  return badge.onClick || onBadgeClick ? (
+  return clickable ? (
     <button
       type="button"
-      className="max-w-full rounded-full"
+      className={tagButtonClassName}
       onClick={(event) => {
         event.stopPropagation();
         (badge.onClick ?? (() => onBadgeClick?.(badge.label)))();
         onSelected?.();
       }}
     >
-      {badgeElement}
+      {chip}
     </button>
   ) : (
-    <span className="max-w-full">{badgeElement}</span>
+    <span className="max-w-full">{chip}</span>
+  );
+}
+
+function WorkCardIndicators({
+  hasAvailableNonOriginEdition,
+  hasPlaybackHistory,
+}: {
+  hasAvailableNonOriginEdition: boolean;
+  hasPlaybackHistory: boolean;
+}) {
+  const { t } = useTranslation();
+  if (!hasAvailableNonOriginEdition && !hasPlaybackHistory) return null;
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1.5">
+      {hasAvailableNonOriginEdition && (
+        <span
+          className="inline-flex shrink-0 text-primary"
+          title={t("workCard.otherLanguageEdition")}
+          role="img"
+          aria-label={t("workCard.otherLanguageEdition")}
+        >
+          <Languages className="h-3.5 w-3.5" aria-hidden="true" />
+        </span>
+      )}
+      {hasPlaybackHistory && (
+        <span
+          className="inline-flex shrink-0 text-muted-foreground"
+          title={t("workCard.playbackHistory")}
+          role="img"
+          aria-label={t("workCard.playbackHistory")}
+        >
+          <History className="h-3.5 w-3.5" aria-hidden="true" />
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -650,14 +721,10 @@ function WorkCardMetrics({
   rating,
   ratingCount,
   sales,
-  hasAvailableNonOriginEdition,
-  hasPlaybackHistory,
 }: {
   rating: number | null;
   ratingCount: number | null;
   sales: number | null;
-  hasAvailableNonOriginEdition: boolean;
-  hasPlaybackHistory: boolean;
 }) {
   const { t } = useTranslation();
   const { resolvedLocale } = useLocale();
@@ -677,69 +744,26 @@ function WorkCardMetrics({
     sales !== null && Number.isFinite(sales) && sales >= 0
       ? t("workCard.salesLabel", { value: formatStandardCount(Math.floor(sales), resolvedLocale) })
       : t("workCard.salesUnavailable");
+  // Each stat stays whole and wraps as a unit on narrow cards instead of
+  // truncating its number.
   return (
-    <div className="flex min-h-10 min-w-0 items-center justify-between gap-2 text-xs text-muted-foreground">
-      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-        <span
-          className="inline-flex min-w-0 flex-1 items-center gap-1 overflow-hidden"
-          title={salesLabel}
-          aria-label={salesLabel}
-        >
-          <ShoppingBag className="h-3.5 w-3.5 shrink-0" />
-          <span className="shrink-0 font-medium">{t("workCard.sales")}</span>
-          <span className="min-w-0 truncate tabular-nums text-foreground">
-            {formatCompactCount(sales, resolvedLocale)}
-          </span>
+    <div className="mt-auto flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-xs text-muted-foreground">
+      <span className="inline-flex shrink-0 items-center gap-1" title={ratingLabel} role="img" aria-label={ratingLabel}>
+        <Star
+          className={cn("h-3.5 w-3.5", normalizedRating !== null && "fill-primary text-primary")}
+          aria-hidden="true"
+        />
+        <span className="font-semibold tabular-nums text-foreground">
+          {normalizedRating === null ? "--" : formatRating(normalizedRating, resolvedLocale)}
         </span>
-        <span
-          className="inline-flex min-w-0 flex-1 items-center gap-1 overflow-hidden"
-          title={ratingLabel}
-          role="img"
-          aria-label={ratingLabel}
-        >
-          <span className="shrink-0 font-medium">{t("workCard.ratingShort")}</span>
-          <span className="flex w-8 shrink-0 items-center gap-0.5" aria-hidden="true">
-            {Array.from({ length: 5 }, (_, index) => {
-              const fill = normalizedRating === null ? 0 : Math.min(1, Math.max(0, normalizedRating - index));
-              return (
-                <span key={index} className="h-1.5 w-1.5 flex-1 overflow-hidden rounded-[2px] bg-muted">
-                  <span className="block h-full bg-primary" style={{ width: `${fill * 100}%` }} />
-                </span>
-              );
-            })}
-          </span>
-          <span className="shrink-0 tabular-nums text-foreground">
-            {normalizedRating === null ? "--" : formatRating(normalizedRating, resolvedLocale)}
-          </span>
-          {normalizedRatingCount !== null && (
-            <span className="min-w-0 truncate tabular-nums">
-              ({formatCompactCount(normalizedRatingCount, resolvedLocale)})
-            </span>
-          )}
-        </span>
-      </div>
-      <div className="flex shrink-0 items-center gap-1.5">
-        {hasAvailableNonOriginEdition && (
-          <span
-            className="inline-flex shrink-0 text-primary"
-            title={t("workCard.otherLanguageEdition")}
-            role="img"
-            aria-label={t("workCard.otherLanguageEdition")}
-          >
-            <Languages className="h-4 w-4" aria-hidden="true" />
-          </span>
+        {normalizedRatingCount !== null && (
+          <span className="tabular-nums">({formatCompactCount(normalizedRatingCount, resolvedLocale)})</span>
         )}
-        {hasPlaybackHistory && (
-          <span
-            className="inline-flex shrink-0 text-muted-foreground"
-            title={t("workCard.playbackHistory")}
-            role="img"
-            aria-label={t("workCard.playbackHistory")}
-          >
-            <History className="h-4 w-4" aria-hidden="true" />
-          </span>
-        )}
-      </div>
+      </span>
+      <span className="inline-flex shrink-0 items-center gap-1" title={salesLabel} aria-label={salesLabel}>
+        <span>{t("workCard.sales")}</span>
+        <span className="font-semibold tabular-nums text-foreground">{formatCompactCount(sales, resolvedLocale)}</span>
+      </span>
     </div>
   );
 }
@@ -775,9 +799,13 @@ function formatCompactCount(value: number | null, locale: ResolvedUiLocale) {
   }).format(Math.floor(value));
 }
 
+function formatDiscount(price: number, regularPrice: number, locale: ResolvedUiLocale) {
+  return numberFormat(locale, { style: "percent", maximumFractionDigits: 0 }).format(price / regularPrice - 1);
+}
+
 export function WorkCardFooter({ left, right }: { left?: ReactNode; right?: ReactNode }) {
   return (
-    <div className="mt-auto flex h-11 shrink-0 items-center justify-between gap-1 border-t px-3">
+    <div className="mt-auto flex h-11 shrink-0 items-center justify-between gap-1 border-t border-border/70 px-1.5">
       <div className="flex min-w-0 items-center gap-1">{left}</div>
       <div className="flex min-w-0 items-center gap-1">{right}</div>
     </div>

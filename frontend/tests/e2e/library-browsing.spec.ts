@@ -291,7 +291,7 @@ test("cards keep two complete tag rows and readable Sales and Rate metrics at co
   await expect(card.getByText("DL", { exact: true })).toHaveCount(0);
   await expect(card.getByText("4.50", { exact: true })).toBeVisible();
   await expect(rate).toBeVisible();
-  await expect(rate.locator("[aria-hidden=true] > span")).toHaveCount(5);
+  await expect(rate).toContainText("(240)");
 
   const assertTagRowsAreComplete = async (minimumCardWidth: number, maximumCardWidth: number) => {
     await expect
