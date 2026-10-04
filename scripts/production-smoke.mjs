@@ -135,7 +135,6 @@ try {
     "KIKOTO_REMOTE_SOURCES_ENABLED=false",
     image,
   ]);
-  await command(["cp", `${fixtureRoot}/.`, `${container}:/data`]);
   await command(["start", container]);
   assert.equal(await command(["exec", container, "id", "-u"]), "0");
   const { HostConfig: hostConfig } = JSON.parse(
@@ -144,6 +143,16 @@ try {
   assert.equal(hostConfig.ReadonlyRootfs, true);
   assert.ok(hostConfig.CapDrop.includes("ALL"));
   assert.ok(hostConfig.SecurityOpt.includes("no-new-privileges:true"));
+  // Create the work folder as the runtime user. Copying a host directory can
+  // preserve an unrelated UID/GID that is not writable without DAC override.
+  await command(["exec", container, "mkdir", "-p", "/data/RJ00000000"]);
+  for (const file of ["example.wav", "02-next.wav", "notes.html"]) {
+    await command([
+      "cp",
+      join(fixtureRoot, "RJ00000000", file),
+      `${container}:/data/RJ00000000/${file}`,
+    ]);
+  }
   // Use the shipped codecs and publish complete fixtures on the data filesystem.
   const staging = "/data/.kikoto-staging/production-smoke";
   await command(["exec", container, "mkdir", "-p", staging]);
