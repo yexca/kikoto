@@ -11,8 +11,8 @@ import {
   type ActiveSourceInfoModel,
   detailReturnTarget,
   formatDateTime,
-  isInternalReturnPath,
   languageLabel,
+  openDetailTagSearch,
 } from "@/features/work-detail/workDetailHelpers";
 import { usePageHeaderBack } from "@/app/pageHeader";
 import i18n from "@/i18n";
@@ -51,8 +51,6 @@ import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { ageRatingPresentation } from "@/lib/ageRating";
 import { formatBytes, formatDuration } from "@/features/work-detail/media/mediaTreeModel";
 import { sourceTabStatusClass } from "@/features/work-detail/source/sourceContextModel";
-import { defaultLibraryBrowseState, libraryBrowseSearch, libraryBrowseStateFromSearch } from "@/lib/libraryBrowseState";
-import { formatSearchClause, parseSearchClauses } from "@/lib/librarySearchClauses";
 import { historyStateWithReturn, NAVIGATION_EVENT } from "@/lib/browserHistory";
 
 export type UnifiedWorkDetailPresentation = {
@@ -284,7 +282,7 @@ function DetailTagLine({ tags, personalTags }: Pick<UnifiedWorkDetailPresentatio
                 type="button"
                 className="inline-flex h-[26px] max-w-48 items-center rounded-full border bg-background/60 px-2.5 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary"
                 title={tag}
-                onClick={() => openDetailTagSearch(tag)}
+                onClick={() => openDetailTagSearch("tag", tag)}
               >
                 <span className="truncate">{tag}</span>
               </button>
@@ -1410,22 +1408,6 @@ function InlineSourceMetric({ label, value }: { label: string; value: string }) 
       <span className="font-semibold text-foreground">{value}</span>
     </span>
   );
-}
-
-function openDetailTagSearch(tag: string) {
-  const value = tag.trim();
-  if (!value) return;
-  const state = window.history.state as { returnTo?: unknown } | null;
-  const returnTo = typeof state?.returnTo === "string" && isInternalReturnPath(state.returnTo) ? state.returnTo : "/";
-  const target = new URL(returnTo, window.location.origin);
-  const browseState = libraryBrowseStateFromSearch(target.search, defaultLibraryBrowseState);
-  const clauses = parseSearchClauses(browseState.query).filter(
-    (clause) => !(clause.kind === "tag" && clause.value.toLowerCase() === value.toLowerCase()),
-  );
-  const query = [...clauses, { kind: "tag" as const, value }].map(formatSearchClause).join(" ");
-  target.search = libraryBrowseSearch({ ...browseState, query, page: 1, scrollY: 0 });
-  window.history.pushState({}, "", `${target.pathname}${target.search}`);
-  window.dispatchEvent(new Event("kikoto:navigation"));
 }
 
 function openResolvedEntityRoute(route: string) {

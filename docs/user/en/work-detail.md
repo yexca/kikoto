@@ -70,7 +70,10 @@ playback actions for one work.
   row on phones), any metadata notice, and bottom-aligned Hero actions. The
   tag row lists provider tags first and then the user's personal tags in a
   distinct accent style, ending with the add or edit icon; long provider tag
-  lists collapse behind a `+N` control. The Directory fills the main column
+  lists collapse behind a `+N` control. Selecting a provider tag or a personal
+  tag adds a `tag:` or `mytag:` clause to the library search the detail was
+  opened from; a personal tag selected after opening the detail from another
+  page starts a new local library search. The Directory fills the main column
   below. Source info and the metadata update time share one panel that stays
   beside the Directory on wide pages and follows it on narrower ones. Source
   info reports file/audio counts, size and duration coverage, and labels a

@@ -90,6 +90,7 @@ import {
   readLastCircleListLocation,
   writeLastCircleListLocation,
 } from "@/lib/circleNavigationState";
+import { openLibraryTagSearch } from "@/lib/libraryTagSearch";
 import { CircleCatalogOptionsSheet, type CircleAvailabilityFilter } from "@/pages/CircleDetailSheets";
 import { circleRefreshSettledMessage, useCircleRefreshRun } from "@/pages/circleRefreshRun";
 import { CreatorListPage } from "@/pages/creator/CreatorListPage";
@@ -1234,6 +1235,7 @@ function CatalogWorkCard({
       onOpen={openTarget}
       onCircleOpen={(externalId) => openCircleRoute(externalId)}
       onSeriesOpen={work.series ? onSeriesOpen : undefined}
+      onTagOpen={(tag) => openLibraryTagSearch("tag", tag)}
       footer={
         <WorkCardFooter
           left={<WorkCardDLsiteAction href={work.dlsiteUrl || dlsiteWorkURL(work.primaryCode)} />}
@@ -1348,7 +1350,7 @@ function catalogWorkCardView(work: CircleCatalogWork, t: TFunction): WorkCardVie
     hasAvailableNonOriginEdition: work.hasAvailableNonOriginEdition,
     hasPlaybackHistory: hasPlaybackHistory(work.progress),
     dlsiteTags: dlsiteTagBadges(work.tags),
-    userTags: userTagBadges(work.userTags ?? []),
+    userTags: userTagBadges(work.userTags ?? [], (tag) => openLibraryTagSearch("user_tag", tag)),
     sourceBadges: statusBadges,
   };
 }

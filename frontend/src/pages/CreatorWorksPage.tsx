@@ -95,6 +95,7 @@ import {
   voiceReturnLabelForLocation,
   writeLastVoiceListLocation,
 } from "@/lib/voiceNavigationState";
+import { openLibraryTagSearch } from "@/lib/libraryTagSearch";
 import {
   mergeVoiceWorks,
   voiceWorkHasRemoteAvailability,
@@ -1127,6 +1128,7 @@ function VoiceWorkCard({
           ? () => openCircleSeriesRoute(work.circleExternalId, work.seriesTitleId)
           : undefined
       }
+      onTagOpen={(tag) => openLibraryTagSearch("tag", tag)}
       footer={
         <WorkCardFooter
           left={<WorkCardDLsiteAction href={voiceWorkDLsiteURL(work)} />}
@@ -1215,7 +1217,7 @@ function voiceWorkCardView(work: VoiceWorkView, t: TFunction): WorkCardViewModel
     hasAvailableNonOriginEdition: work.hasAvailableNonOriginEdition,
     hasPlaybackHistory: "progress" in work && hasPlaybackHistory(work.progress),
     dlsiteTags: dlsiteTagBadges(work.tags),
-    userTags: isKnown ? userTagBadges(work.userTags ?? []) : [],
+    userTags: isKnown ? userTagBadges(work.userTags ?? [], (tag) => openLibraryTagSearch("user_tag", tag)) : [],
     sourceBadges,
   };
 }

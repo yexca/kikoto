@@ -35,6 +35,8 @@ type UserTagRowProps = {
   variant?: "badge" | "chip";
   /** Accessible name for the tag list; defaults to the generic tag title. */
   listLabel?: string;
+  /** Makes each tag a button that opens a search for that tag. */
+  onTagOpen?: (name: string) => void;
 };
 
 // Last loaded vocabulary per scope, so a reopened editor lists suggestions
@@ -55,6 +57,7 @@ export function UserTagRow({
   compact = false,
   variant = "badge",
   listLabel,
+  onTagOpen,
 }: UserTagRowProps) {
   const { t } = useTranslation();
   const mobile = useMobileNavigationLayout();
@@ -122,23 +125,50 @@ export function UserTagRow({
     <div className={`flex min-w-0 flex-wrap items-center gap-1 ${className}`}>
       {selected.length > 0 && (
         <ul className="contents" aria-label={listLabel ?? t("tags.title")}>
-          {visibleTags.map((name) => (
-            <li key={name.toLowerCase()} className="contents">
-              {variant === "chip" ? (
+          {visibleTags.map((name) => {
+            const tag =
+              variant === "chip" ? (
                 <span
-                  className="inline-flex h-[26px] max-w-40 items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 text-xs font-medium text-primary"
+                  className={cn(
+                    "inline-flex h-[26px] max-w-40 items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 text-xs font-medium text-primary",
+                    onTagOpen && "transition-colors group-hover:border-primary group-hover:bg-primary/15",
+                  )}
                   title={name}
                 >
                   <Bookmark className="h-3 w-3 shrink-0 fill-current" aria-hidden="true" />
                   <span className="truncate">{name}</span>
                 </span>
               ) : (
-                <Badge variant="outline" className="max-w-32 truncate" title={name}>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "max-w-32 truncate",
+                    onTagOpen && "group-hover:border-primary group-hover:text-primary",
+                  )}
+                  title={name}
+                >
                   {name}
                 </Badge>
-              )}
-            </li>
-          ))}
+              );
+            return (
+              <li key={name.toLowerCase()} className="contents">
+                {onTagOpen ? (
+                  <button
+                    type="button"
+                    className="group min-w-0 rounded-full"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onTagOpen(name);
+                    }}
+                  >
+                    {tag}
+                  </button>
+                ) : (
+                  tag
+                )}
+              </li>
+            );
+          })}
           {hiddenCount > 0 && (
             <li className="contents">
               <Badge variant="secondary">+{hiddenCount}</Badge>

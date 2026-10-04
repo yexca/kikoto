@@ -2,6 +2,7 @@ import { listeningStatusOptions, type RemoteWorkPreview } from "@/features/work-
 import type { SourceTabInfo } from "@/features/work-detail/source/sourceContextModel";
 import type { TreeStats } from "@/features/work-detail/media/mediaTreeModel";
 import type { ListeningStatus, MediaItem, RemoteWorkDetail, SourcePresenceItem, WorkDetail } from "@/lib/api";
+import { openLibraryTagSearch, type LibraryTagSearchKind } from "@/lib/libraryTagSearch";
 import { parseServerTimestamp } from "@/lib/serverTimestamp";
 import i18n from "@/i18n";
 import type { TFunction } from "i18next";
@@ -131,6 +132,11 @@ export function detailReturnTarget(fallbackPath: string) {
 
 export function isInternalReturnPath(path: string) {
   return path.startsWith("/") && !path.startsWith("//");
+}
+
+/** Opens a tag search in the library view the detail was opened from. */
+export function openDetailTagSearch(kind: LibraryTagSearchKind, tag: string) {
+  openLibraryTagSearch(kind, tag, detailReturnTarget("/").path);
 }
 
 export function listeningStatusLabel(status: ListeningStatus, t?: TFunction) {

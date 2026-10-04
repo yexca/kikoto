@@ -22,7 +22,8 @@ Circles represent makers, circles, and related party catalog state.
 - Shows local/cache/remote source availability tags for catalog works.
 - Presents work results with the same responsive grid and work cards as the
   Library. This applies to both circle detail and circle series;
-  the separate circle-entity list keeps its own controls.
+  the separate circle-entity list keeps its own controls. Selecting a DLsite
+  tag or personal tag on a work card opens a local Library search for it.
 - Shows one `Available N` badge beside user-defined tags on circle detail. The
   duplicated statistic tiles and circle aliases are omitted from circle UI.
 - Keeps the common refresh actions in the detail summary: **First pull** for a
