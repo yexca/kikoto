@@ -24,7 +24,8 @@ Voice pages present persisted person and credit data.
   detail. Cache remains available to playback and filtering data, but is not
   presented as Local.
 - Presents known and remote works with the same responsive grid and shared work
-  cards as the Library.
+  cards as the Library. Selecting a DLsite tag or personal tag on a work card
+  opens a local Library search for it.
 - Loads person detail, known works, and remote matches independently. Remote
   source searches use bounded concurrency, while voice counts and user tags are
   aggregated in batches.

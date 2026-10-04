@@ -227,9 +227,11 @@ async function mockCreatorDetails(
     circleSyncState?: CatalogSyncState;
     voiceSyncState?: CatalogSyncState;
     circleSeries?: CircleSeries[];
+    circleWorks?: typeof circleCatalogWorks;
     onRefresh?: (path: string, payload: unknown) => void;
   } = {},
 ) {
+  const circleWorks = options.circleWorks ?? circleCatalogWorks;
   const voiceCatalogRefresh = voiceCatalogRefreshFixture({ queries: [voice.displayName, "Voice alias"] });
   const voiceDetail = voiceDetailFixture(
     {
@@ -254,9 +256,9 @@ async function mockCreatorDetails(
       playableWorks: 1,
       remoteWorks: 0,
       missingWorks: 1,
-      catalogWorks: circleCatalogWorks.length,
+      catalogWorks: circleWorks.length,
     },
-    { availableWorks: 1, works: circleCatalogWorks, series: options.circleSeries ?? [] },
+    { availableWorks: 1, works: circleWorks, series: options.circleSeries ?? [] },
   );
 
   await page.route("**/api/**", async (route) => {
@@ -891,6 +893,26 @@ test("mobile circle series combines its selected row, DLsite link, and sheet con
   await expect(page).toHaveURL(/\/circles\/RG09999\/series\/SRI0888888888$/);
   await expect(page.getByRole("button", { name: "Series", exact: true }).first()).toContainText("Second Circle Series");
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("circle work card tags open a local Library search", async ({ page }) => {
+  await mockCreatorDetails(page, {
+    circleWorks: [
+      {
+        ...circleCatalogWorks[0],
+        tags: ["Example tag"],
+        userTags: [{ id: 1, name: "Personal tag", color: "" }],
+      },
+    ],
+  });
+
+  await page.goto("/circles/RG09999");
+  await page.getByRole("button", { name: "Example tag", exact: true }).click();
+  await expect(page).toHaveURL(/\/\?q=tag%3A%22Example\+tag%22$/);
+
+  await page.goto("/circles/RG09999");
+  await page.getByRole("button", { name: "Personal tag", exact: true }).click();
+  await expect(page).toHaveURL(/\/\?q=mytag%3A%22Personal\+tag%22$/);
 });
 
 test("@desktop circle detail keeps a full-width compact summary and source-aware return", async ({ page }) => {

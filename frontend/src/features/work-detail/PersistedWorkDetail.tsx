@@ -51,6 +51,7 @@ import {
   type ActiveSourceInfoModel,
   languageLabel,
   openActivityRun,
+  openDetailTagSearch,
   remoteDetailActionCode,
   trackedPresenceForRemoteSource,
   workHasNoSource,
@@ -596,6 +597,7 @@ function persistedPersonalTags(work: WorkDetail | null, onSave: (tags: string[])
       onSave={onSave}
       variant="chip"
       listLabel={i18n.t("libraryDetail.myTags")}
+      onTagOpen={(name) => openDetailTagSearch("user_tag", name)}
       className="contents"
     />
   );

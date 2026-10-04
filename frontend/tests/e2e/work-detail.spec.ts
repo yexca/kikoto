@@ -690,6 +690,26 @@ test("mobile work detail keeps tags in the hero and work-code utilities together
   await expect(detail.getByTestId("active-source-info")).toBeVisible();
 });
 
+test("work detail personal tags open a personal tag library search", async ({ page }) => {
+  const requests: string[] = [];
+  const detailWork: Work = { ...work, userTags: [{ id: 1, name: "Personal tag", color: "" }] };
+  await mockApplication(page, (url) => requests.push(url.searchParams.get("q") ?? ""), false, 1, 0, [], undefined, {
+    authenticated: true,
+    work: detailWork,
+  });
+  await page.goto("/");
+  await page.getByText(detailWork.title, { exact: true }).click();
+
+  await page
+    .getByRole("main")
+    .getByRole("list", { name: "My tags", exact: true })
+    .getByRole("button", { name: "Personal tag", exact: true })
+    .click();
+
+  await expect(page).toHaveURL(/\/\?q=mytag%3A%22Personal\+tag%22$/);
+  await expect.poll(() => requests).toContain("$mytag:Personal tag$");
+});
+
 test("metadata refresh failures open the canonical run-scoped recovery list", async ({ page }) => {
   const control = {
     runId: 77,
