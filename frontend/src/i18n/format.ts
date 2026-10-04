@@ -1,4 +1,5 @@
 import { intlLocaleFor, type ResolvedUiLocale } from "@/i18n";
+import { parseServerTimestamp } from "@/lib/serverTimestamp";
 
 // Intl formatter construction dominates per-call formatting cost, and card lists
 // format several values per item on every render.
@@ -30,8 +31,9 @@ export function formatNumber(value: number, locale: ResolvedUiLocale) {
 }
 
 export function formatDateTime(value: string | number | Date, locale: ResolvedUiLocale) {
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
+  const date =
+    typeof value === "string" ? parseServerTimestamp(value) : value instanceof Date ? value : new Date(value);
+  if (!date || Number.isNaN(date.getTime())) return "";
   return dateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 

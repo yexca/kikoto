@@ -380,7 +380,7 @@ function MergeReviewRow({
   const { t } = useTranslation();
   const { resolvedLocale } = useLocale();
   const undone = review.status !== "merged";
-  const time = formatDateTime(serverTimestamp(review.createdAt), resolvedLocale) || review.createdAt;
+  const time = formatDateTime(review.createdAt, resolvedLocale) || review.createdAt;
   return (
     <li className="flex items-center gap-3 px-3 py-2">
       <GitMerge className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -471,9 +471,4 @@ function candidateAliasSummary(candidate: VoiceAliasCandidate) {
   return [
     ...new Set(candidate.aliases.map((alias) => alias.alias).filter((alias) => alias !== candidate.displayName)),
   ].join(", ");
-}
-
-// Review timestamps are SQLite CURRENT_TIMESTAMP values: UTC without a zone.
-function serverTimestamp(value: string) {
-  return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value) ? `${value.replace(" ", "T")}Z` : value;
 }
