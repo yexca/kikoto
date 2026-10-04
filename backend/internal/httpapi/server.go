@@ -87,6 +87,7 @@ type Server struct {
 	updateHTTPClient               *http.Client
 	appUpdateEndpoints             appUpdateEndpoints
 	lifetime                       *serverLifetime
+	startupRepairsOnce             sync.Once
 }
 
 type localMediaIndexCall struct {
@@ -178,6 +179,21 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/works/{id}/metadata-sync", s.createWorkMetadataSyncRun)
 	mux.HandleFunc("PUT /api/media/{id}/lyrics-preference", s.setMediaLyricsPreference)
 	mux.HandleFunc("DELETE /api/media/{id}/lyrics-preference", s.clearMediaLyricsPreference)
+	mux.HandleFunc("GET /api/metadata/circles", s.listMetadataCircles)
+	mux.HandleFunc("GET /api/metadata/circles/{partyId}", s.getMetadataCircle)
+	mux.HandleFunc("PATCH /api/metadata/circles/{partyId}", s.changeMetadataCircle)
+	mux.HandleFunc("POST /api/metadata/circles/{partyId}/aliases", s.changeMetadataCircle)
+	mux.HandleFunc("DELETE /api/metadata/circles/{partyId}/aliases/{aliasId}", s.changeMetadataCircle)
+	mux.HandleFunc("POST /api/metadata/circles/{partyId}/merge", s.changeMetadataCircle)
+	mux.HandleFunc("GET /api/metadata/circles/{partyId}/merges", s.getMetadataCircle)
+	mux.HandleFunc("POST /api/metadata/circles/{partyId}/merges/{mergeId}/undo", s.changeMetadataCircle)
+	mux.HandleFunc("GET /api/metadata/tags", s.listMetadataTags)
+	mux.HandleFunc("POST /api/metadata/tags", s.changeMetadataTag)
+	handleSlowFirstResponse("PATCH /api/metadata/tags/{tagId}", s.changeMetadataTag)
+	handleSlowFirstResponse("POST /api/metadata/tags/{tagId}/merge", s.changeMetadataTag)
+	handleSlowFirstResponse("DELETE /api/metadata/tags/{tagId}/merge", s.changeMetadataTag)
+	mux.HandleFunc("GET /api/works/{id}/metadata-tags", s.getWorkMetadataTags)
+	mux.HandleFunc("PUT /api/works/{id}/metadata-tags", s.setWorkMetadataTags)
 	mux.HandleFunc("GET /api/works/{id}/manual-overrides", s.getWorkManualOverrides)
 	mux.HandleFunc("PATCH /api/works/{id}/manual-overrides", s.updateWorkManualOverrides)
 	mux.HandleFunc("DELETE /api/works/{id}/manual-overrides/{field}", s.deleteWorkManualOverride)
@@ -430,6 +446,7 @@ func (s *Server) RunStartupWorkflows(ctx context.Context) error {
 	if s.layoutMigrationActive.Load() {
 		return nil
 	}
+	defer s.startStartupMetadataRepairs()
 	if err := s.ensureSystemWorkflowDefinitions(ctx); err != nil {
 		return err
 	}

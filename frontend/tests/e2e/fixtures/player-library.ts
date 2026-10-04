@@ -242,6 +242,12 @@ export async function mockApplication(
       });
       return;
     }
+    if (url.pathname === "/api/works/1/metadata-tags" && route.request().method() === "GET") {
+      await route.fulfill({
+        json: { tags: [], inheritedTags: [], overrides: [] } satisfies ApiResponse<"getWorkMetadataTags">,
+      });
+      return;
+    }
     if (url.pathname === "/api/works/1/user-state" && route.request().method() === "PATCH") {
       await route.fulfill(
         fixture.authenticated

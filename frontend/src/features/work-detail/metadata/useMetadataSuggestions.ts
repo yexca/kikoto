@@ -63,6 +63,7 @@ export function useDebouncedSuggestion<T>(
 export function useWorkCoverCandidates(workId: number, toast: ReturnType<typeof useToast>) {
   const [coverCandidates, setCoverCandidates] = useState<WorkCoverCandidate[]>([]);
   const [selectedCoverId, setSelectedCoverId] = useState<number | null>(null);
+  const [initialCoverId, setInitialCoverId] = useState<number | null>(null);
   const [loadingCovers, setLoadingCovers] = useState(false);
 
   useEffect(() => {
@@ -73,7 +74,9 @@ export function useWorkCoverCandidates(workId: number, toast: ReturnType<typeof 
       .then((result) => {
         if (cancelled) return;
         setCoverCandidates(result.candidates);
-        setSelectedCoverId(result.candidates.find((candidate) => candidate.selected)?.locationId ?? null);
+        const selected = result.candidates.find((candidate) => candidate.selected)?.locationId ?? null;
+        setSelectedCoverId(selected);
+        setInitialCoverId(selected);
       })
       .catch((error) => {
         if (!cancelled) toast.notify(toastFromError(error, i18n.t("libraryDetail.coverCandidatesLoadFailed")));
@@ -86,5 +89,5 @@ export function useWorkCoverCandidates(workId: number, toast: ReturnType<typeof 
     };
   }, [toast, workId]);
 
-  return { coverCandidates, selectedCoverId, setSelectedCoverId, loadingCovers };
+  return { coverCandidates, selectedCoverId, setSelectedCoverId, initialCoverId, loadingCovers };
 }

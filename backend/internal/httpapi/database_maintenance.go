@@ -359,7 +359,7 @@ var databaseCleanupCountQueries = map[string]string{
 	databaseCleanupTaskEmptyMediaItems:  `SELECT COUNT(*) FROM media_item AS item WHERE ` + emptyMediaItemCondition,
 	databaseCleanupTaskMissingPresence:  `SELECT COUNT(*) FROM work_source_presence AS presence WHERE ` + missingLocalPresenceCondition,
 	databaseCleanupTaskOrphanSnapshots:  `SELECT COUNT(*) FROM metadata_snapshot WHERE work_id IS NULL`,
-	databaseCleanupTaskUnusedTags:       `SELECT COUNT(*) FROM tag WHERE is_user_defined = 0 AND NOT EXISTS (SELECT 1 FROM work_tag WHERE work_tag.tag_id = tag.id)`,
+	databaseCleanupTaskUnusedTags:       `SELECT COUNT(*) FROM tag WHERE is_user_defined = 0 AND namespace <> 'metadata' AND NOT EXISTS (SELECT 1 FROM work_tag WHERE work_tag.tag_id = tag.id)`,
 	databaseCleanupTaskExpiredSessions:  `SELECT COUNT(*) FROM user_session WHERE expires_at < datetime('now')`,
 	databaseCleanupTaskNotifications:    `SELECT COUNT(*) FROM workflow_notification WHERE dismissed_at IS NOT NULL`,
 	databaseCleanupTaskOldRuns:          `SELECT COUNT(*) FROM workflow_run AS run WHERE ` + oldWorkflowRunCondition,
@@ -372,7 +372,7 @@ var databaseCleanupDeleteQueries = map[string]string{
 		DELETE FROM work_source_presence
 		WHERE rowid IN (SELECT presence.rowid FROM work_source_presence AS presence WHERE ` + missingLocalPresenceCondition + `)`,
 	databaseCleanupTaskOrphanSnapshots:  `DELETE FROM metadata_snapshot WHERE work_id IS NULL`,
-	databaseCleanupTaskUnusedTags:       `DELETE FROM tag WHERE is_user_defined = 0 AND NOT EXISTS (SELECT 1 FROM work_tag WHERE work_tag.tag_id = tag.id)`,
+	databaseCleanupTaskUnusedTags:       `DELETE FROM tag WHERE is_user_defined = 0 AND namespace <> 'metadata' AND NOT EXISTS (SELECT 1 FROM work_tag WHERE work_tag.tag_id = tag.id)`,
 	databaseCleanupTaskExpiredSessions:  `DELETE FROM user_session WHERE expires_at < datetime('now')`,
 	databaseCleanupTaskNotifications:    `DELETE FROM workflow_notification WHERE dismissed_at IS NOT NULL`,
 	databaseCleanupTaskOldRuns:          `DELETE FROM workflow_run WHERE id IN (SELECT run.id FROM workflow_run AS run WHERE ` + oldWorkflowRunCondition + `)`,

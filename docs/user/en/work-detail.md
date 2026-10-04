@@ -4,6 +4,16 @@
 Work detail presents metadata, editions, file trees, source availability, and
 playback actions for one work.
 
+## Editing metadata
+
+Admin and super_admin can edit work metadata with `library:write`. Save sends only fields changed from the initial editor values; selecting a cover alone preserves automatic titles, circles, series, and voice credits. Clearing a field resets only its override. Existing frozen title overrides that exactly match a trimmed DLsite title in the same family are removed during upgrade; circle, series, and voice overrides are kept.
+
+The Tags section searches shared metadata tags, adds or removes them for this work, and can create a custom tag even when the work has no DLsite metadata. Restore DLsite tags clears the work’s tag additions/removals. Shared names follow the configured metadata language priority, using manual names and learned genre names; a Japanese-only work can show a known Chinese tag name. Hidden tags remain absent everywhere. Personal “My tags” are separate account-owned tags. Demo shows the editor read-only.
+
+New custom names remain drafts until Save creates or reuses the shared tag and attaches it to this work in one transaction. Cancel leaves no shared entry. A name matching any known language after trimming and ignoring case reuses that tag, so repeated clicks and duplicate names do not create duplicate concepts.
+
+Switching metadata language uses that version’s manual or dictionary tag names when available, then falls back to the configured priority. Additions, removals, final-target hiding, and merge mappings still apply. The default version uses the same provider source as the work projection. Snapshot-only tags stay visible until their own projection completes; removing every tag produces an intentionally empty display.
+
 ## Current Behavior
 
 - Loads by work code and resolves translated DLsite-family routes.

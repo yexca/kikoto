@@ -563,7 +563,16 @@ func (c *Client) DownloadCover(ctx context.Context, product Product, cacheRoot s
 		return "", HTTPStatusError{Operation: "cover download", Status: response.Status, StatusCode: response.StatusCode, RetryAfter: response.Header.Get("Retry-After")}
 	}
 
-	if _, err := download.WriteFile(response.Body, response.ContentLength, targetPath, download.Options{MaxBytes: download.CoverMaxBytes}); err != nil {
+	staging, err := os.MkdirTemp(filepath.Dir(targetPath), ".provider-cover-")
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = os.RemoveAll(staging) }()
+	staged := filepath.Join(staging, filepath.Base(targetPath))
+	if _, err := download.WriteFile(response.Body, response.ContentLength, staged, download.Options{MaxBytes: download.CoverMaxBytes}); err != nil {
+		return "", err
+	}
+	if err := download.PublishCover(ctx, staged, targetPath, true); err != nil {
 		return "", err
 	}
 	return relativePath, nil

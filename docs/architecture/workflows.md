@@ -96,12 +96,68 @@ Metadata reasons and retries require `metadata:sync`. No-source reasons, source
 checks, and confirmed deletion require `sources:write`; the UI exposes deletion
 only in the no-source view and the server still revalidates family availability.
 Each permission grants only its corresponding maintenance actions, without
-exposing settings to metadata-only operators. Metadata management chooses All, the attention categories, and Voice aliases
+exposing settings to metadata-only operators. Metadata management chooses the Works group (All and attention categories) and the Entries group (Tags, Circles, and Voice actors)
 from the shared page icon rail. Work records use a management table (code and
 title, circle, status, actions); the action column opens the work metadata
 editor, gated by `library:write`. The list loads on navigation, filter
 changes, recovery actions, saves, and manual refresh, never on a timer.
 Metadata settings open in a popover anchored to the header, with the current list retained underneath.
+Shared tags and circles use searchable management tables and review dialogs.
+Tag and circle changes, work metadata edits, cover overrides, metadata links,
+and source untracking require `library:write`, granted to admin and
+super_admin. Voice alias management retains `metadata:sync`.
+
+Tag APIs live under `/api/metadata/tags` (list/create, rename/hide, merge,
+undo mapping); work additions/removals use `GET/PUT
+/api/works/{id}/metadata-tags`. Circle APIs under `/api/metadata/circles`
+list identities and manage manual names, aliases, merge reviews, and undo.
+These actions change known metadata only and never crawl or materialize a
+provider catalog. Demo keeps all mutation paths read-only.
+
+Management reads require an authenticated Metadata-page operator with at least
+one of `library:write`, `metadata:sync`, `sources:write`, or `system:admin`.
+This keeps library-writer tag completion available without sync permission.
+Anonymous read access does not include these management endpoints. Circle
+lists, details, and merge history share the existing circle visibility predicate.
+Demo lists only entries related to eligible demo works and counts those works
+only; circle merge review history is withheld in Demo.
+
+Startup projects shared tags in transactions of at most 64 existing works.
+`metadata_tag_projection_version` records completion only after every batch
+commits. Language-priority changes use the same batched
+projection; `metadata_projection_pending` makes an interrupted pass resume
+at the next startup. Repeating a completed projection preserves unchanged
+relations and recommendation revisions. Hiding, merging, and undo collect only
+works referencing the connected merge component through provider bases, genre
+ids, effective links, or manual additions/removals. The change and these
+projections commit in one transaction with a ten-second deadline. Cancellation,
+timeout, or an error rolls the entire change back without clearing the global
+completion marker. Names are refreshed only for changed concepts.
+
+Core workflow definitions, startup triggers, and changed-snapshot projections
+run before two independent server-lifetime background repairs: shared-tag
+backfill and legacy flat-cover migration. Neither repair delays or prevents
+these core steps. Protected logs retain repair errors; durable
+`startup_cover_migration` and `startup_metadata_tag_backfill` settings retain
+running/failed/complete status and whether another startup should retry.
+Committed backfill batches remain consistent; the next startup retries an
+incomplete pass idempotently. A bad cover file leaves its
+original in place while other files move, and prevents the layout completion
+marker until a later successful retry.
+
+All cover writers share publication serialization across a work's extensions.
+They stage complete bounded files on the cache filesystem and publish by
+rename, without requiring hard links. Remote and legacy fallback publication
+preserve an existing provider cover; provider publication wins a concurrent
+fallback and removes its old extensions. Windows handle conflicts have a
+cancellable one-second retry bound. No partially written final file is exposed.
+
+Work tag saves accept add/remove overrides and optional custom-name drafts in
+one transaction. Exact names in any language, ignoring surrounding whitespace
+and case, reuse an existing concept. Canceling the editor sends no creation
+request. Hiding a merged source changes its post-undo state; only a hidden final
+target hides the current tag. Search keeps merged source names as aliases and
+rebuilds affected documents when names or mappings change.
 Activity links use `/metadata?reason=metadata&metadataRun=<id>`;
 legacy Maintenance work and metadata links redirect to Metadata management. Filtering by a run additionally
 checks workflow permission and that run's ownership. Successful recovery changes shared work state, never
