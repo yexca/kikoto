@@ -39,11 +39,10 @@ import {
   type TreeTrack,
 } from "@/features/work-detail/media/mediaTreeModel";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { FilePreviewDialog, type FilePreviewState } from "@/features/work-detail/dialogs/FilePreviewDialog";
+import { FilePreviewDialog, type FilePreviewRequest } from "@/features/work-detail/dialogs/FilePreviewDialog";
 import {
   DirectoryLoadErrorPanel,
   DirectoryMessage,
-  type DirectoryMode,
   LocalSourceStatePanel,
   RemoteSourceStatePanel,
   SourceDirectoryPanel,
@@ -165,7 +164,6 @@ type RemoteOnlyDirectoryPanelProps = {
   treeError: string;
   isDetailLoading: boolean;
   treeLoading: boolean;
-  directoryMode: DirectoryMode;
   root: TreeNode;
   directoryStats: TreeStats;
   directoryRoutingRules: DirectoryRoutingRule[];
@@ -177,14 +175,13 @@ type RemoteOnlyDirectoryPanelProps = {
   hasMaterializedWork: boolean;
   selectionModal: ReactNode;
   onActiveKeyChange: (key: string) => void;
-  onDirectoryModeChange: (mode: DirectoryMode) => void;
   onRetry: () => void;
   onSelectRemote: (remote: RemoteSourceAvailability) => void;
   onPlayRemote: (tracks: TreeTrack[], locationId: number) => void;
   onPlayMaterialized: (tracks: TreeTrack[], locationId: number) => void;
   onQueueRemote: (track: TreeTrack, next: boolean) => void;
   onQueueMaterialized: (track: TreeTrack, next: boolean) => void;
-  onPreview: (preview: FilePreviewState) => void;
+  onPreview: (request: FilePreviewRequest) => void;
 };
 
 function remoteOnlyDirectoryDescription(props: RemoteOnlyDirectoryPanelProps) {
@@ -288,8 +285,6 @@ function RemoteOnlyDirectoryPanel(props: RemoteOnlyDirectoryPanelProps) {
       tabs={props.tabs}
       activeKey={props.activeKey}
       onActiveKeyChange={props.onActiveKeyChange}
-      directoryMode={props.directoryMode}
-      onDirectoryModeChange={props.onDirectoryModeChange}
       root={props.root}
       directoryRoutingRules={props.directoryRoutingRules}
       currentLocationId={props.currentLocationId}
@@ -594,7 +589,7 @@ function RemoteOnlyDetailOverlays({
 }: {
   manageOpen: boolean;
   tree: TreeNode;
-  filePreview: FilePreviewState | null;
+  filePreview: FilePreviewRequest | null;
   onManageClose: () => void;
   onPreviewClose: () => void;
 }) {
@@ -607,7 +602,7 @@ function RemoteOnlyDetailOverlays({
           onClose={onManageClose}
         />
       )}
-      {filePreview && <FilePreviewDialog preview={filePreview} onClose={onPreviewClose} />}
+      {filePreview && <FilePreviewDialog request={filePreview} onClose={onPreviewClose} />}
     </>
   );
 }
@@ -638,7 +633,7 @@ export function RemoteOnlyWorkDetailController({
   const [treeLoading, setTreeLoading] = useState(false);
   const [treeError, setTreeError] = useState("");
   const [remoteRetryToken, setRemoteRetryToken] = useState(0);
-  const [filePreview, setFilePreview] = useState<FilePreviewState | null>(null);
+  const [filePreview, setFilePreview] = useState<FilePreviewRequest | null>(null);
   const [activeRemoteTab, setActiveRemoteTab] = useState<string>(remoteSourceTabKey(source.id));
   const [remoteAvailability, setRemoteAvailability] = useState<RemoteSourceAvailability[]>(() =>
     sources
@@ -666,7 +661,6 @@ export function RemoteOnlyWorkDetailController({
   );
   const [availabilityLoading, setAvailabilityLoading] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
-  const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("browse");
   const [isManageOpen, setIsManageOpen] = useState(false);
   const [mobileDetailTab, setMobileDetailTab] = useState<"info" | "directory">("directory");
   const isCompactDetailLayout = useCompactDetailLayout();
@@ -1130,7 +1124,6 @@ export function RemoteOnlyWorkDetailController({
       treeError={treeError}
       isDetailLoading={isDetailLoading}
       treeLoading={treeLoading}
-      directoryMode={directoryMode}
       root={visibleTree}
       directoryStats={visibleDirectoryStats}
       directoryRoutingRules={directoryRoutingRules}
@@ -1142,7 +1135,6 @@ export function RemoteOnlyWorkDetailController({
       hasMaterializedWork={Boolean(trackedWork)}
       selectionModal={<LazyRemoteFetchWorkspaceDialog workspace={fetchWorkspace} />}
       onActiveKeyChange={selectRemoteSourceTab}
-      onDirectoryModeChange={setDirectoryMode}
       onRetry={() => setRemoteRetryToken((value) => value + 1)}
       onSelectRemote={(next) => selectRemoteSourceTab(remoteSourceTabKey(next.source.id))}
       onPlayRemote={playRemoteTracks}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { TimedLyricLine } from "@/lib/timedLyrics";
 import { usePlayer, usePlayerTime } from "@/player/PlayerProvider";
 import { persistDockMode, restoreDockMode } from "@/player/playerPersistence";
 import type { DockMode, PlayerTrack } from "@/player/playerTypes";
@@ -8,7 +9,6 @@ import { useScreenLyrics, useScreenLyricsSync, type ScreenLyricsController } fro
 import { CompactPlayer } from "./CompactPlayer";
 import { FullPlayer } from "./FullPlayer";
 import { MiniPlayer } from "./MiniPlayer";
-import type { TimedLyricLine } from "./timedLyrics";
 import { useActiveLyricIndex, usePlayerLyrics } from "./usePlayerLyrics";
 
 const MOBILE_PLAYER_QUERY = "(max-width: 1023px)";

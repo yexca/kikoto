@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
 
-import { PLAYBACK_CURSOR_UPDATED_EVENT } from "@/lib/appEvents";
+import { PLAYBACK_CURSOR_UPDATED_EVENT, type PlaybackCursorUpdatedDetail } from "@/lib/appEvents";
 import { api, ApiError } from "@/lib/api";
+import type { ClientPrincipalID } from "@/lib/clientStorageScope";
 
 import { canPersistPlaybackProgress } from "./playbackStart";
 import { shouldSaveRemoteProgress, type ProgressSaveMarker } from "./playerProgress";
@@ -14,11 +15,18 @@ type ProgressSavePayload = {
   completed: boolean;
 };
 
-async function saveProgressWithBusyRetry(mediaItemId: number, payload: ProgressSavePayload) {
+type QueuedProgressSave = { payload: ProgressSavePayload; principalID: ClientPrincipalID };
+
+async function saveProgressWithBusyRetry(
+  mediaItemId: number,
+  payload: ProgressSavePayload,
+  principalID: ClientPrincipalID,
+) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const cursor = await api.updateMediaProgress(mediaItemId, payload);
-      window.dispatchEvent(new CustomEvent(PLAYBACK_CURSOR_UPDATED_EVENT, { detail: cursor }));
+      const detail: PlaybackCursorUpdatedDetail = { ...cursor, principalID };
+      window.dispatchEvent(new CustomEvent(PLAYBACK_CURSOR_UPDATED_EVENT, { detail }));
       return;
     } catch (error) {
       if (!(error instanceof ApiError) || error.code !== "database_busy" || attempt > 0) return;
@@ -32,10 +40,10 @@ async function saveProgressWithBusyRetry(mediaItemId: number, payload: ProgressS
  * coalesced per media item; `flushProgress` forces a checkpoint for the item
  * that is current when it runs, and runs when the page is hidden or closed.
  */
-export function usePlaybackProgress(engine: PlaybackEngine, canSaveRemotely: boolean) {
+export function usePlaybackProgress(engine: PlaybackEngine, canSaveRemotely: boolean, principalID: ClientPrincipalID) {
   const { refs, currentTrack, currentPlaybackInstanceKey, duration, durationLocationId } = engine;
   const lastSavedRef = useRef<ProgressSaveMarker | null>(null);
-  const saveQueueRef = useRef<{ inFlight: boolean; pending: Map<number, ProgressSavePayload> }>({
+  const saveQueueRef = useRef<{ inFlight: boolean; pending: Map<number, QueuedProgressSave> }>({
     inFlight: false,
     pending: new Map(),
   });
@@ -43,15 +51,16 @@ export function usePlaybackProgress(engine: PlaybackEngine, canSaveRemotely: boo
 
   const queueProgressSave = (mediaItemId: number, payload: ProgressSavePayload) => {
     const queueState = saveQueueRef.current;
-    queueState.pending.set(mediaItemId, payload);
+    // A save outlives the render that queued it; it belongs to the account that queued it.
+    queueState.pending.set(mediaItemId, { payload, principalID });
     if (queueState.inFlight) return;
     queueState.inFlight = true;
     void (async () => {
       while (queueState.pending.size > 0) {
-        const next = queueState.pending.entries().next().value as [number, ProgressSavePayload] | undefined;
+        const next = queueState.pending.entries().next().value as [number, QueuedProgressSave] | undefined;
         if (!next) break;
         queueState.pending.delete(next[0]);
-        await saveProgressWithBusyRetry(next[0], next[1]);
+        await saveProgressWithBusyRetry(next[0], next[1].payload, next[1].principalID);
       }
       queueState.inFlight = false;
     })();

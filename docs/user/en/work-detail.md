@@ -49,11 +49,12 @@ playback actions for one work.
 - Opens remote source trees lazily after availability is known. An explicit
   persisted remote-source route can load its identified source before an
   aggregate Check and marks a successful load available in the current detail.
-- Wraps complete folder and file names in variable-height Browse and Tree rows,
+- Wraps complete folder and file names in variable-height directory rows,
   including long names without spaces, without horizontal page overflow.
-- Keeps Browse breadcrumbs on one line. Mobile collapses intermediate ancestors
-  into a menu while desktop bounds each visible segment; complete names remain
-  available through rows, ancestor commands, titles, and accessible labels.
+- Keeps the directory breadcrumb on one line. Mobile collapses intermediate
+  ancestors into a menu while desktop bounds each visible segment and keeps the
+  current folder scrolled into view; complete names remain available through
+  rows, ancestor commands, titles, and accessible labels.
 - Keeps one Source menu in the Hero action bar. Its icon changes for Local,
   Tracked, and remote contexts, its header names the selected source, and it
   closes on outside interaction, Escape, or a source change.
@@ -77,25 +78,51 @@ playback actions for one work.
   On compact screens, the Hero keeps the same credit line, tag row, stat
   strip, and actions above the Info and Directory tabs, Info shows the source
   panel, and Mark, List, DLsite, Metadata, and Source collapse to icons.
-- Presents Directory as one panel: a header with the file summary, the
-  Browse/Tree switch, and source checking; underline source tabs with status
-  dots; a slim default-folder line; and the file list. Browse adds a toolbar
-  with an up control and breadcrumb, the folded-lyrics count, and a Play all
-  command for the current folder's playable files.
-- Uses one two-line row for every directory file type on mobile and desktop,
-  placing the complete name above type, precise audio duration, and size.
-  Playable rows are numbered in folder playback order, show a play cue on
-  hover, and mark the current track with an accent row and a live icon.
-- Folds matched same-folder lyrics sidecars out of the default Browse and Tree
-  rows while keeping unmatched text visible. Audio rows expose lyrics choice,
+- Presents Directory as one panel: a header with the file summary and source
+  checking, underline source tabs with status dots, and a folder explorer.
+  When the directory is wide enough and the work has folders, a sticky folder
+  column sits beside the selected folder's contents; otherwise a Folders button
+  opens the same navigator as a bottom sheet on phones or a popover elsewhere.
+  The navigator lists naturally sorted folders with their playable or image
+  counts, opens small trees completely and larger ones toward the selected,
+  recommended, and playing folders, merges a folder that holds only one
+  subfolder into a single row, and marks the recommended folder and the folder
+  that is playing.
+- Opens on the folder recommended by the folder routing rules. The contents
+  toolbar shows an up control and breadcrumb, the folder's track count and
+  duration, a Recommended badge (or a command that returns to the recommended
+  folder), the folded-lyrics count, and a Play all command for the current
+  folder's playable files.
+- Groups a folder's contents into subfolder tiles, an album-style track list,
+  an image gallery, documents, and other files, labelling the groups when more
+  than one is present. Subfolder tiles summarize what they contain and offer a
+  direct play command when they hold playable files. Tracks are numbered in
+  folder playback order with the complete name above size and the work's
+  resume position, and precise duration in a trailing column; they show a play
+  cue on hover and mark the current track with an accent row and a live icon.
+  The resume marker follows playback saves without reloading. Local and cached
+  images show lazily loaded thumbnails; remote images load only when previewed.
+- Folds matched same-folder lyrics sidecars out of the default directory rows
+  while keeping unmatched text visible. Audio rows expose lyrics choice,
   preview, and reveal actions, and a directory control can show all folded
   lyrics. File management and Fetch selection continue to show the complete
   unfiltered tree.
-- Lists naturally sorted folders before naturally sorted files in Tree and
-  Browse. Folder playback follows that same visible order.
+- Lists naturally sorted folders before naturally sorted files. Folder playback
+  follows that same visible order.
 - Keeps available non-playable files such as images and text in Directory while
   counting audio and audio-bearing video together under the Playable source
   metric.
+- Opens previews in a file viewer that steps through the folder's files of the
+  same kind with header controls, arrow keys, swipes on phones, or an image
+  filmstrip. Images sit on a dark stage that fits the window or shows actual
+  size around the clicked point with drag panning, and report their
+  dimensions; video uses the same stage. Text opens in a reading view, and LRC,
+  WebVTT, and SRT files show time-stamped lines, with LRC header tags and a Raw
+  text toggle, parsed the same way as the player's lyrics. The viewer offers
+  Copy for text, Download for local and cached files, and Set cover for local
+  images, which takes a second click to confirm and resets after a few seconds
+  or on another image. It fills the screen on phones and opens above the
+  floating desktop player.
 - Converts local and remote text previews to UTF-8 on demand, using byte-order
   marks, declared charsets, and automatic legacy-encoding detection without
   rewriting the source file.

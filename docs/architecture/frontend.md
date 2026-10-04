@@ -130,8 +130,9 @@ Source loading also warms the next auto-advance track in one detached audio
 element (`useNextTrackPreload`) so the player element can reuse the buffered
 bytes for the identical URL. The dock UI
 lives in `player/dock`: `PlayerDock` owns the Mini, Compact, and full surfaces,
-while queue reordering math, lyrics parsing, and formatting stay in pure
-modules.
+while queue reordering math and formatting stay in pure modules. Timed-lyrics
+parsing lives in `lib/timedLyrics`, so the player and the work detail file
+viewer read LRC, WebVTT, and SRT files the same way.
 
 ## Major Surfaces
 

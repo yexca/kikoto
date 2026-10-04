@@ -1,6 +1,6 @@
 import i18n from "@/i18n";
 import { Button } from "@/components/ui/button";
-import { Check, ChevronDown, Folder, FolderTree, MoreHorizontal, RefreshCw, Sparkles } from "lucide-react";
+import { Check, ChevronDown, MoreHorizontal, RefreshCw } from "lucide-react";
 import type { DirectoryRoutingRule, WorkDetail } from "@/lib/api";
 import {
   type RemoteSourceAvailability,
@@ -12,19 +12,14 @@ import {
 } from "@/features/work-detail/source/sourceContextModel";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/features/work-detail/workDetailHelpers";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { TreeNode, TreeTrack } from "@/features/work-detail/media/mediaTreeModel";
-import type { FilePreviewState } from "@/features/work-detail/dialogs/FilePreviewDialog";
-import { DirectoryBrowser, DirectoryTree } from "@/features/work-detail/directory/DirectoryTree";
+import type { FilePreviewRequest } from "@/features/work-detail/dialogs/FilePreviewDialog";
+import { DirectoryExplorer } from "@/features/work-detail/directory/DirectoryExplorer";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
-import {
-  type DirectoryRouteMatch,
-  directoryRouteSummary,
-  nodeAtPath,
-} from "@/features/work-detail/directory/directoryModel";
+import { nodeAtPath } from "@/features/work-detail/directory/directoryModel";
 import { IconButton } from "@/components/ui/icon-button";
-import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 
 export function DirectoryLoadErrorPanel({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
@@ -154,11 +149,8 @@ export function NoSourceDirectoryPanel({
   );
 }
 
-export type DirectoryMode = "browse" | "tree";
-
 function SourceDirectoryContent({
   emptyState,
-  directoryMode,
   root,
   directoryRoutingRules,
   requestedRoutePath,
@@ -172,7 +164,6 @@ function SourceDirectoryContent({
   onPreview,
 }: {
   emptyState?: ReactNode;
-  directoryMode: DirectoryMode;
   root: TreeNode;
   directoryRoutingRules: DirectoryRoutingRule[];
   requestedRoutePath: string[] | null;
@@ -183,24 +174,23 @@ function SourceDirectoryContent({
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
   onPlayNext?: (track: TreeTrack) => void;
   onAppendQueue?: (track: TreeTrack) => void;
-  onPreview?: (preview: FilePreviewState) => void;
+  onPreview?: (request: FilePreviewRequest) => void;
 }) {
   if (emptyState) return emptyState;
-  const sharedProps = {
-    root,
-    directoryRoutingRules,
-    currentLocationId,
-    currentPlaybackKey,
-    emptyLabel,
-    onPlayFolder,
-    onPlayNext,
-    onAppendQueue,
-    onPreview,
-  };
-  return directoryMode === "browse" ? (
-    <DirectoryBrowser {...sharedProps} routePath={requestedRoutePath ?? undefined} routeRequestKey={routeRequestKey} />
-  ) : (
-    <DirectoryTree {...sharedProps} focusPath={requestedRoutePath ?? undefined} focusRequestKey={routeRequestKey} />
+  return (
+    <DirectoryExplorer
+      root={root}
+      directoryRoutingRules={directoryRoutingRules}
+      routePath={requestedRoutePath ?? undefined}
+      routeRequestKey={routeRequestKey}
+      currentLocationId={currentLocationId}
+      currentPlaybackKey={currentPlaybackKey}
+      emptyLabel={emptyLabel}
+      onPlayFolder={onPlayFolder}
+      onPlayNext={onPlayNext}
+      onAppendQueue={onAppendQueue}
+      onPreview={onPreview}
+    />
   );
 }
 
@@ -221,8 +211,6 @@ export function SourceDirectoryPanel({
   checkingSources = false,
   checkedAt,
   onCheckSources,
-  directoryMode,
-  onDirectoryModeChange,
   root,
   directoryRoutingRules,
   currentLocationId,
@@ -252,8 +240,6 @@ export function SourceDirectoryPanel({
   checkingSources?: boolean;
   checkedAt?: string;
   onCheckSources?: () => void;
-  directoryMode: DirectoryMode;
-  onDirectoryModeChange: (mode: DirectoryMode) => void;
   root: TreeNode;
   directoryRoutingRules: DirectoryRoutingRule[];
   currentLocationId: number | null;
@@ -267,7 +253,7 @@ export function SourceDirectoryPanel({
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
   onPlayNext?: (track: TreeTrack) => void;
   onAppendQueue?: (track: TreeTrack) => void;
-  onPreview?: (preview: FilePreviewState) => void;
+  onPreview?: (request: FilePreviewRequest) => void;
   autoRoutePath?: string[] | null;
   routeStateKey?: string;
 }) {
@@ -304,7 +290,6 @@ export function SourceDirectoryPanel({
   const content = (
     <SourceDirectoryContent
       emptyState={emptyState}
-      directoryMode={directoryMode}
       root={root}
       directoryRoutingRules={directoryRoutingRules}
       requestedRoutePath={effectiveRequestedRoutePath}
@@ -318,14 +303,14 @@ export function SourceDirectoryPanel({
       onPreview={onPreview}
     />
   );
-  const routeSummary = useMemo(() => directoryRouteSummary(root, directoryRoutingRules), [root, directoryRoutingRules]);
   const tabClassName = (active: boolean) =>
     `relative inline-flex h-10 shrink-0 items-center gap-2 px-3 text-sm font-medium transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full ${
       active ? "text-foreground after:bg-primary" : "text-muted-foreground after:bg-transparent hover:text-foreground"
     }`;
   return (
     <section className="pb-4 lg:pb-8" data-testid="directory-panel">
-      <div className="overflow-hidden rounded-xl border bg-card">
+      {/* Clip rather than hide overflow so the folder navigator can stay sticky. */}
+      <div className="overflow-clip rounded-xl border bg-card">
         <div className="flex min-w-0 items-center gap-3 px-4 pt-3 lg:pt-4">
           <div className="min-w-0 flex-1">
             <h3 className="flex min-w-0 items-baseline gap-2 text-base font-semibold">
@@ -339,7 +324,6 @@ export function SourceDirectoryPanel({
             </p>
           </div>
           <div className="hidden shrink-0 items-center gap-1 lg:flex">
-            <DirectoryModeSwitch mode={directoryMode} onChange={onDirectoryModeChange} />
             {onCheckSources && (
               <IconButton
                 title={
@@ -356,7 +340,7 @@ export function SourceDirectoryPanel({
               </IconButton>
             )}
           </div>
-          {mobileNavigationLayout && (
+          {mobileNavigationLayout && onCheckSources && (
             <>
               <button
                 ref={mobileActionsRef}
@@ -379,46 +363,20 @@ export function SourceDirectoryPanel({
                 zIndex={70}
               >
                 <div role="menu" aria-label={i18n.t("libraryDetail.directoryActions")}>
-                  {onCheckSources && (
-                    <button
-                      role="menuitem"
-                      className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
-                      disabled={checkingSources}
-                      onClick={() => {
-                        setMobileActionsOpen(false);
-                        onCheckSources();
-                      }}
-                    >
-                      <RefreshCw className={`h-4 w-4 shrink-0 ${checkingSources ? "animate-spin" : ""}`} />
-                      <span>
-                        {checkingSources
-                          ? i18n.t("libraryDetail.checkingSources")
-                          : i18n.t("libraryDetail.checkSources")}
-                      </span>
-                    </button>
-                  )}
-                  <div className="my-1 border-t" />
-                  <div className="px-2 py-1 text-2xs font-semibold uppercase text-muted-foreground">
-                    {i18n.t("libraryDetail.view")}
-                  </div>
-                  {(["browse", "tree"] as DirectoryMode[]).map((mode) => (
-                    <button
-                      key={mode}
-                      role="menuitemradio"
-                      aria-checked={directoryMode === mode}
-                      className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
-                      onClick={() => {
-                        onDirectoryModeChange(mode);
-                        setMobileActionsOpen(false);
-                      }}
-                    >
-                      {mode === "browse" ? <Folder className="h-4 w-4" /> : <FolderTree className="h-4 w-4" />}
-                      <span className="flex-1">
-                        {mode === "browse" ? i18n.t("libraryDetail.browse") : i18n.t("libraryDetail.tree")}
-                      </span>
-                      {directoryMode === mode && <Check className="h-4 w-4 text-primary" />}
-                    </button>
-                  ))}
+                  <button
+                    role="menuitem"
+                    className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
+                    disabled={checkingSources}
+                    onClick={() => {
+                      setMobileActionsOpen(false);
+                      onCheckSources();
+                    }}
+                  >
+                    <RefreshCw className={`h-4 w-4 shrink-0 ${checkingSources ? "animate-spin" : ""}`} />
+                    <span>
+                      {checkingSources ? i18n.t("libraryDetail.checkingSources") : i18n.t("libraryDetail.checkSources")}
+                    </span>
+                  </button>
                 </div>
               </AnchoredPopover>
             </>
@@ -508,13 +466,6 @@ export function SourceDirectoryPanel({
           )}
         </div>
 
-        {routeSummary && (
-          <DirectoryRouteSummary
-            summary={routeSummary}
-            onSelect={() => setRequestedRoutePath([...routeSummary.path])}
-          />
-        )}
-
         <div className="p-2 sm:p-3">
           {toolbar}
           {loadingMessage && (
@@ -528,69 +479,6 @@ export function SourceDirectoryPanel({
       </div>
       {selectionModal}
     </section>
-  );
-}
-
-function DirectoryModeSwitch({ mode, onChange }: { mode: DirectoryMode; onChange: (mode: DirectoryMode) => void }) {
-  return (
-    <div className={segmentedListClassName("gap-0.5 p-0.5")} role="group">
-      <button
-        className={segmentedItemClassName(mode === "browse", "h-7 gap-1 px-2 text-xs")}
-        aria-pressed={mode === "browse"}
-        title={i18n.t("libraryDetail.browse")}
-        onClick={() => onChange("browse")}
-      >
-        <Folder className="h-3.5 w-3.5" />
-        {i18n.t("libraryDetail.browse")}
-      </button>
-      <button
-        className={segmentedItemClassName(mode === "tree", "h-7 gap-1 px-2 text-xs")}
-        aria-pressed={mode === "tree"}
-        title={i18n.t("libraryDetail.tree")}
-        onClick={() => onChange("tree")}
-      >
-        <FolderTree className="h-3.5 w-3.5" />
-        {i18n.t("libraryDetail.tree")}
-      </button>
-    </div>
-  );
-}
-
-function DirectoryRouteSummary({ summary, onSelect }: { summary: DirectoryRouteMatch; onSelect: () => void }) {
-  const hasMatch = summary.positiveMatches.length > 0;
-  const pathButton = (
-    <button
-      type="button"
-      className="inline-flex min-w-0 max-w-full items-center gap-1 truncate rounded-md bg-primary/10 px-2 py-0.5 font-medium text-primary hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      title={i18n.t("libraryDetail.openPath", { path: summary.pathLabel })}
-      aria-label={hasMatch ? i18n.t("libraryDetail.matchedPath", { path: summary.pathLabel }) : undefined}
-      onClick={onSelect}
-    >
-      <Sparkles className="h-3 w-3 shrink-0" aria-hidden="true" />
-      <span className="truncate">{summary.pathLabel}</span>
-    </button>
-  );
-
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 border-b bg-muted/30 px-4 py-2 text-xs">
-      <span className="shrink-0 font-medium text-muted-foreground">
-        <span className="lg:hidden">
-          {hasMatch ? i18n.t("libraryDetail.matched") : i18n.t("libraryDetail.noMatchingFolder")}
-        </span>
-        <span className="hidden lg:inline">{i18n.t("libraryDetail.defaultFolder")}</span>
-      </span>
-      <span className={`min-w-0 max-w-full ${hasMatch ? "" : "hidden lg:inline"}`}>{pathButton}</span>
-      <span className="hidden min-w-0 text-muted-foreground lg:inline">
-        {hasMatch
-          ? i18n.t("libraryDetail.matchedRules", { rules: summary.positiveMatches.join(" + ") })
-          : i18n.t("libraryDetail.fallbackPlayableMedia")}
-      </span>
-      {summary.negativeMatches.length > 0 && (
-        <span className="hidden text-muted-foreground lg:inline">
-          {i18n.t("libraryDetail.excludedRules", { rules: summary.negativeMatches.join(" + ") })}
-        </span>
-      )}
-    </div>
   );
 }
 

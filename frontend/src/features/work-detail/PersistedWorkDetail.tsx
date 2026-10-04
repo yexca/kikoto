@@ -70,11 +70,10 @@ import {
 } from "@/features/work-detail/WorkDetailLayout";
 import { useTranslation } from "react-i18next";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { FilePreviewDialog, type FilePreviewState } from "@/features/work-detail/dialogs/FilePreviewDialog";
+import { FilePreviewDialog, type FilePreviewRequest } from "@/features/work-detail/dialogs/FilePreviewDialog";
 import {
   DirectoryLoadErrorPanel,
   DirectoryMessage,
-  type DirectoryMode,
   DirectoryOperationBanner,
   LocalSourceStatePanel,
   NoSourceDirectoryPanel,
@@ -453,7 +452,6 @@ type PersistedDirectoryPanelProps = {
   selectedTrackedPresenceKey: string;
   checkingSources: boolean;
   checkedAt: string;
-  directoryMode: DirectoryMode;
   root: TreeNode;
   directoryStats: TreeStats;
   directoryRoutingRules: DirectoryRoutingRule[];
@@ -477,14 +475,13 @@ type PersistedDirectoryPanelProps = {
   onActiveKeyChange: (key: string) => void;
   onTrackedPresenceChange: (key: string) => void;
   onCheckSources: () => void;
-  onDirectoryModeChange: (mode: DirectoryMode) => void;
   onRetry: () => void;
   onSelectRemote: (remote: RemoteSourceAvailability) => void;
   onOpenCleanupRun: () => void;
   onPlayLocal: (tracks: TreeTrack[], locationId: number) => void;
   onPlayRemote: (tracks: TreeTrack[], locationId: number) => void;
   onQueue: (track: TreeTrack, next: boolean) => void;
-  onPreview: (preview: FilePreviewState) => void;
+  onPreview: (request: FilePreviewRequest) => void;
 };
 
 function persistedDirectoryEmptyLabel(props: PersistedDirectoryPanelProps) {
@@ -571,8 +568,6 @@ function PersistedDirectoryPanel(props: PersistedDirectoryPanelProps) {
       checkingSources={props.checkingSources}
       checkedAt={props.checkedAt}
       onCheckSources={props.onCheckSources}
-      directoryMode={props.directoryMode}
-      onDirectoryModeChange={props.onDirectoryModeChange}
       root={props.root}
       directoryRoutingRules={props.directoryRoutingRules}
       currentLocationId={props.currentLocationId}
@@ -788,7 +783,7 @@ function PersistedFilePreviewOverlay({
   onClose,
   onMetadataSaved,
 }: {
-  preview: FilePreviewState | null;
+  preview: FilePreviewRequest | null;
   work: WorkDetail | null;
   toast: ReturnType<typeof useToast>;
   onClose: () => void;
@@ -807,7 +802,7 @@ function PersistedFilePreviewOverlay({
         }
       }
     : undefined;
-  return <FilePreviewDialog preview={preview} onClose={onClose} onSetCover={onSetCover} />;
+  return <FilePreviewDialog request={preview} onClose={onClose} onSetCover={onSetCover} />;
 }
 
 function PersistedDirectoryManagerOverlay({
@@ -989,10 +984,9 @@ export function PersistedWorkDetailController({
     sourceCheckedAt,
     refreshAvailability,
   } = sourceContext;
-  const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("browse");
   const [isManageOpen, setIsManageOpen] = useState(false);
   const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
-  const [preview, setPreview] = useState<FilePreviewState | null>(null);
+  const [preview, setPreview] = useState<FilePreviewRequest | null>(null);
   const [isRefreshingLocalFiles, setIsRefreshingLocalFiles] = useState(false);
   const [message, setMessage] = useState("");
   const [isSyncingDetail, setIsSyncingDetail] = useState(false);
@@ -1736,7 +1730,6 @@ export function PersistedWorkDetailController({
       selectedTrackedPresenceKey={selectedTrackedPresenceKey}
       checkingSources={isCheckingSources}
       checkedAt={sourceCheckedAt}
-      directoryMode={directoryMode}
       root={tree}
       directoryStats={directoryStats}
       directoryRoutingRules={directoryRoutingRules}
@@ -1760,7 +1753,6 @@ export function PersistedWorkDetailController({
       onActiveKeyChange={changeSourceKey}
       onTrackedPresenceChange={changeTrackedPresence}
       onCheckSources={() => void refreshSourceAvailability()}
-      onDirectoryModeChange={setDirectoryMode}
       onRetry={() => {
         if (selectedRemoteSource) {
           if (!auth.demoMode) void refreshAvailability();
