@@ -3,8 +3,11 @@ import {
   metadataEditorInitialState,
   normalizedMetadataLinkCode,
   workMetadataOverridePayload,
+  type MetadataEditorState,
 } from "./metadataEditorModel";
 import { DebouncedSuggestionResult, useDebouncedSuggestion, useWorkCoverCandidates } from "./useMetadataSuggestions";
+
+import { WorkMetadataTagsSection, useWorkMetadataTagsEditor } from "./WorkMetadataTagsSection";
 
 import { useState, type ReactNode } from "react";
 
@@ -360,6 +363,9 @@ function useMetadataEditorActions({
   seriesCircleExternalId,
   voiceActors,
   selectedCoverId,
+  initialCoverId,
+  initialState,
+  tagEditor,
   onSaved,
   onLinkChanged,
   onClose,
@@ -374,6 +380,9 @@ function useMetadataEditorActions({
   seriesCircleExternalId: string;
   voiceActors: ManualOverridePerson[];
   selectedCoverId: number | null;
+  initialCoverId: number | null;
+  initialState: MetadataEditorState;
+  tagEditor: ReturnType<typeof useWorkMetadataTagsEditor>;
   onSaved: () => void;
   onLinkChanged: (result: WorkMetadataLinkResult) => void;
   onClose: () => void;
@@ -383,9 +392,8 @@ function useMetadataEditorActions({
   const save = async () => {
     setSaving(true);
     try {
-      await api.updateWorkManualOverrides(
-        work.id,
-        workMetadataOverridePayload({
+      const payload = workMetadataOverridePayload(
+        {
           title,
           circleName,
           circleExternalId,
@@ -393,9 +401,13 @@ function useMetadataEditorActions({
           seriesTitleId,
           seriesCircleExternalId,
           voiceActors,
-        }),
+        },
+        initialState,
       );
-      if (selectedCoverId !== null) await api.setWorkCoverOverride(work.id, selectedCoverId);
+      if (Object.keys(payload).length) await api.updateWorkManualOverrides(work.id, payload);
+      await tagEditor.save();
+      if (selectedCoverId !== null && selectedCoverId !== initialCoverId)
+        await api.setWorkCoverOverride(work.id, selectedCoverId);
       toast.success(i18n.t("libraryDetail.metadataOverridesSaved"));
       onSaved();
       onClose();
@@ -470,8 +482,9 @@ export function WorkMetadataEditorModal({
   onLinkChanged: (result: WorkMetadataLinkResult) => void;
 }) {
   const toast = useToast();
-  const initialState = metadataEditorInitialState(work);
+  const [initialState] = useState(() => metadataEditorInitialState(work));
   const manual = initialState.manual;
+  const tagEditor = useWorkMetadataTagsEditor(work.id);
   const [title, setTitle] = useState(initialState.title);
   const [circleName, setCircleName] = useState(initialState.circleName);
   const [circleExternalId, setCircleExternalId] = useState(initialState.circleExternalId);
@@ -503,6 +516,9 @@ export function WorkMetadataEditorModal({
     seriesCircleExternalId,
     voiceActors,
     selectedCoverId: coverState.selectedCoverId,
+    initialCoverId: coverState.initialCoverId,
+    initialState,
+    tagEditor,
     onSaved,
     onLinkChanged,
     onClose,
@@ -521,12 +537,12 @@ export function WorkMetadataEditorModal({
       <DialogHeader
         title={i18n.t("libraryDetail.editMetadata")}
         description={work.primaryCode}
-        onClose={onClose}
+        onClose={saving ? undefined : onClose}
         closeLabel={i18n.t("content.close")}
       />
       <DialogBody>
         {/* Demo opens the editor for inspection; every field stays visible but cannot be changed. */}
-        <fieldset disabled={readOnly} className="m-0 min-w-0 space-y-5 border-0 p-0">
+        <fieldset disabled={readOnly || saving} className="m-0 min-w-0 space-y-5 border-0 p-0">
           <EditorSection title={i18n.t("libraryDetail.metadataLink")}>
             <MetadataEditorLinkSection
               link={work.metadataLink}
@@ -561,6 +577,10 @@ export function WorkMetadataEditorModal({
               onSelectCover={coverState.setSelectedCoverId}
               onReset={() => void resetField("cover")}
             />
+          </EditorSection>
+
+          <EditorSection title={i18n.t("metadataEntries.tags")}>
+            <WorkMetadataTagsSection editor={tagEditor} saving={saving} />
           </EditorSection>
 
           <EditorSection title={i18n.t("libraryDetail.circle")}>

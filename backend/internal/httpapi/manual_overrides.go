@@ -105,9 +105,15 @@ func (s *Server) updateWorkManualOverrides(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
 		return
 	}
-	var payload workManualOverridePayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+	var fields map[string]json.RawMessage
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&fields); err != nil || fields == nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
+		return
+	}
+	var payload workManualOverridePayload
+	encoded, err := json.Marshal(fields)
+	if err != nil || json.Unmarshal(encoded, &payload) != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid override fields"})
 		return
 	}
 	tx, err := s.db.BeginTx(r.Context(), nil)
@@ -116,30 +122,11 @@ func (s *Server) updateWorkManualOverrides(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := upsertManualTextOverride(r.Context(), tx, workID, "title", payload.Title, user.ID); err != nil {
-		writeError(w, err)
-		return
-	}
-	if err := upsertManualJSONOverride(r.Context(), tx, workID, "circle", normalizeManualEntity(payload.Circle), user.ID); err != nil {
-		writeError(w, err)
-		return
-	}
-	if err := upsertManualJSONOverride(r.Context(), tx, workID, "series", normalizeManualSeries(payload.Series), user.ID); err != nil {
-		writeError(w, err)
-		return
-	}
-	actors := normalizeManualPeople(payload.VoiceActors)
-	var actorValue any
-	if len(actors) > 0 {
-		actorValue = actors
-	}
-	if err := upsertManualJSONOverride(r.Context(), tx, workID, "voice_actors", actorValue, user.ID); err != nil {
-		writeError(w, err)
-		return
-	}
-	if err := syncManualOverrideRelations(r.Context(), tx, workID, normalizeManualEntity(payload.Circle), normalizeManualSeries(payload.Series), actors); err != nil {
-		writeError(w, err)
-		return
+	for field := range fields {
+		if err := patchManualOverride(r.Context(), tx, workID, field, payload, user.ID); err != nil {
+			writeError(w, err)
+			return
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		writeError(w, err)
@@ -151,6 +138,53 @@ func (s *Server) updateWorkManualOverrides(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, overrides)
+}
+
+// Omitted fields keep their authored values and relations. Explicit null or
+// empty values remove only the corresponding override.
+func patchManualOverride(ctx context.Context, tx *sql.Tx, workID int64, field string, payload workManualOverridePayload, userID int64) error {
+	switch field {
+	case "title":
+		return upsertManualTextOverride(ctx, tx, workID, field, payload.Title, userID)
+	case "circle":
+		value := normalizeManualEntity(payload.Circle)
+		var encoded any
+		if value != nil {
+			encoded = value
+		}
+		if err := upsertManualJSONOverride(ctx, tx, workID, field, encoded, userID); err != nil {
+			return err
+		}
+		if err := deleteManualOverrideRelations(ctx, tx, workID, field); err != nil {
+			return err
+		}
+		return syncManualOverrideCircle(ctx, tx, workID, value)
+	case "series":
+		value := normalizeManualSeries(payload.Series)
+		var encoded any
+		if value != nil {
+			encoded = value
+		}
+		if err := upsertManualJSONOverride(ctx, tx, workID, field, encoded, userID); err != nil {
+			return err
+		}
+		return syncManualOverrideSeries(ctx, tx, workID, value)
+	case "voiceActors":
+		actors := normalizeManualPeople(payload.VoiceActors)
+		var encoded any
+		if len(actors) > 0 {
+			encoded = actors
+		}
+		if err := upsertManualJSONOverride(ctx, tx, workID, "voice_actors", encoded, userID); err != nil {
+			return err
+		}
+		if err := deleteManualOverrideRelations(ctx, tx, workID, "voice_actors"); err != nil {
+			return err
+		}
+		return syncManualOverrideActors(ctx, tx, workID, actors)
+	default:
+		return nil
+	}
 }
 
 func (s *Server) deleteWorkManualOverride(w http.ResponseWriter, r *http.Request) {
@@ -664,22 +698,6 @@ func manualPeopleCredits(values []manualOverridePerson) []voiceCredit {
 		credits = append(credits, voiceCredit{PersonID: value.PersonID, DisplayName: value.Name})
 	}
 	return credits
-}
-
-func syncManualOverrideRelations(ctx context.Context, tx *sql.Tx, workID int64, circle *manualOverrideEntity, series *manualOverrideSeries, actors []manualOverridePerson) error {
-	if _, err := tx.ExecContext(ctx, "DELETE FROM work_party WHERE work_id = ? AND role = 'circle' AND source = 'manual_override'", workID); err != nil {
-		return err
-	}
-	if err := syncManualOverrideCircle(ctx, tx, workID, circle); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM work_credit WHERE work_id = ? AND role = 'voice_actor' AND source = 'manual_override'", workID); err != nil {
-		return err
-	}
-	if err := syncManualOverrideActors(ctx, tx, workID, actors); err != nil {
-		return err
-	}
-	return syncManualOverrideSeries(ctx, tx, workID, series)
 }
 
 func syncManualOverrideCircle(ctx context.Context, tx *sql.Tx, workID int64, circle *manualOverrideEntity) error {

@@ -150,7 +150,8 @@ function canAccessNavigationItem(
 ) {
   if (item.audience === "authenticated" && state === "anonymous") return false;
   if (item.audience === "admin" && state === "anonymous") return false;
-  if (item.id === "metadata") return hasPermission("sources:write") || hasPermission("metadata:sync");
+  if (item.id === "metadata")
+    return hasPermission("library:write") || hasPermission("sources:write") || hasPermission("metadata:sync");
   if (item.permission && !hasPermission(item.permission)) return false;
   return true;
 }

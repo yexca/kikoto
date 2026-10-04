@@ -256,10 +256,10 @@ func attachRemoteWorkCircleFallback(ctx context.Context, tx *sql.Tx, remoteWork 
 		SELECT id
 		FROM party
 		WHERE party_type IN ('circle', 'brand', 'maker')
-			AND LOWER(display_name) = LOWER(?)
+			AND (LOWER(display_name) = LOWER(?) OR EXISTS(SELECT 1 FROM party_alias WHERE party_id=party.id AND LOWER(alias)=LOWER(?)))
 		ORDER BY id ASC
 		LIMIT 1
-	`, strings.TrimSpace(remoteWork.Circle.Name)).Scan(&partyID)
+	`, strings.TrimSpace(remoteWork.Circle.Name), strings.TrimSpace(remoteWork.Circle.Name)).Scan(&partyID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}

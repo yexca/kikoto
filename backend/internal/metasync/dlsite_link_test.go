@@ -11,7 +11,7 @@ import (
 
 func TestSyncFamilyStoresLinkedSourceMetadataOnTheLinkedWork(t *testing.T) {
 	db := openTestDB(t)
-	if _, err := db.Exec(`INSERT INTO metadata_provider (code, display_name) VALUES ('dlsite', 'DLsite')`); err != nil {
+	if _, err := db.Exec(`INSERT INTO metadata_provider (code, display_name) VALUES ('dlsite', 'DLsite') ON CONFLICT(code) DO NOTHING`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO work (primary_code, title) VALUES ('RJ00000040', 'Bonus edition folder')`); err != nil {
@@ -111,7 +111,7 @@ func TestSyncFamilyStoresLinkedSourceMetadataOnTheLinkedWork(t *testing.T) {
 
 func TestSyncFamilyMarksLinkedWorkUnavailableWhenTheSourceIsGone(t *testing.T) {
 	db := openTestDB(t)
-	if _, err := db.Exec(`INSERT INTO metadata_provider (code, display_name) VALUES ('dlsite', 'DLsite')`); err != nil {
+	if _, err := db.Exec(`INSERT INTO metadata_provider (code, display_name) VALUES ('dlsite', 'DLsite') ON CONFLICT(code) DO NOTHING`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO work (primary_code, title) VALUES ('RJ00000043', 'Local title')`); err != nil {

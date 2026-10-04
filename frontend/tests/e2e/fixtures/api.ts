@@ -18,6 +18,8 @@ import type {
   MediaFileLocation,
   MediaItem,
   MetadataIssueWork,
+  MetadataTag,
+  MetadataCircle,
   RecommendationConfig,
   RemoteTrack,
   RemoteWork,
@@ -765,6 +767,34 @@ export function workflowRunsPageFixture(
     pageSize: 10,
     total: runs.length,
     viewTotals: { running: 0, review: 0, failed: 0, completed: 0 },
+    ...overrides,
+  };
+}
+
+export function metadataTagFixture(overrides: Partial<MetadataTag> = {}): MetadataTag {
+  return {
+    id: 1,
+    key: "custom:synthetic-tag",
+    displayName: "Synthetic tag",
+    dlsiteGenreId: null,
+    mergedIntoTagId: null,
+    hidden: false,
+    source: "manual",
+    workCount: 1,
+    names: [{ language: "", name: "Synthetic tag", source: "manual" }],
+    mergedFromTagIds: [],
+    ...overrides,
+  };
+}
+export function metadataCircleFixture(overrides: Partial<MetadataCircle> = {}): MetadataCircle {
+  return {
+    id: 1,
+    displayName: "Synthetic circle",
+    manualName: "",
+    providerName: "Synthetic circle",
+    workCount: 1,
+    aliases: [],
+    externalIds: ["RG00000000"],
     ...overrides,
   };
 }

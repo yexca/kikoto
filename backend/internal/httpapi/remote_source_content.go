@@ -146,10 +146,19 @@ func (s *Server) downloadRemoteCover(ctx context.Context, source remoteSourceFor
 	if coverURL == "" {
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Join(s.cfg.CacheRoot, "cover"), 0o755); err != nil {
+	workCode = strings.ToUpper(strings.TrimSpace(workCode))
+	if normalizeDLsiteCode(workCode) == "" {
+		return fmt.Errorf("invalid cover work code")
+	}
+	if exists, err := s.hasCachedWorkCover(workCode); err != nil {
+		return err
+	} else if exists {
+		return nil
+	}
+	targetPath := filepath.Join(s.cfg.CacheRoot, "cover", filepath.FromSlash(coverAssetRelativePath(workCode, "")))
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 		return err
 	}
-	targetPath := filepath.Join(s.cfg.CacheRoot, "cover", strings.ToUpper(workCode))
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, coverURL, nil)
 	if err != nil {
 		return err
@@ -166,5 +175,30 @@ func (s *Server) downloadRemoteCover(ctx context.Context, source remoteSourceFor
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return fmt.Errorf("cover download returned HTTP %d", response.StatusCode)
 	}
-	return download.WriteImage(response.Body, response.ContentLength, targetPath)
+	// Stage next to the final cover and publish without replacing an existing
+	// file. A provider cover learned during the request must still win.
+	staging, err := os.MkdirTemp(filepath.Dir(targetPath), ".remote-cover-")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(staging) }()
+	if err := download.WriteImage(response.Body, response.ContentLength, filepath.Join(staging, workCode)); err != nil {
+		return err
+	}
+	if exists, err := s.hasCachedWorkCover(workCode); err != nil {
+		return err
+	} else if exists {
+		return nil
+	}
+	entries, err := os.ReadDir(staging)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() {
+			continue
+		}
+		return download.PublishCover(ctx, filepath.Join(staging, entry.Name()), targetPath+filepath.Ext(entry.Name()), false)
+	}
+	return fmt.Errorf("cover staging file missing")
 }

@@ -52,10 +52,11 @@ func (s *Server) suggestCircles(w http.ResponseWriter, r *http.Request) {
 			AND (
 				LOWER(party.display_name) LIKE ?
 				OR LOWER(COALESCE(external.external_id, '')) LIKE ?
+ OR EXISTS(SELECT 1 FROM party_alias WHERE party_id=party.id AND LOWER(alias) LIKE ?)
 			)
 		ORDER BY party.display_name ASC, party.id ASC
 		LIMIT ?
-	`, q, q, limit+1)
+	`, q, q, q, limit+1)
 	if err != nil {
 		writeError(w, err)
 		return

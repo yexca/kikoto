@@ -51,7 +51,7 @@ func TestRemoteCoverUsesBoundedDownloadWriter(t *testing.T) {
 	if !errors.Is(err, download.ErrLimitExceeded) {
 		t.Fatalf("cover error = %v, want limit error", err)
 	}
-	if _, statErr := os.Stat(filepath.Join(cacheRoot, "cover", "RJ00000000.jpg")); !errors.Is(statErr, os.ErrNotExist) {
+	if _, statErr := os.Stat(filepath.Join(cacheRoot, "cover", filepath.FromSlash(coverAssetRelativePath("RJ00000000", ".jpg")))); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("oversized cover was published: %v", statErr)
 	}
 }

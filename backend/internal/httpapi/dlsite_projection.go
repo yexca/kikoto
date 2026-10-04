@@ -2,12 +2,15 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/metadatatags"
 	"github.com/yexca/kikoto/backend/internal/metasync"
 )
 
@@ -21,6 +24,20 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 	if err != nil {
 		return result, err
 	}
+	var canonical bool
+	err = s.db.QueryRowContext(ctx, "SELECT is_canonical FROM work_edition WHERE work_id=?", workID).Scan(&canonical)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return result, err
+	}
+	if !canonical {
+		for _, variant := range variants {
+			if variant.WorkID == workID {
+				selected = variant
+				selectedOK = true
+				break
+			}
+		}
+	}
 	seen := map[string]bool{}
 	for _, variant := range variants {
 		key := firstNonEmpty(strings.ToUpper(strings.TrimSpace(variant.PrimaryCode)), strings.ToUpper(strings.TrimSpace(variant.ExternalID)))
@@ -32,6 +49,14 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 		}
 		var tags []string
 		if err := json.Unmarshal([]byte(variant.TagsJSON), &tags); err != nil {
+			return result, err
+		}
+		locale := strings.ToLower(variant.RequestLocale)
+		if locale == "" {
+			locale = dlsite.LocaleForMetadataLanguage(dlsite.EditionMetadataLanguage(variant.EditionLanguage))
+		}
+		tags, err = metadatatags.Presentation(ctx, s.db, workID, variant.WorkID, tags, locale)
+		if err != nil {
 			return result, err
 		}
 		language := dlsite.EditionMetadataLanguage(variant.EditionLanguage)
@@ -95,50 +120,37 @@ func orderWorkMetadataVariants(variants []workMetadataVariant, priorities []stri
 // non-canonical edition and therefore read the variant directly as well.
 func (s *Server) loadProjectedDLsiteMetadata(ctx context.Context, workID int64) (string, []string, bool, error) {
 	selected, ok, err := metasync.SelectDLsiteMetadataVariant(ctx, s.db, workID, s.preferredMetadataLanguages(ctx))
-	if err != nil || !ok {
-		return "", nil, false, err
-	}
-	var tags []string
-	if err := json.Unmarshal([]byte(selected.TagsJSON), &tags); err != nil {
-		return "", nil, false, err
-	}
-	return strings.TrimSpace(selected.Title), cleanProjectedTags(tags), true, nil
-}
-
-func (s *Server) loadProjectedDLsiteTags(ctx context.Context, workID int64) ([]string, bool, error) {
-	_, tags, ok, err := s.loadProjectedDLsiteMetadata(ctx, workID)
 	if err != nil {
-		return nil, false, err
+		return "", nil, false, err
 	}
 	if ok {
-		return tags, true, nil
-	}
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT tag.display_name
-		FROM work_tag
-		INNER JOIN tag ON tag.id = work_tag.tag_id
-		WHERE work_tag.work_id = ? AND work_tag.source = 'dlsite'
-		ORDER BY LOWER(tag.display_name), tag.id
-	`, workID)
-	if err != nil {
-		return nil, false, err
-	}
-	defer rows.Close()
-	tags = []string{}
-	for rows.Next() {
-		var tag string
-		if err := rows.Scan(&tag); err != nil {
-			return nil, false, err
+		var legacy []string
+		if err := json.Unmarshal([]byte(selected.TagsJSON), &legacy); err != nil {
+			return "", nil, false, err
 		}
-		tags = append(tags, tag)
+		tags, err := metadatatags.Presentation(ctx, s.db, workID, selected.WorkID, legacy)
+		return strings.TrimSpace(selected.Title), cleanProjectedTags(tags), true, err
 	}
-	if err := rows.Err(); err != nil {
-		return nil, false, err
+	tags, err := metadatatags.Read(ctx, s.db, workID)
+	if err != nil {
+		return "", nil, false, err
 	}
-	if len(tags) == 0 {
-		return nil, false, nil
+	names := []string{}
+	for _, tag := range tags {
+		names = append(names, tag.DisplayName)
 	}
-	return cleanProjectedTags(tags), false, nil
+	projected, err := metadatatags.Projected(ctx, s.db, workID)
+	if err != nil {
+		return "", nil, false, err
+	}
+	if !projected && len(names) == 0 {
+		return "", nil, false, nil
+	}
+	return "", cleanProjectedTags(names), projected || len(names) > 0, nil
+}
+func (s *Server) loadProjectedDLsiteTags(ctx context.Context, workID int64) ([]string, bool, error) {
+	_, tags, ok, err := s.loadProjectedDLsiteMetadata(ctx, workID)
+	return tags, ok, err
 }
 
 func (s *Server) loadProjectedDLsiteTagsBatch(ctx context.Context, workIDs []int64) (map[int64][]string, error) {
@@ -161,12 +173,11 @@ func (s *Server) loadProjectedDLsiteTagsBatch(ctx context.Context, workIDs []int
 		placeholders[index] = "?"
 		args[index] = workID
 	}
-	// An empty localized tag set is meaningful. Mark works with a stored
-	// variant before loading rows from work_tag so an empty projection clears
-	// the snapshot fallback instead of leaving stale tags in the card.
+	// Only a completed per-work projection makes an empty tag set authoritative.
+	// A global backfill marker cannot attest to a later snapshot or new work.
 	variantRows, err := s.db.QueryContext(ctx, `
-		SELECT DISTINCT work_id
-		FROM dlsite_metadata_variant
+		SELECT work_id
+		FROM work_metadata_tag_projection
 		WHERE work_id IN (`+strings.Join(placeholders, ",")+`)
 	`, args...)
 	if err != nil {
@@ -191,7 +202,7 @@ func (s *Server) loadProjectedDLsiteTagsBatch(ctx context.Context, workIDs []int
 		SELECT work_tag.work_id, tag.display_name
 		FROM work_tag
 		INNER JOIN tag ON tag.id = work_tag.tag_id
-		WHERE work_tag.source = 'dlsite' AND work_tag.work_id IN (`+strings.Join(placeholders, ",")+`)
+		WHERE tag.namespace IN ('dlsite','metadata') AND NOT EXISTS(SELECT 1 FROM metadata_tag WHERE tag_id=tag.id AND (hidden=1 OR merged_into_tag_id IS NOT NULL)) AND work_tag.work_id IN (`+strings.Join(placeholders, ",")+`)
 		ORDER BY work_tag.work_id ASC, LOWER(tag.display_name), tag.id
 	`, args...)
 	if err != nil {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/metadatatags"
 	"github.com/yexca/kikoto/backend/internal/outbound"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/workflow"
@@ -1139,10 +1140,7 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 	if err := upsertDLsiteMetadataVariant(ctx, tx, logicalWorkID, workID, providerID, product.WorkNo, editionLanguage, requestLocale, chooseTitle(product), product.Genres, contentHash); err != nil {
 		return err
 	}
-	if err := replaceDLsiteWorkTags(ctx, tx, workID, product.Genres, editionToken, requestLocale); err != nil {
-		return err
-	}
-	if err := replaceDLsiteWorkGenres(ctx, tx, workID, product.Genres, requestLocale); err != nil {
+	if err := replaceDLsiteWorkGenres(ctx, tx, workID, product.Genres, requestLocale, s.projectionPriority()); err != nil {
 		return err
 	}
 	if err := recordSyncOutcome(ctx, tx, workID, providerID, "metadata", "succeeded"); err != nil {
@@ -1158,65 +1156,18 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 	return ProjectDLsiteMetadataFamily(ctx, s.db, logicalWorkID, s.projectionPriority())
 }
 
-func replaceDLsiteWorkTags(ctx context.Context, tx *sql.Tx, workID int64, genres []dlsite.Genre, language string, requestLocale string) error {
-	// A work row represents one edition. The localized variants table is the
-	// durable record of every language; work_tag is only the current searchable
-	// projection, so clear the old projection before writing this edition.
-	if _, err := tx.ExecContext(ctx, "DELETE FROM work_tag WHERE work_id = ? AND source = 'dlsite'", workID); err != nil {
-		return err
-	}
-	language = strings.TrimSpace(language)
-	if language == "" {
-		language = strings.TrimSpace(requestLocale)
-	}
-	seen := map[string]bool{}
-	for _, genre := range genres {
-		displayName := strings.TrimSpace(firstNonEmptyText(genre.Name, genre.NameBase))
-		normalizedName := strings.ToLower(displayName)
-		key := normalizedName + "\x00" + language
-		if displayName == "" || seen[key] {
-			continue
-		}
-		seen[key] = true
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO tag (namespace, normalized_name, display_name, language)
-			VALUES ('dlsite', ?, ?, ?)
-			ON CONFLICT(namespace, normalized_name, language) DO UPDATE SET
-				display_name = excluded.display_name,
-				updated_at = CURRENT_TIMESTAMP
-		`, normalizedName, displayName, language); err != nil {
-			return err
-		}
-		var tagID int64
-		if err := tx.QueryRowContext(ctx, `
-			SELECT id
-			FROM tag
-			WHERE namespace = 'dlsite' AND normalized_name = ? AND language = ?
-		`, normalizedName, language).Scan(&tagID); err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO work_tag (work_id, tag_id, source)
-			VALUES (?, ?, 'dlsite')
-			ON CONFLICT(work_id, tag_id, source) DO NOTHING
-		`, workID, tagID); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // replaceDLsiteWorkGenres records the genre ids of one edition and learns
 // their names: NameBase is the Japanese name, and Name is the name for the
 // locale DLsite was asked for. Names are keyed by that request locale, not by
 // the edition language, because an edition without its own locale is
 // requested in ja-jp and reports Japanese names. The search index expands
 // each id to every learned name, so a tag matches in any known language.
-func replaceDLsiteWorkGenres(ctx context.Context, tx *sql.Tx, workID int64, genres []dlsite.Genre, requestLocale string) error {
+func replaceDLsiteWorkGenres(ctx context.Context, tx *sql.Tx, workID int64, genres []dlsite.Genre, requestLocale string, priorities []string) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM work_dlsite_genre WHERE work_id = ?", workID); err != nil {
 		return err
 	}
 	requestLocale = normalizeRequestLocale(requestLocale)
+	ids := []int64{}
 	for _, genre := range genres {
 		if genre.ID <= 0 {
 			continue
@@ -1248,8 +1199,16 @@ func replaceDLsiteWorkGenres(ctx context.Context, tx *sql.Tx, workID int64, genr
 				return err
 			}
 		}
+		id, err := metadatatags.EnsureGenreTx(ctx, tx, int64(genre.ID))
+		if err != nil {
+			return err
+		}
+		ids = append(ids, id)
 	}
-	return nil
+	if len(ids) == 0 {
+		return nil
+	}
+	return metadatatags.RefreshNamesTx(ctx, tx, priorities, ids...)
 }
 
 func normalizeRequestLocale(value string) string {

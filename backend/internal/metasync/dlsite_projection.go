@@ -5,10 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/metadatatags"
 )
 
 // DLsiteMetadataVariant is the language-scoped title/tag projection captured
@@ -77,33 +77,95 @@ func ProjectDLsiteMetadata(ctx context.Context, db *sql.DB, priorities []string)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback() }()
-	rows, err := tx.QueryContext(ctx, "SELECT id FROM logical_work ORDER BY id ASC")
+	if _, err = tx.ExecContext(ctx, "INSERT INTO app_setting(key,value_json) VALUES ('metadata_projection_pending','true') ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json"); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if err = metadatatags.RefreshNamesTx(ctx, tx, priorities); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	var frontier int64
+	if err := db.QueryRowContext(ctx, "SELECT COALESCE(MAX(id),0) FROM work").Scan(&frontier); err != nil {
+		return err
+	}
+	for cursor := int64(0); cursor < frontier; {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		next, err := projectMetadataBatch(ctx, tx, cursor, frontier, priorities)
+		if err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		if next == cursor {
+			break
+		}
+		cursor = next
+	}
+	final, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	logicalIDs := []int64{}
+	defer func() { _ = final.Rollback() }()
+	if _, err := final.ExecContext(ctx, "INSERT INTO app_setting(key,value_json) VALUES ('metadata_tag_projection_version','1') ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json"); err != nil {
+		return err
+	}
+	if _, err := final.ExecContext(ctx, "DELETE FROM app_setting WHERE key='metadata_projection_pending'"); err != nil {
+		return err
+	}
+	return final.Commit()
+}
+
+func projectMetadataBatch(ctx context.Context, tx *sql.Tx, cursor, frontier int64, priorities []string) (int64, error) {
+	rows, err := tx.QueryContext(ctx, "SELECT id FROM work WHERE id>? AND id<=? ORDER BY id LIMIT 64", cursor, frontier)
+	if err != nil {
+		return cursor, err
+	}
+	ids := []int64{}
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
 			_ = rows.Close()
-			return err
+			return cursor, err
 		}
-		logicalIDs = append(logicalIDs, id)
+		ids = append(ids, id)
 	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
+	err = rows.Err()
+	closeErr := rows.Close()
+	if err != nil {
+		return cursor, err
+	}
+	if closeErr != nil {
+		return cursor, closeErr
+	}
+	for _, id := range ids {
+		if err := ProjectWorkMetadataTagsTx(ctx, tx, id, priorities); err != nil {
+			return cursor, err
+		}
+		cursor = id
+	}
+	return cursor, nil
+}
+
+// BackfillMetadataTags resumes safely after an interrupted start. Completion is
+// saved only after every bounded work batch has committed.
+func BackfillMetadataTags(ctx context.Context, db *sql.DB, priorities []string) error {
+	var done bool
+	if err := db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM app_setting WHERE key='metadata_tag_projection_version' AND value_json='1') AND NOT EXISTS(SELECT 1 FROM app_setting WHERE key='metadata_projection_pending')").Scan(&done); err != nil {
 		return err
 	}
-	if err := rows.Close(); err != nil {
-		return err
+	if done {
+		return nil
 	}
-	for _, logicalID := range logicalIDs {
-		if err := projectDLsiteMetadataFamilyTx(ctx, tx, logicalID, priorities); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
+	return ProjectDLsiteMetadata(ctx, db, priorities)
 }
 
 // ProjectDLsiteMetadataFamily updates one logical family. SyncProduct uses
@@ -205,33 +267,107 @@ func variantMatchesPriority(variant DLsiteMetadataVariant, priority string) bool
 	return dlsite.EditionMetadataLanguage(variant.EditionLanguage) == priority
 }
 
-func projectDLsiteMetadataFamilyTx(ctx context.Context, tx *sql.Tx, logicalWorkID int64, priorities []string) error {
-	variants, err := loadDLsiteMetadataVariants(ctx, tx, logicalWorkID)
+func projectDLsiteMetadataFamilyTx(ctx context.Context, tx *sql.Tx, logicalID int64, priorities []string) error {
+	rows, err := tx.QueryContext(ctx, "SELECT work_id FROM work_edition WHERE logical_work_id=? ORDER BY work_id", logicalID)
 	if err != nil {
 		return err
 	}
-	if len(variants) == 0 {
-		return nil
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		ids = append(ids, id)
 	}
-	selected := chooseDLsiteMetadataVariant(variants, priorities)
-	if selected.WorkID <= 0 || strings.TrimSpace(selected.Title) == "" {
-		return nil
-	}
-	canonicalWorkID, err := canonicalWorkIDTx(ctx, tx, logicalWorkID)
-	if err != nil || canonicalWorkID <= 0 {
+	err = rows.Err()
+	closeErr := rows.Close()
+	if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE work
-		SET title = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ? AND title <> ?
-	`, strings.TrimSpace(selected.Title), canonicalWorkID, strings.TrimSpace(selected.Title)); err != nil {
-		return err
+	if closeErr != nil {
+		return closeErr
 	}
-	if err := replaceProjectedDLsiteTags(ctx, tx, canonicalWorkID, selected); err != nil {
-		return err
+	for _, id := range ids {
+		if err := ProjectWorkMetadataTagsTx(ctx, tx, id, priorities); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// ProjectWorkMetadataTagsTx composes provider selection and shared-tag changes
+// in the caller's transaction, including works without any provider snapshot.
+func ProjectWorkMetadataTagsTx(ctx context.Context, tx *sql.Tx, workID int64, priorities []string) error {
+	sourceID := workID
+	var logicalID int64
+	err := tx.QueryRowContext(ctx, "SELECT logical_work_id FROM work_edition WHERE work_id=?", workID).Scan(&logicalID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	var legacy []string
+	if logicalID > 0 {
+		variants, err := loadDLsiteMetadataVariants(ctx, tx, logicalID)
+		if err != nil {
+			return err
+		}
+		canonicalID, err := canonicalWorkIDTx(ctx, tx, logicalID)
+		if err != nil {
+			return err
+		}
+		selected := DLsiteMetadataVariant{}
+		if workID == canonicalID {
+			selected = chooseDLsiteMetadataVariant(variants, priorities)
+		} else {
+			for _, v := range variants {
+				if v.WorkID == workID {
+					selected = v
+					break
+				}
+			}
+		}
+		if selected.WorkID > 0 {
+			sourceID = selected.WorkID
+			if err := json.Unmarshal([]byte(selected.TagsJSON), &legacy); err != nil {
+				return err
+			}
+			if workID == canonicalID && strings.TrimSpace(selected.Title) != "" {
+				if _, err := tx.ExecContext(ctx, "UPDATE work SET title=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND title<>?", strings.TrimSpace(selected.Title), workID, strings.TrimSpace(selected.Title)); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	if legacy == nil {
+		legacy, err = snapshotTagNamesTx(ctx, tx, sourceID)
+		if err != nil {
+			return err
+		}
+	}
+	if legacy == nil {
+		rows, err := tx.QueryContext(ctx, "SELECT tag.display_name FROM work_tag INNER JOIN tag ON tag.id=work_tag.tag_id WHERE work_id=? AND work_tag.source='dlsite' AND tag.namespace='dlsite' ORDER BY tag.id", sourceID)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			legacy = append(legacy, name)
+		}
+		err = rows.Err()
+		closeErr := rows.Close()
+		if err != nil {
+			return err
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+	}
+	return metadatatags.ProjectWorkTx(ctx, tx, workID, sourceID, legacy)
 }
 
 func canonicalWorkIDTx(ctx context.Context, tx *sql.Tx, logicalWorkID int64) (int64, error) {
@@ -251,57 +387,4 @@ func canonicalWorkIDTx(ctx context.Context, tx *sql.Tx, logicalWorkID int64) (in
 		return 0, nil
 	}
 	return workID.Int64, nil
-}
-
-func replaceProjectedDLsiteTags(ctx context.Context, tx *sql.Tx, workID int64, variant DLsiteMetadataVariant) error {
-	if _, err := tx.ExecContext(ctx, "DELETE FROM work_tag WHERE work_id = ? AND source = 'dlsite'", workID); err != nil {
-		return err
-	}
-	var tags []string
-	if err := json.Unmarshal([]byte(variant.TagsJSON), &tags); err != nil {
-		return fmt.Errorf("decode DLsite metadata tags: %w", err)
-	}
-	language := dlsite.EditionMetadataLanguage(variant.EditionLanguage)
-	if language == "" {
-		language = strings.ToLower(strings.TrimSpace(variant.RequestLocale))
-	}
-	if language == "" {
-		language = strings.TrimSpace(variant.EditionLanguage)
-	}
-	seen := map[string]bool{}
-	for _, raw := range tags {
-		name := strings.TrimSpace(raw)
-		if name == "" {
-			continue
-		}
-		normalized := strings.ToLower(name)
-		if seen[normalized] {
-			continue
-		}
-		seen[normalized] = true
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO tag (namespace, normalized_name, display_name, language)
-			VALUES ('dlsite', ?, ?, ?)
-			ON CONFLICT(namespace, normalized_name, language) DO UPDATE SET
-				display_name = excluded.display_name,
-				updated_at = CURRENT_TIMESTAMP
-		`, normalized, name, language); err != nil {
-			return err
-		}
-		var tagID int64
-		if err := tx.QueryRowContext(ctx, `
-			SELECT id FROM tag
-			WHERE namespace = 'dlsite' AND normalized_name = ? AND language = ?
-		`, normalized, language).Scan(&tagID); err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO work_tag (work_id, tag_id, source)
-			VALUES (?, ?, 'dlsite')
-			ON CONFLICT(work_id, tag_id, source) DO NOTHING
-		`, workID, tagID); err != nil {
-			return err
-		}
-	}
-	return nil
 }

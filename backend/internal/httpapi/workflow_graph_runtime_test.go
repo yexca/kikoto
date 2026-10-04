@@ -179,6 +179,7 @@ func TestRunStartupWorkflowsDoesNotRecreateDeletedBuiltInTrigger(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := NewServer(db, config.Config{})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
 	if err := server.RunStartupWorkflows(context.Background()); err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,11 @@
-import { type ManualOverridePerson, type ManualOverrideSeries, type WorkDetail } from "@/lib/api";
+import {
+  type ManualOverridePerson,
+  type ManualOverrideSeries,
+  type WorkDetail,
+  type WorkManualOverridePayload,
+} from "@/lib/api";
 
-export function workMetadataOverridePayload({
+function normalizedOverrides({
   title,
   circleName,
   circleExternalId,
@@ -25,6 +30,21 @@ export function workMetadataOverridePayload({
       .map((actor) => ({ name: actor.name.trim(), personId: Number(actor.personId) || 0 }))
       .filter((actor) => actor.name),
   };
+}
+
+export type MetadataEditorState = Parameters<typeof normalizedOverrides>[0];
+
+export function workMetadataOverridePayload(
+  state: MetadataEditorState,
+  initial: MetadataEditorState,
+): WorkManualOverridePayload {
+  const next = normalizedOverrides(state);
+  const previous = normalizedOverrides(initial);
+  return Object.fromEntries(
+    Object.entries(next).filter(
+      ([key, value]) => JSON.stringify(value) !== JSON.stringify(previous[key as keyof typeof previous]),
+    ),
+  );
 }
 
 type EditableWorkMetadata = Pick<

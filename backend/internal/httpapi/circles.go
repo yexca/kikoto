@@ -288,6 +288,11 @@ func (s *Server) loadCircleSummaries(ctx context.Context, userID int64) ([]circl
 		WHERE party.party_type IN ('circle', 'brand', 'maker')
 			AND provider.code = 'dlsite'
 			AND external.id_type = 'maker_id'
+			AND external.id = (
+				SELECT chosen.id FROM party_external_id AS chosen
+				WHERE chosen.party_id = party.id AND chosen.provider_id = provider.id AND chosen.id_type = 'maker_id'
+				ORDER BY chosen.is_primary DESC, chosen.id LIMIT 1
+			)
 			AND `+circlePartyVisibilityPredicate("party.id")+`
 			`+demoWhere+`
 		ORDER BY party.display_name ASC
@@ -335,7 +340,14 @@ func (s *Server) loadCircleSummaries(ctx context.Context, userID int64) ([]circl
 	if err != nil {
 		return nil, err
 	}
+	aliasesByParty, err := s.loadCircleAliasesBatch(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for index := range items {
+		if aliases := aliasesByParty[items[index].ID]; aliases != nil {
+			items[index].Aliases = aliases
+		}
 		if tags := tagsByParty[items[index].ID]; tags != nil {
 			items[index].UserTags = tags
 		}
@@ -829,9 +841,9 @@ func (s *Server) upsertDLsiteParty(ctx context.Context, externalID string, displ
 	}
 	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO party (party_type, display_name, sort_name)
-		VALUES ('circle', ?, ?)
-	`, displayName, strings.ToLower(displayName)); err != nil {
+		INSERT INTO party (party_type, display_name, sort_name,provider_name)
+		VALUES ('circle', ?, ?,?)
+	`, displayName, strings.ToLower(displayName), displayName); err != nil {
 		return 0, err
 	}
 	partyID, err := lastInsertID(tx)
@@ -1254,7 +1266,7 @@ func (s *Server) loadCircleSummary(ctx context.Context, userID int64, partyID in
 		INNER JOIN party_external_id AS external ON external.party_id = party.id
 		INNER JOIN metadata_provider AS provider ON provider.id = external.provider_id
 		LEFT JOIN user_party_state AS state ON state.party_id = party.id AND state.user_id = ?
-		WHERE party.id = ? AND provider.code = 'dlsite' AND external.id_type = 'maker_id'
+		WHERE party.id = ? AND provider.code = 'dlsite' AND external.id_type = 'maker_id' ORDER BY external.is_primary DESC,external.id LIMIT 1
 	`, userID, partyID).Scan(&item.ID, &item.ExternalID, &item.DisplayName, &rating, &item.Note, &favorite, &lastSynced, &lastAttempt); err != nil {
 		return circleSummary{}, err
 	}
@@ -1262,7 +1274,11 @@ func (s *Server) loadCircleSummary(ctx context.Context, userID int64, partyID in
 	item.Favorite = favorite != 0
 	item.LastSyncedAt = sqlutil.String(lastSynced)
 	item.lastAttemptAt = sqlutil.String(lastAttempt)
-	item.Aliases = []string{}
+	aliases, err := s.loadCircleAliases(ctx, partyID)
+	if err != nil {
+		return circleSummary{}, err
+	}
+	item.Aliases = aliases
 	tags, err := s.loadCircleUserTags(ctx, userID, item.ID)
 	if err != nil {
 		return circleSummary{}, err
@@ -2795,11 +2811,10 @@ func updateMakerPartySnapshot(ctx context.Context, tx *sql.Tx, partyID, provider
 // renameParty follows a provider's circle name without rewriting a party
 // whose name already matches.
 func renameParty(ctx context.Context, tx *sql.Tx, partyID int64, name string) error {
-	_, err := tx.ExecContext(ctx, `
-		UPDATE party
-		SET display_name = ?, sort_name = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ? AND (display_name IS NOT ? OR sort_name IS NOT ?)
-	`, name, strings.ToLower(name), partyID, name, strings.ToLower(name))
+	_, err := tx.ExecContext(ctx, `UPDATE party SET provider_name=?,display_name=CASE WHEN manual_name<>'' THEN manual_name ELSE ? END,
+ sort_name=LOWER(CASE WHEN manual_name<>'' THEN manual_name ELSE ? END),updated_at=CURRENT_TIMESTAMP
+ WHERE id=? AND NOT EXISTS(SELECT 1 FROM party_alias WHERE party_id=party.id AND source IN ('merged_name','merged_alias') AND LOWER(alias)=LOWER(?))
+ AND (provider_name IS NOT ? OR display_name IS NOT CASE WHEN manual_name<>'' THEN manual_name ELSE ? END)`, name, name, name, partyID, name, name, name)
 	return err
 }
 

@@ -16,6 +16,8 @@ export type IconRailItem<T extends string> = {
   controls: string;
   /** Draws a divider before this item to separate a different kind of view. */
   separated?: boolean;
+  /** Optional group heading, shown when the wide rail is expanded. */
+  groupLabel?: string;
   /** Accessible description, such as the elevated scope that a separated group shares. */
   description?: string;
 };
@@ -84,6 +86,11 @@ export function IconRail<T extends string>({
           const active = selected === item.value;
           return (
             <Fragment key={item.value}>
+              {item.groupLabel && item.groupLabel !== items[index - 1]?.groupLabel && expanded && (
+                <span aria-hidden="true" className="px-3 pt-2 text-xs text-muted-foreground">
+                  {item.groupLabel}
+                </span>
+              )}
               {item.separated && (
                 <span
                   aria-hidden="true"
