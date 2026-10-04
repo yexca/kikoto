@@ -330,7 +330,13 @@ export function SettingsPage({
     <div className="space-y-6">
       {readOnly && <DemoReadOnlyNotice />}
       <div className="flex min-w-0 flex-col gap-6 lg:flex-row lg:gap-8">
-        <IconRail label={t("nav.settings")} items={railItems} selected={activeTab} onSelect={selectTab} />
+        <IconRail
+          label={t("nav.settings")}
+          labelsStorageKey="kikoto:settings-rail-labels-shown"
+          items={railItems}
+          selected={activeTab}
+          onSelect={selectTab}
+        />
         <div className="min-w-0 flex-1">
           {activeTab === "account" && (
             <div

@@ -596,6 +596,25 @@ test("administrators see administration tabs after the personal tabs in one list
   await expect(page).toHaveURL(/\/settings$/);
 });
 
+test("@desktop the Settings rail can name every tab and remembers the choice", async ({ page }) => {
+  await mockCacheSettings(page, () => undefined);
+  await page.goto("/settings");
+  const tabs = page.getByRole("tablist", { name: "Settings", exact: true });
+  // An inactive tab's name is only visually hidden until the rail expands.
+  const name = tabs.getByRole("tab", { name: "Recommendations", exact: true }).getByText("Recommendations");
+  const nameWidth = async () => (await name.boundingBox())?.width ?? 0;
+  expect(await nameWidth()).toBeLessThanOrEqual(1);
+
+  await page.getByRole("button", { name: "Show tab names", exact: true }).click();
+  await expect.poll(nameWidth).toBeGreaterThan(1);
+  await page.reload();
+  await expect.poll(nameWidth).toBeGreaterThan(1);
+
+  await page.getByRole("button", { name: "Hide tab names", exact: true }).click();
+  await expect.poll(nameWidth).toBeLessThanOrEqual(1);
+  await expect(page.getByRole("button", { name: "Show tab names", exact: true })).toBeVisible();
+});
+
 test("personal playback seek intervals use the requested defaults and persist locally", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
   await page.goto("/settings");
@@ -757,6 +776,10 @@ for (const layout of ["mobile", "@desktop"]) {
       "true",
     );
     await expect(navigation).toHaveAttribute("aria-orientation", orientation);
+    // Only the wide rail can expand to name every tab; the compact row already names the active one.
+    await expect(page.getByRole("button", { name: "Show tab names", exact: true })).toHaveCount(
+      orientation === "vertical" ? 1 : 0,
+    );
     // A deep link to a later tab scrolls the compact row so the selected tab shows.
     await expect(navigation.getByRole("tab", { name: "Library", exact: true })).toBeInViewport({ ratio: 1 });
     await expect(navigation.getByRole("tab")).toHaveCount(10);

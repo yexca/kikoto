@@ -563,6 +563,8 @@ export const zhHantResource = {
         expandSidebar: "展開側邊欄",
         collapseSidebar: "收合側邊欄",
         collapse: "收合",
+        showTabNames: "展開分頁名稱",
+        hideTabNames: "收合分頁名稱",
         thisPage: "此頁面",
         workflowSubmitting: "工作流程要求仍在提交中。",
         pressBackAgain: "再次按返回鍵以退出 Kikoto。",

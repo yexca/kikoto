@@ -128,10 +128,13 @@ its latest run's status and time and the enabled automation that starts it
 latest run when it loads and again when the active queue or attention count
 changes; the per-workflow summaries have no timer of their own.
 
-Wide layouts keep the list beside the selected workflow. The mobile navigation
-layout lands on the list and opens one workflow at a time: opening a workflow
-adds a history entry, and the header back action returns to the list. The
-selected workflow remains the persisted and linked state (`?workflow=<code>`).
+Wide layouts keep the list beside the selected workflow and can collapse it to
+an icon rail. Each icon then keeps a dot for its latest run, the full workflow
+name stays the accessible name and tooltip, and the choice is stored locally
+for this page. The mobile navigation layout lands on the list and opens one
+workflow at a time: opening a workflow adds a history entry, and the header
+back action returns to the list. The selected workflow remains the persisted
+and linked state (`?workflow=<code>`).
 
 A status strip above the list shows the newest active run with its progress,
 the Needs attention count, and the next enabled schedule. It reads the global
