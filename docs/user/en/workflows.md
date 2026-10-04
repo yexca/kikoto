@@ -43,9 +43,11 @@ Workflows make backend actions inspectable.
   follow workflows), and Remote (Availability Watch and Fetch history), each in
   a fixed order. Every entry shows its latest run's status and time, and small
   icons mark an enabled Startup trigger, schedule, or folder watcher. Wide
-  layouts keep the list beside the selected workflow. On phones the list is the
-  landing view: tapping a workflow opens it, and the header back button or the
-  browser's Back returns to the list.
+  layouts keep the list beside the selected workflow; **Hide tab names** below
+  it collapses the list to icons that each keep a dot for the latest run, and
+  **Show tab names** expands it again. The page remembers this choice. On
+  phones the list is the landing view: tapping a workflow opens it, and the
+  header back button or the browser's Back returns to the list.
   Definitions cannot be created, edited, or deleted from the page.
 - The selected workflow summarizes its latest 20 runs: the last run, the share
   of finished runs that succeeded, their typical (median) duration, and when it

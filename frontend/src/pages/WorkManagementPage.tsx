@@ -215,6 +215,7 @@ export function WorkManagementPage({
       <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:gap-4">
         <IconRail
           label={t("workMaintenance.reason")}
+          labelsStorageKey="kikoto:metadata-rail-labels-shown"
           items={railItems}
           selected={railSelected}
           onSelect={(value) => (value === "aliases" ? showAliases() : showWorks(value))}

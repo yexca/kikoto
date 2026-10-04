@@ -583,6 +583,8 @@ export const japaneseResource = {
         expandSidebar: "サイドバーを展開",
         collapseSidebar: "サイドバーを折りたたむ",
         collapse: "折りたたむ",
+        showTabNames: "タブ名を表示",
+        hideTabNames: "タブ名を隠す",
         thisPage: "このページ",
         workflowSubmitting: "ワークフロー要求を送信中です。",
         pressBackAgain: "もう一度戻るボタンを押すと Kikoto を終了します。",

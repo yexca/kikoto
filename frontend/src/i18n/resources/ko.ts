@@ -575,6 +575,8 @@ export const koreanResource = {
         expandSidebar: "사이드바 펼치기",
         collapseSidebar: "사이드바 접기",
         collapse: "접기",
+        showTabNames: "탭 이름 표시",
+        hideTabNames: "탭 이름 숨기기",
         thisPage: "이 페이지",
         workflowSubmitting: "워크플로 요청을 제출하는 중입니다.",
         pressBackAgain: "Kikoto를 종료하려면 뒤로 버튼을 한 번 더 누르세요.",

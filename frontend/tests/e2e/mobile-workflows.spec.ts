@@ -2038,6 +2038,27 @@ test("@desktop the workflow list keeps the selection beside it and moves focus w
   await expect(page.getByRole("button", { name: "Back to workflows", exact: true })).toHaveCount(0);
 });
 
+test("@desktop the workflow list collapses to an icon rail and remembers the choice", async ({ page }) => {
+  await mockWorkflows(page);
+  await page.goto("/workflows");
+  const list = workflowList(page);
+  // The short name is visible beside the icon until the list collapses.
+  const name = list.getByRole("button", { name: "Refresh local work files", exact: true }).getByText("Local files");
+  const nameWidth = async () => (await name.boundingBox())?.width ?? 0;
+  await expect.poll(nameWidth).toBeGreaterThan(1);
+
+  await page.getByRole("button", { name: "Hide tab names", exact: true }).click();
+  await expect.poll(nameWidth).toBeLessThanOrEqual(1);
+  await page.reload();
+  await expect.poll(nameWidth).toBeLessThanOrEqual(1);
+  // Collapsed items keep their full names for selection.
+  await list.getByRole("button", { name: "Refresh local work files", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Refresh local work files", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Show tab names", exact: true }).click();
+  await expect.poll(nameWidth).toBeGreaterThan(1);
+});
+
 for (const viewport of ["mobile", "@desktop"]) {
   test(`${viewport} workflow Activity separates running, attention, and history`, async ({ page }, testInfo) => {
     await mockWorkflows(page);
