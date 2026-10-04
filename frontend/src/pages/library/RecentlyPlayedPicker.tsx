@@ -1,4 +1,3 @@
-import type { TFunction } from "i18next";
 import { History, Loader2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -8,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { MobileSheet, MobileSheetBody, MobileSheetHeader } from "@/components/ui/mobile-sheet";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { api, assetURL, type Work } from "@/lib/api";
+
+import { progressPercent, recentProgressLabel } from "./recentPlayback";
 
 const RECENTLY_PLAYED_LIMIT = 20;
 
@@ -130,7 +131,7 @@ function RecentlyPlayedList({
               <span className="block h-0.5 w-full overflow-hidden rounded-full bg-muted">
                 <span
                   className="block h-full rounded-full bg-primary"
-                  style={{ width: `${work.progress.completed ? 100 : progressPercent(work.progress)}%` }}
+                  style={{ width: `${progressPercent(work.progress)}%` }}
                 />
               </span>
             </span>
@@ -139,23 +140,4 @@ function RecentlyPlayedList({
       ))}
     </ul>
   );
-}
-
-function recentProgressLabel(progress: Work["progress"], t: TFunction) {
-  if (progress.completed) return `${t("library.finished")} · ${progress.title || t("library.track")}`;
-  const duration =
-    progress.durationSeconds && progress.durationSeconds > 0 ? ` / ${formatTime(progress.durationSeconds)}` : "";
-  return `${progress.title || t("library.track")} · ${formatTime(progress.positionSeconds)}${duration}`;
-}
-
-function formatTime(seconds: number) {
-  const safeSeconds = Math.max(0, Math.floor(seconds));
-  const minutes = Math.floor(safeSeconds / 60);
-  const remainingSeconds = safeSeconds % 60;
-  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
-}
-
-function progressPercent(progress: Work["progress"]) {
-  if (!progress.durationSeconds || progress.durationSeconds <= 0) return 0;
-  return Math.min(100, Math.max(0, (progress.positionSeconds / progress.durationSeconds) * 100));
 }
