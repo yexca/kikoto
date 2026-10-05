@@ -261,8 +261,6 @@ export const surfaceEnglish = {
     accessPolicySaved: "Access policy saved.",
     accessPolicySaveFailed: "Access policy could not be saved.",
     sourceSaved: "Source saved.",
-    requestLanguageUpdated: "Request language updated for {{name}}.",
-    requestLanguageSaveFailed: "Remote request language could not be saved.",
     sourceDeleted: "Source deleted.",
     sourceDeleteFailed: "Source could not be deleted.",
     sourceHealthPassed: "Source health check passed.",
@@ -368,8 +366,9 @@ export const surfaceEnglish = {
       noProxies: "No proxies are configured. DLsite requests connect directly.",
       manageProxies: "Manage proxies",
       proxyUpdated: "DLsite proxy updated.",
-      remoteRequests: "Remote request language",
-      remoteRequestsDescription: "Sent as an Accept-Language hint. A source may ignore it or return mixed languages.",
+      defaultLanguage: "Default metadata language",
+      defaultLanguageDescription:
+        "Used for anyone who has not chosen a language in the Appearance menu, for anonymous visitors, and for stored titles, tag names and background requests.",
       remoteFallback: "Remote metadata fallback",
       remoteFallbackDescription:
         "When DLsite reports a work as not found, the selected sources are asked in order and their tags join shared tags. Turning this off keeps filled values; remote tags leave shared tags.",

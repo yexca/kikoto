@@ -191,8 +191,8 @@ func (s *Server) syncWorkMetadataFamily(ctx context.Context, code string) (metas
 		WithCoordinator(s.metadataCoordinator).
 		WithProductURLBuilder(s.dlsiteEndpoints.ProductURL).
 		WithCacheRoot(s.cfg.CacheRoot).
-		WithMetadataPriority(s.preferredMetadataLanguages(ctx)).
-		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.preferredMetadataLanguages(ctx))).
+		WithMetadataPriority(s.instanceMetadataLanguages(ctx)).
+		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.instanceMetadataLanguages(ctx))).
 		WithRequestPacing(
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5)),
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_rate_limit_backoff_seconds", 30)),

@@ -248,7 +248,7 @@ func (s *Server) discoverRemotePopularCandidates(ctx context.Context, job workfl
 	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", nodeIDs["discover"]); err != nil {
 		return result, checkpoint, err
 	}
-	page, err := s.kikoeruCrawlClientForSource(source).PopularWorks(ctx, 1, payload.Limit)
+	page, err := s.kikoeruCrawlClientForSource(ctx, source).PopularWorks(ctx, 1, payload.Limit)
 	if err != nil {
 		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())

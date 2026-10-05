@@ -18,11 +18,11 @@ For provider display, any non-original edition in the work family is a translati
 
 Admin and super_admin can edit work metadata with `library:write`. Save sends only fields changed from the initial editor values; selecting a cover alone preserves automatic titles, circles, series, and voice credits. Clearing a field resets only its override. Existing frozen title overrides that exactly match a trimmed DLsite title in the same family are removed during upgrade; circle, series, and voice overrides are kept.
 
-The Tags section searches shared metadata tags, adds or removes them for this work, and can create a custom tag even when the work has no DLsite metadata. Restore DLsite tags clears the work’s tag additions/removals. Shared names follow the configured metadata language priority, using manual names and learned genre names; a Japanese-only work can show a known Chinese tag name. After background updates complete, hidden tags remain absent everywhere. Personal “My tags” are separate account-owned tags. Demo shows the editor read-only.
+The Tags section searches shared metadata tags, adds or removes them for this work, and can create a custom tag even when the work has no DLsite metadata. Restore DLsite tags clears the work’s tag additions/removals. Shared names follow your preferred metadata language, using manual names and learned genre names; a Japanese-only work can show a known Chinese tag name. After background updates complete, hidden tags remain absent everywhere. Personal “My tags” are separate account-owned tags. Demo shows the editor read-only.
 
 New custom names remain drafts until Save creates or reuses the shared tag and attaches it to this work in one transaction. Cancel leaves no shared entry. A name matching any known language after trimming and ignoring case reuses that tag, so repeated clicks and duplicate names do not create duplicate concepts.
 
-Switching metadata language uses that version’s manual or dictionary tag names when available, then falls back to the configured priority. Additions, removals, final-target hiding, and merge mappings still apply. The default version uses the same provider source as the work projection. Snapshot-only tags stay visible until their own projection completes; removing every tag produces an intentionally empty display.
+Switching metadata language uses that version’s manual or dictionary tag names when available, then falls back to your preferred language. Every version shows the same tags, taken from the original edition, so switching renames tags without adding or dropping any. Additions, removals, final-target hiding, and merge mappings still apply. Snapshot-only tags stay visible until their own projection completes; removing every tag produces an intentionally empty display.
 
 A Japanese-only work shows its tags in a preferred language once the background **Learn tag names** workflow has learned those names; until then a tag falls back to its Japanese name. Its title stays Japanese.
 
@@ -40,9 +40,10 @@ Until a background update finishes, the work keeps its last saved tag set, inclu
   compact chips beside the work code. Each chip names its current choice and
   opens its own list; an Origin directory edition reads `Origin · <language>`.
   The metadata chip becomes a read-only label when there is only one variant.
-  Metadata defaults to the configured language priority for local works and the
-  source request-language hint for remote-only works; a user's temporary switch
-  changes the displayed title and provider tags without being persisted. The
+  Metadata defaults to your preferred metadata language for local works; for
+  remote-only works it defaults to the first of your languages the source
+  describes, then to the source's fallback language. A temporary switch
+  changes the displayed title and tag names without being persisted. The
   Origin variant is always listed first while the configured default remains
   selected.
 - Treats directory editions as file availability, not metadata availability.

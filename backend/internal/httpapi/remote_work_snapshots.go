@@ -106,7 +106,7 @@ func (s *Server) loadRemoteWork(ctx context.Context, sourceID int64, code string
 	if !isKikoeruSourceType(source.SourceType) || !source.Enabled {
 		return remoteSourceForUse{}, kikoeru.Work{}, fmt.Errorf("source is not an enabled kikoeru-compatible source")
 	}
-	client := s.kikoeruClientForSource(source)
+	client := s.kikoeruClientForSource(ctx, source)
 	remoteWork, _, err := s.resolveRemoteWorkForAccess(ctx, client, code)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -119,7 +119,7 @@ func (s *Server) loadRemoteWork(ctx context.Context, sourceID int64, code string
 }
 
 func (s *Server) loadRemoteTracks(ctx context.Context, source remoteSourceForUse, work kikoeru.Work) ([]kikoeru.Track, error) {
-	tracks, _, err := s.kikoeruClientForSource(source).Tracks(ctx, work.ID)
+	tracks, _, err := s.kikoeruClientForSource(ctx, source).Tracks(ctx, work.ID)
 	if err != nil {
 		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
 		return nil, err
@@ -128,7 +128,7 @@ func (s *Server) loadRemoteTracks(ctx context.Context, source remoteSourceForUse
 }
 
 func (s *Server) loadRemoteWorkCached(ctx context.Context, sourceID int64, code string) (remoteSourceForUse, kikoeru.Work, error) {
-	key := remoteWorkCacheKey(sourceID, code)
+	key := s.remoteWorkCacheKey(ctx, sourceID, code)
 	now := time.Now()
 	s.remoteWorkCacheMu.Lock()
 	snapshot, found := s.remoteWorkCache[key]
@@ -178,7 +178,7 @@ func (s *Server) loadRemoteWorkTracksCached(ctx context.Context, sourceID int64,
 	if err != nil {
 		return remoteSourceForUse{}, kikoeru.Work{}, nil, err
 	}
-	key := remoteWorkCacheKey(sourceID, code)
+	key := s.remoteWorkCacheKey(ctx, sourceID, code)
 	now := time.Now()
 	s.remoteWorkCacheMu.Lock()
 	snapshot, found := s.remoteWorkTracksCache[key]
@@ -238,8 +238,11 @@ type remoteWorkTracksCall struct {
 	err    error
 }
 
-func remoteWorkCacheKey(sourceID int64, code string) string {
-	return fmt.Sprintf("%d:%s", sourceID, strings.ToUpper(strings.TrimSpace(code)))
+// remoteWorkCacheKey separates viewers with different metadata languages,
+// because the source may answer each language differently. The source id
+// stays the key prefix for invalidateRemoteWorkCache.
+func (s *Server) remoteWorkCacheKey(ctx context.Context, sourceID int64, code string) string {
+	return fmt.Sprintf("%d:%s:%s", sourceID, strings.ToUpper(strings.TrimSpace(code)), strings.Join(s.viewerMetadataLanguages(ctx), ","))
 }
 
 func pruneRemoteWorkSnapshots(snapshots map[string]remoteWorkSnapshot, now time.Time) {

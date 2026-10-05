@@ -4,7 +4,9 @@ On mobile, the app header is a compact tool bar ordered as Quick actions,
 Notifications (when authenticated), Appearance, and account. Quick actions
 opens the searchable Command Palette in a bottom sheet; Notifications,
 Appearance, and account use anchored popovers. Appearance owns mode, style, and
-color choices; the account surface owns Activity, account settings, native
+color choices, and for a signed-in user the personal preferred metadata
+language: **Server default** follows the instance default named beside it, and
+a saved change refreshes the routed page through the user preference event; the account surface owns Activity, account settings, native
 connection actions, and authentication actions. On desktop, Quick actions and
 the same command palette remain a centered surface while the header popovers
 stay anchored to their triggers.

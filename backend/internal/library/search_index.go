@@ -62,16 +62,19 @@ func (s *Store) RefreshSearchIndex(ctx context.Context) error {
 	return refreshSearchIndex(ctx, s.db, searchIndexRefresh{})
 }
 
-// RunSearchIndexWorker rebuilds queued search documents until ctx is
-// cancelled: at once, then whenever a search finds a long queue, and at least
-// every searchIndexPollInterval. Each batch commits separately, so the worker
-// never holds the write lock for the whole backlog.
+// RunSearchIndexWorker rebuilds queued search documents and language sort
+// titles until ctx is cancelled: at once, then whenever a search finds a long
+// queue, and at least every searchIndexPollInterval. Each batch commits
+// separately, so the worker never holds the write lock for the whole backlog.
 func (s *Store) RunSearchIndexWorker(ctx context.Context) {
 	ticker := time.NewTicker(searchIndexPollInterval)
 	defer ticker.Stop()
 	for {
 		if err := refreshSearchIndex(ctx, s.db, searchIndexRefresh{batchPause: searchIndexBatchPause}); err != nil && ctx.Err() == nil {
 			slog.Warn("refresh search index", "error", err)
+		}
+		if err := refreshTitleLanguages(ctx, s.db); err != nil && ctx.Err() == nil {
+			slog.Warn("refresh language titles", "error", err)
 		}
 		select {
 		case <-ctx.Done():

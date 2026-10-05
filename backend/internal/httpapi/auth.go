@@ -33,13 +33,14 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		user, err := s.currentUserFromRequest(r.Context(), r)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				next.ServeHTTP(w, r)
+				next.ServeHTTP(w, r.WithContext(withMetadataLanguageMemo(r.Context())))
 				return
 			}
 			writeError(w, err)
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), currentUserKey, user)))
+		ctx := withMetadataLanguageMemo(context.WithValue(r.Context(), currentUserKey, user))
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

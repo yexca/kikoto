@@ -7,4 +7,5 @@ sources:
     api_url: https://example.invalid
     base_url: https://example.invalid
     fallback_url: ""
+    # Fallback language, asked after each viewer's preferred metadata language.
     request_language: ja-JP

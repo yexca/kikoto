@@ -35,11 +35,7 @@ type remoteCatalogWorkProjection struct {
 }
 
 func (s *Server) remoteCatalogProjector(ctx context.Context) remoteCatalogProjector {
-	return newRemoteCatalogProjectorWithLanguages(s.preferredMetadataLanguages(ctx))
-}
-
-func (s *Server) preferredMetadataLanguage(ctx context.Context) string {
-	return s.preferredMetadataLanguages(ctx)[0]
+	return newRemoteCatalogProjectorWithLanguages(s.instanceMetadataLanguages(ctx))
 }
 
 func newRemoteCatalogProjector(language string) remoteCatalogProjector {
@@ -66,32 +62,38 @@ func newRemoteCatalogProjectorWithLanguages(languages []string) remoteCatalogPro
 	return remoteCatalogProjector{languages: ordered}
 }
 
-func remoteSourceRequestLanguages(language string) []string {
-	language = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(language), "_", "-"))
-	if language == "" {
-		language = strings.ToLower(defaultRemoteRequestLanguage)
-	}
-	return []string{language}
-}
-
 func remoteWorkMetadataPresentation(work kikoeru.Work, languages []string) workMetadataPresentation {
 	result := workMetadataPresentation{Variants: []workMetadataVariant{}}
 	originLanguage := remoteWorkOriginLanguage(work)
-	requested := normalizeRemotePresentationLanguage(firstNonEmpty(languages...))
-	if requested == "" || requested == "origin" {
-		requested = normalizeRemotePresentationLanguage(defaultRemoteRequestLanguage)
-	}
-	available := map[string]bool{requested: true}
+	described := map[string]bool{}
 	if originLanguage != "" {
-		available[originLanguage] = true
+		described[originLanguage] = true
 	}
 	for _, tag := range work.Tags {
 		for language, localized := range tag.I18n {
 			language = normalizeRemotePresentationLanguage(language)
 			if language != "" && strings.TrimSpace(localized.Name) != "" {
-				available[language] = true
+				described[language] = true
 			}
 		}
+	}
+	// languages ends with the source's fallback language: the default is the
+	// first preferred language the work describes, otherwise the fallback.
+	requested := ""
+	for _, language := range languages {
+		if language = normalizeRemotePresentationLanguage(language); language != "" && language != "origin" {
+			requested = language
+			if described[language] {
+				break
+			}
+		}
+	}
+	if requested == "" || requested == "origin" {
+		requested = normalizeRemotePresentationLanguage(defaultRemoteRequestLanguage)
+	}
+	available := map[string]bool{requested: true}
+	for language := range described {
+		available[language] = true
 	}
 	ordered := make([]string, 0, len(available)+1)
 	if originLanguage != "" {

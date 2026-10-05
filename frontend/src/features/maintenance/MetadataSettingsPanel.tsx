@@ -11,6 +11,12 @@ import { DLsiteProxyQuickSwitch } from "@/features/proxy";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { InfoHint } from "./InfoHint";
 import {
+  dlsiteMetadataLanguageOptions,
+  dlsiteMetadataLanguagesFor,
+  preferredDlsiteMetadataLanguage,
+  type DlsiteMetadataLanguage,
+} from "./metadataLanguageModel";
+import {
   defaultRemoteMetadataFallback,
   moveRemoteMetadataSource,
   normalizedRemoteMetadataFallback,
@@ -20,13 +26,6 @@ import {
 } from "./remoteMetadataFallbackModel";
 import i18n from "@/i18n";
 const maintenanceCopy = (key: string, options?: Record<string, unknown>) => i18n.t(`maintenance.${key}`, options);
-const remoteRequestLanguageOptions = [
-  { value: "ja-JP", labelKey: "metadata.japanese" },
-  { value: "en-US", labelKey: "metadata.english" },
-  { value: "zh-CN", labelKey: "metadata.simplifiedChinese" },
-  { value: "zh-TW", labelKey: "metadata.traditionalChinese" },
-  { value: "ko-KR", labelKey: "metadata.korean" },
-] as const;
 /**
  * Metadata settings shown in the page's settings popover: a compact header,
  * the editable groups with hover explanations, and a sticky save footer.
@@ -37,10 +36,10 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [days, setDays] = useState(30);
   const [fallback, setFallback] = useState<RemoteMetadataFallbackSettings>(defaultRemoteMetadataFallback);
+  const [defaultLanguage, setDefaultLanguage] = useState<DlsiteMetadataLanguage>("origin");
   const [error, setError] = useState(false);
   const [revision, setRevision] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [updatingSourceId, setUpdatingSourceId] = useState<number | null>(null);
   useEffect(() => {
     let active = true;
     setError(false);
@@ -51,6 +50,7 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
         setSettings(next);
         setDays(next.catalogFreshnessDays);
         setFallback(next.remoteMetadataFallback ?? defaultRemoteMetadataFallback);
+        setDefaultLanguage(preferredDlsiteMetadataLanguage(next.dlsiteMetadataLanguages));
       })
       .catch(() => {
         if (active) setError(true);
@@ -69,42 +69,23 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
         sources,
         settings?.remoteMetadataFallback ?? defaultRemoteMetadataFallback,
       );
+      const savedLanguage = preferredDlsiteMetadataLanguage(settings?.dlsiteMetadataLanguages);
       // Send only changed groups so this form never overwrites other settings.
       const next = await api.updateSettings({
         catalogFreshnessDays: days,
         ...(sameRemoteMetadataFallback(nextFallback, savedFallback) ? {} : { remoteMetadataFallback: nextFallback }),
+        ...(defaultLanguage === savedLanguage
+          ? {}
+          : { dlsiteMetadataLanguages: dlsiteMetadataLanguagesFor(defaultLanguage) }),
       });
       setSettings(next);
       setFallback(next.remoteMetadataFallback ?? defaultRemoteMetadataFallback);
+      setDefaultLanguage(preferredDlsiteMetadataLanguage(next.dlsiteMetadataLanguages));
       toast.success(maintenanceCopy("settingsSaved"));
     } catch (cause) {
       toast.notify(toastFromError(cause, t("errors.unavailable")));
     } finally {
       setSaving(false);
-    }
-  };
-  const updateLanguage = async (source: FileSource, requestLanguage: string) => {
-    if (readOnly || updatingSourceId !== null) return;
-    setUpdatingSourceId(source.id);
-    try {
-      const updated = await api.updateFileSource(source.id, {
-        displayName: source.displayName,
-        sourceType: source.sourceType,
-        priority: source.priority,
-        enabled: source.enabled,
-        config: { ...source.config, requestLanguage },
-        endpoint: source.endpoint,
-      });
-      setSettings((current) =>
-        current
-          ? { ...current, fileSources: current.fileSources.map((item) => (item.id === updated.id ? updated : item)) }
-          : current,
-      );
-      toast.success(maintenanceCopy("requestLanguageUpdated", { name: source.displayName }));
-    } catch (cause) {
-      toast.notify(toastFromError(cause, maintenanceCopy("requestLanguageSaveFailed")));
-    } finally {
-      setUpdatingSourceId(null);
     }
   };
   const manageProxies = () => {
@@ -172,13 +153,9 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
             onManage={manageProxies}
           />
         }
-        remoteSources={settings.fileSources.filter(
-          (source) =>
-            source.sourceType === "kikoeru_compatible" || source.sourceType === "kikoeru_compatible_number178",
-        )}
-        updatingSourceId={updatingSourceId}
+        defaultLanguage={defaultLanguage}
+        onDefaultLanguageChange={setDefaultLanguage}
         onCatalogFreshnessDaysChange={setDays}
-        onRequestLanguageChange={updateLanguage}
         fallback={
           <RemoteMetadataFallbackGroup sources={settings.fileSources} value={fallback} onChange={setFallback} />
         }
@@ -291,10 +268,9 @@ function MetadataSettings({
   catalogFreshnessDays,
   proxy,
   fallback,
-  remoteSources,
-  updatingSourceId,
+  defaultLanguage,
+  onDefaultLanguageChange,
   onCatalogFreshnessDaysChange,
-  onRequestLanguageChange,
 }: {
   disabled: boolean;
   catalogFreshnessDays: number;
@@ -302,10 +278,10 @@ function MetadataSettings({
   proxy: ReactNode;
   /** Remote metadata fallback controls, saved with this form. */
   fallback: ReactNode;
-  remoteSources: FileSource[];
-  updatingSourceId: number | null;
+  /** The instance default metadata language, saved with this form. */
+  defaultLanguage: DlsiteMetadataLanguage;
+  onDefaultLanguageChange: (value: DlsiteMetadataLanguage) => void;
   onCatalogFreshnessDaysChange: (value: number) => void;
-  onRequestLanguageChange: (source: FileSource, language: string) => Promise<void>;
 }) {
   const { t } = useTranslation();
 
@@ -317,45 +293,23 @@ function MetadataSettings({
 
       {fallback}
 
-      {remoteSources.length > 0 && (
-        <SettingsGroup
-          title={maintenanceCopy("metadata.remoteRequests")}
-          hint={maintenanceCopy("metadata.remoteRequestsDescription")}
+      <SettingsGroup
+        title={maintenanceCopy("metadata.defaultLanguage")}
+        hint={maintenanceCopy("metadata.defaultLanguageDescription")}
+      >
+        <NativeSelect
+          fieldSize="sm"
+          value={defaultLanguage}
+          aria-label={maintenanceCopy("metadata.defaultLanguage")}
+          onChange={(event) => onDefaultLanguageChange(event.target.value as DlsiteMetadataLanguage)}
         >
-          <div className="divide-y overflow-hidden rounded-lg border bg-card">
-            {remoteSources.map((source) => {
-              const requestLanguage = source.config.requestLanguage ?? "ja-JP";
-              const known = remoteRequestLanguageOptions.some(
-                (option) => option.value.toLowerCase() === requestLanguage.toLowerCase(),
-              );
-              const value =
-                remoteRequestLanguageOptions.find(
-                  (option) => option.value.toLowerCase() === requestLanguage.toLowerCase(),
-                )?.value ?? requestLanguage;
-              return (
-                <label key={source.id} className="flex min-h-10 items-center justify-between gap-3 px-2.5 py-1 text-sm">
-                  <span className="min-w-0 truncate font-medium">{source.displayName}</span>
-                  <NativeSelect
-                    fieldSize="sm"
-                    className="w-36 shrink-0"
-                    value={value}
-                    disabled={updatingSourceId !== null}
-                    aria-label={`${source.displayName} metadata request language`}
-                    onChange={(event) => void onRequestLanguageChange(source, event.target.value)}
-                  >
-                    {!known && <option value={requestLanguage}>Custom ({requestLanguage})</option>}
-                    {remoteRequestLanguageOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {t(option.labelKey)}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </label>
-              );
-            })}
-          </div>
-        </SettingsGroup>
-      )}
+          {dlsiteMetadataLanguageOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {t(option.labelKey)}
+            </option>
+          ))}
+        </NativeSelect>
+      </SettingsGroup>
 
       <section className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-1">

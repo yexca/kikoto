@@ -21,7 +21,9 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 	if err != nil {
 		return result, err
 	}
-	selected, selectedOK, err := metasync.SelectDLsiteMetadataVariant(ctx, s.db, workID, s.preferredMetadataLanguages(ctx))
+	viewerLanguages := s.viewerMetadataLanguages(ctx)
+	tagLanguages := s.viewerTagLanguages(ctx)
+	selected, selectedOK, err := metasync.SelectDLsiteMetadataVariant(ctx, s.db, workID, viewerLanguages)
 	if err != nil {
 		return result, err
 	}
@@ -30,13 +32,26 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return result, err
 	}
+	// Every language edition presents the same tag set: the canonical work's
+	// fixed tag source, or a non-canonical edition's own genres. Switching
+	// language only renames those tags.
+	tagSource, tagSourceOK, err := metasync.SelectDLsiteTagSourceVariant(ctx, s.db, workID)
+	if err != nil {
+		return result, err
+	}
 	if !canonical {
 		for _, variant := range variants {
 			if variant.WorkID == workID {
-				selected = variant
-				selectedOK = true
+				selected, tagSource = variant, variant
+				selectedOK, tagSourceOK = true, true
 				break
 			}
+		}
+	}
+	var tagSourceLegacy []string
+	if tagSourceOK {
+		if err := json.Unmarshal([]byte(tagSource.TagsJSON), &tagSourceLegacy); err != nil {
+			return result, err
 		}
 	}
 	overrides, err := s.loadWorkManualOverrides(ctx, workID)
@@ -56,15 +71,17 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 		if seen[key] || strings.TrimSpace(variant.Title) == "" {
 			continue
 		}
-		var tags []string
-		if err := json.Unmarshal([]byte(variant.TagsJSON), &tags); err != nil {
+		sourceID, legacy := variant.WorkID, []string{}
+		if tagSourceOK {
+			sourceID, legacy = tagSource.WorkID, tagSourceLegacy
+		} else if err := json.Unmarshal([]byte(variant.TagsJSON), &legacy); err != nil {
 			return result, err
 		}
 		locale := strings.ToLower(variant.RequestLocale)
 		if locale == "" {
 			locale = dlsite.LocaleForMetadataLanguage(dlsite.EditionMetadataLanguage(variant.EditionLanguage))
 		}
-		tags, err = metadatatags.Presentation(ctx, s.db, workID, variant.WorkID, tags, locale)
+		tags, err := metadatatags.PresentationFor(ctx, s.db, workID, sourceID, legacy, tagLanguages, locale)
 		if err != nil {
 			return result, err
 		}
@@ -123,7 +140,7 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 			result.DefaultVariantKey = key
 		}
 	}
-	orderWorkMetadataVariants(result.Variants, s.preferredMetadataLanguages(ctx))
+	orderWorkMetadataVariants(result.Variants, viewerLanguages)
 	for _, language := range []string{"ja-jp", "zh-cn", "zh-tw", "en-us", "ko-kr"} {
 		choice := choices[language]
 		if overrides.Titles[language] == "" {
@@ -181,12 +198,13 @@ func orderWorkMetadataVariants(variants []workMetadataVariant, priorities []stri
 	})
 }
 
-// loadProjectedDLsiteTags returns the language-selected tags for a work family.
-// The canonical work row is normally kept in sync by the projection writer,
-// but catalog and voice pages can arrive through a non-canonical edition and
-// therefore read the variant directly as well.
+// loadProjectedDLsiteTags returns a work family's shared tags named for the
+// viewer. The canonical work row is normally kept in sync by the projection
+// writer, but catalog and voice pages can arrive through a non-canonical
+// edition and therefore read the fixed tag source edition directly as well.
 func (s *Server) loadProjectedDLsiteTags(ctx context.Context, workID int64) ([]string, bool, error) {
-	selected, ok, err := metasync.SelectDLsiteMetadataVariant(ctx, s.db, workID, s.preferredMetadataLanguages(ctx))
+	tagLanguages := s.viewerTagLanguages(ctx)
+	selected, ok, err := metasync.SelectDLsiteTagSourceVariant(ctx, s.db, workID)
 	if err != nil {
 		return nil, false, err
 	}
@@ -195,12 +213,17 @@ func (s *Server) loadProjectedDLsiteTags(ctx context.Context, workID int64) ([]s
 		if err := json.Unmarshal([]byte(selected.TagsJSON), &legacy); err != nil {
 			return nil, false, err
 		}
-		tags, err := metadatatags.Presentation(ctx, s.db, workID, selected.WorkID, legacy)
+		tags, err := metadatatags.PresentationFor(ctx, s.db, workID, selected.WorkID, legacy, tagLanguages)
 		return cleanProjectedTags(tags), true, err
 	}
 	tags, err := metadatatags.Read(ctx, s.db, workID)
 	if err != nil {
 		return nil, false, err
+	}
+	if tagLanguages != nil {
+		if tags, err = metadatatags.Localize(ctx, s.db, tags, tagLanguages); err != nil {
+			return nil, false, err
+		}
 	}
 	names := []string{}
 	for _, tag := range tags {
@@ -262,7 +285,7 @@ func (s *Server) loadProjectedDLsiteTagsBatch(ctx context.Context, workIDs []int
 		return nil, err
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT work_tag.work_id, tag.display_name
+		SELECT work_tag.work_id, tag.id, tag.display_name
 		FROM work_tag
 		INNER JOIN tag ON tag.id = work_tag.tag_id
 		WHERE tag.namespace IN ('dlsite','metadata') AND work_tag.work_id IN (`+strings.Join(placeholders, ",")+`)
@@ -271,20 +294,57 @@ func (s *Server) loadProjectedDLsiteTagsBatch(ctx context.Context, workIDs []int
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	linked := map[int64][]metadatatags.EffectiveTag{}
+	order := []int64{}
+	tagIDs := []int64{}
 	for rows.Next() {
 		var workID int64
-		var tag string
-		if err := rows.Scan(&workID, &tag); err != nil {
+		var tag metadatatags.EffectiveTag
+		if err := rows.Scan(&workID, &tag.ID, &tag.DisplayName); err != nil {
+			_ = rows.Close()
 			return nil, err
 		}
+		if _, exists := linked[workID]; !exists {
+			order = append(order, workID)
+		}
+		linked[workID] = append(linked[workID], tag)
+		tagIDs = append(tagIDs, tag.ID)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if tagLanguages := s.viewerTagLanguages(ctx); tagLanguages != nil && len(tagIDs) > 0 {
+		names, err := metadatatags.LocalizedNames(ctx, s.db, tagIDs, tagLanguages)
+		if err != nil {
+			return nil, err
+		}
+		for _, workID := range order {
+			tags := linked[workID]
+			for index := range tags {
+				if name, ok := names[tags[index].ID]; ok {
+					tags[index].DisplayName = name
+				}
+			}
+			sort.SliceStable(tags, func(i, j int) bool {
+				left, right := strings.ToLower(tags[i].DisplayName), strings.ToLower(tags[j].DisplayName)
+				if left != right {
+					return left < right
+				}
+				return tags[i].ID < tags[j].ID
+			})
+		}
+	}
+	for _, workID := range order {
 		if _, exists := result[workID]; !exists {
 			result[workID] = append([]string{}, legacy[workID]...)
 		}
-		result[workID] = append(result[workID], tag)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+		for _, tag := range linked[workID] {
+			result[workID] = append(result[workID], tag.DisplayName)
+		}
 	}
 	// Marker rows denote replacement; links alone are additions to the existing
 	// snapshot display (notably remote-only works).

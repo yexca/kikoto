@@ -234,8 +234,8 @@ func (s *Server) executeDLsitePopularCollectionJob(ctx context.Context, job work
 		WithCoordinator(s.metadataCoordinator).
 		WithProductURLBuilder(s.dlsiteEndpoints.ProductURL).
 		WithCacheRoot(s.cfg.CacheRoot).
-		WithMetadataPriority(s.preferredMetadataLanguages(ctx)).
-		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.preferredMetadataLanguages(ctx))).
+		WithMetadataPriority(s.instanceMetadataLanguages(ctx)).
+		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.instanceMetadataLanguages(ctx))).
 		WithRequestPacing(
 			requestDelay,
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_rate_limit_backoff_seconds", 30)),

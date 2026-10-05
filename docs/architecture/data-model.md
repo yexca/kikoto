@@ -85,6 +85,26 @@ display token refers to the canonical edition even when its source language is
 not Japanese. The configured priority only changes the normalized title/tag
 projection; the request locale and the raw snapshot remain provenance data.
 
+Metadata language has two scopes. The instance default
+(`app_setting.dlsite_metadata_languages`) decides everything stored or shared:
+the projected `work.title`, `tag.display_name`, background syncs, catalog
+snapshots, remote metadata fallback and Activity text. A signed-in user may
+store an own priority in `user_preference.metadata_languages` (migration `056`;
+`NULL` follows the instance default). It changes only what that user's requests
+present: selected titles and introductions, tag names, the default detail
+edition, title sorting, and live remote-source requests. Requests without a
+user use the instance default. No stored provider value depends on a personal
+priority, and a personal change rewrites nothing.
+
+`work_title_language` (migration `056`) holds each work's title for every
+language that title selection can stop at: each supported language with its own
+edition or language-specific manual title, and always `origin`. Selection over
+a priority therefore equals the first present row in that priority, so a title
+sort reads `COALESCE` over the viewer's languages and falls back to
+`work.title` while a work is queued. Triggers on editions, variants, title
+overrides and work titles queue whole families in `work_title_language_dirty`;
+the search index worker rebuilds them in bounded batches.
+
 DLsite genre ids are stable across request locales. `work_dlsite_genre`
 (migration `047`) records the ids each edition carries, and
 `dlsite_genre_name` learns one name per id and request locale from fetched
@@ -130,14 +150,19 @@ then Japanese manual/dictionary names, then any known name. The edition token
 renaming, and language-priority changes refresh the stored display name.
 Dictionary learning and concept creation refresh only the changed concepts in
 the writing transaction. A normal sync never recalculates the entire dictionary
-and never publishes a generated genre placeholder. Detail language variants use
-that variant's requested locale's manual name, then the universal manual name,
-then its dictionary name, then the stored priority-selected name.
+and never publishes a generated genre placeholder. A viewer whose priority
+differs from the instance default gets the same chain over its own priority at
+read time; the stored name is used unchanged otherwise. Detail language
+variants use that variant's requested locale's manual name, then the universal
+manual name, then its dictionary name, then the viewer's priority-selected name.
 
 `work_tag_override` records per-work additions and removals. Projection takes
-the selected edition's genres for the canonical work and each other edition's
-own genres, follows merge mappings, adds manual concepts, and applies removals
-and hiding. Removal wins when an addition and a removal resolve to the same
+the original edition's genres for the canonical work, never the edition a
+language priority selects (otherwise the first edition with a title in the
+fixed supported-language order), and each other edition's own genres, follows
+merge mappings, adds manual concepts, and applies removals and hiding. Every
+language therefore shows the same tag set; detail language variants rename
+those tags but never swap them for another edition's genres. Removal wins when an addition and a removal resolve to the same
 concept. Effective `work_tag` rows drive cards, detail language chips,
 creator lists, search, workflow predicates, and recommendation similarity.
 `tags_json` retains the provider's original names for provenance.

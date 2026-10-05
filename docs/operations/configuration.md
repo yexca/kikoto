@@ -38,12 +38,17 @@ does not update its environment.
 
 Maintenance manages local scan depth, cache behavior, the remote per-file
 download limit, failed Fetch staging retention, remote request pacing, the
-preferred DLsite metadata language (in the header Appearance menu), outbound
-proxies and their scopes, file sources and their request-language hints, creator catalog
-freshness, and production instance access. A remote source
-request language is configured under `Maintenance -> Metadata` and sent as a
-hint only; the upstream service may ignore it, fall back, or return
-mixed-language metadata.
+default metadata language (under `Metadata -> Metadata settings`), outbound
+proxies and their scopes, file sources and their fallback languages, creator
+catalog freshness, and production instance access.
+
+Each signed-in user may choose an own preferred metadata language in the
+header Appearance menu; users who do not, anonymous visitors, stored titles and
+tag names, and background requests use the default metadata language. A request
+to a remote source on behalf of a user sends `Accept-Language` with that user's
+languages first and the source's fallback language (`request_language` in a
+source seed, default `ja-JP`) last. It is a hint only; the upstream service may
+ignore it, fall back, or return mixed-language metadata.
 
 Production anonymous access is an SQLite-backed instance setting rather than an
 environment variable. It defaults to disabled. A super administrator can

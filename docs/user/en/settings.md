@@ -49,7 +49,7 @@ Settings uses Account, Playback, History, Recommendations, and Tags tabs, shown 
 
 Saving recommendation settings creates a new recommendation session for the current tab. Other open tabs keep their existing snapshots until a new session is created. Saving folder preferences updates subsequent directory selection without stopping the player. Failed saves retain the draft and the previous persisted values. Demo mode keeps these server-backed preferences read-only.
 
-Appearance is available only from the header menu. The globe option follows the browser or device language; its tooltip and accessible name identify automatic selection. Administrators with `sources:write` also see **Preferred metadata language** directly below the UI language. It chooses the title edition priority for the whole instance and defaults to `Origin`; an edition without the chosen language falls back to `Origin`. Shared tag names use manual names and the learned dictionary in the same language priority, independently of whether that language has an edition.
+Appearance is available only from the header menu. The globe option follows the browser or device language; its tooltip and accessible name identify automatic selection. Every signed-in user also sees **Preferred metadata language** directly below the UI language. It is a personal choice: it decides which title edition, introduction and tag names that user sees, orders title sorting by those titles, and is asked first when Kikoto queries a remote source for that user. It starts at **Server default**, the instance default an administrator sets in Metadata settings, which itself defaults to `Origin`; an edition without the chosen language falls back to `Origin`. Shared tag names use manual names and the learned dictionary in the same language priority, independently of whether that language has an edition. Every language shows the same tags: they come from the original edition. Anonymous visitors see the server default.
 
 ## Maintenance Organization
 
@@ -81,6 +81,10 @@ Maintenance uses one horizontal row of tabs, scrolling horizontally on narrow sc
   API, then fills the API URL, public site, and name. When nothing is detected,
   **Connection details** opens for manual entry. Endpoint fields, priority, and
   network/storage options stay in collapsed groups.
+- **Fallback language** is asked last, after the viewer's preferred metadata
+  language, because a source may not describe works in every language. It
+  defaults to Japanese. The upstream may still ignore the request or return
+  mixed-language metadata.
 - Remote sources default to compatible public storage hosts. Source
   configuration can enable **Restrict outbound hosts** to allow only the API,
   Public site, Fallback, and an editable list of exact or `*.example.invalid`
@@ -169,10 +173,12 @@ Select families and choose **Retry metadata**; its count includes only eligible 
 Metadata settings have a **DLsite proxy** shortcut: the same switch and proxy
   choice as the DLsite scope under `Settings -> Proxy -> Proxy scope`, saved
   immediately. **Manage proxies** opens that section to add or reorder proxies.
-  Each compatible remote source also has its request-language
-  hint in this popover; the upstream may ignore it, fall back, or return
-  mixed-language metadata. The preferred metadata language is in the header
-  Appearance menu.
+  **Default metadata language** is the instance default: it applies to users
+  who keep **Server default**, to anonymous visitors, to stored titles and tag
+  names, and to background requests such as remote metadata fallback and
+  catalog refreshes. Changing it refreshes the stored titles and tag names.
+  Each user's own choice is in the header Appearance menu; a remote source's
+  fallback language is in its source settings.
 
 Shared tag names try each preferred language in order: that language’s manual name, the all-language manual name, then the provider name. Detail language switching follows the same precedence.
 
@@ -180,7 +186,7 @@ Hide, merge and undo save their state immediately. Related works update continuo
 
 ### Tag names in preferred languages
 
-DLsite names genres in the requested language even for Japanese-only works. When the preferred metadata languages include one besides Japanese, the **Learn tag names** workflow fills missing tag names in the background: for each language it asks DLsite once for the work that covers the most unnamed tags, so the number of requests depends on missing tags, not on the size of the library. It runs after startup, metadata syncs, and language changes, uses the same request pacing and DLsite proxy as metadata sync, and resumes after a restart. Progress, results, and failures appear in Activity. It stores only tag names, never titles or introductions, and does not ask again for a tag DLsite did not name.
+DLsite names genres in the requested language even for Japanese-only works. When the server default or any user's preferred metadata language is not Japanese, the **Learn tag names** workflow fills missing tag names in the background: for each language it asks DLsite once for the work that covers the most unnamed tags, so the number of requests depends on missing tags, not on the size of the library. It runs after startup, metadata syncs, and language changes, uses the same request pacing and DLsite proxy as metadata sync, and resumes after a restart. Progress, results, and failures appear in Activity. It stores only tag names, never titles or introductions, and does not ask again for a tag DLsite did not name.
 
 ### Remote metadata fallback
 

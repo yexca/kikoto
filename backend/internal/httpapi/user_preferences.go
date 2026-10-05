@@ -14,14 +14,22 @@ type userPreferences struct {
 	RecommendationConfig    library.RecommendationConfig `json:"recommendationConfig"`
 	RecommendationThreshold int                          `json:"recommendationThreshold"`
 	RecommendationDefaults  library.RecommendationConfig `json:"recommendationDefaults"`
+	// MetadataLanguages is the user's own metadata language priority, or nil
+	// when the user follows DefaultMetadataLanguages, the instance default.
+	MetadataLanguages        []string `json:"metadataLanguages"`
+	DefaultMetadataLanguages []string `json:"defaultMetadataLanguages"`
 }
 
 func (s *Server) loadUserPreferences(r *http.Request, userID int64) (userPreferences, error) {
 	result := userPreferences{
-		DirectoryRoutingRules:   s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
-		RecommendationConfig:    s.libraryStore.LoadUserRecommendationConfig(r.Context(), userID),
-		RecommendationThreshold: s.settingInt(r, "recommendation_threshold", 50),
-		RecommendationDefaults:  library.DefaultRecommendationConfig(),
+		DirectoryRoutingRules:    s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
+		RecommendationConfig:     s.libraryStore.LoadUserRecommendationConfig(r.Context(), userID),
+		RecommendationThreshold:  s.settingInt(r, "recommendation_threshold", 50),
+		RecommendationDefaults:   library.DefaultRecommendationConfig(),
+		DefaultMetadataLanguages: s.instanceMetadataLanguages(r.Context()),
+	}
+	if languages, ok := s.userMetadataLanguages(r.Context(), userID); ok {
+		result.MetadataLanguages = languages
 	}
 	var rules sql.NullString
 	var threshold sql.NullInt64
@@ -64,6 +72,9 @@ func (s *Server) updateUserPreferences(w http.ResponseWriter, r *http.Request) {
 		DirectoryRoutingRules   *[]directoryRule              `json:"directoryRoutingRules"`
 		RecommendationConfig    *library.RecommendationConfig `json:"recommendationConfig"`
 		RecommendationThreshold *int                          `json:"recommendationThreshold"`
+		// MetadataLanguages is a language priority, or null to follow the
+		// instance default. Omitting it keeps the current choice.
+		MetadataLanguages json.RawMessage `json:"metadataLanguages"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
 	decoder.DisallowUnknownFields()
@@ -100,6 +111,26 @@ func (s *Server) updateUserPreferences(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "recommendationThreshold must be between 1 and 100"})
 		return
 	}
+	metadataLanguagesChanged := len(payload.MetadataLanguages) > 0
+	var metadataLanguagesJSON any
+	if metadataLanguagesChanged && string(payload.MetadataLanguages) != "null" {
+		var values []string
+		if err := json.Unmarshal(payload.MetadataLanguages, &values); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "metadataLanguages must be a list of languages or null"})
+			return
+		}
+		languages, err := validateDLsiteMetadataLanguages(values)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		encoded, err := json.Marshal(languages)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		metadataLanguagesJSON = string(encoded)
+	}
 	_, err := s.db.ExecContext(r.Context(), `INSERT INTO user_preference (user_id, directory_routing_rules, recommendation_config, recommendation_threshold)
 		VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET
 		directory_routing_rules = COALESCE(excluded.directory_routing_rules, user_preference.directory_routing_rules),
@@ -108,6 +139,15 @@ func (s *Server) updateUserPreferences(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, err)
 		return
+	}
+	if metadataLanguagesChanged {
+		if _, err := s.db.ExecContext(r.Context(), `INSERT INTO user_preference (user_id, metadata_languages) VALUES (?, ?)
+			ON CONFLICT(user_id) DO UPDATE SET metadata_languages = excluded.metadata_languages`, user.ID, metadataLanguagesJSON); err != nil {
+			writeError(w, err)
+			return
+		}
+		// A personal language may need tag names the instance never learned.
+		s.queueGenreNameLearning(r.Context(), "language_priority")
 	}
 	s.getUserPreferences(w, r)
 }

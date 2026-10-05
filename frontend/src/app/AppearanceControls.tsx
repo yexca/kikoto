@@ -7,18 +7,22 @@ import { ThemePresetPicker } from "@/app/ThemePresetPicker";
 import type { ThemeMode, ThemePalette, ThemePreset } from "@/app/theme";
 import { FloatingSelect } from "@/components/ui/floating-select";
 import {
+  dlsiteMetadataLanguageLabelKey,
   dlsiteMetadataLanguageOptions,
   type DlsiteMetadataLanguage,
+  type MetadataLanguageChoice,
 } from "@/features/maintenance/metadataLanguageModel";
 import { UI_LOCALE_OPTIONS, type UiLocale } from "@/i18n";
 
-/** Instance-wide metadata display language; shown only to source administrators. */
+/** The signed-in user's own metadata language, or the instance default. */
 export type MetadataLanguageControl = {
-  value: DlsiteMetadataLanguage | null;
+  value: MetadataLanguageChoice | null;
+  /** The instance default named by the "default" choice. */
+  defaultValue: DlsiteMetadataLanguage | null;
   busy: boolean;
   failed: boolean;
   readOnly: boolean;
-  onChange: (value: DlsiteMetadataLanguage) => void | Promise<void>;
+  onChange: (value: MetadataLanguageChoice) => void | Promise<void>;
 };
 
 export function AppearanceControls({
@@ -76,17 +80,25 @@ export function AppearanceControls({
       {metadataLanguage && (
         <AppearanceGroup label={t("appearance.metadataLanguage")}>
           <FloatingSelect
-            value={metadataLanguage.value ?? "origin"}
+            value={metadataLanguage.value ?? "default"}
             disabled={metadataLanguage.readOnly || metadataLanguage.busy || metadataLanguage.value === null}
             ariaBusy={metadataLanguage.busy || (metadataLanguage.value === null && !metadataLanguage.failed)}
             ariaInvalid={metadataLanguage.failed}
             ariaLabel={t("appearance.metadataLanguage")}
-            onValueChange={(value) => void metadataLanguage.onChange(value as DlsiteMetadataLanguage)}
+            onValueChange={(value) => void metadataLanguage.onChange(value as MetadataLanguageChoice)}
             className={metadataLanguage.busy ? "disabled:cursor-wait" : undefined}
-            options={dlsiteMetadataLanguageOptions.map((option) => ({
-              value: option.value,
-              label: t(option.labelKey),
-            }))}
+            options={[
+              {
+                value: "default",
+                label: t("appearance.metadataLanguageDefault", {
+                  language: t(dlsiteMetadataLanguageLabelKey(metadataLanguage.defaultValue ?? "origin")),
+                }),
+              },
+              ...dlsiteMetadataLanguageOptions.map((option) => ({
+                value: option.value,
+                label: t(option.labelKey),
+              })),
+            ]}
           />
           {metadataLanguage.failed && (
             <p className="mt-2 text-xs text-destructive">

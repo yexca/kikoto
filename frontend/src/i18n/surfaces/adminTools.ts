@@ -26,6 +26,10 @@ export const adminToolsEnglish = {
     enableDescription: "Disabled sources keep their configuration but are not queried.",
     metadataCapability: "Provides work metadata",
     metadataCapabilityDescription: "Lets Metadata settings use this source when DLsite has no record of a work.",
+    fallbackLanguage: "Fallback language",
+    fallbackLanguageDescription:
+      "Requests ask in each viewer's preferred metadata language first and in this language last, for sources that lack the preferred one.",
+    customLanguage: "Custom ({{language}})",
     connection: "Connection details",
     connectionDescription: "API URL, public site, and work links",
     apiUrlHint: "Service base URL; paths such as /api/works are appended automatically.",

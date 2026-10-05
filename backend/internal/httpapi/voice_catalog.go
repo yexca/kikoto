@@ -862,7 +862,7 @@ func (s *Server) discoverVoiceCatalogSource(ctx context.Context, runID int64, so
 	started := time.Now()
 	sourceCtx, cancel := context.WithTimeout(ctx, voiceCatalogSourceTimeout)
 	defer cancel()
-	client := s.kikoeruCrawlClientForSource(source)
+	client := s.kikoeruCrawlClientForSource(ctx, source)
 	candidates := map[string]voiceCatalogCandidate{}
 	queryCursors := make([]voiceCatalogQueryCursor, 0, len(queries))
 	fullSnapshot := true

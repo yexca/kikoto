@@ -402,7 +402,7 @@ func (s *Server) populateWorkDetailMetadata(ctx context.Context, work *workDetai
 	} else {
 		work.Tags = presentProjectedTags(metadata.Tags, tags, projected)
 	}
-	if selected, ok, err := metasync.SelectDLsiteMetadataVariant(ctx, s.db, work.ID, s.preferredMetadataLanguages(ctx)); err != nil {
+	if selected, ok, err := metasync.SelectDLsiteMetadataVariant(ctx, s.db, work.ID, s.viewerMetadataLanguages(ctx)); err != nil {
 		return 0, err
 	} else if ok {
 		if selected.IsCanonical {

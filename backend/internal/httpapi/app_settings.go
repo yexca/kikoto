@@ -188,7 +188,7 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		s.notifyFilesystemTriggerConfigChanged()
 	}
 	if payload.DLsiteMetadataLanguages != nil || payload.DLsiteMetadataLanguage != nil {
-		if err := metasync.ProjectDLsiteMetadata(r.Context(), s.db, s.preferredMetadataLanguages(r.Context())); err != nil {
+		if err := metasync.ProjectDLsiteMetadata(r.Context(), s.db, s.instanceMetadataLanguages(r.Context())); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -397,7 +397,7 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 	if err != nil {
 		return appSettingsResponse{}, err
 	}
-	metadataLanguages := s.preferredMetadataLanguages(r.Context())
+	metadataLanguages := s.instanceMetadataLanguages(r.Context())
 	minimumScanDepth, err := s.requiredLocalScanDepth(r.Context())
 	if err != nil {
 		return appSettingsResponse{}, err
@@ -571,7 +571,10 @@ func validateDLsiteMetadataLanguages(values []string) ([]string, error) {
 	return completeDLsiteMetadataLanguages(normalized), nil
 }
 
-func (s *Server) preferredMetadataLanguages(ctx context.Context) []string {
+func (s *Server) instanceMetadataLanguages(ctx context.Context) []string {
+	if s.db == nil {
+		return append([]string(nil), defaultDLsiteMetadataLanguages...)
+	}
 	var raw string
 	if err := s.db.QueryRowContext(ctx, "SELECT value_json FROM app_setting WHERE key = ?", dlsiteMetadataLanguagesSetting).Scan(&raw); err == nil {
 		var values []string

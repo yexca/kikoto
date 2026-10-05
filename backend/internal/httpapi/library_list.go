@@ -104,6 +104,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		IncludeRecommendation:   strings.EqualFold(r.URL.Query().Get("recommendBadges"), "true"),
 		RecommendationSessionID: recommendationSessionID,
 		DemoOnly:                s.cfg.IsDemo(),
+		TitleLanguages:          s.titleSortLanguages(r.Context(), r.URL.Query().Get("sort")),
 	})
 	if err != nil {
 		writeError(w, err)

@@ -106,7 +106,7 @@ func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 		writeUpstreamError(w, err)
 		return
 	}
-	languages := remoteSourceRequestLanguages(source.Config.RequestLanguage)
+	languages := s.remoteSourceLanguages(r.Context(), source)
 	detail, err := s.remoteWorkDetailWithLanguages(r.Context(), source, remoteWork, languages)
 	if err != nil {
 		writeError(w, err)

@@ -151,7 +151,7 @@ func (s *Server) changeMetadataTag(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	priorities := s.preferredMetadataLanguages(ctx)
+	priorities := s.instanceMetadataLanguages(ctx)
 	tx, release, err := storage.BeginBoundedTx(ctx, s.db)
 	if err != nil {
 		metadataTagError(w, err)
@@ -267,7 +267,7 @@ func (s *Server) setWorkMetadataTags(w http.ResponseWriter, r *http.Request) {
 		metadataTagError(w, metadatatags.ErrInvalid)
 		return
 	}
-	priorities := s.preferredMetadataLanguages(r.Context())
+	priorities := s.instanceMetadataLanguages(r.Context())
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeError(w, err)

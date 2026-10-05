@@ -31,7 +31,7 @@ func (s *Server) enrichLibraryWorkSummaries(ctx context.Context, userID int64, w
 	if err != nil {
 		return err
 	}
-	priorities := s.preferredMetadataLanguages(ctx)
+	priorities := s.viewerMetadataLanguages(ctx)
 	for i := range works {
 		input := inputs[works[i].ID]
 		works[i].Title = metadatatitles.Select(input.Variants, input.Manual, priorities, input.Fallback).Title

@@ -23,7 +23,7 @@ func (s *Server) loadWorkMetadataTags(ctx context.Context, workID int64) (workMe
 	}
 	sourceID := workID
 	legacy := []string{}
-	selected, ok, err := metasync.SelectDLsiteMetadataVariant(ctx, s.db, workID, s.preferredMetadataLanguages(ctx))
+	selected, ok, err := metasync.SelectDLsiteTagSourceVariant(ctx, s.db, workID)
 	if err != nil {
 		return result, err
 	}
@@ -53,5 +53,14 @@ func (s *Server) loadWorkMetadataTags(ctx context.Context, workID int64) (workMe
 		}
 	}
 	result.InheritedTags, err = metadatatags.Inherited(ctx, s.db, sourceID, legacy)
+	if err != nil {
+		return result, err
+	}
+	if tagLanguages := s.viewerTagLanguages(ctx); tagLanguages != nil {
+		if result.Tags, err = metadatatags.Localize(ctx, s.db, result.Tags, tagLanguages); err != nil {
+			return result, err
+		}
+		result.InheritedTags, err = metadatatags.Localize(ctx, s.db, result.InheritedTags, tagLanguages)
+	}
 	return result, err
 }
