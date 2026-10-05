@@ -2163,11 +2163,11 @@ func (s *Server) readCircleCatalogWork(ctx context.Context, row circleCatalogWor
 	if item.WorkID != nil {
 		if title, tags, projected, err := s.loadProjectedDLsiteMetadata(ctx, *item.WorkID); err != nil {
 			return item, dlsiteSnapshotMetadata{}, err
-		} else if projected {
+		} else {
 			if title != "" {
 				item.Title = title
 			}
-			item.Tags = tags
+			item.Tags = presentProjectedTags(item.Tags, tags, projected)
 		}
 	}
 	item.Favorite = row.favorite != 0

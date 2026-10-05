@@ -1904,9 +1904,7 @@ func (s *Server) buildVoiceCatalogRemoteWork(ctx context.Context, row voiceCatal
 		if err != nil {
 			return voiceRemoteWork{}, err
 		}
-		if ok {
-			tags = projected
-		}
+		tags = presentProjectedTags(tags, projected, ok)
 	}
 	voiceActors := decodeVoiceCatalogStrings(row.VoiceActorsJSON)
 	flags := sourceAvailabilityState{}

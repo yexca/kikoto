@@ -394,10 +394,8 @@ func (s *Server) populateWorkDetailMetadata(ctx context.Context, work *workDetai
 	work.SeriesCircleID = work.CircleExternalID
 	if tags, projected, err := s.loadProjectedDLsiteTags(ctx, work.ID); err != nil {
 		return 0, err
-	} else if projected || tags != nil {
-		work.Tags = tags
 	} else {
-		work.Tags = metadata.Tags
+		work.Tags = presentProjectedTags(metadata.Tags, tags, projected)
 	}
 	if selected, ok, err := metasync.SelectDLsiteMetadataVariant(ctx, s.db, work.ID, s.preferredMetadataLanguages(ctx)); err != nil {
 		return 0, err
@@ -527,9 +525,7 @@ func (s *Server) resolveWorkCodeDetail(ctx context.Context, code string) (workRe
 	if err != nil {
 		return workResolveResponse{}, err
 	}
-	if !projected {
-		projectedTags = metadata.Tags
-	}
+	projectedTags = presentProjectedTags(metadata.Tags, projectedTags, projected)
 	return workResolveResponse{
 		RequestedCode:    code,
 		ResolvedCode:     resolvedCode,

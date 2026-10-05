@@ -168,14 +168,22 @@ func TestBackfillNormalizesSnapshotOnlyTagsAndPreservesAuthoritativeRemoval(t *t
 			t.Fatalf("restored tags = %+v, %v", tags, err)
 		}
 	}
-	// Updating snapshot input invalidates only its per-work marker, and an
-	// explicit empty provider set removes the previously normalized genre.
+	// Snapshot input queues replacement while retaining the authoritative old
+	// result; an explicit empty provider set clears tags when projection commits.
 	if _, err := db.Exec("UPDATE metadata_snapshot SET snapshot_json=? WHERE work_id=?", `{"product":{"genres":[]}}`, works[0]); err != nil {
 		t.Fatal(err)
 	}
 	projected, err := metadatatags.Projected(ctx, db, works[0])
-	if err != nil || projected {
-		t.Fatalf("new snapshot kept stale marker: %v, %v", projected, err)
+	if err != nil || !projected {
+		t.Fatalf("new snapshot lost committed marker: %v, %v", projected, err)
+	}
+	var pending int
+	if err := db.QueryRow("SELECT COUNT(*) FROM work_metadata_tag_dirty WHERE work_id=?", works[0]).Scan(&pending); err != nil || pending != 1 {
+		t.Fatalf("new snapshot did not queue replacement: %d, %v", pending, err)
+	}
+	previous, err := metadatatags.Read(ctx, db, works[0])
+	if err != nil || len(previous) != 1 {
+		t.Fatalf("new snapshot lost previous tags before commit: %v, %v", previous, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {

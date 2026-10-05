@@ -15,7 +15,7 @@ export function useMetadataEntrySuggestions(kind: "tags" | "circles", query: str
       const options = { query: query.trim(), pageSize: 20, signal: controller.signal };
       const request =
         kind === "tags"
-          ? api.listMetadataTags({ ...options, includeHidden: true }).then((page) => page.tags)
+          ? api.listMetadataTags({ ...options, includeHidden: true, resolveMerged: true }).then((page) => page.tags)
           : api.listMetadataCircles(options).then((page) => page.circles);
       void request
         .then((entries) => {

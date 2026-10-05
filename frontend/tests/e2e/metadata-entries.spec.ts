@@ -271,6 +271,39 @@ test("hidden tag matches are explained and cannot be silently created in the wor
   await expect(dialog.getByRole("button", { name: "Create tag: Example hidden tag", exact: true })).toHaveCount(0);
 });
 
+test("merged tag names complete as the final target and save that identity", async ({ page }) => {
+  await metadataWorkEditor(page);
+  const target = metadataTagFixture({
+    id: 3,
+    displayName: "Example final target",
+    names: [{ language: "", name: "Example old name", source: "manual" }],
+  });
+  const writes: unknown[] = [];
+  await page.route("**/api/works/1/metadata-tags", (route) => {
+    if (route.request().method() === "PUT") {
+      writes.push(route.request().postDataJSON());
+      return route.fulfill({ json: { tags: [target], inheritedTags: [], overrides: [{ tagId: 3, action: "add" }] } });
+    }
+    return route.fulfill({ json: { tags: [], inheritedTags: [], overrides: [] } });
+  });
+  await page.route("**/api/metadata/tags?*", (route) => {
+    expect(new URL(route.request().url()).searchParams.get("resolveMerged")).toBe("true");
+    return route.fulfill({
+      json: { tags: [target], total: 1, page: 1, pageSize: 20 } satisfies ApiResponse<"listMetadataTags">,
+    });
+  });
+  await page.goto("/metadata");
+  await page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  await dialog.getByLabel("Add tag", { exact: true }).fill("Example old name");
+  await expect(dialog.getByRole("button", { name: "Create tag: Example old name", exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Example final target", exact: true }).click();
+  await expect(dialog.getByRole("button", { name: "Remove Example final target", exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(writes).toEqual([{ overrides: [{ tagId: 3, action: "add" }] }]);
+});
+
 test("tag creation conflicts retain the name and explain the hidden target", async ({ page }) => {
   await mockApplication(page, undefined, false, 1, 0, [], undefined, {
     authenticated: true,

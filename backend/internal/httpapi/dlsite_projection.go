@@ -146,14 +146,14 @@ func (s *Server) loadProjectedDLsiteMetadata(ctx context.Context, workID int64) 
 	if !projected && len(names) == 0 {
 		return "", nil, false, nil
 	}
-	return "", cleanProjectedTags(names), projected || len(names) > 0, nil
+	return "", cleanProjectedTags(names), projected, nil
 }
 func (s *Server) loadProjectedDLsiteTags(ctx context.Context, workID int64) ([]string, bool, error) {
 	_, tags, ok, err := s.loadProjectedDLsiteMetadata(ctx, workID)
 	return tags, ok, err
 }
 
-func (s *Server) loadProjectedDLsiteTagsBatch(ctx context.Context, workIDs []int64) (map[int64][]string, error) {
+func (s *Server) loadProjectedDLsiteTagsBatch(ctx context.Context, workIDs []int64, legacy map[int64][]string) (map[int64][]string, error) {
 	result := make(map[int64][]string, len(workIDs))
 	unique := make([]int64, 0, len(workIDs))
 	seen := map[int64]bool{}
@@ -215,15 +215,29 @@ func (s *Server) loadProjectedDLsiteTagsBatch(ctx context.Context, workIDs []int
 		if err := rows.Scan(&workID, &tag); err != nil {
 			return nil, err
 		}
+		if _, exists := result[workID]; !exists {
+			result[workID] = append([]string{}, legacy[workID]...)
+		}
 		result[workID] = append(result[workID], tag)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	for workID, tags := range result {
-		result[workID] = cleanProjectedTags(tags)
+	// Marker rows denote replacement; links alone are additions to the existing
+	// snapshot display (notably remote-only works).
+	for _, workID := range unique {
+		if tags, exists := result[workID]; exists {
+			result[workID] = cleanProjectedTags(tags)
+		}
 	}
 	return result, nil
+}
+
+func presentProjectedTags(legacy, shared []string, authoritative bool) []string {
+	if authoritative {
+		return shared
+	}
+	return cleanProjectedTags(append(append([]string{}, legacy...), shared...))
 }
 
 func cleanProjectedTags(tags []string) []string {

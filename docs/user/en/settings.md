@@ -152,7 +152,7 @@ The **Metadata** icon rail groups **Works** (All, Needs attention, Metadata issu
 
 Entry lists follow access to the Metadata page: sign in with at least one of `library:write`, `metadata:sync`, `sources:write`, or `system:admin`. Anonymous read access does not include these management lists. Demo shows only tags and circles related to demo works, counts only those works, and does not expose circle merge history.
 
-Tag visibility follows the final merge target. Hiding an already merged tag stores its hidden setting for after undo; merging into a hidden target hides the resulting tag. Original names remain searchable while merged, and undo restores the original identities and search names. Hide, merge, and undo update only related works atomically; a timeout leaves the previous state and can be retried.
+Tag visibility follows the final merge target. Hiding an already merged tag stores its hidden setting for after undo; merging into a hidden target hides the resulting tag. Original names remain searchable while merged, and undo restores the original identities and search names.
 
 Legacy cover migration and tag backfill run independently in the background after core startup workflows. A failed cover file does not stop other files. Repair failures are logged and retried next startup.
 
@@ -170,10 +170,9 @@ Metadata settings have a **DLsite proxy** shortcut: the same switch and proxy
   mixed-language metadata. The preferred metadata language is in the header
   Appearance menu.
 
+Shared tag names try each preferred language in order: that language’s manual name, the all-language manual name, then the provider name. Detail language switching follows the same precedence.
 
-Shared tag names try each preferred language in order: that language’s manual name, the all-language manual name, then the provider name. Detail language switching follows the same precedence. A hidden name match, including a merge into a hidden target, is labelled in completion and rejected on creation; unhide it in Metadata first.
-
-Hide, merge and undo save their state immediately and queue affected works for background updates. Until a work is updated, its last committed tag set stays visible; afterward, display, search and recommendations use the new set. The tag manager shows the remaining instance-wide work count; refresh the list to check progress. Updates resume after restart. Snapshot-only shared tag backfill reads DLsite only, fills missing dictionary names without replacing newer ones, and skips invalid or excessive input while retaining valid manual edits. Remote snapshot tags keep their previous display until remote metadata fallback is introduced.
+Hide, merge and undo save their state immediately. Related works update continuously in the background; the tag manager shows the remaining instance-wide work count, including works waiting for retry. Refresh the list to check progress. A failed work retries automatically without delaying others, and updates resume after restart.
 
 ## Related Docs
 

@@ -52,7 +52,7 @@ func (s *Server) StartJobRunner(ctx context.Context) {
 	}()
 
 	var workers sync.WaitGroup
-	workers.Add(3)
+	workers.Add(4)
 	go func() {
 		defer workers.Done()
 		s.runLocalMediaProbeWorker(ctx)
@@ -64,6 +64,10 @@ func (s *Server) StartJobRunner(ctx context.Context) {
 	go func() {
 		defer workers.Done()
 		s.runFilesystemTriggerCoordinator(ctx)
+	}()
+	go func() {
+		defer workers.Done()
+		s.runMetadataTagQueueWorker(ctx)
 	}()
 	workers.Add(1)
 	go func() {
@@ -82,7 +86,6 @@ func (s *Server) runWorkflowCoordinator(ctx context.Context) {
 	defer databaseCleanupTimer.Stop()
 	databaseBackupTimer := time.NewTimer(databaseBackupCheckInitialDelay)
 	defer databaseBackupTimer.Stop()
-	tagBatchSize := 32
 	for {
 		if s.layoutMigrationActive.Load() {
 			select {
@@ -98,14 +101,6 @@ func (s *Server) runWorkflowCoordinator(ctx context.Context) {
 		s.settleOrphanedWorkflowJobs(ctx)
 		if _, err := s.backfillSnapshotCardSummaries(ctx, snapshotCardSummaryBackfillBatch); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("backfill snapshot card summaries", "error", err)
-		}
-		if _, err := metasync.ProcessMetadataTagQueue(ctx, s.db, tagBatchSize, s.preferredMetadataLanguages(ctx)); err != nil && !errors.Is(err, context.Canceled) {
-			slog.Error("project queued metadata tags", "error", err)
-			if errors.Is(err, context.DeadlineExceeded) {
-				// A slow pool can make progress with smaller transactions instead
-				// of repeatedly timing out at the same full batch after every edit.
-				tagBatchSize = max(1, tagBatchSize/2)
-			}
 		}
 		select {
 		case <-ctx.Done():

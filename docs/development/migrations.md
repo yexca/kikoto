@@ -98,13 +98,18 @@ Migration 048 guards JSON inspection with `json_valid`; malformed stored
 overrides are retained and cannot abort migration.
 Migration 050 adds independent manual/provider circle names, aliases with
 search invalidation, and protected merge-review records for reversible relation
-transfers. Migration 051 adds the durable shared-tag projection queue and
+transfers. Migration 051 adds the durable shared-tag projection queue, per-work
+retry counters and backoff deadlines, and
 snapshot-writer
 triggers, queues existing works, and requests one new startup backfill to repair
 older projections and locale-name precedence. Hidden/merged states now commit
 before batched work projection. Existing databases apply 048–051 through the
 numbered chain; empty databases use the schema-051 baseline. The earlier
-schema-050 baseline is retained for ledger validation. Startup moves old flat
+development schema-050 baseline is removed; only its checksum is retained in
+`retiredBaselineLedgerAssets` so databases created from it continue through 051.
+v0.7.1 shipped schema 047. Snapshot triggers queue only existing works, preserve
+committed projection markers, and permit snapshots to outlive a deleted work.
+Startup moves old flat
 covers to the
 nested cache once and never replaces an existing provider cover.
 The two repairs record durable status separately; failed cover files do not

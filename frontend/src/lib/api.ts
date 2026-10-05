@@ -2497,10 +2497,18 @@ export const api = {
     page = 1,
     pageSize = 25,
     includeHidden = false,
+    resolveMerged = false,
     signal,
-  }: { query?: string; page?: number; pageSize?: number; includeHidden?: boolean; signal?: AbortSignal } = {}) =>
+  }: {
+    query?: string;
+    page?: number;
+    pageSize?: number;
+    includeHidden?: boolean;
+    resolveMerged?: boolean;
+    signal?: AbortSignal;
+  } = {}) =>
     getJSON<MetadataEntryPage<{ tags: MetadataTag[]; pendingWorkCount?: number }>>(
-      `/api/metadata/tags?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}&includeHidden=${includeHidden}`,
+      `/api/metadata/tags?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}&includeHidden=${includeHidden}&resolveMerged=${resolveMerged}`,
       signal,
     ),
   createMetadataTag: (name: string) => postJSONBody<MetadataTag>("/api/metadata/tags", { name }),

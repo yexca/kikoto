@@ -131,11 +131,16 @@ relations and recommendation revisions. Hiding, merging, and undo collect only
 works referencing the connected merge component through provider bases, genre
 ids, effective links, or manual additions/removals. The state change and queue
 entries commit in one bounded transaction; no
-per-work projection runs in the request. The server coordinator processes up to
-32 queued works per pass, capped at 64 by the projection service and a five-second
-transaction deadline; timeout halves later batches down to one work on slower
-storage. Failed batches remain queued and retry on later passes,
-including after restart. Each work retains its old committed links until its
+per-work projection runs in the request. A dedicated worker drains eligible
+backlog in consecutive batches, releasing the write lock between transactions;
+it checks every two seconds only while idle or waiting for retries. Batches start
+at 32 works, capped at 64 by the projection service and a five-second transaction
+deadline. Projection timeouts halve batches down to one work; four successful
+batches double the size back toward 32. Write-lock wait timeouts do not reduce it.
+Failed batches roll back atomically, then only the failing work is durably deferred
+for 30 seconds, doubling up to five minutes on repeated failure. Protected logs
+record each failed attempt, other works continue, and backoff survives restart.
+Each work retains its old committed links and authority marker until its
 new set commits, with search and recommendation invalidation in that transaction.
 Tag lists and mutations expose the instance-wide pending count; management
 refreshes it on navigation, saves and manual refresh. Names are refreshed only
@@ -143,6 +148,7 @@ for changed concepts.
 
 Every snapshot writer is covered by durable queue triggers. Snapshot fallback
 normalizes DLsite input only; remote tags keep their previous snapshot display
+alongside manually added shared tags
 until opt-in remote metadata fallback is implemented. Old snapshots fill missing
 dictionary cells, never replace learned names, and never guess a request language.
 Invalid or over-limit input is skipped as a whole with protected logging, so one

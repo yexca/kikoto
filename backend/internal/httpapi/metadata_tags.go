@@ -61,13 +61,20 @@ func (s *Server) listMetadataTags(w http.ResponseWriter, r *http.Request) {
 		where += ` AND EXISTS(SELECT 1 FROM work_tag AS link JOIN work AS demo_work ON demo_work.id=link.work_id WHERE link.tag_id=concept.tag_id AND ` + contentpolicy.DemoEligibleWorkSQL("demo_work") + `)`
 	}
 	args := []any{includeHidden, query, query, query, query}
+	resolveMerged := !s.cfg.IsDemo() && r.URL.Query().Get("resolveMerged") == "true"
+	from := "metadata_tag AS concept INNER JOIN tag ON tag.id=concept.tag_id"
+	selectedID, orderName := "tag.id", "tag.display_name"
+	if resolveMerged {
+		from += " INNER JOIN metadata_tag_resolution AS resolution ON resolution.source_tag_id=concept.tag_id INNER JOIN tag AS target ON target.id=resolution.resolved_tag_id"
+		selectedID, orderName = "resolution.resolved_tag_id", "target.display_name"
+	}
 	result := metadataTagPage{Tags: []metadatatags.Tag{}, Page: page, PageSize: size}
-	if err := s.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM metadata_tag AS concept INNER JOIN tag ON tag.id=concept.tag_id WHERE "+where, args...).Scan(&result.Total); err != nil {
+	if err := s.db.QueryRowContext(r.Context(), "SELECT COUNT(DISTINCT "+selectedID+") FROM "+from+" WHERE "+where, args...).Scan(&result.Total); err != nil {
 		writeError(w, err)
 		return
 	}
 	args = append(args, size, (page-1)*size)
-	rows, err := s.db.QueryContext(r.Context(), "SELECT tag.id FROM metadata_tag AS concept INNER JOIN tag ON tag.id=concept.tag_id WHERE "+where+" ORDER BY LOWER(tag.display_name),tag.id LIMIT ? OFFSET ?", args...)
+	rows, err := s.db.QueryContext(r.Context(), "SELECT DISTINCT "+selectedID+" FROM "+from+" WHERE "+where+" ORDER BY LOWER("+orderName+"),"+selectedID+" LIMIT ? OFFSET ?", args...)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -97,6 +104,13 @@ func (s *Server) listMetadataTags(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			writeError(w, err)
 			return
+		}
+		if resolveMerged {
+			tag.Names, err = metadatatags.SearchNames(r.Context(), s.db, id)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
 		}
 		result.Tags = append(result.Tags, tag)
 	}

@@ -38,6 +38,7 @@ func metadataReviewRequest(t *testing.T, s *Server, method, path, body string, u
 	t.Helper()
 	r := httptest.NewRequest(method, path, strings.NewReader(body))
 	r = r.WithContext(context.WithValue(r.Context(), currentUserKey, user))
+	path = r.URL.Path
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	w := httptest.NewRecorder()
 	switch {

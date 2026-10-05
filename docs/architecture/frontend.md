@@ -184,7 +184,9 @@ attaches them in the same request; Cancel leaves no shared entry. Only a changed
 tag draft is saved. A tag-section load failure
 retains the other metadata fields. Demo shows these controls disabled.
 
-Tag completion also lists hidden and merged matches. A name resolving to a
+Tag completion requests `resolveMerged=true`, collapses merged matches into
+their final target, and retains source names for exact-match reuse. Management
+lists still show the original entries for undo. A name resolving to a
 hidden final target is labelled and disabled, with an explanation that it must
 be unhidden in Metadata first. Creation conflicts returned by the server retain
 the draft and show the same explanation. The tag manager explains the shared

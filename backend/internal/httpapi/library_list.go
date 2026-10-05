@@ -55,10 +55,12 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []l
 		works = append(works, item)
 	}
 	projectedWorkIDs := make([]int64, 0, len(works))
+	legacyTags := make(map[int64][]string, len(works))
 	for _, item := range works {
 		projectedWorkIDs = append(projectedWorkIDs, item.ID)
+		legacyTags[item.ID] = item.Tags
 	}
-	projectedTags, err := s.loadProjectedDLsiteTagsBatch(ctx, projectedWorkIDs)
+	projectedTags, err := s.loadProjectedDLsiteTagsBatch(ctx, projectedWorkIDs, legacyTags)
 	if err != nil {
 		return nil, err
 	}

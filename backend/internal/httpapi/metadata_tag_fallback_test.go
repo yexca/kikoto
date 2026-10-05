@@ -23,7 +23,7 @@ func TestSnapshotTagFallbackSurvivesGlobalBackfillMarkerAndEmptyProjectionIsAuth
 	if err != nil || projected || tags != nil {
 		t.Fatalf("unprojected snapshot fallback = %v, %v, %v", tags, projected, err)
 	}
-	batch, err := s.loadProjectedDLsiteTagsBatch(ctx, []int64{work})
+	batch, err := s.loadProjectedDLsiteTagsBatch(ctx, []int64{work}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestSnapshotTagFallbackSurvivesGlobalBackfillMarkerAndEmptyProjectionIsAuth
 	if err != nil || !projected || tags == nil || len(tags) != 0 {
 		t.Fatalf("authoritative empty tags=%v, %v, %v", tags, projected, err)
 	}
-	batch, err = s.loadProjectedDLsiteTagsBatch(ctx, []int64{work})
+	batch, err = s.loadProjectedDLsiteTagsBatch(ctx, []int64{work}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

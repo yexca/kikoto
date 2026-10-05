@@ -14,10 +14,9 @@ New custom names remain drafts until Save creates or reuses the shared tag and a
 
 Switching metadata language uses that version’s manual or dictionary tag names when available, then falls back to the configured priority. Additions, removals, final-target hiding, and merge mappings still apply. The default version uses the same provider source as the work projection. Snapshot-only tags stay visible until their own projection completes; removing every tag produces an intentionally empty display.
 
+Completion shows merged names as their final tag. A hidden match, including a merge into a hidden target, is labelled and cannot be added; unhide it in Metadata first. Names follow the language precedence described in [Settings](settings.md).
 
-Shared tag names try each preferred language in order: that language’s manual name, the all-language manual name, then the provider name. Detail language switching follows the same precedence. A hidden name match, including a merge into a hidden target, is labelled in completion and rejected on creation; unhide it in Metadata first.
-
-Hide, merge and undo save their state immediately and queue affected works for background updates. Until a work is updated, its last committed tag set stays visible; afterward, display, search and recommendations use the new set. The tag manager shows the remaining instance-wide work count; refresh the list to check progress. Updates resume after restart. Snapshot-only shared tag backfill reads DLsite only, fills missing dictionary names without replacing newer ones, and skips invalid or excessive input while retaining valid manual edits. Remote snapshot tags keep their previous display until remote metadata fallback is introduced.
+Until a background update finishes, the work keeps its last saved tag set, including an empty set, even when metadata refreshes. Remote tags remain visible alongside manually added shared tags.
 
 ## Current Behavior
 

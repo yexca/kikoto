@@ -1299,11 +1299,11 @@ func (s *Server) buildVoiceKnownWork(ctx context.Context, userID int64, row voic
 	metadata := dlsiteCardMetadata(row.CardSummary, row.Snapshot)
 	if title, tags, projected, err := s.loadProjectedDLsiteMetadata(ctx, displayWorkID); err != nil {
 		return voiceKnownWork{}, false, err
-	} else if projected {
+	} else {
 		if title != "" {
 			row.Title = title
 		}
-		metadata.Tags = tags
+		metadata.Tags = presentProjectedTags(metadata.Tags, tags, projected)
 	}
 	sourceTags, remoteObservations, err := s.workSourceStateByCode(ctx, displayCode)
 	if err != nil {

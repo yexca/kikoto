@@ -132,7 +132,7 @@ before any relation changes, with a protected diagnostic. Valid normalized input
 and manual additions still project.
 `work_metadata_tag_projection` records the work and selected source work whose
 base has been projected, including an intentionally empty result. Snapshot
-inserts or content changes invalidate the affected per-work markers. Reads
+writes retain the marker and committed links until a queued replacement commits. Reads
 retain snapshot fallback for unprojected works; a global backfill completion
 marker alone never makes an empty work authoritative.
 
@@ -161,12 +161,15 @@ custom tags are created and attached in
 the work-save transaction, so cancellation and failed saves leave no new orphan.
 
 `work_metadata_tag_dirty` (migration 051) is the durable per-work projection
-queue. Snapshot insert/update/delete triggers queue the work and dependent
-projections before invalidating markers; inserts and updates also cover stored
+queue with persistent `retry_count` and Unix-second `retry_after`. Snapshot
+insert/update/delete triggers queue only existing works and dependent
+projections without invalidating markers; inserts and updates also cover stored
 edition siblings. Hide/merge/undo enqueue the connected component before and
 after the state change in the same transaction. Processing selects, projects,
 and acknowledges at most 64 works in one bounded write transaction. Failure or
-cancellation retains the whole batch; repeated processing is idempotent. Both
+cancellation retains the whole batch; repeated processing is idempotent. A failed
+work is deferred separately for exponential retries from 30 seconds to five
+minutes, so later works proceed. Backoff survives restart and counts as pending. Both
 mutation responses and tag lists report the instance-wide `pendingWorkCount`.
 Demo reads count only eligible demo works.
 Relation changes invalidate search and advance recommendation input revisions.
