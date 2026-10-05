@@ -11,6 +11,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/library"
+	"github.com/yexca/kikoto/backend/internal/personal"
 )
 
 type workUserStateResponse struct {
@@ -23,6 +24,7 @@ type favoriteListResponse struct {
 	ID          int64  `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Icon        string `json:"icon"`
 	SortOrder   int64  `json:"sortOrder"`
 	Kind        string `json:"kind"`
 	Selected    bool   `json:"selected,omitempty"`
@@ -461,6 +463,7 @@ func (s *Server) createFavoriteList(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
+		Icon        string `json:"icon"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -472,15 +475,20 @@ func (s *Server) createFavoriteList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	description := strings.TrimSpace(payload.Description)
+	icon, ok := personal.NormalizeFavoriteListIcon(payload.Icon)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid favorite list icon"})
+		return
+	}
 	var sortOrder int64
 	if err := s.db.QueryRowContext(r.Context(), "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM favorite_list WHERE user_id = ?", user.ID).Scan(&sortOrder); err != nil {
 		writeError(w, err)
 		return
 	}
 	result, err := s.db.ExecContext(r.Context(), `
-		INSERT INTO favorite_list (user_id, name, description, sort_order, kind)
-		VALUES (?, ?, ?, ?, 'user')
-	`, user.ID, name, description, sortOrder)
+		INSERT INTO favorite_list (user_id, name, description, icon, sort_order, kind)
+		VALUES (?, ?, ?, ?, ?, 'user')
+	`, user.ID, name, description, icon, sortOrder)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "favorite list already exists"})
@@ -515,6 +523,7 @@ func (s *Server) updateFavoriteList(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		Name        *string `json:"name"`
 		Description *string `json:"description"`
+		Icon        *string `json:"icon"`
 		SortOrder   *int64  `json:"sortOrder"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -546,15 +555,23 @@ func (s *Server) updateFavoriteList(w http.ResponseWriter, r *http.Request) {
 	if payload.Description != nil {
 		description = strings.TrimSpace(*payload.Description)
 	}
+	icon := current.Icon
+	if payload.Icon != nil {
+		var ok bool
+		if icon, ok = personal.NormalizeFavoriteListIcon(*payload.Icon); !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid favorite list icon"})
+			return
+		}
+	}
 	sortOrder := current.SortOrder
 	if payload.SortOrder != nil {
 		sortOrder = *payload.SortOrder
 	}
 	if _, err := s.db.ExecContext(r.Context(), `
 		UPDATE favorite_list
-		SET name = ?, description = ?, sort_order = ?, updated_at = CURRENT_TIMESTAMP
+		SET name = ?, description = ?, icon = ?, sort_order = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ? AND user_id = ?
-	`, name, description, sortOrder, listID, user.ID); err != nil {
+	`, name, description, icon, sortOrder, listID, user.ID); err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "favorite list already exists"})
 			return
@@ -902,6 +919,7 @@ func (s *Server) loadFavoriteLists(ctx context.Context, userID int64, workID *in
 		SELECT id,
 			CASE WHEN kind = 'marked' THEN 'Marked' ELSE name END,
 			description,
+			CASE WHEN kind = 'marked' THEN '' ELSE icon END,
 			sort_order,
 			kind,
 			`+selectedColumn+`
@@ -917,7 +935,7 @@ func (s *Server) loadFavoriteLists(ctx context.Context, userID int64, workID *in
 	for rows.Next() {
 		var item favoriteListResponse
 		var selected int
-		if err := rows.Scan(&item.ID, &item.Name, &item.Description, &item.SortOrder, &item.Kind, &selected); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Description, &item.Icon, &item.SortOrder, &item.Kind, &selected); err != nil {
 			return nil, err
 		}
 		item.Selected = selected != 0
@@ -933,10 +951,11 @@ func (s *Server) loadFavoriteList(ctx context.Context, userID int64, listID int6
 	var item favoriteListResponse
 	var selected int
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, CASE WHEN kind = 'marked' THEN 'Marked' ELSE name END, description, sort_order, kind, 0
+		SELECT id, CASE WHEN kind = 'marked' THEN 'Marked' ELSE name END, description,
+			CASE WHEN kind = 'marked' THEN '' ELSE icon END, sort_order, kind, 0
 		FROM favorite_list
 		WHERE id = ? AND user_id = ?
-	`, listID, userID).Scan(&item.ID, &item.Name, &item.Description, &item.SortOrder, &item.Kind, &selected)
+	`, listID, userID).Scan(&item.ID, &item.Name, &item.Description, &item.Icon, &item.SortOrder, &item.Kind, &selected)
 	item.Selected = selected != 0
 	return item, err
 }

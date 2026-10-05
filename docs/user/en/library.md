@@ -109,8 +109,17 @@ full favorite-list row stable while results load, and Shelved is the final
 listening-state option. Playback cursors alone never add a work to Favorites.
 The source picker can refine favorite works to any of several selected
 configured file sources without creating per-source work copies or requesting
-a live remote refresh. List creation and contextual list management share the
-fixed overflow menu beside the horizontally scrollable list row.
+a live remote refresh.
+
+On wide screens a shelf rail beside the results lists All Favorites, Marked,
+your lists, and followed circles and voice actors with their counts. Like the
+Workflows and Settings rails, it can hide its names and keep only icons, and the
+choice is remembered on that device. Each user list can show an icon chosen in
+Edit lists, which is what tells the lists apart in the icon rail; the list icon
+also appears in the add-to-list menus. Phones show the same shelves as one
+scrollable row. The open shelf has a header with a cover mosaic, its count, how
+many works are finished, and the works you are listening to. Works can be shown
+as cards or as a denser list with each work's resume point.
 
 ## TODO
 

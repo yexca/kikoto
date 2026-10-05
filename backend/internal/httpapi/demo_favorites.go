@@ -50,13 +50,14 @@ func seedDemoFavorites(ctx context.Context, tx *sql.Tx) error {
 	}
 	if len(workIDs) > 0 {
 		listNames := []string{"Weekend Picks", "On Repeat"}
+		listIcons := []string{"coffee", "repeat"}
 		listCount := 1
 		if len(workIDs) >= 4 {
 			listCount = 2
 		}
 		for index := 0; index < listCount; index++ {
-			result, err := tx.ExecContext(ctx, `INSERT INTO favorite_list (user_id, name, sort_order, kind)
-				VALUES (?, ?, ?, 'user')`, userID, listNames[index], index)
+			result, err := tx.ExecContext(ctx, `INSERT INTO favorite_list (user_id, name, icon, sort_order, kind)
+				VALUES (?, ?, ?, ?, 'user')`, userID, listNames[index], listIcons[index], index)
 			if err != nil {
 				return err
 			}

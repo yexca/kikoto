@@ -532,6 +532,8 @@ export type FavoriteList = {
   id: number;
   name: string;
   description: string;
+  /** Presentation key for a user list's icon; empty or unknown keys use the default. */
+  icon?: string;
   sortOrder: number;
   kind: "marked" | "user";
   selected?: boolean;
@@ -2570,10 +2572,12 @@ export const api = {
       `/api/works/${encodeURIComponent(code)}/entity-links?${new URLSearchParams({ kind, name })}`,
     ),
   listFavoriteLists: (signal?: AbortSignal) => getJSON<FavoriteList[]>("/api/favorite-lists", signal),
-  createFavoriteList: (payload: { name: string; description?: string }) =>
+  createFavoriteList: (payload: { name: string; description?: string; icon?: string }) =>
     postJSONBody<FavoriteList>("/api/favorite-lists", payload),
-  updateFavoriteList: (id: number, payload: { name?: string; description?: string; sortOrder?: number }) =>
-    patchJSONBody<FavoriteList>(`/api/favorite-lists/${id}`, payload),
+  updateFavoriteList: (
+    id: number,
+    payload: { name?: string; description?: string; icon?: string; sortOrder?: number },
+  ) => patchJSONBody<FavoriteList>(`/api/favorite-lists/${id}`, payload),
   deleteFavoriteList: (id: number) => deleteJSON<{ ok: boolean; deleted: number }>(`/api/favorite-lists/${id}`),
   listFavoriteListWorkIDs: (id: number) => getJSON<FavoriteListWorkIDs>(`/api/favorite-lists/${id}/work-ids`),
   getWorkFavoriteLists: (id: number) => getJSON<FavoriteList[]>(`/api/works/${id}/favorite-lists`),

@@ -309,6 +309,9 @@ delete.
 `favorite_list` distinguishes a system `marked` list from ordinary user lists.
 The system list has no stored items: it derives membership from a non-`none`
 Quick mark. `favorite_list_item` records only explicit user-list membership.
+A user list's `icon` is a short presentation key (lowercase letters, digits,
+and hyphens) that clients map to their own icon set; an empty or unknown key
+shows the default list icon, and the system list never reports one.
 
 `user_work_playback_cursor` stores at most one Resume position for each user and
 canonical logical work family. It references the active edition's logical media

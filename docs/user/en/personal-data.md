@@ -42,7 +42,8 @@ delayed reports from before the clear.
 
 Version 1 Kikoto personal JSON contains per-work listening marks, personal
 ratings/notes, resume information, lifetime listening totals, work tag
-assignments, custom tag definitions, and ordered favorite playlists. System
+assignments, custom tag definitions, and ordered favorite playlists with their
+icons. System
 Marked membership is derived from marks. Circle/voice tag definitions are
 included; their entity assignments and other state are outside this format.
 

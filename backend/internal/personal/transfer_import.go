@@ -248,13 +248,13 @@ func importPlaylist(ctx context.Context, tx *sql.Tx, user int64, list BackupPlay
 		return false, nil
 	}
 	if errors.Is(err, sql.ErrNoRows) {
-		result, insertErr := tx.ExecContext(ctx, `INSERT INTO favorite_list (user_id,name,description,sort_order,kind) VALUES (?,?,?,?,'user')`, user, list.Name, list.Description, list.SortOrder)
+		result, insertErr := tx.ExecContext(ctx, `INSERT INTO favorite_list (user_id,name,description,icon,sort_order,kind) VALUES (?,?,?,?,?,'user')`, user, list.Name, list.Description, list.Icon, list.SortOrder)
 		if insertErr != nil {
 			return false, insertErr
 		}
 		id, err = result.LastInsertId()
 	} else if err == nil {
-		_, err = tx.ExecContext(ctx, `UPDATE favorite_list SET description=?,sort_order=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?`, list.Description, list.SortOrder, id, user)
+		_, err = tx.ExecContext(ctx, `UPDATE favorite_list SET description=?,icon=?,sort_order=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?`, list.Description, list.Icon, list.SortOrder, id, user)
 		if err == nil {
 			_, err = tx.ExecContext(ctx, `DELETE FROM favorite_list_item WHERE list_id=?`, id)
 		}

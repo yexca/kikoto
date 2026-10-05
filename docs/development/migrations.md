@@ -82,7 +82,7 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain ends at
-`050_circle_identity_management.sql`, with `050_v0.7.1.sql` generated
+`051_favorite_list_icon.sql`, with `051_v0.7.1.sql` generated
 from the current `VERSION` file. Released migrations and baselines, including
 `047_v0.7.1.sql`, remain immutable and available for ledger validation.
 
@@ -98,8 +98,9 @@ Migration 048 guards JSON inspection with `json_valid`; malformed stored
 overrides are retained and cannot abort migration.
 Migration 050 adds independent manual/provider circle names, aliases with
 search invalidation, and protected merge-review records for reversible relation
-transfers. Existing databases apply 048–050 through the numbered chain; empty
-databases use the schema-050 baseline. Startup moves old flat covers to the
+transfers. Migration 051 adds the `favorite_list.icon` presentation key with
+an empty default; it changes no existing rows. Existing databases apply 048–051
+through the numbered chain; empty databases use the schema-051 baseline. Startup moves old flat covers to the
 nested cache once and never replaces an existing provider cover.
 The two repairs record durable status separately; failed cover files do not
 stop migration of the remaining files, and both repairs retry next startup.
