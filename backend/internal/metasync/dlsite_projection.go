@@ -23,7 +23,6 @@ type DLsiteMetadataVariant struct {
 	EditionLanguage string
 	RequestLocale   string
 	Description     string
-	Translation     bool
 	Title           string
 	TagsJSON        string
 	ContentHash     string
@@ -49,6 +48,16 @@ func SelectDLsiteMetadataVariant(ctx context.Context, db *sql.DB, workID int64, 
 // the logical family containing workID. The variants do not create or replace
 // work identities; PrimaryCode is only a stable presentation key.
 func ListDLsiteMetadataVariants(ctx context.Context, db *sql.DB, workID int64) ([]DLsiteMetadataVariant, error) {
+	return listDLsiteMetadataVariants(ctx, db, workID, false)
+}
+
+// ListDLsiteMetadataVariantsWithDescriptions is for the detail page only.
+// Projection and list reads must not load every edition's introduction.
+func ListDLsiteMetadataVariantsWithDescriptions(ctx context.Context, db *sql.DB, workID int64) ([]DLsiteMetadataVariant, error) {
+	return listDLsiteMetadataVariants(ctx, db, workID, true)
+}
+
+func listDLsiteMetadataVariants(ctx context.Context, db *sql.DB, workID int64, descriptions bool) ([]DLsiteMetadataVariant, error) {
 	if db == nil || workID <= 0 {
 		return []DLsiteMetadataVariant{}, nil
 	}
@@ -64,7 +73,7 @@ func ListDLsiteMetadataVariants(ctx context.Context, db *sql.DB, workID int64) (
 	if err != nil {
 		return nil, err
 	}
-	return loadDLsiteMetadataVariants(ctx, db, logicalWorkID)
+	return loadDLsiteMetadataVariants(ctx, db, logicalWorkID, descriptions)
 }
 
 // ProjectDLsiteMetadata updates the canonical work title and DLsite tags for
@@ -192,7 +201,11 @@ type metadataVariantQuerier interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
 
-func loadDLsiteMetadataVariants(ctx context.Context, queryer metadataVariantQuerier, logicalWorkID int64) ([]DLsiteMetadataVariant, error) {
+func loadDLsiteMetadataVariants(ctx context.Context, queryer metadataVariantQuerier, logicalWorkID int64, descriptions bool) ([]DLsiteMetadataVariant, error) {
+	description := "''"
+	if descriptions {
+		description = "edition_work.description"
+	}
 	rows, err := queryer.QueryContext(ctx, `
 		SELECT
 			variant.id,
@@ -203,8 +216,7 @@ func loadDLsiteMetadataVariants(ctx context.Context, queryer metadataVariantQuer
 			variant.edition_language,
 			variant.request_locale,
 			variant.title,
- edition_work.description,
- COALESCE(edition.translation_kind IN ('official','volunteer'),0),
+ `+description+`,
 			variant.tags_json,
 			variant.content_hash,
 			variant.fetched_at,
@@ -232,7 +244,7 @@ func loadDLsiteMetadataVariants(ctx context.Context, queryer metadataVariantQuer
 			&variant.EditionLanguage,
 			&variant.RequestLocale,
 			&variant.Title,
-			&variant.Description, &variant.Translation,
+			&variant.Description,
 			&variant.TagsJSON,
 			&variant.ContentHash,
 			&variant.FetchedAt,
@@ -314,7 +326,7 @@ func ProjectWorkMetadataTagsTx(ctx context.Context, tx *sql.Tx, workID int64, pr
 	}
 	var legacy []string
 	if logicalID > 0 {
-		variants, err := loadDLsiteMetadataVariants(ctx, tx, logicalID)
+		variants, err := loadDLsiteMetadataVariants(ctx, tx, logicalID, false)
 		if err != nil {
 			return err
 		}

@@ -2,8 +2,10 @@
 package metadatatitles
 
 import (
-	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"regexp"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/dlsite"
 )
 
 type Variant struct {
@@ -12,7 +14,6 @@ type Variant struct {
 	Title       string
 	Description string
 	Origin      bool
-	Translation bool
 }
 
 type Selection struct {
@@ -23,14 +24,27 @@ type Selection struct {
 	Description string `json:"description"`
 }
 
-// Display removes a known leading edition label only from declared translations.
+// EditionLanguage preserves declared unsupported languages and never infers a
+// work's language from the locale used to request its metadata.
+func EditionLanguage(value string) string {
+	if language := dlsite.EditionMetadataLanguage(value); language != "" && language != dlsite.OriginMetadataLanguage {
+		return language
+	}
+	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(value), "_", "-"))
+}
+
+// DLsite edition labels use a language followed by an edition suffix. Match
+// that structure rather than a list of languages; genre labels do not match.
+var translationLabel = regexp.MustCompile(`^【(?:[^\s【】]+(?:語版|语版|文版)|[A-Za-z]+(?: [A-Za-z]+)* [Vv]ersion|[^\s【】]+ 자막판)】`)
+
+// Display removes one leading edition label only from a non-original edition.
 // Authored titles never pass through this function.
 func Display(title string, translation bool) string {
 	title = strings.TrimSpace(title)
 	if translation {
-		for _, label := range []string{"【简体中文版】", "【簡体中文版】", "【繁體中文版】", "【繁体中文版】", "【한국어 자막판】", "【English Version】", "【English version】", "【英語版】", "【韓国語版】"} {
-			if strings.HasPrefix(title, label) && strings.TrimSpace(strings.TrimPrefix(title, label)) != "" {
-				return strings.TrimSpace(strings.TrimPrefix(title, label))
+		if label := translationLabel.FindString(title); label != "" {
+			if remaining := strings.TrimSpace(strings.TrimPrefix(title, label)); remaining != "" {
+				return remaining
 			}
 		}
 	}
@@ -63,21 +77,31 @@ func ForLanguage(variants []Variant, manual map[string]string, language string, 
 			break
 		}
 	}
-	result := Selection{Language: language, Code: selected.Code, Description: selected.Description}
+	result := Selection{Language: selected.Language, Code: selected.Code, Description: selected.Description}
 	if title := strings.TrimSpace(manual[language]); language != "" && title != "" {
-		result.Title, result.Source = title, "manual"
+		result.Title, result.Source, result.Language = title, "manual", language
 		return result, true
 	}
 	if title := strings.TrimSpace(manual[""]); title != "" {
 		result.Title, result.Source = title, "manual"
 		return result, true
 	}
-	result.Title = Display(selected.Title, selected.Translation)
+	result.Title = Display(selected.Title, !selected.Origin)
 	result.Source = "original"
 	if found {
 		result.Source = "dlsite"
 	}
 	return result, found
+}
+
+// ForEdition presents this exact edition, including when its language is
+// unsupported or unknown. It must never borrow another edition's title.
+func ForEdition(edition Variant, manual map[string]string) Selection {
+	result, _ := ForLanguage(nil, manual, dlsite.OriginMetadataLanguage, edition)
+	if result.Source == "original" {
+		result.Source = "dlsite"
+	}
+	return result
 }
 
 func Select(variants []Variant, manual map[string]string, priorities []string, fallback Variant) Selection {

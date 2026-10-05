@@ -5,6 +5,7 @@ describe("language title drafts", () => {
   const manual = { title: "Global", titles: { "": "Global", "ja-jp": "Japanese" } };
   it("leaves placeholders and untouched languages out of PATCH", () => {
     expect(changedTitles({}, manual)).toEqual({});
+    expect(changedTitles({ "en-us": "" }, manual)).toEqual({});
     expect(changedTitles({ "ja-jp": " Japanese ", "zh-cn": " Example Chinese " }, manual)).toEqual({
       "zh-cn": "Example Chinese",
     });

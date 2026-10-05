@@ -61,6 +61,14 @@ test("language title drafts use source placeholders, partial saves and a scoped 
   });
   await page.route("**/api/works/1/manual-overrides/title?*", (route) => {
     resets.push(new URL(route.request().url()).searchParams.get("language") ?? "");
+    detail.manualOverrides = {};
+    detail.titleChoices!["ja-jp"] = {
+      title: "Example original",
+      language: "",
+      source: "original",
+      code: work.primaryCode,
+      description: "",
+    };
     return route.fulfill({ json: { ok: true, deleted: 1 } });
   });
   await page.goto("/metadata");
@@ -86,10 +94,95 @@ test("language title drafts use source placeholders, partial saves and a scoped 
   ]);
   await open();
   dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  await dialog.getByRole("combobox", { name: "Title language", exact: true }).selectOption("zh-cn");
+  await title.fill("Example Chinese draft to keep");
+  const circleName = dialog
+    .getByRole("region", { name: "Circle", exact: true })
+    .getByRole("textbox", { name: "Name", exact: true });
+  await circleName.fill("Example circle draft to keep");
   await dialog.getByRole("combobox", { name: "Title language", exact: true }).selectOption("ja-jp");
+  await expect(title).toHaveValue("Example Japanese");
+  await expect(dialog.getByText("Current source: Manual title for this language", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Reset title", exact: true }).click();
-  await expect(dialog).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Reset title", exact: true })).toBeDisabled();
+  await expect(title).toHaveValue("");
+  await expect(circleName).toHaveValue("Example circle draft to keep");
+  await dialog.getByRole("combobox", { name: "Title language", exact: true }).selectOption("zh-cn");
+  await expect(title).toHaveValue("Example Chinese draft to keep");
   expect(resets).toEqual(["ja-jp"]);
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(writes[1]).toMatchObject({
+    titles: { "zh-cn": "Example Chinese draft to keep" },
+    circle: { name: "Example circle draft to keep" },
+  });
+  expect((writes[1] as { titles: Record<string, string> }).titles).toEqual({
+    "zh-cn": "Example Chinese draft to keep",
+  });
+});
+
+test("own titles are editable while inherited titles stay hints and clearing matches visible changes", async ({
+  page,
+}) => {
+  await metadataWorkEditor(page);
+  const detail = workDetailFixture(work, {
+    manualOverrides: { title: "Example universal", titles: { "": "Example universal", "ja-jp": "Example Japanese" } },
+    titleChoices: {
+      "en-us": {
+        title: "Example universal",
+        language: "ja-jp",
+        source: "manual",
+        code: work.primaryCode,
+        description: "",
+      },
+      "ja-jp": {
+        title: "Example Japanese",
+        language: "ja-jp",
+        source: "manual",
+        code: work.primaryCode,
+        description: "",
+      },
+    },
+  });
+  await page.route("**/api/works/1?includeMedia=false", (route) => route.fulfill({ json: detail }));
+  const writes: unknown[] = [];
+  await page.route("**/api/works/1/manual-overrides", (route) => {
+    writes.push(route.request().postDataJSON());
+    return route.fulfill({ json: detail.manualOverrides });
+  });
+  await page.goto("/metadata");
+  const open = () => page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
+  await open();
+  const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  const language = dialog.getByRole("combobox", { name: "Title language", exact: true });
+  const title = dialog.getByRole("textbox", { name: "Title", exact: true });
+  await expect(title).toHaveValue("Example universal");
+  await language.selectOption("en-us");
+  await expect(title).toHaveValue("");
+  await expect(title).toHaveAttribute("placeholder", "Example universal");
+  await expect(dialog.getByText("Current source: Manual title (all languages)", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Reset title", exact: true })).toBeDisabled();
+  await title.fill("Example temporary inherited edit");
+  await title.clear();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(writes).toEqual([]);
+  await open();
+  await language.selectOption("ja-jp");
+  await expect(title).toHaveValue("Example Japanese");
+  await title.press("End");
+  await title.pressSequentially(" revised");
+  await expect(title).toHaveValue("Example Japanese revised");
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(writes).toEqual([{ titles: { "ja-jp": "Example Japanese revised" } }]);
+  await open();
+  await language.selectOption("ja-jp");
+  await title.clear();
+  await expect(title).toHaveValue("");
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(writes[1]).toEqual({ titles: { "ja-jp": null } });
 });
 
 test("@desktop cover-only metadata saves do not freeze any displayed scalar fields", async ({ page }) => {

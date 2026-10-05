@@ -2,10 +2,10 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"strings"
 
-	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metadatatitles"
 )
 
@@ -20,6 +20,14 @@ type workTitleInputs struct {
 // Lists and search results share a bounded, batched presentation read. No
 // metadata requests or additional work identities are created by this read.
 func (s *Server) loadWorkTitleInputs(ctx context.Context, ids []int64, descriptions bool) (map[int64]workTitleInputs, error) {
+	return loadWorkTitleInputs(ctx, s.db, ids, descriptions)
+}
+
+type workTitleQuerier interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func loadWorkTitleInputs(ctx context.Context, db workTitleQuerier, ids []int64, descriptions bool) (map[int64]workTitleInputs, error) {
 	result := map[int64]workTitleInputs{}
 	fallbackDescription, editionDescription := "''", "''"
 	if descriptions {
@@ -33,7 +41,7 @@ func (s *Server) loadWorkTitleInputs(ctx context.Context, ids []int64, descripti
 		for i, id := range ids[start:end] {
 			args[i] = id
 		}
-		rows, err := s.db.QueryContext(ctx, `SELECT requested.id, COALESCE(original.primary_code,requested.primary_code),
+		rows, err := db.QueryContext(ctx, `SELECT requested.id, COALESCE(original.primary_code,requested.primary_code),
  COALESCE(original.title,requested.title),`+fallbackDescription+`,COALESCE(origin.metadata_language,'')
  FROM work AS requested
  LEFT JOIN work_edition AS current ON current.work_id=requested.id
@@ -50,7 +58,8 @@ func (s *Server) loadWorkTitleInputs(ctx context.Context, ids []int64, descripti
 				_ = rows.Close()
 				return nil, err
 			}
-			input.Fallback.Language = dlsite.EditionMetadataLanguage(input.Fallback.Language)
+			input.Fallback.Language = metadatatitles.EditionLanguage(input.Fallback.Language)
+			input.Fallback.Origin = true
 			result[id] = input
 		}
 		if err := rows.Err(); err != nil {
@@ -58,9 +67,8 @@ func (s *Server) loadWorkTitleInputs(ctx context.Context, ids []int64, descripti
 			return nil, err
 		}
 		_ = rows.Close()
-		rows, err = s.db.QueryContext(ctx, `SELECT requested.id, edition.primary_code, variant.edition_language,
-   variant.title, `+editionDescription+`, edition.is_canonical,
-   edition.translation_kind IN ('official','volunteer')
+		rows, err = db.QueryContext(ctx, `SELECT requested.id, edition.primary_code, variant.edition_language,
+   variant.title, `+editionDescription+`, edition.is_canonical
    FROM work AS requested
    JOIN work_edition AS current ON current.work_id=requested.id
    JOIN dlsite_metadata_variant AS variant ON variant.logical_work_id=current.logical_work_id
@@ -74,11 +82,11 @@ func (s *Server) loadWorkTitleInputs(ctx context.Context, ids []int64, descripti
 			var id int64
 			var language string
 			var variant metadatatitles.Variant
-			if err := rows.Scan(&id, &variant.Code, &language, &variant.Title, &variant.Description, &variant.Origin, &variant.Translation); err != nil {
+			if err := rows.Scan(&id, &variant.Code, &language, &variant.Title, &variant.Description, &variant.Origin); err != nil {
 				_ = rows.Close()
 				return nil, err
 			}
-			variant.Language = dlsite.EditionMetadataLanguage(language)
+			variant.Language = metadatatitles.EditionLanguage(language)
 			input, exists := result[id]
 			if exists {
 				input.Variants = append(input.Variants, variant)
@@ -90,7 +98,7 @@ func (s *Server) loadWorkTitleInputs(ctx context.Context, ids []int64, descripti
 			return nil, err
 		}
 		_ = rows.Close()
-		rows, err = s.db.QueryContext(ctx, `SELECT work_id,language,value_json FROM work_manual_override WHERE field_name='title' AND work_id IN (`+placeholders+`)`, args...)
+		rows, err = db.QueryContext(ctx, `SELECT work_id,language,value_json FROM work_manual_override WHERE field_name='title' AND work_id IN (`+placeholders+`)`, args...)
 		if err != nil {
 			return nil, err
 		}
@@ -113,6 +121,19 @@ func (s *Server) loadWorkTitleInputs(ctx context.Context, ids []int64, descripti
 			return nil, err
 		}
 		_ = rows.Close()
+	}
+	return result, nil
+}
+
+func (s *Server) loadWorkTitles(ctx context.Context, ids []int64) (map[int64]metadatatitles.Selection, error) {
+	inputs, err := s.loadWorkTitleInputs(ctx, ids, false)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[int64]metadatatitles.Selection, len(inputs))
+	priorities := s.preferredMetadataLanguages(ctx)
+	for id, input := range inputs {
+		result[id] = metadatatitles.Select(input.Variants, input.Manual, priorities, input.Fallback)
 	}
 	return result, nil
 }

@@ -1275,7 +1275,14 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 	if err != nil {
 		return nil, err
 	}
+	titles, err := s.loadWorkTitles(ctx, workIDs)
+	if err != nil {
+		return nil, err
+	}
 	for index := range works {
+		if title, ok := titles[works[index].WorkID]; ok {
+			works[index].Title = title.Title
+		}
 		works[index].UserTags = tagsByWork[works[index].WorkID]
 		works[index].HasNonOrigin = availableNonOriginEditions[works[index].WorkID]
 	}
@@ -1297,12 +1304,9 @@ func (s *Server) buildVoiceKnownWork(ctx context.Context, userID int64, row voic
 		}
 	}
 	metadata := dlsiteCardMetadata(row.CardSummary, row.Snapshot)
-	if title, tags, projected, err := s.loadProjectedDLsiteMetadata(ctx, displayWorkID); err != nil {
+	if tags, projected, err := s.loadProjectedDLsiteTags(ctx, displayWorkID); err != nil {
 		return voiceKnownWork{}, false, err
 	} else {
-		if title != "" {
-			row.Title = title
-		}
 		metadata.Tags = presentProjectedTags(metadata.Tags, tags, projected)
 	}
 	sourceTags, remoteObservations, err := s.workSourceStateByCode(ctx, displayCode)

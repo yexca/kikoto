@@ -2054,8 +2054,15 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 	if err != nil {
 		return nil, err
 	}
+	titles, err := s.loadWorkTitles(ctx, workIDs)
+	if err != nil {
+		return nil, err
+	}
 	for index := range works {
 		if works[index].WorkID != nil {
+			if title, ok := titles[*works[index].WorkID]; ok {
+				works[index].Title = title.Title
+			}
 			works[index].UserTags = tagsByWork[*works[index].WorkID]
 			works[index].HasNonOrigin = availableNonOriginEditions[*works[index].WorkID]
 		} else {
@@ -2161,12 +2168,9 @@ func (s *Server) readCircleCatalogWork(ctx context.Context, row circleCatalogWor
 		item.WorkID = sqlutil.Int64(row.workID)
 	}
 	if item.WorkID != nil {
-		if title, tags, projected, err := s.loadProjectedDLsiteMetadata(ctx, *item.WorkID); err != nil {
+		if tags, projected, err := s.loadProjectedDLsiteTags(ctx, *item.WorkID); err != nil {
 			return item, dlsiteSnapshotMetadata{}, err
 		} else {
-			if title != "" {
-				item.Title = title
-			}
 			item.Tags = presentProjectedTags(item.Tags, tags, projected)
 		}
 	}

@@ -1,11 +1,14 @@
 # Unreleased
 
 - Language-scoped manual titles follow configured language priority before DLsite
-  editions. Editors show sources as placeholders, preserve language drafts, save
-  only changes and reset one scope. Known leading translation labels are removed
+  editions. Editors directly edit owned manual titles, show inherited/provider
+  sources as hints, preserve drafts across resets, and save only changes.
+  Language menus never infer a language from request locale or a universal title.
+  Leading translation labels are recognized by format on every non-original edition,
   only for provider display, preserving raw values and authored titles. Detail
-  introductions follow the selected edition; playback queues use the display
-  title. Every manual title language remains searchable.
+  introductions follow the selected edition as verbatim plain text; playback queues use the display
+  title. Unsupported edition entries retain their own cleaned titles, circle and
+  voice actor titles load in batches, and every manual title language remains searchable.
 - Admin tag merge targets label hidden tags and explain that the merged tag will
   be hidden on all works. Remote tags are documented on voice actor remote-work
   lists in all five languages.

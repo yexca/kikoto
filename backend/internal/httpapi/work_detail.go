@@ -531,11 +531,11 @@ func (s *Server) resolveWorkCodeDetail(ctx context.Context, code string) (workRe
 		return workResolveResponse{}, err
 	}
 	projectedTags = presentProjectedTags(metadata.Tags, projectedTags, projected)
-	selectedTitle, _, err := s.loadWorkTitleSelection(ctx, resolvedID)
+	titles, err := s.loadWorkTitles(ctx, []int64{resolvedID})
 	if err != nil {
 		return workResolveResponse{}, err
 	}
-	title = selectedTitle.Title
+	title = titles[resolvedID].Title
 	return workResolveResponse{
 		RequestedCode:    code,
 		ResolvedCode:     resolvedCode,

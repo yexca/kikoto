@@ -3,7 +3,8 @@ import { surfaceEnglish } from "./en";
 export const surfaceHant = {
   workTitles: {
     language: "標題語言",
-    manual: "手動標題",
+    manual: "目前語言的手動標題",
+    manualAll: "全語言手動標題",
     dlsite: "DLsite 版本 {{code}}",
     original: "原版標題",
     source: "目前來源：{{source}}",

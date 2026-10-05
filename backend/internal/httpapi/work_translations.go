@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metadatatitles"
 	"strings"
 )
@@ -54,12 +53,14 @@ func (s *Server) loadWorkTranslations(ctx context.Context, primaryCode string, b
 	}
 	for i := range translations {
 		item := &translations[i]
-		item.Title = metadatatitles.Display(item.Title, item.TranslationKind == "official" || item.TranslationKind == "volunteer")
+		item.Title = metadatatitles.Display(item.Title, !item.Origin)
 		if item.WorkID != nil {
 			input := inputs[*item.WorkID]
-			selected, _ := metadatatitles.ForLanguage(input.Variants, input.Manual, dlsite.EditionMetadataLanguage(item.MetadataLanguage), input.Fallback)
-			if selected.Title != "" {
-				item.Title = selected.Title
+			for _, variant := range input.Variants {
+				if strings.EqualFold(variant.Code, item.PrimaryCode) {
+					item.Title = metadatatitles.ForEdition(variant, input.Manual).Title
+					break
+				}
 			}
 		}
 	}
@@ -106,6 +107,7 @@ func mergeLogicalWorkTranslation(translations []workTranslation, seen map[string
 	target.LocalAvailable = item.LocalAvailable
 	target.EditionLabel = firstNonEmpty(target.EditionLabel, item.EditionLabel)
 	target.TranslationKind = item.TranslationKind
+	target.Origin = item.Origin
 	target.Official = item.Official
 	if target.MetadataLanguage == "" {
 		target.MetadataLanguage = item.MetadataLanguage

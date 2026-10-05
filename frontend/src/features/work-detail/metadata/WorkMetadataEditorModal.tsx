@@ -371,6 +371,7 @@ function useMetadataEditorActions({
   onSaved,
   onLinkChanged,
   onClose,
+  onTitleReset,
 }: {
   work: WorkDetail;
   toast: ReturnType<typeof useToast>;
@@ -388,6 +389,7 @@ function useMetadataEditorActions({
   onSaved: () => void;
   onLinkChanged: (result: WorkMetadataLinkResult) => void;
   onClose: () => void;
+  onTitleReset: (language: string, work: WorkDetail) => void;
 }) {
   const [saving, setSaving] = useState(false);
 
@@ -426,9 +428,12 @@ function useMetadataEditorActions({
     setSaving(true);
     try {
       await api.deleteWorkManualOverride(work.id, field, language);
+      if (field === "title") {
+        onTitleReset(language ?? "", await api.getWorkSummary(work.id));
+      }
       toast.success(i18n.t("libraryDetail.overrideReset"));
       onSaved();
-      onClose();
+      if (field !== "title") onClose();
     } catch (error) {
       toast.notify(toastFromError(error, i18n.t("libraryDetail.overrideResetFailed")));
     } finally {
@@ -486,6 +491,7 @@ export function WorkMetadataEditorModal({
   onLinkChanged: (result: WorkMetadataLinkResult) => void;
 }) {
   const toast = useToast();
+  const [titleWork, setTitleWork] = useState(work);
   const [initialState] = useState(() => metadataEditorInitialState(work));
   const manual = initialState.manual;
   const tagEditor = useWorkMetadataTagsEditor(work.id);
@@ -511,7 +517,7 @@ export function WorkMetadataEditorModal({
     api.suggestVoices(voiceQuery),
   );
   const { saving, save, resetField, linkMetadata, unlinkMetadata } = useMetadataEditorActions({
-    work,
+    work: titleWork,
     toast,
     titleDrafts,
     circleName,
@@ -527,6 +533,14 @@ export function WorkMetadataEditorModal({
     onSaved,
     onLinkChanged,
     onClose,
+    onTitleReset: (language, refreshed) => {
+      setTitleWork(refreshed);
+      setTitleDrafts((current) => {
+        const remaining = { ...current };
+        delete remaining[language];
+        return remaining;
+      });
+    },
   });
 
   const addVoiceActor = () => setVoiceActors((items) => [...items, { name: "", personId: 0 }]);
@@ -560,7 +574,7 @@ export function WorkMetadataEditorModal({
 
           <EditorSection title={i18n.t("libraryDetail.work")}>
             <WorkTitleEditor
-              work={work}
+              work={titleWork}
               language={titleLanguage}
               drafts={titleDrafts}
               onLanguage={setTitleLanguage}
@@ -659,7 +673,7 @@ export function WorkMetadataEditorModal({
 
 function EditorSection({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="space-y-3">
+    <section aria-label={title} className="space-y-3">
       <h4 className="text-sm font-semibold">{title}</h4>
       {children}
     </section>

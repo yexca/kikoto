@@ -6,7 +6,8 @@
 export const surfaceEnglish = {
   workTitles: {
     language: "Title language",
-    manual: "Manual title",
+    manual: "Manual title for this language",
+    manualAll: "Manual title (all languages)",
     dlsite: "DLsite edition {{code}}",
     original: "Original title",
     source: "Current source: {{source}}",

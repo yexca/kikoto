@@ -3,7 +3,8 @@ import { surfaceEnglish } from "./en";
 export const surfaceKorean = {
   workTitles: {
     language: "제목 언어",
-    manual: "수동 제목",
+    manual: "이 언어의 수동 제목",
+    manualAll: "모든 언어의 수동 제목",
     dlsite: "DLsite 버전 {{code}}",
     original: "원본 제목",
     source: "현재 출처: {{source}}",

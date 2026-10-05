@@ -463,12 +463,6 @@ func (s *Server) applyManualOverridesToCircleWork(ctx context.Context, work *cir
 	if err != nil {
 		return err
 	}
-	selectedTitle, choices, err := s.loadWorkTitleSelection(ctx, *work.WorkID)
-	if err != nil {
-		return err
-	}
-	work.Title = selectedTitle.Title
-	_ = choices
 	if overrides.Circle != nil {
 		work.Circle = overrides.Circle.Name
 		work.CircleExternalID = overrides.Circle.ExternalID
@@ -495,12 +489,6 @@ func (s *Server) applyManualOverridesToVoiceWork(ctx context.Context, work *voic
 	if err != nil {
 		return err
 	}
-	selectedTitle, choices, err := s.loadWorkTitleSelection(ctx, work.WorkID)
-	if err != nil {
-		return err
-	}
-	work.Title = selectedTitle.Title
-	_ = choices
 	if overrides.Circle != nil {
 		work.Circle = overrides.Circle.Name
 		work.CircleExternalID = overrides.Circle.ExternalID

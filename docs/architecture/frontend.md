@@ -340,15 +340,20 @@ visible while the failed remote or media stage renders an inline Retry state.
 
 ## Multilingual title presentation
 
-`WorkTitleEditor` shows six language scopes, source-labelled grey placeholders,
-and independent drafts. `titleEditorModel` compares only touched scopes with
+`WorkTitleEditor` shows six language scopes and independent drafts. The scope's
+own manual title is editable text; provider and inherited values are grey hints.
+Source labels distinguish scope-specific and universal manual titles.
+`titleEditorModel` compares only touched scopes with
 manual values so unchanged provider text never freezes. The existing metadata
 editor composes this with circle, series, voice actor, cover and tag operations.
-Reset passes the selected title language to the API.
+Reset passes the selected title language to the API, refreshes its hints and
+keeps the editor open with all other language and field drafts intact. Clearing
+an owned manual title removes it; clearing an inherited hint changes nothing.
 
 Effective titles and descriptions arrive together in metadata variants. Detail
-language selection updates both; descriptions render provider text without
-attaching provider HTML. Local, remote-preview and resume queues take the current
+language selection updates both; descriptions render stored plain text verbatim
+through React escaping, preserving brackets, ampersands and line breaks. Local,
+remote-preview and resume queues take the current
 display title while retaining their media identity and directory edition.
 Existing global playback remains outside page boundaries. Cards and search
 results use the same backend display policy; the frontend does not strip authored

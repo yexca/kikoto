@@ -45,7 +45,7 @@ test("selected metadata title and introduction follow playback without changing 
             language: "zh-cn",
             title: "Example Chinese",
             description:
-              '<p>Example Chinese introduction</p><script>unsafe()</script><img src="https://media.example.invalid/intro-image.png"><iframe src="https://media.example.invalid/frame"></iframe>',
+              'Example Chinese introduction: 1 < 2 & A > B\nLiteral &amp; and <script>unsafe()</script><img src="https://media.example.invalid/intro-image.png"><iframe src="https://media.example.invalid/frame"></iframe>',
             tags: [],
             origin: false,
           },
@@ -58,7 +58,9 @@ test("selected metadata title and introduction follow playback without changing 
   await page.getByRole("button", { name: "Info", exact: true }).click();
   const introduction = page.getByRole("region", { name: "Description", exact: true });
   await expect(introduction).toContainText("Example Chinese introduction");
-  await expect(introduction).not.toContainText("unsafe");
+  await expect(introduction).toContainText("1 < 2 & A > B");
+  await expect(introduction).toContainText("Literal &amp; and <script>unsafe()</script>");
+  await expect(introduction.getByRole("img")).toHaveCount(0);
   expect(introductionRequests).toEqual([]);
   await page.getByRole("button", { name: "Metadata language", exact: true }).click();
   await page.getByRole("menuitemradio", { name: "Original · Japanese", exact: true }).click();

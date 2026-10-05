@@ -199,18 +199,25 @@ recreated, including language-only updates.
 
 Display title selection tries each configured language: its manual title, the
 universal manual title, then that DLsite edition. `origin` matches the canonical
-edition's declared language and never infers a language from text. Unknown
-origin languages use the universal manual title or original title. Manual titles
+edition's declared language and never infers a language from text or request
+locale. Unknown origin languages use the universal manual title or original title. Manual titles
 without a corresponding provider edition use the original description; otherwise
 the description is read from the selected edition's work row. Missing translated
 introductions remain empty rather than silently borrowing Japanese text.
 
-`metadatatitles` holds the shared pure selection/display policy. A known leading
-translation label is removed only on declared official/volunteer translations;
-provider projections and raw snapshots are untouched, and authored titles and
+`metadatatitles` holds the shared pure selection/display policy. Every
+non-canonical edition is a translation, independent of translator classification.
+One leading DLsite language-edition label is recognized by its suffix format,
+including unsupported languages such as `【ドイツ語版】`; genre labels remain.
+Provider projections and raw snapshots are untouched, and authored titles and
 unrelated brackets survive. Batched HTTP presentation applies the policy to
-cards and search results. Detail variants carry their effective title and
-introduction, including manual-only language choices. All manual languages are
+cards, search results, circle and voice actor lists without reading introductions.
+Each edition list entry uses its own provider title, never a sibling's title.
+Detail variants carry their effective title and
+plain-text introduction, including manual-only language choices. Universal manual
+titles overlay existing choices without creating a language; only a specific
+manual language may add a choice. Unknown original languages stay unknown in
+the menu, selection and editor sources. All manual languages are
 indexed and scoped writes/reset invalidate search. Remote-title fallback is not
 part of this stage.
 

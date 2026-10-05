@@ -711,7 +711,8 @@ without recorded pending issues retain their Activity diagnostics.
 
 The work editor and Metadata Works editor share per-language drafts and the same
 partial PATCH. Only authored changes are sent; source placeholders never become
-manual overrides. Reset targets one field/language. Cover and shared metadata tag
+manual overrides. Own manual titles load as editable text. Title reset targets
+one field/language and keeps other unsaved drafts in the open editor. Cover and shared metadata tag
 operations keep their existing transactions and behavior. Title insert, update,
 language change and delete queue the work's search document. Changing metadata
 language priority selects titles and descriptions from stored editions without

@@ -17,7 +17,7 @@ import (
 
 func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64) (workMetadataPresentation, error) {
 	result := workMetadataPresentation{Variants: []workMetadataVariant{}}
-	variants, err := metasync.ListDLsiteMetadataVariants(ctx, s.db, workID)
+	variants, err := metasync.ListDLsiteMetadataVariantsWithDescriptions(ctx, s.db, workID)
 	if err != nil {
 		return result, err
 	}
@@ -68,21 +68,11 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 		if err != nil {
 			return result, err
 		}
-		language := dlsite.EditionMetadataLanguage(variant.EditionLanguage)
-		if language == "" {
-			language = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(variant.EditionLanguage), "_", "-"))
-		}
-		if language == "" {
-			language = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(variant.RequestLocale), "_", "-"))
-		}
+		language := metadatatitles.EditionLanguage(variant.EditionLanguage)
 		seen[key] = true
-		title := metadatatitles.Display(variant.Title, variant.Translation)
-		source := "dlsite"
-		if choice, ok := choices[language]; ok && choice.Source == "manual" {
-			title, source = choice.Title, choice.Source
-		}
+		choice := metadatatitles.ForEdition(metadatatitles.Variant{Code: key, Language: language, Title: variant.Title, Description: variant.Description, Origin: variant.IsCanonical}, overrides.Titles)
 		result.Variants = append(result.Variants, workMetadataVariant{
-			Key: key, Language: language, Title: title, Description: variant.Description, TitleSource: source,
+			Key: key, Language: language, Title: choice.Title, Description: variant.Description, TitleSource: choice.Source,
 			Tags: cleanProjectedTags(tags), Origin: variant.IsCanonical,
 		})
 		if selectedOK && selected.ID == variant.ID {
@@ -121,7 +111,7 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 				break
 			}
 		}
-		if !matched && selectedTitle.Title != "" && len(result.Variants) > 0 {
+		if !matched && overrides.Titles[selectedTitle.Language] != "" && selectedTitle.Language != "" && len(result.Variants) > 0 {
 			tags := result.Variants[0].Tags
 			for _, variant := range result.Variants {
 				if variant.Key == result.DefaultVariantKey {
@@ -206,7 +196,7 @@ func (s *Server) loadProjectedDLsiteMetadata(ctx context.Context, workID int64) 
 			return "", nil, false, err
 		}
 		tags, err := metadatatags.Presentation(ctx, s.db, workID, selected.WorkID, legacy)
-		return metadatatitles.Display(selected.Title, selected.Translation), cleanProjectedTags(tags), true, err
+		return metadatatitles.Display(selected.Title, !selected.IsCanonical), cleanProjectedTags(tags), true, err
 	}
 	tags, err := metadatatags.Read(ctx, s.db, workID)
 	if err != nil {

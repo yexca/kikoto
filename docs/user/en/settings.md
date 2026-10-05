@@ -5,7 +5,7 @@ Settings exposes account controls, playback preferences, and recommendation pref
 
 ## Multilingual titles
 
-For each preferred metadata language, Kikoto tries its manual title, the all-language manual title, and then that language’s DLsite edition. `Origin` uses the original edition’s declared language; an unknown language is not guessed. If nothing matches, the original title is used. Circle, series, and voice-actor overrides remain shared across languages.
+For each preferred metadata language, Kikoto tries its manual title, the all-language manual title, and then that language’s DLsite edition. `Origin` uses the original edition’s declared language; an unknown language is not guessed. If nothing matches, the original title is used. Circle, series, and voice-actor overrides remain shared across languages. An undeclared original language stays unknown everywhere, regardless of the metadata request locale. A language-specific manual title takes effect for that declared language or when that manual language is explicitly preferred or selected. The language menu includes only existing editions and languages with their own manual title; an all-language title applies to existing options without adding a language.
 
 ## Current Settings
 

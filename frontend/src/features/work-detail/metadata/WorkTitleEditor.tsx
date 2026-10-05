@@ -23,9 +23,10 @@ export function WorkTitleEditor({
   const { t } = useTranslation();
   const choice = work.titleChoices?.[language];
   const manual = manualTitles(work.manualOverrides ?? {});
-  const source =
-    choice?.source === "manual" || (!choice && manual[language])
-      ? t("workTitles.manual")
+  const source = manual[language]
+    ? t(language ? "workTitles.manual" : "workTitles.manualAll")
+    : manual[""]
+      ? t("workTitles.manualAll")
       : choice?.source === "dlsite"
         ? t("workTitles.dlsite", { code: choice.code })
         : t("workTitles.original");
@@ -49,8 +50,8 @@ export function WorkTitleEditor({
         <span>{t("libraryDetail.title")}</span>
         <Input
           className="w-full"
-          value={drafts[language] ?? ""}
-          placeholder={choice?.title ?? manual[language] ?? work.title}
+          value={drafts[language] ?? manual[language] ?? ""}
+          placeholder={manual[language] ? "" : (choice?.title ?? manual[""] ?? work.title)}
           onChange={(event) => onDraft(language, event.target.value)}
         />
       </label>
