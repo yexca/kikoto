@@ -149,7 +149,7 @@ func TestRequestLanguageIsSentAsAcceptLanguageHint(t *testing.T) {
 }
 
 func TestReadLimitedJSONBodyRejectsOversizedResponse(t *testing.T) {
-	if _, err := readLimitedJSONBody(endlessTestReader{}); err == nil {
+	if _, err := readLimitedJSONBody(endlessTestReader{}, maxKikoeruJSONBytes); err == nil {
 		t.Fatal("readLimitedJSONBody() accepted an oversized response")
 	}
 }

@@ -12,79 +12,16 @@ import (
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/remotemetadata"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
-type remoteWorkFallbackPolicy struct {
-	AttachCircleFallback     bool
-	UpdateNormalizedMetadata bool
-}
-
-func loadRemoteWorkFallbackPolicy(ctx context.Context, tx *sql.Tx, code string) (remoteWorkFallbackPolicy, error) {
-	var workID int64
-	err := tx.QueryRowContext(ctx, `
-		SELECT id
-		FROM work
-		WHERE UPPER(primary_code) = UPPER(?)
-	`, code).Scan(&workID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return remoteWorkFallbackPolicy{
-			AttachCircleFallback:     true,
-			UpdateNormalizedMetadata: true,
-		}, nil
-	}
-	if err != nil {
-		return remoteWorkFallbackPolicy{}, err
-	}
-	var hasHigherPriorityMetadata, hasAuthoritativeParty, hasManualCircleOverride int
-	if err := tx.QueryRowContext(ctx, `
-		SELECT
-			EXISTS (
-				SELECT 1
-				FROM metadata_snapshot AS snapshot
-				INNER JOIN metadata_provider AS provider ON provider.id = snapshot.provider_id
-				WHERE snapshot.work_id = ?
-					AND provider.code NOT GLOB 'kikoeru_source_*'
-				UNION ALL
-				SELECT 1
-				FROM work_edition AS edition
-				INNER JOIN metadata_provider AS provider ON provider.id = edition.provider_id
-				WHERE edition.work_id = ? AND provider.code = 'dlsite'
-			),
-			EXISTS (
-				SELECT 1
-				FROM work_party
-				WHERE work_id = ?
-					AND role IN ('circle', 'translator_circle', 'official_translation_brand')
-					AND source NOT IN ('remote_source', 'circle_refresh', 'remote_source_catalog')
-				UNION ALL
-				SELECT 1
-				FROM work_edition
-				WHERE work_id = ? AND maker_id <> ''
-			),
-			EXISTS (
-				SELECT 1
-				FROM work_manual_override
-				WHERE work_id = ? AND field_name = 'circle'
-				UNION ALL
-				SELECT 1
-				FROM work_party
-				WHERE work_id = ? AND role = 'circle' AND source = 'manual_override'
-			)
-	`, workID, workID, workID, workID, workID, workID).Scan(
-		&hasHigherPriorityMetadata,
-		&hasAuthoritativeParty,
-		&hasManualCircleOverride,
-	); err != nil {
-		return remoteWorkFallbackPolicy{}, err
-	}
-	return remoteWorkFallbackPolicy{
-		AttachCircleFallback:     hasHigherPriorityMetadata == 0 && hasAuthoritativeParty == 0 && hasManualCircleOverride == 0,
-		UpdateNormalizedMetadata: hasHigherPriorityMetadata == 0,
-	}, nil
-}
-
-func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse, remoteWork kikoeru.Work, rawWork json.RawMessage, allowCircleFallback bool) (int64, error) {
+// upsertRemoteWork stores one remote source's description of a work. The work
+// is created only when this is the first time Kikoto sees its code; an existing
+// work's normalized fields are then derived from every stored remote snapshot
+// in configured source order, so the result never depends on which source
+// wrote last, and never overrides DLsite metadata.
+func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse, remoteWork kikoeru.Work, rawWork json.RawMessage) (int64, error) {
 	code := normalizedRemoteWorkCode(remoteWork)
 	if code == "" {
 		code = strings.ToUpper(strings.TrimSpace(remoteWork.SourceID))
@@ -92,12 +29,8 @@ func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse
 	if code == "" {
 		return 0, fmt.Errorf("remote work does not expose a stable work code")
 	}
-	policy, err := loadRemoteWorkFallbackPolicy(ctx, tx, code)
-	if err != nil {
-		return 0, err
-	}
 	title := firstNonEmpty(remoteWork.Title, remoteWork.Name, code)
-	workID, err := upsertRemoteWorkBase(ctx, tx, code, title, remoteWork, policy)
+	workID, err := insertRemoteWorkIfMissing(ctx, tx, code, title, remoteWork)
 	if err != nil {
 		return 0, err
 	}
@@ -110,47 +43,22 @@ func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse
 	}); err != nil {
 		return 0, err
 	}
-	if allowCircleFallback && policy.AttachCircleFallback {
-		if err := attachRemoteWorkCircleFallback(ctx, tx, remoteWork, workID, providerID); err != nil {
-			return 0, err
-		}
+	if _, err := remotemetadata.ReconcileWorkTx(ctx, tx, workID); err != nil {
+		return 0, err
 	}
 	return workID, nil
 }
 
-func upsertRemoteWorkBase(ctx context.Context, tx *sql.Tx, code, title string, remoteWork kikoeru.Work, policy remoteWorkFallbackPolicy) (int64, error) {
-	releaseDate := normalizeDate(remoteWork.Release)
+func insertRemoteWorkIfMissing(ctx context.Context, tx *sql.Tx, code, title string, remoteWork kikoeru.Work) (int64, error) {
 	var duration any
 	if remoteWork.Duration != nil && *remoteWork.Duration > 0 {
 		duration = int64(*remoteWork.Duration)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO work (primary_code, work_type, title, description, release_date, age_rating, duration_seconds)
-		VALUES (?, 'audio', ?, ?, ?, ?, ?)
-		ON CONFLICT(primary_code) DO UPDATE SET
-			title = CASE
-				WHEN TRIM(work.title) = '' OR UPPER(TRIM(work.title)) = UPPER(TRIM(work.primary_code)) THEN excluded.title
-				WHEN ?
-					AND TRIM(excluded.title) <> ''
-					AND UPPER(TRIM(excluded.title)) <> UPPER(TRIM(work.primary_code)) THEN excluded.title
-				ELSE work.title
-			END,
-			release_date = CASE
-				WHEN ? THEN COALESCE(excluded.release_date, work.release_date)
-				ELSE COALESCE(work.release_date, excluded.release_date)
-			END,
-			age_rating = CASE
-				WHEN ? THEN COALESCE(NULLIF(excluded.age_rating, ''), work.age_rating)
-				ELSE COALESCE(NULLIF(work.age_rating, ''), excluded.age_rating)
-			END,
-			duration_seconds = CASE
-				WHEN ? THEN COALESCE(excluded.duration_seconds, work.duration_seconds)
-				ELSE COALESCE(work.duration_seconds, excluded.duration_seconds)
-			END,
-			updated_at = CURRENT_TIMESTAMP
-	`, code, title, "", releaseDate, remoteWork.AgeCategoryString, duration,
-		policy.UpdateNormalizedMetadata, policy.UpdateNormalizedMetadata,
-		policy.UpdateNormalizedMetadata, policy.UpdateNormalizedMetadata); err != nil {
+		VALUES (?, 'audio', ?, '', ?, ?, ?)
+		ON CONFLICT(primary_code) DO NOTHING
+	`, code, title, normalizeDate(remoteWork.Release), remoteWork.AgeCategoryString, duration); err != nil {
 		return 0, err
 	}
 	return sqlutil.SelectID(ctx, tx, "SELECT id FROM work WHERE primary_code = ?", code)
@@ -244,36 +152,6 @@ func upsertRemoteMetadataSnapshot(ctx context.Context, tx *sql.Tx, workID, provi
 			LIMIT -1 OFFSET 2
 		)
 	`, workID, providerID, externalID)
-	return err
-}
-
-func attachRemoteWorkCircleFallback(ctx context.Context, tx *sql.Tx, remoteWork kikoeru.Work, workID, providerID int64) error {
-	if remoteWork.Circle == nil || strings.TrimSpace(remoteWork.Circle.Name) == "" {
-		return nil
-	}
-	var partyID int64
-	err := tx.QueryRowContext(ctx, `
-		SELECT id
-		FROM party
-		WHERE party_type IN ('circle', 'brand', 'maker')
-			AND (LOWER(display_name) = LOWER(?) OR EXISTS(SELECT 1 FROM party_alias WHERE party_id=party.id AND LOWER(alias)=LOWER(?)))
-		ORDER BY id ASC
-		LIMIT 1
-	`, strings.TrimSpace(remoteWork.Circle.Name), strings.TrimSpace(remoteWork.Circle.Name)).Scan(&partyID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO work_party (work_id, party_id, role, provider_id, source, updated_at)
-		VALUES (?, ?, 'circle', ?, ?, CURRENT_TIMESTAMP)
-		ON CONFLICT(work_id, party_id, role) DO UPDATE SET
-			provider_id = excluded.provider_id,
-			source = excluded.source,
-			updated_at = CURRENT_TIMESTAMP
-	`, workID, partyID, providerID, "remote_source")
 	return err
 }
 

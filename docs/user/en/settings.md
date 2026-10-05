@@ -5,7 +5,7 @@ Settings exposes account controls, playback preferences, and recommendation pref
 
 ## Multilingual titles
 
-For each preferred metadata language, Kikoto tries its manual title, the all-language manual title, and then that language’s DLsite edition. `Origin` uses the original edition’s declared language; an unknown language is not guessed. If nothing matches, the original title is used. Circle, series, and voice-actor overrides remain shared across languages. An undeclared original language stays unknown everywhere, regardless of the metadata request locale. A language-specific manual title takes effect for that declared language or when that manual language is explicitly preferred or selected. The language menu includes only existing editions and languages with their own manual title; an all-language title applies to existing options without adding a language.
+Kikoto uses the first preferred metadata language that has its own manual title or DLsite edition. Its language-specific manual title wins, then the all-language manual title, then that edition’s title. An all-language title replaces only the text: the default edition, introduction, and tags stay the same as without it. `Origin` uses the original edition’s declared language; an unknown language is not guessed. If nothing matches, the original title is used. Circle, series, and voice-actor overrides remain shared across languages. An undeclared original language stays unknown everywhere, regardless of the metadata request locale; its language label shows only **Original**. A language-specific manual title takes effect for that declared language or when that manual language is explicitly preferred or selected. The language menu includes only existing editions and languages with their own manual title; an all-language title applies to existing options without adding a language.
 
 ## Current Settings
 
@@ -177,6 +177,16 @@ Metadata settings have a **DLsite proxy** shortcut: the same switch and proxy
 Shared tag names try each preferred language in order: that language’s manual name, the all-language manual name, then the provider name. Detail language switching follows the same precedence.
 
 Hide, merge and undo save their state immediately. Related works update continuously in the background; the tag manager shows the remaining instance-wide work count, including works waiting for retry. Refresh the list to check progress. A failed work retries automatically without delaying others, and updates resume after restart.
+
+### Tag names in preferred languages
+
+DLsite names genres in the requested language even for Japanese-only works. When the preferred metadata languages include one besides Japanese, the **Learn tag names** workflow fills missing tag names in the background: for each language it asks DLsite once for the work that covers the most unnamed tags, so the number of requests depends on missing tags, not on the size of the library. It runs after startup, metadata syncs, and language changes, uses the same request pacing and DLsite proxy as metadata sync, and resumes after a restart. Progress, results, and failures appear in Activity. It stores only tag names, never titles or introductions, and does not ask again for a tag DLsite did not name.
+
+### Remote metadata fallback
+
+**Remote metadata fallback** in Metadata settings is off by default. When it is on, refreshing a work's metadata asks the selected remote sources, in the listed order, after DLsite explicitly reports the work as not found; timeouts and other temporary DLsite errors never trigger it. Only sources whose settings have **Provides work metadata** turned on are listed. Each source is asked once, and the first that describes the work fills its title, release date, circle, tags, and cover (a cover only when the work has none). The fallback never creates works and never fills a language DLsite lacks. While it is on, the tags of works without DLsite data join shared tags, and a remote tag matching a known tag reuses it. DLsite data always replaces remote values once available.
+
+The listed order also decides which source wins when several remote sources describe the same work, even with the switch off. Turning the switch off stops new lookups and removes remote tags from shared tags again; titles, dates, circles, and covers already filled stay until DLsite or a manual value replaces them. Metadata issues name the source that filled a work DLsite does not have.
 
 ## Related Docs
 

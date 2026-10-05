@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -181,7 +182,19 @@ func (s *Server) executeWorkMetadataSyncJob(ctx context.Context, job workflowJob
 	family, err := s.syncWorkMetadataFamily(ctx, payload.PrimaryCode)
 	if err != nil {
 		if family.RequestedUnavailable {
-			if finishErr := s.finishUnavailableWorkMetadataSyncJob(ctx, job, payload, family, err.Error()); finishErr != nil {
+			// Only an explicit DLsite "not found" reaches the opt-in remote
+			// fallback; timeouts, rate limits and other retryable failures
+			// return above without contacting any remote source.
+			fallback, fallbackErr := s.runRemoteMetadataFallback(ctx, payload.WorkID, payload.PrimaryCode)
+			if fallbackErr != nil {
+				if ctx.Err() != nil {
+					_ = s.failClaimedWorkflowJob(ctx, job, fallbackErr.Error())
+					return fallbackErr
+				}
+				slog.Warn("remote metadata fallback failed", "work_id", payload.WorkID, "error", fallbackErr)
+				fallback.Status = remoteFallbackFailed
+			}
+			if finishErr := s.finishUnavailableWorkMetadataSyncJob(ctx, job, payload, family, err.Error(), fallback); finishErr != nil {
 				_ = s.failClaimedWorkflowJob(ctx, job, finishErr.Error())
 				return finishErr
 			}
@@ -207,11 +220,17 @@ func (s *Server) executeWorkMetadataSyncJob(ctx context.Context, job workflowJob
 	return nil
 }
 
-func (s *Server) finishUnavailableWorkMetadataSyncJob(ctx context.Context, job workflowJobRecord, payload workMetadataSyncPayload, family metasync.DLsiteFamilySyncResult, message string) error {
+func (s *Server) finishUnavailableWorkMetadataSyncJob(ctx context.Context, job workflowJobRecord, payload workMetadataSyncPayload, family metasync.DLsiteFamilySyncResult, message string, fallback remoteMetadataFallbackResult) error {
+	if fallback.Status == "" {
+		fallback.Status = remoteFallbackDisabled
+	}
+	if fallback.Attempts == nil {
+		fallback.Attempts = []remoteMetadataFallbackAttempt{}
+	}
 	summary := map[string]any{
 		"work_id": payload.WorkID, "primary_code": payload.PrimaryCode, "canonical_code": family.CanonicalCode,
 		"synced_codes": family.SyncedCodes, "skipped_codes": family.SkippedCodes, "failures": family.Failures,
-		"requested_unavailable": true,
+		"requested_unavailable": true, "remote_fallback": fallback,
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -247,6 +266,21 @@ func (s *Server) finishUnavailableWorkMetadataSyncJob(ctx context.Context, job w
 		Message: "DLsite did not return the requested product; future refreshes will skip it", Detail: eventDetail,
 	}); err != nil {
 		return err
+	}
+	if fallback.Status != remoteFallbackDisabled && fallback.Status != remoteFallbackSkipped {
+		level, text := "info", "Remote sources were asked for the work's metadata"
+		switch fallback.Status {
+		case remoteFallbackFilled:
+			text = "A remote source filled the metadata DLsite does not have"
+		case remoteFallbackFailed:
+			level, text = "warn", "Remote metadata fallback could not reach every selected source"
+		}
+		if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
+			NodeRunID: job.NodeRunID, JobID: job.ID, Level: level, Type: "metadata.remote_fallback",
+			Message: text, Detail: map[string]any{"work_id": payload.WorkID, "code": payload.PrimaryCode, "fallback": fallback},
+		}); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

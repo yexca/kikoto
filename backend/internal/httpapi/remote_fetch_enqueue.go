@@ -199,7 +199,7 @@ func (s *Server) insertPreparedRemoteFetchTx(ctx context.Context, tx *sql.Tx, pr
 }
 
 func (s *Server) persistPreparedRemoteFetchTx(ctx context.Context, tx *sql.Tx, prep remoteWorkSavePreparation, runID int64, runInput remoteWorkFetchJobPayload, nodes remoteFetchWorkflowNodes) (remoteWorkSaveResult, error) {
-	workID, err := upsertRemoteWork(ctx, tx, prep.source, prep.remoteWork, prep.rawWork, true)
+	workID, err := upsertRemoteWork(ctx, tx, prep.source, prep.remoteWork, prep.rawWork)
 	if err != nil {
 		return remoteWorkSaveResult{}, err
 	}

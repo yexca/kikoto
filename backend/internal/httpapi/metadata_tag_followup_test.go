@@ -68,7 +68,7 @@ func TestSnapshotWritesRetainCommittedEmptyTagsBeforeQueueRepair(t *testing.T) {
 					if err := db.QueryRow("SELECT COUNT(*) FROM work_metadata_tag_dirty WHERE work_id=?", work).Scan(&pending); err != nil || pending != 1 {
 						t.Fatalf("snapshot not queued: %d %v", pending, err)
 					}
-					_, shown, projected, err := s.loadProjectedDLsiteMetadata(ctx, work)
+					shown, projected, err := s.loadProjectedDLsiteTags(ctx, work)
 					if err != nil || !projected || len(shown) != 0 {
 						t.Fatalf("pending empty result: %v %v %v", shown, projected, err)
 					}

@@ -181,26 +181,26 @@ func orderWorkMetadataVariants(variants []workMetadataVariant, priorities []stri
 	})
 }
 
-// loadProjectedDLsiteMetadata returns the language-selected title and tags for
-// a work family.  The canonical work row is normally kept in sync by the
-// projection writer, but catalog and voice pages can arrive through a
-// non-canonical edition and therefore read the variant directly as well.
-func (s *Server) loadProjectedDLsiteMetadata(ctx context.Context, workID int64) (string, []string, bool, error) {
+// loadProjectedDLsiteTags returns the language-selected tags for a work family.
+// The canonical work row is normally kept in sync by the projection writer,
+// but catalog and voice pages can arrive through a non-canonical edition and
+// therefore read the variant directly as well.
+func (s *Server) loadProjectedDLsiteTags(ctx context.Context, workID int64) ([]string, bool, error) {
 	selected, ok, err := metasync.SelectDLsiteMetadataVariant(ctx, s.db, workID, s.preferredMetadataLanguages(ctx))
 	if err != nil {
-		return "", nil, false, err
+		return nil, false, err
 	}
 	if ok {
 		var legacy []string
 		if err := json.Unmarshal([]byte(selected.TagsJSON), &legacy); err != nil {
-			return "", nil, false, err
+			return nil, false, err
 		}
 		tags, err := metadatatags.Presentation(ctx, s.db, workID, selected.WorkID, legacy)
-		return metadatatitles.Display(selected.Title, !selected.IsCanonical), cleanProjectedTags(tags), true, err
+		return cleanProjectedTags(tags), true, err
 	}
 	tags, err := metadatatags.Read(ctx, s.db, workID)
 	if err != nil {
-		return "", nil, false, err
+		return nil, false, err
 	}
 	names := []string{}
 	for _, tag := range tags {
@@ -208,16 +208,12 @@ func (s *Server) loadProjectedDLsiteMetadata(ctx context.Context, workID int64) 
 	}
 	projected, err := metadatatags.Projected(ctx, s.db, workID)
 	if err != nil {
-		return "", nil, false, err
+		return nil, false, err
 	}
 	if !projected && len(names) == 0 {
-		return "", nil, false, nil
+		return nil, false, nil
 	}
-	return "", cleanProjectedTags(names), projected, nil
-}
-func (s *Server) loadProjectedDLsiteTags(ctx context.Context, workID int64) ([]string, bool, error) {
-	_, tags, ok, err := s.loadProjectedDLsiteMetadata(ctx, workID)
-	return tags, ok, err
+	return cleanProjectedTags(names), projected, nil
 }
 
 func (s *Server) loadProjectedDLsiteTagsBatch(ctx context.Context, workIDs []int64, legacy map[int64][]string) (map[int64][]string, error) {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metadatatags"
+	"github.com/yexca/kikoto/backend/internal/remotemetadata"
 )
 
 // DLsiteMetadataVariant is the language-scoped title/tag projection captured
@@ -367,6 +368,35 @@ func ProjectWorkMetadataTagsTx(ctx context.Context, tx *sql.Tx, workID int64, pr
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM metadata_snapshot WHERE work_id=?)
  AND NOT EXISTS(SELECT 1 FROM metadata_snapshot AS snapshot JOIN metadata_provider AS provider ON provider.id=snapshot.provider_id WHERE snapshot.work_id=? AND provider.code='dlsite')
  AND NOT EXISTS(SELECT 1 FROM dlsite_metadata_variant WHERE work_id=?)`, sourceID, sourceID, sourceID).Scan(&remoteOnly); err != nil {
+		return err
+	}
+	if remoteOnly && sourceID == workID {
+		// A work described only by remote sources follows the configured source
+		// order. With the opt-in fallback enabled, the first active source's tags
+		// become the shared-tag base; otherwise remote tags keep their snapshot
+		// presentation alongside manual additions.
+		reconciled, err := remotemetadata.ReconcileWorkTx(ctx, tx, workID)
+		if err != nil {
+			return err
+		}
+		if reconciled.TagProviderID > 0 {
+			ids, err := metadatatags.ProviderConceptsTx(ctx, tx, reconciled.TagProviderID, reconciled.Tags, priorities)
+			if err != nil {
+				return err
+			}
+			if err := metadatatags.ProjectWorkConceptsTx(ctx, tx, workID, ids); err != nil {
+				return err
+			}
+			if err := remotemetadata.RecordFieldTx(ctx, tx, workID, remotemetadata.FieldTags, reconciled.TagProviderID); err != nil {
+				return err
+			}
+			_, err = tx.ExecContext(ctx, "DELETE FROM work_metadata_tag_dirty WHERE work_id=?", workID)
+			return err
+		}
+		if err := remotemetadata.RecordFieldTx(ctx, tx, workID, remotemetadata.FieldTags, 0); err != nil {
+			return err
+		}
+	} else if err := remotemetadata.ClearTx(ctx, tx, workID); err != nil {
 		return err
 	}
 	if legacy == nil && remoteOnly {

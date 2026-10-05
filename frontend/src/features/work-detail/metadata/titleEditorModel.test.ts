@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedTitles } from "./titleEditorModel";
+import { changedTitles, titleSourceLabel } from "./titleEditorModel";
 
 describe("language title drafts", () => {
   const manual = { title: "Global", titles: { "": "Global", "ja-jp": "Japanese" } };
@@ -15,5 +15,26 @@ describe("language title drafts", () => {
       "ja-jp": null,
       "zh-cn": "【简体中文版】Authored",
     });
+  });
+});
+
+describe("title source label", () => {
+  const remote = {
+    title: "Example Work",
+    language: "",
+    source: "remote" as const,
+    sourceName: "Example Remote A",
+    code: "RJ00000000",
+    description: "",
+  };
+  it("names the remote source that filled a title", () => {
+    expect(titleSourceLabel("zh-cn", {}, remote)).toEqual({
+      key: "workTitles.remote",
+      values: { source: "Example Remote A" },
+    });
+  });
+  it("keeps manual precedence over a remote title", () => {
+    expect(titleSourceLabel("zh-cn", { "": "Global" }, remote)).toEqual({ key: "workTitles.manualAll" });
+    expect(titleSourceLabel("zh-cn", { "zh-cn": "Chinese" }, remote)).toEqual({ key: "workTitles.manual" });
   });
 });

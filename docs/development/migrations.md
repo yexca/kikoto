@@ -82,7 +82,7 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain ends at
-`053_language_scoped_titles.sql`, with `053_v0.7.1.sql` generated
+`055_genre_name_learning.sql`, with `055_v0.7.1.sql` generated
 from the current `VERSION` file. Released migrations and baselines, including
 `047_v0.7.1.sql`, remain immutable and available for ledger validation.
 
@@ -104,13 +104,21 @@ retry counters and backoff deadlines, and
 snapshot-writer
 triggers, queues existing works, and requests one new startup backfill to repair
 older projections and locale-name precedence. Hidden/merged states now commit
-before batched work projection. Existing databases apply 048–053 through the
-numbered chain; empty databases use the schema-053 baseline. The earlier
-development schema-050 baseline and metadata-branch schema-051/052 baselines are
-retired; their checksums remain available for ledger validation.
+before batched work projection. Existing databases apply 048–055 through the
+numbered chain; empty databases use the schema-055 baseline. The earlier
+development schema-050, integrated schema-053 and schema-054 baselines and the
+metadata-branch schema-051/052 baselines are retired; their checksums remain
+available for ledger validation.
 Migration 053 preserves existing all-language authored overrides while adding
 language-scoped titles and rebuilding indexes/search triggers. It never changes
 released/applied numbered SQL or reconstructs existing data from a baseline.
+Migration 054 adds `work_metadata_field_source` for remote-filled value
+provenance and `metadata_tag_provider_name` for remote tag localizations with
+search invalidation triggers. It writes no provenance itself: it queues every
+existing work with a remote snapshot for background reconciliation, which
+applies the deterministic source order without rewriting DLsite-backed works.
+Migration 055 adds `dlsite_genre_name_request` and `dlsite_genre_name_gap`, the
+resumable state of background genre name learning. It changes no existing rows.
 v0.7.1 shipped schema 047. Snapshot triggers queue only existing works, preserve
 committed projection markers, and permit snapshots to outlive a deleted work.
 Startup moves old flat

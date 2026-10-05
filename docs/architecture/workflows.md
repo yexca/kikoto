@@ -71,6 +71,27 @@ all metadata sync runs share the `metadata:provider` resource. Local scan
 follow-ups coalesce only into a queued unscoped `missing` run. A retry repeats
 the failed run's scope.
 
+## Genre Name Learning
+
+`metadata_genre_names` ("Learn tag names") is a single-flight system workflow
+that fills the genre name dictionary for the preferred non-Japanese metadata
+languages, as described in the [data model](data-model.md#work-metadata). It is
+queued only when some preferred language still has a learnable unnamed genre:
+at startup, after a metadata sync, family refresh, preset or DLsite popular run
+finishes (a sync may have learned new genre ids), and after the language
+priority changes. A request while one is queued or running joins it. Demo mode
+does not learn.
+
+The job reads the current language priority and asks DLsite through the same
+client, proxy routes, outbound policy, request delay and retry backoff as
+metadata sync, one locale-specific product request at a time. Each answered
+request commits its names before the next, so a restart or retry resumes from
+the remaining genres. A timeout, rate limit or network failure fails the job for
+the normal workflow retry; other request failures skip that work for the run and
+are listed in the run result. Progress counts named and exhausted genre and
+language pairs; the run summary reports requests, learned names, exhausted
+pairs, failures, and what remains.
+
 ## Metadata Recovery
 
 Metadata synchronization remains a workflow. Metadata management owns the current
@@ -148,8 +169,8 @@ for changed concepts.
 
 Every snapshot writer is covered by durable queue triggers. Snapshot fallback
 normalizes DLsite input only; remote tags keep their previous snapshot display
-alongside manually added shared tags
-until opt-in remote metadata fallback is implemented. Old snapshots fill missing
+alongside manually added shared tags unless the opt-in
+[remote metadata fallback](#remote-metadata-fallback) uses their source. Old snapshots fill missing
 dictionary cells, never replace learned names, and never guess a request language.
 Invalid or over-limit input is skipped as a whole with protected logging, so one
 work cannot permanently block startup backfill or an otherwise valid tag edit.
@@ -717,4 +738,35 @@ operations keep their existing transactions and behavior. Title insert, update,
 language change and delete queue the work's search document. Changing metadata
 language priority selects titles and descriptions from stored editions without
 new provider requests or work identities. See [data model](data-model.md) for the
-precedence and `origin` contract. P2 does not add remote title fallback.
+precedence and `origin` contract. A remote-filled title follows DLsite in the
+title chain without adding a language.
+
+## Remote Metadata Fallback
+
+When the administrator enables it in Metadata settings, the per-work metadata
+job (`metadata_family_sync`, also queued by Metadata recovery and detail
+refresh) asks the selected sources after DLsite reports the requested product
+as not found. Timeouts, rate limits and other retryable DLsite failures fail or
+retry the job without contacting any remote source, so a DLsite outage cannot
+fan out to remote sources. Bulk and scheduled metadata sync keep their
+unavailable-product skip; recovering a not-found work from Metadata management
+runs the fallback. A work that already has DLsite metadata is skipped, and the
+fallback never fills a language DLsite lacks.
+
+Sources are tried in the configured order, and the first that describes the
+work wins. A matching cached description is reused first: that source's earlier
+snapshot of the work, then a voice catalog listing. Otherwise the source is
+asked exactly once through `workInfo`; the catalog page scan is not used. Each
+lookup has a 30-second bound, uses the source's paced crawl lane, buffers at
+most 2 MiB, and accepts only a response that decodes within the snapshot bounds
+and names the same code. A 404 or a different code counts as not found; other
+errors are failures. The snapshot write, reconciliation and shared-tag
+projection commit together; the cover is cached afterwards only when the work
+has none.
+
+Each attempt records a fixed outcome per source in the shared attempt ledger.
+Once a later source fills the work, earlier sources' pending states are
+cleared. The run succeeds as before; its output and a `metadata.remote_fallback`
+Activity event list source codes and outcomes, not endpoints, while protected
+logs keep detailed errors. See [data model](data-model.md#remote-metadata-fallback)
+for ordering, provenance and switching the fallback off.

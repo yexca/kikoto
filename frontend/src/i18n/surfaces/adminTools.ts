@@ -24,6 +24,8 @@ export const adminToolsEnglish = {
     detectError: "Detection could not run. Try again or enter the details manually.",
     enterManually: "Enter details manually",
     enableDescription: "Disabled sources keep their configuration but are not queried.",
+    metadataCapability: "Provides work metadata",
+    metadataCapabilityDescription: "Lets Metadata settings use this source when DLsite has no record of a work.",
     connection: "Connection details",
     connectionDescription: "API URL, public site, and work links",
     apiUrlHint: "Service base URL; paths such as /api/works are appended automatically.",

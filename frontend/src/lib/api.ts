@@ -382,14 +382,27 @@ export type WorkMetadataPresentation = {
 };
 
 export type WorkMetadataSyncStatus = {
-  status: "not_synced" | "available" | "not_found" | string;
+  status: "not_synced" | "available" | "not_found" | "remote_fallback" | string;
   checkedAt: string;
+  /** Remote source that filled a work DLsite reports as not found. */
+  source?: string;
+  /** Remote sources of normalized values while the work has no DLsite metadata. */
+  fields?: WorkMetadataFieldSource[] | null;
+};
+
+export type WorkMetadataField = "title" | "release_date" | "age_rating" | "duration" | "circle" | "tags" | "cover";
+
+export type WorkMetadataFieldSource = {
+  field: WorkMetadataField | string;
+  source: string;
 };
 
 export type WorkTitleChoice = {
   title: string;
   language: string;
-  source: "manual" | "dlsite" | "original";
+  source: "manual" | "dlsite" | "original" | "remote";
+  /** Remote source display name when source is "remote". */
+  sourceName?: string;
   code: string;
   description: string;
 };
@@ -651,6 +664,8 @@ export type FileSource = {
     saveRootTemplate?: string;
     scanDepth?: number;
     requestLanguage?: string;
+    /** Declared capabilities; absent keeps the source type's default. */
+    capabilities?: string[];
   };
   endpoint: {
     baseUrl: string;
@@ -714,6 +729,7 @@ export type AppSettings = {
   catalogFreshnessDays: number;
   dlsiteMetadataLanguage: string;
   dlsiteMetadataLanguages: string[];
+  remoteMetadataFallback?: RemoteMetadataFallbackSettings;
   proxy: ProxySettings;
   /** Lets every account enter a private or LAN address for a Kikoeru account import. */
   kikoeruImportPrivateAddresses: boolean;
@@ -724,6 +740,12 @@ export type AppSettings = {
   dataRoot: string;
   cacheRoot: string;
   fileSources: FileSource[];
+};
+
+/** Opt-in lookup in selected remote sources, in order, when DLsite has no record. */
+export type RemoteMetadataFallbackSettings = {
+  enabled: boolean;
+  sourceIds: number[];
 };
 
 export type ProxyScheme = "http" | "https" | "socks5" | "socks5h";
@@ -1194,6 +1216,8 @@ export type MetadataIssueWork = {
   providerCode: string;
   providerName: string;
   retrying: boolean;
+  /** Remote source that filled a work DLsite does not have. */
+  fallbackSource?: string;
   issues: {
     component: "metadata" | "cover";
     status: "failed" | "unavailable";
@@ -2752,6 +2776,7 @@ export const api = {
     catalogFreshnessDays?: number;
     dlsiteMetadataLanguage?: string;
     dlsiteMetadataLanguages?: string[];
+    remoteMetadataFallback?: RemoteMetadataFallbackSettings;
     proxy?: ProxySettingsPayload;
     kikoeruImportPrivateAddresses?: boolean;
     directoryRoutingRules?: DirectoryRoutingRule[];

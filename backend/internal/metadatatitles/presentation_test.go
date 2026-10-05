@@ -21,6 +21,7 @@ func TestLanguageTitlePriorityAndDescription(t *testing.T) {
 		{"global beats matching provider", map[string]string{"": "Global", "ja-jp": "Japanese manual"}, []string{"zh-cn"}, "Global", "Translated introduction", "zh-cn", "manual"},
 		{"global does not invent preferred edition", map[string]string{"": "Global"}, []string{"ko-kr"}, "Global", "Original introduction", "ja-jp", "manual"},
 		{"next language", nil, []string{"ko-kr", "zh-cn"}, "Example translation", "Translated introduction", "zh-cn", "dlsite"},
+		{"global keeps the next language edition", map[string]string{"": "Global"}, []string{"ko-kr", "zh-cn"}, "Global", "Translated introduction", "zh-cn", "manual"},
 		{"manual without edition", map[string]string{"ko-kr": "Korean manual"}, []string{"ko-kr", "zh-cn"}, "Korean manual", "Original introduction", "ko-kr", "manual"},
 		{"origin uses declared language", map[string]string{"ja-jp": "Japanese manual"}, []string{"origin"}, "Japanese manual", "Original introduction", "ja-jp", "manual"},
 		{"fallback", nil, []string{"en-us"}, "【ASMR】Example original", "Original introduction", "ja-jp", "original"},

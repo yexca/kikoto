@@ -130,6 +130,12 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 		},
 	},
 	{
+		Code:        genreNameWorkflowCode,
+		Name:        genreNameDisplayName,
+		Description: genreNameDescription,
+		Nodes:       genreNameNodes,
+	},
+	{
 		Code:        "remote_source_sync",
 		Name:        "Sync remote source",
 		Description: "Fetch remote work metadata and file locations when a source work is fetched or marked.",
@@ -1598,7 +1604,7 @@ func (s *Server) retryFailedWorkflowJob(ctx context.Context, runID int64) error 
 			AND worker_type IN (
 				'remote_work_fetch', 'remote_media_cache', 'remote_popular_collection',
 				'media_cache_limit_cleanup', 'media_cache_cleanup', 'local_media_delete', 'local_location_cleanup',
-				'media_location_cleanup', 'metadata_family_sync', 'custom_workflow'
+				'media_location_cleanup', 'metadata_family_sync', 'custom_workflow', 'metadata_genre_names'
 			)
 		ORDER BY id DESC LIMIT 1
 	`, runID).Scan(

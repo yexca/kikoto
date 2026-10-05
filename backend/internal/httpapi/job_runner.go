@@ -206,6 +206,7 @@ func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobR
 		localMediaIndexWorkerType:    s.executeLocalMediaIndexJob,
 		"metadata_sync":              s.executeDLsiteMetadataSyncJob,
 		"metadata_family_sync":       s.executeWorkMetadataSyncJob,
+		genreNameWorkerType:          s.executeGenreNameLearningJob,
 		"media_cache_limit_cleanup":  s.executeMediaCacheLimitCleanupJob,
 		"media_cache_cleanup":        s.executeMediaCacheCleanupJob,
 		"local_media_delete":         s.executeLocalMediaDeleteJob,
@@ -272,6 +273,10 @@ func (s *Server) notifyWorkflowJobCompletion(ctx context.Context, job workflowJo
 		status = "failed"
 	}
 	switch job.WorkerType {
+	case "metadata_sync", "metadata_family_sync", "custom_workflow", "dlsite_popular_collection":
+		// A sync may have learned new genre ids; learn their preferred-language
+		// names in the background without delaying this job's settlement.
+		s.queueGenreNameLearning(ctx, "metadata_sync")
 	case "remote_work_fetch":
 		var payload remoteWorkFetchJobPayload
 		if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err == nil {

@@ -164,7 +164,7 @@ func TestUpsertRemoteWorkDoesNotOverrideAuthoritativeMetadataOrCircle(t *testing
 	}
 	if _, err := upsertRemoteWork(ctx, tx, remoteSourceForUse{
 		ID: remoteSourceID, Code: "remote-provenance-a", DisplayName: "Synthetic remote A",
-	}, remoteWork, raw, true); err != nil {
+	}, remoteWork, raw); err != nil {
 		_ = tx.Rollback()
 		t.Fatal(err)
 	}
@@ -234,7 +234,7 @@ func TestUpsertRemoteWorkRefreshesFallbackMetadataAndIgnoresUnrelatedManualOverr
 		}
 		if _, err := upsertRemoteWork(ctx, tx, remoteSourceForUse{
 			ID: remoteSourceID, Code: "remote-provenance-refresh", DisplayName: "Synthetic refresh source",
-		}, remoteWork, raw, true); err != nil {
+		}, remoteWork, raw); err != nil {
 			_ = tx.Rollback()
 			t.Fatal(err)
 		}

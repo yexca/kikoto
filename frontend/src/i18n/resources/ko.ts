@@ -271,6 +271,8 @@ const adminToolsKorean = {
     detectError: "감지를 실행할 수 없습니다. 다시 시도하거나 직접 입력하세요.",
     enterManually: "직접 입력",
     enableDescription: "사용하지 않는 소스는 설정을 유지하지만 요청하지 않습니다.",
+    metadataCapability: "작품 메타데이터 제공",
+    metadataCapabilityDescription: "DLsite에 기록이 없는 작품에 메타데이터 설정이 이 소스를 사용할 수 있게 합니다.",
     connection: "연결 세부 정보",
     connectionDescription: "API URL, 공개 사이트, 작품 링크",
     apiUrlHint: "서비스 기본 URL입니다. /api/works 같은 경로는 자동으로 붙습니다.",

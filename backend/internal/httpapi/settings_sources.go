@@ -15,6 +15,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/outbound"
+	"github.com/yexca/kikoto/backend/internal/remotemetadata"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
@@ -171,6 +172,9 @@ type fileSourceConfig struct {
 	SaveRootTemplate string `json:"saveRootTemplate,omitempty"`
 	ScanDepth        *int   `json:"scanDepth,omitempty"`
 	RequestLanguage  string `json:"requestLanguage,omitempty"`
+	// Capabilities declares what a remote source offers beyond its files. A
+	// nil list keeps the source type's default; an empty list declares none.
+	Capabilities *[]string `json:"capabilities,omitempty"`
 }
 
 type fileSourceEndpoint struct {
@@ -314,6 +318,15 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found"})
 		return
 	}
+	var code string
+	if err := tx.QueryRowContext(r.Context(), "SELECT code FROM file_source WHERE id = ?", id).Scan(&code); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := remoteSourceChangedTx(r.Context(), tx, code); err != nil {
+		writeError(w, err)
+		return
+	}
 	if err := tx.Commit(); err != nil {
 		writeError(w, err)
 		return
@@ -399,14 +412,32 @@ func (s *Server) deleteFileSource(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
 		return
 	}
-	result, err := s.db.ExecContext(r.Context(), "DELETE FROM file_source WHERE id = ? AND source_type <> ?", id, sourceTypeLocalFolder)
+	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	affected, _ := result.RowsAffected()
-	if affected == 0 {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found or cannot be deleted"})
+	defer func() { _ = tx.Rollback() }()
+	var code string
+	if err := tx.QueryRowContext(r.Context(), "SELECT code FROM file_source WHERE id = ? AND source_type <> ?", id, sourceTypeLocalFolder).Scan(&code); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found or cannot be deleted"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	if _, err := tx.ExecContext(r.Context(), "DELETE FROM file_source WHERE id = ?", id); err != nil {
+		writeError(w, err)
+		return
+	}
+	// The removed source's snapshots stay for provenance but rank last.
+	if err := remoteSourceChangedTx(r.Context(), tx, code); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, err)
 		return
 	}
 	s.notifyFilesystemTriggerConfigChanged()
@@ -671,7 +702,17 @@ func validateFileSourcePayload(payload *fileSourcePayload, allowLocal, allowLega
 
 func normalizeFileSourceConfig(config *fileSourceConfig, sourceType string) {
 	if !isKikoeruSourceType(sourceType) {
+		config.Capabilities = nil
 		return
+	}
+	if config.Capabilities != nil {
+		capabilities := []string{}
+		for _, capability := range *config.Capabilities {
+			if capability == remotemetadata.CapabilityMetadata && len(capabilities) == 0 {
+				capabilities = append(capabilities, capability)
+			}
+		}
+		config.Capabilities = &capabilities
 	}
 	raw := strings.TrimSpace(config.RequestLanguage)
 	if raw == "" {

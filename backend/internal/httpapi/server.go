@@ -453,7 +453,13 @@ func (s *Server) RunStartupWorkflows(ctx context.Context) error {
 	if err := s.dispatchStartupSystemWorkflowTriggers(ctx); err != nil {
 		return err
 	}
-	return s.projectChangedSnapshots(ctx)
+	if err := s.projectChangedSnapshots(ctx); err != nil {
+		return err
+	}
+	// Learning is optional: queueing it never prevents startup, and an
+	// interrupted earlier pass resumes from the remaining unnamed genres.
+	s.queueGenreNameLearning(ctx, "startup")
+	return nil
 }
 
 func (s *Server) RecoverInterruptedWorkflows(ctx context.Context) error {

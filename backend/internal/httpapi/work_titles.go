@@ -41,8 +41,13 @@ func loadWorkTitleInputs(ctx context.Context, db workTitleQuerier, ids []int64, 
 		for i, id := range ids[start:end] {
 			args[i] = id
 		}
+		// A title a remote source filled stays a languageless fallback; only its
+		// source name is presented.
 		rows, err := db.QueryContext(ctx, `SELECT requested.id, COALESCE(original.primary_code,requested.primary_code),
- COALESCE(original.title,requested.title),`+fallbackDescription+`,COALESCE(origin.metadata_language,'')
+ COALESCE(original.title,requested.title),`+fallbackDescription+`,COALESCE(origin.metadata_language,''),
+ COALESCE((SELECT provider.display_name FROM work_metadata_field_source AS source
+  JOIN metadata_provider AS provider ON provider.id=source.provider_id
+  WHERE source.work_id=requested.id AND source.field_name='title'),'')
  FROM work AS requested
  LEFT JOIN work_edition AS current ON current.work_id=requested.id
  LEFT JOIN work_edition AS origin ON origin.logical_work_id=current.logical_work_id AND origin.is_canonical=1
@@ -54,7 +59,7 @@ func loadWorkTitleInputs(ctx context.Context, db workTitleQuerier, ids []int64, 
 		for rows.Next() {
 			var id int64
 			input := workTitleInputs{Manual: map[string]string{}}
-			if err := rows.Scan(&id, &input.Fallback.Code, &input.Fallback.Title, &input.Fallback.Description, &input.Fallback.Language); err != nil {
+			if err := rows.Scan(&id, &input.Fallback.Code, &input.Fallback.Title, &input.Fallback.Description, &input.Fallback.Language, &input.Fallback.RemoteSource); err != nil {
 				_ = rows.Close()
 				return nil, err
 			}

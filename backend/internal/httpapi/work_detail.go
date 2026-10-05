@@ -418,7 +418,11 @@ func (s *Server) populateWorkDetailMetadata(ctx context.Context, work *workDetai
 		return 0, err
 	}
 	work.MetadataView = metadataView
-	work.MetadataSync, err = s.loadWorkMetadataSyncStatus(ctx, work.ID, metadataView, snapshotFetchedAt)
+	fieldSources, err := s.loadWorkMetadataFieldSources(ctx, work.ID)
+	if err != nil {
+		return 0, err
+	}
+	work.MetadataSync, err = s.loadWorkMetadataSyncStatus(ctx, work.ID, metadataView, snapshotFetchedAt, fieldSources)
 	if err != nil {
 		return 0, err
 	}

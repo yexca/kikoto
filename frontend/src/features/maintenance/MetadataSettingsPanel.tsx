@@ -1,13 +1,23 @@
-import { Save, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Save, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { api, type AppSettings, type FileSource } from "@/lib/api";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { api, type AppSettings, type FileSource, type RemoteMetadataFallbackSettings } from "@/lib/api";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { Input, NativeSelect } from "@/components/ui/input";
 import { DLsiteProxyQuickSwitch } from "@/features/proxy";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { InfoHint } from "./InfoHint";
+import {
+  defaultRemoteMetadataFallback,
+  moveRemoteMetadataSource,
+  normalizedRemoteMetadataFallback,
+  remoteMetadataFallbackRows,
+  sameRemoteMetadataFallback,
+  toggleRemoteMetadataSource,
+} from "./remoteMetadataFallbackModel";
 import i18n from "@/i18n";
 const maintenanceCopy = (key: string, options?: Record<string, unknown>) => i18n.t(`maintenance.${key}`, options);
 const remoteRequestLanguageOptions = [
@@ -26,6 +36,7 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
   const toast = useToast();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [days, setDays] = useState(30);
+  const [fallback, setFallback] = useState<RemoteMetadataFallbackSettings>(defaultRemoteMetadataFallback);
   const [error, setError] = useState(false);
   const [revision, setRevision] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -39,6 +50,7 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
         if (!active) return;
         setSettings(next);
         setDays(next.catalogFreshnessDays);
+        setFallback(next.remoteMetadataFallback ?? defaultRemoteMetadataFallback);
       })
       .catch(() => {
         if (active) setError(true);
@@ -51,8 +63,19 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
     if (readOnly || saving) return;
     setSaving(true);
     try {
-      const next = await api.updateSettings({ catalogFreshnessDays: days });
+      const sources = settings?.fileSources ?? [];
+      const nextFallback = normalizedRemoteMetadataFallback(sources, fallback);
+      const savedFallback = normalizedRemoteMetadataFallback(
+        sources,
+        settings?.remoteMetadataFallback ?? defaultRemoteMetadataFallback,
+      );
+      // Send only changed groups so this form never overwrites other settings.
+      const next = await api.updateSettings({
+        catalogFreshnessDays: days,
+        ...(sameRemoteMetadataFallback(nextFallback, savedFallback) ? {} : { remoteMetadataFallback: nextFallback }),
+      });
       setSettings(next);
+      setFallback(next.remoteMetadataFallback ?? defaultRemoteMetadataFallback);
       toast.success(maintenanceCopy("settingsSaved"));
     } catch (cause) {
       toast.notify(toastFromError(cause, t("errors.unavailable")));
@@ -156,6 +179,9 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
         updatingSourceId={updatingSourceId}
         onCatalogFreshnessDaysChange={setDays}
         onRequestLanguageChange={updateLanguage}
+        fallback={
+          <RemoteMetadataFallbackGroup sources={settings.fileSources} value={fallback} onChange={setFallback} />
+        }
       />
       <div className="sticky bottom-0 flex justify-end border-t bg-popover px-4 py-2">
         <Button size="sm" onClick={() => void save()} disabled={readOnly || saving}>
@@ -179,10 +205,92 @@ function SettingsGroup({ title, hint, children }: { title: string; hint: string;
   );
 }
 
+/**
+ * Opt-in remote metadata fallback: the switch and the ordered metadata-capable
+ * sources. Saved with the rest of the form.
+ */
+function RemoteMetadataFallbackGroup({
+  sources,
+  value,
+  onChange,
+}: {
+  sources: FileSource[];
+  value: RemoteMetadataFallbackSettings;
+  onChange: (value: RemoteMetadataFallbackSettings) => void;
+}) {
+  const rows = remoteMetadataFallbackRows(sources, value);
+  const selectedCount = rows.filter((row) => row.selected).length;
+  const lastSelected = selectedCount - 1;
+  return (
+    <SettingsGroup
+      title={maintenanceCopy("metadata.remoteFallback")}
+      hint={maintenanceCopy("metadata.remoteFallbackDescription")}
+    >
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <span id="remote-metadata-fallback-label" className="min-w-0">
+          {maintenanceCopy("metadata.remoteFallbackEnabled")}
+        </span>
+        <Switch
+          checked={value.enabled}
+          aria-labelledby="remote-metadata-fallback-label"
+          onCheckedChange={(enabled) => onChange({ ...value, enabled })}
+        />
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{maintenanceCopy("metadata.remoteFallbackNoSources")}</p>
+      ) : (
+        <ol
+          aria-label={maintenanceCopy("metadata.remoteFallbackOrder")}
+          className="divide-y overflow-hidden rounded-lg border bg-card"
+        >
+          {rows.map((row) => {
+            const name = row.source.displayName;
+            return (
+              <li key={row.source.id} className="flex min-h-10 items-center gap-2 px-2.5 py-1 text-sm">
+                <Checkbox
+                  checked={row.selected}
+                  aria-label={maintenanceCopy("metadata.remoteFallbackUse", { name })}
+                  onCheckedChange={(selected) => onChange(toggleRemoteMetadataSource(value, row.source.id, selected))}
+                />
+                <span className="min-w-0 flex-1 truncate font-medium">{name}</span>
+                {row.selected && (
+                  <span className="flex shrink-0 items-center">
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={maintenanceCopy("metadata.remoteFallbackEarlier", { name })}
+                      title={maintenanceCopy("metadata.remoteFallbackEarlier", { name })}
+                      disabled={row.position === 0}
+                      onClick={() => onChange(moveRemoteMetadataSource(value, row.source.id, -1))}
+                    >
+                      <ArrowUp className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={maintenanceCopy("metadata.remoteFallbackLater", { name })}
+                      title={maintenanceCopy("metadata.remoteFallbackLater", { name })}
+                      disabled={row.position === lastSelected}
+                      onClick={() => onChange(moveRemoteMetadataSource(value, row.source.id, 1))}
+                    >
+                      <ArrowDown className="h-3.5 w-3.5" />
+                    </Button>
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </SettingsGroup>
+  );
+}
+
 function MetadataSettings({
   disabled,
   catalogFreshnessDays,
   proxy,
+  fallback,
   remoteSources,
   updatingSourceId,
   onCatalogFreshnessDaysChange,
@@ -192,6 +300,8 @@ function MetadataSettings({
   catalogFreshnessDays: number;
   /** DLsite proxy shortcut; it saves on its own, outside this form. */
   proxy: ReactNode;
+  /** Remote metadata fallback controls, saved with this form. */
+  fallback: ReactNode;
   remoteSources: FileSource[];
   updatingSourceId: number | null;
   onCatalogFreshnessDaysChange: (value: number) => void;
@@ -204,6 +314,8 @@ function MetadataSettings({
       <SettingsGroup title={maintenanceCopy("metadata.proxy")} hint={maintenanceCopy("metadata.proxyDescription")}>
         {proxy}
       </SettingsGroup>
+
+      {fallback}
 
       {remoteSources.length > 0 && (
         <SettingsGroup

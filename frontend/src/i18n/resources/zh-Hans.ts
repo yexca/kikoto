@@ -271,6 +271,8 @@ const adminToolsHans = {
     detectError: "检测未能运行。请重试或手动填写。",
     enterManually: "手动填写",
     enableDescription: "停用的来源会保留配置，但不会被请求。",
+    metadataCapability: "提供作品元数据",
+    metadataCapabilityDescription: "允许元数据设置在 DLsite 没有记录时使用此来源。",
     connection: "连接详情",
     connectionDescription: "API URL、公开网站与作品链接",
     apiUrlHint: "服务基础 URL；/api/works 等路径会自动追加。",
