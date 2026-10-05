@@ -28,7 +28,7 @@
 - 데이터베이스 정리는 Library에서 수행하지 않습니다. Maintenance -> Work maintenance -> No available source에서 확인 후 삭제합니다.
 - `KIKOTO_MODE=demo`에서는 all-ages이며 영구 무료인 작품만 응답에 포함됩니다.
 
-작품 카드는 모든 컬렉션 화면에서 동일한 요약 모델을 사용합니다. Favorites는 Quick 표시와 사용자 목록의 작품을 집계하며 재생 커서만으로 작품이 추가되지는 않습니다.
+작품 카드는 모든 컬렉션 화면에서 동일한 요약 모델을 사용합니다. Favorites는 Quick 표시와 사용자 목록의 작품을 집계하며 재생 커서만으로 작품이 추가되지는 않습니다. Favorites의 선반 레일은 Workflows처럼 이름을 숨기고 아이콘만 표시할 수 있으며, 사용자 목록에는 목록 편집에서 고른 아이콘을 표시할 수 있습니다.
 
 ## Identity
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { FavoriteListIconGlyph } from "@/components/favorite-list/FavoriteListIconGlyph";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { api, type FavoriteList } from "@/lib/api";
@@ -139,6 +140,7 @@ export function FavoriteListMembershipPopover({
                   onClick={(event) => event.stopPropagation()}
                   aria-label={list.name}
                 />
+                <FavoriteListIconGlyph list={list} />
                 <span className="min-w-0 flex-1 truncate">{list.name}</span>
                 {state === "some" && (
                   <span className="shrink-0 text-xs tabular-nums text-muted-foreground">

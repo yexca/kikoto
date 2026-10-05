@@ -160,7 +160,7 @@ source to its final target. A match resolving to a hidden target returns
 custom tags are created and attached in
 the work-save transaction, so cancellation and failed saves leave no new orphan.
 
-`work_metadata_tag_dirty` (migration 051) is the durable per-work projection
+`work_metadata_tag_dirty` (migration 052) is the durable per-work projection
 queue with persistent `retry_count` and Unix-second `retry_after`. Snapshot
 insert/update/delete triggers queue only existing works and dependent
 projections without invalidating markers; inserts and updates also cover stored
@@ -190,7 +190,7 @@ and after records. Undo applies only captured differences, keeps unrelated new
 rows, and rejects a later change to data it would restore. Nested merges undo
 in reverse order. Review responses expose names and status, not raw snapshots.
 
-Migration 052 rebuilds `work_manual_override` with primary key
+Migration 053 rebuilds `work_manual_override` with primary key
 `(work_id, field_name, language)`. Existing rows retain `language=''`, timestamps,
 authorship and cover assets. Only title allows a nonempty language (`ja-jp`,
 `zh-cn`, `zh-tw`, `en-us`, `ko-kr`); other fields remain universal. Field and
@@ -372,6 +372,9 @@ delete.
 `favorite_list` distinguishes a system `marked` list from ordinary user lists.
 The system list has no stored items: it derives membership from a non-`none`
 Quick mark. `favorite_list_item` records only explicit user-list membership.
+A user list's `icon` is a short presentation key (lowercase letters, digits,
+and hyphens) that clients map to their own icon set; an empty or unknown key
+shows the default list icon, and the system list never reports one.
 
 `user_work_playback_cursor` stores at most one Resume position for each user and
 canonical logical work family. It references the active edition's logical media

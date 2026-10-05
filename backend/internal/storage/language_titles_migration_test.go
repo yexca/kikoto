@@ -1,15 +1,15 @@
 package storage
 
 import (
+	"testing"
+
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 	"github.com/yexca/kikoto/backend/migrations"
-	"path/filepath"
-	"testing"
 )
 
 func TestLanguageTitleMigrationPreservesRetiredBaselineDataAndSearchTriggers(t *testing.T) {
 	db := openMigrationManagerDB(t)
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, filepath.Join("..", "..", "migrations"), 51)); err != nil {
+	if err := Migrate(db, copyMetadataMigrationsThrough(t, 51)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec("INSERT INTO work(primary_code,title) VALUES (?,'Example Work')", testfixture.WorkCode(testfixture.PrefixRJ, 0)); err != nil {

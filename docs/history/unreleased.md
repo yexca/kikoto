@@ -60,8 +60,10 @@
   entries and work counts to demo works and withholds circle merge history.
 - Circle management supports manual names, confirmed aliases, and reviewed,
   reversible merges that transfer creator relations and personal circle data.
-- Schema 052 is packaged in `052_v0.7.1.sql`; released baselines remain intact.
-  The superseded development schema-050 and schema-051 baselines are retired with their ledger
-  checksums retained for upgrades.
+- Schema 053 is packaged in `053_v0.7.1.sql`; released baselines remain intact.
+  Existing `main` and metadata development databases retain their original
+  migration history and receive the missing changes through separate immutable
+  paths that converge at schema 053. Historical metadata schema-051/052 and
+  development schema-050 baseline checksums remain available for upgrades.
 
 Changes through v0.7.1 are summarized in [v0.7.1](v0.7.1.md).

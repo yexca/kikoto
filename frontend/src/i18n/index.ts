@@ -40,8 +40,7 @@ void i18n.use(initReactI18next).init({
   interpolation: { escapeValue: false },
   returnNull: false,
   returnEmptyString: false,
-  initImmediate: false,
-  showSupportNotice: false,
+  initAsync: false,
 });
 
 export default i18n;

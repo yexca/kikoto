@@ -82,7 +82,7 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain ends at
-`052_language_scoped_titles.sql`, with `052_v0.7.1.sql` generated
+`053_language_scoped_titles.sql`, with `053_v0.7.1.sql` generated
 from the current `VERSION` file. Released migrations and baselines, including
 `047_v0.7.1.sql`, remain immutable and available for ledger validation.
 
@@ -98,16 +98,17 @@ Migration 048 guards JSON inspection with `json_valid`; malformed stored
 overrides are retained and cannot abort migration.
 Migration 050 adds independent manual/provider circle names, aliases with
 search invalidation, and protected merge-review records for reversible relation
-transfers. Migration 051 adds the durable shared-tag projection queue, per-work
+transfers. Migration 051 adds the `favorite_list.icon` presentation key with
+an empty default, preserving existing list data. Migration 052 adds the durable shared-tag projection queue, per-work
 retry counters and backoff deadlines, and
 snapshot-writer
 triggers, queues existing works, and requests one new startup backfill to repair
 older projections and locale-name precedence. Hidden/merged states now commit
-before batched work projection. Existing databases apply 048–052 through the
-numbered chain; empty databases use the schema-052 baseline. The earlier
-development schema-050 and schema-051 baselines are removed; only their checksums are retained in
-`retiredBaselineLedgerAssets` so databases created from it continue through the numbered chain.
-Migration 052 preserves existing all-language authored overrides while adding
+before batched work projection. Existing databases apply 048–053 through the
+numbered chain; empty databases use the schema-053 baseline. The earlier
+development schema-050 baseline and metadata-branch schema-051/052 baselines are
+retired; their checksums remain available for ledger validation.
+Migration 053 preserves existing all-language authored overrides while adding
 language-scoped titles and rebuilding indexes/search triggers. It never changes
 released/applied numbered SQL or reconstructs existing data from a baseline.
 v0.7.1 shipped schema 047. Snapshot triggers queue only existing works, preserve
@@ -117,6 +118,30 @@ covers to the
 nested cache once and never replaces an existing provider cover.
 The two repairs record durable status separately; failed cover files do not
 stop migration of the remaining files, and both repairs retry next startup.
+
+### Metadata Development Branch Compatibility
+
+Two development histories used the same migration numbers before integration.
+The root chain preserves the `main` history: 051 adds favorite-list icons, 052
+adds the tag projection queue, and 053 adds language-scoped titles. SQL that may
+already have run on the metadata branch remains unchanged in
+`backend/migrations/compat/metadata/`: 051 adds the queue, 052 adds scoped titles,
+and a new 053 appends favorite-list icons. These archived files are embedded but
+are not part of the root chain or fresh-install baseline generation.
+
+Startup selects the metadata history only from its recorded migration filenames
+or its exact historical baseline checksum, then validates the complete ledger
+against that history before applying SQL. Both branches used
+`baseline/051_v0.7.1.sql`, so a missing checksum on that ambiguous row stops the
+upgrade. The packaged 051 baseline remains the original `main` asset; the
+metadata 051 and 052 baseline checksums are ledger-only aliases. Tampered or
+mixed branch histories remain errors, and table shapes are never used to infer
+which branch ran.
+
+Existing filenames, versions, checksums, timestamps, and baseline state are
+preserved. Each history appends its missing changes and reaches the same schema
+at 053. All future root migrations from 054 onward apply to both histories.
+Existing databases are never rebuilt from a baseline.
 
 Migration 047 adds `work_dlsite_genre` and
 `dlsite_genre_name`, backfills them from each work's latest DLsite snapshot

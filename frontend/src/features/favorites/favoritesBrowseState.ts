@@ -1,5 +1,5 @@
 import type { FavoriteSort, ListeningStatus, SortDirection } from "@/lib/api";
-import { currentScopedStorageKey, type ClientPrincipalID } from "../lib/clientStorageScope";
+import { currentScopedStorageKey, type ClientPrincipalID } from "@/lib/clientStorageScope";
 
 export type FavoriteEntity = "works" | "circles" | "voices";
 export type FavoriteAvailability = "all" | "local" | "cache" | "remote" | "missing";

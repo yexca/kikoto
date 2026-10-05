@@ -334,3 +334,36 @@ func TestListeningStatisticsRangesFillSeriesAndScopeTotals(t *testing.T) {
 		t.Fatalf("default range = %q, %v", period, err)
 	}
 }
+
+func TestPlaylistIconsRoundTripAndRejectMalformedKeys(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	execFixture(t, s.DB, `INSERT INTO favorite_list (id,user_id,name,kind,icon) VALUES (1,1,'Example Playlist','user','moon')`)
+	data, err := s.Export(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := ParseImport(ImportRequest{Format: "kikoto", Data: data, Conflict: "keep"})
+	if err != nil || len(b.Playlists) != 1 || b.Playlists[0].Icon != "moon" {
+		t.Fatalf("parse = %+v, %v", b.Playlists, err)
+	}
+	if _, err = s.Import(ctx, 2, b, false); err != nil {
+		t.Fatal(err)
+	}
+	var icon string
+	if err = s.DB.QueryRow(`SELECT icon FROM favorite_list WHERE user_id=2 AND name='Example Playlist'`).Scan(&icon); err != nil || icon != "moon" {
+		t.Fatalf("imported icon = %q, %v", icon, err)
+	}
+	b.Playlists[0].Icon = "coffee"
+	if _, err = s.Import(ctx, 2, b, true); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.DB.QueryRow(`SELECT icon FROM favorite_list WHERE user_id=2 AND name='Example Playlist'`).Scan(&icon); err != nil || icon != "coffee" {
+		t.Fatalf("overwritten icon = %q, %v", icon, err)
+	}
+
+	malformed := strings.Replace(string(data), `"icon":"moon"`, `"icon":"Moon Face"`, 1)
+	if _, err = ParseImport(ImportRequest{Format: "kikoto", Data: json.RawMessage(malformed), Conflict: "keep"}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("malformed icon error = %v", err)
+	}
+}

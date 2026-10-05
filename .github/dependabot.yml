@@ -67,5 +67,8 @@ updates:
       # Capacitor packages must move together with the Android project.
       capacitor:
         patterns: ["@capacitor/*"]
+      # Vitest plugins pin the exact vitest version as a peer dependency.
+      vitest:
+        patterns: ["vitest", "@vitest/*"]
       npm-minor-and-patch:
         update-types: [minor, patch]

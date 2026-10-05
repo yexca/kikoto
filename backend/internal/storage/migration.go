@@ -41,7 +41,8 @@ type migrationAsset struct {
 // baseline file, which may have been produced by an earlier app release when
 // the numbered SQL chain has not changed.
 var retiredBaselineLedgerAssets = []migrationAsset{
-	{version: 51, filename: "baseline/051_v0.7.1.sql", checksum: "bc9120ee0dde556df13da2c541baf6bc033069796b7a322950fa85cde432f3eb", baseline: true},
+	{version: 51, filename: "baseline/051_v0.7.1.sql", checksum: metadataBaseline051Checksum, baseline: true},
+	{version: 52, filename: "baseline/052_v0.7.1.sql", checksum: "3cbd38a638ad1f83a9019fbfac76b3e92f89a495b0dd8b232cf30aac08b39fe0", baseline: true},
 	{
 		version:  31,
 		filename: "baseline/031_current.sql",
@@ -184,6 +185,10 @@ func prepareMigrationCatalog(db *sql.DB, migrationFS fs.FS) (migrationCatalog, d
 	if err := ensureMigrationMetadata(db); err != nil {
 		return migrationCatalog{}, databaseClassification{}, err
 	}
+	catalog, err = selectMetadataMigrationCatalog(db, migrationFS, catalog)
+	if err != nil {
+		return migrationCatalog{}, databaseClassification{}, err
+	}
 	return catalog, classification, nil
 }
 
@@ -324,7 +329,9 @@ func loadMigrationCatalog(migrationFS fs.FS) (migrationCatalog, error) {
 	}
 	for _, baseline := range retiredBaselineLedgerAssets {
 		if baseline.version <= catalog.current {
-			catalog.byFilename[baseline.filename] = baseline
+			if _, packaged := catalog.byFilename[baseline.filename]; !packaged {
+				catalog.byFilename[baseline.filename] = baseline
+			}
 		}
 	}
 	if len(baselines) > 0 {

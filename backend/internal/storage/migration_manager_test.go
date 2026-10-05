@@ -16,7 +16,7 @@ import (
 
 var numberedMigrationFilePattern = regexp.MustCompile(`^[0-9]{3}_[a-z0-9][a-z0-9_]*\.sql$`)
 
-const latestNumberedMigrationVersion = 52
+const latestNumberedMigrationVersion = 53
 
 func TestMigrationChecksumNormalizesLineEndings(t *testing.T) {
 	lf := []byte("CREATE TABLE probe (id INTEGER);\n-- stable\n")
@@ -55,7 +55,7 @@ func TestMigrateFreshDatabaseReusesBaselineAcrossAppReleases(t *testing.T) {
 	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = ?", latestNumberedMigrationVersion).Scan(&filename); err != nil {
 		t.Fatal(err)
 	}
-	if filename != "baseline/052_v0.7.1.sql" {
+	if filename != "baseline/053_v0.7.1.sql" {
 		t.Fatalf("baseline history filename = %q", filename)
 	}
 }
@@ -112,8 +112,8 @@ func TestMigrateUpgradesExistingDatabaseThroughNumberedChain(t *testing.T) {
 	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = ?", latestNumberedMigrationVersion).Scan(&filename); err != nil {
 		t.Fatal(err)
 	}
-	if filename != "052_language_scoped_titles.sql" {
-		t.Fatalf("applied migration = %q, want 052_language_scoped_titles.sql", filename)
+	if filename != "053_language_scoped_titles.sql" {
+		t.Fatalf("applied migration = %q, want 053_language_scoped_titles.sql", filename)
 	}
 }
 
@@ -182,13 +182,13 @@ func TestMigrateUpgradesRetiredBaselineLedger(t *testing.T) {
 			name:            "schema version 031 applies the remaining numbered migration",
 			baseline:        "baseline/031_current.sql",
 			previousVersion: 31,
-			wantHistory:     "baseline/031_current.sql,032_shared_availability_watch.sql,033_metadata_sync_issues.sql,034_user_preferences.sql,035_remove_custom_workflow_definitions.sql,036_work_search_index.sql,037_list_and_foreign_key_indexes.sql,038_metadata_snapshot_card_summary.sql,039_reconfigure_follow_triggers.sql,040_hash_session_tokens.sql,041_creator_lookup_indexes.sql,042_snapshot_projection_state.sql,043_personal_listening_history.sql,044_library_upgrade.sql,045_work_metadata_link.sql,046_work_search_variant_title.sql,047_dlsite_genre_dictionary.sql,048_unfreeze_matching_titles.sql,049_shared_metadata_tags.sql,050_circle_identity_management.sql,051_metadata_tag_projection_queue.sql,052_language_scoped_titles.sql",
+			wantHistory:     "baseline/031_current.sql,032_shared_availability_watch.sql,033_metadata_sync_issues.sql,034_user_preferences.sql,035_remove_custom_workflow_definitions.sql,036_work_search_index.sql,037_list_and_foreign_key_indexes.sql,038_metadata_snapshot_card_summary.sql,039_reconfigure_follow_triggers.sql,040_hash_session_tokens.sql,041_creator_lookup_indexes.sql,042_snapshot_projection_state.sql,043_personal_listening_history.sql,044_library_upgrade.sql,045_work_metadata_link.sql,046_work_search_variant_title.sql,047_dlsite_genre_dictionary.sql,048_unfreeze_matching_titles.sql,049_shared_metadata_tags.sql,050_circle_identity_management.sql,051_favorite_list_icon.sql,052_metadata_tag_projection_queue.sql,053_language_scoped_titles.sql",
 		},
 		{
 			name:            "schema version 032 upgrades without replaying old migrations",
 			baseline:        "baseline/032_current.sql",
 			previousVersion: 32,
-			wantHistory:     "baseline/032_current.sql,033_metadata_sync_issues.sql,034_user_preferences.sql,035_remove_custom_workflow_definitions.sql,036_work_search_index.sql,037_list_and_foreign_key_indexes.sql,038_metadata_snapshot_card_summary.sql,039_reconfigure_follow_triggers.sql,040_hash_session_tokens.sql,041_creator_lookup_indexes.sql,042_snapshot_projection_state.sql,043_personal_listening_history.sql,044_library_upgrade.sql,045_work_metadata_link.sql,046_work_search_variant_title.sql,047_dlsite_genre_dictionary.sql,048_unfreeze_matching_titles.sql,049_shared_metadata_tags.sql,050_circle_identity_management.sql,051_metadata_tag_projection_queue.sql,052_language_scoped_titles.sql",
+			wantHistory:     "baseline/032_current.sql,033_metadata_sync_issues.sql,034_user_preferences.sql,035_remove_custom_workflow_definitions.sql,036_work_search_index.sql,037_list_and_foreign_key_indexes.sql,038_metadata_snapshot_card_summary.sql,039_reconfigure_follow_triggers.sql,040_hash_session_tokens.sql,041_creator_lookup_indexes.sql,042_snapshot_projection_state.sql,043_personal_listening_history.sql,044_library_upgrade.sql,045_work_metadata_link.sql,046_work_search_variant_title.sql,047_dlsite_genre_dictionary.sql,048_unfreeze_matching_titles.sql,049_shared_metadata_tags.sql,050_circle_identity_management.sql,051_favorite_list_icon.sql,052_metadata_tag_projection_queue.sql,053_language_scoped_titles.sql",
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -237,6 +237,9 @@ func TestMigrateUpgradesRetiredDevelopmentBaselines(t *testing.T) {
 		version, filename := retired.version, retired.filename
 		t.Run(filename, func(t *testing.T) {
 			previousCatalog := copyNumberedMigrationsThrough(t, sourceDir, version)
+			if version == 51 || version == 52 {
+				previousCatalog = copyMetadataMigrationsThrough(t, version)
+			}
 			db := openMigrationManagerDB(t)
 			if err := Migrate(db, previousCatalog); err != nil {
 				t.Fatalf("create schema version %03d database: %v", version, err)

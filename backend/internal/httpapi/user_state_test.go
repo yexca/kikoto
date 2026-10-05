@@ -333,3 +333,67 @@ func favoriteStateRequest(method string, target string, body string, user curren
 	}
 	return request.WithContext(context.WithValue(request.Context(), currentUserKey, user))
 }
+
+func TestFavoriteListIconsAreValidatedStoredAndNeverShownOnMarked(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO user_account (id, username, display_name, role) VALUES
+			(1, 'synthetic-user', 'Synthetic User', 'user');
+		INSERT INTO favorite_list (id, user_id, name, sort_order, kind, icon) VALUES
+			(11, 1, '', -1, 'marked', 'moon');
+	`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	user := currentUser{ID: 1, Permissions: []string{"library:read", "favorites:write"}}
+	decode := func(response *httptest.ResponseRecorder) favoriteListResponse {
+		t.Helper()
+		var list favoriteListResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &list); err != nil {
+			t.Fatal(err)
+		}
+		return list
+	}
+
+	created := httptest.NewRecorder()
+	server.createFavoriteList(created, favoriteStateRequest(http.MethodPost, "/api/favorite-lists", `{"name":"Example","icon":" moon "}`, user))
+	if created.Code != http.StatusCreated || decode(created).Icon != "moon" {
+		t.Fatalf("create status = %d, body = %s", created.Code, created.Body.String())
+	}
+	listID := strconv.FormatInt(decode(created).ID, 10)
+
+	renamed := httptest.NewRecorder()
+	server.updateFavoriteList(renamed, favoriteStateRequest(http.MethodPatch, "/api/favorite-lists/"+listID, `{"name":"Renamed"}`, user))
+	if renamed.Code != http.StatusOK || decode(renamed).Icon != "moon" {
+		t.Fatalf("rename kept icon status = %d, body = %s", renamed.Code, renamed.Body.String())
+	}
+
+	for _, body := range []string{`{"icon":"Moon"}`, `{"icon":"book open"}`, `{"icon":"` + strings.Repeat("a", 33) + `"}`} {
+		rejected := httptest.NewRecorder()
+		server.updateFavoriteList(rejected, favoriteStateRequest(http.MethodPatch, "/api/favorite-lists/"+listID, body, user))
+		if rejected.Code != http.StatusBadRequest {
+			t.Fatalf("update %s status = %d, body = %s", body, rejected.Code, rejected.Body.String())
+		}
+	}
+	invalidCreate := httptest.NewRecorder()
+	server.createFavoriteList(invalidCreate, favoriteStateRequest(http.MethodPost, "/api/favorite-lists", `{"name":"Other","icon":"../x"}`, user))
+	if invalidCreate.Code != http.StatusBadRequest {
+		t.Fatalf("invalid create status = %d, body = %s", invalidCreate.Code, invalidCreate.Body.String())
+	}
+
+	cleared := httptest.NewRecorder()
+	server.updateFavoriteList(cleared, favoriteStateRequest(http.MethodPatch, "/api/favorite-lists/"+listID, `{"icon":""}`, user))
+	if cleared.Code != http.StatusOK || decode(cleared).Icon != "" {
+		t.Fatalf("clear icon status = %d, body = %s", cleared.Code, cleared.Body.String())
+	}
+
+	listed := httptest.NewRecorder()
+	server.listFavoriteLists(listed, favoriteStateRequest(http.MethodGet, "/api/favorite-lists", "", user))
+	var lists []favoriteListResponse
+	if err := json.Unmarshal(listed.Body.Bytes(), &lists); err != nil {
+		t.Fatal(err)
+	}
+	if len(lists) != 2 || lists[0].Kind != "marked" || lists[0].Icon != "" {
+		t.Fatalf("lists = %#v", lists)
+	}
+}

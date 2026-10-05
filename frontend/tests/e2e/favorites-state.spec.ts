@@ -81,11 +81,12 @@ async function mockFavorites(
       return;
     }
     if (url.pathname === "/api/favorite-lists" && request.method() === "POST") {
-      const body = request.postDataJSON() as { name: string; description?: string };
+      const body = request.postDataJSON() as { name: string; description?: string; icon?: string };
       const list = favoriteListFixture({
         id: Math.max(...favoriteLists.map((item) => item.id)) + 1,
         name: body.name,
         description: body.description ?? "",
+        icon: body.icon ?? "",
         sortOrder: favoriteLists.filter((item) => item.kind === "user").length,
         kind: "user",
       });
@@ -96,7 +97,7 @@ async function mockFavorites(
     const favoriteListMatch = url.pathname.match(/^\/api\/favorite-lists\/(\d+)$/);
     if (favoriteListMatch && request.method() === "PATCH") {
       const id = Number(favoriteListMatch[1]);
-      const body = request.postDataJSON() as { name?: string; description?: string; sortOrder?: number };
+      const body = request.postDataJSON() as { name?: string; description?: string; icon?: string; sortOrder?: number };
       favoriteLists = favoriteLists.map((list) => (list.id === id ? { ...list, ...body } : list));
       const updated = favoriteLists.find((list) => list.id === id);
       if (!updated) {
@@ -213,17 +214,19 @@ async function mockFavorites(
   });
 }
 
-test("@desktop favorites keeps type and search left with work controls on the right", async ({ page }) => {
+test("@desktop favorites puts shelves in a collapsible rail beside search and work controls", async ({ page }) => {
   await mockFavorites(page, {
     sources: [exampleRemoteA],
   });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/favorites");
 
-  const type = page.getByRole("button", { name: "Favorite type: Works" });
+  const shelves = page.getByRole("navigation", { name: "Favorite shelves" });
   const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
   const resource = page.getByRole("button", { name: "Resource: Any available" });
-  await expect(type).toBeVisible();
+  await expect(shelves.getByRole("button", { name: /^All Favorites/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(shelves.getByRole("button", { name: /^Marked/ })).toBeVisible();
+  await expect(shelves.getByRole("button", { name: /^Circles/ })).toBeVisible();
   await expect(search).toBeVisible();
   await expect(resource).toBeVisible();
   await expect(page.getByRole("button", { name: "Sort: Marked or added" })).toBeVisible();
@@ -240,20 +243,28 @@ test("@desktop favorites keeps type and search left with work controls on the ri
   await expect.poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState?.availability)).toBe("remote");
   await expect.poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState?.sourceIDs)).toEqual([11]);
 
-  const listPicker = page.getByRole("button", { name: /^Favorite lists: All Favorites/ });
-  await expect(listPicker).toBeVisible();
-  await listPicker.click();
-  await expect(page.getByRole("menuitemradio", { name: /All Favorites/ })).toHaveAttribute("aria-checked", "true");
-  await expect(page.getByRole("menuitemradio", { name: /Marked/ })).toBeVisible();
-  await expect(page.getByRole("menuitem")).toHaveCount(0);
-  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Select works", exact: true }).click();
   await expect(page.getByRole("button", { name: "Exit selection", exact: true })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
   await page.getByRole("button", { name: "Exit selection", exact: true }).click();
-  await page.getByRole("button", { name: "Edit lists", exact: true }).click();
+
+  // Hidden names keep each shelf's accessible name, and the choice survives a reload.
+  await page.getByRole("button", { name: "Hide tab names" }).click();
+  await expect(shelves.getByRole("button", { name: /^Study/ })).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "Show tab names" }).click();
+  await expect(page.getByRole("button", { name: "Hide tab names" })).toBeVisible();
+
+  // The rail stays at its sticky offset when the page reaches its end.
+  await page.evaluate(() => window.scrollTo(0, 600));
+  const stickyTop = (await shelves.boundingBox())!.y;
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(async () => (await shelves.boundingBox())!.y).toBe(stickyTop);
+  await page.evaluate(() => window.scrollTo(0, 0));
+
+  await shelves.getByRole("button", { name: "Edit lists", exact: true }).click();
   const listManager = page.getByRole("dialog", { name: "Edit lists" });
   await expect(listManager).toBeVisible();
   await expect(listManager.getByRole("button", { name: "Rename: Study" })).toBeVisible();
@@ -262,10 +273,23 @@ test("@desktop favorites keeps type and search left with work controls on the ri
   const renameForm = listManager.getByRole("form", { name: "Rename list: Study" });
   await expect(renameForm).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(1);
+  await expect(renameForm.getByRole("radio", { name: "Default list icon" })).toHaveAttribute("aria-checked", "true");
   await renameForm.getByLabel("Name").fill("Focus");
   await renameForm.getByLabel("Description").fill("Deep listening");
+  await renameForm.getByRole("radio", { name: "Moon" }).click();
+  const renameRequest = page.waitForRequest(
+    (request) => request.method() === "PATCH" && /\/api\/favorite-lists\/2$/.test(request.url()),
+  );
   await renameForm.getByRole("button", { name: "Save", exact: true }).click();
+  expect((await renameRequest).postDataJSON()).toEqual(
+    expect.objectContaining({ name: "Focus", description: "Deep listening", icon: "moon" }),
+  );
   await expect(listManager.getByRole("button", { name: "Rename: Focus" })).toBeVisible();
+  await listManager.getByRole("button", { name: "Rename: Focus" }).click();
+  await expect(
+    listManager.getByRole("form", { name: "Rename list: Focus" }).getByRole("radio", { name: "Moon" }),
+  ).toHaveAttribute("aria-checked", "true");
+  await listManager.getByRole("button", { name: "Cancel", exact: true }).click();
 
   await listManager.getByRole("button", { name: "Add list", exact: true }).click();
   const addForm = listManager.getByRole("form", { name: "Add list" });
@@ -297,28 +321,25 @@ test("@desktop favorites keeps type and search left with work controls on the ri
   await expect(listManager).toBeVisible();
 
   await page.getByRole("button", { name: "Close favorite list editor" }).click();
-  await type.click();
-  await page.getByRole("menuitemradio", { name: "Circles" }).click();
+  await shelves.getByRole("button", { name: /^Circles/ }).click();
   await expect(page.getByPlaceholder("Search circles")).toBeVisible();
   await expect(page.getByRole("button", { name: /^Resource:/ })).toHaveCount(0);
 });
 
-test("mobile favorites collapses type and search into icon controls", async ({ page }) => {
+test("mobile favorites shows shelves as one row above search and icon controls", async ({ page }) => {
   await mockFavorites(page, {
     sources: [exampleRemoteA],
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/favorites");
 
-  const type = page.getByRole("button", { name: "Favorite type: Works" });
-  const search = page.getByRole("button", { name: "Search library" });
-  await expect(type).toBeVisible();
+  const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
   await expect(search).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Favorite shelves" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Resource: Any available" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Columns: Auto" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sort: Marked or added" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Items per page: 24" })).toBeVisible();
-  await expect(page.getByPlaceholder("Search title, code, circle, tag, or creator")).not.toBeVisible();
 
   const mobileListScroller = page.getByRole("region", { name: "Favorite list tabs" });
   const mobileListTab = mobileListScroller.locator("button").first();
@@ -340,7 +361,7 @@ test("mobile favorites collapses type and search into icon controls", async ({ p
   expect(mobileEditListsBox).not.toBeNull();
   expect(mobileEditListsBox!.height).toBeGreaterThanOrEqual(44);
   await expect(page.getByRole("button", { name: "Select works", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: /Study/ }).click();
+  await mobileListScroller.getByRole("button", { name: /^Study/ }).click();
   await mobileEditLists.click();
   const mobileListManager = page.getByRole("dialog", { name: "Edit lists" });
   await expect(mobileListManager).toBeVisible();
@@ -360,26 +381,21 @@ test("mobile favorites collapses type and search into icon controls", async ({ p
   const topPreviousPage = page.getByRole("button", { name: "Previous page" }).first();
   await expect(topPreviousPage).toBeVisible();
 
-  const toolbar = page.locator("[data-toast-avoid]:visible").filter({ has: type }).first();
+  const toolbar = page.locator("[data-toast-avoid]:visible").filter({ has: search }).first();
   const toolbarBox = await toolbar.boundingBox();
   expect(toolbarBox).not.toBeNull();
   expect(toolbarBox!.y).toBeGreaterThanOrEqual(0);
   expect(toolbarBox!.y + toolbarBox!.height).toBeLessThanOrEqual(mobileViewport!.height);
 
-  await type.click();
-  await expect(page.getByRole("menuitemradio", { name: "Circles" })).toBeVisible();
-  await page.getByRole("menuitemradio", { name: "Circles" }).click();
-  await expect(page.getByRole("button", { name: "Favorite type: Circles" })).toBeVisible();
+  await mobileListScroller.getByRole("button", { name: /^Circles/ }).click();
+  const circleSearch = page.getByPlaceholder("Search circles");
+  await expect(circleSearch).toBeVisible();
   await expect(page.getByRole("button", { name: /^Resource:/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Columns:/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Sort:/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Items per page:/ })).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Search library" }).click();
-  const circleSearch = page.locator('input[placeholder="Search circles"]:visible');
-  await expect(circleSearch).toBeVisible();
   await circleSearch.fill("Example");
-  await expect(page.getByRole("button", { name: "Search library" })).toBeVisible();
+  await expect(circleSearch).toHaveValue("Example");
 });
 
 test("favorites detail Back and mobile tab switches preserve filters, selection, and scroll", async ({ page }) => {
@@ -391,7 +407,7 @@ test("favorites detail Back and mobile tab switches preserve filters, selection,
   await page.getByRole("button", { name: "Sort: Sales" }).click();
   await expect(page.getByRole("menuitemradio", { name: "Sales" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("textbox")).toHaveCount(0);
+  await expect(page.getByRole("menuitemradio", { name: "Sales" })).toHaveCount(0);
   await page.getByRole("button", { name: "Select works", exact: true }).click();
   await page.locator('[aria-label="Select work"]').nth(17).click();
   const target = page.getByText("Favorite work 18", { exact: true });
@@ -460,6 +476,7 @@ test("switching favorite lists keeps the entire playlist row stable while works 
   await page.goto("/favorites");
 
   const listTabs = page.getByRole("region", { name: "Favorite list tabs" });
+  const firstWork = page.locator('[data-favorite-work-id="1"]').getByText("Favorite work 1", { exact: true });
   const playlistButtons = [
     listTabs.locator("button").nth(0),
     listTabs.locator("button").nth(1),
@@ -467,7 +484,7 @@ test("switching favorite lists keeps the entire playlist row stable while works 
     page.getByRole("button", { name: "Edit lists", exact: true }),
   ];
   await expect(playlistButtons[0]).toBeVisible();
-  await expect(page.getByText("Favorite work 1", { exact: true })).toBeVisible();
+  await expect(firstWork).toBeVisible();
   await playlistButtons[3].click();
   const listManager = page.getByRole("dialog", { name: "Edit lists" });
   await expect(listManager).toBeVisible();
@@ -480,7 +497,7 @@ test("switching favorite lists keeps the entire playlist row stable while works 
   await playlistButtons[2].click();
   await listRequestStarted;
   await expect(playlistButtons[2]).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByText("Favorite work 1", { exact: true })).toBeVisible();
+  await expect(firstWork).toBeVisible();
   await expect(page.getByRole("status", { name: "Loading favorite works" })).toHaveCount(0);
   for (const button of playlistButtons) await expect(button).toBeVisible();
   const positionsWhileLoading = await Promise.all(playlistButtons.map((button) => button.boundingBox()));
@@ -489,14 +506,14 @@ test("switching favorite lists keeps the entire playlist row stable while works 
   expect(worksRegionWhileLoading).toEqual(worksRegionBefore);
 
   releaseListRequest();
-  await expect(page.getByText("Favorite work 1", { exact: true })).toBeVisible();
+  await expect(firstWork).toBeVisible();
 });
 
 test("unmarking a work refreshes All Favorites and removes it immediately", async ({ page }) => {
   await mockFavorites(page, { interactiveQuickMark: true });
   await page.goto("/favorites");
 
-  await expect(page.getByText("Favorite work 1", { exact: true })).toBeVisible();
+  await expect(page.locator('[data-favorite-work-id="1"]').getByText("Favorite work 1", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Mark: Listening" }).first().click();
   await page.getByRole("button", { name: "Unmarked" }).click();
 
