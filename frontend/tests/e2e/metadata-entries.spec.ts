@@ -36,6 +36,62 @@ async function metadataWorkEditor(page: Page) {
   );
 }
 
+test("language title drafts use source placeholders, partial saves and a scoped reset", async ({ page }) => {
+  await metadataWorkEditor(page);
+  const detail = workDetailFixture(work, {
+    manualOverrides: { titles: { "ja-jp": "Example Japanese" } },
+    titleChoices: {
+      "": { title: "Example original", language: "", source: "original", code: work.primaryCode, description: "" },
+      "ja-jp": {
+        title: "Example Japanese",
+        language: "ja-jp",
+        source: "manual",
+        code: work.primaryCode,
+        description: "",
+      },
+      "zh-cn": { title: "Example Chinese", language: "zh-cn", source: "dlsite", code: "RJ00000001", description: "" },
+    },
+  });
+  await page.route("**/api/works/1?includeMedia=false", (route) => route.fulfill({ json: detail }));
+  const writes: unknown[] = [];
+  const resets: string[] = [];
+  await page.route("**/api/works/1/manual-overrides", (route) => {
+    writes.push(route.request().postDataJSON());
+    return route.fulfill({ json: detail.manualOverrides });
+  });
+  await page.route("**/api/works/1/manual-overrides/title?*", (route) => {
+    resets.push(new URL(route.request().url()).searchParams.get("language") ?? "");
+    return route.fulfill({ json: { ok: true, deleted: 1 } });
+  });
+  await page.goto("/metadata");
+  const open = () => page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
+  await open();
+  let dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  const title = dialog.getByRole("textbox", { name: "Title", exact: true });
+  await expect(title).toHaveValue("");
+  await expect(title).toHaveAttribute("placeholder", "Example original");
+  await expect(dialog.getByText("Current source: Original title", { exact: true })).toBeVisible();
+  await dialog.getByRole("combobox", { name: "Title language", exact: true }).selectOption("zh-cn");
+  await expect(title).toHaveAttribute("placeholder", "Example Chinese");
+  await expect(dialog.getByText("Current source: DLsite edition RJ00000001", { exact: true })).toBeVisible();
+  await title.fill("【简体中文版】Example authored Chinese");
+  await dialog.getByRole("combobox", { name: "Title language", exact: true }).selectOption("en-us");
+  await title.fill("Example authored English");
+  await dialog.getByRole("combobox", { name: "Title language", exact: true }).selectOption("zh-cn");
+  await expect(title).toHaveValue("【简体中文版】Example authored Chinese");
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(writes).toEqual([
+    { titles: { "zh-cn": "【简体中文版】Example authored Chinese", "en-us": "Example authored English" } },
+  ]);
+  await open();
+  dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  await dialog.getByRole("combobox", { name: "Title language", exact: true }).selectOption("ja-jp");
+  await dialog.getByRole("button", { name: "Reset title", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(resets).toEqual(["ja-jp"]);
+});
+
 test("@desktop cover-only metadata saves do not freeze any displayed scalar fields", async ({ page }) => {
   await metadataWorkEditor(page);
   await page.route("**/api/works/1/cover-candidates", (route) =>
@@ -269,6 +325,40 @@ test("hidden tag matches are explained and cannot be silently created in the wor
   await expect(dialog.getByRole("button", { name: "Example hidden tag · Hidden", exact: true })).toBeDisabled();
   await expect(dialog.getByRole("alert")).toContainText("Unhide it in Metadata");
   await expect(dialog.getByRole("button", { name: "Create tag: Example hidden tag", exact: true })).toHaveCount(0);
+});
+
+test("admin merge targets mark hidden tags and explain the resulting visibility", async ({ page }) => {
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    authenticated: true,
+    permissions: ["library:read", "library:write"],
+  });
+  const entry = metadataTagFixture();
+  const target = metadataTagFixture({
+    id: 2,
+    displayName: "Example hidden target",
+    hidden: true,
+    resolvedHidden: true,
+  });
+  await page.route("**/api/metadata/tags?*", (route) =>
+    route.fulfill({
+      json: { tags: [entry, target], total: 2, page: 1, pageSize: 25 } satisfies ApiResponse<"listMetadataTags">,
+    }),
+  );
+  let merge: unknown;
+  await page.route("**/api/metadata/tags/1/merge", (route) => {
+    merge = route.request().postDataJSON();
+    return route.fulfill({ json: { ...entry, mergedIntoTagId: 2, resolvedHidden: true } });
+  });
+  await page.goto("/metadata?view=tags");
+  await page.getByRole("button", { name: "Manage Synthetic tag", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Merge target", { exact: true }).fill("Example hidden");
+  await dialog.getByRole("button", { name: "Example hidden target · Hidden", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toHaveText(
+    "The target is hidden. After merging, this tag will be hidden on all works.",
+  );
+  await dialog.getByRole("button", { name: "Merge", exact: true }).click();
+  await expect.poll(() => merge).toEqual({ targetTagId: 2 });
 });
 
 test("merged tag names complete as the final target and save that identity", async ({ page }) => {

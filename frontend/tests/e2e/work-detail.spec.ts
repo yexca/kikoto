@@ -11,6 +11,66 @@ import {
 import type { MaintenanceWorkPage, Work, WorkTranslation } from "../../src/lib/api";
 import { mediaItemFixture, mediaLocationFixture, workflowRunDetailFixture, workflowRunFixture } from "./fixtures/api";
 
+test("selected metadata title and introduction follow playback without changing directory edition", async ({
+  page,
+}) => {
+  const introductionRequests: string[] = [];
+  await page.route("https://media.example.invalid/**", (route) => {
+    introductionRequests.push(route.request().url());
+    return route.abort();
+  });
+  await mockApplication(
+    page,
+    undefined,
+    false,
+    1,
+    0,
+    [mediaFixture(1, "track.mp3", "RJ00000000/track.mp3", "audio")],
+    undefined,
+    {
+      authenticated: true,
+      detailMetadataPresentation: {
+        defaultVariantKey: "chinese",
+        variants: [
+          {
+            key: "original",
+            language: "ja-jp",
+            title: "Example original",
+            description: "Example Japanese introduction",
+            tags: [],
+            origin: true,
+          },
+          {
+            key: "chinese",
+            language: "zh-cn",
+            title: "Example Chinese",
+            description:
+              '<p>Example Chinese introduction</p><script>unsafe()</script><img src="https://media.example.invalid/intro-image.png"><iframe src="https://media.example.invalid/frame"></iframe>',
+            tags: [],
+            origin: false,
+          },
+        ],
+      },
+    },
+  );
+  await page.goto("/RJ00000000");
+  await expect(page.getByRole("heading", { name: "Example Chinese", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Info", exact: true }).click();
+  const introduction = page.getByRole("region", { name: "Description", exact: true });
+  await expect(introduction).toContainText("Example Chinese introduction");
+  await expect(introduction).not.toContainText("unsafe");
+  expect(introductionRequests).toEqual([]);
+  await page.getByRole("button", { name: "Metadata language", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "Original · Japanese", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Example original", exact: true })).toBeVisible();
+  await expect(introduction).toContainText("Example Japanese introduction");
+  await page.getByRole("button", { name: "Directory", exact: true }).click();
+  await page.getByTestId("directory-file-row").filter({ hasText: "track.mp3" }).click();
+  await expect
+    .poll(async () => (await readScopedPlayerState(page, playerQueueStorageBaseKey, 1))?.queue?.[0]?.workTitle)
+    .toBe("Example original");
+});
+
 test("unknown routes and missing work codes render not found states", async ({ page }) => {
   await mockApplication(page);
   await page.goto("/missing-route");

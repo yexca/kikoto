@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/metadatatitles"
 	"strings"
 )
 
@@ -38,6 +40,27 @@ func (s *Server) loadWorkTranslations(ctx context.Context, primaryCode string, b
 	for _, item := range materialized {
 		if !mergeMaterializedWorkTranslation(translations, seen, item, primaryCode) {
 			appendWorkTranslation(&translations, seen, item, primaryCode)
+		}
+	}
+	ids := []int64{}
+	for _, item := range translations {
+		if item.WorkID != nil {
+			ids = append(ids, *item.WorkID)
+		}
+	}
+	inputs, err := s.loadWorkTitleInputs(ctx, ids, false)
+	if err != nil {
+		return nil, err
+	}
+	for i := range translations {
+		item := &translations[i]
+		item.Title = metadatatitles.Display(item.Title, item.TranslationKind == "official" || item.TranslationKind == "volunteer")
+		if item.WorkID != nil {
+			input := inputs[*item.WorkID]
+			selected, _ := metadatatitles.ForLanguage(input.Variants, input.Manual, dlsite.EditionMetadataLanguage(item.MetadataLanguage), input.Fallback)
+			if selected.Title != "" {
+				item.Title = selected.Title
+			}
 		}
 	}
 	if len(translations) <= 1 {

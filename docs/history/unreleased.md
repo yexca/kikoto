@@ -1,5 +1,15 @@
 # Unreleased
 
+- Language-scoped manual titles follow configured language priority before DLsite
+  editions. Editors show sources as placeholders, preserve language drafts, save
+  only changes and reset one scope. Known leading translation labels are removed
+  only for provider display, preserving raw values and authored titles. Detail
+  introductions follow the selected edition; playback queues use the display
+  title. Every manual title language remains searchable.
+- Admin tag merge targets label hidden tags and explain that the merged tag will
+  be hidden on all works. Remote tags are documented on voice actor remote-work
+  lists in all five languages.
+
 - Metadata edits send only changed fields; PATCH leaves omitted fields intact.
   Cover-only edits no longer freeze projected titles or creator metadata.
 - Admin now has `library:write` for work metadata, covers, metadata links,
@@ -47,8 +57,8 @@
   entries and work counts to demo works and withholds circle merge history.
 - Circle management supports manual names, confirmed aliases, and reviewed,
   reversible merges that transfer creator relations and personal circle data.
-- Schema 051 is packaged in `051_v0.7.1.sql`; released baselines remain intact.
-  The superseded development schema-050 baseline is retired with its ledger
-  checksum retained for upgrades.
+- Schema 052 is packaged in `052_v0.7.1.sql`; released baselines remain intact.
+  The superseded development schema-050 and schema-051 baselines are retired with their ledger
+  checksums retained for upgrades.
 
 Changes through v0.7.1 are summarized in [v0.7.1](v0.7.1.md).

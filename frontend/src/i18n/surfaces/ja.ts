@@ -1,6 +1,14 @@
 import { surfaceEnglish } from "./en";
 
 export const surfaceJapanese = {
+  workTitles: {
+    language: "タイトルの言語",
+    manual: "手動タイトル",
+    dlsite: "DLsite 版 {{code}}",
+    original: "原版タイトル",
+    source: "現在の出典: {{source}}",
+    description: "作品紹介",
+  },
   workManagement: {
     all: "すべて",
     catalogDescription: "保存済みの作品メタデータを作品ファミリーごとに表示します。",
@@ -58,6 +66,7 @@ export const surfaceJapanese = {
     mergeTarget: "統合先",
     searchMergeTarget: "名前で検索",
     mergeConfirm: "{{source}} を {{target}} に統合します。作品のタグは統合先を使用し、この対応は取り消せます。",
+    mergeHiddenWarning: "統合先は非表示です。統合後、このタグはすべての作品で非表示になります。",
     undoMerge: "統合を取り消す",
     mergedFrom: "統合元",
     providerName: "提供元の名前",

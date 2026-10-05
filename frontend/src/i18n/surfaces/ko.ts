@@ -1,6 +1,14 @@
 import { surfaceEnglish } from "./en";
 
 export const surfaceKorean = {
+  workTitles: {
+    language: "제목 언어",
+    manual: "수동 제목",
+    dlsite: "DLsite 버전 {{code}}",
+    original: "원본 제목",
+    source: "현재 출처: {{source}}",
+    description: "작품 소개",
+  },
   workManagement: {
     all: "전체",
     catalogDescription: "저장된 작품 메타데이터를 작품 계열별로 표시합니다.",
@@ -58,6 +66,7 @@ export const surfaceKorean = {
     mergeTarget: "병합 대상",
     searchMergeTarget: "이름으로 검색",
     mergeConfirm: "{{source}}을(를) {{target}}에 병합합니다. 작품 태그는 대상을 사용하며 이 연결은 취소할 수 있습니다.",
+    mergeHiddenWarning: "대상이 숨겨져 있습니다. 병합 후 이 태그는 모든 작품에서 숨겨집니다.",
     undoMerge: "병합 취소",
     mergedFrom: "병합 원본",
     providerName: "제공자 이름",

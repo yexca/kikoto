@@ -20,6 +20,7 @@ import (
 
 type workManualOverrides struct {
 	Title       *string                `json:"title,omitempty"`
+	Titles      map[string]string      `json:"titles,omitempty"`
 	Circle      *manualOverrideEntity  `json:"circle,omitempty"`
 	Series      *manualOverrideSeries  `json:"series,omitempty"`
 	VoiceActors []manualOverridePerson `json:"voiceActors,omitempty"`
@@ -49,6 +50,7 @@ type manualOverrideCover struct {
 }
 
 type manualOverrideRow struct {
+	Language  string
 	FieldName string
 	ValueJSON string
 	AssetPath string
@@ -64,6 +66,7 @@ type workCoverCandidate struct {
 }
 
 type workManualOverridePayload struct {
+	Titles      map[string]*string     `json:"titles"`
 	Title       *string                `json:"title"`
 	Circle      *manualOverrideEntity  `json:"circle"`
 	Series      *manualOverrideSeries  `json:"series"`
@@ -116,6 +119,22 @@ func (s *Server) updateWorkManualOverrides(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid override fields"})
 		return
 	}
+	if _, legacy := fields["title"]; legacy {
+		if _, scoped := fields["titles"]; scoped {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "use title or titles, not both"})
+			return
+		}
+	}
+	if _, present := fields["titles"]; present && payload.Titles == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "titles must be a language map"})
+		return
+	}
+	for language := range payload.Titles {
+		if !validTitleLanguage(language) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid title language"})
+			return
+		}
+	}
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeError(w, err)
@@ -144,6 +163,13 @@ func (s *Server) updateWorkManualOverrides(w http.ResponseWriter, r *http.Reques
 // empty values remove only the corresponding override.
 func patchManualOverride(ctx context.Context, tx *sql.Tx, workID int64, field string, payload workManualOverridePayload, userID int64) error {
 	switch field {
+	case "titles":
+		for language, value := range payload.Titles {
+			if err := upsertManualTitle(ctx, tx, workID, language, value, userID); err != nil {
+				return err
+			}
+		}
+		return nil
 	case "title":
 		return upsertManualTextOverride(ctx, tx, workID, field, payload.Title, userID)
 	case "circle":
@@ -201,13 +227,18 @@ func (s *Server) deleteWorkManualOverride(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid override field"})
 		return
 	}
+	language := r.URL.Query().Get("language")
+	if !validTitleLanguage(language) || (field != "title" && language != "") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid override language"})
+		return
+	}
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	result, err := tx.ExecContext(r.Context(), "DELETE FROM work_manual_override WHERE work_id = ? AND field_name = ?", workID, field)
+	result, err := tx.ExecContext(r.Context(), "DELETE FROM work_manual_override WHERE work_id = ? AND field_name = ? AND language = ?", workID, field, language)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -271,7 +302,7 @@ func (s *Server) setWorkCoverOverride(w http.ResponseWriter, r *http.Request) {
 	_, err = s.db.ExecContext(r.Context(), `
 		INSERT INTO work_manual_override (work_id, field_name, value_json, asset_path, updated_by_user_id, created_at, updated_at)
 		VALUES (?, 'cover', ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		ON CONFLICT(work_id, field_name) DO UPDATE SET
+		ON CONFLICT(work_id, field_name, language) DO UPDATE SET
 			value_json = excluded.value_json,
 			asset_path = excluded.asset_path,
 			updated_by_user_id = excluded.updated_by_user_id,
@@ -297,7 +328,7 @@ func (s *Server) workIDExists(ctx context.Context, workID int64) bool {
 
 func (s *Server) loadWorkManualOverrides(ctx context.Context, workID int64) (workManualOverrides, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT field_name, value_json, asset_path
+		SELECT field_name, value_json, asset_path, language
 		FROM work_manual_override
 		WHERE work_id = ?
 	`, workID)
@@ -308,7 +339,7 @@ func (s *Server) loadWorkManualOverrides(ctx context.Context, workID int64) (wor
 	overrides := workManualOverrides{}
 	for rows.Next() {
 		var row manualOverrideRow
-		if err := rows.Scan(&row.FieldName, &row.ValueJSON, &row.AssetPath); err != nil {
+		if err := rows.Scan(&row.FieldName, &row.ValueJSON, &row.AssetPath, &row.Language); err != nil {
 			return workManualOverrides{}, err
 		}
 		s.applyManualOverrideRow(&overrides, row)
@@ -322,7 +353,13 @@ func (s *Server) applyManualOverrideRow(overrides *workManualOverrides, row manu
 		var value string
 		if err := json.Unmarshal([]byte(row.ValueJSON), &value); err == nil && strings.TrimSpace(value) != "" {
 			value = strings.TrimSpace(value)
-			overrides.Title = &value
+			if overrides.Titles == nil {
+				overrides.Titles = map[string]string{}
+			}
+			overrides.Titles[row.Language] = value
+			if row.Language == "" {
+				overrides.Title = &value
+			}
 		}
 	case "circle":
 		var value manualOverrideEntity
@@ -386,8 +423,18 @@ func (s *Server) applyManualOverridesToDetail(ctx context.Context, work *workDet
 		return err
 	}
 	work.ManualOverrides = overrides
-	if overrides.Title != nil {
-		work.Title = *overrides.Title
+	selectedTitle, choices, err := s.loadWorkTitleSelection(ctx, work.ID)
+	if err != nil {
+		return err
+	}
+	work.Title = selectedTitle.Title
+	work.Description = selectedTitle.Description
+	work.TitleChoices = choices
+	for _, variant := range work.MetadataView.Variants {
+		if variant.Key == work.MetadataView.DefaultVariantKey {
+			work.Title, work.Description = variant.Title, variant.Description
+			break
+		}
 	}
 	if overrides.Circle != nil {
 		work.Circle = overrides.Circle.Name
@@ -416,9 +463,12 @@ func (s *Server) applyManualOverridesToCircleWork(ctx context.Context, work *cir
 	if err != nil {
 		return err
 	}
-	if overrides.Title != nil {
-		work.Title = *overrides.Title
+	selectedTitle, choices, err := s.loadWorkTitleSelection(ctx, *work.WorkID)
+	if err != nil {
+		return err
 	}
+	work.Title = selectedTitle.Title
+	_ = choices
 	if overrides.Circle != nil {
 		work.Circle = overrides.Circle.Name
 		work.CircleExternalID = overrides.Circle.ExternalID
@@ -445,9 +495,12 @@ func (s *Server) applyManualOverridesToVoiceWork(ctx context.Context, work *voic
 	if err != nil {
 		return err
 	}
-	if overrides.Title != nil {
-		work.Title = *overrides.Title
+	selectedTitle, choices, err := s.loadWorkTitleSelection(ctx, work.WorkID)
+	if err != nil {
+		return err
 	}
+	work.Title = selectedTitle.Title
+	_ = choices
 	if overrides.Circle != nil {
 		work.Circle = overrides.Circle.Name
 		work.CircleExternalID = overrides.Circle.ExternalID
@@ -587,7 +640,7 @@ func (s *Server) copyManualCoverFromLocation(ctx context.Context, workID int64, 
 
 func upsertManualTextOverride(ctx context.Context, tx *sql.Tx, workID int64, field string, value *string, userID int64) error {
 	if value == nil || strings.TrimSpace(*value) == "" {
-		_, err := tx.ExecContext(ctx, "DELETE FROM work_manual_override WHERE work_id = ? AND field_name = ?", workID, field)
+		_, err := tx.ExecContext(ctx, "DELETE FROM work_manual_override WHERE work_id = ? AND field_name = ? AND language = ''", workID, field)
 		return err
 	}
 	trimmed := strings.TrimSpace(*value)
@@ -596,7 +649,7 @@ func upsertManualTextOverride(ctx context.Context, tx *sql.Tx, workID int64, fie
 
 func upsertManualJSONOverride(ctx context.Context, tx *sql.Tx, workID int64, field string, value any, userID int64) error {
 	if value == nil {
-		_, err := tx.ExecContext(ctx, "DELETE FROM work_manual_override WHERE work_id = ? AND field_name = ?", workID, field)
+		_, err := tx.ExecContext(ctx, "DELETE FROM work_manual_override WHERE work_id = ? AND field_name = ? AND language = ''", workID, field)
 		return err
 	}
 	return upsertManualOverride(ctx, tx, workID, field, mustJSON(value), "", userID)
@@ -606,7 +659,7 @@ func upsertManualOverride(ctx context.Context, tx *sql.Tx, workID int64, field s
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO work_manual_override (work_id, field_name, value_json, asset_path, updated_by_user_id, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		ON CONFLICT(work_id, field_name) DO UPDATE SET
+		ON CONFLICT(work_id, field_name, language) DO UPDATE SET
 			value_json = excluded.value_json,
 			asset_path = excluded.asset_path,
 			updated_by_user_id = excluded.updated_by_user_id,
@@ -767,4 +820,23 @@ func deleteManualOverrideRelations(ctx context.Context, tx *sql.Tx, workID int64
 	default:
 		return nil
 	}
+}
+
+func validTitleLanguage(language string) bool {
+	switch language {
+	case "", "ja-jp", "zh-cn", "zh-tw", "en-us", "ko-kr":
+		return true
+	}
+	return false
+}
+
+func upsertManualTitle(ctx context.Context, tx *sql.Tx, workID int64, language string, value *string, userID int64) error {
+	if value == nil || strings.TrimSpace(*value) == "" {
+		_, err := tx.ExecContext(ctx, "DELETE FROM work_manual_override WHERE work_id=? AND field_name='title' AND language=?", workID, language)
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO work_manual_override(work_id,field_name,language,value_json,updated_by_user_id)
+ VALUES (?, 'title', ?, ?, ?) ON CONFLICT(work_id,field_name,language) DO UPDATE SET
+ value_json=excluded.value_json,updated_by_user_id=excluded.updated_by_user_id,updated_at=CURRENT_TIMESTAMP`, workID, language, mustJSON(strings.TrimSpace(*value)), userID)
+	return err
 }

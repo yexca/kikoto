@@ -11,6 +11,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metadatatags"
+	"github.com/yexca/kikoto/backend/internal/metadatatitles"
 	"github.com/yexca/kikoto/backend/internal/metasync"
 )
 
@@ -37,6 +38,14 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 				break
 			}
 		}
+	}
+	overrides, err := s.loadWorkManualOverrides(ctx, workID)
+	if err != nil {
+		return result, err
+	}
+	selectedTitle, choices, err := s.loadWorkTitleSelection(ctx, workID)
+	if err != nil {
+		return result, err
 	}
 	seen := map[string]bool{}
 	for _, variant := range variants {
@@ -67,15 +76,83 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 			language = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(variant.RequestLocale), "_", "-"))
 		}
 		seen[key] = true
+		title := metadatatitles.Display(variant.Title, variant.Translation)
+		source := "dlsite"
+		if choice, ok := choices[language]; ok && choice.Source == "manual" {
+			title, source = choice.Title, choice.Source
+		}
 		result.Variants = append(result.Variants, workMetadataVariant{
-			Key: key, Language: language, Title: strings.TrimSpace(variant.Title),
+			Key: key, Language: language, Title: title, Description: variant.Description, TitleSource: source,
 			Tags: cleanProjectedTags(tags), Origin: variant.IsCanonical,
 		})
 		if selectedOK && selected.ID == variant.ID {
 			result.DefaultVariantKey = key
 		}
 	}
+	fallbackTags := []string{}
+	for _, variant := range result.Variants {
+		if variant.Key == result.DefaultVariantKey {
+			fallbackTags = variant.Tags
+			break
+		}
+	}
+	if len(result.Variants) == 0 && len(overrides.Titles) > 0 {
+		shared, projected, err := s.loadProjectedDLsiteTags(ctx, workID)
+		if err != nil {
+			return result, err
+		}
+		var snapshot string
+		err = s.db.QueryRowContext(ctx, `SELECT snapshot.snapshot_json FROM metadata_snapshot AS snapshot
+   JOIN metadata_provider AS provider ON provider.id=snapshot.provider_id
+   WHERE snapshot.work_id=? AND provider.code='dlsite' ORDER BY snapshot.fetched_at DESC,snapshot.id DESC LIMIT 1`, workID).Scan(&snapshot)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return result, err
+		}
+		fallbackTags = presentProjectedTags(parseDLsiteSnapshot(snapshot).Tags, shared, projected)
+		originTitle := choices["origin"]
+		result.Variants = append(result.Variants, workMetadataVariant{PresentationOnly: true, Key: originTitle.Code, Language: originTitle.Language, Title: originTitle.Title, Description: originTitle.Description, TitleSource: originTitle.Source, Origin: true, Tags: fallbackTags})
+		result.DefaultVariantKey = originTitle.Code
+	}
+	if canonical || len(variants) == 0 {
+		matched := false
+		for _, variant := range result.Variants {
+			if (variant.Language == selectedTitle.Language || selectedTitle.Language == "") && variant.Key == selectedTitle.Code {
+				result.DefaultVariantKey, matched = variant.Key, true
+				break
+			}
+		}
+		if !matched && selectedTitle.Title != "" && len(result.Variants) > 0 {
+			tags := result.Variants[0].Tags
+			for _, variant := range result.Variants {
+				if variant.Key == result.DefaultVariantKey {
+					tags = variant.Tags
+				}
+			}
+			key := "manual:" + selectedTitle.Language
+			result.Variants = append(result.Variants, workMetadataVariant{PresentationOnly: true, Key: key, Language: selectedTitle.Language, Title: selectedTitle.Title, Description: selectedTitle.Description, TitleSource: selectedTitle.Source, Tags: tags})
+			result.DefaultVariantKey = key
+		}
+	}
 	orderWorkMetadataVariants(result.Variants, s.preferredMetadataLanguages(ctx))
+	for _, language := range []string{"ja-jp", "zh-cn", "zh-tw", "en-us", "ko-kr"} {
+		choice := choices[language]
+		if overrides.Titles[language] == "" {
+			continue
+		}
+		exists := false
+		for _, variant := range result.Variants {
+			if variant.Language == language {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			result.Variants = append(result.Variants, workMetadataVariant{PresentationOnly: true, Key: "manual:" + language, Language: language, Title: choice.Title, Description: choice.Description, TitleSource: choice.Source, Tags: fallbackTags})
+			if selectedTitle.Language == language {
+				result.DefaultVariantKey = "manual:" + language
+			}
+		}
+	}
 	if result.DefaultVariantKey == "" && len(result.Variants) > 0 {
 		result.DefaultVariantKey = result.Variants[0].Key
 	}
@@ -129,7 +206,7 @@ func (s *Server) loadProjectedDLsiteMetadata(ctx context.Context, workID int64) 
 			return "", nil, false, err
 		}
 		tags, err := metadatatags.Presentation(ctx, s.db, workID, selected.WorkID, legacy)
-		return strings.TrimSpace(selected.Title), cleanProjectedTags(tags), true, err
+		return metadatatitles.Display(selected.Title, selected.Translation), cleanProjectedTags(tags), true, err
 	}
 	tags, err := metadatatags.Read(ctx, s.db, workID)
 	if err != nil {

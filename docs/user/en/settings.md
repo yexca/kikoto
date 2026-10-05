@@ -3,6 +3,10 @@
 
 Settings exposes account controls, playback preferences, and recommendation preferences. Appearance and UI language are available from the header appearance menu. Instance and user administration remain in Maintenance.
 
+## Multilingual titles
+
+For each preferred metadata language, Kikoto tries its manual title, the all-language manual title, and then that language’s DLsite edition. `Origin` uses the original edition’s declared language; an unknown language is not guessed. If nothing matches, the original title is used. Circle, series, and voice-actor overrides remain shared across languages.
+
 ## Current Settings
 
 - Update the authenticated user's display name.

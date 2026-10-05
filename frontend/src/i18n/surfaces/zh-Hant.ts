@@ -1,6 +1,14 @@
 import { surfaceEnglish } from "./en";
 
 export const surfaceHant = {
+  workTitles: {
+    language: "標題語言",
+    manual: "手動標題",
+    dlsite: "DLsite 版本 {{code}}",
+    original: "原版標題",
+    source: "目前來源：{{source}}",
+    description: "作品簡介",
+  },
   workManagement: {
     all: "全部",
     catalogDescription: "依作品系列彙整顯示所有已儲存的作品中繼資料。",
@@ -58,6 +66,7 @@ export const surfaceHant = {
     mergeTarget: "合併目標",
     searchMergeTarget: "依名稱搜尋",
     mergeConfirm: "將 {{source}} 合併到 {{target}}。作品標籤將使用目標標籤，之後可以取消對應。",
+    mergeHiddenWarning: "目標標籤已隱藏。合併後，此標籤將在所有作品中隱藏。",
     undoMerge: "復原合併",
     mergedFrom: "合併來源",
     providerName: "來源名稱",

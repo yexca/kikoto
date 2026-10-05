@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/library"
+	"github.com/yexca/kikoto/backend/internal/metadatatitles"
 )
 
 func (s *Server) enrichLibraryWorkSummaries(ctx context.Context, userID int64, works []libraryWorkSummary) error {
@@ -26,6 +27,15 @@ func (s *Server) enrichLibraryWorkSummaries(ctx context.Context, userID int64, w
 		return err
 	}
 	s.applyLibrarySummaryEnrichment(works, data)
+	inputs, err := s.loadWorkTitleInputs(ctx, workIDs, false)
+	if err != nil {
+		return err
+	}
+	priorities := s.preferredMetadataLanguages(ctx)
+	for i := range works {
+		input := inputs[works[i].ID]
+		works[i].Title = metadatatitles.Select(input.Variants, input.Manual, priorities, input.Fallback).Title
+	}
 	return nil
 }
 
@@ -123,7 +133,7 @@ func (s *Server) applyLibrarySummaryEnrichment(works []libraryWorkSummary, data 
 			overrides := workManualOverrides{}
 			for _, row := range rows {
 				s.applyManualOverrideRow(&overrides, manualOverrideRow{
-					FieldName: row.FieldName, ValueJSON: row.ValueJSON, AssetPath: row.AssetPath,
+					FieldName: row.FieldName, ValueJSON: row.ValueJSON, AssetPath: row.AssetPath, Language: row.Language,
 				})
 			}
 			applyManualOverridesToLibrarySummary(&works[index], overrides)

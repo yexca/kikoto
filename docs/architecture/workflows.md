@@ -706,3 +706,14 @@ settings, and run context. Failed first-sync notifications and pending metadata
 results open recovery here; operators without workflow access use the unscoped
 issue list, since reading a run-scoped list requires workflow permission. Runs
 without recorded pending issues retain their Activity diagnostics.
+
+## Language-scoped title edits
+
+The work editor and Metadata Works editor share per-language drafts and the same
+partial PATCH. Only authored changes are sent; source placeholders never become
+manual overrides. Reset targets one field/language. Cover and shared metadata tag
+operations keep their existing transactions and behavior. Title insert, update,
+language change and delete queue the work's search document. Changing metadata
+language priority selects titles and descriptions from stored editions without
+new provider requests or work identities. See [data model](data-model.md) for the
+precedence and `origin` contract. P2 does not add remote title fallback.

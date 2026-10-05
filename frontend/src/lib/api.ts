@@ -319,6 +319,7 @@ export type FavoriteSort = "activity" | "added" | "release" | "code" | "title" |
 export type SortDirection = "asc" | "desc";
 
 export type WorkDetail = {
+  titleChoices?: Record<string, WorkTitleChoice>;
   id: number;
   primaryCode: string;
   baseCode: string;
@@ -385,7 +386,17 @@ export type WorkMetadataSyncStatus = {
   checkedAt: string;
 };
 
+export type WorkTitleChoice = {
+  title: string;
+  language: string;
+  source: "manual" | "dlsite" | "original";
+  code: string;
+  description: string;
+};
+
 export type WorkMetadataVariant = {
+  description?: string;
+  titleSource?: WorkTitleChoice["source"];
   key: string;
   language: string;
   title: string;
@@ -426,6 +437,7 @@ export type ManualOverrideCover = {
 };
 
 export type WorkManualOverrides = {
+  titles?: Record<string, string>;
   title?: string;
   circle?: ManualOverrideEntity;
   series?: ManualOverrideSeries;
@@ -434,6 +446,7 @@ export type WorkManualOverrides = {
 };
 
 export type WorkManualOverridePayload = {
+  titles?: Record<string, string | null>;
   title?: string | null;
   circle?: ManualOverrideEntity | null;
   series?: ManualOverrideSeries | null;
@@ -2549,8 +2562,10 @@ export const api = {
   getWorkManualOverrides: (id: number) => getJSON<WorkManualOverrides>(`/api/works/${id}/manual-overrides`),
   updateWorkManualOverrides: (id: number, payload: WorkManualOverridePayload) =>
     patchJSONBody<WorkManualOverrides>(`/api/works/${id}/manual-overrides`, payload),
-  deleteWorkManualOverride: (id: number, field: string) =>
-    deleteJSON<{ ok: boolean; deleted: number }>(`/api/works/${id}/manual-overrides/${encodeURIComponent(field)}`),
+  deleteWorkManualOverride: (id: number, field: string, language?: string) =>
+    deleteJSON<{ ok: boolean; deleted: number }>(
+      `/api/works/${id}/manual-overrides/${encodeURIComponent(field)}${language === undefined ? "" : `?language=${encodeURIComponent(language)}`}`,
+    ),
   setWorkMetadataLink: (id: number, sourceCode: string) =>
     putJSONBody<WorkMetadataLinkResult>(`/api/works/${id}/metadata-link`, { sourceCode }),
   deleteWorkMetadataLink: (id: number) => deleteJSON<WorkMetadataLinkResult>(`/api/works/${id}/metadata-link`),

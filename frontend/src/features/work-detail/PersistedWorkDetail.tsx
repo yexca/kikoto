@@ -689,7 +689,7 @@ function persistedPresentationWorkFields(
   }
   return {
     dlsiteUrl: work.dlsiteUrl ?? "",
-    title: work.manualOverrides?.title ?? activeMetadataVariant?.title ?? hero.title,
+    title: activeMetadataVariant?.title ?? work.title ?? hero.title,
     seriesTitleId: work.seriesTitleId ?? "",
     seriesCircleExternalId: work.seriesCircleExternalId ?? work.circleExternalId ?? "",
     baseCode: work.baseCode,
@@ -743,6 +743,7 @@ function persistedWorkDetailPresentation({
     code: hero.primaryCode,
     dlsiteUrl: fields.dlsiteUrl,
     title: fields.title,
+    description: activeMetadataVariant?.description ?? work?.description,
     circle: hero.circle,
     circleExternalId: hero.circleExternalId,
     series: hero.series,
@@ -1009,6 +1010,8 @@ export function PersistedWorkDetailController({
   const [mobileDetailTab, setMobileDetailTab] = useState<"info" | "directory">("directory");
   const isCompactDetailLayout = useCompactDetailLayout();
   const localDirectoryWork = activeEdition ?? work;
+  const activeMetadataVariant = resolveMetadataVariant(work?.metadataPresentation, selectedMetadataVariantKey);
+  const playbackDisplayTitle = activeMetadataVariant?.title ?? work?.title;
   const playbackCoverUrl = work?.coverUrl || workPreview?.coverUrl || "";
   const localRoot = useMemo(() => {
     const sourceID = selectedSource?.fileSourceId;
@@ -1292,7 +1295,10 @@ export function PersistedWorkDetailController({
     if (!localDirectoryWork || tracks.length === 0) return;
     onPlay();
     player.playQueue(
-      tracks.map((track) => toPlayerTrack(track, localDirectoryWork, playbackCoverUrl)),
+      tracks.map((track) => ({
+        ...toPlayerTrack(track, localDirectoryWork, playbackCoverUrl),
+        ...(playbackDisplayTitle ? { workTitle: playbackDisplayTitle } : {}),
+      })),
       locationId,
     );
   };
@@ -1313,7 +1319,14 @@ export function PersistedWorkDetailController({
         setActiveEditionCode(resumeWork.primaryCode);
       }
       onPlay();
-      player.playQueue(resumeQueue.tracks, resumeQueue.locationId, resumeQueue.positionSeconds);
+      player.playQueue(
+        resumeQueue.tracks.map((track) => ({
+          ...track,
+          ...(playbackDisplayTitle ? { workTitle: playbackDisplayTitle } : {}),
+        })),
+        resumeQueue.locationId,
+        resumeQueue.positionSeconds,
+      );
     } catch (error) {
       toast.notify(toastFromError(error, t("libraryDetail.savedPlaybackResumeFailed")));
     } finally {
@@ -1324,16 +1337,25 @@ export function PersistedWorkDetailController({
   const playRemoteTracks = (tracks: TreeTrack[], locationId: number) => {
     if (!selectedRemoteDetail || tracks.length === 0) return;
     player.playQueue(
-      tracks.map((track) => toRemotePreviewPlayerTrack(track, selectedRemoteDetail, flattenTreeFiles(tree))),
+      tracks.map((track) => ({
+        ...toRemotePreviewPlayerTrack(track, selectedRemoteDetail, flattenTreeFiles(tree)),
+        ...(playbackDisplayTitle ? { workTitle: playbackDisplayTitle } : {}),
+      })),
       locationId,
     );
   };
 
   const queueTrack = (track: TreeTrack, next: boolean) => {
     const queuedTrack = selectedRemoteDetail
-      ? toRemotePreviewPlayerTrack(track, selectedRemoteDetail, flattenTreeFiles(tree))
+      ? {
+          ...toRemotePreviewPlayerTrack(track, selectedRemoteDetail, flattenTreeFiles(tree)),
+          ...(playbackDisplayTitle ? { workTitle: playbackDisplayTitle } : {}),
+        }
       : localDirectoryWork
-        ? toPlayerTrack(track, localDirectoryWork, playbackCoverUrl)
+        ? {
+            ...toPlayerTrack(track, localDirectoryWork, playbackCoverUrl),
+            ...(playbackDisplayTitle ? { workTitle: playbackDisplayTitle } : {}),
+          }
         : null;
     if (!queuedTrack) return;
     if (next) player.playNext(queuedTrack);
@@ -1665,7 +1687,7 @@ export function PersistedWorkDetailController({
   }
 
   const hero = detailHeroModel(code, work, workPreview);
-  const activeMetadataVariant = resolveMetadataVariant(work?.metadataPresentation, selectedMetadataVariantKey);
+
   const personalTags = persistedPersonalTags(work, saveWorkUserTags);
   const fetchSelectionModal = <LazyRemoteFetchWorkspaceDialog workspace={fetchWorkspace} />;
   const activeSourceLabel = persistedActiveSourceLabel(selectedTrackedPresence, selectedSource);

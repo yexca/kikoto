@@ -1,3 +1,5 @@
+import { WorkTitleEditor } from "./WorkTitleEditor";
+import { changedTitles } from "./titleEditorModel";
 import { Check, ExternalLink, Link2, Plus, X } from "lucide-react";
 import {
   metadataEditorInitialState,
@@ -355,7 +357,7 @@ function MetadataEditorVoiceActorsSection({
 function useMetadataEditorActions({
   work,
   toast,
-  title,
+  titleDrafts,
   circleName,
   circleExternalId,
   seriesName,
@@ -372,7 +374,7 @@ function useMetadataEditorActions({
 }: {
   work: WorkDetail;
   toast: ReturnType<typeof useToast>;
-  title: string;
+  titleDrafts: Record<string, string>;
   circleName: string;
   circleExternalId: string;
   seriesName: string;
@@ -394,7 +396,7 @@ function useMetadataEditorActions({
     try {
       const payload = workMetadataOverridePayload(
         {
-          title,
+          title: initialState.title,
           circleName,
           circleExternalId,
           seriesName,
@@ -404,6 +406,8 @@ function useMetadataEditorActions({
         },
         initialState,
       );
+      const titles = changedTitles(titleDrafts, work.manualOverrides ?? {});
+      if (Object.keys(titles).length) payload.titles = titles;
       if (Object.keys(payload).length) await api.updateWorkManualOverrides(work.id, payload);
       await tagEditor.save();
       if (selectedCoverId !== null && selectedCoverId !== initialCoverId)
@@ -418,10 +422,10 @@ function useMetadataEditorActions({
     }
   };
 
-  const resetField = async (field: string) => {
+  const resetField = async (field: string, language?: string) => {
     setSaving(true);
     try {
-      await api.deleteWorkManualOverride(work.id, field);
+      await api.deleteWorkManualOverride(work.id, field, language);
       toast.success(i18n.t("libraryDetail.overrideReset"));
       onSaved();
       onClose();
@@ -485,7 +489,8 @@ export function WorkMetadataEditorModal({
   const [initialState] = useState(() => metadataEditorInitialState(work));
   const manual = initialState.manual;
   const tagEditor = useWorkMetadataTagsEditor(work.id);
-  const [title, setTitle] = useState(initialState.title);
+  const [titleLanguage, setTitleLanguage] = useState("");
+  const [titleDrafts, setTitleDrafts] = useState<Record<string, string>>({});
   const [circleName, setCircleName] = useState(initialState.circleName);
   const [circleExternalId, setCircleExternalId] = useState(initialState.circleExternalId);
   const [seriesName, setSeriesName] = useState(initialState.seriesName);
@@ -508,7 +513,7 @@ export function WorkMetadataEditorModal({
   const { saving, save, resetField, linkMetadata, unlinkMetadata } = useMetadataEditorActions({
     work,
     toast,
-    title,
+    titleDrafts,
     circleName,
     circleExternalId,
     seriesName,
@@ -554,17 +559,14 @@ export function WorkMetadataEditorModal({
           </EditorSection>
 
           <EditorSection title={i18n.t("libraryDetail.work")}>
-            <LabeledInput label={i18n.t("libraryDetail.title")} value={title} onChange={setTitle} />
-            <div className="flex justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={saving || !manual.title}
-                onClick={() => void resetField("title")}
-              >
-                {i18n.t("libraryDetail.resetTitle")}
-              </Button>
-            </div>
+            <WorkTitleEditor
+              work={work}
+              language={titleLanguage}
+              drafts={titleDrafts}
+              onLanguage={setTitleLanguage}
+              onDraft={(language, title) => setTitleDrafts((current) => ({ ...current, [language]: title }))}
+              onReset={(language) => void resetField("title", language)}
+            />
           </EditorSection>
 
           <EditorSection title={i18n.t("libraryDetail.cover")}>

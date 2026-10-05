@@ -70,6 +70,22 @@ func insertSearchWork(t *testing.T, db *sql.DB, ordinal int, title string) int64
 	return execSearchFixture(t, db, `INSERT INTO work (primary_code, title) VALUES (?, ?)`, testfixture.WorkCode(testfixture.PrefixRJ, ordinal), title)
 }
 
+func TestSearchIndexesEveryTitleLanguageAndTracksScopedResets(t *testing.T) {
+	db := openSearchTestDB(t, "../../migrations")
+	id := insertSearchWork(t, db, 0, "【简体中文版】Example display title")
+	execSearchFixture(t, db, `INSERT INTO work_manual_override(work_id,field_name,language,value_json) VALUES (?,'title','ja-jp','"Example Japanese manual"'),(?,'title','ko-kr','"Example Korean manual"')`, id, id)
+	store := NewStore(db)
+	assertSearchCodes(t, store, 0, "'Example Japanese manual'", 0)
+	assertSearchCodes(t, store, 0, "'Example Korean manual'", 0)
+	assertSearchCodes(t, store, 0, "'Example display title'", 0)
+	execSearchFixture(t, db, `UPDATE work_manual_override SET value_json='"Example revised Korean"' WHERE work_id=? AND language='ko-kr'`, id)
+	assertSearchCodes(t, store, 0, "'Example revised Korean'", 0)
+	assertSearchCodes(t, store, 0, "'Example Korean manual'")
+	execSearchFixture(t, db, `DELETE FROM work_manual_override WHERE work_id=? AND language='ja-jp'`, id)
+	assertSearchCodes(t, store, 0, "'Example Japanese manual'")
+	assertSearchCodes(t, store, 0, "'Example revised Korean'", 0)
+}
+
 func tagSearchWork(t *testing.T, db *sql.DB, workID int64, name string) int64 {
 	t.Helper()
 	tagID := execSearchFixture(t, db, `INSERT INTO tag (namespace, normalized_name, display_name, language) VALUES ('dlsite', ?, ?, 'ja_JP')`, name, name)

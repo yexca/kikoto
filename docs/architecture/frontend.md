@@ -338,6 +338,22 @@ stacks, upstream bodies, private endpoints, and local paths are diagnostic data,
 not anonymous UI. A page that already has useful local data should keep it
 visible while the failed remote or media stage renders an inline Retry state.
 
+## Multilingual title presentation
+
+`WorkTitleEditor` shows six language scopes, source-labelled grey placeholders,
+and independent drafts. `titleEditorModel` compares only touched scopes with
+manual values so unchanged provider text never freezes. The existing metadata
+editor composes this with circle, series, voice actor, cover and tag operations.
+Reset passes the selected title language to the API.
+
+Effective titles and descriptions arrive together in metadata variants. Detail
+language selection updates both; descriptions render provider text without
+attaching provider HTML. Local, remote-preview and resume queues take the current
+display title while retaining their media identity and directory edition.
+Existing global playback remains outside page boundaries. Cards and search
+results use the same backend display policy; the frontend does not strip authored
+titles or rewrite provider values.
+
 ## Related Docs
 
 - [Frontend guidelines](../development/frontend-guidelines.md)

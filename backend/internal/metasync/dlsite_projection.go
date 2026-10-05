@@ -22,6 +22,8 @@ type DLsiteMetadataVariant struct {
 	ExternalID      string
 	EditionLanguage string
 	RequestLocale   string
+	Description     string
+	Translation     bool
 	Title           string
 	TagsJSON        string
 	ContentHash     string
@@ -201,12 +203,15 @@ func loadDLsiteMetadataVariants(ctx context.Context, queryer metadataVariantQuer
 			variant.edition_language,
 			variant.request_locale,
 			variant.title,
+ edition_work.description,
+ COALESCE(edition.translation_kind IN ('official','volunteer'),0),
 			variant.tags_json,
 			variant.content_hash,
 			variant.fetched_at,
 			COALESCE(edition.is_canonical, 0)
 		FROM dlsite_metadata_variant AS variant
 		LEFT JOIN work_edition AS edition ON edition.work_id = variant.work_id
+ JOIN work AS edition_work ON edition_work.id=variant.work_id
 		WHERE variant.logical_work_id = ?
 		ORDER BY variant.fetched_at DESC, variant.id DESC
 	`, logicalWorkID)
@@ -227,6 +232,7 @@ func loadDLsiteMetadataVariants(ctx context.Context, queryer metadataVariantQuer
 			&variant.EditionLanguage,
 			&variant.RequestLocale,
 			&variant.Title,
+			&variant.Description, &variant.Translation,
 			&variant.TagsJSON,
 			&variant.ContentHash,
 			&variant.FetchedAt,

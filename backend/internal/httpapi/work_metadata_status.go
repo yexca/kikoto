@@ -50,7 +50,14 @@ func (s *Server) loadWorkMetadataSyncStatus(
 	}
 
 	status := workMetadataSyncStatusNotSynced
-	if snapshotFetchedAt.Valid || len(metadataView.Variants) > 0 {
+	hasStoredEdition := false
+	for _, variant := range metadataView.Variants {
+		if !variant.PresentationOnly {
+			hasStoredEdition = true
+			break
+		}
+	}
+	if snapshotFetchedAt.Valid || hasStoredEdition {
 		status = workMetadataSyncStatusAvailable
 	} else if strings.EqualFold(strings.TrimSpace(providerStatus), workMetadataSyncStatusNotFound) {
 		status = workMetadataSyncStatusNotFound

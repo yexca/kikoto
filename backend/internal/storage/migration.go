@@ -41,6 +41,7 @@ type migrationAsset struct {
 // baseline file, which may have been produced by an earlier app release when
 // the numbered SQL chain has not changed.
 var retiredBaselineLedgerAssets = []migrationAsset{
+	{version: 51, filename: "baseline/051_v0.7.1.sql", checksum: "bc9120ee0dde556df13da2c541baf6bc033069796b7a322950fa85cde432f3eb", baseline: true},
 	{
 		version:  31,
 		filename: "baseline/031_current.sql",

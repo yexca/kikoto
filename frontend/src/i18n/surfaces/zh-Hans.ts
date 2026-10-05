@@ -1,6 +1,14 @@
 import { surfaceEnglish } from "./en";
 
 export const surfaceHans = {
+  workTitles: {
+    language: "标题语言",
+    manual: "手动标题",
+    dlsite: "DLsite 版本 {{code}}",
+    original: "原版标题",
+    source: "当前来源：{{source}}",
+    description: "作品简介",
+  },
   workManagement: {
     all: "全部",
     catalogDescription: "按作品系列归并展示所有已保存的作品元数据。",
@@ -58,6 +66,7 @@ export const surfaceHans = {
     mergeTarget: "合并目标",
     searchMergeTarget: "按名称搜索",
     mergeConfirm: "将 {{source}} 合并到 {{target}}。作品标签将使用目标标签，之后可以取消映射。",
+    mergeHiddenWarning: "目标标签已隐藏。合并后，此标签将在所有作品中隐藏。",
     undoMerge: "撤销合并",
     mergedFrom: "合并来源",
     providerName: "来源名称",

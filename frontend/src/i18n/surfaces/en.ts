@@ -4,6 +4,14 @@
  * persisted user data never become translated at the domain boundary.
  */
 export const surfaceEnglish = {
+  workTitles: {
+    language: "Title language",
+    manual: "Manual title",
+    dlsite: "DLsite edition {{code}}",
+    original: "Original title",
+    source: "Current source: {{source}}",
+    description: "Description",
+  },
   workManagement: {
     all: "All",
     catalogDescription: "All saved work metadata, grouped by work family.",
@@ -63,6 +71,7 @@ export const surfaceEnglish = {
     mergeTarget: "Merge target",
     searchMergeTarget: "Search by name",
     mergeConfirm: "Merge {{source}} into {{target}}. Work tags will use the target; this mapping can be undone.",
+    mergeHiddenWarning: "The target is hidden. After merging, this tag will be hidden on all works.",
     undoMerge: "Undo merge",
     mergedFrom: "Merged from",
     providerName: "Provider name",

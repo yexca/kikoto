@@ -28,7 +28,7 @@ func TestRetiredSchema050BaselinePreservesWorksAndSnapshotsDuringUpgrade(t *test
 		t.Fatalf("retired baseline upgrade: %v", err)
 	}
 	var current, works, snapshots int
-	if err := db.QueryRow("SELECT current_version FROM schema_state WHERE id=1").Scan(&current); err != nil || current != 51 {
+	if err := db.QueryRow("SELECT current_version FROM schema_state WHERE id=1").Scan(&current); err != nil || current != latestNumberedMigrationVersion {
 		t.Fatalf("upgraded version: %d %v", current, err)
 	}
 	if err := db.QueryRow("SELECT COUNT(*) FROM work WHERE primary_code='RJ00000000' AND title='Example Work'").Scan(&works); err != nil || works != 1 {

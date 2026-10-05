@@ -56,6 +56,7 @@ func (s *Store) LoadVoiceCredits(ctx context.Context, workIDs []int64) (map[int6
 }
 
 type ManualOverrideRow struct {
+	Language  string
 	FieldName string
 	ValueJSON string
 	AssetPath string
@@ -199,7 +200,7 @@ func (s *Store) LoadSeries(ctx context.Context, codes []string) (map[string]stri
 
 func (s *Store) LoadManualOverrides(ctx context.Context, workIDs []int64) (map[int64][]ManualOverrideRow, error) {
 	result := map[int64][]ManualOverrideRow{}
-	query, args := int64InQuery(`SELECT work_id, field_name, value_json, asset_path FROM work_manual_override WHERE work_id IN (%s) ORDER BY work_id, field_name`, uniqueInt64s(workIDs))
+	query, args := int64InQuery(`SELECT work_id, field_name, value_json, asset_path, language FROM work_manual_override WHERE work_id IN (%s) ORDER BY work_id, field_name`, uniqueInt64s(workIDs))
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -208,7 +209,7 @@ func (s *Store) LoadManualOverrides(ctx context.Context, workIDs []int64) (map[i
 	for rows.Next() {
 		var workID int64
 		var row ManualOverrideRow
-		if err := rows.Scan(&workID, &row.FieldName, &row.ValueJSON, &row.AssetPath); err != nil {
+		if err := rows.Scan(&workID, &row.FieldName, &row.ValueJSON, &row.AssetPath, &row.Language); err != nil {
 			return nil, err
 		}
 		result[workID] = append(result[workID], row)

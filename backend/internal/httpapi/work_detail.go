@@ -56,6 +56,7 @@ type workDetail struct {
 	SourcePresence   []sourcePresenceItem       `json:"sourcePresence"`
 	LocalFolders     []workFolderLocationDetail `json:"localFolders"`
 	MediaItems       []mediaItemDetail          `json:"mediaItems"`
+	TitleChoices     workTitleChoices           `json:"titleChoices"`
 }
 
 type workMetadataPresentation struct {
@@ -64,11 +65,15 @@ type workMetadataPresentation struct {
 }
 
 type workMetadataVariant struct {
-	Key      string   `json:"key"`
-	Language string   `json:"language"`
-	Title    string   `json:"title"`
-	Tags     []string `json:"tags"`
-	Origin   bool     `json:"origin"`
+	// A manual-only language choice is presentation, not evidence of provider sync.
+	PresentationOnly bool     `json:"-"`
+	Description      string   `json:"description"`
+	TitleSource      string   `json:"titleSource"`
+	Key              string   `json:"key"`
+	Language         string   `json:"language"`
+	Title            string   `json:"title"`
+	Tags             []string `json:"tags"`
+	Origin           bool     `json:"origin"`
 }
 
 type workFolderLocationDetail struct {
@@ -526,6 +531,11 @@ func (s *Server) resolveWorkCodeDetail(ctx context.Context, code string) (workRe
 		return workResolveResponse{}, err
 	}
 	projectedTags = presentProjectedTags(metadata.Tags, projectedTags, projected)
+	selectedTitle, _, err := s.loadWorkTitleSelection(ctx, resolvedID)
+	if err != nil {
+		return workResolveResponse{}, err
+	}
+	title = selectedTitle.Title
 	return workResolveResponse{
 		RequestedCode:    code,
 		ResolvedCode:     resolvedCode,

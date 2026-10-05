@@ -158,6 +158,7 @@ export function MetadataTagDialog({
                         onClick={() => setTarget(candidate as MetadataTag)}
                       >
                         {candidate.displayName}
+                        {(candidate as MetadataTag).resolvedHidden ? ` · ${t("metadataEntries.hidden")}` : ""}
                       </Button>
                     ))}
                 </div>
@@ -171,6 +172,11 @@ export function MetadataTagDialog({
                     <p className="text-sm">
                       {t("metadataEntries.mergeConfirm", { source: tag.displayName, target: target.displayName })}
                     </p>
+                    {target.resolvedHidden && (
+                      <p role="alert" className="text-sm text-muted-foreground">
+                        {t("metadataEntries.mergeHiddenWarning")}
+                      </p>
+                    )}
                     <Button size="sm" onClick={() => void mutate(() => api.mergeMetadataTag(tag.id, target.id))}>
                       {t("metadataEntries.merge")}
                     </Button>

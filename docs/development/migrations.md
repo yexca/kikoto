@@ -82,7 +82,7 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain ends at
-`051_metadata_tag_projection_queue.sql`, with `051_v0.7.1.sql` generated
+`052_language_scoped_titles.sql`, with `052_v0.7.1.sql` generated
 from the current `VERSION` file. Released migrations and baselines, including
 `047_v0.7.1.sql`, remain immutable and available for ledger validation.
 
@@ -103,10 +103,13 @@ retry counters and backoff deadlines, and
 snapshot-writer
 triggers, queues existing works, and requests one new startup backfill to repair
 older projections and locale-name precedence. Hidden/merged states now commit
-before batched work projection. Existing databases apply 048–051 through the
-numbered chain; empty databases use the schema-051 baseline. The earlier
-development schema-050 baseline is removed; only its checksum is retained in
-`retiredBaselineLedgerAssets` so databases created from it continue through 051.
+before batched work projection. Existing databases apply 048–052 through the
+numbered chain; empty databases use the schema-052 baseline. The earlier
+development schema-050 and schema-051 baselines are removed; only their checksums are retained in
+`retiredBaselineLedgerAssets` so databases created from it continue through the numbered chain.
+Migration 052 preserves existing all-language authored overrides while adding
+language-scoped titles and rebuilding indexes/search triggers. It never changes
+released/applied numbered SQL or reconstructs existing data from a baseline.
 v0.7.1 shipped schema 047. Snapshot triggers queue only existing works, preserve
 committed projection markers, and permit snapshots to outlive a deleted work.
 Startup moves old flat

@@ -454,7 +454,7 @@ test("@desktop Metadata table shows management columns, edits a work in place, a
   await dialog.getByLabel("Title", { exact: true }).fill("Example edited title");
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  expect(saves).toEqual([expect.objectContaining({ title: "Example edited title" })]);
+  expect(saves).toEqual([{ titles: { "": "Example edited title" } }]);
   await expect.poll(() => listRequests).toBe(loadedRequests + 1);
 });
 

@@ -1,3 +1,4 @@
+import { WorkDescription } from "./metadata/WorkDescription";
 import {
   api,
   assetURL,
@@ -59,6 +60,7 @@ export type UnifiedWorkDetailPresentation = {
   code: string;
   dlsiteUrl: string;
   title: string;
+  description?: string;
   circle: string;
   circleExternalId: string;
   series: string;
@@ -233,7 +235,10 @@ function DesktopWorkDetailLayout({
       </section>
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_19rem]">
-        <div className="min-w-0 space-y-4">{directory}</div>
+        <div className="min-w-0 space-y-4">
+          <WorkDescription description={presentation.description} />
+          {directory}
+        </div>
         <DetailInfoPanel sourceInfo={sourceInfo} dlsiteFetchedAt={dlsiteFetchedAt} className="xl:sticky xl:top-20" />
       </div>
     </div>
@@ -488,6 +493,7 @@ function MobileWorkDetailLayout({
   code,
   dlsiteUrl,
   title,
+  description,
   circle,
   circleExternalId,
   series,
@@ -530,6 +536,7 @@ function MobileWorkDetailLayout({
   code: string;
   dlsiteUrl: string;
   title: string;
+  description?: string;
   circle: string;
   circleExternalId: string;
   series: string;
@@ -660,7 +667,8 @@ function MobileWorkDetailLayout({
       </div>
 
       {activeTab === "info" ? (
-        <div>
+        <div className="space-y-4">
+          <WorkDescription description={description} />
           <DetailInfoPanel sourceInfo={sourceInfo} dlsiteFetchedAt={dlsiteFetchedAt} className="" />
         </div>
       ) : (

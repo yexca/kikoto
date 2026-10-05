@@ -190,6 +190,36 @@ and after records. Undo applies only captured differences, keeps unrelated new
 rows, and rejects a later change to data it would restore. Nested merges undo
 in reverse order. Review responses expose names and status, not raw snapshots.
 
+Migration 052 rebuilds `work_manual_override` with primary key
+`(work_id, field_name, language)`. Existing rows retain `language=''`, timestamps,
+authorship and cover assets. Only title allows a nonempty language (`ja-jp`,
+`zh-cn`, `zh-tw`, `en-us`, `ko-kr`); other fields remain universal. Field and
+foreign-key indexes and all migration-036 search invalidation triggers are
+recreated, including language-only updates.
+
+Display title selection tries each configured language: its manual title, the
+universal manual title, then that DLsite edition. `origin` matches the canonical
+edition's declared language and never infers a language from text. Unknown
+origin languages use the universal manual title or original title. Manual titles
+without a corresponding provider edition use the original description; otherwise
+the description is read from the selected edition's work row. Missing translated
+introductions remain empty rather than silently borrowing Japanese text.
+
+`metadatatitles` holds the shared pure selection/display policy. A known leading
+translation label is removed only on declared official/volunteer translations;
+provider projections and raw snapshots are untouched, and authored titles and
+unrelated brackets survive. Batched HTTP presentation applies the policy to
+cards and search results. Detail variants carry their effective title and
+introduction, including manual-only language choices. All manual languages are
+indexed and scoped writes/reset invalidate search. Remote-title fallback is not
+part of this stage.
+
+The optional PATCH `titles` map updates only supplied language keys; `null` or
+empty values remove that language. Legacy `title` remains the universal value;
+using both forms in one request is rejected. GET returns `titles` plus compatible
+universal `title`. DELETE `.../manual-overrides/title?language=zh-cn` resets only
+that title scope; an omitted language resets only the universal scope.
+
 `PATCH /api/works/{id}/manual-overrides` updates only supplied fields;
 explicit null or empty values reset that field. Omitted relations remain
 unchanged. Migration 048 clears only title overrides exactly matching a

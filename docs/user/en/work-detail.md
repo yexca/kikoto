@@ -4,6 +4,14 @@
 Work detail presents metadata, editions, file trees, source availability, and
 playback actions for one work.
 
+## Multilingual titles
+
+The title editor has an **All languages**, Japanese, Simplified Chinese, Traditional Chinese, English, and Korean selector. Existing titles appear as grey placeholders with their source (manual title, a DLsite edition code, or the original title). Switching languages keeps each draft. Save sends only changed fields and title languages; Reset title clears only the selected language. The same editor opens from Metadata → Works.
+
+For each preferred metadata language, Kikoto tries its manual title, the all-language manual title, and then that language’s DLsite edition. `Origin` uses the original edition’s declared language; an unknown language is not guessed. If nothing matches, the original title is used. Circle, series, and voice-actor overrides remain shared across languages.
+
+Only a known leading translation label on a declared translation edition is removed for display. Labels such as `【ASMR】`, labels inside the title, and every manually authored title remain intact. Provider titles and snapshots are preserved. Cards, detail, language choices, search results, and newly queued playback use the same display rule; all manual title languages and the displayed provider title remain searchable. The introduction follows the selected DLsite edition. A manual language without a matching edition uses the original introduction.
+
 ## Editing metadata
 
 Admin and super_admin can edit work metadata with `library:write`. Save sends only fields changed from the initial editor values; selecting a cover alone preserves automatic titles, circles, series, and voice credits. Clearing a field resets only its override. Existing frozen title overrides that exactly match a trimmed DLsite title in the same family are removed during upgrade; circle, series, and voice overrides are kept.
@@ -16,7 +24,7 @@ Switching metadata language uses that version’s manual or dictionary tag names
 
 Completion shows merged names as their final tag. A hidden match, including a merge into a hidden target, is labelled and cannot be added; unhide it in Metadata first. Names follow the language precedence described in [Settings](settings.md).
 
-Until a background update finishes, the work keeps its last saved tag set, including an empty set, even when metadata refreshes. Remote tags remain visible alongside manually added shared tags.
+Until a background update finishes, the work keeps its last saved tag set, including an empty set, even when metadata refreshes. The voice actor page’s list of remote works shows remote tags alongside manually added shared tags.
 
 ## Current Behavior
 
