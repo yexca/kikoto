@@ -1,1 +1,1 @@
-export { WorkMetadataEditorModal } from "./WorkMetadataEditorModal";
+export { WorkMetadataEditorModal, type MetadataEditorSection } from "./WorkMetadataEditorModal";

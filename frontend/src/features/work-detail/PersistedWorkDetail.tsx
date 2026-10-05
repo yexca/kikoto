@@ -93,7 +93,7 @@ import {
   useMediaCleanupWorkflow,
 } from "@/features/work-detail/workflows/useMediaCleanupWorkflow";
 import { DirectoryManagerDialog } from "@/features/work-detail/dialogs/DirectoryManagerDialog";
-import { WorkMetadataEditorModal } from "@/features/work-detail/metadata";
+import { WorkMetadataEditorModal, type MetadataEditorSection } from "@/features/work-detail/metadata";
 import { ReforkConfirmDialog } from "@/features/work-detail/dialogs/ReforkConfirmDialog";
 import type { ClientPrincipalID } from "@/lib/clientStorageScope";
 import { useAuth } from "@/auth/AuthProvider";
@@ -865,24 +865,25 @@ function PersistedDirectoryManagerOverlay({
 }
 
 function PersistedMetadataEditorOverlay({
-  open,
+  section,
   work,
   onClose,
   onSaved,
   onLinkChanged,
 }: {
-  open: boolean;
+  section: MetadataEditorSection | null;
   work: WorkDetail | null;
   onClose: () => void;
   onSaved: () => void;
   onLinkChanged: (result: WorkMetadataLinkResult) => void;
 }) {
   const { demoMode } = useAuth();
-  if (!open || !work) return null;
+  if (!section || !work) return null;
   return (
     <WorkMetadataEditorModal
       work={work}
       readOnly={demoMode}
+      initialSection={section}
       onClose={onClose}
       onSaved={onSaved}
       onLinkChanged={onLinkChanged}
@@ -988,7 +989,7 @@ export function PersistedWorkDetailController({
     refreshAvailability,
   } = sourceContext;
   const [isManageOpen, setIsManageOpen] = useState(false);
-  const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
+  const [metadataEditorSection, setMetadataEditorSection] = useState<MetadataEditorSection | null>(null);
   const [preview, setPreview] = useState<FilePreviewRequest | null>(null);
   const [isRefreshingLocalFiles, setIsRefreshingLocalFiles] = useState(false);
   const [message, setMessage] = useState("");
@@ -1735,7 +1736,7 @@ export function PersistedWorkDetailController({
       onResume={() => void resumePlayback()}
       onMark={(status) => void markDetailWork(status)}
       onSyncMetadata={() => void syncDetailMetadata()}
-      onEditMetadata={() => setIsMetadataEditorOpen(true)}
+      onEditMetadata={() => setMetadataEditorSection("title")}
       onTrack={() => void trackSelectedRemoteSource()}
       onUntrack={() => void untrackSelectedSource()}
       onFork={requestForkSource}
@@ -1814,7 +1815,7 @@ export function PersistedWorkDetailController({
     canSyncMetadata,
     metadataSyncBusy: isSyncingDetail || Boolean(activeMetadataRunId),
     onSyncMetadata: () => void syncDetailMetadata(),
-    onLinkMetadata: () => setIsMetadataEditorOpen(true),
+    onLinkMetadata: () => setMetadataEditorSection("source"),
     onMetadataVariantSelect: setSelectedMetadataVariantKey,
     onVersionSelect: (translation) => void selectDisplayedEdition(translation),
   });
@@ -1850,9 +1851,9 @@ export function PersistedWorkDetailController({
         onClose={() => setIsManageOpen(false)}
       />
       <PersistedMetadataEditorOverlay
-        open={isMetadataEditorOpen}
+        section={metadataEditorSection}
         work={work}
-        onClose={() => setIsMetadataEditorOpen(false)}
+        onClose={() => setMetadataEditorSection(null)}
         onSaved={() => void metadataSaved()}
         onLinkChanged={(result) => void metadataLinkChanged(result)}
       />

@@ -128,9 +128,10 @@ Tag and circle changes, work metadata edits, cover overrides, metadata links,
 and source untracking require `library:write`, granted to admin and
 super_admin. Voice alias management retains `metadata:sync`.
 
-Tag APIs live under `/api/metadata/tags` (list/create, rename/hide, merge,
-undo mapping); work additions/removals use `GET/PUT
-/api/works/{id}/metadata-tags`. Circle APIs under `/api/metadata/circles`
+Tag APIs live under `/api/metadata/tags` (list/create, one tag with its
+names, rename/hide, merge, undo mapping); work additions/removals use `GET/PUT
+/api/works/{id}/metadata-tags`, whose `newTagNames` sets language names only
+for tags that save creates, never for an existing tag a draft name resolves to. Circle APIs under `/api/metadata/circles`
 list identities and manage manual names, aliases, merge reviews, and undo.
 These actions change known metadata only and never crawl or materialize a
 provider catalog. Demo keeps all mutation paths read-only.

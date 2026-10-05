@@ -121,6 +121,30 @@ func (s *Server) listMetadataTags(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, result)
 }
+
+// getMetadataTag returns one shared tag with its names in every language, so a
+// work editor can edit them without paging through the tag list.
+func (s *Server) getMetadataTag(w http.ResponseWriter, r *http.Request) {
+	if !s.requireMetadataEntryRead(w, r) {
+		return
+	}
+	id, err := parseInt64PathValue(r, "tagId")
+	if err != nil {
+		metadataTagError(w, metadatatags.ErrInvalid)
+		return
+	}
+	tag, err := metadatatags.Load(r.Context(), s.db, id)
+	if err == nil && s.cfg.IsDemo() && tag.ResolvedHidden {
+		// Demo never lists hidden tags, so it does not reveal them one at a time either.
+		err = sql.ErrNoRows
+	}
+	if err != nil {
+		metadataTagError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, tag)
+}
+
 func (s *Server) changeMetadataTag(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requirePermission(w, r, "library:write")
 	if !ok {
@@ -260,6 +284,9 @@ func (s *Server) setWorkMetadataTags(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		Overrides []metadatatags.Override `json:"overrides"`
 		NewTags   []string                `json:"newTags"`
+		// Language names for tags this request creates, keyed by the trimmed
+		// new tag name. The name itself is the all-language name.
+		NewTagNames map[string]map[string]string `json:"newTagNames"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
 	decoder.DisallowUnknownFields()
@@ -278,11 +305,31 @@ func (s *Server) setWorkMetadataTags(w http.ResponseWriter, r *http.Request) {
 		metadataTagError(w, metadatatags.ErrInvalid)
 		return
 	}
+	// Ids above the current maximum were created by this request. A new name
+	// that reuses an existing tag never rewrites that shared tag's names.
+	var lastTagID int64
+	if err := tx.QueryRowContext(r.Context(), "SELECT COALESCE(MAX(tag_id),0) FROM metadata_tag").Scan(&lastTagID); err != nil {
+		writeError(w, err)
+		return
+	}
+	named := []int64{}
 	for _, name := range payload.NewTags {
 		tagID, err := metadatatags.CreateTx(r.Context(), tx, name, user.ID)
 		if err != nil {
 			metadataTagError(w, err)
 			return
+		}
+		if names := payload.NewTagNames[strings.TrimSpace(name)]; tagID > lastTagID && len(names) > 0 {
+			for language, localized := range names {
+				if strings.TrimSpace(language) == "" {
+					continue
+				}
+				if err := metadatatags.SetNameTx(r.Context(), tx, tagID, language, localized, user.ID); err != nil {
+					metadataTagError(w, err)
+					return
+				}
+			}
+			named = append(named, tagID)
 		}
 		found := false
 		for _, override := range payload.Overrides {
@@ -293,6 +340,12 @@ func (s *Server) setWorkMetadataTags(w http.ResponseWriter, r *http.Request) {
 		}
 		if !found {
 			payload.Overrides = append(payload.Overrides, metadatatags.Override{TagID: tagID, Action: "add"})
+		}
+	}
+	if len(named) > 0 {
+		if err := metadatatags.RefreshNamesTx(r.Context(), tx, priorities, named...); err != nil {
+			writeError(w, err)
+			return
 		}
 	}
 	if err := metadatatags.SetOverridesTx(r.Context(), tx, id, payload.Overrides, user.ID); err != nil {

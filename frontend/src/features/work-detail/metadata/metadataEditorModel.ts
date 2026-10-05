@@ -5,6 +5,23 @@ import {
   type WorkManualOverridePayload,
 } from "@/lib/api";
 
+/**
+ * Where a field's value comes from right now: the provider, a saved manual
+ * override, an unsaved edit, or a saved override staged for removal.
+ */
+export type MetadataFieldStatus = "source" | "manual" | "edited" | "reverting";
+
+/**
+ * The status of a text field over an optional own manual value, such as a
+ * language title or tag name: an empty draft over an own value removes it on save.
+ */
+export function manualValueStatus(draft: string | undefined, own: string | undefined): MetadataFieldStatus {
+  const saved = own ?? "";
+  const next = draft === undefined ? saved : draft.trim();
+  if (next === saved) return own ? "manual" : "source";
+  return own && !next ? "reverting" : "edited";
+}
+
 function normalizedOverrides({
   title,
   circleName,
@@ -34,17 +51,31 @@ function normalizedOverrides({
 
 export type MetadataEditorState = Parameters<typeof normalizedOverrides>[0];
 
+/** Credit overrides staged for removal, so the provider value shows again after saving. */
+export type MetadataEditorReverts = { circle?: boolean; series?: boolean; voiceActors?: boolean };
+
 export function workMetadataOverridePayload(
   state: MetadataEditorState,
   initial: MetadataEditorState,
+  reverts: MetadataEditorReverts = {},
 ): WorkManualOverridePayload {
   const next = normalizedOverrides(state);
   const previous = normalizedOverrides(initial);
-  return Object.fromEntries(
+  const payload: WorkManualOverridePayload = Object.fromEntries(
     Object.entries(next).filter(
       ([key, value]) => JSON.stringify(value) !== JSON.stringify(previous[key as keyof typeof previous]),
     ),
   );
+  // An explicit null or empty list removes only that override.
+  if (reverts.circle) payload.circle = null;
+  if (reverts.series) payload.series = null;
+  if (reverts.voiceActors) payload.voiceActors = [];
+  return payload;
+}
+
+/** Whether a payload changes any credit field: circle, series, or voice actors. */
+export function payloadChangesCredits(payload: WorkManualOverridePayload) {
+  return "circle" in payload || "series" in payload || "voiceActors" in payload;
 }
 
 type EditableWorkMetadata = Pick<

@@ -1,5 +1,15 @@
 # Unreleased
 
+- The metadata editor on work detail and Metadata → Works is reorganized into
+  Title, Cover, Tags, Credits, and Metadata source sections that mark unsaved
+  changes. Every language title has its own row, covers are picked from a
+  thumbnail grid, and circle, series, voice actor, and tag fields complete from
+  suggestions with keyboard selection while keeping identifiers visible. Each
+  tag's names can be edited by language from the work editor, including names
+  for a new custom tag; renaming a shared tag applies to every work that has it. Reverts
+  and metadata link changes are now drafts applied by Save instead of taking
+  effect immediately and closing the editor, and Cancel confirms before
+  discarding drafts.
 - Language-scoped manual titles follow configured language priority before DLsite
   editions. Editors directly edit owned manual titles, show inherited/provider
   sources as hints, preserve drafts across resets, and save only changes.

@@ -500,7 +500,7 @@ test("@desktop Metadata table shows management columns, edits a work in place, a
 
   await row.getByRole("button", { name: `Edit metadata for ${code}`, exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Edit metadata" });
-  await dialog.getByLabel("Title", { exact: true }).fill("Example edited title");
+  await dialog.getByRole("textbox", { name: "All languages", exact: true }).fill("Example edited title");
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(saves).toEqual([{ titles: { "": "Example edited title" } }]);

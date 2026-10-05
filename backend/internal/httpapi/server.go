@@ -189,6 +189,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/metadata/circles/{partyId}/merges/{mergeId}/undo", s.changeMetadataCircle)
 	mux.HandleFunc("GET /api/metadata/tags", s.listMetadataTags)
 	mux.HandleFunc("POST /api/metadata/tags", s.changeMetadataTag)
+	mux.HandleFunc("GET /api/metadata/tags/{tagId}", s.getMetadataTag)
 	handleSlowFirstResponse("PATCH /api/metadata/tags/{tagId}", s.changeMetadataTag)
 	handleSlowFirstResponse("POST /api/metadata/tags/{tagId}/merge", s.changeMetadataTag)
 	handleSlowFirstResponse("DELETE /api/metadata/tags/{tagId}/merge", s.changeMetadataTag)

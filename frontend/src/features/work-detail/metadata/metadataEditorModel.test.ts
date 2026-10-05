@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  manualValueStatus,
   metadataEditorInitialState,
   normalizedMetadataLinkCode,
+  payloadChangesCredits,
   workMetadataOverridePayload,
 } from "./metadataEditorModel";
 
@@ -78,10 +80,41 @@ describe("metadata editor model", () => {
     expect(workMetadataOverridePayload({ ...initial, voiceActors: [] }, initial)).toEqual({ voiceActors: [] });
   });
 
+  it("stages a revert as an explicit removal that wins over a discarded draft", () => {
+    const initial = {
+      title: "Projected title",
+      circleName: "Manual circle",
+      circleExternalId: "",
+      seriesName: "Manual series",
+      seriesTitleId: "",
+      seriesCircleExternalId: "",
+      voiceActors: [{ name: "Manual voice", personId: 0 }],
+    };
+    const payload = workMetadataOverridePayload({ ...initial, circleName: "Abandoned draft" }, initial, {
+      circle: true,
+      voiceActors: true,
+    });
+    expect(payload).toEqual({ circle: null, voiceActors: [] });
+    expect(payloadChangesCredits(payload)).toBe(true);
+    expect(payloadChangesCredits(workMetadataOverridePayload(initial, initial, { series: false }))).toBe(false);
+  });
+
   it("accepts only another DLsite code as a metadata link", () => {
     expect(normalizedMetadataLinkCode(" rj00000001 ", "RJ00000000")).toBe("RJ00000001");
     expect(normalizedMetadataLinkCode("rj00000000", "RJ00000000")).toBeNull();
     expect(normalizedMetadataLinkCode("RJ0000", "RJ00000000")).toBeNull();
     expect(normalizedMetadataLinkCode("https://example.test/RJ00000001", "RJ00000000")).toBeNull();
+  });
+});
+
+describe("manual value status", () => {
+  it("separates inherited, own, edited, and staged-removal rows", () => {
+    expect(manualValueStatus(undefined, undefined)).toBe("source");
+    expect(manualValueStatus(" ", undefined)).toBe("source");
+    expect(manualValueStatus(undefined, "Own")).toBe("manual");
+    expect(manualValueStatus(" Own ", "Own")).toBe("manual");
+    expect(manualValueStatus("Draft", undefined)).toBe("edited");
+    expect(manualValueStatus("Draft", "Own")).toBe("edited");
+    expect(manualValueStatus("", "Own")).toBe("reverting");
   });
 });
