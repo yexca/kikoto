@@ -663,6 +663,7 @@ export type FileSource = {
   config: {
     saveRootTemplate?: string;
     scanDepth?: number;
+    /** Language a remote source is asked in last, after the viewer's metadata languages. */
     requestLanguage?: string;
     /** Declared capabilities; absent keeps the source type's default. */
     capabilities?: string[];
@@ -692,6 +693,10 @@ export type UserPreferences = {
   recommendationConfig: RecommendationConfig;
   recommendationThreshold: number;
   recommendationDefaults: RecommendationConfig;
+  /** The user's own metadata language priority; null follows defaultMetadataLanguages. */
+  metadataLanguages: string[] | null;
+  /** The instance default metadata language priority. */
+  defaultMetadataLanguages: string[];
 };
 
 export type RuntimeSettings = {
@@ -2415,8 +2420,9 @@ export const api = {
   getWorkPlaybackCursor: (id: number, signal?: AbortSignal) =>
     getJSON<WorkPlaybackCursorResponse>(`/api/works/${id}/playback-cursor`, signal),
   getUserPreferences: (signal?: AbortSignal) => getJSON<UserPreferences>("/api/auth/me/preferences", signal),
-  updateUserPreferences: (payload: Partial<Omit<UserPreferences, "recommendationDefaults">>) =>
-    patchJSONBody<UserPreferences>("/api/auth/me/preferences", payload),
+  updateUserPreferences: (
+    payload: Partial<Omit<UserPreferences, "recommendationDefaults" | "defaultMetadataLanguages">>,
+  ) => patchJSONBody<UserPreferences>("/api/auth/me/preferences", payload),
   getRuntimeSettings: (signal?: AbortSignal): Promise<RuntimeSettings> =>
     sharedGetJSON("/api/runtime-settings", signal),
   listRemoteSourceWorks: (

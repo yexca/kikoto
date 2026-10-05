@@ -34,6 +34,9 @@ type ListOptions struct {
 	IncludeRecommendation   bool
 	RecommendationSessionID string
 	DemoOnly                bool
+	// TitleLanguages is the viewer's metadata language priority for a title
+	// sort. Empty sorts by the work row's title.
+	TitleLanguages []string
 }
 
 type RawPage struct {
@@ -52,6 +55,9 @@ type MatchingListOptions struct {
 	RandomSeed int64
 	ListID     int64
 	DemoOnly   bool
+	// TitleLanguages is the viewer's metadata language priority for a title
+	// sort. Empty sorts by the work row's title.
+	TitleLanguages []string
 }
 
 // RawWork is one listed work row. CardSummary is the current-version card
@@ -105,12 +111,16 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 		queryArgs = append(queryArgs, recommendationUserArgs(options.UserID)...)
 	}
 	searchRank, searchRankArgs := searchExactRankSQL(options.Query)
+	titleSort := ""
+	if len(options.TitleLanguages) > 0 {
+		titleSort = TitleSortExpression(options.TitleLanguages)
+	}
 	queryArgs = append(queryArgs, searchRankArgs...)
 	queryArgs = append(queryArgs, options.UserID)
 	queryArgs = append(queryArgs, args...)
 	queryArgs = append(queryArgs, options.PageSize, (options.Page-1)*options.PageSize)
 	rows, err := s.db.QueryContext(ctx, listPageSelectSQLWithSearchRank(
-		where, options.Sort, options.Direction, options.RandomSeed, config, includeRecommendation, recommendationGenerationID, searchRank,
+		where, options.Sort, options.Direction, options.RandomSeed, config, includeRecommendation, recommendationGenerationID, searchRank, titleSort,
 	), queryArgs...)
 	if err != nil {
 		return RawPage{}, err
@@ -228,7 +238,11 @@ func matchingListSelectSQL(where string, options MatchingListOptions) (string, [
 		query := outerProjection + listBaseSelectSQLWithExtra(where, false, ", "+expression+" AS matching_sort_value") + `) AS library_rows ORDER BY matching_sort_value IS NULL ASC, matching_sort_value ` + direction + `, id ` + direction
 		return query, prefixArgs
 	case "release", "code", "title", "rating", "sales", "random", "recent":
-		return listSelectSQL(where, sortKey, direction, options.RandomSeed, DefaultRecommendationConfig(), false), nil
+		titleSort := ""
+		if len(options.TitleLanguages) > 0 {
+			titleSort = TitleSortExpression(options.TitleLanguages)
+		}
+		return listSelectSQLWithTitleSort(where, sortKey, direction, options.RandomSeed, DefaultRecommendationConfig(), false, 0, titleSort), nil
 	default:
 		options.Sort = "activity"
 		return matchingListSelectSQL(where, options)
@@ -305,7 +319,9 @@ func ScanRows(rows *sql.Rows) ([]RawWork, error) {
 	return works, nil
 }
 
-func listOrderBy(sortKey string, direction string, randomSeed int64, config RecommendationConfig) string {
+// listOrderBy builds the ORDER BY clause. titleSort is the title sort key,
+// normally TitleSortExpression for the viewer; empty sorts by work.title.
+func listOrderBy(sortKey string, direction string, randomSeed int64, config RecommendationConfig, titleSort string) string {
 	sortKey, direction = normalizeSort(sortKey, direction)
 	switch sortKey {
 	case "recommend":
@@ -317,7 +333,10 @@ func listOrderBy(sortKey string, direction string, randomSeed int64, config Reco
 	case "code":
 		return "work.primary_code " + direction + ", work.id " + direction
 	case "title":
-		return "work.title COLLATE NOCASE " + direction + ", work.id " + direction
+		if titleSort == "" {
+			titleSort = "work.title"
+		}
+		return titleSort + " COLLATE NOCASE " + direction + ", work.id " + direction
 	case "rating":
 		return nullsLastOrderBy("work.rating_average", direction) + ", work.created_at " + direction + ", work.id " + direction
 	case "sales":
@@ -768,8 +787,21 @@ func listSelectSQLWithRecommendationGeneration(
 	includeRecommendation bool,
 	recommendationGenerationID int64,
 ) string {
+	return listSelectSQLWithTitleSort(where, sortKey, direction, randomSeed, config, includeRecommendation, recommendationGenerationID, "")
+}
+
+func listSelectSQLWithTitleSort(
+	where string,
+	sortKey string,
+	direction string,
+	randomSeed int64,
+	config RecommendationConfig,
+	includeRecommendation bool,
+	recommendationGenerationID int64,
+	titleSort string,
+) string {
 	normalizedSort, _ := normalizeSort(sortKey, direction)
-	orderBy := listOrderBy(sortKey, direction, randomSeed, config)
+	orderBy := listOrderBy(sortKey, direction, randomSeed, config, titleSort)
 	if normalizedSort == "recommend" {
 		recommendationLane := "COALESCE(user_work_state.listening_status, 'none')"
 		if recommendationGenerationID > 0 {

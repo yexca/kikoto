@@ -231,7 +231,7 @@ func TestStreamRemoteSourceMediaDoesNotTranscodeWhenForced(t *testing.T) {
 	}))
 	defer upstream.Close()
 	server := newRemoteTextPreviewServer(t, upstream.URL, upstream.URL+"/media/track.wav")
-	key := remoteWorkCacheKey(7, "RJ00000000")
+	key := server.remoteWorkCacheKey(context.Background(), 7, "RJ00000000")
 	snapshot := server.remoteWorkTracksCache[key]
 	snapshot.Tracks = []kikoeru.Track{{Type: "audio", Title: "track.wav", MediaStreamURL: upstream.URL + "/media/track.wav"}}
 	server.remoteWorkTracksCache[key] = snapshot
@@ -265,7 +265,7 @@ func TestStreamRemoteSourceMediaProxiesNativeResponseAndRange(t *testing.T) {
 	}))
 	defer upstream.Close()
 	server := newRemoteTextPreviewServer(t, upstream.URL, upstream.URL+"/media/track.wav")
-	key := remoteWorkCacheKey(7, "RJ00000000")
+	key := server.remoteWorkCacheKey(context.Background(), 7, "RJ00000000")
 	snapshot := server.remoteWorkTracksCache[key]
 	snapshot.Tracks = []kikoeru.Track{{Type: "audio", Title: "track.wav", MediaStreamURL: upstream.URL + "/media/track.wav"}}
 	server.remoteWorkTracksCache[key] = snapshot
@@ -422,7 +422,7 @@ func TestStreamRemoteSourceMediaPreservesConditionalAndRangeStatuses(t *testing.
 			}))
 			defer upstream.Close()
 			server := newRemoteTextPreviewServer(t, upstream.URL, upstream.URL+"/media/track.wav")
-			key := remoteWorkCacheKey(7, "RJ00000000")
+			key := server.remoteWorkCacheKey(context.Background(), 7, "RJ00000000")
 			snapshot := server.remoteWorkTracksCache[key]
 			snapshot.Tracks = []kikoeru.Track{{Type: "audio", Title: "track.wav", MediaStreamURL: upstream.URL + "/media/track.wav"}}
 			server.remoteWorkTracksCache[key] = snapshot
@@ -450,7 +450,7 @@ func TestStreamRemoteSourceMediaRejectsUnconfiguredOrigin(t *testing.T) {
 	}))
 	defer upstream.Close()
 	server := newRemoteTextPreviewServer(t, upstream.URL, upstream.URL+"/media/track.wav")
-	key := remoteWorkCacheKey(7, "RJ00000000")
+	key := server.remoteWorkCacheKey(context.Background(), 7, "RJ00000000")
 	snapshot := server.remoteWorkTracksCache[key]
 	snapshot.Tracks = []kikoeru.Track{{Type: "audio", Title: "track.wav", MediaStreamURL: "https://media.invalid/track.wav"}}
 	server.remoteWorkTracksCache[key] = snapshot
@@ -471,7 +471,7 @@ func TestStreamRemoteSourceMediaRejectsOversizedResponse(t *testing.T) {
 	}))
 	defer upstream.Close()
 	server := newRemoteTextPreviewServer(t, upstream.URL, upstream.URL+"/media/track.wav")
-	key := remoteWorkCacheKey(7, "RJ00000000")
+	key := server.remoteWorkCacheKey(context.Background(), 7, "RJ00000000")
 	snapshot := server.remoteWorkTracksCache[key]
 	snapshot.Tracks = []kikoeru.Track{{Type: "audio", Title: "track.wav", MediaStreamURL: upstream.URL + "/media/track.wav"}}
 	server.remoteWorkTracksCache[key] = snapshot

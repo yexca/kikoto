@@ -78,7 +78,9 @@ func TestLoadWorkMetadataPresentationReturnsPriorityDefaultAndAllVariants(t *tes
 			simplified = variant
 		}
 	}
-	if simplified.Language != "zh-cn" || simplified.Origin || simplified.Title != "Simplified title" || len(simplified.Tags) != 1 || simplified.Tags[0] != "Simplified tag" {
+	// Every language version presents the family's fixed tag set, the
+	// original edition's tags; switching language never swaps the set.
+	if simplified.Language != "zh-cn" || simplified.Origin || simplified.Title != "Simplified title" || len(simplified.Tags) != 1 || simplified.Tags[0] != "Origin tag" {
 		t.Fatalf("simplified variant = %+v", simplified)
 	}
 }

@@ -151,6 +151,14 @@ dials one of those same validated numeric addresses. Built-in public metadata
 destinations reject private and reserved addresses. Administrator-configured
 source origins may explicitly reach private LAN addresses.
 
+Requests to a compatible remote source send `Accept-Language`: on behalf of a
+signed-in user, that user's metadata languages first; for results stored for
+everyone (crawls, catalog refreshes, remote metadata fallback, downloads), the
+instance default languages; and always the source's configured fallback
+language last, with decreasing weights. The short-lived remote work snapshot
+cache is keyed by the viewer's languages, so one viewer's response never serves
+another language. The header changes no destination or transport policy.
+
 Compatible remote sources default to public-host compatibility mode so a
 source may move media, cover, or text storage to another public origin without
 a Kikoto configuration change. The configured API, public-site, and fallback

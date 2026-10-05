@@ -273,6 +273,9 @@ const adminToolsHans = {
     enableDescription: "停用的来源会保留配置，但不会被请求。",
     metadataCapability: "提供作品元数据",
     metadataCapabilityDescription: "允许元数据设置在 DLsite 没有记录时使用此来源。",
+    fallbackLanguage: "回退语言",
+    fallbackLanguageDescription: "请求先使用查看者偏好的元数据语言，最后使用此语言，用于没有偏好语言的来源。",
+    customLanguage: "自定义（{{language}}）",
     connection: "连接详情",
     connectionDescription: "API URL、公开网站与作品链接",
     apiUrlHint: "服务基础 URL；/api/works 等路径会自动追加。",
@@ -626,6 +629,7 @@ export const zhHansResource = {
         metadataLanguage: "优先展示 metadata 语言",
         metadataLanguageSaveFailed: "无法保存 metadata 语言。",
         metadataLanguageLoadFailed: "无法读取 metadata 语言。",
+        metadataLanguageDefault: "服务器默认（{{language}}）",
       },
       account: {
         account: "账户",

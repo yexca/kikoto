@@ -93,7 +93,7 @@ func TestMetadataTagBackfillBatchesResumeWithoutCreatingWorks(t *testing.T) {
 	}
 }
 
-func TestMetadataTagCanonicalSelectionLeavesOtherEditionsOwnGenres(t *testing.T) {
+func TestMetadataTagCanonicalKeepsOriginalGenresAndOtherEditionsOwnGenres(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
 	if _, err := db.Exec("DELETE FROM work"); err != nil {
@@ -155,16 +155,22 @@ func TestMetadataTagCanonicalSelectionLeavesOtherEditionsOwnGenres(t *testing.T)
 			t.Fatalf("work %d tags %+v want %d", work, tags, id)
 		}
 	}
-	if err := ProjectDLsiteMetadata(ctx, db, []string{"zh-cn", "origin"}); err != nil {
-		t.Fatal(err)
+	// The canonical work keeps its original edition's genres whichever
+	// language is preferred, so every viewer sees the same tag set; only the
+	// stored title follows the priority.
+	for _, priority := range [][]string{{"zh-cn", "origin"}, {"en-us", "origin"}} {
+		if err := ProjectDLsiteMetadata(ctx, db, priority); err != nil {
+			t.Fatal(err)
+		}
+		assert(ids[0], concepts[0])
+		assert(ids[1], concepts[1])
+		assert(ids[2], concepts[2])
+		var title string
+		if err := db.QueryRow("SELECT title FROM work WHERE id=?", ids[0]).Scan(&title); err != nil {
+			t.Fatal(err)
+		}
+		if want := "Synthetic " + priority[0]; title != want {
+			t.Fatalf("priority %v title = %q, want %q", priority, title, want)
+		}
 	}
-	assert(ids[0], concepts[1])
-	assert(ids[1], concepts[1])
-	assert(ids[2], concepts[2])
-	if err := ProjectDLsiteMetadata(ctx, db, []string{"en-us", "origin"}); err != nil {
-		t.Fatal(err)
-	}
-	assert(ids[0], concepts[2])
-	assert(ids[1], concepts[1])
-	assert(ids[2], concepts[2])
 }

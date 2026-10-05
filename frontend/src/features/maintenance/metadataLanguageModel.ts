@@ -39,3 +39,10 @@ export function preferredDlsiteMetadataLanguage(values: readonly string[] | null
 export function dlsiteMetadataLanguagesFor(language: DlsiteMetadataLanguage): DlsiteMetadataLanguage[] {
   return normalizeDlsiteMetadataLanguages([language]);
 }
+
+/** A user's own language, or "default" to follow the instance default. */
+export type MetadataLanguageChoice = DlsiteMetadataLanguage | "default";
+
+export function dlsiteMetadataLanguageLabelKey(language: DlsiteMetadataLanguage) {
+  return dlsiteMetadataLanguageOptions.find((option) => option.value === language)?.labelKey ?? "metadata.origin";
+}

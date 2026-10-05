@@ -296,7 +296,7 @@ func TestMetadataHistoryConcurrentUpgrade(t *testing.T) {
 		}
 	}
 	after := migrationLedgerSnapshot(t, first)
-	if len(after) != latestNumberedMigrationVersion || after["053_favorite_list_icon.sql"] == "" || after["054_remote_metadata_fallback.sql"] == "" || after["055_genre_name_learning.sql"] == "" {
+	if len(after) != latestNumberedMigrationVersion || after["053_favorite_list_icon.sql"] == "" || after["054_remote_metadata_fallback.sql"] == "" || after["055_genre_name_learning.sql"] == "" || after["056_user_metadata_language.sql"] == "" {
 		t.Fatalf("concurrent upgrade did not append each missing migration once: %v", after)
 	}
 	for filename, record := range before {

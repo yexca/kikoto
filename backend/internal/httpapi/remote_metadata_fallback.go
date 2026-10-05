@@ -132,7 +132,7 @@ func (s *Server) fillWorkFromRemoteSource(ctx context.Context, workID int64, cod
 	}
 	if raw == nil {
 		requestCtx, cancel := context.WithTimeout(ctx, remoteMetadataFallbackTimeout)
-		_, raw, err = s.remoteMetadataClient(source).WorkInfo(requestCtx, code)
+		_, raw, err = s.remoteMetadataClient(requestCtx, source).WorkInfo(requestCtx, code)
 		cancel()
 		if err != nil {
 			if kikoeru.IsNotFound(err) {
@@ -152,7 +152,7 @@ func (s *Server) fillWorkFromRemoteSource(ctx context.Context, workID int64, cod
 	if err := json.Unmarshal(raw, &remoteWork); err != nil {
 		return remoteFallbackFailed, cached, err
 	}
-	priorities := s.preferredMetadataLanguages(ctx)
+	priorities := s.instanceMetadataLanguages(ctx)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return remoteFallbackFailed, cached, err
@@ -210,7 +210,7 @@ func (s *Server) cachedRemoteWorkJSON(ctx context.Context, workID int64, code st
 // source transport validates and pins every connection and hop; this client
 // additionally rejects a redirect to any origin the administrator did not
 // configure, and buffers at most remotemetadata.MaxResponseBytes.
-func (s *Server) remoteMetadataClient(source remoteSourceForUse) *kikoeru.Client {
+func (s *Server) remoteMetadataClient(ctx context.Context, source remoteSourceForUse) *kikoeru.Client {
 	httpClient := s.sourceCrawlHTTPClient(source, remoteMetadataFallbackTimeout)
 	configured := map[string]bool{}
 	for _, candidate := range []string{source.Endpoint.APIURL, source.Endpoint.BaseURL, source.Endpoint.FallbackURL} {
@@ -240,7 +240,9 @@ func (s *Server) remoteMetadataClient(source remoteSourceForUse) *kikoeru.Client
 	} else {
 		client = kikoeru.NewClient(source.Endpoint.APIURL, httpClient)
 	}
-	return client.WithRequestLanguage(source.Config.RequestLanguage).WithMaxResponseBytes(remotemetadata.MaxResponseBytes)
+	// Fallback values are stored for every user, so the instance default
+	// languages decide the request, never the user who caused the refresh.
+	return client.WithAcceptLanguage(s.instanceRemoteSourceAcceptLanguage(ctx, source)).WithMaxResponseBytes(remotemetadata.MaxResponseBytes)
 }
 
 // publishRemoteFallbackCover caches the source's cover only when the work has

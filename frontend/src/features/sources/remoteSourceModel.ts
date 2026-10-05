@@ -8,6 +8,27 @@ export const DEFAULT_CACHE_SUFFIX = "/media/<source_code>/<code_prefix>/<code_gr
 
 export type RemoteSourceHealth = "healthy" | "unavailable" | "unknown" | "disabled";
 
+/**
+ * Fallback languages offered for a remote source. A request asks in the
+ * viewer's metadata languages first and in this language last.
+ */
+export const REMOTE_FALLBACK_LANGUAGE_OPTIONS = [
+  { value: "ja-JP", labelKey: "metadata.japanese" },
+  { value: "en-US", labelKey: "metadata.english" },
+  { value: "zh-CN", labelKey: "metadata.simplifiedChinese" },
+  { value: "zh-TW", labelKey: "metadata.traditionalChinese" },
+  { value: "ko-KR", labelKey: "metadata.korean" },
+] as const;
+
+/** The configured fallback, matched case-insensitively to a known option. */
+export function remoteFallbackLanguage(source: Pick<FileSource, "config">) {
+  const configured = source.config.requestLanguage?.trim() || "ja-JP";
+  const known = REMOTE_FALLBACK_LANGUAGE_OPTIONS.find(
+    (option) => option.value.toLowerCase() === configured.toLowerCase(),
+  );
+  return { value: known?.value ?? configured, custom: !known };
+}
+
 export const emptyRemoteSource = {
   id: 0,
   code: "",

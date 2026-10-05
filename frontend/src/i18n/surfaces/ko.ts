@@ -257,8 +257,6 @@ export const surfaceKorean = {
     accessPolicySaved: "접근 정책을 저장했습니다.",
     accessPolicySaveFailed: "접근 정책을 저장하지 못했습니다.",
     sourceSaved: "소스를 저장했습니다.",
-    requestLanguageUpdated: "{{name}}의 요청 언어를 업데이트했습니다.",
-    requestLanguageSaveFailed: "원격 요청 언어를 저장하지 못했습니다.",
     sourceDeleted: "소스를 삭제했습니다.",
     sourceDeleteFailed: "소스를 삭제하지 못했습니다.",
     sourceHealthPassed: "소스 상태 확인을 통과했습니다.",
@@ -450,9 +448,9 @@ export const surfaceKorean = {
       noProxies: "구성된 프록시가 없습니다. DLsite에는 직접 연결합니다.",
       manageProxies: "프록시 관리",
       proxyUpdated: "DLsite 프록시를 업데이트했습니다.",
-      remoteRequests: "원격 요청 언어",
-      remoteRequestsDescription:
-        "Accept-Language 힌트로 전송됩니다. 소스가 무시하거나 여러 언어를 섞어 반환할 수 있습니다.",
+      defaultLanguage: "기본 메타데이터 언어",
+      defaultLanguageDescription:
+        "외관 메뉴에서 언어를 고르지 않은 사용자와 익명 방문자에게 쓰이며, 저장되는 제목·태그 이름과 백그라운드 요청에도 쓰입니다.",
       remoteFallback: "원격 메타데이터 보완",
       remoteFallbackDescription:
         "DLsite가 작품을 찾지 못하면 선택한 소스에 순서대로 요청하고 그 태그를 공유 태그에 추가합니다. 끄면 보완된 값은 유지되고 원격 태그는 공유 태그에서 빠집니다.",

@@ -19,15 +19,22 @@ import (
 	"github.com/yexca/kikoto/backend/internal/textdecode"
 )
 
-func (s *Server) kikoeruClientForSource(source remoteSourceForUse) *kikoeru.Client {
-	return s.kikoeruClientForSourceClass(source, sourceRequestInteractive)
+// kikoeruClientForSource asks in the request viewer's languages.
+func (s *Server) kikoeruClientForSource(ctx context.Context, source remoteSourceForUse) *kikoeru.Client {
+	return s.kikoeruClientForSourceClass(ctx, source, sourceRequestInteractive)
 }
 
-func (s *Server) kikoeruCrawlClientForSource(source remoteSourceForUse) *kikoeru.Client {
-	return s.kikoeruClientForSourceClass(source, sourceRequestCrawl)
+// kikoeruCrawlClientForSource asks in the instance default languages: crawl
+// results are stored for every user.
+func (s *Server) kikoeruCrawlClientForSource(ctx context.Context, source remoteSourceForUse) *kikoeru.Client {
+	return s.kikoeruClientForSourceClass(ctx, source, sourceRequestCrawl)
 }
 
-func (s *Server) kikoeruClientForSourceClass(source remoteSourceForUse, class sourceRequestClass) *kikoeru.Client {
+func (s *Server) kikoeruClientForSourceClass(ctx context.Context, source remoteSourceForUse, class sourceRequestClass) *kikoeru.Client {
+	acceptLanguage := s.remoteSourceAcceptLanguage(ctx, source)
+	if class == sourceRequestCrawl {
+		acceptLanguage = s.instanceRemoteSourceAcceptLanguage(ctx, source)
+	}
 	var httpClient *http.Client
 	switch class {
 	case sourceRequestCrawl:
@@ -38,9 +45,9 @@ func (s *Server) kikoeruClientForSourceClass(source remoteSourceForUse, class so
 		httpClient = s.sourceHTTPClient(source, 20*time.Second)
 	}
 	if source.SourceType == sourceTypeKikoeruCompatible178 {
-		return kikoeru.NewNumber178Client(source.Endpoint.APIURL, httpClient).WithRequestLanguage(source.Config.RequestLanguage)
+		return kikoeru.NewNumber178Client(source.Endpoint.APIURL, httpClient).WithAcceptLanguage(acceptLanguage)
 	}
-	return kikoeru.NewClient(source.Endpoint.APIURL, httpClient).WithRequestLanguage(source.Config.RequestLanguage)
+	return kikoeru.NewClient(source.Endpoint.APIURL, httpClient).WithAcceptLanguage(acceptLanguage)
 }
 
 func (s *Server) getRemoteSourceWorkText(w http.ResponseWriter, r *http.Request) {
@@ -85,9 +92,7 @@ func (s *Server) serveRemoteTextPreview(w http.ResponseWriter, r *http.Request, 
 	}
 	request.Header.Set("Accept", "text/plain,text/*")
 	request.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
-	if source.Config.RequestLanguage != "" {
-		request.Header.Set("Accept-Language", source.Config.RequestLanguage)
-	}
+	request.Header.Set("Accept-Language", s.remoteSourceAcceptLanguage(r.Context(), source))
 	response, err := s.sourceHTTPClient(source, 20*time.Second).Do(request)
 	if err != nil {
 		writeUpstreamError(w, err)
@@ -164,9 +169,7 @@ func (s *Server) downloadRemoteCover(ctx context.Context, source remoteSourceFor
 		return err
 	}
 	request.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
-	if source.Config.RequestLanguage != "" {
-		request.Header.Set("Accept-Language", source.Config.RequestLanguage)
-	}
+	request.Header.Set("Accept-Language", s.instanceRemoteSourceAcceptLanguage(ctx, source))
 	response, err := s.sourceHTTPClient(source, 2*time.Minute).Do(request)
 	if err != nil {
 		return err

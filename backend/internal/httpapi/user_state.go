@@ -149,6 +149,7 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 	}
 	rawWorks, err := s.libraryStore.ListMatchingSorted(r.Context(), where, args, library.MatchingListOptions{
 		UserID: user.ID, Page: query.Page, PageSize: query.PageSize, Sort: query.Sort, Direction: query.Direction, RandomSeed: query.RandomSeed, ListID: query.ListID,
+		TitleLanguages: s.titleSortLanguages(r.Context(), query.Sort),
 	})
 	if err != nil {
 		writeError(w, err)

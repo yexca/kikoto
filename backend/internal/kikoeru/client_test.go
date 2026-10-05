@@ -125,10 +125,10 @@ func TestWorkRejectsNonNumericLanguageEditionObject(t *testing.T) {
 	}
 }
 
-func TestRequestLanguageIsSentAsAcceptLanguageHint(t *testing.T) {
+func TestAcceptLanguageIsSentAsHint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get("Accept-Language"); got != "zh-Hant" {
-			t.Fatalf("Accept-Language = %q, want zh-Hant", got)
+		if got := r.Header.Get("Accept-Language"); got != "zh-TW, zh-Hant;q=0.9" {
+			t.Fatalf("Accept-Language = %q, want zh-TW, zh-Hant;q=0.9", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if r.Method == http.MethodPost {
@@ -139,7 +139,7 @@ func TestRequestLanguageIsSentAsAcceptLanguageHint(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, server.Client()).WithRequestLanguage("zh-Hant")
+	client := NewClient(server.URL, server.Client()).WithAcceptLanguage("zh-TW, zh-Hant;q=0.9")
 	if _, err := client.ListWorks(context.Background(), 1, 10, ""); err != nil {
 		t.Fatal(err)
 	}

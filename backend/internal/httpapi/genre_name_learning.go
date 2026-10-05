@@ -46,7 +46,7 @@ func (s *Server) enqueueGenreNameLearning(ctx context.Context, reason string) (i
 	if s.cfg.IsDemo() {
 		return 0, nil
 	}
-	languages := metasync.GenreNameLearningLanguages(s.preferredMetadataLanguages(ctx))
+	languages := metasync.GenreNameLearningLanguages(s.learnedMetadataLanguages(ctx))
 	if len(languages) == 0 {
 		return 0, nil
 	}
@@ -118,7 +118,7 @@ func (s *Server) executeGenreNameLearningJob(ctx context.Context, job workflowJo
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
-	languages := metasync.GenreNameLearningLanguages(s.preferredMetadataLanguages(ctx))
+	languages := metasync.GenreNameLearningLanguages(s.learnedMetadataLanguages(ctx))
 	pending, err := metasync.PendingGenreNames(ctx, s.db, languages)
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())

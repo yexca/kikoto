@@ -334,13 +334,13 @@ func TestDLsiteMetadataLanguagePriorityUsesArrayAndLegacyFallback(t *testing.T) 
 		t.Fatal(err)
 	}
 	legacyServer := NewServer(legacyDB, config.Config{})
-	loaded := legacyServer.preferredMetadataLanguages(context.Background())
+	loaded := legacyServer.instanceMetadataLanguages(context.Background())
 	if !reflect.DeepEqual(loaded, []string{"en-us", "origin"}) {
 		t.Fatalf("legacy preference = %v", loaded)
 	}
 	freshDB := openMigratedTestDB(t)
 	freshServer := NewServer(freshDB, config.Config{})
-	if loaded := freshServer.preferredMetadataLanguages(context.Background()); !reflect.DeepEqual(loaded, []string{"origin"}) {
+	if loaded := freshServer.instanceMetadataLanguages(context.Background()); !reflect.DeepEqual(loaded, []string{"origin"}) {
 		t.Fatalf("fresh preference = %v", loaded)
 	}
 }

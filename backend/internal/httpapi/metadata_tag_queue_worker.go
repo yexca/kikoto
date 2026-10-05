@@ -22,7 +22,7 @@ func (s *Server) runMetadataTagQueueWorker(ctx context.Context) {
 		continueNow := false
 		if !s.layoutMigrationActive.Load() {
 			var err error
-			continueNow, err = processor.ProcessBatch(ctx, s.preferredMetadataLanguages(ctx))
+			continueNow, err = processor.ProcessBatch(ctx, s.instanceMetadataLanguages(ctx))
 			if err != nil && !errors.Is(err, context.Canceled) {
 				slog.Error("project queued metadata tags", "error", err)
 			}

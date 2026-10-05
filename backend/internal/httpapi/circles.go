@@ -2964,8 +2964,8 @@ func (s *Server) syncCircleProductJSON(ctx context.Context, partyID int64, workC
 		WithCoordinator(s.metadataCoordinator).
 		WithProductURLBuilder(s.dlsiteEndpoints.ProductURL).
 		WithCacheRoot(s.cfg.CacheRoot).
-		WithMetadataPriority(s.preferredMetadataLanguages(ctx)).
-		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.preferredMetadataLanguages(ctx)))
+		WithMetadataPriority(s.instanceMetadataLanguages(ctx)).
+		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.instanceMetadataLanguages(ctx)))
 	result := circleProductSyncResult{Skipped: len(workCodes) - len(candidates), Failures: []string{}}
 	for index, code := range candidates {
 		if progress != nil {
@@ -3093,7 +3093,7 @@ func (s *Server) syncCircleRemoteSourceCatalog(ctx context.Context, partyID int6
 	if err != nil {
 		return 0, err
 	}
-	client := s.kikoeruCrawlClientForSource(source)
+	client := s.kikoeruCrawlClientForSource(ctx, source)
 	keyword := "$circle:" + circleName + "$"
 	pageSize := 20
 	maxPages := 10

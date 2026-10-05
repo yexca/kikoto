@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -127,7 +128,7 @@ func newRemoteTextPreviewServer(t *testing.T, endpoint string, textURL string) *
 	}
 	work := kikoeru.Work{ID: 71, SourceID: "RJ00000000", Title: "Synthetic work"}
 	tracks := []kikoeru.Track{{Type: "text", Title: "01.lrc", MediaStreamURL: textURL}}
-	key := remoteWorkCacheKey(source.ID, work.SourceID)
+	key := server.remoteWorkCacheKey(context.Background(), source.ID, work.SourceID)
 	expiresAt := time.Now().Add(time.Minute)
 	server.remoteWorkCache[key] = remoteWorkSnapshot{Source: source, Work: work, ExpiresAt: expiresAt}
 	server.remoteWorkTracksCache[key] = remoteWorkTracksSnapshot{Source: source, Work: work, Tracks: tracks, ExpiresAt: expiresAt}
