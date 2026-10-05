@@ -307,30 +307,28 @@ func loadSearchDocuments(ctx context.Context, tx *sql.Tx, ids []int64) (map[int6
 		{`SELECT link.work_id, tag.display_name
 			FROM work_tag AS link
 			INNER JOIN tag ON tag.id = link.tag_id
-			WHERE tag.namespace IN ('dlsite', 'metadata') AND NOT EXISTS (SELECT 1 FROM metadata_tag WHERE tag_id = tag.id AND (hidden = 1 OR merged_into_tag_id IS NOT NULL)) AND link.work_id IN (%s)`, func(d *searchDocument) *[]string { return &d.tag }},
+			WHERE tag.namespace IN ('dlsite', 'metadata') AND link.work_id IN (%s)`, func(d *searchDocument) *[]string { return &d.tag }},
 		// Every merged concept is an alias of the effective terminal concept.
 		{`SELECT link.work_id, name.name FROM work_tag AS link
    INNER JOIN metadata_tag AS effective ON effective.tag_id = link.tag_id
    INNER JOIN metadata_tag_resolution AS resolution ON resolution.resolved_tag_id = effective.tag_id
    INNER JOIN metadata_tag AS concept ON concept.tag_id = resolution.source_tag_id
    INNER JOIN dlsite_genre_name AS name ON name.genre_id = concept.dlsite_genre_id
-   WHERE effective.hidden=0 AND effective.merged_into_tag_id IS NULL AND link.work_id IN (%s)`, func(d *searchDocument) *[]string { return &d.tag }},
+   WHERE link.work_id IN (%s)`, func(d *searchDocument) *[]string { return &d.tag }},
 		{`SELECT link.work_id, name.name FROM work_tag AS link
    INNER JOIN metadata_tag AS effective ON effective.tag_id = link.tag_id
    INNER JOIN metadata_tag_resolution AS resolution ON resolution.resolved_tag_id = effective.tag_id
    INNER JOIN metadata_tag_name AS name ON name.tag_id = resolution.source_tag_id
-   WHERE effective.hidden=0 AND effective.merged_into_tag_id IS NULL AND link.work_id IN (%s)`, func(d *searchDocument) *[]string { return &d.tag }},
+   WHERE link.work_id IN (%s)`, func(d *searchDocument) *[]string { return &d.tag }},
 		{`SELECT link.work_id, alias.display_name FROM work_tag AS link
    INNER JOIN metadata_tag AS effective ON effective.tag_id = link.tag_id
    INNER JOIN metadata_tag_resolution AS resolution ON resolution.resolved_tag_id = effective.tag_id
    INNER JOIN tag AS alias ON alias.id = resolution.source_tag_id
-   WHERE effective.hidden=0 AND effective.merged_into_tag_id IS NULL AND link.work_id IN (%s)`, func(d *searchDocument) *[]string { return &d.tag }},
+   WHERE link.work_id IN (%s)`, func(d *searchDocument) *[]string { return &d.tag }},
 		// Compatibility while the startup backfill has not replaced legacy links.
 		{`SELECT genre.work_id, name.name FROM work_dlsite_genre AS genre
    INNER JOIN dlsite_genre_name AS name ON name.genre_id=genre.genre_id
-   LEFT JOIN metadata_tag AS concept ON concept.dlsite_genre_id=genre.genre_id
-   WHERE (concept.tag_id IS NULL OR (concept.hidden=0 AND concept.merged_into_tag_id IS NULL))
-   AND NOT EXISTS (SELECT 1 FROM work_tag_override WHERE work_id=genre.work_id)
+   WHERE NOT EXISTS (SELECT 1 FROM work_tag_override WHERE work_id=genre.work_id)
    AND NOT EXISTS (SELECT 1 FROM work_tag INNER JOIN tag ON tag.id=work_tag.tag_id WHERE work_id=genre.work_id AND tag.namespace='metadata')
    AND NOT EXISTS (SELECT 1 FROM app_setting WHERE key='metadata_tag_projection_version' AND value_json='1')
    AND genre.work_id IN (%s)`, func(d *searchDocument) *[]string { return &d.tag }},

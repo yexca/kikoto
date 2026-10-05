@@ -271,7 +271,7 @@ func recommendationGenerationInsertSQL(config RecommendationConfig) string {
 			SELECT 'tag', work_tag.work_id, work_tag.tag_id
 			FROM work_tag
 			INNER JOIN tag ON tag.id = work_tag.tag_id
-			WHERE tag.namespace IN ('dlsite', 'metadata') AND NOT EXISTS (SELECT 1 FROM metadata_tag WHERE tag_id = tag.id AND (hidden = 1 OR merged_into_tag_id IS NOT NULL))
+			WHERE tag.namespace IN ('dlsite', 'metadata')
 			GROUP BY work_tag.work_id, work_tag.tag_id
 			UNION ALL
 			SELECT 'voice', work_credit.work_id, work_credit.person_id

@@ -22,6 +22,11 @@ export const surfaceEnglish = {
     loading: "Loading…",
   },
   metadataEntries: {
+    hiddenNameConflict: "This name resolves to a hidden tag. Unhide it in Metadata before adding it.",
+    pendingWorks: "{{count}} works remain in the background tag update queue. Refresh to check progress.",
+    namePriority:
+      "For each preferred language: its manual name, then the all-language manual name, then the provider name.",
+
     worksGroup: "Works",
     entriesGroup: "Entries",
     tags: "Tags",

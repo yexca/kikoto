@@ -198,7 +198,7 @@ const positiveTagMatchCountExpression = `(SELECT COUNT(DISTINCT candidate_tag.ta
 	FROM work_tag AS candidate_tag
 	INNER JOIN tag AS candidate_tag_value ON candidate_tag_value.id = candidate_tag.tag_id
 	WHERE candidate_tag.work_id = work.id
-		AND candidate_tag_value.namespace IN ('dlsite', 'metadata') AND NOT EXISTS (SELECT 1 FROM metadata_tag WHERE tag_id = candidate_tag_value.id AND (hidden = 1 OR merged_into_tag_id IS NOT NULL))
+		AND candidate_tag_value.namespace IN ('dlsite', 'metadata')
 		AND EXISTS (
 			SELECT 1
 			FROM work_tag AS liked_tag
@@ -244,7 +244,7 @@ func negativeTagMatchCountExpression(minEvidence int) string {
 		FROM work_tag AS candidate_tag
 		INNER JOIN tag AS candidate_tag_value ON candidate_tag_value.id = candidate_tag.tag_id
 		WHERE candidate_tag.work_id = work.id
-			AND candidate_tag_value.namespace IN ('dlsite', 'metadata') AND NOT EXISTS (SELECT 1 FROM metadata_tag WHERE tag_id = candidate_tag_value.id AND (hidden = 1 OR merged_into_tag_id IS NOT NULL))
+			AND candidate_tag_value.namespace IN ('dlsite', 'metadata')
 			AND (SELECT COUNT(DISTINCT paused_tag.work_id)
 				FROM work_tag AS paused_tag
 				INNER JOIN user_work_state AS paused_state ON paused_state.work_id = paused_tag.work_id AND paused_state.user_id = ?

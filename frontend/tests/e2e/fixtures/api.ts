@@ -773,6 +773,8 @@ export function workflowRunsPageFixture(
 
 export function metadataTagFixture(overrides: Partial<MetadataTag> = {}): MetadataTag {
   return {
+    pendingWorkCount: 0,
+    resolvedHidden: false,
     id: 1,
     key: "custom:synthetic-tag",
     displayName: "Synthetic tag",

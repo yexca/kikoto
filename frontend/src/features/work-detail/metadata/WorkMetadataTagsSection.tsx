@@ -102,6 +102,7 @@ export function WorkMetadataTagsSection({
   const [query, setQuery] = useState("");
   const suggestions = useMetadataEntrySuggestions("tags", query);
   const add = (tag: MetadataTag) => {
+    if (tag.resolvedHidden) return;
     editor.add(tag);
     setQuery("");
   };
@@ -150,10 +151,22 @@ export function WorkMetadataTagsSection({
           {suggestions.entries
             .filter((entry) => !editor.tags.some((tag) => tag.id === entry.id))
             .map((entry) => (
-              <Button key={entry.id} variant="ghost" size="sm" onClick={() => add(entry as MetadataTag)}>
+              <Button
+                key={entry.id}
+                variant="ghost"
+                size="sm"
+                disabled={(entry as MetadataTag).resolvedHidden}
+                onClick={() => add(entry as MetadataTag)}
+              >
                 {entry.displayName}
+                {(entry as MetadataTag).resolvedHidden ? ` · ${t("metadataEntries.hidden")}` : ""}
               </Button>
             ))}
+          {existing?.resolvedHidden && (
+            <p role="alert" className="text-sm text-muted-foreground">
+              {t("metadataEntries.hiddenNameConflict")}
+            </p>
+          )}
           {suggestions.failed && (
             <p role="alert" className="text-sm text-muted-foreground">
               {t("metadataEntries.loadFailed")}

@@ -202,7 +202,7 @@ func (s *Server) loadProjectedDLsiteTagsBatch(ctx context.Context, workIDs []int
 		SELECT work_tag.work_id, tag.display_name
 		FROM work_tag
 		INNER JOIN tag ON tag.id = work_tag.tag_id
-		WHERE tag.namespace IN ('dlsite','metadata') AND NOT EXISTS(SELECT 1 FROM metadata_tag WHERE tag_id=tag.id AND (hidden=1 OR merged_into_tag_id IS NOT NULL)) AND work_tag.work_id IN (`+strings.Join(placeholders, ",")+`)
+		WHERE tag.namespace IN ('dlsite','metadata') AND work_tag.work_id IN (`+strings.Join(placeholders, ",")+`)
 		ORDER BY work_tag.work_id ASC, LOWER(tag.display_name), tag.id
 	`, args...)
 	if err != nil {

@@ -174,8 +174,7 @@ func ProjectWorkTx(ctx context.Context, tx *sql.Tx, workID, genreWorkID int64, l
 
 func Read(ctx context.Context, q Querier, workID int64) ([]EffectiveTag, error) {
 	rows, err := q.QueryContext(ctx, `SELECT tag.id,tag.display_name,relation.source FROM work_tag AS relation INNER JOIN tag ON tag.id=relation.tag_id
- LEFT JOIN metadata_tag AS concept ON concept.tag_id=tag.id
- WHERE relation.work_id=? AND (tag.namespace='dlsite' OR (tag.namespace='metadata' AND concept.hidden=0 AND concept.merged_into_tag_id IS NULL))
+ WHERE relation.work_id=? AND tag.namespace IN ('dlsite','metadata')
  GROUP BY tag.id ORDER BY LOWER(tag.display_name),tag.id`, workID)
 	if err != nil {
 		return nil, err

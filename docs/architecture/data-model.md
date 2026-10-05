@@ -101,16 +101,16 @@ is available. The old `dlsite` rows remain readable during startup backfill.
 `metadata_tag_name` holds manual names by locale; an empty locale applies to
 all languages. Personal `user_tag` records remain account-owned and separate.
 
-The single `tag.display_name` is computed from the universal manual name,
-then each configured preferred locale's manual name or genre dictionary name,
+The single `tag.display_name` tries each configured preferred locale in order:
+that locale's manual name, the universal manual name, then its genre dictionary name,
 then Japanese manual/dictionary names, then any known name. The edition token
 `origin` does not stop this dictionary fallback. Synchronization, manual
 renaming, and language-priority changes refresh the stored display name.
 Dictionary learning and concept creation refresh only the changed concepts in
 the writing transaction. A normal sync never recalculates the entire dictionary
 and never publishes a generated genre placeholder. Detail language variants use
-a universal manual name, then that variant's requested locale's manual or
-dictionary name, then the stored priority-selected name.
+that variant's requested locale's manual name, then the universal manual name,
+then its dictionary name, then the stored priority-selected name.
 
 `work_tag_override` records per-work additions and removals. Projection takes
 the selected edition's genres for the canonical work and each other edition's
@@ -121,8 +121,15 @@ creator lists, search, workflow predicates, and recommendation similarity.
 `tags_json` retains the provider's original names for provenance.
 
 `work_metadata_tag_base` retains each work's original provider concept ids
-before hiding, removals, or merge resolution. Snapshot-only provider names and
-genres are normalized into this base without fetching or creating new works.
+before hiding, removals, or merge resolution. Snapshot-only DLsite names and
+genres are normalized into this base without
+fetching or creating new works. Remote snapshot tags remain in their existing
+snapshot presentation and do not enter shared concepts at this stage. Snapshot
+fallback fills only absent dictionary cells; names with no known request locale
+are unscoped, while `name_base` is Japanese. Invalid objects, more than 256 tags,
+names over 512 bytes, or snapshots over 8 MiB skip the entire snapshot fallback
+before any relation changes, with a protected diagnostic. Valid normalized input
+and manual additions still project.
 `work_metadata_tag_projection` records the work and selected source work whose
 base has been projected, including an intentionally empty result. Snapshot
 inserts or content changes invalidate the affected per-work markers. Reads
@@ -138,15 +145,31 @@ Tag merges retain the original concept and override ids; undo clears the
 mapping, and cycles are rejected. Only the final merge target's hidden flag
 controls visibility. A merged source's hidden flag is dormant until undo;
 merging into a hidden target hides the result for every related work.
-Hidden final concepts and removed work tags do not
-participate in current display, search, or recommendation inputs. Relation
+After each work is projected, hidden final concepts and removed work tags do
+not participate in display, search, or recommendation inputs. `work_tag` remains
+the committed per-work read boundary while background repair is pending, so
+merging does not filter away the old source link before its replacement commits.
+Relation
 changes advance the existing recommendation input revision, so the algorithm
 version is unchanged and new sessions rebuild their generation.
 
 Custom creation trims the name and reuses an existing concept when any known
 locale name matches with Unicode case folding. It resolves a matched merged
-source to its final target. Work-editor custom tags are created and attached in
+source to its final target. A match resolving to a hidden target returns
+`409 metadata_tag_hidden`; it is never silently created or attached. Work-editor
+custom tags are created and attached in
 the work-save transaction, so cancellation and failed saves leave no new orphan.
+
+`work_metadata_tag_dirty` (migration 051) is the durable per-work projection
+queue. Snapshot insert/update/delete triggers queue the work and dependent
+projections before invalidating markers; inserts and updates also cover stored
+edition siblings. Hide/merge/undo enqueue the connected component before and
+after the state change in the same transaction. Processing selects, projects,
+and acknowledges at most 64 works in one bounded write transaction. Failure or
+cancellation retains the whole batch; repeated processing is idempotent. Both
+mutation responses and tag lists report the instance-wide `pendingWorkCount`.
+Demo reads count only eligible demo works.
+Relation changes invalidate search and advance recommendation input revisions.
 
 ### Circle Identity
 

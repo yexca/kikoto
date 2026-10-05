@@ -18,6 +18,8 @@ describe("metadata tag drafts", () => {
       mergedIntoTagId: null,
       mergedFromTagIds: [],
       workCount: 0,
+      pendingWorkCount: 0,
+      resolvedHidden: false,
       names: [{ language: "en-us", name: "Synthetic alternate", source: "manual" as const }],
     };
     expect(sameMetadataTagName(" Synthetic NAME ", "synthetic name")).toBe(true);

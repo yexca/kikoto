@@ -184,6 +184,16 @@ attaches them in the same request; Cancel leaves no shared entry. Only a changed
 tag draft is saved. A tag-section load failure
 retains the other metadata fields. Demo shows these controls disabled.
 
+Tag completion also lists hidden and merged matches. A name resolving to a
+hidden final target is labelled and disabled, with an explanation that it must
+be unhidden in Metadata first. Creation conflicts returned by the server retain
+the draft and show the same explanation. The tag manager explains the shared
+locale precedence: language-specific manual name, all-language manual name,
+provider name. This also governs default names and detail language switches.
+Hide/merge/undo commit immediately and show the instance-wide remaining work
+count while background projection runs. The tag list refresh action reads the
+current count; the work list and player remain usable during repair.
+
 `lib/metadataTagModel` holds draft comparison and language labels; the shared
 suggestion hook owns cancellation and debounce. The maintenance tag and circle
 dialogs keep transport separate from the work editor and preserve their loaded

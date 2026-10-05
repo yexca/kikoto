@@ -18,6 +18,10 @@ export const surfaceJapanese = {
     loading: "読み込み中…",
   },
   metadataEntries: {
+    hiddenNameConflict: "この名前は非表示タグに一致します。追加する前にメタデータ管理で非表示を解除してください。",
+    pendingWorks: "バックグラウンドのタグ更新待ちは {{count}} 作品です。更新して進捗を確認できます。",
+    namePriority: "優先言語ごとに、言語別の手動名、全言語共通の手動名、提供元の名前の順に選びます。",
+
     worksGroup: "作品",
     entriesGroup: "項目",
     tags: "タグ",

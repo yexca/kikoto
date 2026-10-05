@@ -201,7 +201,13 @@ test("@desktop shared tag dialog edits names and reviews reversible merges", asy
   const target = metadataTagFixture({ id: 2, key: "custom:synthetic-target", displayName: "Synthetic target tag" });
   await page.route("**/api/metadata/tags?*", (route) =>
     route.fulfill({
-      json: { tags: [entry, target], total: 2, page: 1, pageSize: 25 } satisfies ApiResponse<"listMetadataTags">,
+      json: {
+        tags: [entry, target],
+        total: 2,
+        page: 1,
+        pageSize: 25,
+        pendingWorkCount: entry.pendingWorkCount,
+      } satisfies ApiResponse<"listMetadataTags">,
     }),
   );
   const changes: unknown[] = [];
@@ -219,13 +225,14 @@ test("@desktop shared tag dialog edits names and reviews reversible merges", asy
   let merge: unknown;
   await page.route("**/api/metadata/tags/1/merge", (route) => {
     if (route.request().method() !== "DELETE") merge = route.request().postDataJSON();
-    entry = { ...entry, mergedIntoTagId: route.request().method() === "DELETE" ? null : 2 };
+    entry = { ...entry, mergedIntoTagId: route.request().method() === "DELETE" ? null : 2, pendingWorkCount: 70 };
     return route.fulfill({ json: entry });
   });
   await page.goto("/metadata?view=tags");
   await expect(page.getByRole("tab", { name: "Tags", exact: true })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("button", { name: "Manage Synthetic tag", exact: true }).click();
   const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText(/its manual name, then the all-language manual name/)).toBeVisible();
   await dialog.getByLabel("All languages", { exact: true }).fill("Authored tag name");
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog).toHaveAccessibleName("Manage Authored tag name");
@@ -235,6 +242,7 @@ test("@desktop shared tag dialog edits names and reviews reversible merges", asy
   await expect(dialog.getByText(/Work tags will use the target/)).toBeVisible();
   await dialog.getByRole("button", { name: "Merge", exact: true }).click();
   await expect(dialog.getByRole("button", { name: "Undo merge" })).toBeVisible();
+  await expect(dialog.getByRole("status")).toContainText("70 works");
   expect(merge).toEqual({ targetTagId: 2 });
   await dialog.getByRole("button", { name: "Undo merge" }).click();
   await expect(dialog.getByLabel("Merge target", { exact: true })).toBeVisible();
@@ -243,6 +251,56 @@ test("@desktop shared tag dialog edits names and reviews reversible merges", asy
   await expect.poll(() => changes.length).toBe(2);
   expect(changes[1]).toEqual({ names: {}, hidden: true });
   await page.screenshot({ path: "test-results/metadata-tag-management.png", fullPage: true });
+});
+
+test("hidden tag matches are explained and cannot be silently created in the work editor", async ({ page }) => {
+  await metadataWorkEditor(page);
+  const hidden = metadataTagFixture({ displayName: "Example hidden tag", hidden: true, resolvedHidden: true });
+  await page.route("**/api/metadata/tags?*", (route) => {
+    expect(new URL(route.request().url()).searchParams.get("includeHidden")).toBe("true");
+    return route.fulfill({
+      json: { tags: [hidden], total: 1, page: 1, pageSize: 20 } satisfies ApiResponse<"listMetadataTags">,
+    });
+  });
+  await page.goto("/metadata");
+  await page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  await dialog.getByLabel("Add tag", { exact: true }).fill("Example hidden tag");
+  await expect(dialog.getByRole("button", { name: "Example hidden tag · Hidden", exact: true })).toBeDisabled();
+  await expect(dialog.getByRole("alert")).toContainText("Unhide it in Metadata");
+  await expect(dialog.getByRole("button", { name: "Create tag: Example hidden tag", exact: true })).toHaveCount(0);
+});
+
+test("tag creation conflicts retain the name and explain the hidden target", async ({ page }) => {
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    authenticated: true,
+    permissions: ["library:read", "library:write"],
+  });
+  await page.route("**/api/metadata/tags?*", (route) =>
+    route.fulfill({
+      json: {
+        tags: [],
+        total: 0,
+        page: 1,
+        pageSize: 25,
+        pendingWorkCount: 3,
+      } satisfies ApiResponse<"listMetadataTags">,
+    }),
+  );
+  await page.route("**/api/metadata/tags", (route) =>
+    route.fulfill({
+      status: 409,
+      json: { code: "metadata_tag_hidden", error: "synthetic conflict", retryable: false },
+    }),
+  );
+  await page.goto("/metadata?view=tags");
+  await expect(page.getByRole("status")).toContainText("3 works");
+  await page.getByRole("button", { name: "Create tag", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Tag name").fill("Example hidden tag");
+  await dialog.getByRole("button", { name: "Create tag", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Unhide it in Metadata");
+  await expect(dialog.getByLabel("Tag name")).toHaveValue("Example hidden tag");
 });
 
 test("circle management keeps names and aliases and reviews merge history", async ({ page }) => {

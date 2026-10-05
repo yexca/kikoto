@@ -18,6 +18,10 @@ export const surfaceHant = {
     loading: "正在載入…",
   },
   metadataEntries: {
+    hiddenNameConflict: "這個名稱對應已隱藏的標籤。請先在中繼資料管理中取消隱藏，再新增。",
+    pendingWorks: "背景標籤更新佇列還有 {{count}} 個作品。重新整理可查看進度。",
+    namePriority: "逐一嘗試偏好語言：該語言的手動名稱 > 所有語言手動名稱 > 提供方名稱。",
+
     worksGroup: "作品",
     entriesGroup: "條目",
     tags: "標籤",

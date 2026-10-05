@@ -74,8 +74,14 @@ export function MetadataTagDialog({
             {t("metadataEntries.workCount")}: {tag.workCount} ·{" "}
             {tag.dlsiteGenreId ? `DLsite #${tag.dlsiteGenreId}` : t("metadataEntries.createTag")}
           </p>
+          {tag.pendingWorkCount > 0 && (
+            <p role="status" className="text-sm text-muted-foreground">
+              {t("metadataEntries.pendingWorks", { count: tag.pendingWorkCount })}
+            </p>
+          )}
           <fieldset disabled={!canManage || busy} className="space-y-3 border-0 p-0">
             <h3 className="text-sm font-semibold">{t("metadataEntries.manualNames")}</h3>
+            <p className="text-sm text-muted-foreground">{t("metadataEntries.namePriority")}</p>
             <div className="grid gap-3 sm:grid-cols-2">
               {metadataTagLanguages.map(([language, label]) => (
                 <label key={language} className="block space-y-1 text-sm">

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { CollectionPagination } from "@/components/collection/CollectionPagination";
-import { api, type MetadataCircle, type MetadataTag } from "@/lib/api";
+import { api, ApiError, type MetadataCircle, type MetadataTag } from "@/lib/api";
 import { MaintenanceToolbar, useMaintenanceSearch, type MaintenanceToolbarSlots } from "./MaintenanceControls";
 import { MetadataTagDialog } from "./MetadataTagDialog";
 import { MetadataCircleDialog } from "./MetadataCircleDialog";
@@ -24,7 +24,11 @@ export function MetadataEntryMaintenance({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const search = useMaintenanceSearch(() => setPage(1));
-  const [result, setResult] = useState<{ entries: (MetadataTag | MetadataCircle)[]; total: number }>({
+  const [result, setResult] = useState<{
+    entries: (MetadataTag | MetadataCircle)[];
+    total: number;
+    pendingWorkCount?: number;
+  }>({
     entries: [],
     total: 0,
   });
@@ -36,7 +40,7 @@ export function MetadataEntryMaintenance({
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
-  const [createFailed, setCreateFailed] = useState(false);
+  const [createFailed, setCreateFailed] = useState<string | null>(null);
   const reload = () => setRefresh((value) => value + 1);
   useEffect(() => {
     const controller = new AbortController();
@@ -46,7 +50,7 @@ export function MetadataEntryMaintenance({
       kind === "tags"
         ? api
             .listMetadataTags({ ...options, includeHidden: true })
-            .then((next) => ({ entries: next.tags, total: next.total }))
+            .then((next) => ({ entries: next.tags, total: next.total, pendingWorkCount: next.pendingWorkCount }))
         : api.listMetadataCircles(options).then((next) => ({ entries: next.circles, total: next.total }));
     void request
       .then((next) => {
@@ -69,15 +73,19 @@ export function MetadataEntryMaintenance({
   }, [kind, page, pageSize, search.query, refresh]);
   const create = async () => {
     setBusy(true);
-    setCreateFailed(false);
+    setCreateFailed(null);
     try {
       const next = await api.createMetadataTag(name.trim());
       setCreating(false);
       setName("");
       setManaged(next);
       reload();
-    } catch {
-      setCreateFailed(true);
+    } catch (error) {
+      setCreateFailed(
+        error instanceof ApiError && error.code === "metadata_tag_hidden"
+          ? "metadataEntries.hiddenNameConflict"
+          : "metadataEntries.saveFailed",
+      );
     } finally {
       setBusy(false);
     }
@@ -115,6 +123,11 @@ export function MetadataEntryMaintenance({
           </Button>
         )}
       </MaintenanceToolbar>
+      {kind === "tags" && (result.pendingWorkCount ?? 0) > 0 && (
+        <p role="status" className="text-sm text-muted-foreground">
+          {t("metadataEntries.pendingWorks", { count: result.pendingWorkCount })}
+        </p>
+      )}
       {(loaded || !failed) && <CollectionPagination {...pagination} placement="top" compactMobile compactTop />}
       {failed && (
         <div role="alert" className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
@@ -220,7 +233,7 @@ export function MetadataEntryMaintenance({
             </label>
             {createFailed && (
               <p role="alert" className="mt-2 text-sm text-destructive">
-                {t("metadataEntries.saveFailed")}
+                {t(createFailed)}
               </p>
             )}
           </DialogBody>

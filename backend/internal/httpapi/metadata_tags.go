@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
@@ -17,10 +16,11 @@ import (
 )
 
 type metadataTagPage struct {
-	Tags     []metadatatags.Tag `json:"tags"`
-	Total    int                `json:"total"`
-	Page     int                `json:"page"`
-	PageSize int                `json:"pageSize"`
+	PendingWorkCount int                `json:"pendingWorkCount"`
+	Tags             []metadatatags.Tag `json:"tags"`
+	Total            int                `json:"total"`
+	Page             int                `json:"page"`
+	PageSize         int                `json:"pageSize"`
 }
 type workMetadataTags struct {
 	Tags          []metadatatags.EffectiveTag `json:"tags"`
@@ -32,6 +32,8 @@ func metadataTagError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		writeAPIError(w, http.StatusServiceUnavailable, "metadata_tag_change_timeout", "tag change timed out; retry the operation", true)
+	case errors.Is(err, metadatatags.ErrHidden):
+		writeAPIError(w, http.StatusConflict, "metadata_tag_hidden", "this name resolves to a hidden tag; unhide it in Metadata before adding it", false)
 	case errors.Is(err, metadatatags.ErrInvalid):
 		writeAPIError(w, http.StatusBadRequest, "invalid_metadata_tag", "invalid metadata tag change", false)
 	case errors.Is(err, sql.ErrNoRows):
@@ -98,6 +100,11 @@ func (s *Server) listMetadataTags(w http.ResponseWriter, r *http.Request) {
 		}
 		result.Tags = append(result.Tags, tag)
 	}
+	result.PendingWorkCount, err = s.metadataTagPendingWorkCount(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, result)
 }
 func (s *Server) changeMetadataTag(w http.ResponseWriter, r *http.Request) {
@@ -138,19 +145,8 @@ func (s *Server) changeMetadataTag(w http.ResponseWriter, r *http.Request) {
 	}
 	defer release()
 	reproject := payload.Hidden != nil || strings.HasSuffix(r.URL.Path, "/merge")
-	affected := map[int64]bool{}
 	collect := func(tagID int64) error {
-		if tagID <= 0 {
-			return nil
-		}
-		ids, err := metadatatags.AffectedWorks(ctx, tx, tagID)
-		if err != nil {
-			return err
-		}
-		for _, id := range ids {
-			affected[id] = true
-		}
-		return nil
+		return metadatatags.EnqueueAffectedTx(ctx, tx, tagID)
 	}
 	if reproject {
 		for _, tagID := range []int64{id, payload.TargetTagID} {
@@ -196,17 +192,6 @@ func (s *Server) changeMetadataTag(w http.ResponseWriter, r *http.Request) {
 		if err := collect(id); err != nil {
 			metadataTagError(w, err)
 			return
-		}
-		workIDs := make([]int64, 0, len(affected))
-		for workID := range affected {
-			workIDs = append(workIDs, workID)
-		}
-		sort.Slice(workIDs, func(i, j int) bool { return workIDs[i] < workIDs[j] })
-		for _, workID := range workIDs {
-			if err := metasync.ProjectWorkMetadataTagsTx(ctx, tx, workID, priorities); err != nil {
-				metadataTagError(w, err)
-				return
-			}
 		}
 	}
 	if err := tx.Commit(); err != nil {

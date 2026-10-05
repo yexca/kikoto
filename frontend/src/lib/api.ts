@@ -441,6 +441,8 @@ export type WorkManualOverridePayload = {
 };
 
 export type MetadataTag = {
+  pendingWorkCount: number;
+  resolvedHidden: boolean;
   id: number;
   key: string;
   displayName: string;
@@ -2497,7 +2499,7 @@ export const api = {
     includeHidden = false,
     signal,
   }: { query?: string; page?: number; pageSize?: number; includeHidden?: boolean; signal?: AbortSignal } = {}) =>
-    getJSON<MetadataEntryPage<{ tags: MetadataTag[] }>>(
+    getJSON<MetadataEntryPage<{ tags: MetadataTag[]; pendingWorkCount?: number }>>(
       `/api/metadata/tags?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}&includeHidden=${includeHidden}`,
       signal,
     ),

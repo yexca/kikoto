@@ -82,7 +82,7 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain ends at
-`050_circle_identity_management.sql`, with `050_v0.7.1.sql` generated
+`051_metadata_tag_projection_queue.sql`, with `051_v0.7.1.sql` generated
 from the current `VERSION` file. Released migrations and baselines, including
 `047_v0.7.1.sql`, remain immutable and available for ledger validation.
 
@@ -93,13 +93,19 @@ locale names, per-work original bases and projection markers, a merge-resolution
 view, and per-work add/remove overrides, creates concepts for already
 known genre ids, and queues search. Its full work projection runs after startup
 core workflows in independent background Go batches, with a completion marker
-and interrupted-pass recovery. Snapshot-only provider tags are normalized too.
+and interrupted-pass recovery. Snapshot-only DLsite tags are normalized too.
 Migration 048 guards JSON inspection with `json_valid`; malformed stored
 overrides are retained and cannot abort migration.
 Migration 050 adds independent manual/provider circle names, aliases with
 search invalidation, and protected merge-review records for reversible relation
-transfers. Existing databases apply 048–050 through the numbered chain; empty
-databases use the schema-050 baseline. Startup moves old flat covers to the
+transfers. Migration 051 adds the durable shared-tag projection queue and
+snapshot-writer
+triggers, queues existing works, and requests one new startup backfill to repair
+older projections and locale-name precedence. Hidden/merged states now commit
+before batched work projection. Existing databases apply 048–051 through the
+numbered chain; empty databases use the schema-051 baseline. The earlier
+schema-050 baseline is retained for ledger validation. Startup moves old flat
+covers to the
 nested cache once and never replaces an existing provider cover.
 The two repairs record durable status separately; failed cover files do not
 stop migration of the remaining files, and both repairs retry next startup.

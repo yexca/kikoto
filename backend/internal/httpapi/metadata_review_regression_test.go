@@ -62,7 +62,7 @@ func metadataReviewRequest(t *testing.T, s *Server, method, path, body string, u
 	return w
 }
 
-func TestTagChangesProjectOnlyConnectedReferencesAndRollbackAsOneUnit(t *testing.T) {
+func TestTagChangesQueueOnlyConnectedReferencesAndRetryFailedBatches(t *testing.T) {
 	db := openMigratedTestDB(t)
 	s := NewServer(db, config.Config{})
 	actor := metadataReviewExec(t, db, "INSERT INTO user_account(username,role) VALUES ('synthetic-tag-review','admin')")
@@ -125,6 +125,16 @@ func TestTagChangesProjectOnlyConnectedReferencesAndRollbackAsOneUnit(t *testing
 		if response.Code != 200 {
 			t.Fatalf("change %s: %d %s", path, response.Code, response.Body.String())
 		}
+		var traced, queued int
+		if err := db.QueryRow("SELECT COUNT(*) FROM review_projection_trace").Scan(&traced); err != nil || traced != 0 {
+			t.Fatalf("request projected works: %d, %v", traced, err)
+		}
+		if err := db.QueryRow("SELECT COUNT(*) FROM work_metadata_tag_dirty").Scan(&queued); err != nil || queued != len(want) {
+			t.Fatalf("queued %d, want %d: %v", queued, len(want), err)
+		}
+		if _, err := metasync.ProcessMetadataTagQueue(ctx, db, 64, nil); err != nil {
+			t.Fatal(err)
+		}
 		rows, err := db.Query("SELECT work_id FROM review_projection_trace ORDER BY work_id")
 		if err != nil {
 			t.Fatal(err)
@@ -154,21 +164,41 @@ func TestTagChangesProjectOnlyConnectedReferencesAndRollbackAsOneUnit(t *testing
 	check(http.MethodPatch, path, `{"hidden":false}`, append([]int64{}, works[:3]...))
 	check(http.MethodPost, path+"/merge", fmt.Sprintf(`{"targetTagId":%d}`, target), append([]int64{}, works[:4]...))
 	check(http.MethodDelete, path+"/merge", "", append([]int64{}, works[:4]...))
-	// A failure during any projection rolls back the state and all earlier
-	// projection writes, with the global completion marker untouched.
+	// State commits independently of repair. A failed batch keeps every old
+	// link and queue entry; a new server resumes it after the fault is removed.
 	metadataReviewExec(t, db, fmt.Sprintf("CREATE TRIGGER review_projection_failure BEFORE UPDATE ON work_metadata_tag_projection WHEN new.work_id=%d BEGIN SELECT RAISE(ABORT,'synthetic projection interruption'); END", works[2]))
 	response := metadataReviewRequest(t, s, http.MethodPatch, path, `{"hidden":true}`, user)
-	if response.Code < 400 {
-		t.Fatalf("interrupted change succeeded: %s", response.Body.String())
+	if response.Code != 200 {
+		t.Fatalf("change failed: %s", response.Body.String())
 	}
 	var hidden bool
-	if err := db.QueryRow("SELECT hidden FROM metadata_tag WHERE tag_id=?", source).Scan(&hidden); err != nil || hidden {
-		t.Fatalf("partial hidden state = %v, %v", hidden, err)
+	if err := db.QueryRow("SELECT hidden FROM metadata_tag WHERE tag_id=?", source).Scan(&hidden); err != nil || !hidden {
+		t.Fatalf("committed hidden state = %v, %v", hidden, err)
+	}
+	if _, err := metasync.ProcessMetadataTagQueue(ctx, db, 64, nil); err == nil {
+		t.Fatal("interrupted batch succeeded")
 	}
 	tags, err := metadatatags.Read(ctx, db, works[0])
 	if err != nil || len(tags) != 1 || tags[0].ID != source {
-		t.Fatalf("partial projection = %v, %v", tags, err)
+		t.Fatalf("old projection lost = %v, %v", tags, err)
 	}
+	var pending int
+	if err := db.QueryRow("SELECT COUNT(*) FROM work_metadata_tag_dirty").Scan(&pending); err != nil || pending != 3 {
+		t.Fatalf("lost queue: %d, %v", pending, err)
+	}
+	metadataReviewExec(t, db, "DROP TRIGGER review_projection_failure")
+	restarted := NewServer(db, config.Config{})
+	if _, err := metasync.ProcessMetadataTagQueue(ctx, restarted.db, 1, nil); err != nil {
+		t.Fatal(err)
+	}
+	tags, err = metadatatags.Read(ctx, db, works[0])
+	if err != nil || len(tags) != 0 {
+		t.Fatalf("new hidden projection = %v, %v", tags, err)
+	}
+	if _, err := metasync.ProcessMetadataTagQueue(ctx, restarted.db, 64, nil); err != nil {
+		t.Fatal(err)
+	}
+
 }
 
 func TestWorkTagDraftCreationIsAtomicAndDeduplicatedByAnyKnownName(t *testing.T) {
@@ -342,6 +372,9 @@ func TestMetadataEntryReadsRespectPagePermissionsDemoScopeAndCircleVisibility(t 
 			t.Fatalf("writer read %s: %d %s", path, response.Code, response.Body.String())
 		}
 	}
+	for _, work := range works {
+		metadataReviewExec(t, db, "INSERT INTO work_metadata_tag_dirty(work_id) VALUES (?)", work)
+	}
 	demo := NewServer(db, config.Config{Mode: config.ModeDemo})
 	user := account.User{ID: 1, Permissions: []string{"library:read"}}
 	response := metadataReviewRequest(t, demo, http.MethodGet, "/api/metadata/circles", "", user)
@@ -365,6 +398,9 @@ func TestMetadataEntryReadsRespectPagePermissionsDemoScopeAndCircleVisibility(t 
 	}
 	if response.Code != 200 || tags.Total != 1 || len(tags.Tags) != 1 || tags.Tags[0].ID != publicTag || tags.Tags[0].WorkCount != 1 {
 		t.Fatalf("demo tags = %+v, status %d", tags, response.Code)
+	}
+	if tags.PendingWorkCount != 1 || tags.Tags[0].PendingWorkCount != 1 {
+		t.Fatalf("demo disclosed ineligible queue entries: %+v", tags)
 	}
 	for _, id := range []int64{private, translator} {
 		for _, suffix := range []string{"", "/merges"} {

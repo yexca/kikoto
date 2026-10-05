@@ -16,6 +16,8 @@ import (
 
 const Namespace = "metadata"
 
+var ErrHidden = errors.New("metadata tag is hidden")
+
 var ErrInvalid = errors.New("invalid metadata tag change")
 
 type Querier interface {
@@ -28,16 +30,18 @@ type Name struct {
 	Source   string `json:"source"`
 }
 type Tag struct {
-	ID          int64   `json:"id"`
-	Key         string  `json:"key"`
-	DisplayName string  `json:"displayName"`
-	GenreID     *int64  `json:"dlsiteGenreId"`
-	MergedInto  *int64  `json:"mergedIntoTagId"`
-	Hidden      bool    `json:"hidden"`
-	Source      string  `json:"source"`
-	WorkCount   int     `json:"workCount"`
-	Names       []Name  `json:"names"`
-	MergedFrom  []int64 `json:"mergedFromTagIds"`
+	ResolvedHidden   bool    `json:"resolvedHidden"`
+	ID               int64   `json:"id"`
+	Key              string  `json:"key"`
+	DisplayName      string  `json:"displayName"`
+	GenreID          *int64  `json:"dlsiteGenreId"`
+	MergedInto       *int64  `json:"mergedIntoTagId"`
+	Hidden           bool    `json:"hidden"`
+	Source           string  `json:"source"`
+	WorkCount        int     `json:"workCount"`
+	PendingWorkCount int     `json:"pendingWorkCount"`
+	Names            []Name  `json:"names"`
+	MergedFrom       []int64 `json:"mergedFromTagIds"`
 }
 type EffectiveTag struct {
 	ID          int64  `json:"id"`
@@ -110,7 +114,10 @@ func CreateTx(ctx context.Context, tx *sql.Tx, name string, userID int64) (int64
 		return 0, ErrInvalid
 	}
 	if id, err := FindByName(ctx, tx, name); err == nil {
-		resolved, _, err := resolve(ctx, tx, id)
+		resolved, hidden, err := resolve(ctx, tx, id)
+		if err == nil && hidden {
+			return 0, ErrHidden
+		}
 		return resolved.ID, err
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return 0, err
@@ -210,8 +217,8 @@ func loadNames(ctx context.Context, q Querier, id, genre int64) ([]Name, error) 
 	}
 	return result, closeRows(rows)
 }
-func displayName(names []Name, priorities []string, fallback string) string {
-	find := func(lang, source string) string {
+func languageName(names []Name, language string) string {
+	find := func(source, lang string) string {
 		for _, n := range names {
 			if n.Language == lang && n.Source == source && strings.TrimSpace(n.Name) != "" {
 				return n.Name
@@ -219,21 +226,27 @@ func displayName(names []Name, priorities []string, fallback string) string {
 		}
 		return ""
 	}
-	if name := find("", "manual"); name != "" {
-		return name
+	for _, value := range []struct{ source, language string }{{"manual", language}, {"manual", ""}, {"dlsite", language}} {
+		if name := find(value.source, value.language); name != "" {
+			return name
+		}
 	}
+	return ""
+}
+
+func displayName(names []Name, priorities []string, fallback string) string {
 	// "origin" concerns edition titles; tag dictionaries fall back to Japanese
 	// only after all explicitly preferred languages.
 	for _, lang := range append(append([]string{}, priorities...), "ja-jp") {
 		if lang == "origin" {
 			continue
 		}
-		if name := find(lang, "manual"); name != "" {
+		if name := languageName(names, lang); name != "" {
 			return name
 		}
-		if name := find(lang, "dlsite"); name != "" {
-			return name
-		}
+	}
+	if name := languageName(names, ""); name != "" {
+		return name
 	}
 	for _, n := range names {
 		if strings.TrimSpace(n.Name) != "" {
@@ -300,12 +313,19 @@ func Load(ctx context.Context, q Querier, id int64) (Tag, error) {
 	if merged.Valid {
 		t.MergedInto = &merged.Int64
 	}
+	_, t.ResolvedHidden, err = resolve(ctx, q, id)
+	if err != nil {
+		return t, err
+	}
 	t.Source = "dlsite"
 	if custom {
 		t.Source = "manual"
 	}
 	t.Names, err = loadNames(ctx, q, id, genre.Int64)
 	if err != nil {
+		return t, err
+	}
+	if err := q.QueryRowContext(ctx, "SELECT COUNT(*) FROM work_metadata_tag_dirty").Scan(&t.PendingWorkCount); err != nil {
 		return t, err
 	}
 	t.MergedFrom = []int64{}

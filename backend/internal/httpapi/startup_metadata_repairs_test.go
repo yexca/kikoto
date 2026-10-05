@@ -82,7 +82,7 @@ func TestStartupRepairsFailIndependentlyContinueOtherCoversAndRetry(t *testing.T
 		t.Fatalf("core startup effects definitions=%d runs=%d parties=%d", definitions, runs, parties)
 	}
 	waitStartupRepair(t, s, "startup_cover_migration", "failed")
-	waitStartupRepair(t, s, "startup_metadata_tag_backfill", "failed")
+	waitStartupRepair(t, s, "startup_metadata_tag_backfill", "complete")
 	goodTarget := filepath.Join(root, filepath.FromSlash(coverAssetRelativePath(codes[1], ".png")))
 	if _, err := os.Stat(goodTarget); err != nil {
 		t.Fatalf("one failed file prevented another migration: %v", err)
@@ -94,8 +94,8 @@ func TestStartupRepairsFailIndependentlyContinueOtherCoversAndRetry(t *testing.T
 	if err := db.QueryRow("SELECT COUNT(*) FROM app_setting WHERE key IN ('cover_layout_version','metadata_tag_projection_version')").Scan(&markers); err != nil {
 		t.Fatal(err)
 	}
-	if markers != 0 {
-		t.Fatal("failed repairs recorded completion")
+	if markers != 1 {
+		t.Fatal("invalid snapshot blocked tag repair or failed cover recorded completion")
 	}
 	if err := s.Shutdown(context.Background()); err != nil {
 		t.Fatal(err)

@@ -67,6 +67,10 @@ func (s *Server) loadMetadataTagForRead(ctx context.Context, id int64) (metadata
 	if err != nil || !s.cfg.IsDemo() {
 		return result, err
 	}
+	result.PendingWorkCount, err = s.metadataTagPendingWorkCount(ctx)
+	if err != nil {
+		return result, err
+	}
 	err = s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT link.work_id) FROM work_tag AS link JOIN work AS demo_work ON demo_work.id=link.work_id WHERE link.tag_id=? AND `+contentpolicy.DemoEligibleWorkSQL("demo_work"), id).Scan(&result.WorkCount)
 	if err != nil {
 		return result, err
@@ -85,4 +89,14 @@ func (s *Server) loadMetadataTagForRead(ctx context.Context, id int64) (metadata
 	}
 	result.MergedFrom = visibleSources
 	return result, nil
+}
+
+func (s *Server) metadataTagPendingWorkCount(ctx context.Context) (int, error) {
+	query := "SELECT COUNT(*) FROM work_metadata_tag_dirty AS dirty"
+	if s.cfg.IsDemo() {
+		query += " JOIN work AS demo_work ON demo_work.id=dirty.work_id WHERE " + contentpolicy.DemoEligibleWorkSQL("demo_work")
+	}
+	var count int
+	err := s.db.QueryRowContext(ctx, query).Scan(&count)
+	return count, err
 }

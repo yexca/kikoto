@@ -18,6 +18,10 @@ export const surfaceKorean = {
     loading: "불러오는 중…",
   },
   metadataEntries: {
+    hiddenNameConflict: "이 이름은 숨겨진 태그와 일치합니다. 추가하기 전에 메타데이터 관리에서 숨김을 해제하세요.",
+    pendingWorks: "백그라운드 태그 업데이트 대기 작품이 {{count}}개 있습니다. 새로고침하여 진행 상황을 확인하세요.",
+    namePriority: "선호 언어마다 해당 언어의 수동 이름, 모든 언어 공통 수동 이름, 제공자 이름 순서로 선택합니다.",
+
     worksGroup: "작품",
     entriesGroup: "항목",
     tags: "태그",

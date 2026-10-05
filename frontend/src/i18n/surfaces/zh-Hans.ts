@@ -18,6 +18,10 @@ export const surfaceHans = {
     loading: "正在加载…",
   },
   metadataEntries: {
+    hiddenNameConflict: "这个名称对应已隐藏的标签。请先在元数据管理中取消隐藏，再添加。",
+    pendingWorks: "后台标签更新队列还有 {{count}} 个作品。刷新可查看进度。",
+    namePriority: "逐个尝试首选语言：该语言的手动名称 > 所有语言手动名称 > 提供方名称。",
+
     worksGroup: "作品",
     entriesGroup: "条目",
     tags: "标签",

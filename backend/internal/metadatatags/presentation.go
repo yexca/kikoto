@@ -51,18 +51,8 @@ func Presentation(ctx context.Context, q Querier, workID, sourceID int64, legacy
 			if err != nil {
 				return nil, err
 			}
-			for _, language := range []string{"", languages[0]} {
-				found := ""
-				for _, value := range names {
-					if value.Language == language && strings.TrimSpace(value.Name) != "" {
-						found = value.Name
-						break
-					}
-				}
-				if found != "" {
-					name = found
-					break
-				}
+			if localized := languageName(names, languages[0]); localized != "" {
+				name = localized
 			}
 		}
 		result = append(result, name)

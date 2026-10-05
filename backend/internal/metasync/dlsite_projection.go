@@ -345,6 +345,15 @@ func ProjectWorkMetadataTagsTx(ctx context.Context, tx *sql.Tx, workID int64, pr
 			return err
 		}
 	}
+	var remoteOnly bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM metadata_snapshot WHERE work_id=?)
+ AND NOT EXISTS(SELECT 1 FROM metadata_snapshot AS snapshot JOIN metadata_provider AS provider ON provider.id=snapshot.provider_id WHERE snapshot.work_id=? AND provider.code='dlsite')
+ AND NOT EXISTS(SELECT 1 FROM dlsite_metadata_variant WHERE work_id=?)`, sourceID, sourceID, sourceID).Scan(&remoteOnly); err != nil {
+		return err
+	}
+	if legacy == nil && remoteOnly {
+		legacy = []string{}
+	}
 	if legacy == nil {
 		rows, err := tx.QueryContext(ctx, "SELECT tag.display_name FROM work_tag INNER JOIN tag ON tag.id=work_tag.tag_id WHERE work_id=? AND work_tag.source='dlsite' AND tag.namespace='dlsite' ORDER BY tag.id", sourceID)
 		if err != nil {
@@ -367,7 +376,18 @@ func ProjectWorkMetadataTagsTx(ctx context.Context, tx *sql.Tx, workID int64, pr
 			return closeErr
 		}
 	}
-	return metadatatags.ProjectWorkTx(ctx, tx, workID, sourceID, legacy)
+	if err := metadatatags.ProjectWorkTx(ctx, tx, workID, sourceID, legacy); err != nil {
+		return err
+	}
+	if remoteOnly {
+		// An empty DLsite projection must not suppress the existing remote
+		// snapshot presentation before remote fallback is enabled.
+		if _, err := tx.ExecContext(ctx, "DELETE FROM work_metadata_tag_projection WHERE work_id=?", workID); err != nil {
+			return err
+		}
+	}
+	_, err = tx.ExecContext(ctx, "DELETE FROM work_metadata_tag_dirty WHERE work_id=?", workID)
+	return err
 }
 
 func canonicalWorkIDTx(ctx context.Context, tx *sql.Tx, logicalWorkID int64) (int64, error) {

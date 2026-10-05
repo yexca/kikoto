@@ -8,11 +8,16 @@ playback actions for one work.
 
 Admin and super_admin can edit work metadata with `library:write`. Save sends only fields changed from the initial editor values; selecting a cover alone preserves automatic titles, circles, series, and voice credits. Clearing a field resets only its override. Existing frozen title overrides that exactly match a trimmed DLsite title in the same family are removed during upgrade; circle, series, and voice overrides are kept.
 
-The Tags section searches shared metadata tags, adds or removes them for this work, and can create a custom tag even when the work has no DLsite metadata. Restore DLsite tags clears the work’s tag additions/removals. Shared names follow the configured metadata language priority, using manual names and learned genre names; a Japanese-only work can show a known Chinese tag name. Hidden tags remain absent everywhere. Personal “My tags” are separate account-owned tags. Demo shows the editor read-only.
+The Tags section searches shared metadata tags, adds or removes them for this work, and can create a custom tag even when the work has no DLsite metadata. Restore DLsite tags clears the work’s tag additions/removals. Shared names follow the configured metadata language priority, using manual names and learned genre names; a Japanese-only work can show a known Chinese tag name. After background updates complete, hidden tags remain absent everywhere. Personal “My tags” are separate account-owned tags. Demo shows the editor read-only.
 
 New custom names remain drafts until Save creates or reuses the shared tag and attaches it to this work in one transaction. Cancel leaves no shared entry. A name matching any known language after trimming and ignoring case reuses that tag, so repeated clicks and duplicate names do not create duplicate concepts.
 
 Switching metadata language uses that version’s manual or dictionary tag names when available, then falls back to the configured priority. Additions, removals, final-target hiding, and merge mappings still apply. The default version uses the same provider source as the work projection. Snapshot-only tags stay visible until their own projection completes; removing every tag produces an intentionally empty display.
+
+
+Shared tag names try each preferred language in order: that language’s manual name, the all-language manual name, then the provider name. Detail language switching follows the same precedence. A hidden name match, including a merge into a hidden target, is labelled in completion and rejected on creation; unhide it in Metadata first.
+
+Hide, merge and undo save their state immediately and queue affected works for background updates. Until a work is updated, its last committed tag set stays visible; afterward, display, search and recommendations use the new set. The tag manager shows the remaining instance-wide work count; refresh the list to check progress. Updates resume after restart. Snapshot-only shared tag backfill reads DLsite only, fills missing dictionary names without replacing newer ones, and skips invalid or excessive input while retaining valid manual edits. Remote snapshot tags keep their previous display until remote metadata fallback is introduced.
 
 ## Current Behavior
 
